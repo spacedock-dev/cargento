@@ -32,15 +32,17 @@ else:
     sqlite_module = _sqlite_module
 
 
-def read_tail(config: RuntimeConfig, path: str) -> list[str]:
+def read_tail(config: RuntimeConfig, path: str, *, end: int | None = None) -> list[str]:
+    """The last `tail_bytes` of a file as lines, or of its first `end` bytes when given."""
     try:
-        size = os.path.getsize(path)
+        size = os.path.getsize(path) if end is None else end
         with open(path, "rb") as source:
             truncated = False
             if size > config.tail_bytes:
                 source.seek(size - config.tail_bytes - 1)
                 truncated = source.read(1) != b"\n"
-            data = source.read().decode("utf-8", "replace")
+            raw = source.read() if end is None else source.read(size - source.tell())
+            data = raw.decode("utf-8", "replace")
     except OSError:
         return []
     lines = data.split("\n")

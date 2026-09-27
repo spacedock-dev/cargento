@@ -151,7 +151,11 @@ BINDING = {
 }
 
 _VERIFIED = score_abstention.VerifiedClaude(
-    BINDING["binary"], BINDING["cli_version"], "/abs/claude", BINDING["signature"], (0, 0, 0, 0, "")
+    BINDING["binary"],
+    BINDING["cli_version"],
+    "/abs/claude",
+    BINDING["signature"],
+    (0, 0, 0, 0, 0, ""),
 )
 
 _LEDGER_PATCH: Any = None
@@ -1034,6 +1038,19 @@ class DRC4710TheProbeCannotReachARealModelTest(unittest.TestCase):
             "request names the account's email or UUID anywhere else: yes", "\n".join(self.printed)
         )
 
+    def test_the_home_or_user_name_in_another_case_fails_the_probe(self) -> None:
+        # Review N1: the CLI fixes the case of the path it names, so a
+        # case-sensitive needle printed "user name: no" over a leak.
+        home = abstention_ledger.real_home()
+        for label, text in (
+            ("home", home.upper()),
+            ("user", "/private/tmp/" + os.path.basename(home.rstrip(os.sep)).upper() + "-x"),
+        ):
+            with self.subTest(label=label):
+                self.seen.clear()
+                self.printed.clear()
+                self.assertEqual(1, self.probe(self.cli(adds=" " + text)))
+
     def test_the_account_uuid_in_a_header_fails_the_probe(self) -> None:
         self.assertEqual(1, self.probe(self.cli(header_leak=True)))
 
@@ -1182,7 +1199,7 @@ class DRC4710TheVerifiedFileIsTheOneThatRunsTest(_InstalledLayout):
     """Sent F4 and Codex 1: the pin was checked once on a path, then that path ran 19 times.
 
     The smaller sound option: the verified file's identity (device, inode,
-    size, mtime and sha256) is recorded at the check and compared before
+    size, mtime, ctime and sha256) is recorded at the check and compared before
     every call, and a call on a changed file is refused.
     """
 
@@ -1190,7 +1207,7 @@ class DRC4710TheVerifiedFileIsTheOneThatRunsTest(_InstalledLayout):
         verified = self.verify("darwin", signed=True)
         stat = self.binary.stat()
         self.assertEqual(
-            (stat.st_dev, stat.st_ino, stat.st_size, stat.st_mtime_ns,
+            (stat.st_dev, stat.st_ino, stat.st_size, stat.st_mtime_ns, stat.st_ctime_ns,
              hashlib.sha256(self.binary.read_bytes()).hexdigest()),
             verified.identity,
         )  # fmt: skip
@@ -1218,7 +1235,43 @@ class DRC4710TheVerifiedFileIsTheOneThatRunsTest(_InstalledLayout):
         self.binary.write_bytes(original)
         stat = self.binary.stat()
         os.utime(self.binary, ns=(stat.st_atime_ns, verified.identity[3]))
-        self.assertEqual(verified.path, fresh("claude"), "identical bytes and stamp pass")
+        with mock.patch("builtins.print"):
+            # Review N2: identical bytes and mtime no longer pass, because
+            # the write moved the inode's ctime, which `os.utime` cannot set.
+            self.assertIsNone(fresh("claude"), "restored bytes and mtime still moved ctime")
+
+    def test_a_swap_and_swap_back_during_verification_is_refused(self) -> None:
+        # Review N2: a runner swapped a signed copy in for `codesign` and the
+        # original back after `--version`. Device, inode, size, mtime and
+        # bytes all matched; only the inode's change time moved, as a rename
+        # away and back does on APFS. The fake stands in for that rename.
+        real_fstat = os.fstat
+        moved = {"on": False}
+
+        class _Stat:
+            def __init__(self, inner: os.stat_result) -> None:
+                self._inner = inner
+
+            def __getattr__(self, name: str) -> Any:
+                value = getattr(self._inner, name)
+                return value + 1 if name == "st_ctime_ns" and moved["on"] else value
+
+        def fstat(fd: int) -> Any:
+            return _Stat(real_fstat(fd))
+
+        def run(command: list[str], **_kwargs: Any) -> Any:
+            if Path(command[0]).name == "codesign":
+                moved["on"] = True
+                return mock.Mock(returncode=0, stdout="", stderr="")
+            return mock.Mock(returncode=0, stdout="9.9.9 (Claude Code)\n", stderr="")
+
+        with (
+            mock.patch.object(os, "fstat", fstat),
+            self.assertRaises(score_abstention.BinaryError),
+        ):
+            score_abstention.verify_claude_binary(
+                resolver=lambda _name: str(self.binary), runner=run, platform="darwin"
+            )
 
     def test_a_file_changed_between_the_signature_and_the_version_is_refused(self) -> None:
         def run(command: list[str], **_kwargs: Any) -> Any:
@@ -1546,6 +1599,55 @@ class DRC4711TheContentsAreCheckedAgainstTheTranscriptTest(_Packet):
         lines = path.read_bytes().split(b"\n")
         self.config = dataclasses.replace(self.config, tail_bytes=len(b"\n".join(lines[1:])))
         self.assertEqual([], self.vouch()(case))
+
+    def grow_past_the_tail(self) -> None:
+        """Append later turns larger than `tail_bytes`, as a session that ran on does."""
+        path = Path(self.index[CLAUDE_SID[:8]])
+        filler = {"type": "assistant", "isSidechain": False, "cwd": "/w",
+                  "sessionId": CLAUDE_SID, "timestamp": _stamp(self.start, 200),
+                  "message": {"role": "assistant",
+                              "content": [{"type": "text", "text": "x" * 1_000}]}}  # fmt: skip
+        with path.open("a") as handle:
+            while path.stat().st_size < 3 * self.config.tail_bytes:
+                handle.write(json.dumps(filler) + "\n")
+                handle.flush()
+
+    def test_the_freeze_records_the_transcript_size(self) -> None:
+        case = self.genuine()
+        self.assertEqual(Path(self.index[CLAUDE_SID[:8]]).stat().st_size, case["transcript_bytes"])
+
+    def test_the_tail_minimum_holds_after_the_transcript_grows_past_the_tail(self) -> None:
+        # Review N3: once the session appended more than `tail_bytes` after
+        # the freeze, today's tail began after `captured_at`, counted no user
+        # message, and dropping every one of them passed.
+        import dataclasses  # noqa: PLC0415
+
+        self.config = dataclasses.replace(self.config, tail_bytes=20_000)
+        genuine = self.genuine(asks=(3, 5, 17))
+        self.grow_past_the_tail()
+        self.assertEqual([], self.vouch()(genuine))
+        oldest = json.loads(json.dumps(genuine))
+        oldest["producer_facts"].remove(self.user_messages(oldest)[0])
+        self.assertIn("facts-unconfirmed", self.vouch()(oldest))
+        none = json.loads(json.dumps(genuine))
+        for fact in self.user_messages(none):
+            none["producer_facts"].remove(fact)
+        self.assertIn("facts-unconfirmed", self.vouch()(none))
+
+    def test_a_transcript_shorter_than_it_was_at_the_freeze_is_demoted(self) -> None:
+        case = self.genuine()
+        path = Path(self.index[CLAUDE_SID[:8]])
+        path.write_bytes(path.read_bytes()[:-1])
+        self.assertIn("transcript-truncated", self.vouch()(case))
+
+    def test_a_case_with_no_recorded_size_is_demoted(self) -> None:
+        case = self.genuine()
+        for value in (None, "12", -1, True):
+            with self.subTest(value=value):
+                case["transcript_bytes"] = value
+                self.assertIn("transcript-truncated", self.vouch()(case))
+        del case["transcript_bytes"]
+        self.assertIn("transcript-truncated", self.vouch()(case))
 
     def test_a_message_stamped_at_a_working_capture_is_held(self) -> None:
         # From the scoring lens's killers (K5): the rebuild's bound is inclusive.

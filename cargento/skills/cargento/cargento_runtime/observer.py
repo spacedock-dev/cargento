@@ -328,17 +328,37 @@ def _account() -> tuple[str, str]:
 def _names_the_account(path: str, home: str, name: str) -> bool:
     """Whether a path sits under the account's home or names the account in a component.
 
-    A component contains the name for names of three characters or more; a
-    shorter name must be a whole component, or every path would match.
+    Both tests ignore case (review N1): on a case-insensitive volume
+    `/Users/ALICE` is the home, and the CLI names the canonical spelling. So
+    "under home" asks the filesystem, `os.path.samefile` on each parent, and
+    the name is compared casefolded. A component contains the name for names
+    of three characters or more; a shorter name must be a whole component, or
+    every path would match.
     """
     real = os.path.realpath(path)
-    for root in {os.path.realpath(home), os.path.realpath(os.path.expanduser("~"))}:
-        if real == root or real.startswith(root.rstrip(os.sep) + os.sep):
+    homes = {os.path.realpath(home), os.path.realpath(os.path.expanduser("~"))}
+    folded = os.path.normcase(real).casefold()
+    for root in homes:
+        prefix = os.path.normcase(root).casefold().rstrip(os.sep)
+        if folded == prefix or folded.startswith(prefix + os.sep):
             return True
-    parts = [part for part in real.split(os.sep) if part]
-    if len(name) >= 3:
-        return any(name in part for part in parts)
-    return name in parts
+    walk = real
+    while True:
+        for root in homes:
+            try:
+                if os.path.samefile(walk, root):
+                    return True
+            except OSError:
+                continue
+        parent = os.path.dirname(walk)
+        if parent == walk:
+            break
+        walk = parent
+    parts = [part for part in folded.split(os.sep) if part]
+    needle = name.casefold()
+    if len(needle) >= 3:
+        return any(needle in part for part in parts)
+    return needle in parts
 
 
 def reading_workdir_root() -> str | None:
@@ -380,7 +400,7 @@ def claude_environment(environ: Mapping[str, str]) -> dict[str, str]:
     return env
 
 
-def claude_exec(
+def claude_exec(  # noqa: PLR0911 - one return per status
     config: RuntimeConfig,
     prompt: str,
     *,

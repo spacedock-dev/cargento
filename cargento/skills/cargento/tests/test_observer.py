@@ -1947,6 +1947,40 @@ class ClaudeExecTest(unittest.TestCase):
         self.assertEqual(Path("/tmp").resolve(), Path(seen[0][1]["cwd"]).resolve().parent)
 
     @unittest.skipIf(os.name == "nt", "the account and /tmp rules are POSIX")
+    def test_a_tmpdir_under_home_spelled_in_another_case_falls_back_to_tmp(self) -> None:
+        # Review N1: on a case-insensitive volume `/Users/ALICE/...` is the
+        # home, and the CLI canonicalises the case before naming it. The name
+        # here is short, so only the home test can catch it.
+        base = Path(tempfile.mkdtemp())
+        fake_home = base / "hq"
+        (fake_home / "tmp").mkdir(parents=True)
+        upper = base / "HQ" / "tmp"
+        if not upper.is_dir():
+            self.skipTest("this volume is case-sensitive")
+        with (
+            mock.patch.object(observer, "_account", return_value=(str(fake_home), "q")),
+            mock.patch.object(tempfile, "tempdir", str(upper)),
+        ):
+            seen, _text, status, _config = self._run()
+        self.assertEqual("ok", status)
+        self.assertEqual(Path("/tmp").resolve(), Path(seen[0][1]["cwd"]).resolve().parent)
+
+    @unittest.skipIf(os.name == "nt", "the account and /tmp rules are POSIX")
+    def test_a_temp_path_naming_the_user_in_another_case_falls_back_to_tmp(self) -> None:
+        # Review N1: the CLI sent `/private/tmp/<USER>-cgverify` and the name
+        # test, being case-sensitive, let it through.
+        named = Path(tempfile.mkdtemp(), "ALICEQUUX-scratch")
+        named.mkdir()
+        with (
+            mock.patch.object(
+                observer, "_account", return_value=("/nonexistent-home", "alicequux")
+            ),
+            mock.patch.object(tempfile, "tempdir", str(named)),
+        ):
+            seen, _text, _status, _config = self._run()
+        self.assertEqual(Path("/tmp").resolve(), Path(seen[0][1]["cwd"]).resolve().parent)
+
+    @unittest.skipIf(os.name == "nt", "the account and /tmp rules are POSIX")
     def test_no_temp_location_outside_home_refuses_before_anything_runs(self) -> None:
         fake_home = Path(tempfile.mkdtemp(), "home", "alicequux")
         (fake_home / "tmp").mkdir(parents=True)

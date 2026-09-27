@@ -2848,7 +2848,7 @@ def _user_message_facts(
 
 
 def frozen_claude_user_messages(
-    config: RuntimeConfig, transcript_path: str, sid: str, *, until: float
+    config: RuntimeConfig, transcript_path: str, sid: str, *, until: float, size: int | None = None
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     """The user-message facts a Claude Code transcript held at `until`: all, and the board's tail.
 
@@ -2857,12 +2857,15 @@ def frozen_claude_user_messages(
     recorded sessions: a user message is the only non-check fact such a case
     carries, and this reproduced the board's ledger rows for it. The first
     list reads the whole file; the second reads the bounded tail `collect`
-    reads today (`io.read_tail`), which a freeze taken earlier, on a file no
-    larger, reached at least as far back as.
+    reads (`io.read_tail`), ending at `size`, the file's length when the case
+    was frozen. The board read a file no larger than that, so its tail reached
+    at least as far back; ending at today's length instead lets a session that
+    ran on past `tail_bytes` leave that tail holding no message (review N3).
     """
     with open(transcript_path, encoding="utf-8", errors="replace") as handle:
         whole = _user_message_facts(config, handle, sid, until)
-    tail = _user_message_facts(config, runtime_io.read_tail(config, transcript_path), sid, until)
+    lines = runtime_io.read_tail(config, transcript_path, end=size)
+    tail = _user_message_facts(config, lines, sid, until)
     return whole, tail
 
 

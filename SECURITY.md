@@ -1185,7 +1185,9 @@ directory made outside the state directory, whose path carries the account's hom
 name (`observer.reading_workdir_root`). On macOS and Linux it is made in the system temp directory
 unless that path sits under the account's home, or has a path component containing the user name
 (names under three characters must be a whole component), as a `TMPDIR` set by direnv, a Nix
-shell or a `~/tmp` convention does. It then falls back to `/tmp`, and when that fails the same test
+shell or a `~/tmp` convention does. Both tests ignore case, and "under home" asks the filesystem
+whether any parent is the home, because on a case-insensitive volume `/Users/ALICE` is the home
+and the CLI names its canonical spelling (review N1). It then falls back to `/tmp`, and when that fails the same test
 the reading is refused before anything runs. On Windows the system temp directory is inside the
 user's profile and no fallback is tried, so the user name is still sent there.
 
@@ -1510,13 +1512,19 @@ the file that ran and not who built it. A process running as the reader can rewr
 directory either way, so this guards against a wrong or planted binary being recorded as the
 qualified producer, not against the account itself. The committed summary names the producer, the
 model, the argv digest, the destination, the CLI path with the home directory written `~`, its
-version and that signature phrase. The file's device, inode, size, mtime and sha256 are recorded
-at the check, confirmed unchanged after `--version`, and compared again before every call
+version and that signature phrase. The file's device, inode, size, mtime, ctime and sha256 are
+recorded at the check, confirmed unchanged after `--version`, and compared again before every call
 (`score_abstention.PinnedClaude`). A changed file refuses that call and every later one. That is
 the smaller of the two options the review offered; the other, executing a verified private copy,
 was not taken because the CLI's behaviour outside its install layout is unmeasured. Identical
-bytes keep the signature valid, so the hash stands in for re-running `codesign`, and the window
-left is the spawn itself. Every call is charged before it runs to one ledger at a fixed path,
+bytes keep the signature valid, so the hash stands in for re-running `codesign`. Two windows
+remain, both open only to a process running as the reader. `codesign` and `--version` read the
+path, not the handle the identity came from, so a signed copy swapped in for them and the original
+put back afterwards passes if the swap is of the parent directory. Swapping the file itself is
+refused, because a rename away and back moves the file's ctime, which nothing can set back (review
+N2). And a same-inode rewrite between the last check and the spawn still runs: the ctime and sha256
+re-check before each call narrows that window to the time between the check and `exec`, but does
+not close it. Every call is charged before it runs to one ledger at a fixed path,
 `~/.cargento/drc-4666-spend.json`, under an exclusive lock, with the digests of the marks and the
 cases it was made under. It never follows `CARGENTO_HOME` or `HOME`: the home is the account's
 own, and scoring refuses while `HOME` names another. The committed result records a hash chain
@@ -1527,8 +1535,10 @@ nothing on a case that claims recorded and is not vouched for. For a Claude Code
 its contents (DRC-4711), rebuilt from the transcript as it stood at the case's `captured_at`. The
 checks and their output tails must be exactly the transcript's. The user messages must be the
 newest ones up to the capture, in order, with none missing between them, none repeated, and at
-least as many as the board's bounded tail reads today. An older message may be absent, because the
-board read a bounded tail when the packet was frozen. A capture with any record between the
+least as many as the board's bounded tail reads of the transcript as it stood at the freeze, whose
+length the case records (`transcript_bytes`). An older message may be absent, because the board read
+a bounded tail when the packet was frozen. A transcript now shorter than that length, or a case that
+records none, is demoted (`transcript-truncated`). A capture with any record between the
 recorded stop and itself is refused at freeze and demoted at score time (`activity-after-stop`),
 and a case frozen under other parser code is named as such (`frozen-on-another-parser`) rather
 than read as tampered. On Windows the home falls back to `USERPROFILE`, so the

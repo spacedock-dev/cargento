@@ -617,8 +617,11 @@ def _frozen_checks(
     captured: float,
     unconfirmed: list[str],
     snapshot: dict[str, Any],
-) -> tuple[list[dict[str, Any]], dict[str, Any]]:
-    """A Claude Code case's checks as they stood, noting what the transcript cannot vouch for."""
+) -> tuple[list[dict[str, Any]], dict[str, Any], int]:
+    """A Claude Code case's checks as they stood, and the transcript's size when frozen.
+
+    Notes in `unconfirmed` what the transcript cannot vouch for.
+    """
     transcript = str(entry.get("transcript") or _transcript_index().get(sid[:8]) or "")
     if not transcript or not os.path.isfile(transcript):
         raise FreezeError("no-transcript")
@@ -628,14 +631,21 @@ def _frozen_checks(
         unconfirmed.append("transcript-other-session")
     from cargento_runtime import project_context  # noqa: PLC0415 - see `_reading`
 
+    # Taken before anything is read, so the score-time tail ending here reaches
+    # no further back than any read this freeze or its board made (review N3).
+    size = os.path.getsize(transcript)
     stop = _stop(snapshot)
     if stop is not None and project_context.claude_activity_between(transcript, stop, captured):
         raise FreezeError("activity-after-stop")
     checks, press = project_context.frozen_claude_checks(config, transcript, sid, until=captured)
-    return checks, {
-        "tails": dict(press.tails),
-        "changed_after": sorted([list(pair) for pair in press.changed_after]),
-    }
+    return (
+        checks,
+        {
+            "tails": dict(press.tails),
+            "changed_after": sorted([list(pair) for pair in press.changed_after]),
+        },
+        size,
+    )
 
 
 # The files whose code turns a transcript into the facts and checks a case holds
@@ -671,12 +681,21 @@ def content_refusal(config: Any, case: dict[str, Any], transcript: str) -> list[
     the press reads must be exactly the transcript's, since dropping a failed
     check changes a verdict as surely as inventing a pass. The user messages
     must be the newest ones up to the capture, in order, none missing between
-    and none twice, and at least as many as the board's bounded tail reads
-    today: a freeze taken earlier read a file no larger, so its tail reached
-    at least that far back. Older ones may be absent.
+    and none twice, and at least as many as the board's bounded tail reads of
+    the file as it stood at the freeze, its first `transcript_bytes` bytes:
+    the board read a file no larger, so its tail reached at least that far
+    back. Older ones may be absent. A transcript now shorter than that size,
+    or a case that records none, is `transcript-truncated`.
     """
     if case.get("parser") != parser_digest():
         return ["frozen-on-another-parser"]
+    size = case.get("transcript_bytes")
+    try:
+        on_disk = os.path.getsize(transcript)
+    except OSError:
+        return ["transcript-missing"]
+    if type(size) is not int or size < 0 or size > on_disk:
+        return ["transcript-truncated"]
     reading = _reading()
     sid = str(case.get("sid") or "")
     captured = float(case["captured_at"])
@@ -688,7 +707,7 @@ def content_refusal(config: Any, case: dict[str, Any], transcript: str) -> list[
             config, transcript, sid, until=captured
         )
         held, tail = project_context.frozen_claude_user_messages(
-            config, transcript, sid, until=captured
+            config, transcript, sid, until=captured, size=size
         )
         moved = stop is not None and project_context.claude_activity_between(
             transcript, stop, captured
@@ -864,7 +883,7 @@ def freeze_case(
         "intent": intent,
     }
     if harness == "claude":
-        checks, case["tool_output"] = _frozen_checks(
+        checks, case["tool_output"], case["transcript_bytes"] = _frozen_checks(
             config, entry, sid, captured, unconfirmed, snapshot
         )
         kept.extend(checks)

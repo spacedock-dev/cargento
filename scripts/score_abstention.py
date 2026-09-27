@@ -401,17 +401,28 @@ def _signature(real: str, *, platform: str, runner: Callable[..., Any]) -> str:
     return f"unchecked sha256:{digest.hexdigest()}"
 
 
-Identity = tuple[int, int, int, int, str]
+Identity = tuple[int, int, int, int, int, str]
 
 
 def file_identity(path: str) -> Identity:
-    """(device, inode, size, mtime in ns, sha256) of a file, read from one open handle."""
+    """(device, inode, size, mtime, ctime in ns, sha256) of a file, read from one open handle.
+
+    The change time is there because no caller can set it (review N2): a
+    rename away and back, which keeps inode, size, mtime and bytes, moves it.
+    """
     digest = hashlib.sha256()
     with open(path, "rb") as handle:
         stat = os.fstat(handle.fileno())
         for block in iter(lambda: handle.read(1 << 20), b""):
             digest.update(block)
-    return stat.st_dev, stat.st_ino, stat.st_size, stat.st_mtime_ns, digest.hexdigest()
+    return (
+        stat.st_dev,
+        stat.st_ino,
+        stat.st_size,
+        stat.st_mtime_ns,
+        stat.st_ctime_ns,
+        digest.hexdigest(),
+    )
 
 
 class VerifiedClaude(NamedTuple):
@@ -426,10 +437,12 @@ class PinnedClaude:
     """A binary resolver that answers only while the file is the one verified (Sent F4).
 
     Called before every call, as `claude_exec` resolves its binary. A changed
-    device, inode, size, mtime or sha256 refuses that call and every later
-    one: identical bytes mean the signature checked at verification still
-    holds, so the hash stands in for re-running `codesign`. The window left is
-    the spawn itself.
+    device, inode, size, mtime, ctime or sha256 refuses that call and every
+    later one: identical bytes mean the signature checked at verification
+    still holds, so the hash stands in for re-running `codesign`. `codesign`
+    reads the path rather than a handle, so a swap of the parent directory
+    during verification, and a same-inode rewrite between this check and the
+    spawn, are narrowed rather than closed; SECURITY.md says so.
     """
 
     def __init__(self, path: str, identity: Identity) -> None:
@@ -2146,8 +2159,11 @@ class _ProbeStub:
     def saw(self, text: str, headers: str = "") -> None:
         self.requests += 1
         whole = f"{headers}\n{text}"
+        # Casefolded (review N1): the CLI names the canonical spelling of a
+        # path, which need not be the case the needle was taken in.
+        folded = whole.casefold()
         for name, needle in self.needles.items():
-            self.found[name] = self.found[name] or needle in whole
+            self.found[name] = self.found[name] or needle.casefold() in folded
         email = self.account.get("email", "")
         if email:
             self.disclosed = self.disclosed or email in "".join(_DISCLOSED_EMAIL.findall(text))

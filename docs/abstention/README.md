@@ -129,6 +129,7 @@ yardstick. Each case carries every format 4 field, plus:
 |---|---|
 | `intent` | `goal` and `lines`, one to six `{text, source}` outcome lines, as a reader would save them. Each line is its own constraint, `line_1` onwards, marked and scored on its own. An optional `at` stamps when the intent counts as typed, and `window_start` opens the evidence window as a stored revision's would; without them the intent counts as typed at 1.0, before every session end. |
 | `tool_output` | Claude Code only: `tails`, each check's redacted output tail by call id, and `changed_after`, the `[call id, check line]` pairs a later command may have changed. Both as a press read them at `captured_at`. |
+| `transcript_bytes` | Claude Code only: the transcript's length in bytes when the case was frozen, taken before the freeze reads it. The score-time check reads the board's tail of the file as it stood then. |
 
 Build a packet with `mark_abstention.py --freeze <spec>`. It spends nothing. The spec is a local
 file listing, per case, the `harness`, `sid`, `project`, `captured_at`, the `row` lifecycle
@@ -167,13 +168,17 @@ reads (DRC-4711):
   press at `captured_at` read.
 - `facts-unconfirmed`: the packet's user messages are not the newest ones the transcript holds up
   to `captured_at`, in order, with none missing between them and none repeated, or are fewer than
-  the board's bounded tail reads today. An older message may be absent, because the board read a
-  bounded tail when the packet was frozen, and a file no larger than today's. Measured on three
+  the board's bounded tail reads of the file's first `transcript_bytes` bytes. An older message may
+  be absent, because the board read a bounded tail when the packet was frozen, of a file no larger
+  than that. The tail ends there rather than at today's end, so a session that ran on past the tail
+  after the freeze cannot empty it. Measured on three
   recorded sessions, a user message is the only fact a Claude Code case carries besides its
   checks, so any other fact lands here too.
 - `activity-after-stop`: the transcript holds a record stamped after the recorded stop or end and
   at or before `captured_at`. Moving the capture later would otherwise carry a later turn into a
   case vouched for at the stop. The freeze refuses the same capture with the same word.
+- `transcript-truncated`: the transcript is now shorter than the case's `transcript_bytes`, or the
+  case records no size. The file the case was frozen from is gone, so nothing is compared.
 - `frozen-on-another-parser`: the case's `parser` stamp, a sha256 over `project_context.py` and
   `reading.py` written at freeze, does not match the scorer's. Every case would differ, so this is
   named on its own rather than read as tampering. Freeze again on the tree you score on, with the
