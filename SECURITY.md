@@ -1286,7 +1286,8 @@ its first sentence, clipped. That is wider than any published field, so it is st
 returns the text of one message, masked by named form as a check line is (a `NAME=value`, the
 word after `--password`, `--token` or `-p`, an `Authorization:` or `X-Api-Key:` value, a
 `user:password@host` quoted or not, and a credential shape wrapped by a line break on both sides
-of the break, with zero-width and other invisible characters removed first), then redacted by
+of the break, with a zero-width space, soft hyphen and the other invisible characters that can
+hide a flag removed first, while the joiners that spell words and emoji are kept), then redacted by
 shape like every published string, with line breaks and control characters as spaces, bounded at 2,000 characters with a flag saying whether
 it was clipped, and a flag saying whether the store would take it as a line (at most 240
 characters). It returns nothing for a message that is not a person's message in that session's

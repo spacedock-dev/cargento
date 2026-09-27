@@ -2285,12 +2285,19 @@ def _adoption(
 
 
 def _settle_moment_ok(value: Any) -> bool:
-    """Absent, or a finite moment; a bool is refused for `_settlement`'s reason."""
-    return value is None or (
-        not isinstance(value, bool)
-        and isinstance(value, (int, float))
-        and math.isfinite(float(value))
-    )
+    """Absent, or a finite moment; a bool is refused for `_settlement`'s reason.
+
+    An integer too large for a float is refused, as `reading.valid_prompt_time`
+    refuses it, rather than raising out of the request.
+    """
+    if value is None:
+        return True
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return False
+    try:
+        return math.isfinite(float(value))
+    except OverflowError:
+        return False
 
 
 # One keyword per field the add carries, for `annotate`'s reason.

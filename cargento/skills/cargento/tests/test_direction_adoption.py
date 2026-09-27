@@ -471,7 +471,7 @@ class KeepStoreTest(unittest.TestCase):
     def test_a_settlement_is_never_a_non_finite_moment(self) -> None:
         # Verifier: one NaN made every later payload invalid JSON.
         self._adopt(FIRST_AT + 10)
-        for bad in (float("nan"), float("inf"), float("-inf")):
+        for bad in (float("nan"), float("inf"), float("-inf"), 10**400):
             with self.subTest(through=bad):
                 self.assertEqual(
                     annotation_store.OUTCOME_REFUSED,
@@ -666,6 +666,32 @@ class DirectionReviewMaskingTest(unittest.TestCase):
         for label, form in forms.items():
             with self.subTest(form=label):
                 self.assertNotIn(self.SECRET, self._review(form))
+
+    def test_joiners_in_words_and_emoji_come_back_byte_identical(self) -> None:
+        # U+200D joins a family emoji and U+200C spells Persian, Urdu and
+        # Kurdish words; neither can hide a flag, so neither is stripped.
+        for label, text in {
+            "ZWJ emoji": "Ship it \U0001f468\u200d\U0001f469\u200d\U0001f467 today",
+            "ZWNJ Persian": "\u0645\u06cc\u200c\u062e\u0648\u0627\u0647\u0645 this",
+        }.items():
+            with self.subTest(text=label):
+                review, clipped, fits = annotation_store.direction_review(text, 240)
+                self.assertEqual(text.encode(), review.encode())
+                self.assertEqual((False, True), (clipped, fits))
+        self.assertNotIn(self.SECRET, self._review(f"--password\u200b {self.SECRET}"))
+
+    def test_a_key_split_by_any_line_separator_is_masked_whole(self) -> None:
+        for label, separator in {
+            "form feed": "\x0c",
+            "vertical tab": "\x0b",
+            "NEL": "\x85",
+            "line separator": "\u2028",
+            "paragraph separator": "\u2029",
+        }.items():
+            with self.subTest(separator=label):
+                text = self._review(f"AKIAIOSFODNN7{separator}EXAMPLE")
+                self.assertNotIn("AKIAIOSFODNN7", text)
+                self.assertNotIn("EXAMPLE", text)
 
     def test_a_key_split_by_a_blank_line_is_masked_whole(self) -> None:
         text = self._review("AKIAIOSFODNN7\n\nEXAMPLE")
@@ -1165,7 +1191,7 @@ class KeepRouteTest(unittest.TestCase):
     def test_a_non_finite_settle_time_is_refused_on_both_routes(self) -> None:
         config, state = self._runtime()
         annotation_store.annotate(config, state, "claude", SHORT, goal="My goal", now=FIRST_AT)
-        for bad in (float("nan"), float("inf"), float("-inf")):
+        for bad in (float("nan"), float("inf"), float("-inf"), 10**400):
             with self.subTest(through=bad):
                 plain = {"harness": "claude", "sid": SHORT, "settle_through": bad}
                 self._handler(config, state, plain)._annotate()

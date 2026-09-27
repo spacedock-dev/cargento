@@ -482,6 +482,14 @@ _MASK_AUTH_SCHEMES: Final = frozenset({"bearer", "basic", "token", "digest", "ne
 _MASK_QUOTED_USERINFO: Final = re.compile(r"(['\"])([^\s:/@'\"]+:)[^'\"]*@")
 
 
+# Zero-width space, word joiner, invisible operators, BOM, soft hyphen and
+# the Mongolian vowel separator: invisible, and none of them spells a word.
+_MASK_INVISIBLE: Final = frozenset("\u200b\u2060\u2061\u2062\u2063\u2064\ufeff\u00ad\u180e")
+# The control characters `str.splitlines` breaks on, so a key split by any of
+# them is still joined and masked.
+_LINE_BREAKS: Final = frozenset("\n\r\x0b\x0c\x1c\x1d\x1e\x85")
+
+
 def mask_prose(text: str) -> str:
     """A person's message with every value `mask_words` names masked, as one line.
 
@@ -495,13 +503,15 @@ def mask_prose(text: str) -> str:
     tail. Over-masking is the accepted direction, as for `_MASK_FLAGS`.
     """
     # Invisible characters first: a zero-width space after a flag hid it from
-    # the match while the page, which strips it, showed the flag bare. Format
-    # characters go, and other controls become spaces, line breaks kept.
+    # the match while the page, which strips it, showed the flag bare. Only
+    # the ones that can hide a flag or split a key go; the joiners U+200C and
+    # U+200D stay, because they spell Persian, Urdu and Kurdish words and join
+    # emoji. Other controls become spaces, and every line break stays one.
     text = "".join(
         ""
-        if unicodedata.category(ch) == "Cf"
+        if ch in _MASK_INVISIBLE
         else " "
-        if unicodedata.category(ch) == "Cc" and ch not in "\n\r"
+        if unicodedata.category(ch) == "Cc" and ch not in _LINE_BREAKS
         else ch
         for ch in text
     )
