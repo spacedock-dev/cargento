@@ -21,7 +21,7 @@ from . import sessions as runtime_sessions
 from . import state as runtime_state
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator, Sequence
+    from collections.abc import Iterable, Iterator, Sequence
 
     from .config import RuntimeConfig
     from .state import RuntimeState
@@ -1334,7 +1334,12 @@ _WRITING_OPTIONS = {
     "git log": frozenset({"--output"}),
     "git show": frozenset({"--output"}),
 }
-_HARMLESS_REDIRECT_RE = re.compile(r"^(?:\d*>&\d+|\d*>/dev/null|&>/dev/null)$")
+# A device that stores nothing, whichever operator writes to it (review W5).
+_HARMLESS_REDIRECT_RE = re.compile(
+    r"^(?:\d*>&\d+|(?:\d+|\{[A-Za-z_][A-Za-z0-9_]*\})?(?:&>>|&>|>>|>\||>)"
+    r"/dev/(?:null|stdout|stderr|tty|fd/\d+))$"
+)
+_CD_OPTION_RE = re.compile(r"^-[LPe@]+$")
 # A written redirection's operator, its optional descriptor first, and the
 # target word after it.
 _WRITE_REDIRECT_RE = re.compile(
@@ -1421,6 +1426,9 @@ class _Segment(NamedTuple):
     # closed after it (DRC-4724).
     opens: int = 0
     closes: int = 0
+    # Redirections after a `)`, which the outer shell opens where the group
+    # started: each with the index of the segment that opened it (review W3).
+    outer: tuple[tuple[str, int], ...] = ()
 
 
 class _ShellLexer:
@@ -1443,9 +1451,12 @@ class _ShellLexer:
         self.redirects: list[str] = []
         self.bodies: list[str] = []
         self.depth = 0
-        # One entry per open parenthesis: whether it opened a subshell.
-        self.parens: list[bool] = []
+        # One entry per open parenthesis: the index of the segment a subshell
+        # opened at, or None where it opened none.
+        self.parens: list[int | None] = []
         self.opens = self.closes = 0
+        self.outer: list[tuple[str, int]] = []
+        self.group: int | None = None
 
     def _at(self, offset: int = 0) -> str:
         index = self.pos + offset
@@ -1477,21 +1488,36 @@ class _ShellLexer:
                     words.append(_WITHHELD if hide_next else word)
                     hide_next = word == _WITHHELD
                 else:
-                    self.redirects.append(redirect)
+                    self._add_redirect(redirect)
                 continue
             if words or self.redirects or self.bodies:
-                found.append(
-                    _Segment(words, joiner, self.redirects, self.bodies, self.opens, self.closes)
-                )
+                found.append(self._segment(words, joiner))
                 # An open before an empty segment waits for the next one.
                 self.opens = self.closes = 0
             words, self.redirects, self.bodies, hide_next = [], [], [], False
+            self.outer, self.group = [], None
             if joiner == "\n":
                 self._skip_bodies(self.heredocs)
                 self.heredocs = []
         if words or self.redirects or self.bodies:
-            found.append(_Segment(words, "", self.redirects, self.bodies, self.opens, self.closes))
+            found.append(self._segment(words, ""))
         return found
+
+    def _add_redirect(self, redirect: str) -> None:
+        self.redirects.append(redirect)
+        if self.group is not None:
+            self.outer.append((redirect, self.group))
+
+    def _segment(self, words: list[str], joiner: str) -> _Segment:
+        return _Segment(
+            words,
+            joiner,
+            self.redirects,
+            self.bodies,
+            self.opens,
+            self.closes,
+            tuple(self.outer),
+        )
 
     def _parenthesis(self, words: list[str], found: list[_Segment]) -> bool:
         """A subshell's `(` or `)`, consumed and counted on its segment (DRC-4724).
@@ -1502,12 +1528,14 @@ class _ShellLexer:
         """
         char = self._at()
         if char == "(":
-            self.parens.append(not words and not self.redirects)
-            self.opens += self.parens[-1]
+            self.parens.append(None if words or self.redirects else len(found))
+            self.opens += self.parens[-1] is not None
         elif char == ")":
-            if self.parens and self.parens.pop():
+            opened = self.parens.pop() if self.parens else None
+            if opened is not None:
                 if words or self.redirects or self.bodies:
                     self.closes += 1
+                    self.group = opened
                 elif self.opens:
                     self.opens -= 1  # `( )`: nothing ran inside it
                 elif found:
@@ -1906,6 +1934,13 @@ class _Part(NamedTuple):
     # inside either does not carry past it (DRC-4724).
     opens: int
     closes: int
+    # A group's or a wrapper's own redirections, each with the index of the
+    # part whose starting directory the outer shell opens it in (review W3).
+    # They are in `redirects` as well, for every other rule.
+    outer: tuple[tuple[str, int], ...] = ()
+    # The segment's words before any stripping, assignments included, and a
+    # wrapper's own words on its first inner part: what masking may hide.
+    raw: tuple[str, ...] = ()
 
 
 def _body_reads_only(body: str) -> bool:
@@ -1940,9 +1975,12 @@ def _call_parts(text: str, depth: int = 0) -> list[_Part]:
     """
     segments = _ShellLexer(text).segments()
     parts: list[_Part] = []
+    first_part: list[int] = []
     for segment, background in zip(
         segments, _backgrounds([s.joiner for s in segments]), strict=True
     ):
+        first_part.append(len(parts))
+        outer = tuple((redirect, first_part[at]) for redirect, at in segment.outer)
         words, rtk = _stripped(segment.words)
         hides = not all(_body_reads_only(body) for body in segment.bodies)
         inner = _shell_wrapper_line(words) if depth < _SHELL_WRAPPER_DEPTH else None
@@ -1956,12 +1994,16 @@ def _call_parts(text: str, depth: int = 0) -> list[_Part]:
         if not spliced:
             parts.append(
                 _Part(words, rtk, segment.joiner, segment.redirects, hides, background,
-                      launches, segment.opens, segment.closes)
+                      launches, segment.opens, segment.closes, outer, tuple(segment.words))
             )  # fmt: skip
             continue
-        last = len(spliced) - 1
+        last, offset = len(spliced) - 1, len(parts)
+        # The wrapper's own redirections open where the wrapper started.
+        wrapper = tuple((r, offset) for r in _without(segment.redirects, segment.outer))
         parts.extend(
             part._replace(
+                outer=(*((r, at + offset) for r, at in part.outer), *outer, *wrapper),
+                raw=(*segment.words, *part.raw) if index == 0 else part.raw,
                 rtk=part.rtk or rtk,
                 joiner=segment.joiner if index == last else part.joiner,
                 redirects=[*part.redirects, *segment.redirects],
@@ -1974,6 +2016,14 @@ def _call_parts(text: str, depth: int = 0) -> list[_Part]:
             for index, part in enumerate(spliced)
         )
     return parts
+
+
+def _without(redirects: list[str], outer: Iterable[tuple[str, int]]) -> list[str]:
+    """`redirects` with one occurrence of each outer redirection taken out."""
+    left = list(redirects)
+    for redirect, _at in outer:
+        left.remove(redirect)
+    return left
 
 
 def _names_a_test_file(word: str) -> bool:
@@ -2078,6 +2128,21 @@ def _evidence_at(run: dict[str, Any]) -> float:
     """A run's result time, or its call time where no result arrived."""
     result_at = run.get("result_at")
     return float(result_at if result_at is not None else run["at"])
+
+
+def _changed_directory(current: str, known: bool, args: list[str]) -> tuple[str, bool]:
+    """Where a `cd` with these arguments leaves the shell, and whether that is
+    known as a path. `-L`, `-P`, `-e`, `-@` and `--` are options."""
+    while args and _CD_OPTION_RE.match(args[0]):
+        args = args[1:]
+    if args[:1] == ["--"]:
+        args = args[1:]
+    if not args or args[0] == "-":
+        return current, False
+    target = os.path.normpath(os.path.join(current or "/", args[0]))
+    if args[0].startswith("-") or not _placeable(args[0]):
+        return target, False
+    return target, known or os.path.isabs(args[0])
 
 
 def _check_identity(directory: str, words: list[str]) -> str:
@@ -2248,16 +2313,32 @@ class _ShellCall:
         except Exception:  # noqa: BLE001 - any parser fault fails closed, as unbalanced does
             self.unbalanced, self.parts = True, []
         self.words: list[tuple[list[str], bool]] = [(p.words, p.rtk) for p in self.parts]
-        self.directories = self._directories(cwd)
+        self.directories, self.placed = self._directories(cwd)
         self.meaningful = [
             i for i, (words, _rtk) in enumerate(self.words) if words and words[0] != "cd"
         ]
         self.checks = [i for i in self.meaningful if _is_check(self.words[i][0])]
         # A check's own redirection into a file is a recorded write by the call
-        # (DRC-4709), each target read from the directory its segment ran in.
+        # (DRC-4709), each target read from the directory its segment ran in,
+        # or the group's or wrapper's start for their own (review W3).
         self.redirect_writes = [
-            (i, target) for i in self.checks for target in _file_targets(self.parts[i].redirects)
+            (i, target, at)
+            for i in self.checks
+            for redirects, at in (
+                (_without(self.parts[i].redirects, self.parts[i].outer), i),
+                *(([r], at) for r, at in self.parts[i].outer),
+            )
+            for target in _file_targets(redirects)
         ]
+        # Every value masking hides anywhere in the call, as the tail scrub
+        # reads them (review W1).
+        self.masked = {
+            piece
+            for part in self.parts
+            for value in records.masked_values(list(part.raw))
+            for piece in (value, *value.split())
+            if len(piece) >= _SCRUB_MIN_CHARS
+        }
         self.fixers = [i for i in self.meaningful if _is_fixer(self.words[i][0])]
         self.changing_others = [
             i for i in self.meaningful if i not in self.checks and not self._reads_only(i)
@@ -2276,18 +2357,44 @@ class _ShellCall:
         part = self.parts[index]
         return not part.hides_change and _reads_only(part.redirects, part.words)
 
-    def _directories(self, cwd: str) -> list[str]:
-        """The directory each segment runs in, following the call's `cd`s."""
-        current, found, entered = cwd, [], []
+    def _directories(self, cwd: str) -> tuple[list[str], list[bool]]:
+        """The directory each segment runs in, following the call's `cd`s, and
+        whether it is known as a path.
+
+        A `cd` the shell resolves at run time (`~`, `$VAR`, a substitution, no
+        argument, `-`) and `pushd` or `popd` leave it unknown until a literal
+        absolute `cd`, or the close of the group, places it again (review W2).
+        The directory string still names the check, as it always did.
+        """
+        current, known = cwd, bool(cwd)
+        found: list[str] = []
+        placed: list[bool] = []
+        entered: list[tuple[str, bool]] = []
         for part in self.parts:
-            entered.extend([current] * part.opens)
+            entered.extend([(current, known)] * part.opens)
             found.append(current)
+            placed.append(known)
             words = part.words
-            if words[:1] == ["cd"] and len(words) > 1 and words[1] != "-":
-                current = os.path.normpath(os.path.join(current or "/", words[1]))
+            if words[:1] == ["cd"]:
+                current, known = _changed_directory(current, known, words[1:])
+            elif words[:1] in (["pushd"], ["popd"]):
+                known = False
             for _ in range(part.closes):
-                current = entered.pop()
-        return found
+                current, known = entered.pop()
+        return found, placed
+
+    def written_path(self, target: str, at: int, cwd: str) -> str | None:
+        """A check's redirect target relative to the working directory, or
+        None where it is not published: outside it, decided by the shell,
+        under an unknown directory, or holding a value the line masks."""
+        if (
+            not _placeable(target)
+            or records.mask_words([target]) != [target]
+            or any(value in target for value in self.masked)
+            or (not os.path.isabs(target) and not self.placed[at])
+        ):
+            return None
+        return _written_path(os.path.join(self.directories[at] or "/", target), cwd)
 
     def joiners(self) -> list[str]:
         return [part.joiner for part in self.parts]
@@ -2388,13 +2495,10 @@ class _ToolReportTally:
         self.scan["shell_calls"] += 1
         if call.fixers:
             self.write_calls.append((at, call_id))
-        for index, target in call.redirect_writes:
+        for _index, target, start in call.redirect_writes:
             # Owner, 2026-09-27: published only inside the working directory;
             # a target outside it, or one the shell decides, counts as outside.
-            placed = os.path.join(call.directories[index] or "/", target)
-            self._record_write(
-                at, call_id, "Bash", _written_path(placed, cwd) if _placeable(target) else None
-            )
+            self._record_write(at, call_id, "Bash", call.written_path(target, start, cwd))
         self.scan["background"] += call.launches()
         foreground = [i for i in call.meaningful if not call.background(i)]
         if foreground and not [i for i in call.checks if i in foreground]:
@@ -2463,11 +2567,13 @@ class _ToolReportTally:
                             *call.fixers,
                             *call.changing_others,
                             *call.substituted,
-                            *(j for j, _target in call.redirect_writes),
+                            *(j for j, _target, _at in call.redirect_writes),
                         )
                     ),
-                    # V7: a fixer at or after this check in the call ages its pass.
-                    "fixes": any(i >= index for i in call.fixers),
+                    # V7: a fixer at or after this check in the call ages its pass,
+                    # and so does a later check's redirect into a file (review W6).
+                    "fixes": any(i >= index for i in call.fixers)
+                    or any(j > index for j, _target, _at in call.redirect_writes),
                 }
             )
 

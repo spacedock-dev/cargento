@@ -29,6 +29,8 @@ SHORT = SID[:8]
 START = dt.datetime(2026, 9, 24, 3, 0, 0, tzinfo=dt.UTC)
 # Synthetic, and deliberately obvious: a real prefix followed by a run of one letter.
 FAKE_KEY = "sk-ant-api03-" + "Q" * 95
+# A value only a named form marks as secret, which redaction alone would not see.
+PLACEHOLDER = "EXAMPLEpw1234"
 # Node's summary glyph and failure glyph, written as escapes so review can read them.
 INFO = "\u2139"
 CROSS = "\u2716"
@@ -1350,7 +1352,16 @@ class ACheckWritesTheFileItsOutputIsRedirectedInto(ClaudeChecksTestCase):
                 self.assertEqual(1, scan["outside_paths"])
 
     def test_a_redirect_to_nothing_or_a_descriptor_writes_nothing(self) -> None:
-        for command in ("pytest > /dev/null", "pytest 2>&1", "pytest < in.txt", "pytest >&-"):
+        for command in (
+            "pytest > /dev/null",
+            "pytest 2>&1",
+            "pytest < in.txt",
+            "pytest >&-",
+            "pytest >>/dev/null",
+            "pytest &>>/dev/null",
+            "pytest 2>/dev/stderr",
+            "pytest >/dev/stdout",
+        ):
             with self.subTest(command=command):
                 self.setUp()
                 self.session.bash(command, "", is_error=False)
@@ -1376,6 +1387,26 @@ class ACheckWritesTheFileItsOutputIsRedirectedInto(ClaudeChecksTestCase):
         self.assertIs(False, found["pytest"]["changed_after"])
         self.assertIs(False, found["ruff check ."]["changed_after"])
 
+    def test_a_harmless_device_redirect_later_ages_no_pass(self) -> None:
+        # Review W5.
+        for later in ("mypy . >>/dev/null", "mypy . &>>/dev/null", "mypy . 2>/dev/stderr"):
+            with self.subTest(later=later):
+                self.setUp()
+                self.session.bash("pytest", "5 passed", is_error=False)
+                self.session.bash(later, "", is_error=False)
+                found = {e["title"]: e for e in self.checks()}
+                self.assertIs(False, found["pytest"]["before_last_change"])
+                self.assertEqual(0, self.read()[1]["outside_paths"])
+
+    def test_a_later_write_in_the_same_call_ages_the_earlier_pass(self) -> None:
+        # Review W6 and Codex 2: `before_last_change` agrees with `changed_after`, so the
+        # server and the page read the same pass as aged.
+        self.session.bash("pytest && mypy . > src/x.py", "", is_error=False)
+        found = {e["title"]: e for e in self.checks()}
+        self.assertIs(True, found["pytest"]["before_last_change"])
+        self.assertIs(True, found["pytest"]["changed_after"])
+        self.assertIs(False, found["mypy ."]["before_last_change"])
+
     def test_it_ages_a_pass_from_an_earlier_call(self) -> None:
         self.session.bash("pytest", "5 passed", is_error=False)
         self.session.bash("mypy . > report.txt", "", is_error=False)
@@ -1388,6 +1419,74 @@ class ACheckWritesTheFileItsOutputIsRedirectedInto(ClaudeChecksTestCase):
         published = json.dumps(self.read())
         self.assertNotIn(FAKE_KEY, published)
         self.assertNotIn(FAKE_KEY[20:60], published)
+
+    def test_a_target_holding_a_value_the_line_masks_is_never_published(self) -> None:
+        # Review W1: the check line masks the value, so the path beside it must not show it.
+        for command in (
+            f"pytest --password {PLACEHOLDER} > {PLACEHOLDER}.log",
+            f"TOKEN={PLACEHOLDER} pytest > out-{PLACEHOLDER}.log",
+            f'pytest > "password={PLACEHOLDER}.log"',
+            f"bash -c 'pytest --token {PLACEHOLDER}' > logs/{PLACEHOLDER}.txt",
+        ):
+            with self.subTest(command=command[:24]):
+                self.setUp()
+                self.session.bash(command, "", is_error=False)
+                events, scan = self.read()
+                self.assertNotIn(PLACEHOLDER, json.dumps(events))
+                self.assertEqual([], self.writes())
+                self.assertEqual(1, scan["outside_paths"])
+
+    def test_a_target_after_a_cd_the_shell_decides_is_counted_as_outside(self) -> None:
+        # Review W2 and Codex 1: the directory is unknown until a literal `cd` places it again.
+        for command in (
+            "cd ~/other && pytest > t1",
+            "cd $HOME && pytest > t2",
+            'cd "$OUTSIDE" && pytest > t3',
+            'cd "$(git rev-parse --show-toplevel)" && pytest > t4',
+            "cd && pytest > t5",
+            "cd - && pytest > t6",
+            "pushd sub && pytest > t7",
+            "cd sub && popd && pytest > t8",
+            "cd $HOME && cd src && pytest > t9",
+        ):
+            with self.subTest(command=command):
+                self.setUp()
+                self.session.bash(command, "", is_error=False)
+                _events, scan = self.read()
+                self.assertEqual([], self.writes())
+                self.assertEqual(1, scan["outside_paths"])
+
+    def test_cd_options_are_read_as_options_and_a_literal_cd_places_it_again(self) -> None:
+        for command, expected in (
+            ("cd -P sub && pytest > t1", ["sub/t1"]),
+            ("cd -L sub && pytest > t2", ["sub/t2"]),
+            ("cd -- sub && pytest > t3", ["sub/t3"]),
+            ("cd $HOME && cd {cwd}/src && pytest > t4", ["src/t4"]),
+            ("(cd $HOME && pytest); pytest > t5", ["t5"]),
+            ("cd $HOME && pytest > {cwd}/abs.txt", ["abs.txt"]),
+        ):
+            with self.subTest(command=command):
+                self.setUp()
+                self.session.bash(command.format(cwd=self.cwd), "", is_error=False)
+                self.assertEqual(expected, self.writes())
+
+    def test_a_groups_own_redirect_is_read_where_the_group_started(self) -> None:
+        # Review W3: the outer shell opens it before the group's `cd` runs.
+        for command, inside in (
+            ("(cd sub && pytest) > o1", ["o1"]),
+            ("(cd sub && pytest) > ../x", []),
+            ("bash -c 'cd sub && pytest' > o2", ["o2"]),
+            ("bash -c 'cd sub && pytest' > ../y", []),
+            ("cd web && (cd sub && pytest) > o3", ["web/o3"]),
+            ("(cd a && (cd b && pytest) > o4)", ["a/o4"]),
+            ("(cd sub && pytest > in.txt) > o5", ["o5", "sub/in.txt"]),
+        ):
+            with self.subTest(command=command):
+                self.setUp()
+                self.session.bash(command, "", is_error=False)
+                _events, scan = self.read()
+                self.assertEqual(inside, self.writes())
+                self.assertEqual(0 if inside else 1, scan["outside_paths"])
 
 
 class AWriteAtTheSameTimeAsAPassAgesIt(ClaudeChecksTestCase):
