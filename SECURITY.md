@@ -1154,8 +1154,8 @@ The content class is what a Claude Code transcript recorded about the checks a s
 files it wrote. A check is a shell command segment whose runner is on the ruling's closed list, and
 a program file counts only when `test` or `tests` stands alone as a word in its name. Its bounds:
 the check's own segment, never the rest of the shell line, with a substituted command shown as
-`$(…)`, a here-string's word shown as `<<<…`, a heredoc body never read as a command, and a
-trailing comment dropped, after credential redaction and masking of the forms redaction cannot
+`$(…)`, a brace expansion shown as `…`, no redirection, here-string word or heredoc delimiter
+published, a heredoc body never read as a command, and a trailing comment dropped, after credential redaction and masking of the forms redaction cannot
 recognise, clipped to 120 characters. Behind `bash -c`, `sh -c`, `zsh -c` or `bash -lc`, it is the
 inner segment alone, never the wrapper. A call with an unterminated quote is a syntax error and is
 read as not run, so nothing of its text is published; the last 180 characters of output, with redaction run over the whole read
@@ -1178,7 +1178,15 @@ password in `user:password@`, up to the last `@` in the word, so one holding `/`
 is masked whole. The words are the ones the program receives: quotes removed, `$'…'` escapes
 decoded and backslash-newline continuations joined before masking and redaction run, so a value is
 masked whole however it was quoted, and an escaped key such as `$'\x41KIA…'` reaches redaction as
-the key it is. A value after any other flag is published as typed unless it has a credential shape.
+the key it is. Redirections are set apart first, so a flag and its value are masked as a pair even
+with a redirection between them, and a NUL decoded from `$'…'` ends the argument as it does for the
+program. A value after any other flag is published as typed unless it has a credential shape.
+
+The output tail is covered by credential-shape redaction, and by one more step: each value the
+check's line masked, and each piece of it of four characters or more, is removed from the tail
+before redaction, since an echoed command (`set -x`, a runner printing its arguments) repeats it. A
+shapeless value the line did not mask, or a masked piece shorter than four characters, can still
+reach the prompt through the tail.
 
 The destination rule: it may go to the reading producer that reads the session, or to the fallback
 route `reading_route.resolve` selects and discloses before the press, and on either only after a
