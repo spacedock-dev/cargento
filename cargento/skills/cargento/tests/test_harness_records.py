@@ -764,10 +764,11 @@ class AntigravityDirectionsAreRead(AntigravityHome):
             observer.resolve_directions(self.config, self.state, "antigravity", AGY_SID)
         )
         self.write(DIRECTION)
-        self.assertEqual(
-            str(self.transcript),
-            observer.resolve_directions(self.config, self.state, "antigravity", AGY_SID),
-        )
+        # Compared normalised: the store root is joined with "/" on every
+        # platform, so a Windows path mixes separators without naming another file.
+        found = observer.resolve_directions(self.config, self.state, "antigravity", AGY_SID)
+        self.assertIsNotNone(found)
+        self.assertEqual(os.path.normpath(str(self.transcript)), os.path.normpath(str(found)))
         for unsafe in ("../x", "..", "."):
             self.assertIsNone(
                 observer.resolve_directions(self.config, self.state, "antigravity", unsafe)
@@ -911,7 +912,9 @@ class AntigravityRefusesALinkAnywhereUnderBrain(AntigravityHome):
         real = Path(self.temp.name) / "dotfiles-gemini"
         (self.home / ".gemini").rename(real)
         (self.home / ".gemini").symlink_to(real, target_is_directory=True)
-        self.assertEqual(str(self.transcript), self._resolved())
+        found = self._resolved()
+        self.assertIsNotNone(found)
+        self.assertEqual(os.path.normpath(str(self.transcript)), os.path.normpath(str(found)))
 
     @unittest.skipUnless(hasattr(os, "O_NOFOLLOW"), "the open-time refusal needs O_NOFOLLOW")
     def test_a_file_swapped_for_a_link_after_the_check_is_not_followed(self) -> None:
