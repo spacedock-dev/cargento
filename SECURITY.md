@@ -1286,14 +1286,16 @@ its first sentence, clipped. That is wider than any published field, so it is st
 returns the text of one message, masked by named form as a check line is (a `NAME=value`, the
 word after `--password`, `--token` or `-p`, an `Authorization:` or `X-Api-Key:` value, a
 `user:password@host` quoted or not, and a credential shape wrapped by a line break on both sides
-of the break), then redacted by shape like every published string, with line breaks and control
-characters as spaces, bounded at 2,000 characters with a flag saying whether
+of the break, with zero-width and other invisible characters removed first), then redacted by
+shape like every published string, with line breaks and control characters as spaces, bounded at 2,000 characters with a flag saying whether
 it was clipped, and a flag saying whether the store would take it as a line (at most 240
 characters). It returns nothing for a message that is not a person's message in that session's
 own record, one not later than the words it would join, or one older than the tail of the
 transcript Cargento already reads: all of those, an unknown session and an unknown fact alike,
-answer one 200 body with one sentence, so the route says nothing about which sessions exist. The
-text is read again from the transcript Cargento already tails, found by `observer.resolve_transcript`
+answer one 200 body with one sentence, so the route says nothing about which sessions exist.
+Prose shapes outside those named forms come back as typed: a password written into a sentence,
+`token: value`, a JSON field and a `?token=` query are not masked, and only a value with a
+credential's own shape is redacted there. The text is read again from the transcript Cargento already tails, found by `observer.resolve_transcript`
 from the session's harness and id, and never from a path a client names. It is served to the same
 callers as `/api/data`: loopback only, same-origin, and refused to a document navigation and to a
 same-site or cross-site fetch, as `POST /api/reading` is, and it answers 503 under

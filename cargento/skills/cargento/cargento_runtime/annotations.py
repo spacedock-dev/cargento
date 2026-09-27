@@ -1983,8 +1983,9 @@ def settle(
         not config.annotations_enabled
         or not key[0]
         or not key[1]
-        or isinstance(through, bool)
-        or not isinstance(through, (int, float))
+        or through is None
+        # Finite, or one stored NaN makes every later payload invalid JSON.
+        or not _settle_moment_ok(through)
         or (
             expected_revision is not None
             and (isinstance(expected_revision, bool) or not isinstance(expected_revision, int))
@@ -2177,7 +2178,10 @@ def _goal_saved_at(
     if provenance or not goal.strip():
         return {}
     if last is not None and not _provenance(last) and last["goal"] == goal:
-        return {"goal_saved_at": float(last.get("goal_saved_at") or last["at"])}
+        # Clamped: `time.time()` can step back between two saves, and a save
+        # time after its own revision is refused on read (`_goal_saved`),
+        # which would make the whole entry unreadable.
+        return {"goal_saved_at": min(float(last.get("goal_saved_at") or last["at"]), stamp)}
     return {"goal_saved_at": stamp}
 
 

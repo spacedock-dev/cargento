@@ -9,6 +9,7 @@ import math
 import os
 import re
 import string
+import unicodedata
 from datetime import UTC, datetime
 from typing import Any, Final
 
@@ -472,7 +473,9 @@ def mask_words(words: list[str]) -> list[str]:
 
 # A header name standing as its own word in prose, with the value in the words
 # after it, and the schemes whose next word is the credential itself.
-_MASK_HEADER_WORD: Final = re.compile(r"^['\"]?(?:authorization|x-api-key)\s*:$", re.IGNORECASE)
+_MASK_HEADER_WORD: Final = re.compile(
+    r"^['\"]?(?:authorization|x-api-key)\s*:(.*)$", re.IGNORECASE | re.DOTALL
+)
 _MASK_AUTH_SCHEMES: Final = frozenset({"bearer", "basic", "token", "digest", "negotiate"})
 # `'user:password with spaces@host'`, quoted in prose, where whitespace splits
 # the word `_MASK_USERINFO` would otherwise see whole.
@@ -491,9 +494,21 @@ def mask_prose(text: str) -> str:
     sides of the break, because joining the lines is what would publish its
     tail. Over-masking is the accepted direction, as for `_MASK_FLAGS`.
     """
+    # Invisible characters first: a zero-width space after a flag hid it from
+    # the match while the page, which strips it, showed the flag bare. Format
+    # characters go, and other controls become spaces, line breaks kept.
+    text = "".join(
+        ""
+        if unicodedata.category(ch) == "Cf"
+        else " "
+        if unicodedata.category(ch) == "Cc" and ch not in "\n\r"
+        else ch
+        for ch in text
+    )
     text = _MASK_QUOTED_USERINFO.sub(lambda m: m.group(1) + m.group(2) + _SECRET_MARKER + "@", text)
     lines = [line.split() for line in text.splitlines()]
-    for above, below in itertools.pairwise(lines):
+    # Over the lines with words, so a blank line between the halves is no gap.
+    for above, below in itertools.pairwise([line for line in lines if line]):
         if above and below and redact_secrets(above[-1] + below[0]) != above[-1] + below[0]:
             above[-1] = below[0] = _SECRET_MARKER
     words: list[str] = []
@@ -504,7 +519,17 @@ def mask_prose(text: str) -> str:
             scheme_next = False
             continue
         words.append(_SECRET_MARKER if header else word)
-        header = scheme_next = bool(not header and _MASK_HEADER_WORD.match(word))
+        named = None if header else _MASK_HEADER_WORD.match(word)
+        # `Authorization:` alone owes the next word, or two when the next is
+        # a scheme; `authorization:Bearer` owes the one after it.
+        header = named is not None
+        scheme_next = named is not None and not named.group(1)
+        if (
+            named is not None
+            and named.group(1)
+            and (named.group(1).strip("'\"").lower() not in _MASK_AUTH_SCHEMES)
+        ):
+            header = False
     return " ".join(mask_words(words))
 
 

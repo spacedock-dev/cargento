@@ -326,6 +326,55 @@ class AddDirectionStoreTest(unittest.TestCase):
         path.write_text(json.dumps(value), encoding="utf-8")
         self.assertIsNone(self._entry())
 
+    def test_a_backward_clock_step_never_writes_a_save_time_after_its_revision(self) -> None:
+        # Verifier V-1: the carried save time is clamped to the new save, so a
+        # 1 ms step back leaves the entry readable and later saves working.
+        annotate = annotation_store.annotate
+        annotate(self.config, self.state, "claude", SHORT, goal="My typed goal", now=FIRST_AT + 100)
+        self.assertEqual(
+            annotation_store.OUTCOME_STORED,
+            annotate(
+                self.config,
+                self.state,
+                "claude",
+                SHORT,
+                lines=["A line"],
+                expected_revision=1,
+                now=FIRST_AT + 99.999,
+            ),
+        )
+        self.assertIsNotNone(self._entry())
+        self.assertEqual(
+            annotation_store.OUTCOME_STORED,
+            # An add cannot bind the clamp itself (its direction must be later
+            # than the floor and not in the future), so it runs over the entry
+            # the skewed save left, and the re-save below steps back again.
+            self._add(expected_revision=2, entry_at=FIRST_AT + 100.2, now=FIRST_AT + 100.5),
+        )
+        self.assertEqual(
+            annotation_store.OUTCOME_STORED,
+            annotate(
+                self.config,
+                self.state,
+                "claude",
+                SHORT,
+                goal="My typed goal",
+                lines=["A line", "Use the placeholder lexer", "B"],
+                expected_revision=3,
+                now=FIRST_AT + 99.9,
+            ),
+        )
+        entry = self._entry()
+        self.assertIsNotNone(entry)
+        latest = entry["revisions"][-1]
+        self.assertLessEqual(latest["goal_saved_at"], latest["at"])
+        self.assertEqual(
+            annotation_store.OUTCOME_STORED,
+            annotation_store.settle(
+                self.config, self.state, "claude", SHORT, through=FIRST_AT, now=FIRST_AT + 101
+            ),
+        )
+
     # The store lens's killing tests (M9, M10, M11, M13, M14, M22).
     def test_a_direction_between_the_prompt_and_the_adoption_is_later(self) -> None:
         self._adopt(FIRST_AT + 100)
@@ -418,6 +467,23 @@ class KeepStoreTest(unittest.TestCase):
             self.config, self.state, "claude", SHORT, through=FIRST_AT + 60, now=FIRST_AT + 110
         )
         self.assertEqual(FIRST_AT + 90, self._settled()["through"])
+
+    def test_a_settlement_is_never_a_non_finite_moment(self) -> None:
+        # Verifier: one NaN made every later payload invalid JSON.
+        self._adopt(FIRST_AT + 10)
+        for bad in (float("nan"), float("inf"), float("-inf")):
+            with self.subTest(through=bad):
+                self.assertEqual(
+                    annotation_store.OUTCOME_REFUSED,
+                    annotation_store.settle(
+                        self.config, self.state, "claude", SHORT, through=bad, now=FIRST_AT + 20
+                    ),
+                )
+                self.assertEqual(
+                    annotation_store.OUTCOME_REFUSED,
+                    self._adopt(FIRST_AT + 20, settle_through=bad, expected_revision=1),
+                )
+        self.assertIsNone(self._settled())
 
     def test_a_keep_from_a_stale_revision_settles_nothing(self) -> None:
         # D-3: checked under the store lock on both Keep writes.
@@ -589,6 +655,22 @@ class DirectionReviewMaskingTest(unittest.TestCase):
                 self.assertNotIn(self.SECRET, text)
                 self.assertNotIn("two@", text)
                 self.assertIn(records.SECRET_MARKER, text)
+
+    def test_the_verifiers_edge_forms_are_masked(self) -> None:
+        forms = {
+            "no space after the colon": f"authorization:Bearer {self.SECRET}",
+            "zero-width after a flag": f"--password\u200b {self.SECRET}",
+            "soft hyphen after a flag": f"--token\u00ad {self.SECRET}",
+            "bell after a NAME": f"-p\u0007 {self.SECRET}",
+        }
+        for label, form in forms.items():
+            with self.subTest(form=label):
+                self.assertNotIn(self.SECRET, self._review(form))
+
+    def test_a_key_split_by_a_blank_line_is_masked_whole(self) -> None:
+        text = self._review("AKIAIOSFODNN7\n\nEXAMPLE")
+        self.assertNotIn("AKIAIOSFODNN7", text)
+        self.assertNotIn("EXAMPLE", text)
 
     def test_a_key_split_by_a_line_break_is_masked_whole(self) -> None:
         text = self._review("AKIAIOSFODNN7\nEXAMPLE")
@@ -1016,6 +1098,8 @@ class KeepRouteTest(unittest.TestCase):
             "allow": True,
             **over,
         }
+        # `adopt=None` names a Keep over saved words, which sends no adoption.
+        payload = {k: v for k, v in payload.items() if not (k == "adopt" and v is None)}
         handler = self._handler(config, state, payload)
         with (
             mock.patch.object(shutil, "which", lambda name: f"/usr/local/bin/{name}"),
@@ -1076,6 +1160,27 @@ class KeepRouteTest(unittest.TestCase):
             handler = self._handler(config, state, keep)
             handler._annotate()
             self.assertEqual("refused", self.replies[-1][0]["outcome"])
+        self.assertNotIn("settled", annotation_store.load(config)[0])
+
+    def test_a_non_finite_settle_time_is_refused_on_both_routes(self) -> None:
+        config, state = self._runtime()
+        annotation_store.annotate(config, state, "claude", SHORT, goal="My goal", now=FIRST_AT)
+        for bad in (float("nan"), float("inf"), float("-inf")):
+            with self.subTest(through=bad):
+                plain = {"harness": "claude", "sid": SHORT, "settle_through": bad}
+                self._handler(config, state, plain)._annotate()
+                self.assertEqual("refused", self.replies[-1][0]["outcome"])
+                compose = self._press(
+                    config,
+                    state,
+                    adopt=None,
+                    settle_through=bad,
+                    expected_revision=1,
+                )
+                self.assertEqual(0, compose.call_count)
+                self.assertEqual(
+                    (422, "refused"), (self.replies[-1][1], self.replies[-1][0]["settled"])
+                )
         self.assertNotIn("settled", annotation_store.load(config)[0])
 
     def test_a_press_with_no_thread_to_run_on_still_says_it_settled(self) -> None:
