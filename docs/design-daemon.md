@@ -87,7 +87,10 @@ every `--no-*` switch `cli.build_parser` defines under its canonical spelling, s
 because `cli` imports `lifecycle`, and the reverse edge would break the inward-only import rule. A hand-kept list
 was tried first and dropped `--no-annotations` and `--no-tripwires` (DRC-4655), so a Windows daemon
 turned both stores back on. The test parses the respawn argv back through the CLI and compares the
-child's config with the parent's for every switch. No opt-in is forwarded; one that ever is will
+child's config with the parent's for every switch, and a second test holds the convention the
+derivation reads: every `--no-*` option is a store-true switch whose destination starts with `no_`
+and spells it. A `--no-*` flag that took a value would be dropped silently, and a `no_*` switch
+spelled otherwise would make the child exit 2, so either shape fails that test first. No opt-in is forwarded; one that ever is will
 travel with `--no-observer-model`, which the derivation always carries.
 
 The Windows branch has to be checked, and the re-spawn dispatched, *before* the POSIX bind-then-fork

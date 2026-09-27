@@ -634,8 +634,8 @@ def _history_bound_argv(args: argparse.Namespace) -> list[str]:
     for the Windows respawn assertions to keep in step with the parser.
 
     The namespace is read directly rather than through `getattr` with a default,
-    for the reason the `--no-history` branch is: a flag added to the parser and
-    forgotten here should raise, not quietly ship the default.
+    so a history bound renamed in the parser and not here raises rather than
+    quietly shipping the default.
     """
     argv: list[str] = []
     if args.history_days != runtime_config.HISTORY_RETENTION_DEFAULT_DAYS:

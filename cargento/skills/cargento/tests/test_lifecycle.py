@@ -2215,3 +2215,43 @@ class EveryOptOutReachesTheWindowsChildTest(unittest.TestCase):
                         self._config(parent).model_calls_disabled,
                         self._config(child).model_calls_disabled,
                     )
+
+    @staticmethod
+    def _convention_breaks(parser: argparse.ArgumentParser) -> list[str]:
+        """Every parser option that `_opt_out_argv`'s naming convention would mishandle."""
+        breaks = []
+        for action in parser._actions:
+            spelled = any(option.startswith("--no-") for option in action.option_strings)
+            named = action.dest.startswith("no_")
+            if not (spelled or named):
+                continue
+            canonical = "--" + action.dest.replace("_", "-")
+            if not (
+                spelled
+                and named
+                and isinstance(action, argparse._StoreTrueAction)
+                and canonical in action.option_strings
+            ):
+                breaks.append(f"{action.option_strings} -> {action.dest}")
+        return breaks
+
+    def test_every_opt_out_in_the_real_parser_keeps_the_convention_the_respawn_reads(
+        self,
+    ) -> None:
+        # `_opt_out_argv` forwards `no_*` destinations holding True, under
+        # `--` plus the destination. A `--no-*` flag that takes a value is
+        # dropped by that, and a `no_*` switch spelled otherwise makes the
+        # child exit 2, so a flag of either shape has to fail here first.
+        self.assertEqual([], self._convention_breaks(cli.build_parser()))
+
+    def test_the_convention_check_catches_each_shape_the_respawn_would_mishandle(self) -> None:
+        shapes = {
+            "takes a value": ("--no-reach-after", {"dest": "no_reach_after"}),
+            "spelled otherwise": ("--offline", {"dest": "no_network", "action": "store_true"}),
+            "dest without no_": ("--no-extra", {"dest": "extra_disabled", "action": "store_true"}),
+        }
+        for shape, (flag, keywords) in shapes.items():
+            with self.subTest(shape=shape):
+                parser = cli.build_parser()
+                parser.add_argument(flag, **keywords)  # type: ignore[arg-type]
+                self.assertEqual(1, len(self._convention_breaks(parser)))
