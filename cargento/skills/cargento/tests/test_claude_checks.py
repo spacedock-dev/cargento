@@ -14,6 +14,7 @@ from __future__ import annotations
 import datetime as dt
 import json
 import re
+import shlex
 import tempfile
 import unittest
 from pathlib import Path
@@ -1467,7 +1468,11 @@ class ACheckWritesTheFileItsOutputIsRedirectedInto(ClaudeChecksTestCase):
         ):
             with self.subTest(command=command):
                 self.setUp()
-                self.session.bash(command.format(cwd=self.cwd), "", is_error=False)
+                # Quoted as a shell needs it: unquoted, a Windows path's backslashes are
+                # escapes, and the shell, like the parser, would read a drive-relative path.
+                self.session.bash(
+                    command.format(cwd=shlex.quote(str(self.cwd))), "", is_error=False
+                )
                 self.assertEqual(expected, self.writes())
 
     def test_a_groups_own_redirect_is_read_where_the_group_started(self) -> None:

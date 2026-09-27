@@ -866,3 +866,28 @@ class APublishedPathIsTheSameOnEveryOs(CheckLineTestCase):
             )
         self.assertEqual("sub/logs/out.txt", published)
         self.assertEqual("src/a.py", write)
+
+    def test_a_host_absolute_path_places_the_directory_and_the_target(self) -> None:
+        # PR #414's second Windows run: a drive or UNC path is a literal absolute path, for the
+        # `cd` that places the directory again and for a redirect target, and it still counts
+        # outside unless it resolves inside the working directory.
+        cwd = "C:\\work\\billing"
+        cases = (
+            ("cd $HOME && cd 'C:\\work\\billing\\src' && pytest > t4", "src/t4"),
+            ("cd $HOME && pytest > 'C:\\work\\billing\\abs.txt'", "abs.txt"),
+            ("cd $HOME && pytest > C:/work/billing/fwd.txt", "fwd.txt"),
+            ("cd $HOME && pytest > 'C:\\other\\x.txt'", None),
+            ("cd $HOME && pytest > '\\\\server\\share\\x.txt'", None),
+            # Unquoted, the shell reads the backslashes as escapes: `C:workbillingsrc` is
+            # relative to the drive's current directory, so the directory stays unknown.
+            ("cd $HOME && cd C:\\work\\billing\\src && pytest > t5", None),
+        )
+        with mock.patch.object(os, "path", ntpath), mock.patch.object(os, "sep", "\\"):
+            found = {}
+            for command, _expected in cases:
+                call = project_context._ShellCall(0.0, cwd, {"command": command})
+                ((_index, target, start),) = call.redirect_writes
+                found[command] = call.written_path(target, start, cwd)
+        for command, expected in cases:
+            with self.subTest(command=command):
+                self.assertEqual(expected, found[command])
