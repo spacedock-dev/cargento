@@ -7649,6 +7649,9 @@ class ACheckWhoseResultLandedAfterTheWordsIsReadOnThePageTest(NextPageJsHarness)
         (0, 60, "failed", False, "departure", 50),
         (None, None, "failed", False, "departure", 50),
         (40, 45, "failed", False, "departure", None),
+        # Window lens, J2: a result time that is no time falls back to the call.
+        (50, 0, "failed", False, "departure", 50),
+        (50, -3, "failed", False, "departure", 50),
     ]
 
     def run_fixture(self, checks: str) -> object:

@@ -1565,6 +1565,52 @@ class ACheckCarriesTheTimeItsResultArrived(ClaudeChecksTestCase):
         self.assertEqual(first, check["record_id"])
         self.assertIs(False, check["earlier_failed"])
 
+    def out_of_order(self, first_output: str, first_failed: bool, second_output: str,
+                     second_failed: bool) -> tuple[str, str]:  # fmt: skip
+        """Two runs of one check called in order, the second's result landing first."""
+        first = self.session.call("Bash", {"command": "pytest"})
+        second = self.session.call("Bash", {"command": "pytest"})
+        self.session.result(second, second_output, is_error=second_failed)
+        self.session.result(first, first_output, is_error=first_failed)
+        return first, second
+
+    def test_a_later_called_failure_is_an_earlier_failure_of_the_latest(self) -> None:
+        # Window lens, M13.
+        first, _second = self.out_of_order("5 passed", False, "Exit code 1\n1 failed", True)
+        check = self.only_check()
+        self.assertEqual(first, check["record_id"])
+        self.assertEqual("passed", check["result"])
+        self.assertIs(True, check["earlier_failed"])
+
+    def test_the_press_tail_belongs_to_the_published_run(self) -> None:
+        # Window lens, M17.
+        first, _second = self.out_of_order("5 passed", False, "Exit code 1\n1 failed", True)
+        check = self.only_check()
+        press = project_context.claude_check_press(self.config, str(self.path))
+        self.assertEqual(first, check["record_id"])
+        self.assertEqual({check["record_id"]}, set(press.tails))
+
+    def test_changed_after_names_the_published_run(self) -> None:
+        # Window lens, M18.
+        first = self.session.call("Bash", {"command": "pytest"})
+        second = self.session.call("Bash", {"command": "pytest"})
+        self.session.result(second, "Exit code 1\n1 failed", is_error=True)
+        self.session.bash("touch changed.py", "", is_error=False)
+        self.session.result(first, "5 passed", is_error=False)
+        check = self.only_check()
+        press = project_context.claude_check_press(self.config, str(self.path))
+        self.assertEqual(first, check["record_id"])
+        self.assertIn((first, "pytest"), press.changed_after)
+
+    def test_equal_result_times_pick_the_later_call(self) -> None:
+        # Window lens, M11.
+        first = self.session.call("Bash", {"command": "pytest"})
+        second = self.session.call("Bash", {"command": "pytest"})
+        self.session.result(second, "5 passed", is_error=False)
+        self.session.result(first, "Exit code 1\n1 failed", is_error=True)
+        self.session.rows[-1]["timestamp"] = self.session.rows[-2]["timestamp"]
+        self.assertEqual(second, self.only_check()["record_id"])
+
     def test_a_result_after_a_frozen_moment_leaves_no_result_time(self) -> None:
         self.session.bash("pytest", "5 passed", is_error=False)  # call 10 s, result 15 s
         self.session.save(self.path)
