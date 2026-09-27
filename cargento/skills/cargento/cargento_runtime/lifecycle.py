@@ -646,25 +646,23 @@ def _history_bound_argv(args: argparse.Namespace) -> list[str]:
 
 
 def _opt_out_argv(args: argparse.Namespace) -> list[str]:
-    flags = [
-        ("--no-spacedock", args.no_spacedock),
-        ("--no-usage", args.no_usage),
-        ("--no-observer-model", getattr(args, "no_observer_model", False)),
-        ("--no-git", args.no_git),
-        ("--no-focus", args.no_focus),
-        ("--no-events", args.no_events),
-        ("--no-irreversible", args.no_irreversible),
-        ("--no-dismiss", args.no_dismiss),
-        ("--no-ask", args.no_ask),
-        ("--no-history", args.no_history),
+    """Every `--no-*` switch the parent was given, read off the parsed namespace.
+
+    Derived rather than listed (DRC-4655): the hand-kept list dropped
+    `--no-annotations` and `--no-tripwires`, so a Windows daemon turned both
+    stores back on. The namespace is what `cli.build_parser` produced, so its
+    `no_*` destinations are exactly the parser's opt-outs, each under its
+    canonical spelling: `--no-harness-usage` shares `--no-observer-model`'s
+    destination and is forwarded once, as that. Only a value that is exactly
+    True counts, which is what a store-true switch holds. Read from the
+    namespace rather than the parser because `cli` imports this module, and
+    the reverse edge would break the inward-only rule the import test holds.
+    """
+    return [
+        "--" + name.replace("_", "-")
+        for name, value in sorted(vars(args).items())
+        if name.startswith("no_") and value is True
     ]
-    argv = [flag for flag, enabled in flags if enabled]
-    if getattr(args, "no_reach", False):
-        # SECURITY.md's off switch for off-machine reach nudges.
-        argv.append("--no-reach")
-    if getattr(args, "no_quiet_hours", False):
-        argv.append("--no-quiet-hours")
-    return argv
 
 
 def spawn_argv(config: RuntimeConfig, args: argparse.Namespace) -> list[str]:
@@ -677,11 +675,13 @@ def spawn_argv(config: RuntimeConfig, args: argparse.Namespace) -> list[str]:
     ``config.launcher_path`` is the only respawn target. Every opt-out the
     parent was given is forwarded, because Windows has no fork and so a daemon
     is always a respawn: a flag dropped here is a flag silently ignored for
-    every Windows daemon user. --daemon is the one deliberate omission, since
-    the child is an ordinary foreground run that happens to own no console and
-    forwarding the flag would re-spawn forever. Rebuilding from the namespace
-    rather than filtering argv means a future flag has to be added here
-    consciously.
+    every Windows daemon user. The opt-outs are every `--no-*` switch the
+    parser put in `args` (`_opt_out_argv`), so a switch added later is
+    forwarded without an edit here. --daemon is the one deliberate
+    omission, since the child is an ordinary foreground run that happens to own
+    no console and forwarding the flag would re-spawn forever. No opt-in
+    (`--observer-model`, `--unasked-readings`) is forwarded; one that ever is
+    travels with `--no-observer-model`, which the derivation always carries.
     """
     argv = [
         sys.executable,

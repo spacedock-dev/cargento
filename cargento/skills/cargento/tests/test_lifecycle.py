@@ -2135,3 +2135,83 @@ class ATerminalHangupStillCleansUpTest(unittest.TestCase):
 
     def test_a_quit_from_the_terminal_kills_the_cli(self) -> None:
         self._hang_up(signal.SIGQUIT)
+
+
+class EveryOptOutReachesTheWindowsChildTest(unittest.TestCase):
+    """DRC-4655: the Windows respawn forwards every `--no-*` the parser defines.
+
+    Windows has no fork, so a daemon there is always `spawn_argv` parsed again
+    by a child. Each case parses the parent's flags, builds its config, parses
+    the respawn argv back through the same CLI and builds the child's, so what
+    is compared is the run the child would have, not the argv's spelling.
+    """
+
+    NOW = 1_800_000_000.0
+
+    def _config(self, args: argparse.Namespace) -> Any:
+        config, _ = cli.build_runtime(args, started=self.NOW)
+        return config
+
+    def _child(
+        self, args: argparse.Namespace, parser: argparse.ArgumentParser | None = None
+    ) -> argparse.Namespace:
+        parser = parser or cli.build_parser()
+        argv = lifecycle.spawn_argv(self._config(args), args)
+        return parser.parse_args(argv[2:])
+
+    @staticmethod
+    def _opt_outs(parser: argparse.ArgumentParser) -> list[str]:
+        """Every opt-out spelling the parser accepts, aliases included."""
+        return [
+            option
+            for action in parser._actions
+            if isinstance(action, argparse._StoreTrueAction)
+            for option in action.option_strings
+            if option.startswith("--no-")
+        ]
+
+    def test_the_child_config_matches_the_parent_for_every_opt_out(self) -> None:
+        parser = cli.build_parser()
+        flags = self._opt_outs(parser)
+        # The two the hand list dropped, named so the derivation cannot pass by
+        # finding nothing.
+        self.assertIn("--no-annotations", flags)
+        self.assertIn("--no-tripwires", flags)
+        for flag in flags:
+            with self.subTest(flag=flag):
+                parent = parser.parse_args([flag])
+                child = self._child(parent)
+                self.assertEqual(self._config(parent), self._config(child))
+                self.assertEqual(vars(parent), {**vars(child), "port": parent.port})
+        every = parser.parse_args(flags)
+        self.assertEqual(self._config(every), self._config(self._child(every)))
+
+    def test_a_new_opt_out_in_the_parser_is_forwarded_without_editing_the_list(self) -> None:
+        parser = cli.build_parser()
+        parser.add_argument("--no-placeholder-store", action="store_true")
+        parent = parser.parse_args(["--no-placeholder-store"])
+        self.assertTrue(self._child(parent, parser).no_placeholder_store)
+        quiet = parser.parse_args([])
+        self.assertFalse(self._child(quiet, parser).no_placeholder_store)
+
+    def test_no_harness_usage_turns_model_calls_off_in_the_child(self) -> None:
+        parent = cli.build_parser().parse_args(["--no-harness-usage"])
+        self.assertTrue(self._config(parent).model_calls_disabled)
+        self.assertTrue(self._config(self._child(parent)).model_calls_disabled)
+
+    def test_an_opt_in_never_travels_without_the_model_refusal_beside_it(self) -> None:
+        parser = cli.build_parser()
+        opt_ins = [["--observer-model"], ["--unasked-readings"], []]
+        refusals = [["--no-observer-model"], ["--no-harness-usage"], []]
+        for opt_in in opt_ins:
+            for refusal in refusals:
+                with self.subTest(opt_in=opt_in, refusal=refusal):
+                    parent = parser.parse_args([*opt_in, *refusal])
+                    child = self._child(parent)
+                    forwarded_in = child.observer_model or child.unasked_readings
+                    if forwarded_in and parent.no_observer_model:
+                        self.assertTrue(child.no_observer_model)
+                    self.assertEqual(
+                        self._config(parent).model_calls_disabled,
+                        self._config(child).model_calls_disabled,
+                    )

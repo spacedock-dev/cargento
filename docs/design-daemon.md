@@ -80,6 +80,16 @@ answer now reports that the port is already served by a different Cargento and p
 The child needs no private flag: it is an ordinary foreground run that happens to own no console. One
 fewer argument, and one fewer way for the two paths to diverge.
 
+Every opt-out the parent was given reaches the child, and the set is read from the parser rather than
+listed. `spawn_argv` forwards each `no_*` destination the parsed namespace holds as True, which is
+every `--no-*` switch `cli.build_parser` defines under its canonical spelling, so
+`--no-harness-usage` arrives as `--no-observer-model`. It reads the namespace rather than the parser
+because `cli` imports `lifecycle`, and the reverse edge would break the inward-only import rule. A hand-kept list
+was tried first and dropped `--no-annotations` and `--no-tripwires` (DRC-4655), so a Windows daemon
+turned both stores back on. The test parses the respawn argv back through the CLI and compares the
+child's config with the parent's for every switch. No opt-in is forwarded; one that ever is will
+travel with `--no-observer-model`, which the derivation always carries.
+
 The Windows branch has to be checked, and the re-spawn dispatched, *before* the POSIX bind-then-fork
 path runs. Reversing that order means the parent holds the listening socket it is supposed to be
 handing to the child.
