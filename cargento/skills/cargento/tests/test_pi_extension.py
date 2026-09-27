@@ -126,19 +126,76 @@ for(const value of ['invalid', '{}', 'null', ' '.repeat(65537),
 """)
         self.assertEqual([], result["messages"])
 
-    def test_delayed_end_cannot_overtake_later_start(self) -> None:
-        result = self.run_adapter("""
+    # Both tests below hold a reply open and move on when the server has seen a
+    # request, not after a fixed pause. The first version paused 110 ms against
+    # an 80 ms reply: on a slow runner the first reply landed later, the end was
+    # coalesced instead of sent, and the lists differed as
+    # [requested, resolved, requested] versus [requested, requested]. Both are
+    # correct; which one a run took was the runner's speed (DRC-4707).
+    HELD_REPLY = """
 server.removeAllListeners('request');
+const log = [], held = [];
 server.on('request',(req,res)=>{let raw=''; req.on('data',c=>raw+=c);
-  req.on('end',()=>{messages.push(JSON.parse(raw)); setTimeout(()=>res.end('{}'),80);});});
-emit('ui_prompt_start'); await pause(110);
-emit('ui_prompt_end'); emit('ui_prompt_start'); await pause(220);
-""")
+  req.on('end',()=>{const body=JSON.parse(raw); messages.push(body);
+    log.push('received '+body.event);
+    const reply=()=>{log.push('replied '+body.event); res.end('{}');};
+    if(hold.has(messages.length)) held.push(reply); else reply();});});
+const waitFor=async(ready)=>{const until=Date.now()+2000;
+  while(!ready()) { if(Date.now()>until) throw Error('timed out: '+JSON.stringify(log));
+    await pause(5); }};
+"""
+
+    def test_delayed_end_cannot_overtake_later_start(self) -> None:
+        # The end is in flight with its reply held when the later start is
+        # emitted. The 50 ms before the release is the window an overtaking
+        # start would need; a start that waits never uses it.
+        result = self.run_adapter(
+            "const hold = new Set([2]);"
+            + self.HELD_REPLY
+            + """
+emit('ui_prompt_start'); await waitFor(()=>messages.length>=1);
+emit('ui_prompt_end'); await waitFor(()=>held.length===1);
+emit('ui_prompt_start'); await pause(50); held[0]();
+await waitFor(()=>messages.length>=3);
+messages.push(log);
+"""
+        )
+        *messages, log = result["messages"]
         self.assertEqual(
             ["input_requested", "input_resolved", "input_requested"],
+            [item["event"] for item in messages],
+        )
+        self.assertEqual([1, 2, 3], [item["source_sequence"] for item in messages])
+        self.assertEqual(
+            [
+                "received input_requested",
+                "replied input_requested",
+                "received input_resolved",
+                "replied input_resolved",
+                "received input_requested",
+                "replied input_requested",
+            ],
+            log,
+        )
+
+    def test_an_end_queued_behind_a_report_is_superseded_by_the_next_start(self) -> None:
+        # The other branch the timed version fell into: a close and a reopen
+        # while the first report is still unanswered leave one queued state,
+        # the later wait, rather than a close that would clear it.
+        result = self.run_adapter(
+            "const hold = new Set([1]);"
+            + self.HELD_REPLY
+            + """
+emit('ui_prompt_start'); await waitFor(()=>held.length===1);
+emit('ui_prompt_end'); emit('ui_prompt_start'); held[0]();
+await waitFor(()=>messages.length>=2);
+"""
+        )
+        self.assertEqual(
+            ["input_requested", "input_requested"],
             [item["event"] for item in result["messages"]],
         )
-        self.assertEqual([1, 2, 3], [item["source_sequence"] for item in result["messages"]])
+        self.assertEqual([1, 3], [item["source_sequence"] for item in result["messages"]])
 
     def test_hanging_endpoint_bounds_burst_and_never_awaits_ui_callback(self) -> None:
         result = self.run_adapter("""
