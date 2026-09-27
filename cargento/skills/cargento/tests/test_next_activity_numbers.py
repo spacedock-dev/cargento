@@ -430,10 +430,12 @@ class TheActivityListNumbersItsEntriesTest(PanelPage):
                 self.assertEqual(4, flagged[0]["n"])
                 for row in drawn:
                     self.assertNotIn("drift", row["text"].lower())
-        # The flag and the conflict block read one predicate: what the block lists as unsettled
-        # is exactly what the list flags while nothing is settled.
-        conflict = re.findall(r'class="next-cockpit-conflict-text">([^<]*)<', unsettled)
-        self.assertEqual(["also clean the logs"], conflict)
+        # The flag and the question before the press read one predicate, and the question names
+        # the flagged row by the number the list gives it (DRC-4682).
+        said = re.findall(r'class="next-cockpit-direction-said">([^<]*)<', unsettled)
+        self.assertEqual(
+            ["You gave a later direction at #4: &quot;also clean the logs&quot;."], said
+        )
         self.assertIn("You settled this", settled)
         # The opening prompt, at the window start and before the save, is never one.
         self.assertEqual([], rows_of(unsettled)[0]["flags"])

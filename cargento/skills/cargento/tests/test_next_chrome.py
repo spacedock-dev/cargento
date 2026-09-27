@@ -187,7 +187,7 @@ console.log(JSON.stringify({views, rendered}));
         )
         self.assertIn(".next-menu button{min-block-size:44px", NEXT_STYLES)
         self.assertIn(
-            '.next-breadcrumb [aria-current="page"]{display:block;margin-top:4px;'
+            '.next-breadcrumb [aria-current="page"]{display:block;flex-basis:100%;margin-top:4px;'
             "overflow-wrap:anywhere}",
             NEXT_STYLES,
         )

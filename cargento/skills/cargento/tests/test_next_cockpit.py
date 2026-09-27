@@ -4316,6 +4316,9 @@ __dashboard.sessions[0].annotation_lines_why = "No expected outcome typed.";
 __dashboard.sessions[0].annotation_revision = 2;
 __dashboard.sessions[0].annotation_revision_count = 2;
 __dashboard.sessions[0].annotation_at = 100;
+// The goal's words were saved after every direction in the fixture's record,
+// so no later direction is open unless a test sets one (DRC-4682's floor).
+__dashboard.sessions[0].annotation_goal_saved_at = 105;
 __dashboard.sessions[0].annotation_binding_why = "";
 
 """
@@ -5440,6 +5443,9 @@ console.log(JSON.stringify({
         out = self.run_fixture(
             self.ANNOTATED
             + """
+// Settled, so the bound applies: an unsettled later direction is drawn past
+// it (DRC-4682), which the test below this one's class covers.
+__dashboard.sessions[0].annotation_settled_through = 300;
 for(let n = 0; n < 40; n++){
   __semantic.facts.push({fact_id:`bulk-${n}`, at:200 + n, type:"user_message",
     summary:`Direction ${n}`, source_session:{harness:"codex", sid:"focus-1"},
@@ -5917,6 +5923,7 @@ __dashboard.sessions[0].annotation_goal = "ship it";
 __dashboard.sessions[0].annotation_revision = 1;
 __dashboard.sessions[0].annotation_revision_count = 1;
 __dashboard.sessions[0].annotation_at = 100;
+__dashboard.sessions[0].annotation_goal_saved_at = 105;
 const job = {id:"j1", phase:"waiting", started_at:100, phase_at:101, provider:"codex",
   cancelling:false, steps:"""
             + self.JOB_STEPS
@@ -5982,6 +5989,7 @@ __dashboard.sessions[0].annotation_goal = "ship it";
 __dashboard.sessions[0].annotation_revision = 1;
 __dashboard.sessions[0].annotation_revision_count = 1;
 __dashboard.sessions[0].annotation_at = 100;
+__dashboard.sessions[0].annotation_goal_saved_at = 105;
 __dashboard.reading_jobs = {};
 nextData = __dashboard;
 navigateNext({view:"project", project:"cargento", focus:"codex:focus-1", tab:"held-to"});
@@ -6104,6 +6112,7 @@ __dashboard.reading_check = "accepted";
 Object.assign(__dashboard.sessions[0], {
   annotation_goal:"do not change the board", annotation_line_1:"",
   annotation_revision:1, annotation_revision_count:1, annotation_at:100,
+  annotation_goal_saved_at:105,
   annotation_assessment:{revision_read:1, scope:"mid-flight",
     scope_text:"This covers only the work so far.",
     criteria:{goal:{result:"consistent with the evidence read", detail:"", cites:["fo-a"]}}}
@@ -6186,6 +6195,7 @@ __dashboard.sessions[0].annotation_lines_why = "No expected outcome typed.";
 __dashboard.sessions[0].annotation_revision = 1;
 __dashboard.sessions[0].annotation_revision_count = 1;
 __dashboard.sessions[0].annotation_at = 100;
+__dashboard.sessions[0].annotation_goal_saved_at = 105;
 __dashboard.sessions[0].annotation_binding_why = "";
 
 renderNext();
@@ -6875,6 +6885,7 @@ __dashboard.sessions[0].annotation_goal_why = "";
 __dashboard.sessions[0].annotation_revision = 1;
 __dashboard.sessions[0].annotation_revision_count = 1;
 __dashboard.sessions[0].annotation_at = 100;
+__dashboard.sessions[0].annotation_goal_saved_at = 105;
 renderNext();
 const afterSave = count();
 const stillRefused = /data-next-cockpit-action="reading-ask"[^>]*aria-disabled/.test(block());
@@ -8320,7 +8331,9 @@ const block = (html.match(
 console.log(JSON.stringify({{
   block,
   rows: (block.match(/class="next-cockpit-conflict-row"/g) || []).length,
-  settle: (block.match(/data-arg="([0-9.]+)"/) || [])[1] || "",
+  said: (html.match(/class="next-cockpit-direction-said">([^<]*)</) || [])[1] || "",
+  add: (html.match(/data-next-cockpit-action="direction-add" data-arg="([^"]*)"/) || [])[1] || "",
+  keep: html.includes('data-next-cockpit-action="direction-keep"'),
   result: (html.match(/class="next-cockpit-reading-result">([^<]*)</) || [])[1] || "",
 }}));
 """,
@@ -8354,199 +8367,26 @@ console.log(JSON.stringify({has: __els.app.innerHTML.includes('class="next-cockp
         # rather than needing a rule.
         self.assertFalse(out["has"])
 
-    def test_a_later_direction_is_counted_and_shown_without_being_judged(self) -> None:
+    def test_a_later_direction_is_asked_about_before_the_press_without_being_judged(self) -> None:
         out = self.held(at=100)
 
-        block = out["block"]
-        assert isinstance(block, str)
-        self.assertIn("2 directions you gave after you saved the words above", block)
-        self.assertEqual(2, out["rows"])
-        # Detected, not judged. The block must never claim the later direction
-        # conflicts, because nothing here can read that.
-        self.assertIn("Nothing here decides whether it changes what you are asking for", block)
-        # On the visible text, not the markup. DEC-20 labels the block
-        # "Conflict to settle", knowing it breaks DEC-16's no-conflict sentence:
-        # the label puts a question and records no finding. So the word appears
-        # once, as that label, and nowhere else -- no sentence says Cargento
-        # found one, because nothing here can read that.
-        visible = re.sub(r"<[^>]*>", " ", block).lower()
-        self.assertEqual(1, visible.count("conflict"))
-        self.assertIn("conflict to settle", visible)
-        # Both choices, and the honest note about the one that mints nothing.
-        self.assertIn("The baseline still applies", block)
-        self.assertIn("Retype the baseline", block)
-        self.assertIn("Retyping clears this only if the words change", block)
+        # The question before the press replaced the block's buttons (owner, DRC-4682): no
+        # block is drawn while a direction is open, and the question names the newest at the
+        # number the list gives it.
+        self.assertEqual("", out["block"])
+        self.assertEqual(0, out["rows"])
+        self.assertEqual(
+            "You gave 2 later directions since saving your intent, the latest at #3: "
+            "&quot;Newest direction&quot;.",
+            out["said"],
+        )
+        self.assertTrue(out["keep"])
+        # Detected, not judged: nothing in the question calls the direction a conflict.
+        self.assertNotIn("conflict", str(out["said"]).lower())
 
-    def test_the_settle_choice_carries_the_moment_the_reader_was_shown(self) -> None:
+    def test_add_names_the_newest_direction_the_reader_was_shown(self) -> None:
         out = self.held(at=100)
-        # The newest candidate's own time, not the clock: the mark has to be
-        # the moment they actually looked at.
-        self.assertEqual("104", out["settle"])
-
-    def settled_with(self, reply: str) -> dict[str, Any]:
-        """Press `The baseline still applies` against a stubbed reply, then
-        read the conflict block the handler's own refresh redrew."""
-        out = self._run_page_js(
-            "await __settle();\nawait __settle();\n"
-            + CockpitHeldToTabTest.FOCUS_DOM
-            + f"""
-__dashboard.annotate = true;
-__dashboard.annotate_cap = 240;
-__dashboard.sessions[0].annotation_goal = "do not change the board";
-__dashboard.sessions[0].annotation_goal_why = "";
-__dashboard.sessions[0].annotation_line_1 = "";
-__dashboard.sessions[0].annotation_lines_why = "";
-__dashboard.sessions[0].annotation_revision = 1;
-__dashboard.sessions[0].annotation_revision_count = 1;
-__dashboard.sessions[0].annotation_at = 100;
-__dashboard.sessions[0].annotation_binding_why = "";
-const upstream = __fetchImpl;
-let posted = null;
-__fetchImpl = async (url, init) => {{
-  if(String(url) !== "/api/annotate") return upstream(url, init);
-  posted = JSON.parse(init.body);
-  return {{ok:true, status:200, json: async () => ({reply})}};
-}};
-navigateNext({{view:"project", project:"cargento", focus:"codex:focus-1", tab:"held-to"}});
-await __settle();
-__fire("click", {{target:controls.find(control =>
-  control.dataset.nextCockpitAction === "conflict-settle"), preventDefault(){{}}}});
-await __settle();
-await __settle();
-const html = __els.app.innerHTML;
-const block = (html.match(
-  /<section class="next-cockpit-conflict">[\\s\\S]*?<\\/section>/) || [""])[0];
-console.log(JSON.stringify({{
-  posted,
-  open: block.includes("you gave after you saved the words above"),
-  cue: (block.match(/class="next-cockpit-conflict-cue">([^<]*)</) || [])[1] || "",
-  heldCues: (html.match(/class="next-cockpit-held-cue"/g) || []).length,
-}}));
-""",
-            storage_prelude({}) + self.FIXTURE,
-        )
-        assert isinstance(out, dict)
-        return out
-
-    def test_a_settle_that_did_not_persist_says_so(self) -> None:
-        """DRC-4543. The settle handler read `ok` alone and drew no cue.
-
-        A settle whose write did not persist left the block open with no
-        reason: the mark was set in this process, the handler's own refresh
-        reloaded the store from disk and dropped it, and the block reopened
-        looking exactly as it had before the press. Worded about what has
-        already happened, because that refresh has run by the time the
-        reader can read the sentence (the save cue's lesson, above).
-        """
-        unwritable = self.settled_with(
-            '{ok:true, persisted:false, outcome:"unwritable", revision:1, revision_count:1}'
-        )
-        refused = self.settled_with(
-            '{ok:true, persisted:false, outcome:"refused", revision:1, revision_count:1}'
-        )
-        stored = self.settled_with(
-            '{ok:true, persisted:true, outcome:"stored", revision:1, revision_count:1}'
-        )
-
-        # The press reached the endpoint with the moment the reader was shown.
-        self.assertEqual(104, unwritable["posted"]["settle_through"])
-        self.assertTrue(unwritable["open"])
-        self.assertEqual(
-            "Not settled. The store could not be written, so the mark has already been "
-            "dropped and the question below still stands.",
-            unwritable["cue"],
-        )
-        self.assertTrue(refused["open"])
-        self.assertEqual(
-            "Not settled. The store refused the mark, so the question below still stands as "
-            "it did.",
-            refused["cue"],
-        )
-        # A settle that landed says nothing here: the block's own settled
-        # sentence is the report, drawn from the store on the next payload.
-        self.assertEqual("", stored["cue"])
-        # And the cue stays inside the block, so the held fields' cue regexes
-        # above still read the field cue and never this one.
-        self.assertEqual(0, stored["heldCues"] + unwritable["heldCues"])
-
-    def settled_twice(self, first: str, second: str) -> dict[str, Any]:
-        """Press `The baseline still applies` twice against two stubbed
-        replies, and read the block the handler's own refresh redrew after
-        the second press. The second reply is a settle the store took, and
-        the payload comes back settled, which is what a reader sees once one
-        lands."""
-        out = self._run_page_js(
-            "await __settle();\nawait __settle();\n"
-            + CockpitHeldToTabTest.FOCUS_DOM
-            + f"""
-__dashboard.annotate = true;
-__dashboard.annotate_cap = 240;
-__dashboard.sessions[0].annotation_goal = "do not change the board";
-__dashboard.sessions[0].annotation_goal_why = "";
-__dashboard.sessions[0].annotation_line_1 = "";
-__dashboard.sessions[0].annotation_lines_why = "";
-__dashboard.sessions[0].annotation_revision = 1;
-__dashboard.sessions[0].annotation_revision_count = 1;
-__dashboard.sessions[0].annotation_at = 100;
-__dashboard.sessions[0].annotation_binding_why = "";
-const upstream = __fetchImpl;
-let reply = {first};
-__fetchImpl = async (url, init) => {{
-  if(String(url) !== "/api/annotate") return upstream(url, init);
-  return {{ok:true, status:200, json: async () => reply}};
-}};
-navigateNext({{view:"project", project:"cargento", focus:"codex:focus-1", tab:"held-to"}});
-await __settle();
-const press = () => {{
-  const control = controls.find(candidate =>
-    candidate.dataset.nextCockpitAction === "conflict-settle");
-  if(control) __fire("click", {{target:control, preventDefault(){{}}}});
-  return Boolean(control);
-}};
-const first_pressed = press();
-await __settle();
-await __settle();
-reply = {second};
-__dashboard.sessions[0].annotation_settled_at = 200;
-__dashboard.sessions[0].annotation_settled_through = 104;
-__dashboard.sessions[0].annotation_settled_revision = 1;
-const second_pressed = press();
-await __settle();
-await __settle();
-const html = __els.app.innerHTML;
-const block = (html.match(
-  /<section class="next-cockpit-conflict">[\\s\\S]*?<\\/section>/) || [""])[0];
-console.log(JSON.stringify({{
-  pressed: [first_pressed, second_pressed],
-  cue: (block.match(/class="next-cockpit-conflict-cue">([^<]*)</) || [])[1] || "",
-  settled: block.includes("You settled this"),
-}}));
-""",
-            storage_prelude({}) + self.FIXTURE,
-        )
-        assert isinstance(out, dict)
-        return out
-
-    def test_a_settle_that_landed_clears_the_cue_the_failed_press_left(self) -> None:
-        """DRC-4543 review T1. The failure cue outlived the failure.
-
-        The handler marked the lane on failure and neither marked nor
-        cleared it on success, so a cue saying the mark had been dropped sat
-        for the lane's whole TTL directly above the block's own `You settled
-        this ... ago`. The block then said both that the settlement was not
-        stored and that it was, which is the class of lie the settle cue was
-        added to remove.
-        """
-        out = self.settled_twice(
-            '{ok:true, persisted:false, outcome:"unwritable", revision:1, revision_count:1}',
-            '{ok:true, persisted:true, outcome:"stored", revision:1, revision_count:1}',
-        )
-
-        self.assertEqual([True, True], out["pressed"])
-        # The second press landed, so the block reads as settled ...
-        self.assertTrue(out["settled"])
-        # ... and says nothing about a mark that was dropped.
-        self.assertEqual("", out["cue"])
+        self.assertEqual("fo-a", out["add"])
 
     def test_a_later_direction_demotes_a_departure_rather_than_filtering_it(self) -> None:
         open_case = self.held(at=100, assessment=self.ASSESSMENT)
@@ -10069,7 +9909,7 @@ console.log(JSON.stringify({
             '__dashboard.sessions[0].departure_why = "";\n'
         )
 
-        self.assertIn("CONFLICT TO SETTLE", out["html"])
+        self.assertIn("data-next-cockpit-direction-question", out["html"])
         self.assertNotIn("It changed the board.", out["block"])
         self.assertIn(
             "This reading verified none of the constraints it read, so it raised nothing and "
@@ -10646,75 +10486,6 @@ console.log(JSON.stringify({
             [annotation_store.DISCARD_ARMED, "", annotation_store.DISCARD_ARMED], out["alert"]
         )
         self.assertTrue(out["armedNow"])
-
-    def test_both_settle_outcomes_are_written_to_the_polite_region(self) -> None:
-        """AC7 for the settle family, which the issue counted as one cue.
-
-        A settle that lands prints no cue at all and re-renders a different
-        element, so covering only the cue table would ship the landed one
-        silent. Its sentence is the page's own, because the block's account of
-        a settle that landed is composed at the next render out of the store
-        the refresh has not read yet.
-        """
-        out = self.run_fixture(
-            self.ANNOUNCER_DOM
-            + """
-__dashboard.annotate = true;
-__dashboard.annotate_cap = 240;
-__dashboard.sessions[0].annotation_goal = "do not change the board";
-__dashboard.sessions[0].annotation_goal_why = "";
-__dashboard.sessions[0].annotation_line_1 = "";
-__dashboard.sessions[0].annotation_lines_why = "";
-__dashboard.sessions[0].annotation_revision = 1;
-__dashboard.sessions[0].annotation_revision_count = 1;
-__dashboard.sessions[0].annotation_at = 100;
-__dashboard.sessions[0].annotation_binding_why = "";
-let reply = {ok:true, persisted:false, outcome:"unwritable", revision:1, revision_count:1};
-const upstream = __fetchImpl;
-__fetchImpl = async (url, init) => {
-  if(String(url) !== "/api/annotate") return upstream(url, init);
-  return {ok:true, status:200, json: async () => reply};
-};
-navigateNext({view:"project", project:"cargento", focus:"codex:focus-1", tab:"held-to"});
-await __settle();
-const settle = () => __fire("click", {target:controls.find(control =>
-  control.dataset.nextCockpitAction === "conflict-settle"), preventDefault(){}});
-settle();
-await __settle();
-await __settle();
-const failed = [...wrote("next-cockpit-cue-status")];
-reply = {ok:true, persisted:true, outcome:"stored", revision:1, revision_count:1};
-settle();
-await __settle();
-await __settle();
-console.log(JSON.stringify({
-  failed,
-  polite: wrote("next-cockpit-cue-status"),
-  alert: wrote("next-cockpit-cue-alert"),
-}));
-"""
-        )
-
-        self.assertEqual(
-            [
-                (
-                    "Not settled. The store could not be written, so the mark has already been "
-                    "dropped and the question below still stands."
-                )
-            ],
-            out["failed"],
-        )
-        self.assertEqual(
-            [
-                (
-                    "Not settled. The store could not be written, so the mark has already been "
-                    "dropped and the question below still stands."
-                ),
-                "Settled. A direction given after this will raise it again.",
-            ],
-            out["polite"],
-        )
-        self.assertEqual([], out["alert"])
 
 
 @unittest.skipUnless(shutil.which("node"), "node not available")
@@ -12704,15 +12475,14 @@ console.log(JSON.stringify({
         html = out["html"]
         assert isinstance(html, str)
         # The check sits directly under the words and the direction, so it is on the first
-        # screen; the reading, then the later-direction question it constrains, follow it
-        # (DRC-4639).
+        # screen (DRC-4639); with a later direction open it is the question before the press,
+        # which replaced the conflict block after the reading (DRC-4682).
         # The panel precedes the activity column in the markup (DRC-4680), so the
         # record still comes last.
         order = [
             ">Intent</h2>",
-            'data-next-cockpit-action="reading-ask"',
+            'data-next-cockpit-action="direction-keep"',
             "<h2>READING</h2>",
-            "CONFLICT TO SETTLE",
             "DEPARTURES RAISED TO YOU",
             # The activity column: the numbered list right after CURRENT ACTIVITY (DRC-4694),
             # then how it landed after the session's facts.
@@ -12823,8 +12593,6 @@ class HeldToPositionalSentencesTest(NextPageJsHarness):
     # A distinctive fragment of each swept sentence -> the rendered marker whose
     # side it claims. Asserted below to be a bijection with the sweep.
     REFERENTS: ClassVar[dict[str, str]] = {
-        "so the question below still stands as it did": "next-cockpit-conflict-open",
-        "already been dropped and the question below still stands": "next-cockpit-conflict-open",
         # The list's own rows, which the limit line closes (DRC-4694 retired its heading).
         "so nothing above is an inspected file": "data-next-cockpit-work>",
         "Save a goal above to analyze drift": 'class="next-cockpit-held-fields"',
@@ -12832,14 +12600,11 @@ class HeldToPositionalSentencesTest(NextPageJsHarness):
         # (DRC-4680): the record is in the activity column beside the panel, so
         # "below" was true of the markup and false to the eye. The offer now
         # names the column, and a row for it would match nothing.
-        "after you saved the words above": 'class="next-cockpit-held-fields"',
     }
 
     # Each arm exists to render sentences the default board does not. `model`
     # supplies an observer model so the reading control stops refusing for a
-    # different reason and reaches the abstention sentence; `settle-*` marks the
-    # cue lane directly, which is the only way to reach a store outcome without
-    # driving a POST.
+    # different reason and reaches the abstention sentence.
     ARMS: ClassVar[dict[str, str]] = {
         "default": "",
         "late-words": "__dashboard.sessions[0].annotation_at = 200;\n",
@@ -12847,8 +12612,6 @@ class HeldToPositionalSentencesTest(NextPageJsHarness):
             '__dashboard.sessions[0].annotation_goal = "";\n'
             '__dashboard.sessions[0].annotation_line_1 = "";\n'
         ),
-        "settle-refused": "",
-        "settle-unpersisted": "",
         "model": "",
         # An Expected Output row in the panel (DRC-4680 review, C-5): on Codex its limit line
         # names the record, which is in the activity column beside the panel, so it may not
@@ -12878,10 +12641,6 @@ navigateNext({view:"project", project:"cargento", focus:"codex:focus-1", tab:"he
 await __settle();
 const group = nextProjectGroups().find(candidate => candidate.label === "cargento");
 const session = nextCockpitFocusedSession(group);
-if(ARM.startsWith("settle-")){
-  nextCockpitHeldMark(nextCockpitHeldKey(session, "settle"), ARM);
-  renderNext();
-}
 if(ARM === "model"){
   for(const key of [nextCockpitContextKey(group, null), nextCockpitContextKey(group, session)]){
     const entry = nextCockpitContexts.get(key);

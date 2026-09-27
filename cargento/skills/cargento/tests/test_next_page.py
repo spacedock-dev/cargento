@@ -1141,9 +1141,6 @@ class NextPageAssetContractTest(unittest.TestCase):
         ".next-capacity-prospect",
         ".next-capacity-prospect small",
         ".next-cockpit-authority>small",
-        ".next-cockpit-conflict-cue",
-        ".next-cockpit-conflict-open",
-        ".next-cockpit-conflict-text",
         ".next-cockpit-conflict-why,.next-cockpit-conflict-settled",
         ".next-cockpit-content",
         ".next-cockpit-content .next-cockpit-evidence-missing",
@@ -1151,6 +1148,7 @@ class NextPageAssetContractTest(unittest.TestCase):
         ".next-cockpit-count-label",
         ".next-cockpit-decision-summary,.next-cockpit-viewing-session,\n.next-cockpit-now-state small,.next-project-workflow-definition>small,\n.next-cockpit-system-details ul,.next-cockpit-memos label>small",
         ".next-cockpit-define",
+        ".next-cockpit-direction-said",
         ".next-cockpit-departures-kept",
         ".next-cockpit-empty,.next-cockpit-evidence-missing",
         ".next-cockpit-held-absent",
@@ -1364,7 +1362,9 @@ class NextPageAssetContractTest(unittest.TestCase):
         # steps and the line saying the page stays usable. DRC-4680 adds one: the
         # harness limit that stands where a level would be. DRC-4694 adds one: the
         # activity list's sentences saying where #1 starts and what is counted and not listed.
-        self.assertEqual(115, len(above))
+        # DRC-4682 retires three with the "Conflict to settle" block (its cue, its open
+        # sentence and its direction rows) and adds one: the question before the press.
+        self.assertEqual(113, len(above))
         self.assertEqual(self.SENTENCE_TIER_RULES, {selector for selector, _size in above})
         self.assertEqual(
             self.SUB_SENTENCE_FLOOR_INVENTORY, {(size, selector) for selector, size in below}
