@@ -436,8 +436,9 @@ _MASK_WORD_FORMS: Final = (
     re.compile(r"^(['\"]?(?:authorization|x-api-key)\s*:\s*).+$", re.IGNORECASE | re.DOTALL),
 )
 # `user:password@host`, scheme optional, the password running to the LAST `@`
-# so one holding `/` or `@` is masked whole.
-_MASK_USERINFO: Final = re.compile(r"((?:[A-Za-z][A-Za-z0-9+.-]*://)?[^\s:/@'\"]+:)\S*@")
+# in the word so one holding `/`, `@` or whitespace is masked whole: a quoted
+# password with a space in it stopped `\S*` short of the `@` (DRC-4703).
+_MASK_USERINFO: Final = re.compile(r"((?:[A-Za-z][A-Za-z0-9+.-]*://)?[^\s:/@'\"]+:).*@", re.DOTALL)
 
 
 def mask_words(words: list[str]) -> list[str]:

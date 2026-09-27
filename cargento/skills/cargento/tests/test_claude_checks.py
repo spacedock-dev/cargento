@@ -1042,22 +1042,36 @@ class TheClosedListIsTheDocumentsList(ClaudeChecksTestCase):
                 words = project_context._strip_runner_prefix(runner.split())
                 self.assertTrue(project_context._is_check(words), runner)
 
+    def closed_lists(self) -> str:
+        text = self.DOC.read_text(encoding="utf-8")
+        return text.split("### The closed lists", 1)[1].split("Runners, matched", 1)[0]
+
+    def wrappers(self) -> list[str]:
+        """The wrappers the ruling's stripping sentence names, parsed from it."""
+        sentence = self.closed_lists().split("and the wrappers", 1)[1].split("The list is", 1)[0]
+        return re.findall(r"`([^`]+)`", sentence)
+
+    def shell_wrappers(self) -> list[str]:
+        sentence = self.closed_lists().split("The shell wrappers are", 1)[1].split(":", 1)[0]
+        return re.findall(r"`([^`]+)`", sentence)
+
     def test_every_wrapper_the_ruling_names_is_stripped(self) -> None:
-        for wrapper in (
-            "uv run",
-            "poetry run",
-            "pipenv run",
-            "npx",
-            "pnpm exec",
-            "bunx",
-            "timeout 60",
-            "time",
-            "rtk",
-            "rtk proxy",
-        ):
+        wrappers = self.wrappers()
+        self.assertGreaterEqual(len(wrappers), 10, wrappers)
+        self.assertIn("env NAME=value", wrappers)
+        for wrapper in [*wrappers, "rtk proxy"]:
             with self.subTest(wrapper=wrapper):
-                words = project_context._strip_runner_prefix([*wrapper.split(), "pytest", "-q"])
-                self.assertEqual(["pytest", "-q"], words)
+                words = [*re.sub(r"\bN\b", "60", wrapper).split(), "pytest", "-q"]
+                self.assertEqual(["pytest", "-q"], project_context._strip_runner_prefix(words))
+
+    def test_every_shell_wrapper_the_ruling_names_stands_for_its_inner_line(self) -> None:
+        shells = self.shell_wrappers()
+        self.assertEqual(4, len(shells), shells)
+        for shell in shells:
+            with self.subTest(shell=shell):
+                self.setUp()
+                self.session.bash(f"{shell} 'cd sub && pytest -q'", "", is_error=False)
+                self.assertEqual("pytest -q", self.only_check()["title"])
 
 
 class WhatTheVerifierFoundAfterTheFirstRound(ClaudeChecksTestCase):

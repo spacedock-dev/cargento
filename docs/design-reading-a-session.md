@@ -1114,10 +1114,15 @@ holds for a Claude Code check; DEC-17 carries the amendment.
 Writing these lists out is part of item 3, which names the kinds (test, build, lint and type-check
 runners) and leaves the list to this section. Each segment, split on `&&`, `||`, `;`, `|`, `&` and newlines, is matched
 after stripping `cd ...`, `NAME=value` assignments and the wrappers `uv run`, `poetry run`,
-`pipenv run`, `npx`, `pnpm exec`, `bunx`, `timeout N`, `time` and `rtk`. The list is closed: a runner not
+`pipenv run`, `npx`, `pnpm exec`, `bunx`, `timeout N`, `time`, `rtk` and `env NAME=value`. The list is closed: a runner not
 named here is not a check. The owner ruled `rtk` a wrapper on 2026-09-24, with one rule of its own:
 because rtk may rewrite a runner's output, a check it wraps takes its result from the error flag
-only, never from a summary line or a failure marker.
+only, never from a summary line or a failure marker. `env` strips only assignments, `-i`,
+`-u NAME` and `--`; `env -S` and `env -C` are not wrappers.
+
+The shell wrappers are `bash -c`, `sh -c`, `zsh -c` and `bash -lc`: the command string is parsed
+again, and its segments stand in for the wrapper's segment. They were added on 2026-09-25; the
+amendment below says how they are read.
 
 Runners, matched on the first word or words of a stripped segment:
 
@@ -1247,6 +1252,57 @@ recorded write.
 drift level is a derived state of the tool-outcome facts. It is published on the session payload
 only, never on a row, in history or in an off-machine payload, and item 6's rule that nothing enters
 a row field or the semantic history store holds for the level as it does for the facts.
+
+### Amended 2026-09-25: one parser reads the line, shell wrappers, and unbalanced quoting
+
+The owner ruled on DRC-4703 after the check line was found to leak on odd quoting. A regex tokenizer,
+a line-based heredoc strip and `shlex` read each line, and when `shlex` failed on an unterminated
+quote the fallback split the value on spaces and masked only its first word. Over 8 masked forms,
+9 quoting styles and 3 positions, 114 of 216 cases published at least half of a two-word placeholder secret, and the
+check line is also the prompt row, so each leak reached the model. This amends item 3's stripping,
+item 5's fields and the closed lists.
+
+1. One parser. `project_context._ShellLexer` reads the call once, the way the shell does, into
+   segments of decoded words: the words the program receives. It reads single and double quotes,
+   `$'…'` with bash's escapes decoded, `$"…"` as a double-quoted string, a backslash-newline as
+   nothing, `$(…)`, backticks and process substitutions to their matching end, and a comment at a
+   word start. A heredoc is recognised only as an unquoted `<<` or `<<-`, its delimiter is any word,
+   quote-removed, and each body is skipped in order after the line ends. A body without its closing
+   line runs to the end of the call, as bash reads it. Before this, a quoted `<<END` hid every line
+   after it and a delimiter such as `MY-EOF` was not recognised, so its body was read as commands.
+2. Unbalanced quoting means the call did not run. An unterminated `'`, `"`, `$'`, `$(` or backtick is a syntax
+   error in every shell. The call is not listed, it is counted in `not_run`, and nothing from its text
+   is published. It still counts as a change, because bash runs the complete lines before it, so an
+   earlier pass ages. The same holds when a shell wrapper's command string is unbalanced. A trailing
+   lone backslash is not unbalanced: measured, bash runs the line.
+3. `bash -c`, `sh -c`, `zsh -c` and `bash -lc` are runner wrappers. A shell
+   named by its path counts. The option set is closed: single-letter clusters over `e`, `u`, `x`, `l`
+   and `c`, `-o pipefail`, `--login`, `--noprofile` and `--norc`, with `-c` the last option and
+   exactly one command word after it. Words after that are `$0` and the positional arguments, and
+   are neither matched nor published. The command word is parsed again and its segments are spliced
+   in place of the wrapper's: the last inner segment takes the wrapper's joiner, so every attribution
+   rule applies unchanged and only withholds. A wrapper sent to the background sends every inner
+   segment with it, and a `cd` inside a wrapper does not carry past it. Only the inner segment is
+   published, and a check's identity is its directory and inner segment, so `bash -c 'pytest'` and
+   `pytest` in one directory are one check. Nesting stops at two wrappers; a third, or any other
+   option, leaves the segment unread: not a check, and a change.
+4. `env NAME=value cmd` is a wrapper, stripping assignments, `-i`, `-u NAME` and `--`.
+   `env -S` re-splits a string and `env -C` changes directory, so neither is a wrapper, and neither is
+   any other `env` option.
+5. Masking reads decoded words. Because the parser decodes quoting first, one word holds a whole
+   quoted value, and every named form masks it whole however it was quoted. The password in
+   `user:password@` is masked up to the last `@` in the word, whitespace included. The named forms are
+   unchanged: these forms and no others.
+6. A here-string's `<<<` word is stdin data, like a heredoc body, and is published as `<<<…`.
+
+No published field was added or removed. Titles change for a wrapper and for values that are now
+masked whole, and the scan counts move with the segmentation. Measured on this machine's
+transcripts (counts only, 2026-09-25 and 2026-09-27): a line continuation had added a false change
+after the check in 237 of 429 check calls that used one, and it adds none now. Those calls fall to
+142 holding a check, because the old reading made each continued line its own segment, so a test file
+named on one was read as a check. Of 315 shell `-c` calls, 6 are now read as checks, against 2
+before, and 21 calls are now not run for unbalanced quoting. After the change the same matrix, with
+the wrappers added, leaks in none of its 1,944 cases.
 
 ## DEC-24: your intent is a drafted goal and a checklist, and a correction is yours to copy
 

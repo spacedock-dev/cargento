@@ -919,6 +919,21 @@ class MaskCommandTest(unittest.TestCase):
                 self.assertNotIn(self.VALUE, masked)
                 self.assertIn("app:", masked)
 
+    def test_a_password_holding_whitespace_is_masked_to_the_last_at(self) -> None:
+        # DRC-4703: the password ran `\S*`, so a space inside one shell word
+        # stopped it short of the `@` and the whole password was published.
+        for word in (
+            "app:EXAMPLEaa EXAMPLEbb@db",
+            "postgres://app:EXAMPLEaa EXAMPLEbb@db/x",
+            "postgres://u:EXAMPLEaa b@EXAMPLEbb@h",
+            "app:EXAMPLEaa\tEXAMPLEbb@db",
+        ):
+            with self.subTest(word=word[:12]):
+                (masked,) = records.mask_words([word])
+                self.assertNotIn("EXAMPLEaa", masked)
+                self.assertNotIn("EXAMPLEbb", masked)
+                self.assertIn("app:" if "app" in word else "u:", masked)
+
     def test_a_command_with_nothing_to_mask_reads_as_it_was_typed(self) -> None:
         line = "python3 -m pytest tests/test_retry.py -q 2>&1 | tail -20"
         self.assertEqual(line, mask(line))
