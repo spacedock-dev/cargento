@@ -1154,8 +1154,11 @@ The content class is what a Claude Code transcript recorded about the checks a s
 files it wrote. A check is a shell command segment whose runner is on the ruling's closed list, and
 a program file counts only when `test` or `tests` stands alone as a word in its name. Its bounds:
 the check's own segment, never the rest of the shell line, with a substituted command shown as
-`$(…)` and a trailing comment dropped, after credential redaction and masking of the forms
-redaction cannot recognise, clipped to 120 characters; the last 180 characters of output, with redaction run over the whole read
+`$(…)`, a here-string's word shown as `<<<…`, a heredoc body never read as a command, and a
+trailing comment dropped, after credential redaction and masking of the forms redaction cannot
+recognise, clipped to 120 characters. Behind `bash -c`, `sh -c`, `zsh -c` or `bash -lc`, it is the
+inner segment alone, never the wrapper. A call with an unterminated quote is a syntax error and is
+read as not run, so nothing of its text is published; the last 180 characters of output, with redaction run over the whole read
 window before the clip; and a written path relative to the working directory. No file content is
 read as a field, and no Edit or Write result body is read. At most 12 entries are listed and the
 rest are counted. The published entry carries the check segment, the result and where the result
@@ -1171,8 +1174,11 @@ it is named in `history.PROMPT_DERIVED_CARRIERS`.
 Masking is by named form, word by word, and covers these forms and no others: a `NAME=value`
 assignment; the value after `--password`, `--token`, `--api-key`, `--secret`, `--auth`, `-p` or
 `-P`, joined by `=` or in the next word; an `Authorization:` or `X-Api-Key:` header value; and the
-password in `user:password@`, up to the last `@`, so one holding `/` or `@` is masked whole. A value
-after any other flag is published as typed unless it has a credential shape.
+password in `user:password@`, up to the last `@` in the word, so one holding `/`, `@` or whitespace
+is masked whole. The words are the ones the program receives: quotes removed, `$'…'` escapes
+decoded and backslash-newline continuations joined before masking and redaction run, so a value is
+masked whole however it was quoted, and an escaped key such as `$'\x41KIA…'` reaches redaction as
+the key it is. A value after any other flag is published as typed unless it has a credential shape.
 
 The destination rule: it may go to the reading producer that reads the session, or to the fallback
 route `reading_route.resolve` selects and discloses before the press, and on either only after a
