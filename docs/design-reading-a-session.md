@@ -1114,10 +1114,16 @@ holds for a Claude Code check; DEC-17 carries the amendment.
 Writing these lists out is part of item 3, which names the kinds (test, build, lint and type-check
 runners) and leaves the list to this section. Each segment, split on `&&`, `||`, `;`, `|`, `&` and newlines, is matched
 after stripping `cd ...`, `NAME=value` assignments and the wrappers `uv run`, `poetry run`,
-`pipenv run`, `npx`, `pnpm exec`, `bunx`, `timeout N`, `time` and `rtk`. The list is closed: a runner not
+`pipenv run`, `npx`, `pnpm exec`, `bunx`, `timeout N`, `time`, `rtk` and `env NAME=value`. The list is closed: a runner not
 named here is not a check. The owner ruled `rtk` a wrapper on 2026-09-24, with one rule of its own:
 because rtk may rewrite a runner's output, a check it wraps takes its result from the error flag
-only, never from a summary line or a failure marker.
+only, never from a summary line or a failure marker. `env`, named by its path or not, strips only
+assignments, `-i`, `--ignore-environment`, `-`, `-u NAME`, `-uNAME`, `--unset NAME`,
+`--unset=NAME` and `--`; `env -S`, `env -C` and every other option leave it unread.
+
+The shell wrappers are `bash -c`, `sh -c`, `zsh -c` and `bash -lc`: the command string is parsed
+again, and its segments stand in for the wrapper's segment. They were added on 2026-09-25; the
+amendment below says how they are read.
 
 Runners, matched on the first word or words of a stripped segment:
 
@@ -1141,9 +1147,9 @@ Read-only commands, matched the same way, for segments that are not checks: `git
 `git log`, `git diff`, `git show`, `ls`, `cat`, `head`, `tail`, `grep`, `rg`, `find`, `wc`, `pwd`,
 `echo`, `which`, `file`, `stat`, `tree` and `less`. Any other segment that is not a check, run after
 any check's latest passing run, is the blocker item 3 names. This list is closed too. A segment is
-not read-only, whatever its command, when it holds a command substitution (`$(` or a backtick), a
-process substitution, or a redirect `>` into anything but `/dev/null` or another descriptor, or a
-writing option: `find -delete`, `-exec`, `-execdir`, `-ok`, `-fprint`, `-fprint0`, `-fprintf` or
+not read-only, whatever its command, when it holds a command or process substitution whose own
+command is not read-only by these same rules, a redirect `>` into anything but `/dev/null` or
+another descriptor, or a writing option: `find -delete`, `-exec`, `-execdir`, `-ok`, `-fprint`, `-fprint0`, `-fprintf` or
 `-fls`, `tree -o`, and `git diff`, `git log` or `git show` with `--output`.
 
 Formatters and fixers are changes: `prettier --write`, `black` without `--check`, `ruff format`
@@ -1247,6 +1253,93 @@ recorded write.
 drift level is a derived state of the tool-outcome facts. It is published on the session payload
 only, never on a row, in history or in an off-machine payload, and item 6's rule that nothing enters
 a row field or the semantic history store holds for the level as it does for the facts.
+
+### Amended 2026-09-25: one parser reads the line, shell wrappers, and unbalanced quoting
+
+The owner ruled on DRC-4703 after the check line was found to leak on odd quoting, and a
+four-lens review on 2026-09-27 tightened the parser; its changes are folded into the items below. A regex tokenizer,
+a line-based heredoc strip and `shlex` read each line, and when `shlex` failed on an unterminated
+quote the fallback split the value on spaces and masked only its first word. Over 8 masked forms,
+9 quoting styles and 3 positions, 114 of 216 cases published at least half of a two-word placeholder secret, and the
+check line is also the prompt row, so each leak reached the model. This amends item 3's stripping,
+item 5's fields and the closed lists.
+
+1. One parser. `project_context._ShellLexer` reads the call once, the way the shell does, into
+   segments of decoded words: the words the program receives. It reads single and double quotes,
+   `$'…'` with bash's escapes decoded, `$"…"` as a double-quoted string, a backslash-newline as
+   nothing, `$(…)`, backticks and process substitutions to their matching end, and a comment at a
+   word start. A `${…}` expansion is read whole, so a quoted `}` or a `)` inside it closes nothing,
+   and inside a substitution a `case` pattern's `)` closes nothing either. `$((…))` and a `((…))`
+   command are arithmetic, so `<<` in them is a shift. A redirection (`>out`, `2>&1`, `&>`, `<in`, `{fd}>`,
+   `<<<`, a heredoc operator) ends the word before it and is kept apart from the words, because the
+   shell strips it before the program receives its arguments: `--password 2>&1 value` reaches the
+   program as a flag and its value side by side. A heredoc is recognised only as an unquoted `<<` or
+   `<<-`, its delimiter is any word, quote-removed, and each body is skipped in order after the line
+   ends. A body without its closing line runs to the end of the call, as bash reads it. Before this,
+   a quoted `<<END` hid every line after it and a delimiter such as `MY-EOF` was not recognised, so
+   its body was read as commands.
+2. Unbalanced quoting means the call did not run. An unterminated `'`, `"`, `$'`, `$(`, `${` or
+   backtick, and a heredoc operator or redirection with no word after it, is a syntax error in every
+   shell. The call is not listed, it is counted in `not_run`, and nothing from its text is published.
+   It still counts as a change, because bash runs the complete lines before it, so an earlier pass
+   ages. A raw NUL in the command, nesting deeper than 32 substitutions or expansions, and any other
+   fault in the parser are read the same way. A shell wrapper whose command string is unbalanced is
+   different: the inner shell fails and the rest of the call runs, so only that wrapper segment is
+   unread, and it is a change. A trailing lone backslash is not unbalanced: measured, bash runs the
+   line and passes no argument for it.
+3. `bash -c`, `sh -c`, `zsh -c` and `bash -lc` are runner wrappers. A shell
+   named by its path counts. The option set is closed: single-letter clusters over `e`, `u`, `l` and
+   `c`, `-o pipefail`, `--login`, `--noprofile` and `--norc`, with `-c` the last option and
+   exactly one command word after it. Words after that are `$0` and the positional arguments, and
+   are neither matched nor published. The command word is parsed again and its segments are spliced
+   in place of the wrapper's: the last inner segment takes the wrapper's joiner, so every attribution
+   rule applies unchanged and only withholds. A wrapper sent to the background sends every inner
+   segment with it, a background launch inside one is counted, a redirection on the wrapper applies
+   to every inner segment, and a `cd` inside a wrapper does not carry past it. `-x` is left out,
+   because xtrace echoes every word, a masked value included, into the output the prompt row
+   carries. Only the inner segment is
+   published, and a check's identity is its directory and inner segment, so `bash -c 'pytest'` and
+   `pytest` in one directory are one check. Nesting stops at two wrappers; a third, or any other
+   option, leaves the segment unread: not a check, and a change.
+4. `env NAME=value cmd` is a wrapper, stripping the options the closed lists name. `env -S`
+   re-splits a string and `env -C` changes directory, so neither is a wrapper, and neither is any
+   other `env` option.
+5. Masking reads decoded words. Because the parser decodes quoting first, one word holds a whole
+   quoted value, and every named form masks it whole however it was quoted. The password in
+   `user:password@` is masked up to the last `@` in the word, whitespace included. A NUL decoded
+   from `$'…'` ends that string, as it ends the argument the program receives. An unquoted word
+   holding a brace expansion (`{a,b}`, `{x..y}`) is published as `…`, since the words it becomes are
+   unknown, and so is the word after it, since `--{x,password} value` expands to a named flag and
+   its value. Each value the check line masked, and each piece of it of four characters or more, is
+   also removed from the output tail before redaction runs over it, since an echoed command repeats
+   it. The named forms are unchanged: these forms and no others.
+6. A redirection is not an argument and is not published: not its target, not a here-string's
+   word, not a heredoc's delimiter. A heredoc body and a here-string word are stdin data.
+7. A substitution runs whatever it names. A command or process substitution anywhere in a call, in
+   a check's own arguments, an assignment, a redirection target or a wrapper's other words, counts
+   as a change unless its own command is read-only by the closed lists, read with these same rules.
+   A segment that is only a redirection into a file (`> build/output`) writes that file, so it is a
+   change too.
+   `$((…))` is arithmetic and runs nothing unless it holds a substitution. This also settles
+   DRC-4724's second acceptance criterion.
+
+No published field was added or removed. Titles change for a wrapper and for values that are now
+masked whole, and the scan counts move with the segmentation. Measured on this machine's
+transcripts (counts only, 2026-09-25 and 2026-09-27): a line continuation had added a false change
+after the check in 237 of 429 check calls that used one, and it adds none now. Those calls fall to
+142 holding a check, because the old reading made each continued line its own segment, so a test file
+named on one was read as a check. Of 315 shell `-c` calls, 6 are now read as checks, against 2
+before, and 21 calls are now not run for unbalanced quoting. After the change the same matrix, with
+the wrappers added, leaks in none of its 1,944 cases.
+
+The review round's own figures, measured 2026-09-27 on the same transcripts (counts only): 18 more
+calls are read as not run, 17 of them holding a raw NUL and 1 that both `bash -n` and `zsh -n`
+reject. 700 calls stopped reading as a change, 489 of them because a `>` inside quotes is an
+argument and not a redirection, and most of the rest because their substitution runs only
+read-only commands; `shlex` finds a file write in 1 of the 700, the check's own redirect, which
+DRC-4709 owns. 319 calls became a change, nearly all an assignment whose substitution runs
+something. The matrix, with newline quotings and an unterminated `$'` added, leaks in none of its
+2,592 cases.
 
 ## DEC-24: your intent is a drafted goal and a checklist, and a correction is yours to copy
 

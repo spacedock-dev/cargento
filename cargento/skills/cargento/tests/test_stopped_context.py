@@ -117,7 +117,7 @@ class ASessionThatStoppedATurnKeepsItsChecksTest(_StoppedSessionCase):
         kinds = {event["kind"] for event in context["events"] if event.get("sid") == SHORT}
         self.assertIn("check_run", kinds)
         self.assertEqual(
-            [("check", "node --test 2>&1"), ("write", "src/retry.js")],
+            [("check", "node --test"), ("write", "src/retry.js")],
             self.reports(context, SHORT),
         )
 
