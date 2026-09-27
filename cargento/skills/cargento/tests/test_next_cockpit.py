@@ -5288,9 +5288,9 @@ console.log(JSON.stringify({
         self.assertFalse(out["heading"])
         self.assertEqual([1, 2, 3], out["numbers"])
         self.assertEqual(["user_message", "prepared_dispatch", "user_message"], out["rows"])
-        # The heading names the record, and this line says what is in it: on
-        # Claude and Codex every entry can be a direction the reader gave, and
-        # the old WORK EVIDENCE heading read those back as the agent's work.
+        # The mix line says what is in the list: on Claude and Codex every entry
+        # can be a direction the reader gave, and the old WORK EVIDENCE heading
+        # read those back as the agent's work.
         self.assertEqual(
             "3 entries · 2 directions you gave · 1 observed of what it did.", out["mix"]
         )
@@ -12505,9 +12505,10 @@ console.log(JSON.stringify({
                 self.assertNotIn(claim, lede.lower())
         self.assertIn("analyze drift", lede)
 
-    def test_the_section_order_puts_the_record_last(self) -> None:
-        """AC-3. Falsified by moving any section, including re-raising OBSERVED
-        RECORD, which no test on the pre-change tree can see."""
+    def test_the_section_order_puts_the_list_after_current_activity(self) -> None:
+        """AC-3, as DRC-4694 moved it. Falsified by moving any section, including
+        the numbered list away from CURRENT ACTIVITY or re-raising its retired
+        OBSERVED RECORD heading."""
         out = self.tab()
         html = out["html"]
         assert isinstance(html, str)

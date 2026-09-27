@@ -1680,11 +1680,12 @@ function nextCockpitJoinClauses(parts){
 
 /* The clause for entries that are counted and not listed, naming the ones a
    departure cites, which are listed anyway with their time and no number. */
-function nextCockpitUnlistedClause(count, what, cited){
+function nextCockpitUnlistedClause(count, what, cited, timed = true){
   const are = count === 1 ? "is" : "are";
+  /* An untimed entry has no time to list it with (review F2). */
+  const how = timed ? `with ${cited === 1 ? "its" : "their"} time and no number` : "with no number";
   const except = !cited ? ""
-    : `, except ${cited === 1 ? "the one" : `the ${cited}`} the analysis cites, listed with ` +
-      `${cited === 1 ? "its" : "their"} time and no number`;
+    : `, except ${cited === 1 ? "the one" : `the ${cited}`} the analysis cites, listed ${how}`;
   return `${count} ${what} ${are} counted and not listed${except}.`;
 }
 
@@ -1777,7 +1778,7 @@ function nextCockpitWorkEvidence(session, source, cited = new Set()){
   if(untimed.length){
     unlisted.push(nextCockpitUnlistedClause(untimed.length,
       `${untimed.length === 1 ? "entry" : "entries"} with no published time`,
-      untimed.filter(isCited).length));
+      untimed.filter(isCited).length, false));
   }
   /* Every figure from the rows drawn and the numbers given, never authored. */
   const listed = entries.filter(entry => numbers.has(entry));
@@ -1785,13 +1786,26 @@ function nextCockpitWorkEvidence(session, source, cited = new Set()){
     ? `<p class="next-cockpit-work-dropped">Listing ${listed.length} of ` +
       `${nextCockpitEntryCount(numbers.size)}: ${nextCockpitJoinClauses([
         `the ${recent.size} most recent`,
-        ...(listed.some(entry => entry.type === "tool_report") ? ["every listed check and file"] : []),
+        /* In the window: a check or file from before it is counted with the
+           earlier entries, so "every" is true only of this set (review F3). */
+        ...(listed.some(entry => entry.type === "tool_report")
+          ? ["every check and file in the window"] : []),
         ...(listed.some(entry => isCited(entry) && entry.type !== "tool_report" &&
           !recent.has(entry)) ? ["every entry the analysis cites"] : []),
       ])}. ${numbers.size - listed.length} ${numbers.size - listed.length === 1 ? "is" : "are"} ` +
       "counted and not listed.</p>" : "";
-  return '<section class="next-cockpit-work" data-next-cockpit-work>' + anchor +
+  /* Nothing numbered while the record holds entries is a fact about the
+     window, not an empty record: "No entry names this session" beside a count
+     of the entries it holds was false (review F1). */
+  const unnumbered = !numbers.size && (earlier.length || untimed.length)
+    ? '<p class="next-cockpit-work-absent">' + (earlier.length
+      ? "No entry in the record read here is from after your intent\u2019s window opened, so " +
+        "none is numbered."
+      : "No entry in the record read here has a published time, so none is numbered.") + "</p>"
+    : "";
+  return '<section class="next-cockpit-work" data-next-cockpit-work>' + anchor + unnumbered +
     (rows ? `<div class="next-cockpit-work-rows" role="list">${rows}</div>`
+      : unnumbered ? ""
       : '<p class="next-cockpit-work-absent">' + `${esc(nextCockpitWorkAbsence(source))}</p>`) +
     (numbered.length ? `<p class="next-cockpit-work-mix">${esc(nextCockpitWorkMix(numbered))}</p>`
       : "") +

@@ -1633,8 +1633,8 @@ calls below on the issue; the rest follow the analysis.
   numbered from its first timed entry. With one, #1 is the first entry at the evidence-window start
   (item 13). Earlier entries are counted ("2 earlier entries") and not listed. An entry with no
   published time cannot be placed in a window, so it is counted the same way and never numbered.
-- A cited entry from before the window, or with no time, is listed anyway, unnumbered, with its
-  time. Whether a reading should cite a pre-window entry at all is a reading rule for item 13, and it
+- A cited entry from before the window, or with no time, is listed anyway, unnumbered: a
+  pre-window one with its time, an untimed one with neither. Whether a reading should cite a pre-window entry at all is a reading rule for item 13, and it
   was filed separately rather than changed here.
 - A window that opens at a reader's message should have an entry at that moment. Where none sits
   there because the record read no longer reaches back that far, the list says so rather than
@@ -1658,8 +1658,11 @@ calls below on the issue; the rest follow the analysis.
   predicate the conflict block narrows to the unsettled ones, so the two cannot disagree. It stays
   flagged once settled, because settling says the baseline still applies, not that the direction was
   never given. It is never called drift (DEC-16).
-- The bound is unchanged: the newest twenty entries that are not checks or files, and every listed
-  check and file. Every entry a departure cites is drawn as well, at its own number, so the gaps in
+- The bound is the newest twenty entries in the window that are not checks or files, and every
+  check and file in the window. A check or file from before the window is counted with the earlier
+  entries and not drawn, where every listed one used to be. When nothing is numbered but the record
+  holds earlier or untimed entries, the list says no entry is from after the window opened (or that
+  none has a time) rather than that the record names nothing. Every entry a departure cites is drawn as well, at its own number, so the gaps in
   the numbering show and no expand control is needed. A later direction past the bound is counted,
   not drawn; the conflict block lists the unsettled ones.
 - The list sits right after CURRENT ACTIVITY under the column's "Session activity" heading, and the

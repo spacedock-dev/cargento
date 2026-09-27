@@ -190,12 +190,127 @@ class TheActivityListNumbersItsEntriesTest(PanelPage):
             text,
         )
         self.assertEqual([1, 2], [row["n"] for row in rows_of(html)])
-        # A window at the save time is where typed words with no earlier message open, and no
-        # entry is expected there.
-        saved = self.render(
-            WINDOWED[3:], "__dashboard.sessions[0].annotation_window_start = 100;\n"
+
+    def test_a_window_at_the_save_time_expects_no_entry(self) -> None:
+        # Typed words with no earlier message open at the save time, and no entry is expected
+        # there. The entries sit after it, so the anchor check really runs (review, M20).
+        html = self.render(
+            [("b1", 110, "task_result", "after", {}), ("b2", 120, "task_result", "later", {})],
+            "__dashboard.sessions[0].annotation_at = 106;\n"
+            "__dashboard.sessions[0].annotation_window_start = 106;\n",
         )
-        self.assertNotIn("no longer reaches back", text_of(saved))
+        self.assertEqual([1, 2], [row["n"] for row in rows_of(html)])
+        self.assertNotIn("window opens", text_of(html))
+
+    def test_a_window_holding_no_entry_says_so_not_that_the_record_is_empty(self) -> None:
+        # Review F1: every held entry is from before the window, which typed words saved with no
+        # message of yours in the record reach, as does a revision older than `window_start`.
+        html = self.render(WINDOWED, "__dashboard.sessions[0].annotation_window_start = 90;\n")
+        text = text_of(html)
+        self.assertNotIn("No entry in the observed record names this session.", text)
+        self.assertIn(
+            "No entry in the record read here is from after your intent's window opened, so "
+            "none is numbered.",
+            text,
+        )
+        self.assertIn("5 earlier entries, from before your intent's window opened, are", text)
+        self.assertEqual([], rows_of(html))
+        self.assertIn("0 entries", meta_of(html))
+        # Only untimed entries: the same, said of the time.
+        untimed = self.render([("u", None, "task_result", "no time here", {})], WINDOW)
+        self.assertNotIn("names this session", text_of(untimed))
+        self.assertIn(
+            "No entry in the record read here has a published time, so none is numbered.",
+            text_of(untimed),
+        )
+        # A record that really holds nothing keeps its own sentence.
+        empty = self.render([], WINDOW)
+        self.assertIn("No entry in the observed record names this session.", text_of(empty))
+
+    def test_the_bound_names_the_checks_and_files_in_the_window(self) -> None:
+        # Review F3: a check from before the window is counted with the earlier entries, so the
+        # bound cannot claim every check and file.
+        check = {"subject": "check", "result": "failed", "result_source": "flag"}
+        rows = [
+            ("c-old", 55, "tool_report", "pytest old", check),
+            WINDOWED[2],
+            *[(f"w{n}", 62 + n, "task_result", f"work {n}", {}) for n in range(25)],
+            ("c-new", 90, "tool_report", "pytest new", check),
+        ]
+        html = self.render(rows, WINDOW)
+        summaries = [row["summary"] for row in rows_of(html)]
+        self.assertNotIn("pytest old", summaries)
+        self.assertIn("pytest new", summaries)
+        self.assertIn(
+            "Listing 21 of 27 entries: the 20 most recent and every check and file in the window. "
+            "6 are counted and not listed.",
+            text_of(html),
+        )
+        self.assertIn("1 earlier entry, from before your intent's window opened, is", text_of(html))
+
+    # The layout lens's killing tests (review round, 2026-09-27). Each failed against a mutant the
+    # tests above let through.
+    def test_an_untimed_entry_is_counted_and_never_numbered(self) -> None:  # M5
+        html = self.render([*WINDOWED, ("u", None, "task_result", "no time here", {})], WINDOW)
+        self.assertEqual([1, 2, 3], [row["n"] for row in rows_of(html)])
+        self.assertNotIn("no time here", [row["summary"] for row in rows_of(html)])
+        self.assertIn("1 entry with no published time is counted and not listed.", text_of(html))
+        self.assertIn("3 entries", meta_of(html))
+
+    def test_a_cited_untimed_entry_is_listed_unnumbered_with_no_time(self) -> None:  # M25, F2
+        html = self.render(
+            [*WINDOWED, ("u", None, "task_result", "no time here", {})],
+            WINDOW + departure(["u"]),
+        )
+        row = [row for row in rows_of(html) if row["summary"] == "no time here"]
+        self.assertEqual(1, len(row))
+        self.assertIsNone(row[0]["n"])
+        self.assertIn("time not published", row[0]["text"])
+        self.assertIn(
+            "1 entry with no published time is counted and not listed, except the one the "
+            "analysis cites, listed with no number.",
+            text_of(html),
+        )
+        self.assertNotIn("listed with its time", text_of(html))
+
+    def test_a_dropped_check_citation_is_not_flagged(self) -> None:  # M9
+        rows = [
+            *WINDOWED,
+            (
+                "pass",
+                86,
+                "tool_report",
+                "pytest",
+                {"subject": "check", "result": "passed", "result_source": "flag"},
+            ),
+        ]
+        html = self.render(rows, WINDOW + departure(["a1", "pass"]))
+        self.assertEqual(
+            {"added the wrapper": ["Cited"]},
+            {row["summary"]: row["flags"] for row in rows_of(html) if row["flags"]},
+        )
+
+    def test_an_adopted_prompt_is_not_a_later_direction(self) -> None:  # M11
+        adopt = (
+            "__dashboard.sessions[0].annotation_goal_source = 'latest-prompt';\n"
+            "__dashboard.sessions[0].annotation_goal_source_at = 60;\n"
+        )
+        html = self.render(WINDOWED, WINDOW + adopt)
+        self.assertEqual("please add retry", rows_of(html)[0]["summary"])
+        self.assertEqual([], rows_of(html)[0]["flags"])
+
+    def test_the_mix_counts_what_the_header_counts(self) -> None:  # M21
+        html = self.render(WINDOWED, WINDOW + departure(["old-2"]))
+        mix = re.search(r'class="next-cockpit-work-mix">([^<]*)<', record_of(html))
+        assert mix is not None
+        self.assertTrue(mix.group(1).startswith("3 entries"), mix.group(1))
+        self.assertIn("3 entries", meta_of(html))
+
+    def test_each_row_carries_its_number_for_the_panel(self) -> None:  # M22
+        record = record_of(self.render(WINDOWED, WINDOW + departure(["old-2"])))
+        self.assertEqual(["1", "2", "3"], re.findall(r'data-next-entry="(\d+)"', record))
+        self.assertIn('data-next-entry-id="old-2"', record)
+        self.assertEqual(4, len(re.findall(r'data-next-entry-id="', record)))
 
     def test_a_cited_entry_from_before_the_window_shows_unnumbered_with_its_time(self) -> None:
         html = self.render(WINDOWED, WINDOW + departure(["old-2"]))

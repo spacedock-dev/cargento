@@ -336,7 +336,7 @@ departure is on record. How it landed follows the session's own facts further do
 words the list starts at #1, the entry where their evidence window opens; earlier entries are
 counted and not listed, and with nothing saved the whole record is numbered. The header's second
 row gives the count, and leaves it out when the record was not read. It lists the twenty most
-recent entries and every check and file, each at its own number, and says how many it counted and
+recent entries in the window and every check and file in the window, each at its own number, and says how many it counted and
 did not list. An entry a departure cites is flagged "Cited" and always listed, and a direction you
 gave after saving is flagged "A later direction you gave", which records no finding. Numbers are
 worked out again on every render, so a check that re-runs or a file written again moves the entries
