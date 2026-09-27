@@ -1553,6 +1553,8 @@ class RuntimeImportGraphTest(unittest.TestCase):
             "cargento_runtime.records",
             "cargento_runtime.sessions",
             "cargento_runtime.state",
+            # The title fallback reads the newest typed direction (DRC-4689).
+            "cargento_runtime.transcripts",
             "cargento_runtime.turns",
         },
         "cargento_runtime.collectors.gemini": {

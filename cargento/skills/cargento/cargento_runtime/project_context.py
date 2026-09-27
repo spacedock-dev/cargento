@@ -430,6 +430,8 @@ def _instruction_event(
     """One timestamped user-role message, excluding known tool/meta records."""
     if not isinstance(record, dict):
         return None
+    if harness in observer.DIRECTION_HARNESSES:
+        return _direction_event(config, record, harness, sid)
     message = observer.parse_message_record(record)
     if message is None or message.get("role") != "user":
         return None
@@ -458,6 +460,41 @@ def _instruction_event(
     parent_id = record.get("parentId")
     if isinstance(parent_id, str) and parent_id:
         event["parent_id"] = parent_id
+    lower = text.casefold()
+    for tag, markers in _DIRECTIVE_TAGS:
+        if any(marker in lower for marker in markers):
+            event["steering_tag"] = tag
+            event["tag_source"] = "explicit user-role wording"
+            break
+    return event
+
+
+def _direction_event(
+    config: RuntimeConfig, record: dict[str, Any], harness: str, sid: str
+) -> dict[str, Any] | None:
+    """One Antigravity direction as a steer event, under the same bounds as a
+    user-role message; `transcripts.antigravity_direction` is the only read."""
+    direction = transcripts.antigravity_direction(record)
+    if direction is None:
+        return None
+    text = direction.text.strip()
+    title = _semantic_line(text, min(MAX_SEMANTIC_LINE, config.observer_goal_cap_chars))
+    if not title:
+        return None
+    event: dict[str, Any] = {
+        "at": direction.at,
+        "kind": "steer",
+        "phase": "user-role instruction",
+        "title": title,
+        "source": "timestamped explicit user input record",
+        "harness": harness,
+        "sid": sid,
+        "intent_promotable": _intent_promotable(text, title),
+    }
+    if direction.record_id:
+        event["record_id"] = direction.record_id
+        event["turn_id"] = direction.record_id
+        event["branch_id"] = direction.record_id
     lower = text.casefold()
     for tag, markers in _DIRECTIVE_TAGS:
         if any(marker in lower for marker in markers):
@@ -765,10 +802,47 @@ def _paired_results(transcript: list[dict[str, Any]]) -> dict[str, dict[str, Any
         if isinstance(call_id, str):
             results[call_id] = {
                 "succeeded": message.get("isError") is not True,
+                "is_error": message.get("isError"),
                 "text": _result_text(message),
                 "at": _record_timestamp(record),
+                **_pi_status(message),
             }
     return results
+
+
+# Pi 0.87.1's bash tool throws on a nonzero exit, a timeout, an abort and a
+# missing exit code, and appends exactly one of these lines after any
+# truncation notice; the agent loop then sets `isError`. Measured in
+# docs/captures/pi/validation-results-0.87.1-macos.jsonl: `isError` was set on
+# exactly the runs that carried one, and every nonzero exit carried the first.
+_PI_EXITED_RE = re.compile(r"(?:\A|\n\n)Command exited with code ([1-9]\d*)\Z")
+_PI_STOPPED_RE = re.compile(
+    r"(?:\A|\n\n)(?:Command timed out after \d+ seconds|Command aborted"
+    r"|Command terminated without an exit code)\Z"
+)
+
+
+def _pi_status(message: dict[str, Any]) -> dict[str, Any]:
+    """The call's status line, and the output tail before it.
+
+    Read from the whole text rather than `_result_text`, which keeps the head:
+    Pi's own truncation keeps the tail, and both the summary and the status
+    line sit at the end.
+    """
+    content = message.get("content")
+    blocks = content if isinstance(content, list) else [content]
+    text = "\n".join(
+        block if isinstance(block, str) else str(block.get("text"))
+        for block in blocks
+        if isinstance(block, str)
+        or (isinstance(block, dict) and isinstance(block.get("text"), str))
+    )
+    status, body = "", text
+    if (found := _PI_EXITED_RE.search(text)) is not None:
+        status, body = "exited", text[: found.start()]
+    elif (found := _PI_STOPPED_RE.search(text)) is not None:
+        status, body = "stopped", text[: found.start()]
+    return {"status": status, "tail": records.redact_secrets(body)[-TOOL_REPORT_TAIL_CHARS:]}
 
 
 def _dispatch_count(command: str) -> int:
@@ -811,29 +885,166 @@ def _dispatch_events(
     return events
 
 
-def _validation_event(
-    result: dict[str, Any] | None,
+# Counts only; which result a run had is `_ToolReportTally._outcome`'s to say.
+_PI_FAILED_COUNT_RE = re.compile(r"\b([1-9]\d*) failed\b|^\u2139 fail ([1-9]\d*)\s*$", re.MULTILINE)
+_PI_PASSED_COUNT_RE = re.compile(r"\b([1-9]\d*) passed\b|^\u2139 pass ([1-9]\d*)\s*$", re.MULTILINE)
+_PI_CHANGING_TOOLS = frozenset({"edit", "write"})
+
+
+def _pi_flag(result: Mapping[str, Any]) -> bool | None:
+    """What Pi's error flag says about the call, as the 0.87.1 capture shows it.
+
+    A clear flag is an exit of 0 for the whole call. A set flag with the
+    exit line is a nonzero exit. Anything else flagged is not an exit: `None`.
+    """
+    if result.get("is_error") is False:
+        return False
+    if result.get("is_error") is True and result.get("status") == "exited":
+        return True
+    return None
+
+
+def _pi_count(pattern: re.Pattern[str], tail: str) -> int:
+    found = pattern.search(tail)
+    return int(next(group for group in found.groups() if group)) if found else 0
+
+
+def _checks_word(count: int) -> str:
+    return "check" if count == 1 else "checks"
+
+
+def _pi_check_title(result: str, *, failed: int, passed: int) -> str:
+    if result == "failed":
+        return (
+            f"{failed} validation {_checks_word(failed)} failed" if failed else "Validation failed"
+        )
+    if result == "passed":
+        return (
+            f"{passed} validation {_checks_word(passed)} passed" if passed else "Validation passed"
+        )
+    return "Validation ran, result not recorded"
+
+
+def _pi_check_runs(
+    command: str,
     *,
+    call_key: str,
     at: float,
+    result: dict[str, Any] | None,
     harness: str,
     sid: str,
-) -> dict[str, Any] | None:
-    if not result or result.get("succeeded") is not True:
-        return None
-    match = re.search(r"(?<!\d)(\d+)\s+passed(?:\s+in\s+[\d.]+s)?", str(result.get("text", "")))
-    if match is None:
-        return None
-    count = int(match.group(1))
-    return {
-        "at": at,
-        "kind": "outcome",
-        "phase": "validation result",
-        "title": f"{count} validation checks passed",
-        "source": "Pi bash tool call and paired successful result",
-        "harness": harness,
-        "sid": sid,
-        "checks_passed": count,
-    }
+) -> list[tuple[str, dict[str, Any], _ShellCall]]:
+    """Each check in one Pi bash call, read by
+    [DEC-23](docs/design-reading-a-session.md#dec-23-a-claude-code-sessions-record-of-its-checks-may-show-the-work)'s
+    rules, as `(check identity, run, call)`.
+
+    Only a runner on the closed list counts, so no other command's output is
+    read as a result. Failure is read first, a zero count is "ran, result not
+    recorded", and the flag speaks only as `_pi_flag` reads it.
+    """
+    if result is not None and result.get("is_error") is True and not result.get("status"):
+        # Flagged with no status line: refused or blocked, so the call never ran.
+        return []
+    call = _ShellCall(at, "", {"command": command})
+    if call.unbalanced or not call.checks:
+        return []
+    flag = _pi_flag(result) if result is not None else None
+    tail = str(result.get("tail") or "") if result is not None else ""
+    all_and = all(joiner == "&&" for joiner in call.joiners()[:-1])
+    attributable = len(call.checks) == 1 and not call.changing_others
+    runs = []
+    for index in call.checks:
+        words, rtk = call.words[index]
+        outcome, source = "not-recorded", ""
+        if (
+            result is not None
+            and not call.background(index)
+            and not call.unestablished(index)
+            and (flag is not None or result.get("status") != "stopped")
+        ):
+            outcome, source = _ToolReportTally._outcome(  # noqa: SLF001 - one rule, both harnesses
+                tail,
+                rtk=rtk,
+                attributable=attributable,
+                flag_result=_flag_result(
+                    flag,
+                    last=index == len(call.parts) - 1,
+                    all_and=all_and,
+                    alone=len(call.meaningful) == 1,
+                ),
+            )
+        failed = _pi_count(_PI_FAILED_COUNT_RE, tail) if attributable else 0
+        passed = _pi_count(_PI_PASSED_COUNT_RE, tail) if attributable else 0
+        run: dict[str, Any] = {
+            "at": at,
+            "kind": "outcome",
+            "phase": "validation result",
+            "title": _pi_check_title(outcome, failed=failed, passed=passed),
+            "source": "Pi bash tool call"
+            + (" and paired result" if result is not None else ", no result recorded yet"),
+            "harness": harness,
+            "sid": sid,
+            "subject": "check",
+            "result": outcome,
+            "lineage": f"{call_key}:check:{index}",
+            "index": index,
+        }
+        if source:
+            run["result_source"] = source
+        if outcome == "failed" and failed:
+            run["checks_failed"] = failed
+        if outcome == "passed" and passed:
+            run["checks_passed"] = passed
+        result_at = result.get("at") if result is not None else None
+        if isinstance(result_at, (int, float)):
+            run["result_at"] = float(result_at)
+        runs.append((_check_identity(call.directories[index], words), run, call))
+    return runs
+
+
+def _pi_changes(block: dict[str, Any]) -> bool:
+    """Whether one Pi tool call may have changed files: an edit or a write,
+    or a bash call that is not on the closed read-only list."""
+    name = block.get("name")
+    if name in _PI_CHANGING_TOOLS:
+        return True
+    if name != "bash":
+        return False
+    command = _call_arguments(block).get("command")
+    return isinstance(command, str) and _ShellCall(0.0, "", {"command": command}).changes()
+
+
+def _latest_pi_checks(
+    runs: list[tuple[str, dict[str, Any], _ShellCall, int]], changing: list[bool]
+) -> list[dict[str, Any]]:
+    """The latest run of each check, as Claude Code's record lists them, with
+    whether a failure came earlier and whether a change followed.
+
+    One run per check rather than every run: the levels read the latest run of
+    a check, and an earlier failure the same check since passed is not a
+    failing check.
+    """
+    by_check: dict[str, list[tuple[dict[str, Any], _ShellCall, int]]] = {}
+    for identity, run, call, seq in runs:
+        by_check.setdefault(identity, []).append((run, call, seq))
+    latest: list[dict[str, Any]] = []
+    for history in by_check.values():
+        order = max(range(len(history)), key=lambda i: (_evidence_at(history[i][0]), i))
+        run, call, seq = history[order]
+        index = run.pop("index")
+        in_call = any(i > index for i in (*call.fixers, *call.changing_others, *call.substituted))
+        edited_later = any(changing[s] for s in range(seq + 1, len(changing)))
+        run["earlier_failed"] = any(
+            other["result"] == "failed" for i, (other, _c, _s) in enumerate(history) if i != order
+        )
+        run["changed_after"] = in_call or edited_later
+        run["before_last_change"] = run["result"] == "passed" and (
+            any(i >= index for i in call.fixers) or edited_later
+        )
+        for other, _call, _seq in history:
+            other.pop("index", None)
+        latest.append(run)
+    return latest
 
 
 def _subagent_category(combined: str) -> str:
@@ -998,6 +1209,13 @@ def _subagent_events(
     return rows
 
 
+def _call_arguments(block: dict[str, Any]) -> dict[str, Any]:
+    """A Pi tool call's arguments: the one read `_tool_call_events` and the
+    check reader share, so SECURITY.md's count of input reads holds."""
+    arguments = block.get("arguments")
+    return arguments if isinstance(arguments, dict) else {}
+
+
 def _tool_call_events(
     block: dict[str, Any],
     *,
@@ -1008,20 +1226,17 @@ def _tool_call_events(
 ) -> list[dict[str, Any]]:
     call_id = block.get("id")
     call_key = call_id if isinstance(call_id, str) else ""
-    arguments = block.get("arguments")
-    args = arguments if isinstance(arguments, dict) else {}
+    args = _call_arguments(block)
     result = results.get(call_key)
     if block.get("name") == "bash":
         command = args.get("command")
-        dispatches = _dispatch_events(
+        return _dispatch_events(
             command if isinstance(command, str) else "",
             at=at,
             result=result,
             harness=harness,
             sid=sid,
         )
-        validation = _validation_event(result, at=at, harness=harness, sid=sid)
-        return dispatches + ([validation] if validation is not None else [])
     if block.get("name") != "subagent":
         return []
     return _subagent_events(
@@ -1131,7 +1346,10 @@ def _work_evidence(
     results = _paired_results(transcript)
 
     events: list[dict[str, Any]] = []
-    for at, block, identity in _assistant_tool_calls(transcript):
+    calls = list(_assistant_tool_calls(transcript))
+    changing = [_pi_changes(block) for _at, block, _identity in calls]
+    check_runs: list[tuple[str, dict[str, Any], _ShellCall, int]] = []
+    for seq, (at, block, identity) in enumerate(calls):
         support = _tool_support(block, results)
         if support is None:
             continue
@@ -1144,23 +1362,57 @@ def _work_evidence(
             harness=harness,
             sid=sid,
         )
+        runs = _pi_bash_check_runs(block, at=at, results=results, harness=harness, sid=sid)
+        for check, run, call in runs:
+            run.update(identity)
+            check_runs.append((check, run, call, seq))
         for event in found:
             event.update(identity)
-        found = _events_after(found, since)
-        for event in found:
-            artifact = str(event.get("dispatch_artifact") or "")
-            assignment = _dispatch_file_assignment(artifact)
-            if assignment:
-                event["assignment"] = assignment
-                event["source"] = (
-                    str(event.get("source") or "") + " and bounded dispatch artifact title"
-                )
+        found = _with_dispatch_titles(_events_after(found, since))
         events.extend(found)
-        if not found:
+        if not found and not runs:
             stats["suppressed_tool_calls"] += 1
         for event in found:
             stats["collapsed_contributors"] += max(0, int(event.get("contributors", 1)) - 1)
+    # Chosen over the whole bounded read before `since` cuts it, so a run the
+    # cut leaves out still supersedes an earlier one.
+    events.extend(_events_after(_latest_pi_checks(check_runs, changing), since))
     return events, stats
+
+
+def _with_dispatch_titles(found: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    for event in found:
+        artifact = str(event.get("dispatch_artifact") or "")
+        assignment = _dispatch_file_assignment(artifact)
+        if assignment:
+            event["assignment"] = assignment
+            event["source"] = (
+                str(event.get("source") or "") + " and bounded dispatch artifact title"
+            )
+    return found
+
+
+def _pi_bash_check_runs(
+    block: dict[str, Any],
+    *,
+    at: float,
+    results: dict[str, dict[str, Any]],
+    harness: str,
+    sid: str,
+) -> list[tuple[str, dict[str, Any], _ShellCall]]:
+    command = _call_arguments(block).get("command")
+    if block.get("name") != "bash" or not isinstance(command, str):
+        return []
+    call_id = block.get("id")
+    call_key = call_id if isinstance(call_id, str) else ""
+    return _pi_check_runs(
+        command,
+        call_key=call_key,
+        at=at,
+        result=results.get(call_key),
+        harness=harness,
+        sid=sid,
+    )
 
 
 def _events_after(events: list[dict[str, Any]], since: float | None) -> list[dict[str, Any]]:
@@ -2962,7 +3214,9 @@ def direction_text(
     `_semantic_fact_from_event`). A message older than the tail is not found,
     and the caller refuses rather than saving the summary in its place.
     """
-    transcript_path = observer.resolve_transcript(config, state, harness, sid)
+    transcript_path = observer.resolve_transcript(
+        config, state, harness, sid
+    ) or observer.resolve_directions(config, state, harness, sid)
     if not transcript_path:
         return ""
     seen: set[tuple[float, str]] = set()
@@ -2979,6 +3233,11 @@ def direction_text(
         seen.add((event["at"], event["title"]))
         fact = _semantic_fact_from_event(event, "steer", _SEMANTIC_FACT_TYPES["steer"], "")
         if fact["fact_id"] == fact_id:
+            if harness in observer.DIRECTION_HARNESSES:
+                # A direction the harness cut short is refused rather than
+                # saved as the whole of what was typed.
+                direction = transcripts.antigravity_direction(record)
+                return direction.text if direction and not direction.truncated else ""
             message = observer.parse_message_record(record)
             return str(message["text"]) if message else ""
     return ""
@@ -5015,6 +5274,44 @@ def _active_child_assignments(
     return assignments
 
 
+def _collect_without_transcript(
+    config: RuntimeConfig,
+    state: RuntimeState,
+    project: str,
+    identity: dict[str, str],
+    *,
+    now: float,
+    sinks: tuple[
+        list[dict[str, Any]],
+        list[dict[str, Any]],
+        dict[str, dict[str, int]],
+        list[dict[str, Any]],
+    ],
+) -> None:
+    """A session `resolve_transcript` does not hand a whole transcript for.
+
+    A directions-only harness contributes its directions and their history and
+    nothing else its transcript holds: no observer snapshot, no work, no gate
+    or boot scan, since each of those reads work or tool output. Any other
+    session is named unavailable, with whether its harness has a reader at all.
+    """
+    events, history_events, history_source_scans, unavailable = sinks
+    harness, sid = identity["harness"], identity["sid"]
+    path = observer.resolve_directions(config, state, harness, sid)
+    if path is None:
+        known = harness in (*observer.TRANSCRIPT_HARNESSES, *observer.DIRECTION_HARNESSES)
+        reason = observer.TRANSCRIPT_NOT_FOUND if known else observer.READER_UNAVAILABLE
+        unavailable.append({**identity, "reason": reason})
+        return
+    events.extend(instruction_events(config, path, harness, sid))
+    rows, signature = _incremental_history_events(
+        config, state, project, path, harness, sid, now=now
+    )
+    history_events.extend(rows)
+    if signature is not None:
+        history_source_scans[f"{harness}:{sid}"] = signature
+
+
 def collect(
     config: RuntimeConfig,
     state: RuntimeState,
@@ -5078,9 +5375,18 @@ def collect(
                 refresh=refresh,
                 model_consent=model_consent,
             )
-        transcript_path = observer.resolve_transcript(config, state, harness, sid)
-        if transcript_path is None:
-            unavailable.append({**identity, "reason": "transcript reader unavailable"})
+        if (
+            harness in observer.DIRECTION_HARNESSES
+            or (transcript_path := observer.resolve_transcript(config, state, harness, sid)) is None
+        ):
+            _collect_without_transcript(
+                config,
+                state,
+                project,
+                identity,
+                now=now,
+                sinks=(events, history_events, history_source_scans, unavailable),
+            )
             continue
         result = _observe_session(
             config,

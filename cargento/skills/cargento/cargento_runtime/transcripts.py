@@ -6,7 +6,7 @@ import json
 import os
 import re
 import unicodedata
-from typing import TYPE_CHECKING, Any, Final
+from typing import TYPE_CHECKING, Any, Final, NamedTuple
 
 from . import io as runtime_io
 from . import records, sessions
@@ -1300,3 +1300,76 @@ def _first_prompt_record(record: dict[str, Any], harness: str) -> tuple[str, flo
     else:
         return None
     return (body, at) if body.strip() and not records.injected_prompt(body, harness) else None
+
+
+# ---------------------------------------------------------------------------
+# Antigravity directions (DRC-4689)
+
+# `transcript.jsonl` rather than `transcript_full.jsonl`: the two held the same
+# records on 62 of 62 local conversations, and the short one bounds each field,
+# so a bounded tail read reaches further back. It truncates `content` on 5 of
+# 115 directions, which it marks in `truncated_fields` (1.2.11 capture,
+# docs/captures/antigravity/transcript-shapes-1.2.11-macos.jsonl).
+ANTIGRAVITY_TRANSCRIPT: Final = (".system_generated", "logs", "transcript.jsonl")
+
+
+def antigravity_transcript(root: str, sid: str) -> str | None:
+    """The conversation's brain transcript under the Antigravity root, a regular
+    file and not a link, or None."""
+    if not sid or sid.startswith(".") or "/" in sid or os.sep in sid:
+        return None
+    path = os.path.join(root, "brain", sid, *ANTIGRAVITY_TRANSCRIPT)
+    try:
+        is_file = not os.path.islink(path) and os.path.isfile(path)
+    except OSError:
+        return None
+    return path if is_file else None
+
+
+class AntigravityDirection(NamedTuple):
+    at: float
+    record_id: str
+    text: str
+    truncated: bool
+
+
+def antigravity_direction(record: Any) -> AntigravityDirection | None:
+    """One direction the person typed, or None for every other record.
+
+    Only `USER_INPUT` from `USER_EXPLICIT`, with string content and a time that
+    parses. Nothing else in the file is read: not the planner's responses or
+    thinking, not tool calls, not command records or their exit codes. Reading
+    work from this harness is out of scope (owner, 2026-09-27), so its
+    harness-limit sentence stays true.
+    """
+    if not isinstance(record, dict):
+        return None
+    if record.get("type") != "USER_INPUT" or record.get("source") != "USER_EXPLICIT":
+        return None
+    text, stamp = record.get("content"), record.get("created_at")
+    at = records.iso_epoch(stamp) if isinstance(stamp, str) else None
+    if not isinstance(text, str) or not text.strip() or at is None:
+        return None
+    step = record.get("step_index")
+    truncated = record.get("truncated_fields")
+    return AntigravityDirection(
+        at,
+        f"step-{step}" if isinstance(step, int) and not isinstance(step, bool) else "",
+        text,
+        isinstance(truncated, list) and "content" in truncated,
+    )
+
+
+def antigravity_newest_direction(config: RuntimeConfig, path: str) -> str:
+    """The newest direction in the bounded tail, or ""."""
+    newest: tuple[float, str] | None = None
+    for raw in runtime_io.read_tail(config, path):
+        if not raw.lstrip().startswith("{"):
+            continue
+        try:
+            direction = antigravity_direction(json.loads(raw))
+        except (ValueError, RecursionError):
+            continue
+        if direction is not None and (newest is None or direction.at >= newest[0]):
+            newest = (direction.at, direction.text)
+    return newest[1] if newest else ""

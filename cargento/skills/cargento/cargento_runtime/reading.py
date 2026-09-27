@@ -354,6 +354,7 @@ WITHHELD_WINDOW_EMPTY = "window-empty"
 WITHHELD_AFTER_STOP = "after-stop"
 WITHHELD_RECORD_UNREAD = "record-unread"
 WITHHELD_RECORD_ERROR = "record-error"
+WITHHELD_NO_RECORD_READER = "no-record-reader"
 WITHHELD_MODEL_UNAVAILABLE = "model-unavailable"
 WITHHELD_CLAUDE_UNAVAILABLE = "claude-unavailable"
 WITHHELD_MODEL_FAILED = "model-failed"
@@ -418,6 +419,13 @@ WITHHELD = {
     WITHHELD_RECORD_ERROR: (
         "The observed record could not be read, so nothing here says what this session "
         "has been doing and no reading can rest on it."
+    ),
+    # Its own sentence (DRC-4689): the record is not empty and not unread by
+    # accident. Cargento has no reader for this harness's record at all, and
+    # saying "no entry names this session" claimed a read that never happened.
+    WITHHELD_NO_RECORD_READER: (
+        "Cargento does not read this harness's session record, so there is nothing to read "
+        "your words against. No reading was made and nothing was spent."
     ),
     # One per provider, because the page named that provider before the
     # press and a missing-CLI sentence naming the other would contradict it.
@@ -1229,6 +1237,8 @@ def build_ledger(
         }
         if is_report and tool_output is not None:
             _add_report_fields(row, fact, cap_chars, tool_output, changed_after)
+        elif fact.get("subject") == CHECK_SUBJECT:
+            _add_check_fields(row, fact)
         rows.append(row)
     rows.sort(key=lambda row: row["at"])
     return tuple(rows)
@@ -1256,6 +1266,20 @@ def _add_report_fields(
     row["changed_after"] = (record_id, fact.get("summary")) in changed_after
     result_at = _number(fact.get("result_at"))
     if row["subject"] == CHECK_SUBJECT and result_at is not None and result_at > 0:
+        row["result_at"] = result_at
+
+
+def _add_check_fields(row: LedgerEntry, fact: Mapping[str, Any]) -> None:
+    """The fields item 8 reads on another harness's check: a Pi validation run,
+    whose summary already names its result and whose fact carries its own
+    `changed_after`. No output tail: Pi's never reaches a prompt."""
+    row["subject"] = CHECK_SUBJECT
+    row["result"] = str(fact.get("result") or "")
+    row["stale"] = fact.get("before_last_change") is True
+    row["earlier_failed"] = fact.get("earlier_failed") is True
+    row["changed_after"] = fact.get("changed_after") is True
+    result_at = _number(fact.get("result_at"))
+    if result_at is not None and result_at > 0:
         row["result_at"] = result_at
 
 
@@ -1428,7 +1452,7 @@ def _priority(entry: LedgerEntry) -> int:
     """Which entries the byte bound reserves first (lower is earlier)."""
     if entry["author"] == AUTHOR_PERSON:
         return 0
-    if entry["type"] == TOOL_REPORT_TYPE and entry.get("subject") == CHECK_SUBJECT:
+    if entry.get("subject") == CHECK_SUBJECT:
         return _CHECK_PRIORITY.get(entry.get("result", ""), 2)
     return 4
 
@@ -1527,11 +1551,7 @@ def build_prompt(
         header, posed = without, False
     head_size = len(header.encode("utf-8", "replace"))
     citable = [entry for entry in ledger if _citable(entry)]
-    checks = [
-        entry
-        for entry in citable
-        if entry["type"] == TOOL_REPORT_TYPE and entry.get("subject") == CHECK_SUBJECT
-    ]
+    checks = [entry for entry in citable if entry.get("subject") == CHECK_SUBJECT]
     failures = [entry for entry in checks if entry.get("result") == RESULT_FAILED]
     if head_size > budget:
         # Nothing fits beside the two fields the reader typed. Return what
@@ -1749,15 +1769,18 @@ def _states_a_verdict(
 def check_supports(entry: Mapping[str, Any], result: str, window_start: float) -> bool:
     """Whether one cited entry may carry this verdict, per the ruling's item 8.
 
-    Any entry that is not a tool report passes through to the other rules. A
-    tool report counts only as a check run inside the evidence window: failed
-    for a departure; passed, and not before the last change, for a consistent.
-    A written path shows a write and no result, so it carries neither. One
+    Any entry that is neither a tool report nor a check passes through to the
+    other rules. A check, on any harness (owner, 2026-09-27, DRC-4690: a Pi
+    validation run too), counts only as a run inside the evidence window:
+    failed for a departure; passed, and not before the last change, for a
+    consistent. A written path shows a write and no result, so it carries
+    neither. One
     predicate per constraint, so the per-line checklist applies it line by line.
     Inside the window is read by `evidence_at`, so a check whose result
     landed after the words counts though its call began before them.
     """
-    if str(entry.get("type") or "") != TOOL_REPORT_TYPE:
+    is_report = str(entry.get("type") or "") == TOOL_REPORT_TYPE
+    if not is_report and entry.get("subject") != CHECK_SUBJECT:
         return True
     if entry.get("subject") != CHECK_SUBJECT:
         return False
@@ -2071,6 +2094,26 @@ def _readable(
 
 # One argument per thing a press decides, each keyword-only and each asserted
 # by a test; bundling them would hide which one a caller left at its default.
+def record_withheld(context: Mapping[str, Any], harness: str, sid: str) -> str:
+    """Why this session's observed record cannot be read against, or "".
+
+    From `project_context.collect`'s `sources.work.unavailable`: a harness
+    with no record reader, or a reader whose transcript was not found. The
+    first is `WITHHELD_NO_RECORD_READER`, the second `WITHHELD_RECORD_UNREAD`;
+    neither is `WITHHELD_LEDGER_EMPTY`, which says the record was read.
+    """
+    sources = context.get("sources") if isinstance(context, dict) else None
+    work = sources.get("work") if isinstance(sources, dict) else None
+    unavailable = work.get("unavailable") if isinstance(work, dict) else None
+    for row in unavailable if isinstance(unavailable, list) else ():
+        if not isinstance(row, dict) or (row.get("harness"), row.get("sid")) != (harness, sid):
+            continue
+        if row.get("reason") == observer.READER_UNAVAILABLE:
+            return WITHHELD_NO_RECORD_READER
+        return WITHHELD_RECORD_UNREAD
+    return ""
+
+
 def produce(  # noqa: PLR0913
     config: RuntimeConfig,
     row: Mapping[str, Any],
@@ -2085,6 +2128,7 @@ def produce(  # noqa: PLR0913
     read_lines: bool = False,
     admit_turn_stop: bool = False,
     on_phase: Callable[[str], None] | None = None,
+    record_withheld: str = "",
 ) -> tuple[Assessment | None, str, bool]:
     """One reading, or the reason there is none. Returns (assessment, why, spent).
 
@@ -2110,6 +2154,10 @@ def produce(  # noqa: PLR0913
 
     `on_phase` is a reading job's, told `PHASE_CHECKING` once a reply arrived
     and never otherwise, so a published phase is one that really happened.
+
+    `record_withheld` is `record_withheld(...)`'s answer for this session: a
+    record that was never read withholds before the ledger, since an empty
+    ledger would say it was read and held nothing.
     """
     goal, lines, scope, withheld = _readable(
         config,
@@ -2122,6 +2170,8 @@ def produce(  # noqa: PLR0913
     )
     if withheld:
         return None, withheld, False
+    if record_withheld:
+        return None, record_withheld, False
     latest = revisions[-1]
     facts = list(facts)
     harness, sid = str(row.get("harness") or ""), str(row.get("sid") or "")
