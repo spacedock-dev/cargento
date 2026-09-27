@@ -11,6 +11,7 @@ stays withheld from everyone who did not press.
 from __future__ import annotations
 
 import dataclasses
+import html
 import json
 import os
 import re
@@ -74,8 +75,8 @@ def _message(fact_id: str, at: Any, **over: Any) -> dict[str, Any]:
     return row
 
 
-def _check(at: float, result: str = "failed") -> dict[str, Any]:
-    return {
+def _check(at: float, result: str = "failed", **over: Any) -> dict[str, Any]:
+    return over | {
         "fact_id": f"check-{int(at)}",
         "type": "tool_report",
         "subject": "check",
@@ -243,8 +244,8 @@ class TheWindowARevisionOpensTest(unittest.TestCase):
 # --------------------------------------------------------------------------------- the producer
 
 
-class YourPressOnAWaitingSessionReadsItsLastTurnTest(unittest.TestCase):
-    """`produce`, with the live walk's check: run after your message and before your save."""
+class _PressCase(unittest.TestCase):
+    """`produce` on a waiting session, with a model that answers one departure."""
 
     def setUp(self) -> None:
         state_dir = Path(tempfile.mkdtemp())
@@ -295,6 +296,10 @@ class YourPressOnAWaitingSessionReadsItsLastTurnTest(unittest.TestCase):
             admit_turn_stop=admit_turn_stop,
         )
 
+
+class YourPressOnAWaitingSessionReadsItsLastTurnTest(_PressCase):
+    """`produce`, with the live walk's check: run after your message and before your save."""
+
     def test_a_reader_gets_a_reading_that_says_it_covers_the_last_turn(self) -> None:
         assessment, why, spent = self.produce([_message("m1", PROMPT), _check(PROMPT + 60)])
         self.assertEqual("", why)
@@ -310,13 +315,26 @@ class YourPressOnAWaitingSessionReadsItsLastTurnTest(unittest.TestCase):
         self.assertEqual(reading.RESULT_DEPARTURE, row["result"])
         self.assertEqual((f"check-{int(PROMPT + 60)}",), row["cites"])
 
-    def test_a_check_run_before_your_message_supports_no_verdict(self) -> None:
+    def test_a_check_run_before_your_message_is_never_offered_to_the_reading(self) -> None:
+        # DRC-4715, owner 2026-09-27: an entry from before the window is dropped from the
+        # prompt, so it is never numbered and nothing can cite it. The model's `1` is your
+        # message now, which shows no work, so the check's failure carries no verdict.
         assessment, _why, _spent = self.produce(
             [_check(PROMPT - 60), _message("m1", PROMPT)], cites=(1,)
         )
         row = assessment["criteria"]["line_1"]
         self.assertEqual(reading.RESULT_UNVERIFIABLE, row["result"])
-        self.assertEqual(reading.WHY_CHECK_DOES_NOT_SHOW_IT, row["why"])
+        self.assertNotIn(f"check-{int(PROMPT - 60)}", row["cites"])
+        self.assertNotIn("pytest", self.prompts[0])
+        self.assertIn("[1] user_message", self.prompts[0])
+
+    def test_a_check_whose_result_arrived_after_your_message_supports_its_verdict(self) -> None:
+        # DRC-4702: the call began before the words and its result landed after them.
+        straddling = _check(PROMPT - 60, result_at=PROMPT + 30)
+        assessment, _why, _spent = self.produce([straddling, _message("m1", PROMPT)], cites=(1,))
+        row = assessment["criteria"]["line_1"]
+        self.assertEqual(reading.RESULT_DEPARTURE, row["result"])
+        self.assertEqual((f"check-{int(PROMPT - 60)}",), row["cites"])
 
     def test_a_revision_without_a_window_start_still_reads_work_from_its_save(self) -> None:
         legacy = {
@@ -325,11 +343,13 @@ class YourPressOnAWaitingSessionReadsItsLastTurnTest(unittest.TestCase):
             "goal": "add retry to the webhook",
             "lines": ({"text": "tests pass", "source": "typed"},),
         }
-        assessment, _why, _spent = self.produce(
+        # Its window opens at the save, after the turn stopped, so the turn holds nothing
+        # after the words to read (DRC-4715).
+        assessment, why, _spent = self.produce(
             [_message("m1", PROMPT), _check(PROMPT + 60)], revision=legacy
         )
-        self.assertEqual(reading.RESULT_UNVERIFIABLE, assessment["criteria"]["line_1"]["result"])
-        self.assertEqual(SAVE, assessment["window_start"])
+        self.assertIsNone(assessment)
+        self.assertEqual(reading.WITHHELD_WINDOW_EMPTY, why)
 
     def test_a_check_run_after_the_turn_stopped_is_not_read_into_the_last_turn(self) -> None:
         assessment, why, _spent = self.produce([_message("m1", PROMPT), _check(STOP + 10)])
@@ -524,7 +544,7 @@ class AReadingOfTheLastTurnIsKeptTest(_StoreCase):
             "window_start": PROMPT,
             "read_at": NOW,
             "stamp": "read",
-            "cutoff": "Read 2 of 2 entries.",
+            "cutoff": "Read 2 of the 2 entries after your words.",
             "scope": reading.SCOPE_LAST_TURN,
             "scope_text": reading.SCOPE_TEXT[reading.SCOPE_LAST_TURN],
             "ended_at_read": None,
@@ -835,3 +855,256 @@ console.log(JSON.stringify({html, legacy}));
 
 if __name__ == "__main__":  # pragma: no cover
     unittest.main()
+
+
+class ACheckIsInsideTheWindowWhenItsResultIsTest(unittest.TestCase):
+    """DRC-4702, owner 2026-09-27: result time decides the window; call time
+    stays for every change comparison and for numbering."""
+
+    def entry(self, at: float, **over: Any) -> dict[str, Any]:
+        base = {"type": reading.TOOL_REPORT_TYPE, "subject": "check", "result": "failed", "at": at}
+        return base | over
+
+    def test_a_result_that_landed_inside_the_window_admits_the_check(self) -> None:
+        entry = self.entry(100, result_at=160)
+        self.assertTrue(reading.check_supports(entry, reading.RESULT_DEPARTURE, 150))
+        self.assertTrue(reading.check_supports(entry, reading.RESULT_DEPARTURE, 160))
+        self.assertFalse(reading.check_supports(entry, reading.RESULT_DEPARTURE, 161))
+
+    def test_a_check_with_no_result_time_is_placed_by_its_call(self) -> None:
+        for result_at in (None, 0, -1, "160", True):
+            with self.subTest(result_at=result_at):
+                entry = self.entry(100, result_at=result_at)
+                self.assertFalse(reading.check_supports(entry, reading.RESULT_DEPARTURE, 150))
+                self.assertTrue(reading.check_supports(entry, reading.RESULT_DEPARTURE, 100))
+
+    def test_the_ledger_carries_the_result_time_of_a_check(self) -> None:
+        ledger = reading.build_ledger(
+            [_check(PROMPT - 60, result_at=PROMPT + 30), _check(PROMPT + 60)],
+            "claude",
+            "s1",
+            tool_output={},
+        )
+        self.assertEqual([PROMPT - 60, PROMPT + 60], [row["at"] for row in ledger])
+        self.assertEqual(PROMPT + 30, ledger[0].get("result_at"))
+        self.assertNotIn("result_at", ledger[1])
+
+
+class AReadingCitesNothingFromBeforeItsWindowTest(_PressCase):
+    """DRC-4715, owner 2026-09-27: a reading may not cite an entry from before
+    its evidence window, of any type, and one with no time cannot be placed
+    after the words. `produce` drops both from the prompt, and the resolver
+    refuses one as a defence, the way any unresolvable citation is refused."""
+
+    def agent(self, fact_id: str, at: float) -> dict[str, Any]:
+        return _message(
+            fact_id, at, type="assistant_message", summary="I will rewrite the parser in Go"
+        )
+
+    def test_a_pre_window_agent_message_is_not_in_the_prompt(self) -> None:
+        assessment, _why, _spent = self.produce(
+            [self.agent("a0", PROMPT - 60), _message("m1", PROMPT), _check(PROMPT + 60)]
+        )
+        self.assertNotIn("rewrite the parser in Go", self.prompts[0])
+        self.assertEqual(reading.RESULT_DEPARTURE, assessment["criteria"]["line_1"]["result"])
+
+    def test_an_untimed_entry_is_not_in_the_prompt(self) -> None:
+        self.produce([self.agent("a0", 0), _message("m1", PROMPT), _check(PROMPT + 60)])
+        self.assertNotIn("rewrite the parser in Go", self.prompts[0])
+
+    def test_a_window_that_leaves_nothing_to_read_says_so(self) -> None:
+        assessment, why, spent = self.produce([self.agent("a0", PROMPT - 60), _check(0)])
+        self.assertIsNone(assessment)
+        self.assertEqual(reading.WITHHELD_WINDOW_EMPTY, why)
+        self.assertFalse(spent)
+        self.assertEqual([], self.prompts)
+        self.assertNotEqual(
+            reading.WITHHELD[reading.WITHHELD_LEDGER_EMPTY],
+            reading.WITHHELD[reading.WITHHELD_WINDOW_EMPTY],
+        )
+        _assessment, why, _spent = self.produce([])
+        self.assertEqual(reading.WITHHELD_LEDGER_EMPTY, why)
+
+    def test_a_turn_cut_that_empties_the_window_is_not_called_an_empty_window(self) -> None:
+        # Review F1 and owner ruling N3: the check is after the words, in a resumed turn the row
+        # has not caught up with. Neither "nothing after the words" nor "no entry names this
+        # session" is true, so the press says the work after the words is not finished.
+        for facts in (
+            [_message("m0", PROMPT - 100), _check(STOP + 30)],
+            [_message("m0", 0), _check(STOP + 30)],
+        ):
+            with self.subTest(first_at=facts[0]["at"]):
+                assessment, why, spent = self.produce(facts)
+                self.assertIsNone(assessment)
+                self.assertEqual(reading.WITHHELD_AFTER_STOP, why)
+                self.assertFalse(spent)
+
+    def test_the_cutoff_counts_each_set_it_did_not_read(self) -> None:
+        # Owner ruling N4, 2026-09-27: earlier, untimed and after-the-stop entries apart.
+        assessment, _why, _spent = self.produce(
+            [
+                self.agent("u0", 0),
+                self.agent("a0", PROMPT - 60),
+                _message("m1", PROMPT),
+                _check(PROMPT + 60),
+                _check(STOP + 30),
+            ]
+        )
+        self.assertTrue(
+            assessment["cutoff"].startswith(
+                "Read 2 of the 2 entries after your words; 1 earlier and 1 untimed entries were "
+                "not read; 1 entry after the last observed stop was not read. Of those read, "
+            ),
+            assessment["cutoff"],
+        )
+
+    def test_the_cutoff_says_how_many_entries_before_the_words_were_not_read(self) -> None:
+        # Owner ruling F2, 2026-09-27.
+        assessment, _why, _spent = self.produce(
+            [
+                self.agent("a0", PROMPT - 60),
+                self.agent("a1", PROMPT - 30),
+                _message("m1", PROMPT),
+                _check(PROMPT + 60),
+            ]
+        )
+        self.assertTrue(
+            assessment["cutoff"].startswith(
+                "Read 2 of the 2 entries after your words; 2 earlier entries were not read."
+            ),
+            assessment["cutoff"],
+        )
+        assessment, _why, _spent = self.produce([_message("m1", PROMPT), _check(PROMPT + 60)])
+        self.assertTrue(
+            assessment["cutoff"].startswith("Read 2 of the 2 entries after your words. "),
+            assessment["cutoff"],
+        )
+
+    def resolve(self, entries: list[reading.LedgerEntry], cites: list[int]) -> Any:
+        return reading.resolve(
+            {
+                "goal": {"token": "departure", "cites": cites, "detail": "it went elsewhere"},
+                "line_1": {"token": "departure", "cites": cites, "detail": "the test failed"},
+            },
+            reading.Selection(tuple(entries)),
+            goal="add retry to the webhook",
+            lines=["tests pass"],
+            detail_cap_chars=240,
+            window_start=150.0,
+        )
+
+    def ledger_row(self, fact_id: str, at: float, **over: Any) -> reading.LedgerEntry:
+        row: reading.LedgerEntry = {
+            "id": fact_id,
+            "type": "assistant_message",
+            "by": "",
+            "summary": "I will rewrite the parser in Go",
+            "at": at,
+            "author": reading.AUTHOR_AGENT,
+            "source": "root transcript · exact",
+        }
+        row.update(cast("Any", over))
+        return row
+
+    def check_row(self, fact_id: str, at: float, **over: Any) -> reading.LedgerEntry:
+        return self.ledger_row(
+            fact_id,
+            at,
+            type=reading.TOOL_REPORT_TYPE,
+            subject="check",
+            result="failed",
+            summary="pytest (failed, as the tool reported)",
+            source="Claude Bash call and paired result · exact",
+            work=True,
+            **over,
+        )
+
+    def test_a_citation_of_a_pre_window_entry_alone_is_refused_as_uncited(self) -> None:
+        for at in (50.0, 149.9, 0.0):
+            with self.subTest(at=at):
+                goal = self.resolve([self.ledger_row("f1", at)], [1])["goal"]
+                self.assertEqual(reading.RESULT_UNVERIFIABLE, goal["result"])
+                self.assertEqual(reading.WHY_UNCITED, goal["why"])
+                self.assertEqual((), goal["cites"])
+
+    def test_an_entry_exactly_at_the_window_start_stays_citable(self) -> None:
+        goal = self.resolve([self.ledger_row("f1", 150.0)], [1])["goal"]
+        self.assertEqual(reading.RESULT_DEPARTURE, goal["result"])
+        self.assertEqual(("f1",), goal["cites"])
+
+    def test_beside_an_in_window_check_only_the_check_stands(self) -> None:
+        line = self.resolve([self.ledger_row("f1", 50.0), self.check_row("c1", 160.0)], [1, 2])[
+            "line_1"
+        ]
+        self.assertEqual(reading.RESULT_DEPARTURE, line["result"])
+        self.assertEqual(("c1",), line["cites"])
+
+    def test_a_check_whose_result_landed_inside_the_window_is_not_refused(self) -> None:
+        line = self.resolve([self.check_row("c1", 100.0, result_at=160.0)], [1])["line_1"]
+        self.assertEqual(reading.RESULT_DEPARTURE, line["result"])
+
+
+WITHHELD_SENTENCES = {
+    reading.WITHHELD_LEDGER_EMPTY: (
+        "No entry in the observed record names this session, so there is nothing to read your "
+        "words against. Absence of evidence is not a reading."
+    ),
+    reading.WITHHELD_WINDOW_EMPTY: (
+        "Every entry in the observed record for this session is from before your words or has "
+        "no time, so there is no work after them to read them against."
+    ),
+    reading.WITHHELD_AFTER_STOP: (
+        "Everything after your words came after the session's last observed stop, so there is "
+        "nothing finished to read yet."
+    ),
+}
+
+
+class WhyAPressOnAWaitingSessionReadsNothingTest(NextPageJsHarness):
+    """Owner ruling N3, 2026-09-27: three different reasons, each said only where it is true,
+    read off the page a reader sees."""
+
+    def whys(self) -> dict[str, str]:
+        case = _PressCase("setUp")
+        case.setUp()
+        agent = _message("a0", PROMPT - 60, type="assistant_message", summary="I will do it")
+        found = {}
+        for name, facts in (
+            ("empty", []),
+            ("before", [agent]),
+            ("after the stop", [_message("m0", PROMPT - 100), _check(STOP + 30)]),
+        ):
+            assessment, why, _spent = case.produce(facts)
+            self.assertIsNone(assessment)
+            found[name] = why
+        case.doCleanups()
+        return found
+
+    def test_each_reason_is_rendered_where_it_is_true(self) -> None:
+        whys = self.whys()
+        self.assertEqual(
+            {
+                "empty": reading.WITHHELD_LEDGER_EMPTY,
+                "before": reading.WITHHELD_WINDOW_EMPTY,
+                "after the stop": reading.WITHHELD_AFTER_STOP,
+            },
+            whys,
+        )
+        texts = {name: reading.WITHHELD[why] for name, why in whys.items()}
+        out = self._run_page_js(
+            "await __settle();\nawait __settle();\n"
+            f"const texts = {json.dumps(texts)};\n"
+            "const session = __dashboard.sessions[0];\n"
+            "console.log(JSON.stringify(Object.fromEntries(Object.entries(texts).map(\n"
+            "  ([name, text]) => [name, nextCockpitReading(session,\n"
+            "    {goal: 'add retry', reading_count: 1, reading_withheld: text}, [],\n"
+            "    {enabled: true})]))));\n",
+            storage_prelude({}) + cockpit_tests.NextCockpitCompositionTest.FIXTURE,
+        )
+        assert isinstance(out, dict)
+        for name, why in whys.items():
+            with self.subTest(case=name):
+                rendered = html.unescape(re.sub(r"<[^>]+>", " ", out[name]))
+                self.assertIn(WITHHELD_SENTENCES[why], " ".join(rendered.split()))
+                for other in set(WITHHELD_SENTENCES) - {why}:
+                    self.assertNotIn(WITHHELD_SENTENCES[other], " ".join(rendered.split()))

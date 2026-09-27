@@ -21,7 +21,7 @@ from . import sessions as runtime_sessions
 from . import state as runtime_state
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator, Sequence
+    from collections.abc import Iterable, Iterator, Sequence
 
     from .config import RuntimeConfig
     from .state import RuntimeState
@@ -1334,7 +1334,17 @@ _WRITING_OPTIONS = {
     "git log": frozenset({"--output"}),
     "git show": frozenset({"--output"}),
 }
-_HARMLESS_REDIRECT_RE = re.compile(r"^(?:\d*>&\d+|\d*>/dev/null|&>/dev/null)$")
+# A device that stores nothing, whichever operator writes to it (review W5).
+_HARMLESS_REDIRECT_RE = re.compile(
+    r"^(?:\d*>&\d+|(?:\d+|\{[A-Za-z_][A-Za-z0-9_]*\})?(?:&>>|&>|>>|>\||>)"
+    r"/dev/(?:null|stdout|stderr|tty|fd/\d+))$"
+)
+_CD_OPTION_RE = re.compile(r"^-[LPe@]+$")
+# A written redirection's operator, its optional descriptor first, and the
+# target word after it.
+_WRITE_REDIRECT_RE = re.compile(
+    r"^(?:\d+|\{[A-Za-z_][A-Za-z0-9_]*\})?(?P<op>&>>|&>|>>|>&|>\||<>|>)(?P<target>.*)$", re.DOTALL
+)
 
 
 def _skip_options(words: list[str], takes_value: frozenset[str]) -> list[str]:
@@ -1412,6 +1422,13 @@ class _Segment(NamedTuple):
     # with the same rules, since whatever it runs runs whether or not the
     # segment is a check.
     bodies: list[str]
+    # Subshells a `(` at command position opened before this segment, and
+    # closed after it (DRC-4724).
+    opens: int = 0
+    closes: int = 0
+    # Redirections after a `)`, which the outer shell opens where the group
+    # started: each with the index of the segment that opened it (review W3).
+    outer: tuple[tuple[str, int], ...] = ()
 
 
 class _ShellLexer:
@@ -1434,6 +1451,12 @@ class _ShellLexer:
         self.redirects: list[str] = []
         self.bodies: list[str] = []
         self.depth = 0
+        # One entry per open parenthesis: the index of the segment a subshell
+        # opened at, or None where it opened none.
+        self.parens: list[int | None] = []
+        self.opens = self.closes = 0
+        self.outer: list[tuple[str, int]] = []
+        self.group: int | None = None
 
     def _at(self, offset: int = 0) -> str:
         index = self.pos + offset
@@ -1455,7 +1478,7 @@ class _ShellLexer:
                 self._skip_group(arithmetic=True)
                 words.append(_ARITHMETIC)
                 continue
-            if self._skip_space():
+            if self._parenthesis(words, found) or self._skip_space():
                 continue
             joiner = self._joiner()
             if joiner is None:
@@ -1465,24 +1488,69 @@ class _ShellLexer:
                     words.append(_WITHHELD if hide_next else word)
                     hide_next = word == _WITHHELD
                 else:
-                    self.redirects.append(redirect)
+                    self._add_redirect(redirect)
                 continue
             if words or self.redirects or self.bodies:
-                found.append(_Segment(words, joiner, self.redirects, self.bodies))
+                found.append(self._segment(words, joiner))
+                # An open before an empty segment waits for the next one.
+                self.opens = self.closes = 0
             words, self.redirects, self.bodies, hide_next = [], [], [], False
+            self.outer, self.group = [], None
             if joiner == "\n":
                 self._skip_bodies(self.heredocs)
                 self.heredocs = []
         if words or self.redirects or self.bodies:
-            found.append(_Segment(words, "", self.redirects, self.bodies))
+            found.append(self._segment(words, ""))
         return found
+
+    def _add_redirect(self, redirect: str) -> None:
+        self.redirects.append(redirect)
+        if self.group is not None:
+            self.outer.append((redirect, self.group))
+
+    def _segment(self, words: list[str], joiner: str) -> _Segment:
+        return _Segment(
+            words,
+            joiner,
+            self.redirects,
+            self.bodies,
+            self.opens,
+            self.closes,
+            tuple(self.outer),
+        )
+
+    def _parenthesis(self, words: list[str], found: list[_Segment]) -> bool:
+        """A subshell's `(` or `)`, consumed and counted on its segment (DRC-4724).
+
+        Only a `(` at command position opens one: `f()` and `a=(1 2)` open
+        nothing, and a `)` that matches no `(`, such as a `case` arm's,
+        closes nothing.
+        """
+        char = self._at()
+        if char == "(":
+            self.parens.append(None if words or self.redirects else len(found))
+            self.opens += self.parens[-1] is not None
+        elif char == ")":
+            opened = self.parens.pop() if self.parens else None
+            if opened is not None:
+                if words or self.redirects or self.bodies:
+                    self.closes += 1
+                    self.group = opened
+                elif self.opens:
+                    self.opens -= 1  # `( )`: nothing ran inside it
+                elif found:
+                    # `(pytest; )`: the close follows the joiner.
+                    found[-1] = found[-1]._replace(closes=found[-1].closes + 1)
+        else:
+            return False
+        self.pos += 1
+        return True
 
     def _skip_space(self) -> bool:
         """Blanks, a backslash-newline, a lone backslash at the very end (bash
-        passes no argument for it), a comment at a word start, and a subshell's
-        or group's parentheses, which are shed."""
+        passes no argument for it), and a comment at a word start."""
         char, after = self._at(), self._at(1)
-        if char in (" ", "\t", "(", ")") or (char == "\\" and after in ("\n", "")):
+        if char in (" ", "\t") or (char == "\\" and after in ("\n", "")):
             self.pos += 2 if char == "\\" else 1
         elif char == "#":
             end = self.text.find("\n", self.pos)
@@ -1862,10 +1930,17 @@ class _Part(NamedTuple):
     # Background launches this part ends: its own `&`, and an inner one a
     # wrapper's splice would otherwise overwrite.
     launches: int
-    # Wrappers entered at this part and left after it: a `cd` inside a
-    # wrapper's subshell does not carry past it.
+    # Subshells and wrappers entered at this part and left after it: a `cd`
+    # inside either does not carry past it (DRC-4724).
     opens: int
     closes: int
+    # A group's or a wrapper's own redirections, each with the index of the
+    # part whose starting directory the outer shell opens it in (review W3).
+    # They are in `redirects` as well, for every other rule.
+    outer: tuple[tuple[str, int], ...] = ()
+    # The segment's words before any stripping, assignments included, and a
+    # wrapper's own words on its first inner part: what masking may hide.
+    raw: tuple[str, ...] = ()
 
 
 def _body_reads_only(body: str) -> bool:
@@ -1900,9 +1975,12 @@ def _call_parts(text: str, depth: int = 0) -> list[_Part]:
     """
     segments = _ShellLexer(text).segments()
     parts: list[_Part] = []
+    first_part: list[int] = []
     for segment, background in zip(
         segments, _backgrounds([s.joiner for s in segments]), strict=True
     ):
+        first_part.append(len(parts))
+        outer = tuple((redirect, first_part[at]) for redirect, at in segment.outer)
         words, rtk = _stripped(segment.words)
         hides = not all(_body_reads_only(body) for body in segment.bodies)
         inner = _shell_wrapper_line(words) if depth < _SHELL_WRAPPER_DEPTH else None
@@ -1916,24 +1994,36 @@ def _call_parts(text: str, depth: int = 0) -> list[_Part]:
         if not spliced:
             parts.append(
                 _Part(words, rtk, segment.joiner, segment.redirects, hides, background,
-                      launches, 0, 0)
+                      launches, segment.opens, segment.closes, outer, tuple(segment.words))
             )  # fmt: skip
             continue
-        last = len(spliced) - 1
+        last, offset = len(spliced) - 1, len(parts)
+        # The wrapper's own redirections open where the wrapper started.
+        wrapper = tuple((r, offset) for r in _without(segment.redirects, segment.outer))
         parts.extend(
             part._replace(
+                outer=(*((r, at + offset) for r, at in part.outer), *outer, *wrapper),
+                raw=(*segment.words, *part.raw) if index == 0 else part.raw,
                 rtk=part.rtk or rtk,
                 joiner=segment.joiner if index == last else part.joiner,
                 redirects=[*part.redirects, *segment.redirects],
                 hides_change=part.hides_change or hides,
                 background=part.background or background,
                 launches=part.launches + (launches if index == last else 0),
-                opens=part.opens + (index == 0),
-                closes=part.closes + (index == last),
+                opens=part.opens + (index == 0) * (1 + segment.opens),
+                closes=part.closes + (index == last) * (1 + segment.closes),
             )
             for index, part in enumerate(spliced)
         )
     return parts
+
+
+def _without(redirects: list[str], outer: Iterable[tuple[str, int]]) -> list[str]:
+    """`redirects` with one occurrence of each outer redirection taken out."""
+    left = list(redirects)
+    for redirect, _at in outer:
+        left.remove(redirect)
+    return left
 
 
 def _names_a_test_file(word: str) -> bool:
@@ -1993,6 +2083,33 @@ def _writes_a_file(redirects: list[str]) -> bool:
     return any(">" in target and not _HARMLESS_REDIRECT_RE.match(target) for target in redirects)
 
 
+def _file_targets(redirects: list[str]) -> list[str]:
+    """The target word of each redirection into a file, as written.
+
+    `>&-` and `>&2` name a descriptor, not a file.
+    """
+    targets = []
+    for redirect in redirects:
+        match = _WRITE_REDIRECT_RE.match(redirect)
+        if match is None or _HARMLESS_REDIRECT_RE.match(redirect):
+            continue
+        target = match.group("target")
+        if match.group("op") == ">&" and (target == "-" or target.isdigit()):
+            continue
+        targets.append(target)
+    return targets
+
+
+def _placeable(target: str) -> bool:
+    """Whether a redirection's target is a path as written: an expansion, a
+    substitution, `~` or a withheld word is decided by the shell at run time."""
+    return (
+        bool(target)
+        and not target.startswith("~")
+        and not any(mark in target for mark in ("$", "`", _WITHHELD))
+    )
+
+
 def _reads_only(redirects: list[str], words: list[str]) -> bool:
     """Whether one segment is on the closed read-only list.
 
@@ -2007,23 +2124,52 @@ def _reads_only(redirects: list[str], words: list[str]) -> bool:
     return " ".join(words[:2]) in _READ_ONLY_PAIRS or words[0] in _READ_ONLY_WORDS
 
 
+def _evidence_at(run: dict[str, Any]) -> float:
+    """A run's result time, or its call time where no result arrived."""
+    result_at = run.get("result_at")
+    return float(result_at if result_at is not None else run["at"])
+
+
+def _changed_directory(current: str, known: bool, args: list[str]) -> tuple[str, bool]:
+    """Where a `cd` with these arguments leaves the shell, and whether that is
+    known as a path. `-L`, `-P`, `-e`, `-@` and `--` are options."""
+    while args and _CD_OPTION_RE.match(args[0]):
+        args = args[1:]
+    if args[:1] == ["--"]:
+        args = args[1:]
+    if not args or args[0] == "-":
+        return current, False
+    target = os.path.normpath(os.path.join(current or "/", args[0]))
+    if args[0].startswith("-") or not _placeable(args[0]):
+        return target, False
+    return target, known or os.path.isabs(args[0])
+
+
 def _check_identity(directory: str, words: list[str]) -> str:
     """Item 4's "same check": the directory it ran in and its stripped segment,
     without redirects (review, 2026-09-24: the directory is part of it)."""
     return directory + "\0" + " ".join(word for word in words if not _REDIRECT_RE.match(word))
 
 
-def _tool_result_blocks(transcript: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
-    results: dict[str, dict[str, Any]] = {}
+class _Result(NamedTuple):
+    """A call's `tool_result` block, and the time of the record that holds it."""
+
+    block: dict[str, Any]
+    at: float | None
+
+
+def _tool_result_blocks(transcript: list[dict[str, Any]]) -> dict[str, _Result]:
+    results: dict[str, _Result] = {}
     for record in transcript:
         if record.get("type") != "user" or record.get("isSidechain") is True:
             continue
         content = records.message_dict(record).get("content")
+        at = _record_timestamp(record)
         for block in content if isinstance(content, list) else ():
             if isinstance(block, dict) and block.get("type") == "tool_result":
                 call_id = block.get("tool_use_id")
                 if isinstance(call_id, str) and call_id:
-                    results[call_id] = block
+                    results[call_id] = _Result(block, at)
     return results
 
 
@@ -2167,11 +2313,32 @@ class _ShellCall:
         except Exception:  # noqa: BLE001 - any parser fault fails closed, as unbalanced does
             self.unbalanced, self.parts = True, []
         self.words: list[tuple[list[str], bool]] = [(p.words, p.rtk) for p in self.parts]
-        self.directories = self._directories(cwd)
+        self.directories, self.placed = self._directories(cwd)
         self.meaningful = [
             i for i, (words, _rtk) in enumerate(self.words) if words and words[0] != "cd"
         ]
         self.checks = [i for i in self.meaningful if _is_check(self.words[i][0])]
+        # A check's own redirection into a file is a recorded write by the call
+        # (DRC-4709), each target read from the directory its segment ran in,
+        # or the group's or wrapper's start for their own (review W3).
+        self.redirect_writes = [
+            (i, target, at)
+            for i in self.checks
+            for redirects, at in (
+                (_without(self.parts[i].redirects, self.parts[i].outer), i),
+                *(([r], at) for r, at in self.parts[i].outer),
+            )
+            for target in _file_targets(redirects)
+        ]
+        # Every value masking hides anywhere in the call, as the tail scrub
+        # reads them (review W1).
+        self.masked = {
+            piece
+            for part in self.parts
+            for value in records.masked_values(list(part.raw))
+            for piece in (value, *value.split())
+            if len(piece) >= _SCRUB_MIN_CHARS
+        }
         self.fixers = [i for i in self.meaningful if _is_fixer(self.words[i][0])]
         self.changing_others = [
             i for i in self.meaningful if i not in self.checks and not self._reads_only(i)
@@ -2190,18 +2357,44 @@ class _ShellCall:
         part = self.parts[index]
         return not part.hides_change and _reads_only(part.redirects, part.words)
 
-    def _directories(self, cwd: str) -> list[str]:
-        """The directory each segment runs in, following the call's `cd`s."""
-        current, found, entered = cwd, [], []
+    def _directories(self, cwd: str) -> tuple[list[str], list[bool]]:
+        """The directory each segment runs in, following the call's `cd`s, and
+        whether it is known as a path.
+
+        A `cd` the shell resolves at run time (`~`, `$VAR`, a substitution, no
+        argument, `-`) and `pushd` or `popd` leave it unknown until a literal
+        absolute `cd`, or the close of the group, places it again (review W2).
+        The directory string still names the check, as it always did.
+        """
+        current, known = cwd, bool(cwd)
+        found: list[str] = []
+        placed: list[bool] = []
+        entered: list[tuple[str, bool]] = []
         for part in self.parts:
-            entered.extend([current] * part.opens)
+            entered.extend([(current, known)] * part.opens)
             found.append(current)
+            placed.append(known)
             words = part.words
-            if words[:1] == ["cd"] and len(words) > 1 and words[1] != "-":
-                current = os.path.normpath(os.path.join(current or "/", words[1]))
+            if words[:1] == ["cd"]:
+                current, known = _changed_directory(current, known, words[1:])
+            elif words[:1] in (["pushd"], ["popd"]):
+                known = False
             for _ in range(part.closes):
-                current = entered.pop()
-        return found
+                current, known = entered.pop()
+        return found, placed
+
+    def written_path(self, target: str, at: int, cwd: str) -> str | None:
+        """A check's redirect target relative to the working directory, or
+        None where it is not published: outside it, decided by the shell,
+        under an unknown directory, or holding a value the line masks."""
+        if (
+            not _placeable(target)
+            or records.mask_words([target]) != [target]
+            or any(value in target for value in self.masked)
+            or (not os.path.isabs(target) and not self.placed[at])
+        ):
+            return None
+        return _written_path(os.path.join(self.directories[at] or "/", target), cwd)
 
     def joiners(self) -> list[str]:
         return [part.joiner for part in self.parts]
@@ -2225,11 +2418,16 @@ class _ShellCall:
 class _ToolReportTally:
     """The full scan of one transcript's calls, and the entries chosen from it."""
 
-    def __init__(self, results: dict[str, dict[str, Any]]) -> None:
+    def __init__(self, results: dict[str, _Result]) -> None:
         self.results = results
         self.runs: dict[str, list[dict[str, Any]]] = {}
         self.writes: dict[str, dict[str, Any]] = {}
-        self.last_write_at = float("-inf")
+        # (time, call id) of every recorded write and fixer run. A pass is aged
+        # by one from another call at or after its own time, since recorded
+        # time cannot order two calls that share it (DRC-4709); its own call is
+        # ordered by segment instead (`fixes`, `changes_later_in_call`), which
+        # is what keeps `black . && pytest` current.
+        self.write_calls: list[tuple[float, str]] = []
         # Order of the shell calls that ran, and which of them may change files,
         # for the press alone (`changed_after`); layer 1's fields are untouched.
         self.shell_seq = 0
@@ -2257,22 +2455,30 @@ class _ToolReportTally:
     def _add_write(
         self, at: float, cwd: str, call_id: str, name: str, tool_input: dict[str, Any]
     ) -> None:
-        result = self.results.get(call_id)
-        if result is None or result.get("is_error") is True:
+        found = self.results.get(call_id)
+        if found is None or found.block.get("is_error") is True:
             # Not established as written (review, 2026-09-24): an attempt.
             self.scan["write_attempts"] += 1
             return
         # A written file ages every earlier pass wherever it is. Only the path is
         # read: never `content`, `old_string`, `new_string` or `edits`.
-        self.last_write_at = max(self.last_write_at, at)
-        path = _written_path(tool_input.get("file_path") or tool_input.get("notebook_path"), cwd)
+        self._record_write(
+            at,
+            call_id,
+            name,
+            _written_path(tool_input.get("file_path") or tool_input.get("notebook_path"), cwd),
+        )
+
+    def _record_write(self, at: float, call_id: str, tool: str, path: str | None) -> None:
+        self.write_calls.append((at, call_id))
         if path is None:
             self.scan["outside_paths"] += 1
             return
-        self.writes[path] = {"at": at, "record_id": call_id, "tool": name}
+        self.writes[path] = {"at": at, "record_id": call_id, "tool": tool}
 
     def _add_shell(self, at: float, cwd: str, call_id: str, tool_input: dict[str, Any]) -> None:
-        result = self.results.get(call_id)
+        found = self.results.get(call_id)
+        result = found.block if found is not None else None
         text = _tool_result_text(result) if result is not None else ""
         if result is not None and result.get("is_error") is True and not _EXITED_RE.match(text):
             # V3: the call never ran, so it is no run and supersedes nothing.
@@ -2288,16 +2494,25 @@ class _ToolReportTally:
             return
         self.scan["shell_calls"] += 1
         if call.fixers:
-            self.last_write_at = max(self.last_write_at, at)
+            self.write_calls.append((at, call_id))
+        for _index, target, start in call.redirect_writes:
+            # Owner, 2026-09-27: published only inside the working directory;
+            # a target outside it, or one the shell decides, counts as outside.
+            self._record_write(at, call_id, "Bash", call.written_path(target, start, cwd))
         self.scan["background"] += call.launches()
         foreground = [i for i in call.meaningful if not call.background(i)]
         if foreground and not [i for i in call.checks if i in foreground]:
             self.scan["other_commands"] += 1
             self.scan["read_only_commands"] += not call.changes()
-        self._add_runs(call, call_id, result, text)
+        self._add_runs(call, call_id, result, text, found.at if found is not None else None)
 
     def _add_runs(
-        self, call: _ShellCall, call_id: str, result: dict[str, Any] | None, text: str
+        self,
+        call: _ShellCall,
+        call_id: str,
+        result: dict[str, Any] | None,
+        text: str,
+        result_at: float | None,
     ) -> None:
         flag = result.get("is_error") if result is not None else None
         # Redaction runs over the whole read window before the tail is cut (item 5).
@@ -2338,16 +2553,27 @@ class _ToolReportTally:
                     "result": outcome,
                     "result_source": source,
                     "recorded": result is not None,
+                    # When the result arrived (DRC-4702): it decides the window
+                    # and which run is latest, never a change comparison.
+                    "result_at": result_at if result is not None and not background else None,
                     "background": background,
                     # Held for the press only (`claude_check_tails`); never
                     # copied onto the published entry.
                     "tail": _scrubbed_tail(text, words) if result is not None else "",
                     "seq": self.shell_seq,
                     "changes_later_in_call": any(
-                        i > index for i in (*call.fixers, *call.changing_others, *call.substituted)
+                        i > index
+                        for i in (
+                            *call.fixers,
+                            *call.changing_others,
+                            *call.substituted,
+                            *(j for j, _target, _at in call.redirect_writes),
+                        )
                     ),
-                    # V7: a fixer at or after this check in the call ages its pass.
-                    "fixes": any(i >= index for i in call.fixers),
+                    # V7: a fixer at or after this check in the call ages its pass,
+                    # and so does a later check's redirect into a file (review W6).
+                    "fixes": any(i >= index for i in call.fixers)
+                    or any(j > index for j, _target, _at in call.redirect_writes),
                 }
             )
 
@@ -2375,8 +2601,18 @@ class _ToolReportTally:
         from_tail = _tail_result(tail) if attributable else None
         return from_tail if from_tail is not None else ("not-recorded", "")
 
+    @staticmethod
+    def _latest(history: list[dict[str, Any]]) -> int:
+        """The index of the run whose evidence is newest: its result's time, or
+        its call's with none, and call order between equals (DRC-4702)."""
+        return max(
+            range(len(history)),
+            key=lambda i: (_evidence_at(history[i]), i),
+        )
+
     def _check_entry(self, history: list[dict[str, Any]]) -> dict[str, Any]:
-        latest = history[-1]
+        index = self._latest(history)
+        latest = history[index]
         if latest["background"]:
             source = "Claude Bash call run in the background, no result recorded"
         elif latest["recorded"]:
@@ -2390,9 +2626,17 @@ class _ToolReportTally:
             "record_id": latest["record_id"],
             "title": latest["title"],
             "result": latest["result"],
-            "earlier_failed": any(run["result"] == "failed" for run in history[:-1]),
+            "earlier_failed": any(
+                run["result"] == "failed" for i, run in enumerate(history) if i != index
+            ),
             "before_last_change": latest["result"] == "passed"
-            and (latest["fixes"] or self.last_write_at > latest["at"]),
+            and (
+                latest["fixes"]
+                or any(
+                    at >= latest["at"] and call_id != latest["record_id"]
+                    for at, call_id in self.write_calls
+                )
+            ),
             # Whether a command that may change files followed this run, in its
             # own call or a later one, in command order: the press's
             # `changed_after`, published so the live level can block on it
@@ -2403,6 +2647,8 @@ class _ToolReportTally:
         }
         if latest["result_source"]:
             entry["result_source"] = latest["result_source"]
+        if latest["result_at"] is not None:
+            entry["result_at"] = latest["result_at"]
         return entry
 
     def entries(self, sid: str) -> list[dict[str, Any]]:
@@ -2442,7 +2688,7 @@ class _ToolReportTally:
 
     def tails(self) -> dict[str, str]:
         """Each check's latest foreground run's redacted output tail, by call id."""
-        latest = (history[-1] for history in self.runs.values())
+        latest = (history[self._latest(history)] for history in self.runs.values())
         return {
             run["record_id"]: run["tail"] for run in latest if not run["background"] and run["tail"]
         }
@@ -2459,7 +2705,7 @@ class _ToolReportTally:
         or any later call that ran and may change files. A change before the
         check, or a read-only command after it, does not count.
         """
-        latest = (history[-1] for history in self.runs.values())
+        latest = (history[self._latest(history)] for history in self.runs.values())
         return frozenset(
             (run["record_id"], run["title"]) for run in latest if self._changed_after(run)
         )
@@ -3489,6 +3735,7 @@ def _semantic_fact_from_event(
         "earlier_failed",
         "before_last_change",
         "changed_after",
+        "result_at",
     ):
         if source_event.get(key) not in (None, ""):
             fact[key] = source_event[key]

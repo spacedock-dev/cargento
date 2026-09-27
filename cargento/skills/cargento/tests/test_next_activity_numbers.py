@@ -173,6 +173,23 @@ class TheActivityListNumbersItsEntriesTest(PanelPage):
         self.assertEqual(seen[0], seen[1])
         self.assertEqual([(1, "please add retry"), (2, "pytest"), (3, "ruff check .")], seen[0])
 
+    def test_a_check_whose_result_landed_after_the_window_opened_is_not_numbered(self) -> None:
+        # Owner, DRC-4702: numbering stays on call time, so a number never shifts when a result
+        # arrives. The check that began before the window stays counted with the earlier entries.
+        check = {"subject": "check", "result": "failed", "result_source": "flag"}
+        rows = [*WINDOWED, ("c-s", 55, "tool_report", "pytest straddling", check)]
+        before = rows_of(self.render(rows, WINDOW))
+        rows[-1] = ("c-s", 55, "tool_report", "pytest straddling", check | {"result_at": 65})
+        html = self.render(rows, WINDOW)
+        self.assertEqual(before, rows_of(html))
+        self.assertEqual(
+            [(1, "please add retry"), (2, "added the wrapper"), (3, "wired it in")],
+            [(row["n"], row["summary"]) for row in rows_of(html)],
+        )
+        self.assertIn(
+            "3 earlier entries, from before your intent's window opened, are", text_of(html)
+        )
+
     def test_numbers_hold_when_an_entry_arrives_at_the_end(self) -> None:
         before = self.render(WINDOWED, WINDOW)
         after = self.render([*WINDOWED, ("a3", 90, "task_result", "ran the suite", {})], WINDOW)

@@ -426,7 +426,7 @@ class AnOlderStoreStillReadsTest(_StoreCase):
             "revision_read_at": NOW,
             "read_at": NOW + 10,
             "stamp": "read at 10:00",
-            "cutoff": "Read 1 of 1 entries.",
+            "cutoff": "Read 1 of the 1 entry after your words.",
             "scope": "mid-flight",
             "scope_text": reading.SCOPE_TEXT["mid-flight"],
             "ended_at_read": None,
@@ -1565,11 +1565,14 @@ class AReadingSaysHowFarItsEvidenceRanTest(_ProducerCase):
         assert assessment is not None
         self.assertEqual(300.0, assessment["evidence_through"])
 
-    def test_a_record_with_no_usable_time_says_so_with_none(self) -> None:
-        assessment, _why, _spent = self.produce(_reply(["goal"]), facts=[_pi_fact("f1", 0.0)])
+    def test_a_record_with_no_usable_time_is_not_read(self) -> None:
+        # DRC-4715: an entry with no time cannot be placed after the words, so a record of only
+        # those leaves the window nothing to read, and no reading claims how far it ran.
+        assessment, why, spent = self.produce(_reply(["goal"]), facts=[_pi_fact("f1", 0.0)])
 
-        assert assessment is not None
-        self.assertIsNone(assessment["evidence_through"])
+        self.assertIsNone(assessment)
+        self.assertEqual(reading.WITHHELD_WINDOW_EMPTY, why)
+        self.assertFalse(spent)
 
 
 # ------------------------------------------------------------------------------ unasked lane

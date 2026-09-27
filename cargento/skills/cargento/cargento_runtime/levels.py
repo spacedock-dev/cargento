@@ -434,11 +434,13 @@ class _LineTally:
             self.not_shown += 1
             return
         # A pass shows a line only inside the reading's window, as
-        # `reading.check_supports` requires (V5); one with no time cannot.
+        # `reading.check_supports` requires (V5), read by when its result
+        # arrived (DRC-4702); one with no time cannot.
         inside_window = [
             f
             for f in passes
-            if (at := _at(f)) is not None and (self.window is None or at >= self.window)
+            if (at := reading.evidence_at(f)) is not None
+            and (self.window is None or at >= self.window)
         ]
         if result == reading.RESULT_CONSISTENT and not why and inside_window:
             self.shown.extend(_ids(inside_window))
@@ -505,7 +507,9 @@ def analysis_level(
         tally.read(row, outcome_line=reading.is_outcome_line(name))
 
     failed = [f for f in _checks(evidence) if f.get("result") == reading.RESULT_FAILED]
-    in_window = [f for f in failed if window is None or (_at(f) or window) >= window]
+    in_window = [
+        f for f in failed if window is None or (reading.evidence_at(f) or window) >= window
+    ]
     # A failure the counts hold and the listing dropped has no time to place.
     unplaced = _count(evidence.scan, "failed") > len(failed)
     reasons = [

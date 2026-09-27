@@ -4853,7 +4853,7 @@ class AnnotateRouteTest(unittest.TestCase):
                     "evidence": "turn transcript",
                     "revision": 1,
                     "cutoff": 1_000.0,
-                    "cutoff_text": "Read 4 of 4 entries in the observed record.",
+                    "cutoff_text": "Read 4 of the 4 entries after your words.",
                     "withdrawn": False,
                 }
             ],
@@ -4998,7 +4998,7 @@ class AnnotateRouteTest(unittest.TestCase):
                     "evidence": "turn transcript",
                     "revision": 1,
                     "cutoff": 1_000.0,
-                    "cutoff_text": "Read 4 of 4 entries in the observed record.",
+                    "cutoff_text": "Read 4 of the 4 entries after your words.",
                     "withdrawn": False,
                 }
             ],

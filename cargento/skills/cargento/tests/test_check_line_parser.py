@@ -11,12 +11,14 @@ from __future__ import annotations
 
 import itertools
 import json
+import ntpath
+import os
 import re
 import shlex
 from typing import TYPE_CHECKING, Any
 from unittest import mock
 
-from cargento_runtime import project_context, reading
+from cargento_runtime import project_context, reading, records
 
 from .test_claude_checks import SHORT, ClaudeChecksTestCase, Transcript
 
@@ -117,7 +119,12 @@ class CheckLineTestCase(ClaudeChecksTestCase):
     def assert_the_prompt_row_holds_neither_half(self, checks: list[dict[str, Any]]) -> None:
         """The prompt row on its own: exactly one row per listed check, built from
         its masked line, and neither half of the value anywhere in the rows."""
-        rows = [row for row in self.ledger if row["type"] == reading.TOOL_REPORT_TYPE]
+        # A check's redirect target is a written-path row beside it (DRC-4709).
+        rows = [
+            row
+            for row in self.ledger
+            if row["type"] == reading.TOOL_REPORT_TYPE and row.get("subject") == "check"
+        ]
         self.assertEqual(len(checks), len(rows), rows)
         for check, row in zip(checks, rows, strict=True):
             self.assertTrue(row["summary"].startswith(check["title"]), row["summary"])
@@ -773,3 +780,114 @@ class TheVerifiersThreeFindings(CheckLineTestCase):
                 text, checks, _scan = self.published()
                 self.assertEqual(1, len(checks))
                 self.assertNotIn(HALF_A, text)
+
+
+class ACdInsideASubshellDoesNotCarryPastIt(CheckLineTestCase):
+    """DRC-4724's first criterion: a `(` at command position opens a subshell,
+    and its `)` restores the directory current at the `(`, as a `bash -c`
+    wrapper already does."""
+
+    @staticmethod
+    def check_directories(command: str) -> list[str]:
+        """Each check's directory, normalised on both sides of the comparison.
+
+        The directory is the check's identity key, joined with `os.path` as it
+        was before DRC-4724, so on Windows a directory a `cd` reached carries
+        backslashes while the starting one keeps what the record said. It is
+        never published; a written path is, and it is always `/`-separated
+        (`test_a_published_path_is_slash_separated_whatever_the_os`).
+        """
+        call = project_context._ShellCall(0.0, "/w", {"command": command})
+        return [os.path.normpath(call.directories[index]) for index in call.checks]
+
+    def assert_directories(self, expected: list[str], command: str) -> None:
+        self.assertEqual([os.path.normpath(path) for path in expected],
+                         self.check_directories(command))  # fmt: skip
+
+    def test_each_check_runs_in_the_directory_its_subshell_left(self) -> None:
+        for command, expected in (
+            ("(cd sub && pytest); pytest", ["/w/sub", "/w"]),
+            ("(cd sub) && pytest", ["/w"]),
+            ("(cd a; (cd b; pytest); pytest); pytest", ["/w/a/b", "/w/a", "/w"]),
+            ("cd a && (cd b && pytest) && pytest", ["/w/a/b", "/w/a"]),
+            ("(cd sub && pytest ; ); pytest", ["/w/sub", "/w"]),
+            ("(bash -c 'cd x && pytest'); pytest", ["/w/x", "/w"]),
+            ("( bash -c 'cd x' && cd y && pytest ); pytest", ["/w/y", "/w"]),
+            ("bash -c '(cd x && pytest); pytest'; pytest", ["/w/x", "/w", "/w"]),
+        ):
+            with self.subTest(command=command):
+                self.assert_directories(expected, command)
+
+    def test_a_parenthesis_that_opens_no_subshell_changes_nothing(self) -> None:
+        for command, expected in (
+            ("cd sub; case x in a) true;; esac; pytest", ["/w/sub"]),
+            ("case x in a) true;; esac; pytest", ["/w"]),
+            ("cd sub && f() { true; }; pytest", ["/w/sub"]),
+            ("cd sub && ((n = 1)) && pytest", ["/w/sub"]),
+            ("cd sub; echo $(cd other); pytest", ["/w/sub"]),
+        ):
+            with self.subTest(command=command):
+                self.assert_directories(expected, command)
+
+    def test_a_failure_in_the_subshell_is_not_superseded_by_a_pass_outside_it(self) -> None:
+        self.session.bash("cd sub && pytest", "1 failed", is_error=True)
+        self.session.bash("(cd sub && true); pytest", "", is_error=False)
+        results = sorted(c["result"] for c in self.checks())
+        self.assertEqual(["failed", "passed"], results)
+        self.assertEqual([False, False], [c["earlier_failed"] for c in self.checks()])
+
+    def test_the_published_line_is_unchanged_by_the_subshell(self) -> None:
+        self.session.bash(f"(cd api && pytest --password {HALF_A} -q); pytest", "", is_error=False)
+        text, checks, _scan = self.published()
+        self.assertEqual(
+            ["pytest", f"pytest --password {records.SECRET_MARKER} -q"],
+            sorted(c["title"] for c in checks),
+        )
+        self.assertNotIn(HALF_A, text)
+
+
+class APublishedPathIsTheSameOnEveryOs(CheckLineTestCase):
+    """PR #414's Windows run: a written path a reader sees never carries the
+    host's separator, whichever path module joined it."""
+
+    def test_a_published_path_is_slash_separated_whatever_the_os(self) -> None:
+        with (
+            mock.patch.object(os, "path", ntpath),
+            mock.patch.object(os, "sep", "\\"),
+        ):
+            call = project_context._ShellCall(
+                0.0, "C:\\work\\billing", {"command": "cd sub && pytest > logs/out.txt"}
+            )
+            index, target, start = call.redirect_writes[0]
+            self.assertEqual(index, start)
+            published = call.written_path(target, start, "C:\\work\\billing")
+            write = project_context._written_path(
+                "C:\\work\\billing\\src\\a.py", "C:\\work\\billing"
+            )
+        self.assertEqual("sub/logs/out.txt", published)
+        self.assertEqual("src/a.py", write)
+
+    def test_a_host_absolute_path_places_the_directory_and_the_target(self) -> None:
+        # PR #414's second Windows run: a drive or UNC path is a literal absolute path, for the
+        # `cd` that places the directory again and for a redirect target, and it still counts
+        # outside unless it resolves inside the working directory.
+        cwd = "C:\\work\\billing"
+        cases = (
+            ("cd $HOME && cd 'C:\\work\\billing\\src' && pytest > t4", "src/t4"),
+            ("cd $HOME && pytest > 'C:\\work\\billing\\abs.txt'", "abs.txt"),
+            ("cd $HOME && pytest > C:/work/billing/fwd.txt", "fwd.txt"),
+            ("cd $HOME && pytest > 'C:\\other\\x.txt'", None),
+            ("cd $HOME && pytest > '\\\\server\\share\\x.txt'", None),
+            # Unquoted, the shell reads the backslashes as escapes: `C:workbillingsrc` is
+            # relative to the drive's current directory, so the directory stays unknown.
+            ("cd $HOME && cd C:\\work\\billing\\src && pytest > t5", None),
+        )
+        with mock.patch.object(os, "path", ntpath), mock.patch.object(os, "sep", "\\"):
+            found = {}
+            for command, _expected in cases:
+                call = project_context._ShellCall(0.0, cwd, {"command": command})
+                ((_index, target, start),) = call.redirect_writes
+                found[command] = call.written_path(target, start, cwd)
+        for command, expected in cases:
+            with self.subTest(command=command):
+                self.assertEqual(expected, found[command])

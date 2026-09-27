@@ -236,11 +236,11 @@ class DepartureFollowUpTest(unittest.TestCase):
         2000 against `cutoff` 900.
         """
         same_evidence = (
-            _check(cutoff_text="Read 12 of 12 entries in the observed record."),
+            _check(cutoff_text="Read 12 of the 12 entries after your words."),
             _check(
                 at=2_000.0,
                 cutoff=2_000.0,
-                cutoff_text="Read 12 of 12 entries in the observed record.",
+                cutoff_text="Read 12 of the 12 entries after your words.",
                 constraint="",
             ),
         )

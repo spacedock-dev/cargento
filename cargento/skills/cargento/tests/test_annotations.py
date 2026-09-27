@@ -1613,7 +1613,7 @@ class AReadingIsKeptBesideTheWordsItReadTest(unittest.TestCase):
         base = {
             "revision_read": 1,
             "stamp": "read at 10:00",
-            "cutoff": "Read 1 of 1 entries",
+            "cutoff": "Read 1 of the 1 entry after your words",
             "scope": runtime_reading.SCOPE_FINAL,
             "scope_text": runtime_reading.SCOPE_TEXT[runtime_reading.SCOPE_FINAL],
             "ended_at_read": 99.0,
@@ -2252,7 +2252,7 @@ class AReadingTheStoreRefusesIsNotAReadingNobodyAskedForTest(unittest.TestCase):
             "revision_read": 1,
             "revision_read_at": 100.0,
             "stamp": "read at 10:00",
-            "cutoff": "Read 1 of 1 entries",
+            "cutoff": "Read 1 of the 1 entry after your words",
             "scope": runtime_reading.SCOPE_FINAL,
             "scope_text": runtime_reading.SCOPE_TEXT[runtime_reading.SCOPE_FINAL],
             "ended_at_read": 99.0,

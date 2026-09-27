@@ -1226,6 +1226,57 @@ class WhatTheReaderIsToldTheReadingCovered(unittest.TestCase):
         self.assertIn("70", sentence)
         self.assertIn("400", sentence)
 
+    def test_a_reader_is_told_how_many_entries_before_their_words_were_not_read(self) -> None:
+        # Owner rulings F2 and N4, 2026-09-27: each set counted apart, each clause only when it
+        # holds something, in the singular for one.
+        rows = (entry(id="a", at=NOW - 60.0), entry(id="b", at=NOW - 60.0))
+        for counts, opening in (
+            (
+                {"earlier": 2},
+                "Read 2 of the 3 entries after your words; 2 earlier entries were not read. ",
+            ),
+            (
+                {"earlier": 1},
+                "Read 2 of the 3 entries after your words; 1 earlier entry was not read. ",
+            ),
+            (
+                {"untimed": 1},
+                "Read 2 of the 3 entries after your words; 1 untimed entry was not read. ",
+            ),
+            (
+                {"earlier": 2, "untimed": 1},
+                (
+                    "Read 2 of the 3 entries after your words; 2 earlier "
+                    "and 1 untimed entries were not read. "
+                ),
+            ),
+            (
+                {"after_stop": 2},
+                (
+                    "Read 2 of the 3 entries after your words; 2 entries after the "
+                    "last observed stop were not read. "
+                ),
+            ),
+            (
+                {"earlier": 1, "after_stop": 1},
+                (
+                    "Read 2 of the 3 entries after your words; 1 earlier entry was not read; "
+                    "1 entry after the last observed stop was not read. "
+                ),
+            ),
+        ):
+            with self.subTest(counts=counts):
+                sentence = reading.cutoff_text(rows, 3, NOW, **counts)
+                self.assertTrue(sentence.startswith(opening + "Of those read, "), sentence)
+        self.assertTrue(
+            reading.cutoff_text(rows[:1], 1, NOW, earlier=1).startswith(
+                "Read 1 of the 1 entry after your words; 1 earlier entry was not read. "
+            )
+        )
+        plain = reading.cutoff_text(rows, 2, NOW)
+        self.assertTrue(plain.startswith("Read 2 of the 2 entries after your words. "), plain)
+        self.assertNotIn("not read", plain)
+
     def test_a_reader_is_told_when_the_reading_rests_on_nobody_but_the_agent(self) -> None:
         rows = (entry(id="a", at=NOW - 60.0), entry(id="b", at=NOW - 60.0))
         self.assertIn("2 the agent wrote", reading.cutoff_text(rows, 2, NOW))
@@ -1575,9 +1626,13 @@ class WhatOnePressActuallyCostsAndProduces(unittest.TestCase):
             {"n": 2, "at": 500.0, "goal": "the goal it read", "output": ""},
         ]
         # `now` well past the end, or the producer withholds on the settle
-        # window and this measures that instead of the stamp.
+        # window and this measures that instead of the stamp. The entry is
+        # after the words, or the window leaves nothing to read (DRC-4715).
         assessment, why, _spent = self._produce(
-            revisions=revisions, row={"ended_at": 600.0, "state": "idle"}, now=9_000.0
+            revisions=revisions,
+            row={"ended_at": 600.0, "state": "idle"},
+            now=9_000.0,
+            facts=[{**self.FACT, "at": 550.0}],
         )
 
         self.assertEqual("", why)
@@ -1626,7 +1681,7 @@ class WhatOnePressActuallyCostsAndProduces(unittest.TestCase):
         self.assertEqual(3, assessment["revision_read"])
         self.assertEqual(reading.SCOPE_MID_FLIGHT, assessment["scope"])
         self.assertEqual(reading.SCOPE_TEXT[reading.SCOPE_MID_FLIGHT], assessment["scope_text"])
-        self.assertIn("Read 1 of 1 entries", assessment["cutoff"])
+        self.assertIn("Read 1 of the 1 entry after your words", assessment["cutoff"])
         self.assertEqual({reading.CONSTRAINT_GOAL}, set(assessment["criteria"]))
 
     def test_a_reading_of_an_ended_session_records_the_end_it_rested_on(self) -> None:
@@ -2020,12 +2075,16 @@ class WhatACheckLetsAReadingSayAboutYourExpectedOutput(AClaudeCodeReadingProduce
         self.assertEqual(reading.WHY_CHECK_DOES_NOT_SHOW_IT, row["why"])
 
     def test_a_check_run_before_you_saved_your_words_supports_neither_verdict(self) -> None:
+        # DRC-4715: it is not offered at all, so the line is never put to a record that
+        # shows no work after the words.
         for result, token in (("failed", "departure"), ("passed", "consistent")):
             with self.subTest(result=result):
+                self.prompts.clear()
                 early = check_fact(result=result, at=40.0)
                 row = self._output([early, WORDS_FACT], token, [1])
                 self.assertEqual(reading.RESULT_UNVERIFIABLE, row["result"])
-                self.assertEqual(reading.WHY_CHECK_DOES_NOT_SHOW_IT, row["why"])
+                self.assertEqual(reading.WHY_NOT_ASKED, row["why"])
+                self.assertNotIn("pytest", self.prompts[0])
 
     def test_a_check_with_no_recorded_result_supports_neither_verdict(self) -> None:
         for token in ("departure", "consistent"):

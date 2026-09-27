@@ -350,6 +350,8 @@ WITHHELD_SETTLING = "settling"
 WITHHELD_STOP_SETTLING = "stop-settling"
 WITHHELD_REVISION_AFTER_END = "revision-after-end"
 WITHHELD_LEDGER_EMPTY = "ledger-empty"
+WITHHELD_WINDOW_EMPTY = "window-empty"
+WITHHELD_AFTER_STOP = "after-stop"
 WITHHELD_RECORD_UNREAD = "record-unread"
 WITHHELD_RECORD_ERROR = "record-error"
 WITHHELD_MODEL_UNAVAILABLE = "model-unavailable"
@@ -395,6 +397,19 @@ WITHHELD = {
     WITHHELD_LEDGER_EMPTY: (
         "No entry in the observed record names this session, so there is nothing to "
         "read your words against. Absence of evidence is not a reading."
+    ),
+    # Its own sentence, because the one above says no entry names the session,
+    # and here entries do: every one is from before the words or untimed
+    # (DRC-4715).
+    WITHHELD_WINDOW_EMPTY: (
+        "Every entry in the observed record for this session is from before your words or "
+        "has no time, so there is no work after them to read them against."
+    ),
+    # Its own sentence (owner, 2026-09-27): entries after the words exist, so
+    # neither sentence above is true; they are in a turn not yet stopped.
+    WITHHELD_AFTER_STOP: (
+        "Everything after your words came after the session's last observed stop, so there is "
+        "nothing finished to read yet."
     ),
     WITHHELD_RECORD_UNREAD: (
         "The observed record for this session has not been read, so it is unread rather "
@@ -661,6 +676,8 @@ class LedgerEntry(TypedDict):
     stale: NotRequired[bool]
     earlier_failed: NotRequired[bool]
     changed_after: NotRequired[bool]
+    # When a check's result arrived, where one did (DRC-4702).
+    result_at: NotRequired[float]
     tail: NotRequired[str]
     # Whether this entry demonstrates work on its session's harness, stamped by
     # `build_ledger` from `WORK_EVIDENCE_BY_HARNESS`.
@@ -1041,6 +1058,27 @@ def asks_output(output: str, entries: Iterable[Mapping[str, Any]]) -> bool:
     return bool(output.strip()) and any(demonstrates_work(entry) for entry in entries)
 
 
+def evidence_at(entry: Mapping[str, Any]) -> float | None:
+    """When an entry's evidence arrived: a check's result time where one was
+    recorded, and its call time otherwise.
+
+    One helper for every window test, on the ledger, the levels and a
+    published fact alike, since each carries `at` and `result_at` under the
+    same names. The page's `nextReadingEvidenceAt` is its copy. Owner,
+    2026-09-27 (DRC-4702): this decides the window and which run is latest;
+    every change comparison, and the page's numbering, keep the call time.
+    """
+    result_at = _number(entry.get("result_at"))
+    return result_at if result_at is not None and result_at > 0 else _number(entry.get("at"))
+
+
+def _before_window(entry: Mapping[str, Any], window_start: float) -> bool:
+    """Whether an entry's evidence cannot be placed at or after the window's
+    start: earlier than it, or with no time at all once a window is open."""
+    at = evidence_at(entry) or 0.0
+    return at < window_start or (window_start > 0 and at <= 0)
+
+
 def _citable(entry: LedgerEntry) -> bool:
     """Whether rule 3 would let a citation to this entry resolve.
 
@@ -1190,20 +1228,35 @@ def build_ledger(
             "work": fact.get("type") in WORK_EVIDENCE_BY_HARNESS.get(harness, frozenset()),
         }
         if is_report and tool_output is not None:
-            row["summary"] = _tool_report_summary(fact, cap_chars)
-            row["subject"] = str(fact.get("subject") or "")
-            row["result"] = str(fact.get("result") or "")
-            row["stale"] = fact.get("before_last_change") is True
-            row["earlier_failed"] = fact.get("earlier_failed") is True
-            branch = fact.get("branch")
-            record_id = branch.get("record_id") if isinstance(branch, dict) else None
-            tail = tool_output.get(record_id) if isinstance(record_id, str) else None
-            if row["subject"] == CHECK_SUBJECT and tail:
-                row["tail"] = _tail_field(tail)
-            row["changed_after"] = (record_id, fact.get("summary")) in changed_after
+            _add_report_fields(row, fact, cap_chars, tool_output, changed_after)
         rows.append(row)
     rows.sort(key=lambda row: row["at"])
     return tuple(rows)
+
+
+def _add_report_fields(
+    row: LedgerEntry,
+    fact: Mapping[str, Any],
+    cap_chars: int,
+    tool_output: Mapping[str, str],
+    changed_after: frozenset[tuple[str, str]],
+) -> None:
+    """A `TOOL_REPORT_TYPE` row's own fields, which `build_ledger` admits only
+    when tool output was given."""
+    row["summary"] = _tool_report_summary(fact, cap_chars)
+    row["subject"] = str(fact.get("subject") or "")
+    row["result"] = str(fact.get("result") or "")
+    row["stale"] = fact.get("before_last_change") is True
+    row["earlier_failed"] = fact.get("earlier_failed") is True
+    branch = fact.get("branch")
+    record_id = branch.get("record_id") if isinstance(branch, dict) else None
+    tail = tool_output.get(record_id) if isinstance(record_id, str) else None
+    if row["subject"] == CHECK_SUBJECT and tail:
+        row["tail"] = _tail_field(tail)
+    row["changed_after"] = (record_id, fact.get("summary")) in changed_after
+    result_at = _number(fact.get("result_at"))
+    if row["subject"] == CHECK_SUBJECT and result_at is not None and result_at > 0:
+        row["result_at"] = result_at
 
 
 def end_kind(row: Mapping[str, Any]) -> str:
@@ -1291,7 +1344,35 @@ def _last_turn(row: Mapping[str, Any], *, now: float, settle_sec: float) -> tupl
     return SCOPE_LAST_TURN, ""
 
 
-def cutoff_text(selected: Sequence[LedgerEntry], total: int, now: float) -> str:
+def _entries(count: int) -> str:
+    return f"{count} entry" if count == 1 else f"{count} entries"
+
+
+def _not_read(earlier: int, untimed: int, after_stop: int) -> str:
+    """The clauses naming each set a press did not read, each only when it
+    holds something (owner, 2026-09-27)."""
+    clauses = []
+    counts = [f"{n} {name}" for n, name in ((earlier, "earlier"), (untimed, "untimed")) if n]
+    if counts:
+        one = earlier + untimed == 1
+        clauses.append(f"{' and '.join(counts)} {'entry was' if one else 'entries were'} not read")
+    if after_stop:
+        clauses.append(
+            f"{_entries(after_stop)} after the last observed stop "
+            f"{'was' if after_stop == 1 else 'were'} not read"
+        )
+    return "".join(f"; {clause}" for clause in clauses)
+
+
+def cutoff_text(
+    selected: Sequence[LedgerEntry],
+    total: int,
+    now: float,
+    *,
+    earlier: int = 0,
+    untimed: int = 0,
+    after_stop: int = 0,
+) -> str:
     """What this reading actually read, by count and by author.
 
     Composed from measurements rather than written by the model, and it names
@@ -1301,12 +1382,18 @@ def cutoff_text(selected: Sequence[LedgerEntry], total: int, now: float) -> str:
 
     Two absences that are not the same absence: nothing in the record, and a
     record too large for any of it to fit. They rendered the same sentence.
+
+    `total` counts the entries after the words and through the observed stop.
+    `earlier` and `untimed` count those a reading may not cite, before the
+    words or with no time, and `after_stop` those after the words that came
+    after the last observed stop (owner, 2026-09-27).
     """
+    left_out = _not_read(earlier, untimed, after_stop)
     if not selected:
         return (
-            "No entry in the observed record was read."
+            f"No entry in the observed record was read{left_out}."
             if not total
-            else f"None of the {total} entries in the observed record could be read."
+            else f"None of the {_entries(total)} after your words could be read{left_out}."
         )
     mix = {
         name: sum(1 for row in selected if row["author"] == name)
@@ -1321,7 +1408,8 @@ def cutoff_text(selected: Sequence[LedgerEntry], total: int, now: float) -> str:
         if len(stamped) != len(selected):
             window += f", {len(selected) - len(stamped)} carrying no usable time"
     return (
-        f"Read {len(selected)} of {total} entries in the observed record, {window}: "
+        f"Read {len(selected)} of the {_entries(total)} after your words{left_out}. "
+        f"Of those read, {window}: "
         f"{mix[AUTHOR_PERSON]} you wrote, {mix[AUTHOR_AGENT]} the agent wrote, "
         f"{mix[AUTHOR_DERIVED]} Cargento derived. Nothing outside that was read."
     )
@@ -1666,12 +1754,14 @@ def check_supports(entry: Mapping[str, Any], result: str, window_start: float) -
     for a departure; passed, and not before the last change, for a consistent.
     A written path shows a write and no result, so it carries neither. One
     predicate per constraint, so the per-line checklist applies it line by line.
+    Inside the window is read by `evidence_at`, so a check whose result
+    landed after the words counts though its call began before them.
     """
     if str(entry.get("type") or "") != TOOL_REPORT_TYPE:
         return True
     if entry.get("subject") != CHECK_SUBJECT:
         return False
-    at = _number(entry.get("at")) or 0.0
+    at = evidence_at(entry) or 0.0
     if at <= 0 or at < window_start:
         return False
     if result == RESULT_DEPARTURE:
@@ -1791,8 +1881,14 @@ def _resolve_one(
             continue
         if value in by_index and value not in wanted:
             wanted.append(value)
-    # Rule 3: a departure or a consistent needs a citation that resolves.
-    cited = [by_index[value] for value in wanted[:MAX_CITES] if _citable(by_index[value])]
+    # Rule 3: a departure or a consistent needs a citation that resolves. One
+    # from before the window is refused the same way (DRC-4715): `produce`
+    # never numbers one, so this holds only against a hand-built selection.
+    cited = [
+        by_index[value]
+        for value in wanted[:MAX_CITES]
+        if _citable(by_index[value]) and not _before_window(by_index[value], window_start)
+    ]
     if result in (RESULT_DEPARTURE, RESULT_CONSISTENT) and not cited:
         result = RESULT_UNVERIFIABLE
         why = WHY_UNCITED
@@ -2038,17 +2134,9 @@ def produce(  # noqa: PLR0913
         tool_output=tails,
         changed_after=tool_output.changed_after if tool_output is not None else frozenset(),
     )
-    stopped: float | None = None
-    if scope == SCOPE_LAST_TURN:
-        # Through the last turn means through the observed stop. A resumed turn
-        # whose state update lags leaves the row idle at the old stop while the
-        # record moves on, and a later fact would then be read, and cited, as
-        # part of a turn it was not in. An entry with no time stays: it is
-        # counted apart and can carry no check.
-        stopped = _number(row.get("finished_at")) or 0.0
-        ledger = tuple(entry for entry in ledger if entry["at"] <= stopped)
-    if not ledger:
-        return None, WITHHELD_LEDGER_EMPTY, False
+    ledger, stopped, left_out, withheld = _ledger_to_read(ledger, row, scope, window_start(latest))
+    if withheld:
+        return None, withheld, False
     prompt, selected = build_prompt(
         ledger,
         goal=goal,
@@ -2075,7 +2163,7 @@ def produce(  # noqa: PLR0913
         detail_cap_chars=config.annotation_text_cap_chars,
         window_start=window_start(latest),
     )
-    cutoff = cutoff_text(selected.entries, len(ledger), now)
+    cutoff = cutoff_text(selected.entries, len(ledger), now, **left_out)
     if tool_output is not None and not admitted and _has_reports(facts, harness, sid):
         cutoff += (
             " The checks this session recorded were not sent, because tool output was not "
@@ -2118,6 +2206,40 @@ _STATUS_FAILURES = {
     "closed": (WITHHELD_STOPPING, False),
     "cancelled": (WITHHELD_CANCELLED_UNSENT, False),
 }
+
+
+def _ledger_to_read(
+    ledger: tuple[LedgerEntry, ...], row: Mapping[str, Any], scope: str, opened: float
+) -> tuple[tuple[LedgerEntry, ...], float | None, dict[str, int], str]:
+    """The entries a press may number, the stop it read through, how many it
+    left out and why, and why there are none when there are none."""
+    left_out = {"earlier": 0, "untimed": 0, "after_stop": 0}
+    if not ledger:
+        return ledger, None, left_out, WITHHELD_LEDGER_EMPTY
+    # Owner, 2026-09-27 (DRC-4715): nothing from before the words, and nothing
+    # with no time to place after them, is numbered, so nothing can cite it.
+    # Here rather than in `build_ledger`, which is the page-parity contract.
+    # Decided over the whole ledger, before the stop cut: that sentence says
+    # nothing is after the words, which a turn the cut removed contradicts
+    # (review F1).
+    if all(_before_window(entry, opened) for entry in ledger):
+        return (), None, left_out, WITHHELD_WINDOW_EMPTY
+    # Through the last turn means through the observed stop. A resumed turn
+    # whose state update lags leaves the row idle at the old stop while the
+    # record moves on, and a later fact would then be read, and cited, as part
+    # of a turn it was not in.
+    stopped = (_number(row.get("finished_at")) or 0.0) if scope == SCOPE_LAST_TURN else None
+    kept: list[LedgerEntry] = []
+    for entry in ledger:
+        if _before_window(entry, opened):
+            left_out["untimed" if (evidence_at(entry) or 0.0) <= 0 else "earlier"] += 1
+        elif stopped is not None and entry["at"] > stopped:
+            left_out["after_stop"] += 1
+        else:
+            kept.append(entry)
+    # Entries after the words exist, so an empty list here is a turn not yet
+    # stopped, never an empty record (owner, 2026-09-27).
+    return tuple(kept), stopped, left_out, "" if kept else WITHHELD_AFTER_STOP
 
 
 def _call_failed(model: Callable[..., tuple[str, str]], status: str) -> tuple[str, bool] | None:

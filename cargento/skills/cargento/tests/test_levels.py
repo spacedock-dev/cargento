@@ -627,3 +627,30 @@ class CorrectionRoundTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ResultTimeTest(unittest.TestCase):
+    """DRC-4702: a check whose call began before the window and whose result
+    landed inside it is read as inside the window, by both sources' window
+    checks. Change comparisons keep the call time."""
+
+    def test_a_straddling_pass_shows_the_line(self) -> None:
+        facts = evidence(
+            [check("c1", SAVE - 10, "passed") | {"result_at": SAVE + 5}],
+            scan(passed=1),
+        )
+        level = analyze(SUPPORTED, facts)
+        self.assertEqual(levels.NONE_OR_LOW, level.level)
+        self.assertIn("c1", level.cites)
+
+    def test_a_straddling_failure_reads_high(self) -> None:
+        facts = evidence(
+            [check("c1", SAVE - 10, "failed") | {"result_at": SAVE + 5}], scan(failed=1)
+        )
+        self.assertEqual(levels.HIGH, analyze(SUPPORTED, facts).level)
+
+    def test_a_result_before_the_window_stays_outside_it(self) -> None:
+        facts = evidence(
+            [check("c1", SAVE - 10, "failed") | {"result_at": SAVE - 5}], scan(failed=1)
+        )
+        self.assertEqual(levels.NOT_ENOUGH, analyze(SUPPORTED, facts).level)

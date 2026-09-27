@@ -7559,12 +7559,18 @@ console.log(JSON.stringify({
             "consistentOnFailure",
             "departureOnPass",
             "consistentOnAgedPass",
-            "beforeTheWords",
             "writtenPath",
         ):
             with self.subTest(case=name):
                 self.assertEqual(unverifiable, out[name]["result"])
                 self.assertEqual(sentence, out[name]["why"])
+        # DRC-4715: a check from before the words is not a citation at all, so it is refused
+        # the way any unresolvable citation is, rather than read as a check that does not show it.
+        self.assertEqual(unverifiable, out["beforeTheWords"]["result"])
+        self.assertEqual(
+            "Nothing resolvable was cited, so there is no entry to read this against.",
+            out["beforeTheWords"]["why"],
+        )
         self.assertEqual("departure", out["departureOnFailure"]["result"])
 
     def test_a_stored_reason_about_checks_has_a_sentence_of_its_own(self) -> None:
@@ -7618,6 +7624,191 @@ console.log(JSON.stringify({
         self.assertEqual([True], out["pi"])
         self.assertEqual("not verifiable from available evidence", out["codexResult"])
         self.assertEqual("consistent with the evidence read", out["piResult"])
+
+
+@unittest.skipUnless(shutil.which("node"), "node not available")
+class ACheckWhoseResultLandedAfterTheWordsIsReadOnThePageTest(NextPageJsHarness):
+    """DRC-4702 on the page: result time decides the window, as the producer's
+    `reading.check_supports` decides it, and the two are tied by one table."""
+
+    FIXTURE = NextCockpitCompositionTest.FIXTURE
+    ENTRIES = WhatTheBoardShowsOfAReadingThatCitedACheck.ENTRIES
+    # (call time, result time, result, aged, verdict, window start): each row
+    # is read by both rules. `changed_after` is left out on purpose: the page's
+    # copy does not read it yet, a divergence filed on its own.
+    CASES: ClassVar[list[tuple[Any, Any, str, bool, str, Any]]] = [
+        (40, 60, "failed", False, "departure", 50),
+        (40, 50, "failed", False, "departure", 50),
+        (40, 45, "failed", False, "departure", 50),
+        (40, None, "failed", False, "departure", 50),
+        (40, 0, "failed", False, "departure", 50),
+        (60, None, "failed", False, "departure", 50),
+        (40, 60, "passed", False, "consistent with the evidence read", 50),
+        (40, 60, "passed", True, "consistent with the evidence read", 50),
+        (40, 60, "failed", False, "consistent with the evidence read", 50),
+        (0, 60, "failed", False, "departure", 50),
+        (None, None, "failed", False, "departure", 50),
+        (40, 45, "failed", False, "departure", None),
+        # Window lens, J2: a result time that is no time falls back to the call.
+        (50, 0, "failed", False, "departure", 50),
+        (50, -3, "failed", False, "departure", 50),
+    ]
+
+    def run_fixture(self, checks: str) -> object:
+        return self._run_page_js(
+            "await __settle();\nawait __settle();\n" + checks,
+            storage_prelude({}) + self.FIXTURE,
+        )
+
+    def test_a_check_whose_result_landed_inside_the_window_carries_its_verdict(self) -> None:
+        out = self.run_fixture(
+            self.ENTRIES
+            + """
+const straddling = check("c1", "failed", {at:40, resultAt:60});
+const early = check("c1", "failed", {at:40, resultAt:45});
+console.log(JSON.stringify({
+  straddling: output("departure", ["c1"], [straddling]).result,
+  early: output("departure", ["c1"], [early]).result,
+  mapped: nextCockpitWorkEntries({harness:"claude", sid:"s1"}, {facts:[
+    {fact_id:"c1", type:"tool_report", subject:"check", at:40, result_at:60,
+     source_session:{harness:"claude", sid:"s1"}},
+    {fact_id:"c2", type:"tool_report", subject:"check", at:41,
+     source_session:{harness:"claude", sid:"s1"}}]}).map(e => e.resultAt),
+}));
+"""
+        )
+        assert isinstance(out, dict)
+        self.assertEqual("departure", out["straddling"])
+        self.assertEqual("not verifiable from available evidence", out["early"])
+        self.assertEqual([60, None], out["mapped"])
+
+    def test_the_page_and_the_producer_place_a_check_in_the_window_alike(self) -> None:
+        from cargento_runtime import reading  # noqa: PLC0415 - kept beside the one test using it
+
+        page_cases = [
+            {
+                "entry": {
+                    "type": "tool_report",
+                    "subject": "check",
+                    "result": result,
+                    "at": at,
+                    "resultAt": result_at,
+                    "beforeLastChange": aged,
+                },
+                "verdict": verdict,
+                "window": window,
+            }
+            for at, result_at, result, aged, verdict, window in self.CASES
+        ]
+        out = self.run_fixture(
+            f"const cases = {json.dumps(page_cases)};\n"
+            "console.log(JSON.stringify(cases.map(c =>\n"
+            "  nextReadingCheckSupports(c.entry, c.verdict, c.window))));\n"
+        )
+        server = [
+            reading.check_supports(
+                {
+                    "type": reading.TOOL_REPORT_TYPE,
+                    "subject": "check",
+                    "result": result,
+                    "at": at,
+                    "result_at": result_at,
+                    "stale": aged,
+                },
+                verdict,
+                0.0 if window is None else window,
+            )
+            for at, result_at, result, aged, verdict, window in self.CASES
+        ]
+        self.assertEqual(server, out)
+        self.assertIn(True, server)
+        self.assertIn(False, server)
+
+
+@unittest.skipUnless(shutil.which("node"), "node not available")
+class AStoredCitationFromBeforeTheWindowIsUncitedOnThePageTest(NextPageJsHarness):
+    """DRC-4715 on the page, for a reading stored before the producer stopped
+    numbering them: a citation of an entry from before the reading's window,
+    or with no time once a window is open, is refused like any citation that
+    does not resolve."""
+
+    FIXTURE = NextCockpitCompositionTest.FIXTURE
+    ENTRIES = (
+        WhatTheBoardShowsOfAReadingThatCitedACheck.ENTRIES
+        + """
+const said = (id, at) => ({id, type:"assistant_message", by:"", summary:"I will rewrite it in Go",
+  at, source:"root transcript · exact"});
+const goal = (cites, entries, extra) => nextCockpitReadingShape(
+  {revision_read_at: 50, ...(extra || {}), criteria: {goal: {result: "departure", cites}}},
+  annotation, entries, "").criteria.find(row => row.key === "goal");
+"""
+    )
+    # (evidence time, window): the producer's `_before_window` and the page's
+    # `nextReadingBeforeWindow` over the same rows.
+    CASES: ClassVar[list[tuple[Any, Any, Any]]] = [
+        (40, None, 50),
+        (50, None, 50),
+        (40, 60, 50),
+        (40, 45, 50),
+        (None, None, 50),
+        (0, None, 50),
+        (0, None, None),
+        (40, None, None),
+        (-5, None, None),
+    ]
+
+    def run_fixture(self, checks: str) -> object:
+        return self._run_page_js(
+            "await __settle();\nawait __settle();\n" + checks,
+            storage_prelude({}) + self.FIXTURE,
+        )
+
+    def test_a_citation_of_an_entry_from_before_the_window_is_uncited(self) -> None:
+        out = self.run_fixture(
+            self.ENTRIES
+            + """
+console.log(JSON.stringify({
+  before: goal(["a1"], [said("a1", 40)]),
+  untimed: goal(["a1"], [said("a1", null)]),
+  atTheStart: goal(["a1"], [said("a1", 50)]).result,
+  beside: goal(["a1", "a2"], [said("a1", 40), said("a2", 70)]).citedIds,
+  noWindow: goal(["a1"], [said("a1", 40)], {revision_read_at: null}).result,
+}));
+"""
+        )
+        assert isinstance(out, dict)
+        for name in ("before", "untimed"):
+            with self.subTest(case=name):
+                self.assertEqual("not verifiable from available evidence", out[name]["result"])
+                self.assertEqual(
+                    "Nothing resolvable was cited, so there is no entry to read this against.",
+                    out[name]["why"],
+                )
+        self.assertEqual("departure", out["atTheStart"])
+        self.assertEqual(["a2"], out["beside"])
+        self.assertEqual("departure", out["noWindow"])
+
+    def test_the_page_and_the_producer_place_an_entry_before_the_window_alike(self) -> None:
+        from cargento_runtime import reading  # noqa: PLC0415 - kept beside the one test using it
+
+        cases = [
+            {"entry": {"at": at, "resultAt": result_at}, "window": window}
+            for at, result_at, window in self.CASES
+        ]
+        out = self.run_fixture(
+            f"const cases = {json.dumps(cases)};\n"
+            "console.log(JSON.stringify(cases.map(c =>\n"
+            "  nextReadingBeforeWindow(c.entry, c.window))));\n"
+        )
+        server = [
+            reading._before_window(
+                {"at": at, "result_at": result_at}, 0.0 if window is None else window
+            )
+            for at, result_at, window in self.CASES
+        ]
+        self.assertEqual(server, out)
+        self.assertIn(True, server)
+        self.assertIn(False, server)
 
 
 @unittest.skipUnless(shutil.which("node"), "node not available")
@@ -8599,7 +8790,7 @@ __dashboard.sessions[0].departures = [{
   constraint: "TYPED GOAL", clause: "do not change the board while capturing",
   reading: "Two turns edited the running board.", revision: 2,
   at: __dashboard.generated - 600, cutoff: __dashboard.generated - 600,
-  cutoff_text: "Read 4 of 4 entries in the observed record.",
+  cutoff_text: "Read 4 of the 4 entries after your words.",
   evidence: "turn transcript"}];
 """
         out = self._open(self.DISCARDED, standing)

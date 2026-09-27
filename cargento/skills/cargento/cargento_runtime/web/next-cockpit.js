@@ -1578,6 +1578,7 @@ function nextCockpitWorkEntries(session, semantic){
         by: String(fact.by || ""),
         summary: String(fact.summary || "No summary published"),
         at: fact.at,
+        resultAt: fact.result_at,
         actorClaim: String(fact.actor_claim || ""),
         modelDerived: String(fact.actor_claim || "").startsWith("model-derived"),
         subject: String(fact.subject || ""),
@@ -2127,14 +2128,33 @@ function nextReadingDemonstratesWork(entry){
   return Boolean(entry && entry.work === true);
 }
 
+/* `reading.evidence_at`: a check's result time where one was recorded, and
+   its call time otherwise. It decides the window only; the numbering and every
+   change comparison keep the call time (owner, DRC-4702). */
+function nextReadingEvidenceAt(entry){
+  const resultAt = nextNumber(entry && entry.resultAt);
+  return resultAt != null && resultAt > 0 ? resultAt : nextNumber(entry && entry.at);
+}
+
+/* `reading._before_window`: an entry whose evidence cannot be placed at or
+   after the window's start, earlier than it or with no time once one is open.
+   A reading may not cite one (owner, DRC-4715); a test holds this to the
+   producer's rule. A reading with no window start refuses nothing here. */
+function nextReadingBeforeWindow(entry, windowStart){
+  const at = nextReadingEvidenceAt(entry) || 0;
+  const start = windowStart == null ? 0 : windowStart;
+  return at < start || (start > 0 && at <= 0);
+}
+
 /* `reading.check_supports`, spelt for the entries the page holds: a cited
-   tool report carries a verdict only as a check run in the window, failed for
-   a departure, passed and not before the last change for a consistent. A
-   written path shows a write and no result, so it carries neither. */
+   tool report carries a verdict only as a check whose result arrived in the
+   window, failed for a departure, passed and not before the last change for a
+   consistent. A written path shows a write and no result, so it carries
+   neither. A test holds this and the producer's rule to one table. */
 function nextReadingCheckSupports(entry, result, windowStart){
   if(String(entry && entry.type || "") !== "tool_report") return true;
   if(entry.subject !== "check") return false;
-  const at = nextNumber(entry.at);
+  const at = nextReadingEvidenceAt(entry);
   if(at == null || at <= 0 || (windowStart != null && at < windowStart)) return false;
   if(result === NEXT_READING_DEPARTURE) return entry.result === "failed";
   if(result === NEXT_READING_CONSISTENT) return entry.result === "passed" && !entry.beforeLastChange;
@@ -2204,7 +2224,11 @@ function nextCockpitConflictCandidates(annotation, entries){
 
 function nextCockpitReadingCriterion(key, label, clause, raw, entries, limit, unsettled,
     windowStart = null){
-  let citations = nextReadingCitations(raw, entries);
+  /* Refused like any citation that does not resolve. The producer never
+     numbers such an entry, so this holds only for a reading stored before it
+     stopped (DRC-4715). */
+  let citations = nextReadingCitations(raw, entries)
+    .filter(entry => !nextReadingBeforeWindow(entry, windowStart));
   const declared = raw && typeof raw === "object" ? String(raw.result || "") : "";
   const stored = raw && typeof raw === "object" ? String(raw.why || "") : "";
   let limitText = limit || "";

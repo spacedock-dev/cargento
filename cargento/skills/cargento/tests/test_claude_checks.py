@@ -14,13 +14,14 @@ from __future__ import annotations
 import datetime as dt
 import json
 import re
+import shlex
 import tempfile
 import unittest
 from pathlib import Path
 from typing import Any
 from unittest import mock
 
-from cargento_runtime import observer, project_context, semantic_history
+from cargento_runtime import levels, observer, project_context, semantic_history
 from cargento_runtime.config import build_runtime_config
 from cargento_runtime.state import build_runtime_state
 
@@ -29,6 +30,8 @@ SHORT = SID[:8]
 START = dt.datetime(2026, 9, 24, 3, 0, 0, tzinfo=dt.UTC)
 # Synthetic, and deliberately obvious: a real prefix followed by a run of one letter.
 FAKE_KEY = "sk-ant-api03-" + "Q" * 95
+# A value only a named form marks as secret, which redaction alone would not see.
+PLACEHOLDER = "EXAMPLEpw1234"
 # Node's summary glyph and failure glyph, written as escapes so review can read them.
 INFO = "\u2139"
 CROSS = "\u2716"
@@ -1295,3 +1298,334 @@ class ACheckFrozenAtAMomentIsTheCheckAsItStoodThen(ClaudeChecksTestCase):
         checks = [fact for fact in facts if fact.get("subject") == "check"]
         self.assertEqual("not-recorded", checks[0]["result"])
         self.assertEqual({}, press.tails)
+
+
+class ACheckWritesTheFileItsOutputIsRedirectedInto(ClaudeChecksTestCase):
+    """DRC-4709: a file redirect on a check segment is a write by that call. Owner,
+    2026-09-27: a target inside the working directory is published as a written
+    path, and one outside it counts only as outside."""
+
+    def facts(self) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+        events, scan = self.read()
+        return [
+            project_context._semantic_fact_from_event(e, e["kind"], "tool_report", "")
+            for e in events
+        ], scan
+
+    def writes(self) -> list[str]:
+        return sorted(e["title"] for e in self.read()[0] if e["subject"] == "write")
+
+    def test_a_target_inside_the_working_directory_is_a_written_path(self) -> None:
+        self.session.bash("pytest > src/out.txt", "", is_error=False)
+        events, scan = self.read()
+        write = next(e for e in events if e["subject"] == "write")
+        self.assertEqual("src/out.txt", write["title"])
+        self.assertEqual("Claude Bash call", write["source"])
+        self.assertEqual(1, scan["written_paths"])
+        facts, scan = self.facts()
+        level = levels.live_level(
+            levels.Evidence(tuple(facts), scan, 0, str(self.cwd)),
+            levels.Intent(saved=True, goal="Fix it", lines=("only touch web/",)),
+        )
+        self.assertIn(level.level, (levels.MEDIUM, levels.HIGH, levels.EXTREME))
+        self.assertNotIn(levels.REASON_FLOOR_MET, level.reasons)
+
+    def test_the_target_is_read_from_the_directory_the_check_ran_in(self) -> None:
+        self.session.bash("cd src && pytest >> logs/run.txt", "", is_error=False)
+        self.session.bash("(cd web && pytest > a.txt); pytest 2> b.txt", "", is_error=False)
+        self.assertEqual(["b.txt", "src/logs/run.txt", "web/a.txt"], self.writes())
+
+    def test_a_target_outside_it_or_unplaceable_is_counted_as_outside(self) -> None:
+        for command in (
+            "pytest > /tmp/out.txt",
+            "pytest > ../elsewhere.txt",
+            'pytest > "$OUT"',
+            "pytest > $(mktemp)",
+            "pytest > ~/out.txt",
+            "pytest &> `mktemp`",
+        ):
+            with self.subTest(command=command):
+                self.setUp()
+                self.session.bash(command, "", is_error=False)
+                _events, scan = self.read()
+                self.assertEqual([], self.writes())
+                self.assertEqual(0, scan["written_paths"])
+                self.assertEqual(1, scan["outside_paths"])
+
+    def test_a_redirect_to_nothing_or_a_descriptor_writes_nothing(self) -> None:
+        for command in (
+            "pytest > /dev/null",
+            "pytest 2>&1",
+            "pytest < in.txt",
+            "pytest >&-",
+            "pytest >>/dev/null",
+            "pytest &>>/dev/null",
+            "pytest 2>/dev/stderr",
+            "pytest >/dev/stdout",
+        ):
+            with self.subTest(command=command):
+                self.setUp()
+                self.session.bash(command, "", is_error=False)
+                _events, scan = self.read()
+                self.assertEqual(0, scan["written_paths"] + scan["outside_paths"])
+
+    def test_a_checks_own_redirect_does_not_age_its_own_pass(self) -> None:
+        self.session.bash("pytest > src/out.txt", "", is_error=False)
+        check = self.only_check()
+        self.assertEqual("passed", check["result"])
+        self.assertIs(False, check["before_last_change"])
+        self.assertIs(False, check["changed_after"])
+        self.assertIsNone(self.read()[1]["last_changing_command_at"])
+
+    def test_it_ages_an_earlier_check_in_the_same_call_and_not_a_later_one(self) -> None:
+        self.session.bash("ruff check . && pytest > out.txt", "", is_error=False)
+        found = {e["title"]: e for e in self.checks()}
+        self.assertIs(True, found["ruff check ."]["changed_after"])
+        self.assertIs(False, found["pytest"]["changed_after"])
+        self.setUp()
+        self.session.bash("pytest > out.txt && ruff check .", "", is_error=False)
+        found = {e["title"]: e for e in self.checks()}
+        self.assertIs(False, found["pytest"]["changed_after"])
+        self.assertIs(False, found["ruff check ."]["changed_after"])
+
+    def test_a_harmless_device_redirect_later_ages_no_pass(self) -> None:
+        # Review W5.
+        for later in ("mypy . >>/dev/null", "mypy . &>>/dev/null", "mypy . 2>/dev/stderr"):
+            with self.subTest(later=later):
+                self.setUp()
+                self.session.bash("pytest", "5 passed", is_error=False)
+                self.session.bash(later, "", is_error=False)
+                found = {e["title"]: e for e in self.checks()}
+                self.assertIs(False, found["pytest"]["before_last_change"])
+                self.assertEqual(0, self.read()[1]["outside_paths"])
+
+    def test_a_later_write_in_the_same_call_ages_the_earlier_pass(self) -> None:
+        # Review W6 and Codex 2: `before_last_change` agrees with `changed_after`, so the
+        # server and the page read the same pass as aged.
+        self.session.bash("pytest && mypy . > src/x.py", "", is_error=False)
+        found = {e["title"]: e for e in self.checks()}
+        self.assertIs(True, found["pytest"]["before_last_change"])
+        self.assertIs(True, found["pytest"]["changed_after"])
+        self.assertIs(False, found["mypy ."]["before_last_change"])
+
+    def test_it_ages_a_pass_from_an_earlier_call(self) -> None:
+        self.session.bash("pytest", "5 passed", is_error=False)
+        self.session.bash("mypy . > report.txt", "", is_error=False)
+        found = {e["title"]: e for e in self.checks()}
+        self.assertIs(True, found["pytest"]["before_last_change"])
+        self.assertIs(False, found["mypy ."]["before_last_change"])
+
+    def test_the_published_path_is_redacted_like_any_written_path(self) -> None:
+        self.session.bash(f"pytest > logs/{FAKE_KEY}.txt", "", is_error=False)
+        published = json.dumps(self.read())
+        self.assertNotIn(FAKE_KEY, published)
+        self.assertNotIn(FAKE_KEY[20:60], published)
+
+    def test_a_target_holding_a_value_the_line_masks_is_never_published(self) -> None:
+        # Review W1: the check line masks the value, so the path beside it must not show it.
+        for command in (
+            f"pytest --password {PLACEHOLDER} > {PLACEHOLDER}.log",
+            f"TOKEN={PLACEHOLDER} pytest > out-{PLACEHOLDER}.log",
+            f'pytest > "password={PLACEHOLDER}.log"',
+            f"bash -c 'pytest --token {PLACEHOLDER}' > logs/{PLACEHOLDER}.txt",
+        ):
+            with self.subTest(command=command[:24]):
+                self.setUp()
+                self.session.bash(command, "", is_error=False)
+                events, scan = self.read()
+                self.assertNotIn(PLACEHOLDER, json.dumps(events))
+                self.assertEqual([], self.writes())
+                self.assertEqual(1, scan["outside_paths"])
+
+    def test_a_target_after_a_cd_the_shell_decides_is_counted_as_outside(self) -> None:
+        # Review W2 and Codex 1: the directory is unknown until a literal `cd` places it again.
+        for command in (
+            "cd ~/other && pytest > t1",
+            "cd $HOME && pytest > t2",
+            'cd "$OUTSIDE" && pytest > t3',
+            'cd "$(git rev-parse --show-toplevel)" && pytest > t4',
+            "cd && pytest > t5",
+            "cd - && pytest > t6",
+            "pushd sub && pytest > t7",
+            "cd sub && popd && pytest > t8",
+            "cd $HOME && cd src && pytest > t9",
+        ):
+            with self.subTest(command=command):
+                self.setUp()
+                self.session.bash(command, "", is_error=False)
+                _events, scan = self.read()
+                self.assertEqual([], self.writes())
+                self.assertEqual(1, scan["outside_paths"])
+
+    def test_cd_options_are_read_as_options_and_a_literal_cd_places_it_again(self) -> None:
+        for command, expected in (
+            ("cd -P sub && pytest > t1", ["sub/t1"]),
+            ("cd -L sub && pytest > t2", ["sub/t2"]),
+            ("cd -- sub && pytest > t3", ["sub/t3"]),
+            ("cd $HOME && cd {cwd}/src && pytest > t4", ["src/t4"]),
+            ("(cd $HOME && pytest); pytest > t5", ["t5"]),
+            ("cd $HOME && pytest > {cwd}/abs.txt", ["abs.txt"]),
+        ):
+            with self.subTest(command=command):
+                self.setUp()
+                # Quoted as a shell needs it: unquoted, a Windows path's backslashes are
+                # escapes, and the shell, like the parser, would read a drive-relative path.
+                self.session.bash(
+                    command.format(cwd=shlex.quote(str(self.cwd))), "", is_error=False
+                )
+                self.assertEqual(expected, self.writes())
+
+    def test_a_groups_own_redirect_is_read_where_the_group_started(self) -> None:
+        # Review W3: the outer shell opens it before the group's `cd` runs.
+        for command, inside in (
+            ("(cd sub && pytest) > o1", ["o1"]),
+            ("(cd sub && pytest) > ../x", []),
+            ("bash -c 'cd sub && pytest' > o2", ["o2"]),
+            ("bash -c 'cd sub && pytest' > ../y", []),
+            ("cd web && (cd sub && pytest) > o3", ["web/o3"]),
+            ("(cd a && (cd b && pytest) > o4)", ["a/o4"]),
+            ("(cd sub && pytest > in.txt) > o5", ["o5", "sub/in.txt"]),
+        ):
+            with self.subTest(command=command):
+                self.setUp()
+                self.session.bash(command, "", is_error=False)
+                _events, scan = self.read()
+                self.assertEqual(inside, self.writes())
+                self.assertEqual(0 if inside else 1, scan["outside_paths"])
+
+
+class AWriteAtTheSameTimeAsAPassAgesIt(ClaudeChecksTestCase):
+    """DRC-4709's tie item: a write or fixer from another call, recorded at the
+    same time as a pass, ages it. The pass's own call is ordered by its
+    segments instead, so `black . && pytest` keeps its pass current."""
+
+    def same_time_as(self, call_row: int) -> None:
+        """Stamp the last call with the time of an earlier call's record."""
+        self.session.rows[-2]["timestamp"] = self.session.rows[call_row]["timestamp"]
+
+    def test_an_edit_recorded_at_the_time_of_the_pass_ages_it(self) -> None:
+        self.session.bash("pytest", "5 passed", is_error=False)
+        pass_row = len(self.session.rows) - 2
+        self.session.edit(self.file("web/x.js"))
+        self.same_time_as(pass_row)
+        self.assertIs(True, self.only_check()["before_last_change"])
+
+    def test_a_fixer_recorded_at_the_time_of_the_pass_ages_it(self) -> None:
+        self.session.bash("pytest", "5 passed", is_error=False)
+        pass_row = len(self.session.rows) - 2
+        self.session.bash("black .", "", is_error=False)
+        self.same_time_as(pass_row)
+        self.assertIs(True, self.only_check()["before_last_change"])
+
+    def test_a_fixer_before_the_check_in_the_same_call_keeps_the_pass_current(self) -> None:
+        for command in ("black . && pytest", "ruff format . && ruff check --fix . && pytest"):
+            with self.subTest(command=command):
+                self.setUp()
+                self.session.bash(command, "", is_error=False)
+                found = {e["title"]: e for e in self.checks()}
+                self.assertEqual("passed", found["pytest"]["result"])
+                self.assertIs(False, found["pytest"]["before_last_change"])
+
+
+class ACheckCarriesTheTimeItsResultArrived(ClaudeChecksTestCase):
+    """DRC-4702: a check's result can land after the words it is read against,
+    so the published entry carries when its result arrived beside when its call
+    began. Each record in these fixtures is five seconds after the last."""
+
+    def test_a_recorded_run_publishes_the_time_of_the_record_that_holds_its_result(self) -> None:
+        self.session.bash("pytest", "5 passed", is_error=False)
+        check = self.only_check()
+        self.assertEqual(check["at"] + 5, check["result_at"])
+        fact = project_context._semantic_fact_from_event(check, check["kind"], "tool_report", "")
+        self.assertEqual(check["result_at"], fact["result_at"])
+
+    def test_the_fact_id_does_not_move_when_the_result_arrives(self) -> None:
+        self.session.bash("pytest", "5 passed", is_error=False)
+        check = self.only_check()
+        unrecorded = {k: v for k, v in check.items() if k != "result_at"}
+        self.assertEqual(
+            project_context._semantic_fact_from_event(unrecorded, "check_run", "tool_report", "")[
+                "fact_id"
+            ],
+            project_context._semantic_fact_from_event(check, "check_run", "tool_report", "")[
+                "fact_id"
+            ],
+        )
+
+    def test_a_run_with_no_result_or_in_the_background_has_no_result_time(self) -> None:
+        self.session.call("Bash", {"command": "pytest"})
+        self.assertNotIn("result_at", self.only_check())
+        self.setUp()
+        self.session.bash("pytest", "5 passed", is_error=False)
+        self.session.bash("pytest &", "", is_error=False)
+        self.assertNotIn("result_at", self.only_check())
+
+    def test_the_run_whose_result_arrived_last_is_the_latest(self) -> None:
+        first = self.session.call("Bash", {"command": "pytest"})
+        second = self.session.call("Bash", {"command": "pytest"})
+        self.session.result(second, "5 passed", is_error=False)
+        self.session.result(first, "Exit code 1\n1 failed", is_error=True)
+        check = self.only_check()
+        self.assertEqual("failed", check["result"])
+        self.assertEqual(first, check["record_id"])
+        self.assertIs(False, check["earlier_failed"])
+
+    def out_of_order(self, first_output: str, first_failed: bool, second_output: str,
+                     second_failed: bool) -> tuple[str, str]:  # fmt: skip
+        """Two runs of one check called in order, the second's result landing first."""
+        first = self.session.call("Bash", {"command": "pytest"})
+        second = self.session.call("Bash", {"command": "pytest"})
+        self.session.result(second, second_output, is_error=second_failed)
+        self.session.result(first, first_output, is_error=first_failed)
+        return first, second
+
+    def test_a_later_called_failure_is_an_earlier_failure_of_the_latest(self) -> None:
+        # Window lens, M13.
+        first, _second = self.out_of_order("5 passed", False, "Exit code 1\n1 failed", True)
+        check = self.only_check()
+        self.assertEqual(first, check["record_id"])
+        self.assertEqual("passed", check["result"])
+        self.assertIs(True, check["earlier_failed"])
+
+    def test_the_press_tail_belongs_to_the_published_run(self) -> None:
+        # Window lens, M17.
+        first, _second = self.out_of_order("5 passed", False, "Exit code 1\n1 failed", True)
+        check = self.only_check()
+        press = project_context.claude_check_press(self.config, str(self.path))
+        self.assertEqual(first, check["record_id"])
+        self.assertEqual({check["record_id"]}, set(press.tails))
+
+    def test_changed_after_names_the_published_run(self) -> None:
+        # Window lens, M18.
+        first = self.session.call("Bash", {"command": "pytest"})
+        second = self.session.call("Bash", {"command": "pytest"})
+        self.session.result(second, "Exit code 1\n1 failed", is_error=True)
+        self.session.bash("touch changed.py", "", is_error=False)
+        self.session.result(first, "5 passed", is_error=False)
+        check = self.only_check()
+        press = project_context.claude_check_press(self.config, str(self.path))
+        self.assertEqual(first, check["record_id"])
+        self.assertIn((first, "pytest"), press.changed_after)
+
+    def test_equal_result_times_pick_the_later_call(self) -> None:
+        # Window lens, M11.
+        first = self.session.call("Bash", {"command": "pytest"})
+        second = self.session.call("Bash", {"command": "pytest"})
+        self.session.result(second, "5 passed", is_error=False)
+        self.session.result(first, "Exit code 1\n1 failed", is_error=True)
+        self.session.rows[-1]["timestamp"] = self.session.rows[-2]["timestamp"]
+        self.assertEqual(second, self.only_check()["record_id"])
+
+    def test_a_result_after_a_frozen_moment_leaves_no_result_time(self) -> None:
+        self.session.bash("pytest", "5 passed", is_error=False)  # call 10 s, result 15 s
+        self.session.save(self.path)
+        until = (START + dt.timedelta(seconds=12)).timestamp()
+        facts, _press = project_context.frozen_claude_checks(
+            self.config, str(self.path), SID, until=until
+        )
+        self.assertNotIn("result_at", facts[0])
+        until = (START + dt.timedelta(seconds=16)).timestamp()
+        facts, _press = project_context.frozen_claude_checks(
+            self.config, str(self.path), SID, until=until
+        )
+        self.assertEqual(START.timestamp() + 15, facts[0]["result_at"])
