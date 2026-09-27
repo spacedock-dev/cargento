@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import math
+import os
 import re
 import string
 from datetime import UTC, datetime
@@ -50,6 +51,7 @@ _UNSAFE_CHARS = re.compile("[\\x00-\\x1f\\x7f\\u200b\\u200e\\u200f\\u202a-\\u202
 # scrub protects the screenshot and tells them nothing.
 
 _SECRET_MARKER: Final = "…REDACTED"  # noqa: S105 - the marker replaces a secret, it is not one
+SECRET_MARKER: Final = _SECRET_MARKER
 
 # `(name, characters of the match kept in front of the marker, anchored, pattern)`.
 #
@@ -465,6 +467,23 @@ def mask_words(words: list[str]) -> list[str]:
         )
         masked.append(_MASK_USERINFO.sub(lambda m: m.group(1) + _SECRET_MARKER + "@", formed))
     return masked
+
+
+def masked_values(words: list[str]) -> list[str]:
+    """The raw text `mask_words` replaced in each word, so a caller can remove
+    the same values from output that echoes the command."""
+    found = []
+    for word, masked in zip(words, mask_words(words), strict=True):
+        if word == masked:
+            continue
+        start = len(os.path.commonprefix([word, masked]))
+        rest, masked_rest = word[start:], masked[start:]
+        if masked_rest.endswith(SECRET_MARKER):
+            end = 0
+        else:
+            end = len(os.path.commonprefix([rest[::-1], masked_rest[::-1]]))
+        found.append(rest[: len(rest) - end])
+    return [value for value in found if value]
 
 
 def safe_text(value: Any, limit: int) -> str:

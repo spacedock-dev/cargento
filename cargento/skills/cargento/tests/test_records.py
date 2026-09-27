@@ -934,6 +934,9 @@ class MaskCommandTest(unittest.TestCase):
                 self.assertNotIn("EXAMPLEbb", masked)
                 self.assertIn("app:" if "app" in word else "u:", masked)
 
+    def test_the_userinfo_mask_keeps_the_user_and_the_host(self) -> None:
+        self.assertEqual(["app:\u2026REDACTED@db"], records.mask_words(["app:EXAMPLEaa@db"]))
+
     def test_a_command_with_nothing_to_mask_reads_as_it_was_typed(self) -> None:
         line = "python3 -m pytest tests/test_retry.py -q 2>&1 | tail -20"
         self.assertEqual(line, mask(line))

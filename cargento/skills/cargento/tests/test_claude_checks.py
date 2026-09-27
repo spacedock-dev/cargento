@@ -259,7 +259,8 @@ class WhatAReaderSeesOfTheChecksASessionRan(ClaudeChecksTestCase):
     def test_a_check_line_is_its_own_segment_and_never_the_rest_of_the_shell_line(self) -> None:
         self.session.bash("cd api && pytest -q 2>&1 | tail -3 ; echo done", "3 passed")
         title = self.only_check()["title"]
-        self.assertEqual("pytest -q 2>&1", title)
+        # A redirection is not an argument, so it is not published (review, 2026-09-27).
+        self.assertEqual("pytest -q", title)
 
     def test_a_program_file_is_a_check_only_when_test_stands_alone_in_its_name(self) -> None:
         for command, is_check in (
@@ -1063,6 +1064,33 @@ class TheClosedListIsTheDocumentsList(ClaudeChecksTestCase):
             with self.subTest(wrapper=wrapper):
                 words = [*re.sub(r"\bN\b", "60", wrapper).split(), "pytest", "-q"]
                 self.assertEqual(["pytest", "-q"], project_context._strip_runner_prefix(words))
+
+    def shell_options(self) -> tuple[list[str], list[str]]:
+        """The closed option set, parsed from amendment item 3: its letters and
+        its long options."""
+        text = self.DOC.read_text(encoding="utf-8")
+        amendment = text.split("### Amended 2026-09-25", 1)[1]
+        sentence = amendment.split("The option set is closed:", 1)[1].split(", with", 1)[0]
+        named = re.findall(r"`([^`]+)`", sentence)
+        return [n for n in named if len(n) == 1], [n for n in named if n.startswith("-")]
+
+    def test_every_shell_option_the_ruling_names_is_accepted_and_no_other(self) -> None:
+        letters, longs = self.shell_options()
+        self.assertIn("c", letters)
+        self.assertNotIn("x", letters)
+        self.assertIn("--login", longs)
+        accepted = [f"bash -{letter}c" for letter in letters if letter != "c"]
+        accepted += [f"bash {option} -c" for option in longs]
+        for wrapper in accepted:
+            with self.subTest(wrapper=wrapper):
+                self.setUp()
+                self.session.bash(f"{wrapper} 'pytest -q'", "", is_error=False)
+                self.assertEqual("pytest -q", self.only_check()["title"])
+        for letter in sorted(set("abefhikmnprstuvxBCEHPT") - set(letters)):
+            with self.subTest(refused=letter):
+                self.setUp()
+                self.session.bash(f"bash -{letter}c 'pytest -q'", "", is_error=False)
+                self.assertEqual([], self.checks())
 
     def test_every_shell_wrapper_the_ruling_names_stands_for_its_inner_line(self) -> None:
         shells = self.shell_wrappers()
