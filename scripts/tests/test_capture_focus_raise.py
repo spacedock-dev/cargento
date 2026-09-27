@@ -1433,18 +1433,30 @@ class DisclaimedSpawnTest(unittest.TestCase):
     @unittest.skipUnless(sys.platform == "darwin", ABSENT)
     def test_a_disclaimed_child_is_its_own_responsible_process(self) -> None:
         # The one variable this whole capture turns on, measured rather than
-        # assumed -- and measured against `/usr/bin/true`, which raises nothing.
+        # assumed -- against a shell that raises nothing and waits on a pipe.
         # An ordinary child inherits this process's responsible pid; a
         # disclaimed one answers itself.
+        # Not `/usr/bin/true`: an exited child has no responsible process, so
+        # the reading raced true's exit and answered None 42 of 200 runs on a
+        # loaded Mac (DRC-4707). The child is held until the reading is taken.
         # Falsified by: a disclaimed child still answering the parent's.
         mine = recorder.responsible_pid(os.getpid())
-        child, code = recorder._spawn_disclaimed(["/usr/bin/true"], allowed=True)
-        self.assertEqual(0, code)
-        self.assertIsNotNone(child)
-        assert child is not None
-        theirs = recorder.responsible_pid(child)
-        self.assertEqual(child, theirs)
-        self.assertNotEqual(mine, theirs)
+        hold, release = os.pipe()
+        os.set_inheritable(hold, True)
+        try:
+            child, code = recorder._spawn_disclaimed(
+                ["/bin/sh", "-c", f"read _ <&{hold}"], allowed=True
+            )
+        finally:
+            os.close(hold)
+        with os.fdopen(release, "w") as release_child:
+            self.assertEqual(0, code)
+            self.assertIsNotNone(child)
+            assert child is not None
+            theirs = recorder.responsible_pid(child)
+            self.assertEqual(child, theirs)
+            self.assertNotEqual(mine, theirs)
+            release_child.write("\n")
         self.assertEqual(0, recorder._reap(child))
 
     @unittest.skipUnless(sys.platform == "darwin", ABSENT)
