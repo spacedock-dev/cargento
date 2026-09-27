@@ -1209,7 +1209,9 @@ _WITHHELD = "…"
 # An arithmetic body holding a substitution: read as a change, never parsed.
 _UNREAD_BODY = "\0"
 _NESTING_CAP = 32
-_REDIRECTION_RE = re.compile(r"\d*(?:&>>|&>|<<<|<<-|<<|<&|<>|>>|>&|>\||<|>)")
+_REDIRECTION_RE = re.compile(
+    r"(?:\d+|\{[A-Za-z_][A-Za-z0-9_]*\})?(?P<op>&>>|&>|<<<|<<-|<<|<&|<>|>>|>&|>\||<|>)"
+)
 _BRACE_EXPANSION_RE = re.compile(r"\{[^{}]*(?:,|\.\.)[^{}]*\}")
 _CASE_WORD_RE = re.compile(r"(?:case|esac)(?=[\s;|&()]|$)")
 _COMMAND_STARTS = frozenset(" \t\n;(|&")
@@ -1443,6 +1445,9 @@ class _ShellLexer:
             raise _Unbalanced
         found: list[_Segment] = []
         words: list[str] = []
+        # `--{x,password} value` expands to `--x --password value`, so the
+        # word after a withheld brace word may be a named form's value.
+        hide_next = False
         while self.pos < len(self.text):
             if not words and self.text.startswith("((", self.pos):
                 # An arithmetic command: `<<` in it is a shift, not a heredoc.
@@ -1456,13 +1461,15 @@ class _ShellLexer:
             if joiner is None:
                 redirect = self._redirection()
                 if redirect is None:
-                    words.append(self._word())
+                    word = self._word()
+                    words.append(_WITHHELD if hide_next else word)
+                    hide_next = word == _WITHHELD
                 else:
                     self.redirects.append(redirect)
                 continue
             if words or self.redirects or self.bodies:
                 found.append(_Segment(words, joiner, self.redirects, self.bodies))
-            words, self.redirects, self.bodies = [], [], []
+            words, self.redirects, self.bodies, hide_next = [], [], [], False
             if joiner == "\n":
                 self._skip_bodies(self.heredocs)
                 self.heredocs = []
@@ -1539,7 +1546,7 @@ class _ShellLexer:
 
     def _process_substitution(self, match: re.Match[str]) -> bool:
         """`<(…)` and `>(…)` are words, not redirections."""
-        bare = match.group().lstrip("0123456789") in ("<", ">")
+        bare = match.group("op") in ("<", ">")
         return bare and self.text[match.end() : match.end() + 1] == "("
 
     def _heredoc(self, pending: list[tuple[str, bool]]) -> None:
@@ -1981,13 +1988,18 @@ def _is_check(words: list[str]) -> bool:
     return _is_named_runner(words) or _is_test_program(words)
 
 
+def _writes_a_file(redirects: list[str]) -> bool:
+    """A `>` into anything but `/dev/null` or another descriptor."""
+    return any(">" in target and not _HARMLESS_REDIRECT_RE.match(target) for target in redirects)
+
+
 def _reads_only(redirects: list[str], words: list[str]) -> bool:
     """Whether one segment is on the closed read-only list.
 
     A redirect into a file writes something the list does not name (review,
     2026-09-24); a substitution is read on its own, by `_body_reads_only`.
     """
-    if any(">" in target and not _HARMLESS_REDIRECT_RE.match(target) for target in redirects):
+    if _writes_a_file(redirects):
         return False
     writing = _WRITING_OPTIONS.get(words[0]) or _WRITING_OPTIONS.get(" ".join(words[:2]))
     if writing and writing & {w.split("=", 1)[0] for w in words[1:]}:
@@ -2167,6 +2179,12 @@ class _ShellCall:
         # A changing substitution runs even in a check's own arguments or an
         # assignment-only segment (review, 2026-09-27; DRC-4724).
         self.substituted = [i for i, part in enumerate(self.parts) if part.hides_change]
+        # `> build/output` alone truncates the file: no words, but a write.
+        self.substituted += [
+            i
+            for i, part in enumerate(self.parts)
+            if not part.words and _writes_a_file(part.redirects)
+        ]
 
     def _reads_only(self, index: int) -> bool:
         part = self.parts[index]

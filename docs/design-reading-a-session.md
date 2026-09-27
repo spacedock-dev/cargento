@@ -1270,7 +1270,7 @@ item 5's fields and the closed lists.
    nothing, `$(…)`, backticks and process substitutions to their matching end, and a comment at a
    word start. A `${…}` expansion is read whole, so a quoted `}` or a `)` inside it closes nothing,
    and inside a substitution a `case` pattern's `)` closes nothing either. `$((…))` and a `((…))`
-   command are arithmetic, so `<<` in them is a shift. A redirection (`>out`, `2>&1`, `&>`, `<in`,
+   command are arithmetic, so `<<` in them is a shift. A redirection (`>out`, `2>&1`, `&>`, `<in`, `{fd}>`,
    `<<<`, a heredoc operator) ends the word before it and is kept apart from the words, because the
    shell strips it before the program receives its arguments: `--password 2>&1 value` reaches the
    program as a flag and its value side by side. A heredoc is recognised only as an unquoted `<<` or
@@ -1309,7 +1309,8 @@ item 5's fields and the closed lists.
    `user:password@` is masked up to the last `@` in the word, whitespace included. A NUL decoded
    from `$'…'` ends that string, as it ends the argument the program receives. An unquoted word
    holding a brace expansion (`{a,b}`, `{x..y}`) is published as `…`, since the words it becomes are
-   unknown. Each value the check line masked, and each piece of it of four characters or more, is
+   unknown, and so is the word after it, since `--{x,password} value` expands to a named flag and
+   its value. Each value the check line masked, and each piece of it of four characters or more, is
    also removed from the output tail before redaction runs over it, since an echoed command repeats
    it. The named forms are unchanged: these forms and no others.
 6. A redirection is not an argument and is not published: not its target, not a here-string's
@@ -1317,6 +1318,8 @@ item 5's fields and the closed lists.
 7. A substitution runs whatever it names. A command or process substitution anywhere in a call, in
    a check's own arguments, an assignment, a redirection target or a wrapper's other words, counts
    as a change unless its own command is read-only by the closed lists, read with these same rules.
+   A segment that is only a redirection into a file (`> build/output`) writes that file, so it is a
+   change too.
    `$((…))` is arithmetic and runs nothing unless it holds a substitution. This also settles
    DRC-4724's second acceptance criterion.
 

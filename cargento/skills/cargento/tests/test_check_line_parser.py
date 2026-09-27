@@ -729,3 +729,47 @@ class AChangeASubstitutionOrRedirectionMakesIsNeverHidden(CheckLineTestCase):
                 self.session.bash("pytest", "5 passed", is_error=False)
                 self.session.bash(later, "", is_error=False)
                 self.assertIs(False, self.only_check()["changed_after"])
+
+
+class TheVerifiersThreeFindings(CheckLineTestCase):
+    """N1 to N3, from the fresh verifier's report of 2026-09-27."""
+
+    def test_a_segment_that_is_only_a_redirect_into_a_file_ages_the_pass(self) -> None:  # N1
+        for later in ("> build/output", ">> build/log", "bash -c '> build/output'", "&> build/x"):
+            with self.subTest(later=later):
+                self.fresh()
+                self.session.bash("pytest -q", "5 passed", is_error=False)
+                self.session.bash(later, "", is_error=False)
+                self.assertIs(True, self.only_check()["changed_after"])
+        self.fresh()
+        self.session.bash("pytest -q && > build/x", "5 passed", is_error=False)
+        self.assertIs(True, self.only_check()["changed_after"])
+
+    def test_a_redirect_to_nothing_or_a_descriptor_alone_ages_nothing(self) -> None:  # N1
+        for later in ("> /dev/null", "2>&1"):
+            with self.subTest(later=later):
+                self.fresh()
+                self.session.bash("pytest -q", "5 passed", is_error=False)
+                self.session.bash(later, "", is_error=False)
+                self.assertIs(False, self.only_check()["changed_after"])
+
+    def test_a_named_descriptor_redirect_is_a_redirection(self) -> None:  # N2
+        # bash 4.1 and later, and zsh, read `{fd}>` as a redirection, so the
+        # program receives the flag and the value side by side.
+        for redirect in ("{fd}>/dev/null", "{fd}<in", "{out}>>log", "{fd}>&-"):
+            with self.subTest(redirect=redirect):
+                self.fresh()
+                self.session.bash(f"pytest --password {redirect} {HALF_A} -q", "", is_error=False)
+                text, checks, _scan = self.published()
+                self.assertEqual(1, len(checks))
+                self.assertNotIn(HALF_A, text)
+                self.assert_the_prompt_row_holds_neither_half(checks)
+
+    def test_a_withheld_brace_word_withholds_the_word_after_it(self) -> None:  # N3
+        for command in (f"pytest --{{x,password}} {HALF_A}", f"pytest --password{{,}} {HALF_A}"):
+            with self.subTest(command=command[:20]):
+                self.fresh()
+                self.session.bash(command, "", is_error=False)
+                text, checks, _scan = self.published()
+                self.assertEqual(1, len(checks))
+                self.assertNotIn(HALF_A, text)

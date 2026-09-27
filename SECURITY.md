@@ -1154,7 +1154,7 @@ The content class is what a Claude Code transcript recorded about the checks a s
 files it wrote. A check is a shell command segment whose runner is on the ruling's closed list, and
 a program file counts only when `test` or `tests` stands alone as a word in its name. Its bounds:
 the check's own segment, never the rest of the shell line, with a substituted command shown as
-`$(…)`, a brace expansion shown as `…`, no redirection, here-string word or heredoc delimiter
+`$(…)`, a brace expansion and the word after it shown as `…`, no redirection, here-string word or heredoc delimiter
 published, a heredoc body never read as a command, and a trailing comment dropped, after credential redaction and masking of the forms redaction cannot
 recognise, clipped to 120 characters. Behind `bash -c`, `sh -c`, `zsh -c` or `bash -lc`, it is the
 inner segment alone, never the wrapper. A call with an unterminated quote is a syntax error and is
@@ -1178,8 +1178,8 @@ password in `user:password@`, up to the last `@` in the word, so one holding `/`
 is masked whole. The words are the ones the program receives: quotes removed, `$'…'` escapes
 decoded and backslash-newline continuations joined before masking and redaction run, so a value is
 masked whole however it was quoted, and an escaped key such as `$'\x41KIA…'` reaches redaction as
-the key it is. Redirections are set apart first, so a flag and its value are masked as a pair even
-with a redirection between them, and a NUL decoded from `$'…'` ends the argument as it does for the
+the key it is. Redirections, a named descriptor such as `{fd}>` included, are set apart first, so a
+flag and its value are masked as a pair even with a redirection between them, and a NUL decoded from `$'…'` ends the argument as it does for the
 program. A value after any other flag is published as typed unless it has a credential shape.
 
 The output tail is covered by credential-shape redaction, and by one more step: each value the
