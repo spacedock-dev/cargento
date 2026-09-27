@@ -1628,6 +1628,31 @@ The optional xterm JavaScript and CSS are vendored and served at `/assets/xterm.
 `/assets/xterm.css`. Only loopback peers with the ordinary origin checks can receive them, and
 both return 404 unless the interaction feature is enabled. Serving an asset starts no terminal.
 
+## Antigravity directions (a directions-only transcript read)
+
+DRC-4689 reads one more file: Antigravity's
+`<antigravity.root>/brain/<conversation-id>/.system_generated/logs/transcript.jsonl`, found by
+`observer.resolve_directions`. Only records whose `type` is `USER_INPUT` and whose `source` is
+`USER_EXPLICIT` are read, and of those only `content`, `created_at`, `step_index` and
+`truncated_fields` (`transcripts.antigravity_direction`). The planner's responses and thinking,
+tool calls, command records and their exit codes, system messages and conversation history are
+never parsed into anything. The file is read by the bounded tail read every transcript gets,
+refused when it is a link, and the conversation id is refused when it could climb out of
+`brain/`.
+
+What is read is the words the person typed, the class every other harness's user messages are
+already in. They become steer facts in the observed record, under the same line bound and
+redaction as those, and the newest one is the row's title and last prompt when the CLI log does
+not carry one, which it does not in 1.2.11. After a reader allows a reading, those directions may
+be sent to the reading model with the rest of the record, exactly as a Claude Code, Codex or Pi
+session's user messages are. The file is kept apart from `observer.resolve_transcript` on purpose:
+every caller of that one reads work or tool output (the observer, the gate and Spacedock boot
+scans, the working-directory read, workflow discovery), and none of them is handed this path, so
+"Cargento can't read work from this harness" stays true. A direction the harness truncated is
+refused by "Add it to my intent" rather than saved as the whole of what was typed. The shapes behind
+this are in
+[docs/captures/antigravity/transcript-shapes-1.2.11-macos.jsonl](docs/captures/antigravity/transcript-shapes-1.2.11-macos.jsonl).
+
 ## Off-machine nudges (reaching the operator away from the desk)
 
 Every signal Cargento sends today needs somebody in front of the machine: the macOS popup, the
@@ -2107,7 +2132,12 @@ The operator-cockpit prototype also reads dispatch evidence:
 - `collectors.codex._child_assignment` reads `spawn_agent` and `followup_task` arguments from
   the bounded transcript tail, matching a child task or target before summarizing its message.
 - `project_context._tool_call_events` and `project_context._tool_support` read Pi `bash` and
-  `subagent` arguments for dispatch events, assignment summaries, and counts.
+  `subagent` arguments for dispatch events, assignment summaries, and counts. The first reads
+  through `project_context._call_arguments`, which the Pi check reader shares, so DRC-4690's
+  results add no expression. That reader keeps a `bash` call's runner and result under DEC-23's
+  rules and publishes a title Cargento writes ("2 validation checks failed"), never the command or
+  its output. It reads the last 180 characters of the result text, redacted first, and the error
+  flag, and nothing of that tail reaches a prompt.
 - `project_context.codex_dispatch_events` reads `spawn_agent` arguments to join a task name to
   a readable dispatch artifact. Its backward scan is capped at 32 MiB by default; project event
   output is capped at 100 rows and semantic lines at 112 characters.
