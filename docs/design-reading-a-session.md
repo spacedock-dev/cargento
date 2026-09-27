@@ -1502,7 +1502,7 @@ the later-direction floor (item 9).
 4. A later direction before an analysis. When the record holds an unsettled later direction of the
    reader's, the Drift section asks before the press, naming how many are unsettled. For one it
    says "You gave a later direction at #<n>: "<first line>"."; for several, "You gave <N> later
-   directions since saving your intent, the latest at #<n>: "<first line>"." Then it offers "Keep
+   directions since saving your intent, the earliest at #<n>: "<first line>"." Then it offers "Keep
    my intent and analyze" or "Add it to my intent". Keep settles all of them (DEC-16's "The
    baseline still applies") and analyzes in one press, and counts as "Allow" where the disclosure
    beside it has not been allowed yet. Add opens a new outcome line holding the direction's raw text
@@ -2021,7 +2021,10 @@ question before the press in place of "Conflict to settle", and Add adopting a d
   Keep say "Save your intent, or undo your edit, to analyze drift."; Add says "Save your intent, or
   undo your edit, to add this direction." beside its pending line, not in the Drift control. A held
   goal is forgotten after a press only while it still equals the draft that press adopted, so
-  nothing typed while a request is open is dropped (fix round).
+  nothing typed while a request is open is dropped (fix round). An outcome line typed while Add's
+  save is open is kept too, and the stored line joins it with its place in the new list as its
+  origin, so the next lines save keeps the added direction rather than deleting it (second fix
+  round).
 - No level. `nextIntentDrafted` is the one predicate the level and the live estimate consult;
   `nextDriftEstimate` is the empty seam they fill, and a test stubs it to prove the guard can fail.
   "Save your intent to see a live estimate" is DRC-4696's.
@@ -2029,7 +2032,9 @@ question before the press in place of "Conflict to settle", and Add adopting a d
   list's flag, the question and the route agree about what is later.
 - The question. It stands in the control's place, with Keep the one primary and Add beside it.
   Keep is never the consent, so the disclosure stands after it, and only where Keep will analyze. "since your first prompt" replaces "since
-  saving your intent" over a draft. The number is `nextCockpitEntryNumbers`'; the sentence drops it
+  saving your intent" over a draft. Of several directions it quotes the earliest, the one Add
+  opens (owner, 2026-09-28): quoting the latest named a direction Add could not reach until the
+  ones before it were added or kept. The number is `nextCockpitEntryNumbers`'; the sentence drops it
   rather than naming one the list did not give. The block after the reading keeps only its neutral
   states (nothing since, settled, unread).
 - Keep's route. Where the page already knows no analysis can start (no reader, model calls off, no
@@ -2039,7 +2044,18 @@ question before the press in place of "Conflict to settle", and Add adopting a d
   to send it for a reading." over the confirming step's "Allow and analyze" (owner, fix round).
   Otherwise it goes to `POST /api/reading`. Either way it names `expected_revision`, a refused
   settlement says nothing was settled, the outcome is written to the polite live region, and a
-  settle hands focus to the next primary.
+  settle hands focus to the next primary. The region is the only place it is announced: the
+  sentence beside the control is drawn without `role="status"`, so a screen reader hears it once.
+  Each press empties the region first if it still holds the last Keep sentence, so the same
+  outcome twice is announced twice, and the unsaved-edit refusal is written there too. The next
+  Analyze or Allow press takes Keep's sentence back out.
+- Landing and holding still. The Sessions goal link lands on the Intent heading over an untouched
+  draft, and in the box only where nothing is drafted. The drafted box and the pending line are
+  as tall as their text whether focused or not. The first fix round held the focused draft at its
+  two-row resting height so Keep would not move under the press, and that hid the rest of the
+  draft Keep adopts (137 characters showed about 80 at 375px). A box that grew on focus and shrank
+  on the mousedown that blurred it swallowed the first press on the button below it, which is
+  what the pending line did to its save, a second Add and Keep (second fix round).
 - Add. It opens the earliest unsettled direction, so its save settles through that one only and the
   question comes back for any later one (fix round; the build first opened the newest, which
   settled the earlier ones unanswered). The pending line is one per session beside the lines draft,
