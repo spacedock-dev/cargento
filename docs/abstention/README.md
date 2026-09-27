@@ -37,6 +37,11 @@ file per producer, one run each. It holds:
   the CLI is the native installer's, a file under `~/.local/share/claude/versions` named for the
   version it reports. A stub on `PATH` or an `ANTHROPIC_BASE_URL` pointed elsewhere refuses the
   run before anything is written.
+- `signature`: what vouches for that CLI's origin. On macOS it is
+  `Developer ID Q6L2SF6YDW com.anthropic.claude-code`, written only after `codesign` confirmed the
+  pinned requirement, and an unsigned or foreign binary refuses the run before it is executed. On
+  Linux and Windows no signature is checked, and it reads `unchecked sha256:<hex>`, the hash of the
+  file that ran. [SECURITY.md](../../SECURITY.md#the-abstention-check) states that limit.
 - `spend`, the calls charged to the spend ledger when the run finished and the cap it ran under.
 - `marks_digest`, the sha256 of `~/.cargento/abstention-marks.json` as it was when scored. A later
   `--report` hashes the marks again and refuses PASS if they moved, because a mark written after
@@ -124,6 +129,7 @@ yardstick. Each case carries every format 4 field, plus:
 |---|---|
 | `intent` | `goal` and `lines`, one to six `{text, source}` outcome lines, as a reader would save them. Each line is its own constraint, `line_1` onwards, marked and scored on its own. An optional `at` stamps when the intent counts as typed, and `window_start` opens the evidence window as a stored revision's would; without them the intent counts as typed at 1.0, before every session end. |
 | `tool_output` | Claude Code only: `tails`, each check's redacted output tail by call id, and `changed_after`, the `[call id, check line]` pairs a later command may have changed. Both as a press read them at `captured_at`. |
+| `transcript_bytes` | Claude Code only: the transcript's length in bytes when the case was frozen, taken before the freeze reads it. The score-time check reads the board's tail of the file as it stood then. |
 
 Build a packet with `mark_abstention.py --freeze <spec>`. It spends nothing. The spec is a local
 file listing, per case, the `harness`, `sid`, `project`, `captured_at`, the `row` lifecycle
@@ -151,7 +157,35 @@ Codex has no session-end hook and is never read at a turn stop.
 
 The scorer repeats these checks at score time for every case the packet calls `recorded`, because
 the packet is hand-editable: the transcript found for that sid under `~/.claude/projects`, its
-session id, and the lifecycle in this machine's history and ends stores. A case that fails any of
+session id, and the lifecycle in this machine's history and ends stores. For a Claude Code case it
+also rebuilds the contents from that transcript as it stood at the case's `captured_at`, the same
+derivation the freeze used, and compares them with the packet as the ledger rows the producer
+reads (DRC-4711):
+
+- `checks-differ`: the check facts are not exactly the transcript's. An invented, altered or
+  dropped check all land here.
+- `tool-output-differs`: `tool_output`, the tails and changed-after pairs, is not exactly what a
+  press at `captured_at` read.
+- `facts-unconfirmed`: the packet's user messages are not the newest ones the transcript holds up
+  to `captured_at`, in order, with none missing between them and none repeated, or are fewer than
+  the board's bounded tail reads of the file's first `transcript_bytes` bytes. An older message may
+  be absent, because the board read a bounded tail when the packet was frozen, of a file no larger
+  than that. The tail ends there rather than at today's end, so a session that ran on past the tail
+  after the freeze cannot empty it. Measured on three
+  recorded sessions, a user message is the only fact a Claude Code case carries besides its
+  checks, so any other fact lands here too.
+- `activity-after-stop`: the transcript holds a record stamped after the recorded stop or end and
+  at or before `captured_at`. Moving the capture later would otherwise carry a later turn into a
+  case vouched for at the stop. The freeze refuses the same capture with the same word.
+- `transcript-truncated`: the transcript is now shorter than the case's `transcript_bytes`, or the
+  case records no size. The file the case was frozen from is gone, so nothing is compared.
+- `frozen-on-another-parser`: the case's `parser` stamp, a sha256 over `project_context.py` and
+  `reading.py` written at freeze, does not match the scorer's. Every case would differ, so this is
+  named on its own rather than read as tampering. Freeze again on the tree you score on, with the
+  freeze board started from that same checkout, since the board derives the user messages.
+
+Turns appended after `captured_at` are not a mismatch. A Codex case has no transcript this check
+reads, and under the per-producer floor it is a control that never covers. A case that fails any of
 them becomes `synthetic`, is withheld as `not-recorded` without a model call, and never meets the
 floor, whatever the packet or the rubric says. A case the packet itself calls `synthetic` is
 different: it is sent, charged and scored, so it can fail the run, and it never meets the floor. `--report` runs the same check and counts only the
@@ -201,14 +235,27 @@ case the cap stopped is withheld as `spend-cap`.
   (`withheld:model-failed`). It carries the other records over only when they hash to what the
   ledger recorded as the last run, so a hand-edited outcome is refused.
 
-`--probe-argv` is the one way to watch what the CLI sends without spending: it calls the verified
-CLI once with a fixed sentence, only when `ANTHROPIC_BASE_URL` points at a local stub, and writes no
-result and charges nothing. It refuses any destination that is not this machine.
+`--probe-argv` is the one way to watch what the CLI sends without spending. It starts its own stub
+on `127.0.0.1` and runs the verified CLI twice with a fixed sentence: once signed in with a
+placeholder API key, and once with a placeholder OAuth token and a placeholder account (a random
+`@example.invalid` email and UUID) it writes into a config directory of its own. Every endpoint,
+provider, credential, config-directory and proxy variable [SECURITY.md](../../SECURITY.md#the-abstention-check)
+lists is removed, and the base URL points at the stub. It refuses to run when
+`reading_route.destination` would name anything else, and refuses the answer unless it carries a
+nonce only the stub knew, so a forwarding proxy or an operator's `ANTHROPIC_BASE_URL` cannot turn
+it into a real call (DRC-4710). On Windows that route names nothing, so the probe always
+refuses there before the CLI runs. Per pass it prints yes or no for: the argv carries
+`--system-prompt`, the request carries the fixed sentence, and the request names the home
+directory, the user name or the state directory. The OAuth pass adds whether the placeholder email
+is in the disclosed block the CLI adds and whether the email or UUID appear anywhere else. It exits
+0 only when the first two are yes and every leak is no, and it writes no result and charges
+nothing. It says only what reached its stub; run it under an OS sandbox to know nothing else left.
 
 The owner's commands, in order. `CARGENTO_HOME` holds the packet; the ledger does not move with it:
 
 ```bash
 export CARGENTO_HOME=~/.cargento/abstention-claude-<date>
+python3 scripts/score_abstention.py --probe-argv      # its own stub, spends nothing; expect exit 0
 python3 scripts/mark_abstention.py --freeze "$CARGENTO_HOME/freeze-spec.json"   # spends nothing
 python3 scripts/score_abstention.py --report          # preflight, spends nothing
 python3 scripts/mark_abstention.py                    # y/n/s/q per constraint, every case
@@ -229,9 +276,18 @@ the model ran, so the case says nothing about the model, and it is counted for n
 The verdict is `failed` when a case marked should-abstain judged or the rubric records a false
 reassurance (a mark of `abstain` on that line is not enough on its own), `blocked` when a rubric
 entry left a required judgement unscored, `short` when no case failed but
-fewer than one recorded case per DEC-15 kind reached the model on Claude or on Codex, `stale` when
+fewer than one recorded case per DEC-15 kind reached the model on the harness of the producer
+scored (on both Claude and Codex for a run that names no producer), `stale` when
 the marks no longer hash to `marks_digest` or replay inputs no longer match `inputs_digest`, and
-`passed` only when none of those hold. The report
+`passed` only when none of those hold.
+
+Coverage is judged per producer, by the
+[DEC-17 amendment of 2026-09-27](../design-reading-a-session.md#amended-2026-09-27-the-floor-is-judged-per-producer).
+Each harness in `coverage` carries `kinds`, `role`, `missing` and `not_produced`. The producer's own
+harness is `scored` and its absent kinds are `missing`, which reads `short`. The other harness is a
+cross-harness `control`: its cases are scored and can fail the run, and its absent kinds are
+`not_produced`, which never reads `short`. A run that names no producer marks both `required`. The
+report
 never prints one figure for the whole: false reassurance, false alarm, missed departure and
 over-abstention are four counts, and citations hit, missed or extra are a fifth column beside them.
 
@@ -268,7 +324,10 @@ Kept beside the cases, never here. Its shape, so a case set can be written again
 ```
 
 `kind` is one of `supported-departure`, `legitimate-change`,
-`matching-intent-incorrect-execution`, `misleading-completion` and `insufficient-evidence`.
+`matching-intent-incorrect-execution`, `misleading-completion` and `insufficient-evidence`. A
+departure the case's own prompt asked for does not count as `supported-departure`: tag it only when
+the agent left the stated scope on its own
+([DEC-17, amended 2026-09-27](../design-reading-a-session.md#amended-2026-09-27-the-floor-is-judged-per-producer)).
 `result` is one of `departure`, `consistent` and `unverifiable`, the producer's own three tokens. A
 `recorded` entry names a case in the cases file by id and carries no body, and against a format 5
 case its `expect` is keyed `goal` and `line_1` onwards. Every asked constraint of a rubric case is

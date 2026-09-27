@@ -611,9 +611,17 @@ def _lifecycle_recorded(
 
 
 def _frozen_checks(
-    config: Any, entry: dict[str, Any], sid: str, captured: float, unconfirmed: list[str]
-) -> tuple[list[dict[str, Any]], dict[str, Any]]:
-    """A Claude Code case's checks as they stood, noting what the transcript cannot vouch for."""
+    config: Any,
+    entry: dict[str, Any],
+    sid: str,
+    captured: float,
+    unconfirmed: list[str],
+    snapshot: dict[str, Any],
+) -> tuple[list[dict[str, Any]], dict[str, Any], int]:
+    """A Claude Code case's checks as they stood, and the transcript's size when frozen.
+
+    Notes in `unconfirmed` what the transcript cannot vouch for.
+    """
     transcript = str(entry.get("transcript") or _transcript_index().get(sid[:8]) or "")
     if not transcript or not os.path.isfile(transcript):
         raise FreezeError("no-transcript")
@@ -623,22 +631,137 @@ def _frozen_checks(
         unconfirmed.append("transcript-other-session")
     from cargento_runtime import project_context  # noqa: PLC0415 - see `_reading`
 
+    # Taken before anything is read, so the score-time tail ending here reaches
+    # no further back than any read this freeze or its board made (review N3).
+    size = os.path.getsize(transcript)
+    stop = _stop(snapshot)
+    if stop is not None and project_context.claude_activity_between(transcript, stop, captured):
+        raise FreezeError("activity-after-stop")
     checks, press = project_context.frozen_claude_checks(config, transcript, sid, until=captured)
-    return checks, {
-        "tails": dict(press.tails),
+    return (
+        checks,
+        {
+            "tails": dict(press.tails),
+            "changed_after": sorted([list(pair) for pair in press.changed_after]),
+        },
+        size,
+    )
+
+
+# The files whose code turns a transcript into the facts and checks a case holds
+# (review, Scoring F7). A packet frozen under other bytes is named as such
+# rather than read as tampered, since every case would then differ.
+_PARSER_FILES = ("project_context.py", "reading.py")
+
+
+def parser_digest() -> str:
+    """sha256 over the runtime files that derive a case's facts, stamped into each case."""
+    digest = hashlib.sha256()
+    for name in _PARSER_FILES:
+        with open(os.path.join(_SKILL, "cargento_runtime", name), "rb") as handle:
+            digest.update(handle.read())
+    return digest.hexdigest()
+
+
+def _stop(snapshot: dict[str, Any]) -> float | None:
+    """The recorded end or turn stop a capture follows, if the row has one."""
+    for field in ("ended_at", "finished_at"):
+        if _epoch(snapshot.get(field)):
+            return float(snapshot[field])
+    return None
+
+
+def content_refusal(config: Any, case: dict[str, Any], transcript: str) -> list[str]:
+    """Why a Claude Code case's contents are not what its transcript holds (DRC-4711).
+
+    Rebuilt as the freeze built them, at the case's own `captured_at`, so turns
+    appended since are not a mismatch, and compared as the ledger rows the
+    producer reads. A capture with any record between its stop and itself is
+    not the moment the stop recorded (`activity-after-stop`). The checks and
+    the press reads must be exactly the transcript's, since dropping a failed
+    check changes a verdict as surely as inventing a pass. The user messages
+    must be the newest ones up to the capture, in order, none missing between
+    and none twice, and at least as many as the board's bounded tail reads of
+    the file as it stood at the freeze, its first `transcript_bytes` bytes:
+    the board read a file no larger, so its tail reached at least that far
+    back. Older ones may be absent. A transcript now shorter than that size,
+    or a case that records none, is `transcript-truncated`.
+    """
+    if case.get("parser") != parser_digest():
+        return ["frozen-on-another-parser"]
+    size = case.get("transcript_bytes")
+    try:
+        on_disk = os.path.getsize(transcript)
+    except OSError:
+        return ["transcript-missing"]
+    if type(size) is not int or size < 0 or size > on_disk:
+        return ["transcript-truncated"]
+    reading = _reading()
+    sid = str(case.get("sid") or "")
+    captured = float(case["captured_at"])
+    from cargento_runtime import project_context  # noqa: PLC0415 - see `_reading`
+
+    stop = _stop(case.get("row_snapshot") or {})
+    try:
+        checks, press = project_context.frozen_claude_checks(
+            config, transcript, sid, until=captured
+        )
+        held, tail = project_context.frozen_claude_user_messages(
+            config, transcript, sid, until=captured, size=size
+        )
+        moved = stop is not None and project_context.claude_activity_between(
+            transcript, stop, captured
+        )
+    except OSError:
+        return ["transcript-missing"]
+    reasons: list[str] = ["activity-after-stop"] if moved else []
+    tails = dict(press.tails)
+    frozen = {
+        "tails": tails,
         "changed_after": sorted([list(pair) for pair in press.changed_after]),
     }
+    if json.loads(json.dumps(frozen)) != case.get("tool_output"):
+        reasons.append("tool-output-differs")
+    facts = [f for f in case.get("producer_facts") or () if isinstance(f, dict)]
+    tool = reading.TOOL_REPORT_TYPE
+
+    def rows(these: list[dict[str, Any]], tails: dict[str, str] | None) -> list[Any]:
+        return list(
+            reading.build_ledger(
+                json.loads(json.dumps(these)),
+                "claude",
+                sid,
+                tool_output=tails,
+                changed_after=press.changed_after,
+            )
+        )
+
+    if rows([f for f in facts if f.get("type") == tool], tails) != rows(checks, tails):
+        reasons.append("checks-differ")
+    mine = rows([f for f in facts if f.get("type") != tool], None)
+    whole = rows(held, None)
+    newest = whole[len(whole) - len(mine) :] if mine else []
+    if mine != newest or len(mine) < len(rows(tail, None)):
+        reasons.append("facts-unconfirmed")
+    return reasons
 
 
 def provenance(
-    case: dict[str, Any], *, observations: Any, ends: Any, index: dict[str, str]
+    case: dict[str, Any],
+    *,
+    observations: Any,
+    ends: Any,
+    index: dict[str, str],
+    config: Any = None,
 ) -> list[str]:
     """Why a frozen case cannot be called recorded, from the machine's own records.
 
     The freeze's checks, repeated at score time, because the packet is
     hand-editable and the scorer read `origin` as written (V2). `index` maps a
     Claude Code sid's first eight characters to its transcript, as
-    `_transcript_index` builds it from `CLAUDE_PROJECTS_ROOT`.
+    `_transcript_index` builds it from `CLAUDE_PROJECTS_ROOT`. A Claude Code
+    case's contents are rebuilt from that transcript too (`content_refusal`),
+    under `config`, the runtime config the freeze would build when none is given.
     """
     snapshot = case.get("row_snapshot")
     captured = case.get("captured_at")
@@ -657,14 +780,22 @@ def provenance(
                 reasons.append("transcript-outside-projects")
             if not _transcript_is_the_session(transcript, sid):
                 reasons.append("transcript-other-session")
+            if not reasons:
+                reasons.extend(
+                    content_refusal(
+                        config if config is not None else _runtime_config(), case, transcript
+                    )
+                )
     return reasons
 
 
-def make_vouch(*, observations: Any, ends: Any, index: dict[str, str]) -> Any:
+def make_vouch(*, observations: Any, ends: Any, index: dict[str, str], config: Any = None) -> Any:
     """`provenance` bound to one set of records, for the scorer to call per case."""
 
     def vouch(case: Any) -> list[str]:
-        return provenance(dict(case), observations=observations, ends=ends, index=index)
+        return provenance(
+            dict(case), observations=observations, ends=ends, index=index, config=config
+        )
 
     return vouch
 
@@ -672,7 +803,9 @@ def make_vouch(*, observations: Any, ends: Any, index: dict[str, str]) -> Any:
 def machine_vouch(store_home: str) -> Any:
     """`make_vouch` over this machine's history, ends and Claude Code transcripts."""
     observations, ends = _observed_stores(store_home)
-    return make_vouch(observations=observations, ends=ends, index=_transcript_index())
+    return make_vouch(
+        observations=observations, ends=ends, index=_transcript_index(), config=_runtime_config()
+    )
 
 
 def freeze_case(
@@ -750,8 +883,11 @@ def freeze_case(
         "intent": intent,
     }
     if harness == "claude":
-        checks, case["tool_output"] = _frozen_checks(config, entry, sid, captured, unconfirmed)
+        checks, case["tool_output"], case["transcript_bytes"] = _frozen_checks(
+            config, entry, sid, captured, unconfirmed, snapshot
+        )
         kept.extend(checks)
+        case["parser"] = parser_digest()
     case["producer_facts"] = kept
     case["unconfirmed"] = unconfirmed
     if unconfirmed:

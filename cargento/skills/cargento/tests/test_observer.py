@@ -1804,6 +1804,28 @@ class ClaudeExecTest(unittest.TestCase):
                 # tool set and a default one differ only in that token.
                 self.assertEqual([value], self._values(command, flag))
 
+    def test_a_fixed_system_prompt_replaces_claude_codes_default(self) -> None:
+        # DRC-4666, owner ruling: Claude Code's default system prompt is not
+        # the reader's to send. `--system-prompt` replaces it whole;
+        # `--append-system-prompt` would keep it, so it must never appear.
+        seen, _text, _status, _config = self._run()
+        command = seen[0][0]
+        self.assertEqual(
+            [observer.CLAUDE_READING_SYSTEM_PROMPT], self._values(command, "--system-prompt")
+        )
+        self.assertNotIn("--append-system-prompt", command)
+        self.assertNotIn("--system-prompt-file", command)
+
+    def test_the_fixed_system_prompt_names_nothing_of_this_machine(self) -> None:
+        text = observer.CLAUDE_READING_SYSTEM_PROMPT
+        self.assertTrue(text.strip())
+        self.assertEqual(text, " ".join(text.split()), "one line, no layout to carry anything")
+        home = str(Path.home())
+        for leaked in (home, os.getcwd(), os.environ.get("USER") or "\0", "/", "\\", "~"):
+            with self.subTest(leaked=leaked):
+                self.assertNotIn(leaked, text)
+        self.assertFalse(text.startswith("-"), "a value, never read as a flag")
+
     def test_the_empty_mcp_config_names_no_server(self) -> None:
         self.assertEqual({"mcpServers": {}}, json.loads(observer.CLAUDE_EMPTY_MCP_CONFIG))
 
@@ -1852,6 +1874,7 @@ class ClaudeExecTest(unittest.TestCase):
             "--output-format",
             "--model",
             "--effort",
+            "--system-prompt",
         }
         index = 1
         while index < len(command):
@@ -1874,11 +1897,102 @@ class ClaudeExecTest(unittest.TestCase):
         _command, kwargs, observed = seen[0]
         cwd = Path(kwargs["cwd"])
         self.assertNotEqual(config.state_dir, cwd, "the store directory is not a scratch cwd")
-        self.assertEqual(config.state_dir, cwd.parent)
+        self.assertEqual(Path(tempfile.gettempdir()).resolve(), cwd.parent.resolve())
         self.assertTrue(observed["cwd_exists"])
         if os.name != "nt":  # POSIX permission bits; Windows uses ACLs
             self.assertEqual(0o700, observed["cwd_mode"])
         self.assertEqual([], observed["cwd_entries"])
+
+    @unittest.skipIf(os.name == "nt", "the system temp directory is under the profile there")
+    def test_the_working_directory_names_neither_the_home_nor_the_state_directory(self) -> None:
+        # Measured 2026-09-27 on 2.1.283 against a local stub: even with
+        # `--system-prompt`, the CLI sends an environment block naming its
+        # working directory. Under the state directory that path carried the
+        # account's home, and with it the user name (DRC-4666).
+        seen, _text, _status, config = self._run()
+        cwd = Path(seen[0][1]["cwd"]).resolve()
+        for root in (Path.home().resolve(), Path(config.state_dir).resolve()):
+            with self.subTest(root=root):
+                self.assertNotEqual(root, cwd)
+                self.assertNotIn(root, cwd.parents)
+        self.assertFalse(cwd.exists(), "the working directory outlived the call")
+
+    @unittest.skipIf(os.name == "nt", "the account and /tmp rules are POSIX")
+    def test_a_tmpdir_under_home_falls_back_to_tmp(self) -> None:
+        # Sent F2: TMPDIR under home (direnv, Nix shells, ~/tmp) put the home
+        # path and user name in the environment block the CLI sends.
+        fake_home = Path(tempfile.mkdtemp(), "Users", "alicequux")
+        under = fake_home / "tmp"
+        under.mkdir(parents=True)
+        with (
+            mock.patch.object(observer, "_account", return_value=(str(fake_home), "alicequux")),
+            mock.patch.object(tempfile, "tempdir", str(under)),
+        ):
+            seen, _text, status, _config = self._run()
+        self.assertEqual("ok", status)
+        cwd = Path(seen[0][1]["cwd"]).resolve()
+        self.assertEqual(Path("/tmp").resolve(), cwd.parent)
+
+    @unittest.skipIf(os.name == "nt", "the account and /tmp rules are POSIX")
+    def test_a_temp_path_naming_the_user_falls_back_to_tmp(self) -> None:
+        named = Path(tempfile.mkdtemp(), "scratch-alicequux")
+        named.mkdir()
+        with (
+            mock.patch.object(
+                observer, "_account", return_value=("/nonexistent-home", "alicequux")
+            ),
+            mock.patch.object(tempfile, "tempdir", str(named)),
+        ):
+            seen, _text, _status, _config = self._run()
+        self.assertEqual(Path("/tmp").resolve(), Path(seen[0][1]["cwd"]).resolve().parent)
+
+    @unittest.skipIf(os.name == "nt", "the account and /tmp rules are POSIX")
+    def test_a_tmpdir_under_home_spelled_in_another_case_falls_back_to_tmp(self) -> None:
+        # Review N1: on a case-insensitive volume `/Users/ALICE/...` is the
+        # home, and the CLI canonicalises the case before naming it. The name
+        # here is short, so only the home test can catch it.
+        base = Path(tempfile.mkdtemp())
+        fake_home = base / "hq"
+        (fake_home / "tmp").mkdir(parents=True)
+        upper = base / "HQ" / "tmp"
+        if not upper.is_dir():
+            self.skipTest("this volume is case-sensitive")
+        with (
+            mock.patch.object(observer, "_account", return_value=(str(fake_home), "q")),
+            mock.patch.object(tempfile, "tempdir", str(upper)),
+        ):
+            seen, _text, status, _config = self._run()
+        self.assertEqual("ok", status)
+        self.assertEqual(Path("/tmp").resolve(), Path(seen[0][1]["cwd"]).resolve().parent)
+
+    @unittest.skipIf(os.name == "nt", "the account and /tmp rules are POSIX")
+    def test_a_temp_path_naming_the_user_in_another_case_falls_back_to_tmp(self) -> None:
+        # Review N1: the CLI sent `/private/tmp/<USER>-cgverify` and the name
+        # test, being case-sensitive, let it through.
+        named = Path(tempfile.mkdtemp(), "ALICEQUUX-scratch")
+        named.mkdir()
+        with (
+            mock.patch.object(
+                observer, "_account", return_value=("/nonexistent-home", "alicequux")
+            ),
+            mock.patch.object(tempfile, "tempdir", str(named)),
+        ):
+            seen, _text, _status, _config = self._run()
+        self.assertEqual(Path("/tmp").resolve(), Path(seen[0][1]["cwd"]).resolve().parent)
+
+    @unittest.skipIf(os.name == "nt", "the account and /tmp rules are POSIX")
+    def test_no_temp_location_outside_home_refuses_before_anything_runs(self) -> None:
+        fake_home = Path(tempfile.mkdtemp(), "home", "alicequux")
+        (fake_home / "tmp").mkdir(parents=True)
+        with (
+            mock.patch.object(observer, "_account", return_value=(str(fake_home), "alicequux")),
+            mock.patch.object(tempfile, "tempdir", str(fake_home / "tmp")),
+            mock.patch.object(observer, "READING_FALLBACK_TMP", str(fake_home / "tmp")),
+        ):
+            seen, text, status, config = self._run()
+        self.assertEqual(("", "failed"), (text, status))
+        self.assertEqual([], seen)
+        self.assertEqual([], os.listdir(config.state_dir))
 
     def test_stdout_goes_to_an_owner_only_file_outside_the_working_directory(self) -> None:
         seen: list[tuple[str, int]] = []
@@ -1969,6 +2083,16 @@ class ClaudeExecTest(unittest.TestCase):
             with self.subTest(kept=name):
                 self.assertEqual("x", scrubbed.get(name))
         self.assertIn("CLAUDECODE", environ, "the caller's mapping was modified")
+
+    def test_a_reading_turns_off_the_clis_nonessential_traffic(self) -> None:
+        # Sent F3: measured under a no-egress sandbox, the CLI looked up six
+        # other hosts per reading, and none with this variable set.
+        for environ in ({}, {"CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "0"}):
+            with self.subTest(environ=environ):
+                scrubbed = observer.claude_environment(environ)
+                self.assertEqual("1", scrubbed["CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC"])
+        seen, _text, _status, _config = self._run()
+        self.assertEqual("1", seen[0][1]["env"]["CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC"])
 
     def test_the_call_runs_with_the_scrubbed_environment(self) -> None:
         with mock.patch.dict(os.environ, {"CLAUDECODE": "1", "CLAUDE_CODE_SESSION_ID": "s"}):
@@ -2304,16 +2428,21 @@ class SupervisedModelCallTest(unittest.TestCase):
                 bin_dir = Path(tempfile.mkdtemp())
                 self.addCleanup(shutil.rmtree, bin_dir, True)
                 peak_file = bin_dir / "peak"
+                peak_file.write_text("0")
                 fake = bin_dir / name
+                # The count is published by rename: `open(..., 'w')` truncates
+                # before it writes, and the kill this test provokes landed in
+                # that gap 4 runs in 25 under load, leaving '' to parse.
                 fake.write_text(
                     f"#!{sys.executable}\n"
-                    "import sys, time\n"
+                    "import os, sys, time\n"
                     "sys.stdin.read()\n"
                     f"out = {where[name]}\n"
                     "chunk = b'x' * (1 << 20)\n"
                     "for n in range(50):\n"
                     "    out.write(chunk); out.flush()\n"
-                    f"    open({str(peak_file)!r}, 'w').write(str(n + 1))\n"
+                    f"    open({str(peak_file) + '.part'!r}, 'w').write(str(n + 1))\n"
+                    f"    os.replace({str(peak_file) + '.part'!r}, {str(peak_file)!r})\n"
                     "    time.sleep(0.02)\n"
                     "time.sleep(60)\n"
                 )

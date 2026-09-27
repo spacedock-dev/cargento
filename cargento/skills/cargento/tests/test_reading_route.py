@@ -272,6 +272,22 @@ class EveryMachineGetsExactlyOneTrueAnswer(unittest.TestCase):
                 self.assertTrue(route["disclosure"].startswith(route["note"]))
                 self.assertIn("never a verification", route["disclosure"])
 
+    def test_a_claude_code_reading_discloses_what_its_cli_adds(self) -> None:
+        # Owner ruling of 2026-09-27 on the review's Sent F1: under OAuth
+        # sign-in the CLI adds the account's email address and ID to every
+        # reading, and its environment block beside it. Accepted, so said.
+        text = reading_route._base_disclosure("claude")
+        for words in (
+            "email address",
+            "account ID",
+            "working directory",
+            "platform",
+            "device identifier",
+        ):
+            with self.subTest(words=words):
+                self.assertIn(words, text)
+        self.assertNotIn("email address", reading_route._base_disclosure("codex"))
+
     def test_no_two_states_with_no_reader_share_a_sentence(self) -> None:
         seen: dict[str, tuple[str, str, str]] = {}
         for harness, claude, codex, route in self._all():

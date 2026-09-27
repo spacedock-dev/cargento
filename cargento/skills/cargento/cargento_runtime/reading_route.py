@@ -355,10 +355,24 @@ def _base_disclosure(provider: str) -> str:
         "A reading sends the goal you chose, and a bounded list of entries from the "
         f"observed record, to a {label} subprocess. {label} uses its own authentication to "
         f"reach {vendor}, so this is one of the paths that sends session content off this "
-        f"machine and spends your {label} capacity. Your expected outcome lines are sent only "
-        "when an entry sent is work evidence, and on no other reading. The reading is a model's "
-        "account of the evidence it was given, never a verification that the work was done."
+        f"machine and spends your {label} capacity.{_CLI_ADDS.get(provider, '')} "
+        "Your expected outcome lines are sent only when an entry sent is work evidence, and on "
+        "no other reading. The reading is a model's account of the evidence it was given, never "
+        "a verification that the work was done."
     )
+
+
+# What the Claude Code CLI adds to every reading on its own, measured on 2.1.283
+# against a local stub (DRC-4666 review, Sent F1 and F5). The owner accepted the
+# account details on 2026-09-27 on condition they are said before the press.
+_CLI_ADDS = {
+    CLAUDE: (
+        " Claude Code also sends, with every reading, its working directory (an empty "
+        "temporary one), the platform, shell, OS version and date, a device identifier, "
+        "and, when you are signed in with a Claude account, that account's email address "
+        "and account ID."
+    ),
+}
 
 
 def _state(provider: str, which: Callable[[str], Any]) -> str:

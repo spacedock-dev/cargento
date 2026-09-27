@@ -12,7 +12,7 @@ import shlex
 import shutil
 import stat
 import subprocess
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from typing import TYPE_CHECKING, Any, NamedTuple
 
 from . import claude_data, observer, records, semantic_history, spacedock, transcripts
@@ -2821,6 +2821,66 @@ def frozen_claude_checks(
         for row in tally.entries(sid)
     ]
     return facts, PressChecks(tally.tails(), tally.changed_after())
+
+
+def _user_message_facts(
+    config: RuntimeConfig, lines: Iterable[str], sid: str, until: float
+) -> list[dict[str, Any]]:
+    """`instruction_events` over these lines, cut at `until`, as `collect` publishes them."""
+    facts: list[dict[str, Any]] = []
+    seen: set[tuple[float, str]] = set()
+    for raw in lines:
+        if not raw or not raw.lstrip().startswith("{"):
+            continue
+        try:
+            record = json.loads(raw)
+        except (ValueError, RecursionError):
+            continue
+        event = _instruction_event(config, record, "claude", sid)
+        if event is None or float(event["at"]) > until:
+            continue
+        key = (event["at"], event["title"])
+        if key in seen:
+            continue
+        seen.add(key)
+        facts.append(_semantic_fact_from_event(event, "steer", _SEMANTIC_FACT_TYPES["steer"], ""))
+    return facts
+
+
+def frozen_claude_user_messages(
+    config: RuntimeConfig, transcript_path: str, sid: str, *, until: float, size: int | None = None
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """The user-message facts a Claude Code transcript held at `until`: all, and the board's tail.
+
+    For the abstention scorer's score-time check (DRC-4711), beside
+    `frozen_claude_checks`. Measured 2026-09-27 on a scratch board over three
+    recorded sessions: a user message is the only non-check fact such a case
+    carries, and this reproduced the board's ledger rows for it. The first
+    list reads the whole file; the second reads the bounded tail `collect`
+    reads (`io.read_tail`), ending at `size`, the file's length when the case
+    was frozen. The board read a file no larger than that, so its tail reached
+    at least as far back; ending at today's length instead lets a session that
+    ran on past `tail_bytes` leave that tail holding no message (review N3).
+    """
+    with open(transcript_path, encoding="utf-8", errors="replace") as handle:
+        whole = _user_message_facts(config, handle, sid, until)
+    lines = runtime_io.read_tail(config, transcript_path, end=size)
+    tail = _user_message_facts(config, lines, sid, until)
+    return whole, tail
+
+
+def claude_activity_between(transcript_path: str, after: float, until: float) -> bool:
+    """Whether any record in the transcript is stamped after `after` and at or before `until`."""
+    with open(transcript_path, "rb") as handle:
+        for raw in handle:
+            try:
+                record = json.loads(raw)
+            except (ValueError, RecursionError):
+                continue
+            at = _record_timestamp(record) if isinstance(record, dict) else None
+            if at is not None and after < at <= until:
+                return True
+    return False
 
 
 def _session_work_evidence(
