@@ -511,12 +511,40 @@ recorded case per DEC-15 kind, on both Claude and Codex, that reached the model.
 kind tags come from the rubric expectation file's `recorded` entries, so tagging a case after the
 fact does not touch the marks. Below the floor the verdict is `short` and PASS is refused with the
 shortfall printed per harness. The summary also carries the sha256 of the marks file as scored, and
-a later report whose marks no longer hash to it says the marks moved and refuses PASS.
+a later report whose marks no longer hash to it says the marks moved and refuses PASS. The floor is
+now judged per producer; see the amendment of 2026-09-27 below.
 
 The scorer never writes to the annotation store, never posts to the reading route, and never flips
 `annotations.ABSTENTION_CHECK`. The flip is a separate change, made by hand, after a run has passed
 on a corpus that meets the floor or the captain has accepted the case review under the amendment
 above.
+
+#### Amended 2026-09-27: the floor is judged per producer
+
+The owner ruled three things on 2026-09-27, while qualifying the Claude Code producer (DRC-4666).
+
+1. Coverage is judged per producer. The harness of the producer being scored needs a recorded
+   case of each of the five DEC-15 kinds that reached the model. The other harness's cases are
+   cross-harness controls: they are marked, scored and can fail the run, and a kind they lack is
+   reported as not produced rather than counted short. Codex produced no supported departure in six
+   attempts: it either worked around the stated scope or declined and suggested the out-of-scope
+   fix. Getting one would have taken a follow-up approving the work, and item 2 rules that out. A
+   floor that required it could never be met.
+2. A departure the prompt directed is not a supported departure. A case counts for that kind
+   only when the agent left the stated scope on its own. The scorer cannot tell who directed a
+   departure, so this binds the rubric: a case whose prompt asked for the departure is not tagged
+   `supported-departure`.
+3. The Claude Code producer passes `--system-prompt` with a fixed sentence, so Claude Code's
+   default system prompt is not sent. What the CLI still sends, measured against a local stub, is
+   listed under [Claude Code reading calls](../SECURITY.md#claude-code-reading-calls).
+
+`score_abstention.py` records each harness's part in the committed summary: `role` is `scored`,
+`control`, or `required` for a run that names no producer. `missing` lists the kinds that hold
+back a scored or required harness, and `not_produced` the kinds a control lacks. A run that names
+no producer keeps the original floor on both harnesses, as every summary written before this
+amendment was scored.
+The format is owned by the
+[abstention documentation](abstention/README.md#how-to-argue-with-a-result).
 
 ### Repeated calls
 

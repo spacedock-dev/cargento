@@ -48,8 +48,11 @@ fact, the model said nothing usable.
 ## What PASS needs
 
 No case marked should-abstain judged; and at least one evidence-bearing,
-kind-tagged, recorded case per DEC-15 kind, on both Claude and Codex, that
-actually reached the model. Ten, minimum. A judge mark that abstains is
+kind-tagged, recorded case per DEC-15 kind that actually reached the model,
+judged per producer: the harness of the producer being scored needs all five,
+and the other harness's cases are cross-harness controls whose absent kinds
+are reported as not produced (the DEC-17 amendment of 2026-09-27). A run that
+names no producer keeps the original floor, both harnesses. A judge mark that abstains is
 recorded and does not fail, because over-abstention is the safe direction.
 The kind tags come from the rubric file's `recorded` entries, never from the
 marks file, which is the captain's and is not altered.
@@ -87,6 +90,7 @@ import argparse
 import contextlib
 import dataclasses
 import hashlib
+import http.server
 import json
 import math
 import os
@@ -96,11 +100,12 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 import urllib.error
 import urllib.parse
 import urllib.request
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Self
 
 import abstention_ledger
 import mark_abstention
@@ -168,6 +173,11 @@ KINDS = (
 # DEC-17 names these two because their evidence shapes differ. A third
 # harness may be scored; only these two are required.
 COVERAGE_HARNESSES = ("claude", "codex")
+# A harness's part in the floor. The producer scored needs every kind; the
+# other harness's cases are cross-harness controls (owner, 2026-09-27).
+COVERAGE_SCORED = "scored"
+COVERAGE_CONTROL = "control"
+COVERAGE_REQUIRED = "required"
 # What a rubric entry's `harness` may say. Three values rather than the
 # runtime's registry: the two the floor requires, and Pi, whose record
 # publishes demonstrated work results (`project_context._work_evidence`), the
@@ -296,7 +306,15 @@ def _get(url: str, timeout: int = 30) -> Any:
 
 # ------------------------------------------------------------- spend and argv
 
-BINDING_KEYS = ("producer", "model", "argv_digest", "destination", "binary", "cli_version")
+BINDING_KEYS = (
+    "producer",
+    "model",
+    "argv_digest",
+    "destination",
+    "binary",
+    "cli_version",
+    "signature",
+)
 WITHHELD_LEDGER = "ledger-refused"
 
 
@@ -337,16 +355,65 @@ def _display_path(path: str) -> str:
     return "~" + path[len(home) :] if path == home or path.startswith(home + os.sep) else path
 
 
+# The native CLI's signer, measured with `codesign -dv` on 2.1.283
+# (2026-09-27): "Developer ID Application: Anthropic PBC", team Q6L2SF6YDW,
+# identifier com.anthropic.claude-code. Pinned as one code requirement, so a
+# stub saved in the install layout, unsigned or signed by anyone else, is
+# refused before it is ever run (DRC-4710, V4).
+CLAUDE_TEAM_ID = "Q6L2SF6YDW"
+CLAUDE_SIGNING_ID = "com.anthropic.claude-code"
+CLAUDE_CODE_REQUIREMENT = (
+    f'=anchor apple generic and identifier "{CLAUDE_SIGNING_ID}" '
+    f'and certificate leaf[subject.OU] = "{CLAUDE_TEAM_ID}"'
+)
+_CODESIGN = "/usr/bin/codesign"
+
+
+def _signature(real: str, *, platform: str, runner: Callable[..., Any]) -> str:
+    """What vouches for the binary's origin, as a closed phrase, or a refusal.
+
+    macOS checks the pinned requirement with `codesign`, and a missing or
+    failing `codesign` refuses. No other platform checks a signature: Linux
+    has none to check, and whether the Windows build carries Authenticode was
+    never measured. There the binary's sha256 is recorded instead, which says
+    which file ran, not who built it. SECURITY.md states that limit.
+    """
+    if platform == "darwin":
+        try:
+            result = runner(
+                [_CODESIGN, "--verify", "--strict", "-R", CLAUDE_CODE_REQUIREMENT, real],
+                capture_output=True,
+                text=True,
+                timeout=30,
+                check=False,
+            )
+        except (OSError, subprocess.SubprocessError) as error:
+            msg = "`codesign` could not check the CLI's signature"
+            raise BinaryError(msg) from error
+        if getattr(result, "returncode", 1) != 0:
+            msg = f"`claude` is not signed by Anthropic (team {CLAUDE_TEAM_ID})"
+            raise BinaryError(msg)
+        return f"Developer ID {CLAUDE_TEAM_ID} {CLAUDE_SIGNING_ID}"
+    digest = hashlib.sha256()
+    with open(real, "rb") as handle:
+        for block in iter(lambda: handle.read(1 << 20), b""):
+            digest.update(block)
+    return f"unchecked sha256:{digest.hexdigest()}"
+
+
 def verify_claude_binary(
     *,
     resolver: Callable[[str], str | None] = shutil.which,
     runner: Callable[..., Any] = subprocess.run,
-) -> tuple[str, str, str]:
-    """(display path, `--version` line, absolute path) of the real Claude Code CLI.
+    platform: str = sys.platform,
+) -> tuple[str, str, str, str]:
+    """(display path, `--version` line, absolute path, signature) of the real Claude Code CLI.
 
     Real means the native installer's layout: the command resolves into one of
     `CLAUDE_VERSIONS_ROOTS`, to a file named for the version it reports as
-    `<x.y.z> (Claude Code)`. `--version` starts no model and spends nothing.
+    `<x.y.z> (Claude Code)`, and on macOS signed by Anthropic (`_signature`),
+    checked before the file is run at all. `--version` starts no model and
+    spends nothing.
     """
     found = resolver("claude")
     if not found or not os.path.isabs(found):
@@ -357,6 +424,7 @@ def verify_claude_binary(
     if os.path.dirname(real) not in roots:
         msg = f"`claude` resolves to {_display_path(real)}, outside the installed versions"
         raise BinaryError(msg)
+    signature = _signature(real, platform=platform, runner=runner)
     result = runner([real, "--version"], capture_output=True, text=True, timeout=30, check=False)
     line = str(getattr(result, "stdout", "") or "").strip()
     match = _CLAUDE_VERSION_RE.fullmatch(line)
@@ -366,7 +434,7 @@ def verify_claude_binary(
     if match.group(1) != os.path.basename(real):
         msg = "`claude --version` names another version than the file it runs"
         raise BinaryError(msg)
-    return _display_path(real), line, real
+    return _display_path(real), line, real, signature
 
 
 class _ArgvCapturedError(Exception):
@@ -736,7 +804,9 @@ def _dec17(records: Sequence[Mapping[str, Any]]) -> dict[str, list[str]]:
     return {"failed": sorted(set(failed)), "held": sorted(set(held))}
 
 
-def _coverage(rubric_records: Sequence[Mapping[str, Any]]) -> dict[str, dict[str, Any]]:
+def _coverage(
+    rubric_records: Sequence[Mapping[str, Any]], producer: str = ""
+) -> dict[str, dict[str, Any]]:
     """Kinds per required harness that a recorded case carried to the model.
 
     Recorded only: DEC-17 asks for one recorded session per kind, and a
@@ -744,6 +814,12 @@ def _coverage(rubric_records: Sequence[Mapping[str, Any]]) -> dict[str, dict[str
     rule exists to refuse. Withheld cases count for nothing here, whatever
     kind they are tagged with: a producer that never saw the case proved
     nothing about the kind.
+
+    Judged per producer (owner ruling of 2026-09-27, the DEC-17 amendment of
+    that date). The harness of the producer being scored is `scored` and
+    needs every kind; the other is a cross-harness `control`, and its absent
+    kinds are `not_produced`, never `missing`. A run that names no producer
+    keeps both `required`, the floor every earlier summary was scored under.
     """
     out: dict[str, dict[str, Any]] = {}
     for harness in COVERAGE_HARNESSES:
@@ -757,7 +833,21 @@ def _coverage(rubric_records: Sequence[Mapping[str, Any]]) -> dict[str, dict[str
             and r["kind"] in KINDS
             and _fully_scored(r)
         }
-        out[harness] = {"kinds": len(kinds), "missing": [k for k in KINDS if k not in kinds]}
+        absent = [k for k in KINDS if k not in kinds]
+        role = (
+            COVERAGE_REQUIRED
+            if producer not in COVERAGE_HARNESSES
+            else COVERAGE_SCORED
+            if harness == producer
+            else COVERAGE_CONTROL
+        )
+        control = role == COVERAGE_CONTROL
+        out[harness] = {
+            "kinds": len(kinds),
+            "role": role,
+            "missing": [] if control else absent,
+            "not_produced": absent if control else [],
+        }
     return out
 
 
@@ -775,7 +865,9 @@ def _verdict(
         return VERDICT_FAILED
     if any(count for name, count in counts.items() if name.startswith("unscored:")):
         return VERDICT_BLOCKED
-    if any(coverage[h]["kinds"] < len(KINDS) for h in COVERAGE_HARNESSES):
+    # `missing`, not `kinds`: a control's absent kinds are never short, and a
+    # coverage entry written before roles existed carries `missing` too.
+    if any(coverage[h]["missing"] for h in COVERAGE_HARNESSES if h in coverage):
         return VERDICT_SHORT
     return VERDICT_PASSED
 
@@ -808,7 +900,7 @@ def summarize(
             rubric_counts[got] = rubric_counts.get(got, 0) + 1
         rubric_counts[RUBRIC_UNKNOWN] += int(entry.get("unknown_expectations") or 0)
     dec17 = _dec17(records)
-    coverage = _coverage(rubric_records)
+    coverage = _coverage(rubric_records, str((binding or {}).get("producer") or ""))
     bound = {key: str((binding or {})[key]) for key in BINDING_KEYS if key in (binding or {})}
     return {
         **bound,
@@ -1031,12 +1123,29 @@ def render(summary: Mapping[str, Any]) -> list[str]:
         for case_id in dec17["held"]
     )
     lines.append("Coverage, recorded cases that reached the model:")
-    for harness, cover in summary["coverage"].items():
-        missing = f" (missing: {', '.join(cover['missing'])})" if cover["missing"] else ""
-        kinds = f"{cover['kinds']} of {len(KINDS)} kinds reached the model"
-        lines.append(f"  {harness}: {kinds}{missing}")
+    lines.extend(_coverage_lines(summary["coverage"]))
     lines.extend(_render_rubric(summary))
     lines.append(_verdict_sentence(summary))
+    return lines
+
+
+_ROLE_WORDS = {
+    COVERAGE_SCORED: " (the producer scored: every kind required)",
+    COVERAGE_CONTROL: " (cross-harness control: counted neither short nor covered)",
+}
+
+
+def _coverage_lines(coverage: Mapping[str, Mapping[str, Any]]) -> list[str]:
+    lines = []
+    for harness, cover in coverage.items():
+        role = _ROLE_WORDS.get(str(cover.get("role") or ""), "")
+        kinds = f"{cover['kinds']} of {len(KINDS)} kinds reached the model"
+        gaps = ""
+        if cover.get("missing"):
+            gaps += f" (missing: {', '.join(cover['missing'])})"
+        if cover.get("not_produced"):
+            gaps += f" (not produced: {', '.join(cover['not_produced'])})"
+        lines.append(f"  {harness}{role}: {kinds}{gaps}")
     return lines
 
 
@@ -1058,10 +1167,16 @@ def _verdict_sentence(summary: Mapping[str, Any]) -> str:  # noqa: PLR0911 - one
             "PASS is refused until every required judgement is scored."
         )
     if verdict == VERDICT_SHORT:
+        scored = [
+            h
+            for h, cover in (summary.get("coverage") or {}).items()
+            if cover.get("role") == COVERAGE_SCORED
+        ]
+        where = f"on {scored[0]}, the producer scored" if scored else "on both Claude and Codex"
         return (
             "SHORT: no failure, and PASS is refused because the coverage floor is not met. "
-            "It wants one evidence-bearing, kind-tagged recorded case per DEC-15 kind on "
-            "both Claude and Codex, each reaching the model."
+            "It wants one evidence-bearing, kind-tagged recorded case per DEC-15 kind "
+            f"{where}, each reaching the model."
         )
     unparsed = int((summary["counts"].get("outcomes") or {}).get(OUTCOME_UNPARSED, 0))
     if unparsed:
@@ -1855,27 +1970,202 @@ def _argument_refusal(args: argparse.Namespace) -> str:  # noqa: PLR0911 - one p
     return ""
 
 
-def _is_loopback(destination: str) -> bool:
-    host = destination.rsplit(":", 1)[0] if destination.count(":") == 1 else destination
-    return host.strip("[]") in ("127.0.0.1", "localhost", "::1")
+# Every variable that can move a Claude Code call off the stub: the endpoint
+# and provider switches `reading_route` reads, the credentials, and the proxies
+# (a proxy carries a call wherever it likes). Stripped, never trusted.
+_PROBE_DROPPED_PREFIXES = ("ANTHROPIC_", "CLAUDE_CODE_USE_", "CLAUDE_CODE_CUSTOM_OAUTH")
+_PROBE_DROPPED = frozenset({"http_proxy", "https_proxy", "all_proxy", "no_proxy"})
+PROBE_PROMPT = "Reply with the word ok."
 
 
-def probe_argv(config: Any, destination: str, binary: str) -> int:
-    """One call to a local stub, to see what the CLI sends. Writes nothing and charges nothing.
+def _probe_events(message: Mapping[str, Any], nonce: str) -> bytes:
+    """The Messages stream a real endpoint sends, answering `nonce` and nothing else."""
+    events = [
+        ("message_start", {"type": "message_start",
+                           "message": {**message, "content": [], "stop_reason": None}}),
+        ("content_block_start", {"type": "content_block_start", "index": 0,
+                                 "content_block": {"type": "text", "text": ""}}),
+        ("content_block_delta", {"type": "content_block_delta", "index": 0,
+                                 "delta": {"type": "text_delta", "text": nonce}}),
+        ("content_block_stop", {"type": "content_block_stop", "index": 0}),
+        ("message_delta", {"type": "message_delta",
+                           "delta": {"stop_reason": "end_turn", "stop_sequence": None},
+                           "usage": {"output_tokens": 1}}),
+        ("message_stop", {"type": "message_stop"}),
+    ]  # fmt: skip
+    return "".join(f"event: {e}\ndata: {json.dumps(d)}\n\n" for e, d in events).encode()
 
-    For checking the argv against a stub `ANTHROPIC_BASE_URL` at no cost. It
-    refuses any destination that is not this machine, so it can never spend,
-    and it cannot write a result because it has no result to write: a fixed
-    sentence goes to the model, never a case.
+
+class _ProbeHandler(http.server.BaseHTTPRequestHandler):
+    """Answers the CLI for `_ProbeStub`, which it reaches as `self.server.probe`."""
+
+    def _answer(self, status: int, kind: str, body: bytes) -> None:
+        self.send_response(status)
+        self.send_header("content-type", kind)
+        self.send_header("content-length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def do_GET(self) -> None:
+        self._answer(200, "application/json", b"{}")
+
+    def do_HEAD(self) -> None:
+        self._answer(200, "application/json", b"")
+
+    def do_POST(self) -> None:
+        stub: _ProbeStub = self.server.probe  # type: ignore[attr-defined]
+        text = self.rfile.read(int(self.headers.get("content-length") or 0)).decode(
+            "utf-8", "replace"
+        )
+        if not self.path.split("?")[0].endswith("/v1/messages"):
+            self._answer(200, "application/json", json.dumps({"input_tokens": 1}).encode())
+            return
+        try:
+            parsed = json.loads(text)
+        except ValueError:
+            parsed = {}
+        body: Mapping[str, Any] = parsed if isinstance(parsed, dict) else {}
+        stub.saw(text)
+        usage = {"input_tokens": 1, "output_tokens": 1}
+        message = {"id": "msg_probe", "type": "message", "role": "assistant",
+                   "model": str(body.get("model") or ""), "stop_sequence": None,
+                   "usage": usage}  # fmt: skip
+        if body.get("stream"):
+            self._answer(200, "text/event-stream", _probe_events(message, stub.nonce))
+            return
+        whole = {**message, "content": [{"type": "text", "text": stub.nonce}],
+                 "stop_reason": "end_turn"}  # fmt: skip
+        self._answer(200, "application/json", json.dumps(whole).encode())
+
+    def log_message(self, *_args: Any) -> None:
+        pass
+
+
+class _ProbeStub:
+    """A Messages endpoint on this machine that answers every call with a nonce.
+
+    The nonce is in no request the CLI sends, so a reply carrying it came from
+    here: a real model reached through anything else cannot produce it. Only
+    derived yes-or-no facts about each request are kept, never its text.
     """
-    _config, reading, _records = _runtime()
-    if not _is_loopback(destination):
-        print(f"Refused: --probe-argv only calls a local stub, and this reaches {destination}.")
+
+    def __init__(self, nonce: str, *, needles: Mapping[str, str]) -> None:
+        self.nonce = nonce
+        self.needles = dict(needles)
+        self.requests = 0
+        self.found: dict[str, bool] = dict.fromkeys(needles, False)
+        self.server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), _ProbeHandler)
+        self.server.probe = self  # type: ignore[attr-defined]
+        self.host = f"127.0.0.1:{self.server.server_address[1]}"
+        self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
+
+    def saw(self, text: str) -> None:
+        self.requests += 1
+        for name, needle in self.needles.items():
+            self.found[name] = self.found[name] or needle in text
+
+    def __enter__(self) -> Self:
+        self.thread.start()
+        return self
+
+    def __exit__(self, *_exc: object) -> None:
+        self.server.shutdown()
+        self.server.server_close()
+
+
+def probe_environment(environ: Mapping[str, str], host: str) -> dict[str, str]:
+    """The operator's environment with every route off this machine removed, pointed at `host`.
+
+    The key is a placeholder no real endpoint accepts, so a call that went
+    anywhere else would be refused there as well.
+    """
+    import secrets  # noqa: PLC0415
+
+    env = {
+        key: value
+        for key, value in environ.items()
+        if not key.startswith(_PROBE_DROPPED_PREFIXES) and key.lower() not in _PROBE_DROPPED
+    }
+    env["ANTHROPIC_BASE_URL"] = f"http://{host}"
+    env["ANTHROPIC_API_KEY"] = f"cargento-probe-placeholder-{secrets.token_hex(8)}"
+    env["NO_PROXY"] = "127.0.0.1"
+    return env
+
+
+def probe_argv(
+    config: Any,
+    binary: str,
+    *,
+    runner: Callable[..., Any] | None = None,
+    environ: Mapping[str, str] | None = None,
+) -> int:
+    """One call to a stub this starts itself, to see what the CLI sends. Writes and charges nothing.
+
+    Refused rather than charged (DRC-4710, V5): no operator setting chooses
+    the endpoint. The probe starts its own stub, strips every variable that
+    could move the call (`probe_environment`), confirms `reading_route`
+    names that stub as the destination, and counts the call good only when the
+    reply carries the stub's nonce. It reports, as yes or no, whether the argv
+    and the request carry the fixed system prompt and whether the request
+    names this machine's home or state directory.
+    """
+    import secrets  # noqa: PLC0415
+
+    _runtime()
+    from cargento_runtime import observer, reading_route, supervise  # noqa: PLC0415
+
+    nonce = secrets.token_hex(16)
+    needles = {
+        "instruction": observer.CLAUDE_READING_SYSTEM_PROMPT,
+        "home": abstention_ledger.real_home(),
+        "user": os.path.basename(abstention_ledger.real_home().rstrip(os.sep)) or "\0",
+        "state": str(config.state_dir),
+    }
+    argv: list[list[str]] = []
+    with _ProbeStub(nonce, needles=needles) as stub:
+        env = probe_environment(os.environ if environ is None else environ, stub.host)
+        where = reading_route.destination("claude", environ=env)
+        if where != stub.host:
+            print(
+                f"Refused: the CLI would reach {where or 'an unnamed host'}, not the probe's stub."
+            )
+            return 2
+        spawn = runner if runner is not None else supervise.run
+
+        def run(command: Sequence[str], **kwargs: Any) -> Any:
+            argv.append([str(part) for part in command])
+            return spawn(command, **{**kwargs, "env": observer.claude_environment(env)})
+
+        raw, status = observer.claude_exec(
+            config,
+            PROBE_PROMPT,
+            output_cap_bytes=256,
+            runner=run,
+            binary_resolver=lambda _name: binary,
+        )
+    if status != "ok" or nonce not in raw or not stub.requests:
+        print(
+            f"Refused: the CLI's answer ({status}) did not come from the probe's own stub, "
+            "so this says nothing about what it sends. Nothing was written."
+        )
         return 2
-    model = reading.ClaudeReadingModel(config, binary_resolver=lambda _name: binary)
-    raw, status = model("Reply with the word ok.", output_cap_bytes=256)
-    print(f"Probe to {destination}: {status}, {len(raw)} characters back. Nothing was written.")
-    return 0 if status == "ok" else 1
+    command = argv[0] if argv else []
+    flagged = "--system-prompt" in command and (
+        command[command.index("--system-prompt") + 1] == observer.CLAUDE_READING_SYSTEM_PROMPT
+    )
+    facts = {
+        "argv carries --system-prompt": flagged,
+        "request carries the fixed instruction": stub.found["instruction"],
+        "request names the home directory": stub.found["home"],
+        "request names the account's user name": stub.found["user"],
+        "request names the state directory": stub.found["state"],
+    }
+    print(f"Probe: {stub.requests} request(s) reached the probe's own stub, none anywhere else.")
+    for name, value in facts.items():
+        print(f"  {name}: {'yes' if value else 'no'}")
+    print("Nothing was written and nothing was charged.")
+    leaked = stub.found["home"] or stub.found["user"] or stub.found["state"]
+    return 0 if flagged and stub.found["instruction"] and not leaked else 1
 
 
 def main(argv: list[str] | None = None) -> int:  # noqa: PLR0911 - one refusal per line
@@ -1910,11 +2200,11 @@ def main(argv: list[str] | None = None) -> int:  # noqa: PLR0911 - one refusal p
     )
     if args.probe_argv:
         try:
-            _shown, _version, binary = verify_claude_binary()
+            _shown, _version, binary, _signed = verify_claude_binary()
         except BinaryError as error:
             print(f"Refused: {error}.")
             return 2
-        return probe_argv(config, reading_route.destination("claude"), binary)
+        return probe_argv(config, binary)
     out = args.out or (CLAUDE_SUMMARY_PATH if args.producer == "claude" else SUMMARY_PATH)
     corpus = _load_corpus(args.rubric)
     if not corpus.cases.get("cases"):
@@ -1934,7 +2224,7 @@ def main(argv: list[str] | None = None) -> int:  # noqa: PLR0911 - one refusal p
         print(f"Refused: the reading call would reach {where}, not Anthropic.")
         return 2
     try:
-        shown, version, binary = verify_claude_binary()
+        shown, version, binary, signature = verify_claude_binary()
     except BinaryError as error:
         print(f"Refused: {error}.")
         return 2
@@ -1945,6 +2235,7 @@ def main(argv: list[str] | None = None) -> int:  # noqa: PLR0911 - one refusal p
         "destination": destination,
         "binary": shown,
         "cli_version": version,
+        "signature": signature,
     }
     results_path = results_path_for("claude")
     resume = None

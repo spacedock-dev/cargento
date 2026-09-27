@@ -2823,6 +2823,34 @@ def frozen_claude_checks(
     return facts, PressChecks(tally.tails(), tally.changed_after())
 
 
+def frozen_claude_user_messages(
+    config: RuntimeConfig, transcript_path: str, sid: str, *, until: float
+) -> list[dict[str, Any]]:
+    """The user-message facts a Claude Code transcript held at `until`, as `collect` derives them.
+
+    For the abstention scorer's score-time check (DRC-4711), beside
+    `frozen_claude_checks`. Measured 2026-09-27 on a scratch board over three
+    recorded sessions: a user message is the only non-check fact such a case
+    carries, and this reproduced the board's ledger rows for it. The whole
+    file is read, not the bounded tail, so a turn the board's tail dropped is
+    still found.
+    """
+    facts: list[dict[str, Any]] = []
+    with open(transcript_path, encoding="utf-8", errors="replace") as handle:
+        for line in handle:
+            try:
+                record = json.loads(line)
+            except (ValueError, RecursionError):
+                continue
+            event = _instruction_event(config, record, "claude", sid)
+            if event is None or float(event["at"]) > until:
+                continue
+            facts.append(
+                _semantic_fact_from_event(event, "steer", _SEMANTIC_FACT_TYPES["steer"], "")
+            )
+    return facts
+
+
 def _session_work_evidence(
     config: RuntimeConfig,
     transcript_path: str,

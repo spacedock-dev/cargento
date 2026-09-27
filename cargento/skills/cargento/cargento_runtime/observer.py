@@ -283,6 +283,17 @@ CLAUDE_READING_MODEL = "claude-sonnet-5"
 # Bounded below the CLI's top levels so one reading fits the shared 60-second
 # timeout that `OBSERVER_MODEL_TIMEOUT_SEC` already gives the Codex lane.
 CLAUDE_READING_EFFORT = "high"
+# Replaces Claude Code's default system prompt, about 13,000 characters of agent
+# instructions on 2.1.283 (owner ruling, DRC-4666, 2026-09-27). The CLI still
+# sends its environment block beside it; SECURITY.md lists what that holds. The
+# reading prompt on stdin carries the whole task, so this only frames it. One
+# line and nothing of this machine, so the argv digest moves with its wording
+# and with nothing else. The wording awaits the owner's approval.
+CLAUDE_READING_SYSTEM_PROMPT = (
+    "You assess a record of an agent's work session against goals a reader wrote. "
+    "Use only the text of the user message. Reply with the JSON object it asks for "
+    "and nothing else."
+)
 # Passed as a JSON string, which `claude --help` (2.1.280) documents for
 # `--mcp-config` beside files, so no temp file exists to leak or race.
 CLAUDE_EMPTY_MCP_CONFIG = '{"mcpServers":{}}'
@@ -344,10 +355,14 @@ def claude_exec(
     caches and its own logs; `--no-session-persistence` keeps the conversation
     off disk and does not govern those. `--bare` is deliberately absent: it
     refuses OAuth sign-in, which is how most operators are signed in.
-    Every flag was checked against `claude --help` on 2.1.280.
+    `--system-prompt` replaces the default system prompt; the environment
+    block the CLI sends beside it is not governed by any flag. Every flag was
+    checked against `claude --help` on 2.1.280, and `--system-prompt` on 2.1.283.
 
     The working directory is a fresh owner-only directory, empty, so even a
-    tool the flags failed to remove would find nothing of Cargento's there.
+    tool the flags failed to remove would find nothing of Cargento's there. It
+    is made in the system temp directory, because the CLI still tells the
+    model its working directory, platform, shell, OS version and the date.
     """
     binary = binary_resolver("claude")
     if not binary or not os.path.isabs(binary):
@@ -356,7 +371,11 @@ def claude_exec(
     workdir = ""
     output_path = ""
     try:
-        workdir = tempfile.mkdtemp(prefix="reading-claude-cwd-", dir=config.state_dir)
+        # The system temp directory, not the state directory: the CLI names
+        # its working directory to the model even under `--system-prompt`
+        # (measured on 2.1.283), and the state directory's path carries the
+        # account's home. Owner-only and empty either way.
+        workdir = tempfile.mkdtemp(prefix="reading-claude-cwd-")
         descriptor, output_path = tempfile.mkstemp(
             prefix="reading-claude-", suffix=".txt", dir=config.state_dir
         )
@@ -383,6 +402,8 @@ def claude_exec(
             CLAUDE_READING_MODEL,
             "--effort",
             CLAUDE_READING_EFFORT,
+            "--system-prompt",
+            CLAUDE_READING_SYSTEM_PROMPT,
         ]
         # A file rather than a pipe, so the reply is bounded on read rather
         # than buffered whole into this process.

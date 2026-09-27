@@ -630,15 +630,75 @@ def _frozen_checks(
     }
 
 
+def content_refusal(config: Any, case: dict[str, Any], transcript: str) -> list[str]:
+    """Why a Claude Code case's contents are not what its transcript holds (DRC-4711).
+
+    Rebuilt as the freeze built them, at the case's own `captured_at`, so turns
+    appended since are not a mismatch. Compared as the ledger rows the producer
+    reads, the one thing an invented fact could change. The checks and the
+    press reads must be exactly the transcript's, since dropping a failed
+    check changes a verdict as surely as inventing a pass. A user message must
+    be one the transcript holds, and one it holds may be absent: the board
+    reads a bounded tail, so an old turn is legitimately missing from a long
+    session's facts.
+    """
+    reading = _reading()
+    sid = str(case.get("sid") or "")
+    captured = float(case["captured_at"])
+    from cargento_runtime import project_context  # noqa: PLC0415 - see `_reading`
+
+    try:
+        checks, press = project_context.frozen_claude_checks(
+            config, transcript, sid, until=captured
+        )
+        typed = project_context.frozen_claude_user_messages(config, transcript, sid, until=captured)
+    except OSError:
+        return ["transcript-missing"]
+    tails = dict(press.tails)
+    frozen = {
+        "tails": tails,
+        "changed_after": sorted([list(pair) for pair in press.changed_after]),
+    }
+    reasons: list[str] = []
+    if json.loads(json.dumps(frozen)) != case.get("tool_output"):
+        reasons.append("tool-output-differs")
+    facts = [f for f in case.get("producer_facts") or () if isinstance(f, dict)]
+    tool = reading.TOOL_REPORT_TYPE
+
+    def rows(these: list[dict[str, Any]], tails: dict[str, str] | None) -> list[Any]:
+        return list(
+            reading.build_ledger(
+                these, "claude", sid, tool_output=tails, changed_after=press.changed_after
+            )
+        )
+
+    packet_checks = [f for f in facts if f.get("type") == tool]
+    if rows(json.loads(json.dumps(packet_checks)), tails) != rows(
+        json.loads(json.dumps(checks)), tails
+    ):
+        reasons.append("checks-differ")
+    held = rows(typed, None)
+    if any(row not in held for row in rows([f for f in facts if f.get("type") != tool], None)):
+        reasons.append("facts-unconfirmed")
+    return reasons
+
+
 def provenance(
-    case: dict[str, Any], *, observations: Any, ends: Any, index: dict[str, str]
+    case: dict[str, Any],
+    *,
+    observations: Any,
+    ends: Any,
+    index: dict[str, str],
+    config: Any = None,
 ) -> list[str]:
     """Why a frozen case cannot be called recorded, from the machine's own records.
 
     The freeze's checks, repeated at score time, because the packet is
     hand-editable and the scorer read `origin` as written (V2). `index` maps a
     Claude Code sid's first eight characters to its transcript, as
-    `_transcript_index` builds it from `CLAUDE_PROJECTS_ROOT`.
+    `_transcript_index` builds it from `CLAUDE_PROJECTS_ROOT`. A Claude Code
+    case's contents are rebuilt from that transcript too (`content_refusal`),
+    under `config`, the runtime config the freeze would build when none is given.
     """
     snapshot = case.get("row_snapshot")
     captured = case.get("captured_at")
@@ -657,14 +717,22 @@ def provenance(
                 reasons.append("transcript-outside-projects")
             if not _transcript_is_the_session(transcript, sid):
                 reasons.append("transcript-other-session")
+            if not reasons:
+                reasons.extend(
+                    content_refusal(
+                        config if config is not None else _runtime_config(), case, transcript
+                    )
+                )
     return reasons
 
 
-def make_vouch(*, observations: Any, ends: Any, index: dict[str, str]) -> Any:
+def make_vouch(*, observations: Any, ends: Any, index: dict[str, str], config: Any = None) -> Any:
     """`provenance` bound to one set of records, for the scorer to call per case."""
 
     def vouch(case: Any) -> list[str]:
-        return provenance(dict(case), observations=observations, ends=ends, index=index)
+        return provenance(
+            dict(case), observations=observations, ends=ends, index=index, config=config
+        )
 
     return vouch
 
@@ -672,7 +740,9 @@ def make_vouch(*, observations: Any, ends: Any, index: dict[str, str]) -> Any:
 def machine_vouch(store_home: str) -> Any:
     """`make_vouch` over this machine's history, ends and Claude Code transcripts."""
     observations, ends = _observed_stores(store_home)
-    return make_vouch(observations=observations, ends=ends, index=_transcript_index())
+    return make_vouch(
+        observations=observations, ends=ends, index=_transcript_index(), config=_runtime_config()
+    )
 
 
 def freeze_case(

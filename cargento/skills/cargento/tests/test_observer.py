@@ -1804,6 +1804,28 @@ class ClaudeExecTest(unittest.TestCase):
                 # tool set and a default one differ only in that token.
                 self.assertEqual([value], self._values(command, flag))
 
+    def test_a_fixed_system_prompt_replaces_claude_codes_default(self) -> None:
+        # DRC-4666, owner ruling: Claude Code's default system prompt is not
+        # the reader's to send. `--system-prompt` replaces it whole;
+        # `--append-system-prompt` would keep it, so it must never appear.
+        seen, _text, _status, _config = self._run()
+        command = seen[0][0]
+        self.assertEqual(
+            [observer.CLAUDE_READING_SYSTEM_PROMPT], self._values(command, "--system-prompt")
+        )
+        self.assertNotIn("--append-system-prompt", command)
+        self.assertNotIn("--system-prompt-file", command)
+
+    def test_the_fixed_system_prompt_names_nothing_of_this_machine(self) -> None:
+        text = observer.CLAUDE_READING_SYSTEM_PROMPT
+        self.assertTrue(text.strip())
+        self.assertEqual(text, " ".join(text.split()), "one line, no layout to carry anything")
+        home = str(Path.home())
+        for leaked in (home, os.getcwd(), os.environ.get("USER") or "\0", "/", "\\", "~"):
+            with self.subTest(leaked=leaked):
+                self.assertNotIn(leaked, text)
+        self.assertFalse(text.startswith("-"), "a value, never read as a flag")
+
     def test_the_empty_mcp_config_names_no_server(self) -> None:
         self.assertEqual({"mcpServers": {}}, json.loads(observer.CLAUDE_EMPTY_MCP_CONFIG))
 
@@ -1852,6 +1874,7 @@ class ClaudeExecTest(unittest.TestCase):
             "--output-format",
             "--model",
             "--effort",
+            "--system-prompt",
         }
         index = 1
         while index < len(command):
@@ -1874,11 +1897,25 @@ class ClaudeExecTest(unittest.TestCase):
         _command, kwargs, observed = seen[0]
         cwd = Path(kwargs["cwd"])
         self.assertNotEqual(config.state_dir, cwd, "the store directory is not a scratch cwd")
-        self.assertEqual(config.state_dir, cwd.parent)
+        self.assertEqual(Path(tempfile.gettempdir()).resolve(), cwd.parent.resolve())
         self.assertTrue(observed["cwd_exists"])
         if os.name != "nt":  # POSIX permission bits; Windows uses ACLs
             self.assertEqual(0o700, observed["cwd_mode"])
         self.assertEqual([], observed["cwd_entries"])
+
+    @unittest.skipIf(os.name == "nt", "the system temp directory is under the profile there")
+    def test_the_working_directory_names_neither_the_home_nor_the_state_directory(self) -> None:
+        # Measured 2026-09-27 on 2.1.283 against a local stub: even with
+        # `--system-prompt`, the CLI sends an environment block naming its
+        # working directory. Under the state directory that path carried the
+        # account's home, and with it the user name (DRC-4666).
+        seen, _text, _status, config = self._run()
+        cwd = Path(seen[0][1]["cwd"]).resolve()
+        for root in (Path.home().resolve(), Path(config.state_dir).resolve()):
+            with self.subTest(root=root):
+                self.assertNotEqual(root, cwd)
+                self.assertNotIn(root, cwd.parents)
+        self.assertFalse(cwd.exists(), "the working directory outlived the call")
 
     def test_stdout_goes_to_an_owner_only_file_outside_the_working_directory(self) -> None:
         seen: list[tuple[str, int]] = []

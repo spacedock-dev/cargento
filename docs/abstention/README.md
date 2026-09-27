@@ -37,6 +37,11 @@ file per producer, one run each. It holds:
   the CLI is the native installer's, a file under `~/.local/share/claude/versions` named for the
   version it reports. A stub on `PATH` or an `ANTHROPIC_BASE_URL` pointed elsewhere refuses the
   run before anything is written.
+- `signature`: what vouches for that CLI's origin. On macOS it is
+  `Developer ID Q6L2SF6YDW com.anthropic.claude-code`, written only after `codesign` confirmed the
+  pinned requirement, and an unsigned or foreign binary refuses the run before it is executed. On
+  Linux and Windows no signature is checked, and it reads `unchecked sha256:<hex>`, the hash of the
+  file that ran. [SECURITY.md](../../SECURITY.md#the-abstention-check) states that limit.
 - `spend`, the calls charged to the spend ledger when the run finished and the cap it ran under.
 - `marks_digest`, the sha256 of `~/.cargento/abstention-marks.json` as it was when scored. A later
   `--report` hashes the marks again and refuses PASS if they moved, because a mark written after
@@ -151,7 +156,24 @@ Codex has no session-end hook and is never read at a turn stop.
 
 The scorer repeats these checks at score time for every case the packet calls `recorded`, because
 the packet is hand-editable: the transcript found for that sid under `~/.claude/projects`, its
-session id, and the lifecycle in this machine's history and ends stores. A case that fails any of
+session id, and the lifecycle in this machine's history and ends stores. For a Claude Code case it
+also rebuilds the contents from that transcript as it stood at the case's `captured_at`, the same
+derivation the freeze used, and compares them with the packet as the ledger rows the producer
+reads (DRC-4711):
+
+- `checks-differ`: the check facts are not exactly the transcript's. An invented, altered or
+  dropped check all land here.
+- `tool-output-differs`: `tool_output`, the tails and changed-after pairs, is not exactly what a
+  press at `captured_at` read.
+- `facts-unconfirmed`: a user message in the packet is not one the transcript holds. A message the
+  transcript holds may be absent from the packet, because the board reads a bounded tail. Measured
+  on three recorded sessions, a user message is the only fact a Claude Code case carries besides
+  its checks, so any other fact lands here too.
+
+Turns appended after `captured_at` are not a mismatch. The rebuild follows the parser, so freeze
+the packet on the tree you score on: a parser change between the two demotes every case. A Codex
+case has no transcript this check reads, and under the per-producer floor it is a control that
+never covers. A case that fails any of
 them becomes `synthetic`, is withheld as `not-recorded` without a model call, and never meets the
 floor, whatever the packet or the rubric says. A case the packet itself calls `synthetic` is
 different: it is sent, charged and scored, so it can fail the run, and it never meets the floor. `--report` runs the same check and counts only the
@@ -201,14 +223,21 @@ case the cap stopped is withheld as `spend-cap`.
   (`withheld:model-failed`). It carries the other records over only when they hash to what the
   ledger recorded as the last run, so a hand-edited outcome is refused.
 
-`--probe-argv` is the one way to watch what the CLI sends without spending: it calls the verified
-CLI once with a fixed sentence, only when `ANTHROPIC_BASE_URL` points at a local stub, and writes no
-result and charges nothing. It refuses any destination that is not this machine.
+`--probe-argv` is the one way to watch what the CLI sends without spending. It starts its own stub
+on `127.0.0.1`, runs the verified CLI once with a fixed sentence, every `ANTHROPIC_*`,
+`CLAUDE_CODE_USE_*` and proxy variable removed, the base URL pointed at that stub and a placeholder
+key. It refuses to run when `reading_route.destination` would name anything else, and refuses the
+answer unless it carries a nonce only the stub knew, so a forwarding proxy or an operator's
+`ANTHROPIC_BASE_URL` cannot turn it into a real call (DRC-4710). It prints yes or no for: the argv
+carries `--system-prompt`, the request carries the fixed sentence, and the request names the home
+directory, the user name or the state directory. It exits 0 only when the first two are yes and the
+rest no, and it writes no result and charges nothing.
 
 The owner's commands, in order. `CARGENTO_HOME` holds the packet; the ledger does not move with it:
 
 ```bash
 export CARGENTO_HOME=~/.cargento/abstention-claude-<date>
+python3 scripts/score_abstention.py --probe-argv      # its own stub, spends nothing; expect exit 0
 python3 scripts/mark_abstention.py --freeze "$CARGENTO_HOME/freeze-spec.json"   # spends nothing
 python3 scripts/score_abstention.py --report          # preflight, spends nothing
 python3 scripts/mark_abstention.py                    # y/n/s/q per constraint, every case
@@ -229,9 +258,18 @@ the model ran, so the case says nothing about the model, and it is counted for n
 The verdict is `failed` when a case marked should-abstain judged or the rubric records a false
 reassurance (a mark of `abstain` on that line is not enough on its own), `blocked` when a rubric
 entry left a required judgement unscored, `short` when no case failed but
-fewer than one recorded case per DEC-15 kind reached the model on Claude or on Codex, `stale` when
+fewer than one recorded case per DEC-15 kind reached the model on the harness of the producer
+scored (on both Claude and Codex for a run that names no producer), `stale` when
 the marks no longer hash to `marks_digest` or replay inputs no longer match `inputs_digest`, and
-`passed` only when none of those hold. The report
+`passed` only when none of those hold.
+
+Coverage is judged per producer, by the
+[DEC-17 amendment of 2026-09-27](../design-reading-a-session.md#amended-2026-09-27-the-floor-is-judged-per-producer).
+Each harness in `coverage` carries `kinds`, `role`, `missing` and `not_produced`. The producer's own
+harness is `scored` and its absent kinds are `missing`, which reads `short`. The other harness is a
+cross-harness `control`: its cases are scored and can fail the run, and its absent kinds are
+`not_produced`, which never reads `short`. A run that names no producer marks both `required`. The
+report
 never prints one figure for the whole: false reassurance, false alarm, missed departure and
 over-abstention are four counts, and citations hit, missed or extra are a fifth column beside them.
 

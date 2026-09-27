@@ -1134,6 +1134,9 @@ The argv, every flag checked against `claude --help` on 2.1.280, run without a s
   nobody is asked. `bypassPermissions` and the `--dangerously-*` flags never appear.
 - `--output-format text`, `--model claude-sonnet-5` (fixed, never the CLI default) and
   `--effort high`.
+- `--system-prompt` with one fixed sentence, `observer.CLAUDE_READING_SYSTEM_PROMPT`, in place of
+  Claude Code's default system prompt (owner ruling, DRC-4666, 2026-09-27). Checked on 2.1.283.
+  `--append-system-prompt`, which would keep the default, never appears.
 
 `--bare` is not used, because it refuses OAuth sign-in. `--json-schema` is not used either.
 
@@ -1145,11 +1148,28 @@ session. Authentication and provider variables are kept, so configuration in the
 environment, such as `ANTHROPIC_API_KEY`, `ANTHROPIC_BASE_URL` or `CLAUDE_CODE_USE_BEDROCK` and
 `CLAUDE_CODE_USE_VERTEX`, decides which endpoint and which account receive the reading.
 
-The process runs in a fresh owner-only (0700) empty directory under the state directory. Stdout
-goes to an owner-only temp file, never a pipe, and at most `annotation_text_cap_chars * 8` bytes of
+What reaches Anthropic besides the reading prompt was measured on 2.1.283, 2026-09-27, by
+running the real CLI against a local stub with every outbound connection off this machine blocked
+by the OS (`score_abstention.py --probe-argv`, below):
+
+- Not sent: Claude Code's default system prompt, about 13,000 characters of agent
+  instructions, and with it anything read from CLAUDE.md, memory or skills. No tool is offered:
+  the request's tool list is empty.
+- Sent anyway, with no flag that removes it: a billing header line naming the CLI version, one line
+  saying the caller is built on the Claude Agent SDK, and a separate system message giving the
+  working directory, whether it is a git repository, the platform, the shell, the OS version,
+  the model's name and today's date. The request also carries the account identifier the CLI
+  always sends. `--exclude-dynamic-system-prompt-sections` does not help: the CLI ignores it
+  under `--system-prompt`.
+
+Because that working directory is sent, the process runs in a fresh owner-only (0700) empty
+directory made in the system temp directory, not under the state directory, whose path carries
+the account's home and so the user name. On macOS and Linux that path names neither. On Windows
+the system temp directory is inside the user's profile, so the user name is still sent there.
+Stdout goes to an owner-only temp file under the state directory, never a pipe, and at most `annotation_text_cap_chars * 8` bytes of
 it are read. The file is bounded on disk at 1 MiB plus one 0.01 s slice of writes, as
-[Observer model calls](#observer-model-calls) describes, with the measured overshoot. Stderr is discarded. The timeout is the
-shared **60 seconds**. The directory and the
+[Observer model calls](#observer-model-calls) describes, with the measured overshoot. Stderr is
+discarded. The timeout is the shared **60 seconds**. The directory and the
 file are removed on every path, including a timeout or an OS error, and only once the CLI and
 anything it started have been killed and reaped. An absent or relative
 `shutil.which("claude")` spends nothing and creates nothing. The prompt is the reading prompt Codex
@@ -1159,9 +1179,9 @@ same rolling cap apply.
 These flags are CLI restrictions, not an OS sandbox. There is no Claude Code equivalent of Codex
 `--sandbox read-only`. The installed CLI still owns its authentication, caches and logs, and
 `--no-session-persistence` does not govern those. That the flags suppress every tool at run time
-is not verified by this repository's tests, and neither is whether a given account may use the
-pinned model id. Both were unmeasured when this entry was written, because the build is gated and
-no Claude Code reading was run.
+is not verified by this repository's tests; the one measurement, the stub probe above on 2.1.283,
+saw an empty tool list. Whether a given account may use the pinned model id is still unmeasured,
+because the build is gated and no Claude Code reading has been run.
 
 ### Tool output in a Claude Code reading
 
@@ -1450,21 +1470,39 @@ with a tool-output grant would. The owner authorized that sending for this quali
 
 The scorer refuses to start unless the call reaches Anthropic (`reading_route.destination` names
 `Anthropic`) through the native installer's CLI, whose version file and `--version` line agree, and
-unless every case is marked with closed tokens. The committed summary names the producer, the
-model, the argv digest, the destination, the CLI path with the home directory written `~`, and its
-version. Every call is charged before it runs to one ledger at a fixed path,
+unless every case is marked with closed tokens. On macOS the CLI must also satisfy a pinned code
+requirement, checked with `codesign --verify --strict` before the file is run at all: signed
+through Apple's Developer ID chain, identifier `com.anthropic.claude-code`, team `Q6L2SF6YDW`
+(Anthropic PBC, measured on 2.1.283). An unsigned stub saved in the install layout is refused, and
+so is a machine where `codesign` cannot run (DRC-4710). No other platform checks a signature. Linux
+has none to check, and whether the Windows CLI carries an Authenticode signature was never measured.
+There the committed result records the binary's sha256 as `unchecked sha256:<hex>`, which names
+the file that ran and not who built it. A process running as the reader can rewrite the install
+directory either way, so this guards against a wrong or planted binary being recorded as the
+qualified producer, not against the account itself. The committed summary names the producer, the
+model, the argv digest, the destination, the CLI path with the home directory written `~`, its
+version and that signature phrase. Every call is charged before it runs to one ledger at a fixed path,
 `~/.cargento/drc-4666-spend.json`, under an exclusive lock, with the digests of the marks and the
 cases it was made under. It never follows `CARGENTO_HOME` or `HOME`: the home is the account's
 own, and scoring refuses while `HOME` names another. The committed result records a hash chain
 over the ledger's charges and their digests, and scoring refuses while the ledger does not begin
 with it, reading the committed result at its fixed path whatever `--out` says. The scorer also
 re-checks each case's provenance against this machine's transcripts, history and ends, and spends
-nothing on a case that claims recorded and is not vouched for. On Windows the home falls back to `USERPROFILE`, so the
+nothing on a case that claims recorded and is not vouched for. For a Claude Code case that includes
+its contents: the checks, their output tails and its user messages are rebuilt from the transcript
+as it stood at the case's `captured_at`, and a case whose packet says anything else is demoted
+(DRC-4711). On Windows the home falls back to `USERPROFILE`, so the
 `HOME` protection is POSIX only. The ledger stops at nineteen calls across every
 run and producer, refuses every call when it cannot be read, refuses calls under other digests, and
 freezes the marks once it holds one. It holds case ids, times, statuses and digests only. The
 scorer does not pass through the reader's rolling budget, so that ledger is the bound.
-`--probe-argv` calls a local stub only, and writes and charges nothing. A Claude Code result is its
+`--probe-argv` writes and charges nothing, and it cannot reach a real model through anything the
+operator configured: it starts its own stub on `127.0.0.1`, runs the verified CLI with every
+`ANTHROPIC_*` and `CLAUDE_CODE_USE_*` variable and every proxy variable removed, the base URL set
+to that stub and a placeholder key no real endpoint accepts, refuses to run when
+`reading_route.destination` would name anything but the stub, and counts the call good only when
+the reply carries a nonce only the stub knew (DRC-4710: refused, not charged). It reports only yes
+or no facts about the request, never its text. A Claude Code result is its
 own file, `docs/abstention/claude-results.json`, and opens no gate by being written. A case the producer refuses before the model, an empty ledger or a session the
 board no longer lists, spends nothing. The yardstick is handed to the producer as an argument, so
 the run writes nothing to `cargento-annotations.json` and increments no reading count. Historical

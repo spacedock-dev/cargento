@@ -9,6 +9,7 @@ Claude Code case's checks frozen as they stood at the capture.
 from __future__ import annotations
 
 import datetime as dt
+import hashlib
 import json
 import os
 import subprocess
@@ -146,6 +147,7 @@ BINDING = {
     "destination": "Anthropic",
     "binary": "~/.local/share/claude/versions/2.1.281",
     "cli_version": "2.1.281 (Claude Code)",
+    "signature": "Developer ID Q6L2SF6YDW com.anthropic.claude-code",
 }
 
 _LEDGER_PATCH: Any = None
@@ -264,7 +266,12 @@ class TheClaudeProducerIsChosenExplicitlyTest(unittest.TestCase):
             mock.patch.object(
                 score_abstention,
                 "verify_claude_binary",
-                return_value=(BINDING["binary"], BINDING["cli_version"], "/abs/claude"),
+                return_value=(
+                    BINDING["binary"],
+                    BINDING["cli_version"],
+                    "/abs/claude",
+                    BINDING["signature"],
+                ),
             ),
             mock.patch("cargento_runtime.reading_route.destination", return_value="Anthropic"),
             mock.patch("builtins.print"),
@@ -803,7 +810,7 @@ class Q3TheDestinationAndBinaryAreBoundTest(_Packet):
             return mock.Mock(return_value=mock.Mock(returncode=0, stdout=f"{version}\n"))
 
         with mock.patch.object(score_abstention, "CLAUDE_VERSIONS_ROOTS", (str(versions),)):
-            path, version, absolute = score_abstention.verify_claude_binary(
+            path, version, absolute, _signed = score_abstention.verify_claude_binary(
                 resolver=lambda _name: str(real), runner=run("2.1.281 (Claude Code)")
             )
             self.assertEqual("2.1.281 (Claude Code)", version)
@@ -819,8 +826,7 @@ class Q3TheDestinationAndBinaryAreBoundTest(_Packet):
                     score_abstention.verify_claude_binary(resolver=resolver, runner=runner)
         self.assertNotIn(str(Path.home()), path)
 
-    def test_the_stub_probe_never_writes_a_result_and_refuses_anthropic(self) -> None:
-        model = _Model(("ok", "ok"))
+    def test_the_probe_writes_no_result_and_charges_nothing(self) -> None:
         results = self.home / "claude-results.json"
         with (
             mock.patch.object(score_abstention, "CLAUDE_SUMMARY_PATH", str(results)),
@@ -828,22 +834,224 @@ class Q3TheDestinationAndBinaryAreBoundTest(_Packet):
             mock.patch.object(
                 score_abstention,
                 "verify_claude_binary",
-                return_value=(BINDING["binary"], BINDING["cli_version"], "/abs/claude"),
+                return_value=(
+                    BINDING["binary"],
+                    BINDING["cli_version"],
+                    "/abs/claude",
+                    BINDING["signature"],
+                ),
             ),
-            mock.patch.object(reading, "ClaudeReadingModel", return_value=model),
+            mock.patch.object(score_abstention, "probe_argv", return_value=0) as probe,
             mock.patch("builtins.print"),
         ):
-            with mock.patch("cargento_runtime.reading_route.destination", return_value="Anthropic"):
-                self.assertEqual(2, score_abstention.main(["--probe-argv"]))
-            self.assertEqual([], model.prompts)
-            with mock.patch(
-                "cargento_runtime.reading_route.destination", return_value="127.0.0.1:8123"
-            ):
-                self.assertEqual(0, score_abstention.main(["--probe-argv"]))
-        self.assertEqual(1, len(model.prompts))
+            self.assertEqual(0, score_abstention.main(["--probe-argv"]))
+        probe.assert_called_once()
+        self.assertEqual("/abs/claude", probe.call_args.args[1])
         self.assertFalse(results.exists())
         self.assertFalse(self.ledger_path.exists())
         self.assertEqual([], list(self.home.glob("*.json")))
+
+
+class _Proxy:
+    """A forwarding proxy that answers as the real model would, and counts what reached it."""
+
+    def __init__(self) -> None:
+        import http.server  # noqa: PLC0415
+        import threading  # noqa: PLC0415
+
+        hits: list[str] = []
+        self.hits = hits
+
+        class Handler(http.server.BaseHTTPRequestHandler):
+            def do_POST(self) -> None:
+                self.rfile.read(int(self.headers.get("content-length") or 0))
+                hits.append(self.path)
+                body = json.dumps({"content": [{"type": "text", "text": "ok"}]}).encode()
+                self.send_response(200)
+                self.send_header("content-type", "application/json")
+                self.send_header("content-length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+
+            def log_message(self, *_args: Any) -> None:
+                pass
+
+        self.server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        self.url = f"http://127.0.0.1:{self.server.server_address[1]}"
+        threading.Thread(target=self.server.serve_forever, daemon=True).start()
+
+    def close(self) -> None:
+        self.server.shutdown()
+        self.server.server_close()
+
+
+class DRC4710TheProbeCannotReachARealModelTest(unittest.TestCase):
+    """DRC-4710 V5: `--probe-argv` accepted any loopback address, a forwarding proxy included.
+
+    Refused, not charged: the probe points the CLI at a stub it starts itself,
+    strips every variable that could move the call, and counts the probe good
+    only when the reply carries a nonce that only its own stub knows.
+    """
+
+    def setUp(self) -> None:
+        self.proxy = _Proxy()
+        self.addCleanup(self.proxy.close)
+        # The operator's own configuration: every route a call could take elsewhere.
+        self.operator = {
+            "HOME": str(Path.home()),
+            "PATH": os.environ.get("PATH", ""),
+            "ANTHROPIC_BASE_URL": self.proxy.url,
+            "HTTPS_PROXY": self.proxy.url,
+            "https_proxy": self.proxy.url,
+            "ANTHROPIC_API_KEY": "sk-ant-PLACEHOLDER-operator",
+            "ANTHROPIC_AUTH_TOKEN": "PLACEHOLDER-token",
+            "CLAUDE_CODE_USE_BEDROCK": "1",
+        }
+        self.seen: list[dict[str, Any]] = []
+        self.printed: list[str] = []
+
+    def cli(self, *, obeys: bool = True, adds: str = "") -> Any:
+        """A fake Claude Code CLI: posts one Messages request and prints the reply text."""
+        import urllib.request  # noqa: PLC0415
+
+        def run(command: list[str], **kwargs: Any) -> Any:
+            env = kwargs["env"]
+            self.seen.append({"command": list(command), "env": dict(env)})
+            base = (
+                env.get("ANTHROPIC_BASE_URL", "") if obeys else self.operator["ANTHROPIC_BASE_URL"]
+            )
+            system = command[command.index("--system-prompt") + 1] + adds
+            body = json.dumps(
+                {
+                    "model": observer.CLAUDE_READING_MODEL,
+                    "system": [{"type": "text", "text": system}],
+                    "messages": [{"role": "user", "content": kwargs["input"]}],
+                    "stream": False,
+                }
+            ).encode()
+            opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+            request = urllib.request.Request(  # noqa: S310 - loopback only
+                f"{base}/v1/messages", data=body, headers={"content-type": "application/json"}
+            )
+            with opener.open(request, timeout=10) as response:
+                reply = json.loads(response.read())
+            kwargs["stdout"].write(reply["content"][0]["text"].encode())
+            return subprocess.CompletedProcess(command, 0)
+
+        return run
+
+    def probe(self, runner: Any) -> int:
+        with mock.patch("builtins.print", side_effect=_collect_into(self.printed)):
+            return score_abstention.probe_argv(
+                _state_config(), "/abs/claude", runner=runner, environ=self.operator
+            )
+
+    def test_the_cli_is_pointed_only_at_the_probes_own_stub(self) -> None:
+        self.assertEqual(0, self.probe(self.cli()), self.printed)
+        self.assertEqual([], self.proxy.hits)
+        env = self.seen[0]["env"]
+        self.assertTrue(env["ANTHROPIC_BASE_URL"].startswith("http://127.0.0.1:"))
+        self.assertNotEqual(self.proxy.url, env["ANTHROPIC_BASE_URL"])
+        for gone in (
+            "HTTPS_PROXY",
+            "https_proxy",
+            "ANTHROPIC_AUTH_TOKEN",
+            "CLAUDE_CODE_USE_BEDROCK",
+        ):
+            with self.subTest(gone=gone):
+                self.assertNotIn(gone, env)
+        self.assertNotEqual(self.operator["ANTHROPIC_API_KEY"], env["ANTHROPIC_API_KEY"])
+        said = "\n".join(self.printed)
+        self.assertIn("argv carries --system-prompt: yes", said)
+        self.assertIn("request carries the fixed instruction: yes", said)
+        self.assertIn("request names the home directory: no", said)
+
+    def test_a_reply_that_did_not_come_from_the_stub_is_refused(self) -> None:
+        # A CLI that reached the operator's proxy anyway: the real model's
+        # answer cannot carry the nonce, so the probe says so and passes nothing.
+        self.assertEqual(2, self.probe(self.cli(obeys=False)))
+        self.assertEqual(1, len(self.proxy.hits))
+        self.assertIn("Refused", "\n".join(self.printed))
+
+    def test_a_destination_other_than_the_stub_runs_nothing(self) -> None:
+        runner = mock.Mock(side_effect=AssertionError("ran"))
+        with mock.patch("cargento_runtime.reading_route.destination", return_value="Anthropic"):
+            self.assertEqual(2, self.probe(runner))
+        runner.assert_not_called()
+
+    def test_a_request_naming_this_machine_fails_the_probe(self) -> None:
+        self.assertEqual(1, self.probe(self.cli(adds=f" cwd {Path.home()}")))
+        self.assertIn("request names the home directory: yes", "\n".join(self.printed))
+
+
+class DRC4710TheCliIsBoundByItsSignatureTest(unittest.TestCase):
+    """DRC-4710 V4: a stub saved in the install layout was recorded as Anthropic's CLI."""
+
+    def setUp(self) -> None:
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        versions = Path(self.temp.name, "versions")
+        versions.mkdir()
+        self.binary = versions / "9.9.9"
+        self.binary.write_bytes(b"#!/bin/sh\necho '9.9.9 (Claude Code)'\n")
+        patch = mock.patch.object(score_abstention, "CLAUDE_VERSIONS_ROOTS", (str(versions),))
+        patch.start()
+        self.addCleanup(patch.stop)
+        self.ran: list[list[str]] = []
+
+    def runner(self, *, signed: bool) -> Any:
+        def run(command: list[str], **_kwargs: Any) -> Any:
+            self.ran.append(list(command))
+            if Path(command[0]).name == "codesign":
+                return mock.Mock(returncode=0 if signed else 1, stdout="", stderr="")
+            return mock.Mock(returncode=0, stdout="9.9.9 (Claude Code)\n", stderr="")
+
+        return run
+
+    def verify(self, platform: str, *, signed: bool) -> tuple[str, str, str, str]:
+        return score_abstention.verify_claude_binary(
+            resolver=lambda _name: str(self.binary),
+            runner=self.runner(signed=signed),
+            platform=platform,
+        )
+
+    def test_on_macos_a_stub_in_the_install_layout_is_refused_before_it_runs(self) -> None:
+        with self.assertRaises(score_abstention.BinaryError):
+            self.verify("darwin", signed=False)
+        self.assertEqual(["codesign"], [Path(c[0]).name for c in self.ran])
+
+    def test_on_macos_the_pinned_team_and_identifier_are_required(self) -> None:
+        *_rest, signature = self.verify("darwin", signed=True)
+        codesign = self.ran[0]
+        self.assertEqual("/usr/bin/codesign", codesign[0])
+        self.assertIn("--strict", codesign)
+        requirement = codesign[codesign.index("-R") + 1]
+        self.assertIn('certificate leaf[subject.OU] = "Q6L2SF6YDW"', requirement)
+        self.assertIn('identifier "com.anthropic.claude-code"', requirement)
+        self.assertIn("anchor apple generic", requirement)
+        self.assertEqual(str(self.binary.resolve()), codesign[-1])
+        self.assertEqual("Developer ID Q6L2SF6YDW com.anthropic.claude-code", signature)
+        self.assertEqual("--version", self.ran[1][1])
+
+    def test_on_macos_without_codesign_the_run_is_refused(self) -> None:
+        def missing(command: list[str], **_kwargs: Any) -> Any:
+            if Path(command[0]).name == "codesign":
+                raise FileNotFoundError(command[0])
+            return mock.Mock(returncode=0, stdout="9.9.9 (Claude Code)\n")
+
+        with self.assertRaises(score_abstention.BinaryError):
+            score_abstention.verify_claude_binary(
+                resolver=lambda _name: str(self.binary), runner=missing, platform="darwin"
+            )
+
+    def test_elsewhere_no_signature_is_checked_and_the_hash_is_recorded(self) -> None:
+        digest = hashlib.sha256(self.binary.read_bytes()).hexdigest()
+        for platform in ("linux", "win32"):
+            with self.subTest(platform=platform):
+                self.ran.clear()
+                *_rest, signature = self.verify(platform, signed=False)
+                self.assertEqual(f"unchecked sha256:{digest}", signature)
+                self.assertNotIn("codesign", [Path(c[0]).name for c in self.ran])
 
 
 class Q4OnlyAGenuineCaseIsRecordedTest(unittest.TestCase):
@@ -928,6 +1136,170 @@ class Q4OnlyAGenuineCaseIsRecordedTest(unittest.TestCase):
                     self.config, entry, [], observations=observations, ends=[]
                 )
                 self.assertEqual(origin, case["origin"])
+
+
+def _asked(start: float, session_id: str, seconds: int = 5) -> dict[str, Any]:
+    """A reader's typed turn, in the recorded shape."""
+    return {
+        "type": "user", "isSidechain": False, "cwd": "/w", "sessionId": session_id,
+        "uuid": f"u-{session_id}-{seconds}", "timestamp": _stamp(start, seconds),
+        "message": {"role": "user", "content": "ASKED_WORDS make the tests pass"},
+    }  # fmt: skip
+
+
+def _board_facts(config: Any, rows: list[dict[str, Any]], sid: str) -> list[dict[str, Any]]:
+    """What the board publishes for these rows' typed turns: its own derivation, as measured.
+
+    Measured 2026-09-27 on a scratch board over the recorded sessions H2,
+    1b4a141f and a2364dbf: every non-check fact a Claude Code case carries is
+    a `steer` user message, and this rebuild matched the board's ledger rows.
+    """
+    from cargento_runtime import project_context  # noqa: PLC0415
+
+    facts = []
+    for row in rows:
+        event = project_context._instruction_event(config, row, "claude", sid)
+        if event is not None:
+            facts.append(
+                project_context._semantic_fact_from_event(event, "steer", "user_message", "")
+            )
+    return facts
+
+
+class DRC4711TheContentsAreCheckedAgainstTheTranscriptTest(_Packet):
+    """DRC-4711: identity alone vouched for a case whose facts were invented."""
+
+    def setUp(self) -> None:
+        super().setUp()
+        self.root = self.home / "projects"
+        self.start = dt.datetime(2026, 9, 24, 3, 0, 0, tzinfo=dt.UTC).timestamp()
+        self.config = _state_config()
+        self.index: dict[str, str] = {}
+        self.stops: list[dict[str, Any]] = []
+        patch = mock.patch.object(mark_abstention, "CLAUDE_PROJECTS_ROOT", str(self.root))
+        patch.start()
+        self.addCleanup(patch.stop)
+
+    def genuine(self, sid: str = CLAUDE_SID) -> dict[str, Any]:
+        rows = [_asked(self.start, sid), *_transcript(self.start, sid)]
+        folder = self.root / "-w"
+        folder.mkdir(parents=True, exist_ok=True)
+        path = folder / f"{sid}.jsonl"
+        path.write_text("\n".join(json.dumps(r) for r in rows) + "\n")
+        self.index[sid[:8]] = str(path)
+        self.stops.append(
+            {"harness": "claude", "sid": sid, "state": "idle", "last_activity": self.start + 20}
+        )
+        entry = {
+            "harness": "claude",
+            "sid": sid,
+            "project": "p",
+            "captured_at": self.start + 30,
+            "row": {"state": "idle", "finished_at": self.start + 20},
+            "intent": {"goal": GOAL, "lines": [{"text": LINE_ONE}]},
+            "transcript": str(path),
+        }
+        case = mark_abstention.freeze_case(
+            self.config,
+            entry,
+            _board_facts(self.config, rows, sid),
+            observations=self.stops,
+            ends=[],
+        )
+        self.assertEqual("recorded", case["origin"], case["unconfirmed"])
+        copied: dict[str, Any] = json.loads(json.dumps(case))
+        return copied
+
+    def vouch(self) -> Any:
+        return mark_abstention.make_vouch(
+            observations=self.stops, ends=[], index=self.index, config=self.config
+        )
+
+    def test_a_genuine_case_stays_vouched_for(self) -> None:
+        case = self.genuine()
+        self.assertEqual(
+            {"user_message", "tool_report"}, {f["type"] for f in case["producer_facts"]}
+        )
+        self.assertEqual([], self.vouch()(case))
+
+    def test_invented_checks_are_demoted(self) -> None:
+        case = self.genuine()
+        for fact in case["producer_facts"]:
+            if fact["type"] == "tool_report":
+                fact["result"] = "failed"
+        self.assertIn("checks-differ", self.vouch()(case))
+
+    def test_an_invented_check_added_beside_the_real_one_is_demoted(self) -> None:
+        case = self.genuine()
+        case["producer_facts"].append(_check("k-invented", at=self.start + 12, record="toolu_77"))
+        self.assertIn("checks-differ", self.vouch()(case))
+
+    def test_invented_tool_output_is_demoted(self) -> None:
+        case = self.genuine()
+        case["tool_output"]["tails"]["toolu_1"] = "INVENTED 99 passed"
+        self.assertIn("tool-output-differs", self.vouch()(case))
+
+    def test_an_invented_non_check_fact_with_the_checks_intact_is_demoted(self) -> None:
+        case = self.genuine()
+        case["producer_facts"].append(
+            _fact("a-invented", sid=CLAUDE_SID, harness="claude", at=self.start + 6)
+        )
+        self.assertIn("facts-unconfirmed", self.vouch()(case))
+        case = self.genuine()
+        for fact in case["producer_facts"]:
+            if fact["type"] == "user_message":
+                fact["summary"] = "INVENTED words the reader never typed"
+        self.assertIn("facts-unconfirmed", self.vouch()(case))
+
+    def test_a_transcript_that_grew_after_the_capture_is_not_demoted(self) -> None:
+        case = self.genuine()
+        path = Path(self.index[CLAUDE_SID[:8]])
+        later = [
+            _asked(self.start, CLAUDE_SID, seconds=60),
+            {"type": "assistant", "isSidechain": False, "cwd": "/w", "sessionId": CLAUDE_SID,
+             "timestamp": _stamp(self.start, 70), "message": {"role": "assistant", "content": [
+                 {"type": "tool_use", "id": "toolu_5", "name": "Bash",
+                  "input": {"command": "pytest"}}]}},
+            {"type": "user", "isSidechain": False, "cwd": "/w", "sessionId": CLAUDE_SID,
+             "timestamp": _stamp(self.start, 75), "message": {"role": "user", "content": [
+                 {"type": "tool_result", "tool_use_id": "toolu_5", "content": "1 failed",
+                  "is_error": True}]}},
+        ]  # fmt: skip
+        with path.open("a") as handle:
+            handle.write("\n".join(json.dumps(r) for r in later) + "\n")
+        self.assertEqual([], self.vouch()(case))
+
+    def test_a_run_built_only_from_invented_cases_reads_short(self) -> None:
+        sids = [f"{i:x}{i:x}{i:x}{i:x}b2c3-REAL-SID" for i in range(len(score_abstention.KINDS))]
+        self.cases = [self.genuine(sid) for sid in sids]
+        self.marks = {c["id"]: {"goal": "abstain", "line_1": "abstain"} for c in self.cases}
+        self.rubric = {
+            "cases": {
+                c["id"]: {
+                    "kind": kind,
+                    "origin": "recorded",
+                    "expect": {n: {"result": "unverifiable"} for n in ("goal", "line_1")},
+                }
+                for c, kind in zip(self.cases, score_abstention.KINDS, strict=True)
+            }
+        }
+        reply = _reply(goal=("unverifiable", ()), line_1=("unverifiable", ()))
+        self.score(_Model((reply, "ok")), vouch=self.vouch())
+        self.assertEqual("passed", self.committed()["verdict"])
+        self.summary.unlink()
+        self.ledger_path.unlink()
+        for case in self.cases:
+            for fact in case["producer_facts"]:
+                if fact["type"] == "tool_report":
+                    fact["summary"] = "INVENTED npm test"
+        model = _Model((reply, "ok"))
+        self.score(model, vouch=self.vouch())
+        committed = self.committed()
+        self.assertEqual("short", committed["verdict"])
+        self.assertEqual(0, committed["coverage"]["claude"]["kinds"])
+        self.assertEqual([], model.prompts)
+        origins = {e["origin"] for e in committed["rubric"]["cases"].values()}
+        self.assertEqual({"synthetic"}, origins)
 
 
 class Q4ASyntheticCaseNeverMeetsTheFloorTest(_Packet):
@@ -1054,6 +1426,56 @@ class Q6AnUnscoredRequiredJudgementBlocksAPassTest(_Packet):
         counts["unscored:bad-expectation"] = 1
         dec17: dict[str, list[str]] = {"failed": [], "held": []}
         self.assertEqual("blocked", score_abstention._verdict(dec17, coverage, counts))
+
+
+class TheFloorIsJudgedPerProducerTest(unittest.TestCase):
+    """Owner ruling, 2026-09-27: the producer scored needs every kind; the other is a control.
+
+    Codex produced no supported departure in six attempts, and one it was told
+    to make does not count, so a floor that required it could never be met.
+    """
+
+    def summary(self, missing: dict[str, str], binding: dict[str, str] | None) -> dict[str, Any]:
+        full = {"goal": "correct", "line_1": "correct"}
+        records = [
+            _rubric_record(kind, harness, full)
+            for harness in ("claude", "codex")
+            for kind in score_abstention.KINDS
+            if missing.get(harness) != kind
+        ]
+        for index, record in enumerate(records):
+            record["id"] = f"{index:016x}"
+        return score_abstention.summarize(
+            [], marks={}, marks_bytes=b"", now=1.0, rubric_records=records, binding=binding
+        )
+
+    def test_a_claude_complete_set_passes_with_a_codex_kind_never_produced(self) -> None:
+        summary = self.summary({"codex": "supported-departure"}, BINDING)
+        self.assertEqual("passed", summary["verdict"])
+        codex = summary["coverage"]["codex"]
+        self.assertEqual("control", codex["role"])
+        self.assertEqual(["supported-departure"], codex["not_produced"])
+        self.assertEqual([], codex["missing"])
+        self.assertEqual("scored", summary["coverage"]["claude"]["role"])
+
+    def test_a_claude_set_missing_a_kind_reads_short(self) -> None:
+        summary = self.summary({"claude": "supported-departure"}, BINDING)
+        self.assertEqual("short", summary["verdict"])
+        self.assertEqual(["supported-departure"], summary["coverage"]["claude"]["missing"])
+
+    def test_the_report_says_not_produced_and_never_short_for_the_control(self) -> None:
+        lines = "\n".join(
+            score_abstention.render(self.summary({"codex": "legitimate-change"}, BINDING))
+        )
+        self.assertIn("cross-harness control", lines)
+        self.assertIn("not produced: legitimate-change", lines)
+        self.assertNotIn("missing: legitimate-change", lines)
+        self.assertIn("PASSED", lines)
+
+    def test_a_run_that_names_no_producer_keeps_both_harnesses_required(self) -> None:
+        # Every summary written before the amendment was scored under the
+        # original floor; the amendment does not rewrite them.
+        self.assertEqual("short", self.summary({"codex": "supported-departure"}, None)["verdict"])
 
 
 class Q7EveryCaseIsMarkedBeforeAnyCallTest(_Packet):
@@ -1321,7 +1743,12 @@ class V2TheScorerReChecksProvenanceTest(_Packet):
             mock.patch.object(
                 score_abstention,
                 "verify_claude_binary",
-                return_value=(BINDING["binary"], BINDING["cli_version"], "/abs/claude"),
+                return_value=(
+                    BINDING["binary"],
+                    BINDING["cli_version"],
+                    "/abs/claude",
+                    BINDING["signature"],
+                ),
             ),
             mock.patch.object(mark_abstention, "machine_vouch", return_value="VOUCH") as built,
             mock.patch("cargento_runtime.reading_route.destination", return_value="Anthropic"),
