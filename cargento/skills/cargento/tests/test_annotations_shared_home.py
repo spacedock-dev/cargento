@@ -152,7 +152,8 @@ class _SharedHomeCase(unittest.TestCase):
         )
         self.addCleanup(_kill, holder)
         assert holder.stdout is not None
-        self.assertEqual(b"held\n", holder.stdout.readline())
+        # rstrip: a Windows child writes "\r\n" through its text-mode stdout.
+        self.assertEqual(b"held", holder.stdout.readline().rstrip())
         return holder
 
     def assert_numbers_unique(self, entry: Any) -> None:
