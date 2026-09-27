@@ -8371,13 +8371,13 @@ console.log(JSON.stringify({has: __els.app.innerHTML.includes('class="next-cockp
         out = self.held(at=100)
 
         # The question before the press replaced the block's buttons (owner, DRC-4682): no
-        # block is drawn while a direction is open, and the question names the newest at the
-        # number the list gives it.
+        # block is drawn while a direction is open, and the question names the earliest, the
+        # one Add opens, at the number the list gives it (owner, 2026-09-28).
         self.assertEqual("", out["block"])
         self.assertEqual(0, out["rows"])
         self.assertEqual(
-            "You gave 2 later directions since saving your intent, the latest at #3: "
-            "&quot;Newest direction&quot;.",
+            "You gave 2 later directions since saving your intent, the earliest at #1: "
+            "&quot;Correct the lane order&quot;.",
             out["said"],
         )
         self.assertTrue(out["keep"])

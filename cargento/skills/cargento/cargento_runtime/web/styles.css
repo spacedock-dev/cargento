@@ -843,16 +843,23 @@ input::placeholder,textarea::placeholder{color:var(--ink2)}
 .next-session-panel .next-cockpit-held-field>textarea:not(:focus){height:calc(var(--fs-body)*1.55*2 + 9px);min-height:0;padding-bottom:0;overflow:hidden}
 .next-session-panel .next-cockpit-held-line textarea:focus{white-space:pre-wrap;field-sizing:content}
 .next-session-panel .next-cockpit-held-field>textarea:focus{field-sizing:content}
-/* An untouched draft keeps its at-rest height under focus. The landing puts
-   focus in it, and a box that grew on focus and shrank on the mousedown that
-   blurred it moved Keep up 30px under the press, so the click landed beside
-   the button (consent F4). The first edit drops the attribute and it grows. */
-.next-session-panel .next-cockpit-held-field[data-next-cockpit-drafted]>textarea:focus{field-sizing:fixed;height:calc(var(--fs-body)*1.55*2 + 9px);min-height:0;padding-bottom:0;overflow:hidden}
+/* An untouched draft and the pending line are as tall as their text whether
+   focused or not. A box that grew on focus and shrank on the mousedown that
+   blurred it moved the button below it out from under the press, so the click
+   landed beside it (consent F4, verifier V3); a box held at its at-rest
+   height under focus hid the rest of the draft Keep adopts (verifier V1).
+   Both are words a press is about to act on, so neither is clipped. */
+.next-session-panel .next-cockpit-held-field[data-next-cockpit-drafted]>textarea{field-sizing:content;height:auto;min-height:0;padding-bottom:0}
+.next-session-panel .next-cockpit-held-line.next-cockpit-direction-line>textarea{field-sizing:content;height:auto;white-space:pre-wrap;text-overflow:clip}
 /* Where `field-sizing` is missing the box cannot size to its text, so focus
-   gives it several rows and it scrolls inside them (verifier V-3). */
+   gives it several rows and it scrolls inside them (verifier V-3). The two
+   boxes above take those rows at rest too, so focus still moves nothing; the
+   rest of a longer draft scrolls into view under focus. */
 @supports not (field-sizing: content){
   .next-session-panel .next-cockpit-held-line textarea:focus{height:calc(var(--fs-body)*1.55*4 + 16px)}
   .next-session-panel .next-cockpit-held-field>textarea:focus{height:calc(var(--fs-body)*1.55*6 + 16px)}
+  .next-session-panel .next-cockpit-held-field[data-next-cockpit-drafted]>textarea{height:calc(var(--fs-body)*1.55*6 + 16px)}
+  .next-session-panel .next-cockpit-held-line.next-cockpit-direction-line>textarea{height:calc(var(--fs-body)*1.55*4 + 16px)}
 }
 /* Top-aligned, each item one control tall, so a field's count and controls
    stay on the heading's first line and never float beside an open "Use a

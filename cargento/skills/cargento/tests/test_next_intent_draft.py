@@ -28,6 +28,7 @@ from .next_harness import NEXT_STYLES, NextPageJsHarness, storage_prelude
 FIXTURE = cockpit_tests.NextCockpitCompositionTest.FIXTURE
 FIRST = "Build the retry queue for failed events"
 LATEST = "Newest direction"
+EARLIEST = "Correct the lane order"
 FULL = "An expected outcome holds six lines. Replace or merge a line to add another."
 MEASURED = "Drift is measured against these. Edit anything that is off."
 EDITED = "Save your intent, or undo your edit, to analyze drift."
@@ -313,7 +314,7 @@ class TheQuestionBeforeThePressTest(_DraftPage):
         html = self.html()
         drift = visible_text(drift_of(html))
         self.assertIn(
-            f'You gave 2 later directions since your first prompt, the latest at #3: "{LATEST}".',
+            f'You gave 2 later directions since your first prompt, the earliest at #1: "{EARLIEST}".',
             drift,
         )
         self.assertNotIn("CONFLICT TO SETTLE", html)
@@ -325,8 +326,11 @@ class TheQuestionBeforeThePressTest(_DraftPage):
         )
         self.assertIn("Add it to my intent", drift)
         self.assertNotIn('data-next-cockpit-action="reading-ask"', html)
-        # The number named is a drawn row.
-        self.assertRegex(html, r'data-next-entry="3" data-next-entry-id="fo-a"')
+        # The number named is a drawn row, and the direction Add opens (owner, 2026-09-28).
+        self.assertRegex(html, r'data-next-entry="1" data-next-entry-id="fo-b"')
+        add = re.search(r'data-next-cockpit-action="direction-add" data-arg="([^"]*)"', html)
+        assert add is not None
+        self.assertEqual("fo-b", add.group(1))
 
     def test_a_typed_goal_floors_on_its_goal_save_time_not_its_revision_time(self) -> None:
         html = self.html(TYPED)
@@ -336,7 +340,8 @@ class TheQuestionBeforeThePressTest(_DraftPage):
     def test_several_since_saving_a_typed_goal(self) -> None:
         html = self.html(TYPED + "__s.annotation_goal_saved_at = 100;\n")
         self.assertIn(
-            f'You gave 2 later directions since saving your intent, the latest at #3: "{LATEST}".',
+            f"You gave 2 later directions since saving your intent, the earliest at #1: "
+            f'"{EARLIEST}".',
             visible_text(drift_of(html)),
         )
 
@@ -714,6 +719,61 @@ console.log(JSON.stringify({presses, landed, posts:__posts.map(p => p.url),
         self.assertEqual(2, out["presses"])
 
 
+# Every element carrying a focus key, parsed from the markup, so a test can
+# see which one the page focused and what kind of element it is.
+LANDING_DOM = r"""
+let __focusables = [];
+__els.app = {
+  get innerHTML(){ return this.html || ""; },
+  set innerHTML(html){
+    this.html = html;
+    document.activeElement = null;
+    __focusables = [...html.matchAll(/<([a-z0-9]+)\b([^>]*\bdata-next-focus="([^"]*)"[^>]*)>/g)]
+      .map(match => ({tagName:match[1].toUpperCase(), attrs:match[2],
+        dataset:{nextFocus:match[3].replace(/&quot;/g, '"').replace(/&amp;/g, "&")},
+        focus(){ document.activeElement = this; }}));
+  },
+  querySelectorAll(selector){ return selector === "[data-next-focus]" ? __focusables : []; }
+};
+"""
+
+LAND = """
+navigateNext({view:"sessions"});
+await __settle();
+const link = __els.app.innerHTML.match(
+  /data-next-route="([^"]*:claude:focus-1)" data-next-goal-focus/);
+__fire("click", {preventDefault(){}, target:{dataset:{nextRoute:link[1]},
+  hasAttribute(name){ return name === "data-next-goal-focus"; },
+  closest(selector){ return selector === "[data-next-route]" ? this : null; }}});
+await __settle();
+const active = document.activeElement;
+console.log(JSON.stringify(active ? {key:active.dataset.nextFocus, tag:active.tagName,
+  attrs:active.attrs} : null));
+"""
+
+
+@unittest.skipUnless(shutil.which("node"), "node not available")
+class LandingOverADraftTest(_DraftPage):
+    """Verifier V1: the landing never leaves focus in an untouched drafted goal box."""
+
+    def test_the_sessions_link_lands_on_the_intent_heading_over_an_untouched_draft(self) -> None:
+        out = self.drive(LANDING_DOM, LAND)
+        assert isinstance(out, dict)
+        self.assertNotEqual(GOAL_KEY, out["key"])
+        self.assertEqual("H2", out["tag"])
+        self.assertIn('id="next-session-intent-heading"', out["attrs"])
+        self.assertIn('tabindex="-1"', out["attrs"])
+
+    def test_with_nothing_drafted_it_still_lands_in_the_empty_goal_box(self) -> None:
+        out = self.drive(
+            LANDING_DOM + '__s.first_prompt = ""; __s.first_prompt_at = null;'
+            " __s.instruction = null;\n",
+            LAND,
+        )
+        assert isinstance(out, dict)
+        self.assertEqual(GOAL_KEY, out["key"])
+
+
 @unittest.skipUnless(shutil.which("node"), "node not available")
 class RideAlongTest(_DraftPage):
     """DRC-4714's focus keys and line width, and DRC-4671's breadcrumb."""
@@ -955,6 +1015,33 @@ class UnsavedEditsRefuseThePressTest(_DraftPage):
         )
         self.assertIs(False, lines)
 
+    def test_a_line_typed_while_add_saves_keeps_the_added_direction(self) -> None:
+        """Verifier V2: the reader types into line 0 while Add's save is open, the
+        save lands, and the next lines save still carries the added direction."""
+        type_line = (
+            '__fire("input", {target:{value:"MY LINE", dataset:{nextCockpitHeldLinesKey:'
+            f'{json.dumps(LINES_KEY)}, nextCockpitHeldLineIndex:"0"}}, closest(selector){{'
+            ' return selector === "[data-next-cockpit-held-lines-key]" ? this : null; }}});'
+        )
+        out = self.run_after(
+            '__reply["/api/direction"] = body => ({status:200, body:{ok:true,'
+            f" fact_id:body.fact_id, text:{json.dumps(LATEST)}, clipped:false, fits:true}}}});\n"
+            '__reply["/api/annotate"] = body => { if(body.add_direction){ '
+            + type_line
+            + " Object.assign(__s, SETTLED_BY_KEEP, {annotation_settled_through:102,"
+            f' annotation_line_1:{json.dumps(LATEST)}, annotation_line_1_source:"direction"}});'
+            ' } return {status:200, body:{ok:true, persisted:true, outcome:"stored",'
+            " revision:1, revision_count:1}}; };\n",
+            OPEN_ADD + '__press("direction-save");\nawait __settle();\nawait __settle();\n'
+            "renderNext();\n"
+            '__press("held-save", "lines");\nawait __settle();\nawait __settle();\n',
+        )
+        saves = [post["body"] for post in out["posts"] if "lines" in post["body"]]
+        self.assertEqual(1, len(saves), out["posts"])
+        self.assertEqual(["MY LINE", LATEST], saves[0]["lines"])
+        self.assertEqual([None, 0], saves[0]["origins"])
+        self.assertEqual(1, saves[0]["expected_revision"])
+
 
 @unittest.skipUnless(shutil.which("node"), "node not available")
 class KeepSettlesWithoutConsentTest(_DraftPage):
@@ -1084,7 +1171,7 @@ class EveryOpenDirectionIsDrawnTest(_DraftPage):
         work = visible_text(html[html.index("data-next-cockpit-work") :])
         self.assertNotIn("from before your intent\u2019s window opened", work)
         self.assertIn(
-            f'You gave 2 later directions since your first prompt, the latest at #2: "{LATEST}".',
+            f'You gave 2 later directions since your first prompt, the earliest: "{EARLIEST}".',
             visible_text(drift_of(html)),
         )
 
@@ -1106,7 +1193,7 @@ class EveryOpenDirectionIsDrawnTest(_DraftPage):
         )
         html = self.html('__s.first_prompt = ""; __s.first_prompt_at = null;\n' + later)
         self.assertIn(
-            "You gave 2 later directions since your latest prompt, the latest at",
+            "You gave 2 later directions since your latest prompt, the earliest at",
             visible_text(drift_of(html)),
         )
 
@@ -1166,6 +1253,78 @@ class KeepOutcomeReachesTheReaderTest(_DraftPage):
             "console.log(JSON.stringify(active && active.dataset ? active.dataset.nextFocus : null));",
         )
         self.assertEqual("reading:claude:focus-1", out)
+
+    PRESS_KEEP = '__press("direction-keep");\nawait __settle();\nawait __settle();\n'
+
+    def spoken(self, html: str, sentence: str) -> list[str]:
+        """Every paragraph opening tag that carries `sentence`."""
+        return re.findall(r"<p\b[^>]*>(?=" + re.escape(sentence) + ")", html)
+
+    def test_keeps_outcome_is_announced_by_the_region_alone(self) -> None:
+        """Verifier V5: the paragraph beside the control is not a second live node."""
+        cases = {
+            "settled, allow owed": (
+                '__dashboard.reading = {consent:false, reason:"consent-required"};\n'
+                + KeepInEveryRouteStateTest.STORED,
+                KEEP_ALLOW,
+            ),
+            "refused": (
+                (
+                    '__dashboard.reading = {consent:true, reason:"run-disabled"};\n'
+                    '__reply["/api/annotate"] = () => ({status:200, body:{ok:true,'
+                    ' persisted:false, outcome:"unwritable"}});\n'
+                ),
+                KEEP_REFUSED,
+            ),
+        }
+        for name, (setup, sentence) in cases.items():
+            with self.subTest(state=name):
+                out = self.drive(
+                    self.DOM + setup,
+                    self.PRESS_KEEP + "console.log(JSON.stringify({html:__els.app.innerHTML,"
+                    ' polite:wrote("next-cockpit-cue-status")}));',
+                )
+                assert isinstance(out, dict)
+                self.assertEqual([sentence], out["polite"])
+                tags = self.spoken(out["html"], sentence)
+                self.assertEqual(1, len(tags), tags)
+                self.assertNotIn("role=", tags[0])
+
+    def test_a_repeated_keep_outcome_is_announced_again(self) -> None:
+        out = self.drive(
+            self.DOM + '__dashboard.reading = {consent:true, reason:"run-disabled"};\n'
+            '__reply["/api/annotate"] = () => ({status:200, body:{ok:true,'
+            ' persisted:false, outcome:"unwritable"}});\n',
+            self.PRESS_KEEP
+            + self.PRESS_KEEP
+            + 'console.log(JSON.stringify(wrote("next-cockpit-cue-status")));',
+        )
+        self.assertEqual([KEEP_REFUSED, "", KEEP_REFUSED], out)
+
+    def test_the_allow_after_keep_takes_keeps_sentence_back_out_of_the_region(self) -> None:
+        out = self.drive(
+            self.DOM
+            + '__dashboard.reading = {consent:false, reason:"consent-required"};\n'
+            + KeepInEveryRouteStateTest.STORED
+            + STARTED,
+            self.PRESS_KEEP + '__press("reading-allow");\nawait __settle();\nawait __settle();\n'
+            'console.log(JSON.stringify(wrote("next-cockpit-cue-status")));',
+        )
+        self.assertEqual([KEEP_ALLOW, ""], out)
+
+    def test_the_unsaved_edit_refusal_is_written_to_the_region(self) -> None:
+        out = self.drive(
+            self.DOM + TYPED,
+            '__typeGoal("Ship it differently");\n'
+            + self.PRESS_KEEP
+            + "console.log(JSON.stringify({html:__els.app.innerHTML,"
+            ' polite:wrote("next-cockpit-cue-status")}));',
+        )
+        assert isinstance(out, dict)
+        self.assertEqual([EDITED], out["polite"])
+        tags = self.spoken(out["html"], EDITED)
+        self.assertEqual(1, len(tags), tags)
+        self.assertNotIn("role=", tags[0])
 
 
 @unittest.skipUnless(shutil.which("node"), "node not available")
@@ -1322,13 +1481,30 @@ class PhoneWidthAndThePressTest(unittest.TestCase):
             narrow, r"\.next-session-panel \.next-cockpit-direction-tools\{grid-column:1/-1"
         )
 
-    def test_an_untouched_draft_keeps_its_height_when_focused(self) -> None:
-        self.assertRegex(
-            NEXT_STYLES,
+    def test_an_untouched_draft_is_as_tall_as_its_text_focused_or_not(self) -> None:
+        """Verifier V1: focus changes nothing, so Keep holds still under the press
+        (consent F4) and no part of the draft Keep adopts is clipped."""
+        rule = re.search(
             r"\.next-session-panel \.next-cockpit-held-field\[data-next-cockpit-drafted\]>"
-            r"textarea:focus\{[^}]*field-sizing:fixed[^}]*"
-            r"height:calc\(var\(--fs-body\)\*1\.55\*2 \+ 9px\)",
+            r"textarea\{([^}]*)\}",
+            NEXT_STYLES,
         )
+        assert rule is not None
+        self.assertIn("field-sizing:content", rule.group(1))
+        self.assertIn("height:auto", rule.group(1))
+        self.assertNotRegex(NEXT_STYLES, r"\[data-next-cockpit-drafted\]>textarea:focus\{")
+
+    def test_the_pending_line_is_as_tall_as_its_text_focused_or_not(self) -> None:
+        """Verifier V3: a box that shrank on blur moved its save, a second Add and
+        Keep out from under the mousedown that blurred it."""
+        rule = re.search(
+            r"\.next-session-panel \.next-cockpit-held-line\.next-cockpit-direction-line>"
+            r"textarea\{([^}]*)\}",
+            NEXT_STYLES,
+        )
+        assert rule is not None
+        for declaration in ("field-sizing:content", "height:auto", "white-space:pre-wrap"):
+            self.assertIn(declaration, rule.group(1))
 
 
 if __name__ == "__main__":
