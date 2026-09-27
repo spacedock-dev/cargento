@@ -1575,9 +1575,13 @@ class WhatOnePressActuallyCostsAndProduces(unittest.TestCase):
             {"n": 2, "at": 500.0, "goal": "the goal it read", "output": ""},
         ]
         # `now` well past the end, or the producer withholds on the settle
-        # window and this measures that instead of the stamp.
+        # window and this measures that instead of the stamp. The entry is
+        # after the words, or the window leaves nothing to read (DRC-4715).
         assessment, why, _spent = self._produce(
-            revisions=revisions, row={"ended_at": 600.0, "state": "idle"}, now=9_000.0
+            revisions=revisions,
+            row={"ended_at": 600.0, "state": "idle"},
+            now=9_000.0,
+            facts=[{**self.FACT, "at": 550.0}],
         )
 
         self.assertEqual("", why)
@@ -2020,12 +2024,16 @@ class WhatACheckLetsAReadingSayAboutYourExpectedOutput(AClaudeCodeReadingProduce
         self.assertEqual(reading.WHY_CHECK_DOES_NOT_SHOW_IT, row["why"])
 
     def test_a_check_run_before_you_saved_your_words_supports_neither_verdict(self) -> None:
+        # DRC-4715: it is not offered at all, so the line is never put to a record that
+        # shows no work after the words.
         for result, token in (("failed", "departure"), ("passed", "consistent")):
             with self.subTest(result=result):
+                self.prompts.clear()
                 early = check_fact(result=result, at=40.0)
                 row = self._output([early, WORDS_FACT], token, [1])
                 self.assertEqual(reading.RESULT_UNVERIFIABLE, row["result"])
-                self.assertEqual(reading.WHY_CHECK_DOES_NOT_SHOW_IT, row["why"])
+                self.assertEqual(reading.WHY_NOT_ASKED, row["why"])
+                self.assertNotIn("pytest", self.prompts[0])
 
     def test_a_check_with_no_recorded_result_supports_neither_verdict(self) -> None:
         for token in ("departure", "consistent"):

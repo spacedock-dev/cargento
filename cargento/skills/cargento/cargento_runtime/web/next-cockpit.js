@@ -2136,6 +2136,16 @@ function nextReadingEvidenceAt(entry){
   return resultAt != null && resultAt > 0 ? resultAt : nextNumber(entry && entry.at);
 }
 
+/* `reading._before_window`: an entry whose evidence cannot be placed at or
+   after the window's start, earlier than it or with no time once one is open.
+   A reading may not cite one (owner, DRC-4715); a test holds this to the
+   producer's rule. A reading with no window start refuses nothing here. */
+function nextReadingBeforeWindow(entry, windowStart){
+  const at = nextReadingEvidenceAt(entry) || 0;
+  const start = windowStart == null ? 0 : windowStart;
+  return at < start || (start > 0 && at <= 0);
+}
+
 /* `reading.check_supports`, spelt for the entries the page holds: a cited
    tool report carries a verdict only as a check whose result arrived in the
    window, failed for a departure, passed and not before the last change for a
@@ -2214,7 +2224,11 @@ function nextCockpitConflictCandidates(annotation, entries){
 
 function nextCockpitReadingCriterion(key, label, clause, raw, entries, limit, unsettled,
     windowStart = null){
-  let citations = nextReadingCitations(raw, entries);
+  /* Refused like any citation that does not resolve. The producer never
+     numbers such an entry, so this holds only for a reading stored before it
+     stopped (DRC-4715). */
+  let citations = nextReadingCitations(raw, entries)
+    .filter(entry => !nextReadingBeforeWindow(entry, windowStart));
   const declared = raw && typeof raw === "object" ? String(raw.result || "") : "";
   const stored = raw && typeof raw === "object" ? String(raw.why || "") : "";
   let limitText = limit || "";

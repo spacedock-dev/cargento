@@ -350,6 +350,7 @@ WITHHELD_SETTLING = "settling"
 WITHHELD_STOP_SETTLING = "stop-settling"
 WITHHELD_REVISION_AFTER_END = "revision-after-end"
 WITHHELD_LEDGER_EMPTY = "ledger-empty"
+WITHHELD_WINDOW_EMPTY = "window-empty"
 WITHHELD_RECORD_UNREAD = "record-unread"
 WITHHELD_RECORD_ERROR = "record-error"
 WITHHELD_MODEL_UNAVAILABLE = "model-unavailable"
@@ -395,6 +396,13 @@ WITHHELD = {
     WITHHELD_LEDGER_EMPTY: (
         "No entry in the observed record names this session, so there is nothing to "
         "read your words against. Absence of evidence is not a reading."
+    ),
+    # Its own sentence, because the one above says no entry names the session,
+    # and here entries do: every one is from before the words or untimed
+    # (DRC-4715).
+    WITHHELD_WINDOW_EMPTY: (
+        "Every entry in the observed record for this session is from before your words or "
+        "has no time, so there is no work after them to read them against."
     ),
     WITHHELD_RECORD_UNREAD: (
         "The observed record for this session has not been read, so it is unread rather "
@@ -1055,6 +1063,13 @@ def evidence_at(entry: Mapping[str, Any]) -> float | None:
     """
     result_at = _number(entry.get("result_at"))
     return result_at if result_at is not None and result_at > 0 else _number(entry.get("at"))
+
+
+def _before_window(entry: Mapping[str, Any], window_start: float) -> bool:
+    """Whether an entry's evidence cannot be placed at or after the window's
+    start: earlier than it, or with no time at all once a window is open."""
+    at = evidence_at(entry) or 0.0
+    return at < window_start or (window_start > 0 and at <= 0)
 
 
 def _citable(entry: LedgerEntry) -> bool:
@@ -1824,8 +1839,14 @@ def _resolve_one(
             continue
         if value in by_index and value not in wanted:
             wanted.append(value)
-    # Rule 3: a departure or a consistent needs a citation that resolves.
-    cited = [by_index[value] for value in wanted[:MAX_CITES] if _citable(by_index[value])]
+    # Rule 3: a departure or a consistent needs a citation that resolves. One
+    # from before the window is refused the same way (DRC-4715): `produce`
+    # never numbers one, so this holds only against a hand-built selection.
+    cited = [
+        by_index[value]
+        for value in wanted[:MAX_CITES]
+        if _citable(by_index[value]) and not _before_window(by_index[value], window_start)
+    ]
     if result in (RESULT_DEPARTURE, RESULT_CONSISTENT) and not cited:
         result = RESULT_UNVERIFIABLE
         why = WHY_UNCITED
@@ -2071,17 +2092,9 @@ def produce(  # noqa: PLR0913
         tool_output=tails,
         changed_after=tool_output.changed_after if tool_output is not None else frozenset(),
     )
-    stopped: float | None = None
-    if scope == SCOPE_LAST_TURN:
-        # Through the last turn means through the observed stop. A resumed turn
-        # whose state update lags leaves the row idle at the old stop while the
-        # record moves on, and a later fact would then be read, and cited, as
-        # part of a turn it was not in. An entry with no time stays: it is
-        # counted apart and can carry no check.
-        stopped = _number(row.get("finished_at")) or 0.0
-        ledger = tuple(entry for entry in ledger if entry["at"] <= stopped)
-    if not ledger:
-        return None, WITHHELD_LEDGER_EMPTY, False
+    ledger, stopped, withheld = _ledger_to_read(ledger, row, scope, window_start(latest))
+    if withheld:
+        return None, withheld, False
     prompt, selected = build_prompt(
         ledger,
         goal=goal,
@@ -2151,6 +2164,28 @@ _STATUS_FAILURES = {
     "closed": (WITHHELD_STOPPING, False),
     "cancelled": (WITHHELD_CANCELLED_UNSENT, False),
 }
+
+
+def _ledger_to_read(
+    ledger: tuple[LedgerEntry, ...], row: Mapping[str, Any], scope: str, opened: float
+) -> tuple[tuple[LedgerEntry, ...], float | None, str]:
+    """The entries a press may number, the stop it read through, and why
+    there are none when there are none."""
+    stopped: float | None = None
+    if scope == SCOPE_LAST_TURN:
+        # Through the last turn means through the observed stop. A resumed turn
+        # whose state update lags leaves the row idle at the old stop while the
+        # record moves on, and a later fact would then be read, and cited, as
+        # part of a turn it was not in.
+        stopped = _number(row.get("finished_at")) or 0.0
+        ledger = tuple(entry for entry in ledger if entry["at"] <= stopped)
+    if not ledger:
+        return ledger, stopped, WITHHELD_LEDGER_EMPTY
+    # Owner, 2026-09-27 (DRC-4715): nothing from before the words, and nothing
+    # with no time to place after them, is numbered, so nothing can cite it.
+    # Here rather than in `build_ledger`, which is the page-parity contract.
+    ledger = tuple(entry for entry in ledger if not _before_window(entry, opened))
+    return ledger, stopped, "" if ledger else WITHHELD_WINDOW_EMPTY
 
 
 def _call_failed(model: Callable[..., tuple[str, str]], status: str) -> tuple[str, bool] | None:
