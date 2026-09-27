@@ -781,6 +781,7 @@ class AnOutputFileHasABoundTest(unittest.TestCase):
         helper = int(pid_file.read_text())
         self.assertTrue(_wait_until(lambda: not process_alive(helper)), "its helper outlived it")
 
+    @unittest.skipIf(sys.platform == "win32", "`_state` is the POSIX wait; Windows has its own")
     def test_a_limit_shortens_the_wait_slice(self) -> None:
         """F1: while a bound is set the size is looked at every 0.01 s, not every 0.1 s."""
         steps: list[float] = []
@@ -803,6 +804,32 @@ class AnOutputFileHasABoundTest(unittest.TestCase):
         waits = [step for step in steps if step > 0]
         self.assertTrue(waits)
         self.assertLessEqual(max(waits), 0.01)
+
+    def test_a_limit_shortens_the_windows_wait_slice(self) -> None:
+        """F1 on Windows: `_wait_windows` waits in 0.01 s steps while a bound is set.
+
+        A fake process, so it runs on every OS: the test above patches `_state`,
+        which only the POSIX wait calls, and it measured nothing on Windows.
+        """
+        steps: list[float] = []
+
+        class _Process(_FakeWindowsProcess):
+            def wait(self, timeout: float | None = None) -> int:
+                steps.append(timeout or 0.0)
+                if len(steps) >= 20:
+                    self.returncode = 0
+                return super().wait(timeout)
+
+        out = self.home / "reply.txt"
+        out.write_bytes(b"")
+        for limit, most in (((str(out), 1 << 20), 0.01), (None, supervise._CANCEL_POLL_SEC)):
+            with self.subTest(limit=limit):
+                steps.clear()
+                group = supervise.Group(_Process(exits=False))  # type: ignore[arg-type]
+                group._limit = limit
+                supervise._wait_windows(group, 30)
+                self.assertEqual(20, len(steps))
+                self.assertEqual(most, max(steps))
 
     def test_a_cli_that_writes_past_the_bound_and_exits_at_once_is_oversized(self) -> None:
         """Codex P2: the exit inside a slice once hid the size, and it read as a reply."""
