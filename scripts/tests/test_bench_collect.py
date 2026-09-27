@@ -3,12 +3,14 @@ from __future__ import annotations
 import contextlib
 import dataclasses
 import io
+import os
 import sys
 import tempfile
 import time
 import unittest
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
+from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
@@ -389,6 +391,27 @@ class SimulationEndToEndTest(unittest.TestCase):
             report,
         )
         self.assertNotIn("NOTHING", report)
+
+    def test_a_simulation_writes_no_state_into_the_home_it_runs_under(self) -> None:
+        # The fixture sessions a simulation collects are fake by construction.
+        # Without a scratch CARGENTO_HOME, collect() recorded them into the
+        # owner's real ~/.cargento/cargento-history.json, a store at its size
+        # cap, where each fixture row can evict a real one. Measured on
+        # 2026-09-27: sid 00000000 project proj-0 (claude) and
+        # 00000000-1111-2222-3333-444444444444 w/proj-0 (codex), w/proj (pi).
+        with tempfile.TemporaryDirectory() as fake_home:
+            environ = {k: v for k, v in os.environ.items() if k != "CARGENTO_HOME"}
+            environ["HOME"] = environ["USERPROFILE"] = fake_home
+            with (
+                mock.patch.dict(os.environ, environ, clear=True),
+                contextlib.redirect_stdout(io.StringIO()),
+            ):
+                code = bench_collect.main(
+                    ["bench_collect", "--simulate", "claude=1,codex=1,pi=1", "--repeat", "1"]
+                )
+            written = sorted(str(p.relative_to(fake_home)) for p in Path(fake_home).rglob("*"))
+        self.assertEqual(0, code)
+        self.assertEqual([], written)
 
     def test_an_unparseable_spec_exits_non_zero_without_measuring(self) -> None:
         buffer = io.StringIO()

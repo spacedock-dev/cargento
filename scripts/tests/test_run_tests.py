@@ -173,6 +173,33 @@ class RunnerVerdictTest(unittest.TestCase):
         self.assertEqual(1, code, out)
         self.assertIn("test_parent_only_fails", out)
 
+    def test_every_worker_gets_a_state_home_outside_the_real_one(self) -> None:
+        # The tripwire for the whole class of leak, not one test: any test the
+        # runner starts resolves CARGENTO_HOME to a scratch directory, even when
+        # the shell exported the real one.
+        real = str(Path("~/.cargento").expanduser())
+        write_suite(
+            self.root,
+            {
+                "test_state_home.py": f"""
+                import os
+                import unittest
+
+
+                class StateHome(unittest.TestCase):
+                    def test_is_scratch(self):
+                        home = os.environ.get("CARGENTO_HOME", "")
+                        self.assertTrue(home, "CARGENTO_HOME is unset in a worker")
+                        self.assertNotEqual({real!r}, os.path.realpath(home))
+                        self.assertIn("cargento-runner-home-", home)
+                """
+            },
+        )
+        with mock_env({"CARGENTO_HOME": real}):
+            code, out = run(self.root)
+
+        self.assertEqual(0, code, out)
+
     def test_discovering_nothing_is_a_failure_not_a_pass(self) -> None:
         # A mistyped -s would otherwise turn a CI job green having run nothing.
         code, out = run(self.root)

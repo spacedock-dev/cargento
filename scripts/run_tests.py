@@ -48,6 +48,7 @@ import multiprocessing
 import os
 import queue
 import sys
+import tempfile
 import time
 import traceback
 import unittest
@@ -316,6 +317,16 @@ def main(argv: list[str] | None = None) -> int:
         "--slowest", type=int, default=0, metavar="N", help="list the N slowest classes"
     )
     args = parser.parse_args(argv)
+    # Every worker inherits this, so no test can resolve Cargento's state to the
+    # developer's real ~/.cargento. The dashboard suite already gets one from
+    # tests/support.py; scripts/tests has no shared module, and a test there that
+    # built a runtime (bench_collect's simulation, 2026-09-27) wrote fixture
+    # sessions into the owner's real history store. Assigned rather than
+    # defaulted, as support.py does: an exported CARGENTO_HOME is the same leak.
+    # HOME stays: test_abstention_claude deliberately refuses a HOME that is not
+    # the account's own.
+    state_home = tempfile.TemporaryDirectory(prefix="cargento-runner-home-")
+    os.environ["CARGENTO_HOME"] = state_home.name
     if args.top:
         sys.path.insert(0, os.path.abspath(args.top))
     ok = run(
@@ -326,6 +337,7 @@ def main(argv: list[str] | None = None) -> int:
         coverage=args.coverage,
         slowest=args.slowest,
     )
+    state_home.cleanup()
     return 0 if ok else 1
 
 

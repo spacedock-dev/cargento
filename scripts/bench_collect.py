@@ -559,7 +559,9 @@ def main(argv: list[str]) -> int:
                 "cold": args.simulate_cold,
                 "projects": args.simulate_projects,
             }
-        config, state = build_runtime(cli, args, store_root_overrides=overrides)
+        config, state = build_runtime(
+            cli, args, store_root_overrides=overrides, state_home=Path(scratch) / "cargento"
+        )
         # build_application, not Application(...): the constructor also requires
         # the harness registry and three injected sinks, and the CLI is what
         # assembles them. The no-op sink keeps store diagnostics out of the report.
@@ -585,6 +587,7 @@ def build_runtime(
     args: argparse.Namespace,
     *,
     store_root_overrides: dict[str, str] | None,
+    state_home: Path,
 ) -> tuple[Any, Any]:
     """Config and state, with the stores redirected when a simulation asked.
 
@@ -593,6 +596,13 @@ def build_runtime(
     ``build_runtime_config`` and reproduces what the CLI passes. usage_fetch is
     off in both branches on purpose: a benchmark must never make an outbound
     vendor quota request, and a fetch would pollute the timing besides.
+
+    A simulation also moves Cargento's own state into ``state_home``. Redirecting
+    the harness stores alone left ``CARGENTO_HOME`` resolving to the owner's real
+    ``~/.cargento``, so every simulated collect recorded its fixture sessions into
+    their real history store, where at the size cap each one evicts a real row.
+    The state is redirected rather than history switched off so the timing still
+    includes the history write a real collect pays for.
     """
     if store_root_overrides is None:
         # Parse standard CLI defaults so newly added runtime flags populate
@@ -609,7 +619,7 @@ def build_runtime(
     from cargento_runtime import state as runtime_state  # noqa: PLC0415
 
     config = runtime_config.build_runtime_config(
-        environ=os.environ,
+        environ={**os.environ, runtime_config.CARGENTO_HOME_ENV: str(state_home)},
         platform_name=sys.platform,
         os_name=os.name,
         launcher_path=SKILL_DIR / "server.py",
