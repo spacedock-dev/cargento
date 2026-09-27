@@ -1337,7 +1337,13 @@ def _last_turn(row: Mapping[str, Any], *, now: float, settle_sec: float) -> tupl
     return SCOPE_LAST_TURN, ""
 
 
-def cutoff_text(selected: Sequence[LedgerEntry], total: int, now: float) -> str:
+def _entries(count: int) -> str:
+    return f"{count} entry" if count == 1 else f"{count} entries"
+
+
+def cutoff_text(
+    selected: Sequence[LedgerEntry], total: int, now: float, *, earlier: int = 0
+) -> str:
     """What this reading actually read, by count and by author.
 
     Composed from measurements rather than written by the model, and it names
@@ -1347,12 +1353,20 @@ def cutoff_text(selected: Sequence[LedgerEntry], total: int, now: float) -> str:
 
     Two absences that are not the same absence: nothing in the record, and a
     record too large for any of it to fit. They rendered the same sentence.
+
+    `total` counts the entries after the words and `earlier` those before
+    them, which a reading may not cite and so never reads (owner, 2026-09-27).
     """
+    left_out = (
+        f"; {earlier} earlier {'entry was' if earlier == 1 else 'entries were'} not read"
+        if earlier
+        else ""
+    )
     if not selected:
         return (
-            "No entry in the observed record was read."
+            f"No entry in the observed record was read{left_out}."
             if not total
-            else f"None of the {total} entries in the observed record could be read."
+            else f"None of the {_entries(total)} after your words could be read{left_out}."
         )
     mix = {
         name: sum(1 for row in selected if row["author"] == name)
@@ -1367,7 +1381,8 @@ def cutoff_text(selected: Sequence[LedgerEntry], total: int, now: float) -> str:
         if len(stamped) != len(selected):
             window += f", {len(selected) - len(stamped)} carrying no usable time"
     return (
-        f"Read {len(selected)} of {total} entries in the observed record, {window}: "
+        f"Read {len(selected)} of the {_entries(total)} after your words{left_out}. "
+        f"Of those read, {window}: "
         f"{mix[AUTHOR_PERSON]} you wrote, {mix[AUTHOR_AGENT]} the agent wrote, "
         f"{mix[AUTHOR_DERIVED]} Cargento derived. Nothing outside that was read."
     )
@@ -2092,7 +2107,7 @@ def produce(  # noqa: PLR0913
         tool_output=tails,
         changed_after=tool_output.changed_after if tool_output is not None else frozenset(),
     )
-    ledger, stopped, withheld = _ledger_to_read(ledger, row, scope, window_start(latest))
+    ledger, stopped, earlier, withheld = _ledger_to_read(ledger, row, scope, window_start(latest))
     if withheld:
         return None, withheld, False
     prompt, selected = build_prompt(
@@ -2121,7 +2136,7 @@ def produce(  # noqa: PLR0913
         detail_cap_chars=config.annotation_text_cap_chars,
         window_start=window_start(latest),
     )
-    cutoff = cutoff_text(selected.entries, len(ledger), now)
+    cutoff = cutoff_text(selected.entries, len(ledger), now, earlier=earlier)
     if tool_output is not None and not admitted and _has_reports(facts, harness, sid):
         cutoff += (
             " The checks this session recorded were not sent, because tool output was not "
@@ -2168,9 +2183,19 @@ _STATUS_FAILURES = {
 
 def _ledger_to_read(
     ledger: tuple[LedgerEntry, ...], row: Mapping[str, Any], scope: str, opened: float
-) -> tuple[tuple[LedgerEntry, ...], float | None, str]:
-    """The entries a press may number, the stop it read through, and why
-    there are none when there are none."""
+) -> tuple[tuple[LedgerEntry, ...], float | None, int, str]:
+    """The entries a press may number, the stop it read through, how many it
+    left out as before the words, and why there are none when there are none."""
+    if not ledger:
+        return ledger, None, 0, WITHHELD_LEDGER_EMPTY
+    # Owner, 2026-09-27 (DRC-4715): nothing from before the words, and nothing
+    # with no time to place after them, is numbered, so nothing can cite it.
+    # Here rather than in `build_ledger`, which is the page-parity contract.
+    # Decided over the whole ledger, before the stop cut: that sentence says
+    # nothing is after the words, which a turn the cut removed contradicts
+    # (review F1).
+    if all(_before_window(entry, opened) for entry in ledger):
+        return (), None, 0, WITHHELD_WINDOW_EMPTY
     stopped: float | None = None
     if scope == SCOPE_LAST_TURN:
         # Through the last turn means through the observed stop. A resumed turn
@@ -2179,13 +2204,8 @@ def _ledger_to_read(
         # part of a turn it was not in.
         stopped = _number(row.get("finished_at")) or 0.0
         ledger = tuple(entry for entry in ledger if entry["at"] <= stopped)
-    if not ledger:
-        return ledger, stopped, WITHHELD_LEDGER_EMPTY
-    # Owner, 2026-09-27 (DRC-4715): nothing from before the words, and nothing
-    # with no time to place after them, is numbered, so nothing can cite it.
-    # Here rather than in `build_ledger`, which is the page-parity contract.
-    ledger = tuple(entry for entry in ledger if not _before_window(entry, opened))
-    return ledger, stopped, "" if ledger else WITHHELD_WINDOW_EMPTY
+    kept = tuple(entry for entry in ledger if not _before_window(entry, opened))
+    return kept, stopped, len(ledger) - len(kept), "" if kept else WITHHELD_LEDGER_EMPTY
 
 
 def _call_failed(model: Callable[..., tuple[str, str]], status: str) -> tuple[str, bool] | None:

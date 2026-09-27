@@ -543,7 +543,7 @@ class AReadingOfTheLastTurnIsKeptTest(_StoreCase):
             "window_start": PROMPT,
             "read_at": NOW,
             "stamp": "read",
-            "cutoff": "Read 2 of 2 entries.",
+            "cutoff": "Read 2 of the 2 entries after your words.",
             "scope": reading.SCOPE_LAST_TURN,
             "scope_text": reading.SCOPE_TEXT[reading.SCOPE_LAST_TURN],
             "ended_at_read": None,
@@ -923,6 +923,36 @@ class AReadingCitesNothingFromBeforeItsWindowTest(_PressCase):
         )
         _assessment, why, _spent = self.produce([])
         self.assertEqual(reading.WITHHELD_LEDGER_EMPTY, why)
+
+    def test_a_turn_cut_that_empties_the_window_is_not_called_an_empty_window(self) -> None:
+        # Review F1: the check is after the words, in a resumed turn the row has not caught up
+        # with. The stop cut removes it, so the existing reason stands, and the window sentence,
+        # which says nothing is after the words, would be false.
+        assessment, why, _spent = self.produce([_message("m0", PROMPT - 100), _check(STOP + 30)])
+        self.assertIsNone(assessment)
+        self.assertEqual(reading.WITHHELD_LEDGER_EMPTY, why)
+
+    def test_the_cutoff_says_how_many_entries_before_the_words_were_not_read(self) -> None:
+        # Owner ruling F2, 2026-09-27.
+        assessment, _why, _spent = self.produce(
+            [
+                self.agent("a0", PROMPT - 60),
+                self.agent("a1", PROMPT - 30),
+                _message("m1", PROMPT),
+                _check(PROMPT + 60),
+            ]
+        )
+        self.assertTrue(
+            assessment["cutoff"].startswith(
+                "Read 2 of the 2 entries after your words; 2 earlier entries were not read."
+            ),
+            assessment["cutoff"],
+        )
+        assessment, _why, _spent = self.produce([_message("m1", PROMPT), _check(PROMPT + 60)])
+        self.assertTrue(
+            assessment["cutoff"].startswith("Read 2 of the 2 entries after your words. "),
+            assessment["cutoff"],
+        )
 
     def resolve(self, entries: list[reading.LedgerEntry], cites: list[int]) -> Any:
         return reading.resolve(

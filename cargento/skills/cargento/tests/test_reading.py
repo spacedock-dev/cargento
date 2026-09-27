@@ -1226,6 +1226,23 @@ class WhatTheReaderIsToldTheReadingCovered(unittest.TestCase):
         self.assertIn("70", sentence)
         self.assertIn("400", sentence)
 
+    def test_a_reader_is_told_how_many_entries_before_their_words_were_not_read(self) -> None:
+        # Owner ruling F2, 2026-09-27: the second clause appears only when some were left out.
+        rows = (entry(id="a", at=NOW - 60.0), entry(id="b", at=NOW - 60.0))
+        self.assertTrue(
+            reading.cutoff_text(rows, 3, NOW, earlier=2).startswith(
+                "Read 2 of the 3 entries after your words; 2 earlier entries were not read. "
+            )
+        )
+        self.assertTrue(
+            reading.cutoff_text(rows[:1], 1, NOW, earlier=1).startswith(
+                "Read 1 of the 1 entry after your words; 1 earlier entry was not read. "
+            )
+        )
+        plain = reading.cutoff_text(rows, 2, NOW)
+        self.assertTrue(plain.startswith("Read 2 of the 2 entries after your words. "), plain)
+        self.assertNotIn("earlier", plain)
+
     def test_a_reader_is_told_when_the_reading_rests_on_nobody_but_the_agent(self) -> None:
         rows = (entry(id="a", at=NOW - 60.0), entry(id="b", at=NOW - 60.0))
         self.assertIn("2 the agent wrote", reading.cutoff_text(rows, 2, NOW))
@@ -1630,7 +1647,7 @@ class WhatOnePressActuallyCostsAndProduces(unittest.TestCase):
         self.assertEqual(3, assessment["revision_read"])
         self.assertEqual(reading.SCOPE_MID_FLIGHT, assessment["scope"])
         self.assertEqual(reading.SCOPE_TEXT[reading.SCOPE_MID_FLIGHT], assessment["scope_text"])
-        self.assertIn("Read 1 of 1 entries", assessment["cutoff"])
+        self.assertIn("Read 1 of the 1 entry after your words", assessment["cutoff"])
         self.assertEqual({reading.CONSTRAINT_GOAL}, set(assessment["criteria"]))
 
     def test_a_reading_of_an_ended_session_records_the_end_it_rested_on(self) -> None:

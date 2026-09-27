@@ -426,7 +426,7 @@ class AnOlderStoreStillReadsTest(_StoreCase):
             "revision_read_at": NOW,
             "read_at": NOW + 10,
             "stamp": "read at 10:00",
-            "cutoff": "Read 1 of 1 entries.",
+            "cutoff": "Read 1 of the 1 entry after your words.",
             "scope": "mid-flight",
             "scope_text": reading.SCOPE_TEXT["mid-flight"],
             "ended_at_read": None,

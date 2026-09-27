@@ -8790,7 +8790,7 @@ __dashboard.sessions[0].departures = [{
   constraint: "TYPED GOAL", clause: "do not change the board while capturing",
   reading: "Two turns edited the running board.", revision: 2,
   at: __dashboard.generated - 600, cutoff: __dashboard.generated - 600,
-  cutoff_text: "Read 4 of 4 entries in the observed record.",
+  cutoff_text: "Read 4 of the 4 entries after your words.",
   evidence: "turn transcript"}];
 """
         out = self._open(self.DISCARDED, standing)
