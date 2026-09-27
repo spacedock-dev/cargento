@@ -649,8 +649,10 @@ the project activity cards, so it no longer stops at project detail.
 
 Since DRC-4639 the page leads, after its identity header, with what was the cockpit's Held to tab.
 Since DRC-4680 that is the Intent and drift panel, an aside of its own beside a "Session activity"
-column, and the CURRENT ACTIVITY card leads that column rather than sitting inside the panel. The
-panel is first in the markup, so it follows the page's name in reading and keyboard order and leads
+column, and the CURRENT ACTIVITY card leads that column rather than sitting inside the panel. Since
+DRC-4694 the session's numbered activity follows that card directly, under the column's heading;
+[DEC-24](design-reading-a-session.md#what-the-numbering-build-decided-2026-09-25) owns what it
+numbers and flags. The panel is first in the markup, so it follows the page's name in reading and keyboard order and leads
 the single column below 1100px; the stylesheet puts it in the right-hand track when both fit. It
 scrolls with the page and is not sticky. A blocked session's question comes between the header and
 both columns.
@@ -695,7 +697,8 @@ The earlier cell preferred `asked` over raw `last_prompt` for a measured reason:
 Using an `agent` or `earlier` instruction without its label would turn quoted or older context
 into a claim about the newest request. That distinction still governs the goal's source label.
 
-The header keeps the registry label, full session ID and measured activity metadata. A working row
+The header keeps the registry label, full session ID and measured activity metadata, and the
+activity list's entry count, which it omits rather than showing 0 when the record was not read. A working row
 labels its measured `turn.elapsed_h` as the current start age; an absent, empty, or malformed turn
 measurement removes that clause instead of falling back to the transcript's creation time. A
 needs-input row derives its blocked age against the payload's `generated` clock. An idle row may

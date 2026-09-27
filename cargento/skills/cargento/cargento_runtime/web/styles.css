@@ -1258,11 +1258,18 @@ input::placeholder,textarea::placeholder{color:var(--ink2)}
 /* DRC-4509's work evidence. Mono for the type, the stamp and the source, which
    are the identifiers and figures in a row. The summary is prose whoever it
    came from, so it is sans, and so is the limit line the board writes. */
-.next-cockpit-work{display:flex;flex-direction:column;gap:8px;padding:0 16px 14px}
+.next-cockpit-work{display:flex;flex-direction:column;gap:8px;padding:12px 16px 14px}
 .next-cockpit-work>header{display:flex;justify-content:space-between;align-items:baseline;gap:10px}
 .next-cockpit-work h2{margin:0;color:var(--ink-label);font-family:var(--mono);font-size:var(--fs-label);font-weight:600;letter-spacing:.07em}
-.next-cockpit-work-row{display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:baseline;gap:3px 10px;padding-left:9px;border-left:1px solid var(--rule)}
-.next-cockpit-work-row+.next-cockpit-work-row{margin-top:5px}
+.next-cockpit-work-rows{display:flex;flex-direction:column;gap:5px}
+.next-cockpit-work-row{display:grid;grid-template-columns:4ch minmax(0,1fr);align-items:baseline;gap:3px 10px;padding-left:9px;border-left:1px solid var(--rule)}
+.next-cockpit-work-n{color:var(--ink2);font:var(--fs-label) var(--mono);font-variant-numeric:tabular-nums}
+.next-cockpit-work-body{display:flex;flex-direction:column;gap:3px;min-width:0}
+.next-cockpit-work-head{display:flex;flex-wrap:wrap;align-items:baseline;gap:3px 8px}
+.next-cockpit-work-actor{color:var(--ink);font:600 var(--fs-label) var(--mono)}
+.next-cockpit-work-flag{margin-left:auto;padding:0 7px;border:1px solid var(--rule);border-radius:var(--r-pill);color:var(--ink2);font:500 var(--fs-label)/1.5 var(--mono)}
+.next-cockpit-work-flag+.next-cockpit-work-flag{margin-left:0}
+.next-cockpit-work-anchor,.next-cockpit-work-earlier{margin:0;color:var(--ink2);font:var(--fs-body)/1.5 var(--sans)}
 .next-cockpit-work-type{color:var(--ink-label);font-family:var(--mono);font-size:var(--fs-label);font-weight:600;letter-spacing:.07em}
 .next-cockpit-work-summary{font:var(--fs-body)/1.55 var(--sans);overflow-wrap:anywhere}
 /* A model's paraphrase inside the observed record takes the same third
@@ -1270,7 +1277,7 @@ input::placeholder,textarea::placeholder{color:var(--ink2)}
 .next-cockpit-work-derived{font:italic var(--fs-body)/1.55 var(--sans);color:var(--ink2);padding-left:7px;border-left:1px dotted var(--rule);overflow-wrap:anywhere}
 .next-cockpit-work-mix{margin:0;color:var(--ink2);font:500 var(--fs-body)/1.55 var(--sans);max-width:var(--measure)}
 .next-cockpit-work-at{color:var(--ink-caption);font-family:var(--mono);font-size:var(--fs-label)}
-.next-cockpit-work-source{grid-column:1/-1;color:var(--ink-caption);font-family:var(--mono);font-size:var(--fs-label)}
+.next-cockpit-work-source{grid-column:1/-1;color:var(--ink-caption);font-family:var(--mono);font-size:var(--fs-label);overflow-wrap:anywhere}
 .next-cockpit-work-result{grid-column:1/-1;color:var(--ink2);font:var(--fs-body)/1.5 var(--sans)}
 .next-cockpit-work-turn{grid-column:1/-1;color:var(--ink-label);font:var(--fs-label) var(--mono);letter-spacing:.07em}
 .next-cockpit-work-absent,.next-cockpit-work-limit{margin:0;color:var(--ink-absence);font:var(--fs-body)/1.5 var(--sans)}

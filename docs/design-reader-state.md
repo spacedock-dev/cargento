@@ -245,6 +245,14 @@ scroll internally; their viewport and user-resized dimensions have a separate in
 container requires its own state owner and an inventory update. `text-overflow:ellipsis` is a text
 rendering rule, not a scroll container.
 
+**The session's activity list moves what follows it.** Since DRC-4694 the numbered list sits right
+after CURRENT ACTIVITY, above the workers, the session's facts and HOW IT LANDED. An entry arriving
+on a render adds a row, so everything after the list moves down by that row until the list reaches
+its bound of twenty entries (measured at 1440x900: the facts moved from 10 to 99px across one
+append, where the old record at the end of the column moved nothing). The list holds no reader
+state and no scroll container, so nothing here restores; a reader scrolled below the list sees the
+page shift by a row.
+
 ## Text selection
 
 **Deliberately not managed.** A selection made across rendered text is destroyed by the redraw.

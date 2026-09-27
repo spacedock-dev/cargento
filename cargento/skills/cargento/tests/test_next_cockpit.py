@@ -5274,6 +5274,7 @@ console.log(JSON.stringify({
   sources: [...block.matchAll(/class="next-cockpit-work-source">([^<]*)</g)].map(m => m[1]),
   limit: (block.match(/class="next-cockpit-work-limit">([^<]*)</) || [])[1],
   heading: html.includes("OBSERVED RECORD"),
+  numbers: [...block.matchAll(/class="next-cockpit-work-n">#(\\d+)</g)].map(m => Number(m[1])),
   mix: (html.match(/class="next-cockpit-work-mix">([^<]*)</) || [])[1],
 }));
 """
@@ -5282,11 +5283,14 @@ console.log(JSON.stringify({
         # Then: the fact's own type, never a relabelling. Nothing here is
         # called a decision, because none of these sources records one.
         assert isinstance(out, dict)
-        self.assertTrue(out["heading"])
+        # The list sits under the activity column's own heading, and OBSERVED RECORD is
+        # retired (DRC-4694); every row carries its number.
+        self.assertFalse(out["heading"])
+        self.assertEqual([1, 2, 3], out["numbers"])
         self.assertEqual(["user_message", "prepared_dispatch", "user_message"], out["rows"])
-        # The heading names the record, and this line says what is in it: on
-        # Claude and Codex every entry can be a direction the reader gave, and
-        # the old WORK EVIDENCE heading read those back as the agent's work.
+        # The mix line says what is in the list: on Claude and Codex every entry
+        # can be a direction the reader gave, and the old WORK EVIDENCE heading
+        # read those back as the agent's work.
         self.assertEqual(
             "3 entries · 2 directions you gave · 1 observed of what it did.", out["mix"]
         )
@@ -5459,7 +5463,12 @@ console.log(JSON.stringify({
         self.assertEqual(20, out["rows"])
         self.assertEqual("Direction 20", out["first"])
         self.assertEqual("Direction 39", out["last"])
-        self.assertEqual("Showing the 20 most recent of 43 observed entries.", out["dropped"])
+        # Counted from the numbers and the rows drawn (DRC-4694): no intent window is
+        # published here, so all 43 are numbered and the newest 20 listed.
+        self.assertEqual(
+            "Listing 20 of 43 entries: the 20 most recent. 23 are counted and not listed.",
+            out["dropped"],
+        )
 
     def test_a_session_the_record_says_nothing_about_says_so(self) -> None:
         out = self.run_fixture(
@@ -8929,16 +8938,21 @@ const departures = (html.match(
   /<section class="next-cockpit-departures">[\\s\\S]*?<\\/section>/) || [""])[0];
 console.log(JSON.stringify({
   departures,
-  // The cited fact really is outside the drawn window, or this proves nothing.
-  windowed: html.includes("Showing the 20 most recent of 25 observed entries."),
-  citedRowDrawn: html.includes("Zeta the earliest direction"),
+  // The cited fact really is outside the recency bound, or this proves nothing.
+  windowed: html.includes("Listing 21 of 25 entries: the 20 most recent and every entry " +
+    "the analysis cites. 4 are counted and not listed."),
+  // And it is still drawn, at its own number and flagged, so the reader can reach it
+  // (DRC-4694). It was asserted absent before, against a summary no fact carried.
+  citedRow: (html.split('<div class="next-cockpit-work-row"').find(row =>
+    row.includes("Do not change the board")) || ""),
 }));
 """,
             storage_prelude({}) + self.FIXTURE,
         )
         assert isinstance(out, dict)
         self.assertTrue(out["windowed"])
-        self.assertFalse(out["citedRowDrawn"])
+        self.assertIn('class="next-cockpit-work-n">#1<', out["citedRow"])
+        self.assertIn('data-next-entry-flag="cited">Cited<', out["citedRow"])
         self.assertIn("It changed the board.", out["departures"])
         self.assertNotIn("raised no departure", out["departures"])
 
@@ -12491,9 +12505,10 @@ console.log(JSON.stringify({
                 self.assertNotIn(claim, lede.lower())
         self.assertIn("analyze drift", lede)
 
-    def test_the_section_order_puts_the_record_last(self) -> None:
-        """AC-3. Falsified by moving any section, including re-raising OBSERVED
-        RECORD, which no test on the pre-change tree can see."""
+    def test_the_section_order_puts_the_list_after_current_activity(self) -> None:
+        """AC-3, as DRC-4694 moved it. Falsified by moving any section, including
+        the numbered list away from CURRENT ACTIVITY or re-raising its retired
+        OBSERVED RECORD heading."""
         out = self.tab()
         html = out["html"]
         assert isinstance(html, str)
@@ -12508,8 +12523,11 @@ console.log(JSON.stringify({
             "<h2>READING</h2>",
             "CONFLICT TO SETTLE",
             "DEPARTURES RAISED TO YOU",
+            # The activity column: the numbered list right after CURRENT ACTIVITY (DRC-4694),
+            # then how it landed after the session's facts.
+            "CURRENT ACTIVITY",
+            "data-next-cockpit-work>",
             "HOW IT LANDED",
-            "OBSERVED RECORD",
         ]
         found = [html.find(heading) for heading in order]
         for heading, at in zip(order, found, strict=True):
@@ -12519,7 +12537,8 @@ console.log(JSON.stringify({
             with self.subTest(pair=(before, after)):
                 self.assertLess(html.find(before), html.find(after))
         # The Intent-log pointer is the tab's last line, after the record.
-        self.assertLess(html.find("OBSERVED RECORD"), html.find("next-cockpit-departures-kept"))
+        self.assertLess(html.find("HOW IT LANDED"), html.find("next-cockpit-departures-kept"))
+        self.assertNotIn("OBSERVED RECORD", html)
 
     def test_the_record_read_phrase_did_not_merely_move(self) -> None:
         """AC-4's original string check, kept as the regression it is.
@@ -12615,7 +12634,8 @@ class HeldToPositionalSentencesTest(NextPageJsHarness):
     REFERENTS: ClassVar[dict[str, str]] = {
         "so the question below still stands as it did": "next-cockpit-conflict-open",
         "already been dropped and the question below still stands": "next-cockpit-conflict-open",
-        "so nothing above is an inspected file": "OBSERVED RECORD",
+        # The list's own rows, which the limit line closes (DRC-4694 retired its heading).
+        "so nothing above is an inspected file": "data-next-cockpit-work>",
         "Save a goal above to analyze drift": 'class="next-cockpit-held-fields"',
         # "the observed record below" left this table with its positional word
         # (DRC-4680): the record is in the activity column beside the panel, so
@@ -13691,7 +13711,7 @@ __dashboard.annotate_cap = 240;
 navigateNext({view:"project", project:"cargento", focus:"claude:claude-idle", tab:"held-to"});
 await __settle();
 const html = __els.app.innerHTML;
-const reading = html.slice(html.indexOf("<h2>READING</h2>"), html.indexOf("OBSERVED RECORD"));
+const reading = html.slice(html.indexOf("<h2>READING</h2>"), html.indexOf("</aside>"));
 console.log(JSON.stringify({reading}));
 """
         )

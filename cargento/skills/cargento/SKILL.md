@@ -112,8 +112,8 @@ outcome lines you typed, then a **Drift** section with the `Analyze drift` contr
 analysis reads and sends under it, the reading, any direction you gave after you saved those words
 (labelled "Conflict to settle", which asks a question and records no finding), and every departure
 on record, asked for or not. The **Session activity** column beside it holds the agent's current
-activity, the recorded request, tasks, subagents, token measurements, how the session landed and
-the observed record. On a harness other than Claude Code or Pi the Drift section says "Cargento
+activity, the session's numbered entries, the recorded request, tasks, subagents, token measurements
+and how the session landed. On a harness other than Claude Code or Pi the Drift section says "Cargento
 can't read work from this harness" where a drift level will go; `Analyze drift` stays wherever a
 reader is named. With no reader on this machine, the reason stands where the control would be. The
 page has at most one primary control, `Analyze drift`. No answer option is ever emphasised: a session blocked on
@@ -330,11 +330,18 @@ so rather than leaving you to assume otherwise.
 
 Below the two fields the Drift section runs in reading order: `Analyze drift`, the reading, a
 later direction and the notes about your saved words, and the departures on record. The agent's
-current activity leads the Session activity column beside it. The departures section appears only with `--unasked-readings` on, or once a reading or a
-departure is on record. How it landed and the observed record follow
-the session's own facts further down. The record is last because it is the longest block here and
-its absence sentence is one of four that used to arrive before you reached the reading. It lists every observed entry naming that session with its own type and the source that
-published it, and states the limit under it: demonstrated work results are read on Pi, and on
+current activity leads the Session activity column beside it, and the session's entries follow it,
+numbered. The departures section appears only with `--unasked-readings` on, or once a reading or a
+departure is on record. How it landed follows the session's own facts further down. With saved
+words the list starts at #1, the entry where their evidence window opens; earlier entries are
+counted and not listed, and with nothing saved the whole record is numbered. The header's second
+row gives the count, and leaves it out when the record was not read. It lists the twenty most
+recent entries in the window and every check and file in the window, each at its own number, and says how many it counted and
+did not list. An entry a departure cites is flagged "Cited" and always listed, and a direction you
+gave after saving is flagged "A later direction you gave", which records no finding. Numbers are
+worked out again on every render, so a check that re-runs or a file written again moves the entries
+after it. Each entry shows who wrote it, its own type and the source that published it, and the
+list states the limit under it: demonstrated work results are read on Pi, and on
 Claude Code the record also lists the checks a session ran and the files it wrote, each result as
 the tool reported it and counted from the whole transcript read. A reading sends those checks, with
 the last 180 characters each printed and the paths of the files written, only after you allow tool output for the destination named

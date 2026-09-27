@@ -111,7 +111,7 @@ function nextSessionTitle(session){
     nextSessionKey(row) === nextSessionKey(session) && row.project === String(session.project == null ? "" : session.project)).titleText;
 }
 
-function nextSessionMeta(session){
+function nextSessionMeta(session, entries = null){
   const parts = [];
   const harness = nextSessionRegistryLabel(session);
   if(harness) parts.push(harness);
@@ -136,6 +136,9 @@ function nextSessionMeta(session){
       if(started != null) parts.push(`session started ${started} ago`);
     }
   }
+  /* The activity list's own count, so the header and the list say one number,
+     and nothing where the record was not read (DRC-4694). */
+  if(entries != null) parts.push(`${entries} ${entries === 1 ? "entry" : "entries"}`);
   /* These last two are unconditional, and both for the reason the first one
      gives: every clause above is a reading, and these say what the readings
      cannot cover, so they qualify the whole line rather than any one of them.
@@ -646,8 +649,6 @@ function nextSessionView(project, harness, sid, openDisclosures = new Set()){
   const word = ended ? "ended" : observed.askKnown ? "needs input" : state && state.label;
   const stateLabel = state ? '<span class="next-session-state">' +
     `<span class="next-visually-hidden">State: </span>${word}</span>` : "";
-  const meta = nextSessionMeta(session);
-  const metaLine = meta ? `<p class="next-session-detail-meta">${esc(meta)}</p>` : "";
   const titleClass = observed.titleKnown ? "" : ' class="next-session-absent"';
   const rate = observed.rateKnown ? ` · ${esc(observed.rateText)}` : "";
   /* At most one primary, and none while a question is open without a raise
@@ -663,16 +664,6 @@ function nextSessionView(project, harness, sid, openDisclosures = new Set()){
   const missingReentry = reentryLimit.resume + (nextSessionRaiseControl(session) ? "" : reentryLimit.raise);
   const controls = nextSessionCopyControl(session) + nextSessionLinkControl(session) +
     nextSessionResumeControl(session) + raise;
-  /* Two rows at most, as C1's one-row header comes out in Cargento's type:
-     the state, name and id, then the measured line with the controls beside
-     it. Stacked one per line it took 205px at 1440x900 and put Analyze drift
-     under the fold (DRC-4680 walk). */
-  const identity = '<header class="next-session-detail-header">' +
-    `<div class="next-session-detail-title">${stateLabel}` +
-    `<h1${titleClass}>${esc(observed.titleText)}</h1>` +
-    `<p class="next-session-identity">${esc(observed.harness)} · ${esc(observed.sid)}${rate}</p>` +
-    '</div><div class="next-session-detail-bar">' +
-    `${metaLine}<div class="next-session-controls">${controls}</div></div></header>`;
   const assignment = nextSessionInstruction(session, "asked")
     ? nextSessionCommandFact("assignment", "ASSIGNMENT",
       nextInstructionLine(session, "", "next-session-command-context")) : "";
@@ -686,6 +677,18 @@ function nextSessionView(project, harness, sid, openDisclosures = new Set()){
   const group = nextProjectGroups().find(candidate => candidate.label === label) ||
     {label, sessions: [session]};
   const drift = nextCockpitDriftBlock(group, session, !waiting);
+  const meta = nextSessionMeta(session, drift.count);
+  const metaLine = meta ? `<p class="next-session-detail-meta">${esc(meta)}</p>` : "";
+  /* Two rows at most, as C1's one-row header comes out in Cargento's type:
+     the state, name and id, then the measured line with the controls beside
+     it. Stacked one per line it took 205px at 1440x900 and put Analyze drift
+     under the fold (DRC-4680 walk). */
+  const identity = '<header class="next-session-detail-header">' +
+    `<div class="next-session-detail-title">${stateLabel}` +
+    `<h1${titleClass}>${esc(observed.titleText)}</h1>` +
+    `<p class="next-session-identity">${esc(observed.harness)} · ${esc(observed.sid)}${rate}</p>` +
+    '</div><div class="next-session-detail-bar">' +
+    `${metaLine}<div class="next-session-controls">${controls}</div></div></header>`;
   /* Identity, then what is waiting on the reader, both full width; then the
      Intent and drift panel and the session's activity as two columns
      (DRC-4680). The answer sits above both because it outranks the check.
@@ -696,7 +699,7 @@ function nextSessionView(project, harness, sid, openDisclosures = new Set()){
      and is not sticky. */
   const activity = '<div class="next-session-activity" data-next-session-activity>' +
     '<h2 class="next-session-activity-heading">Session activity</h2>' +
-    nextSessionCommandSurface(session, observed) +
+    nextSessionCommandSurface(session, observed) + drift.list +
     /* Worker history has no height bound: 31 old workers put the check at
        2019px on a 900px screen when they shared CURRENT ACTIVITY's card. */
     nextSessionSubagents(observed) +
