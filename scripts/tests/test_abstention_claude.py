@@ -884,6 +884,16 @@ class _Proxy:
         self.server.server_close()
 
 
+# The probe runs only where `reading_route.destination` names its stub, and on
+# Windows that names nothing (SECURITY.md, "or the machine is Windows"), so
+# every pass refuses before the CLI runs. What it would print there cannot be
+# asserted; `test_on_windows_the_probe_refuses_before_running_anything` pins
+# the refusal itself on every platform.
+_NAMES_A_DESTINATION = unittest.skipIf(
+    sys.platform == "win32", "reading_route names no destination on Windows, so the probe refuses"
+)
+
+
 class DRC4710TheProbeCannotReachARealModelTest(unittest.TestCase):
     """DRC-4710 V5: `--probe-argv` accepted any loopback address, a forwarding proxy included.
 
@@ -979,6 +989,7 @@ class DRC4710TheProbeCannotReachARealModelTest(unittest.TestCase):
                 _state_config(), "/abs/claude", runner=runner, environ=self.operator
             )
 
+    @_NAMES_A_DESTINATION
     def test_the_cli_is_pointed_only_at_the_probes_own_stub(self) -> None:
         self.assertEqual(0, self.probe(self.cli()), self.printed)
         self.assertEqual([], self.proxy.hits)
@@ -1004,6 +1015,7 @@ class DRC4710TheProbeCannotReachARealModelTest(unittest.TestCase):
         self.assertIn("request carries the fixed instruction: yes", said)
         self.assertIn("request names the home directory: no", said)
 
+    @_NAMES_A_DESTINATION
     def test_the_probe_also_runs_signed_in_with_a_placeholder_account(self) -> None:
         # Owner ruling of 2026-09-27 on Sent F1: under OAuth the CLI adds the
         # account's email and UUID. Accepted and disclosed, and measured on a
@@ -1032,12 +1044,14 @@ class DRC4710TheProbeCannotReachARealModelTest(unittest.TestCase):
         self.assertNotIn(account["emailAddress"], said)
         self.assertNotIn("none anywhere else", said)
 
+    @_NAMES_A_DESTINATION
     def test_the_account_email_beyond_the_disclosed_block_fails_the_probe(self) -> None:
         self.assertEqual(1, self.probe(self.cli(leak=" signed in as EMAIL")))
         self.assertIn(
             "request names the account's email or UUID anywhere else: yes", "\n".join(self.printed)
         )
 
+    @_NAMES_A_DESTINATION
     def test_the_home_or_user_name_in_another_case_fails_the_probe(self) -> None:
         # Review N1: the CLI fixes the case of the path it names, so a
         # case-sensitive needle printed "user name: no" over a leak.
@@ -1051,9 +1065,11 @@ class DRC4710TheProbeCannotReachARealModelTest(unittest.TestCase):
                 self.printed.clear()
                 self.assertEqual(1, self.probe(self.cli(adds=" " + text)))
 
+    @_NAMES_A_DESTINATION
     def test_the_account_uuid_in_a_header_fails_the_probe(self) -> None:
         self.assertEqual(1, self.probe(self.cli(header_leak=True)))
 
+    @_NAMES_A_DESTINATION
     def test_a_reply_from_elsewhere_is_refused_even_when_the_stub_was_also_called(self) -> None:
         # From the scoring lens's killers (K2): a real model's answer to the
         # probe's sentence is "ok", so only the nonce tells the two apart.
@@ -1103,6 +1119,7 @@ class DRC4710TheProbeCannotReachARealModelTest(unittest.TestCase):
                 self.assertNotIn(gone, env)
         self.assertEqual("1", env["CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC"])
 
+    @_NAMES_A_DESTINATION
     def test_a_reply_that_did_not_come_from_the_stub_is_refused(self) -> None:
         # A CLI that reached the operator's proxy anyway: the real model's
         # answer cannot carry the nonce, so the probe says so and passes nothing.
@@ -1116,6 +1133,18 @@ class DRC4710TheProbeCannotReachARealModelTest(unittest.TestCase):
             self.assertEqual(2, self.probe(runner))
         runner.assert_not_called()
 
+    def test_on_windows_the_probe_refuses_before_running_anything(self) -> None:
+        # What the Windows runner measured on PR #416: the route names nothing
+        # there, so the probe says so and the CLI never starts.
+        runner = mock.Mock(side_effect=AssertionError("ran"))
+        with mock.patch("cargento_runtime.reading_route.platform.system", return_value="Windows"):
+            self.assertEqual(2, self.probe(runner))
+        runner.assert_not_called()
+        self.assertEqual(
+            ["Refused: the CLI would reach an unnamed host, not the probe's stub."], self.printed
+        )
+
+    @_NAMES_A_DESTINATION
     def test_a_request_naming_this_machine_fails_the_probe(self) -> None:
         self.assertEqual(1, self.probe(self.cli(adds=f" cwd {Path.home()}")))
         self.assertIn("request names the home directory: yes", "\n".join(self.printed))

@@ -243,7 +243,8 @@ provider, credential, config-directory and proxy variable [SECURITY.md](../../SE
 lists is removed, and the base URL points at the stub. It refuses to run when
 `reading_route.destination` would name anything else, and refuses the answer unless it carries a
 nonce only the stub knew, so a forwarding proxy or an operator's `ANTHROPIC_BASE_URL` cannot turn
-it into a real call (DRC-4710). Per pass it prints yes or no for: the argv carries
+it into a real call (DRC-4710). On Windows that route names nothing, so the probe always
+refuses there before the CLI runs. Per pass it prints yes or no for: the argv carries
 `--system-prompt`, the request carries the fixed sentence, and the request names the home
 directory, the user name or the state directory. The OAuth pass adds whether the placeholder email
 is in the disclosed block the CLI adds and whether the email or UUID appear anywhere else. It exits
