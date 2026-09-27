@@ -36,6 +36,7 @@ import json
 import math
 import os
 import re
+import threading
 import time
 from typing import TYPE_CHECKING, Any, Final, NamedTuple, NotRequired, TypedDict, cast
 
@@ -43,7 +44,7 @@ from cargento_runtime import io as runtime_io
 from cargento_runtime import reading, records
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Iterable, Mapping, Sequence
+    from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
 
     from cargento_runtime.config import RuntimeConfig
     from cargento_runtime.state import RuntimeState
@@ -498,6 +499,157 @@ def store_path(config: RuntimeConfig) -> str:
     return os.path.join(config.state_home, "cargento-annotations.json")
 
 
+# How long a write waits for another dashboard's write before answering
+# `unwritable`. A write holds the lock for one read, one fsync and one rename,
+# so anything near this is a stuck holder rather than a queue.
+_STORE_LOCK_WAIT_SECONDS = 10.0
+
+
+def lock_path(config: RuntimeConfig) -> str:
+    """The file every write locks, beside the store rather than the store itself.
+
+    Not the store: the store is replaced by a rename on every write, so a lock
+    on it would be a lock on a file the next writer no longer opens, and
+    Windows refuses to replace a file another handle holds locked.
+    """
+    return f"{store_path(config)}.lock"
+
+
+# Store paths this process has already said cannot be locked, so a board on a
+# filesystem without locks says it once rather than on every save.
+_UNLOCKABLE_NAMED: set[str] = set()
+_UNLOCKABLE_NAMED_LOCK = threading.Lock()
+
+# One writer per store per process, before the OS lock. Keyed by store path
+# rather than held on a state, so two dashboards in one process share it, and
+# never `annotation_lock`, so `refresh` and `active` do not wait behind it.
+_WRITERS: dict[str, threading.Lock] = {}
+_WRITERS_LOCK = threading.Lock()
+# The stores this thread is writing now. A writer that calls another writer
+# would wait out its own lock and then blame another dashboard, so it raises.
+_WRITING = threading.local()
+
+
+def _writer_lock(path: str) -> threading.Lock:
+    with _WRITERS_LOCK:
+        return _WRITERS.setdefault(path, threading.Lock())
+
+
+def _writing() -> set[str]:
+    paths: set[str] | None = getattr(_WRITING, "paths", None)
+    if paths is None:
+        paths = set()
+        _WRITING.paths = paths
+    return paths
+
+
+@contextlib.contextmanager
+def _locked_store(
+    config: RuntimeConfig,
+    state: RuntimeState | None,
+    diagnostic_sink: Callable[[str], None],
+) -> Iterator[_Store | None]:
+    """One write's read, check and rename, exclusive across dashboards (DRC-4661).
+
+    `state.annotation_lock` serialises this process's threads and nothing
+    else. Two dashboards on one Cargento home are two states, usually two
+    processes, and each re-read the file under its own lock, so a writer
+    paused after its read let the other commit and then renamed its older copy
+    over the newer one. The OS lock is `reading_jobs`' recovery lock, the same
+    helper and not a third mechanism. Under it every stale writer is decided
+    as it already was in one process: a guarded one (`expected_revision`,
+    an empty-goal check) is refused as stale, and an unguarded goal save
+    appends after the other dashboard's revision.
+
+    Three locks, in this order, on one ten-second deadline. This process's
+    writer lock for the store comes first, so only one thread here ever asks
+    the OS: local `flock` and `msvcrt.locking` conflict across handles in one
+    process, but Linux NFS emulates `flock` with POSIX locks the process owns,
+    where a second thread's open "gets" the lock its sibling holds and either
+    close releases it to the other dashboard. Modelled with `lockf` (no NFS
+    mount was measured), taking the OS lock per thread lost 6 to 23 of 160
+    stored saves. The OS lock gets whatever the writer lock left of the wait.
+    `annotation_lock` comes last, because the first version held it through
+    the wait and stalled `refresh` and `active` behind every queued save:
+    measured, three saves answered at 10, 20 and 30 s while the board stalled
+    30 s. Now each waiting save costs at most one wait and readers none.
+
+    Yields the store as read under the lock, so no writer can check a copy
+    read outside it, or None, and the caller then writes nothing, when another
+    holder kept the lock past the wait or the lock file refuses this user.
+    Only a filesystem that reports it cannot lock yields the store without the
+    OS lock, under this process's locks alone, and says once what that costs:
+    refusing there would refuse every save on that home. A home that cannot
+    take the lock file at all yields the store marked unwritable, so the
+    mutator keeps the words for this run and answers `unwritable` without
+    writing (DRC-4533): the write's own makedirs could otherwise succeed where
+    the lock open failed, and write without the lock.
+    """
+    path = store_path(config)
+    writing = _writing()
+    if path in writing:
+        msg = f"already writing the annotation store {path}; a writer called a writer"
+        raise RuntimeError(msg)
+    deadline = time.monotonic() + _STORE_LOCK_WAIT_SECONDS
+    writer = _writer_lock(path)
+    with contextlib.ExitStack() as stack:
+        if not writer.acquire(timeout=_STORE_LOCK_WAIT_SECONDS):
+            runtime_io.diag(
+                f"Cargento: an earlier save to the annotation store {path} was still "
+                f"waiting after {_STORE_LOCK_WAIT_SECONDS:g}s; nothing was saved",
+                diagnostic_sink,
+            )
+            yield None
+            return
+        stack.callback(writer.release)
+        writing.add(path)
+        stack.callback(writing.discard, path)
+        # The lock file sits in the state home, which the first save creates.
+        with contextlib.suppress(OSError):
+            os.makedirs(config.state_home, mode=0o700, exist_ok=True)
+        held = stack.enter_context(
+            runtime_io.held_file_lock(lock_path(config), wait=max(0.0, deadline - time.monotonic()))
+        )
+        if held == runtime_io.LOCK_BUSY:
+            runtime_io.diag(
+                f"Cargento: another dashboard held the annotation store "
+                f"{path} for {_STORE_LOCK_WAIT_SECONDS:g}s; "
+                "nothing was saved",
+                diagnostic_sink,
+            )
+            yield None
+            return
+        if held == runtime_io.LOCK_DENIED:
+            runtime_io.diag(
+                f"Cargento: could not open or lock {lock_path(config)}; "
+                "nothing was saved to the annotation store",
+                diagnostic_sink,
+            )
+            yield None
+            return
+        if held == runtime_io.LOCK_UNSUPPORTED:
+            _name_unlockable(config, diagnostic_sink)
+        if state is not None:
+            stack.enter_context(state.annotation_lock)
+        store = _read_store(config)
+        yield store._replace(writable=False) if held == runtime_io.LOCK_UNCREATABLE else store
+
+
+def _name_unlockable(config: RuntimeConfig, diagnostic_sink: Callable[[str], None]) -> None:
+    """Say once per process that this store's saves are exclusive only within it."""
+    path = store_path(config)
+    with _UNLOCKABLE_NAMED_LOCK:
+        if path in _UNLOCKABLE_NAMED:
+            return
+        _UNLOCKABLE_NAMED.add(path)
+    # Owner approval needed: the wording of this line.
+    runtime_io.diag(
+        f"Cargento: the annotation store {path} cannot be locked on this filesystem; "
+        "saves from another dashboard sharing this home may overwrite each other",
+        diagnostic_sink,
+    )
+
+
 def _line(value: Any, cap: int) -> OutcomeLine | None:
     """One untrusted stored line, or nothing if it is not one."""
     if not isinstance(value, dict) or not isinstance(value.get("text"), str):
@@ -945,6 +1097,9 @@ class _Store(NamedTuple):
     entries: tuple[Annotation, ...]
     kept_raw: tuple[Any, ...]
     trusted: bool
+    # False when the lock file could not be made (`_locked_store`): nothing
+    # may be written, because the write would go ahead without the lock.
+    writable: bool = True
 
 
 def load(config: RuntimeConfig) -> tuple[Annotation, ...]:
@@ -1112,15 +1267,19 @@ def _write(
     # socket. Latent while every field is a str, int or float, which is exactly
     # when a guard is cheap.
     except (OSError, ValueError, TypeError, RecursionError):
-        runtime_io.diag(
-            f"Cargento: could not write the annotation store {target}; "
-            "what you typed will be gone at the next collection",
-            diagnostic_sink,
-        )
+        _say_unwritten(config, diagnostic_sink)
         with contextlib.suppress(OSError, ValueError):
             os.unlink(tmp)
         return False
     return True
+
+
+def _say_unwritten(config: RuntimeConfig, diagnostic_sink: Callable[[str], None]) -> None:
+    runtime_io.diag(
+        f"Cargento: could not write the annotation store {store_path(config)}; "
+        "what you typed will be gone at the next collection",
+        diagnostic_sink,
+    )
 
 
 def _stored(entries: tuple[Annotation, ...]) -> tuple[dict[str, Any], ...]:
@@ -1143,8 +1302,8 @@ def _commit(
 ) -> str:
     """Write one mutator's result: trimmed, the written entry kept, the refused kept raw.
 
-    Inside the caller's lock, and the cache set before the write, as every
-    mutator did before this was shared. Every raw entry goes back as it was:
+    Inside the caller's `_locked_store`, and the cache set before the write, as
+    every mutator did before this was shared. Every raw entry goes back as it was:
     a mutator refuses a session held raw before it reaches here (`_held`).
     """
     raw = store.kept_raw
@@ -1152,6 +1311,9 @@ def _commit(
     if kept is None:
         return OUTCOME_UNWRITABLE
     state.annotations = _stored(kept)
+    if not store.writable:
+        _say_unwritten(config, diagnostic_sink)
+        return OUTCOME_UNWRITABLE
     return (
         OUTCOME_STORED
         if save(config, kept, diagnostic_sink=diagnostic_sink, raw=raw)
@@ -1162,6 +1324,19 @@ def _commit(
 def _held(store: _Store, key: tuple[str, str]) -> bool:
     """Whether this session's own entry is one this build refused on read."""
     return any(_key(value.get("harness"), value.get("sid")) == key for value in store.kept_raw)
+
+
+def _unwritten(store: _Store | None, key: tuple[str, str]) -> str:
+    """Why a write to this session must not go ahead, or "" when it may.
+
+    Busy (another dashboard held the lock), a file this build cannot trust,
+    or this session's own entry held raw, in that order.
+    """
+    if store is None:
+        return OUTCOME_UNWRITABLE
+    if not store.trusted:
+        return OUTCOME_UNTRUSTED
+    return OUTCOME_UNREADABLE if _held(store, key) else ""
 
 
 def refresh(config: RuntimeConfig, state: RuntimeState) -> tuple[Annotation, ...]:
@@ -1468,13 +1643,12 @@ def _record(  # noqa: PLR0913 (the two callers' fields, one keyword each)
     key = _key(harness, sid)
     if not key[0] or not key[1]:
         return OUTCOME_REFUSED
-    with state.annotation_lock:
-        # From disk under the lock, for `annotate`'s reason: a save made by a
-        # second dashboard since this one's last collection is carried forward
-        # rather than written away.
-        store = _read_store(config)
-        if not store.trusted:
-            return OUTCOME_UNTRUSTED
+    # From disk under the lock, for `annotate`'s reason: a save made by a
+    # second dashboard since this one's last collection is carried forward
+    # rather than written away.
+    with _locked_store(config, state, diagnostic_sink) as store:
+        if store is None or not store.trusted:
+            return OUTCOME_UNWRITABLE if store is None else OUTCOME_UNTRUSTED
         current = store.entries
         existing = find(current, *key)
         if existing is None or is_discarded(existing):
@@ -1840,16 +2014,16 @@ def _annotate(  # noqa: PLR0913
     ):
         return OUTCOME_REFUSED
 
-    with state.annotation_lock:
-        # From disk under the lock rather than from the cached copy, so a save
-        # made by a second dashboard since this one's last collection is carried
-        # forward instead of being written away.
-        store = _read_store(config)
-        if not store.trusted or _held(store, key):
-            # A session held raw is refused like an unreadable store: its
-            # words are on disk, this build cannot read them, and a save here
-            # would renumber from 1 over them.
-            return OUTCOME_UNTRUSTED if not store.trusted else OUTCOME_UNREADABLE
+    # From disk under the lock rather than from the cached copy, so a save
+    # made by a second dashboard since this one's last collection is carried
+    # forward instead of being written away.
+    with _locked_store(config, state, diagnostic_sink) as store:
+        # A session held raw is refused like an unreadable store: its words
+        # are on disk, this build cannot read them, and a save here would
+        # renumber from 1 over them.
+        refused = _unwritten(store, key)
+        if store is None or refused:
+            return refused
         current = store.entries
         existing = find(current, *key)
         base_lines = (
@@ -1941,10 +2115,11 @@ def _annotate(  # noqa: PLR0913
             )
         updated["written"] = stamp
         others = [e for e in current if (e["harness"], e["sid"]) != key]
-        # Inside the lock, not after it. The server is threaded, so two saves on
-        # one session both read the pre-write store, both mint revision n+1, and
-        # the later write erases the earlier one. Holding the lock across the
-        # write costs one file write and closes the whole in-process window.
+        # Inside the lock, not after it. The server is threaded and a second
+        # dashboard may share the home, so two saves on one session would both
+        # read the pre-write store, both mint revision n+1, and the later write
+        # would erase the earlier one. Holding the lock across the write costs
+        # one file write and closes the window in and across processes.
         return _commit(
             config, state, store, key, [*others, updated], diagnostic_sink=diagnostic_sink
         )
@@ -1994,13 +2169,12 @@ def settle(
         return OUTCOME_REFUSED
     stamp = time.time() if now is None else now
 
-    with state.annotation_lock:
-        # From disk under the lock, for `annotate`'s reason: a save made by a
-        # second dashboard since this one's last collection is carried forward
-        # rather than written away.
-        store = _read_store(config)
-        if not store.trusted:
-            return OUTCOME_UNTRUSTED
+    # From disk under the lock, for `annotate`'s reason: a save made by a
+    # second dashboard since this one's last collection is carried forward
+    # rather than written away.
+    with _locked_store(config, state, diagnostic_sink) as store:
+        if store is None or not store.trusted:
+            return OUTCOME_UNWRITABLE if store is None else OUTCOME_UNTRUSTED
         current = store.entries
         existing = find(current, *key)
         # A discard record has no baseline to answer about, which is the rule
@@ -2065,10 +2239,10 @@ def clear(
     if not key[0] or not key[1]:
         return OUTCOME_REFUSED
     stamp = time.time() if now is None else now
-    with state.annotation_lock:
-        store = _read_store(config)
-        if not store.trusted or _held(store, key):
-            return OUTCOME_UNTRUSTED if not store.trusted else OUTCOME_UNREADABLE
+    with _locked_store(config, state, diagnostic_sink) as store:
+        refused = _unwritten(store, key)
+        if store is None or refused:
+            return refused
         current = store.entries
         existing = find(current, *key)
         others = tuple(e for e in current if (e["harness"], e["sid"]) != key)
@@ -2115,18 +2289,29 @@ def forget(config: RuntimeConfig) -> str:
     says what a reader typed will be gone, which is the opposite of what this
     failure means: nothing was written, so every record and every word stands.
     """
-    store = _read_store(config)
-    if not store.trusted:
-        # A store this build cannot read is never written over: the sweep
-        # would keep only what it could parse, which is nothing.
-        return FORGET_UNTRUSTED
-    entries = store.entries
-    kept = tuple(entry for entry in entries if not is_discarded(entry))
-    if len(kept) == len(entries):
+    if not os.path.lexists(store_path(config)):
+        # Nothing to sweep, and no reason to make a state home and a lock file
+        # on a machine that never saved anything. A save racing this adds
+        # words, and this writes nothing, so nothing is lost.
         return FORGET_NOTHING
-    if _write(config, kept, diagnostic_sink=lambda _line: None, raw=store.kept_raw):
-        return FORGET_SWEPT
-    return FORGET_UNWRITABLE
+    silent: Callable[[str], None] = lambda _line: None  # noqa: E731
+    # Under the dashboards' lock with no state of its own: `--forget` refuses a
+    # running dashboard on its port, and a second dashboard on another port
+    # shares this file (DRC-4661).
+    with _locked_store(config, None, silent) as store:
+        if store is None or not store.trusted:
+            # A store this build cannot read is never written over: the sweep
+            # would keep only what it could parse, which is nothing.
+            return FORGET_UNWRITABLE if store is None else FORGET_UNTRUSTED
+        entries = store.entries
+        kept = tuple(entry for entry in entries if not is_discarded(entry))
+        if len(kept) == len(entries):
+            return FORGET_NOTHING
+        if not store.writable:
+            return FORGET_UNWRITABLE
+        if _write(config, kept, diagnostic_sink=silent, raw=store.kept_raw):
+            return FORGET_SWEPT
+        return FORGET_UNWRITABLE
 
 
 def _provenance(value: Mapping[str, Any]) -> Provenance | None:

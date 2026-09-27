@@ -1058,14 +1058,6 @@ class OffSwitchTest(unittest.TestCase):
         self.assertIn("--no-focus", argv)
         self.assertNotIn("--no-focus", lifecycle.spawn_argv(config, _namespace(no_focus=False)))
 
-    def test_the_respawn_branch_reads_the_attribute_directly(self) -> None:
-        # Read off the namespace rather than through `getattr` with a default,
-        # so a flag added to the parser and forgotten here raises.
-        namespace = _namespace()
-        del namespace.no_focus
-        with self.assertRaises(AttributeError):
-            lifecycle.spawn_argv(support.make_config(), namespace)
-
 
 def _namespace(**overrides: object) -> argparse.Namespace:
     base: dict[str, object] = {

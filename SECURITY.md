@@ -85,7 +85,18 @@ The posture rests on two invariants:
    never written over: every save answers `untrusted` until it can be, because a write would keep
    only what this build could read, and the board says the file could not be read rather than
    showing every session as one nobody typed against. A session whose own entry this build cannot
-   read is kept as it was, and a save, adoption or discard of it answers `unreadable`. It is
+   read is kept as it was, and a save, adoption or discard of it answers `unreadable`. Every write
+   holds an OS lock on `cargento-annotations.json.lock` beside the file across its read, its check
+   and its rename (`flock` on POSIX, `msvcrt.locking` on Windows), so two dashboards sharing one
+   Cargento home cannot write an older copy over a newer save or reuse a revision number: a write
+   that named a revision the other dashboard has moved past is refused as stale, and a plain goal
+   save appends after it. A write that waits ten seconds for the lock writes nothing and answers
+   `unwritable`, and so does one whose lock file exists or can be made but cannot be opened or locked
+   by this user, such as a lock file left mode 000 or owned by another account. Only a filesystem
+   that reports it cannot lock at all (`ENOLCK` or `EOPNOTSUPP`) falls back to the one dashboard's
+   in-process lock: its saves still write, the dashboard logs once that another dashboard sharing
+   the home may overwrite them, and on that filesystem the guarantee above holds within one
+   dashboard only. It is
    redacted on the way in like every other prompt-derived string, written owner-only through a temp
    file and a rename -- the file synced before the rename and the directory synced after it, so
    that rename is trusted only once both are on disk; where the directory cannot be synced, as on
