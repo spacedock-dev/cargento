@@ -1182,8 +1182,9 @@ inner segment alone, never the wrapper. A call with an unterminated quote is a s
 read as not run, so nothing of its text is published; the last 180 characters of output, with redaction run over the whole read
 window before the clip; and a written path relative to the working directory. A written path is a
 file-write tool's path or, since 2026-09-27, a check's own redirect target, published only when it
-falls inside the working directory and through the same redaction; a target outside it, or one the
-shell decides at run time (`$VAR`, a substitution, `~`), is counted and never published
+falls inside the working directory and through the same redaction; a target outside it, one the
+shell decides at run time (`$VAR`, a substitution, `~`), one under a directory a `cd` left unknown,
+and one holding any value the call's masking hides, is counted and never published
 ([the amendment](docs/design-reading-a-session.md#amended-2026-09-27-a-subshell-a-checks-own-redirect-a-write-at-the-same-time-and-when-a-result-arrived)). No file content is
 read as a field, and no Edit or Write result body is read. At most 12 entries are listed and the
 rest are counted. The published entry carries the check segment, the result, where the result

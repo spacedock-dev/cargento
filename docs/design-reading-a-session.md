@@ -1362,9 +1362,18 @@ and item 3's measured note that a written path comes only from a file-write tool
    directory that segment ran in. A target inside the working directory is published as a written
    path, as a file-write tool's path is, through the same redaction. A target outside it, or one the
    shell decides when it runs (a `$` expansion, a substitution, `~`, a withheld word), is counted in
-   `outside_paths` and never published. The redirect does not age its own check's pass. It ages an
-   earlier check in the same call and any pass from an earlier call, and it does not set
-   `last_changing_command_at`, because it is now a recorded write. Measured (counts only): 90
+   `outside_paths` and never published. So is a target that masking would change, or that holds
+   any value masked anywhere in the call, assignments included, since the check row beside it
+   shows that value masked. A `cd` the shell resolves at run time (`~`, `$VAR`, a substitution,
+   no argument, `-`), and `pushd` or `popd`, leave the directory unknown until a literal absolute
+   `cd` or the group's close places it again, and a relative target under an unknown directory
+   counts outside. `-L`, `-P`, `-e`, `-@` and `--` are options to `cd`, not directories. A group's
+   or a wrapper's own redirect (`(cd sub && pytest) > out`) is read from the directory the group
+   started in, where the outer shell opens it. A redirect into `/dev/null`, `/dev/stdout`,
+   `/dev/stderr`, `/dev/tty` or `/dev/fd/N`, by any operator, writes no file. The redirect does
+   not age its own check's pass. It ages an earlier check in the same call, setting both
+   `before_last_change` and `changed_after`, and any pass from an earlier call, and it does not
+   set `last_changing_command_at`, because it is now a recorded write. Measured (counts only): 90
    redirect targets on check segments, every one counted outside. The analysis had counted 9 inside,
    and all 9 were `$VAR` targets, whose path the shell picks at run time.
 3. A write or fixer run from another call, recorded at the same time as a pass, ages it, since the
@@ -1379,6 +1388,9 @@ and item 3's measured note that a written path comes only from a file-write tool
    time, because in 291 of 9,544 measured checks a changing command started while the check ran,
    and a result time would read it as before the pass. `reading.evidence_at` is the one helper, the
    page's `nextReadingEvidenceAt` is its copy, and a test runs both window rules over one table.
+   With two parallel runs of one check, the published run can swap when the earlier call's result
+   lands after the later call's, which moves the fact id. A stored citation of the old id then
+   reads uncited, which errs safe.
 
 DRC-4709's third item, a subagent's writes, waits for DRC-4687.
 
@@ -1946,7 +1958,13 @@ decisions below follow that ruling and the DRC-4702 decisions of the same date.
   stored before this, so a line resting only on it reads "uncited" on both sides and falls to "not
   verifiable". No new reason token was needed.
 - When the window leaves nothing to read, the press withholds with `window-empty` rather than
-  `ledger-empty`, whose sentence says no entry names the session and would be false here.
+  `ledger-empty`, whose sentence says no entry names the session and would be false here. It is
+  decided over the whole record, before the last-turn stop cut: when that cut is what leaves
+  nothing, an entry after the words exists, so `ledger-empty` stands.
+- The cutoff sentence counts the entries after the words, and says how many earlier ones were not
+  read (owner, 2026-09-27): "Read 2 of the 2 entries after your words; 2 earlier entries were not
+  read." The second clause appears only when some were left out, and the time and author mix
+  follow as "Of those read, ...".
 
 ## DEC-26: four drift levels, and a live estimate after every turn
 
