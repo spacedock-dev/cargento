@@ -83,9 +83,16 @@ def _annotation_body_refused(payload: dict[str, Any]) -> bool:
     """
     goal, output = payload.get("goal"), payload.get("output")
     lines, expected = payload.get("lines"), payload.get("expected_revision")
-    origins = payload.get("origins")
+    origins, replace = payload.get("origins"), payload.get("replace")
+    # `add_direction` names the fact and `text` is the reader's review of it;
+    # the server, not the body, makes the line an entry line.
+    texts = (goal, output, payload.get("add_direction"), payload.get("text"))
     return (
-        any(value is not None and not isinstance(value, str) for value in (goal, output))
+        any(value is not None and not isinstance(value, str) for value in texts)
+        or (
+            replace is not None
+            and (isinstance(replace, bool) or not isinstance(replace, int) or replace < 0)
+        )
         or (
             lines is not None
             and (not isinstance(lines, list) or not all(isinstance(line, str) for line in lines))
@@ -307,6 +314,11 @@ class _RequestHandler(BaseHTTPRequestHandler):
     # bytes: a peer may declare a length it never sends, which a limit test does
     # on purpose and a hostile client would do to stall a handler.
     REJECT_DRAIN_SECONDS: ClassVar[float] = 0.25
+
+    # The store's token for the settlement a Keep press wrote, or None when the
+    # press carried none. Reset per request: a kept-alive connection reuses
+    # this handler for the next one.
+    _keep_outcome: str | None = None
 
     # Body bytes this request has already taken off the wire. Reset per request,
     # and a class default so a handler-level test that calls one method directly
@@ -1446,8 +1458,15 @@ class _RequestHandler(BaseHTTPRequestHandler):
                 config, state, harness, sid, diagnostic_sink=application.diagnostic_sink
             )
             withdrew = _withdraw_raises(application, outcome, harness, sid)
+        elif "add_direction" in payload:
+            outcome = self._add_direction(harness, sid, payload)
         elif "adopt" in payload:
-            outcome = self._adopt_prompt(harness, sid, payload, standalone=True)
+            # With `settle_through` beside it this is Keep where no analysis
+            # can start (no reader, or readings off): the draft is adopted and
+            # the directions settled in one write, and nothing is read.
+            outcome = self._adopt_prompt(
+                harness, sid, payload, standalone=True, settle_through=settle_through
+            )
         elif settle_through is not None:
             # A third arm on this route rather than a route of its own: the
             # subject is the same session's annotation, the reply shape is the
@@ -1595,6 +1614,13 @@ class _RequestHandler(BaseHTTPRequestHandler):
         if not isinstance(harness, str) or not isinstance(sid, str) or not harness or not sid:
             self._reject(400)
             return
+        self._reading_press(harness, sid, payload)
+
+    def _reading_press(self, harness: str, sid: str, payload: dict[str, Any]) -> None:
+        """An admitted press on one session: Keep's settlement, route, permission, job."""
+        self._keep_outcome = None
+        if "settle_through" in payload and not self._keep(harness, sid, payload):
+            return
         route = self._reading_route(harness, payload)
         if route is None:
             return
@@ -1707,14 +1733,55 @@ class _RequestHandler(BaseHTTPRequestHandler):
             return route
         code, reason = refusal
         self._send(
-            json.dumps(
-                {"ok": False, "produced": False, "reason": reason, "route": route},
-                separators=(",", ":"),
-            ).encode(),
+            self._reading_json({"ok": False, "produced": False, "reason": reason, "route": route}),
             "application/json",
             code,
         )
         return None
+
+    def _keep(self, harness: str, sid: str, payload: dict[str, Any]) -> bool:
+        """ "Keep my intent and analyze": settle first, and answer 422 if that is refused.
+
+        Before the route, the permission and the job, so a press that then
+        cannot start an analysis -- another provider, the budget, one already
+        in flight -- has still settled, as the owner ruled for DRC-4682. Over
+        an unsaved draft the adoption rides in the same store write
+        (`annotations.adopt`), and the adoption later in this press is then
+        only checked, never repeated. Every reply after this carries the
+        store's token as `settled`.
+        """
+        application = self.server.application
+        through = payload.get("settle_through")
+        outcome = (
+            self._adopt_prompt(harness, sid, payload, settle_through=through)
+            if "adopt" in payload
+            else annotation_store.settle(
+                application.config,
+                application.state,
+                harness,
+                sid,
+                through=through,
+                now=application.clock(),
+                diagnostic_sink=application.diagnostic_sink,
+            )
+        )
+        self._keep_outcome = outcome
+        if outcome in {annotation_store.OUTCOME_STORED, annotation_store.OUTCOME_UNCHANGED}:
+            return True
+        self._send(
+            self._reading_json({"ok": False, "produced": False, "adoption_refused": True}),
+            "application/json",
+            422,
+        )
+        return False
+
+    def _reading_json(self, answer: dict[str, Any]) -> bytes:
+        """One reading-route reply, with Keep's settlement token when this press carried one."""
+        settled = self._keep_outcome
+        return json.dumps(
+            {**answer, "settled": settled} if settled is not None else answer,
+            separators=(",", ":"),
+        ).encode()
 
     def _reading_adoption(
         self,
@@ -1723,7 +1790,7 @@ class _RequestHandler(BaseHTTPRequestHandler):
         payload: dict[str, Any],
         route: runtime_reading_route.Route,
     ) -> None:
-        if "adopt" in payload:
+        if "adopt" in payload and self._keep_outcome is None:
             outcome = self._adopt_prompt(harness, sid, payload)
             if outcome not in {annotation_store.OUTCOME_STORED, annotation_store.OUTCOME_UNCHANGED}:
                 self._send(
@@ -1735,7 +1802,13 @@ class _RequestHandler(BaseHTTPRequestHandler):
         self._send_reading(harness, sid, route, adoption=payload if "adopt" in payload else None)
 
     def _adopt_prompt(
-        self, harness: str, sid: str, payload: dict[str, Any], *, standalone: bool = False
+        self,
+        harness: str,
+        sid: str,
+        payload: dict[str, Any],
+        *,
+        standalone: bool = False,
+        settle_through: Any = None,
     ) -> str:
         application = self.server.application
         expected = payload.get("expected_revision")
@@ -1760,7 +1833,152 @@ class _RequestHandler(BaseHTTPRequestHandler):
             expected_at=payload.get("expected_prompt_at"),
             now=application.clock(),
             expected_revision=expected if standalone else None,
+            settle_through=settle_through,
         )
+
+    def _session_row(self, harness: str, sid: str) -> dict[str, Any] | None:
+        """This session's published row from a fresh all-sessions collection, or None.
+
+        All sessions, for `_typed_window_start`'s reason: a reader can act from
+        that view, and the default one leaves an aged session out.
+        """
+        application = self.server.application
+        application.state.snapshot.clear()
+        _, body = application.collect_json(show_all=True)
+        rows = [
+            row
+            for row in json.loads(body)["sessions"]
+            if row.get("harness") == harness and row.get("sid") == sid
+        ]
+        return rows[0] if len(rows) == 1 else None
+
+    def _later_direction(
+        self, row: dict[str, Any], fact_id: str, adopt_source: str | None = None
+    ) -> tuple[float, str] | None:
+        """A later direction's time and whole raw text, or None when it cannot be opened.
+
+        Every check is the server's own: the fact must be a person's message
+        in THIS session's published record, later than the words it would join
+        (`annotations.direction_floor`), and still in the record's tail, where
+        its whole text is read again (`project_context.direction_text`). A
+        direction the tail no longer reaches is refused rather than stood in
+        for by its summary, which would be saving a summary
+        (`annotations.direction_floor` cites the ruling).
+        """
+        application = self.server.application
+        harness, sid = str(row.get("harness")), str(row.get("sid"))
+        fact = next((f for f in self._session_facts(row) if f.get("fact_id") == fact_id), None)
+        if (
+            not isinstance(fact, dict)
+            or fact.get("type") != "user_message"
+            or fact.get("source_session") != {"harness": harness, "sid": sid}
+        ):
+            return None
+        at = runtime_reading.valid_prompt_time(fact.get("at"))
+        entry = annotation_store.find(
+            annotation_store.active(application.config, application.state), harness, sid
+        )
+        floor = annotation_store.direction_floor(entry, row, adopt_source)
+        if at is None or floor is None or at <= floor:
+            return None
+        text = runtime_project_context.direction_text(
+            application.config, application.state, harness, sid, fact_id
+        )
+        return (at, text) if text.strip() else None
+
+    def _add_direction(self, harness: str, sid: str, payload: dict[str, Any]) -> str:
+        """The `add_direction` arm: a verified later direction saved as an outcome line.
+
+        On `/api/annotate` rather than a route of its own, for the settle
+        arm's reason: the same session's annotation and the same reply. The
+        fact is re-validated exactly as `POST /api/direction` opened it.
+        """
+        application = self.server.application
+        row = self._session_row(harness, sid)
+        adopt = payload.get("adopt")
+        fact_id = str(payload.get("add_direction") or "")
+        found = (
+            self._later_direction(row, fact_id, adopt if isinstance(adopt, str) else None)
+            if row is not None and fact_id
+            else None
+        )
+        if row is None or found is None:
+            return annotation_store.OUTCOME_REFUSED
+        now = application.clock()
+        return annotation_store.add_direction(
+            application.config,
+            application.state,
+            row,
+            source_id=fact_id,
+            text=payload.get("text"),
+            entry_at=found[0],
+            expected_revision=payload.get("expected_revision"),
+            now=now,
+            replace=payload.get("replace"),
+            adopt=adopt,
+            expected_prompt=payload.get("expected_prompt"),
+            expected_prompt_at=payload.get("expected_prompt_at"),
+            window_start=self._typed_window_start(harness, sid, now),
+            diagnostic_sink=application.diagnostic_sink,
+        )
+
+    def _direction(self) -> None:
+        """Open one later direction's whole text for review (DRC-4682).
+
+        Reads and writes nothing but the reply: the page opens the direction
+        as a pending outcome line, and only the `add_direction` arm of
+        `/api/annotate` saves one. Guarded as the reading route is, by the
+        navigation and loopback-resource refusals, because this reply carries
+        more of a prompt than any published field: the whole message, redacted
+        and bounded, where the record holds its first sentence. Every
+        direction it will not open answers one 200 body, never a 404, for
+        `_focus`'s ruling.
+        """
+        application = self.server.application
+        config = application.config
+        if not config.annotations_enabled:
+            self._reject(503)
+            return
+        if self._is_document_navigation() or not self._loopback_resource_ok():
+            self._reject(403)
+            return
+        try:
+            length = int(self.headers.get("Content-Length") or 0)
+        except ValueError:
+            length = -1
+        if not 0 <= length <= config.annotation_body_cap_bytes:
+            self._reject(413)
+            return
+        try:
+            payload = json.loads(self._read_body(length) or b"{}")
+        except (ValueError, json.JSONDecodeError, RecursionError):
+            payload = {}
+        if not isinstance(payload, dict):
+            payload = {}
+        harness, sid, fact_id = payload.get("harness"), payload.get("sid"), payload.get("fact_id")
+        if not all(isinstance(part, str) and part for part in (harness, sid, fact_id)):
+            self._reject(400)
+            return
+        row = self._session_row(str(harness), str(sid))
+        found = self._later_direction(row, str(fact_id)) if row is not None else None
+        if found is None:
+            answer: dict[str, Any] = {
+                "ok": False,
+                "reason": "unavailable",
+                "why": annotation_store.DIRECTION_UNAVAILABLE,
+            }
+        else:
+            text, clipped, fits = annotation_store.direction_review(
+                found[1], config.annotation_text_cap_chars
+            )
+            answer = {
+                "ok": True,
+                "fact_id": fact_id,
+                "text": text,
+                "clipped": clipped,
+                "fits": fits,
+            }
+        self._send(json.dumps(answer, separators=(",", ":")).encode(), "application/json")
 
     def _reading_permission_reply(
         self, answer: reading_policy.Status, *, off: bool = False
@@ -1777,7 +1995,7 @@ class _RequestHandler(BaseHTTPRequestHandler):
             else 403
         )
         self._send(
-            json.dumps({"ok": code == 200, "produced": False, "reading": answer}).encode(),
+            self._reading_json({"ok": code == 200, "produced": False, "reading": answer}),
             "application/json",
             code,
         )
@@ -1803,16 +2021,15 @@ class _RequestHandler(BaseHTTPRequestHandler):
         entry = annotation_store.find(annotation_store.active(config, state), harness, sid)
         if not rows or entry is None:
             self._send(
-                json.dumps(
-                    {"ok": True, "produced": False, "reason": "no annotated session by that name"},
-                    separators=(",", ":"),
-                ).encode(),
+                self._reading_json(
+                    {"ok": True, "produced": False, "reason": "no annotated session by that name"}
+                ),
                 "application/json",
             )
             return
         if adoption is not None and not self._adoption_matches(entry, adoption):
             self._send(
-                json.dumps({"ok": False, "produced": False, "adoption_refused": True}).encode(),
+                self._reading_json({"ok": False, "produced": False, "adoption_refused": True}),
                 "application/json",
                 422,
             )
@@ -1827,15 +2044,14 @@ class _RequestHandler(BaseHTTPRequestHandler):
             # lane holds has no job, and none is invented for it.
             running = runtime_reading.published_jobs(config).get(key)
             self._send(
-                json.dumps(
+                self._reading_json(
                     {
                         "ok": False,
                         "produced": False,
                         "reason": "in-flight",
                         **({"job": running} if running else {}),
-                    },
-                    separators=(",", ":"),
-                ).encode(),
+                    }
+                ),
                 "application/json",
                 409,
             )
@@ -1853,7 +2069,7 @@ class _RequestHandler(BaseHTTPRequestHandler):
             self._reject(503)
             return
         self._send(
-            json.dumps({"ok": True, "job": started}, separators=(",", ":")).encode(),
+            self._reading_json({"ok": True, "job": started}),
             "application/json",
             202,
         )
@@ -2140,6 +2356,7 @@ class _RequestHandler(BaseHTTPRequestHandler):
             "/api/dismiss": self._dismiss,
             "/api/tripwire": self._tripwire,
             "/api/annotate": self._annotate,
+            "/api/direction": self._direction,
             "/api/reading": self._reading,
             "/api/reading/cancel": self._reading_cancel,
             "/api/focus": self._focus,

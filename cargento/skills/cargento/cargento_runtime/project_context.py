@@ -2641,6 +2641,43 @@ def instruction_events(
     return events
 
 
+def direction_text(
+    config: RuntimeConfig, state: RuntimeState, harness: str, sid: str, fact_id: str
+) -> str:
+    """The whole text of one user message in the bounded tail, found by its fact id, or "".
+
+    For DRC-4682's "Add it to my intent", which needs a direction's raw words
+    where the published fact holds only its first sentence. Found by
+    recomputing each tail message's fact id exactly as `instruction_events`
+    and `_semantic_fact_from_event` publish it, first of a duplicate pair
+    included, because a Claude user message carries no record id to look up:
+    Claude spells it `uuid`, and joining that to the hash would move every
+    stored citation of a Claude message (the 2026-09-12 precedent in
+    `_semantic_fact_from_event`). A message older than the tail is not found,
+    and the caller refuses rather than saving the summary in its place.
+    """
+    transcript_path = observer.resolve_transcript(config, state, harness, sid)
+    if not transcript_path:
+        return ""
+    seen: set[tuple[float, str]] = set()
+    for raw in runtime_io.read_tail(config, transcript_path):
+        if not raw or not raw.lstrip().startswith("{"):
+            continue
+        try:
+            record = json.loads(raw)
+        except (ValueError, RecursionError):
+            continue
+        event = _instruction_event(config, record, harness, sid)
+        if event is None or (event["at"], event["title"]) in seen:
+            continue
+        seen.add((event["at"], event["title"]))
+        fact = _semantic_fact_from_event(event, "steer", _SEMANTIC_FACT_TYPES["steer"], "")
+        if fact["fact_id"] == fact_id:
+            message = observer.parse_message_record(record)
+            return str(message["text"]) if message else ""
+    return ""
+
+
 def _codex_dispatch_artifact(task_name: str) -> tuple[str, str, str, str] | None:
     match = _CODEX_ENSIGN_TASK_RE.fullmatch(task_name)
     if match is None:
