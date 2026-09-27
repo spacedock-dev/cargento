@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import contextlib
+import errno
 import glob
 import json
 import ntpath
@@ -297,14 +298,43 @@ def atomic_write_owner_only(
         raise
 
 
+# What `held_file_lock` yields. Four answers rather than a bool and None,
+# because the annotation store refuses a lock file it cannot use but falls back
+# where the filesystem cannot lock at all, and the recovery pass runs in both.
+LOCK_HELD = "held"
+LOCK_BUSY = "busy"
+LOCK_UNSUPPORTED = "unsupported"
+LOCK_DENIED = "denied"
+LOCK_UNCREATABLE = "uncreatable"
+
+# The errnos with which a filesystem says it has no locks, rather than that
+# this file refuses this user. ENOTSUP and EOPNOTSUPP are one value on Linux
+# and two on macOS. Windows has none here: the CRT reports every `LockFile`
+# failure as EACCES, which reads as busy and so refuses (not measured there).
+_LOCKS_UNSUPPORTED = frozenset({errno.ENOLCK, errno.EOPNOTSUPP, errno.ENOTSUP})
+
+# Why a lock file that does not exist could not be made: the directory cannot
+# take a new file. A store beside it cannot be written then either, since its
+# write is a temp file and a rename in that same directory. EMFILE and ENFILE
+# are absent on purpose: they are this process running out of descriptors,
+# which says nothing about the directory, so they stay a refusal.
+_DIRECTORY_REFUSES = frozenset(
+    {errno.ENOENT, errno.ENOTDIR, errno.EROFS, errno.EACCES, errno.EPERM, errno.ENOSPC}
+    | ({errno.EDQUOT} if hasattr(errno, "EDQUOT") else set())
+)
+
+
 @contextlib.contextmanager
-def held_file_lock(path: str | os.PathLike[str], *, wait: float) -> Iterator[bool | None]:
+def held_file_lock(path: str | os.PathLike[str], *, wait: float) -> Iterator[str]:
     """Hold an OS lock on `path` for the block, waiting at most `wait` seconds.
 
-    Yields True while held, False when another holder kept it past the wait,
-    and None when the file cannot be opened or locked at all. The caller
-    decides what False and None mean. An OS lock dies with its process, so a
-    holder that crashed leaves nothing stale behind.
+    Yields `LOCK_HELD` while held, `LOCK_BUSY` when another holder kept it past
+    the wait, `LOCK_UNSUPPORTED` when the filesystem reports it cannot lock,
+    `LOCK_UNCREATABLE` when there is no lock file and its directory refuses a
+    new one, and `LOCK_DENIED` when the file cannot be opened or locked for any
+    other reason: a lock file left mode 000, one another user owns, a sharing
+    violation. The caller decides what each means. An OS lock dies with its
+    process, so a holder that crashed leaves nothing stale behind.
 
     Moved here from `reading_jobs`' recovery pass so the annotation store takes
     the same lock rather than a third mechanism (DRC-4661). `flock` on POSIX,
@@ -313,22 +343,30 @@ def held_file_lock(path: str | os.PathLike[str], *, wait: float) -> Iterator[boo
     """
     try:
         fd = os.open(path, os.O_RDWR | os.O_CREAT, 0o600)
-    except OSError:
-        yield None
+    except OSError as exc:
+        if exc.errno in _LOCKS_UNSUPPORTED:
+            yield LOCK_UNSUPPORTED
+        elif exc.errno in _DIRECTORY_REFUSES and not os.path.lexists(path):
+            yield LOCK_UNCREATABLE
+        else:
+            yield LOCK_DENIED
         return
     try:
         held = _lock_fd(fd, wait)
         try:
             yield held
         finally:
-            if held:
+            if held == LOCK_HELD:
                 _unlock_fd(fd)
     finally:
         os.close(fd)
 
 
-def _lock_fd(fd: int, wait: float) -> bool | None:
-    """Lock `fd`, waiting a bounded time. None when this file cannot be locked."""
+def _lock_fd(fd: int, wait: float) -> str:
+    """Lock `fd`, waiting a bounded time. One of `held_file_lock`'s answers."""
+    # Held elsewhere: `flock` raises BlockingIOError and `msvcrt.locking`
+    # PermissionError (EACCES), each for this and nothing else.
+    busy: type[OSError] = PermissionError if sys.platform == "win32" else BlockingIOError
     deadline = time.monotonic() + wait
     while True:
         try:
@@ -337,16 +375,14 @@ def _lock_fd(fd: int, wait: float) -> bool | None:
                 msvcrt.locking(fd, msvcrt.LK_NBLCK, 1)
             else:
                 fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        except (BlockingIOError, PermissionError):
-            # Held elsewhere: `flock` raises the first, `msvcrt.locking` the
-            # second (EACCES), each for this and nothing else.
+        except busy:
             if time.monotonic() >= deadline:
-                return False
+                return LOCK_BUSY
             time.sleep(0.05)
-        except OSError:
-            return None
+        except OSError as exc:
+            return LOCK_UNSUPPORTED if exc.errno in _LOCKS_UNSUPPORTED else LOCK_DENIED
         else:
-            return True
+            return LOCK_HELD
 
 
 def _unlock_fd(fd: int) -> None:

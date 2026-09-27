@@ -488,7 +488,7 @@ def _recovering(path: Path) -> Iterator[bool]:
     rename claim still holds on POSIX, and refusing would strand every marker.
     """
     with runtime_io.held_file_lock(path, wait=_RECOVERY_WAIT_SECONDS) as held:
-        yield held is not False
+        yield held != runtime_io.LOCK_BUSY
 
 
 def _claim(path: Path, alive: Callable[[int], bool]) -> Path | None:

@@ -36,6 +36,7 @@ import json
 import math
 import os
 import re
+import threading
 import time
 from typing import TYPE_CHECKING, Any, Final, NamedTuple, NotRequired, TypedDict, cast
 
@@ -514,6 +515,12 @@ def lock_path(config: RuntimeConfig) -> str:
     return f"{store_path(config)}.lock"
 
 
+# Store paths this process has already said cannot be locked, so a board on a
+# filesystem without locks says it once rather than on every save.
+_UNLOCKABLE_NAMED: set[str] = set()
+_UNLOCKABLE_NAMED_LOCK = threading.Lock()
+
+
 @contextlib.contextmanager
 def _locked_store(
     config: RuntimeConfig,
@@ -532,29 +539,68 @@ def _locked_store(
     an empty-goal check) is refused as stale, and an unguarded goal save
     appends after the other dashboard's revision.
 
+    The OS lock is taken first and this state's lock only once it is held.
+    The other order held the state lock through the ten-second wait, so every
+    other writer here queued behind it and then waited its own ten seconds,
+    and `refresh` and `active` hung behind all of them: measured, three saves
+    answered at 10, 20 and 30 s while the board stalled 30 s. `flock` and
+    `msvcrt.locking` conflict across handles in one process, so threads still
+    exclude each other under the OS lock alone.
+
     Yields the store as read under the lock, so no writer can check a copy
-    read outside it, or None when another holder kept the lock past the wait,
-    and the caller then writes nothing. A lock that cannot be taken at all (a filesystem
-    without `flock`) yields True, as the recovery pass does: refusing there
-    would refuse every save, where proceeding keeps the in-process guarantee.
+    read outside it, or None, and the caller then writes nothing, when another
+    holder kept the lock past the wait or the lock file refuses this user.
+    Only a filesystem that reports it cannot lock yields the store without the
+    OS lock, under this state's lock alone, and says once what that costs:
+    refusing there would refuse every save on that home. A home that cannot
+    take the lock file at all also yields it, because the write that follows
+    fails in the same directory and answers `unwritable` through `_write`,
+    which keeps the words for this run and says when they go (DRC-4533).
     """
     with contextlib.ExitStack() as stack:
-        if state is not None:
-            stack.enter_context(state.annotation_lock)
         # The lock file sits in the state home, which the first save creates.
         with contextlib.suppress(OSError):
             os.makedirs(config.state_home, mode=0o700, exist_ok=True)
         held = stack.enter_context(
             runtime_io.held_file_lock(lock_path(config), wait=_STORE_LOCK_WAIT_SECONDS)
         )
-        if held is False:
+        if held == runtime_io.LOCK_BUSY:
             runtime_io.diag(
                 f"Cargento: another dashboard held the annotation store "
                 f"{store_path(config)} for {_STORE_LOCK_WAIT_SECONDS:g}s; "
                 "nothing was saved",
                 diagnostic_sink,
             )
-        yield None if held is False else _read_store(config)
+            yield None
+            return
+        if held == runtime_io.LOCK_DENIED:
+            runtime_io.diag(
+                f"Cargento: could not open or lock {lock_path(config)}; "
+                "nothing was saved to the annotation store",
+                diagnostic_sink,
+            )
+            yield None
+            return
+        if held == runtime_io.LOCK_UNSUPPORTED:
+            _name_unlockable(config, diagnostic_sink)
+        if state is not None:
+            stack.enter_context(state.annotation_lock)
+        yield _read_store(config)
+
+
+def _name_unlockable(config: RuntimeConfig, diagnostic_sink: Callable[[str], None]) -> None:
+    """Say once per process that this store's saves are exclusive only within it."""
+    path = store_path(config)
+    with _UNLOCKABLE_NAMED_LOCK:
+        if path in _UNLOCKABLE_NAMED:
+            return
+        _UNLOCKABLE_NAMED.add(path)
+    # Owner approval needed: the wording of this line.
+    runtime_io.diag(
+        f"Cargento: the annotation store {path} cannot be locked on this filesystem; "
+        "saves from another dashboard sharing this home may overwrite each other",
+        diagnostic_sink,
+    )
 
 
 def _line(value: Any, cap: int) -> OutcomeLine | None:

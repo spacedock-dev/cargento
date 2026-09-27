@@ -15,9 +15,13 @@ lost the race is refused with the stale-revision answer it already had.
 from __future__ import annotations
 
 import contextlib
+import errno
+import io
 import json
 import os
 import shutil
+import signal
+import stat
 import subprocess
 import sys
 import tempfile
@@ -382,8 +386,15 @@ class EveryWriterSharesTheBoundaryTest(_SharedHomeCase):
 class ABusyStoreIsReportedNotWrittenTest(_SharedHomeCase):
     """Another process holding the store past the wait: nothing is written, and it says so."""
 
-    def test_a_save_that_cannot_take_the_lock_answers_unwritable_and_writes_nothing(self) -> None:
-        said: list[str] = []
+    OTHER = "another-session"
+
+    def hold(self, *, stop: bool = False) -> subprocess.Popen[bytes]:
+        """Hold the store's lock from a second real process until the test ends.
+
+        `stop` suspends the holder once it holds the lock, a dashboard stopped
+        with Ctrl-Z in the middle of a write. Windows has no SIGSTOP, and a
+        holder asleep inside the lock is the same thing to the waiter.
+        """
         holder = subprocess.Popen(
             [
                 sys.executable,
@@ -391,12 +402,18 @@ class ABusyStoreIsReportedNotWrittenTest(_SharedHomeCase):
                 _HOLD_LOCK,
                 str(SKILL_DIR),
                 annotation_store.lock_path(self.config),
+                "stop" if stop and hasattr(signal, "SIGSTOP") else "sleep",
             ],
             stdout=subprocess.PIPE,
         )
-        self.addCleanup(holder.kill)
+        self.addCleanup(_kill, holder)
         assert holder.stdout is not None
         self.assertEqual(b"held\n", holder.stdout.readline())
+        return holder
+
+    def test_a_save_that_cannot_take_the_lock_answers_unwritable_and_writes_nothing(self) -> None:
+        said: list[str] = []
+        self.hold()
         with mock.patch.object(annotation_store, "_STORE_LOCK_WAIT_SECONDS", 0.2):
             outcome = annotation_store.annotate(
                 self.config,
@@ -412,16 +429,290 @@ class ABusyStoreIsReportedNotWrittenTest(_SharedHomeCase):
         self.assertFalse(os.path.exists(annotation_store.store_path(self.config)))
         self.assertTrue(any("annotation store" in line for line in said), said)
 
+    def writers(self) -> dict[str, Callable[[], str]]:
+        """Every writer, each one that would store if the lock were free."""
+        config, state = self.config, self.first
+        fresh = _row(sid="fresh-session")
+        return {
+            "goal": lambda: annotation_store.annotate(
+                config, state, "claude", SID, goal="A newer goal", now=START + 200
+            ),
+            "lines": lambda: annotation_store.annotate(
+                config, state, "claude", SID, lines=["A line"], expected_revision=1, now=START
+            ),
+            "reading outcome": lambda: annotation_store.record_reading(
+                config, state, "claude", SID, assessment=_assessment(), job_id="0a0b0c0d0e0f01"
+            ),
+            "withheld outcome": lambda: annotation_store.record_withheld(
+                config,
+                state,
+                "claude",
+                SID,
+                reason=next(iter(runtime_reading.WITHHELD)),
+                spent=True,
+                job_id="0a0b0c0d0e0f02",
+            ),
+            "settle": lambda: annotation_store.settle(
+                config, state, "claude", SID, through=START + 80, now=START + 200
+            ),
+            "adoption": lambda: annotation_store.adopt(
+                config,
+                state,
+                fresh,
+                source="first-prompt",
+                expected_text=FIRST,
+                expected_at=FIRST_AT,
+                now=START + 200,
+            ),
+            "adoption with settle_through": lambda: annotation_store.adopt(
+                config,
+                state,
+                fresh,
+                source="first-prompt",
+                expected_text=FIRST,
+                expected_at=FIRST_AT,
+                now=START + 200,
+                expected_revision=0,
+                settle_through=START + 90,
+            ),
+            "add_direction": lambda: annotation_store.add_direction(
+                config,
+                state,
+                fresh,
+                source_id="fact:aaaaaaaaaaaaaaaa",
+                text="Use the placeholder lexer",
+                entry_at=FIRST_AT + 60,
+                expected_revision=0,
+                now=FIRST_AT + 120,
+            ),
+            "discard": lambda: annotation_store.clear(
+                config, state, "claude", SID, now=START + 200
+            ),
+            "--forget": lambda: annotation_store.forget(config),
+        }
+
+    def test_every_writer_refuses_while_another_process_holds_the_store(self) -> None:
+        annotation_store.annotate(self.config, self.first, "claude", SID, goal="Seed", now=START)
+        annotation_store.annotate(
+            self.config, self.first, "claude", self.OTHER, goal="Gone", now=START
+        )
+        annotation_store.clear(self.config, self.first, "claude", self.OTHER, now=START + 1)
+        store = Path(annotation_store.store_path(self.config))
+        before = store.read_bytes()
+        cached = annotation_store.refresh(self.config, self.first)
+        self.hold()
+        refusals = {
+            "--forget": annotation_store.FORGET_UNWRITABLE,
+        }
+        with (
+            mock.patch.object(annotation_store, "_STORE_LOCK_WAIT_SECONDS", 0.1),
+            contextlib.redirect_stdout(io.StringIO()),
+        ):
+            for name, write in self.writers().items():
+                with self.subTest(writer=name):
+                    outcome = write()
+                    self.assertEqual(
+                        refusals.get(name, annotation_store.OUTCOME_UNWRITABLE), outcome
+                    )
+                    self.assertEqual(before, store.read_bytes())
+                    self.assertEqual(cached, annotation_store.active(self.config, self.first))
+
+    def test_every_writer_stores_once_the_store_is_free(self) -> None:
+        # The other half of the refusal test: each writer above is one that
+        # writes when nothing holds the lock, so its refusal is the lock's.
+        for name in self.writers():
+            with self.subTest(writer=name):
+                self.setUp()
+                annotation_store.annotate(
+                    self.config, self.first, "claude", SID, goal="Seed", now=START
+                )
+                annotation_store.annotate(
+                    self.config, self.first, "claude", self.OTHER, goal="Gone", now=START
+                )
+                annotation_store.clear(self.config, self.first, "claude", self.OTHER, now=START + 1)
+                with contextlib.redirect_stdout(io.StringIO()):
+                    outcome = self.writers()[name]()
+                self.assertIn(
+                    outcome, (annotation_store.OUTCOME_STORED, annotation_store.FORGET_SWEPT)
+                )
+
+    def test_a_stuck_holder_costs_each_waiting_save_one_wait_and_readers_none(self) -> None:
+        annotation_store.annotate(self.config, self.first, "claude", SID, goal="Seed", now=START)
+        wait = 1.5
+        self.hold(stop=True)
+        took: dict[str, tuple[str, float]] = {}
+
+        def timed(name: str, call: Callable[[], object]) -> None:
+            began = time.monotonic()
+            answer = call()
+            took[name] = (str(answer)[:20], time.monotonic() - began)
+
+        def save(name: str) -> Callable[[], str]:
+            return lambda: annotation_store.annotate(
+                self.config, self.first, "claude", SID, goal=f"typed {name}", now=START + 9
+            )
+
+        calls: list[tuple[str, Callable[[], object]]] = [
+            ("save1", save("save1")),
+            ("save2", save("save2")),
+            ("save3", save("save3")),
+            ("refresh", lambda: annotation_store.refresh(self.config, self.first)),
+            ("active", lambda: annotation_store.active(self.config, self.first)),
+        ]
+        threads = []
+        with (
+            mock.patch.object(annotation_store, "_STORE_LOCK_WAIT_SECONDS", wait),
+            contextlib.redirect_stdout(io.StringIO()),
+        ):
+            for name, call in calls:
+                thread = threading.Thread(target=timed, args=(name, call))
+                thread.start()
+                threads.append(thread)
+                time.sleep(0.1)
+            for thread in threads:
+                thread.join(30)
+
+        self.assertEqual({name for name, _ in calls}, set(took), took)
+        for name in ("save1", "save2", "save3"):
+            answer, seconds = took[name]
+            self.assertEqual(annotation_store.OUTCOME_UNWRITABLE, answer)
+            # One wait each. Queued behind the in-process lock they answered
+            # at one, two and three waits.
+            self.assertLess(seconds, wait * 1.6, took)
+        for name in ("refresh", "active"):
+            self.assertLess(took[name][1], wait / 2, took)
+
+    def test_forget_on_a_machine_that_never_saved_creates_nothing(self) -> None:
+        home = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, home, True)
+        config, _ = make_runtime(
+            state_home=os.path.join(home, "state"), state_dir=Path(home, "state")
+        )
+
+        self.assertEqual(annotation_store.FORGET_NOTHING, annotation_store.forget(config))
+        self.assertFalse(os.path.lexists(config.state_home))
+
+    @unittest.skipIf(os.name == "nt", "POSIX file modes")
+    def test_the_lock_file_is_readable_by_its_owner_alone(self) -> None:
+        annotation_store.annotate(self.config, self.first, "claude", SID, goal="Seed", now=START)
+        mode = stat.S_IMODE(os.stat(annotation_store.lock_path(self.config)).st_mode)
+        self.assertEqual(0, mode & 0o077, oct(mode))
+
+
+class AnUnlockableStoreIsRefusedOrNamedTest(_SharedHomeCase):
+    """A lock file this user cannot use refuses; a filesystem that cannot lock says so.
+
+    DRC-4661's rule is that a save is kept or explicitly refused. Proceeding
+    without the lock is neither when the file is there and refuses this user,
+    so only a filesystem that reports locking unsupported falls back to the
+    in-process lock, and names what that costs once.
+    """
+
+    def setUp(self) -> None:
+        super().setUp()
+        annotation_store._UNLOCKABLE_NAMED.clear()
+        self.addCleanup(annotation_store._UNLOCKABLE_NAMED.clear)
+
+    def save(self, said: list[str], text: str = "Typed") -> str:
+        return annotation_store.annotate(
+            self.config,
+            self.first,
+            "claude",
+            SID,
+            goal=text,
+            now=START,
+            diagnostic_sink=said.append,
+        )
+
+    @unittest.skipIf(os.name == "nt" or os.geteuid() == 0, "POSIX modes, and root opens anything")
+    def test_a_lock_file_this_user_cannot_open_refuses_every_save_from_both_processes(
+        self,
+    ) -> None:
+        home = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, home, True)
+        state_dir = os.path.join(home, "state")
+        os.makedirs(state_dir, mode=0o700)
+        lock = os.path.join(state_dir, "cargento-annotations.json.lock")
+        Path(lock).touch()
+        os.chmod(lock, 0)
+        self.addCleanup(os.chmod, lock, 0o600)
+        outcomes, said = _two_processes_save(home, 30)
+
+        self.assertEqual([annotation_store.OUTCOME_UNWRITABLE] * 60, outcomes)
+        self.assertFalse(os.path.exists(os.path.join(state_dir, "cargento-annotations.json")))
+        self.assertIn(lock, said)
+
+    @unittest.skipIf(os.name == "nt", "the CRT reports every LockFile failure as EACCES")
+    def test_a_filesystem_that_cannot_lock_saves_under_this_process_lock_and_says_so_once(
+        self,
+    ) -> None:
+        for code in sorted({errno.ENOLCK, errno.EOPNOTSUPP, errno.ENOTSUP}):
+            with self.subTest(errno=errno.errorcode[code]):
+                self.setUp()
+                said: list[str] = []
+                refusal = OSError(code, os.strerror(code))
+                with mock.patch("fcntl.flock", side_effect=refusal):
+                    first = self.save(said, "First")
+                    second = self.save(said, "Second")
+
+                self.assertEqual((annotation_store.OUTCOME_STORED,) * 2, (first, second))
+                self.assertEqual(
+                    [
+                        (
+                            "Cargento: the annotation store "
+                            f"{annotation_store.store_path(self.config)} cannot be locked on "
+                            "this filesystem; saves from another dashboard sharing this home "
+                            "may overwrite each other"
+                        )
+                    ],
+                    said,
+                )
+
+    @unittest.skipIf(os.name == "nt", "fcntl")
+    def test_a_lock_refused_for_any_other_reason_writes_nothing(self) -> None:
+        for code in (errno.EACCES, errno.EPERM, errno.EIO):
+            with self.subTest(errno=errno.errorcode[code]):
+                self.setUp()
+                said: list[str] = []
+                refusal = OSError(code, os.strerror(code))
+                with mock.patch("fcntl.flock", side_effect=refusal):
+                    outcome = self.save(said)
+
+                self.assertEqual(annotation_store.OUTCOME_UNWRITABLE, outcome)
+                self.assertFalse(os.path.exists(annotation_store.store_path(self.config)))
+                self.assertTrue(said)
+
+    def test_running_out_of_descriptors_is_a_refusal_not_a_home_without_room(self) -> None:
+        # No lock file yet, and an open that fails for a reason about this
+        # process rather than its directory: the store could still be written,
+        # so proceeding would be a save without the lock.
+        lock = annotation_store.lock_path(self.config)
+        real_open = os.open
+
+        def open_(path: Any, *args: Any, **kwargs: Any) -> int:
+            if os.fspath(path) == lock:
+                raise OSError(errno.EMFILE, os.strerror(errno.EMFILE))
+            return real_open(path, *args, **kwargs)
+
+        said: list[str] = []
+        with mock.patch("os.open", side_effect=open_):
+            outcome = self.save(said)
+
+        self.assertEqual(annotation_store.OUTCOME_UNWRITABLE, outcome)
+        self.assertFalse(os.path.exists(annotation_store.store_path(self.config)))
+
 
 # Holds the store's lock from a second process until killed. Run on every
 # platform the suite runs on, so windows-latest exercises the `msvcrt` branch.
 _HOLD_LOCK = textwrap.dedent(
     """
-    import sys, time
+    import os, signal, sys, time
     sys.path.insert(0, sys.argv[1])
     from cargento_runtime import io as runtime_io
     with runtime_io.held_file_lock(sys.argv[2], wait=5.0) as held:
         print("held" if held else "not held", flush=True)
+        if sys.argv[3] == "stop":
+            os.kill(os.getpid(), signal.SIGSTOP)
         time.sleep(60)
     """
 )
@@ -442,14 +733,18 @@ _SAVER = textwrap.dedent(
         launcher_path=Path(home) / "server.py",
     )
     state = build_runtime_state(config, started=time.time())
+    said = []
+    Path(home, f"ready-{name}").touch()
     go = os.path.join(home, "go")
     while not os.path.exists(go):
         time.sleep(0.01)
     outcomes = [
-        store.annotate(config, state, "claude", "shared", goal=f"{name} save {k}")
+        store.annotate(
+            config, state, "claude", "shared", goal=f"{name} save {k}", diagnostic_sink=said.append
+        )
         for k in range(count)
     ]
-    print(json.dumps(outcomes))
+    print(json.dumps({"outcomes": outcomes, "said": said}))
     """
 )
 
@@ -462,24 +757,7 @@ class TwoProcessesOnOneHomeTest(unittest.TestCase):
     def test_every_save_from_both_processes_takes_its_own_revision_number(self) -> None:
         home = tempfile.mkdtemp()
         self.addCleanup(shutil.rmtree, home, True)
-        env = {k: v for k, v in os.environ.items() if not k.startswith("CARGENTO_")}
-        procs = [
-            subprocess.Popen(
-                [sys.executable, "-c", _SAVER, str(SKILL_DIR), home, name, str(self.SAVES)],
-                stdout=subprocess.PIPE,
-                env=env,
-            )
-            for name in ("one", "two")
-        ]
-        for proc in procs:
-            self.addCleanup(_kill, proc)
-        time.sleep(0.3)
-        Path(home, "go").touch()
-        outcomes = []
-        for proc in procs:
-            out, _ = proc.communicate(timeout=120)
-            self.assertEqual(0, proc.returncode)
-            outcomes.extend(json.loads(out))
+        outcomes, _ = _two_processes_save(home, self.SAVES)
 
         self.assertEqual([annotation_store.OUTCOME_STORED] * 2 * self.SAVES, outcomes)
         data = json.loads(Path(home, "state", "cargento-annotations.json").read_text("utf-8"))
@@ -489,6 +767,65 @@ class TwoProcessesOnOneHomeTest(unittest.TestCase):
         # kept tail is consecutive. A lost update leaves the last number short.
         self.assertEqual(2 * self.SAVES, numbers[-1])
         self.assertEqual(list(range(numbers[0], numbers[-1] + 1)), numbers)
+
+
+def _two_processes_save(home: str, saves: int) -> tuple[list[str], str]:
+    """Two real processes, each making `saves` goal saves into `home` at once.
+
+    Each touches a ready file once imported, and neither starts until both
+    have, so a slow start cannot run one's saves before the other begins.
+    Returns every outcome and everything either process said.
+    """
+    env = {k: v for k, v in os.environ.items() if not k.startswith("CARGENTO_")}
+    procs = [
+        subprocess.Popen(
+            [sys.executable, "-c", _SAVER, str(SKILL_DIR), home, name, str(saves)],
+            stdout=subprocess.PIPE,
+            env=env,
+        )
+        for name in ("one", "two")
+    ]
+    try:
+        deadline = time.monotonic() + 60
+        while not all(Path(home, f"ready-{name}").exists() for name in ("one", "two")):
+            if time.monotonic() > deadline or any(p.poll() is not None for p in procs):
+                msg = "a saver never became ready"
+                raise AssertionError(msg)
+            time.sleep(0.01)
+        Path(home, "go").touch()
+        outcomes: list[str] = []
+        said: list[str] = []
+        for proc in procs:
+            out, _ = proc.communicate(timeout=120)
+            if proc.returncode != 0:
+                msg = f"a saver exited {proc.returncode}"
+                raise AssertionError(msg)
+            report = json.loads(out)
+            outcomes.extend(report["outcomes"])
+            said.extend(report["said"])
+    finally:
+        for proc in procs:
+            _kill(proc)
+    return outcomes, "\n".join(said)
+
+
+def _assessment() -> Any:
+    return {
+        "revision_read": 1,
+        "stamp": "read at 10:00",
+        "cutoff": "Read 1 of the 1 entry after your words",
+        "scope": runtime_reading.SCOPE_FINAL,
+        "scope_text": runtime_reading.SCOPE_TEXT[runtime_reading.SCOPE_FINAL],
+        "ended_at_read": 99.0,
+        "criteria": {
+            "goal": {
+                "result": runtime_reading.RESULT_DEPARTURE,
+                "cites": ("f1",),
+                "detail": "it renamed a different flag",
+                "clause": "Seed",
+            },
+        },
+    }
 
 
 def _kill(proc: subprocess.Popen[bytes]) -> None:
