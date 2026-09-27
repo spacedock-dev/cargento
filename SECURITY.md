@@ -1176,14 +1176,18 @@ files it wrote. A check is a shell command segment whose runner is on the ruling
 a program file counts only when `test` or `tests` stands alone as a word in its name. Its bounds:
 the check's own segment, never the rest of the shell line, with a substituted command shown as
 `$(…)`, a brace expansion and the word after it shown as `…`, no redirection, here-string word or heredoc delimiter
-published, a heredoc body never read as a command, and a trailing comment dropped, after credential redaction and masking of the forms redaction cannot
+published in it, a heredoc body never read as a command, and a trailing comment dropped, after credential redaction and masking of the forms redaction cannot
 recognise, clipped to 120 characters. Behind `bash -c`, `sh -c`, `zsh -c` or `bash -lc`, it is the
 inner segment alone, never the wrapper. A call with an unterminated quote is a syntax error and is
 read as not run, so nothing of its text is published; the last 180 characters of output, with redaction run over the whole read
-window before the clip; and a written path relative to the working directory. No file content is
+window before the clip; and a written path relative to the working directory. A written path is a
+file-write tool's path or, since 2026-09-27, a check's own redirect target, published only when it
+falls inside the working directory and through the same redaction; a target outside it, or one the
+shell decides at run time (`$VAR`, a substitution, `~`), is counted and never published
+([the amendment](docs/design-reading-a-session.md#amended-2026-09-27-a-subshell-a-checks-own-redirect-a-write-at-the-same-time-and-when-a-result-arrived)). No file content is
 read as a field, and no Edit or Write result body is read. At most 12 entries are listed and the
-rest are counted. The published entry carries the check segment, the result and where the result
-came from, and never the output itself. The output tail is read again at the press
+rest are counted. The published entry carries the check segment, the result, where the result
+came from and, as `result_at`, when it arrived, and never the output itself. The output tail is read again at the press
 (`project_context.claude_check_press`), keyed by the call, and carried into that one prompt only:
 Cargento never writes it onto the fact, a row, the page or history. A departure's explanation is
 model prose, and the model may quote a line of the tail in it; that explanation is stored with the

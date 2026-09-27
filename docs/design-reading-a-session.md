@@ -1245,7 +1245,8 @@ readings rely on are in
 [the transcript capture](captures/claude/transcript-tool-shapes-2.1.281-macos.jsonl). It also shows
 the limit on writes: a shell command's result records its command and output and no path, so a
 written path comes only from a file-write tool call, and a file a shell command changes is not a
-recorded write.
+recorded write. A check's own redirect into a file is the one exception since 2026-09-27; see
+[the amendment of that date](#amended-2026-09-27-a-subshell-a-checks-own-redirect-a-write-at-the-same-time-and-when-a-result-arrived).
 
 ### Amended 2026-09-24: the live estimate reads these facts on the machine
 
@@ -1314,7 +1315,9 @@ item 5's fields and the closed lists.
    also removed from the output tail before redaction runs over it, since an echoed command repeats
    it. The named forms are unchanged: these forms and no others.
 6. A redirection is not an argument and is not published: not its target, not a here-string's
-   word, not a heredoc's delimiter. A heredoc body and a here-string word are stdin data.
+   word, not a heredoc's delimiter. A heredoc body and a here-string word are stdin data. Amended
+   2026-09-27: a check segment's redirect target inside the working directory is published as a
+   written path, below.
 7. A substitution runs whatever it names. A command or process substitution anywhere in a call, in
    a check's own arguments, an assignment, a redirection target or a wrapper's other words, counts
    as a change unless its own command is read-only by the closed lists, read with these same rules.
@@ -1340,6 +1343,44 @@ read-only commands; `shlex` finds a file write in 1 of the 700, the check's own 
 DRC-4709 owns. 319 calls became a change, nearly all an assignment whose substitution runs
 something. The matrix, with newline quotings and an unterminated `$'` added, leaks in none of its
 2,592 cases.
+
+### Amended 2026-09-27: a subshell, a check's own redirect, a write at the same time, and when a result arrived
+
+The owner ruled on DRC-4702, DRC-4709 and DRC-4724 on 2026-09-27. This amends item 3 of the
+2026-09-25 amendment (a subshell is read as a wrapper is), its item 6 (a check's redirect target),
+and item 3's measured note that a written path comes only from a file-write tool call.
+
+1. A `(` at command position opens a subshell, and its matching `)` restores the directory that was
+   current at the `(`, as a shell wrapper already did. `(cd sub && pytest); pytest` runs its second
+   check in the working directory, so a failure in `sub` is no longer superseded by a pass outside
+   it. A `)` that matches no `(`, such as a `case` arm's, and the parentheses of `f()` or
+   `a=(1 2)`, open and close nothing. No published byte changed; only a check's identity moved.
+   Measured on this machine's transcripts (counts only): 7 of 9,703 check calls change directory,
+   and none gains or loses a check. A `cd` after `{`, `then` or `do` is still not followed, which
+   was filed separately.
+2. A file redirect on a check segment is a recorded write by its call, its target read from the
+   directory that segment ran in. A target inside the working directory is published as a written
+   path, as a file-write tool's path is, through the same redaction. A target outside it, or one the
+   shell decides when it runs (a `$` expansion, a substitution, `~`, a withheld word), is counted in
+   `outside_paths` and never published. The redirect does not age its own check's pass. It ages an
+   earlier check in the same call and any pass from an earlier call, and it does not set
+   `last_changing_command_at`, because it is now a recorded write. Measured (counts only): 90
+   redirect targets on check segments, every one counted outside. The analysis had counted 9 inside,
+   and all 9 were `$VAR` targets, whose path the shell picks at run time.
+3. A write or fixer run from another call, recorded at the same time as a pass, ages it, since the
+   recorded times cannot say which came first. The pass's own call is still ordered by its segments,
+   so `black . && pytest` keeps its pass current: a tie rule without that exclusion aged 11 of the
+   747 fixer-before-check calls measured. No check call shared a time with a file write.
+4. Each recorded foreground check run publishes `result_at`, the time of the record holding its
+   result. A background run, or one with no result yet, has none. `at` stays the call time, so the
+   fact id, the page's order and its numbers do not move when a result lands. The result time
+   decides the evidence window and which run of a check is latest. Every change comparison
+   (`before_last_change`, `changed_after`, the live floor's changing-command time) keeps the call
+   time, because in 291 of 9,544 measured checks a changing command started while the check ran,
+   and a result time would read it as before the pass. `reading.evidence_at` is the one helper, the
+   page's `nextReadingEvidenceAt` is its copy, and a test runs both window rules over one table.
+
+DRC-4709's third item, a subagent's writes, waits for DRC-4687.
 
 ## DEC-24: your intent is a drafted goal and a checklist, and a correction is yours to copy
 
@@ -1797,8 +1838,11 @@ calls below on the issue; the rest follow the analysis.
   (item 13). Earlier entries are counted ("2 earlier entries") and not listed. An entry with no
   published time cannot be placed in a window, so it is counted the same way and never numbered.
 - A cited entry from before the window, or with no time, is listed anyway, unnumbered: a
-  pre-window one with its time, an untimed one with neither. Whether a reading should cite a pre-window entry at all is a reading rule for item 13, and it
-  was filed separately rather than changed here.
+  pre-window one with its time, an untimed one with neither. Whether a reading should cite a
+  pre-window entry at all was filed separately, and ruled on 2026-09-27: it may not
+  ([what the window build decided](#what-the-window-build-decided-2026-09-27)). This path now serves
+  a reading stored with no window start, and a check whose result landed inside the window though
+  its call began before it, since numbering stays on the call time.
 - A window that opens at a reader's message should have an entry at that moment. Where none sits
   there because the record read no longer reaches back that far, the list says so rather than
   calling a later entry #1. A window at the save time is typed words with no earlier message, and
@@ -1881,6 +1925,28 @@ can start. The page half comes after it.
   store can still race, and these writes share that gap with every other save (DRC-4661).
 - Not permanent. A line added from an entry becomes a typed line once the reader edits it and
   saves, as an edited adopted goal becomes typed, so "added from #n" lasts until the first edit.
+
+### What the window build decided, 2026-09-27
+
+DRC-4715 asked whether a reading may cite an entry from before its evidence window. The owner ruled
+no, and that such a citation is refused the way any other unsupported citation is. The build
+decisions below follow that ruling and the DRC-4702 decisions of the same date.
+
+- The rule covers every entry type, not only checks. An entry with no time cannot be placed after
+  the words, so it is refused too once a window is open. A reading with no window start refuses
+  nothing on these grounds.
+- "Before the window" is read by when an entry's evidence arrived: a check's result time where one
+  was recorded, its call time otherwise. A check whose call began before the words and whose result
+  landed after them is inside the window.
+- `reading.produce` drops these entries from the list it numbers, beside the last-turn cap, so the
+  model is never offered one. That follows `_citable`'s rule that a row the resolver must refuse is
+  never numbered. It is done there rather than in `build_ledger`, which is the page-parity contract
+  and which the abstention scorer also reads.
+- The resolver's rule 3 refuses such an entry as well, and the page's copy refuses one in a reading
+  stored before this, so a line resting only on it reads "uncited" on both sides and falls to "not
+  verifiable". No new reason token was needed.
+- When the window leaves nothing to read, the press withholds with `window-empty` rather than
+  `ledger-empty`, whose sentence says no entry names the session and would be false here.
 
 ## DEC-26: four drift levels, and a live estimate after every turn
 
@@ -2005,7 +2071,8 @@ part of what the owner's marks validate.
   reads Medium, as a pass followed by a write does on the live side. The cited pass must also be
   inside the reading's window, as `reading.check_supports` requires. A failed check in the reading's
   window reads High whether or not the reading cited it, and a check with no time counts as inside
-  the window. A failed check before the window still blocks "None or low".
+  the window. Both window tests read a check by when its result arrived, where one was recorded
+  (DRC-4702, 2026-09-27). A failed check before the window still blocks "None or low".
 - The case tool takes the marks before any reading exists. Cases are built without readings, both
   levels are marked from the evidence and the intent alone, the digest is committed, and readings
   are attached afterwards, stamped with that commit. The first build showed a stored reading on the
