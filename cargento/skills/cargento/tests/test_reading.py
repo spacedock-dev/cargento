@@ -1511,6 +1511,18 @@ class WhatOnePressActuallyCostsAndProduces(unittest.TestCase):
         self.assertTrue(spent)
         self.assertIn("may still be running", reading.WITHHELD[why])
 
+    def test_a_cli_stopped_for_flooding_its_output_is_named_and_counted(self) -> None:
+        """DRC-4667: its own cause and sentence, and spent, because the call ran."""
+        _a, why, spent = self._produce(model=self._model("", "oversized"))
+        self.assertEqual(reading.WITHHELD_OVERSIZED, why)
+        self.assertTrue(spent)
+        self.assertEqual(
+            "The reading was stopped because its CLI wrote far more output than a reading can "
+            "use. Nothing was produced, the attempt still counts, and a fresh press is the only "
+            "retry.",
+            reading.WITHHELD[why],
+        )
+
     def test_a_call_refused_because_cargento_is_stopping_spends_nothing(self) -> None:
         _a, why, spent = self._produce(model=self._model("", "closed"))
         self.assertEqual(reading.WITHHELD_STOPPING, why)

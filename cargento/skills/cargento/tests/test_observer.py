@@ -2288,6 +2288,68 @@ class SupervisedModelCallTest(unittest.TestCase):
                 self.assertIs(spawned, seen[1]["on_spawn"])
 
     @unittest.skipIf(os.name == "nt", "a shebang script stands in for the CLI")
+    def test_a_cli_that_floods_its_output_file_is_stopped_near_the_bound(self) -> None:
+        """DRC-4667: 50 MiB to the reply file is stopped near 1 MiB, and the file goes."""
+        import sys  # noqa: PLC0415
+        import time  # noqa: PLC0415
+
+        # Claude Code's reply is its stdout; Codex writes the file it is named.
+        where = {
+            "claude": "sys.stdout.buffer",
+            "codex": "open(sys.argv[sys.argv.index('--output-last-message') + 1], 'wb')",
+        }
+        for name, call in (("claude", observer.claude_exec), ("codex", observer.codex_exec)):
+            with self.subTest(cli=name):
+                config = self._config()
+                bin_dir = Path(tempfile.mkdtemp())
+                self.addCleanup(shutil.rmtree, bin_dir, True)
+                peak_file = bin_dir / "peak"
+                fake = bin_dir / name
+                fake.write_text(
+                    f"#!{sys.executable}\n"
+                    "import sys, time\n"
+                    "sys.stdin.read()\n"
+                    f"out = {where[name]}\n"
+                    "chunk = b'x' * (1 << 20)\n"
+                    "for n in range(50):\n"
+                    "    out.write(chunk); out.flush()\n"
+                    f"    open({str(peak_file)!r}, 'w').write(str(n + 1))\n"
+                    "    time.sleep(0.02)\n"
+                    "time.sleep(60)\n"
+                )
+                fake.chmod(0o700)
+                started = time.monotonic()
+                output, status = call(
+                    config, "prompt", output_cap_bytes=64, binary_resolver=lambda _n, f=fake: str(f)
+                )
+                self.assertEqual(("", "oversized"), (output, status))
+                self.assertLess(time.monotonic() - started, 20)
+                self.assertLess(int(peak_file.read_text()), 10, "the flood ran far past the bound")
+                self.assertEqual([], sorted(p.name for p in config.state_dir.iterdir()))
+
+    def test_the_bound_reaches_only_the_supervised_runner(self) -> None:
+        """A runner with `subprocess.run`'s signature is never handed `output_limit`."""
+        seen: list[dict[str, Any]] = []
+
+        def runner(command: Any, **kwargs: Any) -> Any:
+            seen.append(kwargs)
+            return subprocess.CompletedProcess(command, 0)
+
+        config = self._config()
+        for call in (observer.codex_exec, observer.claude_exec):
+            with self.subTest(call=call.__name__):
+                seen.clear()
+                call(
+                    config,
+                    "p",
+                    output_cap_bytes=64,
+                    runner=runner,
+                    binary_resolver=lambda name: f"/usr/local/bin/{name}",
+                )
+                self.assertNotIn("output_limit", seen[0])
+                self.assertEqual(1 << 20, observer.OUTPUT_FILE_LIMIT_BYTES)
+
+    @unittest.skipIf(os.name == "nt", "a shebang script stands in for the CLI")
     def test_a_claude_call_past_its_timeout_takes_its_tree_and_its_files_with_it(self) -> None:
         import sys  # noqa: PLC0415
         import time  # noqa: PLC0415

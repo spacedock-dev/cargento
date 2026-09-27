@@ -1005,8 +1005,8 @@ follows the text naming the receiver. The answer lives under `CARGENTO_HOME` (by
 "Turn off readings" and `--forget` revoke it. Goal summaries keep `--observer-model` and their
 separate browser consent. The explicit model off switch overrides both permissions.
 
-The same SQLite store holds only that answer and model-attempt timestamps, never session ids or
-content. A transaction reserves one of twelve reader-requested attempts in a rolling twenty-four
+The same SQLite store holds only that answer, model-attempt timestamps and, for 30 days, the
+random id of the job each attempt was charged to (DRC-4713), never session ids or content. A transaction reserves one of twelve reader-requested attempts in a rolling twenty-four
 hours before the model starts. Eligibility checks and a known missing CLI spend nothing; a failed
 or timed-out attempt keeps its reservation because the provider may already have spent capacity.
 Concurrent processes share the transaction bound. A denied or corrupt store fails closed. The page
@@ -1077,7 +1077,22 @@ rather than only the direct child, and the daemon's own group is never signalled
 POSIX: a helper that leaves the group, by `setsid` or `setpgid`, is not reached; a Job Object has
 no such exit. The group is signalled only while its leader is unreaped, so its id cannot have been
 reused by another process, and the call returns only after the child is reaped, so its temporary
-files are removed after, never under, a live writer. A kill whose child has not exited within five
+files are removed after, never under, a live writer. When neither `waitid` nor kqueue can watch the
+exit, the call polls, which reaps the leader, so helpers still in its group after a normal exit are
+not swept; a timeout, a shutdown or a Cancel still kills the group, because each kills before the
+reap. That has been seen only under forced errors, and a test pins it (DRC-4712). On that path a
+helper still writing after the leader's exit is not reached at all, whether it was already
+writing under the bound or starts afterwards: the poll that sees the exit is the reap, the caller then removes the file, and the helper's writes to
+the removed file are bounded by nothing but the disk until the helper exits. Seeing the exit
+without reaping needs a third watcher, which is the fix the owner ruled documented rather than
+built. A call's output file is bounded on disk as well as on read (DRC-4667): the runner checks its
+size every 0.01 s while the CLI runs, and once more when it has exited, before its group or Job
+Object is let go. Past **1 MiB** it kills the CLI's group or Job Object as a Cancel does. A reading
+records a spent `oversized` attempt; the goal lane falls back as on any failed call and records
+nothing. The file can exceed 1 MiB by what the CLI writes in one 0.01 s slice, which is bounded by
+disk speed rather than by the limit: an unpaused writer on an APFS SSD was measured at 41 to 89 MiB
+before the kill, which landed 11 to 15 ms after the bound was passed (286 to 600 MiB at the earlier
+0.1 s slice). The file is removed once the group is reaped. A kill whose child has not exited within five
 seconds ends the call anyway and is recorded as its own withheld reason, which says the process
 may still be running. Because a child in its own group no longer receives the terminal's signals,
 SIGTERM, SIGHUP and SIGQUIT all unwind through the daemon's cleanup, which shuts the runner (a
@@ -1132,7 +1147,9 @@ environment, such as `ANTHROPIC_API_KEY`, `ANTHROPIC_BASE_URL` or `CLAUDE_CODE_U
 
 The process runs in a fresh owner-only (0700) empty directory under the state directory. Stdout
 goes to an owner-only temp file, never a pipe, and at most `annotation_text_cap_chars * 8` bytes of
-it are read. Stderr is discarded. The timeout is the shared **60 seconds**. The directory and the
+it are read. The file is bounded on disk at 1 MiB plus one 0.01 s slice of writes, as
+[Observer model calls](#observer-model-calls) describes, with the measured overshoot. Stderr is discarded. The timeout is the
+shared **60 seconds**. The directory and the
 file are removed on every path, including a timeout or an OS error, and only once the CLI and
 anything it started have been killed and reaped. An absent or relative
 `shutil.which("claude")` spends nothing and creates nothing. The prompt is the reading prompt Codex
@@ -1338,9 +1355,13 @@ and a spent attempt keeps its marker until the store holds it; a store that refu
 leaves the marker saying so, and the next start records the attempt with that sentence, or with
 the stop's or the unconfirmed kill's own sentence when that was the refused outcome. A job the
 shutdown ends is recorded as a spent `interrupted` attempt, unless its kill could not be confirmed,
-which keeps the "may still be running" sentence. So is any marker the next dashboard start finds
+which keeps the "may still be running" sentence. The stop's line is the reservation (DRC-4712): the
+charge commits under the lock the shutdown takes, so a shutdown before the commit charges nothing
+and records the unspent "Cargento was stopping" sentence. A marker the next dashboard start finds,
 whose pid no state file of a running dashboard on this state directory names (its own pid counts
-as an earlier run).
+as an earlier run), is recorded from the job ledger (DRC-4713): spent when the budget store holds a
+charge for that job's id or cannot answer, and unspent ("stopping", or "cancelled-unsent" when the
+marker says cancelled) when it holds none.
 A recovery pass holds an OS lock on `reading-jobs.lock` beside that directory (`flock` on POSIX,
 `msvcrt.locking` on Windows), each marker is claimed by a rename before it is recorded, and an entry
 that already holds the job's id counts nothing, so one job is one attempt however many dashboards
