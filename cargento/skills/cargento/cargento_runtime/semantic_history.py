@@ -185,6 +185,24 @@ def _source_identity(fact: Mapping[str, Any]) -> str:
     return records.safe_text(source, 160) or "source unavailable"
 
 
+# Every Pi check fact's source begins with this, and so did the older writer's
+# validation fact (DRC-4690).
+PI_CHECK_SOURCE_PREFIX = "Pi bash tool call"
+
+
+def is_check_fact(fact: Mapping[str, Any]) -> bool:
+    """A check's result, which this store never keeps
+    ([DEC-23](docs/design-reading-a-session.md#dec-23-a-claude-code-sessions-record-of-its-checks-may-show-the-work)
+    item 6). The allowlist below drops `subject` and `result`, so a check read
+    back from here would be a bare "5 validation checks passed" that no later
+    run could supersede and no later change could age."""
+    if fact.get("subject") == "check":
+        return True
+    evidence = fact.get("evidence")
+    source = evidence.get("source") if isinstance(evidence, dict) else ""
+    return fact.get("type") == "result" and str(source or "").startswith(PI_CHECK_SOURCE_PREFIX)
+
+
 def _event_from_fact(
     fact: Mapping[str, Any],
     work_items: Mapping[str, Mapping[str, Any]],
@@ -192,7 +210,7 @@ def _event_from_fact(
     fact_type = str(fact.get("type") or "")
     source_kind = str(fact.get("source_kind") or "")
     event_type = "checkpoint" if source_kind == "checkpoint" else _FACT_EVENT_TYPES.get(fact_type)
-    if event_type is None:
+    if event_type is None or is_check_fact(fact):
         return None
     fact_id = records.safe_text(fact.get("fact_id"), 160)
     summary = records.safe_text(fact.get("summary"), SUMMARY_CAP_CHARS)

@@ -21,7 +21,7 @@ from typing import TYPE_CHECKING, Any
 from cargento_runtime import config as runtime_config
 from cargento_runtime import io as runtime_io
 from cargento_runtime import quota as runtime_quota
-from cargento_runtime import records, sessions, turns
+from cargento_runtime import records, sessions, transcripts, turns
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -712,6 +712,13 @@ def collect(
 
         meta = metadata.get(sid) or {}
         prompt = str(meta.get("last_prompt") or "").strip()
+        if not prompt:
+            # 1.2.11 no longer logs the prompt marker (0 of 7 local logs), so the
+            # newest typed direction in the brain transcript stands in. Only
+            # `USER_INPUT` is read there (DRC-4689).
+            brain = transcripts.antigravity_transcript(_root(config), sid)
+            if brain is not None:
+                prompt = transcripts.antigravity_newest_direction(config, brain).strip()
         cwd = str(meta.get("cwd") or "").strip()
         project = sessions.project_from_cwd(config, cwd) or "antigravity"
         session = sessions.base_session("antigravity", sid, project)

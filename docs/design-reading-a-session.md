@@ -1061,8 +1061,32 @@ time, because the rule 7 amendment found that on Claude and Codex nothing in the
 demonstrates work. The Claude transcript does record every tool call and its result, and
 `records.tool_outcome` already joins a call to its result by id and keeps the name only. DEC-5 let
 the after-tool hook post a shape identifier and a tool name and nothing more. Pi, the one harness
-whose record shows work, publishes only a derived count of validation checks passed, with no
+whose record shows work, published only a derived count of validation checks passed, with no
 command or output (`project_context._work_evidence`).
+
+Pi's results now follow items 1, 2 and 8 as well (owner, 2026-09-27, DRC-4690). The count
+grepped from any output read a failure as a pass, `0 passed` as a pass and `echo '5 passed'` as a
+pass, and dropped a flagged failure entirely. A Pi validation run is now counted only for a runner
+on the closed list, failure is read first, and a zero count is "ran, result not recorded". The
+error flag is read as the 0.87.1 capture
+([docs/captures/pi/validation-results-0.87.1-macos.jsonl](captures/pi/validation-results-0.87.1-macos.jsonl))
+shows it: set with Pi's own "Command exited with code N" line it is a nonzero exit, set with a
+timeout line it is a run with no result, and set with no status line the call never ran. The
+latest run of each check is kept, and its fact carries `subject` and `result`, so item 8 applies
+to it: `check_supports` now keys on a check on any harness, not only Claude Code's
+`tool_report`. The title is Cargento's and no command or output is published.
+
+Three rulings from the review round (2026-09-27) hold it there. A Pi check never enters the
+semantic history store, as item 6 already said of Claude Code's: the store keeps an allowlist of
+fact keys without `subject` or `result`, so a superseded pass came back from it as a bare "5
+validation checks passed" that nothing could supersede or age, and it carried a `consistent` while
+the latest run had failed. A subjectless Pi bash result already on disk from an older build,
+including the pass the build before this read from `echo '5 passed'`, supports no verdict at all.
+A clear or absent flag beside Pi's own exit line is outside what the capture shows, since a
+`tool_result` extension can clear the flag on a call that threw, so such a run is never a pass.
+And every Pi tool except `read`, `grep`, `find` and `ls` ages an earlier pass, `powershell` and
+extension tools included: guessing that an unknown tool only reads is what would produce a false
+`consistent`.
 
 The ruling is yes, bounded, and readable by a model. Two other answers were put beside it. Page
 only, never sent to a model, shows the work but leaves no reading able to judge Expected Output on
@@ -1799,6 +1823,15 @@ the analysis's recommendation.
   Never on Pi, whose work results are read, so the sentence would be false there. The observed
   record's old line "Cargento reads those on Pi alone" is retired for the same reason: Claude Code's
   checks are read too.
+- On Antigravity the limit stays true because only the person's typed directions are read, never
+  its work (owner, 2026-09-27, DRC-4689). Those directions give a pressed reading something to read
+  against. They do not give item 2's goal draft a first prompt there: nothing produces
+  `first_prompt` for Antigravity, and prompt adoption is Claude Code and Codex only. On a harness
+  with no observed-record reader, the press withholds with `no-record-reader` rather than saying
+  the record is empty. The page's
+  record column still prints "No entry in the observed record names this session." for those
+  harnesses, because it reads `omitted` and not `sources.work.unavailable`; that is a web
+  follow-up.
 - With no reader on this machine, the route's reason replaces the button. The four no-producer
   tokens and an unpublished route draw no inert button, which narrows NUI-18 for this one case
   ([An inert control is present and refusing](design-next-ui.md#an-inert-control-is-present-and-refusing-never-absent)).
@@ -1985,6 +2018,15 @@ decisions below follow that ruling and the DRC-4702 decisions of the same date.
 - The resolver's rule 3 refuses such an entry as well, and the page's copy refuses one in a reading
   stored before this, so a line resting only on it reads "uncited" on both sides and falls to "not
   verifiable". No new reason token was needed.
+- Two more reasons come before those, because a record that was never read is not an empty one
+  (DRC-4689). `no-record-reader` is for a harness Cargento has no observed-record reader for:
+  Copilot, Cursor, OpenCode, Goose, Droid and Gemini CLI. Their collectors still read prompts and
+  titles for the board, so the sentence says that and no more (owner, 2026-09-27): "Cargento
+  reads only this harness's prompts and titles, not the session's work, so there is nothing to
+  read your words against. No reading was made and nothing was spent." `record-unread` is for a
+  harness that has a reader and whose transcript was not found. Both withhold before the ledger
+  and spend nothing.
+  Antigravity has a reader for the person's typed directions alone, so its reading runs on those.
 - Three reasons for reading nothing, each said only where it is true (owner, 2026-09-27).
   `ledger-empty` is for a record with no entry naming the session. `window-empty` is for a record
   whose every entry is from before the words or has no time. It is decided over the whole record,

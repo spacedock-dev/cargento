@@ -138,3 +138,41 @@ and a disposable Pi capability; verify a key still closes the native prompt befo
 Stop every Pi process, local model endpoint, substitute endpoint and dashboard you started.
 Commit only sanitized shapes and equality verdicts. The exact version is a measurement;
 other versions, nested prompt arrangements and other platforms need their own evidence.
+
+## A validation run, 0.87.1
+
+[validation-results-0.87.1-macos.jsonl](validation-results-0.87.1-macos.jsonl) records what
+Pi's `isError` means on a bash call, for DRC-4690. It keeps key sets, the flag, which of Pi's
+own status lines ended the result text and its exit code, which of DEC-23's closed summary
+patterns matched, and timings. It keeps no output text, command, path or id.
+
+The install was `npm install --prefix "$LAB/pi" @earendil-works/pi-coding-agent@0.87.1` into a
+scratch directory, with `PI_CODING_AGENT_DIR="$LAB/agent" PI_OFFLINE=1 PI_TELEMETRY=0`. The
+model was a loopback endpoint on an unused port, registered in `$LAB/agent/models.json` as above.
+It differs from the prompt capture's endpoint in one way: when the last message is not a tool
+result it streams one `tool_calls` delta naming `bash`, with the command read from a file, and
+finishes with `tool_calls`; after the tool result it streams `done` and stops. Each run was one
+print-mode session from a scratch project holding two tiny pytest files and two `node:test`
+files:
+
+```bash
+node "$LAB/pi/node_modules/@earendil-works/pi-coding-agent/dist/bundle/cli.js" \
+  --offline --no-extensions --no-skills --no-prompt-templates --no-themes --no-context-files \
+  --tools bash --provider capture --model capture-model --api-key capture-local-unused \
+  --session-dir "$LAB/cases/<case>" -p "run it" </dev/null
+```
+
+Redirect stdin. With it inherited, print mode waits on it and never reaches the model.
+
+`isError` was set on exactly the runs whose text ended in a status line, and every nonzero exit
+ended in `Command exited with code N`. `dist/core/tools/bash.js` says why: the tool throws on a
+nonzero exit, a timeout, an abort and a missing exit code, and appends one status line after any
+truncation notice. So the runtime reads a set flag with the exit line as a nonzero exit, a set
+flag with a timeout or abort line as a run with no result, and a set flag with no status line as
+a call that never ran. A clear flag is an exit of 0 for the whole call, which is why the run that
+ended in `; true` reads clear beside its own failure summary. A flag that is clear or absent beside
+the exit line never occurred here; an extension's `tool_result` hook can produce one, and the
+runtime reads that run as not recorded, never as a pass.
+
+The endpoint was stopped and the scratch install removed after the runs. Other versions need
+their own evidence.

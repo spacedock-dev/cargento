@@ -27,6 +27,7 @@ import tempfile
 import threading
 from typing import TYPE_CHECKING, Any, Protocol
 
+from . import config as runtime_config
 from . import io as runtime_io
 from . import records, spacedock, supervise, transcripts
 
@@ -1294,6 +1295,38 @@ def _resolve_codex_transcript(
     if roots:
         return max(roots, key=_mtime)
     return max(children, key=_mtime) if children else None
+
+
+# The harnesses whose whole transcript `resolve_transcript` finds, and the one
+# whose directions alone `resolve_directions` finds. Every other harness has no
+# record reader, which a press says in its own sentence rather than calling the
+# record empty (DRC-4689).
+TRANSCRIPT_HARNESSES = ("claude", "codex", "pi")
+DIRECTION_HARNESSES = ("antigravity",)
+READER_UNAVAILABLE = "transcript reader unavailable"
+TRANSCRIPT_NOT_FOUND = "transcript not found"
+
+
+def resolve_directions(
+    config: RuntimeConfig,
+    state: RuntimeState,  # noqa: ARG001 - the resolver signature every caller holds
+    harness: str,
+    sid: str,
+) -> str | None:
+    """The transcript a directions-only harness writes, or None.
+
+    Separate from `resolve_transcript` on purpose: every caller of that one
+    reads work or tool output from the file (the observer, the gate and
+    workflow scans, the cwd read, the Spacedock boot scan), and Antigravity's
+    work is never read (owner, 2026-09-27). This path reaches only
+    `transcripts.antigravity_direction`.
+    """
+    # `_SAFE_ID_RE` admits `..`, which would climb out of `brain/`.
+    if harness not in DIRECTION_HARNESSES or not _SAFE_ID_RE.match(sid) or sid.startswith("."):
+        return None
+    return transcripts.antigravity_transcript(
+        runtime_config.primary_store(config, "antigravity.root"), sid
+    )
 
 
 def resolve_transcript(

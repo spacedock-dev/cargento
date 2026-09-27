@@ -296,6 +296,27 @@ class CargentoHTTPServer(ThreadingHTTPServer):
         self.server_port = int(bound[1])
 
 
+def _session_context(application: Any, row: dict[str, Any]) -> dict[str, Any]:
+    """One session's project context, without refreshing anything."""
+    context = runtime_project_context.collect(
+        application.config,
+        application.state,
+        [row],
+        str(row.get("project_key") or row.get("project") or ""),
+        now=application.clock(),
+        refresh=False,
+        focus=(str(row.get("harness")), str(row.get("sid"))),
+        model_consent=False,
+    )
+    return context if isinstance(context, dict) else {}
+
+
+def _facts_of(context: dict[str, Any]) -> list[Any]:
+    semantic = context.get("semantic")
+    facts = semantic.get("facts", []) if isinstance(semantic, dict) else []
+    return list(facts) if isinstance(facts, list) else []
+
+
 class _RequestHandler(BaseHTTPRequestHandler):
     server: CargentoHTTPServer
 
@@ -2121,11 +2142,17 @@ class _RequestHandler(BaseHTTPRequestHandler):
         launch or fails. A fresh press is the only retry.
         """
         application = self.server.application
+        context = _session_context(application, row)
         return runtime_reading.produce(
             application.config,
             row,
             entry["revisions"],
-            self._session_facts(row),
+            _facts_of(context),
+            # A record never read withholds in its own sentence, not as an
+            # empty one (DRC-4689).
+            record_withheld=runtime_reading.record_withheld(
+                context, str(row.get("harness")), str(row.get("sid"))
+            ),
             # The one caller that reads the outcome lines: the reader pressed
             # for this reading (item 12 of the ruling
             # `reading.MAX_OUTCOME_LINES` cites keeps them from
@@ -2142,20 +2169,7 @@ class _RequestHandler(BaseHTTPRequestHandler):
 
     def _session_facts(self, row: dict[str, Any]) -> list[Any]:
         """The observed record for one session, without refreshing anything."""
-        application = self.server.application
-        context = runtime_project_context.collect(
-            application.config,
-            application.state,
-            [row],
-            str(row.get("project_key") or row.get("project") or ""),
-            now=application.clock(),
-            refresh=False,
-            focus=(str(row.get("harness")), str(row.get("sid"))),
-            model_consent=False,
-        )
-        semantic = context.get("semantic") if isinstance(context, dict) else None
-        facts = semantic.get("facts", []) if isinstance(semantic, dict) else []
-        return list(facts) if isinstance(facts, list) else []
+        return _facts_of(_session_context(self.server.application, row))
 
     def _reading_arguments(
         self,

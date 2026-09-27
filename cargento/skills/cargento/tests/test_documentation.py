@@ -1672,6 +1672,8 @@ class IrreversibleActionsContractDocumentationTest(unittest.TestCase):
             "`collectors.codex._child_assignment`",
             "`project_context._tool_call_events`",
             "`project_context._tool_support`",
+            "`project_context._pi_bash_check_runs`",
+            "`project_context._pi_changes`",
             "`project_context.codex_dispatch_events`",
             "`project_context.claude_tool_reports`",
         ):
