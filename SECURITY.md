@@ -1283,8 +1283,11 @@ settles nothing.
 "Add it to my intent" is two requests. The first, `POST /api/direction`, names a session and one
 fact id and returns that message's whole text for review, where the published record holds only
 its first sentence, clipped. That is wider than any published field, so it is stated exactly. It
-returns the text of one message, redacted by the same filter as every published string, with line
-breaks and control characters as spaces, bounded at 2,000 characters with a flag saying whether
+returns the text of one message, masked by named form as a check line is (a `NAME=value`, the
+word after `--password`, `--token` or `-p`, an `Authorization:` or `X-Api-Key:` value, a
+`user:password@host` quoted or not, and a credential shape wrapped by a line break on both sides
+of the break), then redacted by shape like every published string, with line breaks and control
+characters as spaces, bounded at 2,000 characters with a flag saying whether
 it was clipped, and a flag saying whether the store would take it as a line (at most 240
 characters). It returns nothing for a message that is not a person's message in that session's
 own record, one not later than the words it would join, or one older than the tail of the
@@ -1298,9 +1301,10 @@ same-site or cross-site fetch, as `POST /api/reading` is, and it answers 503 und
 machine, and the text never enters session history: no published field carries it and the
 history prompt-text allowlist is unchanged. A local process running as you gains nothing it could
 not read from the transcript file itself. Another account on the machine can reach this route as
-it can reach `/api/data` (Known and accepted), and for that account it is wider: the whole of one
-of your messages rather than its first sentence, one fact id at a time, each id taken from the
-published record. Why it is no narrower: the reader edits a long direction down to one line of
+it can reach `/api/data` (Known and accepted), and for that account it is wider: the whole text of
+any later direction in any session's transcript tail, each fact id listed by
+`GET /api/project-context`, where that route gives only the first sentence. A loop over those ids
+reads every one of them, so the ids bound nothing. Why it is no narrower: the reader edits a long direction down to one line of
 their own, so the page must show more than fits, and a summary in its place would be the one thing
 DEC-24 item 4 forbids saving.
 
@@ -1311,6 +1315,10 @@ most 240 characters and one line, refused rather than clipped. A full list of si
 unless the body names the line to replace, so a reader's own line is written away only when they
 chose it, and every request names the revision it was drafted against. The line, the settlement
 through that direction's time and, over an unsaved draft, the adopted goal go in one store write.
+Keep names its revision too, on both routes, and a stale one settles nothing; Keep never adopts
+over a saved goal holding other words, and a settlement never moves back over one already given.
+The revision check holds inside one dashboard process. Two dashboards sharing the store have no
+lock between them, and this write shares that gap with every other save (DRC-4661).
 
 The background job, built with DRC-4686. An admitted press answers `202` with a job the server
 owns, before the model is called, and the reading runs on a thread of its own under the
@@ -2395,8 +2403,9 @@ can reach the port. Reading `/api/data` is the whole board: every session's titl
 project paths. Writing is the fifteen POST routes enabled without terminal registration, `/api/shutdown` and `/api/answer` among them, so a
 reachable dashboard can be killed, and a question a session is waiting on can be answered by
 somebody other than you. One of the fifteen only reads: `POST /api/direction` returns the whole text
-of a direction a session's user gave, which `/api/data` already names by its first sentence. There
-is nothing to authenticate with on thirteen of them, for the reason the
+of a direction a session's user gave, which `/api/project-context` names by its first sentence. It
+answers only a loopback peer, so a non-default bind does not widen it; its bounds are in Analyze
+drift, Cancel and copied corrections. There is nothing to authenticate with on thirteen of them, for the reason the
 ask-lane paragraph below gives: the page is served as fixed bytes with no per-run secret in them.
 Two carry a capability and they are not worth the same. `POST /api/events/<harness>` takes a per-run
 token published only in the state file at mode `0600` and never served to the page, so a client

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import itertools
 import json
 import math
 import os
@@ -467,6 +468,44 @@ def mask_words(words: list[str]) -> list[str]:
         )
         masked.append(_MASK_USERINFO.sub(lambda m: m.group(1) + _SECRET_MARKER + "@", formed))
     return masked
+
+
+# A header name standing as its own word in prose, with the value in the words
+# after it, and the schemes whose next word is the credential itself.
+_MASK_HEADER_WORD: Final = re.compile(r"^['\"]?(?:authorization|x-api-key)\s*:$", re.IGNORECASE)
+_MASK_AUTH_SCHEMES: Final = frozenset({"bearer", "basic", "token", "digest", "negotiate"})
+# `'user:password with spaces@host'`, quoted in prose, where whitespace splits
+# the word `_MASK_USERINFO` would otherwise see whole.
+_MASK_QUOTED_USERINFO: Final = re.compile(r"(['\"])([^\s:/@'\"]+:)[^'\"]*@")
+
+
+def mask_prose(text: str) -> str:
+    """A person's message with every value `mask_words` names masked, as one line.
+
+    For a later direction's whole text (DRC-4682), which reaches further than
+    any published summary: prose splits on whitespace where a check line is
+    lexed, so three forms need a word more than `mask_words` reads. A header
+    name standing alone masks the word after it, and the one after that when
+    it is an auth scheme; a quoted `user:password@host` is masked across its
+    spaces; and a credential shape wrapped by a line break is masked on both
+    sides of the break, because joining the lines is what would publish its
+    tail. Over-masking is the accepted direction, as for `_MASK_FLAGS`.
+    """
+    text = _MASK_QUOTED_USERINFO.sub(lambda m: m.group(1) + m.group(2) + _SECRET_MARKER + "@", text)
+    lines = [line.split() for line in text.splitlines()]
+    for above, below in itertools.pairwise(lines):
+        if above and below and redact_secrets(above[-1] + below[0]) != above[-1] + below[0]:
+            above[-1] = below[0] = _SECRET_MARKER
+    words: list[str] = []
+    header = scheme_next = False
+    for word in (word for line in lines for word in line):
+        if header and scheme_next and word.strip("'\"").lower() in _MASK_AUTH_SCHEMES:
+            words.append(word)
+            scheme_next = False
+            continue
+        words.append(_SECRET_MARKER if header else word)
+        header = scheme_next = bool(not header and _MASK_HEADER_WORD.match(word))
+    return " ".join(mask_words(words))
 
 
 def masked_values(words: list[str]) -> list[str]:

@@ -362,6 +362,10 @@ class Window(TypedDict, total=False):
     window_start: float
 
 
+class GoalSaved(TypedDict, total=False):
+    goal_saved_at: float
+
+
 class OutcomeLine(TypedDict):
     """One line of the expected outcome: one line of text and where it came from.
 
@@ -391,6 +395,13 @@ class Revision(TypedDict):
     # the ruling `reading.TURN_STOP_HARNESSES` cites). Absent on a revision an
     # older build saved, which then opens at `reading.baseline_at`.
     window_start: NotRequired[float]
+    # When a typed goal's current words were saved, carried unchanged by a
+    # save that leaves them alone: a lines-only save and an added direction
+    # mint a revision without moving it. The later-direction floor for
+    # typed words reads it (`direction_floor`), so adding one direction cannot
+    # hide a later one the reader never answered. Absent on an adopted or empty
+    # goal and on a revision an older build saved, which falls back to `at`.
+    goal_saved_at: NotRequired[float]
     n: int
     at: float
     goal: str
@@ -542,11 +553,13 @@ def _revision(value: Any, cap: int) -> Revision | None:
     provenance = _provenance(value)
     lines = _lines(value, cap)
     window = _window(value)
-    if provenance is None or lines is None or window is None:
+    saved = _goal_saved(value)
+    if provenance is None or lines is None or window is None or saved is None:
         return None
     return {
         **provenance,
         **window,
+        **saved,
         "n": number,
         "at": records.norm_epoch(value.get("at")),
         # Type-checked here as well as on the way in. Any local process can
@@ -744,7 +757,12 @@ def _entry(value: Any, *, text_cap: int, revision_cap: int) -> Annotation | None
     raw = value.get("revisions")
     if not isinstance(raw, list) or any(
         isinstance(item, dict)
-        and (_provenance(item) is None or _lines(item, text_cap) is None or _window(item) is None)
+        and (
+            _provenance(item) is None
+            or _lines(item, text_cap) is None
+            or _window(item) is None
+            or _goal_saved(item) is None
+        )
         for item in raw
     ):
         # Dropping just this revision could restore older typed words and
@@ -1283,6 +1301,14 @@ def published(entry: Annotation | None, *, binding_why: str = BINDING_EXACT) -> 
         "at": latest["at"] if latest else None,
         "goal_source": latest.get("goal_source", "typed") if latest else None,
         "goal_source_at": latest.get("goal_source_at") if latest else None,
+        # When a typed goal's words were saved, which a lines-only save and an
+        # added direction do not move; None for an adopted or empty goal. The
+        # later-direction floor for typed words (`direction_floor`).
+        "goal_saved_at": (
+            (latest.get("goal_saved_at") or latest["at"])
+            if latest and goal and not latest.get("goal_source")
+            else None
+        ),
         # Where the evidence opens for these words, as the producer reads it:
         # the page labels the last turn by it and the live estimate reads from it.
         "window_start": (reading.window_start(latest) or None) if latest else None,
@@ -1649,7 +1675,8 @@ def _save_refused(
     """Whether the store refuses this save before building it.
 
     A stale revision; an adoption onto a goal already saved; a list replaced
-    from a view that cannot name its revision; an entry line that is not later
+    from a view that cannot name its revision; Keep adopting over a saved goal
+    that holds other words; an entry line that is not later
     than the words it would join.
     """
     actual_revision = existing["revisions"][-1]["n"] if existing and existing["revisions"] else 0
@@ -1663,6 +1690,12 @@ def _save_refused(
             and existing["revisions"][-1]["goal"]
         )
         or _unguarded_replacement(existing, new_texts, options)
+        or (
+            "goal_empty_or" in options
+            and existing
+            and existing["revisions"]
+            and existing["revisions"][-1]["goal"] not in ("", options["goal_empty_or"])
+        )
         or (options.get("entry_line") is not None and not _direction_later(existing, options))
     )
 
@@ -1715,7 +1748,8 @@ def direction_floor(
     item 4 of
     [DEC-24](docs/design-reading-a-session.md#dec-24-your-intent-is-a-drafted-goal-and-a-checklist-and-a-correction-is-yours-to-copy)
     needs: adopted words by their source time, typed words by
-    their save, and with no saved goal the draft's time -- the first prompt,
+    when those words were saved (`goal_saved_at`, which a lines-only save and
+    an added direction leave alone), and with no saved goal the draft's time -- the first prompt,
     else the latest, the order the draft itself is chosen in. A lines-only
     revision still counts as no goal, as it does for the draft. `adopt_source`
     is the prompt a write is about to adopt, whose time is then the floor.
@@ -1724,7 +1758,7 @@ def direction_floor(
         return prompt_candidate(dict(row), adopt_source)[1]
     latest = entry["revisions"][-1] if entry and entry["revisions"] else None
     if latest and str(latest.get("goal") or "").strip():
-        return float(latest.get("goal_source_at") or latest["at"])
+        return float(latest.get("goal_source_at") or latest.get("goal_saved_at") or latest["at"])
     for source in ("first-prompt", "latest-prompt"):
         text, at = prompt_candidate(dict(row), source)
         if text and at is not None:
@@ -1742,13 +1776,16 @@ def _direction_later(existing: Annotation | None, options: Mapping[str, Any]) ->
 def direction_review(raw: str, cap: int) -> tuple[str, bool, bool]:
     """A later direction's text for the reader to review: `(text, clipped, fits)`.
 
-    The annotation scrub, so what the page shows is what a save would store:
-    redacted before it is bounded, control characters and line breaks as
+    Masked by named form first, as a check line is (`records.mask_prose`),
+    because the whole message reaches further than any published summary.
+    Then the annotation scrub, so what the page shows is what a save would
+    store: redacted before it is bounded, control characters and line breaks as
     spaces, and whitespace runs collapsed so a multi-line direction reads as
     the one line it would become. Nothing is summarised. `fits` is the store's
     own test (`_typed_lines`), so the page cannot promise a save it refuses.
     """
-    whole = " ".join(records.safe_text(raw, 2 * len(raw) + 64).split())
+    masked = records.mask_prose(raw)
+    whole = " ".join(records.safe_text(masked, 2 * len(masked) + 64).split())
     text = records.redact_clip(whole, DIRECTION_TEXT_CAP_CHARS)
     clipped = text != whole
     return text, clipped, not clipped and _typed_lines([text], cap) == [text]
@@ -1850,6 +1887,7 @@ def _annotate(  # noqa: PLR0913
             revision: Revision = {
                 **source_fields,
                 **_opened(source_fields, window_start, stamp),
+                **_goal_saved_at(last, source_fields, text_goal, stamp),
                 "n": last["n"] + 1,
                 "at": stamp,
                 "goal": text_goal,
@@ -1886,6 +1924,7 @@ def _annotate(  # noqa: PLR0913
                     {
                         **source_fields,
                         **_opened(source_fields, window_start, stamp),
+                        **_goal_saved_at(None, source_fields, new_goal or "", stamp),
                         "n": discarded_revision(existing) + 1,
                         "at": stamp,
                         "goal": new_goal or "",
@@ -1919,6 +1958,7 @@ def settle(
     *,
     through: Any,
     now: float | None = None,
+    expected_revision: Any = None,
     diagnostic_sink: Callable[[str], None] = print,
 ) -> str:
     """Record that the reader has answered a later direction. Returns an `OUTCOMES` token.
@@ -1932,13 +1972,24 @@ def settle(
 
     Settling a session with nothing typed is refused. The mark is an answer
     about a baseline, and there is no baseline to answer about.
+
+    A settlement never moves back over one already given (`_settlement_at`):
+    a stale tab answering through an older moment reopens nothing.
+    `expected_revision`, when sent, is checked under the lock, so Keep from a
+    page drafted against other words settles nothing.
     """
-    if not config.annotations_enabled:
-        return OUTCOME_REFUSED
     key = _key(harness, sid)
-    if not key[0] or not key[1]:
-        return OUTCOME_REFUSED
-    if isinstance(through, bool) or not isinstance(through, (int, float)):
+    if (
+        not config.annotations_enabled
+        or not key[0]
+        or not key[1]
+        or isinstance(through, bool)
+        or not isinstance(through, (int, float))
+        or (
+            expected_revision is not None
+            and (isinstance(expected_revision, bool) or not isinstance(expected_revision, int))
+        )
+    ):
         return OUTCOME_REFUSED
     stamp = time.time() if now is None else now
 
@@ -1956,15 +2007,14 @@ def settle(
         # raise, since it has none.
         if existing is None or is_discarded(existing):
             return OUTCOME_REFUSED
+        revision = existing["revisions"][-1]["n"]
+        if expected_revision is not None and expected_revision != revision:
+            return OUTCOME_REFUSED
         updated: Annotation = {
             "harness": existing["harness"],
             "sid": existing["sid"],
             "revisions": existing["revisions"],
-            "settled": {
-                "at": stamp,
-                "through": min(float(through), stamp),
-                "revision": existing["revisions"][-1]["n"],
-            },
+            "settled": _settlement_at(existing, through, stamp, revision),
         }
         updated = _carried(existing, updated)
         updated["written"] = stamp
@@ -2105,6 +2155,32 @@ def _window(value: Mapping[str, Any]) -> Window | None:
     return {"window_start": at}
 
 
+def _goal_saved(value: Mapping[str, Any]) -> GoalSaved | None:
+    """A stored typed-goal save time, `{}` when there is none, or None to refuse.
+
+    Refused rather than dropped, for `_window`'s reason: a save time later
+    than its own revision is a rewritten file.
+    """
+    if "goal_saved_at" not in value:
+        return {}
+    at = reading.valid_prompt_time(value.get("goal_saved_at"))
+    saved = reading.valid_prompt_time(value.get("at"))
+    if at is None or saved is None or at > saved:
+        return None
+    return {"goal_saved_at": at}
+
+
+def _goal_saved_at(
+    last: Revision | None, provenance: Mapping[str, Any], goal: str, stamp: float
+) -> GoalSaved:
+    """The typed-goal save time a new revision stores: carried while the words stand."""
+    if provenance or not goal.strip():
+        return {}
+    if last is not None and not _provenance(last) and last["goal"] == goal:
+        return {"goal_saved_at": float(last.get("goal_saved_at") or last["at"])}
+    return {"goal_saved_at": stamp}
+
+
 def _opened(provenance: Mapping[str, Any], typed: Any, stamp: float) -> Window:
     """The window start a new revision stores: the words' own time.
 
@@ -2158,10 +2234,19 @@ def adopt(  # noqa: PLR0913
     `settle_through` is Keep over an unsaved draft: the adoption and the
     later-direction settlement in one write, because `settle` refuses a
     session with nothing saved and two requests could interleave with another
-    tab.
+    tab. Keep needs `expected_revision`, checked under the lock, and never
+    adopts over a saved goal holding other words: a press labelled "Keep my
+    intent" must not replace the reader's own.
     """
     options = _adoption(row, source, expected_text, expected_at, now)
-    if options is None or not _settle_moment_ok(settle_through):
+    keep = settle_through is not None
+    if (
+        options is None
+        or not _settle_moment_ok(settle_through)
+        or (
+            keep and (isinstance(expected_revision, bool) or not isinstance(expected_revision, int))
+        )
+    ):
         return OUTCOME_REFUSED
     text = options.pop("goal")
     return _annotate(
@@ -2174,7 +2259,7 @@ def adopt(  # noqa: PLR0913
             **options,
             "empty_goal_only": expected_revision is None,
             "expected_revision": expected_revision,
-            **({"settle_through": float(settle_through)} if settle_through is not None else {}),
+            **({"settle_through": float(settle_through), "goal_empty_or": text} if keep else {}),
         },
     )
 

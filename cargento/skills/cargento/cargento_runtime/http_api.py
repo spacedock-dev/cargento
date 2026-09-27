@@ -1481,6 +1481,10 @@ class _RequestHandler(BaseHTTPRequestHandler):
                 sid,
                 through=settle_through,
                 now=application.clock(),
+                # Checked when sent: Keep with no reader over saved words names
+                # its revision, and the older "The baseline still applies"
+                # press on the page sends none.
+                expected_revision=payload.get("expected_revision"),
                 diagnostic_sink=application.diagnostic_sink,
             )
         else:
@@ -1752,6 +1756,7 @@ class _RequestHandler(BaseHTTPRequestHandler):
         """
         application = self.server.application
         through = payload.get("settle_through")
+        expected = payload.get("expected_revision")
         outcome = (
             self._adopt_prompt(harness, sid, payload, settle_through=through)
             if "adopt" in payload
@@ -1762,8 +1767,11 @@ class _RequestHandler(BaseHTTPRequestHandler):
                 sid,
                 through=through,
                 now=application.clock(),
+                expected_revision=expected,
                 diagnostic_sink=application.diagnostic_sink,
             )
+            if isinstance(expected, int) and not isinstance(expected, bool)
+            else annotation_store.OUTCOME_REFUSED
         )
         self._keep_outcome = outcome
         if outcome in {annotation_store.OUTCOME_STORED, annotation_store.OUTCOME_UNCHANGED}:
@@ -1812,7 +1820,9 @@ class _RequestHandler(BaseHTTPRequestHandler):
     ) -> str:
         application = self.server.application
         expected = payload.get("expected_revision")
-        if standalone and (isinstance(expected, bool) or not isinstance(expected, int)):
+        # Keep names its revision as Looks right does (`annotations.adopt`).
+        guarded = standalone or settle_through is not None
+        if guarded and (isinstance(expected, bool) or not isinstance(expected, int)):
             return annotation_store.OUTCOME_REFUSED
         # Read the source again rather than accepting client-authored provenance.
         application.state.snapshot.clear()
@@ -1832,7 +1842,7 @@ class _RequestHandler(BaseHTTPRequestHandler):
             expected_text=payload.get("expected_prompt"),
             expected_at=payload.get("expected_prompt_at"),
             now=application.clock(),
-            expected_revision=expected if standalone else None,
+            expected_revision=expected if guarded else None,
             settle_through=settle_through,
         )
 
@@ -2065,8 +2075,16 @@ class _RequestHandler(BaseHTTPRequestHandler):
             )
         except RuntimeError:
             # No thread to run it on; `launch` has already freed the slot, so
-            # the next press can start one. Nothing was spent.
-            self._reject(503)
+            # the next press can start one. Nothing was spent. A Keep press
+            # has settled by now, so its reply says so rather than a bare 503.
+            if self._keep_outcome is None:
+                self._reject(503)
+            else:
+                self._send(
+                    self._reading_json({"ok": False, "produced": False, "reason": "no-thread"}),
+                    "application/json",
+                    503,
+                )
             return
         self._send(
             self._reading_json({"ok": True, "job": started}),

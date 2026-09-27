@@ -1778,12 +1778,14 @@ can start. The page half comes after it.
   `POST /api/annotate`, beside the settle arm, because it writes the same annotation and answers
   the same way. SECURITY.md states what the open returns and to whom.
 - What counts as later. A person's message in the session's own record after the words' own time:
-  an adopted goal's source time, a typed goal's latest save, and with no saved goal the draft's
-  time, the first prompt or else the latest. A revision holding lines and no goal still counts as
-  no goal. Typed words move their floor with every save, so adding one direction to a typed goal
-  also stops every direction given before that save from being later, which is what retyping the
-  baseline already did. Adopted words keep their floor, so a direction given after the one added
-  still asks.
+  an adopted goal's source time, the time a typed goal's words were saved, and with no saved goal
+  the draft's time, the first prompt or else the latest. A revision holding lines and no goal still
+  counts as no goal. The typed goal's save time is its own stored field, `goal_saved_at`, published
+  as `annotation_goal_saved_at`: a lines-only save and an added direction mint a revision without
+  moving it, and only new goal words do. Review found that flooring typed words at the latest
+  revision instead meant adding one direction hid a later one the reader never answered, where
+  adopted words kept it open; the two now behave alike. A revision an older build saved has no
+  such field and falls back to its save time.
 - The text. It is read again from the transcript tail by recomputing each message's fact id,
   because a Claude user message carries no record id. The id was not changed to add one: that
   would move every stored citation of a Claude message. A message older than the tail is refused
@@ -1799,9 +1801,14 @@ can start. The page half comes after it.
   moves back over one the reader already gave, so adding an older direction reopens nothing.
 - Keep. The reading press carries `settle_through`, and the settlement, with the adoption over a
   draft, is written before the route, the permission and the job, so a press that starts nothing
-  has still settled. Every later reply of that press carries the store's token as `settled`, and a
-  refused settlement answers 422 and starts nothing. Where no analysis can start at all, the page
-  sends the same answer to `POST /api/annotate`.
+  has still settled. Every later reply of that press carries the store's token as `settled`, a 503
+  for want of a thread included, and a refused settlement answers 422 and starts nothing. Where no
+  analysis can start at all, the page sends the same answer to `POST /api/annotate`. Both name
+  `expected_revision`, checked under the store lock, so a stale tab settles nothing, and neither
+  adopts over a saved goal that holds other words. A settlement never moves back over one already
+  given, on Keep as on Add.
+- One process. The revision check holds inside one dashboard process; two dashboards sharing the
+  store can still race, and these writes share that gap with every other save (DRC-4661).
 - Not permanent. A line added from an entry becomes a typed line once the reader edits it and
   saves, as an edited adopted goal becomes typed, so "added from #n" lasts until the first edit.
 

@@ -840,7 +840,12 @@ class TheAnnotationFieldListIsDerivedTest(unittest.TestCase):
         rendered = {
             part.strip().strip('"') for part in body.split("[", 1)[1].split(",") if part.strip()
         }
-        self.assertEqual(set(annotation_store.published(None)), rendered)
+        # Published by the store for a page layer that has not shipped yet,
+        # and never read by the page until then. Disjoint from what the page
+        # reads, so the entry must go the moment the page reads the field.
+        pending = {"goal_saved_at"}  # DRC-4682's page layer (web layer 11)
+        self.assertEqual(set(), pending & rendered, "the page reads it now: drop it from pending")
+        self.assertEqual(set(annotation_store.published(None)) - pending, rendered)
 
 
 class AnnotationFieldCollapseTest(unittest.TestCase):

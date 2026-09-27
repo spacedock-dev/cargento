@@ -23,8 +23,17 @@ from types import SimpleNamespace
 from typing import Any
 from unittest import mock
 
-from cargento_runtime import aggregate, history, http_api, observer, project_context, reading_route
+from cargento_runtime import (
+    aggregate,
+    history,
+    http_api,
+    observer,
+    project_context,
+    reading_route,
+    records,
+)
 from cargento_runtime import annotations as annotation_store
+from cargento_runtime import reading_jobs as runtime_reading_jobs
 from cargento_runtime import sessions as runtime_sessions
 from cargento_runtime.config import build_runtime_config
 from cargento_runtime.state import build_runtime_state
@@ -42,6 +51,14 @@ LONG = (
     + "x" * 180
     + ("\nThen keep the parser tests exactly as they are today, please.")
 )
+
+
+LATER = "Keep the placeholder parser tests as they are."
+LATER_AT = FIRST_AT + 100
+
+
+def _with_latest() -> dict[str, Any]:
+    return _row(instruction={"label": "asked", "text": LATER, "at": LATER_AT})
 
 
 def _row(**extra: Any) -> dict[str, Any]:
@@ -97,7 +114,7 @@ class AddDirectionStoreTest(unittest.TestCase):
     def _entry(self) -> Any:
         return annotation_store.find(annotation_store.load(self.config), "claude", SHORT)
 
-    def _add(self, **over: Any) -> str:
+    def _add(self, row: dict[str, Any] | None = None, **over: Any) -> str:
         arguments: dict[str, Any] = {
             "source_id": "fact:0123456789abcdef",
             "text": "Use the placeholder lexer",
@@ -106,7 +123,19 @@ class AddDirectionStoreTest(unittest.TestCase):
             "now": FIRST_AT + 120,
         }
         arguments.update(over)
-        return annotation_store.add_direction(self.config, self.state, _row(), **arguments)
+        return annotation_store.add_direction(self.config, self.state, row or _row(), **arguments)
+
+    def _adopt(self, now: float, **over: Any) -> str:
+        return annotation_store.adopt(
+            self.config,
+            self.state,
+            _row(),
+            source="first-prompt",
+            expected_text=FIRST,
+            expected_at=FIRST_AT,
+            now=now,
+            **over,
+        )
 
     def _adopting(self, **over: Any) -> str:
         return self._add(
@@ -178,12 +207,8 @@ class AddDirectionStoreTest(unittest.TestCase):
             annotation_store.OUTCOME_STORED,
             self._add(expected_revision=1, replace=2, source_id="fact:aaaa"),
         )
-        # Typed words are floored at their latest save, so the add itself moved
-        # the floor past every direction given before it (the page's own rule).
-        self.assertEqual(
-            annotation_store.OUTCOME_REFUSED,
-            self._add(expected_revision=2, replace=4, source_id="fact:bbbb", text="Second"),
-        )
+        # A typed goal is floored at its own save, which the add did not
+        # move, so a direction given before the add is still later.
         self.assertEqual(
             annotation_store.OUTCOME_STORED,
             self._add(
@@ -191,7 +216,7 @@ class AddDirectionStoreTest(unittest.TestCase):
                 replace=4,
                 source_id="fact:bbbb",
                 text="Second",
-                entry_at=FIRST_AT + 130,
+                entry_at=FIRST_AT + 90,
                 now=FIRST_AT + 140,
             ),
         )
@@ -261,12 +286,178 @@ class AddDirectionStoreTest(unittest.TestCase):
         self.assertEqual("entry", published["line_1_source"])
         self.assertEqual("fact:0123456789abcdef", published["line_1_source_id"])
 
+    def test_adding_one_direction_to_a_typed_goal_keeps_a_later_one_open(self) -> None:
+        # Store review F1: the typed goal's floor is its own save, so adding
+        # the earlier direction d1 leaves d2 later and unsettled.
+        annotation_store.annotate(
+            self.config, self.state, "claude", SHORT, goal="My typed goal", now=FIRST_AT + 10
+        )
+        self.assertEqual(annotation_store.OUTCOME_STORED, self._add(expected_revision=1))
+        entry = self._entry()
+        published = annotation_store.published(entry)
+        self.assertEqual(FIRST_AT + 10, published["goal_saved_at"])
+        self.assertEqual(FIRST_AT + 10, annotation_store.direction_floor(entry, _row()))
+        self.assertEqual(FIRST_AT + 60, published["settled_through"])
+        self.assertLess(published["settled_through"], FIRST_AT + 90)
+
+    def test_only_a_change_to_the_goals_words_moves_its_save_time(self) -> None:
+        def save(now: float, **fields: Any) -> Any:
+            annotation_store.annotate(self.config, self.state, "claude", SHORT, now=now, **fields)
+            return annotation_store.published(self._entry())["goal_saved_at"]
+
+        self.assertEqual(FIRST_AT + 10, save(FIRST_AT + 10, goal="My typed goal"))
+        self.assertEqual(FIRST_AT + 10, save(FIRST_AT + 20, lines=["A line"], expected_revision=1))
+        self.assertEqual(
+            FIRST_AT + 10,
+            save(FIRST_AT + 30, goal="My typed goal", lines=["A line", "B"], expected_revision=2),
+        )
+        self.assertEqual(FIRST_AT + 40, save(FIRST_AT + 40, goal="Retyped goal"))
+        self._adopt(FIRST_AT + 50, expected_revision=4)
+        self.assertIsNone(annotation_store.published(self._entry())["goal_saved_at"])
+        self.assertIsNone(annotation_store.published(None)["goal_saved_at"])
+
+    def test_a_goal_save_time_after_its_own_save_refuses_the_entry(self) -> None:
+        annotation_store.annotate(
+            self.config, self.state, "claude", SHORT, goal="My typed goal", now=FIRST_AT + 10
+        )
+        path = Path(annotation_store.store_path(self.config))
+        value = json.loads(path.read_text(encoding="utf-8"))
+        value["entries"][0]["revisions"][0]["goal_saved_at"] = FIRST_AT + 99
+        path.write_text(json.dumps(value), encoding="utf-8")
+        self.assertIsNone(self._entry())
+
+    # The store lens's killing tests (M9, M10, M11, M13, M14, M22).
+    def test_a_direction_between_the_prompt_and_the_adoption_is_later(self) -> None:
+        self._adopt(FIRST_AT + 100)
+        self.assertEqual(annotation_store.OUTCOME_STORED, self._add(expected_revision=1))
+
+    def test_a_lines_only_save_does_not_move_the_floor(self) -> None:
+        annotation_store.annotate(
+            self.config,
+            self.state,
+            "claude",
+            SHORT,
+            lines=["A typed line"],
+            expected_revision=0,
+            now=FIRST_AT + 100,
+        )
+        self.assertEqual(annotation_store.OUTCOME_STORED, self._add(expected_revision=1))
+
+    def test_with_no_goal_the_first_prompt_floors_before_the_latest(self) -> None:
+        self.assertEqual(annotation_store.OUTCOME_STORED, self._add(_with_latest()))
+
+    def test_adopting_the_latest_prompt_floors_at_its_time(self) -> None:
+        self.assertEqual(
+            annotation_store.OUTCOME_REFUSED,
+            self._add(
+                _with_latest(),
+                adopt="latest-prompt",
+                expected_prompt=LATER,
+                expected_prompt_at=LATER_AT,
+            ),
+        )
+        self.assertIsNone(self._entry())
+
+    def test_an_add_that_adopts_never_replaces_saved_words(self) -> None:
+        annotation_store.annotate(
+            self.config, self.state, "claude", SHORT, goal="My typed goal", now=FIRST_AT + 20
+        )
+        self.assertEqual(
+            annotation_store.OUTCOME_REFUSED,
+            self._add(
+                expected_revision=1,
+                adopt="first-prompt",
+                expected_prompt=FIRST,
+                expected_prompt_at=FIRST_AT,
+            ),
+        )
+        self.assertEqual("My typed goal", self._entry()["revisions"][-1]["goal"])
+
+    def test_an_add_without_a_revision_is_refused_on_a_list_with_room(self) -> None:
+        self._adopt(FIRST_AT + 10)
+        self.assertEqual(annotation_store.OUTCOME_REFUSED, self._add(expected_revision=None))
+        self.assertEqual((), self._entry()["revisions"][-1]["lines"])
+
 
 class KeepStoreTest(unittest.TestCase):
     def setUp(self) -> None:
         home = tempfile.mkdtemp()
         self.addCleanup(shutil.rmtree, home, True)
         self.config, self.state = make_runtime(state_home=home, state_dir=Path(home))
+
+    def _adopt(self, now: float, **over: Any) -> str:
+        return annotation_store.adopt(
+            self.config,
+            self.state,
+            _row(),
+            source="first-prompt",
+            expected_text=FIRST,
+            expected_at=FIRST_AT,
+            now=now,
+            **over,
+        )
+
+    def _settled(self) -> Any:
+        return annotation_store.load(self.config)[0].get("settled")
+
+    # The store lens's killing test (M5).
+    def test_keep_over_a_draft_clamps_a_future_settlement_to_now(self) -> None:
+        self.assertEqual(
+            annotation_store.OUTCOME_STORED,
+            self._adopt(FIRST_AT + 200, settle_through=FIRST_AT + 10_000_000, expected_revision=0),
+        )
+        self.assertEqual(FIRST_AT + 200, self._settled()["through"])
+
+    def test_a_keep_never_moves_a_settlement_back(self) -> None:
+        # D-2: a stale tab's Keep through an older moment reopens nothing.
+        self._adopt(FIRST_AT + 10)
+        annotation_store.settle(
+            self.config, self.state, "claude", SHORT, through=FIRST_AT + 90, now=FIRST_AT + 100
+        )
+        annotation_store.settle(
+            self.config, self.state, "claude", SHORT, through=FIRST_AT + 60, now=FIRST_AT + 110
+        )
+        self.assertEqual(FIRST_AT + 90, self._settled()["through"])
+
+    def test_a_keep_from_a_stale_revision_settles_nothing(self) -> None:
+        # D-3: checked under the store lock on both Keep writes.
+        annotation_store.annotate(
+            self.config, self.state, "claude", SHORT, lines=["A line"], now=FIRST_AT + 10
+        )
+        self.assertEqual(
+            annotation_store.OUTCOME_REFUSED,
+            self._adopt(FIRST_AT + 200, settle_through=FIRST_AT + 150, expected_revision=0),
+        )
+        self.assertEqual(
+            annotation_store.OUTCOME_REFUSED,
+            annotation_store.settle(
+                self.config,
+                self.state,
+                "claude",
+                SHORT,
+                through=FIRST_AT + 150,
+                now=FIRST_AT + 200,
+                expected_revision=0,
+            ),
+        )
+        self.assertIsNone(self._settled())
+        self.assertEqual(
+            annotation_store.OUTCOME_STORED,
+            self._adopt(FIRST_AT + 200, settle_through=FIRST_AT + 150, expected_revision=1),
+        )
+
+    def test_keep_never_adopts_over_a_different_saved_goal(self) -> None:
+        # D-4: "Keep my intent" must not write the prompt over the reader's words.
+        annotation_store.annotate(
+            self.config, self.state, "claude", SHORT, goal="My own typed goal", now=FIRST_AT + 10
+        )
+        self.assertEqual(
+            annotation_store.OUTCOME_REFUSED,
+            self._adopt(FIRST_AT + 200, settle_through=FIRST_AT + 150, expected_revision=1),
+        )
+        entry = annotation_store.load(self.config)[0]
+        self.assertEqual("My own typed goal", entry["revisions"][-1]["goal"])
+        self.assertNotIn("settled", entry)
 
     def test_keep_over_a_draft_adopts_and_settles_in_one_write(self) -> None:
         writes = _Writes()
@@ -280,6 +471,7 @@ class KeepStoreTest(unittest.TestCase):
                 expected_at=FIRST_AT,
                 now=FIRST_AT + 200,
                 settle_through=FIRST_AT + 150,
+                expected_revision=0,
             )
         self.assertEqual(annotation_store.OUTCOME_STORED, outcome)
         self.assertEqual(1, writes.count)
@@ -299,6 +491,7 @@ class KeepStoreTest(unittest.TestCase):
             expected_at=FIRST_AT,
             now=FIRST_AT + 200,
             settle_through=FIRST_AT + 150,
+            expected_revision=0,
         )
         self.assertEqual(annotation_store.OUTCOME_REFUSED, outcome)
         self.assertEqual((), annotation_store.load(self.config))
@@ -315,6 +508,7 @@ class KeepStoreTest(unittest.TestCase):
                         expected_at=FIRST_AT,
                         now=FIRST_AT + 200,
                         settle_through=bad,
+                        expected_revision=0,
                     ),
                 )
 
@@ -357,6 +551,50 @@ class DirectionReviewTest(unittest.TestCase):
         text, clipped, fits = annotation_store.direction_review(huge, 240)
         self.assertLessEqual(len(text), annotation_store.DIRECTION_TEXT_CAP_CHARS)
         self.assertEqual((True, False), (clipped, fits))
+
+    # The store lens's killing test (M27).
+    def test_the_review_collapses_whitespace_runs(self) -> None:
+        text, clipped, fits = annotation_store.direction_review("one\n\n   two\tthree", 240)
+        self.assertEqual(("one two three", False, True), (text, clipped, fits))
+
+
+class DirectionReviewMaskingTest(unittest.TestCase):
+    """S-1: past the first sentence, each shapeless form is masked as a check line's is."""
+
+    SECRET = "PLACEHOLDERpw9"  # noqa: S105 - a placeholder, never a credential
+
+    def _review(self, form: str) -> str:
+        text, _clipped, _fits = annotation_store.direction_review(
+            f"Credential case is next. Then run {form} and carry on.", 240
+        )
+        self.assertTrue(text.startswith("Credential case is next."))
+        return text
+
+    def test_each_named_form_is_masked_after_the_first_sentence(self) -> None:
+        forms = {
+            "NAME=value": f"PGPASSWORD={self.SECRET}",
+            "--password value": f"--password {self.SECRET}",
+            "--password=value": f"--password={self.SECRET}",
+            "--token value": f"--token {self.SECRET}",
+            "-pvalue": f"-p{self.SECRET}",
+            "Authorization header": f"Authorization: Bearer {self.SECRET}",
+            "X-Api-Key header": f"X-Api-Key: {self.SECRET}",
+            "user:pw@host": f"deploy:{self.SECRET}@db.example",
+            "quoted user:pw@host": f"'deploy:{self.SECRET}@db.example'",
+            "quoted with a space": f"'deploy:{self.SECRET} two@db.example'",
+        }
+        for label, form in forms.items():
+            with self.subTest(form=label):
+                text = self._review(form)
+                self.assertNotIn(self.SECRET, text)
+                self.assertNotIn("two@", text)
+                self.assertIn(records.SECRET_MARKER, text)
+
+    def test_a_key_split_by_a_line_break_is_masked_whole(self) -> None:
+        text = self._review("AKIAIOSFODNN7\nEXAMPLE")
+        self.assertNotIn("AKIAIOSFODNN7", text)
+        self.assertNotIn("EXAMPLE", text)
+        self.assertIn(records.SECRET_MARKER, text)
 
 
 class _ClaudeSession(unittest.TestCase):
@@ -756,11 +994,12 @@ class KeepRouteTest(unittest.TestCase):
         "expected_prompt": FIRST,
         "expected_prompt_at": FIRST_AT,
         "settle_through": FIRST_AT + 60,
+        "expected_revision": 0,
     }
 
     def test_keep_with_no_reader_settles_on_the_annotate_route(self) -> None:
         config, state = self._runtime()
-        handler = self._handler(config, state, {**self.KEEP, "expected_revision": 0})
+        handler = self._handler(config, state, dict(self.KEEP))
         handler._annotate()
         answer, code = self.replies[-1]
         self.assertEqual((200, "stored"), (code, answer["outcome"]))
@@ -817,6 +1056,35 @@ class KeepRouteTest(unittest.TestCase):
             (422, True, "refused"), (code, answer["adoption_refused"], answer["settled"])
         )
         self.assertEqual((), annotation_store.load(config))
+
+    def test_a_keep_press_must_name_its_revision_and_a_stale_one_settles_nothing(self) -> None:
+        # D-3: a stale tab is refused and settles nothing, on the press as on annotate.
+        config, state = self._runtime()
+        annotation_store.annotate(
+            config, state, "claude", SHORT, lines=["A line"], now=FIRST_AT + 10
+        )
+        for over in ({"expected_revision": None}, {"expected_revision": 0}):
+            with self.subTest(**over):
+                compose = self._press(config, state, **over)
+                self.assertEqual(0, compose.call_count)
+                answer, code = self.replies[-1]
+                self.assertEqual((422, "refused"), (code, answer["settled"]))
+        for keep in (
+            {k: v for k, v in self.KEEP.items() if k != "adopt"},
+            {**self.KEEP, "expected_revision": 0},
+        ):
+            handler = self._handler(config, state, keep)
+            handler._annotate()
+            self.assertEqual("refused", self.replies[-1][0]["outcome"])
+        self.assertNotIn("settled", annotation_store.load(config)[0])
+
+    def test_a_press_with_no_thread_to_run_on_still_says_it_settled(self) -> None:
+        # D-5: the settlement is on disk, so the 503 says so.
+        config, state = self._runtime()
+        with mock.patch.object(runtime_reading_jobs, "launch", side_effect=RuntimeError):
+            self._press(config, state)
+        answer, code = self.replies[-1]
+        self.assertEqual((503, "stored"), (code, answer.get("settled")))
 
 
 if __name__ == "__main__":
