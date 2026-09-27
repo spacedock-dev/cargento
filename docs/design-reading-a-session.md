@@ -1076,6 +1076,18 @@ latest run of each check is kept, and its fact carries `subject` and `result`, s
 to it: `check_supports` now keys on a check on any harness, not only Claude Code's
 `tool_report`. The title is Cargento's and no command or output is published.
 
+Three rulings from the review round (2026-09-27) hold it there. A Pi check never enters the
+semantic history store, as item 6 already said of Claude Code's: the store keeps an allowlist of
+fact keys without `subject` or `result`, so a superseded pass came back from it as a bare "5
+validation checks passed" that nothing could supersede or age, and it carried a `consistent` while
+the latest run had failed. A subjectless Pi bash result already on disk from an older build,
+including the pass the build before this read from `echo '5 passed'`, supports no verdict at all.
+A clear or absent flag beside Pi's own exit line is outside what the capture shows, since a
+`tool_result` extension can clear the flag on a call that threw, so such a run is never a pass.
+And every Pi tool except `read`, `grep`, `find` and `ls` ages an earlier pass, `powershell` and
+extension tools included: guessing that an unknown tool only reads is what would produce a false
+`consistent`.
+
 The ruling is yes, bounded, and readable by a model. Two other answers were put beside it. Page
 only, never sent to a model, shows the work but leaves no reading able to judge Expected Output on
 Claude Code. Refusing leaves every check on a Claude Code session not verifiable. What the ruling

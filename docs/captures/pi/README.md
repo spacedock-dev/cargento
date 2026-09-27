@@ -170,7 +170,9 @@ nonzero exit, a timeout, an abort and a missing exit code, and appends one statu
 truncation notice. So the runtime reads a set flag with the exit line as a nonzero exit, a set
 flag with a timeout or abort line as a run with no result, and a set flag with no status line as
 a call that never ran. A clear flag is an exit of 0 for the whole call, which is why the run that
-ended in `; true` reads clear beside its own failure summary.
+ended in `; true` reads clear beside its own failure summary. A flag that is clear or absent beside
+the exit line never occurred here; an extension's `tool_result` hook can produce one, and the
+runtime reads that run as not recorded, never as a pass.
 
 The endpoint was stopped and the scratch install removed after the runs. Other versions need
 their own evidence.
