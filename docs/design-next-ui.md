@@ -1073,7 +1073,8 @@ and draws none for an idle-only project, which is where unattended drift lands. 
 the reader's goal beside NOW (DRC-4637). A session with drift on record joins Active now whatever its
 state, after blocked and before working, and is not counted in the `Active now` figure, which keeps
 the definition above (DRC-4641). Each row labels a typed goal as your words, or a permitted Claude
-Code or Codex prompt as your latest prompt; other harnesses supply only typed words. A goal slot
+Code or Codex prompt as the one the session page drafts, your first prompt or else your latest
+(DRC-4682); other harnesses supply only typed words. A goal slot
 without typed words opens the same session composer with the cursor in the goal field. The store-off
 slot has no link. The once-per-screen Goal sources disclosure explains that limit and the permitted
 prompt sources. Projects stays one click away with the member order the 2026-09-23

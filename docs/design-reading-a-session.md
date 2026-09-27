@@ -1999,6 +1999,42 @@ can start. The page half comes after it.
 - Not permanent. A line added from an entry becomes a typed line once the reader edits it and
   saves, as an edited adopted goal becomes typed, so "added from #n" lasts until the first edit.
 
+### What the draft and question page build decided, 2026-09-27
+
+DRC-4682's page half, on the server half's wire, built to the owner's decisions of the same date:
+no level or pill over an unsaved draft, every unsettled later direction drawn at its own number, the
+question before the press in place of "Conflict to settle", and Add adopting a draft in its write.
+
+- The draft. The goal box holds the first prompt as Cargento publishes it, or the latest where no
+  first prompt with a time is published, marked "from your prompt" (and "latest" for the second),
+  with "Shown excerpt only." on a clipped one, a tinted box and Looks right. It is derived on every
+  render and never written, so it is not reader state; an edit rides the held draft as any other,
+  and a box put back to the draft's words is the draft again, so saving it adopts rather than
+  storing an excerpt as typed words. Nothing is drafted over a store this build cannot read. The
+  design's line "Drift is measured against these. Edit anything that is off." takes the lede's
+  place over a draft rather than adding a row: the six-line fold had 7px to spare at 1440x900, and
+  still has (893 before and after).
+- The edited box. Analyze, Keep and Add's save over an edited, unsaved box are refused with "Save
+  your goal, or undo your edit, to analyze drift.", because each would adopt words not on screen.
+- No level. `nextIntentDrafted` is the one predicate the level and the live estimate consult;
+  `nextDriftEstimate` is the empty seam they fill, and a test stubs it to prove the guard can fail.
+  "Save your intent to see a live estimate" is DRC-4696's.
+- The floor. The page reads `annotation_goal_saved_at` for a typed goal, as the server does, so the
+  list's flag, the question and the route agree about what is later.
+- The question. It stands in the control's place, with Keep the one primary and Add beside it, and
+  the disclosure before Keep where Keep is the consent. "since your first prompt" replaces "since
+  saving your intent" over a draft. The number is `nextCockpitEntryNumbers`'; the sentence drops it
+  rather than naming one the list did not give. The block after the reading keeps only its neutral
+  states (nothing since, settled, unread).
+- Keep's route. Where the page already knows no analysis can start (no reader, model calls off, no
+  provider enabled, a job running, the daily cap), Keep goes to `POST /api/annotate` and reads
+  `Keep my intent`; otherwise to `POST /api/reading`, carrying Allow where none is given. Either
+  way it names `expected_revision`, and a refused settlement says nothing was settled.
+- Add. The pending line is one per session beside the lines draft, with no `maxlength`, so a long
+  direction is shown whole and counted over the bound, and its save stays inert with a sentence
+  rather than cutting it. At six saved lines the reader names the line to replace. The line label
+  reads "from #n · not saved"; "added from #n" on a saved line is DRC-4697's.
+
 ### What the window build decided, 2026-09-27
 
 DRC-4715 asked whether a reading may cite an entry from before its evidence window. The owner ruled
