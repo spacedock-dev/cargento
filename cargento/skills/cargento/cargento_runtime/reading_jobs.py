@@ -28,16 +28,9 @@ import contextlib
 import json
 import os
 import secrets
-import sys
 import threading
-import time
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Protocol
-
-if sys.platform == "win32":
-    import msvcrt
-else:
-    import fcntl
 
 from . import annotations as annotation_store
 from . import io as runtime_io
@@ -494,51 +487,8 @@ def _recovering(path: Path) -> Iterator[bool]:
     that cannot be opened or locked for any other reason yields True: the
     rename claim still holds on POSIX, and refusing would strand every marker.
     """
-    try:
-        fd = os.open(path, os.O_RDWR | os.O_CREAT, 0o600)
-    except OSError:
-        yield True
-        return
-    try:
-        held = _lock(fd)
-        try:
-            yield held is not False
-        finally:
-            if held:
-                _unlock(fd)
-    finally:
-        os.close(fd)
-
-
-def _lock(fd: int) -> bool | None:
-    """Lock `fd`, waiting a bounded time. None when this file cannot be locked."""
-    deadline = time.monotonic() + _RECOVERY_WAIT_SECONDS
-    while True:
-        try:
-            if sys.platform == "win32":
-                os.lseek(fd, 0, os.SEEK_SET)
-                msvcrt.locking(fd, msvcrt.LK_NBLCK, 1)
-            else:
-                fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        except (BlockingIOError, PermissionError):
-            # Held elsewhere: `flock` raises the first, `msvcrt.locking` the
-            # second (EACCES), each for this and nothing else.
-            if time.monotonic() >= deadline:
-                return False
-            time.sleep(0.05)
-        except OSError:
-            return None
-        else:
-            return True
-
-
-def _unlock(fd: int) -> None:
-    with contextlib.suppress(OSError):
-        if sys.platform == "win32":
-            os.lseek(fd, 0, os.SEEK_SET)
-            msvcrt.locking(fd, msvcrt.LK_UNLCK, 1)
-        else:
-            fcntl.flock(fd, fcntl.LOCK_UN)
+    with runtime_io.held_file_lock(path, wait=_RECOVERY_WAIT_SECONDS) as held:
+        yield held is not False
 
 
 def _claim(path: Path, alive: Callable[[int], bool]) -> Path | None:

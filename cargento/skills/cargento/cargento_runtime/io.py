@@ -10,10 +10,17 @@ import os
 import posixpath
 import secrets
 import stat
+import sys
+import time
 from typing import TYPE_CHECKING, Any, BinaryIO
 from urllib.parse import quote
 
 from . import state as runtime_state
+
+if sys.platform == "win32":
+    import msvcrt
+else:
+    import fcntl
 
 if TYPE_CHECKING:
     import sqlite3 as sqlite3_types
@@ -288,3 +295,64 @@ def atomic_write_owner_only(
         with contextlib.suppress(OSError):
             os.unlink(tmp)
         raise
+
+
+@contextlib.contextmanager
+def held_file_lock(path: str | os.PathLike[str], *, wait: float) -> Iterator[bool | None]:
+    """Hold an OS lock on `path` for the block, waiting at most `wait` seconds.
+
+    Yields True while held, False when another holder kept it past the wait,
+    and None when the file cannot be opened or locked at all. The caller
+    decides what False and None mean. An OS lock dies with its process, so a
+    holder that crashed leaves nothing stale behind.
+
+    Moved here from `reading_jobs`' recovery pass so the annotation store takes
+    the same lock rather than a third mechanism (DRC-4661). `flock` on POSIX,
+    one byte of `msvcrt.locking` on Windows, and each conflicts across open
+    handles, so two dashboards in one process exclude each other too.
+    """
+    try:
+        fd = os.open(path, os.O_RDWR | os.O_CREAT, 0o600)
+    except OSError:
+        yield None
+        return
+    try:
+        held = _lock_fd(fd, wait)
+        try:
+            yield held
+        finally:
+            if held:
+                _unlock_fd(fd)
+    finally:
+        os.close(fd)
+
+
+def _lock_fd(fd: int, wait: float) -> bool | None:
+    """Lock `fd`, waiting a bounded time. None when this file cannot be locked."""
+    deadline = time.monotonic() + wait
+    while True:
+        try:
+            if sys.platform == "win32":
+                os.lseek(fd, 0, os.SEEK_SET)
+                msvcrt.locking(fd, msvcrt.LK_NBLCK, 1)
+            else:
+                fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except (BlockingIOError, PermissionError):
+            # Held elsewhere: `flock` raises the first, `msvcrt.locking` the
+            # second (EACCES), each for this and nothing else.
+            if time.monotonic() >= deadline:
+                return False
+            time.sleep(0.05)
+        except OSError:
+            return None
+        else:
+            return True
+
+
+def _unlock_fd(fd: int) -> None:
+    with contextlib.suppress(OSError):
+        if sys.platform == "win32":
+            os.lseek(fd, 0, os.SEEK_SET)
+            msvcrt.locking(fd, msvcrt.LK_UNLCK, 1)
+        else:
+            fcntl.flock(fd, fcntl.LOCK_UN)
