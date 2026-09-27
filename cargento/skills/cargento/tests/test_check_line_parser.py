@@ -16,7 +16,7 @@ import shlex
 from typing import TYPE_CHECKING, Any
 from unittest import mock
 
-from cargento_runtime import project_context, reading
+from cargento_runtime import project_context, reading, records
 
 from .test_claude_checks import SHORT, ClaudeChecksTestCase, Transcript
 
@@ -773,3 +773,55 @@ class TheVerifiersThreeFindings(CheckLineTestCase):
                 text, checks, _scan = self.published()
                 self.assertEqual(1, len(checks))
                 self.assertNotIn(HALF_A, text)
+
+
+class ACdInsideASubshellDoesNotCarryPastIt(CheckLineTestCase):
+    """DRC-4724's first criterion: a `(` at command position opens a subshell,
+    and its `)` restores the directory current at the `(`, as a `bash -c`
+    wrapper already does."""
+
+    @staticmethod
+    def check_directories(command: str) -> list[str]:
+        call = project_context._ShellCall(0.0, "/w", {"command": command})
+        return [call.directories[index] for index in call.checks]
+
+    def test_each_check_runs_in_the_directory_its_subshell_left(self) -> None:
+        for command, expected in (
+            ("(cd sub && pytest); pytest", ["/w/sub", "/w"]),
+            ("(cd sub) && pytest", ["/w"]),
+            ("(cd a; (cd b; pytest); pytest); pytest", ["/w/a/b", "/w/a", "/w"]),
+            ("cd a && (cd b && pytest) && pytest", ["/w/a/b", "/w/a"]),
+            ("(cd sub && pytest ; ); pytest", ["/w/sub", "/w"]),
+            ("(bash -c 'cd x && pytest'); pytest", ["/w/x", "/w"]),
+            ("( bash -c 'cd x' && cd y && pytest ); pytest", ["/w/y", "/w"]),
+            ("bash -c '(cd x && pytest); pytest'; pytest", ["/w/x", "/w", "/w"]),
+        ):
+            with self.subTest(command=command):
+                self.assertEqual(expected, self.check_directories(command))
+
+    def test_a_parenthesis_that_opens_no_subshell_changes_nothing(self) -> None:
+        for command, expected in (
+            ("cd sub; case x in a) true;; esac; pytest", ["/w/sub"]),
+            ("case x in a) true;; esac; pytest", ["/w"]),
+            ("cd sub && f() { true; }; pytest", ["/w/sub"]),
+            ("cd sub && ((n = 1)) && pytest", ["/w/sub"]),
+            ("cd sub; echo $(cd other); pytest", ["/w/sub"]),
+        ):
+            with self.subTest(command=command):
+                self.assertEqual(expected, self.check_directories(command))
+
+    def test_a_failure_in_the_subshell_is_not_superseded_by_a_pass_outside_it(self) -> None:
+        self.session.bash("cd sub && pytest", "1 failed", is_error=True)
+        self.session.bash("(cd sub && true); pytest", "", is_error=False)
+        results = sorted(c["result"] for c in self.checks())
+        self.assertEqual(["failed", "passed"], results)
+        self.assertEqual([False, False], [c["earlier_failed"] for c in self.checks()])
+
+    def test_the_published_line_is_unchanged_by_the_subshell(self) -> None:
+        self.session.bash(f"(cd api && pytest --password {HALF_A} -q); pytest", "", is_error=False)
+        text, checks, _scan = self.published()
+        self.assertEqual(
+            ["pytest", f"pytest --password {records.SECRET_MARKER} -q"],
+            sorted(c["title"] for c in checks),
+        )
+        self.assertNotIn(HALF_A, text)

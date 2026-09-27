@@ -1412,6 +1412,10 @@ class _Segment(NamedTuple):
     # with the same rules, since whatever it runs runs whether or not the
     # segment is a check.
     bodies: list[str]
+    # Subshells a `(` at command position opened before this segment, and
+    # closed after it (DRC-4724).
+    opens: int = 0
+    closes: int = 0
 
 
 class _ShellLexer:
@@ -1434,6 +1438,9 @@ class _ShellLexer:
         self.redirects: list[str] = []
         self.bodies: list[str] = []
         self.depth = 0
+        # One entry per open parenthesis: whether it opened a subshell.
+        self.parens: list[bool] = []
+        self.opens = self.closes = 0
 
     def _at(self, offset: int = 0) -> str:
         index = self.pos + offset
@@ -1455,7 +1462,7 @@ class _ShellLexer:
                 self._skip_group(arithmetic=True)
                 words.append(_ARITHMETIC)
                 continue
-            if self._skip_space():
+            if self._parenthesis(words, found) or self._skip_space():
                 continue
             joiner = self._joiner()
             if joiner is None:
@@ -1468,21 +1475,49 @@ class _ShellLexer:
                     self.redirects.append(redirect)
                 continue
             if words or self.redirects or self.bodies:
-                found.append(_Segment(words, joiner, self.redirects, self.bodies))
+                found.append(
+                    _Segment(words, joiner, self.redirects, self.bodies, self.opens, self.closes)
+                )
+                # An open before an empty segment waits for the next one.
+                self.opens = self.closes = 0
             words, self.redirects, self.bodies, hide_next = [], [], [], False
             if joiner == "\n":
                 self._skip_bodies(self.heredocs)
                 self.heredocs = []
         if words or self.redirects or self.bodies:
-            found.append(_Segment(words, "", self.redirects, self.bodies))
+            found.append(_Segment(words, "", self.redirects, self.bodies, self.opens, self.closes))
         return found
+
+    def _parenthesis(self, words: list[str], found: list[_Segment]) -> bool:
+        """A subshell's `(` or `)`, consumed and counted on its segment (DRC-4724).
+
+        Only a `(` at command position opens one: `f()` and `a=(1 2)` open
+        nothing, and a `)` that matches no `(`, such as a `case` arm's,
+        closes nothing.
+        """
+        char = self._at()
+        if char == "(":
+            self.parens.append(not words and not self.redirects)
+            self.opens += self.parens[-1]
+        elif char == ")":
+            if self.parens and self.parens.pop():
+                if words or self.redirects or self.bodies:
+                    self.closes += 1
+                elif self.opens:
+                    self.opens -= 1  # `( )`: nothing ran inside it
+                elif found:
+                    # `(pytest; )`: the close follows the joiner.
+                    found[-1] = found[-1]._replace(closes=found[-1].closes + 1)
+        else:
+            return False
+        self.pos += 1
+        return True
 
     def _skip_space(self) -> bool:
         """Blanks, a backslash-newline, a lone backslash at the very end (bash
-        passes no argument for it), a comment at a word start, and a subshell's
-        or group's parentheses, which are shed."""
+        passes no argument for it), and a comment at a word start."""
         char, after = self._at(), self._at(1)
-        if char in (" ", "\t", "(", ")") or (char == "\\" and after in ("\n", "")):
+        if char in (" ", "\t") or (char == "\\" and after in ("\n", "")):
             self.pos += 2 if char == "\\" else 1
         elif char == "#":
             end = self.text.find("\n", self.pos)
@@ -1862,8 +1897,8 @@ class _Part(NamedTuple):
     # Background launches this part ends: its own `&`, and an inner one a
     # wrapper's splice would otherwise overwrite.
     launches: int
-    # Wrappers entered at this part and left after it: a `cd` inside a
-    # wrapper's subshell does not carry past it.
+    # Subshells and wrappers entered at this part and left after it: a `cd`
+    # inside either does not carry past it (DRC-4724).
     opens: int
     closes: int
 
@@ -1916,7 +1951,7 @@ def _call_parts(text: str, depth: int = 0) -> list[_Part]:
         if not spliced:
             parts.append(
                 _Part(words, rtk, segment.joiner, segment.redirects, hides, background,
-                      launches, 0, 0)
+                      launches, segment.opens, segment.closes)
             )  # fmt: skip
             continue
         last = len(spliced) - 1
@@ -1928,8 +1963,8 @@ def _call_parts(text: str, depth: int = 0) -> list[_Part]:
                 hides_change=part.hides_change or hides,
                 background=part.background or background,
                 launches=part.launches + (launches if index == last else 0),
-                opens=part.opens + (index == 0),
-                closes=part.closes + (index == last),
+                opens=part.opens + (index == 0) * (1 + segment.opens),
+                closes=part.closes + (index == last) * (1 + segment.closes),
             )
             for index, part in enumerate(spliced)
         )
