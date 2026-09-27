@@ -1685,8 +1685,9 @@ the poll-fallback limit on DRC-4713.
   watch an exit, the call polls, and the poll reaps the leader, so helpers left in its group after
   a normal exit are not swept. A timeout, a shutdown or a Cancel still kills the group first. It has
   been seen only under forced errors, and a test pins it so the documents change if it does. On
-  that path a helper that starts writing after the leader's exit is not reached either, since the
-  poll that sees the exit is the reap. The size is looked at before each poll, so a writer caught
+  that path a helper still writing after the leader's exit is not reached either, whether it was
+  already writing under the bound or starts afterwards, since the poll that sees the exit is the
+  reap. The size is looked at before each poll, so a writer caught
   while the leader runs is killed with its group. Seeing the exit without reaping would need a third
   watcher (libc `waitid` with `WNOWAIT` through ctypes on macOS, measured working), which is the
   fix this ruling declined.

@@ -209,7 +209,7 @@ class Group:
         deadline = time.monotonic() + timeout
         while True:
             # The size before the poll, because the poll reaps: after it the
-            # group can no longer be signalled (Codex P1). A helper that starts
+            # group can no longer be signalled (Codex P1). A helper still
             # writing after the leader's exit is not reached here at all.
             if self._over_limit() or self._cancelled.is_set():
                 return False

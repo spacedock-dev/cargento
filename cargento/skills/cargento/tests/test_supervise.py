@@ -1163,6 +1163,18 @@ class ThePollFallbackLimitIsDocumentedTest(unittest.TestCase):
                 phrase = "helpers still in its group after a normal exit are not swept"
                 self.assertTrue(phrase in text, f"{name} does not state the poll-fallback limit")
 
+    def test_the_cost_of_a_helper_still_writing_is_stated(self) -> None:
+        """The pin above's cost: a helper already writing, or starting to, is not reached."""
+        root = Path(supervise.__file__).resolve().parents[4]
+        documents = ("COMPATIBILITY.md", "SECURITY.md", "docs/design-reading-a-session.md")
+        for name in documents:
+            with self.subTest(document=name):
+                text = " ".join((root / name).read_text(encoding="utf-8").split())
+                phrase = "a helper still writing after the leader's exit is not reached"
+                self.assertTrue(phrase in text, f"{name} does not state the helper's cost")
+        security = " ".join((root / "SECURITY.md").read_text(encoding="utf-8").split())
+        self.assertTrue("bounded by nothing but the disk until the helper exits" in security)
+
 
 if __name__ == "__main__":
     unittest.main()

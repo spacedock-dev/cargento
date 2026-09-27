@@ -1081,8 +1081,8 @@ files are removed after, never under, a live writer. When neither `waitid` nor k
 exit, the call polls, which reaps the leader, so helpers still in its group after a normal exit are
 not swept; a timeout, a shutdown or a Cancel still kills the group, because each kills before the
 reap. That has been seen only under forced errors, and a test pins it (DRC-4712). On that path a
-helper that starts writing the output file after the leader has exited is not reached at all: the
-poll that sees the exit is the reap, the caller then removes the file, and the helper's writes to
+helper still writing after the leader's exit is not reached at all, whether it was already
+writing under the bound or starts afterwards: the poll that sees the exit is the reap, the caller then removes the file, and the helper's writes to
 the removed file are bounded by nothing but the disk until the helper exits. Seeing the exit
 without reaping needs a third watcher, which is the fix the owner ruled documented rather than
 built. A call's output file is bounded on disk as well as on read (DRC-4667): the runner checks its

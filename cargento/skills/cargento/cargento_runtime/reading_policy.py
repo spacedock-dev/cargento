@@ -309,11 +309,16 @@ def charged(config: RuntimeConfig, job_id: str, *, started_at: Any, now: float) 
         return None
     if row is not None:
         return True
+    # A watermark that is not a finite number is damage, and damage cannot
+    # vouch for an absent row. Raising here once let recovery delete the
+    # marker and record nothing (verify N1).
+    watermark = since[0] if since is not None else None
     if (
-        since is None
+        not isinstance(watermark, (int, float))
+        or not math.isfinite(watermark)
         or not isinstance(started_at, (int, float))
         or not math.isfinite(started_at)
-        or started_at <= max(float(since[0]), now - JOB_LEDGER_SEC, 0.0)
+        or started_at <= max(float(watermark), now - JOB_LEDGER_SEC, 0.0)
     ):
         return None
     return False

@@ -550,6 +550,20 @@ class TheJobLedgerTest(unittest.TestCase):
         self.assertIsNone(self._charged("j1", started_at=150.0, now=500.0))
         self.assertIs(False, self._charged("j2", started_at=450.0, now=500.0))
 
+    def test_a_watermark_that_is_not_a_finite_number_cannot_answer(self) -> None:
+        """Verify N1: a damaged watermark is "cannot say", never an exception."""
+        assert runtime_io.sqlite_module is not None
+        for value in ("not a number", float("inf"), None):
+            with self.subTest(watermark=value):
+                db = runtime_io.sqlite_module.connect(reading_policy.store_path(self.config))
+                if value is None:
+                    db.execute("UPDATE spend_jobs_since SET at = 'NaN' WHERE id = 1")
+                else:
+                    db.execute("UPDATE spend_jobs_since SET at = ? WHERE id = 1", (value,))
+                db.commit()
+                db.close()
+                self.assertIsNone(self._charged("j2", started_at=1_000.0, now=2_000.0))
+
     def test_a_reservation_records_its_job_and_no_other(self) -> None:
         reading_policy.reserve(self.config, now=100.0, job_id="j1")
         self.assertIs(True, self._charged("j1"))
