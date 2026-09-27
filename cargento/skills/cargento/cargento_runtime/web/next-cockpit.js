@@ -1578,6 +1578,7 @@ function nextCockpitWorkEntries(session, semantic){
         by: String(fact.by || ""),
         summary: String(fact.summary || "No summary published"),
         at: fact.at,
+        resultAt: fact.result_at,
         actorClaim: String(fact.actor_claim || ""),
         modelDerived: String(fact.actor_claim || "").startsWith("model-derived"),
         subject: String(fact.subject || ""),
@@ -2127,14 +2128,23 @@ function nextReadingDemonstratesWork(entry){
   return Boolean(entry && entry.work === true);
 }
 
+/* `reading.evidence_at`: a check's result time where one was recorded, and
+   its call time otherwise. It decides the window only; the numbering and every
+   change comparison keep the call time (owner, DRC-4702). */
+function nextReadingEvidenceAt(entry){
+  const resultAt = nextNumber(entry && entry.resultAt);
+  return resultAt != null && resultAt > 0 ? resultAt : nextNumber(entry && entry.at);
+}
+
 /* `reading.check_supports`, spelt for the entries the page holds: a cited
-   tool report carries a verdict only as a check run in the window, failed for
-   a departure, passed and not before the last change for a consistent. A
-   written path shows a write and no result, so it carries neither. */
+   tool report carries a verdict only as a check whose result arrived in the
+   window, failed for a departure, passed and not before the last change for a
+   consistent. A written path shows a write and no result, so it carries
+   neither. A test holds this and the producer's rule to one table. */
 function nextReadingCheckSupports(entry, result, windowStart){
   if(String(entry && entry.type || "") !== "tool_report") return true;
   if(entry.subject !== "check") return false;
-  const at = nextNumber(entry.at);
+  const at = nextReadingEvidenceAt(entry);
   if(at == null || at <= 0 || (windowStart != null && at < windowStart)) return false;
   if(result === NEXT_READING_DEPARTURE) return entry.result === "failed";
   if(result === NEXT_READING_CONSISTENT) return entry.result === "passed" && !entry.beforeLastChange;

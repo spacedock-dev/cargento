@@ -2074,23 +2074,37 @@ def _reads_only(redirects: list[str], words: list[str]) -> bool:
     return " ".join(words[:2]) in _READ_ONLY_PAIRS or words[0] in _READ_ONLY_WORDS
 
 
+def _evidence_at(run: dict[str, Any]) -> float:
+    """A run's result time, or its call time where no result arrived."""
+    result_at = run.get("result_at")
+    return float(result_at if result_at is not None else run["at"])
+
+
 def _check_identity(directory: str, words: list[str]) -> str:
     """Item 4's "same check": the directory it ran in and its stripped segment,
     without redirects (review, 2026-09-24: the directory is part of it)."""
     return directory + "\0" + " ".join(word for word in words if not _REDIRECT_RE.match(word))
 
 
-def _tool_result_blocks(transcript: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
-    results: dict[str, dict[str, Any]] = {}
+class _Result(NamedTuple):
+    """A call's `tool_result` block, and the time of the record that holds it."""
+
+    block: dict[str, Any]
+    at: float | None
+
+
+def _tool_result_blocks(transcript: list[dict[str, Any]]) -> dict[str, _Result]:
+    results: dict[str, _Result] = {}
     for record in transcript:
         if record.get("type") != "user" or record.get("isSidechain") is True:
             continue
         content = records.message_dict(record).get("content")
+        at = _record_timestamp(record)
         for block in content if isinstance(content, list) else ():
             if isinstance(block, dict) and block.get("type") == "tool_result":
                 call_id = block.get("tool_use_id")
                 if isinstance(call_id, str) and call_id:
-                    results[call_id] = block
+                    results[call_id] = _Result(block, at)
     return results
 
 
@@ -2297,7 +2311,7 @@ class _ShellCall:
 class _ToolReportTally:
     """The full scan of one transcript's calls, and the entries chosen from it."""
 
-    def __init__(self, results: dict[str, dict[str, Any]]) -> None:
+    def __init__(self, results: dict[str, _Result]) -> None:
         self.results = results
         self.runs: dict[str, list[dict[str, Any]]] = {}
         self.writes: dict[str, dict[str, Any]] = {}
@@ -2334,8 +2348,8 @@ class _ToolReportTally:
     def _add_write(
         self, at: float, cwd: str, call_id: str, name: str, tool_input: dict[str, Any]
     ) -> None:
-        result = self.results.get(call_id)
-        if result is None or result.get("is_error") is True:
+        found = self.results.get(call_id)
+        if found is None or found.block.get("is_error") is True:
             # Not established as written (review, 2026-09-24): an attempt.
             self.scan["write_attempts"] += 1
             return
@@ -2356,7 +2370,8 @@ class _ToolReportTally:
         self.writes[path] = {"at": at, "record_id": call_id, "tool": tool}
 
     def _add_shell(self, at: float, cwd: str, call_id: str, tool_input: dict[str, Any]) -> None:
-        result = self.results.get(call_id)
+        found = self.results.get(call_id)
+        result = found.block if found is not None else None
         text = _tool_result_text(result) if result is not None else ""
         if result is not None and result.get("is_error") is True and not _EXITED_RE.match(text):
             # V3: the call never ran, so it is no run and supersedes nothing.
@@ -2385,10 +2400,15 @@ class _ToolReportTally:
         if foreground and not [i for i in call.checks if i in foreground]:
             self.scan["other_commands"] += 1
             self.scan["read_only_commands"] += not call.changes()
-        self._add_runs(call, call_id, result, text)
+        self._add_runs(call, call_id, result, text, found.at if found is not None else None)
 
     def _add_runs(
-        self, call: _ShellCall, call_id: str, result: dict[str, Any] | None, text: str
+        self,
+        call: _ShellCall,
+        call_id: str,
+        result: dict[str, Any] | None,
+        text: str,
+        result_at: float | None,
     ) -> None:
         flag = result.get("is_error") if result is not None else None
         # Redaction runs over the whole read window before the tail is cut (item 5).
@@ -2429,6 +2449,9 @@ class _ToolReportTally:
                     "result": outcome,
                     "result_source": source,
                     "recorded": result is not None,
+                    # When the result arrived (DRC-4702): it decides the window
+                    # and which run is latest, never a change comparison.
+                    "result_at": result_at if result is not None and not background else None,
                     "background": background,
                     # Held for the press only (`claude_check_tails`); never
                     # copied onto the published entry.
@@ -2472,8 +2495,18 @@ class _ToolReportTally:
         from_tail = _tail_result(tail) if attributable else None
         return from_tail if from_tail is not None else ("not-recorded", "")
 
+    @staticmethod
+    def _latest(history: list[dict[str, Any]]) -> int:
+        """The index of the run whose evidence is newest: its result's time, or
+        its call's with none, and call order between equals (DRC-4702)."""
+        return max(
+            range(len(history)),
+            key=lambda i: (_evidence_at(history[i]), i),
+        )
+
     def _check_entry(self, history: list[dict[str, Any]]) -> dict[str, Any]:
-        latest = history[-1]
+        index = self._latest(history)
+        latest = history[index]
         if latest["background"]:
             source = "Claude Bash call run in the background, no result recorded"
         elif latest["recorded"]:
@@ -2487,7 +2520,9 @@ class _ToolReportTally:
             "record_id": latest["record_id"],
             "title": latest["title"],
             "result": latest["result"],
-            "earlier_failed": any(run["result"] == "failed" for run in history[:-1]),
+            "earlier_failed": any(
+                run["result"] == "failed" for i, run in enumerate(history) if i != index
+            ),
             "before_last_change": latest["result"] == "passed"
             and (
                 latest["fixes"]
@@ -2506,6 +2541,8 @@ class _ToolReportTally:
         }
         if latest["result_source"]:
             entry["result_source"] = latest["result_source"]
+        if latest["result_at"] is not None:
+            entry["result_at"] = latest["result_at"]
         return entry
 
     def entries(self, sid: str) -> list[dict[str, Any]]:
@@ -2545,7 +2582,7 @@ class _ToolReportTally:
 
     def tails(self) -> dict[str, str]:
         """Each check's latest foreground run's redacted output tail, by call id."""
-        latest = (history[-1] for history in self.runs.values())
+        latest = (history[self._latest(history)] for history in self.runs.values())
         return {
             run["record_id"]: run["tail"] for run in latest if not run["background"] and run["tail"]
         }
@@ -2562,7 +2599,7 @@ class _ToolReportTally:
         or any later call that ran and may change files. A change before the
         check, or a read-only command after it, does not count.
         """
-        latest = (history[-1] for history in self.runs.values())
+        latest = (history[self._latest(history)] for history in self.runs.values())
         return frozenset(
             (run["record_id"], run["title"]) for run in latest if self._changed_after(run)
         )
@@ -3592,6 +3629,7 @@ def _semantic_fact_from_event(
         "earlier_failed",
         "before_last_change",
         "changed_after",
+        "result_at",
     ):
         if source_event.get(key) not in (None, ""):
             fact[key] = source_event[key]

@@ -7621,6 +7621,102 @@ console.log(JSON.stringify({
 
 
 @unittest.skipUnless(shutil.which("node"), "node not available")
+class ACheckWhoseResultLandedAfterTheWordsIsReadOnThePageTest(NextPageJsHarness):
+    """DRC-4702 on the page: result time decides the window, as the producer's
+    `reading.check_supports` decides it, and the two are tied by one table."""
+
+    FIXTURE = NextCockpitCompositionTest.FIXTURE
+    ENTRIES = WhatTheBoardShowsOfAReadingThatCitedACheck.ENTRIES
+    # (call time, result time, result, aged, verdict, window start): each row
+    # is read by both rules. `changed_after` is left out on purpose: the page's
+    # copy does not read it yet, a divergence filed on its own.
+    CASES: ClassVar[list[tuple[Any, Any, str, bool, str, Any]]] = [
+        (40, 60, "failed", False, "departure", 50),
+        (40, 50, "failed", False, "departure", 50),
+        (40, 45, "failed", False, "departure", 50),
+        (40, None, "failed", False, "departure", 50),
+        (40, 0, "failed", False, "departure", 50),
+        (60, None, "failed", False, "departure", 50),
+        (40, 60, "passed", False, "consistent with the evidence read", 50),
+        (40, 60, "passed", True, "consistent with the evidence read", 50),
+        (40, 60, "failed", False, "consistent with the evidence read", 50),
+        (0, 60, "failed", False, "departure", 50),
+        (None, None, "failed", False, "departure", 50),
+        (40, 45, "failed", False, "departure", None),
+    ]
+
+    def run_fixture(self, checks: str) -> object:
+        return self._run_page_js(
+            "await __settle();\nawait __settle();\n" + checks,
+            storage_prelude({}) + self.FIXTURE,
+        )
+
+    def test_a_check_whose_result_landed_inside_the_window_carries_its_verdict(self) -> None:
+        out = self.run_fixture(
+            self.ENTRIES
+            + """
+const straddling = check("c1", "failed", {at:40, resultAt:60});
+const early = check("c1", "failed", {at:40, resultAt:45});
+console.log(JSON.stringify({
+  straddling: output("departure", ["c1"], [straddling]).result,
+  early: output("departure", ["c1"], [early]).result,
+  mapped: nextCockpitWorkEntries({harness:"claude", sid:"s1"}, {facts:[
+    {fact_id:"c1", type:"tool_report", subject:"check", at:40, result_at:60,
+     source_session:{harness:"claude", sid:"s1"}},
+    {fact_id:"c2", type:"tool_report", subject:"check", at:41,
+     source_session:{harness:"claude", sid:"s1"}}]}).map(e => e.resultAt),
+}));
+"""
+        )
+        assert isinstance(out, dict)
+        self.assertEqual("departure", out["straddling"])
+        self.assertEqual("not verifiable from available evidence", out["early"])
+        self.assertEqual([60, None], out["mapped"])
+
+    def test_the_page_and_the_producer_place_a_check_in_the_window_alike(self) -> None:
+        from cargento_runtime import reading  # noqa: PLC0415 - kept beside the one test using it
+
+        page_cases = [
+            {
+                "entry": {
+                    "type": "tool_report",
+                    "subject": "check",
+                    "result": result,
+                    "at": at,
+                    "resultAt": result_at,
+                    "beforeLastChange": aged,
+                },
+                "verdict": verdict,
+                "window": window,
+            }
+            for at, result_at, result, aged, verdict, window in self.CASES
+        ]
+        out = self.run_fixture(
+            f"const cases = {json.dumps(page_cases)};\n"
+            "console.log(JSON.stringify(cases.map(c =>\n"
+            "  nextReadingCheckSupports(c.entry, c.verdict, c.window))));\n"
+        )
+        server = [
+            reading.check_supports(
+                {
+                    "type": reading.TOOL_REPORT_TYPE,
+                    "subject": "check",
+                    "result": result,
+                    "at": at,
+                    "result_at": result_at,
+                    "stale": aged,
+                },
+                verdict,
+                0.0 if window is None else window,
+            )
+            for at, result_at, result, aged, verdict, window in self.CASES
+        ]
+        self.assertEqual(server, out)
+        self.assertIn(True, server)
+        self.assertIn(False, server)
+
+
+@unittest.skipUnless(shutil.which("node"), "node not available")
 class CockpitReadingShapeTest(NextPageJsHarness):
     """DEC-17's seven rules, one case each (DRC-4511 AC4).
 

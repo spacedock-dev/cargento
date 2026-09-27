@@ -1421,3 +1421,61 @@ class AWriteAtTheSameTimeAsAPassAgesIt(ClaudeChecksTestCase):
                 found = {e["title"]: e for e in self.checks()}
                 self.assertEqual("passed", found["pytest"]["result"])
                 self.assertIs(False, found["pytest"]["before_last_change"])
+
+
+class ACheckCarriesTheTimeItsResultArrived(ClaudeChecksTestCase):
+    """DRC-4702: a check's result can land after the words it is read against,
+    so the published entry carries when its result arrived beside when its call
+    began. Each record in these fixtures is five seconds after the last."""
+
+    def test_a_recorded_run_publishes_the_time_of_the_record_that_holds_its_result(self) -> None:
+        self.session.bash("pytest", "5 passed", is_error=False)
+        check = self.only_check()
+        self.assertEqual(check["at"] + 5, check["result_at"])
+        fact = project_context._semantic_fact_from_event(check, check["kind"], "tool_report", "")
+        self.assertEqual(check["result_at"], fact["result_at"])
+
+    def test_the_fact_id_does_not_move_when_the_result_arrives(self) -> None:
+        self.session.bash("pytest", "5 passed", is_error=False)
+        check = self.only_check()
+        unrecorded = {k: v for k, v in check.items() if k != "result_at"}
+        self.assertEqual(
+            project_context._semantic_fact_from_event(unrecorded, "check_run", "tool_report", "")[
+                "fact_id"
+            ],
+            project_context._semantic_fact_from_event(check, "check_run", "tool_report", "")[
+                "fact_id"
+            ],
+        )
+
+    def test_a_run_with_no_result_or_in_the_background_has_no_result_time(self) -> None:
+        self.session.call("Bash", {"command": "pytest"})
+        self.assertNotIn("result_at", self.only_check())
+        self.setUp()
+        self.session.bash("pytest", "5 passed", is_error=False)
+        self.session.bash("pytest &", "", is_error=False)
+        self.assertNotIn("result_at", self.only_check())
+
+    def test_the_run_whose_result_arrived_last_is_the_latest(self) -> None:
+        first = self.session.call("Bash", {"command": "pytest"})
+        second = self.session.call("Bash", {"command": "pytest"})
+        self.session.result(second, "5 passed", is_error=False)
+        self.session.result(first, "Exit code 1\n1 failed", is_error=True)
+        check = self.only_check()
+        self.assertEqual("failed", check["result"])
+        self.assertEqual(first, check["record_id"])
+        self.assertIs(False, check["earlier_failed"])
+
+    def test_a_result_after_a_frozen_moment_leaves_no_result_time(self) -> None:
+        self.session.bash("pytest", "5 passed", is_error=False)  # call 10 s, result 15 s
+        self.session.save(self.path)
+        until = (START + dt.timedelta(seconds=12)).timestamp()
+        facts, _press = project_context.frozen_claude_checks(
+            self.config, str(self.path), SID, until=until
+        )
+        self.assertNotIn("result_at", facts[0])
+        until = (START + dt.timedelta(seconds=16)).timestamp()
+        facts, _press = project_context.frozen_claude_checks(
+            self.config, str(self.path), SID, until=until
+        )
+        self.assertEqual(START.timestamp() + 15, facts[0]["result_at"])

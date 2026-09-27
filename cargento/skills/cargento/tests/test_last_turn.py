@@ -74,8 +74,8 @@ def _message(fact_id: str, at: Any, **over: Any) -> dict[str, Any]:
     return row
 
 
-def _check(at: float, result: str = "failed") -> dict[str, Any]:
-    return {
+def _check(at: float, result: str = "failed", **over: Any) -> dict[str, Any]:
+    return over | {
         "fact_id": f"check-{int(at)}",
         "type": "tool_report",
         "subject": "check",
@@ -317,6 +317,14 @@ class YourPressOnAWaitingSessionReadsItsLastTurnTest(unittest.TestCase):
         row = assessment["criteria"]["line_1"]
         self.assertEqual(reading.RESULT_UNVERIFIABLE, row["result"])
         self.assertEqual(reading.WHY_CHECK_DOES_NOT_SHOW_IT, row["why"])
+
+    def test_a_check_whose_result_arrived_after_your_message_supports_its_verdict(self) -> None:
+        # DRC-4702: the call began before the words and its result landed after them.
+        straddling = _check(PROMPT - 60, result_at=PROMPT + 30)
+        assessment, _why, _spent = self.produce([straddling, _message("m1", PROMPT)], cites=(1,))
+        row = assessment["criteria"]["line_1"]
+        self.assertEqual(reading.RESULT_DEPARTURE, row["result"])
+        self.assertEqual((f"check-{int(PROMPT - 60)}",), row["cites"])
 
     def test_a_revision_without_a_window_start_still_reads_work_from_its_save(self) -> None:
         legacy = {
@@ -835,3 +843,36 @@ console.log(JSON.stringify({html, legacy}));
 
 if __name__ == "__main__":  # pragma: no cover
     unittest.main()
+
+
+class ACheckIsInsideTheWindowWhenItsResultIsTest(unittest.TestCase):
+    """DRC-4702, owner 2026-09-27: result time decides the window; call time
+    stays for every change comparison and for numbering."""
+
+    def entry(self, at: float, **over: Any) -> dict[str, Any]:
+        base = {"type": reading.TOOL_REPORT_TYPE, "subject": "check", "result": "failed", "at": at}
+        return base | over
+
+    def test_a_result_that_landed_inside_the_window_admits_the_check(self) -> None:
+        entry = self.entry(100, result_at=160)
+        self.assertTrue(reading.check_supports(entry, reading.RESULT_DEPARTURE, 150))
+        self.assertTrue(reading.check_supports(entry, reading.RESULT_DEPARTURE, 160))
+        self.assertFalse(reading.check_supports(entry, reading.RESULT_DEPARTURE, 161))
+
+    def test_a_check_with_no_result_time_is_placed_by_its_call(self) -> None:
+        for result_at in (None, 0, -1, "160", True):
+            with self.subTest(result_at=result_at):
+                entry = self.entry(100, result_at=result_at)
+                self.assertFalse(reading.check_supports(entry, reading.RESULT_DEPARTURE, 150))
+                self.assertTrue(reading.check_supports(entry, reading.RESULT_DEPARTURE, 100))
+
+    def test_the_ledger_carries_the_result_time_of_a_check(self) -> None:
+        ledger = reading.build_ledger(
+            [_check(PROMPT - 60, result_at=PROMPT + 30), _check(PROMPT + 60)],
+            "claude",
+            "s1",
+            tool_output={},
+        )
+        self.assertEqual([PROMPT - 60, PROMPT + 60], [row["at"] for row in ledger])
+        self.assertEqual(PROMPT + 30, ledger[0].get("result_at"))
+        self.assertNotIn("result_at", ledger[1])
