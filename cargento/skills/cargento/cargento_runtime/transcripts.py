@@ -1315,13 +1315,26 @@ ANTIGRAVITY_TRANSCRIPT: Final = (".system_generated", "logs", "transcript.jsonl"
 
 def antigravity_transcript(root: str, sid: str) -> str | None:
     """The conversation's brain transcript under the Antigravity root, a regular
-    file and not a link, or None."""
+    file reached through no link below `brain/`, or None.
+
+    Every component from `brain/<sid>` down is checked, not just the file: a
+    linked conversation or `logs/` directory would otherwise hand the reader a
+    file anywhere on disk. A link above `brain/` is the person's own layout and
+    is followed. Readers open the path with `follow_links=False`, which closes
+    the swap of the file itself after this check; a swap of a parent directory
+    in between is not closable without an `openat` walk, and is the same class
+    `spacedock.read_frontmatter` records.
+    """
     if not sid or sid.startswith(".") or "/" in sid or os.sep in sid:
         return None
-    path = os.path.join(root, "brain", sid, *ANTIGRAVITY_TRANSCRIPT)
+    brain = os.path.join(root, "brain")
+    path = os.path.join(brain, sid, *ANTIGRAVITY_TRANSCRIPT)
     try:
-        is_file = not os.path.islink(path) and os.path.isfile(path)
-    except OSError:
+        unlinked = os.path.realpath(path) == os.path.join(
+            os.path.realpath(brain), sid, *ANTIGRAVITY_TRANSCRIPT
+        )
+        is_file = unlinked and os.path.isfile(path)
+    except (OSError, ValueError):
         return None
     return path if is_file else None
 
@@ -1363,7 +1376,7 @@ def antigravity_direction(record: Any) -> AntigravityDirection | None:
 def antigravity_newest_direction(config: RuntimeConfig, path: str) -> str:
     """The newest direction in the bounded tail, or ""."""
     newest: tuple[float, str] | None = None
-    for raw in runtime_io.read_tail(config, path):
+    for raw in runtime_io.read_tail(config, path, follow_links=False):
         if not raw.lstrip().startswith("{"):
             continue
         try:

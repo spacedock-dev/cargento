@@ -10,7 +10,7 @@ import os
 import posixpath
 import secrets
 import stat
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, BinaryIO
 from urllib.parse import quote
 
 from . import state as runtime_state
@@ -32,11 +32,24 @@ else:
     sqlite_module = _sqlite_module
 
 
-def read_tail(config: RuntimeConfig, path: str, *, end: int | None = None) -> list[str]:
+def _open_binary(path: str, *, follow_links: bool) -> BinaryIO:
+    """``open(path, "rb")``, or with ``O_NOFOLLOW`` where the platform has it,
+    so a final component swapped for a link after a caller's check raises
+    rather than being followed. Windows has no ``O_NOFOLLOW``, and there the
+    caller's own link check is the whole refusal."""
+    if follow_links:
+        return open(path, "rb")
+    flags = os.O_RDONLY | getattr(os, "O_BINARY", 0) | getattr(os, "O_NOFOLLOW", 0)
+    return os.fdopen(os.open(path, flags), "rb")
+
+
+def read_tail(
+    config: RuntimeConfig, path: str, *, end: int | None = None, follow_links: bool = True
+) -> list[str]:
     """The last `tail_bytes` of a file as lines, or of its first `end` bytes when given."""
     try:
-        size = os.path.getsize(path) if end is None else end
-        with open(path, "rb") as source:
+        with _open_binary(path, follow_links=follow_links) as source:
+            size = os.fstat(source.fileno()).st_size if end is None else end
             truncated = False
             if size > config.tail_bytes:
                 source.seek(size - config.tail_bytes - 1)
@@ -96,10 +109,11 @@ def reverse_lines(
     *,
     max_bytes: int | None = None,
     contains: bytes | None = None,
+    follow_links: bool = True,
 ) -> Iterator[bytes]:
     """Yield complete lines from ``path`` newest-first, reading fixed chunks."""
     try:
-        with open(path, "rb") as source:
+        with _open_binary(path, follow_links=follow_links) as source:
             size = os.fstat(source.fileno()).st_size
             stop = size if end_pos is None else min(end_pos, size)
             floor = 0 if max_bytes is None else max(0, stop - max_bytes)

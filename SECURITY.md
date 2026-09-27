@@ -1636,16 +1636,23 @@ DRC-4689 reads one more file: Antigravity's
 `USER_EXPLICIT` are read, and of those only `content`, `created_at`, `step_index` and
 `truncated_fields` (`transcripts.antigravity_direction`). The planner's responses and thinking,
 tool calls, command records and their exit codes, system messages and conversation history are
-never parsed into anything. The file is read by the bounded tail read every transcript gets,
-refused when it is a link, and the conversation id is refused when it could climb out of
-`brain/`.
+never parsed into anything. The file is read by the bounded tail read every transcript gets. It
+is refused when it, `brain/<conversation-id>`, `.system_generated` or `logs` is a link: its real
+path must be exactly that path under the real `brain/` directory, so a link above `brain/`, such as
+a linked `~/.gemini`, is followed and one below it is not. The conversation id is refused when it
+could climb out of `brain/`. The reads then open the file without following a link where the
+platform has `O_NOFOLLOW`, so a file swapped for a link after the check is not followed. Windows has
+no `O_NOFOLLOW`, and a parent directory swapped between the check and the open is not caught on any
+platform; both need write access to the owner's `~/.gemini` already.
 
 What is read is the words the person typed, the class every other harness's user messages are
 already in. They become steer facts in the observed record, under the same line bound and
 redaction as those, and the newest one is the row's title and last prompt when the CLI log does
-not carry one, which it does not in 1.2.11. After a reader allows a reading, those directions may
-be sent to the reading model with the rest of the record, exactly as a Claude Code, Codex or Pi
-session's user messages are. The file is kept apart from `observer.resolve_transcript` on purpose:
+not carry one, which it does not in 1.2.11. They are also kept in `semantic-work-history.json`,
+cut to 112 characters, like every harness's directives, and `--forget` does not clear that store.
+After a reader allows a reading, those directions may be sent to the reading model with the rest of
+the record, and the opt-in unasked lane, when switched on, may send them without a press, exactly
+as it sends a Claude Code, Codex or Pi session's user messages. The file is kept apart from `observer.resolve_transcript` on purpose:
 every caller of that one reads work or tool output (the observer, the gate and Spacedock boot
 scans, the working-directory read, workflow discovery), and none of them is handed this path, so
 "Cargento can't read work from this harness" stays true. A direction the harness truncated is
@@ -2134,10 +2141,13 @@ The operator-cockpit prototype also reads dispatch evidence:
 - `project_context._tool_call_events` and `project_context._tool_support` read Pi `bash` and
   `subagent` arguments for dispatch events, assignment summaries, and counts. The first reads
   through `project_context._call_arguments`, which the Pi check reader shares, so DRC-4690's
-  results add no expression. That reader keeps a `bash` call's runner and result under DEC-23's
-  rules and publishes a title Cargento writes ("2 validation checks failed"), never the command or
-  its output. It reads the last 180 characters of the result text, redacted first, and the error
-  flag, and nothing of that tail reaches a prompt.
+  results add no expression. That reader is two named reads. `project_context._pi_bash_check_runs`
+  parses a `bash` command to find the runner, and keeps the runner and result under DEC-23's rules,
+  publishing a title Cargento writes ("2 validation checks failed"), never the command or its
+  output. It reads the last 180 characters of the result text, redacted first, and the error flag,
+  and nothing of that tail reaches a prompt. `project_context._pi_changes` reads the name of every
+  Pi tool call and parses every `bash` command, check or not, against DEC-23's read-only list; what
+  it keeps is only whether a change followed a check.
 - `project_context.codex_dispatch_events` reads `spawn_agent` arguments to join a task name to
   a readable dispatch artifact. Its backward scan is capped at 32 MiB by default; project event
   output is capped at 100 rows and semantic lines at 112 characters.

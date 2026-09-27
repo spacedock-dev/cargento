@@ -421,11 +421,14 @@ WITHHELD = {
         "has been doing and no reading can rest on it."
     ),
     # Its own sentence (DRC-4689): the record is not empty and not unread by
-    # accident. Cargento has no reader for this harness's record at all, and
+    # accident. Cargento has no observed-record reader for this harness, and
     # saying "no entry names this session" claimed a read that never happened.
+    # Its collector does read prompts and titles for the board, so the sentence
+    # says so rather than that nothing is read (owner, 2026-09-27).
     WITHHELD_NO_RECORD_READER: (
-        "Cargento does not read this harness's session record, so there is nothing to read "
-        "your words against. No reading was made and nothing was spent."
+        "Cargento reads only this harness's prompts and titles, not the session's work, so "
+        "there is nothing to read your words against. No reading was made and nothing was "
+        "spent."
     ),
     # One per provider, because the page named that provider before the
     # press and a missing-CLI sentence naming the other would contradict it.
@@ -1781,7 +1784,7 @@ def check_supports(entry: Mapping[str, Any], result: str, window_start: float) -
     """
     is_report = str(entry.get("type") or "") == TOOL_REPORT_TYPE
     if not is_report and entry.get("subject") != CHECK_SUBJECT:
-        return True
+        return not _subjectless_pi_check(entry)
     if entry.get("subject") != CHECK_SUBJECT:
         return False
     at = evidence_at(entry) or 0.0
@@ -1796,6 +1799,21 @@ def check_supports(entry: Mapping[str, Any], result: str, window_start: float) -
             and entry.get("changed_after") is not True
         )
     return False
+
+
+# `semantic_history.PI_CHECK_SOURCE_PREFIX`, spelled again rather than imported:
+# this module does not depend on the store, and the import graph is reviewed.
+_PI_CHECK_SOURCE_PREFIX = "Pi bash tool call"
+
+
+def _subjectless_pi_check(entry: Mapping[str, Any]) -> bool:
+    """A Pi bash result with no `subject`: a row an older build left in the
+    semantic history store, which no longer takes one. It cannot be superseded
+    or aged, and the build before DRC-4690 wrote one for `echo '5 passed'`, so
+    it carries no verdict at all."""
+    return str(entry.get("type") or "") == "result" and str(entry.get("source") or "").startswith(
+        _PI_CHECK_SOURCE_PREFIX
+    )
 
 
 def _changed_after_pass(entry: Mapping[str, Any], window_start: float) -> bool:
@@ -2098,7 +2116,7 @@ def record_withheld(context: Mapping[str, Any], harness: str, sid: str) -> str:
     """Why this session's observed record cannot be read against, or "".
 
     From `project_context.collect`'s `sources.work.unavailable`: a harness
-    with no record reader, or a reader whose transcript was not found. The
+    with no observed-record reader, or a reader whose transcript was not found. The
     first is `WITHHELD_NO_RECORD_READER`, the second `WITHHELD_RECORD_UNREAD`;
     neither is `WITHHELD_LEDGER_EMPTY`, which says the record was read.
     """

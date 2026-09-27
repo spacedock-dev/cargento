@@ -1813,8 +1813,10 @@ the analysis's recommendation.
   checks are read too.
 - On Antigravity the limit stays true because only the person's typed directions are read, never
   its work (owner, 2026-09-27, DRC-4689). Those directions give a pressed reading something to read
-  against, and give item 2's goal draft a first prompt there. On a harness with no record reader,
-  the press withholds with `no-record-reader` rather than saying the record is empty. The page's
+  against. They do not give item 2's goal draft a first prompt there: nothing produces
+  `first_prompt` for Antigravity, and prompt adoption is Claude Code and Codex only. On a harness
+  with no observed-record reader, the press withholds with `no-record-reader` rather than saying
+  the record is empty. The page's
   record column still prints "No entry in the observed record names this session." for those
   harnesses, because it reads `omitted` and not `sources.work.unavailable`; that is a web
   follow-up.
@@ -2005,9 +2007,13 @@ decisions below follow that ruling and the DRC-4702 decisions of the same date.
   stored before this, so a line resting only on it reads "uncited" on both sides and falls to "not
   verifiable". No new reason token was needed.
 - Two more reasons come before those, because a record that was never read is not an empty one
-  (DRC-4689). `no-record-reader` is for a harness Cargento reads no record from at all: Copilot,
-  Cursor, OpenCode, Goose, Droid and Gemini CLI. `record-unread` is for a harness that has a reader
-  and whose transcript was not found. Both withhold before the ledger and spend nothing.
+  (DRC-4689). `no-record-reader` is for a harness Cargento has no observed-record reader for:
+  Copilot, Cursor, OpenCode, Goose, Droid and Gemini CLI. Their collectors still read prompts and
+  titles for the board, so the sentence says that and no more (owner, 2026-09-27): "Cargento
+  reads only this harness's prompts and titles, not the session's work, so there is nothing to
+  read your words against. No reading was made and nothing was spent." `record-unread` is for a
+  harness that has a reader and whose transcript was not found. Both withhold before the ledger
+  and spend nothing.
   Antigravity has a reader for the person's typed directions alone, so its reading runs on those.
 - Three reasons for reading nothing, each said only where it is true (owner, 2026-09-27).
   `ledger-empty` is for a record with no entry naming the session. `window-empty` is for a record

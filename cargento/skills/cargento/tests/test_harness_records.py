@@ -14,7 +14,9 @@ reader gets its own withheld sentence rather than "no entry names this session".
 
 from __future__ import annotations
 
+import calendar
 import json
+import os
 import tempfile
 import time
 import unittest
@@ -23,7 +25,15 @@ from types import SimpleNamespace
 from typing import Any
 from unittest import mock
 
-from cargento_runtime import http_api, levels, observer, project_context, reading
+from cargento_runtime import (
+    http_api,
+    levels,
+    observer,
+    project_context,
+    reading,
+    semantic_history,
+    transcripts,
+)
 from cargento_runtime.collectors import antigravity
 from cargento_runtime.config import build_runtime_config
 from cargento_runtime.state import build_runtime_state
@@ -302,6 +312,376 @@ class APiCheckReachesTheLevelsAndTheReadingRules(PiRecord):
         self.assertFalse(reading.check_supports(entry, reading.RESULT_CONSISTENT, AT_EPOCH))
 
 
+class PisOwnExitLineOutranksAClearFlag(PiRecord):
+    """A `tool_result` extension may clear `isError` on a call that threw, leaving Pi's own
+    "Command exited with code N" line in place (0.87.1 `afterToolCall`). The capture shows the
+    two agreeing, so a record where they disagree is not one it vouches for: never a pass."""
+
+    def test_a_clear_flag_beside_the_exit_line_is_not_recorded(self) -> None:
+        self.bash("pytest -q", is_error=False, text=exited("E   assert 1 == 2", 1))
+        self.assertEqual("not-recorded", self.one()["result"])
+
+    def test_a_pass_summary_beside_the_exit_line_is_not_a_pass(self) -> None:
+        self.bash("pytest -q", is_error=False, text=exited("5 passed in 0.1s", 1))
+        got = self.one()
+        self.assertEqual("not-recorded", got["result"])
+        self.assertNotIn("passed", got["title"])
+
+    def test_the_same_holds_through_rtk(self) -> None:
+        self.bash("rtk pytest -q", is_error=False, text=exited("", 1))
+        self.assertEqual("not-recorded", self.one()["result"])
+
+    def test_an_absent_flag_beside_the_exit_line_is_not_a_pass(self) -> None:
+        self.bash("pytest -q", is_error=False, text=exited("5 passed", 1))
+        del self.records[-1]["message"]["isError"]
+        self.assertEqual("not-recorded", self.one()["result"])
+
+    def test_a_failure_summary_beside_the_exit_line_still_reads_failed(self) -> None:
+        self.bash("pytest -q", is_error=False, text=exited("1 failed, 4 passed", 1))
+        self.assertEqual("failed", self.one()["result"])
+
+
+class AnyPiToolNotKnownToBeReadOnlyAgesAPass(PiRecord):
+    def test_a_later_powershell_call_ages_a_pass(self) -> None:
+        self.bash("pytest -q", is_error=False, text="4 passed in 1s")
+        self.tool("powershell", {"command": "Set-Content a.py 'b'"})
+        got = self.one()
+        self.assertIs(True, got["changed_after"])
+        self.assertIs(True, got["before_last_change"])
+
+    def test_a_later_unknown_tool_ages_a_pass(self) -> None:
+        self.bash("pytest -q", is_error=False, text="4 passed in 1s")
+        self.tool("some_extension_tool", {"target": "a.py"})
+        self.assertIs(True, self.one()["changed_after"])
+
+    def test_the_read_only_tools_leave_a_pass_current(self) -> None:
+        self.bash("pytest -q", is_error=False, text="4 passed in 1s")
+        for name in ("read", "grep", "find", "ls"):
+            self.tool(name, {"path": "a.py"})
+        got = self.one()
+        self.assertIs(False, got["changed_after"])
+        self.assertIs(False, got["before_last_change"])
+
+
+def _epoch(stamp: str) -> float:
+    return float(calendar.timegm(time.strptime(stamp, "%Y-%m-%dT%H:%M:%SZ")))
+
+
+class EachPiReadingRuleIsPinned(PiRecord):
+    """One case per rule the mutation run found no test for (gF review, correctness)."""
+
+    def test_a_timed_out_run_whose_tail_says_passed_is_not_a_pass(self) -> None:
+        self.bash("pytest -q", is_error=True, text="5 passed\n\nCommand timed out after 9 seconds")
+        self.assertEqual("not-recorded", self.one()["result"])
+
+    def test_a_check_run_in_the_background_is_not_read(self) -> None:
+        self.bash("pytest -q &", is_error=False, text="5 passed in 0.1s")
+        self.assertEqual("not-recorded", self.one()["result"])
+
+    def test_a_check_after_or_is_not_read(self) -> None:
+        self.bash("false || pytest -q", is_error=False, text="5 passed in 0.1s")
+        self.assertEqual("not-recorded", self.one()["result"])
+
+    def test_the_latest_run_is_the_one_whose_result_came_last(self) -> None:
+        # The first call's pass lands after the second call's failure.
+        self.records += [
+            _call("c1", "bash", {"command": "pytest -q"}, "2026-08-24T20:01:00Z", "a1"),
+            _call("c2", "bash", {"command": "pytest -q"}, "2026-08-24T20:02:00Z", "a2"),
+            _result("c2", is_error=True, text=exited("1 failed", 1), at="2026-08-24T20:02:05Z"),
+            _result("c1", is_error=False, text="4 passed", at="2026-08-24T20:03:00Z"),
+        ]
+        got = self.one()
+        self.assertEqual("passed", got["result"])
+        self.assertIs(True, got["earlier_failed"])
+
+    def test_a_change_later_in_the_same_call_marks_the_pass_changed_after_alone(self) -> None:
+        self.bash("pytest -q && sed -i s/a/b/ a.py", is_error=False, text="5 passed in 0.1s")
+        got = self.one()
+        self.assertEqual("passed", got["result"])
+        self.assertIs(True, got["changed_after"])
+        self.assertIs(False, got["before_last_change"])
+
+    def test_a_fixer_that_is_the_check_ages_its_own_pass_and_nothing_follows_it(self) -> None:
+        self.bash("ruff check --fix .", is_error=False, text="All checks passed!")
+        got = self.one()
+        self.assertEqual("passed", got["result"])
+        self.assertIs(True, got["before_last_change"])
+        self.assertIs(False, got["changed_after"])
+
+    def test_an_aborted_run_after_a_pass_is_the_latest_run(self) -> None:
+        self.bash("pytest -q", is_error=False, text="4 passed in 1s")
+        self.bash("pytest -q", is_error=True, text="..\n\nCommand aborted")
+        self.assertEqual("not-recorded", self.one()["result"])
+
+    def test_an_exit_line_the_program_printed_itself_is_not_pis(self) -> None:
+        self.bash("pytest -q", is_error=False, text="Command exited with code 1\n5 passed in 0.1s")
+        self.assertEqual("passed", self.one()["result"])
+
+    def test_the_result_time_is_kept(self) -> None:
+        self.bash("pytest -q", is_error=False, text="4 passed in 1s")
+        self.assertEqual(_epoch("2026-08-24T20:01:05Z"), self.one()["result_at"])
+
+    def test_a_check_before_since_is_left_out(self) -> None:
+        self.bash("pytest -q", is_error=False, text="4 passed in 1s")
+        self.checks()
+        events, _stats = project_context._work_evidence(
+            self.config, str(self.path), "pi", self.SID, since=_epoch("2026-08-24T20:30:00Z")
+        )
+        self.assertEqual([], [e for e in events if e.get("kind") == "outcome"])
+
+
+class APiCheckCarriesItsFieldsIntoTheLedger(PiRecord):
+    def _ledger(self) -> tuple[reading.LedgerEntry, ...]:
+        facts = []
+        for event in self.checks():
+            fact = project_context._semantic_fact_from_event(event, "outcome", "result", "")
+            fact["source_session"] = {"harness": "pi", "sid": self.SID}
+            facts.append(fact)
+        return reading.build_ledger(facts, "pi", self.SID)
+
+    def test_a_result_that_landed_inside_the_window_counts_though_its_call_began_before(
+        self,
+    ) -> None:
+        self.bash("pytest -q", is_error=False, text="4 passed in 1s")
+        (entry,) = self._ledger()
+        self.assertEqual(_epoch("2026-08-24T20:01:05Z"), entry["result_at"])
+        window_start = _epoch("2026-08-24T20:01:02Z")
+        self.assertTrue(reading.check_supports(entry, reading.RESULT_CONSISTENT, window_start))
+
+    def test_a_change_later_in_the_call_withholds_a_consistent(self) -> None:
+        self.bash("pytest -q && sed -i s/a/b/ a.py", is_error=False, text="5 passed in 0.1s")
+        (entry,) = self._ledger()
+        self.assertIs(True, entry["changed_after"])
+        self.assertFalse(reading.check_supports(entry, reading.RESULT_CONSISTENT, 0.0))
+
+    def test_a_pass_before_its_own_fix_withholds_a_consistent(self) -> None:
+        self.bash("ruff check --fix .", is_error=False, text="All checks passed!")
+        (entry,) = self._ledger()
+        self.assertIs(True, entry["stale"])
+        self.assertFalse(reading.check_supports(entry, reading.RESULT_CONSISTENT, 0.0))
+
+    def test_an_earlier_failure_is_carried(self) -> None:
+        self.bash("pytest -q", is_error=True, text=exited("1 failed in 1s", 1))
+        self.bash("pytest -q", is_error=False, text="4 passed in 1s")
+        (entry,) = self._ledger()
+        self.assertIs(True, entry["earlier_failed"])
+
+    def _failure_and_pass(self) -> tuple[tuple[reading.LedgerEntry, ...], int, int]:
+        self.bash("pytest -q", is_error=True, text=exited("1 failed in 1s", 1))
+        self.bash("ruff check .", is_error=False, text="All checks passed!")
+        ledger = self._ledger()
+        prompt, _selection = reading.build_prompt(ledger, goal="add a retry", max_bytes=1 << 20)
+        head = len(prompt[: prompt.index("[1] ")].encode())
+        row = max(len(line.encode()) + 1 for line in prompt.splitlines() if line[:1] == "[")
+        return ledger, head, row
+
+    def test_a_pi_failure_is_reserved_before_a_newer_pass(self) -> None:
+        ledger, head, row = self._failure_and_pass()
+        _prompt, selection = reading.build_prompt(
+            ledger, goal="add a retry", max_bytes=head + row + 2
+        )
+        self.assertEqual(["failed"], [entry["result"] for entry in selection.entries])
+
+    def test_a_pi_failure_the_bound_left_out_is_counted_unread(self) -> None:
+        ledger, head, _row = self._failure_and_pass()
+        _prompt, selection = reading.build_prompt(ledger, goal="add a retry", max_bytes=head + 1)
+        self.assertEqual((), selection.entries)
+        self.assertEqual(["failed"], [entry["result"] for entry in selection.unread_failures])
+
+
+def _iso(epoch: float) -> str:
+    return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(epoch))
+
+
+class APiCheckNeverComesBackFromSemanticHistory(unittest.TestCase):
+    """DEC-23 item 6 keeps check facts out of the semantic history store, as Claude Code's are:
+    the store keeps an allowlist of fact keys without `subject` or `result`, so a check read back
+    from it is a bare "5 validation checks passed" that no rule can age or supersede."""
+
+    SID = "pi-history"
+
+    def setUp(self) -> None:
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.root = Path(self.temp.name)
+        (self.root / "pi").mkdir()
+        self.config = build_runtime_config(
+            environ={"HOME": str(self.root), "CARGENTO_HOME": str(self.root / "state")},
+            platform_name="linux",
+            os_name="posix",
+            launcher_path=self.root / "server.py",
+            store_root_overrides={"pi.sessions": str(self.root / "pi")},
+        )
+        self.state = build_runtime_state(self.config, started=time.time())
+        self.now = time.time()
+        self.records: list[dict[str, Any]] = [
+            {
+                "type": "session",
+                "id": self.SID,
+                "cwd": str(self.root),
+                "timestamp": _iso(self.now - 600),
+            },
+            {
+                "type": "message",
+                "id": "u1",
+                "timestamp": _iso(self.now - 590),
+                "message": {
+                    "role": "user",
+                    "content": [{"type": "text", "text": "Add a retry to the webhook handler"}],
+                },
+            },
+        ]
+
+    def bash(self, call_id: str, command: str, *, ago: float, is_error: bool, text: str) -> None:
+        self.records.append(
+            _call(call_id, "bash", {"command": command}, _iso(self.now - ago), f"a-{call_id}")
+        )
+        self.records.append(
+            _result(call_id, is_error=is_error, text=text, at=_iso(self.now - ago + 5))
+        )
+
+    def collect(self) -> dict[str, Any]:
+        (self.root / "pi" / "s.jsonl").write_text(
+            "\n".join(json.dumps(record) for record in self.records) + "\n", encoding="utf-8"
+        )
+        row = {
+            "harness": "pi",
+            "sid": self.SID,
+            "project": "p",
+            "project_key": "p",
+            "active": True,
+            "state": "working",
+            "cwd": str(self.root),
+        }
+        return project_context.collect(
+            self.config,
+            self.state,
+            [row],
+            "p",
+            now=time.time(),
+            focus=("pi", self.SID),
+            model_consent=False,
+        )
+
+    def _no_entry_carries_a_consistent(self, facts: list[dict[str, Any]]) -> None:
+        ledger = reading.build_ledger(facts, "pi", self.SID)
+        revisions = [
+            {
+                "n": 1,
+                "goal": "Add a retry to the webhook handler",
+                "at": self.now - 595,
+                "line_1": "The webhook tests pass",
+                "lines": ["The webhook tests pass"],
+            }
+        ]
+        row = {"harness": "pi", "sid": self.SID, "state": "working", "ended_at": None}
+        for number in range(1, len(ledger) + 1):
+            reply = json.dumps(
+                {
+                    "goal": {"result": "unverifiable", "cites": [], "detail": ""},
+                    "line_1": {"result": "consistent", "cites": [number], "detail": ""},
+                }
+            )
+            got, _why, _spent = reading.produce(
+                self.config,
+                row,
+                revisions,
+                facts,
+                now=time.time(),
+                stamp_text="x",
+                model=lambda _prompt, _reply=reply, **_kw: (_reply, "ok"),
+                read_lines=True,
+            )
+            with self.subTest(cited=number):
+                assert got is not None
+                self.assertNotEqual(reading.RESULT_CONSISTENT, got["criteria"]["line_1"]["result"])
+
+    def test_a_pass_superseded_by_a_later_failure_carries_no_consistent(self) -> None:
+        self.bash("c1", "pytest -q", ago=500, is_error=False, text="5 passed in 0.1s")
+        self.collect()
+        self.bash("c2", "pytest -q", ago=300, is_error=True, text=exited("1 failed, 4 passed", 1))
+        facts = self.collect()["semantic"]["facts"]
+        results = [fact for fact in facts if fact.get("type") == "result"]
+        self.assertEqual(["failed"], [fact.get("result") for fact in results], results)
+        self._no_entry_carries_a_consistent(facts)
+
+    def test_the_store_is_never_handed_a_pi_check(self) -> None:
+        self.bash("c1", "pytest -q", ago=500, is_error=False, text="5 passed in 0.1s")
+        self.collect()
+        store = json.loads(
+            Path(semantic_history.store_path(self.config)).read_text(encoding="utf-8")
+        )
+        events = [event for project in store["projects"].values() for event in project["events"]]
+        self.assertTrue(events, "the collect wrote no history at all")
+        self.assertEqual([], [e for e in events if e["event_type"] == "result"])
+
+    def test_the_store_and_the_reader_name_one_source_prefix(self) -> None:
+        # Spelled in both modules so the reader need not import the store.
+        self.assertEqual(
+            semantic_history.PI_CHECK_SOURCE_PREFIX,
+            reading._PI_CHECK_SOURCE_PREFIX,
+        )
+        self.bash("c1", "pytest -q", ago=500, is_error=False, text="5 passed in 0.1s")
+        (check,) = [f for f in self.collect()["semantic"]["facts"] if f.get("subject") == "check"]
+        self.assertTrue(
+            check["evidence"]["source"].startswith(semantic_history.PI_CHECK_SOURCE_PREFIX)
+        )
+
+    def _old_row(self, fact_id: str, source: str, ago: float) -> dict[str, Any]:
+        fact = {
+            "fact_id": fact_id,
+            "at": self.now - ago,
+            "type": "result",
+            "source_kind": "outcome",
+            "summary": "5 validation checks passed",
+            "scope": "session",
+            "actor_claim": "session assistant/tool exchange",
+            "work_item_id": None,
+            "source_session": {"harness": "pi", "sid": self.SID},
+            "branch": {"harness": "pi", "sid": self.SID, "record_id": fact_id},
+            "evidence": {"source": source, "confidence": "exact"},
+        }
+        return {
+            "event_id": fact_id,
+            "event_type": "result",
+            "at": self.now - ago,
+            "source_identity": f"pi:{self.SID}",
+            "source_ref": fact_id,
+            "work_binding": None,
+            "summary": fact["summary"],
+            "fact": fact,
+            "work_item": None,
+        }
+
+    def test_a_pre_upgrade_row_supports_no_verdict(self) -> None:
+        # The first row is what the build before DRC-4690 wrote for `echo '5 passed'`; the
+        # second is a superseded pass this change's first build let into the store.
+        rows = [
+            self._old_row("fact:old-echo", "Pi bash tool call and paired successful result", 400),
+            self._old_row("fact:old-pass", "Pi bash tool call and paired result", 350),
+        ]
+        Path(self.config.state_home).mkdir(parents=True, exist_ok=True)
+        Path(semantic_history.store_path(self.config)).write_text(
+            json.dumps(
+                {
+                    "v": semantic_history.SCHEMA_VERSION,
+                    "projects": {"p": {"events": rows, "cursors": {}}},
+                }
+            ),
+            encoding="utf-8",
+        )
+        self.bash("c1", "echo '5 passed'", ago=300, is_error=False, text="5 passed")
+        facts = self.collect()["semantic"]["facts"]
+        ledger = reading.build_ledger(facts, "pi", self.SID)
+        old = [entry for entry in ledger if entry["id"] in {"fact:old-echo", "fact:old-pass"}]
+        self.assertEqual(2, len(old), ledger)
+        for entry in old:
+            for verdict in (reading.RESULT_CONSISTENT, reading.RESULT_DEPARTURE):
+                with self.subTest(entry=entry["id"], verdict=verdict):
+                    self.assertFalse(reading.check_supports(entry, verdict, 0.0))
+        self._no_entry_carries_a_consistent(facts)
+
+
 # --- Antigravity ------------------------------------------------------------------------------
 
 AGY_SID = "11111111-2222-3333-4444-555555555555"
@@ -467,6 +847,90 @@ class AntigravityDirectionsAreRead(AntigravityHome):
         )
 
 
+class AntigravityRefusesALinkAnywhereUnderBrain(AntigravityHome):
+    """SECURITY.md: the transcript is refused when it is a link, and the conversation id when it
+    could climb out of `brain/`. That holds for every component below `brain/`, not only the
+    file, and at the open as well as at the check."""
+
+    def setUp(self) -> None:
+        super().setUp()
+        probe = Path(self.temp.name) / "probe"
+        try:
+            probe.symlink_to(self.temp.name, target_is_directory=True)
+        except (OSError, NotImplementedError):
+            self.skipTest("symlink creation not permitted")
+        probe.unlink()
+
+    def _outside(self) -> Path:
+        elsewhere = Path(self.temp.name) / "elsewhere"
+        logs = elsewhere / ".system_generated" / "logs"
+        logs.mkdir(parents=True)
+        (logs / "transcript.jsonl").write_text(json.dumps(DIRECTION) + "\n", encoding="utf-8")
+        return elsewhere
+
+    def _resolved(self) -> str | None:
+        return observer.resolve_directions(self.config, self.state, "antigravity", AGY_SID)
+
+    def test_a_linked_transcript_file_is_refused(self) -> None:
+        outside = self._outside() / ".system_generated" / "logs" / "transcript.jsonl"
+        self.logs.mkdir(parents=True)
+        self.transcript.symlink_to(outside)
+        self.assertIsNone(self._resolved())
+
+    def test_a_linked_conversation_directory_is_refused(self) -> None:
+        (self.agy / "brain").mkdir()
+        (self.agy / "brain" / AGY_SID).symlink_to(self._outside(), target_is_directory=True)
+        self.assertIsNone(self._resolved())
+        (row,) = antigravity.collect(self.config, self.state, time.time(), 24, False)
+        self.assertIsNone(row["title"])
+
+    def test_a_linked_logs_directory_is_refused(self) -> None:
+        self.logs.parent.mkdir(parents=True)
+        self.logs.symlink_to(
+            self._outside() / ".system_generated" / "logs", target_is_directory=True
+        )
+        self.assertIsNone(self._resolved())
+
+    def test_a_linked_system_generated_directory_is_refused(self) -> None:
+        self.logs.parent.parent.mkdir(parents=True)
+        self.logs.parent.symlink_to(self._outside() / ".system_generated", target_is_directory=True)
+        self.assertIsNone(self._resolved())
+
+    def test_a_link_to_another_conversation_inside_brain_is_refused(self) -> None:
+        other = self.agy / "brain" / "other" / ".system_generated" / "logs"
+        other.mkdir(parents=True)
+        (other / "transcript.jsonl").write_text(json.dumps(DIRECTION) + "\n", encoding="utf-8")
+        (self.agy / "brain" / AGY_SID).symlink_to(
+            self.agy / "brain" / "other", target_is_directory=True
+        )
+        self.assertIsNone(self._resolved())
+
+    def test_a_store_reached_through_a_linked_home_is_still_read(self) -> None:
+        # A link above `brain/` is the person's own layout, such as a dotfiles checkout.
+        self.write(DIRECTION)
+        real = Path(self.temp.name) / "dotfiles-gemini"
+        (self.home / ".gemini").rename(real)
+        (self.home / ".gemini").symlink_to(real, target_is_directory=True)
+        self.assertEqual(str(self.transcript), self._resolved())
+
+    @unittest.skipUnless(hasattr(os, "O_NOFOLLOW"), "the open-time refusal needs O_NOFOLLOW")
+    def test_a_file_swapped_for_a_link_after_the_check_is_not_followed(self) -> None:
+        self.write(DIRECTION)
+        path = self._resolved()
+        assert path is not None
+        outside = self._outside() / ".system_generated" / "logs" / "transcript.jsonl"
+        self.transcript.unlink()
+        self.transcript.symlink_to(outside)
+        self.assertEqual(
+            [], project_context.instruction_events(self.config, path, "antigravity", AGY_SID)
+        )
+        self.assertEqual("", transcripts.antigravity_newest_direction(self.config, path))
+        backfill = project_context.instruction_events(
+            self.config, path, "antigravity", AGY_SID, max_bytes=1 << 20
+        )
+        self.assertEqual([], backfill)
+
+
 class AntigravityTitleFallsBackToTheNewestDirection(AntigravityHome):
     def test_a_log_without_the_marker_takes_the_title_from_the_transcript(self) -> None:
         later = agy(
@@ -553,6 +1017,16 @@ class APressOnAHarnessWithNoRecordSaysSo(AntigravityHome):
         sentence = reading.WITHHELD[reading.WITHHELD_NO_RECORD_READER]
         self.assertNotIn("No entry in the observed record", sentence)
 
+    def test_the_no_reader_sentence_says_what_cargento_does_read(self) -> None:
+        # Every one of these harnesses' prompts and titles is read for the board (privacy
+        # review F1), so the sentence may not say the record goes unread.
+        self.assertEqual(
+            "Cargento reads only this harness's prompts and titles, not the session's work, so "
+            "there is nothing to read your words against. No reading was made and nothing was "
+            "spent.",
+            reading.WITHHELD[reading.WITHHELD_NO_RECORD_READER],
+        )
+
     def test_a_reader_whose_transcript_is_missing_says_unread_not_empty(self) -> None:
         row = {**self._row("antigravity"), "project": "p", "active": True}
         context = project_context.collect(
@@ -561,6 +1035,25 @@ class APressOnAHarnessWithNoRecordSaysSo(AntigravityHome):
         self.assertEqual(
             reading.WITHHELD_RECORD_UNREAD,
             reading.record_withheld(context, "antigravity", AGY_SID),
+        )
+
+    def test_another_sessions_missing_reader_does_not_withhold_this_one(self) -> None:
+        context = {
+            "sources": {
+                "work": {
+                    "unavailable": [
+                        {
+                            "harness": "copilot",
+                            "sid": "other",
+                            "reason": observer.READER_UNAVAILABLE,
+                        }
+                    ]
+                }
+            }
+        }
+        self.assertEqual("", reading.record_withheld(context, "copilot", AGY_SID))
+        self.assertEqual(
+            reading.WITHHELD_NO_RECORD_READER, reading.record_withheld(context, "copilot", "other")
         )
 
     def test_the_reading_route_passes_the_unread_record_to_the_producer(self) -> None:

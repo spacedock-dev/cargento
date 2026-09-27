@@ -888,7 +888,7 @@ def _dispatch_events(
 # Counts only; which result a run had is `_ToolReportTally._outcome`'s to say.
 _PI_FAILED_COUNT_RE = re.compile(r"\b([1-9]\d*) failed\b|^\u2139 fail ([1-9]\d*)\s*$", re.MULTILINE)
 _PI_PASSED_COUNT_RE = re.compile(r"\b([1-9]\d*) passed\b|^\u2139 pass ([1-9]\d*)\s*$", re.MULTILINE)
-_PI_CHANGING_TOOLS = frozenset({"edit", "write"})
+_PI_READ_ONLY_TOOLS = frozenset({"read", "grep", "find", "ls"})
 
 
 def _pi_flag(result: Mapping[str, Any]) -> bool | None:
@@ -896,11 +896,14 @@ def _pi_flag(result: Mapping[str, Any]) -> bool | None:
 
     A clear flag is an exit of 0 for the whole call. A set flag with the
     exit line is a nonzero exit. Anything else flagged is not an exit: `None`.
+    So is a flag that is not set beside Pi's own exit line: a `tool_result`
+    extension may clear it on a call that threw, and the capture shows the two
+    only agreeing.
     """
+    if result.get("status") == "exited":
+        return True if result.get("is_error") is True else None
     if result.get("is_error") is False:
         return False
-    if result.get("is_error") is True and result.get("status") == "exited":
-        return True
     return None
 
 
@@ -973,6 +976,9 @@ def _pi_check_runs(
                     alone=len(call.meaningful) == 1,
                 ),
             )
+        if outcome == "passed" and flag is None and result and result.get("status") == "exited":
+            # The exit line says the call failed, so no output may say it passed.
+            outcome, source = "not-recorded", ""
         failed = _pi_count(_PI_FAILED_COUNT_RE, tail) if attributable else 0
         passed = _pi_count(_PI_PASSED_COUNT_RE, tail) if attributable else 0
         run: dict[str, Any] = {
@@ -1003,13 +1009,17 @@ def _pi_check_runs(
 
 
 def _pi_changes(block: dict[str, Any]) -> bool:
-    """Whether one Pi tool call may have changed files: an edit or a write,
-    or a bash call that is not on the closed read-only list."""
+    """Whether one Pi tool call may have changed files: any tool but the four
+    Pi 0.87.1 ships that only read, or a bash call that is not on the closed
+    read-only list.
+
+    Unknown tools count as changes, `powershell` and extension tools included,
+    because a pass a write followed is not current, and the cost of guessing
+    wrong the other way is a false consistent.
+    """
     name = block.get("name")
-    if name in _PI_CHANGING_TOOLS:
-        return True
     if name != "bash":
-        return False
+        return name not in _PI_READ_ONLY_TOOLS
     command = _call_arguments(block).get("command")
     return isinstance(command, str) and _ShellCall(0.0, "", {"command": command}).changes()
 
@@ -3169,15 +3179,22 @@ def instruction_events(
     """Timestamped non-meta user-role messages from the bounded transcript tail."""
     events: list[dict[str, Any]] = []
     seen: set[tuple[float, str]] = set()
+    # A directions file was checked link-free by its resolver; do not follow
+    # one swapped in since.
+    follow = harness not in observer.DIRECTION_HARNESSES
     source = (
         [
             line.decode("utf-8", "replace")
             for line in reversed(
-                list(runtime_io.reverse_lines(config, transcript_path, max_bytes=max_bytes))
+                list(
+                    runtime_io.reverse_lines(
+                        config, transcript_path, max_bytes=max_bytes, follow_links=follow
+                    )
+                )
             )
         ]
         if max_bytes is not None
-        else runtime_io.read_tail(config, transcript_path)
+        else runtime_io.read_tail(config, transcript_path, follow_links=follow)
     )
     for raw in source:
         if not raw or not raw.lstrip().startswith("{"):
@@ -3220,7 +3237,8 @@ def direction_text(
     if not transcript_path:
         return ""
     seen: set[tuple[float, str]] = set()
-    for raw in runtime_io.read_tail(config, transcript_path):
+    follow = harness not in observer.DIRECTION_HARNESSES
+    for raw in runtime_io.read_tail(config, transcript_path, follow_links=follow):
         if not raw or not raw.lstrip().startswith("{"):
             continue
         try:
