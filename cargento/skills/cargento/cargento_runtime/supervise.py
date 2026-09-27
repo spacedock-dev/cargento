@@ -14,8 +14,9 @@ with that signature stays valid, plus `on_spawn`: it is handed the `Group` the
 moment the child exists, which is the seam a reading job uses to say it is
 waiting on the provider and a Cancel reaches the CLI through (`Group.cancel`). Output goes to a file
 or nowhere, never to a pipe: every model call writes its reply to a file. `output_limit`
-bounds that file (DRC-4667): the wait looks at its size every `_CANCEL_POLL_SEC`,
-and past the limit the call kills the group as a Cancel does and raises
+bounds that file (DRC-4667): the wait looks at its size every `_LIMIT_POLL_SEC`,
+and once more when the CLI has exited, before the group or Job Object is let
+go. Past the limit the call kills the group as a Cancel does and raises
 `OversizedError`, so the file can outgrow the limit by at most one slice of
 writes before the caller removes it.
 
@@ -60,6 +61,10 @@ REAP_TIMEOUT_SEC = 5.0
 # cancelled. Only a kill that failed needs it: one that worked ends the wait
 # at once. It bounds how late the call starts its own bounded reap.
 _CANCEL_POLL_SEC = 0.1
+# The slice while an output file has a bound (review F1). At 0.1 s an unpaused
+# writer on an APFS SSD put 286 to 600 MiB on disk before the first look; the
+# slice is what bounds the overshoot, since the kill itself took 88 ms.
+_LIMIT_POLL_SEC = 0.01
 
 _RUNNING, _EXITED, _REAPED, _UNKNOWN = "running", "exited", "reaped", "unknown"
 
@@ -203,14 +208,19 @@ class Group:
         """
         deadline = time.monotonic() + timeout
         while True:
+            # The size before the poll, because the poll reaps: after it the
+            # group can no longer be signalled (Codex P1). A helper that starts
+            # writing after the leader's exit is not reached here at all.
+            if self._over_limit() or self._cancelled.is_set():
+                return False
             with self._lock:
                 if self._process.poll() is not None:
                     self._reaped = True
                     return True
             remaining = deadline - time.monotonic()
-            if remaining <= 0 or self._over_limit() or self._cancelled.is_set():
+            if remaining <= 0:
                 return False
-            time.sleep(min(0.02, remaining))
+            time.sleep(min(_LIMIT_POLL_SEC if self._limit else 0.02, remaining))
 
     def kill(self) -> bool:
         """Kill the group. Safe from any thread and more than once; False if it failed."""
@@ -236,6 +246,9 @@ class Group:
 
     def cancelled(self) -> bool:
         return self._cancelled.is_set()
+
+    def _poll_step(self) -> float:
+        return _LIMIT_POLL_SEC if self._limit is not None else _CANCEL_POLL_SEC
 
     def _over_limit(self) -> bool:
         """Whether the output file passed its bound, cancelling the call the first time.
@@ -429,6 +442,10 @@ def run(  # noqa: PLR0913 (subprocess.run's keywords, one each)
             returncode = _run_windows(group, input, timeout, on_spawn)
         else:
             returncode = _run_posix(group, input, timeout, on_spawn)
+        # The final size, for a CLI that wrote past the bound and exited inside
+        # one slice (Codex P2). Before `close`, so on Windows the Job Object can
+        # still be ended; on POSIX the reap has already swept the group.
+        group._over_limit()  # noqa: SLF001
     finally:
         with _LOCK:
             _LIVE.discard(group)
@@ -479,11 +496,13 @@ def _wait_posix(group: Group, limit: float) -> bool:
     deadline = time.monotonic() + limit
     while True:
         remaining = deadline - time.monotonic()
-        step = min(_CANCEL_POLL_SEC, max(remaining, 0.0))
+        step = min(group._poll_step(), max(remaining, 0.0))  # noqa: SLF001
         state = _state(pid, step)
         if state == _UNKNOWN:
             return not group._await_exit(max(deadline - time.monotonic(), 0.0))  # noqa: SLF001
-        if state != _RUNNING or group._over_limit() or group.cancelled():  # noqa: SLF001
+        # The size first, so an exit inside the slice cannot hide it (Codex
+        # P2): the leader is unreaped here and the group can still be killed.
+        if group._over_limit() or state != _RUNNING or group.cancelled():  # noqa: SLF001
             return False
         if remaining <= step:
             return True
@@ -532,7 +551,7 @@ def _wait_windows(group: Group, timeout: float | None) -> None:
     deadline = None if timeout is None else time.monotonic() + timeout
     reap_by: float | None = None
     while True:
-        step = _CANCEL_POLL_SEC
+        step = group._poll_step()  # noqa: SLF001
         if deadline is not None and not group.cancelled():
             step = min(step, max(deadline - time.monotonic(), 0.0))
         try:

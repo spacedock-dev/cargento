@@ -1612,8 +1612,10 @@ new strings on the issue; the other calls were made within them.
   was sent) over a cancel made after the shutdown began, then the cancel over a failed or finished
   call. The stop's word stands only where the stop reached the call first. A shutdown that begins
   just after the model seam's own `closed()` check, followed by a cancel before the commit point,
-  records `cancelled-unsent`, where with no cancel the job would have reserved and recorded a spent
-  `interrupted`. Nothing was reserved, so the count still equals the charge.
+  records `cancelled-unsent`. Nothing was reserved, so the count still equals the charge. (Amended
+  2026-09-27: with no cancel that job now records an unspent `stopping` too, because the
+  reservation finds the runner shut; see "What the accounting build decided" below. Before that it
+  reserved and recorded a spent `interrupted`.)
 - `cancelled` is a kept marker reason, so a store that refuses it never recovers as "The analysis
   ran", and the cancel writes that reason into the marker, so a dashboard that dies before the
   write records the cancel at its next start.
@@ -1667,8 +1669,12 @@ the poll-fallback limit on DRC-4713.
   after the charge was the alternative, and it only moves the window: a death between the commit
   and the rewrite leaves a charged attempt uncounted.
 - An output file past 1 MiB stops the call. The wait looks at the output file's size every
-  0.1 s, and past `observer.OUTPUT_FILE_LIMIT_BYTES` it kills the CLI's group or Job Object the way a
-  Cancel does. The outcome is a spent `oversized` attempt ("The reading was stopped because its CLI
+  0.01 s while the CLI runs, and once more when it has exited, before the group or Job Object is let
+  go, and past `observer.OUTPUT_FILE_LIMIT_BYTES` it kills the CLI's group or Job Object the way a
+  Cancel does. The slice was 0.1 s in the first build, and an unpaused writer put 286 to 600 MiB on
+  disk before the first look; at 0.01 s it measured 41 to 89 MiB. A CLI that wrote past the bound
+  and exited inside one slice first read as an ordinary reply, which the look after the exit
+  closes. The goal lane falls back on an oversized call as on any failure and records nothing. The outcome is a spent `oversized` attempt ("The reading was stopped because its CLI
   wrote far more output than a reading can use. Nothing was produced, the attempt still counts, and
   a fresh press is the only retry."), and `oversized` is a kept marker reason, so a store that
   refuses it never recovers as "ran". The bound is deliberately far above the 8 KiB read cap, since
@@ -1678,7 +1684,23 @@ the poll-fallback limit on DRC-4713.
 - The poll fallback's limit is documented, not fixed. When neither `waitid` nor kqueue can
   watch an exit, the call polls, and the poll reaps the leader, so helpers left in its group after
   a normal exit are not swept. A timeout, a shutdown or a Cancel still kills the group first. It has
-  been seen only under forced errors, and a test pins it so the documents change if it does.
+  been seen only under forced errors, and a test pins it so the documents change if it does. On
+  that path a helper that starts writing after the leader's exit is not reached either, since the
+  poll that sees the exit is the reap. The size is looked at before each poll, so a writer caught
+  while the leader runs is killed with its group. Seeing the exit without reaping would need a third
+  watcher (libc `waitid` with `WNOWAIT` through ctypes on macOS, measured working), which is the
+  fix this ruling declined.
+- The ledger answers "no charge" only for a job that started after its watermark. The watermark is
+  the ledger's creation time, raised to 30 days back on every prune, so a row pruned under a clock
+  that ran ahead and was then set back, or a store deleted and made again after the crash, reads as
+  "cannot say" and the attempt counts. Without it, the first review measured a charged attempt
+  recovering as unspent after a prune at a later wall clock. A row that exists answers "charged"
+  whatever its age.
+- Precedence among the spent words: `unstopped` > `cancelled` > `oversized` > `interrupted`. "May
+  still be running" is the one sentence nothing hides. A cancel before the seal still becomes the
+  cancel, as it does over a finished reply. A shutdown after a flood kill keeps `oversized`,
+  because that kill came first and the file did pass the bound. All four are spent, so the order
+  never moves the count. The owner accepted it on 2026-09-27.
 - On Windows the prompt is fed from a thread, and the call waits with `process.wait`. CPython's
   Windows `communicate` writes stdin on the calling thread before any timed wait, so a CLI that
   never read a prompt larger than the pipe held the call past its own timeout.

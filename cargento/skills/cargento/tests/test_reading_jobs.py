@@ -268,6 +268,18 @@ class ReadingJobTest(unittest.TestCase):
         self._run(compose)
         self.assertIn(("withheld", reading.WITHHELD_UNSTOPPED, True), self.events)
 
+    def test_a_shutdown_after_a_flood_kill_keeps_oversized(self) -> None:
+        """Review T5: the flood kill came first, so the stop does not rename it."""
+
+        def compose(hooks: reading_jobs.Hooks) -> Any:
+            hooks.before_reserve()
+            hooks.reserved()
+            supervise._SHUTDOWN.set()
+            return None, reading.WITHHELD_OVERSIZED, True
+
+        self._run(compose)
+        self.assertIn(("withheld", reading.WITHHELD_OVERSIZED, True), self.events)
+
     def test_a_kept_marker_recovers_as_a_refused_write_not_as_a_stop(self) -> None:
         """Verify N6: the analysis finished; the store refused its outcome."""
 
@@ -533,7 +545,8 @@ class ARestartRecordsTheAttemptItInterruptedTest(unittest.TestCase):
         return reading_policy.status(self.config, now=1_700_000_100.0)["used"]
 
     def _open_store(self) -> None:
-        reading_policy.set_consent(self.config, True, now=1_700_000_000.0)
+        # Before any job: the ledger answers only for jobs after it began.
+        reading_policy.set_consent(self.config, True, now=1_699_999_000.0)
 
     def test_a_marker_with_no_charge_on_record_recovers_unspent(self) -> None:
         self._open_store()
@@ -657,7 +670,8 @@ class CancelAnAnalysisTest(unittest.TestCase):
         annotation_store.annotate(
             self.config, self.state, "claude", "s1", goal="ship the parser", output="", now=10.0
         )
-        reading_policy.set_consent(self.config, True, now=NOW)
+        # Before the press, so the ledger can answer for the job (review F2).
+        reading_policy.set_consent(self.config, True, now=NOW - 100.0)
         self.events: list[Any] = []
         self.application: Any = _Application(self.config, self.state, self.events)
         self.addCleanup(reading.end_job, self.config, KEY)

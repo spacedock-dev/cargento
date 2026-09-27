@@ -160,6 +160,15 @@ def _transaction(
         # `INSERT INTO spends VALUES (?)` fails against a second column, and a
         # rollback would then refuse every press as store-unavailable.
         db.execute("CREATE TABLE IF NOT EXISTS spend_jobs (job TEXT PRIMARY KEY, at REAL NOT NULL)")
+        # How far back an absent row still means "no charge": from the
+        # ledger's creation, raised on every prune. Without it, a row pruned
+        # under a clock that ran ahead, or a store deleted and made again,
+        # read as "never charged" for a job that was (review F2).
+        db.execute(
+            "CREATE TABLE IF NOT EXISTS spend_jobs_since "
+            "(id INTEGER PRIMARY KEY CHECK(id=1), at REAL NOT NULL)"
+        )
+        db.execute("INSERT OR IGNORE INTO spend_jobs_since VALUES (1, ?)", (now,))
         # Schema, so it fires inside a pre-DRC-4650 build's own write: that
         # build's Turn off and `--forget` touch only the legacy row, and without
         # this the Claude Code answer survived a rollback (DRC-4666).
@@ -173,6 +182,9 @@ def _transaction(
         allowed = _allowed(db)
         db.execute("DELETE FROM spends WHERE at <= ?", (now - DAY_SEC,))
         db.execute("DELETE FROM spend_jobs WHERE at <= ?", (now - JOB_LEDGER_SEC,))
+        db.execute(
+            "UPDATE spend_jobs_since SET at = max(at, ?) WHERE id = 1", (now - JOB_LEDGER_SEC,)
+        )
         dates = tuple(float(row[0]) for row in db.execute("SELECT at FROM spends ORDER BY at"))
         if any(not math.isfinite(at) or at <= 0 for at in dates):
             raise ValueError("Invalid spend timestamp")
@@ -275,18 +287,14 @@ def reserve(
 def charged(config: RuntimeConfig, job_id: str, *, started_at: Any, now: float) -> bool | None:
     """Whether the ledger holds a charge for this job, or None when it cannot say.
 
-    None for no id, a start time that is not a positive number or is older
-    than the ledger keeps, and a store that is missing, unreadable or older
-    than the ledger. A caller counts None as spent: dropping a charged attempt
-    silently is the loss DRC-4686 Q2 ruled out. Reads only; creates nothing.
+    A row is a charge whenever it was made. No row means no charge only for a
+    job that started after the ledger's watermark: None for a start at or
+    before it, older than the ledger keeps, or not a positive number, and for
+    no id or a store that is missing, unreadable or older than the ledger. A
+    caller counts None as spent: dropping a charged attempt silently is the
+    loss DRC-4686 Q2 ruled out. Reads only; creates nothing.
     """
-    if (
-        not job_id
-        or not isinstance(started_at, (int, float))
-        or not math.isfinite(started_at)
-        or started_at <= max(now - JOB_LEDGER_SEC, 0.0)
-        or runtime_io.sqlite_module is None
-    ):
+    if not job_id or runtime_io.sqlite_module is None:
         return None
     path = store_path(config)
     try:
@@ -296,9 +304,19 @@ def charged(config: RuntimeConfig, job_id: str, *, started_at: Any, now: float) 
             runtime_io.sqlite_module.connect(path, timeout=2.0, isolation_level=None)
         ) as db:
             row = db.execute("SELECT 1 FROM spend_jobs WHERE job = ?", (job_id,)).fetchone()
+            since = db.execute("SELECT at FROM spend_jobs_since WHERE id = 1").fetchone()
     except (OSError, ValueError, RuntimeError, _SQL_ERROR):
         return None
-    return row is not None
+    if row is not None:
+        return True
+    if (
+        since is None
+        or not isinstance(started_at, (int, float))
+        or not math.isfinite(started_at)
+        or started_at <= max(float(since[0]), now - JOB_LEDGER_SEC, 0.0)
+    ):
+        return None
+    return False
 
 
 class RefusedError(Exception):

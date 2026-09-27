@@ -703,6 +703,53 @@ _FLOODS_ITS_OUTPUT = (
 )
 
 
+# The same, without the pause: it writes as fast as the disk takes it, and
+# stamps the wall clock just before the write that crosses 1 MiB, so a test
+# measures the time to the kill rather than a size that depends on the disk.
+# Capped at 400 MiB so a runner that never stops it cannot fill the disk.
+_FLOODS_UNTHROTTLED = (
+    "import subprocess, sys, time\n"
+    "child = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(60)'])\n"
+    "with open(sys.argv[1], 'w') as out:\n"
+    "    out.write(str(child.pid))\n"
+    "sys.stdout.buffer.write(b'x' * ((1 << 20) - 1))\n"
+    "sys.stdout.flush()\n"
+    "with open(sys.argv[2], 'w') as out:\n"
+    "    out.write(repr(time.time()))\n"
+    "chunk = b'x' * (1 << 20)\n"
+    "for _ in range(400):\n"
+    "    sys.stdout.buffer.write(chunk)\n"
+    "    sys.stdout.flush()\n"
+    "time.sleep(60)\n"
+)
+# Writes 2 MiB in one burst and exits at once: over the bound, inside a slice.
+_BURSTS_AND_EXITS = "import sys; sys.stdout.buffer.write(b'x' * (2 << 20)); sys.stdout.flush()"
+
+
+class _FakeWindowsProcess:
+    """A Windows `Popen` that has already exited, or that runs until it is killed."""
+
+    pid, args, stdin = 4244, ["cli"], None
+
+    def __init__(self, *, exits: bool) -> None:
+        self.returncode: int | None = 0 if exits else None
+        self.killed = False
+
+    def kill(self, _group: Any = None) -> bool:
+        self.killed = True
+        self.returncode = 1
+        return True
+
+    def poll(self) -> int | None:
+        return self.returncode
+
+    def wait(self, timeout: float | None = None) -> int:
+        if self.returncode is not None:
+            return self.returncode
+        time.sleep(timeout or 0.0)
+        raise subprocess.TimeoutExpired("cli", timeout or 0.0)
+
+
 class AnOutputFileHasABoundTest(unittest.TestCase):
     """DRC-4667: a CLI that writes far past what a call can use is stopped near the bound."""
 
@@ -713,25 +760,136 @@ class AnOutputFileHasABoundTest(unittest.TestCase):
         patcher.start()
         self.addCleanup(patcher.stop)
 
-    def test_a_cli_that_floods_its_output_file_is_killed_near_the_bound(self) -> None:
+    def test_a_cli_that_floods_its_output_file_is_killed_soon_after_the_bound(self) -> None:
+        """Time to the kill, not size: an unpaused writer's overshoot is the disk's speed."""
         out, pid_file = self.home / "reply.txt", self.home / "helper.pid"
+        crossed = self.home / "crossed"
         limit = 1 << 20
-        started = time.monotonic()
         with out.open("wb") as handle, self.assertRaises(supervise.OversizedError):
             supervise.run(
-                [sys.executable, "-c", _FLOODS_ITS_OUTPUT, str(pid_file)],
+                [sys.executable, "-c", _FLOODS_UNTHROTTLED, str(pid_file), str(crossed)],
                 input="",
                 stdout=handle,
                 stderr=subprocess.DEVNULL,
                 timeout=60,
                 output_limit=(str(out), limit),
             )
-        self.assertLess(time.monotonic() - started, 20, "the flood ran on toward the timeout")
-        size = out.stat().st_size
-        self.assertGreater(size, limit)
-        self.assertLess(size, 10 * limit, "the file grew far past one slice of writes")
+        # Includes the kill and the reap; generous for a loaded runner, and
+        # far inside the 60 s timeout the call would otherwise run to.
+        self.assertLess(time.time() - float(crossed.read_text()), 3.0)
+        self.assertGreater(out.stat().st_size, limit)
         helper = int(pid_file.read_text())
         self.assertTrue(_wait_until(lambda: not process_alive(helper)), "its helper outlived it")
+
+    def test_a_limit_shortens_the_wait_slice(self) -> None:
+        """F1: while a bound is set the size is looked at every 0.01 s, not every 0.1 s."""
+        steps: list[float] = []
+        real = supervise._state
+
+        def state(pid: int, timeout: float) -> str:
+            steps.append(timeout)
+            return real(pid, timeout)
+
+        out = self.home / "reply.txt"
+        with mock.patch.object(supervise, "_state", state), out.open("wb") as handle:
+            supervise.run(
+                [sys.executable, "-c", "import time; time.sleep(0.3)"],
+                input="",
+                stdout=handle,
+                stderr=subprocess.DEVNULL,
+                timeout=30,
+                output_limit=(str(out), 1 << 20),
+            )
+        waits = [step for step in steps if step > 0]
+        self.assertTrue(waits)
+        self.assertLessEqual(max(waits), 0.01)
+
+    def test_a_cli_that_writes_past_the_bound_and_exits_at_once_is_oversized(self) -> None:
+        """Codex P2: the exit inside a slice once hid the size, and it read as a reply."""
+        out = self.home / "reply.txt"
+        with out.open("wb") as handle, self.assertRaises(supervise.OversizedError):
+            supervise.run(
+                [sys.executable, "-c", _BURSTS_AND_EXITS],
+                input="",
+                stdout=handle,
+                stderr=subprocess.DEVNULL,
+                timeout=30,
+                output_limit=(str(out), 1 << 20),
+            )
+
+    @unittest.skipIf(sys.platform == "win32", "a Job Object has no unwatchable exit")
+    def test_the_poll_fallback_still_reports_a_burst_that_exits_at_once(self) -> None:
+        """Codex P1, the part the poll can reach: the final size is still read."""
+        out = self.home / "reply.txt"
+        with (
+            mock.patch.object(supervise, "_state", return_value="unknown"),
+            out.open("wb") as handle,
+            self.assertRaises(supervise.OversizedError),
+        ):
+            supervise.run(
+                [sys.executable, "-c", _BURSTS_AND_EXITS],
+                input="",
+                stdout=handle,
+                stderr=subprocess.DEVNULL,
+                timeout=30,
+                output_limit=(str(out), 1 << 20),
+            )
+
+    @unittest.skipIf(sys.platform == "win32", "a Job Object has no unwatchable exit")
+    def test_the_poll_fallback_also_stops_a_flood(self) -> None:
+        """Review T3: the bound holds, and the group dies, where the exit cannot be watched."""
+        out, pid_file = self.home / "reply.txt", self.home / "helper.pid"
+        started = time.monotonic()
+        with (
+            mock.patch.object(supervise, "_state", return_value="unknown"),
+            out.open("wb") as handle,
+            self.assertRaises(supervise.OversizedError),
+        ):
+            supervise.run(
+                [sys.executable, "-c", _FLOODS_ITS_OUTPUT, str(pid_file)],
+                input="",
+                stdout=handle,
+                stderr=subprocess.DEVNULL,
+                timeout=20,
+                output_limit=(str(out), 1 << 20),
+            )
+        self.assertLess(time.monotonic() - started, 15)
+        helper = int(pid_file.read_text())
+        self.assertTrue(_wait_until(lambda: not process_alive(helper)), "its helper outlived it")
+
+    def test_the_windows_wait_stops_a_flood(self) -> None:
+        """Review T3: a fake process, because `_wait_windows` runs only on Windows."""
+        out = self.home / "reply.txt"
+        out.write_bytes(b"x" * (2 << 20))
+        process = _FakeWindowsProcess(exits=False)
+        group = supervise.Group(process)  # type: ignore[arg-type]
+        group._limit = (str(out), 1 << 20)
+        with mock.patch.object(supervise.Group, "_kill", process.kill):
+            supervise._wait_windows(group, 3)
+        self.assertTrue(group._oversized)
+        self.assertTrue(process.killed)
+
+    def test_a_windows_cli_that_writes_past_the_bound_and_exits_is_oversized(self) -> None:
+        """Codex P2 on Windows: the final size is read while the Job Object can still be ended."""
+        out = self.home / "reply.txt"
+        out.write_bytes(b"x" * (2 << 20))
+        process = _FakeWindowsProcess(exits=True)
+        group = supervise.Group(process, job=7)  # type: ignore[arg-type]
+        terminated: list[int] = []
+
+        def terminate(job: int) -> bool:
+            terminated.append(job)
+            return True
+
+        with (
+            mock.patch.object(sys, "platform", "win32"),
+            mock.patch.object(supervise._windows, "terminate", terminate),
+            mock.patch.object(supervise._windows, "close", lambda _job: None),
+            mock.patch.object(supervise, "_spawn", lambda *_a, **_k: group),
+            self.assertRaises(supervise.OversizedError),
+        ):
+            supervise.run(["cli"], input=None, timeout=3, output_limit=(str(out), 1 << 20))
+        self.assertEqual([7], terminated, "the Job Object was not ended before it closed")
 
     def test_a_reply_inside_the_bound_is_returned_as_usual(self) -> None:
         out = self.home / "reply.txt"
@@ -890,6 +1048,39 @@ class AWindowsPromptNobodyReadsTest(unittest.TestCase):
         self.assertIsInstance(outcome[0], subprocess.TimeoutExpired)
 
 
+class TheWindowsPromptIsStillSentTest(unittest.TestCase):
+    """Review T4: feeding from a thread must still deliver the prompt, whole."""
+
+    def test_the_windows_runner_still_sends_the_prompt(self) -> None:
+        written: list[Any] = []
+        done = threading.Event()
+
+        class _Stdin:
+            def write(self, data: Any) -> None:
+                written.append(data)
+
+            def close(self) -> None:
+                done.set()
+
+        class _Process:
+            pid, args = 4243, ["cli"]
+
+            def __init__(self) -> None:
+                self.stdin: Any = _Stdin()
+                self.returncode: int | None = None
+
+            def wait(self, timeout: float | None = None) -> int:
+                if done.wait(timeout or 0.0):
+                    self.returncode = 0
+                    return 0
+                raise subprocess.TimeoutExpired("cli", timeout or 0.0)
+
+        group = supervise.Group(_Process())  # type: ignore[arg-type]
+        with mock.patch.object(supervise.Group, "_kill", lambda _g: True):
+            self.assertEqual(0, supervise._run_windows(group, "prompt", 5, None))
+        self.assertEqual(["prompt"], written)
+
+
 class ThePollFallbackLimitIsDocumentedTest(unittest.TestCase):
     """DRC-4712 L4, pinned rather than fixed (owner, 2026-09-27).
 
@@ -922,6 +1113,40 @@ class ThePollFallbackLimitIsDocumentedTest(unittest.TestCase):
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
                 timeout=30,
+            )
+        helper = int(pid_file.read_text())
+        try:
+            self.assertTrue(process_alive(helper), "the poll fallback now sweeps: update the docs")
+        finally:
+            with contextlib.suppress(OSError):
+                os.kill(helper, signal.SIGKILL)
+
+    @unittest.skipIf(sys.platform == "win32", "a Job Object has no unwatchable exit")
+    def test_a_helper_that_writes_after_the_leader_exits_is_not_bounded_here(self) -> None:
+        """Codex P1, pinned: the poll that sees the exit is the reap, so nothing is swept.
+
+        SECURITY.md states what that costs: such a helper writes to the removed
+        file, bounded by nothing but the disk, until it exits.
+        """
+        pid_file, out = self.home / "helper.pid", self.home / "reply.txt"
+        leaves_a_writer = (
+            "import subprocess, sys\n"
+            "child = subprocess.Popen([sys.executable, '-c',\n"
+            "    'import sys, time\\nwhile True:\\n    time.sleep(0.05)\\n'\n"
+            "    '    sys.stdout.buffer.write(bytes(65536)); sys.stdout.flush()\\n'])\n"
+            "open(sys.argv[1], 'w').write(str(child.pid))\n"
+        )
+        with (
+            mock.patch.object(supervise, "_state", return_value="unknown"),
+            out.open("wb") as handle,
+        ):
+            supervise.run(
+                [sys.executable, "-c", leaves_a_writer, str(pid_file)],
+                input="",
+                stdout=handle,
+                stderr=subprocess.DEVNULL,
+                timeout=30,
+                output_limit=(str(out), 1 << 20),
             )
         helper = int(pid_file.read_text())
         try:

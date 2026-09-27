@@ -1080,11 +1080,19 @@ reused by another process, and the call returns only after the child is reaped, 
 files are removed after, never under, a live writer. When neither `waitid` nor kqueue can watch the
 exit, the call polls, which reaps the leader, so helpers still in its group after a normal exit are
 not swept; a timeout, a shutdown or a Cancel still kills the group, because each kills before the
-reap. That has been seen only under forced errors, and a test pins it (DRC-4712). A call's output
-file is bounded on disk as well as on read (DRC-4667): the runner checks its size every 0.1 s, and
-past **1 MiB** kills the CLI's group or Job Object as a Cancel does and records a spent `oversized`
-attempt, so the file can exceed 1 MiB by at most what the CLI writes in one 0.1 s slice before it is
-removed. A kill whose child has not exited within five
+reap. That has been seen only under forced errors, and a test pins it (DRC-4712). On that path a
+helper that starts writing the output file after the leader has exited is not reached at all: the
+poll that sees the exit is the reap, the caller then removes the file, and the helper's writes to
+the removed file are bounded by nothing but the disk until the helper exits. Seeing the exit
+without reaping needs a third watcher, which is the fix the owner ruled documented rather than
+built. A call's output file is bounded on disk as well as on read (DRC-4667): the runner checks its
+size every 0.01 s while the CLI runs, and once more when it has exited, before its group or Job
+Object is let go. Past **1 MiB** it kills the CLI's group or Job Object as a Cancel does. A reading
+records a spent `oversized` attempt; the goal lane falls back as on any failed call and records
+nothing. The file can exceed 1 MiB by what the CLI writes in one 0.01 s slice, which is bounded by
+disk speed rather than by the limit: an unpaused writer on an APFS SSD was measured at 41 to 89 MiB
+before the kill, which landed 11 to 15 ms after the bound was passed (286 to 600 MiB at the earlier
+0.1 s slice). The file is removed once the group is reaped. A kill whose child has not exited within five
 seconds ends the call anyway and is recorded as its own withheld reason, which says the process
 may still be running. Because a child in its own group no longer receives the terminal's signals,
 SIGTERM, SIGHUP and SIGQUIT all unwind through the daemon's cleanup, which shuts the runner (a
@@ -1139,8 +1147,8 @@ environment, such as `ANTHROPIC_API_KEY`, `ANTHROPIC_BASE_URL` or `CLAUDE_CODE_U
 
 The process runs in a fresh owner-only (0700) empty directory under the state directory. Stdout
 goes to an owner-only temp file, never a pipe, and at most `annotation_text_cap_chars * 8` bytes of
-it are read. The file is bounded on disk at 1 MiB plus at most one 0.1 s slice of writes, as
-[Observer model calls](#observer-model-calls) describes. Stderr is discarded. The timeout is the
+it are read. The file is bounded on disk at 1 MiB plus one 0.01 s slice of writes, as
+[Observer model calls](#observer-model-calls) describes, with the measured overshoot. Stderr is discarded. The timeout is the
 shared **60 seconds**. The directory and the
 file are removed on every path, including a timeout or an OS error, and only once the CLI and
 anything it started have been killed and reaped. An absent or relative

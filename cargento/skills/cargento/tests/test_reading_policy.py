@@ -422,6 +422,24 @@ class TheCapOutranksConsentTest(unittest.TestCase):
             )
 
 
+class _StopAtTheInsert:
+    """A connection that tries a shutdown at the moment the charge is inserted."""
+
+    def __init__(self, db: Any, seen: list[bool]) -> None:
+        self._db, self._seen = db, seen
+
+    def execute(self, sql: str, *args: Any) -> Any:
+        if sql.startswith("INSERT INTO spends"):
+            stopper = threading.Thread(target=supervise.kill_all, daemon=True)
+            stopper.start()
+            stopper.join(0.3)
+            self._seen.append(stopper.is_alive())
+        return self._db.execute(sql, *args)
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._db, name)
+
+
 class TheReservationIsTheStopsLineTest(unittest.TestCase):
     """DRC-4712: a shutdown before the reservation commits spends nothing.
 
@@ -437,7 +455,7 @@ class TheReservationIsTheStopsLineTest(unittest.TestCase):
         patcher = mock.patch.object(supervise, "_SHUTDOWN", threading.Event())
         patcher.start()
         self.addCleanup(patcher.stop)
-        reading_policy.set_consent(self.config, True, now=100.0)
+        reading_policy.set_consent(self.config, True, now=50.0)
 
     def _stop_inside_the_transaction(self) -> Any:
         # `_allowed` runs after `BEGIN IMMEDIATE`, so a stop here has passed
@@ -465,6 +483,17 @@ class TheReservationIsTheStopsLineTest(unittest.TestCase):
         model.assert_not_called()
         self.assertEqual(0, reading_policy.status(self.config, now=100.0)["used"])
 
+    def test_a_shutdown_cannot_land_between_the_insert_and_the_commit(self) -> None:
+        """Review T1: the lock covers the insert and the commit, not only the look."""
+        seen: list[bool] = []
+        real = reading_policy._connect
+        with mock.patch.object(
+            reading_policy, "_connect", lambda config: _StopAtTheInsert(real(config), seen)
+        ):
+            answer = reading_policy.reserve(self.config, now=100.0, job_id="j1")
+        self.assertEqual([True], seen, "the shutdown ran while the charge was uncommitted")
+        self.assertEqual("", answer["reason"])
+
     def test_a_shutdown_after_the_commit_leaves_the_charge_standing(self) -> None:
         self.assertEqual("", reading_policy.reserve(self.config, now=100.0, job_id="j1")["reason"])
         supervise.kill_all()
@@ -482,10 +511,44 @@ class TheJobLedgerTest(unittest.TestCase):
         patcher = mock.patch.object(supervise, "_SHUTDOWN", threading.Event())
         patcher.start()
         self.addCleanup(patcher.stop)
-        reading_policy.set_consent(self.config, True, now=100.0)
+        reading_policy.set_consent(self.config, True, now=50.0)
 
     def _charged(self, job_id: str, *, started_at: float = 100.0, now: float = 100.0) -> Any:
         return reading_policy.charged(self.config, job_id, started_at=started_at, now=now)
+
+    def _rows(self) -> list[str]:
+        assert runtime_io.sqlite_module is not None
+        db = runtime_io.sqlite_module.connect(reading_policy.store_path(self.config))
+        try:
+            return [row[0] for row in db.execute("SELECT job FROM spend_jobs ORDER BY at")]
+        finally:
+            db.close()
+
+    def test_the_ledger_drops_rows_past_30_days(self) -> None:
+        """Review T2: SECURITY.md says 30 days, so the rows go at 30 days, not later."""
+        reading_policy.reserve(self.config, now=100.0, job_id="j1")
+        reading_policy.reserve(self.config, now=100.0 + 29 * 86_400.0, job_id="j2")
+        self.assertEqual(["j1", "j2"], self._rows())
+        reading_policy.status(self.config, now=100.0 + 31 * 86_400.0)
+        self.assertEqual(["j2"], self._rows())
+
+    def test_a_reservation_answers_the_count_it_made(self) -> None:
+        self.assertEqual(1, reading_policy.reserve(self.config, now=100.0, job_id="j1")["used"])
+
+    def test_a_prune_at_a_later_clock_is_not_read_as_no_charge(self) -> None:
+        """F2: a row pruned under a clock that ran ahead is "cannot say", never "no charge"."""
+        reading_policy.reserve(self.config, now=200.0, job_id="j1")
+        reading_policy.status(self.config, now=200.0 + 31 * 86_400.0)
+        # The clock is set back, and the marker's job now looks young again.
+        self.assertIsNone(self._charged("j1", started_at=150.0, now=300.0))
+
+    def test_a_store_recreated_after_the_job_started_cannot_answer_for_it(self) -> None:
+        """F2: a deleted store's replacement knows nothing from before it was made."""
+        reading_policy.reserve(self.config, now=200.0, job_id="j1")
+        reading_policy.store_path(self.config).unlink()
+        reading_policy.set_consent(self.config, True, now=400.0)
+        self.assertIsNone(self._charged("j1", started_at=150.0, now=500.0))
+        self.assertIs(False, self._charged("j2", started_at=450.0, now=500.0))
 
     def test_a_reservation_records_its_job_and_no_other(self) -> None:
         reading_policy.reserve(self.config, now=100.0, job_id="j1")
@@ -522,7 +585,9 @@ class TheJobLedgerTest(unittest.TestCase):
         with self.subTest("no job id"):
             self.assertIsNone(self._charged(""))
         with self.subTest("no usable start"):
-            self.assertIsNone(self._charged("j1", started_at=float("nan")))
+            # A row answers whatever the start; only an absent one needs it.
+            self.assertIs(True, self._charged("j1", started_at=float("nan")))
+            self.assertIsNone(self._charged("j2", started_at=float("nan")))
         with self.subTest("SQLite missing"), mock.patch.object(runtime_io, "sqlite_module", None):
             self.assertIsNone(self._charged("j1"))
         with self.subTest("store corrupt"):
