@@ -351,6 +351,7 @@ WITHHELD_STOP_SETTLING = "stop-settling"
 WITHHELD_REVISION_AFTER_END = "revision-after-end"
 WITHHELD_LEDGER_EMPTY = "ledger-empty"
 WITHHELD_WINDOW_EMPTY = "window-empty"
+WITHHELD_AFTER_STOP = "after-stop"
 WITHHELD_RECORD_UNREAD = "record-unread"
 WITHHELD_RECORD_ERROR = "record-error"
 WITHHELD_MODEL_UNAVAILABLE = "model-unavailable"
@@ -403,6 +404,12 @@ WITHHELD = {
     WITHHELD_WINDOW_EMPTY: (
         "Every entry in the observed record for this session is from before your words or "
         "has no time, so there is no work after them to read them against."
+    ),
+    # Its own sentence (owner, 2026-09-27): entries after the words exist, so
+    # neither sentence above is true; they are in a turn not yet stopped.
+    WITHHELD_AFTER_STOP: (
+        "Everything after your words came after the session's last observed stop, so there is "
+        "nothing finished to read yet."
     ),
     WITHHELD_RECORD_UNREAD: (
         "The observed record for this session has not been read, so it is unread rather "
@@ -1341,8 +1348,30 @@ def _entries(count: int) -> str:
     return f"{count} entry" if count == 1 else f"{count} entries"
 
 
+def _not_read(earlier: int, untimed: int, after_stop: int) -> str:
+    """The clauses naming each set a press did not read, each only when it
+    holds something (owner, 2026-09-27)."""
+    clauses = []
+    counts = [f"{n} {name}" for n, name in ((earlier, "earlier"), (untimed, "untimed")) if n]
+    if counts:
+        one = earlier + untimed == 1
+        clauses.append(f"{' and '.join(counts)} {'entry was' if one else 'entries were'} not read")
+    if after_stop:
+        clauses.append(
+            f"{_entries(after_stop)} after the last observed stop "
+            f"{'was' if after_stop == 1 else 'were'} not read"
+        )
+    return "".join(f"; {clause}" for clause in clauses)
+
+
 def cutoff_text(
-    selected: Sequence[LedgerEntry], total: int, now: float, *, earlier: int = 0
+    selected: Sequence[LedgerEntry],
+    total: int,
+    now: float,
+    *,
+    earlier: int = 0,
+    untimed: int = 0,
+    after_stop: int = 0,
 ) -> str:
     """What this reading actually read, by count and by author.
 
@@ -1354,14 +1383,12 @@ def cutoff_text(
     Two absences that are not the same absence: nothing in the record, and a
     record too large for any of it to fit. They rendered the same sentence.
 
-    `total` counts the entries after the words and `earlier` those before
-    them, which a reading may not cite and so never reads (owner, 2026-09-27).
+    `total` counts the entries after the words and through the observed stop.
+    `earlier` and `untimed` count those a reading may not cite, before the
+    words or with no time, and `after_stop` those after the words that came
+    after the last observed stop (owner, 2026-09-27).
     """
-    left_out = (
-        f"; {earlier} earlier {'entry was' if earlier == 1 else 'entries were'} not read"
-        if earlier
-        else ""
-    )
+    left_out = _not_read(earlier, untimed, after_stop)
     if not selected:
         return (
             f"No entry in the observed record was read{left_out}."
@@ -2107,7 +2134,7 @@ def produce(  # noqa: PLR0913
         tool_output=tails,
         changed_after=tool_output.changed_after if tool_output is not None else frozenset(),
     )
-    ledger, stopped, earlier, withheld = _ledger_to_read(ledger, row, scope, window_start(latest))
+    ledger, stopped, left_out, withheld = _ledger_to_read(ledger, row, scope, window_start(latest))
     if withheld:
         return None, withheld, False
     prompt, selected = build_prompt(
@@ -2136,7 +2163,7 @@ def produce(  # noqa: PLR0913
         detail_cap_chars=config.annotation_text_cap_chars,
         window_start=window_start(latest),
     )
-    cutoff = cutoff_text(selected.entries, len(ledger), now, earlier=earlier)
+    cutoff = cutoff_text(selected.entries, len(ledger), now, **left_out)
     if tool_output is not None and not admitted and _has_reports(facts, harness, sid):
         cutoff += (
             " The checks this session recorded were not sent, because tool output was not "
@@ -2183,11 +2210,12 @@ _STATUS_FAILURES = {
 
 def _ledger_to_read(
     ledger: tuple[LedgerEntry, ...], row: Mapping[str, Any], scope: str, opened: float
-) -> tuple[tuple[LedgerEntry, ...], float | None, int, str]:
+) -> tuple[tuple[LedgerEntry, ...], float | None, dict[str, int], str]:
     """The entries a press may number, the stop it read through, how many it
-    left out as before the words, and why there are none when there are none."""
+    left out and why, and why there are none when there are none."""
+    left_out = {"earlier": 0, "untimed": 0, "after_stop": 0}
     if not ledger:
-        return ledger, None, 0, WITHHELD_LEDGER_EMPTY
+        return ledger, None, left_out, WITHHELD_LEDGER_EMPTY
     # Owner, 2026-09-27 (DRC-4715): nothing from before the words, and nothing
     # with no time to place after them, is numbered, so nothing can cite it.
     # Here rather than in `build_ledger`, which is the page-parity contract.
@@ -2195,17 +2223,23 @@ def _ledger_to_read(
     # nothing is after the words, which a turn the cut removed contradicts
     # (review F1).
     if all(_before_window(entry, opened) for entry in ledger):
-        return (), None, 0, WITHHELD_WINDOW_EMPTY
-    stopped: float | None = None
-    if scope == SCOPE_LAST_TURN:
-        # Through the last turn means through the observed stop. A resumed turn
-        # whose state update lags leaves the row idle at the old stop while the
-        # record moves on, and a later fact would then be read, and cited, as
-        # part of a turn it was not in.
-        stopped = _number(row.get("finished_at")) or 0.0
-        ledger = tuple(entry for entry in ledger if entry["at"] <= stopped)
-    kept = tuple(entry for entry in ledger if not _before_window(entry, opened))
-    return kept, stopped, len(ledger) - len(kept), "" if kept else WITHHELD_LEDGER_EMPTY
+        return (), None, left_out, WITHHELD_WINDOW_EMPTY
+    # Through the last turn means through the observed stop. A resumed turn
+    # whose state update lags leaves the row idle at the old stop while the
+    # record moves on, and a later fact would then be read, and cited, as part
+    # of a turn it was not in.
+    stopped = (_number(row.get("finished_at")) or 0.0) if scope == SCOPE_LAST_TURN else None
+    kept: list[LedgerEntry] = []
+    for entry in ledger:
+        if _before_window(entry, opened):
+            left_out["untimed" if (evidence_at(entry) or 0.0) <= 0 else "earlier"] += 1
+        elif stopped is not None and entry["at"] > stopped:
+            left_out["after_stop"] += 1
+        else:
+            kept.append(entry)
+    # Entries after the words exist, so an empty list here is a turn not yet
+    # stopped, never an empty record (owner, 2026-09-27).
+    return tuple(kept), stopped, left_out, "" if kept else WITHHELD_AFTER_STOP
 
 
 def _call_failed(model: Callable[..., tuple[str, str]], status: str) -> tuple[str, bool] | None:

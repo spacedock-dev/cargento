@@ -1957,14 +1957,17 @@ decisions below follow that ruling and the DRC-4702 decisions of the same date.
 - The resolver's rule 3 refuses such an entry as well, and the page's copy refuses one in a reading
   stored before this, so a line resting only on it reads "uncited" on both sides and falls to "not
   verifiable". No new reason token was needed.
-- When the window leaves nothing to read, the press withholds with `window-empty` rather than
-  `ledger-empty`, whose sentence says no entry names the session and would be false here. It is
-  decided over the whole record, before the last-turn stop cut: when that cut is what leaves
-  nothing, an entry after the words exists, so `ledger-empty` stands.
-- The cutoff sentence counts the entries after the words, and says how many earlier ones were not
-  read (owner, 2026-09-27): "Read 2 of the 2 entries after your words; 2 earlier entries were not
-  read." The second clause appears only when some were left out, and the time and author mix
-  follow as "Of those read, ...".
+- Three reasons for reading nothing, each said only where it is true (owner, 2026-09-27).
+  `ledger-empty` is for a record with no entry naming the session. `window-empty` is for a record
+  whose every entry is from before the words or has no time. It is decided over the whole record,
+  before the last-turn stop cut. `after-stop` is for a record that does hold entries after the
+  words, every one of them after the session's last observed stop, as a resumed turn the row has
+  not caught up with leaves it: "Everything after your words came after the session's last
+  observed stop, so there is nothing finished to read yet."
+- The cutoff sentence counts each set honestly (owner, 2026-09-27): "Read 2 of the 3 entries
+  after your words; 1 earlier and 1 untimed entries were not read; 1 entry after the last observed
+  stop was not read." Each clause appears only when its count is not zero, in the singular for
+  one, and the time and author mix follow in their own sentence, "Of those read, ...".
 
 ## DEC-26: four drift levels, and a live estimate after every turn
 

@@ -11,6 +11,7 @@ stays withheld from everyone who did not press.
 from __future__ import annotations
 
 import dataclasses
+import html
 import json
 import os
 import re
@@ -925,12 +926,37 @@ class AReadingCitesNothingFromBeforeItsWindowTest(_PressCase):
         self.assertEqual(reading.WITHHELD_LEDGER_EMPTY, why)
 
     def test_a_turn_cut_that_empties_the_window_is_not_called_an_empty_window(self) -> None:
-        # Review F1: the check is after the words, in a resumed turn the row has not caught up
-        # with. The stop cut removes it, so the existing reason stands, and the window sentence,
-        # which says nothing is after the words, would be false.
-        assessment, why, _spent = self.produce([_message("m0", PROMPT - 100), _check(STOP + 30)])
-        self.assertIsNone(assessment)
-        self.assertEqual(reading.WITHHELD_LEDGER_EMPTY, why)
+        # Review F1 and owner ruling N3: the check is after the words, in a resumed turn the row
+        # has not caught up with. Neither "nothing after the words" nor "no entry names this
+        # session" is true, so the press says the work after the words is not finished.
+        for facts in (
+            [_message("m0", PROMPT - 100), _check(STOP + 30)],
+            [_message("m0", 0), _check(STOP + 30)],
+        ):
+            with self.subTest(first_at=facts[0]["at"]):
+                assessment, why, spent = self.produce(facts)
+                self.assertIsNone(assessment)
+                self.assertEqual(reading.WITHHELD_AFTER_STOP, why)
+                self.assertFalse(spent)
+
+    def test_the_cutoff_counts_each_set_it_did_not_read(self) -> None:
+        # Owner ruling N4, 2026-09-27: earlier, untimed and after-the-stop entries apart.
+        assessment, _why, _spent = self.produce(
+            [
+                self.agent("u0", 0),
+                self.agent("a0", PROMPT - 60),
+                _message("m1", PROMPT),
+                _check(PROMPT + 60),
+                _check(STOP + 30),
+            ]
+        )
+        self.assertTrue(
+            assessment["cutoff"].startswith(
+                "Read 2 of the 2 entries after your words; 1 earlier and 1 untimed entries were "
+                "not read; 1 entry after the last observed stop was not read. Of those read, "
+            ),
+            assessment["cutoff"],
+        )
 
     def test_the_cutoff_says_how_many_entries_before_the_words_were_not_read(self) -> None:
         # Owner ruling F2, 2026-09-27.
@@ -1016,3 +1042,69 @@ class AReadingCitesNothingFromBeforeItsWindowTest(_PressCase):
     def test_a_check_whose_result_landed_inside_the_window_is_not_refused(self) -> None:
         line = self.resolve([self.check_row("c1", 100.0, result_at=160.0)], [1])["line_1"]
         self.assertEqual(reading.RESULT_DEPARTURE, line["result"])
+
+
+WITHHELD_SENTENCES = {
+    reading.WITHHELD_LEDGER_EMPTY: (
+        "No entry in the observed record names this session, so there is nothing to read your "
+        "words against. Absence of evidence is not a reading."
+    ),
+    reading.WITHHELD_WINDOW_EMPTY: (
+        "Every entry in the observed record for this session is from before your words or has "
+        "no time, so there is no work after them to read them against."
+    ),
+    reading.WITHHELD_AFTER_STOP: (
+        "Everything after your words came after the session's last observed stop, so there is "
+        "nothing finished to read yet."
+    ),
+}
+
+
+class WhyAPressOnAWaitingSessionReadsNothingTest(NextPageJsHarness):
+    """Owner ruling N3, 2026-09-27: three different reasons, each said only where it is true,
+    read off the page a reader sees."""
+
+    def whys(self) -> dict[str, str]:
+        case = _PressCase("setUp")
+        case.setUp()
+        agent = _message("a0", PROMPT - 60, type="assistant_message", summary="I will do it")
+        found = {}
+        for name, facts in (
+            ("empty", []),
+            ("before", [agent]),
+            ("after the stop", [_message("m0", PROMPT - 100), _check(STOP + 30)]),
+        ):
+            assessment, why, _spent = case.produce(facts)
+            self.assertIsNone(assessment)
+            found[name] = why
+        case.doCleanups()
+        return found
+
+    def test_each_reason_is_rendered_where_it_is_true(self) -> None:
+        whys = self.whys()
+        self.assertEqual(
+            {
+                "empty": reading.WITHHELD_LEDGER_EMPTY,
+                "before": reading.WITHHELD_WINDOW_EMPTY,
+                "after the stop": reading.WITHHELD_AFTER_STOP,
+            },
+            whys,
+        )
+        texts = {name: reading.WITHHELD[why] for name, why in whys.items()}
+        out = self._run_page_js(
+            "await __settle();\nawait __settle();\n"
+            f"const texts = {json.dumps(texts)};\n"
+            "const session = __dashboard.sessions[0];\n"
+            "console.log(JSON.stringify(Object.fromEntries(Object.entries(texts).map(\n"
+            "  ([name, text]) => [name, nextCockpitReading(session,\n"
+            "    {goal: 'add retry', reading_count: 1, reading_withheld: text}, [],\n"
+            "    {enabled: true})]))));\n",
+            storage_prelude({}) + cockpit_tests.NextCockpitCompositionTest.FIXTURE,
+        )
+        assert isinstance(out, dict)
+        for name, why in whys.items():
+            with self.subTest(case=name):
+                rendered = html.unescape(re.sub(r"<[^>]+>", " ", out[name]))
+                self.assertIn(WITHHELD_SENTENCES[why], " ".join(rendered.split()))
+                for other in set(WITHHELD_SENTENCES) - {why}:
+                    self.assertNotIn(WITHHELD_SENTENCES[other], " ".join(rendered.split()))

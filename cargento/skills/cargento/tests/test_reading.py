@@ -1227,13 +1227,47 @@ class WhatTheReaderIsToldTheReadingCovered(unittest.TestCase):
         self.assertIn("400", sentence)
 
     def test_a_reader_is_told_how_many_entries_before_their_words_were_not_read(self) -> None:
-        # Owner ruling F2, 2026-09-27: the second clause appears only when some were left out.
+        # Owner rulings F2 and N4, 2026-09-27: each set counted apart, each clause only when it
+        # holds something, in the singular for one.
         rows = (entry(id="a", at=NOW - 60.0), entry(id="b", at=NOW - 60.0))
-        self.assertTrue(
-            reading.cutoff_text(rows, 3, NOW, earlier=2).startswith(
-                "Read 2 of the 3 entries after your words; 2 earlier entries were not read. "
-            )
-        )
+        for counts, opening in (
+            (
+                {"earlier": 2},
+                "Read 2 of the 3 entries after your words; 2 earlier entries were not read. ",
+            ),
+            (
+                {"earlier": 1},
+                "Read 2 of the 3 entries after your words; 1 earlier entry was not read. ",
+            ),
+            (
+                {"untimed": 1},
+                "Read 2 of the 3 entries after your words; 1 untimed entry was not read. ",
+            ),
+            (
+                {"earlier": 2, "untimed": 1},
+                (
+                    "Read 2 of the 3 entries after your words; 2 earlier "
+                    "and 1 untimed entries were not read. "
+                ),
+            ),
+            (
+                {"after_stop": 2},
+                (
+                    "Read 2 of the 3 entries after your words; 2 entries after the "
+                    "last observed stop were not read. "
+                ),
+            ),
+            (
+                {"earlier": 1, "after_stop": 1},
+                (
+                    "Read 2 of the 3 entries after your words; 1 earlier entry was not read; "
+                    "1 entry after the last observed stop was not read. "
+                ),
+            ),
+        ):
+            with self.subTest(counts=counts):
+                sentence = reading.cutoff_text(rows, 3, NOW, **counts)
+                self.assertTrue(sentence.startswith(opening + "Of those read, "), sentence)
         self.assertTrue(
             reading.cutoff_text(rows[:1], 1, NOW, earlier=1).startswith(
                 "Read 1 of the 1 entry after your words; 1 earlier entry was not read. "
@@ -1241,7 +1275,7 @@ class WhatTheReaderIsToldTheReadingCovered(unittest.TestCase):
         )
         plain = reading.cutoff_text(rows, 2, NOW)
         self.assertTrue(plain.startswith("Read 2 of the 2 entries after your words. "), plain)
-        self.assertNotIn("earlier", plain)
+        self.assertNotIn("not read", plain)
 
     def test_a_reader_is_told_when_the_reading_rests_on_nobody_but_the_agent(self) -> None:
         rows = (entry(id="a", at=NOW - 60.0), entry(id="b", at=NOW - 60.0))
