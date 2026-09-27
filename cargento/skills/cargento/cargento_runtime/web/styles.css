@@ -843,6 +843,11 @@ input::placeholder,textarea::placeholder{color:var(--ink2)}
 .next-session-panel .next-cockpit-held-field>textarea:not(:focus){height:calc(var(--fs-body)*1.55*2 + 9px);min-height:0;padding-bottom:0;overflow:hidden}
 .next-session-panel .next-cockpit-held-line textarea:focus{white-space:pre-wrap;field-sizing:content}
 .next-session-panel .next-cockpit-held-field>textarea:focus{field-sizing:content}
+/* An untouched draft keeps its at-rest height under focus. The landing puts
+   focus in it, and a box that grew on focus and shrank on the mousedown that
+   blurred it moved Keep up 30px under the press, so the click landed beside
+   the button (consent F4). The first edit drops the attribute and it grows. */
+.next-session-panel .next-cockpit-held-field[data-next-cockpit-drafted]>textarea:focus{field-sizing:fixed;height:calc(var(--fs-body)*1.55*2 + 9px);min-height:0;padding-bottom:0;overflow:hidden}
 /* Where `field-sizing` is missing the box cannot size to its text, so focus
    gives it several rows and it scrolls inside them (verifier V-3). */
 @supports not (field-sizing: content){
@@ -954,6 +959,10 @@ input::placeholder,textarea::placeholder{color:var(--ink2)}
   .next-session-panel .next-cockpit-held-line{grid-template-columns:auto auto minmax(0,1fr)}
   .next-session-panel .next-cockpit-held-field .next-cockpit-held-line textarea{grid-column:1/-1}
   .next-session-panel .next-cockpit-held-line>button{justify-self:start}
+  /* The pending line's save and remove take their own row: in the third,
+     shrinkable track they collapsed to nothing and spilled past the page
+     beside the unnumbered source (layout F3). */
+  .next-session-panel .next-cockpit-direction-tools{grid-column:1/-1;justify-self:start}
   .next-session-facts>div{grid-template-columns:90px minmax(0,1fr);gap:12px}
   .next-session-command-facts{grid-template-columns:1fr}
   .next-session-command-facts>section+section{border-top:1px solid var(--rule);border-left:0}
