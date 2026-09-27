@@ -1533,6 +1533,14 @@ async function nextCockpitSaveDirection(session){
       held.cue = kind;
     }
     await refreshNext();
+    /* A poll that starts while that refresh is open supersedes it, and the
+       superseded one returns without publishing, so the merge read the
+       pre-save row: measured live (verifier F1). Refresh again, a bounded
+       number of times, until the row carries the revision the save minted. */
+    const minted = nextNumber(saved.revision) || 0;
+    for(let tries = 0; typed && tries < 3 && nextCockpitRowRevision(session) < minted; tries += 1){
+      await refreshNext();
+    }
     const typing = typed ? nextCockpitHeldDrafts.get(linesKey) : null;
     if(typing) nextCockpitLinesTakeAdded(session, linesKey, typing, held, annotation);
   }catch(_error){
@@ -1543,14 +1551,27 @@ async function nextCockpitSaveDirection(session){
   }
 }
 
+// The session's row as the latest refresh published it, by harness and sid.
+function nextCockpitCurrentRow(session){
+  return nextRows().find(row => row && row.harness === session.harness &&
+    row.sid === session.sid) || session;
+}
+
+function nextCockpitRowRevision(session){
+  const annotation = nextCockpitAnnotation(nextCockpitCurrentRow(session));
+  return nextNumber(annotation && annotation.revision) || 0;
+}
+
 /* The stored line, and its place in the store's new list as its origin, join
    a lines draft the reader typed into while Add's save was open. The origin
    counts only once the refresh has published the revision the save minted;
    before that the line is offered as added here, and the store gives it a
    source of its own. A replace takes the place of the line it replaced where
-   the draft still holds that line untouched. */
+   the draft still holds that line untouched. The stored list is read from
+   the row the refresh published: the poll hands the page a new object, so
+   the one this save captured never moves (verifier F1). */
 function nextCockpitLinesTakeAdded(session, key, draft, held, before){
-  const annotation = nextCockpitAnnotation(session);
+  const annotation = nextCockpitAnnotation(nextCockpitCurrentRow(session));
   const saved = nextCockpitSavedLines(annotation);
   const moved = (nextNumber(annotation && annotation.revision) || 0) >
     (nextNumber(before && before.revision) || 0);

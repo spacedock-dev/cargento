@@ -1042,6 +1042,97 @@ class UnsavedEditsRefuseThePressTest(_DraftPage):
         self.assertEqual([None, 0], saves[0]["origins"])
         self.assertEqual(1, saves[0]["expected_revision"])
 
+    @staticmethod
+    def type_line_zero(value: str) -> str:
+        return (
+            f'__fire("input", {{target:{{value:{json.dumps(value)},'
+            f" dataset:{{nextCockpitHeldLinesKey:{json.dumps(LINES_KEY)},"
+            ' nextCockpitHeldLineIndex:"0"}, closest(selector){'
+            ' return selector === "[data-next-cockpit-held-lines-key]" ? this : null; }}});'
+        )
+
+    def typed_during_save(
+        self, setup: str, fresh: str, then: str, *, stale: int = 0
+    ) -> dict[str, Any]:
+        """The save's refresh publishes a NEW session object, as the live poll
+        does, rather than mutating the one the save captured (verifier F1).
+        `stale` GETs after the save still serve the pre-save row, as a refresh
+        superseded by a poll leaves it live."""
+        out = self.drive(
+            setup + "let __fresh = null; let __staleGets = 0; const __get = __fetchImpl;\n"
+            '__fetchImpl = async (url, init) => { if((!init || init.method !== "POST") &&'
+            " __fresh){ if(__staleGets > 0){ __staleGets -= 1; } else {"
+            " __dashboard.sessions[0] = __fresh; __fresh = null; } } return __get(url, init); };\n"
+            '__reply["/api/direction"] = body => ({status:200, body:{ok:true,'
+            f" fact_id:body.fact_id, text:{json.dumps(LATEST)}, clipped:false, fits:true}}}});\n"
+            '__reply["/api/annotate"] = body => { if(body.add_direction){ '
+            + self.type_line_zero("Line 1 MY EDIT")
+            + f" __staleGets = {stale}; __fresh = Object.assign({{}}, __s, SETTLED_BY_KEEP,"
+            f" {{annotation_settled_through:102}}, {fresh}); return {{status:200,"
+            ' body:{ok:true, persisted:true, outcome:"stored", revision:3, revision_count:3}};'
+            ' } return {status:200, body:{ok:true, persisted:true, outcome:"stored",'
+            " revision:4, revision_count:4}}; };\n",
+            OPEN_ADD + then + '__press("direction-save");\nawait __settle();\nawait __settle();\n'
+            "renderNext();\nawait __settle();\n"
+            f"const __draft = nextCockpitHeldDrafts.get({json.dumps(LINES_KEY)});\n"
+            f"const __origins = nextCockpitHeldOrigins.get({json.dumps(LINES_KEY)});\n"
+            "const __boxes = (__els.app.innerHTML.match("
+            "/data-next-cockpit-held-line-index=/g) || []).length;\n"
+            '__press("held-save", "lines");\nawait __settle();\nawait __settle();\n'
+            "console.log(JSON.stringify({draft:__draft, origins:__origins, boxes:__boxes,"
+            " posts:__posts, html:__els.app.innerHTML}));",
+        )
+        assert isinstance(out, dict)
+        return out
+
+    def test_a_replace_typed_over_a_full_list_takes_the_replaced_lines_place(self) -> None:
+        six = "".join(
+            f'__s.annotation_line_{k} = "Line {k}"; __s.annotation_line_{k}_source = "typed";'
+            for k in range(1, 7)
+        )
+        stored = (
+            "{annotation_revision:3, annotation_revision_count:3,"
+            f' annotation_line_3:{json.dumps(LATEST)}, annotation_line_3_source:"direction"}}'
+        )
+        out = self.typed_during_save(six + TYPED, stored, REPLACE_THREE)
+        want = ["Line 1 MY EDIT", "Line 2", LATEST, "Line 4", "Line 5", "Line 6"]
+        self.assertEqual(want, out["draft"])
+        self.assertEqual([0, 1, 2, 3, 4, 5], out["origins"])
+        self.assertEqual(6, out["boxes"])
+        saves = [post["body"] for post in out["posts"] if "lines" in post["body"]]
+        self.assertEqual(1, len(saves), out["posts"])
+        self.assertEqual(want, saves[0]["lines"])
+        self.assertEqual([0, 1, 2, 3, 4, 5], saves[0]["origins"])
+        self.assertEqual(3, saves[0]["expected_revision"])
+        self.assertNotIn("The server refused the write", visible_text(out["html"]))
+
+    def test_a_replace_waits_out_a_refresh_that_served_the_pre_save_row(self) -> None:
+        six = "".join(
+            f'__s.annotation_line_{k} = "Line {k}"; __s.annotation_line_{k}_source = "typed";'
+            for k in range(1, 7)
+        )
+        stored = (
+            "{annotation_revision:3, annotation_revision_count:3,"
+            f' annotation_line_3:{json.dumps(LATEST)}, annotation_line_3_source:"direction"}}'
+        )
+        out = self.typed_during_save(six + TYPED, stored, REPLACE_THREE, stale=1)
+        want = ["Line 1 MY EDIT", "Line 2", LATEST, "Line 4", "Line 5", "Line 6"]
+        self.assertEqual(want, out["draft"])
+        self.assertEqual([0, 1, 2, 3, 4, 5], out["origins"])
+
+    def test_an_add_typed_over_a_short_list_appends_from_a_fresh_session(self) -> None:
+        stored = (
+            "{annotation_revision:3, annotation_revision_count:3,"
+            f' annotation_line_2:{json.dumps(LATEST)}, annotation_line_2_source:"direction"}}'
+        )
+        out = self.typed_during_save(ONE_LINE + TYPED, stored, "")
+        self.assertEqual(["Line 1 MY EDIT", LATEST], out["draft"])
+        self.assertEqual([0, 1], out["origins"])
+        saves = [post["body"] for post in out["posts"] if "lines" in post["body"]]
+        self.assertEqual(1, len(saves), out["posts"])
+        self.assertEqual(["Line 1 MY EDIT", LATEST], saves[0]["lines"])
+        self.assertEqual([0, 1], saves[0]["origins"])
+
 
 @unittest.skipUnless(shutil.which("node"), "node not available")
 class KeepSettlesWithoutConsentTest(_DraftPage):
