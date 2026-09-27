@@ -11,6 +11,8 @@ from __future__ import annotations
 
 import itertools
 import json
+import ntpath
+import os
 import re
 import shlex
 from typing import TYPE_CHECKING, Any
@@ -787,8 +789,20 @@ class ACdInsideASubshellDoesNotCarryPastIt(CheckLineTestCase):
 
     @staticmethod
     def check_directories(command: str) -> list[str]:
+        """Each check's directory, normalised on both sides of the comparison.
+
+        The directory is the check's identity key, joined with `os.path` as it
+        was before DRC-4724, so on Windows a directory a `cd` reached carries
+        backslashes while the starting one keeps what the record said. It is
+        never published; a written path is, and it is always `/`-separated
+        (`test_a_published_path_is_slash_separated_whatever_the_os`).
+        """
         call = project_context._ShellCall(0.0, "/w", {"command": command})
-        return [call.directories[index] for index in call.checks]
+        return [os.path.normpath(call.directories[index]) for index in call.checks]
+
+    def assert_directories(self, expected: list[str], command: str) -> None:
+        self.assertEqual([os.path.normpath(path) for path in expected],
+                         self.check_directories(command))  # fmt: skip
 
     def test_each_check_runs_in_the_directory_its_subshell_left(self) -> None:
         for command, expected in (
@@ -802,7 +816,7 @@ class ACdInsideASubshellDoesNotCarryPastIt(CheckLineTestCase):
             ("bash -c '(cd x && pytest); pytest'; pytest", ["/w/x", "/w", "/w"]),
         ):
             with self.subTest(command=command):
-                self.assertEqual(expected, self.check_directories(command))
+                self.assert_directories(expected, command)
 
     def test_a_parenthesis_that_opens_no_subshell_changes_nothing(self) -> None:
         for command, expected in (
@@ -813,7 +827,7 @@ class ACdInsideASubshellDoesNotCarryPastIt(CheckLineTestCase):
             ("cd sub; echo $(cd other); pytest", ["/w/sub"]),
         ):
             with self.subTest(command=command):
-                self.assertEqual(expected, self.check_directories(command))
+                self.assert_directories(expected, command)
 
     def test_a_failure_in_the_subshell_is_not_superseded_by_a_pass_outside_it(self) -> None:
         self.session.bash("cd sub && pytest", "1 failed", is_error=True)
@@ -830,3 +844,25 @@ class ACdInsideASubshellDoesNotCarryPastIt(CheckLineTestCase):
             sorted(c["title"] for c in checks),
         )
         self.assertNotIn(HALF_A, text)
+
+
+class APublishedPathIsTheSameOnEveryOs(CheckLineTestCase):
+    """PR #414's Windows run: a written path a reader sees never carries the
+    host's separator, whichever path module joined it."""
+
+    def test_a_published_path_is_slash_separated_whatever_the_os(self) -> None:
+        with (
+            mock.patch.object(os, "path", ntpath),
+            mock.patch.object(os, "sep", "\\"),
+        ):
+            call = project_context._ShellCall(
+                0.0, "C:\\work\\billing", {"command": "cd sub && pytest > logs/out.txt"}
+            )
+            index, target, start = call.redirect_writes[0]
+            self.assertEqual(index, start)
+            published = call.written_path(target, start, "C:\\work\\billing")
+            write = project_context._written_path(
+                "C:\\work\\billing\\src\\a.py", "C:\\work\\billing"
+            )
+        self.assertEqual("sub/logs/out.txt", published)
+        self.assertEqual("src/a.py", write)
