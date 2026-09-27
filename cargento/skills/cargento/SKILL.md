@@ -368,8 +368,9 @@ Cargento publishes it, or from your latest prompt, marked "latest", where no fir
 time is published. The draft is marked "from your prompt", an excerpt says "Shown excerpt only.",
 the box is tinted, and the stamp still reads "No revision saved yet": nothing is saved until you
 press Looks right, edit the box and save, or press `Analyze drift`, which adopts the draft. "Use a
-prompt" still offers your latest prompt. Analyze drift over an edited box you have not saved is
-refused, because it would read words that are not on screen. No drift level or pill is drawn over
+prompt" still offers your latest prompt. Analyze drift, Keep and an added line's save are refused
+while the goal box or the outcome lines hold an edit you have not saved, because each would stand
+on words that are not on screen; your edit stays in the box. No drift level or pill is drawn over
 an unsaved draft. Once a goal is saved the Intent heading reads "Confirmed".
 
 A direction you gave after your intent (after the saved goal's words, or after the drafted prompt)
@@ -377,11 +378,14 @@ is asked about before the press, in the control's place: "You gave a later direc
 the entry by its number in the list, and every unsettled one is listed at its own number past the
 twenty-row bound. Nothing there decides whether it changes what you asked for: that is yours, and
 Cargento does not write into the session either way. `Keep my intent and analyze` settles them
-through the newest one shown, adopting a draft in the same write, and starts the analysis, giving
-the Allow where none is given yet; where no analysis can start it reads `Keep my intent`, settles,
-and says no analysis was started. `Add it to my intent` opens the newest direction's whole text as
-a pending line under Expected outcome, marked "not saved", for you to edit: a line over 240
-characters is refused rather than clipped, and at six lines you choose the line it replaces. While
+through the newest one shown, adopting a draft in the same write, and starts the analysis. Keep
+never gives the Allow: where none is given yet it reads `Keep my intent`, settles, and asks you to
+press `Allow and analyze`, beside its disclosure, to send it; where no analysis can start it reads
+`Keep my intent`, settles, and says no analysis was started. `Add it to my intent` opens the
+earliest unsettled direction's whole text as a pending line under Expected outcome, marked "not
+saved", for you to edit, and its save settles through that direction only, so the question comes
+back for any later one: a line over 240 characters is refused rather than clipped, and at six
+lines you choose the line it replaces. While
 a later direction is unsettled a reading states no departure at all.
 
 `DEPARTURES RAISED TO YOU` is where a raise is reviewed, and the one place on the session page it
