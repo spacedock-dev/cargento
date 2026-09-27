@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import collections
 import concurrent.futures
 import tempfile
 import threading
@@ -152,8 +153,35 @@ class ReadingPolicyTest(unittest.TestCase):
         reading_policy.set_consent(self.config, True, now=100.0)
         with concurrent.futures.ProcessPoolExecutor(max_workers=4) as pool:
             results = list(pool.map(_reserve_in_process, [self.home.name] * 24))
-        self.assertEqual(12, results.count(""))
-        self.assertEqual(12, results.count("daily-cap"))
+        # Every reason, not two counts: on a Windows runner three presses came
+        # back neither admitted nor capped, and the counts could not say why.
+        self.assertEqual({"": 12, "daily-cap": 12}, collections.Counter(results))
+
+    def test_a_reservation_waits_out_a_write_that_outlasts_a_read(self) -> None:
+        # DRC-4707: a press refused as store-unavailable while under the cap,
+        # because another process held the store longer than the 2 s a write
+        # used to wait. Held here past the read wait, the reservation must
+        # still be waiting when the holder lets go, and then be admitted.
+        reading_policy.set_consent(self.config, True, now=100.0)
+        assert runtime_io.sqlite_module is not None
+        holder = runtime_io.sqlite_module.connect(
+            reading_policy.store_path(self.config), isolation_level=None
+        )
+        reasons: list[str] = []
+        worker = threading.Thread(
+            target=lambda: reasons.append(reading_policy.reserve(self.config, now=100.0)["reason"])
+        )
+        try:
+            holder.execute("BEGIN IMMEDIATE")
+            worker.start()
+            worker.join(reading_policy.READ_WAIT_SEC + 0.5)
+            waited = worker.is_alive()
+            holder.execute("COMMIT")
+        finally:
+            holder.close()
+        worker.join(reading_policy.WRITE_WAIT_SEC)
+        self.assertTrue(waited, f"refused while the store was held: {reasons}")
+        self.assertEqual([""], reasons)
 
 
 class PermissionIsPerProviderTest(unittest.TestCase):
@@ -488,7 +516,9 @@ class TheReservationIsTheStopsLineTest(unittest.TestCase):
         seen: list[bool] = []
         real = reading_policy._connect
         with mock.patch.object(
-            reading_policy, "_connect", lambda config: _StopAtTheInsert(real(config), seen)
+            reading_policy,
+            "_connect",
+            lambda config, wait: _StopAtTheInsert(real(config, wait), seen),
         ):
             answer = reading_policy.reserve(self.config, now=100.0, job_id="j1")
         self.assertEqual([True], seen, "the shutdown ran while the charge was uncommitted")

@@ -37,6 +37,15 @@ JOB_LEDGER_SEC = 30 * DAY_SEC
 PROVIDERS = ("codex", "claude")
 LEGACY_PROVIDER = "codex"
 _SQL_ERROR = getattr(runtime_io.sqlite_module, "Error", RuntimeError)
+# How long a write waits behind other processes' writes before it is refused
+# as store-unavailable. Every write holds the lock for one short transaction,
+# so the wait is the length of the queue, and a slow disk lengthens every place
+# in it. At 2 s, three of 24 reservations from four processes were refused on a
+# Windows runner while under the cap (DRC-4707), and a reader sees that as a
+# refused Analyze. A read for the board keeps the short wait, so a collect does
+# not stall behind a queue of presses.
+WRITE_WAIT_SEC = 10.0
+READ_WAIT_SEC = 2.0
 
 
 class Status(TypedDict):
@@ -89,7 +98,7 @@ def tool_output_allowed(answer: Status, provider: str, destination: str) -> bool
     return bool(destination) and destination in answer.get("tool_output", {}).get(provider, [])
 
 
-def _connect(config: RuntimeConfig) -> Any:
+def _connect(config: RuntimeConfig, wait: float) -> Any:
     if runtime_io.sqlite_module is None:
         raise RuntimeError("SQLite is unavailable")
     path = store_path(config)
@@ -99,7 +108,7 @@ def _connect(config: RuntimeConfig) -> Any:
     # SQLite inherits this owner-only mode for its rollback journal too.
     fd = os.open(path, os.O_CREAT | os.O_WRONLY, 0o600)
     os.close(fd)
-    return runtime_io.sqlite_module.connect(path, timeout=2.0, isolation_level=None)
+    return runtime_io.sqlite_module.connect(path, timeout=wait, isolation_level=None)
 
 
 def _allowed(db: Any) -> dict[str, bool]:
@@ -141,7 +150,8 @@ def _transaction(
 ) -> Status:
     if not math.isfinite(now) or now <= 0:
         return _answer(reason="store-unavailable")
-    with contextlib.closing(_connect(config)) as db:
+    wait = READ_WAIT_SEC if operation == "read" else WRITE_WAIT_SEC
+    with contextlib.closing(_connect(config, wait)) as db:
         db.execute("BEGIN IMMEDIATE")
         db.execute(
             "CREATE TABLE IF NOT EXISTS permission (id INTEGER PRIMARY KEY CHECK(id=1), "
@@ -301,7 +311,7 @@ def charged(config: RuntimeConfig, job_id: str, *, started_at: Any, now: float) 
         if path.is_symlink() or not path.is_file():
             return None
         with contextlib.closing(
-            runtime_io.sqlite_module.connect(path, timeout=2.0, isolation_level=None)
+            runtime_io.sqlite_module.connect(path, timeout=READ_WAIT_SEC, isolation_level=None)
         ) as db:
             row = db.execute("SELECT 1 FROM spend_jobs WHERE job = ?", (job_id,)).fetchone()
             since = db.execute("SELECT at FROM spend_jobs_since WHERE id = 1").fetchone()
