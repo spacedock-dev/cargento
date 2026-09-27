@@ -2428,16 +2428,21 @@ class SupervisedModelCallTest(unittest.TestCase):
                 bin_dir = Path(tempfile.mkdtemp())
                 self.addCleanup(shutil.rmtree, bin_dir, True)
                 peak_file = bin_dir / "peak"
+                peak_file.write_text("0")
                 fake = bin_dir / name
+                # The count is published by rename: `open(..., 'w')` truncates
+                # before it writes, and the kill this test provokes landed in
+                # that gap 4 runs in 25 under load, leaving '' to parse.
                 fake.write_text(
                     f"#!{sys.executable}\n"
-                    "import sys, time\n"
+                    "import os, sys, time\n"
                     "sys.stdin.read()\n"
                     f"out = {where[name]}\n"
                     "chunk = b'x' * (1 << 20)\n"
                     "for n in range(50):\n"
                     "    out.write(chunk); out.flush()\n"
-                    f"    open({str(peak_file)!r}, 'w').write(str(n + 1))\n"
+                    f"    open({str(peak_file) + '.part'!r}, 'w').write(str(n + 1))\n"
+                    f"    os.replace({str(peak_file) + '.part'!r}, {str(peak_file)!r})\n"
                     "    time.sleep(0.02)\n"
                     "time.sleep(60)\n"
                 )
