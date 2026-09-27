@@ -24,6 +24,11 @@ if TYPE_CHECKING:
 
 DAY_SEC = 86_400.0
 DAILY_CAP = 12
+# How long the job ledger keeps the id each charge was made for (DRC-4713).
+# Far past `DAY_SEC`, because the budget reads only `spends`: a restart more
+# than a day after a crash must still find the row, or it would call a charged
+# attempt uncharged. A marker older than this is answered "cannot say".
+JOB_LEDGER_SEC = 30 * DAY_SEC
 # One answer per receiver (DRC-4650): allowing Codex to send a reader's words
 # to OpenAI is not allowing Claude Code to send them to Anthropic. Codex keeps
 # the original single-row table, so an answer saved before there were two
@@ -127,7 +132,12 @@ def _write(db: Any, provider: str, allowed: bool) -> None:
 
 
 def _transaction(
-    config: RuntimeConfig, now: float, operation: str, provider: str, tool_output: str = ""
+    config: RuntimeConfig,
+    now: float,
+    operation: str,
+    provider: str,
+    tool_output: str = "",
+    job_id: str = "",
 ) -> Status:
     if not math.isfinite(now) or now <= 0:
         return _answer(reason="store-unavailable")
@@ -146,6 +156,10 @@ def _transaction(
             "destination TEXT NOT NULL, PRIMARY KEY (provider, destination))"
         )
         db.execute("CREATE TABLE IF NOT EXISTS spends (at REAL NOT NULL)")
+        # A table of its own rather than a column on `spends`: an older build's
+        # `INSERT INTO spends VALUES (?)` fails against a second column, and a
+        # rollback would then refuse every press as store-unavailable.
+        db.execute("CREATE TABLE IF NOT EXISTS spend_jobs (job TEXT PRIMARY KEY, at REAL NOT NULL)")
         # Schema, so it fires inside a pre-DRC-4650 build's own write: that
         # build's Turn off and `--forget` touch only the legacy row, and without
         # this the Claude Code answer survived a rollback (DRC-4666).
@@ -158,6 +172,7 @@ def _transaction(
             )
         allowed = _allowed(db)
         db.execute("DELETE FROM spends WHERE at <= ?", (now - DAY_SEC,))
+        db.execute("DELETE FROM spend_jobs WHERE at <= ?", (now - JOB_LEDGER_SEC,))
         dates = tuple(float(row[0]) for row in db.execute("SELECT at FROM spends ORDER BY at"))
         if any(not math.isfinite(at) or at <= 0 for at in dates):
             raise ValueError("Invalid spend timestamp")
@@ -181,17 +196,39 @@ def _transaction(
             allowed.get(provider, False), dates, providers=allowed, tool_output=_tool_output(db)
         )
         if operation == "reserve" and not answer["reason"]:
-            db.execute("INSERT INTO spends VALUES (?)", (now,))
-            answer = {**answer, "used": len(dates) + 1}
+            return _commit_charge(db, answer, now, job_id)
         db.execute("COMMIT")
         return answer
 
 
+def _commit_charge(db: Any, answer: Status, now: float, job_id: str) -> Status:
+    """Insert the charge and its job, and commit, unless the runner has shut.
+
+    Under the lock a shutdown takes (DRC-4712). The wait for SQLite's write
+    lock is already behind this, so `kill_all` waits one commit at most, and
+    it never touches SQLite, so the two locks cannot be taken in both orders.
+    """
+    with supervise.admitting() as open_:
+        if not open_:
+            db.execute("ROLLBACK")
+            return {**answer, "reason": "stopping"}
+        db.execute("INSERT INTO spends VALUES (?)", (now,))
+        if job_id:
+            db.execute("INSERT OR IGNORE INTO spend_jobs VALUES (?, ?)", (job_id, now))
+        db.execute("COMMIT")
+    return {**answer, "used": answer["used"] + 1}
+
+
 def _run(
-    config: RuntimeConfig, now: float, operation: str, provider: str, tool_output: str = ""
+    config: RuntimeConfig,
+    now: float,
+    operation: str,
+    provider: str,
+    tool_output: str = "",
+    job_id: str = "",
 ) -> Status:
     try:
-        return _transaction(config, now, operation, provider, tool_output)
+        return _transaction(config, now, operation, provider, tool_output, job_id)
     except (OSError, ValueError, RuntimeError, _SQL_ERROR):
         return _answer(reason="store-unavailable")
 
@@ -220,15 +257,48 @@ def set_consent(
     return _run(config, now, "allow" if allowed else "off", provider, tool_output)
 
 
-def reserve(config: RuntimeConfig, *, now: float, provider: str = LEGACY_PROVIDER) -> Status:
+def reserve(
+    config: RuntimeConfig, *, now: float, provider: str = LEGACY_PROVIDER, job_id: str = ""
+) -> Status:
     """Commit a charge before launch; uncertainty about spend never refunds it.
 
     One rolling budget whichever provider is admitted: two providers must not
-    be a way to double a reader's daily readings.
+    be a way to double a reader's daily readings. `job_id` commits with the
+    charge, so a restart can ask `charged` whether that job's attempt was made.
+    A shutdown before the commit answers `stopping` and charges nothing.
     """
     if config.model_calls_disabled:
         return status(config, now=now, provider=provider)
-    return _run(config, now, "reserve", provider)
+    return _run(config, now, "reserve", provider, job_id=job_id)
+
+
+def charged(config: RuntimeConfig, job_id: str, *, started_at: Any, now: float) -> bool | None:
+    """Whether the ledger holds a charge for this job, or None when it cannot say.
+
+    None for no id, a start time that is not a positive number or is older
+    than the ledger keeps, and a store that is missing, unreadable or older
+    than the ledger. A caller counts None as spent: dropping a charged attempt
+    silently is the loss DRC-4686 Q2 ruled out. Reads only; creates nothing.
+    """
+    if (
+        not job_id
+        or not isinstance(started_at, (int, float))
+        or not math.isfinite(started_at)
+        or started_at <= max(now - JOB_LEDGER_SEC, 0.0)
+        or runtime_io.sqlite_module is None
+    ):
+        return None
+    path = store_path(config)
+    try:
+        if path.is_symlink() or not path.is_file():
+            return None
+        with contextlib.closing(
+            runtime_io.sqlite_module.connect(path, timeout=2.0, isolation_level=None)
+        ) as db:
+            row = db.execute("SELECT 1 FROM spend_jobs WHERE job = ?", (job_id,)).fetchone()
+    except (OSError, ValueError, RuntimeError, _SQL_ERROR):
+        return None
+    return row is not None
 
 
 class RefusedError(Exception):
@@ -248,7 +318,7 @@ class GuardedModel:
         *,
         provider: str = LEGACY_PROVIDER,
         on_reserved: Callable[[], None] | None = None,
-        before_reserve: Callable[[], None] | None = None,
+        before_reserve: Callable[[], str | None] | None = None,
         cancelled: Callable[[], bool] | None = None,
     ) -> None:
         self.config = config
@@ -258,7 +328,9 @@ class GuardedModel:
         # A reading job is told the spend is committed (DRC-4686).
         self.on_reserved = on_reserved
         # And its marker before the reservation: a hook that raises here
-        # stops the call with nothing spent.
+        # stops the call with nothing spent. What it returns is the job id the
+        # charge is recorded under, so the marker and the ledger row it
+        # promises come from one place (DRC-4713).
         self.before_reserve = before_reserve
         # A reader's Cancel, asked here so one that lands before the
         # reservation spends nothing (owner, 2026-09-24; see the Cancel
@@ -277,9 +349,12 @@ class GuardedModel:
             return "", "closed"
         if self.cancelled is not None and self.cancelled():
             return "", "cancelled"
-        if self.before_reserve is not None:
-            self.before_reserve()
-        answer = reserve(self.config, now=self.clock(), provider=self.provider)
+        job_id = self.before_reserve() if self.before_reserve is not None else None
+        answer = reserve(self.config, now=self.clock(), provider=self.provider, job_id=job_id or "")
+        if answer["reason"] == "stopping":
+            # The shutdown reached the reservation before its commit, so the
+            # call is the stop the early look above would have refused.
+            return "", "closed"
         if answer["reason"]:
             raise RefusedError(answer)
         if self.on_reserved is not None:

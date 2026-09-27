@@ -617,7 +617,7 @@ class CancelKillsTheCliAndNothingElseTest(unittest.TestCase):
         """Review P2: once cancelled, the wait keeps its poll step whatever the deadline says.
 
         A fake process, because `_wait_windows` runs only on Windows: its
-        `communicate` never finishes, and the kill never lands.
+        `wait` never finishes, and the kill never lands.
         """
 
         class _Process:
@@ -626,7 +626,7 @@ class CancelKillsTheCliAndNothingElseTest(unittest.TestCase):
             def __init__(self) -> None:
                 self.calls = 0
 
-            def communicate(self, _data: Any = None, timeout: float | None = None) -> None:
+            def wait(self, timeout: float | None = None) -> None:
                 self.calls += 1
                 if timeout:
                     time.sleep(timeout)
@@ -640,7 +640,7 @@ class CancelKillsTheCliAndNothingElseTest(unittest.TestCase):
         ):
             group.cancel()
             with self.assertRaises(supervise.UnstoppedError):
-                supervise._wait_windows(group, "prompt", 0.05)
+                supervise._wait_windows(group, 0.05)
         # About 0.5 s at 0.1 s a step, plus the call's own 0.05 s: a handful.
         self.assertLess(process.calls, 50, "the reap window spun on a zero timeout")
 
@@ -684,6 +684,259 @@ class CancelKillsTheCliAndNothingElseTest(unittest.TestCase):
         report = self._harness("foreground")
         self.assertTrue(report["cli_done"])
         self.assertTrue(report["sentinel"], "a sibling in the launching group was killed")
+
+
+# A CLI that starts a grandchild, writes its pid to argv[1], then floods its
+# stdout 1 MiB at a time. The pause between chunks keeps one 0.1 s slice to a
+# few MiB, so "killed near the bound" is a measurement and not disk speed.
+_FLOODS_ITS_OUTPUT = (
+    "import subprocess, sys, time\n"
+    "child = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(60)'])\n"
+    "with open(sys.argv[1], 'w') as out:\n"
+    "    out.write(str(child.pid))\n"
+    "chunk = b'x' * (1 << 20)\n"
+    "for _ in range(50):\n"
+    "    sys.stdout.buffer.write(chunk)\n"
+    "    sys.stdout.flush()\n"
+    "    time.sleep(0.02)\n"
+    "time.sleep(60)\n"
+)
+
+
+class AnOutputFileHasABoundTest(unittest.TestCase):
+    """DRC-4667: a CLI that writes far past what a call can use is stopped near the bound."""
+
+    def setUp(self) -> None:
+        self.home = Path(tempfile.mkdtemp())
+        self.addCleanup(lambda: __import__("shutil").rmtree(self.home, True))
+        patcher = mock.patch.object(supervise, "_SHUTDOWN", threading.Event())
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def test_a_cli_that_floods_its_output_file_is_killed_near_the_bound(self) -> None:
+        out, pid_file = self.home / "reply.txt", self.home / "helper.pid"
+        limit = 1 << 20
+        started = time.monotonic()
+        with out.open("wb") as handle, self.assertRaises(supervise.OversizedError):
+            supervise.run(
+                [sys.executable, "-c", _FLOODS_ITS_OUTPUT, str(pid_file)],
+                input="",
+                stdout=handle,
+                stderr=subprocess.DEVNULL,
+                timeout=60,
+                output_limit=(str(out), limit),
+            )
+        self.assertLess(time.monotonic() - started, 20, "the flood ran on toward the timeout")
+        size = out.stat().st_size
+        self.assertGreater(size, limit)
+        self.assertLess(size, 10 * limit, "the file grew far past one slice of writes")
+        helper = int(pid_file.read_text())
+        self.assertTrue(_wait_until(lambda: not process_alive(helper)), "its helper outlived it")
+
+    def test_a_reply_inside_the_bound_is_returned_as_usual(self) -> None:
+        out = self.home / "reply.txt"
+        with out.open("wb") as handle:
+            result = supervise.run(
+                [sys.executable, "-c", "import sys; sys.stdout.write('x' * 4096)"],
+                input="",
+                stdout=handle,
+                stderr=subprocess.DEVNULL,
+                timeout=30,
+                output_limit=(str(out), 1 << 20),
+            )
+        self.assertEqual(0, result.returncode)
+        self.assertEqual(4096, out.stat().st_size)
+
+    def test_an_unconfirmed_kill_outranks_the_oversized_answer(self) -> None:
+        out, pid_file = self.home / "reply.txt", self.home / "helper.pid"
+        groups: list[supervise.Group] = []
+        try:
+            with (
+                mock.patch.object(supervise.Group, "_kill", return_value=False),
+                mock.patch.object(supervise, "REAP_TIMEOUT_SEC", 0.5),
+                out.open("wb") as handle,
+                self.assertRaises(supervise.UnstoppedError),
+            ):
+                supervise.run(
+                    [sys.executable, "-c", _FLOODS_ITS_OUTPUT, str(pid_file)],
+                    input="",
+                    stdout=handle,
+                    stderr=subprocess.DEVNULL,
+                    timeout=60,
+                    on_spawn=groups.append,
+                    output_limit=(str(out), 1 << 20),
+                )
+        finally:
+            # The kill was faked as failing, so the CLI and its helper still
+            # run; on Windows closing the job ended them already.
+            if groups and sys.platform != "win32":
+                supervise.kill_group(groups[0].pid)
+                groups[0]._process.wait(10)
+
+
+class TheReservationAndTheShutdownShareALockTest(unittest.TestCase):
+    """DRC-4712: `admitting` holds the lock `kill_all` takes, so the two are ordered."""
+
+    def setUp(self) -> None:
+        patcher = mock.patch.object(supervise, "_SHUTDOWN", threading.Event())
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def test_a_shutdown_waits_for_an_admission_in_progress(self) -> None:
+        with supervise.admitting() as open_:
+            self.assertTrue(open_)
+            stopper = threading.Thread(target=supervise.kill_all, daemon=True)
+            stopper.start()
+            stopper.join(0.3)
+            self.assertTrue(stopper.is_alive(), "the shutdown did not wait for the admission")
+            self.assertFalse(supervise.closed())
+        stopper.join(5)
+        self.assertFalse(stopper.is_alive())
+        with supervise.admitting() as open_:
+            self.assertFalse(open_)
+
+
+class _UnreadStdin:
+    """A Windows pipe nobody reads: a write blocks until the test ends."""
+
+    def __init__(self, drained: threading.Event) -> None:
+        self._drained = drained
+
+    def write(self, _data: Any) -> None:
+        self._drained.wait(30)
+
+    def close(self) -> None:
+        pass
+
+
+class _UnreadWindowsProcess:
+    """A Windows `Popen` whose CLI never reads stdin and exits only when killed.
+
+    `communicate` writes on the calling thread first, as CPython's does there.
+    """
+
+    pid, args = 4242, ["cli"]
+
+    def __init__(self, drained: threading.Event) -> None:
+        self.stdin: Any = _UnreadStdin(drained)
+        self.returncode: int | None = None
+        self.killed = False
+
+    def communicate(self, data: Any = None, timeout: float | None = None) -> None:
+        if data is not None and self.stdin is not None:
+            self.stdin.write(data)
+        self.wait(timeout)
+
+    def wait(self, timeout: float | None = None) -> int:
+        if self.killed:
+            self.returncode = 1
+            return 1
+        time.sleep(timeout or 0.0)
+        raise subprocess.TimeoutExpired("cli", timeout or 0.0)
+
+
+class AWindowsPromptNobodyReadsTest(unittest.TestCase):
+    """DRC-4713: a CLI that never reads stdin still meets the call's deadline.
+
+    CPython's Windows `communicate` writes stdin in the calling thread before
+    any timed wait, so a prompt larger than the pipe held the call past its
+    timeout for as long as the CLI ran.
+    """
+
+    def setUp(self) -> None:
+        patcher = mock.patch.object(supervise, "_SHUTDOWN", threading.Event())
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def test_a_call_whose_cli_never_reads_stdin_still_times_out(self) -> None:
+        """A real child, on every platform; the Windows CI job is the one this guards."""
+        started = time.monotonic()
+        with self.assertRaises(subprocess.TimeoutExpired):
+            supervise.run(
+                [sys.executable, "-c", "import time; time.sleep(60)"],
+                input="x" * (1 << 20),
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                text=True,
+                encoding="utf-8",
+                timeout=1,
+            )
+        self.assertLess(time.monotonic() - started, 1 + supervise.REAP_TIMEOUT_SEC + 3)
+
+    def test_the_windows_wait_never_writes_the_prompt_on_its_own_thread(self) -> None:
+        """A fake process, because `_run_windows` runs only on Windows: its stdin never drains."""
+        drained = threading.Event()
+        self.addCleanup(drained.set)
+        process = _UnreadWindowsProcess(drained)
+        group = supervise.Group(process)  # type: ignore[arg-type]
+        outcome: list[BaseException] = []
+
+        def kill(_group: Any) -> bool:
+            process.killed = True
+            return True
+
+        def call() -> None:
+            try:
+                supervise._run_windows(group, "prompt", 0.5, None)
+            except BaseException as exc:  # noqa: BLE001 (reported to the test thread)
+                outcome.append(exc)
+
+        with mock.patch.object(supervise.Group, "_kill", kill):
+            worker = threading.Thread(target=call, daemon=True)
+            worker.start()
+            worker.join(10)
+        self.assertFalse(worker.is_alive(), "the call waited on a prompt nobody read")
+        self.assertEqual(1, len(outcome))
+        self.assertIsInstance(outcome[0], subprocess.TimeoutExpired)
+
+
+class ThePollFallbackLimitIsDocumentedTest(unittest.TestCase):
+    """DRC-4712 L4, pinned rather than fixed (owner, 2026-09-27).
+
+    When neither `waitid` nor kqueue can watch the exit, the call polls, and the
+    poll reaps the leader, so helpers still in its group after a NORMAL exit are
+    not swept. COMPATIBILITY.md and SECURITY.md say so. A timeout still kills the
+    group, because that kill comes before the reap. If this starts sweeping,
+    change the two documents with it.
+    """
+
+    def setUp(self) -> None:
+        self.home = Path(tempfile.mkdtemp())
+        self.addCleanup(lambda: __import__("shutil").rmtree(self.home, True))
+        patcher = mock.patch.object(supervise, "_SHUTDOWN", threading.Event())
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    @unittest.skipIf(sys.platform == "win32", "a Job Object has no unwatchable exit")
+    def test_a_helper_left_after_a_normal_exit_survives_the_poll_fallback(self) -> None:
+        pid_file = self.home / "helper.pid"
+        leaves_a_helper = (
+            "import subprocess, sys\n"
+            "child = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(60)'])\n"
+            "open(sys.argv[1], 'w').write(str(child.pid))\n"
+        )
+        with mock.patch.object(supervise, "_state", return_value="unknown"):
+            supervise.run(
+                [sys.executable, "-c", leaves_a_helper, str(pid_file)],
+                input="",
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                timeout=30,
+            )
+        helper = int(pid_file.read_text())
+        try:
+            self.assertTrue(process_alive(helper), "the poll fallback now sweeps: update the docs")
+        finally:
+            with contextlib.suppress(OSError):
+                os.kill(helper, signal.SIGKILL)
+
+    def test_the_limit_is_stated_where_the_runner_is_documented(self) -> None:
+        root = Path(supervise.__file__).resolve().parents[4]
+        for name in ("COMPATIBILITY.md", "SECURITY.md"):
+            with self.subTest(document=name):
+                text = " ".join((root / name).read_text(encoding="utf-8").split())
+                phrase = "helpers still in its group after a normal exit are not swept"
+                self.assertTrue(phrase in text, f"{name} does not state the poll-fallback limit")
 
 
 if __name__ == "__main__":

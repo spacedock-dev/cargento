@@ -364,6 +364,7 @@ WITHHELD_STOPPING = "stopping"
 WITHHELD_UNSTORED = "unstored"
 WITHHELD_CANCELLED = "cancelled"
 WITHHELD_CANCELLED_UNSENT = "cancelled-unsent"
+WITHHELD_OVERSIZED = "oversized"
 WITHHELD = {
     WITHHELD_TURN_STOP: (
         "A turn stop was observed and no session end was, so there is no end for a "
@@ -440,6 +441,13 @@ WITHHELD = {
     ),
     WITHHELD_STOPPING: (
         "The analysis did not run, because Cargento was stopping. Nothing was sent or spent."
+    ),
+    # The CLI wrote past `observer.OUTPUT_FILE_LIMIT_BYTES` and was killed as a
+    # Cancel kills it (DRC-4667). The call ran, so the attempt counts.
+    WITHHELD_OVERSIZED: (
+        "The reading was stopped because its CLI wrote far more output than a reading can "
+        "use. Nothing was produced, the attempt still counts, and a fresh press is the only "
+        "retry."
     ),
     # Recorded at the next start for a spent attempt whose outcome the store
     # refused when it ran: the analysis finished, so it is not called a stop.
@@ -2103,18 +2111,23 @@ def produce(  # noqa: PLR0913
     return assessment, "", True
 
 
+# The exec statuses that name their own cause, and whether each spent.
+_STATUS_FAILURES = {
+    "unstopped": (WITHHELD_UNSTOPPED, True),
+    "oversized": (WITHHELD_OVERSIZED, True),
+    "closed": (WITHHELD_STOPPING, False),
+    "cancelled": (WITHHELD_CANCELLED_UNSENT, False),
+}
+
+
 def _call_failed(model: Callable[..., tuple[str, str]], status: str) -> tuple[str, bool] | None:
     """Why the model call produced nothing, and whether it spent, or None for a reply."""
     if status == "unavailable":
         # Named for the CLI the page promised, never the other one: each model
         # says which sentence its own absence gets.
         return getattr(model, "unavailable_reason", None) or WITHHELD_MODEL_UNAVAILABLE, False
-    if status == "unstopped":
-        return WITHHELD_UNSTOPPED, True
-    if status == "closed":
-        return WITHHELD_STOPPING, False
-    if status == "cancelled":
-        return WITHHELD_CANCELLED_UNSENT, False
+    if status in _STATUS_FAILURES:
+        return _STATUS_FAILURES[status]
     if status != "ok":
         return WITHHELD_MODEL_FAILED, True
     return None

@@ -7,10 +7,13 @@ unasked lane takes that same slot. This module is the thread: it tells the job
 each real phase as it happens, publishes a revision for each, writes the
 outcome, and only then frees the slot.
 
-A spend the dashboard was stopped in the middle of is not lost. Once the spend
-is committed, a small marker names the job; the outcome's write removes it,
-and the next start turns any marker whose process is gone into a spent
-`interrupted` attempt (Q2 on the issue). The marker holds identifiers only.
+A spend the dashboard was stopped in the middle of is not lost. Before the
+spend, a small marker names the job; the outcome's write removes it, and the
+next start turns any marker whose process is gone into an outcome (Q2 on the
+issue). The reservation commits the job's id with the charge (DRC-4713), so
+that outcome is a spent `interrupted` attempt only when the ledger holds the
+charge, or cannot say, and an unspent `stopping` one when it holds none. The
+marker holds identifiers only.
 
 A Cancel (DRC-4693) marks the job, kills its CLI's group, and lets this thread
 finish as it would have: the reap, the file removal, the write, and only then
@@ -74,6 +77,7 @@ _KEPT_REASONS = (
     reading.WITHHELD_INTERRUPTED,
     reading.WITHHELD_UNSTOPPED,
     reading.WITHHELD_CANCELLED,
+    reading.WITHHELD_OVERSIZED,
 )
 # Held across every read-and-rewrite and removal of a marker, because a Cancel
 # rewrites one from a request thread while the job's own thread may remove it:
@@ -116,15 +120,16 @@ class Hooks:
         # exception after it still records a spent attempt.
         self.spent = False
 
-    def before_reserve(self) -> None:
+    def before_reserve(self) -> str:
         """Leave the marker a restart would find, before anything is spent.
 
         Before and not after the reservation: a marker that cannot be written
         stops the job with nothing spent, where one written after could fail
-        with the spend already made and nothing left to count it. The price is
-        the other side of that line: a dashboard that dies between this write
-        and the reservation leaves a marker for an attempt the budget never
-        charged, and the next start counts it.
+        with the spend already made and nothing left to count it. A dashboard
+        that dies between this write and the reservation leaves a marker for
+        an attempt the budget never charged. That once counted; now the marker
+        says its charge carries the job's id, returned here for the seam to
+        reserve under, and the next start asks the ledger (DRC-4713).
 
         The last step before the reservation is the job's commit point, taken
         under the lock a Cancel takes, so the spent and unspent sides of a
@@ -140,6 +145,10 @@ class Hooks:
             "sid": self._job.sid,
             "pid": os.getpid(),
             "started_at": self._job.started_at,
+            # This build reserves under the job's id, so the ledger can answer
+            # for it. A marker without this came from a build whose charge
+            # carried no id, and is counted as it always was.
+            "ledger": True,
         }
         path = _marker(config, self._job.id)
         # Held across the write and the commit, so a Cancel accepted after the
@@ -153,6 +162,7 @@ class Hooks:
                 with contextlib.suppress(OSError):
                     path.unlink(missing_ok=True)
                 raise CancelledBeforeReserveError(self._job.id)
+        return self._job.id
 
     def reserved(self) -> None:
         """The spend is committed."""
@@ -314,8 +324,14 @@ def _outcome(
         )
         outcome = None, reading.WITHHELD_MODEL_FAILED, hooks.spent
     assessment, why, spent = outcome
-    # "May still be running" is the one sentence a stop must not hide (verify N5).
-    if assessment is None and spent and supervise.closed() and why != reading.WITHHELD_UNSTOPPED:
+    # "May still be running" is the one sentence a stop must not hide (verify
+    # N5), and a CLI killed for flooding its file was killed before the stop.
+    if (
+        assessment is None
+        and spent
+        and supervise.closed()
+        and why not in (reading.WITHHELD_UNSTOPPED, reading.WITHHELD_OVERSIZED)
+    ):
         # The dashboard is stopping and killed the call: said as the stop it
         # was, as the next start would have said it (review F5).
         return None, reading.WITHHELD_INTERRUPTED, True
@@ -385,7 +401,7 @@ def _record(application: Application, job: reading.Job, outcome: Outcome) -> boo
 
 
 def recover(application: Application, *, alive: Callable[[int], bool]) -> int:
-    """Record every job a stopped dashboard left spent. Returns how many.
+    """Record the outcome of every job a stopped dashboard left. Returns how many.
 
     `alive` answers whether a pid is a dashboard serving this state directory
     now (`lifecycle.dashboard_alive`, injected so this module never imports the
@@ -422,13 +438,8 @@ def _recover(application: Application, alive: Callable[[int], bool]) -> int:
         try:
             marker = json.loads(text)
             harness, sid, job_id = marker["harness"], marker["sid"], str(marker["id"])
-            kept = marker.get("reason")
-            reason = (
-                kept
-                if kept in (*_KEPT_REASONS, reading.WITHHELD_UNSTORED)
-                else reading.WITHHELD_INTERRUPTED
-            )
-        except (ValueError, KeyError, TypeError):
+            reason, spent = _recovered(application, marker, job_id)
+        except (ValueError, KeyError, TypeError, AttributeError):
             with contextlib.suppress(OSError):
                 claimed.unlink()
             continue
@@ -438,7 +449,7 @@ def _recover(application: Application, alive: Callable[[int], bool]) -> int:
             harness,
             sid,
             reason=reason,
-            spent=True,
+            spent=spent,
             diagnostic_sink=application.diagnostic_sink,
             job_id=job_id,
         )
@@ -448,6 +459,31 @@ def _recover(application: Application, alive: Callable[[int], bool]) -> int:
         with contextlib.suppress(OSError):
             claimed.unlink()
     return recorded
+
+
+def _recovered(application: Application, marker: dict[str, Any], job_id: str) -> tuple[str, bool]:
+    """The outcome a left marker records, and whether it spent.
+
+    Spent only when the ledger holds a charge for the job, or cannot say: a
+    charged attempt recorded as unspent would be the silent loss Q2 ruled out,
+    so doubt counts. A marker the ledger answers "no charge" for recovers as
+    the unspent outcome it was, a stop, or the cancel it says it was.
+    """
+    kept = marker.get("reason")
+    if marker.get("ledger") is True:
+        answer = reading_policy.charged(
+            application.config,
+            job_id,
+            started_at=marker.get("started_at"),
+            now=application.clock(),
+        )
+        if answer is False:
+            if kept == reading.WITHHELD_CANCELLED:
+                return reading.WITHHELD_CANCELLED_UNSENT, False
+            return reading.WITHHELD_STOPPING, False
+    if kept in (*_KEPT_REASONS, reading.WITHHELD_UNSTORED):
+        return kept, True
+    return reading.WITHHELD_INTERRUPTED, True
 
 
 @contextlib.contextmanager

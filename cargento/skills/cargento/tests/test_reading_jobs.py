@@ -288,8 +288,12 @@ class ReadingJobTest(unittest.TestCase):
         self.assertEqual(1, entry.get("readings"))
 
     def test_a_kept_marker_keeps_a_stop_or_an_unconfirmed_kill_as_its_reason(self) -> None:
-        """L3: a refused "interrupted" or "unstopped" must not recover as "ran"."""
-        for reason in (reading.WITHHELD_INTERRUPTED, reading.WITHHELD_UNSTOPPED):
+        """L3: a refused "interrupted", "unstopped" or "oversized" must not recover as "ran"."""
+        for reason in (
+            reading.WITHHELD_INTERRUPTED,
+            reading.WITHHELD_UNSTOPPED,
+            reading.WITHHELD_OVERSIZED,
+        ):
             with self.subTest(reason=reason):
                 annotation_store.annotate(
                     self.config, self.state, "claude", "s1", goal=f"g {reason}", output="", now=11.0
@@ -508,6 +512,96 @@ class ARestartRecordsTheAttemptItInterruptedTest(unittest.TestCase):
             "abc", json.dumps({"id": "abc", "harness": "claude", "sid": "s1", "pid": os.getpid()})
         )
         self.assertEqual(1, reading_jobs.recover(self.application, alive=lambda _pid: True))
+        self.assertEqual(1, self._entry().get("readings"))
+
+    # DRC-4713: recovery counts an attempt as spent only when the ledger holds
+    # its charge, and counts it when the ledger cannot say.
+
+    def _ledgered(self, job_id: str, **extra: Any) -> Path:
+        marker = {
+            "id": job_id,
+            "harness": "claude",
+            "sid": "s1",
+            "pid": 4242,
+            "started_at": 1_700_000_000.0,
+            "ledger": True,
+            **extra,
+        }
+        return self._marker(job_id, json.dumps(marker))
+
+    def _used(self) -> int:
+        return reading_policy.status(self.config, now=1_700_000_100.0)["used"]
+
+    def _open_store(self) -> None:
+        reading_policy.set_consent(self.config, True, now=1_700_000_000.0)
+
+    def test_a_marker_with_no_charge_on_record_recovers_unspent(self) -> None:
+        self._open_store()
+        reading_policy.reserve(self.config, now=1_700_000_050.0, job_id="other")
+        self._ledgered("dead")
+        reading_jobs.recover(self.application, alive=lambda _pid: False)
+        entry = self._entry()
+        self.assertNotIn("readings", entry)
+        self.assertEqual(reading.WITHHELD[reading.WITHHELD_STOPPING], entry.get("withheld"))
+        self.assertEqual(1, self._used(), "recovery charged or refunded the budget")
+
+    def test_a_marker_whose_charge_is_on_record_recovers_spent(self) -> None:
+        self._open_store()
+        reading_policy.reserve(self.config, now=1_700_000_050.0, job_id="dead")
+        self._ledgered("dead")
+        reading_jobs.recover(self.application, alive=lambda _pid: False)
+        entry = self._entry()
+        self.assertEqual(1, entry.get("readings"))
+        self.assertEqual(reading.WITHHELD[reading.WITHHELD_INTERRUPTED], entry.get("withheld"))
+        self.assertEqual(1, self._used())
+
+    def test_a_cancelled_marker_with_no_charge_recovers_cancelled_unsent(self) -> None:
+        self._open_store()
+        reading_policy.reserve(self.config, now=1_700_000_050.0, job_id="other")
+        self._ledgered("dead", reason=reading.WITHHELD_CANCELLED)
+        reading_jobs.recover(self.application, alive=lambda _pid: False)
+        entry = self._entry()
+        self.assertNotIn("readings", entry)
+        self.assertEqual(reading.WITHHELD[reading.WITHHELD_CANCELLED_UNSENT], entry.get("withheld"))
+
+    def test_a_ledger_that_cannot_answer_counts_the_attempt_spent(self) -> None:
+        cases: list[tuple[str, Any, dict[str, Any]]] = [
+            ("no store", None, {}),
+            ("no SQLite", mock.patch.object(runtime_io, "sqlite_module", None), {}),
+            ("older than the ledger keeps", None, {"started_at": 1.0}),
+            ("no start time", None, {"started_at": None}),
+        ]
+        for count, (name, patch, extra) in enumerate(cases, start=1):
+            with self.subTest(name):
+                if count == 2:
+                    # From here a ledger exists, and would answer "no charge"
+                    # for these ids if it were asked.
+                    self._open_store()
+                    reading_policy.reserve(self.config, now=1_700_000_050.0, job_id="other")
+                job_id = name.replace(" ", "-")
+                annotation_store.annotate(
+                    self.config, self.state, "claude", "s1", goal=f"g {name}", output="", now=11.0
+                )
+                self._ledgered(job_id, **extra)
+                with patch or contextlib.nullcontext():
+                    reading_jobs.recover(self.application, alive=lambda _pid: False)
+                entry = self._entry()
+                self.assertEqual(count, entry.get("readings"))
+                self.assertEqual(
+                    reading.WITHHELD[reading.WITHHELD_INTERRUPTED], entry.get("withheld")
+                )
+
+    def test_a_marker_from_a_build_without_the_ledger_is_counted_spent(self) -> None:
+        """Written before an upgrade or during a rollback: its charge carried no job id."""
+        self._open_store()
+        reading_policy.reserve(self.config, now=1_700_000_050.0, job_id="other")
+        self._marker(
+            "old",
+            json.dumps(
+                {"id": "old", "harness": "claude", "sid": "s1", "pid": 4242, "started_at": 1.7e9}
+            ),
+        )
+        reading_jobs.recover(self.application, alive=lambda _pid: False)
         self.assertEqual(1, self._entry().get("readings"))
 
     def test_the_interrupted_sentence_says_the_attempt_counted(self) -> None:
@@ -1105,6 +1199,115 @@ class CancelAnAnalysisTest(unittest.TestCase):
             canceller.join(15)
             self._finish(thread)
         self.assertEqual([], sorted((self.home / reading_jobs.MARKER_DIR).glob("*.json*")))
+
+    # DRC-4712 and DRC-4713: the stop's line is the reservation, and a job the
+    # dashboard died in is counted from the ledger. Barriers, never sleeps.
+
+    def _held_at(self, target: Any, name: str, *, after: bool) -> tuple[Any, Any, Any]:
+        """Patch `target.name` to stop at a barrier before or after the real call."""
+        real = getattr(target, name)
+        at, go = threading.Event(), threading.Event()
+
+        def held(*args: Any, **kwargs: Any) -> Any:
+            if not after:
+                at.set()
+                go.wait(10)
+            answer = real(*args, **kwargs)
+            if after:
+                at.set()
+                go.wait(10)
+            return answer
+
+        return mock.patch.object(target, name, held), at, go
+
+    def test_a_shutdown_between_the_seams_check_and_the_reservation_spends_nothing(self) -> None:
+        patch, at, go = self._held_at(reading_jobs.Hooks, "before_reserve", after=True)
+        with patch, mock.patch.object(supervise, "_spawn", wraps=supervise._spawn) as spawn:
+            _job, thread = self._start()
+            self.assertTrue(at.wait(10))
+            supervise.kill_all()
+            go.set()
+            self._finish(thread)
+        spawn.assert_not_called()
+        self.assertEqual(0, self._used())
+        self.assertIn(("withheld", reading.WITHHELD_STOPPING, False), self.events)
+        self.assertNotIn("readings", self._entry())
+        self.assertEqual([], sorted((self.home / reading_jobs.MARKER_DIR).glob("*.json*")))
+
+    def test_a_shutdown_after_the_reservation_is_spent_and_interrupted(self) -> None:
+        patch, at, go = self._held_at(reading_policy, "reserve", after=True)
+        with patch, mock.patch.object(supervise, "_spawn", wraps=supervise._spawn) as spawn:
+            _job, thread = self._start()
+            self.assertTrue(at.wait(10))
+            supervise.kill_all()
+            go.set()
+            self._finish(thread)
+        spawn.assert_not_called()
+        self.assertEqual(1, self._used())
+        self.assertIn(("withheld", reading.WITHHELD_INTERRUPTED, True), self.events)
+        self.assertEqual(1, self._entry().get("readings"))
+
+    def _died_before_the_write(self) -> tuple[Any, list[str]]:
+        """What a dashboard that died just before the outcome's write leaves: its marker."""
+        left: list[str] = []
+
+        def record(_application: Any, job: reading.Job, _outcome: Any) -> bool:
+            left.append((self.home / reading_jobs.MARKER_DIR / f"{job.id}.json").read_text())
+            return True
+
+        return mock.patch.object(reading_jobs, "_record", record), left
+
+    def _restart_with(self, marker: str) -> Any:
+        markers = self.home / reading_jobs.MARKER_DIR
+        markers.mkdir(exist_ok=True)
+        (markers / f"{json.loads(marker)['id']}.json").write_text(marker)
+        reading_jobs.recover(self.application, alive=lambda _pid: False)
+        return self._entry()
+
+    def test_a_dashboard_killed_between_the_marker_and_the_reservation_recovers_unspent(
+        self,
+    ) -> None:
+        real = reading_jobs.Hooks.before_reserve
+
+        def died(hooks: reading_jobs.Hooks) -> Any:
+            real(hooks)
+            raise RuntimeError("the process ends here")
+
+        died_here, left = self._died_before_the_write()
+        with died_here, mock.patch.object(reading_jobs.Hooks, "before_reserve", died):
+            _job, thread = self._start()
+            self._finish(thread)
+        entry = self._restart_with(left[0])
+        self.assertNotIn("readings", entry)
+        self.assertEqual(0, self._used())
+        self.assertEqual(reading.WITHHELD[reading.WITHHELD_STOPPING], entry.get("withheld"))
+
+    def test_a_dashboard_killed_after_the_reservation_recovers_spent(self) -> None:
+        self.mode = "reply"
+        died_here, left = self._died_before_the_write()
+        with died_here:
+            _job, thread = self._start()
+            self._finish(thread)
+        entry = self._restart_with(left[0])
+        self.assertEqual(1, entry.get("readings"))
+        self.assertEqual(1, self._used())
+        self.assertEqual(reading.WITHHELD[reading.WITHHELD_INTERRUPTED], entry.get("withheld"))
+
+    def test_a_stop_at_the_reservation_then_a_death_before_the_write_recovers_unspent(
+        self,
+    ) -> None:
+        patch, at, go = self._held_at(reading_jobs.Hooks, "before_reserve", after=True)
+        died_here, left = self._died_before_the_write()
+        with patch, died_here:
+            _job, thread = self._start()
+            self.assertTrue(at.wait(10))
+            supervise.kill_all()
+            go.set()
+            self._finish(thread)
+        entry = self._restart_with(left[0])
+        self.assertNotIn("readings", entry)
+        self.assertEqual(0, self._used())
+        self.assertEqual(reading.WITHHELD[reading.WITHHELD_STOPPING], entry.get("withheld"))
 
     def test_the_cancel_sentences_say_what_the_reader_may_rely_on(self) -> None:
         spent = reading.WITHHELD[reading.WITHHELD_CANCELLED]

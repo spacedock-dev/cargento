@@ -41,6 +41,11 @@ NO_GOAL_REASON = "generic-opener-only-no-work"
 OBSERVER_MODEL = "gpt-5.6-luna"
 OBSERVER_MODEL_REASONING_EFFORT = "max"
 OBSERVER_MODEL_TIMEOUT_SEC = 60
+# The most a model call's output file may hold before the CLI is killed
+# (DRC-4667). Checked every 0.1 s, so the file can pass it by one slice of
+# writes. 128 times the reading's read cap, and never near it on purpose: a
+# reply past the read cap is salvaged as cut, not failed.
+OUTPUT_FILE_LIMIT_BYTES = 1 << 20
 OBSERVER_MODEL_MAX_PROMPT_BYTES = 16_384
 _MODEL_FLIGHT_LOCK = threading.Lock()
 _MODEL_IN_FLIGHT: set[tuple[str, str]] = set()
@@ -159,10 +164,15 @@ class ModelCaller(Protocol):
     def __call__(self, recent_text: str, entity_stage: str) -> str | None: ...
 
 
-def _spawn_hook(on_spawn: Callable[[supervise.Group], None] | None) -> dict[str, Any]:
-    # Only when given, so a runner injected with `subprocess.run`'s signature,
-    # as the argv tests do, is still called with keywords it accepts.
-    return {"on_spawn": on_spawn} if on_spawn is not None else {}
+def _spawn_hook(
+    on_spawn: Callable[[supervise.Group], None] | None, runner: Any, output_path: str
+) -> dict[str, Any]:
+    # Only what the runner takes, so a runner injected with `subprocess.run`'s
+    # signature, as the argv tests do, is still called with keywords it accepts.
+    options: dict[str, Any] = {"on_spawn": on_spawn} if on_spawn is not None else {}
+    if runner is supervise.run:
+        options["output_limit"] = (output_path, OUTPUT_FILE_LIMIT_BYTES)
+    return options
 
 
 def codex_exec(
@@ -178,7 +188,8 @@ def codex_exec(
 
     `unavailable` when no absolute `codex` resolves, `failed` on a non-zero
     exit, a timeout or an OS error, `unstopped` when a killed CLI would not
-    exit, `ok` otherwise. What an EMPTY output means
+    exit, `oversized` when it wrote past `OUTPUT_FILE_LIMIT_BYTES` and was
+    killed for it, `ok` otherwise. What an EMPTY output means
     is the caller's to decide, because a goal line and a reading disagree
     about it.
 
@@ -241,7 +252,7 @@ def codex_exec(
             encoding="utf-8",
             timeout=OBSERVER_MODEL_TIMEOUT_SEC,
             check=False,
-            **_spawn_hook(on_spawn),
+            **_spawn_hook(on_spawn, runner, output_path),
         )
         if result.returncode != 0:
             return "", "failed"
@@ -254,6 +265,8 @@ def codex_exec(
         # Killed and not gone within the bound: said as its own status, since
         # "did not complete" would hide that the CLI may still be running.
         return "", "unstopped"
+    except supervise.OversizedError:
+        return "", "oversized"
     except (OSError, subprocess.SubprocessError):
         return "", "failed"
     finally:
@@ -385,7 +398,7 @@ def claude_exec(
                 encoding="utf-8",
                 timeout=OBSERVER_MODEL_TIMEOUT_SEC,
                 check=False,
-                **_spawn_hook(on_spawn),
+                **_spawn_hook(on_spawn, runner, output_path),
             )
         if result.returncode != 0:
             return "", "failed"
@@ -398,6 +411,8 @@ def claude_exec(
         # Killed and not gone within the bound: said as its own status, since
         # "did not complete" would hide that the CLI may still be running.
         return "", "unstopped"
+    except supervise.OversizedError:
+        return "", "oversized"
     except (OSError, subprocess.SubprocessError):
         return "", "failed"
     finally:

@@ -13,7 +13,17 @@ A Job Object on Windows has no such exit.
 with that signature stays valid, plus `on_spawn`: it is handed the `Group` the
 moment the child exists, which is the seam a reading job uses to say it is
 waiting on the provider and a Cancel reaches the CLI through (`Group.cancel`). Output goes to a file
-or nowhere, never to a pipe: every model call writes its reply to a file.
+or nowhere, never to a pipe: every model call writes its reply to a file. `output_limit`
+bounds that file (DRC-4667): the wait looks at its size every `_CANCEL_POLL_SEC`,
+and past the limit the call kills the group as a Cancel does and raises
+`OversizedError`, so the file can outgrow the limit by at most one slice of
+writes before the caller removes it.
+
+When neither `waitid` nor kqueue can watch the exit, the call polls, and the
+poll reaps the leader: helpers still in its group after a normal exit are then
+not swept. A timeout, a shutdown or a Cancel still kills the group, because
+each kills before the reap. It has been seen only under forced errors, so it is
+documented (COMPATIBILITY.md, SECURITY.md) rather than fixed (DRC-4712).
 
 This module imports nothing from the runtime.
 """
@@ -32,7 +42,7 @@ import time
 from typing import IO, TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Mapping, Sequence
+    from collections.abc import Callable, Iterator, Mapping, Sequence
 
 # Held across the spawn and its registration as well as across the shutdown's
 # snapshot, so no child can exist between the two where a shutdown misses it.
@@ -60,6 +70,10 @@ class ClosedError(OSError):
 
 class UnstoppedError(subprocess.SubprocessError):
     """A killed child did not exit within `REAP_TIMEOUT_SEC`, so it may still run."""
+
+
+class OversizedError(subprocess.SubprocessError):
+    """The CLI wrote past its `output_limit`, so its group was killed and reaped."""
 
 
 def kill_group(pgid: int) -> bool:
@@ -154,6 +168,9 @@ class Group:
         self._reaped = False
         # Set by a Cancel, from any thread; the call's own wait reads it.
         self._cancelled = threading.Event()
+        # The output file and its bound, and whether the bound was passed.
+        self._limit: tuple[str, int] | None = None
+        self._oversized = False
 
     @property
     def pid(self) -> int:
@@ -191,7 +208,7 @@ class Group:
                     self._reaped = True
                     return True
             remaining = deadline - time.monotonic()
-            if remaining <= 0 or self._cancelled.is_set():
+            if remaining <= 0 or self._over_limit() or self._cancelled.is_set():
                 return False
             time.sleep(min(0.02, remaining))
 
@@ -219,6 +236,25 @@ class Group:
 
     def cancelled(self) -> bool:
         return self._cancelled.is_set()
+
+    def _over_limit(self) -> bool:
+        """Whether the output file passed its bound, cancelling the call the first time.
+
+        Through `cancel`, so the kill, the bounded reap and an unconfirmed kill
+        are exactly a Cancel's; only the answer the call raises differs.
+        """
+        if self._limit is None or self._oversized:
+            return self._oversized
+        path, max_bytes = self._limit
+        try:
+            size = os.stat(path).st_size
+        except OSError:
+            return False
+        if size <= max_bytes:
+            return False
+        self._oversized = True
+        self.cancel()
+        return True
 
     def _kill(self) -> bool:
         if sys.platform == "win32":
@@ -264,6 +300,18 @@ def live() -> frozenset[Group]:
 def closed() -> bool:
     """Whether the runner has been shut down in this process."""
     return _SHUTDOWN.is_set()
+
+
+@contextlib.contextmanager
+def admitting() -> Iterator[bool]:
+    """Hold the lock `kill_all` takes, and yield whether the runner is still open.
+
+    A reservation commits inside this (DRC-4712), so a shutdown lands wholly
+    before the charge, which is then never made, or wholly after it, which
+    is then spent: the stop's line is the reservation, as the Cancel's is.
+    """
+    with _LOCK:
+        yield not _SHUTDOWN.is_set()
 
 
 def kill_all() -> None:
@@ -349,13 +397,15 @@ def run(  # noqa: PLR0913 (subprocess.run's keywords, one each)
     timeout: float | None = None,
     check: bool = False,
     on_spawn: Callable[[Group], None] | None = None,
+    output_limit: tuple[str, int] | None = None,
 ) -> subprocess.CompletedProcess[Any]:
     """`subprocess.run`, with the CLI's whole group killed on a timeout or an error.
 
     Returns only after the child is reaped, so a caller's `finally` that
     removes a temporary file never races a writer that is still alive. Raises
-    `ClosedError` after a shutdown, and `UnstoppedError` when a killed child
-    would not exit.
+    `ClosedError` after a shutdown, `UnstoppedError` when a killed child
+    would not exit, and `OversizedError` when the file `output_limit` names
+    passed its size in bytes.
     """
     if subprocess.PIPE in (stdout, stderr):
         raise ValueError("supervise.run writes output to a file or nowhere, never a pipe")
@@ -373,6 +423,7 @@ def run(  # noqa: PLR0913 (subprocess.run's keywords, one each)
             encoding=encoding,
         )
         _LIVE.add(group)
+    group._limit = output_limit  # noqa: SLF001 (set before any wait reads it)
     try:
         if sys.platform == "win32":
             returncode = _run_windows(group, input, timeout, on_spawn)
@@ -382,6 +433,8 @@ def run(  # noqa: PLR0913 (subprocess.run's keywords, one each)
         with _LOCK:
             _LIVE.discard(group)
         group.close()
+    if group._oversized:  # noqa: SLF001
+        raise OversizedError(group.pid)
     if check and returncode:
         raise subprocess.CalledProcessError(returncode, command)
     return subprocess.CompletedProcess(command, returncode, None, None)
@@ -430,7 +483,7 @@ def _wait_posix(group: Group, limit: float) -> bool:
         state = _state(pid, step)
         if state == _UNKNOWN:
             return not group._await_exit(max(deadline - time.monotonic(), 0.0))  # noqa: SLF001
-        if state != _RUNNING or group.cancelled():
+        if state != _RUNNING or group._over_limit() or group.cancelled():  # noqa: SLF001
             return False
         if remaining <= step:
             return True
@@ -443,46 +496,52 @@ def _run_windows(
     on_spawn: Callable[[Group], None] | None,
 ) -> int:
     process = group._process  # noqa: SLF001
+    # Fed from a thread, as on POSIX, and never from `communicate`: CPython's
+    # Windows `communicate` writes stdin in the calling thread before any timed
+    # wait, so a CLI that never read a prompt larger than the pipe held the
+    # call past its own deadline (DRC-4713). Output goes to a file or nowhere,
+    # so `communicate` bought nothing else. If the kill fails, the feeder stays
+    # blocked; it is a daemon thread and ends with the process.
+    stdin, process.stdin = process.stdin, None
     try:
         if on_spawn is not None:
             on_spawn(group)
-        _wait_windows(group, data, timeout)
+        if data is not None and stdin is not None:
+            threading.Thread(target=_feed, args=(stdin, data), daemon=True).start()
+        _wait_windows(group, timeout)
     except UnstoppedError:
         raise
     except BaseException:
         group.kill()
         try:
-            process.communicate(timeout=REAP_TIMEOUT_SEC)
+            process.wait(timeout=REAP_TIMEOUT_SEC)
         except subprocess.TimeoutExpired as exc:
             raise UnstoppedError(process.pid) from exc
         raise
     return int(process.returncode)
 
 
-def _wait_windows(group: Group, data: str | bytes | None, timeout: float | None) -> None:
-    """`communicate` in slices, so a Cancel is seen within one. Raises on the limit.
+def _wait_windows(group: Group, timeout: float | None) -> None:
+    """`wait` in slices, so a Cancel is seen within one. Raises on the limit.
 
-    CPython's Windows `communicate` writes stdin in the calling thread, so the
-    first call does not return until the prompt is written; a retry after its
-    timeout loses no output, and the input goes with the first call only, as it
-    must. Once cancelled, the step stays `_CANCEL_POLL_SEC` whatever the call's
+    Once cancelled, the step stays `_CANCEL_POLL_SEC` whatever the call's
     deadline says: a deadline that ran out inside the reap window made every
     step zero, and the loop spun on a core until the reap bound.
     """
     process = group._process  # noqa: SLF001
     deadline = None if timeout is None else time.monotonic() + timeout
-    pending = data
     reap_by: float | None = None
     while True:
         step = _CANCEL_POLL_SEC
         if deadline is not None and not group.cancelled():
             step = min(step, max(deadline - time.monotonic(), 0.0))
         try:
-            process.communicate(pending, timeout=step)
+            process.wait(timeout=step)
         except subprocess.TimeoutExpired:
-            pending = None
+            pass
         else:
             return
+        group._over_limit()  # noqa: SLF001 (cancels the call past its bound)
         if group.cancelled():
             if reap_by is None:
                 group.kill()
