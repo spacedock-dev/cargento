@@ -1335,6 +1335,11 @@ _WRITING_OPTIONS = {
     "git show": frozenset({"--output"}),
 }
 _HARMLESS_REDIRECT_RE = re.compile(r"^(?:\d*>&\d+|\d*>/dev/null|&>/dev/null)$")
+# A written redirection's operator, its optional descriptor first, and the
+# target word after it.
+_WRITE_REDIRECT_RE = re.compile(
+    r"^(?:\d+|\{[A-Za-z_][A-Za-z0-9_]*\})?(?P<op>&>>|&>|>>|>&|>\||<>|>)(?P<target>.*)$", re.DOTALL
+)
 
 
 def _skip_options(words: list[str], takes_value: frozenset[str]) -> list[str]:
@@ -2028,6 +2033,33 @@ def _writes_a_file(redirects: list[str]) -> bool:
     return any(">" in target and not _HARMLESS_REDIRECT_RE.match(target) for target in redirects)
 
 
+def _file_targets(redirects: list[str]) -> list[str]:
+    """The target word of each redirection into a file, as written.
+
+    `>&-` and `>&2` name a descriptor, not a file.
+    """
+    targets = []
+    for redirect in redirects:
+        match = _WRITE_REDIRECT_RE.match(redirect)
+        if match is None or _HARMLESS_REDIRECT_RE.match(redirect):
+            continue
+        target = match.group("target")
+        if match.group("op") == ">&" and (target == "-" or target.isdigit()):
+            continue
+        targets.append(target)
+    return targets
+
+
+def _placeable(target: str) -> bool:
+    """Whether a redirection's target is a path as written: an expansion, a
+    substitution, `~` or a withheld word is decided by the shell at run time."""
+    return (
+        bool(target)
+        and not target.startswith("~")
+        and not any(mark in target for mark in ("$", "`", _WITHHELD))
+    )
+
+
 def _reads_only(redirects: list[str], words: list[str]) -> bool:
     """Whether one segment is on the closed read-only list.
 
@@ -2207,6 +2239,11 @@ class _ShellCall:
             i for i, (words, _rtk) in enumerate(self.words) if words and words[0] != "cd"
         ]
         self.checks = [i for i in self.meaningful if _is_check(self.words[i][0])]
+        # A check's own redirection into a file is a recorded write by the call
+        # (DRC-4709), each target read from the directory its segment ran in.
+        self.redirect_writes = [
+            (i, target) for i in self.checks for target in _file_targets(self.parts[i].redirects)
+        ]
         self.fixers = [i for i in self.meaningful if _is_fixer(self.words[i][0])]
         self.changing_others = [
             i for i in self.meaningful if i not in self.checks and not self._reads_only(i)
@@ -2264,7 +2301,12 @@ class _ToolReportTally:
         self.results = results
         self.runs: dict[str, list[dict[str, Any]]] = {}
         self.writes: dict[str, dict[str, Any]] = {}
-        self.last_write_at = float("-inf")
+        # (time, call id) of every recorded write and fixer run. A pass is aged
+        # by one from another call at or after its own time, since recorded
+        # time cannot order two calls that share it (DRC-4709); its own call is
+        # ordered by segment instead (`fixes`, `changes_later_in_call`), which
+        # is what keeps `black . && pytest` current.
+        self.write_calls: list[tuple[float, str]] = []
         # Order of the shell calls that ran, and which of them may change files,
         # for the press alone (`changed_after`); layer 1's fields are untouched.
         self.shell_seq = 0
@@ -2299,12 +2341,19 @@ class _ToolReportTally:
             return
         # A written file ages every earlier pass wherever it is. Only the path is
         # read: never `content`, `old_string`, `new_string` or `edits`.
-        self.last_write_at = max(self.last_write_at, at)
-        path = _written_path(tool_input.get("file_path") or tool_input.get("notebook_path"), cwd)
+        self._record_write(
+            at,
+            call_id,
+            name,
+            _written_path(tool_input.get("file_path") or tool_input.get("notebook_path"), cwd),
+        )
+
+    def _record_write(self, at: float, call_id: str, tool: str, path: str | None) -> None:
+        self.write_calls.append((at, call_id))
         if path is None:
             self.scan["outside_paths"] += 1
             return
-        self.writes[path] = {"at": at, "record_id": call_id, "tool": name}
+        self.writes[path] = {"at": at, "record_id": call_id, "tool": tool}
 
     def _add_shell(self, at: float, cwd: str, call_id: str, tool_input: dict[str, Any]) -> None:
         result = self.results.get(call_id)
@@ -2323,7 +2372,14 @@ class _ToolReportTally:
             return
         self.scan["shell_calls"] += 1
         if call.fixers:
-            self.last_write_at = max(self.last_write_at, at)
+            self.write_calls.append((at, call_id))
+        for index, target in call.redirect_writes:
+            # Owner, 2026-09-27: published only inside the working directory;
+            # a target outside it, or one the shell decides, counts as outside.
+            placed = os.path.join(call.directories[index] or "/", target)
+            self._record_write(
+                at, call_id, "Bash", _written_path(placed, cwd) if _placeable(target) else None
+            )
         self.scan["background"] += call.launches()
         foreground = [i for i in call.meaningful if not call.background(i)]
         if foreground and not [i for i in call.checks if i in foreground]:
@@ -2379,7 +2435,13 @@ class _ToolReportTally:
                     "tail": _scrubbed_tail(text, words) if result is not None else "",
                     "seq": self.shell_seq,
                     "changes_later_in_call": any(
-                        i > index for i in (*call.fixers, *call.changing_others, *call.substituted)
+                        i > index
+                        for i in (
+                            *call.fixers,
+                            *call.changing_others,
+                            *call.substituted,
+                            *(j for j, _target in call.redirect_writes),
+                        )
                     ),
                     # V7: a fixer at or after this check in the call ages its pass.
                     "fixes": any(i >= index for i in call.fixers),
@@ -2427,7 +2489,13 @@ class _ToolReportTally:
             "result": latest["result"],
             "earlier_failed": any(run["result"] == "failed" for run in history[:-1]),
             "before_last_change": latest["result"] == "passed"
-            and (latest["fixes"] or self.last_write_at > latest["at"]),
+            and (
+                latest["fixes"]
+                or any(
+                    at >= latest["at"] and call_id != latest["record_id"]
+                    for at, call_id in self.write_calls
+                )
+            ),
             # Whether a command that may change files followed this run, in its
             # own call or a later one, in command order: the press's
             # `changed_after`, published so the live level can block on it

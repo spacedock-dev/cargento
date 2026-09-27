@@ -117,7 +117,12 @@ class CheckLineTestCase(ClaudeChecksTestCase):
     def assert_the_prompt_row_holds_neither_half(self, checks: list[dict[str, Any]]) -> None:
         """The prompt row on its own: exactly one row per listed check, built from
         its masked line, and neither half of the value anywhere in the rows."""
-        rows = [row for row in self.ledger if row["type"] == reading.TOOL_REPORT_TYPE]
+        # A check's redirect target is a written-path row beside it (DRC-4709).
+        rows = [
+            row
+            for row in self.ledger
+            if row["type"] == reading.TOOL_REPORT_TYPE and row.get("subject") == "check"
+        ]
         self.assertEqual(len(checks), len(rows), rows)
         for check, row in zip(checks, rows, strict=True):
             self.assertTrue(row["summary"].startswith(check["title"]), row["summary"])

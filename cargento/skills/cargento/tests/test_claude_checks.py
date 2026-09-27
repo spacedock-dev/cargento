@@ -20,7 +20,7 @@ from pathlib import Path
 from typing import Any
 from unittest import mock
 
-from cargento_runtime import observer, project_context, semantic_history
+from cargento_runtime import levels, observer, project_context, semantic_history
 from cargento_runtime.config import build_runtime_config
 from cargento_runtime.state import build_runtime_state
 
@@ -1295,3 +1295,129 @@ class ACheckFrozenAtAMomentIsTheCheckAsItStoodThen(ClaudeChecksTestCase):
         checks = [fact for fact in facts if fact.get("subject") == "check"]
         self.assertEqual("not-recorded", checks[0]["result"])
         self.assertEqual({}, press.tails)
+
+
+class ACheckWritesTheFileItsOutputIsRedirectedInto(ClaudeChecksTestCase):
+    """DRC-4709: a file redirect on a check segment is a write by that call. Owner,
+    2026-09-27: a target inside the working directory is published as a written
+    path, and one outside it counts only as outside."""
+
+    def facts(self) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+        events, scan = self.read()
+        return [
+            project_context._semantic_fact_from_event(e, e["kind"], "tool_report", "")
+            for e in events
+        ], scan
+
+    def writes(self) -> list[str]:
+        return sorted(e["title"] for e in self.read()[0] if e["subject"] == "write")
+
+    def test_a_target_inside_the_working_directory_is_a_written_path(self) -> None:
+        self.session.bash("pytest > src/out.txt", "", is_error=False)
+        events, scan = self.read()
+        write = next(e for e in events if e["subject"] == "write")
+        self.assertEqual("src/out.txt", write["title"])
+        self.assertEqual("Claude Bash call", write["source"])
+        self.assertEqual(1, scan["written_paths"])
+        facts, scan = self.facts()
+        level = levels.live_level(
+            levels.Evidence(tuple(facts), scan, 0, str(self.cwd)),
+            levels.Intent(saved=True, goal="Fix it", lines=("only touch web/",)),
+        )
+        self.assertIn(level.level, (levels.MEDIUM, levels.HIGH, levels.EXTREME))
+        self.assertNotIn(levels.REASON_FLOOR_MET, level.reasons)
+
+    def test_the_target_is_read_from_the_directory_the_check_ran_in(self) -> None:
+        self.session.bash("cd src && pytest >> logs/run.txt", "", is_error=False)
+        self.session.bash("(cd web && pytest > a.txt); pytest 2> b.txt", "", is_error=False)
+        self.assertEqual(["b.txt", "src/logs/run.txt", "web/a.txt"], self.writes())
+
+    def test_a_target_outside_it_or_unplaceable_is_counted_as_outside(self) -> None:
+        for command in (
+            "pytest > /tmp/out.txt",
+            "pytest > ../elsewhere.txt",
+            'pytest > "$OUT"',
+            "pytest > $(mktemp)",
+            "pytest > ~/out.txt",
+            "pytest &> `mktemp`",
+        ):
+            with self.subTest(command=command):
+                self.setUp()
+                self.session.bash(command, "", is_error=False)
+                _events, scan = self.read()
+                self.assertEqual([], self.writes())
+                self.assertEqual(0, scan["written_paths"])
+                self.assertEqual(1, scan["outside_paths"])
+
+    def test_a_redirect_to_nothing_or_a_descriptor_writes_nothing(self) -> None:
+        for command in ("pytest > /dev/null", "pytest 2>&1", "pytest < in.txt", "pytest >&-"):
+            with self.subTest(command=command):
+                self.setUp()
+                self.session.bash(command, "", is_error=False)
+                _events, scan = self.read()
+                self.assertEqual(0, scan["written_paths"] + scan["outside_paths"])
+
+    def test_a_checks_own_redirect_does_not_age_its_own_pass(self) -> None:
+        self.session.bash("pytest > src/out.txt", "", is_error=False)
+        check = self.only_check()
+        self.assertEqual("passed", check["result"])
+        self.assertIs(False, check["before_last_change"])
+        self.assertIs(False, check["changed_after"])
+        self.assertIsNone(self.read()[1]["last_changing_command_at"])
+
+    def test_it_ages_an_earlier_check_in_the_same_call_and_not_a_later_one(self) -> None:
+        self.session.bash("ruff check . && pytest > out.txt", "", is_error=False)
+        found = {e["title"]: e for e in self.checks()}
+        self.assertIs(True, found["ruff check ."]["changed_after"])
+        self.assertIs(False, found["pytest"]["changed_after"])
+        self.setUp()
+        self.session.bash("pytest > out.txt && ruff check .", "", is_error=False)
+        found = {e["title"]: e for e in self.checks()}
+        self.assertIs(False, found["pytest"]["changed_after"])
+        self.assertIs(False, found["ruff check ."]["changed_after"])
+
+    def test_it_ages_a_pass_from_an_earlier_call(self) -> None:
+        self.session.bash("pytest", "5 passed", is_error=False)
+        self.session.bash("mypy . > report.txt", "", is_error=False)
+        found = {e["title"]: e for e in self.checks()}
+        self.assertIs(True, found["pytest"]["before_last_change"])
+        self.assertIs(False, found["mypy ."]["before_last_change"])
+
+    def test_the_published_path_is_redacted_like_any_written_path(self) -> None:
+        self.session.bash(f"pytest > logs/{FAKE_KEY}.txt", "", is_error=False)
+        published = json.dumps(self.read())
+        self.assertNotIn(FAKE_KEY, published)
+        self.assertNotIn(FAKE_KEY[20:60], published)
+
+
+class AWriteAtTheSameTimeAsAPassAgesIt(ClaudeChecksTestCase):
+    """DRC-4709's tie item: a write or fixer from another call, recorded at the
+    same time as a pass, ages it. The pass's own call is ordered by its
+    segments instead, so `black . && pytest` keeps its pass current."""
+
+    def same_time_as(self, call_row: int) -> None:
+        """Stamp the last call with the time of an earlier call's record."""
+        self.session.rows[-2]["timestamp"] = self.session.rows[call_row]["timestamp"]
+
+    def test_an_edit_recorded_at_the_time_of_the_pass_ages_it(self) -> None:
+        self.session.bash("pytest", "5 passed", is_error=False)
+        pass_row = len(self.session.rows) - 2
+        self.session.edit(self.file("web/x.js"))
+        self.same_time_as(pass_row)
+        self.assertIs(True, self.only_check()["before_last_change"])
+
+    def test_a_fixer_recorded_at_the_time_of_the_pass_ages_it(self) -> None:
+        self.session.bash("pytest", "5 passed", is_error=False)
+        pass_row = len(self.session.rows) - 2
+        self.session.bash("black .", "", is_error=False)
+        self.same_time_as(pass_row)
+        self.assertIs(True, self.only_check()["before_last_change"])
+
+    def test_a_fixer_before_the_check_in_the_same_call_keeps_the_pass_current(self) -> None:
+        for command in ("black . && pytest", "ruff format . && ruff check --fix . && pytest"):
+            with self.subTest(command=command):
+                self.setUp()
+                self.session.bash(command, "", is_error=False)
+                found = {e["title"]: e for e in self.checks()}
+                self.assertEqual("passed", found["pytest"]["result"])
+                self.assertIs(False, found["pytest"]["before_last_change"])
