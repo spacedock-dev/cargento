@@ -338,8 +338,11 @@ def held_file_lock(path: str | os.PathLike[str], *, wait: float) -> Iterator[str
 
     Moved here from `reading_jobs`' recovery pass so the annotation store takes
     the same lock rather than a third mechanism (DRC-4661). `flock` on POSIX,
-    one byte of `msvcrt.locking` on Windows, and each conflicts across open
-    handles, so two dashboards in one process exclude each other too.
+    one byte of `msvcrt.locking` on Windows. Locally each belongs to the open
+    handle, so two opens in one process conflict. Where `flock` is emulated
+    with POSIX locks, as Linux NFS clients do, the lock belongs to the process:
+    a second open in it succeeds, and any close releases it. A caller with
+    threads must let only one of them hold this at a time.
     """
     try:
         fd = os.open(path, os.O_RDWR | os.O_CREAT, 0o600)

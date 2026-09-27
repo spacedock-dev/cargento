@@ -132,6 +132,29 @@ class _SharedHomeCase(unittest.TestCase):
             self.config, state, "claude", SID, goal=text, now=now
         )
 
+    def hold(self, *, stop: bool = False) -> subprocess.Popen[bytes]:
+        """Hold the store's lock from a second real process until the test ends.
+
+        `stop` suspends the holder once it holds the lock, a dashboard stopped
+        with Ctrl-Z in the middle of a write. Windows has no SIGSTOP, and a
+        holder asleep inside the lock is the same thing to the waiter.
+        """
+        holder = subprocess.Popen(
+            [
+                sys.executable,
+                "-c",
+                _HOLD_LOCK,
+                str(SKILL_DIR),
+                annotation_store.lock_path(self.config),
+                "stop" if stop and hasattr(signal, "SIGSTOP") else "sleep",
+            ],
+            stdout=subprocess.PIPE,
+        )
+        self.addCleanup(_kill, holder)
+        assert holder.stdout is not None
+        self.assertEqual(b"held\n", holder.stdout.readline())
+        return holder
+
     def assert_numbers_unique(self, entry: Any) -> None:
         numbers = [revision["n"] for revision in entry["revisions"]]
         self.assertEqual(sorted(set(numbers)), numbers)
@@ -387,29 +410,6 @@ class ABusyStoreIsReportedNotWrittenTest(_SharedHomeCase):
     """Another process holding the store past the wait: nothing is written, and it says so."""
 
     OTHER = "another-session"
-
-    def hold(self, *, stop: bool = False) -> subprocess.Popen[bytes]:
-        """Hold the store's lock from a second real process until the test ends.
-
-        `stop` suspends the holder once it holds the lock, a dashboard stopped
-        with Ctrl-Z in the middle of a write. Windows has no SIGSTOP, and a
-        holder asleep inside the lock is the same thing to the waiter.
-        """
-        holder = subprocess.Popen(
-            [
-                sys.executable,
-                "-c",
-                _HOLD_LOCK,
-                str(SKILL_DIR),
-                annotation_store.lock_path(self.config),
-                "stop" if stop and hasattr(signal, "SIGSTOP") else "sleep",
-            ],
-            stdout=subprocess.PIPE,
-        )
-        self.addCleanup(_kill, holder)
-        assert holder.stdout is not None
-        self.assertEqual(b"held\n", holder.stdout.readline())
-        return holder
 
     def test_a_save_that_cannot_take_the_lock_answers_unwritable_and_writes_nothing(self) -> None:
         said: list[str] = []
@@ -682,6 +682,41 @@ class AnUnlockableStoreIsRefusedOrNamedTest(_SharedHomeCase):
                 self.assertFalse(os.path.exists(annotation_store.store_path(self.config)))
                 self.assertTrue(said)
 
+    @unittest.skipIf(os.name == "nt", "the holder's lock file cannot be unlinked while held")
+    def test_a_lock_file_that_cannot_be_made_writes_nothing_while_another_process_holds_it(
+        self,
+    ) -> None:
+        # The state home vanished or filled between the makedirs and the lock
+        # open, while another dashboard held the lock. The write that follows
+        # makes its own directory and would succeed with no lock at all, over
+        # the holder's store, so the save must not write.
+        annotation_store.annotate(self.config, self.first, "claude", SID, goal="Seed", now=START)
+        store = Path(annotation_store.store_path(self.config))
+        before = store.read_bytes()
+        self.hold()
+        lock = annotation_store.lock_path(self.config)
+        os.unlink(lock)
+        real_open = os.open
+
+        def open_(path: Any, *args: Any, **kwargs: Any) -> int:
+            if os.fspath(path) == lock:
+                raise OSError(errno.ENOENT, os.strerror(errno.ENOENT))
+            return real_open(path, *args, **kwargs)
+
+        said: list[str] = []
+        with mock.patch("os.open", side_effect=open_):
+            outcome = self.save(said, "Typed while the home was gone")
+
+        self.assertEqual(annotation_store.OUTCOME_UNWRITABLE, outcome)
+        self.assertEqual(before, store.read_bytes())
+        # The words stay in this process, which is what `unwritable` promises.
+        entry = annotation_store.find(
+            annotation_store.active(self.config, self.first), "claude", SID
+        )
+        assert entry is not None
+        self.assertEqual("Typed while the home was gone", entry["revisions"][-1]["goal"])
+        self.assertTrue(any("could not write the annotation store" in line for line in said), said)
+
     def test_running_out_of_descriptors_is_a_refusal_not_a_home_without_room(self) -> None:
         # No lock file yet, and an open that fails for a reason about this
         # process rather than its directory: the store could still be written,
@@ -710,7 +745,7 @@ _HOLD_LOCK = textwrap.dedent(
     sys.path.insert(0, sys.argv[1])
     from cargento_runtime import io as runtime_io
     with runtime_io.held_file_lock(sys.argv[2], wait=5.0) as held:
-        print("held" if held else "not held", flush=True)
+        print(held, flush=True)
         if sys.argv[3] == "stop":
             os.kill(os.getpid(), signal.SIGSTOP)
         time.sleep(60)
@@ -749,6 +784,67 @@ _SAVER = textwrap.dedent(
 )
 
 
+# `_SAVER` with eight threads per process and `flock` routed to `lockf`, whose
+# locks belong to the process: Linux NFS's emulation of `flock`. Each read is
+# slowed so a lost update shows rather than hides in a narrow window.
+_THREADED_LOCKF_SAVER = textwrap.dedent(
+    """
+    import fcntl, json, os, sys, threading, time
+    from pathlib import Path
+    from unittest import mock
+    sys.path.insert(0, sys.argv[1])
+    from cargento_runtime import annotations as store
+    from cargento_runtime.config import build_runtime_config
+    from cargento_runtime.state import build_runtime_state
+    home, name, count = sys.argv[2], sys.argv[3], int(sys.argv[4])
+    config = build_runtime_config(
+        environ={**os.environ, "HOME": home, "CARGENTO_HOME": os.path.join(home, "state")},
+        platform_name=sys.platform,
+        os_name=os.name,
+        launcher_path=Path(home) / "server.py",
+    )
+    state = build_runtime_state(config, started=time.time())
+
+    def per_process(fd, op):
+        if op & fcntl.LOCK_UN:
+            return fcntl.lockf(fd, fcntl.LOCK_UN)
+        return fcntl.lockf(fd, fcntl.LOCK_EX | (op & fcntl.LOCK_NB))
+
+    real_read = store._read_store
+
+    def slow(c):
+        s = real_read(c)
+        time.sleep(0.002)
+        return s
+
+    mock.patch("fcntl.flock", side_effect=per_process).start()
+    mock.patch.object(store, "_read_store", side_effect=slow).start()
+    said, outcomes, guard, go = [], [], threading.Lock(), threading.Event()
+
+    def work(i):
+        go.wait()
+        for k in range(count):
+            answer = store.annotate(
+                config, state, "claude", "shared", goal=f"{name}{i}-{k}",
+                diagnostic_sink=said.append,
+            )
+            with guard:
+                outcomes.append(answer)
+
+    threads = [threading.Thread(target=work, args=(i,)) for i in range(8)]
+    for thread in threads:
+        thread.start()
+    Path(home, f"ready-{name}").touch()
+    while not os.path.exists(os.path.join(home, "go")):
+        time.sleep(0.005)
+    go.set()
+    for thread in threads:
+        thread.join()
+    print(json.dumps({"outcomes": outcomes, "said": said}))
+    """
+)
+
+
 class TwoProcessesOnOneHomeTest(unittest.TestCase):
     """Two real dashboards' worth of processes, saving into one home at once."""
 
@@ -769,7 +865,117 @@ class TwoProcessesOnOneHomeTest(unittest.TestCase):
         self.assertEqual(list(range(numbers[0], numbers[-1] + 1)), numbers)
 
 
-def _two_processes_save(home: str, saves: int) -> tuple[list[str], str]:
+class ThreadsInOneProcessTest(_SharedHomeCase):
+    """Sixteen threads of one dashboard saving into one session at once.
+
+    Each read is slowed so any overlap of two read-check-writes loses a
+    revision. Run once under the OS lock and once where the filesystem reports
+    it cannot lock, where only this process's own exclusion keeps them apart.
+    """
+
+    THREADS = 16
+    SAVES = 10
+
+    def run_threads(self) -> list[str]:
+        real = annotation_store._read_store
+
+        def slow(config: Any) -> Any:
+            store = real(config)
+            time.sleep(0.002)
+            return store
+
+        outcomes: list[str] = []
+        guard = threading.Lock()
+        go = threading.Event()
+
+        def work(i: int) -> None:
+            go.wait()
+            for k in range(self.SAVES):
+                answer = annotation_store.annotate(
+                    self.config, self.first, "claude", SID, goal=f"{i}-{k}", now=START + k
+                )
+                with guard:
+                    outcomes.append(answer)
+
+        threads = [threading.Thread(target=work, args=(i,)) for i in range(self.THREADS)]
+        with (
+            mock.patch.object(annotation_store, "_read_store", side_effect=slow),
+            contextlib.redirect_stdout(io.StringIO()),
+        ):
+            for thread in threads:
+                thread.start()
+            go.set()
+            for thread in threads:
+                thread.join(60)
+        return outcomes
+
+    def assert_every_save_kept(self, outcomes: list[str]) -> None:
+        total = self.THREADS * self.SAVES
+        self.assertEqual([annotation_store.OUTCOME_STORED] * total, outcomes)
+        entry = self.entry()
+        numbers = [revision["n"] for revision in entry["revisions"]]
+        self.assertEqual(total, numbers[-1])
+        self.assertEqual(list(range(numbers[0], numbers[-1] + 1)), numbers)
+
+    def test_every_save_takes_its_own_revision_number(self) -> None:
+        self.assert_every_save_kept(self.run_threads())
+
+    @unittest.skipIf(os.name == "nt", "fcntl")
+    def test_every_save_takes_its_own_revision_number_where_the_filesystem_cannot_lock(
+        self,
+    ) -> None:
+        annotation_store._UNLOCKABLE_NAMED.clear()
+        self.addCleanup(annotation_store._UNLOCKABLE_NAMED.clear)
+        refusal = OSError(errno.ENOLCK, os.strerror(errno.ENOLCK))
+        with mock.patch("fcntl.flock", side_effect=refusal):
+            outcomes = self.run_threads()
+        self.assert_every_save_kept(outcomes)
+
+
+class AWriterInsideAWriterTest(_SharedHomeCase):
+    """A writer called while this thread already writes the store fails at once."""
+
+    def test_a_nested_writer_raises_rather_than_waiting_out_its_own_lock(self) -> None:
+        began = time.monotonic()
+        with (
+            annotation_store._locked_store(self.config, None, lambda _line: None) as store,
+            self.assertRaisesRegex(RuntimeError, "already writing"),
+        ):
+            self.assertIsNotNone(store)
+            annotation_store.annotate(self.config, self.first, "claude", SID, goal="Nested")
+        self.assertLess(time.monotonic() - began, 1.0)
+        # The outer write released everything on the way out.
+        self.assertEqual(
+            annotation_store.OUTCOME_STORED,
+            annotation_store.annotate(self.config, self.first, "claude", SID, goal="After"),
+        )
+
+
+class PerProcessLocksTest(unittest.TestCase):
+    """Two processes of eight threads each, where the OS lock belongs to the process.
+
+    Linux NFS clients emulate `flock` with whole-file POSIX locks, which a
+    process owns: a second thread's open "gets" a lock its sibling holds, and
+    either thread's close releases it for the other process. Modelled here by
+    routing `flock` to `lockf`. One OS-lock user per process is what keeps
+    every stored save; without it this lost 6 to 23 of 160 per run.
+    """
+
+    @unittest.skipIf(os.name == "nt", "fcntl")
+    def test_every_stored_save_is_kept_when_the_lock_is_per_process(self) -> None:
+        home = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, home, True)
+        outcomes, _ = _two_processes_save(home, 10, script=_THREADED_LOCKF_SAVER)
+
+        self.assertEqual([annotation_store.OUTCOME_STORED] * 160, outcomes)
+        data = json.loads(Path(home, "state", "cargento-annotations.json").read_text("utf-8"))
+        (entry,) = data["entries"]
+        numbers = [revision["n"] for revision in entry["revisions"]]
+        self.assertEqual(160, numbers[-1])
+        self.assertEqual(list(range(numbers[0], numbers[-1] + 1)), numbers)
+
+
+def _two_processes_save(home: str, saves: int, script: str = "") -> tuple[list[str], str]:
     """Two real processes, each making `saves` goal saves into `home` at once.
 
     Each touches a ready file once imported, and neither starts until both
@@ -779,7 +985,7 @@ def _two_processes_save(home: str, saves: int) -> tuple[list[str], str]:
     env = {k: v for k, v in os.environ.items() if not k.startswith("CARGENTO_")}
     procs = [
         subprocess.Popen(
-            [sys.executable, "-c", _SAVER, str(SKILL_DIR), home, name, str(saves)],
+            [sys.executable, "-c", script or _SAVER, str(SKILL_DIR), home, name, str(saves)],
             stdout=subprocess.PIPE,
             env=env,
         )
@@ -833,6 +1039,8 @@ def _kill(proc: subprocess.Popen[bytes]) -> None:
         proc.kill()
     with contextlib.suppress(subprocess.TimeoutExpired, OSError):
         proc.wait(5)
+    if proc.stdout is not None:
+        proc.stdout.close()
 
 
 if __name__ == "__main__":

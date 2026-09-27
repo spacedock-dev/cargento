@@ -520,6 +520,28 @@ def lock_path(config: RuntimeConfig) -> str:
 _UNLOCKABLE_NAMED: set[str] = set()
 _UNLOCKABLE_NAMED_LOCK = threading.Lock()
 
+# One writer per store per process, before the OS lock. Keyed by store path
+# rather than held on a state, so two dashboards in one process share it, and
+# never `annotation_lock`, so `refresh` and `active` do not wait behind it.
+_WRITERS: dict[str, threading.Lock] = {}
+_WRITERS_LOCK = threading.Lock()
+# The stores this thread is writing now. A writer that calls another writer
+# would wait out its own lock and then blame another dashboard, so it raises.
+_WRITING = threading.local()
+
+
+def _writer_lock(path: str) -> threading.Lock:
+    with _WRITERS_LOCK:
+        return _WRITERS.setdefault(path, threading.Lock())
+
+
+def _writing() -> set[str]:
+    paths: set[str] | None = getattr(_WRITING, "paths", None)
+    if paths is None:
+        paths = set()
+        _WRITING.paths = paths
+    return paths
+
 
 @contextlib.contextmanager
 def _locked_store(
@@ -539,35 +561,59 @@ def _locked_store(
     an empty-goal check) is refused as stale, and an unguarded goal save
     appends after the other dashboard's revision.
 
-    The OS lock is taken first and this state's lock only once it is held.
-    The other order held the state lock through the ten-second wait, so every
-    other writer here queued behind it and then waited its own ten seconds,
-    and `refresh` and `active` hung behind all of them: measured, three saves
-    answered at 10, 20 and 30 s while the board stalled 30 s. `flock` and
-    `msvcrt.locking` conflict across handles in one process, so threads still
-    exclude each other under the OS lock alone.
+    Three locks, in this order, on one ten-second deadline. This process's
+    writer lock for the store comes first, so only one thread here ever asks
+    the OS: local `flock` and `msvcrt.locking` conflict across handles in one
+    process, but Linux NFS emulates `flock` with POSIX locks the process owns,
+    where a second thread's open "gets" the lock its sibling holds and either
+    close releases it to the other dashboard. Modelled with `lockf` (no NFS
+    mount was measured), taking the OS lock per thread lost 6 to 23 of 160
+    stored saves. The OS lock gets whatever the writer lock left of the wait.
+    `annotation_lock` comes last, because the first version held it through
+    the wait and stalled `refresh` and `active` behind every queued save:
+    measured, three saves answered at 10, 20 and 30 s while the board stalled
+    30 s. Now each waiting save costs at most one wait and readers none.
 
     Yields the store as read under the lock, so no writer can check a copy
     read outside it, or None, and the caller then writes nothing, when another
     holder kept the lock past the wait or the lock file refuses this user.
     Only a filesystem that reports it cannot lock yields the store without the
-    OS lock, under this state's lock alone, and says once what that costs:
+    OS lock, under this process's locks alone, and says once what that costs:
     refusing there would refuse every save on that home. A home that cannot
-    take the lock file at all also yields it, because the write that follows
-    fails in the same directory and answers `unwritable` through `_write`,
-    which keeps the words for this run and says when they go (DRC-4533).
+    take the lock file at all yields the store marked unwritable, so the
+    mutator keeps the words for this run and answers `unwritable` without
+    writing (DRC-4533): the write's own makedirs could otherwise succeed where
+    the lock open failed, and write without the lock.
     """
+    path = store_path(config)
+    writing = _writing()
+    if path in writing:
+        msg = f"already writing the annotation store {path}; a writer called a writer"
+        raise RuntimeError(msg)
+    deadline = time.monotonic() + _STORE_LOCK_WAIT_SECONDS
+    writer = _writer_lock(path)
     with contextlib.ExitStack() as stack:
+        if not writer.acquire(timeout=_STORE_LOCK_WAIT_SECONDS):
+            runtime_io.diag(
+                f"Cargento: an earlier save to the annotation store {path} was still "
+                f"waiting after {_STORE_LOCK_WAIT_SECONDS:g}s; nothing was saved",
+                diagnostic_sink,
+            )
+            yield None
+            return
+        stack.callback(writer.release)
+        writing.add(path)
+        stack.callback(writing.discard, path)
         # The lock file sits in the state home, which the first save creates.
         with contextlib.suppress(OSError):
             os.makedirs(config.state_home, mode=0o700, exist_ok=True)
         held = stack.enter_context(
-            runtime_io.held_file_lock(lock_path(config), wait=_STORE_LOCK_WAIT_SECONDS)
+            runtime_io.held_file_lock(lock_path(config), wait=max(0.0, deadline - time.monotonic()))
         )
         if held == runtime_io.LOCK_BUSY:
             runtime_io.diag(
                 f"Cargento: another dashboard held the annotation store "
-                f"{store_path(config)} for {_STORE_LOCK_WAIT_SECONDS:g}s; "
+                f"{path} for {_STORE_LOCK_WAIT_SECONDS:g}s; "
                 "nothing was saved",
                 diagnostic_sink,
             )
@@ -585,7 +631,8 @@ def _locked_store(
             _name_unlockable(config, diagnostic_sink)
         if state is not None:
             stack.enter_context(state.annotation_lock)
-        yield _read_store(config)
+        store = _read_store(config)
+        yield store._replace(writable=False) if held == runtime_io.LOCK_UNCREATABLE else store
 
 
 def _name_unlockable(config: RuntimeConfig, diagnostic_sink: Callable[[str], None]) -> None:
@@ -1050,6 +1097,9 @@ class _Store(NamedTuple):
     entries: tuple[Annotation, ...]
     kept_raw: tuple[Any, ...]
     trusted: bool
+    # False when the lock file could not be made (`_locked_store`): nothing
+    # may be written, because the write would go ahead without the lock.
+    writable: bool = True
 
 
 def load(config: RuntimeConfig) -> tuple[Annotation, ...]:
@@ -1217,15 +1267,19 @@ def _write(
     # socket. Latent while every field is a str, int or float, which is exactly
     # when a guard is cheap.
     except (OSError, ValueError, TypeError, RecursionError):
-        runtime_io.diag(
-            f"Cargento: could not write the annotation store {target}; "
-            "what you typed will be gone at the next collection",
-            diagnostic_sink,
-        )
+        _say_unwritten(config, diagnostic_sink)
         with contextlib.suppress(OSError, ValueError):
             os.unlink(tmp)
         return False
     return True
+
+
+def _say_unwritten(config: RuntimeConfig, diagnostic_sink: Callable[[str], None]) -> None:
+    runtime_io.diag(
+        f"Cargento: could not write the annotation store {store_path(config)}; "
+        "what you typed will be gone at the next collection",
+        diagnostic_sink,
+    )
 
 
 def _stored(entries: tuple[Annotation, ...]) -> tuple[dict[str, Any], ...]:
@@ -1257,6 +1311,9 @@ def _commit(
     if kept is None:
         return OUTCOME_UNWRITABLE
     state.annotations = _stored(kept)
+    if not store.writable:
+        _say_unwritten(config, diagnostic_sink)
+        return OUTCOME_UNWRITABLE
     return (
         OUTCOME_STORED
         if save(config, kept, diagnostic_sink=diagnostic_sink, raw=raw)
@@ -2250,6 +2307,8 @@ def forget(config: RuntimeConfig) -> str:
         kept = tuple(entry for entry in entries if not is_discarded(entry))
         if len(kept) == len(entries):
             return FORGET_NOTHING
+        if not store.writable:
+            return FORGET_UNWRITABLE
         if _write(config, kept, diagnostic_sink=silent, raw=store.kept_raw):
             return FORGET_SWEPT
         return FORGET_UNWRITABLE
