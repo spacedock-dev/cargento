@@ -1,0 +1,177 @@
+{
+  "cases": {
+    "0dd3ae7c558bf2cf": {
+      "analysis": null,
+      "kind": "intent-names-no-folder",
+      "live": {
+        "level": "not_enough",
+        "outcome": "match",
+        "reasons": [
+          "intent-names-no-folder",
+          "later-direction"
+        ]
+      },
+      "marks": {
+        "analysis": "not_enough",
+        "live": "not_enough"
+      }
+    },
+    "287c05b8f660177e": {
+      "analysis": null,
+      "kind": "failed-check",
+      "live": {
+        "level": "high",
+        "outcome": "match",
+        "reasons": [
+          "failed-check",
+          "intent-names-no-folder"
+        ]
+      },
+      "marks": {
+        "analysis": "high",
+        "live": "high"
+      }
+    },
+    "4283ae64f4661945": {
+      "analysis": null,
+      "kind": "draft-unsaved",
+      "live": {
+        "level": "no_live_level",
+        "outcome": "match",
+        "reasons": [
+          "draft-unsaved"
+        ]
+      },
+      "marks": {
+        "analysis": "not_enough",
+        "live": "no_live_level"
+      }
+    },
+    "5e607f9f716ab27c": {
+      "analysis": null,
+      "kind": "check-not-recorded",
+      "live": {
+        "level": "not_enough",
+        "outcome": "match",
+        "reasons": [
+          "intent-names-no-folder",
+          "no-passing-check",
+          "background-run"
+        ]
+      },
+      "marks": {
+        "analysis": "not_enough",
+        "live": "not_enough"
+      }
+    },
+    "a6db9b8aeb9fc9b4": {
+      "analysis": null,
+      "kind": "own-account-only",
+      "live": {
+        "level": "not_enough",
+        "outcome": "match",
+        "reasons": [
+          "intent-names-no-folder",
+          "command-after-pass"
+        ]
+      },
+      "marks": {
+        "analysis": "not_enough",
+        "live": "not_enough"
+      }
+    },
+    "a753d332906e61bd": {
+      "analysis": null,
+      "kind": "work-left-out",
+      "live": {
+        "level": "not_enough",
+        "outcome": "match",
+        "reasons": [
+          "intent-names-no-folder",
+          "no-passing-check",
+          "background-run"
+        ]
+      },
+      "marks": {
+        "analysis": "not_enough",
+        "live": "not_enough"
+      }
+    },
+    "aad7b5879c84cb68": {
+      "analysis": null,
+      "kind": "pass-then-write",
+      "live": {
+        "level": "medium",
+        "outcome": "match",
+        "reasons": [
+          "pass-then-write",
+          "intent-names-no-folder"
+        ]
+      },
+      "marks": {
+        "analysis": "medium",
+        "live": "medium"
+      }
+    },
+    "ca9ec817a6451f67": {
+      "analysis": null,
+      "kind": "later-direction",
+      "live": {
+        "level": "not_enough",
+        "outcome": "match",
+        "reasons": [
+          "intent-names-no-folder",
+          "later-direction"
+        ]
+      },
+      "marks": {
+        "analysis": "not_enough",
+        "live": "not_enough"
+      }
+    },
+    "d68d3f6a32182ba0": {
+      "analysis": null,
+      "kind": "own-account-only",
+      "live": {
+        "level": "not_enough",
+        "outcome": "match",
+        "reasons": [
+          "intent-names-no-folder",
+          "no-passing-check"
+        ]
+      },
+      "marks": {
+        "analysis": "not_enough",
+        "live": "not_enough"
+      }
+    },
+    "e41740a407b84be1": {
+      "analysis": null,
+      "kind": "failed-check",
+      "live": {
+        "level": "high",
+        "outcome": "match",
+        "reasons": [
+          "failed-check"
+        ]
+      },
+      "marks": {
+        "analysis": "high",
+        "live": "high"
+      }
+    }
+  },
+  "cases_digest": "f598b0eb122561e71e29cee51cf7195fd0a408420e9dc5b1f894a84e3f019bcf",
+  "counts": {
+    "failed": 0,
+    "match": 10,
+    "more-cautious": 0,
+    "no_reading": 10,
+    "refused": 0
+  },
+  "digest_commit": "fb00e2f00156fbd15ca7b89dbe085251ff22e576",
+  "marks_digest": "700d7827e636ef7d38b7a943b063f6c4fedfe9d2f8db022c18083ca0a0b2d974",
+  "scored_at": 1790580629.286131,
+  "v": 1,
+  "verdict": "passed"
+}
