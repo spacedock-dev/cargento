@@ -64,6 +64,28 @@
         "live": "not_enough"
       }
     },
+    "67c7fac396411258": {
+      "analysis": {
+        "level": "not_enough",
+        "outcome": "more-cautious",
+        "reasons": [
+          "line-not-shown-by-a-check"
+        ]
+      },
+      "kind": "other",
+      "live": {
+        "level": "none_or_low",
+        "outcome": "match",
+        "reasons": [
+          "intent-names-no-folder",
+          "floor-met"
+        ]
+      },
+      "marks": {
+        "analysis": "none_or_low",
+        "live": "none_or_low"
+      }
+    },
     "a6db9b8aeb9fc9b4": {
       "analysis": null,
       "kind": "own-account-only",
@@ -159,19 +181,63 @@
         "analysis": "high",
         "live": "high"
       }
+    },
+    "e57704a2fb1c8cb1": {
+      "analysis": {
+        "level": "medium",
+        "outcome": "match",
+        "reasons": [
+          "pass-then-write"
+        ]
+      },
+      "kind": "pass-then-write",
+      "live": {
+        "level": "medium",
+        "outcome": "match",
+        "reasons": [
+          "pass-then-write",
+          "intent-names-no-folder"
+        ]
+      },
+      "marks": {
+        "analysis": "medium",
+        "live": "medium"
+      }
+    },
+    "fe0c809502575a99": {
+      "analysis": {
+        "level": "not_enough",
+        "outcome": "match",
+        "reasons": [
+          "line-not-shown-by-a-check"
+        ]
+      },
+      "kind": "other",
+      "live": {
+        "level": "none_or_low",
+        "outcome": "match",
+        "reasons": [
+          "intent-names-no-folder",
+          "floor-met"
+        ]
+      },
+      "marks": {
+        "analysis": "not_enough",
+        "live": "none_or_low"
+      }
     }
   },
-  "cases_digest": "f598b0eb122561e71e29cee51cf7195fd0a408420e9dc5b1f894a84e3f019bcf",
+  "cases_digest": "72e33c71da8f7a48c5d3e3c78beaca71a2ef7583aee28ac6fd262deb46988543",
   "counts": {
     "failed": 0,
-    "match": 10,
-    "more-cautious": 0,
+    "match": 15,
+    "more-cautious": 1,
     "no_reading": 10,
     "refused": 0
   },
-  "digest_commit": "fb00e2f00156fbd15ca7b89dbe085251ff22e576",
-  "marks_digest": "700d7827e636ef7d38b7a943b063f6c4fedfe9d2f8db022c18083ca0a0b2d974",
-  "scored_at": 1790580629.286131,
+  "digest_commit": "f4ebdd333c534dca21eb1bffd9e0a5c0173ea8a5",
+  "marks_digest": "5cf72642d950e5b6f56ef081cc23682e6f3e5465d260960b9b4ad39fb9bba97d",
+  "scored_at": 1790595210.1114419,
   "v": 1,
   "verdict": "passed"
 }
