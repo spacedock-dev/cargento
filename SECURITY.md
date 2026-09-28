@@ -127,10 +127,13 @@ The posture rests on two invariants:
    One forwarder writes too: `statusline_hook.py`'s deduplication memo under
    the same directory, which holds a normalized state name and a timestamp and nothing about the
    session's content.
-   One `POST` mutates nothing and is named here for what it returns rather than for the count
-   above: `POST /api/direction` hands back the whole text of one later direction you gave, for
-   review before it becomes an outcome line, and [Analyze drift, Cancel and copied corrections](#analyze-drift-cancel-and-copied-corrections)
-   owns its bounds.
+   Two `POST`s store nothing of their own and are named here for what they return rather than for
+   the count above: `POST /api/direction` hands back the whole text of one later direction you
+   gave, for review before it becomes an outcome line, and `POST /api/correction` hands back Steer
+   back's correction, which is the goal and outcome lines you saved, each line's state and the
+   times of the entries it rests on. Each runs a collection to read the session, and that
+   collection may rewrite `semantic-work-history.json` as any collection does. [Analyze drift, Cancel and copied corrections](#analyze-drift-cancel-and-copied-corrections)
+   owns the bounds of both.
    One `GET` reads wider than the rest, and is named here for that reason rather than for the
    count above. `GET /api/annotations` serves the prose you composed, for every session you have
    annotated, including sessions no longer on the board. That is a wider scope than `/api/data`
@@ -1498,15 +1501,28 @@ exists, whether its harness is read and whether that text was copied before, so 
 nothing about which sessions exist. Two things remain. Each probe of a real Claude Code session
 stores a digest and takes one of its eight waiting slots, pushing out the oldest copy still waiting.
 And a store that cannot be written answers 503 only when a write was attempted, which happens only
-for a real Claude Code session. The correction is composed without a model from the reader's goal,
-outcome lines with their state, and cited entry numbers and times, and never from model prose, tool
-output or a recorded command; the Copy button that calls this route arrives with DRC-4681. The
+for a real Claude Code session. The Copy button in Steer back's box calls this route with the box's
+exact text, after the clipboard took it and never before. The
 residual is a local process: any process that can reach the loopback route can record a digest.
 Each digest it records can mark one later message whose text matches exactly as Cargento-assisted,
 once, up to the per-session bound. A marked message is not person-authored evidence and not an
 unsettled later direction, so a process that records the exact text of a short direction in
 advance can keep that direction from raising the later-direction question and from blocking "None
 or low".
+
+Steer back's correction, built with DRC-4681. `POST /api/correction` names a session and nothing
+else, and answers a correction the server composes without a model from that session's published
+row and observed record: the goal and outcome lines the reader saved, each line's state re-derived
+from a stored reading of those exact words, and the time of each entry a line or sentence rests on.
+It never reads a fact's summary, a command, a check name, tool output, a reading's detail or a
+message's text, so none of them can reach the correction; each entry travels as its time and a
+placeholder holding its fact id, which the page replaces with the number its own list draws, or
+drops. A reply is at most 2,000 characters however the page numbers it, and is never truncated: a
+longer one drops its consistent lines and then answers a refusal sentence. It stores nothing of
+its own: it reads, and the collection it runs to read the session may rewrite the semantic history
+store, as `POST /api/direction`'s does. It is guarded as `POST /api/direction` is, reads Claude Code sessions only, and answers one body for an
+unknown session, another harness, and a session with nothing to steer from alike. The reader edits
+the text in the page and copies it; Cargento never sends it into the session.
 
 The Not accurate token, with DRC-4695. A reader may mark a reading not accurate. The token is stored
 with the annotation entry and removed with it, and, like the words and readings in that file, it is
@@ -2623,12 +2639,13 @@ that was.
 saying the machine's network may read the board, and there is no second gate behind it: everything
 the paragraph below grants another account on the machine, a non-default bind grants anything that
 can reach the port. Reading `/api/data` is the whole board: every session's titles, prompts and
-project paths. Writing is the sixteen POST routes enabled without terminal registration, `/api/shutdown` and `/api/answer` among them, so a
+project paths. Writing is the seventeen POST routes enabled without terminal registration, `/api/shutdown` and `/api/answer` among them, so a
 reachable dashboard can be killed, and a question a session is waiting on can be answered by
-somebody other than you. One of the sixteen only reads: `POST /api/direction` returns the whole text
-of a direction a session's user gave, which `/api/project-context` names by its first sentence. It
-answers only a loopback peer, so a non-default bind does not widen it; its bounds are in Analyze
-drift, Cancel and copied corrections. There is nothing to authenticate with on fourteen of them, for the reason the
+somebody other than you. Two of the seventeen store nothing of their own: `POST /api/direction` returns the whole text
+of a direction a session's user gave, which `/api/project-context` names by its first sentence, and
+`POST /api/correction` returns the goal and outcome lines a reader saved, composed as Steer back's
+correction. Both answer only a loopback peer, so a non-default bind does not widen them; their
+bounds are in Analyze drift, Cancel and copied corrections. There is nothing to authenticate with on fifteen of them, for the reason the
 ask-lane paragraph below gives: the page is served as fixed bytes with no per-run secret in them.
 Two carry a capability and they are not worth the same. `POST /api/events/<harness>` takes a per-run
 token published only in the state file at mode `0600` and never served to the page, so a client

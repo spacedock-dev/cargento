@@ -1405,6 +1405,11 @@ class RuntimeImportGraphTest(unittest.TestCase):
         # (DRC-4678), and renders each message as `transcripts` renders a row's
         # prompt fields, to place those fields on the message they quote. Only
         # `aggregate`, `http_api` and `cli` reach it.
+        # Pure composition: the copy route's cap and harnesses, and the reading's rules.
+        "cargento_runtime.correction": {
+            "cargento_runtime.copied_corrections",
+            "cargento_runtime.reading",
+        },
         "cargento_runtime.copied_corrections": {
             "cargento_runtime.config",
             "cargento_runtime.io",
@@ -1794,6 +1799,8 @@ class RuntimeImportGraphTest(unittest.TestCase):
             "cargento_runtime.reading_policy",
             # `POST /api/correction/copied`, and the `copied` mark on facts (DRC-4678).
             "cargento_runtime.copied_corrections",
+            # `POST /api/correction`, Steer back's correction (DRC-4681).
+            "cargento_runtime.correction",
             # Resolves the one provider a press may reach (DRC-4650).
             "cargento_runtime.reading_route",
             "cargento_runtime.tripwires",

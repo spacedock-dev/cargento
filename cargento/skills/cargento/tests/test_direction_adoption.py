@@ -234,6 +234,36 @@ class AddDirectionStoreTest(unittest.TestCase):
         )
         self.assertEqual("typed", lines[0]["source"])
 
+    def test_a_direction_already_saved_as_a_line_is_refused_a_second_place(self) -> None:
+        # Update intent instead could offer it again (page F1); two lines from one entry would
+        # write a typed line away for a copy of one already kept.
+        _six(self.config, self.state)
+        self.assertEqual(
+            annotation_store.OUTCOME_STORED,
+            self._add(expected_revision=1, replace=1, source_id="fact:aaaa"),
+        )
+        before = self.writes.count
+        self.assertEqual(
+            annotation_store.OUTCOME_REFUSED,
+            self._add(expected_revision=2, replace=2, source_id="fact:aaaa"),
+        )
+        self.assertEqual(before, self.writes.count)
+        lines = self._entry()["revisions"][-1]["lines"]
+        self.assertEqual("Line 3", lines[2]["text"])
+        # Replacing the very line that holds it leaves one line from that entry, and stands.
+        self.assertEqual(
+            annotation_store.OUTCOME_STORED,
+            self._add(expected_revision=2, replace=1, source_id="fact:aaaa", text="Reworded"),
+        )
+        self.assertEqual(
+            ["fact:aaaa"],
+            [
+                line.get("source_id")
+                for line in self._entry()["revisions"][-1]["lines"]
+                if line.get("source_id")
+            ],
+        )
+
     def test_a_long_or_multi_line_direction_is_refused_never_clipped(self) -> None:
         self.assertEqual(annotation_store.OUTCOME_REFUSED, self._adopting(text=LONG))
         self.assertEqual(0, self.writes.count)
@@ -917,6 +947,73 @@ class DirectionRouteTest(_ClaudeSession):
         self.assertEqual(6, len(lines))
         self.assertEqual({"text": edited, "source": "entry", "source_id": fact_id}, lines[5])
         self.assertNotIn(opened["text"], json.dumps(annotation_store.load(self.config)))
+
+    def test_a_settled_direction_that_is_not_the_latest_prompt_is_added_from_its_entry(
+        self,
+    ) -> None:
+        # Update intent instead (DRC-4697): after an analysis's Keep settled every direction,
+        # the one a departure cites is added from its own entry, with later prompts after it,
+        # and the goal is kept.
+        annotation_store.annotate(
+            self.config,
+            self.state,
+            "claude",
+            SHORT,
+            goal="Ship the placeholder parser",
+            lines=["The parser tests pass"],
+            now=20.0,
+        )
+        self.session.prompt("Later still: rename the placeholder lexer.")
+        self.session.save(self.path)
+        latest = max(
+            (f for f in self.facts() if f.get("type") == "user_message"),
+            key=lambda f: float(f["at"]),
+        )
+        annotation_store.settle(
+            self.config,
+            self.state,
+            "claude",
+            SHORT,
+            through=latest["at"],
+            now=NOW,
+            expected_revision=1,
+        )
+        fact_id = str(
+            min(
+                (
+                    f
+                    for f in self.facts()
+                    if f.get("type") == "user_message" and float(f["at"]) > FIRST_AT
+                ),
+                key=lambda f: float(f["at"]),
+            )["fact_id"]
+        )
+        self.assertNotEqual(fact_id, latest["fact_id"])
+        with self._serving() as port:
+            _, opened = self._open(port, fact_id)
+            self.assertIs(True, opened["ok"])
+            status, stored = self._post(
+                port,
+                "/api/annotate",
+                {
+                    "harness": "claude",
+                    "sid": SHORT,
+                    "add_direction": fact_id,
+                    "text": "Use the placeholder lexer for every token",
+                    "expected_revision": 1,
+                },
+            )
+        self.assertEqual((200, "stored"), (status, stored["outcome"]))
+        revision = annotation_store.load(self.config)[0]["revisions"][-1]
+        self.assertEqual("Ship the placeholder parser", revision["goal"])
+        self.assertEqual(
+            {
+                "text": "Use the placeholder lexer for every token",
+                "source": "entry",
+                "source_id": fact_id,
+            },
+            revision["lines"][1],
+        )
 
     def test_add_over_the_draft_adopts_it_in_the_same_request(self) -> None:
         fact_id = str(self.direction()["fact_id"])

@@ -2148,10 +2148,10 @@ class FocusCommandContractDocumentationTest(unittest.TestCase):
             'path.startswith("/api/events/")' in do_post
         )
         gated = len(re.findall(r"\bcoordinator\.(?:focus_)?authorized\(", source))
-        self.assertEqual(16, routes)
+        self.assertEqual(17, routes)
         self.assertEqual(2, gated)
-        self.assertIn("Writing is the sixteen POST routes", self.FLAT)
-        self.assertIn("There is nothing to authenticate with on fourteen of them", self.FLAT)
+        self.assertIn("Writing is the seventeen POST routes", self.FLAT)
+        self.assertIn("There is nothing to authenticate with on fifteen of them", self.FLAT)
         self.assertIn("Two carry a capability and they are not worth the same.", self.FLAT)
 
     def test_the_copied_correction_route_is_named_counted_and_its_residual_stated(self) -> None:
