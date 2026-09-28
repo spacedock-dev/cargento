@@ -694,5 +694,400 @@ class ScoreTest(CaseToolTestCase):
         self.assertIn(case_id, raw)
 
 
+def _runtime_module(name: str) -> Any:
+    """A runtime module, reached the way the tool reaches it."""
+    levels_cases._runtime()
+    import importlib  # noqa: PLC0415
+
+    return importlib.import_module(f"cargento_runtime.{name}")
+
+
+class FakeModel:
+    """A reading model that never leaves the process: counts calls and keeps the prompts."""
+
+    unavailable_reason = "model-unavailable"
+
+    def __init__(self, reply: str = "", status: str = "ok", interrupt_at: int = 0) -> None:
+        self.interrupt_at = interrupt_at
+        self.reply = reply or json.dumps(
+            {
+                "goal": {"result": "unverifiable", "cites": [], "detail": ""},
+                "line_1": {"result": "departure", "cites": [1], "detail": "MODEL PROSE"},
+            }
+        )
+        self.status = status
+        self.prompts: list[str] = []
+
+    def available(self) -> bool:
+        return True
+
+    def __call__(self, prompt: str, *, output_cap_bytes: int) -> tuple[str, str]:
+        del output_cap_bytes
+        self.prompts.append(prompt)
+        if len(self.prompts) == self.interrupt_at:
+            raise KeyboardInterrupt
+        return self.reply, self.status
+
+
+class ReadTest(CaseToolTestCase):
+    """`--read`: the frozen cases replayed through the board's producer, charged on its ledger."""
+
+    def setUp(self) -> None:
+        super().setUp()
+        self.reading_home = self.root / "reading-home"
+        self.config = levels_cases.reading_config(str(self.reading_home))
+        self.policy = _runtime_module("reading_policy")
+        self.policy.set_consent(
+            self.config, True, now=time.time(), provider="codex", tool_output="OpenAI"
+        )
+        self.model = FakeModel()
+
+    def used(self) -> int:
+        return int(self.policy.status(self.config, now=time.time(), provider="codex")["used"])
+
+    def read(self, *case_ids: str, dry_run: bool = False) -> int:
+        return levels_cases.read_cases(
+            home=str(self.home),
+            repo_root=str(self.repo),
+            digest_path=str(self.digest_path),
+            reading_config=self.config,
+            case_ids=list(case_ids) or None,
+            model=self.model,
+            destination="OpenAI",
+            dry_run=dry_run,
+            clock=lambda: time.time() + 60,
+            say=self.say,
+        )
+
+    def replayed(self) -> dict[str, Any]:
+        path = levels_cases._paths(str(self.home))["replayed"]
+        return dict(json.loads(Path(path).read_text(encoding="utf-8")))
+
+    def record(self) -> dict[str, Any]:
+        path = levels_cases._paths(str(self.home))["replay"]
+        return dict(json.loads(Path(path).read_text(encoding="utf-8")))
+
+    def attach_replayed(self) -> int:
+        return levels_cases.attach_readings(
+            levels_cases._paths(str(self.home))["replayed"],
+            home=str(self.home),
+            repo_root=str(self.repo),
+            digest_path=str(self.digest_path),
+            now=time.time() + 120,
+            say=self.say,
+        )
+
+    def test_a_read_case_attaches_and_scores_unchanged(self) -> None:
+        case_id = self.marked("h", "h")
+        self.assertEqual(self.read(case_id), 0, self.out)
+        self.assertEqual(len(self.model.prompts), 1)
+        self.assertEqual(set(self.replayed()), {"v", "readings"})
+        self.assertEqual(set(self.replayed()["readings"]), {case_id})
+        self.assertEqual(self.attach_replayed(), 0, self.out)
+        self.assertEqual(self.score(), 0, self.out)
+        row = self.results()["cases"][case_id]
+        self.assertEqual(row["analysis"]["level"], "high")
+        self.assertEqual(row["analysis"]["outcome"], levels_cases.MATCH)
+
+    def test_the_frozen_record_and_intent_are_what_is_sent(self) -> None:
+        case_id = self.marked("h", "h")
+        self.read(case_id)
+        (prompt,) = self.model.prompts
+        self.assertIn(GOAL, prompt)
+        self.assertIn("node --test passes", prompt)
+        # The check the case froze at its cut: the failure, never the later pass.
+        self.assertIn("failed", prompt)
+        self.assertNotIn("pass 3", prompt)
+
+    def test_a_withheld_case_is_recorded_as_refused_not_faked(self) -> None:
+        # Cut before any record: nothing to read, so the producer withholds.
+        self.build(self.case(until=_epoch(5), kind="other"))
+        self.mark(Answers("x", "x"))
+        self.commit_digest()
+        (case,) = self.cases()
+        self.assertEqual(self.read(case["id"]), 0, self.out)
+        self.assertEqual(self.model.prompts, [])
+        self.assertEqual(self.used(), 0)
+        entry = self.record()["cases"][case["id"]]
+        self.assertEqual(entry["status"], "refused")
+        self.assertEqual(entry["withheld"], "ledger-empty")
+        self.assertFalse(entry["charged"])
+        self.assertFalse(Path(levels_cases._paths(str(self.home))["replayed"]).exists())
+
+    def test_a_failed_call_is_refused_and_still_charged(self) -> None:
+        case_id = self.marked("h", "h")
+        self.model = FakeModel(status="failed")
+        self.assertEqual(self.read(case_id), 0, self.out)
+        entry = self.record()["cases"][case_id]
+        self.assertEqual((entry["status"], entry["withheld"]), ("refused", "model-failed"))
+        self.assertTrue(entry["charged"])
+        self.assertEqual(self.used(), 1)
+
+    def test_an_unmarked_case_refuses_before_any_call(self) -> None:
+        self.build(self.case(), self.case(kind="other", until=None))
+        self.mark(Answers("h", "h", "q"))
+        self.commit_digest()
+        marked, unmarked = (c["id"] for c in self.cases())
+        self.assertEqual(self.read(marked, unmarked), 1)
+        self.assertEqual(self.model.prompts, [])
+        self.assertEqual(self.used(), 0)
+
+    def test_an_uncommitted_digest_refuses_before_any_call(self) -> None:
+        self.build(self.case())
+        self.mark(Answers("h", "h"))
+        self.assertEqual(self.read(self.cases()[0]["id"]), 1)
+        self.assertEqual(self.model.prompts, [])
+
+    def test_a_case_changed_since_marking_refuses_before_any_call(self) -> None:
+        case_id = self.marked("h", "h")
+        cases_path = self.home / "drift-levels" / "cases.json"
+        body = json.loads(cases_path.read_text(encoding="utf-8"))
+        body["cases"][0]["intent"]["lines"] = ["a line nobody marked against"]
+        cases_path.write_text(json.dumps(body), encoding="utf-8")
+        self.assertEqual(self.read(case_id), 1)
+        self.assertEqual(self.model.prompts, [])
+        self.assertEqual(self.used(), 0)
+
+    def test_the_budget_is_charged_exactly_once_per_call(self) -> None:
+        # One session frozen as two kinds is one producer input: one call, one charge.
+        self.build(self.case(), self.case(kind="other"))
+        self.mark(Answers("h", "h", "h", "h"))
+        self.commit_digest()
+        ids = [c["id"] for c in self.cases()]
+        self.assertEqual(self.read(*ids), 0, self.out)
+        self.assertEqual(len(self.model.prompts), 1)
+        self.assertEqual(self.used(), 1)
+        self.assertEqual(set(self.replayed()["readings"]), set(ids))
+
+    def test_a_case_already_read_is_not_read_or_charged_again(self) -> None:
+        case_id = self.marked("h", "h")
+        self.read(case_id)
+        self.assertEqual(self.read(case_id), 0, self.out)
+        self.assertEqual(len(self.model.prompts), 1)
+        self.assertEqual(self.used(), 1)
+        self.assertIn(case_id, self.replayed()["readings"])
+
+    def test_a_budget_too_small_for_the_calls_refuses_before_any_call(self) -> None:
+        case_id = self.marked("h", "h")
+        for _ in range(self.policy.DAILY_CAP):
+            self.policy.reserve(self.config, now=time.time(), provider="codex")
+        self.assertEqual(self.read(case_id), 1)
+        self.assertEqual(self.model.prompts, [])
+        self.assertEqual(self.used(), self.policy.DAILY_CAP)
+
+    def test_codex_not_allowed_in_the_reading_home_refuses_before_any_call(self) -> None:
+        case_id = self.marked("h", "h")
+        self.policy.set_consent(self.config, False, now=time.time())
+        self.assertEqual(self.read(case_id), 1)
+        self.assertEqual(self.model.prompts, [])
+
+    def test_a_route_that_is_not_openai_refuses_before_any_call(self) -> None:
+        case_id = self.marked("h", "h")
+        got = levels_cases.read_cases(
+            home=str(self.home),
+            repo_root=str(self.repo),
+            digest_path=str(self.digest_path),
+            reading_config=self.config,
+            case_ids=[case_id],
+            model=self.model,
+            destination="",
+            say=self.say,
+        )
+        self.assertEqual(got, 1)
+        self.assertEqual(self.model.prompts, [])
+
+    def test_a_dry_run_makes_no_call_and_no_charge(self) -> None:
+        case_id = self.marked("h", "h")
+        self.out.clear()  # the marking screen shows the intent; the dry run must not
+        self.assertEqual(self.read(case_id, dry_run=True), 0, self.out)
+        self.assertEqual(self.model.prompts, [])
+        self.assertEqual(self.used(), 0)
+        paths = levels_cases._paths(str(self.home))
+        self.assertFalse(Path(paths["replayed"]).exists())
+        self.assertFalse(Path(paths["replay"]).exists())
+        shown = "\n".join(self.out)
+        self.assertIn(case_id, shown)
+        self.assertIn("1 call", shown)
+        for local in (GOAL, "node --test passes", SID, self.cwd):
+            self.assertNotIn(local, shown)
+
+    def test_the_default_is_the_cases_the_prep_named(self) -> None:
+        self.assertEqual(
+            levels_cases.DEFAULT_READ,
+            (
+                "e41740a407b84be1",
+                "5e607f9f716ab27c",
+                "a753d332906e61bd",
+                "d68d3f6a32182ba0",
+                "0dd3ae7c558bf2cf",
+            ),
+        )
+
+    def test_the_local_record_holds_no_session_text(self) -> None:
+        case_id = self.marked("h", "h")
+        self.read(case_id)
+        raw = Path(levels_cases._paths(str(self.home))["replay"]).read_text(encoding="utf-8")
+        for local in (GOAL, "node --test passes", SID, self.cwd, "MODEL PROSE"):
+            self.assertNotIn(local, raw)
+
+    # -- F1: the dry run says which cases a reading could move, before any spend.
+
+    def line_for(self, case_id: str) -> str:
+        (line,) = [x for x in self.out if x.strip().startswith(f"{case_id}: analysis")]
+        return line
+
+    def test_a_dry_run_flags_cases_whose_analysis_outcome_cannot_move(self) -> None:
+        # A failed check inside the window forces High whatever the reply says,
+        # so a case marked High can only match and one marked Extreme can only fail.
+        passing = Transcript(self.cwd)
+        passing.bash(20, "node --test", f"{INFO} pass 3\n{INFO} fail 0", failed=False)
+        passing_path = self.root / "claude" / "projects" / "-work-ttt-pass" / f"{SID}.jsonl"
+        passing.save(passing_path)
+        self.build(
+            self.case(),
+            self.case(kind="other"),
+            self.case(kind="own-account-only", transcript=str(passing_path), until=None),
+        )
+        self.mark(Answers("h", "h", "h", "e", "x", "x"))
+        self.commit_digest()
+        fixed, failing, movable = (c["id"] for c in self.cases())
+        self.out.clear()
+        self.assertEqual(self.read(fixed, failing, movable, dry_run=True), 0, self.out)
+        self.assertIn("fixed by the evidence", self.line_for(fixed))
+        self.assertNotIn("fails whatever the reply", self.line_for(fixed))
+        self.assertIn("reaches high;", self.line_for(fixed))
+        self.assertIn("fails whatever the reply", self.line_for(failing))
+        self.assertNotIn("fixed by the evidence", self.line_for(movable))
+        self.assertNotIn("fails whatever the reply", self.line_for(movable))
+        # A departure stands only on a failed check, so a passing-only case
+        # reaches None or low (failed against its mark) or Not enough (a match).
+        self.assertIn("reaches none_or_low, not_enough;", self.line_for(movable))
+        self.assertEqual(self.model.prompts, [])
+        self.assertEqual(self.used(), 0)
+        paths = levels_cases._paths(str(self.home))
+        self.assertFalse(Path(paths["replayed"]).exists())
+        self.assertFalse(Path(paths["replay"]).exists())
+        shown = "\n".join(self.out)
+        for local in (GOAL, "node --test passes", SID, self.cwd):
+            self.assertNotIn(local, shown)
+
+    def test_a_dry_run_with_no_fake_calls_nothing_and_charges_nothing(self) -> None:
+        from unittest import mock  # noqa: PLC0415
+
+        case_id = self.marked("h", "h")
+        reading = _runtime_module("reading")
+        with mock.patch.object(reading, "CodexReadingModel", side_effect=AssertionError("built")):
+            got = levels_cases.read_cases(
+                home=str(self.home),
+                repo_root=str(self.repo),
+                digest_path=str(self.digest_path),
+                reading_config=self.config,
+                case_ids=[case_id],
+                destination="OpenAI",
+                dry_run=True,
+                say=self.say,
+            )
+        self.assertEqual(got, 0, self.out)
+        self.assertEqual(self.used(), 0)
+        self.assertIn("fixed by the evidence", self.line_for(case_id))
+
+    # -- F2: every call is written as it lands, and a charge is never paid twice.
+
+    def four_cases(self) -> list[str]:
+        self.build(*(self.case(until=_epoch(t)) for t in (300, 400, 500)), self.case(until=None))
+        self.mark(Answers(*["h"] * 8))
+        self.commit_digest()
+        return [str(c["id"]) for c in self.cases()]
+
+    def test_an_interrupted_run_keeps_its_readings_and_never_charges_twice(self) -> None:
+        ids = self.four_cases()
+        self.model = FakeModel(interrupt_at=3)
+        with self.assertRaises(KeyboardInterrupt):
+            self.read(*ids)
+        self.assertEqual(self.used(), 3)
+        self.assertEqual(set(self.replayed()["readings"]), set(ids[:2]))
+        statuses = {k: v["status"] for k, v in self.record()["cases"].items()}
+        self.assertEqual(statuses, {ids[0]: "read", ids[1]: "read", ids[2]: "charged"})
+        self.model = FakeModel()
+        self.assertEqual(self.read(*ids), 0, self.out)
+        # Exactly the call not yet made: the fourth. The third was charged and is not read again.
+        self.assertEqual(len(self.model.prompts), 1)
+        self.assertEqual(self.used(), 4)
+        self.assertEqual(set(self.replayed()["readings"]), {ids[0], ids[1], ids[3]})
+        self.assertEqual(self.record()["cases"][ids[2]]["status"], "charged")
+        self.assertTrue(any(ids[2] in x and "not read again" in x for x in self.out))
+
+    def test_a_marker_whose_charge_never_landed_is_read(self) -> None:
+        case_id = self.marked("h", "h")
+        path = levels_cases._paths(str(self.home))["replay"]
+        levels_cases._write(
+            path,
+            {
+                "v": 1,
+                "cases": {
+                    case_id: {
+                        "status": "pending",
+                        "job": "levels-replay:never-charged",
+                        "started_at": time.time() + 30,
+                    }
+                },
+            },
+        )
+        self.assertEqual(self.read(case_id), 0, self.out)
+        self.assertEqual(len(self.model.prompts), 1)
+        self.assertEqual(self.used(), 1)
+        self.assertEqual(self.record()["cases"][case_id]["status"], "read")
+
+    # -- F4: no grant, no reading: refused up front.
+
+    def test_no_tool_output_grant_refuses_before_any_call(self) -> None:
+        case_id = self.marked("h", "h")
+        self.policy.set_consent(self.config, False, now=time.time())
+        self.policy.set_consent(self.config, True, now=time.time(), provider="codex")
+        self.assertEqual(self.read(case_id), 1)
+        self.assertEqual(self.model.prompts, [])
+        self.assertEqual(self.used(), 0)
+        self.assertIn("tool output", "\n".join(self.out))
+        self.assertFalse(Path(levels_cases._paths(str(self.home))["replay"]).exists())
+
+    # -- F5 and F6: what a re-run charges.
+
+    def test_a_charged_failure_is_read_and_charged_again_on_rerun(self) -> None:
+        case_id = self.marked("h", "h")
+        self.model = FakeModel(status="failed")
+        self.read(case_id)
+        self.model = FakeModel()
+        self.assertEqual(self.read(case_id), 0, self.out)
+        self.assertEqual(self.used(), 2)
+        self.assertEqual(self.record()["cases"][case_id]["status"], "read")
+
+    def test_a_sibling_with_identical_inputs_reuses_the_held_reading(self) -> None:
+        self.build(self.case(), self.case(kind="other"))
+        self.mark(Answers("h", "h", "h", "h"))
+        self.commit_digest()
+        first, second = (str(c["id"]) for c in self.cases())
+        self.read(first)
+        self.assertEqual(self.read(second), 0, self.out)
+        self.assertEqual(len(self.model.prompts), 1)
+        self.assertEqual(self.used(), 1)
+        readings = self.replayed()["readings"]
+        self.assertEqual(readings[first], readings[second])
+        entry = self.record()["cases"][second]
+        self.assertEqual((entry["status"], entry["charged"], entry["call"]), ("read", False, first))
+
+
+class CommittedTextTest(unittest.TestCase):
+    """What this tool commits never names a session (SECURITY.md, the abstention check)."""
+
+    def test_no_session_id_prefix_in_the_readme_or_the_tool(self) -> None:
+        import re  # noqa: PLC0415
+
+        root = Path(__file__).resolve().parents[2]
+        for relative in ("docs/drift-levels/README.md", "scripts/levels_cases.py"):
+            text = (root / relative).read_text(encoding="utf-8")
+            tokens = re.findall(r"(?<![0-9a-f])[0-9a-f]{8}(?![0-9a-f])", text)
+            self.assertEqual([t for t in tokens if any(ch.isdigit() for ch in t)], [], relative)
+
+
 if __name__ == "__main__":
     unittest.main()
