@@ -451,7 +451,16 @@ marked, with the attempt count and disclosure still beside it. A screen reader h
 when the box appears and how the analysis ended once when it goes, never again on a redraw or reload. The box comes from the published
 board, so a reload or another tab shows the same analysis at the same step, and a second press
 starts nothing. The result, or why there is none, replaces the box when it is stored; an analysis
-a stop or restart cut short is recorded as an interrupted attempt. The box offers Cancel, which stops the call and records a cancelled attempt that still counts, or one that spent nothing when it landed before anything was sent. A failed request says its result could
+a stop or restart cut short is recorded as an interrupted attempt. On a Claude Code session the
+result shows the analysis level (worked out again from the stored reading on every view, never
+stored, never on a row) with its time, then the answer: "Departs from your intent" with a count and
+each departure's own account under a departure, otherwise a failed check in the window, "Can't
+tell", or "Nothing found against what it read". Each line reads "Departs at #n", "Consistent with
+#n, as the tool reported; not inspected", "Consistent with what the session said at #n; not a
+check" or "Can't tell", never "Done". "Where the work went" groups the written files by folder. A
+result says when your intent changed after it or new work arrived since, with "Analyze again", and
+"Not accurate?" marks the reading with a token that is stored beside it and never sent or counted.
+The box offers Cancel, which stops the call and records a cancelled attempt that still counts, or one that spent nothing when it landed before anything was sent. A failed request says its result could
 not be confirmed and is never retried automatically. The counter reports recorded model requests, so a refusal before the model runs
 does not increase it.
 

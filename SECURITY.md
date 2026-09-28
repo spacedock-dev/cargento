@@ -1526,9 +1526,15 @@ store, as `POST /api/direction`'s does. It is guarded as `POST /api/direction` i
 unknown session, another harness, and a session with nothing to steer from alike. The reader edits
 the text in the page and copies it; Cargento never sends it into the session.
 
-The Not accurate token, with DRC-4695. A reader may mark a reading not accurate. The token is stored
-with the annotation entry and removed with it, and, like the words and readings in that file, it is
-not reached by `--forget`. It is never sent, never counted and never entered into abstention marks.
+The Not accurate token, built with DRC-4695. A reader may mark a reading not accurate, through the
+`not_accurate` arm of `POST /api/annotate`, which takes a bool and the reading's `read_at` and
+stores the literal token `true` beside the reading it names, and nothing else: no reason, no text
+and no time. A mark naming any other reading is refused, and a new reading clears it. The token is
+stored with the annotation entry and removed with it, and, like the words and readings in that
+file, it is not reached by `--forget`. It is published on the session row as
+`annotation_not_accurate` for the page alone: it is never sent to a model, never counted, never in
+session history or the unasked lane, and never entered into abstention marks. Any local process
+that can reach the loopback route can set or clear it, as it can the words themselves.
 
 ### The abstention check
 

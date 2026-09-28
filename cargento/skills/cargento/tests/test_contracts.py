@@ -1811,6 +1811,8 @@ class RuntimeImportGraphTest(unittest.TestCase):
             "cargento_runtime.correction",
             # The focused project context's live drift estimate (DRC-4696).
             "cargento_runtime.live_estimate",
+            # And its analysis-derived level, recomputed from the stored reading (DRC-4695).
+            "cargento_runtime.levels",
             # Resolves the one provider a press may reach (DRC-4650).
             "cargento_runtime.reading_route",
             "cargento_runtime.tripwires",

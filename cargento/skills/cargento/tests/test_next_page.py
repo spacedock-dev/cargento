@@ -1126,6 +1126,16 @@ class NextPageAssetContractTest(unittest.TestCase):
         ".next-session-drift-hint",
         ".next-session-drift-detail",
         ".next-session-drift-nudge",
+        # DRC-4695: the analysis result's headline, its count, the answer line, the stale
+        # banner's head, Where the work went's heading and folders, and Not accurate.
+        ".next-cockpit-result-headline",
+        ".next-cockpit-result-count",
+        ".next-cockpit-result-line",
+        ".next-cockpit-result-stale-head",
+        ".next-cockpit-result-work h3",
+        ".next-cockpit-result-folder",
+        ".next-cockpit-result-mark",
+        ".next-cockpit-result-marked",
         # Every rule this census resolves at or above the floor. A set rather
         # than a count, so one rule leaving the tier while another joins cannot
         # pass unnoticed.
@@ -1374,7 +1384,10 @@ class NextPageAssetContractTest(unittest.TestCase):
         # DRC-4681 adds one: the correction box, which holds the reader's own words.
         # DRC-4696 adds three: the live monitor's hint, the estimate's source line and
         # the nudge to analyze.
-        self.assertEqual(118, len(above))
+        # DRC-4695 adds eight: the analysis result's headline, count, answer line, stale
+        # banner head, Where the work went's heading and folders, and Not accurate with
+        # its mark.
+        self.assertEqual(126, len(above))
         self.assertEqual(self.SENTENCE_TIER_RULES, {selector for selector, _size in above})
         self.assertEqual(
             self.SUB_SENTENCE_FLOOR_INVENTORY, {(size, selector) for selector, size in below}
@@ -1972,8 +1985,8 @@ class NextPageAssetContractTest(unittest.TestCase):
                 "7d3250df229af732ebb668171e4cb284f0c1e00e4b0241710d1e5f0ac2a76777",
             ),
             "next-cockpit.js": (
-                389_420,
-                "3d86df47a9456782f3f8a35d21f742002b5f60d1bdb7774b2e999484f8306c1d",
+                404_654,
+                "2ed6658991de6e24619ad86215701665b61d40c7b5e243b9f7562849ebc4c8ea",
             ),
             "next-render.js": (
                 12_231,
@@ -1992,16 +2005,16 @@ class NextPageAssetContractTest(unittest.TestCase):
                 self.assertEqual(digest, hashlib.sha256(data).hexdigest())
 
         styles = frontend_page.asset_path("styles.css").read_bytes()
-        self.assertEqual(158_885, len(styles))
+        self.assertEqual(161_055, len(styles))
         self.assertEqual(
-            "e7133974173e5821b8eab2c65470a986d78e73b9a642a91a5573c6e9975cdb5f",
+            "a42471794b5b31679b21e471dd063866222d5169d5710e9307b0aa4c4785af9e",
             hashlib.sha256(styles).hexdigest(),
         )
 
         assembled = frontend_page.load_page()
-        self.assertEqual(1_252_402, len(assembled))
+        self.assertEqual(1_269_806, len(assembled))
         self.assertEqual(
-            "13b368ef923995144709f9d7a2452d64107f1417d270d8bd508fc226fa451719",
+            "f0d9f461f8fb477a98d51ecfd0dc33e916350d1604a04860c22864bcc38b33cb",
             hashlib.sha256(assembled).hexdigest(),
         )
 
