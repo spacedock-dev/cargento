@@ -12,11 +12,13 @@ from __future__ import annotations
 
 import dataclasses
 import datetime as dt
+import json
 import os
 from pathlib import Path
 from typing import Any
 from unittest import mock
 
+from cargento_runtime import io as runtime_io
 from cargento_runtime import levels, observer, project_context
 from cargento_runtime.state import build_runtime_state
 
@@ -376,3 +378,239 @@ class SubagentTranscriptsShareOneBound(SubagentChecksTestCase):
         self.assertEqual(["pytest"], [e["title"] for e in events if e["subject"] == "check"])
         self.assertEqual(1, scan["subagent_transcripts"])
         self.assertEqual(1, scan["subagent_transcripts_unread"])
+
+
+PAD = "x" * 400
+
+
+def _last_stamp(path: Path) -> float:
+    """The newest record's time, which is where Claude Code leaves the file's mtime."""
+    stamps = [
+        dt.datetime.fromisoformat(row["timestamp"]).timestamp()
+        for row in map(json.loads, path.read_text().splitlines())
+    ]
+    return max(stamps)
+
+
+class APassTheBoundCannotVouchForIsNotCurrent(SubagentChecksTestCase):
+    """The reads-from horizon: a pass older than what every bounded transcript read reaches
+    back to may have been changed by a write the bound left out."""
+
+    def settle(self) -> None:
+        """Save every transcript with its mtime at its own last record, then keep them."""
+        self.save_all()
+        for path in (self.path, *(p for _s, p in self.subagents)):
+            stamp = _last_stamp(path)
+            os.utime(path, (stamp, stamp))
+        self.save_all = lambda: None  # type: ignore[method-assign]
+
+    def older_pass_with_the_parents_write_cut(self) -> None:
+        sub = self.delegate()
+        sub.bash("pytest", "5 passed", is_error=False)
+        self.returns(sub)
+        self.session.edit(self.file("src/retry.py"))
+        for i in range(20):
+            self.session.bash(f"ls dir{i}", PAD, is_error=False)
+        self.config = dataclasses.replace(self.config, turn_scan_max_bytes=6000)
+
+    def test_a_subagent_pass_older_than_the_parents_window_does_not_meet_the_floor(self) -> None:
+        self.older_pass_with_the_parents_write_cut()
+        events, scan = self.read()
+        check = next(e for e in events if e["subject"] == "check")
+        # Withheld, not dropped: the pass is still listed.
+        self.assertEqual(("pytest", "passed"), (check["title"], check["result"]))
+        self.assertIs(True, check["changed_after"])
+        self.assertGreater(scan["reads_from"], check["at"])
+        got = self.live()
+        self.assertEqual(levels.NOT_ENOUGH, got.level, got)
+        self.assertNotIn(levels.REASON_FLOOR_MET, got.reasons)
+
+    def test_a_failure_older_than_the_window_is_kept_and_unmarked(self) -> None:
+        # Withholding marks passes only: a failure still reads High, and is
+        # not said to have been changed after.
+        sub = self.delegate()
+        sub.bash("pytest", "1 failed, 4 passed", is_error=True)
+        self.returns(sub)
+        for i in range(20):
+            self.session.bash(f"ls dir{i}", PAD, is_error=False)
+        self.config = dataclasses.replace(self.config, turn_scan_max_bytes=6000)
+        check = next(e for e in self.read()[0] if e["subject"] == "check")
+        self.assertEqual("failed", check["result"])
+        self.assertIs(False, check["changed_after"])
+        self.assertEqual(levels.HIGH, self.live().level)
+
+    def test_the_press_carries_the_same_withheld_pass(self) -> None:
+        self.older_pass_with_the_parents_write_cut()
+        self.save_all()
+        press = project_context.claude_check_press(self.config, str(self.path))
+        self.assertEqual(["pytest"], [title for _id, title in press.changed_after])
+
+    def test_the_frozen_moment_withholds_it_too(self) -> None:
+        self.older_pass_with_the_parents_write_cut()
+        self.save_all()
+        facts, press = project_context.frozen_claude_checks(
+            self.config, str(self.path), SID, until=self.NOW
+        )
+        check = next(f for f in facts if f.get("subject") == "check")
+        self.assertEqual("passed", check["result"])
+        self.assertIs(True, check["changed_after"])
+        self.assertEqual(["pytest"], [title for _id, title in press.changed_after])
+
+    def test_a_parent_only_window_reads_as_it_did(self) -> None:
+        # Every pass the parent's own window holds is at or after its oldest record.
+        for i in range(20):
+            self.session.bash(f"ls dir{i}", PAD, is_error=False)
+        self.session.bash("pytest", "5 passed", is_error=False)
+        self.config = dataclasses.replace(self.config, turn_scan_max_bytes=6000)
+        events, scan = self.read()
+        check = next(e for e in events if e["subject"] == "check")
+        self.assertIs(False, check["changed_after"])
+        self.assertIn("reads_from", scan)
+        self.assertEqual(levels.NONE_OR_LOW, self.live().level)
+
+    def test_nothing_cut_publishes_no_horizon(self) -> None:
+        self.session.bash("pytest", "5 passed", is_error=False)
+        sub = self.delegate()
+        sub.bash("ruff check .", "All checks passed!", is_error=False)
+        self.returns(sub)
+        self.assertNotIn("reads_from", self.read()[1])
+        self.assertEqual(levels.NONE_OR_LOW, self.live().level)
+
+    def test_an_unread_subagents_write_after_the_pass_withholds_the_floor(self) -> None:
+        self.session.bash("pytest", "5 passed", is_error=False)
+        old = self.delegate("0000aaaa0000aaaa")
+        old.edit(self.file("src/retry.py"))
+        self.returns(old)
+        new = self.delegate("1111bbbb1111bbbb")
+        for i in range(10):
+            new.bash(f"cat f{i}", PAD, is_error=False)
+        self.returns(new)
+        self.settle()
+        old_path, new_path = (p for _s, p in self.subagents)
+        self.config = dataclasses.replace(self.config, turn_scan_max_bytes=new_path.stat().st_size)
+        events, scan = project_context.claude_tool_reports(self.config, str(self.path), SHORT)
+        self.assertEqual(1, scan["subagent_transcripts_unread"])
+        self.assertEqual(old_path.stat().st_mtime, scan["reads_from"])
+        check = next(e for e in events if e["title"] == "pytest")
+        self.assertIs(True, check["changed_after"])
+        self.assertEqual(levels.NOT_ENOUGH, self.live().level)
+
+    def test_a_transcript_that_grew_past_the_bound_while_read_leaves_a_horizon(self) -> None:
+        self.session.bash("pytest", "5 passed", is_error=False)
+        sub = self.delegate()
+        sub.edit(self.file("src/retry.py"))
+        self.returns(sub)
+        self.save_all()
+        sub_path = self.subagents[0][1]
+        self.config = dataclasses.replace(self.config, turn_scan_max_bytes=6000)
+        self.assertLess(sub_path.stat().st_size, 6000)
+        real = project_context._work_records
+
+        def grows_first(config: Any, path: str, **kw: Any) -> list[dict[str, Any]]:
+            # Appended between the stat and the read: the window now starts
+            # after the subagent's edit, which postdates the parent's pass.
+            if path == str(sub_path):
+                for i in range(20):
+                    sub.bash(f"cat f{i}", PAD, is_error=False)
+                sub.save(sub_path)
+            return real(config, path, **kw)
+
+        with mock.patch.object(project_context, "_work_records", side_effect=grows_first):
+            events, scan = project_context.claude_tool_reports(self.config, str(self.path), SHORT)
+        self.assertEqual(0, scan["written_paths"])
+        self.assertIs(True, next(e for e in events if e["title"] == "pytest")["changed_after"])
+
+
+class ATranscriptThatYieldsNothingWasNotRead(SubagentChecksTestCase):
+    def pass_then_subagent_edit(self) -> None:
+        self.session.bash("pytest", "5 passed", is_error=False)
+        sub = self.delegate()
+        sub.edit(self.file("src/retry.py"))
+        self.returns(sub)
+        self.save_all()
+
+    def test_one_that_fails_to_open_is_unread_and_withholds_the_floor(self) -> None:
+        self.pass_then_subagent_edit()
+        real = runtime_io._open_binary
+
+        def refuse(path: str, **kw: Any) -> Any:
+            if "subagents" in str(path):
+                raise PermissionError(13, "denied", path)
+            return real(path, **kw)
+
+        with mock.patch.object(runtime_io, "_open_binary", side_effect=refuse):
+            events, scan = project_context.claude_tool_reports(self.config, str(self.path), SHORT)
+        self.assertEqual(
+            (0, 1), (scan["subagent_transcripts"], scan["subagent_transcripts_unread"])
+        )
+        self.assertIn("reads_from", scan)
+        self.assertIs(True, next(e for e in events if e["subject"] == "check")["changed_after"])
+
+    def test_one_whose_only_line_outgrew_the_bound_is_unread(self) -> None:
+        self.session.bash("pytest", "5 passed", is_error=False)
+        sub = self.delegate()
+        sub.bash("cat big", "y" * 20_000, is_error=False)
+        self.returns(sub)
+        self.save_all()
+        sub_path = self.subagents[0][1]
+        # Room for the prompt record alone would still be a read, so the bound
+        # sits below the newest line: nothing complete fits.
+        self.config = dataclasses.replace(self.config, turn_scan_max_bytes=10_000)
+        self.assertGreater(sub_path.stat().st_size, 10_000)
+        _events, scan = project_context.claude_tool_reports(self.config, str(self.path), SHORT)
+        self.assertEqual(
+            (0, 1), (scan["subagent_transcripts"], scan["subagent_transcripts_unread"])
+        )
+
+    def test_the_frozen_moment_counts_an_unopenable_one_as_unread(self) -> None:
+        self.pass_then_subagent_edit()
+        real = project_context._stood_lines
+
+        def refuse(path: str, until: float, **kw: Any) -> list[bytes]:
+            if "subagents" in str(path):
+                raise PermissionError(13, "denied", path)
+            return real(path, until, **kw)
+
+        with mock.patch.object(project_context, "_stood_lines", side_effect=refuse):
+            facts, _press = project_context.frozen_claude_checks(
+                self.config, str(self.path), SID, until=self.NOW
+            )
+        check = next(f for f in facts if f.get("subject") == "check")
+        self.assertIs(True, check["changed_after"])
+
+
+class ALinkOutOfTheSessionDirectoryIsNotASubagent(SubagentChecksTestCase):
+    def outside(self, folder: Path) -> Path:
+        folder.mkdir(parents=True)
+        other = Subagent(self.session, "feedfacefeedface")
+        other.bash("make test", "all passed", is_error=False)
+        other.save(folder / "agent-feedfacefeedface.jsonl")
+        return folder
+
+    def titles(self) -> list[str]:
+        self.session.save(self.path)
+        events, _scan = project_context.claude_tool_reports(self.config, str(self.path), SHORT)
+        return [e["title"] for e in events if e["subject"] == "check"]
+
+    def test_a_linked_subagents_directory_is_not_read(self) -> None:
+        self.session.bash("pytest", "5 passed", is_error=False)
+        out = self.outside(self.root / "elsewhere")
+        session_dir = self.path.with_suffix("")
+        session_dir.mkdir(parents=True)
+        os.symlink(out, session_dir / "subagents")
+        self.assertEqual(["pytest"], self.titles())
+
+    def test_a_linked_workflow_run_is_not_read(self) -> None:
+        self.session.bash("pytest", "5 passed", is_error=False)
+        out = self.outside(self.root / "elsewhere")
+        runs = self.path.with_suffix("") / "subagents" / "workflows"
+        runs.mkdir(parents=True)
+        os.symlink(out, runs / "wf_0001-abc")
+        self.assertEqual(["pytest"], self.titles())
+
+    def test_a_linked_session_directory_is_followed_as_the_parent_is(self) -> None:
+        self.session.bash("pytest", "5 passed", is_error=False)
+        out = self.outside(self.root / "elsewhere" / "subagents")
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        os.symlink(out.parent, self.path.with_suffix(""))
+        self.assertEqual(["make test", "pytest"], sorted(self.titles()))
