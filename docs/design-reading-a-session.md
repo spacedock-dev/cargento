@@ -2049,6 +2049,20 @@ question before the press in place of "Conflict to settle", and Add adopting a d
   Each press empties the region first if it still holds the last Keep sentence, so the same
   outcome twice is announced twice, and the unsaved-edit refusal is written there too. The next
   Analyze or Allow press takes Keep's sentence back out.
+- Parity and polish (DRC-4732, DRC-4734, DRC-4726, DRC-4736; owner, 2026-09-28). Keep opens every
+  direction it would settle through `POST /api/direction` before it settles anything. Where one
+  says more than its summary, the question draws them all whole, says nothing was settled, and the
+  next press settles; where one cannot be opened, Keep is refused. Analyze and the plain goal save
+  send the revision the page drew. `/api/reading` refuses a stale one with 409 `revision-changed`
+  before the route, any Allow write, the adoption or the job, and the page says the approved stale
+  sentence; the store already refused a stale goal save, and the typed words stay in the box.
+  `nextReadingCheckSupports` mirrors `check_supports` on every harness, including `changed_after`
+  and the subjectless Pi rows an older build stored, held by a test built from the server's own Pi
+  fixture; the record column opens with "Cargento reads work results from Claude Code and Pi
+  only." The analyzing box lost `role="status"`, which re-announced it on every render: its start
+  and its outcome are written once each to the persistent polite region. The question adds no
+  full stop after a quote that ends in its own mark, and the Intent heading's keyboard focus draws
+  the accent ring.
 - Landing and holding still. The Sessions goal link lands on the Intent heading over an untouched
   draft, and in the box only where nothing is drafted. The drafted box and the pending line are
   as tall as their text whether focused or not. The first fix round held the focused draft at its

@@ -108,15 +108,27 @@ const __renders = [];
 const __renderNext = renderNext;
 renderNext = (...args) => { __renders.push(args.length ? args[0] : undefined); return __renderNext(...args); };
 let __posts = [];
+// Keep opens every direction it settles (DRC-4732). Where a test gives no
+// reply for that route, each opens as its own summary, so the whole text is
+// already on screen and one press settles; those opens are kept in `__opened`
+// rather than `__posts`, which then holds what the press itself sent.
+let __opened = [];
 const __reply = {};
+const __replyByDefault = {"/api/direction": body => {
+  const fact = __semantic.facts.find(f => f.fact_id === body.fact_id);
+  return {status:200, body:{ok:true, fact_id:body.fact_id, text:fact ? fact.summary : "",
+    clipped:false, fits:true}};
+}};
 const __upstream = __fetchImpl;
 __fetchImpl = async (url, init) => {
   if(!init || init.method !== "POST" || String(url).startsWith("/api/tripwire")){
     return __upstream(url, init);
   }
   const body = JSON.parse(init.body);
-  __posts.push({url:String(url), body});
-  const made = (__reply[String(url)] || (() => ({ok:true, status:200, body:{ok:true}})))(body);
+  (__reply[String(url)] || !__replyByDefault[String(url)] ? __posts : __opened)
+    .push({url:String(url), body});
+  const made = (__reply[String(url)] || __replyByDefault[String(url)] ||
+    (() => ({ok:true, status:200, body:{ok:true}})))(body);
   return {ok:made.status < 400, status:made.status, json:async () => made.body};
 };
 """
@@ -1401,7 +1413,8 @@ class KeepOutcomeReachesTheReaderTest(_DraftPage):
             self.PRESS_KEEP + '__press("reading-allow");\nawait __settle();\nawait __settle();\n'
             'console.log(JSON.stringify(wrote("next-cockpit-cue-status")));',
         )
-        self.assertEqual([KEEP_ALLOW, ""], out)
+        # The Allow's own press then starts a job, announced once (DRC-4736).
+        self.assertEqual([KEEP_ALLOW, "", "Analyzing drift"], out)
 
     def test_the_unsaved_edit_refusal_is_written_to_the_region(self) -> None:
         out = self.drive(

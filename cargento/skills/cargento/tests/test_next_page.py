@@ -1149,6 +1149,7 @@ class NextPageAssetContractTest(unittest.TestCase):
         ".next-cockpit-decision-summary,.next-cockpit-viewing-session,\n.next-cockpit-now-state small,.next-project-workflow-definition>small,\n.next-cockpit-system-details ul,.next-cockpit-memos label>small",
         ".next-cockpit-define",
         ".next-cockpit-direction-said",
+        ".next-cockpit-direction-whole-item",
         ".next-cockpit-departures-kept",
         ".next-cockpit-empty,.next-cockpit-evidence-missing",
         ".next-cockpit-held-absent",
@@ -1364,7 +1365,8 @@ class NextPageAssetContractTest(unittest.TestCase):
         # activity list's sentences saying where #1 starts and what is counted and not listed.
         # DRC-4682 retires three with the "Conflict to settle" block (its cue, its open
         # sentence and its direction rows) and adds one: the question before the press.
-        self.assertEqual(113, len(above))
+        # DRC-4732 adds one: each direction's whole text, drawn before Keep settles it.
+        self.assertEqual(114, len(above))
         self.assertEqual(self.SENTENCE_TIER_RULES, {selector for selector, _size in above})
         self.assertEqual(
             self.SUB_SENTENCE_FLOOR_INVENTORY, {(size, selector) for selector, size in below}

@@ -1608,7 +1608,16 @@ function nextCockpitLinesTakeAdded(session, key, draft, held, before){
    instructions, dispatches and gate decisions and never an inspected file,
    test or deliverable. Without the sentence an empty list reads as "no work
    was done" rather than "that path was never taken here". */
+/* Which harnesses' work is read at all, ahead of what this one's record is
+   (owner, DRC-4734): once Pi's checks were read too, a line naming only this
+   harness left the reader to guess whether any other was. */
+const NEXT_COCKPIT_WORK_READ_FROM = "Cargento reads work results from Claude Code and Pi only.";
+
 function nextCockpitWorkEvidenceLimit(harness){
+  return `${NEXT_COCKPIT_WORK_READ_FROM} ${nextCockpitWorkEvidenceOwn(harness)}`;
+}
+
+function nextCockpitWorkEvidenceOwn(harness){
   const label = nextHarnessLabels().get(harness) || nextCockpitHumanLabel(harness);
   if(harness === "pi") return `${label} publishes demonstrated work results, and they are read here.`;
   if(harness === "claude"){
@@ -1839,6 +1848,7 @@ function nextCockpitWorkEntries(session, semantic){
         resultSource: String(fact.result_source || ""),
         earlierFailed: fact.earlier_failed === true,
         beforeLastChange: fact.before_last_change === true,
+        changedAfter: fact.changed_after === true,
         source: [evidence.source, evidence.confidence].map(value =>
           String(value == null ? "" : value).trim()).filter(Boolean).join(" · "),
       };
@@ -2408,19 +2418,34 @@ function nextReadingBeforeWindow(entry, windowStart){
   return at < start || (start > 0 && at <= 0);
 }
 
-/* `reading.check_supports`, spelt for the entries the page holds: a cited
-   tool report carries a verdict only as a check whose result arrived in the
-   window, failed for a departure, passed and not before the last change for a
-   consistent. A written path shows a write and no result, so it carries
-   neither. A test holds this and the producer's rule to one table. */
+/* `reading.check_supports`, spelt for the entries the page holds: a check, on
+   any harness (a Pi validation run as well as a Claude Code tool report),
+   carries a verdict only as a run whose result arrived in the window, failed
+   for a departure, passed, not before the last change and with no changing
+   command after it for a consistent. A written path shows a write and no
+   result, so it carries neither, and a subjectless Pi result an older build
+   stored carries none (`reading._subjectless_pi_check`). Two tests hold this
+   to the producer's rule, one from the server's own Pi fixture (DRC-4734). */
 function nextReadingCheckSupports(entry, result, windowStart){
-  if(String(entry && entry.type || "") !== "tool_report") return true;
+  const report = String(entry && entry.type || "") === "tool_report";
+  if(!report && entry.subject !== "check") return !nextReadingSubjectlessPiCheck(entry);
   if(entry.subject !== "check") return false;
   const at = nextReadingEvidenceAt(entry);
   if(at == null || at <= 0 || (windowStart != null && at < windowStart)) return false;
   if(result === NEXT_READING_DEPARTURE) return entry.result === "failed";
-  if(result === NEXT_READING_CONSISTENT) return entry.result === "passed" && !entry.beforeLastChange;
+  if(result === NEXT_READING_CONSISTENT){
+    return entry.result === "passed" && !entry.beforeLastChange && !entry.changedAfter;
+  }
   return false;
+}
+
+/* `reading._PI_CHECK_SOURCE_PREFIX`, spelt a third time for the page, which
+   holds the entry's source as the ledger joins it. */
+const NEXT_READING_PI_CHECK_SOURCE = "Pi bash tool call";
+
+function nextReadingSubjectlessPiCheck(entry){
+  return String(entry && entry.type || "") === "result" &&
+    String(entry && entry.source || "").startsWith(NEXT_READING_PI_CHECK_SOURCE);
 }
 
 /* The third author, which the page did not have. An observer snapshot is
@@ -3266,7 +3291,12 @@ function nextReadingJobBox(job, key){
   const held = nextCockpitReadingCancels.get(key);
   const mine = held && held.job === job.id ? held : null;
   const finishing = job.cancelling === true || Boolean(mine && mine.pending);
-  return `<div class="next-cockpit-reading-job" role="status" data-next-analyzing="${esc(job.id)}">` +
+  /* No role: the box is inside `#app`, which every render rebuilds, so a
+     status role re-announced it on each revision while the job ran
+     (DRC-4736). Its start and its outcome go once each through the
+     persistent region instead (`nextCockpitReadingJobCues`). */
+  nextCockpitReadingJobsDrawn.add(String(job.id));
+  return `<div class="next-cockpit-reading-job" data-next-analyzing="${esc(job.id)}">` +
     '<div class="next-cockpit-reading-job-head"><span class="next-cockpit-reading-job-title" ' +
     `tabindex="-1" data-next-focus="reading:${esc(key)}">${esc(NEXT_READING_JOB_TITLE)}</span>` +
     '<button type="button" class="next-action" data-next-cockpit-action="reading-cancel" ' +
@@ -3282,6 +3312,67 @@ function nextReadingJobBox(job, key){
 function nextReadingJobShown(session, job){
   if(!nextData || !job || typeof job !== "object") return;
   nextData.reading_jobs = {...(nextData.reading_jobs || {}), [sessKey(session)]: job};
+}
+
+/* How an analysis ended, said once (DRC-4726). A withheld, cancelled or
+   interrupted end is the server's own `reading_withheld` sentence; a stored
+   reading is this one (owner, 2026-09-28). */
+const NEXT_READING_FINISHED = "The analysis finished. Its reading is in the Reading section.";
+/* The job ids drawn by the render in progress, cleared before each one. */
+const nextCockpitReadingJobsDrawn = new Set();
+/* Per session, the running job this tab has seen, whether the last render
+   drew its box, and the outcome fields as they stood when it was first seen,
+   so an end can tell a new reading from the one already stored. Held for the
+   life of the tab and dropped when the job ends; docs/design-reader-state.md
+   holds the row. */
+const nextCockpitReadingJobsSeen = new Map();
+let nextCockpitReadingJobsPrimed = false;
+
+function nextCockpitReadingJobOutcome(key, seen){
+  const row = (nextData && Array.isArray(nextData.sessions) ? nextData.sessions : [])
+    .find(session => sessKey(session) === key);
+  const annotation = row ? nextCockpitAnnotation(row) : null;
+  const withheld = String(annotation && annotation.reading_withheld || "");
+  if(withheld) return withheld;
+  const reading = JSON.stringify(annotation && annotation.assessment || null);
+  return reading !== "null" && reading !== seen.reading ? NEXT_READING_FINISHED : "";
+}
+
+/* Run after every render, once the regions are ensured, and never from the
+   render itself: a region and its first message must not arrive in the same
+   mutation. "Analyzing drift" is said when a job this tab had not seen is
+   first drawn, and the outcome when a job whose box the last render drew
+   leaves `reading_jobs`, so a redraw, a phase revision or a reload says
+   nothing again. The first pass only records what is already running: a
+   reload pressed nothing. */
+function nextCockpitReadingJobCues(){
+  if(!nextData) return;
+  const jobs = nextData.reading_jobs && typeof nextData.reading_jobs === "object"
+    ? nextData.reading_jobs : {};
+  const primed = nextCockpitReadingJobsPrimed;
+  nextCockpitReadingJobsPrimed = true;
+  for(const [key, seen] of [...nextCockpitReadingJobsSeen]){
+    const job = jobs[key];
+    if(job && typeof job === "object" && String(job.id) === seen.id) continue;
+    nextCockpitReadingJobsSeen.delete(key);
+    const outcome = seen.drawn ? nextCockpitReadingJobOutcome(key, seen) : "";
+    if(outcome) nextCockpitAnnounceCue(`job:${seen.id}`, outcome, false);
+  }
+  for(const [key, job] of Object.entries(jobs)){
+    if(!job || typeof job !== "object" || typeof job.id !== "string") continue;
+    const drawn = nextCockpitReadingJobsDrawn.has(job.id);
+    const seen = nextCockpitReadingJobsSeen.get(key);
+    if(seen){
+      seen.drawn = drawn;
+      continue;
+    }
+    const row = (Array.isArray(nextData.sessions) ? nextData.sessions : [])
+      .find(session => sessKey(session) === key);
+    const annotation = row ? nextCockpitAnnotation(row) : null;
+    nextCockpitReadingJobsSeen.set(key, {id: job.id, drawn,
+      reading: JSON.stringify(annotation && annotation.assessment || null)});
+    if(primed && drawn) nextCockpitAnnounceCue(`job:${job.id}`, NEXT_READING_JOB_TITLE, false);
+  }
 }
 
 function nextCockpitReadingControl(session, annotation, model, primary = true){
@@ -3660,6 +3751,79 @@ const NEXT_COCKPIT_KEEP_ALLOW =
 const NEXT_COCKPIT_KEEP_REFUSED =
   "Nothing was settled and no analysis was started: your intent changed since this page " +
   "was drawn, or the store refused the mark. Review your intent and press again.";
+/* Keep settles every direction it was shown, and the question quotes only the
+   earliest one's first sentence. So before it settles, each direction is
+   opened whole through `POST /api/direction`; one whose whole text is more
+   than its summary is drawn here and the press stops, and one that cannot be
+   opened refuses the press (owner, DRC-4732). */
+const NEXT_COCKPIT_KEEP_READ_FIRST =
+  "Nothing was settled yet. Each direction Keep settles is now shown whole. Read it, then " +
+  "press again.";
+const NEXT_COCKPIT_KEEP_UNOPENED =
+  "Nothing was settled and no analysis was started: Cargento could not open the whole text " +
+  "of every direction Keep would settle, so it cannot show you what you would keep. Press " +
+  "again to retry.";
+/* Per session: each direction's whole text as Keep opened it, by fact id, and
+   whether the question is drawing them. For the life of the tab, dropped once
+   no direction is open; docs/design-reader-state.md holds the row. */
+const nextCockpitDirectionWhole = new Map();
+
+function nextCockpitCollapsedText(text){
+  return String(text || "").replace(/\s+/g, " ").trim();
+}
+
+/* "read" when every direction's whole text is on screen, "shown" when this
+   press opened one that says more than its summary, "refused" when one could
+   not be opened. A text drawn by an earlier press counts as read. */
+async function nextCockpitKeepReadWhole(session, pending){
+  const key = sessKey(session);
+  const held = nextCockpitDirectionWhole.get(key) || {texts: new Map(), shown: false};
+  nextCockpitDirectionWhole.set(key, held);
+  let unread = false;
+  let refused = false;
+  for(const entry of pending){
+    const id = String(entry.id || "");
+    if(held.texts.has(id)) continue;
+    let opened = null;
+    try{
+      const response = await fetch("/api/direction", {method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({harness: session.harness, sid: session.sid, fact_id: id})});
+      const answer = response && typeof response.json === "function"
+        ? await response.json().catch(() => null) : null;
+      if(response && response.ok && answer && answer.ok === true && typeof answer.text === "string"){
+        opened = {text: answer.text, clipped: answer.clipped === true};
+      }
+    }catch(_error){
+      opened = null;
+    }
+    if(!opened){
+      refused = true;
+      break;
+    }
+    held.texts.set(id, opened);
+    if(nextCockpitCollapsedText(opened.text) !== nextCockpitCollapsedText(entry.summary)) unread = true;
+  }
+  if(unread) held.shown = true;
+  return refused ? "refused" : unread ? "shown" : "read";
+}
+
+function nextCockpitDirectionWholeList(key, pending, numbers){
+  const held = nextCockpitDirectionWhole.get(key);
+  if(!held || !held.shown) return "";
+  const items = pending.filter(entry => held.texts.has(String(entry.id || ""))).map(entry => {
+    const id = String(entry.id || "");
+    const opened = held.texts.get(id);
+    const n = numbers.get(id);
+    return '<li class="next-cockpit-direction-whole-item">' +
+      (n == null ? "" : `<span class="next-cockpit-source">#${n}</span>`) +
+      `<span class="next-cockpit-direction-whole-text">${esc(opened.text)}</span>` +
+      (opened.clipped ? `<p class="next-cockpit-held-full">${esc(NEXT_COCKPIT_DIRECTION_CLIPPED)}</p>` : "") +
+      "</li>";
+  }).join("");
+  return items ? `<ol class="next-cockpit-direction-whole" data-next-cockpit-direction-whole>${items}</ol>` : "";
+}
+
 const NEXT_COCKPIT_KEEP_UNCONFIRMED =
   "Could not confirm the press. Refresh to check whether your intent was kept before " +
   "pressing again.";
@@ -3670,17 +3834,20 @@ const NEXT_COCKPIT_KEEP_UNCONFIRMED =
 function nextCockpitDirectionSentence(session, annotation, pending, numbers){
   const earliest = pending[0];
   const n = numbers.get(String(earliest.id || ""));
-  const said = `"${String(earliest.summary || "")}"`;
+  const summary = String(earliest.summary || "");
+  /* No second mark after a quote that ends in its own (DRC-4736): the
+     sentence's full stop is the quote's. */
+  const said = `"${summary}"${/[.!?\u2026]$/.test(summary.trim()) ? "" : "."}`;
   if(pending.length === 1){
-    return n == null ? `You gave a later direction: ${said}.`
-      : `You gave a later direction at #${n}: ${said}.`;
+    return n == null ? `You gave a later direction: ${said}`
+      : `You gave a later direction at #${n}: ${said}`;
   }
   const draft = String(annotation && annotation.goal || "").trim() ? null
     : nextIntentDraft(session, annotation);
   const since = !draft ? "since saving your intent"
     : draft.source === "first-prompt" ? "since your first prompt" : "since your latest prompt";
   return `You gave ${pending.length} later directions ${since}, the earliest` +
-    `${n == null ? "" : ` at #${n}`}: ${said}.`;
+    `${n == null ? "" : ` at #${n}`}: ${said}`;
 }
 
 /* The later directions the question asks about, or none: only over words or
@@ -3693,8 +3860,11 @@ function nextCockpitDirectionsOpen(session, annotation, source){
 
 function nextCockpitDirectionQuestion(session, annotation, source, model, primary){
   const pending = nextCockpitDirectionsOpen(session, annotation, source);
-  if(!pending.length) return "";
   const key = sessKey(session);
+  if(!pending.length){
+    nextCockpitDirectionWhole.delete(key);
+    return "";
+  }
   const numbers = nextCockpitEntryNumbers(session, source);
   /* An unsaved edit outranks every other refusal: Keep would settle over
      words that are not on screen on any route, the no-reader one included. */
@@ -3733,6 +3903,7 @@ function nextCockpitDirectionQuestion(session, annotation, source, model, primar
     '<div class="next-cockpit-direction-question" data-next-cockpit-direction-question>' +
     `<p class="next-cockpit-direction-said">${esc(nextCockpitDirectionSentence(
       session, annotation, pending, numbers))}</p>` +
+    nextCockpitDirectionWholeList(key, pending, numbers) +
     `<div class="next-cockpit-reading-ask">${keep}${add}${nextReadingAnyConsent()
       ? '<button type="button" class="next-action" data-next-cockpit-action="reading-off" ' +
         `data-next-focus="reading-off:${esc(key)}">Turn off readings</button>` : ""}</div>` +
@@ -3797,6 +3968,11 @@ async function nextCockpitKeepIntent(session, model){
   nextCockpitReadingRequests.set(key, request);
   renderNext();
   try{
+    const read = await nextCockpitKeepReadWhole(session, pending);
+    if(read !== "read"){
+      request.message = read === "refused" ? NEXT_COCKPIT_KEEP_UNOPENED : NEXT_COCKPIT_KEEP_READ_FIRST;
+      return;
+    }
     if(!analyze){
       const response = await fetch("/api/annotate", {method: "POST",
         headers: {"Content-Type": "application/json"},
@@ -4154,6 +4330,10 @@ async function nextCockpitAskForReading(session, model, allow = false){
   const confirmation = nextCockpitReadingRequests.get(key);
   const adoption = allow && confirmation && confirmation.consent
     ? confirmation.adoption : nextImplicitAdoption(session);
+  /* The revision this panel drew, so a press from a page another tab has
+     since moved on is refused before anything starts (DRC-4732): the model
+     would otherwise read words this reader never saw. */
+  const expected = nextNumber(nextCockpitAnnotation(session)?.revision) || 0;
   const request = {pending: true, message: "", adoption};
   nextCockpitReadingRequests.set(key, request);
   renderNext();
@@ -4162,7 +4342,7 @@ async function nextCockpitAskForReading(session, model, allow = false){
       method: "POST",
       headers: {"Content-Type": "application/json"},
       body: JSON.stringify({harness: session.harness, sid: session.sid, provider,
-        press: true, observer_model: 1, ...adoption,
+        press: true, observer_model: 1, ...adoption, expected_revision: expected,
         ...(allow ? {allow:true, ...(destination ? {tool_output:destination} : {})} : {})}),
     });
     const answer = response && typeof response.json === "function"
@@ -4185,6 +4365,15 @@ async function nextCockpitAskForReading(session, model, allow = false){
       /* Nothing was sent or saved. The next press starts again, and asks for
          the new receiver's own Allow if it has none. */
       request.message = NEXT_READING_PROVIDER_CHANGED;
+      request.consent = false;
+      await refreshNext();
+      return;
+    }
+    if(response && response.status === 409 && answer && answer.reason === "revision-changed"){
+      /* Nothing was started, adopted or allowed. The owner's stale sentence,
+         shared with Keep: the next press is the reader's, against the words
+         the refresh now draws. */
+      request.message = NEXT_COCKPIT_KEEP_REFUSED;
       request.consent = false;
       await refreshNext();
       return;
@@ -4433,7 +4622,12 @@ async function nextCockpitHeldSave(session, kind){
   // stale draft of one overwrite a save of the other. The outcome lines save
   // through `nextCockpitLinesSave`.
   const sent = nextCockpitHeldDrafts.has(key) ? nextCockpitHeldDrafts.get(key) : null;
-  const body = {harness: session.harness, sid: session.sid, [kind]: sent};
+  /* With the revision this box was drawn against, as the lines save sends
+     one, so a save from a tab another tab has moved on is refused and the
+     typed words stay in the box (DRC-4732) rather than replacing words this
+     reader never saw. */
+  const body = {harness: session.harness, sid: session.sid, [kind]: sent,
+    expected_revision: nextNumber(annotation && annotation.revision) || 0};
   try{
     const response = await fetch("/api/annotate", {
       method: "POST",
@@ -5551,6 +5745,7 @@ function nextProjectCockpit(context, observation, commandAttention){
 }
 
 function nextCockpitBeforeRender(){
+  nextCockpitReadingJobsDrawn.clear();
   const app = document.getElementById("app");
   for(const details of nextCockpitHadDisclosures && app && app.querySelectorAll ? app.querySelectorAll("[data-next-cockpit-disclosure]") : []){
     nextCockpitDisclosureStates.set(details.getAttribute("data-next-cockpit-disclosure"), details.open === true);
