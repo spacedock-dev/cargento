@@ -885,7 +885,12 @@ input::placeholder,textarea::placeholder{color:var(--ink2)}
 /* The Drift section: one card holding the control, the reading, any later
    direction, the caveats and the departures. */
 .next-session-drift{margin:0;padding:0 0 4px;border:1px solid var(--rule);border-radius:var(--r-card);background:var(--panel)}
-.next-session-drift-head{display:flex;flex-wrap:wrap;align-items:flex-start;justify-content:space-between;gap:8px 12px;padding:8px 16px 10px}
+/* The row gap is the wrapped layout's alone: it clears the switch's -13px, so
+   at phone widths its 44px target starts below the subtitle rather than over
+   it, where a tap on the text toggled the switch (review of d2854fc1, P-2).
+   Centring the switch on the titles instead also cleared it, and pushed the
+   track past a 900px first screen with six outcome lines. */
+.next-session-drift-head{display:flex;flex-wrap:wrap;align-items:flex-start;justify-content:space-between;gap:16px 12px;padding:8px 16px 10px}
 .next-session-drift-titles{min-width:0}
 /* The live monitor switch (DRC-4696), beside the heading as the design places it. */
 /* The button keeps the 44px target every control here has; the track it draws
@@ -904,6 +909,7 @@ input::placeholder,textarea::placeholder{color:var(--ink2)}
 .next-session-drift-level{color:var(--ink);font-size:var(--fs-value);font-weight:600}
 .next-session-drift-source{color:var(--ink2);font-family:var(--mono);font-size:var(--fs-label)}
 .next-session-drift-meter{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:4px;margin:0}
+.next-session-drift-meter[data-dim]{opacity:.45}
 .next-session-drift-seg{display:block;height:8px;border-radius:4px;background:var(--rule)}
 .next-session-drift-pill-meter{display:inline-flex;gap:2px}
 .next-session-drift-pill-meter>.next-session-drift-seg{width:6px;height:12px;border-radius:2px}

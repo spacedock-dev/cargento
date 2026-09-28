@@ -2374,8 +2374,14 @@ was settled on the withholding side.
 - The server computes it, not the page. `live_estimate.py` replays the focused session's calls
   through the same tally the record is published from and asks `levels.live_level` after every write
   or shell call, so the level now is the validated function over the published facts and "Rose from"
-  comes from the same replay. It is published on the focused project context only. The reading
-  route's context, which the unasked lane reads, carries none, and neither does a row.
+  comes from the same replay. It is published on the focused project context only, and only when
+  the request's project is the session's. The reading route's context, which the unasked lane
+  reads, carries none, and neither does a row.
+- The replay asks for the level after the last 64 writes or shell calls only. Each ask re-derives
+  the entries from the whole tally, and an unbounded replay took 24 s on a 3,000-call transcript of
+  targeted checks. A rise older than that window is withheld. The replay is held in the server's
+  memory per session and saved words, never written: an unchanged transcript is not read again, and
+  a grown one is asked only after its new calls.
 - The switch is never sent, so the server computes the estimate for the focused session whenever it
   has a saved intent, and the page decides whether to draw it.
 - "Rose from <level> at #<n>" is said only when both levels are on the scale and the entry the rise
@@ -2386,4 +2392,7 @@ was settled on the withholding side.
 - The pill shows a level on the scale only. "Not enough recorded yet" stays in the Drift section,
   and the pill is not a link, because the page routes on its fragment.
 - The nudge is drawn and never announced: no live region, because the live estimate raises nothing
-  (item 5). It is not drawn while an analysis runs.
+  (item 5). It is not drawn while an analysis runs, when the level keeps its title and pill, dims
+  its meter and drops its detail line, as the design's analyzing state does. Over an unsaved edit to
+  saved words the nudge goes too, because Analyze is refused there; the level and the pill stay,
+  since they are about the saved words.

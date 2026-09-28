@@ -4697,16 +4697,22 @@ function nextDriftLevel(session, annotation = null, group = null, estimate = und
         ? `<p class="next-session-drift-hint">${esc(NEXT_DRIFT_LIVE_HINT)}</p>` : "";
     }
     const high = found.level === "high" || found.level === "extreme";
-    const detail = found.level ? [NEXT_DRIFT_LIVE_LINE, found.rose].filter(Boolean).join(" ") : "";
+    /* While an analysis runs the design keeps the title and dims the meter,
+       and drops the detail line. Over an unsaved edit the nudge would point at
+       a press the page refuses, so it goes; the level is over the saved words. */
+    const running = Boolean(nextReadingJob(session));
+    const detail = found.level && !running
+      ? [NEXT_DRIFT_LIVE_LINE, found.rose].filter(Boolean).join(" ") : "";
     return '<div class="next-session-drift-live" data-next-drift-level>' +
       '<p class="next-session-drift-live-head">' +
       `<span class="next-session-drift-level">${esc(String(found.label))}</span>` +
       (found.source ? `<span class="next-session-drift-source">${esc(found.source)}</span>` : "") +
       '</p>' +
-      (found.level ? `<p class="next-session-drift-meter" aria-hidden="true">${nextDriftMeter(found.level)}</p>` : "") +
+      (found.level ? `<p class="next-session-drift-meter" aria-hidden="true"${running ? " data-dim" : ""}>` +
+        `${nextDriftMeter(found.level)}</p>` : "") +
       (detail ? `<p class="next-session-drift-detail">${esc(detail)}</p>` : "") +
       '</div>' +
-      (high && !nextReadingJob(session)
+      (high && !running && !nextIntentUnsaved(session, annotation)
         ? `<p class="next-session-drift-nudge">${esc(NEXT_DRIFT_NUDGE)}</p>` : "");
   }
   return `<p class="next-session-drift-limit" data-next-drift-limit>${esc(NEXT_DRIFT_HARNESS_LIMIT)}</p>`;

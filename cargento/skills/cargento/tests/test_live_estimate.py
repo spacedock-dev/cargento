@@ -16,8 +16,10 @@ import dataclasses
 import http.client
 import json
 import subprocess
+import sys
+import time
 import unittest
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from unittest import mock
 
 from cargento_runtime import annotations as annotation_store
@@ -26,6 +28,9 @@ from cargento_runtime import http_api, levels, live_estimate, observer, project_
 from .support import make_server, serve_until_closed
 from .test_claude_checks import SHORT, START
 from .test_copied_corrections import _App
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 GOAL = "Ship the placeholder parser"
 LINE = "The parser tests pass"
@@ -209,6 +214,254 @@ class TheLiveEstimateTest(_Replay):
         self.assertEqual(direct.level, self.estimate()["level"])
 
 
+class TheReplayIsBoundedTest(_Replay):
+    """The level is asked for over the last `LIVE_REPLAY_STEPS` moving calls only, and a
+    request that finds the transcript and the words unchanged replays nothing."""
+
+    def many_calls(self, n: int) -> None:
+        # Distinct targeted checks beside writes: the shape that made each evaluation
+        # cost more as the transcript grew (review of d2854fc1, F1).
+        for i in range(n):
+            if i % 2:
+                self.session.bash(f"pytest tests/test_mod.py::test_case_{i}", "1 passed in 0.1s")
+            else:
+                self.session.write(f"{self.session.cwd}/src/f{i % 50}.py")
+
+    def test_the_level_is_evaluated_at_most_once_per_step_of_the_window(self) -> None:
+        self.many_calls(500)
+        with mock.patch.object(levels, "live_level", wraps=levels.live_level) as spy:
+            self.estimate()
+        self.assertLessEqual(spy.call_count, live_estimate.LIVE_REPLAY_STEPS + 2)
+
+    def test_a_rise_older_than_the_window_is_withheld_and_one_inside_it_is_named(self) -> None:
+        self.session.write(self.session.cwd + "/src/a.py")
+        self.session.bash("pytest", "1 failed, 4 passed", is_error=True)
+        # Read-only shell calls step the replay without moving the level.
+        for _ in range(live_estimate.LIVE_REPLAY_STEPS - 2):
+            self.session.bash("ls", "a b")
+        inside = self.estimate()
+        self.assertEqual((levels.HIGH, levels.MEDIUM), (inside["level"], inside["rose_from"]))
+        for _ in range(3):
+            self.session.bash("ls", "a b")
+        outside = self.estimate()
+        self.assertEqual(levels.HIGH, outside["level"])
+        self.assertIsNone(outside["rose_from"])
+        self.assertIsNone(outside["rose_at"])
+
+    def test_an_unchanged_transcript_and_unchanged_words_replay_nothing(self) -> None:
+        self.session.bash("pytest", "1 failed", is_error=True)
+        first = self.estimate()
+        with mock.patch.object(
+            project_context, "_work_records", side_effect=AssertionError("replayed")
+        ):
+            again = live_estimate.for_session(
+                self.config, saved_row(), str(self.path), [], floor=None, now=99999.0
+            )
+        self.assertEqual(first, again)
+
+    def test_new_words_a_new_call_or_a_settled_direction_replay_again(self) -> None:
+        later = {
+            "fact_id": "d-1",
+            "type": "user_message",
+            "at": 50.0,
+            "summary": "Also do the lexer",
+            "source_session": {"harness": "claude", "sid": SHORT},
+            "evidence": {"source": "root transcript", "confidence": "exact"},
+        }
+        self.estimate()
+        with mock.patch.object(
+            project_context, "_work_records", wraps=project_context._work_records
+        ) as reads:
+            self.assertEqual(2, self.estimate(saved_row(annotation_revision=2))["revision"])
+            self.assertEqual(levels.NOT_ENOUGH, self.estimate(facts=[later], floor=10.0)["level"])
+            self.session.bash("pytest", "1 failed", is_error=True)
+            self.assertEqual(levels.HIGH, self.estimate()["level"])
+        self.assertEqual(3, reads.call_count)
+
+    def test_a_turn_that_adds_one_call_asks_for_one_new_level(self) -> None:
+        # A live session grows between two generations; the steps it already had
+        # stand, so a new call costs one ask rather than the whole window again.
+        self.many_calls(500)
+        self.estimate()
+        self.session.write(self.session.cwd + "/src/new.py")
+        with mock.patch.object(levels, "live_level", wraps=levels.live_level) as spy:
+            self.estimate()
+        self.assertEqual(1, spy.call_count)
+
+    def test_a_growing_transcript_reads_what_a_fresh_replay_reads(self) -> None:
+        cwd = self.session.cwd
+        t = self.session
+        late = ""
+
+        def call_whose_result_comes_later() -> None:
+            nonlocal late
+            late = t.call("Bash", {"command": "pytest tests"})
+
+        steps: list[Callable[[], object]] = [
+            lambda: t.write(cwd + "/src/a.py"),
+            call_whose_result_comes_later,
+            lambda: t.write(cwd + "/src/b.py"),
+            lambda: t.result(late, "Exit code 1\n1 failed", is_error=True),
+            lambda: t.prompt("Also the lexer"),
+            lambda: t.bash("pytest tests", "5 passed"),
+            lambda: t.write("/elsewhere/c.py"),
+            lambda: t.write(cwd + "/src/a.py"),
+            lambda: t.bash("pytest tests", "1 failed", is_error=True),
+        ]
+        for n, step in enumerate(steps):
+            step()
+            grown = self.estimate()
+            live_estimate._cache.clear()
+            fresh = self.estimate()
+            with self.subTest(step=n):
+                self.assertEqual(
+                    {k: v for k, v in fresh.items() if k != "computed_at"},
+                    {k: v for k, v in grown.items() if k != "computed_at"},
+                )
+
+    def test_a_call_id_seen_before_with_other_content_is_read_afresh(self) -> None:
+        # Ids alone do not identify a call: a transcript rewritten at the same path
+        # can reuse one, and the steps it had then are about another call.
+        self.session.write("/elsewhere/y.py")
+        self.estimate()
+        self.session.rows = self.session.rows[:3]
+        self.session.calls = 1
+        self.session.bash("pytest", "1 failed", is_error=True)
+        grown = self.estimate()
+        live_estimate._cache.clear()
+        self.assertEqual(self.estimate(), grown)
+
+    def test_a_long_transcript_costs_about_what_the_record_itself_costs(self) -> None:
+        if sys.gettrace() is not None or "coverage" in sys.modules:
+            # Measured: tracing slowed the replay's many small calls about 22 times and the
+            # record's about 6 times, so a ratio under a tracer measures the tracer.
+            self.skipTest("timed without a tracer only")
+        self.many_calls(3000)
+        self.session.save(self.path)
+        started = time.perf_counter()
+        project_context.claude_tool_reports(self.config, str(self.path), SHORT)
+        record = time.perf_counter() - started
+        started = time.perf_counter()
+        self.estimate()
+        live = time.perf_counter() - started
+        # Generous for a loaded machine; the unbounded replay took about 150 times the
+        # record's cost on this transcript.
+        self.assertLess(live, 1.0 + 20 * record, (live, record))
+
+
+class TheReplayMatchesTheRecordTest(_Replay):
+    """Every step's level is `levels.live_level` over the record as it stood after that
+    call, and the last step reads the very facts and scan the record publishes."""
+
+    INTENTS = (
+        levels.Intent(saved=True, goal=GOAL, lines=(LINE,)),
+        levels.Intent(saved=True, goal=GOAL, lines=("Only touch src/", LINE)),
+    )
+
+    def actions(self) -> dict[str, Any]:
+        cwd = self.session.cwd
+        t = self.session
+        return {
+            "pass": lambda: t.bash("pytest tests", "5 passed in 0.1s"),
+            "fail": lambda: t.bash("pytest tests", "1 failed, 4 passed", is_error=True),
+            "zero": lambda: t.bash("pytest tests", "0 passed in 0.01s"),
+            "noresult": lambda: t.call("Bash", {"command": "pytest tests"}),
+            "bg": lambda: t.bash("pytest tests &", ""),
+            "fixer": lambda: t.bash("black .", "reformatted 1 file"),
+            "w_in": lambda: t.write(cwd + "/src/a.py"),
+            "w_out": lambda: t.write(cwd + "/docs/x.md"),
+            "w_far": lambda: t.write("/elsewhere/y.py"),
+            "redir": lambda: t.bash("echo x > src/gen.py", ""),
+            "redir_out": lambda: t.bash("echo x > /tmp/gen.py", ""),
+            "passfix": lambda: t.bash("pytest tests && black .", "5 passed\nreformatted"),
+        }
+
+    def row_for(self, intent: levels.Intent) -> dict[str, Any]:
+        row = saved_row(annotation_line_1="")
+        for k, line in enumerate(intent.lines, 1):
+            row[f"annotation_line_{k}"] = line
+        return row
+
+    def published(self) -> tuple[tuple[dict[str, Any], ...], dict[str, Any]]:
+        self.session.save(self.path)
+        rows, scan = project_context.claude_tool_reports(self.config, str(self.path), SHORT)
+        facts = tuple(
+            project_context._semantic_fact_from_event(r, r["kind"], "tool_report", "") for r in rows
+        )
+        return facts, scan
+
+    def replayed(self, sequence: list[str], intent: levels.Intent) -> None:
+        self.session.rows = self.session.rows[:1]
+        acts = self.actions()
+        facts, scan = self.published()
+        cwd = str(self.session.cwd)
+        expected = [levels.live_level(levels.Evidence(facts, scan, 0, cwd), intent).level]
+        for name in sequence:
+            acts[name]()
+            facts, scan = self.published()
+            expected.append(levels.live_level(levels.Evidence(facts, scan, 0, cwd), intent).level)
+        steps: list[list[str]] = []
+        read: list[levels.Evidence] = []
+        rose_from, live_level = levels.rose_from, levels.live_level
+
+        def spy_steps(found: Any) -> Any:
+            steps.append(list(found))
+            return rose_from(found)
+
+        def spy_level(evidence: levels.Evidence, words: levels.Intent) -> levels.Level:
+            read.append(evidence)
+            return live_level(evidence, words)
+
+        with (
+            mock.patch.object(levels, "rose_from", spy_steps),
+            mock.patch.object(levels, "live_level", spy_level),
+        ):
+            answer = self.estimate(self.row_for(intent))
+        self.assertEqual(expected, steps[-1])
+        self.assertEqual(expected[-1], answer["level"])
+        self.assertEqual((facts, scan), (read[-1].facts, read[-1].scan))
+
+    def test_each_step_and_the_last_read_agree_with_the_record(self) -> None:
+        for sequence in (
+            # The review's fuzz state where a lost `passed` restore read not_enough.
+            ["passfix", "redir_out", "fail", "fail", "redir_out", "redir", "redir_out",
+             "redir_out", "pass"],
+            ["pass", "w_in", "fail", "noresult", "bg", "fixer", "zero", "pass", "w_out",
+             "w_far", "redir", "pass", "w_in", "w_out", "w_out"],
+            ["zero", "pass", "pass", "fail", "pass", "fixer", "passfix", "w_far", "redir_out"],
+        ):  # fmt: skip
+            for intent in self.INTENTS:
+                with self.subTest(sequence=sequence, lines=intent.lines):
+                    self.replayed(sequence, intent)
+
+
+class WhereItRoseTest(_Replay):
+    def test_a_rise_whose_entry_a_later_call_replaced_names_no_entry(self) -> None:
+        # setUp's pass, then a write (Medium, risen at the write), then the same path
+        # written again: the rising call's entry is gone from the record.
+        self.session.write(self.session.cwd + "/src/a.py")
+        risen = self.estimate()
+        self.assertIsNotNone(risen["rose_at"])
+        self.session.write(self.session.cwd + "/src/a.py")
+        answer = self.estimate()
+        self.assertEqual(levels.MEDIUM, answer["level"])
+        self.assertIsNone(answer["rose_from"])
+        self.assertIsNone(answer["rose_at"])
+
+    def test_a_call_that_left_a_write_and_a_check_names_the_check(self) -> None:
+        # A check's own redirect is a write by the same call (DRC-4709).
+        self.session.bash("pytest > src/out.txt", "", is_error=True)
+        facts = self.facts_now()
+        self.assertEqual(
+            {"check", "write"},
+            {f["subject"] for f in facts if f["branch"]["record_id"] == "toolu_002"},
+        )
+        answer = self.estimate()
+        self.assertEqual((levels.HIGH, levels.NONE_OR_LOW), (answer["level"], answer["rose_from"]))
+        failing = [f["fact_id"] for f in facts if f.get("result") == "failed"]
+        self.assertEqual(failing, [answer["rose_at"]])
+
+
 class TheRouteTest(_Replay):
     """Published on the focused project context only, over a real socket."""
 
@@ -287,6 +540,47 @@ class TheRouteTest(_Replay):
         row = json.loads(body)["sessions"][0]
         context = http_api._session_context(app, row)
         self.assertNotIn("live_levels", json.dumps(context))
+
+    def test_a_later_direction_reaches_the_level_and_keep_settles_it(self) -> None:
+        # A prompt before the save is under the saved goal's floor and is no later direction.
+        self.session.prompt("Before the goal was saved")
+        self.save_goal()
+        self.session.save(self.path)
+        path = f"/api/project-context?project=billing&session=claude:{SHORT}"
+        with self.serving() as port:
+            quiet = self.get(port, path)["sources"]["work"]["live_levels"][0]
+            self.session.prompt("Also do the lexer")
+            self.session.save(self.path)
+            later = self.get(port, path)["sources"]["work"]["live_levels"][0]
+            # Keep, as the page sends it with no reader.
+            conn = http.client.HTTPConnection("127.0.0.1", port, timeout=10)
+            try:
+                conn.request(
+                    "POST",
+                    "/api/annotate",
+                    body=json.dumps(
+                        {"harness": "claude", "sid": SHORT, "settle_through": self.now}
+                    ).encode(),
+                    headers={"Content-Type": "application/json"},
+                )
+                self.assertEqual(200, conn.getresponse().status)
+            finally:
+                conn.close()
+            kept = self.get(port, path)["sources"]["work"]["live_levels"][0]
+        self.assertNotIn(levels.REASON_LATER_DIRECTION, quiet["reasons"])
+        self.assertEqual(levels.NOT_ENOUGH, later["level"])
+        self.assertIn(levels.REASON_LATER_DIRECTION, later["reasons"])
+        self.assertNotIn(levels.REASON_LATER_DIRECTION, kept["reasons"])
+
+    def test_a_request_under_another_project_gets_no_level(self) -> None:
+        self.save_goal()
+        self.session.bash("pytest", "1 failed", is_error=True)
+        self.session.save(self.path)
+        with self.serving() as port:
+            elsewhere = self.get(
+                port, f"/api/project-context?project=elsewhere&session=claude:{SHORT}"
+            )
+        self.assertNotIn("live_levels", json.dumps(elsewhere))
 
     def test_with_annotations_off_nothing_is_published(self) -> None:
         self.config = dataclasses.replace(self.config, annotations_enabled=False)

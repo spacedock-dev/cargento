@@ -269,6 +269,107 @@ class TheLevelTest(_LivePage):
         self.assertEqual([], out)
 
 
+ANALYZING = """
+__dashboard.reading_jobs = {"claude:focus-1": {id:"job-1", phase:"reading", steps:[]}};
+"""
+
+
+def segments_on(html: str) -> int:
+    meter = re.search(r'<p class="next-session-drift-meter"[^>]*>([\s\S]*?)</p>', html)
+    assert meter is not None, html[:400]
+    return meter.group(1).count(" data-on")
+
+
+@unittest.skipUnless(shutil.which("node"), "node not available")
+class WhileAnalyzingTest(_LivePage):
+    """The design's analyzing state: the title and pill stay, the detail line goes, the
+    meter dims, and there is no nudge."""
+
+    def test_the_detail_line_and_the_nudge_go_and_the_meter_dims(self) -> None:
+        html = self.on(
+            live("high", rose_from="medium", rose_at="c-fail"), setup=TYPED + CHECK + ANALYZING
+        )
+        drift = drift_of(html)
+        text = visible_text(drift)
+        self.assertIn("High", text)
+        self.assertIn("data-next-drift-pill", header_of(html))
+        self.assertNotIn(SOURCE_LINE, text)
+        self.assertNotIn("Rose from", text)
+        self.assertNotIn(NUDGE, text)
+        self.assertRegex(drift, r'<p class="next-session-drift-meter"[^>]*\bdata-dim\b')
+
+    def test_with_no_analysis_the_meter_is_not_dimmed(self) -> None:
+        drift = drift_of(self.on(live("high")))
+        self.assertIn(SOURCE_LINE, visible_text(drift))
+        self.assertNotRegex(drift, r"\bdata-dim\b")
+
+
+@unittest.skipUnless(shutil.which("node"), "node not available")
+class OverAnUnsavedEditTest(_LivePage):
+    def test_the_nudge_hides_while_the_level_and_the_pill_stay(self) -> None:
+        html = self.html(
+            TYPED + CHECK + serve(live("high")),
+            '__typeGoal("Something quite different");\nawait __settle();\nrenderNext();\n' + HTML,
+            seed={KEY: "1"},
+        )
+        text = visible_text(drift_of(html))
+        self.assertIn("High", text)
+        self.assertIn("data-next-drift-pill", header_of(html))
+        self.assertNotIn(NUDGE, text)
+
+
+@unittest.skipUnless(shutil.which("node"), "node not available")
+class TheSwitchContractTest(_LivePage):
+    """What the review's surviving mutants showed nothing held."""
+
+    def test_the_switch_keeps_its_focus_key_across_the_redraw(self) -> None:
+        self.assertIn(
+            'data-next-focus="live-monitor:claude:focus-1"', switch_of(self.on(live("high")))
+        )
+
+    def test_its_accessible_name_is_live_monitor(self) -> None:
+        html = self.on(live("high"))
+        labelled = re.search(r'aria-labelledby="([^"]+)"', switch_of(html))
+        assert labelled is not None
+        label = re.search(rf'<[^>]*\bid="{labelled.group(1)}"[^>]*>([^<]*)<', html)
+        assert label is not None
+        self.assertEqual("Live monitor", label.group(1).strip())
+
+    def test_the_nudge_is_never_announced(self) -> None:
+        html = self.on(live("high"))
+        nudge = re.search(r"<p\b[^>]*>(?=[^<]*" + re.escape(NUDGE[:20]) + ")", html)
+        assert nudge is not None
+        self.assertNotRegex(nudge.group(0), r"\brole=|aria-live")
+        before = html[: nudge.start()]
+        # Not inside any open live region.
+        for opened in re.finditer(
+            r"<(\w+)\b[^>]*(?:aria-live=|role=\"(?:status|alert|log)\")", before
+        ):
+            tag = opened.group(1)
+            rest = before[opened.start() :]
+            self.assertGreater(rest.count(f"</{tag}>"), rest.count(f"<{tag}") - 1, rest[:200])
+
+    def test_a_press_redraws_at_once_without_waiting_for_the_next_poll(self) -> None:
+        out = self.html(
+            TYPED + CHECK + serve(live("high")),
+            '__fire("click", {preventDefault(){}, target:{dataset:{nextCockpitAction:'
+            '"live-monitor", arg:""}, closest(){ return this; }}});\n' + HTML,
+        )
+        self.assertIn('aria-checked="true"', switch_of(drift_of(out)))
+        self.assertIn("data-next-drift-level", out)
+
+    def test_the_hint_goes_when_the_switch_is_on(self) -> None:
+        # With a level, and with none published yet: the hint is for turning it on.
+        for row in (live("high"), None):
+            with self.subTest(row=row):
+                self.assertNotIn(HINT, visible_text(self.on(row)))
+
+    def test_the_meter_fills_one_segment_per_level(self) -> None:
+        for level, filled in (("none_or_low", 1), ("medium", 2), ("high", 3), ("extreme", 4)):
+            with self.subTest(level=level):
+                self.assertEqual(filled, segments_on(drift_of(self.on(live(level)))))
+
+
 @unittest.skipUnless(shutil.which("node"), "node not available")
 class NoLevelWithoutSavedWordsTest(_LivePage):
     def test_an_unsaved_draft_shows_no_level_and_no_pill_even_when_one_is_published(

@@ -1972,8 +1972,8 @@ class NextPageAssetContractTest(unittest.TestCase):
                 "7d3250df229af732ebb668171e4cb284f0c1e00e4b0241710d1e5f0ac2a76777",
             ),
             "next-cockpit.js": (
-                389_039,
-                "4bc070c8bd06b1c9fe6b194f31cdd971801fd21a4c2370c807bdd5394810e020",
+                389_420,
+                "3d86df47a9456782f3f8a35d21f742002b5f60d1bdb7774b2e999484f8306c1d",
             ),
             "next-render.js": (
                 12_231,
@@ -1992,16 +1992,16 @@ class NextPageAssetContractTest(unittest.TestCase):
                 self.assertEqual(digest, hashlib.sha256(data).hexdigest())
 
         styles = frontend_page.asset_path("styles.css").read_bytes()
-        self.assertEqual(158_462, len(styles))
+        self.assertEqual(158_885, len(styles))
         self.assertEqual(
-            "4b7c88ebba7109bcee322cdd741630c9315711d5c69ad853c373802ae9fa82ea",
+            "e7133974173e5821b8eab2c65470a986d78e73b9a642a91a5573c6e9975cdb5f",
             hashlib.sha256(styles).hexdigest(),
         )
 
         assembled = frontend_page.load_page()
-        self.assertEqual(1_251_598, len(assembled))
+        self.assertEqual(1_252_402, len(assembled))
         self.assertEqual(
-            "2e68fcb88be93c53dad371c29aa2ad2e8cd81557ad90b50f713b50220f25fa8c",
+            "13b368ef923995144709f9d7a2452d64107f1417d270d8bd508fc226fa451719",
             hashlib.sha256(assembled).hexdigest(),
         )
 

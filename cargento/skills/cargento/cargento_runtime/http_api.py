@@ -324,6 +324,7 @@ def _with_live_level(
     context: dict[str, Any],
     rows: list[dict[str, Any]],
     focus: tuple[str, str],
+    project: str,
 ) -> dict[str, Any]:
     """The focused session's project context with its live drift estimate (DRC-4696).
 
@@ -334,7 +335,16 @@ def _with_live_level(
     """
     config = application.config
     harness, sid = focus
-    matching = [r for r in rows if r.get("harness") == harness and r.get("sid") == sid]
+    # The project too, as `project_context` selects it: under another project the
+    # context holds none of the session's facts, so its later directions read none.
+    matching = [
+        r
+        for r in rows
+        if r.get("harness") == harness
+        and r.get("sid") == sid
+        and project
+        in {str(r.get("project_key") or r.get("project") or ""), str(r.get("project") or "")}
+    ]
     if (
         harness not in live_estimate.HARNESSES
         or not config.annotations_enabled
@@ -898,7 +908,7 @@ class _RequestHandler(BaseHTTPRequestHandler):
         # `copied_corrections` cites).
         result = copied_corrections.mark(result, collected["sessions"])
         if focus is not None:
-            result = _with_live_level(application, result, collected["sessions"], focus)
+            result = _with_live_level(application, result, collected["sessions"], focus, project)
         self._send(
             json.dumps(result, ensure_ascii=False, separators=(",", ":")).encode(),
             "application/json",
