@@ -311,6 +311,11 @@ def _session_context(application: Any, row: dict[str, Any]) -> dict[str, Any]:
     return context if isinstance(context, dict) else {}
 
 
+def _latest_revision(entry: annotation_store.Annotation | None) -> int:
+    """The number of an entry's latest revision, or 0 where it holds none."""
+    return entry["revisions"][-1]["n"] if entry and entry["revisions"] else 0
+
+
 def _facts_of(context: dict[str, Any]) -> list[Any]:
     semantic = context.get("semantic")
     facts = semantic.get("facts", []) if isinstance(semantic, dict) else []
@@ -1644,6 +1649,8 @@ class _RequestHandler(BaseHTTPRequestHandler):
     def _reading_press(self, harness: str, sid: str, payload: dict[str, Any]) -> None:
         """An admitted press on one session: Keep's settlement, route, permission, job."""
         self._keep_outcome = None
+        self._keep_at: float | None = None
+        self._press_revision: int | None = None
         if "settle_through" in payload:
             if not self._keep(harness, sid, payload):
                 return
@@ -1673,18 +1680,48 @@ class _RequestHandler(BaseHTTPRequestHandler):
         if isinstance(expected, bool) or not isinstance(expected, int):
             self._reject(400)
             return False
-        config = self.server.application.config
-        state = self.server.application.state
-        entry = annotation_store.find(annotation_store.active(config, state), harness, sid)
-        stored = entry["revisions"][-1]["n"] if entry and entry["revisions"] else 0
-        if expected == stored:
+        application = self.server.application
+        # From disk under the store's lock, not this process's copy, which
+        # misses a save another dashboard made since its last collection
+        # (wire review F3).
+        entries = annotation_store.fresh(
+            application.config, application.state, application.diagnostic_sink
+        )
+        if entries is None:
+            self._reject(503)
+            return False
+        if expected == _latest_revision(annotation_store.find(entries, harness, sid)):
+            self._press_revision = expected
             return True
+        self._revision_changed()
+        return False
+
+    def _revision_changed(self) -> None:
         self._send(
             self._reading_json({"ok": False, "produced": False, "reason": "revision-changed"}),
             "application/json",
             409,
         )
-        return False
+
+    def _composes_what_was_pressed(
+        self, entry: annotation_store.Annotation, *, adopted: bool
+    ) -> bool:
+        """Whether the entry about to reach the model is the one this press was checked against.
+
+        Read again at the job, because a save can land between the check and
+        here. A plain press names its revision. A Keep names the revision it
+        settled, so its own settlement must still sit on the latest revision.
+        An adoption is held by `_adoption_matches` instead, since it minted
+        the revision itself.
+        """
+        latest = _latest_revision(entry)
+        if self._keep_at is not None:
+            settled = entry.get("settled")
+            return settled is not None and (settled["at"], settled["revision"]) == (
+                self._keep_at,
+                latest,
+            )
+        return adopted or self._press_revision is None or self._press_revision == latest
 
     def _reading_cancel(self) -> None:
         """Cancel the named running analysis (DRC-4693).
@@ -1809,8 +1846,12 @@ class _RequestHandler(BaseHTTPRequestHandler):
         application = self.server.application
         through = payload.get("settle_through")
         expected = payload.get("expected_revision")
+        # The settlement's own stamp, so the job can tell this press's
+        # settlement from one written after it (`_composes_what_was_pressed`).
+        now = application.clock()
+        self._keep_at = now
         outcome = (
-            self._adopt_prompt(harness, sid, payload, settle_through=through)
+            self._adopt_prompt(harness, sid, payload, settle_through=through, now=now)
             if "adopt" in payload
             else annotation_store.settle(
                 application.config,
@@ -1818,7 +1859,7 @@ class _RequestHandler(BaseHTTPRequestHandler):
                 harness,
                 sid,
                 through=through,
-                now=application.clock(),
+                now=now,
                 expected_revision=expected,
                 diagnostic_sink=application.diagnostic_sink,
             )
@@ -1869,6 +1910,7 @@ class _RequestHandler(BaseHTTPRequestHandler):
         *,
         standalone: bool = False,
         settle_through: Any = None,
+        now: float | None = None,
     ) -> str:
         application = self.server.application
         expected = payload.get("expected_revision")
@@ -1893,7 +1935,7 @@ class _RequestHandler(BaseHTTPRequestHandler):
             source=str(payload.get("adopt") or ""),
             expected_text=payload.get("expected_prompt"),
             expected_at=payload.get("expected_prompt_at"),
-            now=application.clock(),
+            now=application.clock() if now is None else now,
             expected_revision=expected if guarded else None,
             settle_through=settle_through,
         )
@@ -2080,7 +2122,12 @@ class _RequestHandler(BaseHTTPRequestHandler):
             for row in json.loads(body)["sessions"]
             if row.get("harness") == harness and row.get("sid") == sid
         ]
-        entry = annotation_store.find(annotation_store.active(config, state), harness, sid)
+        # From disk under the store's lock, the entry the job is handed: the
+        # cache can miss this press's own adoption, when a collection that read
+        # the store before it assigned its copy after (the a11y lens's Keep over
+        # a draft), and a save another dashboard made since the check.
+        entries = annotation_store.fresh(config, state, application.diagnostic_sink)
+        entry = annotation_store.find(entries or (), harness, sid)
         if not rows or entry is None:
             self._send(
                 self._reading_json(
@@ -2088,6 +2135,9 @@ class _RequestHandler(BaseHTTPRequestHandler):
                 ),
                 "application/json",
             )
+            return
+        if not self._composes_what_was_pressed(entry, adopted=adoption is not None):
+            self._revision_changed()
             return
         if adoption is not None and not self._adoption_matches(entry, adoption):
             self._send(

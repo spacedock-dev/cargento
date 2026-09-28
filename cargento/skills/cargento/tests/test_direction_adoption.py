@@ -620,6 +620,16 @@ class DirectionReviewTest(unittest.TestCase):
         self.assertLessEqual(len(text), annotation_store.DIRECTION_TEXT_CAP_CHARS)
         self.assertEqual((True, False), (clipped, fits))
 
+    def test_raw_text_that_reaches_the_cap_is_clipped(self) -> None:
+        # The record reader already cut the message at the same 2,000 characters
+        # (`records.EXTRACT_TEXT_CAP_CHARS`), so the review never sees the overflow.
+        cap = annotation_store.DIRECTION_TEXT_CAP_CHARS
+        reached = ("Keep the lanes. " * cap)[:cap]
+        _text, clipped, fits = annotation_store.direction_review(reached, 240)
+        self.assertEqual((True, False), (clipped, fits))
+        _text, clipped, _fits = annotation_store.direction_review(reached[:-1], 240)
+        self.assertFalse(clipped)
+
     # The store lens's killing test (M27).
     def test_the_review_collapses_whitespace_runs(self) -> None:
         text, clipped, fits = annotation_store.direction_review("one\n\n   two\tthree", 240)
@@ -851,6 +861,24 @@ class DirectionRouteTest(_ClaudeSession):
             "/api/direction",
             {"harness": "claude", "sid": SHORT, "fact_id": fact_id, **over},
         )
+
+    def test_a_direction_longer_than_cargento_opens_answers_clipped(self) -> None:
+        # The wire review's live case: 3,663 characters, the last sentence out of reach.
+        steps = "".join(f"Step {n}: rename lane {n} and keep its tests green. " for n in range(80))
+        final = "FINAL: and then delete the tests folder entirely."
+        huge = steps[: 3663 - len(final)] + final
+        self.assertEqual(3663, len(huge))
+        self.session.prompt(huge)
+        self.session.save(self.path)
+        fact = max(
+            (f for f in self.facts() if f.get("type") == "user_message"),
+            key=lambda f: float(f["at"]),
+        )
+        with self._serving() as port:
+            status, body = self._open(port, str(fact["fact_id"]))
+        self.assertEqual(200, status)
+        self.assertEqual((True, True, False), (body["ok"], body["clipped"], body["fits"]))
+        self.assertNotIn("FINAL", body["text"])
 
     def test_open_returns_the_whole_direction_and_says_it_does_not_fit(self) -> None:
         fact_id = str(self.direction()["fact_id"])
@@ -1155,6 +1183,39 @@ class KeepRouteTest(_ReadingRouteHandler):
         answer, code = self.replies[-1]
         self.assertEqual((202, "stored"), (code, answer["settled"]))
 
+    def test_keep_over_a_draft_analyzes_when_a_collection_overwrote_the_cache(self) -> None:
+        # The a11y lens's cccc0013/dddd0013 case: a collection that read the store before
+        # Keep's write assigns its copy after it, so the cache has no entry for the session.
+        config, state = self._runtime()
+        payload = {
+            **self.KEEP,
+            "press": True,
+            "observer_model": 1,
+            "provider": "codex",
+            "allow": True,
+        }
+        handler = self._handler(config, state, payload)
+        route = handler._reading_route
+
+        def stale_cache(*args: Any, **kwargs: Any) -> Any:
+            answer = route(*args, **kwargs)
+            state.annotations = ()
+            return answer
+
+        handler._reading_route = stale_cache
+        with (
+            mock.patch.object(shutil, "which", lambda name: f"/usr/local/bin/{name}"),
+            mock.patch.object(reading_route, "destination", return_value=""),
+            mock.patch.object(
+                handler, "_compose_reading", return_value=(None, "test", False)
+            ) as compose,
+        ):
+            handler._reading()
+        answer, code = self.replies[-1]
+        self.assertEqual((202, "stored"), (code, answer.get("settled")), answer)
+        self.assertEqual(1, compose.call_count)
+        self.assertEqual(FIRST, compose.call_args.args[1]["revisions"][-1]["goal"])
+
     def test_a_press_that_cannot_start_still_leaves_the_settlement(self) -> None:
         config, state = self._runtime()
         compose = self._press(config, state, provider="someone-else")
@@ -1301,6 +1362,111 @@ class APlainPressNamesItsRevisionTest(_ReadingRouteHandler):
         annotation_store.annotate(config, state, "claude", SHORT, goal="Newer", now=FIRST_AT + 1)
         compose = self._plain(config, state, allow=True)
         self.assertEqual(1, compose.call_count)
+
+    def test_the_published_revision_after_a_discard_starts_the_analysis(self) -> None:
+        # Numbering continues past a discard, so the revision is not the count (wire F7, S5).
+        config, state = self._runtime()
+        self._saved(config, state)
+        annotation_store.clear(config, state, "claude", SHORT, now=FIRST_AT + 1)
+        annotation_store.annotate(config, state, "claude", SHORT, goal="Again", now=FIRST_AT + 2)
+        published = annotation_store.published(annotation_store.load(config)[0])
+        self.assertEqual((2, 1), (published["revision"], published["revision_count"]))
+        compose = self._plain(config, state, allow=True, expected_revision=2)
+        self.assertEqual(1, compose.call_count)
+        self.assertEqual(202, self.replies[-1][1])
+
+    def test_the_revision_is_checked_before_the_route(self) -> None:
+        # A stale press naming another provider is answered as stale (wire F7, S7).
+        config, state = self._runtime()
+        self._saved(config, state)
+        annotation_store.annotate(config, state, "claude", SHORT, goal="Newer", now=FIRST_AT + 1)
+        compose = self._plain(config, state, provider="someone-else", expected_revision=1)
+        self.assertEqual(0, compose.call_count)
+        answer, code = self.replies[-1]
+        self.assertEqual((409, "revision-changed"), (code, answer["reason"]))
+
+    def test_a_save_made_by_another_dashboard_refuses_the_press(self) -> None:
+        # Two dashboards on one home: this one's cache still holds revision 1.
+        config, state = self._runtime()
+        other = build_runtime_state(config, started=NOW)
+        self._saved(config, state)
+        annotation_store.annotate(config, other, "claude", SHORT, goal="OMEGA", now=FIRST_AT + 1)
+        self.assertEqual(1, annotation_store.active(config, state)[0]["revisions"][-1]["n"])
+        compose = self._plain(config, state, allow=True, expected_revision=1)
+        self.assertEqual(0, compose.call_count)
+        self.assertEqual(409, self.replies[-1][1])
+        self.assertEqual({}, runtime_reading.published_jobs(config))
+        # Refused before the route, so the Allow it carried was not recorded either.
+        self.assertFalse(reading_policy.status(config, now=NOW, provider="codex")["consent"])
+
+    def _between(self, handler: Any, act: Any) -> None:
+        """Run `act` after the check and the route, before the entry is composed."""
+        route = handler._reading_route
+
+        def raced(*args: Any, **kwargs: Any) -> Any:
+            answer = route(*args, **kwargs)
+            act()
+            return answer
+
+        handler._reading_route = raced
+
+    def _raced_press(self, config: Any, state: Any, act: Any, **over: Any) -> Any:
+        payload = {
+            "harness": "claude",
+            "sid": SHORT,
+            "press": True,
+            "observer_model": 1,
+            "provider": "codex",
+            "allow": True,
+            **over,
+        }
+        handler = self._handler(config, state, payload)
+        self._between(handler, act)
+        with (
+            mock.patch.object(shutil, "which", lambda name: f"/usr/local/bin/{name}"),
+            mock.patch.object(reading_route, "destination", return_value=""),
+            mock.patch.object(
+                handler, "_compose_reading", return_value=(None, "test", False)
+            ) as compose,
+        ):
+            handler._reading()
+        return compose
+
+    def test_a_save_landing_after_the_check_never_reaches_the_model(self) -> None:
+        config, state = self._runtime()
+        other = build_runtime_state(config, started=NOW)
+        self._saved(config, state)
+        compose = self._raced_press(
+            config,
+            state,
+            lambda: annotation_store.annotate(
+                config, other, "claude", SHORT, goal="OMEGA", now=FIRST_AT + 1
+            ),
+            expected_revision=1,
+        )
+        self.assertEqual(0, compose.call_count)
+        answer, code = self.replies[-1]
+        self.assertEqual((409, "revision-changed"), (code, answer["reason"]))
+        self.assertEqual({}, runtime_reading.published_jobs(config))
+
+    def test_a_save_landing_after_keep_settles_never_reaches_the_model(self) -> None:
+        config, state = self._runtime()
+        other = build_runtime_state(config, started=NOW)
+        self._saved(config, state)
+        compose = self._raced_press(
+            config,
+            state,
+            lambda: annotation_store.annotate(
+                config, other, "claude", SHORT, goal="OMEGA", now=FIRST_AT + 1
+            ),
+            settle_through=FIRST_AT + 60,
+            expected_revision=1,
+        )
+        self.assertEqual(0, compose.call_count)
+        answer, code = self.replies[-1]
+        self.assertEqual(
+            (409, "revision-changed", "stored"), (code, answer["reason"], answer["settled"])
+        )
 
     def test_a_revision_that_is_not_a_number_is_refused(self) -> None:
         config, state = self._runtime()
