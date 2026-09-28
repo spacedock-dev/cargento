@@ -2236,7 +2236,12 @@ and each was settled on the withholding side.
   store no longer holds gives no level. The page draws it only for the reading it shows, matched by
   `read_at` and revision, in the level slot, labelled "Analysis" with its time and item 1's source
   line. It is drawn over the live estimate, as the design's result stage draws it, and its pill
-  shows whichever way the live monitor is set, since the switch hides the live level only.
+  shows whichever way the live monitor is set, since the switch hides the live level only. A
+  reading of a revision other than the saved one draws no level, in the slot or the pill, so the
+  live estimate stands when the switch is on and nothing does when it is off. The server scores that
+  reading against the lines it read, and a level for words the reader has since replaced says
+  nothing about today's, which is the live estimate's own rule below. The reading keeps its
+  "Your intent changed" banner and "Analyze again".
 - The page holds "None or low" to its own rows. Where the level says None or low and a line the
   panel draws is not a consistent it can word, the level reads "Not enough recorded yet". The
   validated function counts a departure the page has demoted (an unsettled later direction, say),
@@ -2254,7 +2259,10 @@ and each was settled on the withholding side.
   departure's detail followed by its citation. With none, a failed check in the reading's window,
   where a check with no time counts as inside it as `analysis_level` reads it, gives "A check failed
   at #n." naming the latest; then any line without a valid verdict gives "Can't tell"; then
-  "Nothing found against what it read. This is not a check that the work was done." A reading of
+  "Nothing found against what it read. This is not a check that the work was done." That last
+  rung needs at least one outcome line among the rows: otherwise a reading of a goal with no line,
+  which the producer does not withhold, answers "Can't tell", as the level beside it reads "Not enough
+  recorded yet" (DEC-26 item 1). A reading of
   the words shown now draws every line typed now, so a line it returned nothing for is a missing
   result and cannot tell; a reading of older words draws only the lines it read.
 - Where the work went groups the written paths the list numbers in the window by folder, with each
@@ -2263,7 +2271,8 @@ and each was settled on the withholding side.
   With no write listed there is no section.
 - Stale says why. Changed words give "Your intent changed after this analysis." with the revision
   sentence the raises use; otherwise an entry newer than the reading's `evidence_through` gives "New
-  work since this analysis.". A reading stored without that time claims no new work. "Analyze again"
+  work since this analysis.". A reading stored without that time, which only rows from before
+  2026-09-24 are, counts from its `read_at` instead, so work after it still says so. "Analyze again"
   is drawn in the banner only where a press would run: a reader, no refusal, no job, and no question
   before the press standing, which Keep answers.
 - Not accurate is a toggle on the reading shown, posted through `POST /api/annotate` with the

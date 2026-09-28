@@ -2283,7 +2283,9 @@ def mark_not_accurate(
     a token stored with the annotation entry and removed with it. `read_at`
     names the reading the reader was shown, checked under the lock, so a tab
     drawn before a newer reading landed marks nothing rather than the newer
-    one. The token is all that is written: no reason, no text and no time.
+    one. The token is all the mark adds: no reason and no text. Like any
+    store write it updates the entry's `written` time, which eviction at
+    the cap reads.
     """
     key = _key(harness, sid)
     if (

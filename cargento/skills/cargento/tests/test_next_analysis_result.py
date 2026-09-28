@@ -286,6 +286,37 @@ class TheLevelTest(_ResultPage):
         self.assertNotIn("Live estimate", drift)
         self.assertIn("Drift: High", visible_text(html[: html.index("<aside")]))
 
+    def test_a_reading_of_words_since_replaced_yields_to_the_live_estimate(self) -> None:
+        # Revision 1's reading scores None or low against its own two lines; revision 2 is the
+        # saved intent, and the live estimate for it is High. A level for words the reader has
+        # replaced is not drawn, in the slot or the pill, and the live estimate stands.
+        stale = assessment(ALL_CONSISTENT["criteria"], revision_read=1)
+        level = server_level(stale, NO_FAILURE)
+        self.assertEqual(levels.NONE_OR_LOW, level)
+        switch = "nextLiveMonitorMemory.set('cargento.next.live-estimate:claude:focus-1', true);\n"
+        live = {
+            "harness": "claude",
+            "sid": "focus-1",
+            "revision": 2,
+            "computed_at": 107.0,
+            "level": levels.HIGH,
+            "reasons": [],
+            "rose_from": None,
+            "rose_at": None,
+        }
+        html = self.page(stale, level, facts=NO_FAILURE, extra=switch, live=live)
+        drift = visible_text(drift_of(html))
+        self.assertIn("Live estimate", drift)
+        self.assertNotIn("None or low", drift)
+        self.assertNotIn("Analysis ·", drift)
+        self.assertIn("Drift: High", visible_text(html[: html.index("<aside")]))
+        # The reading itself still says why it is stale and offers another press.
+        self.assertIn("Your intent changed after this analysis.", visible_text(result_of(html)))
+        # With the switch off there is no live estimate, and still no stale level.
+        off = self.page(stale, level, facts=NO_FAILURE)
+        self.assertNotIn("None or low", visible_text(drift_of(off)))
+        self.assertNotIn("data-next-drift-pill", off)
+
     def test_a_level_computed_for_another_reading_is_not_drawn(self) -> None:
         html = self.page(MIXED, levels.HIGH, read_at=READ_AT - 1)
         self.assertNotIn("data-next-drift-level", html)
@@ -424,6 +455,15 @@ class TheAnswerTest(_ResultPage):
         answer = self.answer_of(self.page(ALL_CONSISTENT, levels.NONE_OR_LOW, facts=NO_FAILURE))
         self.assertEqual(NOTHING_FOUND, answer)
 
+    def test_a_reading_with_a_goal_and_no_line_cannot_tell(self) -> None:
+        # A saved goal with no outcome line is enough to press; the goal row alone is not an
+        # answer against what the work was for.
+        goal_only = assessment({"goal": criterion(CONSISTENT, "task-a")})
+        no_lines = '__s.annotation_line_1 = "";\n__s.annotation_line_2 = "";\n'
+        html = self.page(goal_only, levels.NOT_ENOUGH, facts=NO_FAILURE, extra=no_lines)
+        self.assertIn("Consistent with what the session said", visible_text(result_of(html)))
+        self.assertEqual("Can't tell", self.answer_of(html))
+
     def test_a_malformed_or_missing_line_result_gives_cant_tell(self) -> None:
         malformed = assessment(
             {
@@ -520,6 +560,14 @@ class AStaleResultSaysWhyTest(_ResultPage):
         value = assessment(MIXED["criteria"])
         value.pop("evidence_through")
         self.assertEqual("", self.stale_of(self.page(value, levels.HIGH)))
+
+    def test_a_result_with_no_evidence_time_counts_new_work_from_when_it_read(self) -> None:
+        late = (*FACTS, _report("w-late", READ_AT + 4, "write", summary="src/parser/late.py"))
+        value = assessment(MIXED["criteria"])
+        value.pop("evidence_through")
+        stale = self.stale_of(self.page(value, levels.HIGH, facts=late))
+        self.assertIn("New work since this analysis.", stale)
+        self.assertIn("Analyze again", stale)
 
     def test_analyze_again_is_not_offered_while_the_question_before_the_press_stands(
         self,

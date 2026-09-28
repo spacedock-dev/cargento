@@ -2945,7 +2945,8 @@ function nextCockpitReadingCriterionRow(row, numbers = null, byId = null){
    the reading's window, where a check with no time counts as inside it, as
    `levels.analysis_level` reads it; otherwise any line without a valid
    verdict, a malformed or missing result included, cannot tell; otherwise
-   nothing was found. A reading that read no line cannot tell either. */
+   nothing was found. A reading with no outcome line cannot tell either: the
+   goal row alone is not an answer against what the work was for. */
 function nextDriftAnswer(shape, entries){
   const departures = shape.criteria.filter(row => row.result === NEXT_READING_DEPARTURE);
   if(departures.length) return {kind: "departs", count: departures.length, departures};
@@ -2958,7 +2959,8 @@ function nextDriftAnswer(shape, entries){
     return {kind: "failed-check", failed: latest};
   }
   const verdict = row => row.result === NEXT_READING_CONSISTENT && row.restsOn;
-  if(!shape.criteria.length || !shape.criteria.every(verdict)) return {kind: "cant-tell"};
+  if(!shape.criteria.some(row => nextReadingIsOutcomeLine(row.key)) ||
+      !shape.criteria.every(verdict)) return {kind: "cant-tell"};
   return {kind: "nothing-found"};
 }
 
@@ -3034,11 +3036,13 @@ function nextCockpitResultWork(entries, numbers, scan){
    newest entry it saw (`evidence_through`), each with Analyze again where a
    press would run. The words changing says why with the revision sentence the
    raises use; new work is any entry after the reading's newest. A reading
-   stored with no such time claims no new work. */
+   stored with no such time counts from when it read instead, so an older row
+   still owns up to work that landed after it. */
 function nextCockpitResultStale(shape, raw, annotation, entries, again){
   const current = nextNumber(annotation && annotation.revision);
   const superseded = nextRevisionSuperseded("This reading", shape.revisionRead, current);
-  const through = nextNumber(raw && raw.evidence_through);
+  const evidence = nextNumber(raw && raw.evidence_through);
+  const through = evidence != null ? evidence : nextNumber(raw && raw.read_at);
   const newer = !superseded && through != null &&
     (entries || []).some(entry => (nextNumber(entry && entry.at) || 0) > through);
   if(!superseded && !newer) return "";
@@ -4865,8 +4869,8 @@ function nextDriftEstimate(group, session){
 
 /* The analysis-derived level (DRC-4695): the server's `levels.analysis_level`
    over the stored reading and the record as it is now, recomputed on every
-   fetch and never stored. Drawn only for the reading the panel shows, and
-   with its own source line (items 1, 2 and 6 of
+   fetch and never stored. Drawn only for the reading the panel shows, only
+   while that reading read the saved revision, and with its own source line (items 1, 2 and 6 of
    [DEC-26](docs/design-reading-a-session.md#dec-26-four-drift-levels-and-a-live-estimate-after-every-turn)).
    The page holds "None or low" to its own rows as well: a level of None or
    low beside a line the panel cannot show as consistent would reassure past
@@ -4885,6 +4889,11 @@ function nextDriftAnalysis(group, session, annotation, shape){
   const row = nextDriftAnalysisRow(group, session);
   if(readAt == null || !row || nextNumber(row.read_at) !== readAt ||
       nextNumber(row.revision_read) !== nextNumber(raw.revision_read)) return null;
+  // A level for words the reader has replaced yields to the live estimate, as
+  // the live one does for a revision the panel does not show
+  // ([What the live estimate build decided](docs/design-reading-a-session.md#what-the-live-estimate-build-decided-2026-09-28)).
+  const current = nextNumber(annotation && annotation.revision);
+  if(current != null && nextNumber(raw.revision_read) !== current) return null;
   let level = String(row.level || "");
   if(!NEXT_DRIFT_LEVEL_NAMES[level]) return null;
   const shown = shape.criteria.length > 0 && shape.criteria.every(line =>
