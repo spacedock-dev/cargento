@@ -236,6 +236,38 @@ class CopyStoreTest(_Store):
             self.assertEqual(copies.OUTCOME_UNWRITABLE, self.register(now=100.0))
         self.assertFalse(os.path.lexists(copies.store_path(self.config)))
 
+    def test_the_store_at_its_full_bound_reads_back_whole(self) -> None:
+        # Every value at its widest: a sid at the key cap, times with every digit a float prints,
+        # and the largest inode and offset a 64-bit stat gives. A store over the read cap reads
+        # back as nothing, which un-marks every recognised paste at once (DRC-4678 verify, V1).
+        sessions = self.config.annotation_max_sessions
+        moment = 1790000000.1234567
+        held = {
+            ("claude", f"{n:0{copies._KEY_CAP_CHARS}d}"): copies.Held(
+                tuple(
+                    {
+                        "digest": f"{n:032x}{c:032x}",
+                        "copied_at": moment + c,
+                        "ino": 2**64 - 1,
+                        "offset": 2**63 - 1,
+                    }
+                    for c in range(copies.COPIES_PER_SESSION)
+                ),
+                tuple(
+                    {"fact_id": f"fact:{n:08x}{m:08x}", "at": moment + m, "copied_at": moment + m}
+                    for m in range(copies.MATCHES_PER_SESSION)
+                ),
+            )
+            for n in range(sessions)
+        }
+        self.assertEqual(copies.OUTCOME_STORED, copies._write(self.config, held, print))
+        size = os.path.getsize(copies.store_path(self.config))
+        # A quarter of the cap spare, so a field added later has room before this reads empty.
+        self.assertLess(size, copies._READ_CAP_BYTES * 3 // 4)
+        loaded = copies.load(self.config)
+        self.assertEqual(sessions, len(loaded))
+        self.assertEqual(held, loaded)
+
     def test_forget_deletes_the_store(self) -> None:
         self.assertFalse(copies.forget(self.config))
         self.register(now=100.0)
@@ -770,6 +802,35 @@ class CopiedRouteTest(_App):
             )
         self.assertEqual((200, False), (pasted[0], pasted[1]["ok"]))
         self.assertEqual((200, True, OWN), (own[0], own[1]["ok"], own[1]["text"]))
+
+    def test_a_paste_written_during_the_registration_never_shows_as_the_readers_words(
+        self,
+    ) -> None:
+        # A paste landing after the transcript's end is read and before the copy is stored is in
+        # the lookup's own collection, unrecognised; that board must not be served afterwards
+        # (DRC-4678 verify, V2: a paste 2 to 10 ms after the press showed as the reader's).
+        self.now = START.timestamp() + self.session.seconds + 1
+        real = copies.transcript_position
+        pasted: list[float] = []
+
+        def position_then_paste(*args: Any) -> tuple[int, int] | None:
+            found = real(*args)
+            pasted.append(_paste(self.session, STORED))
+            self.session.save(self.path)
+            return found
+
+        with (
+            mock.patch.object(copies, "transcript_position", position_then_paste),
+            self.serving() as port,
+        ):
+            self.assertEqual((200, {"ok": True}), self.post(port, self.body()))
+            conn = http.client.HTTPConnection("127.0.0.1", port, timeout=10)
+            # The all-sessions view, which is the board the lookup collected and memoised.
+            conn.request("GET", "/api/data?all=1")
+            data = json.loads(conn.getresponse().read())
+            conn.close()
+        rows = [row for row in data["sessions"] if row.get("sid") == SHORT]
+        self.assertEqual(pasted, [entry["at"] for entry in rows[0]["copied_prompts"]])
 
     def test_no_copied_text_reaches_the_payload(self) -> None:
         with self.serving() as port:

@@ -1572,7 +1572,7 @@ the later-direction floor (item 9).
    moves on, up to 32 per session, apart from the eight waiting digests. Adoption and every
    surface that shows a prompt as the reader's words (the stated goal, the assignment, an exact
    direction) compare fact ids, so a prompt typed in the same second as a paste stays the
-   reader's.
+   reader's while the tail holds it.
 10. Not accurate. A token the reader can set on a reading, stored with the annotation entry and
     removed with it. `--forget` does not reach it. It is never sent, never counted and never entered
     into abstention marks, and SECURITY.md notes it.

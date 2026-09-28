@@ -2136,29 +2136,38 @@ class _RequestHandler(BaseHTTPRequestHandler):
             return
         outcome = copied_corrections.OUTCOME_REFUSED
         if harness in copied_corrections.HARNESSES:
-            # Where the transcript ends is read before the lookup's collection too, for the
-            # clock's reason: only a message past it can match.
-            position = copied_corrections.transcript_position(
-                config, application.state, str(harness), str(sid)
-            )
-            # No snapshot is cleared after this: the lookup cleared it before collecting, and a
-            # copy changes no row until its message is written.
-            if self._session_row(str(harness), str(sid)):
-                outcome = copied_corrections.register(
-                    config,
-                    harness,
-                    sid,
-                    text,
-                    now=now,
-                    position=position,
-                    diagnostic_sink=application.diagnostic_sink,
-                )
+            outcome = self._register_copy(str(harness), str(sid), text, now)
         unwritable = outcome == copied_corrections.OUTCOME_UNWRITABLE
         self._send(
             json.dumps({"ok": not unwritable}, separators=(",", ":")).encode(),
             "application/json",
             503 if unwritable else 200,
         )
+
+    def _register_copy(self, harness: str, sid: str, text: str, now: float) -> str:
+        """Register a copy for a session the board publishes; returns the store's outcome."""
+        application = self.server.application
+        # Where the transcript ends is read before the lookup's collection too, for the
+        # clock's reason: only a message past it can match.
+        position = copied_corrections.transcript_position(
+            application.config, application.state, harness, sid
+        )
+        if not self._session_row(harness, sid):
+            return copied_corrections.OUTCOME_REFUSED
+        outcome = copied_corrections.register(
+            application.config,
+            harness,
+            sid,
+            text,
+            now=now,
+            position=position,
+            diagnostic_sink=application.diagnostic_sink,
+        )
+        # The lookup's own collection is memoised, and a paste written while it ran is in it
+        # unrecognised, so a board read next would show that paste as the reader's words.
+        if outcome == copied_corrections.OUTCOME_STORED:
+            application.state.snapshot.clear()
+        return outcome
 
     def _reading_permission_reply(
         self, answer: reading_policy.Status, *, off: bool = False

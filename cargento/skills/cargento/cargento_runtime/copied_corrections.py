@@ -42,8 +42,7 @@ CORRECTION_CAP_CHARS = 2000
 # waiting for their message; a recognised message moves to `matches` and leaves this count.
 COPIES_PER_SESSION = 8
 # Recognised messages kept per session, the oldest dropped, and apart from the waiting copies so a
-# ninth copy (or a probe) cannot un-mark one. 32 keeps the store under `_READ_CAP_BYTES` at the
-# session bound: 256 sessions of eight ~130-byte copies and 32 ~70-byte matches is about 800 KB.
+# ninth copy (or a probe) cannot un-mark one.
 MATCHES_PER_SESSION = 32
 # How much of a message is read to digest it. A tab stored as four spaces makes the stored text
 # longer than what was copied, so four times the cap covers any correction the route accepts; a
@@ -53,7 +52,11 @@ _MESSAGE_READ_CAP = 4 * CORRECTION_CAP_CHARS + 1
 # The newest bytes of a transcript read for a match: the bound the semantic history store's
 # backfill reads a source to, so a message that store publishes is one this can recognise.
 _SCAN_CAP_BYTES = project_context.SEMANTIC_BACKFILL_MAX_BYTES
-_READ_CAP_BYTES = 1 << 20
+# A store past this reads back as nothing, un-marking every recognised paste at once, so it sits
+# well above the full bound. Measured: a copy is about 150 bytes on disk and a match about 93, and
+# at their widest (a 64-character sid, 17-digit times, 64-bit inode and offset) 173 and 97, so 256
+# sessions of eight copies and 32 matches write 1,180,437 bytes, which overran the old 1 MiB.
+_READ_CAP_BYTES = 2 << 20
 _KEY_CAP_CHARS = 64
 _LOCK_WAIT_SECONDS = 10.0
 # Only Claude Code's messages are read for a digest, which is what item 9 rules.
@@ -491,7 +494,9 @@ def _recognise(
     taken = {match["fact_id"] for match in held.matches}
     found: list[tuple[str, Match]] = []
     for copy in held.copies:
-        # A transcript replaced or cut short since the copy is not the one it was made in.
+        # A replaced transcript (a new inode) or one now shorter than where the copy was made is
+        # skipped. One cut short and regrown past that point on the same inode can still match;
+        # Claude Code only appends, and the digest must still be exact.
         if copy["ino"] != ino or copy["offset"] > size:
             continue
         for message in messages:
