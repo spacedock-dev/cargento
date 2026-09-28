@@ -359,6 +359,61 @@ class KeepShowsTheWholeDirectionTest(_DraftPage):
         self.assertEqual(["/api/reading"], posted(out))
         self.assertIn(READ_FIRST, visible_text(drift_of(out["html"])))
 
+    def test_where_no_analysis_can_start_two_directions_settle_through_the_latest(self) -> None:
+        # The `/api/annotate` route keeps its own `settle_through`, so the reading route's
+        # tests do not guard it: through fo-b (102) would leave fo-a, drawn and read, open.
+        out = self.keep_twice(
+            '__dashboard.reading = {consent:true, reason:"run-disabled"};\n'
+            '__reply["/api/annotate"] = () => ({status:200, body:{ok:true, persisted:true,'
+            ' outcome:"stored", revision:1, revision_count:1}});\n'
+        )
+        self.assertEqual([], out["first"]["posts"])
+        whole = re.search(
+            r"<ol[^>]*data-next-cockpit-direction-whole[\s\S]*?</ol>", out["first"]["html"]
+        )
+        assert whole is not None, "no whole-direction list drawn"
+        self.assertIn(EARLIEST, visible_text(whole.group(0)))
+        self.assertIn("Newest direction", visible_text(whole.group(0)))
+        self.assertEqual(["/api/annotate"], posted(out))
+        body = out["posts"][-1]["body"]
+        self.assertEqual(104, body["settle_through"])
+        self.assertEqual(0, body["expected_revision"])
+        self.assertNotIn("press", body)
+
+    def test_a_sole_direction_arriving_after_a_drawn_list_is_drawn_before_it_settles(
+        self,
+    ) -> None:
+        # Another tab settles both drawn directions, and one new direction arrives whose
+        # whole text is its summary. The list this tab drew never showed it, so the sole
+        # one-press rule does not apply: the press draws it, and the next one settles it.
+        out = self.drive(
+            "",
+            '__press("direction-keep");\nawait __settle();\nawait __settle();\n'
+            "__s.annotation_settled_through = 104; __s.annotation_settled_at = 105;\n"
+            "__semantic.facts.unshift({fact_id:'fo-c', at:106, type:'user_message',"
+            " summary:'Also delete the whole tests folder.',"
+            " source_session:{harness:'claude', sid:'focus-1'},"
+            " evidence:{source:'root transcript', confidence:'exact'}});\n"
+            "await refreshNext();\nawait __settle();\nawait __settle();\n"
+            '__press("direction-keep");\nawait __settle();\nawait __settle();\n'
+            "const second = {posts:__posts.map(p => p.url), html:__els.app.innerHTML,"
+            " opened:__opened.map(p => p.body.fact_id)};\n"
+            '__press("direction-keep");\nawait __settle();\nawait __settle();\n'
+            "console.log(JSON.stringify({second, posts:__posts}));",
+        )
+        assert isinstance(out, dict)
+        second = out["second"]
+        self.assertEqual(["fo-b", "fo-a", "fo-c"], second["opened"])
+        self.assertEqual([], second["posts"])
+        whole = re.search(r"<ol[^>]*data-next-cockpit-direction-whole[\s\S]*?</ol>", second["html"])
+        assert whole is not None, "no whole-direction list drawn"
+        listed = visible_text(whole.group(0))
+        self.assertIn("Also delete the whole tests folder.", listed)
+        self.assertNotIn(EARLIEST, listed)
+        self.assertIn(READ_FIRST, visible_text(drift_of(second["html"])))
+        self.assertEqual(["/api/reading"], posted(out))
+        self.assertEqual(106, out["posts"][-1]["body"]["settle_through"])
+
 
 @unittest.skipUnless(shutil.which("node"), "node not available")
 class TheQuestionEndsWithOneMarkTest(_DraftPage):
