@@ -2087,6 +2087,22 @@ class AnIgnoredHangupStaysIgnoredTest(unittest.TestCase):
         self.assertEqual(0, server.wait(timeout=15), "a SIGTERM before the serve loop was dropped")
         self.assertFalse(self.state.exists(), "a stopped server left its state file")
 
+    def test_sigterm_while_the_producer_thread_starts_still_stops_it(self) -> None:
+        """DRC-4737 follow-up: a `kill` inside `Thread.start` must still exit 0.
+
+        The signal can land before the new thread has reported in, and the
+        cleanup's `join` then raised "cannot join thread before it is started",
+        which replaced the clean exit with a traceback and exit 1 and skipped
+        the state file's removal. Measured on the 3.11 runtime-floor job.
+        """
+        server, _ = self._start_ignoring("SIGTERM", stall_in="producer")
+        self.assertTrue(self.state.exists(), "the state file precedes the producer")
+        os.kill(server.pid, signal.SIGTERM)
+        self.assertEqual(
+            0, server.wait(timeout=15), "a SIGTERM while the producer started exited unclean"
+        )
+        self.assertFalse(self.state.exists(), "a stopped server left its state file")
+
     def test_sigterm_during_assembly_still_stops_it(self) -> None:
         """DRC-4737: before the bind there is nothing to clean up, so it stops as by default."""
         server, _ = self._start_ignoring("SIGTERM", stall_in="assembly")
@@ -2114,8 +2130,9 @@ class ADashboardIsAliveOnlyByItsStateFileTest(unittest.TestCase):
 
 
 # The server with one step parked: it announces the step, then waits there for
-# a signal. `recover` runs after the state file is written, `assembly` before
-# the bind. A dropped SIGTERM reads as the wait outliving the test's own.
+# a signal. `recover` runs after the state file is written, `producer` is the
+# producer thread's start before the thread has reported in, and `assembly`
+# is before the bind. A dropped SIGTERM reads as the wait outliving the test's own.
 _STALLED_SERVER = """
 import sys, time
 from pathlib import Path
@@ -2132,6 +2149,15 @@ def parked(real):
 
 if step == "recover":
     reading_jobs.recover = parked(reading_jobs.recover)
+elif step == "producer":
+    import threading
+    from cargento_runtime import lifecycle
+    real_start = threading.Thread.start
+    def start(self):
+        if getattr(self, "_target", None) is lifecycle.run_producer:
+            return parked(real_start)(self)
+        return real_start(self)
+    threading.Thread.start = start
 else:
     cli.build_application = parked(cli.build_application)
 raise SystemExit(cli.main(sys.argv[4:]))

@@ -1003,7 +1003,11 @@ def serve(
         with contextlib.suppress(Exception):
             supervise.kill_all()
         producer_stop.set()
-        if producer is not None:
+        # `is_alive`, not a bare join: a SIGTERM can land inside `start()`
+        # before the thread reports in, and joining it then raised over the
+        # clean exit, turning it into exit 1 with the state file left behind.
+        # A thread that reports in later sees the stop already set.
+        if producer is not None and producer.is_alive():
             producer.join(timeout=2)
         if observation is not None:
             # Before the streams close: a coordinator mid-collection would
