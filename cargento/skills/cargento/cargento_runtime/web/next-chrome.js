@@ -394,7 +394,8 @@ function nextStampControlStates(selector, attribute, keyOf){
 // One key for the click and for the render, derived from the control's own
 // dataset either way. Two spellings of it would agree until one of them changed.
 function nextCopyStateKey(dataset){
-  const lane = dataset.nextCopyCommand ? "command" : (dataset.nextCopyLink ? "link" : "copy");
+  const lane = dataset.nextCopyCorrection ? "correction" : dataset.nextCopyCommand ? "command"
+    : (dataset.nextCopyLink ? "link" : "copy");
   return nextControlStateKey(
     lane,
     dataset.nextCopyHarness,
@@ -418,12 +419,16 @@ function nextCopyState(target, key, state){
 // differs is which dataset key carries the payload and what the announcement calls
 // it. Both share the same fallback: on a context with no `navigator.clipboard` the
 // failure is announced and the value stays readable on the control's own title.
-async function nextCopyToClipboard(target){
+// Steer back's correction is a third lane (DRC-4681): its text is the box's, handed in, and its
+// announcement is the cue the control shows, "Copied" or "Copy unavailable". The answer says
+// whether the clipboard took it, so the caller records only a copy that happened.
+async function nextCopyToClipboard(target, text = null){
   const dataset = target && target.dataset || {};
-  const command = String(dataset.nextCopyCommand || "");
-  const link = command ? "" : String(dataset.nextCopyLink || "");
-  const sid = String(dataset.nextCopySession || "");
-  const value = command || link || sid;
+  const correction = typeof text === "string";
+  const command = correction ? "" : String(dataset.nextCopyCommand || "");
+  const link = command || correction ? "" : String(dataset.nextCopyLink || "");
+  const sid = correction ? "" : String(dataset.nextCopySession || "");
+  const value = correction ? text : command || link || sid;
   const status = nextSessionCopyStatus(document.getElementById("app"));
   // Written to the element for the reader looking at it now, and to the module
   // map for the render that is about to replace it (DRC-4392). The two controls
@@ -435,16 +440,18 @@ async function nextCopyToClipboard(target){
     await navigator.clipboard.writeText(value);
     nextCopyState(target, key, "copied");
     if(status){
-      status.textContent = command ? `Copied ${command}` :
+      status.textContent = correction ? "Copied" : command ? `Copied ${command}` :
         (link ? "Copied a link to this session" : `Copied session ID ${sid}`);
     }
+    return true;
   }catch(_error){
     nextCopyState(target, key, "failed");
     if(status){
-      status.textContent = command
+      status.textContent = correction ? "Copy unavailable" : command
         ? "Re-entry command could not be copied"
         : (link ? "The link to this session could not be copied" : "Session ID could not be copied");
     }
+    return false;
   }
 }
 

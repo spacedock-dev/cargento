@@ -60,7 +60,7 @@ The posture rests on two invariants:
    no network on Cargento's own account: the hand-off request in Hand-off requests below writes one
    line to a socket on this machine, and what travels afterwards travels on the receiving session's
    own connection, which is why it is named here rather than counted above.
-2. Read-only against harness stores. They are opened read-only and never written. Twelve endpoints
+2. Read-only against harness stores. They are opened read-only and never written. Thirteen endpoints
    mutate, and seven of them only in memory: `POST /api/notify` updates needs-input state, and
    `POST /api/usage` stores a quota figure a harness published to its own status-line command.
    `POST /api/events/<harness>` also mutates in memory only, behind the capability described under
@@ -71,7 +71,7 @@ The posture rests on two invariants:
    timestamp for the whole board, never written to disk, and a body that names a session is refused
    rather than stripped. Delivery records below is where that refusal is stated. The long
    poll that delivers an answer, `GET /api/ask/<id>`, drops that question from memory once it has,
-   which is the delivery completing rather than a change a caller asked for. Five write to disk.
+   which is the delivery completing rather than a change a caller asked for. Six write to disk.
    `POST /api/dismiss` writes the sessions you marked handled,
    `POST /api/annotate` writes the goal you typed or explicitly adopted and the expected outcome lines you typed against a session, including a line you added from a later direction you gave and the settlement of those directions, and
    `POST /api/reading` writes a model's reading of that session back into the same annotation
@@ -121,13 +121,19 @@ The posture rests on two invariants:
    owns its bounds. The fifth, `POST /api/reading/cancel`, marks the running analysis cancelled,
    rewrites its recovery marker under the state directory, and kills its CLI's process group; the
    cancelled outcome it causes is written by the analysis's own job, into the same annotation entry
-   `POST /api/reading` writes. One forwarder writes too: `statusline_hook.py`'s deduplication memo under
+   `POST /api/reading` writes. The sixth, `POST /api/correction/copied`, records the digest of a
+   correction you copied, never its text, in `cargento-copied-corrections.json`; [Analyze drift,
+   Cancel and copied corrections](#analyze-drift-cancel-and-copied-corrections) owns its bounds.
+   One forwarder writes too: `statusline_hook.py`'s deduplication memo under
    the same directory, which holds a normalized state name and a timestamp and nothing about the
    session's content.
-   One `POST` mutates nothing and is named here for what it returns rather than for the count
-   above: `POST /api/direction` hands back the whole text of one later direction you gave, for
-   review before it becomes an outcome line, and [Analyze drift, Cancel and copied corrections](#analyze-drift-cancel-and-copied-corrections)
-   owns its bounds.
+   Two `POST`s store nothing of their own and are named here for what they return rather than for
+   the count above: `POST /api/direction` hands back the whole text of one later direction you
+   gave, for review before it becomes an outcome line, and `POST /api/correction` hands back Steer
+   back's correction, which is the goal and outcome lines you saved, each line's state and the
+   times of the entries it rests on. Each runs a collection to read the session, and that
+   collection may rewrite `semantic-work-history.json` as any collection does. [Analyze drift, Cancel and copied corrections](#analyze-drift-cancel-and-copied-corrections)
+   owns the bounds of both.
    One `GET` reads wider than the rest, and is named here for that reason rather than for the
    count above. `GET /api/annotations` serves the prose you composed, for every session you have
    annotated, including sessions no longer on the board. That is a wider scope than `/api/data`
@@ -1352,8 +1358,8 @@ the live estimate only classifies them on this machine, by time.
 
 ### Analyze drift, Cancel and copied corrections
 
-Ruled 2026-09-24 by [DEC-24](docs/design-reading-a-session.md#dec-24-your-intent-is-a-drafted-goal-and-a-checklist-and-a-correction-is-yours-to-copy). The background job and Cancel are built; each other part arrives with the
-layer named beside it, and the route counts in Scope move in those layers, not here.
+Ruled 2026-09-24 by [DEC-24](docs/design-reading-a-session.md#dec-24-your-intent-is-a-drafted-goal-and-a-checklist-and-a-correction-is-yours-to-copy). The background job, Cancel and the copied-correction route are built; each other part arrives
+with the layer named beside it, and the route counts in Scope move in those layers, not here.
 
 The labels. "Check for drift" became "Analyze drift", and "Allow and check" became "Allow and
 analyze", with DRC-4680. When idle the disclosure sits under "Analyze drift", whose press either
@@ -1462,19 +1468,61 @@ reader chose it, and it reaches no process but the reading's own. No job, anothe
 unknown session answer one `409 not-running` body, so the route says nothing about which sessions
 exist. It writes no consent and reserves nothing.
 
-The copied-correction route, with DRC-4678. When the reader copies a correction, the server records
-a digest of the exact text copied, edited or not: bounded per session, one use per digest, matched
-only after the copy. The correction is composed without a model from the reader's goal, outcome
-lines with their state, and cited entry numbers and times, and never from model prose, tool output
-or a recorded command. A later user message whose digest, computed from its raw text before any
-clipping, matches exactly is treated as Cargento-assisted: not adopted as the goal, not
-person-authored evidence and not an unsettled later direction. The residual is a local process: any
-process that can reach the loopback route can record a digest. Each digest it records can mark one
-later message whose text matches exactly as Cargento-assisted, once, up to the per-session bound. A
-marked message is not person-authored evidence and not an unsettled later direction, so a process
-that records the exact text of a short direction in advance can keep that direction from raising
-the later-direction question and from blocking "None or low". DRC-4678 states here, before it
-ships, where the digest is kept and what clears it.
+The copied-correction route, built with DRC-4678. `POST /api/correction/copied` names a session
+and the exact text the reader copied, at most 2,000 characters, and the server records its digest:
+a SHA-256 of the text after one normalisation, applied to both sides, which is what Claude Code
+2.1.283 was measured doing to a paste: CRLF and CR become LF, a tab becomes four spaces, and
+whitespace is trimmed at both ends. The store holds the digest, the moment of the copy and where the
+session's transcript ended at that moment (its inode and size), and, once a message is recognised,
+that message's fact id and time. It never holds the text. It is `cargento-copied-corrections.json`
+beside the annotation store, owner-only through a temp file and a rename, under an OS lock on the
+`.lock` file beside it. It is bounded at eight digests per session still waiting for their message
+and 32 recognised messages per session, the oldest of each dropped. Dropping the oldest waiting
+digest drops only a copy whose message never arrived: a message already recognised keeps its mark
+until 32 later recognised messages in that session push it out, and then it reads as the reader's
+own words again. `--forget` deletes the file, and `--no-annotations` turns it off. A digest still
+waiting answers without storing anything, so registering one twice earns no second match. Only
+Claude Code sessions are read for a match. A user message written after the point the transcript
+had reached when the text was copied, whose digest computed from its raw text before any redaction
+or clipping matches exactly, is Cargento-assisted, whatever either clock says. The transcript is
+read from that point to its end, at most its newest 32 MiB, the bound the semantic history store
+reads a source to, so a paste the bounded tail never held is still recognised. Each digest binds the
+first such message, and nothing before it, and a recognised message stays recognised after the
+tail moves past it. An assisted message is `derived` rather than person-authored evidence, is never
+adopted as the goal, does not open the evidence window of typed words, cannot be opened by
+`POST /api/direction`, is not an unsettled later direction, and is never shown as the stated goal,
+the assignment or an exact direction. Reader edits inside a copied correction are exempt from the
+later-direction floor: an edit made in Cargento's box before copying is inside the digest, while an
+edit after pasting, a backspace that wipes the paste included, makes a different message that is
+the reader's own. The route is guarded as `POST /api/direction` is: loopback only, same-origin,
+refused to a document navigation and to a same-site or cross-site fetch, and 503 under
+`--no-annotations`. Every accepted registration answers the same `{"ok": true}`, whether the session
+exists, whether its harness is read and whether that text was copied before, so the route says
+nothing about which sessions exist. Two things remain. Each probe of a real Claude Code session
+stores a digest and takes one of its eight waiting slots, pushing out the oldest copy still waiting.
+And a store that cannot be written answers 503 only when a write was attempted, which happens only
+for a real Claude Code session. The Copy button in Steer back's box calls this route with the box's
+exact text, after the clipboard took it and never before. The
+residual is a local process: any process that can reach the loopback route can record a digest.
+Each digest it records can mark one later message whose text matches exactly as Cargento-assisted,
+once, up to the per-session bound. A marked message is not person-authored evidence and not an
+unsettled later direction, so a process that records the exact text of a short direction in
+advance can keep that direction from raising the later-direction question and from blocking "None
+or low".
+
+Steer back's correction, built with DRC-4681. `POST /api/correction` names a session and nothing
+else, and answers a correction the server composes without a model from that session's published
+row and observed record: the goal and outcome lines the reader saved, each line's state re-derived
+from a stored reading of those exact words, and the time of each entry a line or sentence rests on.
+It never reads a fact's summary, a command, a check name, tool output, a reading's detail or a
+message's text, so none of them can reach the correction; each entry travels as its time and a
+placeholder holding its fact id, which the page replaces with the number its own list draws, or
+drops. A reply is at most 2,000 characters however the page numbers it, and is never truncated: a
+longer one drops its consistent lines and then answers a refusal sentence. It stores nothing of
+its own: it reads, and the collection it runs to read the session may rewrite the semantic history
+store, as `POST /api/direction`'s does. It is guarded as `POST /api/direction` is, reads Claude Code sessions only, and answers one body for an
+unknown session, another harness, and a session with nothing to steer from alike. The reader edits
+the text in the page and copies it; Cargento never sends it into the session.
 
 The Not accurate token, with DRC-4695. A reader may mark a reading not accurate. The token is stored
 with the annotation entry and removed with it, and, like the words and readings in that file, it is
@@ -2591,12 +2639,13 @@ that was.
 saying the machine's network may read the board, and there is no second gate behind it: everything
 the paragraph below grants another account on the machine, a non-default bind grants anything that
 can reach the port. Reading `/api/data` is the whole board: every session's titles, prompts and
-project paths. Writing is the fifteen POST routes enabled without terminal registration, `/api/shutdown` and `/api/answer` among them, so a
+project paths. Writing is the seventeen POST routes enabled without terminal registration, `/api/shutdown` and `/api/answer` among them, so a
 reachable dashboard can be killed, and a question a session is waiting on can be answered by
-somebody other than you. One of the fifteen only reads: `POST /api/direction` returns the whole text
-of a direction a session's user gave, which `/api/project-context` names by its first sentence. It
-answers only a loopback peer, so a non-default bind does not widen it; its bounds are in Analyze
-drift, Cancel and copied corrections. There is nothing to authenticate with on thirteen of them, for the reason the
+somebody other than you. Two of the seventeen store nothing of their own: `POST /api/direction` returns the whole text
+of a direction a session's user gave, which `/api/project-context` names by its first sentence, and
+`POST /api/correction` returns the goal and outcome lines a reader saved, composed as Steer back's
+correction. Both answer only a loopback peer, so a non-default bind does not widen them; their
+bounds are in Analyze drift, Cancel and copied corrections. There is nothing to authenticate with on fifteen of them, for the reason the
 ask-lane paragraph below gives: the page is served as fixed bytes with no per-run secret in them.
 Two carry a capability and they are not worth the same. `POST /api/events/<harness>` takes a per-run
 token published only in the state file at mode `0600` and never served to the page, so a client

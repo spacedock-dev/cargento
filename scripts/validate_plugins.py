@@ -306,6 +306,8 @@ CARGENTO_RUNTIME_FILES = (
     "skills/cargento/cargento_runtime/departures.py",
     "skills/cargento/cargento_runtime/ends.py",
     "skills/cargento/cargento_runtime/dismissals.py",
+    "skills/cargento/cargento_runtime/copied_corrections.py",
+    "skills/cargento/cargento_runtime/correction.py",
     "skills/cargento/cargento_runtime/notifications.py",
     "skills/cargento/cargento_runtime/spacedock.py",
     "skills/cargento/cargento_runtime/tripwires.py",

@@ -439,7 +439,8 @@ history; this is the only way. It deletes nothing you typed: the goal and the ex
 session, and any reading made against them, go when you discard that session's words on its
 session page. The one thing it takes out of that store is the record of a discard, which holds when the act
 happened and no text, and is the machine's memory of something it did rather than anything you
-wrote.
+wrote. It also deletes `cargento-copied-corrections.json`, the digests of corrections you copied
+from Cargento, which hold no text either.
 
 Stop the dashboard first if one is running. `--forget` refuses while an instance answers on the port
 it names, because a running server keeps its own copy of the history in memory and writes the

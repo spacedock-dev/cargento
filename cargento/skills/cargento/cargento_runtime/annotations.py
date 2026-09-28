@@ -1920,15 +1920,24 @@ def _with_entry(
     A full list is refused rather than trimmed, and a line is replaced only
     when the page names it: the lines written away are the reader's own
     (item 4 of the ruling `direction_floor` cites). `replace` is a position
-    counted from 0, as `origins` is.
+    counted from 0, as `origins` is. An entry already saved as another line is
+    refused too, through the same refusal: a second copy of it would write a
+    line of the reader's away for words the list already holds (page F1).
     """
     if line is None:
         return lines
     if replace is None:
-        return (*lines, line) if len(lines) < reading.MAX_OUTCOME_LINES else None
-    if isinstance(replace, bool) or not isinstance(replace, int) or not 0 <= replace < len(lines):
+        added = (*lines, line) if len(lines) < reading.MAX_OUTCOME_LINES else None
+    elif isinstance(replace, bool) or not isinstance(replace, int) or not 0 <= replace < len(lines):
         return None
-    return (*lines[:replace], line, *lines[replace + 1 :])
+    else:
+        added = (*lines[:replace], line, *lines[replace + 1 :])
+    source = line.get("source_id")
+    if added is None or (
+        source and sum(1 for kept in added if kept.get("source_id") == source) > 1
+    ):
+        return None
+    return added
 
 
 def _settlement_at(
@@ -2430,10 +2439,13 @@ def prompt_candidate(row: dict[str, Any], source: str) -> tuple[str, float | Non
     if harness not in {"claude", "codex"}:
         return "", None
     if source == "first-prompt":
+        # A correction the reader copied from Cargento is not their goal (DRC-4678).
+        if reading.prompt_copied(row, "first_prompt"):
+            return "", None
         text, at = row.get("first_prompt"), row.get("first_prompt_at")
     elif source == "latest-prompt" and harness == "claude":
         instruction = records.as_dict(row.get("instruction"))
-        if instruction.get("label") != "asked":
+        if instruction.get("label") != "asked" or reading.prompt_copied(row, "instruction"):
             return "", None
         text, at = instruction.get("text"), instruction.get("at")
     elif source == "latest-prompt" and row.get("prompt_states_work") is True:

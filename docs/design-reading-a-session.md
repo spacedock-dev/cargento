@@ -1558,10 +1558,21 @@ the later-direction floor (item 9).
    outcome line under item 4's rules. It never replaces the goal.
 9. A copied correction coming back. The server records a digest of the exact text the reader
    copied, edited or not, per session: bounded per session, one use per digest, matched only after
-   the copy. The Claude collector computes each user message's digest from its raw text before any
-   clipping. A later message that matches exactly is Cargento-assisted: not adopted as the goal,
-   not person-authored evidence, and not an unsettled later direction. No match, no special
-   treatment. SECURITY.md names the route and its local-process residual.
+   the copy. Each user message's digest is computed from its raw text before any clipping. A later
+   message that matches exactly is Cargento-assisted: not adopted as the goal, not person-authored
+   evidence, and not an unsettled later direction. No match, no special treatment. SECURITY.md
+   names the route and its local-process residual. Built by DRC-4678 to the owner's rulings of
+   2026-09-28: both sides normalise CRLF and CR to LF and a tab to four spaces and are trimmed at
+   both ends, which is what a live paste into Claude Code 2.1.283 measured; eight digests per
+   session, the oldest dropped; and the activity list labels a recognised message "You · Copied
+   from Cargento". An edited paste, a backspace that wipes it included, is the reader's own words.
+   The review round added three things. "After the copy" is a position in the transcript, not a
+   clock: a message counts only if it was written past where the transcript ended when the text
+   was copied. A recognised message is stored by its fact id and stays recognised after the tail
+   moves on, up to 32 per session, apart from the eight waiting digests. Adoption and every
+   surface that shows a prompt as the reader's words (the stated goal, the assignment, an exact
+   direction) compare fact ids, so a prompt typed in the same second as a paste stays the
+   reader's while the tail holds it.
 10. Not accurate. A token the reader can set on a reading, stored with the annotation entry and
     removed with it. `--forget` does not reach it. It is never sent, never counted and never entered
     into abstention marks, and SECURITY.md notes it.
@@ -2144,6 +2155,73 @@ decisions below follow that ruling and the DRC-4702 decisions of the same date.
   after your words; 1 earlier and 1 untimed entries were not read; 1 entry after the last observed
   stop was not read." Each clause appears only when its count is not zero, in the singular for
   one, and the time and author mix follow in their own sentence, "Of those read, ...".
+
+### What the Steer back and Update intent build decided, 2026-09-28
+
+DRC-4681 built item 7 and DRC-4697 built item 8, to the owner's rulings of 2026-09-28: the template
+approved as exact text, the server composing with placeholders and times while the page fills in
+"#n", no Steer back with nothing to steer from, consistent lines dropped before a refusal over 2,000
+characters, the Copy cue reusing "Copied" and "Copy unavailable", the direction offered, and the
+saved-line labels. The calls the rulings left open:
+
+- The route is `POST /api/correction`, answering parts rather than a published field, because
+  composition reads the record, and a per-session field would compose on every collection for a
+  box few readers open. A part is text or `{"entry": fact_id}`. The page writes the first number
+  it draws as "(#n in Cargento)" and the rest as "(#n)", as the template shows them, and an entry
+  it does not number keeps only its time, which the server already wrote.
+- Each line's state is the stored reading's, re-derived against the record as it is now with the
+  page's rules for whether a verdict survives: a reading of an older revision lends no state, an
+  unsettled later direction demotes a departure, a citation must resolve inside the reading's
+  window, and on Claude Code an outcome-line verdict stands only where the route can carry checks
+  (`nextReadingOutputLimit`). A stored `why` the page knows never demotes a row, because the page
+  applies one only after its own rules have left the row unverifiable; one it does not know demotes
+  it as unreadable. Otherwise the text could claim a departure the panel beside it has demoted. A
+  goal departure counts as something to steer from, and the template says it as "Back to my goal".
+- One sentence each for a failed check and a later direction, at the latest of each. A settled
+  later direction still counts, because settling records that the baseline still applies, not
+  that the reader never said it. A copied correction is never one.
+- Consistent lines are dropped one at a time, the last first, until the text fits. Every
+  placeholder is counted at six digits, so the page's text never passes 2,000 whatever it numbers.
+  Both sides count characters as code points: the page has no `maxlength`, which counts UTF-16
+  units, so a correction of emoji is shown whole and one keystroke never cuts it. An edit past
+  the cap is cut from the run it inserted, by whole characters, and never from the text already
+  there: keeping the first 2,000 code points of the whole value cut a mid-text paste's tail and
+  split "é" into a bare "e".
+- Claude Code only, as the copy route is, so a paste of the correction can be recognised coming
+  back. An unknown session and another harness answer what a session with nothing to steer from
+  does.
+- Placement. Steer back takes the control's slot on the first screen rather than the result's rows,
+  which ran to 2,567px at 1440x900 with six lines when it was first drawn there. Under a surviving
+  departure it is the one primary with Update intent instead beside it, and Analyze drift follows
+  as a secondary, the design's "Analyze again". With no reader it is the primary beside the route's
+  reason. With a reader and no departure it is a secondary after Analyze drift. It is not drawn
+  while the question before the press stands, since the question owns that slot and Keep is its
+  primary. The result stage gains nothing, so DRC-4695 renders around it.
+- The box is labelled "Correction to copy" with the hint "Cargento never sends this. Copy it and
+  paste it into the session." Copy writes the box's text, frozen at the press, and posts it to
+  `POST /api/correction/copied` only after the clipboard took it. The owner approved "Copy",
+  "Nothing recorded now gives a correction to steer back from." and "Could not compose a
+  correction. Press Steer back again to retry." on 2026-09-28. A press over either refusal asks
+  again, in one press.
+- An open box follows the record. The press stamps what composition read: the saved words'
+  revision, the settlement, the stored reading's `read_at`, and the entries the parts cite. A
+  change in any of them drops a text the reader has not edited, which is recomposed from the server
+  where there is still something to steer from and closed where there is not, so Copy never records
+  a text composed from a record that no longer holds. An edited text stays the reader's, marked
+  "This was composed from an older record. Recompose replaces your edit with a correction from the
+  record as it stands." beside a Recompose button; both wait on the owner.
+- Update intent instead offers the direction a surviving departure cites, else the latest later
+  direction, through Add's own `POST /api/direction`, skipping any direction already saved as a
+  line; with none left it adds the empty line. The store refuses an entry already saved as another
+  line through the same refusal a stale revision gets, so no route can add it twice. The pending line it opens stands while its
+  direction is any later direction, settled or not, where Add's own line stands only while its
+  direction is unsettled. With no later direction it adds an empty outcome line, focused, and at
+  six lines it says the existing six-line sentence and adds nothing. The server already added a
+  settled direction: `annotations.direction_floor` never read the settlement.
+- A saved line added from an entry reads "added from #12" where the list numbers that entry and
+  "added from your direction at 14:04" where it does not. With no record read, or the entry gone
+  from it, it keeps "added from an entry". The reading's row label beside a line still says "ADDED
+  FROM AN ENTRY", which DRC-4695's result renders anew.
 
 ## DEC-26: four drift levels, and a live estimate after every turn
 

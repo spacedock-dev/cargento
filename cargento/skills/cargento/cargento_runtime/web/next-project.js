@@ -245,15 +245,17 @@ function nextAnnotationLines(annotation){
   for(let k = 1; k <= NEXT_OUTCOME_LINES_MAX; k += 1){
     const text = String(annotation && annotation[`line_${k}`] || "");
     if(!text.trim()) continue;
-    lines.push({k, text, source: String(annotation[`line_${k}_source`] || "typed")});
+    lines.push({k, text, source: String(annotation[`line_${k}_source`] || "typed"),
+      sourceId: String(annotation[`line_${k}_source_id`] || "")});
   }
   return lines;
 }
 
 /* Where a line came from, in the reader's words. Only the server mints an
    entry line, and it keeps the entry's fact id rather than a number, because
-   the activity list numbers entries afresh; so this names the kind of source
-   and not "#n" until the list carries stable numbers. */
+   the activity list numbers entries afresh. This is the kind of source alone,
+   for a surface with no record to number against; the session page names the
+   entry itself (`nextCockpitLineSource`, DRC-4697). */
 function nextOutcomeLineSource(line){
   return line && line.source === "entry" ? "added from an entry" : "typed";
 }
