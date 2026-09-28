@@ -22,6 +22,7 @@ from urllib.parse import ParseResult, parse_qs, urlparse
 from cargento_runtime import annotations as annotation_store
 from cargento_runtime import asks as runtime_asks
 from cargento_runtime import (
+    copied_corrections,
     departures,
     dismissals,
     notifications,
@@ -308,7 +309,7 @@ def _session_context(application: Any, row: dict[str, Any]) -> dict[str, Any]:
         focus=(str(row.get("harness")), str(row.get("sid"))),
         model_consent=False,
     )
-    return context if isinstance(context, dict) else {}
+    return copied_corrections.mark(context, [row]) if isinstance(context, dict) else {}
 
 
 def _latest_revision(entry: annotation_store.Annotation | None) -> int:
@@ -848,6 +849,10 @@ class _RequestHandler(BaseHTTPRequestHandler):
                 and self._loopback_resource_ok()
             ),
         )
+        # Marked here and in `_session_context`, the two readers the page and the
+        # reading route see; the unasked lane receives no copy (item 12 of the ruling
+        # `copied_corrections` cites).
+        result = copied_corrections.mark(result, collected["sessions"])
         self._send(
             json.dumps(result, ensure_ascii=False, separators=(",", ":")).encode(),
             "application/json",
@@ -1976,6 +1981,7 @@ class _RequestHandler(BaseHTTPRequestHandler):
             not isinstance(fact, dict)
             or fact.get("type") != "user_message"
             or fact.get("source_session") != {"harness": harness, "sid": sid}
+            or fact.get(runtime_reading.COPIED_FLAG) is True
         ):
             return None
         at = runtime_reading.valid_prompt_time(fact.get("at"))
@@ -2083,6 +2089,68 @@ class _RequestHandler(BaseHTTPRequestHandler):
                 "fits": fits,
             }
         self._send(json.dumps(answer, separators=(",", ":")).encode(), "application/json")
+
+    def _correction_copied(self) -> None:
+        """Record that the reader copied this correction for this session (DRC-4678).
+
+        Guarded as `POST /api/direction` and the reading route are: 503 under
+        `--no-annotations`, whose flag turns the store off, and refused to a
+        document navigation and to a same-site or cross-site fetch, because a
+        forged copy would let a page mark the reader's next message as
+        Cargento's. An unknown session, a harness whose messages are not read
+        and a digest already held answer one 200 body, for `_focus`'s ruling.
+        """
+        application = self.server.application
+        config = application.config
+        if not config.annotations_enabled:
+            self._reject(503)
+            return
+        if self._is_document_navigation() or not self._loopback_resource_ok():
+            self._reject(403)
+            return
+        try:
+            length = int(self.headers.get("Content-Length") or 0)
+        except ValueError:
+            length = -1
+        if not 0 <= length <= config.annotation_body_cap_bytes:
+            self._reject(413)
+            return
+        try:
+            payload = json.loads(self._read_body(length) or b"{}")
+        except (ValueError, json.JSONDecodeError, RecursionError):
+            payload = {}
+        if not isinstance(payload, dict):
+            payload = {}
+        harness, sid, text = payload.get("harness"), payload.get("sid"), payload.get("text")
+        if (
+            not all(isinstance(part, str) and part for part in (harness, sid))
+            or not isinstance(text, str)
+            or len(text) > copied_corrections.CORRECTION_CAP_CHARS
+            or not copied_corrections.normalise(text)
+        ):
+            self._reject(400)
+            return
+        outcome = copied_corrections.OUTCOME_REFUSED
+        if harness in copied_corrections.HARNESSES and self._session_row(str(harness), str(sid)):
+            outcome = copied_corrections.register(
+                config,
+                harness,
+                sid,
+                text,
+                now=application.clock(),
+                diagnostic_sink=application.diagnostic_sink,
+            )
+            # The next collection must read the store again, not a cached board.
+            application.state.snapshot.clear()
+        unwritable = outcome == copied_corrections.OUTCOME_UNWRITABLE
+        self._send(
+            json.dumps(
+                {"ok": not unwritable, "registered": outcome == copied_corrections.OUTCOME_STORED},
+                separators=(",", ":"),
+            ).encode(),
+            "application/json",
+            503 if unwritable else 200,
+        )
 
     def _reading_permission_reply(
         self, answer: reading_policy.Status, *, off: bool = False
@@ -2470,6 +2538,7 @@ class _RequestHandler(BaseHTTPRequestHandler):
             "/api/tripwire": self._tripwire,
             "/api/annotate": self._annotate,
             "/api/direction": self._direction,
+            "/api/correction/copied": self._correction_copied,
             "/api/reading": self._reading,
             "/api/reading/cancel": self._reading_cancel,
             "/api/focus": self._focus,

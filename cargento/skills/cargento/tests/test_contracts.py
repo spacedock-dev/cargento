@@ -1373,6 +1373,8 @@ class RuntimeImportGraphTest(unittest.TestCase):
         # this stays inward.
         "cargento_runtime.aggregate": {
             "cargento_runtime.reading_policy",
+            # Attaches each row's recognised copied corrections (DRC-4678).
+            "cargento_runtime.copied_corrections",
             # Publishes who reads each harness's sessions (DRC-4650).
             "cargento_runtime.reading_route",
             "cargento_runtime.tripwires",
@@ -1396,6 +1398,19 @@ class RuntimeImportGraphTest(unittest.TestCase):
             "cargento_runtime.snapshot",
             "cargento_runtime.state",
             "cargento_runtime.unasked",
+        },
+        # Not a leaf: it re-reads a Claude Code transcript tail and recomputes
+        # fact ids through `project_context`, as `direction_text` does, rather
+        # than editing that module, which the abstention qualification freezes
+        # (DRC-4678). Only `aggregate`, `http_api` and `cli` reach it.
+        "cargento_runtime.copied_corrections": {
+            "cargento_runtime.config",
+            "cargento_runtime.io",
+            "cargento_runtime.observer",
+            "cargento_runtime.project_context",
+            "cargento_runtime.reading",
+            "cargento_runtime.records",
+            "cargento_runtime.state",
         },
         # A leaf over the same four as `dismissals`, for the same reason: the
         # lane writes it, the application publishes it and a review surface
@@ -1434,6 +1449,8 @@ class RuntimeImportGraphTest(unittest.TestCase):
         # The CLI is the assembly point, so it may import any runtime module.
         "cargento_runtime.cli": {
             "cargento_runtime.reading_policy",
+            # `--forget` deletes the copied-correction digests (DRC-4678).
+            "cargento_runtime.copied_corrections",
             "cargento_runtime.aggregate",
             # `--forget` sweeps the discard records this store keeps
             # (DRC-4565): a record that Cargento deleted something is the
@@ -1772,6 +1789,8 @@ class RuntimeImportGraphTest(unittest.TestCase):
         # `PendingAsk` and is therefore the one place that bounding can happen.
         "cargento_runtime.http_api": {
             "cargento_runtime.reading_policy",
+            # `POST /api/correction/copied`, and the `copied` mark on facts (DRC-4678).
+            "cargento_runtime.copied_corrections",
             # Resolves the one provider a press may reach (DRC-4650).
             "cargento_runtime.reading_route",
             "cargento_runtime.tripwires",

@@ -667,6 +667,12 @@ def base_session(harness: str, sid: Any, project: str) -> Session:
         "annotation_reading_count": 0,
         "annotation_reading_withheld": "",
         "annotation_reading_refused": False,
+        # The messages in this session recognised as a correction the reader
+        # copied from Cargento, each `{"fact_id", "at"}` (DRC-4678). `[]` is
+        # every row with none, which is also every row nothing was copied for:
+        # it is a list to read, never a count. Filled by
+        # `copied_corrections.attach`, and never in session history.
+        "copied_prompts": [],
         # What became of the notifications raised about this session, and
         # whether a dashboard tab has reported a notification lane of its own.
         # Declared here at their absent values on the rule above, and left empty

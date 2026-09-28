@@ -1843,6 +1843,7 @@ function nextCockpitWorkEntries(session, semantic){
         actorClaim: String(fact.actor_claim || ""),
         modelDerived: String(fact.actor_claim || "").startsWith("model-derived"),
         subject: String(fact.subject || ""),
+        copied: fact.copied === true,
         work: nextReadingWorkOn(session && session.harness, fact.type),
         result: String(fact.result || ""),
         resultSource: String(fact.result_source || ""),
@@ -1925,7 +1926,8 @@ function nextCockpitEntryNumbers(session, source){
 
 function nextCockpitEntryActor(entry){
   const author = nextReadingAuthor(entry);
-  if(author === "person") return "You";
+  /* You pasted it, and Cargento wrote it: the meta says which. */
+  if(author === "person" || nextReadingCopied(entry)) return "You";
   /* Cargento's own paraphrase is never credited to the agent, which is the
      rule `nextReadingAuthor` records for a reading. */
   return author === "derived" ? "Cargento’s summary" : "Agent";
@@ -1999,8 +2001,8 @@ function nextCockpitWorkEvidence(session, source, cited = new Set()){
     const head = entry.type === "tool_report"
       ? `<span class="next-cockpit-work-result">${esc(nextCockpitToolReportLine(entry))}</span>`
       : `<span class="next-cockpit-work-actor">${esc(nextCockpitEntryActor(entry))}</span>` +
-        `<span class="next-cockpit-work-type">${esc(entry.type === "user_message" ? "Prompt"
-          : entry.type)}</span>`;
+        `<span class="next-cockpit-work-type">${esc(nextReadingCopied(entry)
+          ? "Copied from Cargento" : entry.type === "user_message" ? "Prompt" : entry.type)}</span>`;
     /* Neutral tags: neither is a finding. "Cited" says a departure rests on
        the entry, and a later direction is never called drift
        ([DEC-16](docs/design-reading-a-session.md#dec-16-cargento-does-not-write-into-a-session)). */
@@ -2112,17 +2114,20 @@ function nextCockpitWorkMix(entries){
      about who wrote a row, because rule 7 already owns that question and two
      answers to it on one page is how they drift. */
   let directions = 0;
+  let copied = 0;
   let derived = 0;
   let summaries = 0;
   let work = 0;
   for(const entry of entries){
     if(nextReadingPersonAuthored(entry)) directions += 1;
+    else if(nextReadingCopied(entry)) copied += 1;
     else if(entry.modelDerived) derived += 1;
     else if(String(entry.type || "") === "observer_snapshot") summaries += 1;
     else work += 1;
   }
   const parts = [`${entries.length} ${entries.length === 1 ? "entry" : "entries"}`];
   if(directions) parts.push(`${directions} ${directions === 1 ? "direction" : "directions"} you gave`);
+  if(copied) parts.push(`${copied} copied from Cargento`);
   if(derived) parts.push(`${derived} model-derived`);
   if(summaries){
     parts.push(`${summaries} derived ${summaries === 1 ? "summary" : "summaries"} of this session`);
@@ -2373,9 +2378,16 @@ const NEXT_READING_STORED_WHY = {
    asymmetry in rule 7 turns on it and a truthy check would count every
    unfamiliar type as a person's words. A gate decision is a person's only
    where the source records one. */
+/* A message the server recognised as a correction the reader copied from
+   Cargento is Cargento's words (DRC-4678, `reading.COPIED_FLAG`): not theirs
+   here, so not a later direction and not a turn's start either. */
+function nextReadingCopied(entry){
+  return String(entry && entry.type || "") === "user_message" && entry.copied === true;
+}
+
 function nextReadingPersonAuthored(entry){
   const type = String(entry && entry.type || "");
-  if(type === "user_message") return true;
+  if(type === "user_message") return entry.copied !== true;
   return type === "gate_decision" && String(entry && entry.by || "").startsWith("person:");
 }
 
@@ -2456,6 +2468,7 @@ function nextReadingSubjectlessPiCheck(entry){
    and the prefix catches only one of them. */
 function nextReadingAuthor(entry){
   if(nextReadingPersonAuthored(entry)) return "person";
+  if(nextReadingCopied(entry)) return "derived";
   return String(entry && entry.type || "") === "observer_snapshot" ? "derived" : "agent";
 }
 
@@ -6263,6 +6276,10 @@ function nextPromptCandidate(session, source = "latest-prompt"){
   }else if(source === "latest-prompt" && session.prompt_states_work === true){
     text = String(session.title || ""); at = nextNumber(session.prompt_at);
   }
+  /* A correction the reader copied from Cargento is never their goal, as
+     `annotations.prompt_candidate` refuses it (DRC-4678). */
+  if(at != null && (Array.isArray(session.copied_prompts) ? session.copied_prompts : [])
+    .some(entry => entry && nextNumber(entry.at) === at)) return null;
   return text ? {text, at: at != null && at > 0 ? at : null, source} : null;
 }
 

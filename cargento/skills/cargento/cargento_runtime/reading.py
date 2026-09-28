@@ -225,6 +225,14 @@ AUTHOR_PERSON = "person"
 AUTHOR_AGENT = "agent"
 AUTHOR_DERIVED = "derived"
 
+# A user message whose raw text matches a correction the reader copied from Cargento
+# (`copied_corrections`, DRC-4678) carries this flag, and its session row lists it under
+# `COPIED_PROMPTS`. It is Cargento's words, so it is `derived` here, and adoption and the
+# later-direction floor read the same mark: item 9 of the ruling `copied_corrections` cites
+# makes the three one rule.
+COPIED_FLAG = "copied"
+COPIED_PROMPTS = "copied_prompts"
+
 # Which cited entries may carry a verdict about a deliverable. rule 7
 # keyed this on WHO wrote an entry, and the captain amended it on 2026-09-10
 # after seven adversaries showed the coded rule inverted its own reason: the
@@ -1029,7 +1037,7 @@ def author_of(fact: Mapping[str, Any]) -> str:
     """
     fact_type = str(fact.get("type") or "")
     if fact_type == "user_message":
-        return AUTHOR_PERSON
+        return AUTHOR_DERIVED if fact.get(COPIED_FLAG) is True else AUTHOR_PERSON
     if fact_type == "gate_decision" and str(fact.get("by") or "").startswith("person:"):
         return AUTHOR_PERSON
     if fact_type == "observer_snapshot":
@@ -2485,12 +2493,15 @@ def typed_window_start(
 
     A `user_message` only. `author_of` also counts a person's gate decision,
     and approving a permission mid-turn is not new words: counting it would
-    move the window past the prompt that started the run.
+    move the window past the prompt that started the run. A copied correction
+    is not your words either (`COPIED_FLAG`).
     """
     latest = saved_at
     found = False
     for fact in facts:
         if not isinstance(fact, dict) or fact.get("type") != "user_message":
+            continue
+        if fact.get(COPIED_FLAG) is True:
             continue
         session = fact.get("source_session")
         if not isinstance(session, dict):

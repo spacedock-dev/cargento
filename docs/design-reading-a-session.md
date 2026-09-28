@@ -1561,7 +1561,12 @@ the later-direction floor (item 9).
    the copy. The Claude collector computes each user message's digest from its raw text before any
    clipping. A later message that matches exactly is Cargento-assisted: not adopted as the goal,
    not person-authored evidence, and not an unsettled later direction. No match, no special
-   treatment. SECURITY.md names the route and its local-process residual.
+   treatment. SECURITY.md names the route and its local-process residual. Built by DRC-4678 to the
+   owner's rulings of 2026-09-28: both sides normalise CRLF and CR to LF and a tab to four spaces
+   and are trimmed at both ends, which is what a live paste into Claude Code 2.1.283 measured;
+   eight digests per session, the oldest dropped; and the activity list labels a recognised
+   message "You · Copied from Cargento". An edited paste, a backspace that wipes it included, is
+   the reader's own words.
 10. Not accurate. A token the reader can set on a reading, stored with the annotation entry and
     removed with it. `--forget` does not reach it. It is never sent, never counted and never entered
     into abstention marks, and SECURITY.md notes it.
