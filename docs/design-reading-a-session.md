@@ -1492,8 +1492,10 @@ the measured note that DEC-23 reads the root session's calls alone.
 3. A subagent's entry is labelled in the record. The event and its published fact carry
    `worker_kind: "subagent"`, a key the fact already allows, on a check whose latest run was a
    subagent's and on a path a subagent wrote last. The parent's own entries carry none. The page
-   renders no word for it yet, and the evidence source line and the prompt row are unchanged: what
-   the page calls a subagent's check is the owner's to word.
+   renders no word for the key itself, so the evidence source line names the worker instead:
+   "Claude subagent Bash call and paired result", "Claude subagent Edit call", and so on. The owner
+   chose that wording on 2026-09-28 because the page already shows the source line and it needs no
+   web change.
 4. A subagent's writes count against the parent's earlier passes, with the same fields: a
    file-write tool's path, a check's own redirect, a fixer, and every changing shell command set
    `before_last_change`, `changed_after` and `last_changing_command_at` exactly as the parent's

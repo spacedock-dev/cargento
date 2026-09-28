@@ -154,6 +154,18 @@ class ASubagentsCheckIsTheParents(SubagentChecksTestCase):
         self.assertNotIn("worker_kind", found["pytest"])
         self.assertEqual("subagent", found["ruff check ."]["worker_kind"])
 
+    def test_a_reader_sees_the_subagent_named_in_the_source_line(self) -> None:
+        """The page shows no worker label, so the source line carries it (owner, 2026-09-28)."""
+        self.session.bash("pytest", "5 passed", is_error=False)
+        sub = self.delegate()
+        sub.bash("ruff check .", "All checks passed!", is_error=False)
+        sub.edit(self.file("src/retry.py"))
+        self.returns(sub)
+        found = {e["title"]: e["source"] for e in self.read()[0]}
+        self.assertEqual("Claude Bash call and paired result", found["pytest"])
+        self.assertEqual("Claude subagent Bash call and paired result", found["ruff check ."])
+        self.assertEqual("Claude subagent Edit call", found["src/retry.py"])
+
     def test_the_label_reaches_the_published_fact(self) -> None:
         sub = self.delegate()
         sub.bash("pytest", "5 passed", is_error=False)

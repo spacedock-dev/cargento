@@ -2912,12 +2912,15 @@ class _ToolReportTally:
     def _check_entry(self, history: list[dict[str, Any]]) -> dict[str, Any]:
         index = self._latest(history)
         latest = history[index]
+        # The page renders no word for `worker_kind`, so the source line names
+        # the subagent (owner, 2026-09-28).
+        who = "Claude subagent" if latest["worker"] else "Claude"
         if latest["background"]:
-            source = "Claude Bash call run in the background, no result recorded"
+            source = f"{who} Bash call run in the background, no result recorded"
         elif latest["recorded"]:
-            source = "Claude Bash call and paired result"
+            source = f"{who} Bash call and paired result"
         else:
-            source = "Claude Bash call, no result recorded yet"
+            source = f"{who} Bash call, no result recorded yet"
         entry: dict[str, Any] = {
             "kind": "check_run",
             "subject": "check",
@@ -2966,7 +2969,7 @@ class _ToolReportTally:
                 "at": write["at"],
                 "record_id": write["record_id"],
                 "title": records.safe_text(path, TOOL_REPORT_PATH_CHARS),
-                "source": f"Claude {write['tool']} call",
+                "source": f"Claude {'subagent ' if write['worker'] else ''}{write['tool']} call",
                 "rank": len(_RESULT_ORDER),
                 **({"worker_kind": write["worker"]} if write["worker"] else {}),
             }
