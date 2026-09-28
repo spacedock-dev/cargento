@@ -868,6 +868,44 @@ class ReportSpendsNothing(unittest.TestCase):
         self.assertIn("No scoring run has been recorded", text)
 
 
+class TheReportNamesThePacketItReadTest(unittest.TestCase):
+    """The owner read a default-home packet as his own; the report must say which it read."""
+
+    def test_the_first_line_names_the_packet_and_the_default_home(self) -> None:
+        with tempfile.TemporaryDirectory() as folder:
+            home = Path(folder)
+            packet = home / ".cargento" / "abstention-claude-2026-09-27"
+            packet.mkdir(parents=True)
+            cases = packet / "abstention-cases.json"
+            cases.write_text(json.dumps({"v": 3, "cases": [_case("a" * 16)]}))
+            for default_home in (False, True):
+                printed: list[str] = []
+                with (
+                    mock.patch.object(abstention_ledger, "real_home", return_value=str(home)),
+                    mock.patch.object(score_abstention, "CASES_PATH", str(cases)),
+                    mock.patch.object(score_abstention, "MARKS_PATH", str(packet / "m.json")),
+                    mock.patch.object(mark_abstention, "DEFAULT_HOME", default_home),
+                    mock.patch("builtins.print", _collect(printed)),
+                ):
+                    code = score_abstention.main(
+                        [
+                            "--report",
+                            "--rubric",
+                            str(packet / "r.json"),
+                            "--out",
+                            str(packet / "o.json"),
+                        ]
+                    )
+                with self.subTest(default_home=default_home):
+                    self.assertEqual(0, code)
+                    self.assertEqual(
+                        "Packet: ~/.cargento/abstention-claude-2026-09-27/abstention-cases.json "
+                        "(1 case)",
+                        printed[0],
+                    )
+                    self.assertEqual(default_home, "CARGENTO_HOME is not set" in printed[1])
+
+
 class TheDisclosureIsWrittenWhereTheCodeSaysItIs(unittest.TestCase):
     """AC4: the answer lives in SECURITY.md, and the scorer points at it."""
 

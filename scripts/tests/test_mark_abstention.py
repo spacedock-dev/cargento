@@ -455,5 +455,142 @@ class TheDocstringDoesNotClaimWhatTheCodeLacksTest(unittest.TestCase):
             self.assertFalse(hasattr(mark_abstention, gone), f"{gone} is dead and still here")
 
 
+def _built(case_id: str, **fields: Any) -> dict[str, Any]:
+    """A case as `--build` writes one, format 3."""
+    return {
+        "id": case_id,
+        "harness": "codex",
+        "sid": "s1",
+        "end_shape": "still running",
+        "facts": 0,
+        "citable": 0,
+        "work_results": 0,
+        "reached": True,
+        "asks_output": False,
+        **fields,
+    }
+
+
+class _Home(unittest.TestCase):
+    """A packet in a home that `~` stands for, and a way to run either mode against it."""
+
+    def setUp(self) -> None:
+        temp = tempfile.TemporaryDirectory()
+        self.addCleanup(temp.cleanup)
+        self.home = Path(temp.name)
+        folder = self.home / ".cargento" / "abstention-claude-2026-09-27"
+        folder.mkdir(parents=True)
+        self.cases = folder / "abstention-cases.json"
+        self.marks = folder / "abstention-marks.json"
+
+    def run_mode(
+        self, body: dict[str, Any], mode: Callable[[], int], *, default_home: bool = False
+    ) -> tuple[int, list[str], Any]:
+        self.cases.write_text(json.dumps(body))
+        printed: list[str] = []
+        with (
+            mock.patch.object(abstention_ledger, "real_home", return_value=str(self.home)),
+            mock.patch.object(mark_abstention, "CASES_PATH", str(self.cases)),
+            mock.patch.object(mark_abstention, "MARKS_PATH", str(self.marks)),
+            mock.patch.object(mark_abstention, "DEFAULT_HOME", default_home),
+            mock.patch.object(mark_abstention, "_ask", return_value=None) as ask,
+            mock.patch("builtins.print", side_effect=_collect(printed)),
+        ):
+            code = mode()
+        return code, printed, ask
+
+
+class ThePacketReadIsNamedFirstTest(_Home):
+    """The owner posted a 23 case report from the default home as his marks for a 13 case packet."""
+
+    WANT = "Packet: ~/.cargento/abstention-claude-2026-09-27/abstention-cases.json (2 cases)"
+
+    def body(self) -> dict[str, Any]:
+        return {"v": 3, "cases": [_built("a" * 16), _built("b" * 16, sid="s2")]}
+
+    def test_the_report_names_the_packet_on_its_first_line(self) -> None:
+        code, printed, _ask = self.run_mode(self.body(), mark_abstention.report)
+        self.assertEqual(0, code)
+        self.assertEqual(self.WANT, printed[0])
+        self.assertNotIn("CARGENTO_HOME", "\n".join(printed))
+
+    def test_marking_names_the_packet_on_its_first_line(self) -> None:
+        _code, printed, _ask = self.run_mode(self.body(), mark_abstention.mark)
+        self.assertEqual(self.WANT, printed[0])
+
+    def test_the_default_home_is_called_out_when_cargento_home_is_unset(self) -> None:
+        for mode in (mark_abstention.report, mark_abstention.mark):
+            with self.subTest(mode=mode.__name__):
+                _code, printed, _ask = self.run_mode(self.body(), mode, default_home=True)
+                self.assertEqual(self.WANT, printed[0])
+                self.assertIn("CARGENTO_HOME is not set", printed[1])
+                self.assertIn("default home", printed[1])
+
+    def test_the_default_home_follows_the_environment_at_import(self) -> None:
+        self.assertEqual(not os.environ.get("CARGENTO_HOME"), mark_abstention.DEFAULT_HOME)
+
+
+class AMismatchedPacketIsRefusedBeforeItIsShownTest(_Home):
+    """A checkout 24 commits behind died on `KeyError: 'end_shape'` at `_show`."""
+
+    def assert_refused(self, body: dict[str, Any], *named: str) -> None:
+        for mode in (mark_abstention.mark, mark_abstention.report):
+            with self.subTest(mode=mode.__name__):
+                code, printed, ask = self.run_mode(body, mode)
+                said = "\n".join(printed)
+                self.assertEqual(1, code, said)
+                self.assertEqual(0, ask.call_count)
+                self.assertTrue(printed[0].startswith("Packet: ~/.cargento/"), printed[0])
+                self.assertIn("frozen by a different version of these scripts", said)
+                self.assertIn("git pull", said)
+                self.assertNotIn("=" * 72, said)
+                self.assertFalse(self.marks.exists())
+                for word in named:
+                    self.assertIn(word, said)
+
+    def test_a_built_case_without_its_end_shape_is_refused(self) -> None:
+        case = _built("a" * 16)
+        del case["end_shape"]
+        self.assert_refused({"v": 3, "cases": [case]}, "end_shape", "a" * 16)
+
+    def test_a_format_this_version_does_not_know_is_refused(self) -> None:
+        self.assert_refused({"v": 6, "cases": [_built("a" * 16)]}, "format 6")
+
+    def test_a_packet_with_no_format_is_refused(self) -> None:
+        self.assert_refused({"cases": [_built("a" * 16)]}, "no case format")
+
+    def test_a_frozen_claude_case_without_its_parser_stamp_is_refused(self) -> None:
+        case = {
+            "id": "a" * 16,
+            "harness": "claude",
+            "sid": "s1",
+            "origin": "recorded",
+            "captured_at": 110.0,
+            "row_snapshot": {"harness": "claude", "sid": "s1", "state": "working"},
+            "intent": {"goal": "g", "lines": [{"text": "t"}]},
+            "producer_facts": [],
+            "unconfirmed": [],
+            "tool_output": {"tails": {}, "changed_after": []},
+        }
+        self.assert_refused({"v": 5, "cases": [case]}, "transcript_bytes", "parser")
+
+    def test_a_case_that_is_not_an_object_is_refused(self) -> None:
+        self.assert_refused({"v": 3, "cases": [_built("a" * 16), "b"]}, "case 2")
+
+    def test_a_whole_packet_is_still_marked(self) -> None:
+        code, _printed, ask = self.run_mode(
+            {"v": 3, "cases": [_built("a" * 16)]}, mark_abstention.mark
+        )
+        self.assertEqual(0, code)
+        self.assertEqual(1, ask.call_count)
+
+    def test_the_screen_itself_never_indexes_an_optional_field(self) -> None:
+        printed: list[str] = []
+        with mock.patch("builtins.print", side_effect=_collect(printed)):
+            mark_abstention._show({}, "1/1")
+            mark_abstention._show({"reached": True, "citable": 2}, "1/1")
+        self.assertIn("2 citable facts, 0 of them showing work done", "\n".join(printed))
+
+
 if __name__ == "__main__":
     unittest.main()

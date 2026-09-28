@@ -1674,6 +1674,38 @@ def _binding_refusal(corpus: Corpus, binding: Mapping[str, str] | None) -> str:
     return ""
 
 
+def parser_mismatch(corpus: Corpus) -> list[str]:
+    """Why this checkout cannot score the packet's stamped cases, or nothing.
+
+    The score-time re-check demotes a case whose `parser` stamp differs from
+    this checkout's (`frozen-on-another-parser`). Measured before this refusal:
+    the run still went ahead, withheld each such case unscored and charged
+    every other case to the ledger, so the calls bought a result that could
+    only read short.
+    """
+    if corpus.cases.get("v") != mark_abstention.FORMAT_INTENT:
+        return []
+    cases = [c for c in corpus.cases.get("cases") or () if isinstance(c, dict)]
+    here = mark_abstention.parser_digest()
+    other = [c for c in cases if "parser" in c and c["parser"] != here]
+    if not other:
+        return []
+    return [
+        (
+            "Refused: this checkout's project_context.py or reading.py differs from the one "
+            "these cases were frozen on."
+        ),
+        (
+            f"  {len(other)} of {len(cases)} cases carry another parser digest, and every one "
+            "of them would be demoted to synthetic and withheld, while the rest were still charged."
+        ),
+        (
+            "  Fix: check out the commit the packet was frozen on and score from there, or "
+            "re-freeze the packet from this checkout (a re-frozen packet needs marking again)."
+        ),
+    ]
+
+
 def _may_score(
     corpus: Corpus,
     tool_destination: str | None,
@@ -1681,7 +1713,15 @@ def _may_score(
     binding: Mapping[str, str] | None,
     ledger: abstention_ledger.Ledger | None,
 ) -> bool:
-    """Every refusal a run makes before its first call, in one place."""
+    """Every refusal a run makes before its first call, in one place.
+
+    The parser check comes first, before the ledger is read or charged.
+    """
+    stale = parser_mismatch(corpus)
+    if stale:
+        for line in [*stale, "Nothing was charged and no model was called."]:
+            print(line)
+        return False
     refused = _binding_refusal(corpus, binding)
     if refused:
         print(f"Refused: {refused}.")
@@ -1933,6 +1973,9 @@ def report(
     marks = mark_abstention._marks(dict(corpus.marks))  # noqa: SLF001
     live = {str(c.get("id")) for c in cases}
     print(f"{sum(1 for k in marks if k in live)} of {len(cases)} cases marked.")
+    # Said at the preflight, so the refusal `--score` would make is no surprise.
+    for line in parser_mismatch(corpus):
+        print(line.replace("Refused:", "--score will refuse:", 1))
     if _is_replay(corpus):
         if not _replay_preflight(corpus):
             return 2
@@ -2381,6 +2424,7 @@ def main(argv: list[str] | None = None) -> int:  # noqa: PLR0911 - one refusal p
         return probe_argv(config, probed.path, pinned=PinnedClaude(probed.path, probed.identity))
     out = args.out or (CLAUDE_SUMMARY_PATH if args.producer == "claude" else SUMMARY_PATH)
     corpus = _load_corpus(args.rubric)
+    mark_abstention.print_packet(CASES_PATH, dict(corpus.cases))
     if not corpus.cases.get("cases"):
         print(f"No cases at {CASES_PATH}. Run mark_abstention.py --build or --freeze first.")
         return 1
