@@ -1141,9 +1141,6 @@ class NextPageAssetContractTest(unittest.TestCase):
         ".next-capacity-prospect",
         ".next-capacity-prospect small",
         ".next-cockpit-authority>small",
-        ".next-cockpit-conflict-cue",
-        ".next-cockpit-conflict-open",
-        ".next-cockpit-conflict-text",
         ".next-cockpit-conflict-why,.next-cockpit-conflict-settled",
         ".next-cockpit-content",
         ".next-cockpit-content .next-cockpit-evidence-missing",
@@ -1151,6 +1148,7 @@ class NextPageAssetContractTest(unittest.TestCase):
         ".next-cockpit-count-label",
         ".next-cockpit-decision-summary,.next-cockpit-viewing-session,\n.next-cockpit-now-state small,.next-project-workflow-definition>small,\n.next-cockpit-system-details ul,.next-cockpit-memos label>small",
         ".next-cockpit-define",
+        ".next-cockpit-direction-said",
         ".next-cockpit-departures-kept",
         ".next-cockpit-empty,.next-cockpit-evidence-missing",
         ".next-cockpit-held-absent",
@@ -1364,7 +1362,9 @@ class NextPageAssetContractTest(unittest.TestCase):
         # steps and the line saying the page stays usable. DRC-4680 adds one: the
         # harness limit that stands where a level would be. DRC-4694 adds one: the
         # activity list's sentences saying where #1 starts and what is counted and not listed.
-        self.assertEqual(115, len(above))
+        # DRC-4682 retires three with the "Conflict to settle" block (its cue, its open
+        # sentence and its direction rows) and adds one: the question before the press.
+        self.assertEqual(113, len(above))
         self.assertEqual(self.SENTENCE_TIER_RULES, {selector for selector, _size in above})
         self.assertEqual(
             self.SUB_SENTENCE_FLOOR_INVENTORY, {(size, selector) for selector, size in below}
@@ -1918,16 +1918,16 @@ class NextPageAssetContractTest(unittest.TestCase):
                 "81e7f6490f9d6c2e128549aff8bb54c2f6bebaec15b03bfebe3e057b4ef8f587",
             ),
             "next-chrome.js": (
-                42_157,
-                "fcd6e0417023ae9a455cbebaf1e9255f3efaea8f833feb2f2c0f4fb9cdf842b2",
+                42_153,
+                "7021b769122c0c349af657277ce0d8975963b9a127e17f16f5842148c328ac94",
             ),
             "next-capacity.js": (
                 32_261,
                 "986a0b0d74771bbb9f1d9df520dbb6c91d5916685fe365a64eff61c29acab7cc",
             ),
             "next-sessions.js": (
-                27_337,
-                "0a25ee33ad44f10a5df78aec4ca2a40324a5f4cb8f1e165f6f1416cbe8783f05",
+                27_738,
+                "a8ee3dfac8f00047888fbf85e53830d344ba28cbc3f9d922357558dda2c563a9",
             ),
             "next-projects.js": (
                 5_829,
@@ -1962,8 +1962,8 @@ class NextPageAssetContractTest(unittest.TestCase):
                 "7d3250df229af732ebb668171e4cb284f0c1e00e4b0241710d1e5f0ac2a76777",
             ),
             "next-cockpit.js": (
-                308_087,
-                "efb1a2f56fd7824a4bddb694f6be434f28b91f752a09f58f82225cf71d7da72d",
+                340_965,
+                "2dae439307bc4f4d48813cdedb7bd23793de7a0e4f5d6a410f9c3f01d32d93fd",
             ),
             "next-render.js": (
                 12_231,
@@ -1982,16 +1982,16 @@ class NextPageAssetContractTest(unittest.TestCase):
                 self.assertEqual(digest, hashlib.sha256(data).hexdigest())
 
         styles = frontend_page.asset_path("styles.css").read_bytes()
-        self.assertEqual(151_138, len(styles))
+        self.assertEqual(153_877, len(styles))
         self.assertEqual(
-            "c4c5565626edeb3fdd6961daca861d9fcd5dbab7eae35f3cf0188c8b8ea51e82",
+            "2f4096efbea4198db6aed413cdad45feed0f21421b4bc1a48c94f0116d37b47e",
             hashlib.sha256(styles).hexdigest(),
         )
 
         assembled = frontend_page.load_page()
-        self.assertEqual(1_161_364, len(assembled))
+        self.assertEqual(1_197_378, len(assembled))
         self.assertEqual(
-            "0ad122b21f2a9c9331a5fa218860be3a4210a4ad0e1d9010402874f4ebf9d328",
+            "2704e55e7ac509bb9e3efd8a15c324c887b218f4df3cee833cee24d339054b66",
             hashlib.sha256(assembled).hexdigest(),
         )
 

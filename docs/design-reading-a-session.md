@@ -950,8 +950,9 @@ and the fact that they are CLI restrictions rather than an OS sandbox, are in
 [DEC-24](#dec-24-your-intent-is-a-drafted-goal-and-a-checklist-and-a-correction-is-yours-to-copy)
 renames item 1's labels: the first press of "Analyze drift" shows the reading disclosure with "Allow
 and analyze". Where the answer is kept, what `--forget` revokes and the off switch are unchanged.
-"Keep my intent and analyze" counts as the allow when the disclosure beside it has not been allowed
-yet, and a cancelled analysis is a spent attempt against the cap.
+Keep does not count as the allow (owner, 2026-09-27, superseding this amendment's first wording):
+where the disclosure has not been allowed it settles and sends nothing, and "Allow and analyze"
+does the sending. A cancelled analysis is a spent attempt against the cap.
 [DEC-23](#dec-23-a-claude-code-sessions-record-of-its-checks-may-show-the-work) item 7 adds one
 condition: the first reading that would send tool output needs a fresh "Allow and analyze" whose
 disclosure names tool output and the receiving vendor as configured, and an answer given before that
@@ -1501,7 +1502,7 @@ the later-direction floor (item 9).
 4. A later direction before an analysis. When the record holds an unsettled later direction of the
    reader's, the Drift section asks before the press, naming how many are unsettled. For one it
    says "You gave a later direction at #<n>: "<first line>"."; for several, "You gave <N> later
-   directions since saving your intent, the latest at #<n>: "<first line>"." Then it offers "Keep
+   directions since saving your intent, the earliest at #<n>: "<first line>"." Then it offers "Keep
    my intent and analyze" or "Add it to my intent". Keep settles all of them (DEC-16's "The
    baseline still applies") and analyzes in one press, and counts as "Allow" where the disclosure
    beside it has not been allowed yet. Add opens a new outcome line holding the direction's raw text
@@ -1998,6 +1999,75 @@ can start. The page half comes after it.
   store can still race, and these writes share that gap with every other save (DRC-4661).
 - Not permanent. A line added from an entry becomes a typed line once the reader edits it and
   saves, as an edited adopted goal becomes typed, so "added from #n" lasts until the first edit.
+
+### What the draft and question page build decided, 2026-09-27
+
+DRC-4682's page half, on the server half's wire, built to the owner's decisions of the same date:
+no level or pill over an unsaved draft, every unsettled later direction drawn at its own number, the
+question before the press in place of "Conflict to settle", and Add adopting a draft in its write.
+
+- The draft. The goal box holds the first prompt as Cargento publishes it, or the latest where no
+  first prompt with a time is published, marked "from your prompt" (and "latest" for the second),
+  with "Shown excerpt only." on a clipped one, a tinted box and Looks right. It is derived on every
+  render and never written, so it is not reader state; an edit rides the held draft as any other,
+  and a box put back to the draft's words is the draft again, so saving it adopts rather than
+  storing an excerpt as typed words. Nothing is drafted over a store this build cannot read. The
+  design's line "Drift is measured against these. Edit anything that is off." takes the lede's
+  place over a draft rather than adding a row: the six-line fold had 7px to spare at 1440x900, and
+  still has (893 before and after).
+- The edited box. Analyze, Keep and Add's save are refused whenever the goal box differs from what
+  it stands on (the saved goal, or the draft) or the outcome-lines draft differs from what the
+  server holds, because each would stand on words not on screen and then drop the edit. Analyze and
+  Keep say "Save your intent, or undo your edit, to analyze drift."; Add says "Save your intent, or
+  undo your edit, to add this direction." beside its pending line, not in the Drift control. A held
+  goal is forgotten after a press only while it still equals the draft that press adopted, so
+  nothing typed while a request is open is dropped (fix round). An outcome line typed while Add's
+  save is open is kept too, and the stored line joins it with its place in the new list as its
+  origin, so the next lines save keeps the added direction rather than deleting it (second fix
+  round).
+- No level. `nextIntentDrafted` is the one predicate the level and the live estimate consult;
+  `nextDriftEstimate` is the empty seam they fill, and a test stubs it to prove the guard can fail.
+  "Save your intent to see a live estimate" is DRC-4696's.
+- The floor. The page reads `annotation_goal_saved_at` for a typed goal, as the server does, so the
+  list's flag, the question and the route agree about what is later.
+- The question. It stands in the control's place, with Keep the one primary and Add beside it.
+  Keep is never the consent, so the disclosure stands after it, and only where Keep will analyze. "since your first prompt" replaces "since
+  saving your intent" over a draft. Of several directions it quotes the earliest, the one Add
+  opens (owner, 2026-09-28): quoting the latest named a direction Add could not reach until the
+  ones before it were added or kept. The number is `nextCockpitEntryNumbers`'; the sentence drops it
+  rather than naming one the list did not give. The block after the reading keeps only its neutral
+  states (nothing since, settled, unread).
+- Keep's route. Where the page already knows no analysis can start (no reader, model calls off, no
+  provider enabled, a job running, the daily cap), Keep goes to `POST /api/annotate` and reads
+  `Keep my intent`. Where an Allow is still owed it goes there too, with no `allow` and no
+  `tool_output`, and then says "Kept your intent and settled the direction. Press Allow and analyze
+  to send it for a reading." over the confirming step's "Allow and analyze" (owner, fix round).
+  Otherwise it goes to `POST /api/reading`. Either way it names `expected_revision`, a refused
+  settlement says nothing was settled, the outcome is written to the polite live region, and a
+  settle hands focus to the next primary. The region is the only place it is announced: the
+  sentence beside the control is drawn without `role="status"`, so a screen reader hears it once.
+  Each press empties the region first if it still holds the last Keep sentence, so the same
+  outcome twice is announced twice, and the unsaved-edit refusal is written there too. The next
+  Analyze or Allow press takes Keep's sentence back out.
+- Landing and holding still. The Sessions goal link lands on the Intent heading over an untouched
+  draft, and in the box only where nothing is drafted. The drafted box and the pending line are
+  as tall as their text whether focused or not. The first fix round held the focused draft at its
+  two-row resting height so Keep would not move under the press, and that hid the rest of the
+  draft Keep adopts (137 characters showed about 80 at 375px). A box that grew on focus and shrank
+  on the mousedown that blurred it swallowed the first press on the button below it, which is
+  what the pending line did to its save, a second Add and Keep (second fix round).
+- Add. It opens the earliest unsettled direction, so its save settles through that one only and the
+  question comes back for any later one (fix round; the build first opened the newest, which
+  settled the earlier ones unanswered). The pending line is one per session beside the lines draft,
+  with no `maxlength`, so a long direction is shown whole and counted over the bound, and its save
+  stays inert with a sentence rather than cutting it. At six saved lines the reader names the line
+  to replace. The line label reads "from #n · not saved", with the number recomputed from the fact
+  id on every render, and the line goes once its direction is no longer open. A second Add press
+  while it is pending focuses it rather than reopening it over the reader's edits. "added from #n"
+  on a saved line is DRC-4697's.
+- Every open direction is drawn. One from before the intent's window is drawn with its time and no
+  number, as a cited earlier entry is, and is not counted among the earlier entries left unlisted,
+  so the question never names a direction the list does not show.
 
 ### What the window build decided, 2026-09-27
 

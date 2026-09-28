@@ -37,7 +37,9 @@ const restored=nodes.map(node=>node.open);
 nextCockpitBeforeRender();nextRoute.session='two';mount();nextCockpitAfterRender();
 console.log(JSON.stringify({restored,other:nodes.map(node=>node.open)}));
 """)
-        self.assertEqual({"restored": [True, True, True], "other": [False, False, False]}, out)
+        # The menu and its one choice: the first prompt is the draft now, so the menu offers the
+        # latest alone (DRC-4682).
+        self.assertEqual({"restored": [True, True], "other": [False, False]}, out)
 
     def test_goalless_check_posts_the_exact_prompt_and_time(self) -> None:
         out = self.run_page("""

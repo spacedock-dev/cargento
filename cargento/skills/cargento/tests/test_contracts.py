@@ -843,7 +843,7 @@ class TheAnnotationFieldListIsDerivedTest(unittest.TestCase):
         # Published by the store for a page layer that has not shipped yet,
         # and never read by the page until then. Disjoint from what the page
         # reads, so the entry must go the moment the page reads the field.
-        pending = {"goal_saved_at"}  # DRC-4682's page layer (web layer 11)
+        pending: set[str] = set()
         self.assertEqual(set(), pending & rendered, "the page reads it now: drop it from pending")
         self.assertEqual(set(annotation_store.published(None)) - pending, rendered)
 
