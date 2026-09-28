@@ -378,7 +378,9 @@ is asked about before the press, in the control's place: "You gave a later direc
 the entry by its number in the list (of several, it quotes the earliest, the one Add opens), and
 every unsettled one is listed at its own number past the twenty-row bound. Nothing there decides whether it changes what you asked for: that is yours, and
 Cargento does not write into the session either way. `Keep my intent and analyze` settles them
-through the newest one shown, adopting a draft in the same write, and starts the analysis. Keep
+through the newest one shown, adopting a draft in the same write, and starts the analysis. Of two
+or more, the first press shows each whole and settles nothing, and the next press settles what was
+shown. Keep
 never gives the Allow: where none is given yet it reads `Keep my intent`, settles, and asks you to
 press `Allow and analyze`, beside its disclosure, to send it; where no analysis can start it reads
 `Keep my intent`, settles, and says no analysis was started. `Add it to my intent` opens the

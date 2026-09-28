@@ -1979,7 +1979,9 @@ can start. The page half comes after it.
   would move every stored citation of a Claude message. A message older than the tail is refused
   with one sentence, never replaced by its clipped summary. The open returns the whole message
   scrubbed as a save would scrub it, up to 2,000 characters, with a clipped flag and the store's
-  own answer to whether it fits as a line.
+  own answer to whether it fits as a line. The record reader cuts a message at the same 2,000
+  characters first, so raw text that reaches the bound counts as clipped; one of exactly 2,000 is
+  flagged too, which says less was shown than was, the safe error.
 - One refusal body. An unknown session or fact, another session's entry, one that is not a
   person's message, one not later than the words and one older than the tail all answer the same
   200 body, so the route says nothing about which sessions exist.
@@ -2050,11 +2052,15 @@ question before the press in place of "Conflict to settle", and Add adopting a d
   outcome twice is announced twice, and the unsaved-edit refusal is written there too. The next
   Analyze or Allow press takes Keep's sentence back out.
 - Parity and polish (DRC-4732, DRC-4734, DRC-4726, DRC-4736; owner, 2026-09-28). Keep opens every
-  direction it would settle through `POST /api/direction` before it settles anything. Where one
-  says more than its summary, the question draws them all whole, says nothing was settled, and the
-  next press settles; where one cannot be opened, Keep is refused. Analyze and the plain goal save
+  direction it would settle through `POST /api/direction` before it settles anything. Only a sole
+  direction whose whole text is the summary the question quotes settles in one press, because of
+  several the question quotes the earliest alone. Otherwise the question draws them all whole,
+  says nothing was settled, and the next press settles what was drawn under the revision captured
+  at the draw; a direction arriving between the presses is drawn by the next one instead of
+  settled. Where one cannot be opened, Keep is refused (fix round, wire review F1 and F2). Analyze and the plain goal save
   send the revision the page drew. `/api/reading` refuses a stale one with 409 `revision-changed`
-  before the route, any Allow write, the adoption or the job, and the page says the approved stale
+  before the route, any Allow write, the adoption or the job, reading the store from disk under
+  its lock and checking the entry handed to the job again, so another dashboard's save is caught, and the page says the approved stale
   sentence; the store already refused a stale goal save, and the typed words stay in the box.
   `nextReadingCheckSupports` mirrors `check_supports` on every harness, including `changed_after`
   and the subjectless Pi rows an older build stored, held by a test built from the server's own Pi

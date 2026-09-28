@@ -1047,6 +1047,12 @@ writes no consent and reserves nothing; if no provider can read the session, it 
 the reason. One model runs per press. If its CLI is missing at launch, or the call fails, no other
 provider is tried.
 
+A press names the revision its page drew. The route checks it against the annotation store read
+from disk under the store's lock, not this process's copy, before the route, any Allow write and
+the job, and checks the entry it hands the job again the same way. A save another dashboard on
+the same home made in between, or one landing between the check and the job, answers 409
+`revision-changed`, so the model never reads words the page did not show.
+
 ### Observer model calls
 
 Goal summaries are off unless `--observer-model` was supplied and their disclosure accepted.
@@ -1376,7 +1382,7 @@ word after `--password`, `--token` or `-p`, an `Authorization:` or `X-Api-Key:` 
 of the break, with a zero-width space, soft hyphen and the other invisible characters that can
 hide a flag removed first, while the joiners that spell words and emoji are kept), then redacted by
 shape like every published string, with line breaks and control characters as spaces, bounded at 2,000 characters with a flag saying whether
-it was clipped, and a flag saying whether the store would take it as a line (at most 240
+it was clipped (a message the record reader already cut at that bound counts as clipped), and a flag saying whether the store would take it as a line (at most 240
 characters). It returns nothing for a message that is not a person's message in that session's
 own record, one not later than the words it would join, or one older than the tail of the
 transcript Cargento already reads: all of those, an unknown session and an unknown fact alike,
