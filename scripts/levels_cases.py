@@ -15,10 +15,11 @@ This follows `mark_abstention.py` and `score_abstention.py`, and keeps their spl
 
 The spec is a local file the owner writes, one entry per case: its kind from the closed set
 below, the transcript it is drawn from, an optional `until` (a Unix time; the transcript is cut
-there, which is how 74c70a30's failed-check case is frozen before the second turn DRC-4673 gave
-it), the intent as a separate yardstick, how many later directions stand unsettled, and an
-optional stored reading for the analysis source. Nothing is defaulted: an entry missing the intent
-or the direction count is refused, because a default there is the author's thumb on the case.
+there, which is how a session that later passed keeps a failed-check case frozen before the
+second turn DRC-4673 gave it), the intent as a separate yardstick, how many later directions stand
+unsettled, and an optional stored reading for the analysis source. Nothing is defaulted: an entry
+missing the intent or the direction count is refused, because a default there is the author's thumb
+on the case.
 
 The cases carry recorded check lines and written paths, so they stay under `~/.cargento`, never in
 the repository. What is committed is the marks' digest (`docs/drift-levels/marks-digest.json`) and
@@ -143,8 +144,9 @@ def digest(body: Any) -> str:
 def case_id(sid: str, until: float | None, kind: str) -> str:
     """Stable over identity, cut and kind, and nothing readable.
 
-    One session stands for more than one case (3f4e7b30 is both a check with no
-    recorded result and work left out), so the kind and the cut are part of it.
+    One session stands for more than one case (one of the frozen sessions is both
+    a check with no recorded result and work left out), so the kind and the cut
+    are part of it.
     """
     return hashlib.sha256(f"claude|{sid}|{until}|{kind}".encode()).hexdigest()[:16]
 
@@ -873,8 +875,8 @@ def score(
 # ------------------------------------------------------------ replayed readings
 
 # The cases the marking prep named for an analysis reading (2026-09-27): the
-# uncut sessions 1b4a141f, 3f4e7b30 (frozen as two kinds, so two cases and one
-# producer input), cfc97e82 and a2364dbf. Case ids, never session ids.
+# four uncut sessions, one of them frozen as two kinds, so five cases and four
+# producer inputs. Case ids only: a committed file never names a session.
 DEFAULT_READ = (
     "e41740a407b84be1",
     "5e607f9f716ab27c",
@@ -981,8 +983,8 @@ def _read_refusal(case: Mapping[str, Any] | None, marked: Mapping[str, Any] | No
 
 def _read_preflight(
     home: str, repo_root: str, digest_path: str, chosen: list[str], say: Any
-) -> dict[str, dict[str, Any]] | None:
-    """The chosen cases, once the marks bind them; None, having said why, when they do not."""
+) -> tuple[dict[str, dict[str, Any]], dict[str, dict[str, Any]]] | None:
+    """(every case, its marks) once the marks bind them; None, having said why, when they do not."""
     paths = _paths(home)
     body = _load(paths["cases"])
     committed = committed_digest(repo_root, digest_path)
@@ -1010,12 +1012,20 @@ def _read_preflight(
     if problems:
         say("Refused. Nothing was read and nothing was charged.")
         return None
-    return {key: cases[key] for key in chosen}
+    return cases, entries
 
 
-def _budget_refusal(answer: Mapping[str, Any], calls: int) -> str:
+def _budget_refusal(answer: Mapping[str, Any], calls: int, *, granted: bool) -> str:
     if not answer.get("providers", {}).get(READ_PROVIDER):
         return "Codex is not allowed in the reading home; Allow it on the reading board first"
+    if not granted:
+        # The cases froze only tool-reported facts, and without the grant none
+        # of them is sent: the producer would withhold every case as
+        # `ledger-empty`. Refused here instead, with the reason that is true.
+        return (
+            "the reading home holds no grant for tool output to OpenAI, and the cases hold "
+            "only tool-reported facts, so there would be nothing to read"
+        )
     if answer.get("reason") and answer["reason"] != "daily-cap":
         return f"the reading ledger answers {answer['reason']}"
     used, limit = int(answer.get("used") or 0), int(answer.get("limit") or 0)
@@ -1031,6 +1041,7 @@ class _Spy:
 
     def __init__(self) -> None:
         self.sizes: list[int] = []
+        self.prompts: list[str] = []
 
     def available(self) -> bool:
         return True
@@ -1038,7 +1049,62 @@ class _Spy:
     def __call__(self, prompt: str, *, output_cap_bytes: int) -> tuple[str, str]:
         del output_cap_bytes
         self.sizes.append(len(prompt.encode("utf-8")))
+        self.prompts.append(prompt)
         return "", "cancelled"
+
+
+# The replies a dry run scores per case: each answer token on every question,
+# citing nothing, each numbered entry alone, or all of them, and one refusal.
+# Small on purpose: it asks whether any reply can move a case's outcome, which
+# a uniform reply already answers for the rules `levels.analysis_level` keeps.
+SYNTHETIC_TOKENS = ("departure", "consistent", "unverifiable")
+SYNTHETIC_REFUSAL = "I can't help with reading this session."
+
+
+class _Synthetic:
+    """A reply a dry run scores through the real producer and scorer; nothing leaves."""
+
+    unavailable_reason = "model-unavailable"
+
+    def __init__(self, questions: list[str], token: str, pattern: str | int) -> None:
+        self.questions = questions
+        self.token = token
+        self.pattern = pattern
+
+    def available(self) -> bool:
+        return True
+
+    def __call__(self, prompt: str, *, output_cap_bytes: int) -> tuple[str, str]:
+        del output_cap_bytes
+        if not self.token:
+            return SYNTHETIC_REFUSAL, "ok"
+        numbered = _numbered(prompt)
+        if self.pattern == "all":
+            cites = numbered
+        elif isinstance(self.pattern, int):
+            cites = [self.pattern]
+        else:
+            cites = []
+        detail = "A synthetic departure." if self.token == SYNTHETIC_TOKENS[0] else ""
+        body = {q: {"result": self.token, "cites": cites, "detail": detail} for q in self.questions}
+        return json.dumps(body), "ok"
+
+
+def _numbered(prompt: str) -> list[int]:
+    """The entry numbers the prompt's menu lists, which are all a reply may cite."""
+    import re  # noqa: PLC0415
+
+    reading, _policy, _route = _read_runtime()
+    _head, _sep, menu = prompt.partition(reading.MENU_HEADING)
+    return sorted({int(n) for n in re.findall(r"^\[(\d+)\] ", menu, re.MULTILINE)})
+
+
+def _questions(case: Mapping[str, Any]) -> list[str]:
+    """The keys a reply answers: the Goal when the producer asks it, and each outcome line."""
+    reading, _policy, _route = _read_runtime()
+    intent = case.get("intent") or {}
+    asked = [reading.CONSTRAINT_GOAL] if reading.asks_goal(str(intent.get("goal") or "")) else []
+    return asked + [reading.outcome_line(k) for k in range(1, len(intent.get("lines") or ()) + 1)]
 
 
 def _produce(
@@ -1082,62 +1148,143 @@ def read_cases(  # noqa: PLR0913 - one keyword per thing a replay is bound to
 
     Everything that can refuse does so before the first call: the committed
     marks, the cases they bind, each case's mark and intent, the route, the
-    consent and the room left on the ledger. A case the producer withholds is
-    recorded as refused with its reason, and nothing stands in for it.
+    consent, the tool-output grant and the room left on the ledger. A case the
+    producer withholds is recorded as refused with its reason, and nothing
+    stands in for it.
     """
     _reading, reading_policy, reading_route = _read_runtime()
     chosen = list(dict.fromkeys(case_ids or DEFAULT_READ))
-    cases = _read_preflight(home, repo_root, digest_path, chosen, say)
-    if cases is None:
+    bound = _read_preflight(home, repo_root, digest_path, chosen, say)
+    if bound is None:
         return 1
+    every, marks = bound
+    cases = {key: every[key] for key in chosen}
     where = reading_route.destination(READ_PROVIDER) if destination is None else destination
     if where != reading_route.VENDORS[READ_PROVIDER]:
         say(f"Refused: the reading call would reach {where or 'an unnamed host'}, not OpenAI.")
         return 1
     paths = _paths(home)
     held = dict(_load(paths["replayed"]).get("readings") or {})
-    groups = _groups(chosen, cases, held, say)
+    record = dict(_load(paths["replay"]).get("cases") or {})
+    plan = _plan(chosen, every, held, record, reading_config, clock, say)
     answer = reading_policy.status(reading_config, now=clock(), provider=READ_PROVIDER)
     press = _Press(
         where, reading_policy.tool_output_allowed(answer, READ_PROVIDER, where), reading_config
     )
     say(
-        f"{len(groups)} call{'s' if len(groups) != 1 else ''} for "
-        f"{sum(map(len, groups.values()))} cases; "
+        f"{len(plan.groups)} call{'s' if len(plan.groups) != 1 else ''} for "
+        f"{sum(map(len, plan.groups.values()))} cases; "
         f"ledger {answer.get('used')} of {answer.get('limit')}; "
         f"tool output to {where} {'granted' if press.granted else 'not granted'}."
     )
-    refusal = _budget_refusal(answer, len(groups))
+    refusal = _budget_refusal(answer, len(plan.groups), granted=press.granted)
     if refusal:
         say(f"Refused: {refusal}. Nothing was read and nothing was charged.")
         return 1
     if dry_run:
-        return _dry_run(press, cases, groups, clock, say)
-    record = dict(_load(paths["replay"]).get("cases") or {})
-    for keys in groups.values():
-        _read_group(press, cases, keys, model, clock, held, record, say)
-    _write(paths["replay"], {"v": 1, "cases": record})
+        return _dry_run(press, cases, marks, plan.groups, clock, say)
+    files = _Files(paths, held, record)
+    for key, sibling in plan.reused.items():
+        held[key] = held[sibling]
+        record[key] = {
+            "status": STATUS_READ,
+            "withheld": "",
+            "spent": False,
+            "charged": False,
+            "call": sibling,
+            "at": clock(),
+        }
+    if plan.reused:
+        files.save()
+    for keys in plan.groups.values():
+        _read_group(press, cases, keys, model, clock, files, say)
+    files.save()
     if held:
-        _write(paths["replayed"], {"v": 1, "readings": held})
         say(f"Readings for --attach-readings: {paths['replayed']}")
     return 0
 
 
-def _groups(
-    chosen: list[str], cases: Mapping[str, Mapping[str, Any]], held: Mapping[str, Any], say: Any
-) -> dict[str, list[str]]:
-    """The calls to make: cases not yet read, one call per distinct producer input.
+# A call's marker in `replay.json` before its outcome: `pending` is written just
+# before the reservation, with the job id the ledger records the charge under;
+# `charged` once the reservation has committed. Either one left behind means the
+# run stopped mid-call. A re-run never reads a `charged` case again, and reads a
+# `pending` one again only when the ledger says its job was never charged.
+STATUS_PENDING = "pending"
+STATUS_CHARGED = "charged"
 
-    A case already read is kept, never read again: a second run of the same
-    command would otherwise charge the ledger for readings it already holds.
+
+class _Plan:
+    """The calls a run makes, and the cases it answers from a held sibling instead."""
+
+    def __init__(self) -> None:
+        self.groups: dict[str, list[str]] = {}
+        self.reused: dict[str, str] = {}
+
+
+def _in_flight(entry: Any, config: Any, clock: Any) -> bool:
+    """Whether a record marks a call that may have been charged and has no outcome."""
+    if not isinstance(entry, dict):
+        return False
+    if entry.get("status") == STATUS_CHARGED:
+        return True
+    if entry.get("status") != STATUS_PENDING:
+        return False
+    _reading, reading_policy, _route = _read_runtime()
+    landed = reading_policy.charged(
+        config, str(entry.get("job") or ""), started_at=entry.get("started_at"), now=clock()
+    )
+    # None is "cannot say", which the ledger's own callers count as spent.
+    return landed is not False
+
+
+def _plan(
+    chosen: list[str],
+    cases: Mapping[str, Mapping[str, Any]],
+    held: Mapping[str, Any],
+    record: Mapping[str, Any],
+    config: Any,
+    clock: Any,
+    say: Any,
+) -> _Plan:
+    """The calls to make: one per distinct producer input that holds no reading yet.
+
+    A case already read is kept. A case whose sibling, with identical inputs,
+    holds a reading takes that reading, so splitting siblings across two runs
+    never pays twice. A case a stopped run charged and left without an outcome
+    is not read again. A call that finished and failed is read again, charged
+    again, as a fresh press is the retry on the board.
     """
-    groups: dict[str, list[str]] = {}
+    plan = _Plan()
+    by_inputs = {_inputs(cases[key]): key for key in held if key in cases}
+    charged = {
+        _inputs(cases[k]) for k in record if k in cases and _in_flight(record[k], config, clock)
+    }
     for key in chosen:
+        inputs = _inputs(cases[key])
         if key in held:
             say(f"  {key}: already read, kept and not read again")
+        elif inputs in by_inputs:
+            plan.reused[key] = by_inputs[inputs]
+            say(f"  {key}: takes {by_inputs[inputs]}'s reading, which read the same inputs")
+        elif inputs in charged:
+            say(f"  {key}: charged by a run that stopped before its reading; not read again")
         else:
-            groups.setdefault(_inputs(cases[key]), []).append(key)
-    return groups
+            plan.groups.setdefault(inputs, []).append(key)
+    return plan
+
+
+class _Files:
+    """Both output files, written together after every change so a stop loses nothing."""
+
+    def __init__(self, paths: Mapping[str, str], held: dict[str, Any], record: dict[str, Any]):
+        self.paths = paths
+        self.held = held
+        self.record = record
+
+    def save(self) -> None:
+        _write(self.paths["replay"], {"v": 1, "cases": self.record})
+        if self.held:
+            _write(self.paths["replayed"], {"v": 1, "readings": self.held})
 
 
 class _Press:
@@ -1149,18 +1296,17 @@ class _Press:
         self.config = config
 
     def tool_output(self, case: Mapping[str, Any]) -> Any:
-        """As the board's press composes it for a Claude Code session.
+        """As the board's press composes it for a Claude Code session with the grant.
 
-        A grant for exactly this destination admits the checks; without one
-        the cutoff says they were not sent. The cases froze no output tails,
-        so no check's output is sent: its line, result and times are.
+        `read_cases` refuses without one. The cases froze no output tails, so no
+        check's output is sent: its line, result and times are.
         """
         reading, _policy, reading_route = _read_runtime()
-        label = reading_route.LABELS[READ_PROVIDER]
-        if not self.granted:
-            return reading.ToolOutput(destination="", label=label, allowed=False)
         return reading.ToolOutput(
-            destination=self.where, label=label, tails={}, changed_after=_changed_after(case)
+            destination=self.where,
+            label=reading_route.LABELS[READ_PROVIDER],
+            tails={},
+            changed_after=_changed_after(case),
         )
 
 
@@ -1170,19 +1316,35 @@ def _read_group(
     keys: list[str],
     model: Any,
     clock: Any,
-    held: dict[str, Any],
-    record: dict[str, Any],
+    files: _Files,
     say: Any,
 ) -> None:
     """One producer call for cases that share every input, charged once at the model seam."""
     reading, reading_policy, _route = _read_runtime()
     charged: list[bool] = []
+    job = f"levels-replay:{keys[0]}:{clock():.6f}"
+
+    def mark(status: str, **extra: Any) -> None:
+        at = clock()
+        for key in keys:
+            files.record[key] = {"status": status, "call": keys[0], "at": at, **extra}
+        files.save()
+
+    def before_reserve() -> str:
+        mark(STATUS_PENDING, job=job, started_at=clock())
+        return job
+
+    def on_reserved() -> None:
+        charged.append(True)
+        mark(STATUS_CHARGED, job=job, charged=True)
+
     guarded = reading_policy.GuardedModel(
         press.config,
         model if model is not None else reading.CodexReadingModel(press.config),
         clock,
         provider=READ_PROVIDER,
-        on_reserved=lambda: charged.append(True),
+        on_reserved=on_reserved,
+        before_reserve=before_reserve,
     )
     case = cases[keys[0]]
     assessment, why, spent = _produce(press.config, case, guarded, press.tool_output(case), clock())
@@ -1190,8 +1352,8 @@ def _read_group(
         assessment, why = None, "store-refused"
     for key in keys:
         if assessment is not None:
-            held[key] = assessment
-        record[key] = {
+            files.held[key] = assessment
+        files.record[key] = {
             "status": STATUS_READ if assessment is not None else STATUS_REFUSED,
             "withheld": why,
             "spent": spent,
@@ -1199,17 +1361,56 @@ def _read_group(
             "call": keys[0],
             "at": clock(),
         }
-        say(f"  {key}: {record[key]['status']}{f' ({why})' if why else ''}")
+        say(f"  {key}: {files.record[key]['status']}{f' ({why})' if why else ''}")
+    files.save()
+
+
+def _reachable(
+    press: _Press, case: Mapping[str, Any], marked: Mapping[str, Any], clock: Any
+) -> tuple[set[str], set[str], int, int]:
+    """(levels, outcomes, replies withheld, replies) over the synthetic family, no call made."""
+    _config_mod, _project_context, levels = _runtime()
+    questions = _questions(case)
+    spy = _Spy()
+    _produce(press.config, case, spy, press.tool_output(case), clock())
+    replies: list[tuple[str, str | int]] = [("", "")]
+    if spy.prompts:
+        numbered = _numbered(spy.prompts[0])
+        patterns: list[str | int] = ["none", *numbered, "all"]
+        replies += [(token, pattern) for token in SYNTHETIC_TOKENS for pattern in patterns]
+    reached: set[str] = set()
+    outcomes: set[str] = set()
+    withheld = 0
+    for token, pattern in replies:
+        model = _Synthetic(questions, token, pattern)
+        assessment, _why, _spent = _produce(
+            press.config, case, model, press.tool_output(case), clock()
+        )
+        admitted = _admit(press.config, assessment) if assessment is not None else None
+        if admitted is None:
+            withheld += 1
+            continue
+        row = _score_case(levels, case, marked, (admitted, ""))["analysis"]
+        reached.add(str(row["level"]))
+        outcomes.add(str(row["outcome"]))
+    return reached, outcomes, withheld, len(replies)
 
 
 def _dry_run(
     press: _Press,
     cases: Mapping[str, Mapping[str, Any]],
+    marks: Mapping[str, Mapping[str, Any]],
     groups: Mapping[str, list[str]],
     clock: Any,
     say: Any,
 ) -> int:
-    """What would be sent, by count and case id: the producer up to the call, and no call."""
+    """What would be sent, and what any reply could score: counts, ids and closed tokens only.
+
+    Each chosen case is also scored against a small family of synthetic replies
+    through the real producer and the real scorer, so the owner sees before any
+    spend which cases a reading cannot move: the evidence alone fixes their
+    analysis outcome, and a reading would buy a result known in advance.
+    """
     for keys in groups.values():
         spy = _Spy()
         case = cases[keys[0]]
@@ -1223,6 +1424,25 @@ def _dry_run(
             else f"would be refused ({why})"
         )
         say(f"  {', '.join(keys)}: {shown}")
+    fixed = failing = 0
+    for key, case in cases.items():
+        reached, outcomes, withheld, total = _reachable(press, case, marks[key], clock)
+        flags = []
+        if len(outcomes) == 1:
+            fixed += 1
+            flags.append("fixed by the evidence")
+        if outcomes == {FAILED}:
+            failing += 1
+            flags.append("fails whatever the reply")
+        say(
+            f"  {key}: analysis reaches {', '.join(sorted(reached)) or 'nothing'}; "
+            f"outcomes {', '.join(sorted(outcomes)) or 'none'}; "
+            f"{withheld} of {total} replies withheld" + "".join(f" -- {flag}" for flag in flags)
+        )
+    say(
+        f"{fixed} of {len(cases)} cases have an analysis outcome no reply can move; "
+        f"{failing} fail whatever the reply."
+    )
     say("Dry run: no call was made and nothing was charged or written.")
     return 0
 

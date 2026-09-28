@@ -64,11 +64,11 @@ A mark written after seeing an output is agreement, not a mark, so the tool enfo
    ```
 
    `until` is a Unix time or `null`. The transcript is cut there, so a session that later changed
-   is frozen as it stood. 74c70a30 is the case in point: it now ends on a passing run, so its
-   failed-check case is cut before its second turn. `intent.saved: false` makes a drafted goal that
-   was never saved, and a goal and lines that name no folder make the no-folder case. Both are set
-   here because neither is a property of the session. `unsettled_directions` is written by hand,
-   since the count comes from the page. An entry missing any field is refused, and nothing is
+   is frozen as it stood. The failed-check case is the case in point: its session now ends on a
+   passing run, so the case is cut before its second turn. `intent.saved: false` makes a drafted
+   goal that was never saved, and a goal and lines that name no folder make the no-folder case. Both
+   are set here because neither is a property of the session. `unsettled_directions` is written by
+   hand, since the count comes from the page. An entry missing any field is refused, and nothing is
    defaulted.
 
 2. Mark every case. Each screen shows the intent, the frozen checks and writes with their times
@@ -88,7 +88,7 @@ A mark written after seeing an output is agreement, not a mark, so the tool enfo
 3. Commit `marks-digest.json`.
 
    Then make the readings, with `--read` (next section), on the owner's go-ahead. It is the only
-   step that spends.
+   step that spends, and on this corpus the owner ruled that it does not run (next section).
 
 4. Attach readings. `--attach-readings` takes `{"v": 1, "readings": {"<case id>": <reading>}}`,
    where each reading is a stored reading in the annotation store's own shape. It refuses every one
@@ -145,17 +145,20 @@ than the frozen facts, so the prep left all three cut cases out as `cut-not-live
   refuses if `reading_route.destination("codex")` names anything else. The prompt, the evidence
   rules, the admission of a turn stop and the outcome lines are the press's. With a stored grant
   for tool output to OpenAI, each check goes with its line, result, times and changed-after flag.
-  The cases froze no output tails, so no check's output is sent. Without a grant, the checks stay
-  off the prompt and the cutoff says so, as it does on a press.
+  The cases froze no output tails and no user messages, so neither is sent, where a press sends
+  both. Without a grant, the run refuses
+  before any call: the cases hold only tool-reported checks and written paths, so with none of them
+  on the prompt there is nothing to read, and every case would come back `ledger-empty`.
 
 **One count.** Every call is charged where the board charges a press: `reading_policy.reserve`, on
 the reading home's `cargento-reading-permission.sqlite3`, through the same `GuardedModel` seam. A
 charge happens after every check `produce` makes and before the subprocess, so a case the producer
 withholds costs nothing. A call that starts and then fails is still charged. `--reading-home` names
 the home the reading board ran on. The run refuses before any call if Codex is not allowed there,
-or if the calls it needs do not fit in the ledger's rolling 12. That ledger counts a rolling day. The
-owner's DRC-4692 authorization is a total (12 readings, 5 spent before this), and nothing on disk
-holds that total, so whoever runs `--read` adds its calls to the count logged on DRC-4692.
+if there is no grant for tool output to OpenAI, or if the calls it needs do not fit in the ledger's
+rolling 12. That ledger counts a rolling day. The owner's DRC-4692 authorization is a total (12
+readings, 5 spent before this), and nothing on disk holds that total, so whoever runs `--read` adds
+its calls to the count logged on DRC-4692.
 
 **Refused before any call:** a digest that is not committed, local marks that no longer hash to it,
 cases that changed since they were marked (the marks file carries the case set's digest, and the
@@ -168,21 +171,46 @@ with its reason token. A reading the annotation store's validator would refuse i
 reading, which `counts.no_reading` counts.
 
 Two cases with the same producer inputs share one call, and the reading is attached to both. The
-same session and cut, frozen as two kinds, is one reading: 3f4e7b30 is `check-not-recorded` and
-`work-left-out`. A case that already has a replayed reading is kept and not read again, so running
-the command twice does not spend twice.
+same session and cut, frozen as two kinds, is one reading: one uncut session is both
+`check-not-recorded` and `work-left-out`. A case that already has a replayed reading is kept and not
+read again, and a case whose identical-input sibling holds one takes that reading instead of a
+call, whichever run read the sibling.
+
+A re-run can still charge again. A call that finished and was refused after its charge,
+`model-failed` for one, is read again on the next run and charged again, as a fresh press is the
+retry on the board. Both files are written after every call, so a run that is
+stopped keeps every reading it made. Before each charge `replay.json` marks the call `pending`,
+with the job id the ledger records the charge under, and `charged` once the charge has committed.
+A re-run never reads a `charged` case again, since that call may have been paid for and its reading
+lost, and reads a `pending` one again only when the ledger says that job was never charged. To read
+a stopped case anyway, delete its entry from `replay.json`, knowing it will be charged again.
 
 `--read` writes `replayed-readings.json` in exactly the shape `--attach-readings` takes, and
 `--attach-readings` and `--score` run on it unchanged. `replay.json` holds, per case id, the status,
-the withheld token, whether the call spent, whether it was charged, and when. It holds no session id,
+the withheld token, whether the call spent, whether it was charged, and when, and for a call in
+flight its marker and ledger job id, made of a case id and a time. It holds no session id,
 intent text or model prose. `--dry-run` runs the producer up to the model with a stub that sends
 nothing, and prints only case ids, the number of calls, prompt sizes, fact counts and the ledger's
-count. It makes no call, charges nothing and writes no file.
+count. Then it scores each chosen case against a small family of synthetic replies, through the
+real producer and `levels.analysis_level`: each answer token on every question, citing nothing,
+each numbered entry alone, or all of them, and one refusal. It prints the analysis levels and
+outcomes that family reaches, and flags a case `fixed by the evidence` when no reply moves its
+outcome and `fails whatever the reply` when every reply fails its mark. It makes no call, charges
+nothing and writes no file.
 
-With no `--case`, `--read` reads the cases the marking prep named, the four uncut sessions
-1b4a141f, 3f4e7b30, cfc97e82 and a2364dbf. That is five case ids and four calls. `--case <id>`,
-repeated, chooses others. The cut cases can be read this way too, since replay reads them as they
-were frozen.
+With no `--case`, `--read` reads the cases the marking prep named, the four uncut sessions. That is
+five case ids and four calls. `--case <id>`, repeated, chooses others. The cut cases can be read
+this way too, since replay reads them as they were frozen.
+
+**This corpus: the readings are not spent (owner, 2026-09-28).** The dry run over the nine cases a
+press can read found seven whose analysis outcome no reply moves. A failed check inside the window
+forces High, and a line no check shows or a direction left unsettled holds a case at "Not enough
+recorded yet", so on those seven the evidence fixes the level and a reading would buy a result known
+before the call. The tenth case's intent was never saved, so no press reads it. Two can move:
+`a6db9b8aeb9fc9b4` between its mark and a more cautious Medium, and `aad7b5879c84cb68`, which
+reaches its Medium mark only when a reply calls a line unverifiable while citing the pass that
+preceded the last write, and fails on every other reply. The tool stays, so a future corpus whose
+outcomes a reading can move is read the same way.
 
 ## How to argue with a result
 

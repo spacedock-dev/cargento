@@ -2280,7 +2280,9 @@ part of what the owner's marks validate.
   `levels_cases.py --read` hands `reading.produce` the case's frozen facts and intent, with the
   row stopped at the case's own `captured_at`. It goes over the Codex route, charged on the reading
   home's ledger, the count a press uses. The evidence rules, the prompt and every withheld reason
-  are the press's, and a withheld case is recorded as refused. The
+  are the press's, and a withheld case is recorded as refused. On this corpus the readings are not
+  spent (owner, 2026-09-28): the dry run's synthetic replies show the evidence alone fixes the
+  analysis outcome of seven of the nine readable cases. The
   [replay section](drift-levels/README.md#readings-replayed-from-the-frozen-cases) owns the rest.
 - A level passes the owner's mark when it matches or reassures less. "Not enough recorded yet" is
   more cautious than "None or low" only. Said of a case marked Medium or higher, it hides drift the
