@@ -3345,6 +3345,15 @@ function nextCockpitReadingJobOutcome(key, seen){
    leaves `reading_jobs`, so a redraw, a phase revision or a reload says
    nothing again. The first pass only records what is already running: a
    reload pressed nothing. */
+/* A region already holding the sentence is emptied first, as
+   `nextCockpitKeepUnsay` does for Keep: setting the same text again is not
+   read (verifier V5). */
+function nextCockpitReadingJobSay(key, sentence){
+  const region = nextCockpitCueStatus(document.getElementById("app"));
+  if(region && region.textContent === sentence) region.textContent = "";
+  nextCockpitAnnounceCue(key, sentence, false);
+}
+
 function nextCockpitReadingJobCues(){
   if(!nextData) return;
   const jobs = nextData.reading_jobs && typeof nextData.reading_jobs === "object"
@@ -3356,7 +3365,16 @@ function nextCockpitReadingJobCues(){
     if(job && typeof job === "object" && String(job.id) === seen.id) continue;
     nextCockpitReadingJobsSeen.delete(key);
     const outcome = seen.drawn ? nextCockpitReadingJobOutcome(key, seen) : "";
-    if(outcome) nextCockpitAnnounceCue(`job:${seen.id}`, outcome, false);
+    if(outcome){
+      nextCockpitReadingJobSay(`job:${seen.id}`, outcome);
+    }else{
+      /* Ended unannounced: a virtual cursor must not still find "Analyzing
+         drift" in the region, and the next start must not set that same
+         text again, which is not read (a11y review F1). */
+      nextCockpitAnnouncedCues.delete(`job:${seen.id}`);
+      const region = nextCockpitCueStatus(document.getElementById("app"));
+      if(region && region.textContent === NEXT_READING_JOB_TITLE) region.textContent = "";
+    }
   }
   for(const [key, job] of Object.entries(jobs)){
     if(!job || typeof job !== "object" || typeof job.id !== "string") continue;
@@ -3371,7 +3389,7 @@ function nextCockpitReadingJobCues(){
     const annotation = row ? nextCockpitAnnotation(row) : null;
     nextCockpitReadingJobsSeen.set(key, {id: job.id, drawn,
       reading: JSON.stringify(annotation && annotation.assessment || null)});
-    if(primed && drawn) nextCockpitAnnounceCue(`job:${job.id}`, NEXT_READING_JOB_TITLE, false);
+    if(primed && drawn) nextCockpitReadingJobSay(`job:${job.id}`, NEXT_READING_JOB_TITLE);
   }
 }
 
@@ -3763,23 +3781,27 @@ const NEXT_COCKPIT_KEEP_UNOPENED =
   "Nothing was settled and no analysis was started: Cargento could not open the whole text " +
   "of every direction Keep would settle, so it cannot show you what you would keep. Press " +
   "again to retry.";
-/* Per session: each direction's whole text as Keep opened it, by fact id, and
-   whether the question is drawing them. For the life of the tab, dropped once
-   no direction is open; docs/design-reader-state.md holds the row. */
+/* Per session: each direction's whole text as Keep opened it, by fact id, the
+   ids the question drew whole, and the revision the page drew them against.
+   For the life of the tab, dropped once no direction is open or a Keep is
+   refused; docs/design-reader-state.md holds the row. */
 const nextCockpitDirectionWhole = new Map();
 
 function nextCockpitCollapsedText(text){
   return String(text || "").replace(/\s+/g, " ").trim();
 }
 
-/* "read" when every direction's whole text is on screen, "shown" when this
-   press opened one that says more than its summary, "refused" when one could
-   not be opened. A text drawn by an earlier press counts as read. */
-async function nextCockpitKeepReadWhole(session, pending){
+/* "read" when an earlier press drew every direction Keep would settle, "shown"
+   when this press drew them, "refused" when one could not be opened. Only a
+   sole direction whose whole text is the summary the question quotes settles
+   in one press: of several, the question quotes the earliest alone, so the
+   rest were never on screen (wire review F1). A direction opened or arriving
+   after the list was drawn is unread, so the next press draws it. */
+async function nextCockpitKeepReadWhole(session, pending, revision){
   const key = sessKey(session);
-  const held = nextCockpitDirectionWhole.get(key) || {texts: new Map(), shown: false};
+  const held = nextCockpitDirectionWhole.get(key) ||
+    {texts: new Map(), drawn: new Set(), revision: null};
   nextCockpitDirectionWhole.set(key, held);
-  let unread = false;
   let refused = false;
   for(const entry of pending){
     const id = String(entry.id || "");
@@ -3802,16 +3824,24 @@ async function nextCockpitKeepReadWhole(session, pending){
       break;
     }
     held.texts.set(id, opened);
-    if(nextCockpitCollapsedText(opened.text) !== nextCockpitCollapsedText(entry.summary)) unread = true;
   }
-  if(unread) held.shown = true;
-  return refused ? "refused" : unread ? "shown" : "read";
+  if(refused) return "refused";
+  const ids = pending.map(entry => String(entry.id || ""));
+  if(ids.every(id => held.drawn.has(id))) return "read";
+  const sole = ids.length === 1 && !held.drawn.size ? held.texts.get(ids[0]) : null;
+  if(sole && !sole.clipped &&
+     nextCockpitCollapsedText(sole.text) === nextCockpitCollapsedText(pending[0].summary)){
+    return "read";
+  }
+  held.drawn = new Set(ids);
+  held.revision = revision;
+  return "shown";
 }
 
 function nextCockpitDirectionWholeList(key, pending, numbers){
   const held = nextCockpitDirectionWhole.get(key);
-  if(!held || !held.shown) return "";
-  const items = pending.filter(entry => held.texts.has(String(entry.id || ""))).map(entry => {
+  if(!held || !held.drawn.size) return "";
+  const items = pending.filter(entry => held.drawn.has(String(entry.id || ""))).map(entry => {
     const id = String(entry.id || "");
     const opened = held.texts.get(id);
     const n = numbers.get(id);
@@ -3821,7 +3851,10 @@ function nextCockpitDirectionWholeList(key, pending, numbers){
       (opened.clipped ? `<p class="next-cockpit-held-full">${esc(NEXT_COCKPIT_DIRECTION_CLIPPED)}</p>` : "") +
       "</li>";
   }).join("");
-  return items ? `<ol class="next-cockpit-direction-whole" data-next-cockpit-direction-whole>${items}</ol>` : "";
+  /* Focusable by script alone, and named for the focus restore, so it keeps
+     focus across the redraws while the reader reads (a11y review F3). */
+  return items ? '<ol class="next-cockpit-direction-whole" data-next-cockpit-direction-whole ' +
+    `tabindex="-1" data-next-focus="direction-whole:${esc(key)}">${items}</ol>` : "";
 }
 
 const NEXT_COCKPIT_KEEP_UNCONFIRMED =
@@ -3834,10 +3867,11 @@ const NEXT_COCKPIT_KEEP_UNCONFIRMED =
 function nextCockpitDirectionSentence(session, annotation, pending, numbers){
   const earliest = pending[0];
   const n = numbers.get(String(earliest.id || ""));
-  const summary = String(earliest.summary || "");
+  const summary = String(earliest.summary || "").trim();
   /* No second mark after a quote that ends in its own (DRC-4736): the
-     sentence's full stop is the quote's. */
-  const said = `"${summary}"${/[.!?\u2026]$/.test(summary.trim()) ? "" : "."}`;
+     sentence's full stop is the quote's, including a mark a closing quote or
+     bracket follows, as in (see tests.). */
+  const said = `"${summary}"${/[.!?\u2026]["'\u201d\u2019)\]]*$/.test(summary) ? "" : "."}`;
   if(pending.length === 1){
     return n == null ? `You gave a later direction: ${said}`
       : `You gave a later direction at #${n}: ${said}`;
@@ -3963,16 +3997,21 @@ async function nextCockpitKeepIntent(session, model){
   const analyze = !reason && !nextReadingJob(session) && !owed;
   const through = nextNumber(pending[pending.length - 1].at);
   const adoption = nextIntentAdoption(draft);
-  const expected = nextNumber(annotation && annotation.revision) || 0;
+  const drawnAt = nextNumber(annotation && annotation.revision) || 0;
   const request = {pending: true, message: "", adoption, announced: true};
   nextCockpitReadingRequests.set(key, request);
   renderNext();
   try{
-    const read = await nextCockpitKeepReadWhole(session, pending);
+    const read = await nextCockpitKeepReadWhole(session, pending, drawnAt);
     if(read !== "read"){
       request.message = read === "refused" ? NEXT_COCKPIT_KEEP_UNOPENED : NEXT_COCKPIT_KEEP_READ_FIRST;
       return;
     }
+    /* A press after the list was drawn names the revision it was drawn
+       against, so words saved since then are refused rather than settled
+       over. `pending` is every drawn direction here, so `through` is too. */
+    const held = nextCockpitDirectionWhole.get(key);
+    const expected = held && held.drawn.size && held.revision != null ? held.revision : drawnAt;
     if(!analyze){
       const response = await fetch("/api/annotate", {method: "POST",
         headers: {"Content-Type": "application/json"},
@@ -3986,6 +4025,9 @@ async function nextCockpitKeepIntent(session, model){
       request.message = settled ? (owed ? NEXT_COCKPIT_KEEP_ALLOW : NEXT_COCKPIT_KEEP_NO_ANALYSIS)
         : outcome === "untrusted" ? NEXT_COCKPIT_HELD_CUES["settle-untrusted"]
         : NEXT_COCKPIT_KEEP_REFUSED;
+      /* A refused Keep draws its directions again against the revision now
+         on screen: the one held was what the store just refused. */
+      if(!settled) nextCockpitDirectionWhole.delete(key);
       if(settled){
         nextIntentForgetAdopted(session, draft);
         /* The confirming step the idle control draws: its Allow, beside the
@@ -4007,6 +4049,7 @@ async function nextCockpitKeepIntent(session, model){
     if(!answer) throw new Error("not confirmed");
     if(answer.adoption_refused || (response && response.status === 422)){
       request.message = NEXT_COCKPIT_KEEP_REFUSED;
+      nextCockpitDirectionWhole.delete(key);
       await refreshNext();
       return;
     }
@@ -4041,7 +4084,24 @@ async function nextCockpitKeepIntent(session, model){
        role, so the outcome is announced once (verifier V5). */
     if(request.message) nextCockpitAnnounceCue(`keep:${key}`, request.message, false);
     renderNext();
+    if(request.message === NEXT_COCKPIT_KEEP_READ_FIRST) nextCockpitShowWhole(key);
   }
+}
+
+/* The whole text Keep asks the reader to read, brought to them: focus on the
+   list, so a screen reader is where "it" is and the next Tab reaches Keep
+   again, and its start scrolled into view, since a long list focused as it
+   stands leaves its start above the viewport (a11y review F3, measured 760px
+   above at 1440x900). */
+function nextCockpitShowWhole(key){
+  const app = document.getElementById("app");
+  if(!app || typeof app.querySelectorAll !== "function") return;
+  const named = `direction-whole:${key}`;
+  const list = [...app.querySelectorAll("[data-next-focus]")]
+    .find(target => String(target.dataset && target.dataset.nextFocus || "") === named);
+  if(!list || typeof list.focus !== "function") return;
+  list.focus({preventScroll: true});
+  if(typeof list.scrollIntoView === "function") list.scrollIntoView({block: "start"});
 }
 
 /* The act the endpoint has always had and no control reached (DRC-4561).
@@ -4375,6 +4435,11 @@ async function nextCockpitAskForReading(session, model, allow = false){
          the refresh now draws. */
       request.message = NEXT_COCKPIT_KEEP_REFUSED;
       request.consent = false;
+      /* Said once, by the persistent region, as Keep's is and under Keep's
+         key, which the next press empties: a status paragraph inside `#app`
+         was re-inserted and re-read on every render (a11y review F2). */
+      request.announced = true;
+      nextCockpitAnnounceCue(`keep:${key}`, NEXT_COCKPIT_KEEP_REFUSED, false);
       await refreshNext();
       return;
     }

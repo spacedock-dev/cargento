@@ -28,6 +28,7 @@ from .next_harness import NEXT_STYLES, NextPageJsHarness, storage_prelude
 from .test_next_intent_draft import (
     EARLIEST,
     KEEP_REFUSED,
+    ROUTE,
     TYPED,
     _DraftPage,
     drift_of,
@@ -47,6 +48,7 @@ UNOPENED = (
     "of every direction Keep would settle, so it cannot show you what you would keep. Press "
     "again to retry."
 )
+CLIPPED = "Only the start of this direction is shown; it is longer than Cargento opens."
 SAVE_REFUSED = "Not saved. The server refused the write, and your words are still in the box."
 RECORD_LINE = "Cargento reads work results from Claude Code and Pi only."
 JOB = (
@@ -76,6 +78,15 @@ class AnalyzeAndTheGoalSaveNameTheirRevisionTest(_DraftPage):
         self.assertEqual("/api/reading", out[0]["url"])
         self.assertEqual(2, out[0]["body"]["expected_revision"])
 
+    def test_after_a_discard_analyze_sends_the_revision_number_not_the_count(self) -> None:
+        # Numbering continues past a discard: revision 3 is the only one kept.
+        out = self.drive(
+            SETTLED + "__s.annotation_revision = 3; __s.annotation_revision_count = 1;\n",
+            '__press("reading-ask");\nawait __settle();\nconsole.log(JSON.stringify(__posts));',
+        )
+        assert isinstance(out, list)
+        self.assertEqual(3, out[0]["body"]["expected_revision"])
+
     def test_allow_and_analyze_sends_the_revision_the_page_drew(self) -> None:
         out = self.drive(
             SETTLED + '__dashboard.reading = {consent:false, reason:"consent-required"};\n',
@@ -99,6 +110,57 @@ class AnalyzeAndTheGoalSaveNameTheirRevisionTest(_DraftPage):
         self.assertIn(KEEP_REFUSED, drift)
         self.assertNotIn("Analyzing drift", drift)
         self.assertIn('data-next-cockpit-action="reading-ask"', out["html"])
+
+    STALE = (
+        '__reply["/api/reading"] = () => { __s.annotation_goal = "Words another tab saved";'
+        " __s.annotation_revision = 3; __s.annotation_revision_count = 3;"
+        ' return {status:409, body:{ok:false, produced:false, reason:"revision-changed"}}; };\n'
+    )
+
+    def test_a_stale_analyze_is_said_once_by_the_region_and_by_no_status_paragraph(self) -> None:
+        out = self.drive(
+            SETTLED + DOM + self.STALE,
+            '__press("reading-ask");\nawait __settle();\nawait __settle();\n'
+            "renderNext();\nawait refreshNext();\nawait __settle();\nrenderNext();\n"
+            f"console.log(JSON.stringify({{polite:{POLITE}, html:__els.app.innerHTML}}));",
+        )
+        assert isinstance(out, dict)
+        self.assertEqual(1, out["polite"].count(KEEP_REFUSED), out["polite"])
+        tags = re.findall(r"<p\b[^>]*>(?=" + re.escape(KEEP_REFUSED) + ")", out["html"])
+        self.assertEqual(1, len(tags), tags)
+        self.assertNotIn("role=", tags[0])
+
+    # Board reads counted from the refusal on, so the refresh it asks for is seen: the
+    # fixture's board is one object, whose new words would draw without one, and every
+    # click reads the board once of its own accord.
+    READS = (
+        "let __boardReads = 0;\nconst __readBase = __fetchImpl;\n"
+        "__fetchImpl = async (url, init) => {\n"
+        "  if(!(init && init.method === 'POST') && String(url).startsWith('/api/data'))"
+        " __boardReads += 1;\n"
+        "  return __readBase(url, init);\n};\n"
+    )
+
+    def test_a_stale_allow_reads_the_board_again_and_asks_for_the_allow_again(self) -> None:
+        out = self.drive(
+            SETTLED
+            + '__dashboard.reading = {consent:false, reason:"consent-required"};\n'
+            + self.STALE
+            + self.READS,
+            '__press("reading-ask");\nawait __settle();\n'
+            "const __stale = __reply['/api/reading'];\nlet __atReply = null;\n"
+            "__reply['/api/reading'] = body => { __atReply = __boardReads; return __stale(body); };\n"
+            '__press("reading-allow");\nawait __settle();\nawait __settle();\n'
+            "console.log(JSON.stringify({posts:__posts, reads:__boardReads - __atReply,"
+            " html:__els.app.innerHTML}));",
+        )
+        assert isinstance(out, dict)
+        self.assertEqual(["/api/reading"], posted(out))
+        self.assertGreaterEqual(out["reads"], 1)
+        # The refresh drew the words the refusal was about, and the Allow step is gone.
+        self.assertIn("Words another tab saved", out["html"])
+        self.assertNotIn('data-next-cockpit-action="reading-allow"', out["html"])
+        self.assertIn(KEEP_REFUSED, visible_text(drift_of(out["html"])))
 
     def test_the_goal_save_sends_its_revision_and_a_refusal_keeps_the_typed_words(self) -> None:
         typed = "Ship the retry queue with jitter"
@@ -154,6 +216,35 @@ class KeepShowsTheWholeDirectionTest(_DraftPage):
         self.assertEqual(["/api/direction", "/api/direction", "/api/reading"], posted(out))
         self.assertEqual(104, out["posts"][-1]["body"]["settle_through"])
 
+    def test_the_first_press_moves_focus_to_the_whole_directions_and_scrolls_to_their_start(
+        self,
+    ) -> None:
+        # The stub document parses lists too, so the list's focus key is reachable.
+        dom = cockpit_tests.NextCockpitCompositionTest.FOCUS_DOM.replace(
+            "(button|a|textarea)", "(button|a|textarea|ol)"
+        ).replace(
+            "focus(){ document.activeElement = this; },",
+            "focus(options){ document.activeElement = this; this.focused = options || {}; },"
+            " scrollIntoView(options){ this.scrolled = options; },",
+        )
+        out = self.drive(
+            dom,
+            "const keep = controls.find(c => c.dataset.nextCockpitAction === 'direction-keep');\n"
+            "keep.focus();\n__fire('click', {preventDefault(){}, target:keep});\n"
+            "await __settle();\nawait __settle();\n"
+            "const active = document.activeElement;\n"
+            "console.log(JSON.stringify({tag:active && active.tagName, key:active &&"
+            " active.dataset.nextFocus, tabindex:active && active.getAttribute('tabindex'),"
+            " scrolled:active && active.scrolled, focused:active && active.focused}));",
+        )
+        assert isinstance(out, dict)
+        self.assertEqual(
+            ("OL", "direction-whole:claude:focus-1", "-1"),
+            (out["tag"], out["key"], out["tabindex"]),
+        )
+        self.assertEqual({"block": "start"}, out["scrolled"])
+        self.assertEqual({"preventScroll": True}, out["focused"])
+
     def test_a_direction_that_cannot_be_opened_refuses_keep(self) -> None:
         out = self.keep_twice(
             '__reply["/api/direction"] = body => body.fact_id === "fo-a"'
@@ -165,17 +256,108 @@ class KeepShowsTheWholeDirectionTest(_DraftPage):
         self.assertNotIn("/api/annotate", posted(out))
         self.assertIn(UNOPENED, visible_text(drift_of(out["first"]["html"])))
 
-    def test_a_direction_its_summary_already_shows_whole_settles_in_one_press(self) -> None:
+    def test_a_sole_direction_its_summary_already_shows_whole_settles_in_one_press(self) -> None:
+        # TYPED saved its goal at 103, so fo-a (104) is the one direction open, and the
+        # question quotes its whole text.
         out = self.drive(
-            "",
+            TYPED,
             '__press("direction-keep");\nawait __settle();\nawait __settle();\n'
             "console.log(JSON.stringify({posts:__posts, opened:__opened.map(p => p.body.fact_id),"
             " html:__els.app.innerHTML}));",
         )
         assert isinstance(out, dict)
-        self.assertEqual(["fo-b", "fo-a"], out["opened"])
+        self.assertEqual(["fo-a"], out["opened"])
         self.assertEqual(["/api/reading"], posted(out))
         self.assertNotIn(READ_FIRST, visible_text(out["html"]))
+
+    def test_two_directions_are_drawn_whole_first_even_when_each_equals_its_summary(self) -> None:
+        # The question quotes only the earliest, so the later one was never on screen.
+        out = self.keep_twice("")
+        first = out["first"]
+        self.assertEqual([], first["posts"])
+        drift = visible_text(drift_of(first["html"]))
+        self.assertIn(READ_FIRST, drift)
+        whole = re.search(r"<ol[^>]*data-next-cockpit-direction-whole[\s\S]*?</ol>", first["html"])
+        assert whole is not None, "no whole-direction list drawn"
+        self.assertIn(EARLIEST, visible_text(whole.group(0)))
+        self.assertIn("Newest direction", visible_text(whole.group(0)))
+        self.assertEqual(["/api/reading"], posted(out))
+        self.assertEqual(104, out["posts"][-1]["body"]["settle_through"])
+
+    def test_a_clipped_direction_is_drawn_with_the_owners_clipped_sentence(self) -> None:
+        # Even where the opened start equals the quoted summary: the rest was never opened.
+        out = self.drive(
+            TYPED + '__reply["/api/direction"] = body => ({status:200, body:{ok:true,'
+            ' fact_id:body.fact_id, text:"Newest direction", clipped:true, fits:false}});\n',
+            '__press("direction-keep");\nawait __settle();\nawait __settle();\n'
+            "console.log(JSON.stringify({posts:__posts, html:__els.app.innerHTML}));",
+        )
+        assert isinstance(out, dict)
+        self.assertEqual(["/api/direction"], posted(out))
+        whole = re.search(r"<ol[^>]*data-next-cockpit-direction-whole[\s\S]*?</ol>", out["html"])
+        assert whole is not None, "no whole-direction list drawn"
+        self.assertIn(CLIPPED, visible_text(whole.group(0)))
+        self.assertIn(READ_FIRST, visible_text(drift_of(out["html"])))
+
+    ARRIVES = (
+        "__semantic.facts.unshift({fact_id:'fo-c', at:106, type:'user_message',"
+        " summary:'Also delete the whole tests folder.',"
+        " source_session:{harness:'claude', sid:'focus-1'},"
+        " evidence:{source:'root transcript', confidence:'exact'}});\n"
+        "await refreshNext();\nawait __settle();\nawait __settle();\n"
+    )
+
+    def test_a_direction_arriving_between_presses_is_drawn_and_not_settled(self) -> None:
+        out = self.drive(
+            "",
+            '__press("direction-keep");\nawait __settle();\nawait __settle();\n'
+            + self.ARRIVES
+            + '__press("direction-keep");\nawait __settle();\nawait __settle();\n'
+            "const second = {posts:__posts.map(p => p.url), html:__els.app.innerHTML,"
+            " opened:__opened.map(p => p.body.fact_id)};\n"
+            '__press("direction-keep");\nawait __settle();\nawait __settle();\n'
+            "console.log(JSON.stringify({second, posts:__posts}));",
+        )
+        assert isinstance(out, dict)
+        second = out["second"]
+        self.assertEqual([], second["posts"])
+        self.assertEqual(["fo-b", "fo-a", "fo-c"], second["opened"])
+        whole = re.search(r"<ol[^>]*data-next-cockpit-direction-whole[\s\S]*?</ol>", second["html"])
+        assert whole is not None, "no whole-direction list drawn"
+        self.assertIn("Also delete the whole tests folder.", visible_text(whole.group(0)))
+        self.assertIn(READ_FIRST, visible_text(drift_of(second["html"])))
+        # The third press settles what the second drew, the new direction included.
+        self.assertEqual(["/api/reading"], posted(out))
+        self.assertEqual(106, out["posts"][-1]["body"]["settle_through"])
+
+    def test_the_second_press_names_the_revision_the_list_was_drawn_with(self) -> None:
+        out = self.drive(
+            "",
+            '__press("direction-keep");\nawait __settle();\nawait __settle();\n'
+            "__s.annotation_revision = 5;\nawait refreshNext();\nawait __settle();\n"
+            '__press("direction-keep");\nawait __settle();\nawait __settle();\n'
+            "console.log(JSON.stringify({posts:__posts}));",
+        )
+        assert isinstance(out, dict)
+        self.assertEqual(["/api/reading"], posted(out))
+        self.assertEqual(0, out["posts"][-1]["body"]["expected_revision"])
+
+    def test_a_refused_keep_draws_the_directions_again_against_the_new_revision(self) -> None:
+        out = self.drive(
+            '__reply["/api/reading"] = () => ({status:422, body:{ok:false, produced:false,'
+            ' adoption_refused:true, settled:"refused"}});\n',
+            '__press("direction-keep");\nawait __settle();\nawait __settle();\n'
+            "__s.annotation_revision = 5;\nawait refreshNext();\nawait __settle();\n"
+            '__press("direction-keep");\nawait __settle();\nawait __settle();\n'
+            "const refused = __posts.length;\n"
+            '__press("direction-keep");\nawait __settle();\nawait __settle();\n'
+            "console.log(JSON.stringify({refused, posts:__posts, html:__els.app.innerHTML}));",
+        )
+        assert isinstance(out, dict)
+        self.assertEqual(1, out["refused"])
+        # The press after the refusal draws again rather than repeating the stale revision.
+        self.assertEqual(["/api/reading"], posted(out))
+        self.assertIn(READ_FIRST, visible_text(drift_of(out["html"])))
 
 
 @unittest.skipUnless(shutil.which("node"), "node not available")
@@ -195,6 +377,24 @@ class TheQuestionEndsWithOneMarkTest(_DraftPage):
                 self.assertIn(f'You gave a later direction at #3: "{said}"', drift)
                 self.assertNotIn(f'"{said}".', drift)
 
+    def test_a_mark_before_a_closing_quote_or_bracket_gets_no_second_one(self) -> None:
+        for said in (
+            "Ship it now!",
+            'Say "done."',
+            "Keep it (see tests.)",
+            "\u201call green.\u201d",
+        ):
+            with self.subTest(said=said):
+                drift = visible_text(drift_of(self.html(TYPED + self.summary("fo-a", said))))
+                self.assertIn(f'You gave a later direction at #3: "{said}"', drift)
+                self.assertNotIn(f'"{said}".', drift)
+
+    def test_a_trailing_space_is_trimmed_before_quoting(self) -> None:
+        drift = visible_text(drift_of(self.html(TYPED + self.summary("fo-a", "Log it all. "))))
+        self.assertIn('You gave a later direction at #3: "Log it all."', drift)
+        self.assertNotIn('"Log it all. "', drift)
+        self.assertNotIn('"Log it all.".', drift)
+
     def test_the_plural_form_gets_no_second_mark_either(self) -> None:
         said = "Should the lanes swap?"
         drift = visible_text(drift_of(self.html(self.summary("fo-b", said))))
@@ -204,6 +404,26 @@ class TheQuestionEndsWithOneMarkTest(_DraftPage):
     def test_a_quote_with_no_mark_of_its_own_still_ends_the_sentence(self) -> None:
         drift = visible_text(drift_of(self.html()))
         self.assertIn(f'the earliest at #1: "{EARLIEST}".', drift)
+
+
+class TheWholeDirectionListWrapsAlikeTest(unittest.TestCase):
+    """A11y review F4: a long direction's number stays beside its text, as a short one's does."""
+
+    def rule(self, selector: str) -> str:
+        match = re.search(re.escape(selector) + r"\{([^}]*)\}", NEXT_STYLES)
+        assert match is not None, f"no rule for {selector}"
+        return match.group(1)
+
+    def test_each_item_is_a_two_column_grid_that_never_wraps_the_number_away(self) -> None:
+        item = self.rule(".next-cockpit-direction-whole-item")
+        self.assertIn("display:grid", item)
+        self.assertIn("grid-template-columns:auto minmax(0,1fr)", item)
+        self.assertNotIn("flex-wrap", item)
+        self.assertIn("grid-column:2", self.rule(".next-cockpit-direction-whole-text"))
+        self.assertIn(
+            "grid-column:2",
+            self.rule(".next-cockpit-direction-whole-item>.next-cockpit-held-full"),
+        )
 
 
 class TheIntentHeadingUsesThePagesRingTest(unittest.TestCase):
@@ -311,6 +531,71 @@ class AnAnalysisIsAnnouncedOnceTest(_DraftPage):
         self.assertEqual(1, out["polite"].count("Analyzing drift"), out["polite"])
         self.assertNotIn(said, out["polite"])
 
+    REGION = 'region("next-cockpit-cue-status").textContent'
+
+    def test_a_job_that_ends_unannounced_leaves_no_analyzing_drift_in_the_region(self) -> None:
+        said = reading.WITHHELD[reading.WITHHELD_CANCELLED]
+        cases = {
+            "ended while away": 'navigateNext({view:"sessions"});\nawait __settle();\n'
+            f"__dashboard.reading_jobs = {{}};\n__s.annotation_reading_withheld = {json.dumps(said)};\n"
+            "await refreshNext();\nawait __settle();\n"
+            f"{ROUTE}\nawait __settle();\nrenderNext();\n",
+            "ended with nothing new": "__dashboard.reading_jobs = {};\n"
+            "await refreshNext();\nawait __settle();\nrenderNext();\n",
+        }
+        for name, end in cases.items():
+            with self.subTest(case=name):
+                out = self.drive(
+                    SETTLED + DOM + JOB,
+                    self.RUN + end + f"console.log(JSON.stringify({self.REGION}));",
+                )
+                self.assertEqual("", out)
+
+    def test_two_jobs_in_a_row_each_announce_their_start_and_their_end(self) -> None:
+        said = reading.WITHHELD[reading.WITHHELD_CANCELLED]
+        second = (
+            f"__dashboard.reading_jobs = {{}};\n__s.annotation_reading_withheld = {json.dumps(said)};\n"
+            "await refreshNext();\nawait __settle();\nrenderNext();\n"
+            'const JOB2 = {...JOB, id:"j2"};\n'
+            '__reply["/api/reading"] = () => { __dashboard.reading_jobs = {"claude:focus-1": JOB2};'
+            " return {status:202, body:{ok:true, job:JOB2}}; };\n"
+            '__press("reading-ask");\nawait __settle();\nawait __settle();\n'
+            "await refreshNext();\nawait __settle();\nrenderNext();\n"
+            "__dashboard.reading_jobs = {};\n"
+            "await refreshNext();\nawait __settle();\nrenderNext();\n"
+        )
+        out = self.drive(
+            SETTLED + DOM + JOB,
+            self.RUN + second + f"console.log(JSON.stringify({POLITE}));",
+        )
+        assert isinstance(out, list)
+        self.assertEqual(2, out.count("Analyzing drift"), out)
+        self.assertEqual(2, out.count(said), out)
+
+    def test_an_outcome_the_region_already_holds_is_emptied_before_it_is_said_again(self) -> None:
+        # A second job another tab started while the reader was away, ending as the first did:
+        # no start is said in between, so the region still holds the first job's outcome.
+        said = reading.WITHHELD[reading.WITHHELD_CANCELLED]
+        second = (
+            f"__dashboard.reading_jobs = {{}};\n__s.annotation_reading_withheld = {json.dumps(said)};\n"
+            "await refreshNext();\nawait __settle();\nrenderNext();\n"
+            'navigateNext({view:"sessions"});\nawait __settle();\n'
+            '__dashboard.reading_jobs = {"claude:focus-1": {...JOB, id:"j2"}};\n'
+            "await refreshNext();\nawait __settle();\n"
+            f"{ROUTE}\nawait __settle();\nrenderNext();\n"
+            "__dashboard.reading_jobs = {};\n"
+            "await refreshNext();\nawait __settle();\nrenderNext();\n"
+        )
+        out = self.drive(
+            SETTLED + DOM + JOB,
+            self.RUN + second + f"console.log(JSON.stringify({POLITE}));",
+        )
+        assert isinstance(out, list)
+        self.assertEqual(1, out.count("Analyzing drift"), out)
+        self.assertEqual(2, out.count(said), out)
+        last = len(out) - 1 - out[::-1].index(said)
+        self.assertEqual("", out[last - 1], out)
+
     def test_a_reload_after_the_job_ended_announces_nothing(self) -> None:
         said = reading.WITHHELD[reading.WITHHELD_CANCELLED]
         out = self.drive(
@@ -388,6 +673,15 @@ class ThePageJudgesAPiCheckAsTheServerDoesTest(NextPageJsHarness):
             ("fact:old-pass", "Pi bash tool call and paired result"),
         ):
             facts.append(older(holder, fact_id, source, 400)["fact"])
+        # And the two rows that are not subjectless Pi checks, so the page's test is held to
+        # both halves of it: another type from a Pi bash call, and a result from a source
+        # that names a Pi bash call without starting with it. Each passes through.
+        other_type = older(
+            holder, "fact:old-other-type", "Pi bash tool call and paired result", 400
+        )
+        other_type["fact"]["type"] = "agent_message"
+        not_prefixed = older(holder, "fact:old-not-prefixed", "After a Pi bash tool call", 400)
+        facts.extend([other_type["fact"], not_prefixed["fact"]])
         return facts
 
     def test_every_pi_fact_carries_a_verdict_on_the_page_exactly_when_it_does_on_the_server(
@@ -423,6 +717,9 @@ class ThePageJudgesAPiCheckAsTheServerDoesTest(NextPageJsHarness):
         }
         self.assertEqual(sorted(server), sorted(out))
         self.assertEqual(server, out)
+        for fact_id in ("fact:old-other-type", "fact:old-not-prefixed"):
+            self.assertIn(fact_id, server)
+            self.assertIn(True, [value for row in server[fact_id] for value in row], fact_id)
         flat = [value for rows in server.values() for row in rows for value in row]
         self.assertIn(True, flat)
         self.assertIn(False, flat)
