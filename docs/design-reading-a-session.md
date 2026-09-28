@@ -453,6 +453,22 @@ What this costs is that the marker is also the person who wants the feature, so 
 permissive direction has nobody to catch it. The mitigation is the first of those three, and it is
 weaker than a second reader.
 
+#### Amended 2026-09-28: the agent may write marks the captain agrees to
+
+The captain may have the agent building this check propose a judge or abstain mark for each
+constraint, and a mark the captain agrees to may be written into the marks file by that agent. An
+agreed mark is the captain's. A mark the captain has not agreed to is not written.
+
+Two things still hold. Marks are written before any producer runs against the corpus, so a mark
+written after seeing an output is still not a mark. And the corpus stays recorded sessions only.
+
+What this costs is independence. The agent that proposes the marks also wrote the reading prompt,
+and it is the same model family as the Claude Code producer being qualified. That is the case the
+original ruling excluded. A blind spot the proposer and the producer share would make a permissive
+mark look right to both, and the captain's agreement is then the only independent check. The
+mitigation is that disagreement is shown rather than smoothed: every constraint where the proposal
+differs from the captain's own mark goes to the captain to decide.
+
 #### Amended 2026-09-14: the captain accepts the case review
 
 After answering all twelve recorded Claude and Codex snapshots, the captain accepted that review
