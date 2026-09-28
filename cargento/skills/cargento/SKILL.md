@@ -429,7 +429,16 @@ revisions say the words have moved, and legacy readings without a reading time s
 unknown. Consistent readings add no mark or rank, and there is no drift total. With annotations
 off the slot has no link and there is no Drift mark; the screen explains that once.
 
-Nothing here evaluates on a cadence. Drift marks show departures already on record, from a
+One thing here evaluates on a cadence, and only when you turn it on: the Drift section's `Live
+monitor` switch, off by default and remembered per session in this browser only, never sent to the
+server. With it on, a Claude Code session's page shows a live estimate (None or low, Medium, High or
+Extreme, or Not enough recorded yet), labelled `Live estimate` with the time it was computed and
+worked out after every turn from the recorded checks and written paths against your saved intent,
+with no model call. It says where it last rose ("Rose from Medium at #12"), recomputed each time and
+never stored, adds a nudge to analyze at High, and shows the level in the page header beside the
+entry count. Over an unsaved draft it reads "Save your intent to see a live estimate" and there is no
+pill. It never appears on a Sessions row, raises no notification, and never feeds the unasked lane.
+Drift marks show departures already on record, from a
 reader-requested reading or the optional unasked lane. With nothing typed the block says there is nothing to read against; with the observer
 model off it gives that reason; otherwise it states what a reading may and may not read and offers
 one control, `Analyze drift`. When it cannot run it stays on the page, refuses the press, and

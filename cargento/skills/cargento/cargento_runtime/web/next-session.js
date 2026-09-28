@@ -689,7 +689,7 @@ function nextSessionView(project, harness, sid, openDisclosures = new Set()){
     `<h1${titleClass}>${esc(observed.titleText)}</h1>` +
     `<p class="next-session-identity">${esc(observed.harness)} · ${esc(observed.sid)}${rate}</p>` +
     '</div><div class="next-session-detail-bar">' +
-    `${metaLine}<div class="next-session-controls">${controls}</div></div></header>`;
+    `${metaLine}${drift.pill || ""}<div class="next-session-controls">${controls}</div></div></header>`;
   /* Identity, then what is waiting on the reader, both full width; then the
      Intent and drift panel and the session's activity as two columns
      (DRC-4680). The answer sits above both because it outranks the check.
