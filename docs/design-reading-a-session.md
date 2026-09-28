@@ -2173,14 +2173,17 @@ saved-line labels. The calls the rulings left open:
   page's rules for whether a verdict survives: a reading of an older revision lends no state, an
   unsettled later direction demotes a departure, a citation must resolve inside the reading's
   window, and on Claude Code an outcome-line verdict stands only where the route can carry checks
-  (`nextReadingOutputLimit`). Otherwise the text could claim a departure the panel beside it has
-  demoted. A goal departure counts as something to steer from, and the template says it as "Back
-  to my goal".
+  (`nextReadingOutputLimit`). A stored `why` the page knows never demotes a row, because the page
+  applies one only after its own rules have left the row unverifiable; one it does not know demotes
+  it as unreadable. Otherwise the text could claim a departure the panel beside it has demoted. A
+  goal departure counts as something to steer from, and the template says it as "Back to my goal".
 - One sentence each for a failed check and a later direction, at the latest of each. A settled
   later direction still counts, because settling records that the baseline still applies, not
   that the reader never said it. A copied correction is never one.
 - Consistent lines are dropped one at a time, the last first, until the text fits. Every
   placeholder is counted at six digits, so the page's text never passes 2,000 whatever it numbers.
+  Both sides count characters as code points: the page has no `maxlength`, which counts UTF-16
+  units, so a correction of emoji is shown whole and one keystroke never cuts it.
 - Claude Code only, as the copy route is, so a paste of the correction can be recognised coming
   back. An unknown session and another harness answer what a session with nothing to steer from
   does.
@@ -2193,11 +2196,21 @@ saved-line labels. The calls the rulings left open:
   primary. The result stage gains nothing, so DRC-4695 renders around it.
 - The box is labelled "Correction to copy" with the hint "Cargento never sends this. Copy it and
   paste it into the session." Copy writes the box's text, frozen at the press, and posts it to
-  `POST /api/correction/copied` only after the clipboard took it. The page's other sentences here
-  are new and wait on the owner: "Nothing recorded now gives a correction to steer back from." and
-  "Could not compose a correction. Press Steer back again to retry."
+  `POST /api/correction/copied` only after the clipboard took it. The owner approved "Copy",
+  "Nothing recorded now gives a correction to steer back from." and "Could not compose a
+  correction. Press Steer back again to retry." on 2026-09-28. A press over either refusal asks
+  again, in one press.
+- An open box follows the record. The press stamps what composition read: the saved words'
+  revision, the settlement, the stored reading's `read_at`, and the entries the parts cite. A
+  change in any of them drops a text the reader has not edited, which is recomposed from the server
+  where there is still something to steer from and closed where there is not, so Copy never records
+  a text composed from a record that no longer holds. An edited text stays the reader's, marked
+  "This was composed from an older record. Recompose replaces your edit with a correction from the
+  record as it stands." beside a Recompose button; both wait on the owner.
 - Update intent instead offers the direction a surviving departure cites, else the latest later
-  direction, through Add's own `POST /api/direction`. The pending line it opens stands while its
+  direction, through Add's own `POST /api/direction`, skipping any direction already saved as a
+  line; with none left it adds the empty line. The store refuses an entry already saved as another
+  line through the same refusal a stale revision gets, so no route can add it twice. The pending line it opens stands while its
   direction is any later direction, settled or not, where Add's own line stands only while its
   direction is unsettled. With no later direction it adds an empty outcome line, focused, and at
   six lines it says the existing six-line sentence and adds nothing. The server already added a

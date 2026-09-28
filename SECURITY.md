@@ -127,11 +127,12 @@ The posture rests on two invariants:
    One forwarder writes too: `statusline_hook.py`'s deduplication memo under
    the same directory, which holds a normalized state name and a timestamp and nothing about the
    session's content.
-   Two `POST`s mutate nothing and are named here for what they return rather than for the count
-   above: `POST /api/direction` hands back the whole text of one later direction you gave, for
-   review before it becomes an outcome line, and `POST /api/correction` hands back Steer back's
-   correction, which is the goal and outcome lines you saved, each line's state and the times of
-   the entries it rests on. [Analyze drift, Cancel and copied corrections](#analyze-drift-cancel-and-copied-corrections)
+   Two `POST`s store nothing of their own and are named here for what they return rather than for
+   the count above: `POST /api/direction` hands back the whole text of one later direction you
+   gave, for review before it becomes an outcome line, and `POST /api/correction` hands back Steer
+   back's correction, which is the goal and outcome lines you saved, each line's state and the
+   times of the entries it rests on. Each runs a collection to read the session, and that
+   collection may rewrite `semantic-work-history.json` as any collection does. [Analyze drift, Cancel and copied corrections](#analyze-drift-cancel-and-copied-corrections)
    owns the bounds of both.
    One `GET` reads wider than the rest, and is named here for that reason rather than for the
    count above. `GET /api/annotations` serves the prose you composed, for every session you have
@@ -1517,8 +1518,9 @@ It never reads a fact's summary, a command, a check name, tool output, a reading
 message's text, so none of them can reach the correction; each entry travels as its time and a
 placeholder holding its fact id, which the page replaces with the number its own list draws, or
 drops. A reply is at most 2,000 characters however the page numbers it, and is never truncated: a
-longer one drops its consistent lines and then answers a refusal sentence. It writes nothing, is
-guarded as `POST /api/direction` is, reads Claude Code sessions only, and answers one body for an
+longer one drops its consistent lines and then answers a refusal sentence. It stores nothing of
+its own: it reads, and the collection it runs to read the session may rewrite the semantic history
+store, as `POST /api/direction`'s does. It is guarded as `POST /api/direction` is, reads Claude Code sessions only, and answers one body for an
 unknown session, another harness, and a session with nothing to steer from alike. The reader edits
 the text in the page and copies it; Cargento never sends it into the session.
 
@@ -2639,7 +2641,7 @@ the paragraph below grants another account on the machine, a non-default bind gr
 can reach the port. Reading `/api/data` is the whole board: every session's titles, prompts and
 project paths. Writing is the seventeen POST routes enabled without terminal registration, `/api/shutdown` and `/api/answer` among them, so a
 reachable dashboard can be killed, and a question a session is waiting on can be answered by
-somebody other than you. Two of the seventeen only read: `POST /api/direction` returns the whole text
+somebody other than you. Two of the seventeen store nothing of their own: `POST /api/direction` returns the whole text
 of a direction a session's user gave, which `/api/project-context` names by its first sentence, and
 `POST /api/correction` returns the goal and outcome lines a reader saved, composed as Steer back's
 correction. Both answer only a loopback peer, so a non-default bind does not widen them; their

@@ -2094,12 +2094,14 @@ class _RequestHandler(BaseHTTPRequestHandler):
     def _correction(self) -> None:
         """Compose Steer back's correction for one session (DRC-4681).
 
-        Reads and writes nothing but the reply, which `correction.compose`
-        builds from the session's published row, its observed record and the
-        later-direction floor, never from anything the page sends beyond which
-        session. Guarded as `POST /api/direction` is, because the reply carries
-        the reader's whole goal and lines. Every session it will not compose
-        for answers one 200 body, for `_focus`'s ruling.
+        Stores nothing of its own. It reads: the reply is what
+        `correction.compose` builds from the session's published row, its
+        observed record and the later-direction floor, never from anything the
+        page sends beyond which session. The collection `_session_row` runs may
+        rewrite the semantic history store, as `/api/direction`'s does.
+        Guarded as `POST /api/direction` is, because the reply carries the
+        reader's whole goal and lines. Every session it will not compose for
+        answers one 200 body, for `_focus`'s ruling.
         """
         application = self.server.application
         config = application.config

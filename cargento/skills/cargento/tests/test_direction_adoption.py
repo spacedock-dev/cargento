@@ -234,6 +234,36 @@ class AddDirectionStoreTest(unittest.TestCase):
         )
         self.assertEqual("typed", lines[0]["source"])
 
+    def test_a_direction_already_saved_as_a_line_is_refused_a_second_place(self) -> None:
+        # Update intent instead could offer it again (page F1); two lines from one entry would
+        # write a typed line away for a copy of one already kept.
+        _six(self.config, self.state)
+        self.assertEqual(
+            annotation_store.OUTCOME_STORED,
+            self._add(expected_revision=1, replace=1, source_id="fact:aaaa"),
+        )
+        before = self.writes.count
+        self.assertEqual(
+            annotation_store.OUTCOME_REFUSED,
+            self._add(expected_revision=2, replace=2, source_id="fact:aaaa"),
+        )
+        self.assertEqual(before, self.writes.count)
+        lines = self._entry()["revisions"][-1]["lines"]
+        self.assertEqual("Line 3", lines[2]["text"])
+        # Replacing the very line that holds it leaves one line from that entry, and stands.
+        self.assertEqual(
+            annotation_store.OUTCOME_STORED,
+            self._add(expected_revision=2, replace=1, source_id="fact:aaaa", text="Reworded"),
+        )
+        self.assertEqual(
+            ["fact:aaaa"],
+            [
+                line.get("source_id")
+                for line in self._entry()["revisions"][-1]["lines"]
+                if line.get("source_id")
+            ],
+        )
+
     def test_a_long_or_multi_line_direction_is_refused_never_clipped(self) -> None:
         self.assertEqual(annotation_store.OUTCOME_REFUSED, self._adopting(text=LONG))
         self.assertEqual(0, self.writes.count)

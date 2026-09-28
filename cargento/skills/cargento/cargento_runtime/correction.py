@@ -145,11 +145,15 @@ class _Rows:
     def state(self, name: str) -> tuple[str, dict[str, Any] | None]:
         """One constraint's state and the entry its time is read from."""
         row = self.criteria.get(name)
+        # A stored `why` the page knows explains only a row its own rules already left
+        # unverifiable, so it never demotes one here; one it does not know reads as unreadable
+        # and demotes the row, as `nextCockpitReadingCriterion` does (injection F4).
+        why = row.get("why") if isinstance(row, dict) else None
         if (
             self.unsettled
             or not isinstance(row, dict)
             or set(row) - set(reading.CRITERION_KEYS)
-            or row.get("why")
+            or (why and (not isinstance(why, str) or why not in reading.WHY_TOKENS))
         ):
             return _NOT_SHOWN, None
         result = row.get("result")

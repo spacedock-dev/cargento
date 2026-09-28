@@ -26,8 +26,17 @@ from typing import Any
 
 from cargento_runtime import correction
 
+from .next_harness import NEXT_STYLES
 from .test_next_drift_panel import routes
-from .test_next_intent_draft import PRIMARY, TYPED, _DraftPage, aside_of, drift_of, visible_text
+from .test_next_intent_draft import (
+    PRIMARY,
+    ROUTE,
+    TYPED,
+    _DraftPage,
+    aside_of,
+    drift_of,
+    visible_text,
+)
 
 KEY = "claude:focus-1"
 LINE = "The parser tests pass"
@@ -198,6 +207,11 @@ class WhereSteerBackIsDrawnTest(_DraftPage):
                 assert slot is not None
                 self.assertIn(routed["claude"]["note"], visible_text(slot.group(0)))
                 self.assertIn('data-next-cockpit-action="steer-back"', slot.group(0))
+                # Where Analyze would be, so ahead of "Turn off readings" (page F5).
+                first = re.search(r"<button\b[^>]*>", slot.group(0))
+                assert first is not None
+                self.assertIn('data-next-cockpit-action="steer-back"', first.group(0))
+                self.assertIn('data-next-cockpit-action="reading-off"', slot.group(0))
                 self.assertNotIn('data-next-cockpit-action="reading-ask"', html)
                 self.assertNotIn("update-intent", html)
 
@@ -274,7 +288,9 @@ class TheCorrectionTest(_DraftPage):
         html = self.opened()["html"]
         box = box_of(html)
         self.assertIn(">Correction to copy</label>", box)
-        self.assertIn('maxlength="2000"', box)
+        # Counted in characters as the server counts them, so no UTF-16 `maxlength` (F2).
+        self.assertNotIn("maxlength", box)
+        self.assertRegex(visible_text(box), r"\b\d+/2000\b")
         self.assertIn(HINT, visible_text(box))
         self.assertIn(">Copy</button>", box)
         self.assertNotIn("Send", visible_text(aside_of(html)))
@@ -431,6 +447,345 @@ class AddedFromLabelTest(_DraftPage):
 
     def test_a_typed_line_is_still_typed(self) -> None:
         self.assertEqual("typed", self.label('__s.annotation_line_1_source = "typed";\n'))
+
+    def test_at_phone_widths_the_label_wraps_and_remove_keeps_its_own_column(self) -> None:
+        # "added from your direction at 14:00" sized an `auto` column to its whole width and
+        # pushed remove past the page at 375 and 320 (page F2); measured live with CDP.
+        phone = "".join(
+            block[: block.index("\n}\n")]
+            for block in NEXT_STYLES.split("@media(max-width:760px){")[1:]
+        )
+        self.assertIn(
+            ".next-session-panel .next-cockpit-held-line"
+            "{grid-template-columns:auto minmax(0,1fr) auto}",
+            phone,
+        )
+        self.assertRegex(
+            phone,
+            r"\.next-session-panel \.next-cockpit-held-line \.next-cockpit-held-source"
+            r"\{min-width:0;overflow-wrap:anywhere\}",
+        )
+
+
+# The record moving under an open box (injection F1, page F3). Each replaces what the fixture's
+# server publishes and redraws, as a poll does.
+REDRAW = (
+    "__dashboard.generated = (__dashboard.generated || 0) + 1;\n"
+    "nextCockpitContexts.clear();\nawait refreshNext();\nawait __settle();\nawait __settle();\n"
+)
+# A passing re-run superseded the failed check the departure cited: the entry leaves the record,
+# so the panel demotes the departure and nothing is left to steer from.
+SUPERSEDED = "__semantic.facts = __semantic.facts.filter(f => f.fact_id !== 'c-fail');\n" + REDRAW
+# A new analysis of the same words, read later.
+REREAD = "__s.annotation_assessment = {...__s.annotation_assessment, read_at:107};\n" + REDRAW
+# The reader saved new words from elsewhere (revision 2 to 3).
+RESAVED = (
+    '__s.annotation_goal = "Ship the retry queue again"; __s.annotation_revision = 3;\n'
+    "__s.annotation_revision_count = 3;\n" + REDRAW
+)
+FRESH = {"ok": True, "parts": ["Back to my goal: fresh.\nPlease continue from here."]}
+STALE_NOTE = (
+    "This was composed from an older record. Recompose replaces your edit with a correction from "
+    "the record as it stands."
+)
+
+
+def correction_posts(out: dict[str, Any]) -> list[Any]:
+    return [post for post in out["posts"] if post["url"] == "/api/correction"]
+
+
+@unittest.skipUnless(shutil.which("node"), "node not available")
+class AnOpenCorrectionFollowsTheRecordTest(_DraftPage):
+    SETUP = TYPED + QUIET + LINES + CHECK + DEPARTURE + reply(composed()) + INPUT + COPY
+
+    def moved(self, change: str, *, before: str = "", after: str = "") -> Any:
+        return self.drive(
+            self.SETUP,
+            '__press("steer-back");\nawait __settle();\nawait __settle();\n'
+            + before
+            + reply(FRESH).replace("\n", "")
+            + "\n"
+            + change
+            + after
+            + "console.log(JSON.stringify({html:__els.app.innerHTML, posts:__posts,"
+            " copied:__copied}));",
+        )
+
+    def test_a_departure_the_record_no_longer_holds_closes_an_unedited_box(self) -> None:
+        out = self.moved(SUPERSEDED)
+        html = out["html"]
+        self.assertNotIn("data-next-cockpit-correction-key", html)
+        self.assertNotIn("departed at", visible_text(html))
+        self.assertNotIn("A check failed", visible_text(html))
+        # Nothing is left to steer from, so no second request and no control.
+        self.assertEqual(1, len(correction_posts(out)))
+        self.assertNotIn("steer-back", html)
+
+    def test_a_new_analysis_recomposes_an_unedited_box_from_the_server(self) -> None:
+        out = self.moved(REREAD)
+        self.assertEqual(2, len(correction_posts(out)))
+        self.assertEqual(
+            "Back to my goal: fresh.\nPlease continue from here.", textarea_of(out["html"])
+        )
+
+    def test_new_words_recompose_an_unedited_box(self) -> None:
+        out = self.moved(RESAVED)
+        self.assertEqual(2, len(correction_posts(out)))
+        text = textarea_of(out["html"])
+        self.assertNotIn("Ship the retry queue\n", text)
+        self.assertNotIn("departed at", text)
+
+    def test_a_copied_but_unedited_text_is_recomposed_too(self) -> None:
+        out = self.moved(
+            REREAD, before='__press("correction-copy");\nawait __settle();\nawait __settle();\n'
+        )
+        self.assertEqual(2, len(correction_posts(out)))
+        self.assertEqual(
+            "Back to my goal: fresh.\nPlease continue from here.", textarea_of(out["html"])
+        )
+
+    def test_copy_after_the_record_moved_copies_and_records_only_the_new_text(self) -> None:
+        out = self.moved(
+            RESAVED,
+            after='__posts = [];\n__press("correction-copy");\nawait __settle();\nawait __settle();\n',
+        )
+        fresh = "Back to my goal: fresh.\nPlease continue from here."
+        self.assertEqual([fresh], out["copied"])
+        self.assertEqual(
+            [{"url": "/api/correction/copied", "body": {**WHO, "text": fresh}}], out["posts"]
+        )
+
+    def test_an_edited_text_is_kept_and_marked_as_composed_from_an_older_record(self) -> None:
+        edited = "Back to my goal: my own words.\nPlease continue from here."
+        out = self.moved(RESAVED, before=f"__typeCorrection({json.dumps(edited)});\n")
+        html = out["html"]
+        self.assertEqual(edited, textarea_of(html))
+        self.assertEqual(1, len(correction_posts(out)))
+        self.assertIn(STALE_NOTE, visible_text(drift_of(html)))
+        self.assertIn('data-next-cockpit-action="correction-recompose"', html)
+        self.assertIn(">Recompose</button>", html)
+
+    def test_recompose_replaces_an_edited_text_with_the_record_as_it_stands(self) -> None:
+        edited = "Back to my goal: my own words.\nPlease continue from here."
+        out = self.moved(
+            RESAVED,
+            before=f"__typeCorrection({json.dumps(edited)});\n",
+            after='__press("correction-recompose");\nawait __settle();\nawait __settle();\n',
+        )
+        self.assertEqual(2, len(correction_posts(out)))
+        self.assertEqual(
+            "Back to my goal: fresh.\nPlease continue from here.", textarea_of(out["html"])
+        )
+        self.assertNotIn(STALE_NOTE, visible_text(out["html"]))
+
+    def test_an_edited_stale_text_still_copies_as_the_reader_wrote_it(self) -> None:
+        edited = "Back to my goal: my own words.\nPlease continue from here."
+        out = self.moved(
+            RESAVED,
+            before=f"__typeCorrection({json.dumps(edited)});\n",
+            after='__posts = [];\n__press("correction-copy");\nawait __settle();\nawait __settle();\n',
+        )
+        self.assertEqual([edited], out["copied"])
+        self.assertEqual(
+            [{"url": "/api/correction/copied", "body": {**WHO, "text": edited}}], out["posts"]
+        )
+
+    def test_copy_before_the_redraw_never_copies_a_text_the_record_moved_past(self) -> None:
+        # The record arrived and the page has not drawn it yet: Copy itself reads it, whatever
+        # the click path draws first.
+        out = self.moved(
+            "const __g = nextCockpitRouteGroup(); const __f = nextCockpitFocusedSession(__g);\n"
+            "__f.annotation_revision = 3;\n__posts = [];\n"
+            "await nextCockpitCopyCorrection(__f, {dataset:{nextCopyCorrection:'claude:focus-1'}},"
+            " nextCockpitWorkSource(__g, __f));\nawait __settle();\n"
+        )
+        self.assertEqual([], out["copied"])
+        self.assertEqual([], [p for p in out["posts"] if p["url"] == "/api/correction/copied"])
+
+    def test_recomposed_to_nothing_it_closes_rather_than_refusing_an_unmade_press(self) -> None:
+        out = self.drive(
+            self.SETUP,
+            '__press("steer-back");\nawait __settle();\nawait __settle();\n'
+            + reply({"ok": False, "reason": "nothing"}).replace("\n", "")
+            + "\n"
+            + REREAD
+            + "console.log(JSON.stringify({html:__els.app.innerHTML, posts:__posts}));",
+        )
+        self.assertEqual(2, len(correction_posts(out)))
+        self.assertNotIn("data-next-cockpit-correction-key", out["html"])
+        self.assertNotIn(
+            "Nothing recorded now gives a correction to steer back from.",
+            visible_text(out["html"]),
+        )
+        self.assertIn('aria-expanded="false"', out["html"])
+
+    def test_a_redraw_that_changes_nothing_keeps_the_box_and_asks_nothing(self) -> None:
+        out = self.moved(REDRAW)
+        self.assertEqual(1, len(correction_posts(out)))
+        self.assertIn("departed at", textarea_of(out["html"]))
+
+
+ROCKETS = "\U0001f680" * 1500
+
+
+@unittest.skipUnless(shutil.which("node"), "node not available")
+class TheCapCountsCharactersTest(_DraftPage):
+    """The server counts code points (`correction._width`), so the page does too (injection F2)."""
+
+    SETUP = TYPED + QUIET + LINES + CHECK + DEPARTURE + INPUT + COPY
+
+    def run_box(self, typed: str | None = None) -> Any:
+        edit = f"__typeCorrection({json.dumps(typed)});\n" if typed is not None else ""
+        return self.drive(
+            self.SETUP + reply({"ok": True, "parts": [ROCKETS]}),
+            '__press("steer-back");\nawait __settle();\nawait __settle();\n'
+            + edit
+            + '__press("correction-copy");\nawait __settle();\nawait __settle();\n'
+            "console.log(JSON.stringify({html:__els.app.innerHTML, copied:__copied}));",
+        )
+
+    def test_a_correction_of_astral_characters_is_shown_whole_and_uncapped_by_units(self) -> None:
+        out = self.run_box()
+        box = box_of(out["html"])
+        self.assertEqual(ROCKETS, textarea_of(out["html"]))
+        self.assertNotIn("maxlength", box)
+        self.assertIn("1500/2000", visible_text(box))
+        self.assertEqual([ROCKETS], out["copied"])
+
+    def test_one_keystroke_on_it_cuts_nothing(self) -> None:
+        typed = ROCKETS + "x"
+        out = self.run_box(typed)
+        self.assertEqual([typed], out["copied"])
+
+    def test_past_the_cap_it_keeps_two_thousand_whole_characters(self) -> None:
+        out = self.run_box("\U0001f680" * 2100)
+        self.assertEqual(["\U0001f680" * 2000], out["copied"])
+
+
+@unittest.skipUnless(shutil.which("node"), "node not available")
+class ASavedDirectionIsNotOfferedAgainTest(_DraftPage):
+    """Update intent instead never offers a direction already saved as a line (page F1)."""
+
+    SAVED_FO_A = (
+        '__s.annotation_line_2 = "Newest direction";\n'
+        '__s.annotation_line_2_source = "entry";\n'
+        '__s.annotation_line_2_source_id = "fo-a";\n'
+    )
+
+    def offered(self, setup: str) -> str | None:
+        html = self.html(TYPED + LINES + setup)
+        match = re.search(r'data-next-cockpit-action="update-intent" data-arg="([^"]*)"', html)
+        assert match is not None, "no Update intent instead"
+        return match.group(1)
+
+    def test_the_cited_direction_already_saved_gives_way_to_the_latest_other(self) -> None:
+        self.assertEqual("fo-c", self.offered(CITED + LATEST + self.SAVED_FO_A))
+
+    def test_with_every_later_direction_saved_it_offers_the_empty_line(self) -> None:
+        self.assertEqual("", self.offered(CITED + self.SAVED_FO_A))
+
+
+@unittest.skipUnless(shutil.which("node"), "node not available")
+class SteerBackPressesTest(_DraftPage):
+    SETUP = TYPED + QUIET + LINES + CHECK + DEPARTURE + INPUT + COPY
+
+    def run_presses(self, first: str, then: str) -> Any:
+        return self.drive(
+            self.SETUP + first,
+            '__press("steer-back");\nawait __settle();\nawait __settle();\n'
+            + then
+            + "console.log(JSON.stringify({html:__els.app.innerHTML, posts:__posts,"
+            " renders:__renders, copied:__copied}));",
+        )
+
+    def test_retry_after_a_failure_is_one_press(self) -> None:
+        failing = '__reply["/api/correction"] = () => ({status:500, body:{}});\n'
+        out = self.run_presses(
+            failing,
+            reply(composed()) + '__press("steer-back");\nawait __settle();\nawait __settle();\n',
+        )
+        self.assertEqual(2, len(correction_posts(out)))
+        self.assertIn("departed at", textarea_of(out["html"]))
+
+    def test_a_press_over_nothing_to_steer_from_asks_again(self) -> None:
+        out = self.run_presses(
+            reply({"ok": False, "reason": "nothing"}),
+            reply(composed()) + '__press("steer-back");\nawait __settle();\nawait __settle();\n',
+        )
+        self.assertEqual(2, len(correction_posts(out)))
+        self.assertIn("departed at", textarea_of(out["html"]))
+
+    def test_a_double_press_sends_one_request(self) -> None:
+        out = self.drive(
+            self.SETUP + reply(composed()),
+            '__press("steer-back");\n__press("steer-back");\nawait __settle();\nawait __settle();\n'
+            "console.log(JSON.stringify({html:__els.app.innerHTML, posts:__posts}));",
+        )
+        self.assertEqual(1, len(correction_posts(out)))
+        self.assertIn("data-next-steer-box", out["html"])
+
+    def test_a_reply_whose_parts_are_not_text_or_entries_opens_no_box(self) -> None:
+        out = self.run_presses(reply({"ok": True, "parts": ["Back", {"entry": 4}]}), "")
+        self.assertNotIn("data-next-cockpit-correction-key", out["html"])
+        self.assertIn(
+            "Could not compose a correction. Press Steer back again to retry.",
+            visible_text(out["html"]),
+        )
+
+    def test_an_edit_after_copying_resets_the_cue(self) -> None:
+        out = self.run_presses(
+            reply(composed()),
+            '__press("correction-copy");\nawait __settle();\nawait __settle();\n'
+            '__typeCorrection("Back to my goal: changed.");\nrenderNext();\n',
+        )
+        box = box_of(out["html"])
+        self.assertIn(">Copy</button>", box)
+        self.assertNotIn(">Copied</button>", box)
+
+    def test_copy_keeps_its_focus_key_across_the_redraw(self) -> None:
+        out = self.run_presses(
+            reply(composed()), '__press("correction-copy");\nawait __settle();\nawait __settle();\n'
+        )
+        self.assertIn(f'data-next-focus="correction-copy:{KEY}"', box_of(out["html"]))
+        self.assertIn({"named": f"correction-copy:{KEY}"}, out["renders"])
+
+    def test_copy_freezes_the_text_it_copied_against_renumbering(self) -> None:
+        out = self.run_presses(
+            reply(composed()),
+            '__press("correction-copy");\nawait __settle();\nawait __settle();\n'
+            "__s.annotation_window_start = 102.5;\n" + REDRAW,
+        )
+        self.assertEqual(out["copied"], [textarea_of(out["html"])])
+        self.assertIn("(#4 in Cargento)", textarea_of(out["html"]))
+
+    def test_copy_is_announced_in_the_live_region(self) -> None:
+        out = self.drive(
+            self.SETUP + reply(composed()),
+            "nextSessionCopyStatusElement = {textContent: ''};\n"
+            '__press("steer-back");\nawait __settle();\nawait __settle();\n'
+            '__press("correction-copy");\nawait __settle();\nawait __settle();\n'
+            "console.log(JSON.stringify(nextSessionCopyStatusElement.textContent));",
+        )
+        self.assertEqual("Copied", out)
+
+
+@unittest.skipUnless(shutil.which("node"), "node not available")
+class OnlyClaudeCodeIsOfferedSteerBackTest(_DraftPage):
+    def test_a_codex_session_with_a_departure_and_a_failed_check_has_no_steer_back(self) -> None:
+        codex = (
+            '__s.harness = "codex";\n'
+            "for(const f of __semantic.facts){ if(f.source_session)"
+            ' f.source_session = {harness:"codex", sid:"focus-1"}; }\n'
+        )
+        html = self.html(
+            TYPED + QUIET + LINES + CHECK + DEPARTURE + codex,
+            ROUTE.replace("claude", "codex") + "\nawait __settle();\nawait __settle();\n"
+            "console.log(JSON.stringify(__els.app.innerHTML));",
+        )
+        self.assertIn('id="next-session-drift-heading"', html)
+        self.assertIn("Ship the retry queue", html)
+        self.assertNotIn("steer-back", html)
+        self.assertNotIn("update-intent", html)
 
 
 if __name__ == "__main__":

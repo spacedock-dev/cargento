@@ -19,9 +19,10 @@ import json
 import time
 import unittest
 from typing import Any
+from unittest import mock
 
 from cargento_runtime import annotations as annotation_store
-from cargento_runtime import correction
+from cargento_runtime import correction, http_api
 
 from .support import make_server, serve_until_closed
 from .test_claude_checks import SHORT, START
@@ -260,6 +261,60 @@ class SomethingToSteerFromTest(unittest.TestCase):
         self.assertEqual({"ok": False, "reason": "nothing"}, answer)
 
 
+class WhatCountsTest(unittest.TestCase):
+    """The rules the correction shares with the panel, each on a fixture that tells them apart."""
+
+    def test_a_departure_on_the_goal_alone_is_something_to_steer_from(self) -> None:
+        row = session_row(
+            annotation_line_1="",
+            annotation_line_2="",
+            annotation_line_3="",
+            annotation_assessment=reading(goal=row_of(DEPARTED, ("a1",))),
+        )
+        answer = compose(row, (fact("a1", 112, "assistant_message"),), floor=200.0)
+        self.assertIs(True, answer["ok"], answer)
+        self.assertEqual(
+            "Back to my goal: Ship the placeholder parser\nPlease continue from here.",
+            rendered(answer["parts"]),
+        )
+
+    def test_the_latest_failed_check_and_the_latest_direction_are_the_ones_named(self) -> None:
+        facts = (
+            check("c-late", 113, "failed"),
+            check("c-fail", 110, "failed"),
+            fact("d-late", 116, "user_message"),
+            fact("d1", 114, "user_message"),
+        )
+        row = session_row(annotation_assessment=None, annotation_settled_through=120.0)
+        text = rendered(compose(row, facts)["parts"])
+        self.assertIn("A check failed at T113{c-late}.", text)
+        self.assertIn("I gave a later direction at T116{d-late}.", text)
+        self.assertNotIn("{c-fail}", text)
+        self.assertNotIn("{d1}", text)
+
+    def test_a_direction_after_the_settlement_demotes_a_departure(self) -> None:
+        facts = (*FACTS, fact("d-late", 116, "user_message"))
+        text = rendered(compose(session_row(annotation_settled_through=114.0), facts)["parts"])
+        self.assertIn("- The parser tests pass: nothing recorded shows this yet", text)
+        self.assertIn("I gave a later direction at T116{d-late}.", text)
+        # Settled through it, the same departure stands.
+        settled = rendered(compose(session_row(annotation_settled_through=116.0), facts)["parts"])
+        self.assertIn("- The parser tests pass: departed at T110{c-fail}", settled)
+
+    def test_a_stored_reason_the_page_knows_leaves_a_departure_standing(self) -> None:
+        # The page applies a stored `why` only once its own rules left the row unverifiable
+        # (`nextCockpitReadingCriterion`); an unknown one demotes the row as unreadable.
+        for why, said in (
+            ("uncited", "- The parser tests pass: departed at T110{c-fail}"),
+            ("not-asked", "- The parser tests pass: departed at T110{c-fail}"),
+            ("made-up", "- The parser tests pass: nothing recorded shows this yet"),
+        ):
+            with self.subTest(why=why):
+                criteria = {"line_1": row_of(DEPARTED, ("c-fail",), why=why)}
+                row = session_row(annotation_assessment=reading(**criteria))
+                self.assertIn(said, rendered(compose(row)["parts"]))
+
+
 class InjectionTest(unittest.TestCase):
     """Nothing but the reader's words, the connectives and times reaches the text."""
 
@@ -345,6 +400,30 @@ class LengthTest(unittest.TestCase):
             answer,
         )
 
+    def test_each_number_is_counted_at_its_widest(self) -> None:
+        # The page draws " (#n in Cargento)" on the first number and " (#n)" after it, so a text
+        # that fits only without them is refused rather than let past the cap on the page.
+        facts = (check("c-fail", 110, "failed"), fact("d1", 114, "user_message"))
+        allowance = len(" (#999999 in Cargento)") + len(" (#999999)")
+
+        def with_goal(size: int) -> dict[str, Any]:
+            row = session_row(
+                annotation_goal="g" * size,
+                annotation_line_1="",
+                annotation_line_2="",
+                annotation_line_3="",
+                annotation_assessment=None,
+            )
+            return compose(row, facts)
+
+        base = len(words(with_goal(1)["parts"])) - 1
+        fits = with_goal(2000 - allowance - base)
+        self.assertIs(True, fits["ok"])
+        self.assertEqual(2000, self.widest(fits["parts"]))
+        over = with_goal(2000 - allowance - base + 1)
+        self.assertEqual("too-long", over["reason"])
+        self.assertLessEqual(len(words(fits["parts"])) + allowance, 2000)
+
 
 class CorrectionRouteTest(_App):
     """`POST /api/correction` over a real socket, on a real Claude Code transcript."""
@@ -420,6 +499,43 @@ class CorrectionRouteTest(_App):
         # One body for all three, so a refusal says nothing about which sessions exist.
         self.assertEqual((200, {"ok": False, "reason": "nothing"}), unknown)
         self.assertEqual((200, {"ok": False, "reason": "nothing"}), other)
+
+    def test_a_codex_session_with_saved_words_and_a_failed_check_gets_no_correction(self) -> None:
+        # A real Codex row in the collection, with saved words and a failed check in its record:
+        # everything a Claude Code session would be steered from, refused at the harness.
+        annotation_store.annotate(
+            self.config,
+            self.state,
+            "codex",
+            SHORT,
+            goal="Ship the placeholder parser",
+            lines=["The parser tests pass"],
+            now=START.timestamp() + 1,
+        )
+        failed = check("c-fail", START.timestamp() + 5, "failed")
+        failed["source_session"] = {"harness": "codex", "sid": SHORT}
+        read: list[str] = []
+
+        def facts(_handler: Any, row: dict[str, Any]) -> list[Any]:
+            read.append(str(row.get("harness")))
+            return [failed]
+
+        app = self.app(harness="codex")
+        with mock.patch.object(http_api._RequestHandler, "_session_facts", facts):
+            httpd = make_server(application=app)
+            thread = serve_until_closed(httpd)
+            try:
+                answer = self.post(httpd.server_port, {"harness": "codex", "sid": SHORT})
+            finally:
+                httpd.shutdown()
+                thread.join(timeout=5)
+        codex = [
+            row for row in app.collect(show_all=True)["sessions"] if row.get("harness") == "codex"
+        ]
+        self.assertEqual(1, len(codex), "the fixture has no Codex session")
+        self.assertEqual("Ship the placeholder parser", codex[0]["annotation_goal"])
+        self.assertEqual((200, {"ok": False, "reason": "nothing"}), answer)
+        self.assertEqual([], read)
 
     def test_it_is_refused_cross_origin_and_on_a_malformed_body(self) -> None:
         with self.serving() as port:
