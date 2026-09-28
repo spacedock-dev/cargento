@@ -5,6 +5,7 @@ from __future__ import annotations
 import contextlib
 import copy
 import hashlib
+import heapq
 import json
 import os
 import re
@@ -754,7 +755,11 @@ def _subagent_specs(arguments: dict[str, Any]) -> list[tuple[str, str, str, str]
 
 
 def _work_records(
-    config: RuntimeConfig, transcript_path: str, *, max_bytes: int | None = None
+    config: RuntimeConfig,
+    transcript_path: str,
+    *,
+    max_bytes: int | None = None,
+    follow_links: bool = True,
 ) -> list[dict[str, Any]]:
     transcript: list[dict[str, Any]] = []
     bounded = list(
@@ -762,6 +767,7 @@ def _work_records(
             config,
             transcript_path,
             max_bytes=max_bytes or config.turn_scan_max_bytes,
+            follow_links=follow_links,
         )
     )
     for raw_bytes in reversed(bounded):
@@ -2420,10 +2426,14 @@ class _Result(NamedTuple):
     at: float | None
 
 
-def _tool_result_blocks(transcript: list[dict[str, Any]]) -> dict[str, _Result]:
+def _tool_result_blocks(
+    transcript: list[dict[str, Any]], *, sidechain: bool = False
+) -> dict[str, _Result]:
+    """Each call's result, by call id. `sidechain` reads a subagent's own
+    transcript, where every record is one; a parent's reads none of them."""
     results: dict[str, _Result] = {}
     for record in transcript:
-        if record.get("type") != "user" or record.get("isSidechain") is True:
+        if record.get("type") != "user" or (record.get("isSidechain") is True) is not sidechain:
             continue
         content = records.message_dict(record).get("content")
         at = _record_timestamp(record)
@@ -2436,12 +2446,18 @@ def _tool_result_blocks(transcript: list[dict[str, Any]]) -> dict[str, _Result]:
 
 
 def _claude_tool_uses(
-    transcript: list[dict[str, Any]],
-) -> Iterator[tuple[float, str, str, str, dict[str, Any]]]:
-    """`(at, cwd, call id, tool name, input)` for the root session's calls;
-    subagents are DRC-4687's."""
+    transcript: list[dict[str, Any]], *, sidechain: bool = False
+) -> Iterator[tuple[float, str, str, str, dict[str, Any], str]]:
+    """`(at, cwd, call id, tool name, input, worker)` for one transcript's own
+    calls: the root session's, or with `sidechain` a subagent's, whose worker
+    is `SUBAGENT_WORKER`. A sidechain record inside a parent's own file is
+    read by neither (none in 300 parent transcripts measured, 2026-09-28)."""
+    worker = SUBAGENT_WORKER if sidechain else ""
     for record in transcript:
-        if record.get("type") != "assistant" or record.get("isSidechain") is True:
+        if (
+            record.get("type") != "assistant"
+            or (record.get("isSidechain") is True) is not sidechain
+        ):
             continue
         content = records.message_dict(record).get("content")
         at = _record_timestamp(record)
@@ -2453,7 +2469,7 @@ def _claude_tool_uses(
                 continue
             call_id, name, tool_input = block.get("id"), block.get("name"), block.get("input")
             if isinstance(call_id, str) and isinstance(name, str) and isinstance(tool_input, dict):
-                yield at, cwd if isinstance(cwd, str) else "", call_id, name, tool_input
+                yield at, cwd if isinstance(cwd, str) else "", call_id, name, tool_input, worker
 
 
 def _tool_result_text(block: dict[str, Any]) -> str:
@@ -2702,20 +2718,34 @@ class _ToolReportTally:
                     "read_only_commands", "background", "unknown_flags", "written_paths",
                     "outside_paths", "write_attempts", "not_run", "failed", "passed",
                     "not_recorded",
-                    "listed", "more",
+                    "listed", "more", "subagent_transcripts", "subagent_transcripts_unread",
                 ),
                 0,
             ),
         }  # fmt: skip
 
-    def add(self, at: float, cwd: str, call_id: str, name: str, tool_input: dict[str, Any]) -> None:
+    def add(
+        self,
+        at: float,
+        cwd: str,
+        call_id: str,
+        name: str,
+        tool_input: dict[str, Any],
+        worker: str = "",
+    ) -> None:
         if name in _WRITE_TOOLS:
-            self._add_write(at, cwd, call_id, name, tool_input)
+            self._add_write(at, cwd, call_id, name, tool_input, worker)
         elif name == "Bash":
-            self._add_shell(at, cwd, call_id, tool_input)
+            self._add_shell(at, cwd, call_id, tool_input, worker)
 
     def _add_write(
-        self, at: float, cwd: str, call_id: str, name: str, tool_input: dict[str, Any]
+        self,
+        at: float,
+        cwd: str,
+        call_id: str,
+        name: str,
+        tool_input: dict[str, Any],
+        worker: str,
     ) -> None:
         found = self.results.get(call_id)
         if found is None or found.block.get("is_error") is True:
@@ -2729,16 +2759,21 @@ class _ToolReportTally:
             call_id,
             name,
             _written_path(tool_input.get("file_path") or tool_input.get("notebook_path"), cwd),
+            worker,
         )
 
-    def _record_write(self, at: float, call_id: str, tool: str, path: str | None) -> None:
+    def _record_write(
+        self, at: float, call_id: str, tool: str, path: str | None, worker: str
+    ) -> None:
         self.write_calls.append((at, call_id))
         if path is None:
             self.scan["outside_paths"] += 1
             return
-        self.writes[path] = {"at": at, "record_id": call_id, "tool": tool}
+        self.writes[path] = {"at": at, "record_id": call_id, "tool": tool, "worker": worker}
 
-    def _add_shell(self, at: float, cwd: str, call_id: str, tool_input: dict[str, Any]) -> None:
+    def _add_shell(
+        self, at: float, cwd: str, call_id: str, tool_input: dict[str, Any], worker: str
+    ) -> None:
         found = self.results.get(call_id)
         result = found.block if found is not None else None
         text = _tool_result_text(result) if result is not None else ""
@@ -2760,13 +2795,13 @@ class _ToolReportTally:
         for _index, target, start in call.redirect_writes:
             # Owner, 2026-09-27: published only inside the working directory;
             # a target outside it, or one the shell decides, counts as outside.
-            self._record_write(at, call_id, "Bash", call.written_path(target, start, cwd))
+            self._record_write(at, call_id, "Bash", call.written_path(target, start, cwd), worker)
         self.scan["background"] += call.launches()
         foreground = [i for i in call.meaningful if not call.background(i)]
         if foreground and not [i for i in call.checks if i in foreground]:
             self.scan["other_commands"] += 1
             self.scan["read_only_commands"] += not call.changes()
-        self._add_runs(call, call_id, result, text, found.at if found is not None else None)
+        self._add_runs(call, call_id, result, text, found.at if found is not None else None, worker)
 
     def _add_runs(
         self,
@@ -2775,6 +2810,7 @@ class _ToolReportTally:
         result: dict[str, Any] | None,
         text: str,
         result_at: float | None,
+        worker: str,
     ) -> None:
         flag = result.get("is_error") if result is not None else None
         # Redaction runs over the whole read window before the tail is cut (item 5).
@@ -2823,6 +2859,7 @@ class _ToolReportTally:
                     # copied onto the published entry.
                     "tail": _scrubbed_tail(text, words) if result is not None else "",
                     "seq": self.shell_seq,
+                    "worker": worker,
                     "changes_later_in_call": any(
                         i > index
                         for i in (
@@ -2911,6 +2948,8 @@ class _ToolReportTally:
             entry["result_source"] = latest["result_source"]
         if latest["result_at"] is not None:
             entry["result_at"] = latest["result_at"]
+        if latest["worker"]:
+            entry["worker_kind"] = latest["worker"]
         return entry
 
     def entries(self, sid: str) -> list[dict[str, Any]]:
@@ -2929,6 +2968,7 @@ class _ToolReportTally:
                 "title": records.safe_text(path, TOOL_REPORT_PATH_CHARS),
                 "source": f"Claude {write['tool']} call",
                 "rank": len(_RESULT_ORDER),
+                **({"worker_kind": write["worker"]} if write["worker"] else {}),
             }
             for path, write in self.writes.items()
         )
@@ -2992,10 +3032,7 @@ def claude_check_press(
     output for ever holds it. The same scan and bounds as
     `claude_tool_reports`, so both belong to the run that fact lists.
     """
-    transcript = _work_records(config, transcript_path, max_bytes=max_bytes)
-    tally = _ToolReportTally(_tool_result_blocks(transcript))
-    for call in _claude_tool_uses(transcript):
-        tally.add(*call)
+    tally = _claude_tally(config, transcript_path, max_bytes=max_bytes)
     return PressChecks(tally.tails(), tally.changed_after())
 
 
@@ -3016,6 +3053,103 @@ def press_checks(config: RuntimeConfig, state: RuntimeState, harness: str, sid: 
     return claude_check_press(config, transcript_path)
 
 
+# A subagent's own transcript sits under its parent's session directory, flat
+# for a Task or Agent call and one level deeper for a workflow's run, as the
+# collector lists them (`collectors.claude.SUBAGENT_GLOBS`). Only a plain
+# `agent-<hex>` file is a subagent: compaction (`agent-acompact-*`), an aside
+# question and a prompt suggestion fork the parent's context and replay its
+# calls under the parent's own ids, measured 2026-09-28 in 15 of 16 aside
+# questions and 21 of 39 compactions that held a call. `_subagent_transcripts`
+# cites the ruling.
+_SUBAGENT_GLOBS = (
+    ("subagents", "agent-*.jsonl"),
+    ("subagents", "workflows", "*", "agent-*.jsonl"),
+)
+_SUBAGENT_FILE_RE = re.compile(r"agent-[0-9a-f]+\.jsonl")
+SUBAGENT_WORKER = "subagent"
+
+
+def _subagent_transcripts(transcript_path: str) -> list[str]:
+    """Every subagent transcript of one Claude Code session, links refused, by
+    [DEC-23](docs/design-reading-a-session.md#amended-2026-09-28-a-subagents-checks-and-writes-are-the-parents)
+    """
+    if not transcript_path.endswith(".jsonl"):
+        return []
+    session_dir = transcript_path[: -len(".jsonl")]
+    if not os.path.isdir(session_dir):
+        return []
+    return [
+        path
+        for pattern in _SUBAGENT_GLOBS
+        for path in runtime_io.glob_under(session_dir, *pattern)
+        if _SUBAGENT_FILE_RE.fullmatch(os.path.basename(path)) and not os.path.islink(path)
+    ]
+
+
+def _subagent_records(
+    config: RuntimeConfig, transcript_path: str
+) -> tuple[list[list[dict[str, Any]]], int]:
+    """The subagents' records, newest transcript first, and how many went unread.
+
+    All of a session's subagents share one `turn_scan_max_bytes` bound, the
+    parent's own: measured 2026-09-28, one session held 389 subagent
+    transcripts and 405 MB, and every collection reads them. A transcript the
+    bound reaches into is read for its newest bytes, as the parent is.
+    """
+    dated: list[tuple[float, int, str]] = []
+    for path in _subagent_transcripts(transcript_path):
+        try:
+            found = os.stat(path)
+        except OSError:
+            continue
+        dated.append((found.st_mtime, found.st_size, path))
+    dated.sort(key=lambda row: (-row[0], row[2]))
+    budget = config.turn_scan_max_bytes
+    read: list[list[dict[str, Any]]] = []
+    unread = 0
+    for _mtime, size, path in dated:
+        if budget <= 0:
+            unread += 1
+            continue
+        read.append(_work_records(config, path, max_bytes=budget, follow_links=False))
+        budget -= size
+    return read, unread
+
+
+def _tally_of(
+    parent: list[dict[str, Any]], subagents: list[list[dict[str, Any]]], unread: int
+) -> _ToolReportTally:
+    """One tally over a parent's calls and its subagents', in call time order.
+
+    Each transcript keeps its own order and the streams are merged by call
+    time, the parent's first at a tie, so a session with no subagent reads
+    exactly as it did. Call time, not result time, orders them, because every
+    change comparison is by call time (the 2026-09-27 amendment's item 4); the
+    result time still picks a check's latest run, across both.
+    """
+    results = _tool_result_blocks(parent)
+    for records_ in subagents:
+        for call_id, found in _tool_result_blocks(records_, sidechain=True).items():
+            results.setdefault(call_id, found)
+    tally = _ToolReportTally(results)
+    streams = [
+        _claude_tool_uses(parent),
+        *(_claude_tool_uses(records_, sidechain=True) for records_ in subagents),
+    ]
+    for call in heapq.merge(*streams, key=lambda row: row[0]):
+        tally.add(*call)
+    tally.scan.update(subagent_transcripts=len(subagents), subagent_transcripts_unread=unread)
+    return tally
+
+
+def _claude_tally(
+    config: RuntimeConfig, transcript_path: str, *, max_bytes: int | None = None
+) -> _ToolReportTally:
+    parent = _work_records(config, transcript_path, max_bytes=max_bytes)
+    subagents, unread = _subagent_records(config, transcript_path)
+    return _tally_of(parent, subagents, unread)
+
+
 def claude_tool_reports(
     config: RuntimeConfig,
     transcript_path: str,
@@ -3023,16 +3157,97 @@ def claude_tool_reports(
     *,
     max_bytes: int | None = None,
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
-    """The listed checks and written paths, and the full-scan counts behind them.
+    """The listed checks and written paths, and the full-scan counts behind them,
+    a subagent's included and labelled.
 
     Claude Code only, and published into the observed record only:
     [DEC-23](docs/design-reading-a-session.md#dec-23-a-claude-code-sessions-record-of-its-checks-may-show-the-work)
     """
-    transcript = _work_records(config, transcript_path, max_bytes=max_bytes)
-    tally = _ToolReportTally(_tool_result_blocks(transcript))
-    for call in _claude_tool_uses(transcript):
-        tally.add(*call)
+    tally = _claude_tally(config, transcript_path, max_bytes=max_bytes)
     return tally.entries(sid), tally.scan
+
+
+def _stood_lines(path: str, until: float, *, follow_links: bool = True) -> list[bytes]:
+    """A transcript's lines up to the first record stamped after `until`."""
+    stood: list[bytes] = []
+    with (
+        open(path, "rb")
+        if follow_links
+        else os.fdopen(
+            os.open(path, os.O_RDONLY | getattr(os, "O_BINARY", 0) | getattr(os, "O_NOFOLLOW", 0)),
+            "rb",
+        )
+    ) as handle:
+        for raw in handle:
+            try:
+                record = json.loads(raw)
+            except (ValueError, RecursionError):
+                record = None
+            at = _record_timestamp(record) if isinstance(record, dict) else None
+            if at is not None and at > until:
+                break
+            stood.append(raw)
+    return stood
+
+
+def _newest_records(lines: list[bytes], max_bytes: int) -> list[dict[str, Any]]:
+    """The records in the newest `max_bytes` of these lines, oldest first."""
+    kept: list[bytes] = []
+    size = 0
+    for raw in reversed(lines):
+        size += len(raw)
+        if size > max_bytes:
+            break
+        kept.append(raw)
+    cut: list[dict[str, Any]] = []
+    for raw in reversed(kept):
+        try:
+            record = json.loads(raw)
+        except (ValueError, RecursionError):
+            continue
+        if isinstance(record, dict):
+            cut.append(record)
+    return cut
+
+
+def _stood_subagents(
+    config: RuntimeConfig, transcript_path: str, until: float
+) -> tuple[list[list[dict[str, Any]]], int]:
+    """`_subagent_records` as the transcripts stood at `until`: newest by the
+    last record each held then, rather than by today's modification time."""
+    dated: list[tuple[float, str, list[bytes]]] = []
+    for path in _subagent_transcripts(transcript_path):
+        try:
+            stood = _stood_lines(path, until, follow_links=False)
+        except OSError:
+            continue
+        stamps = [
+            at
+            for raw in stood
+            if (record := _json_dict(raw)) is not None
+            and (at := _record_timestamp(record)) is not None
+        ]
+        if stamps:
+            dated.append((max(stamps), path, stood))
+    dated.sort(key=lambda row: (-row[0], row[1]))
+    budget = config.turn_scan_max_bytes
+    read: list[list[dict[str, Any]]] = []
+    unread = 0
+    for _at, _path, stood in dated:
+        if budget <= 0:
+            unread += 1
+            continue
+        read.append(_newest_records(stood, budget))
+        budget -= sum(len(raw) for raw in stood)
+    return read, unread
+
+
+def _json_dict(raw: bytes) -> dict[str, Any] | None:
+    try:
+        record = json.loads(raw)
+    except (ValueError, RecursionError):
+        return None
+    return record if isinstance(record, dict) else None
 
 
 def frozen_claude_checks(
@@ -3044,40 +3259,15 @@ def frozen_claude_checks(
     `before_last_change` are computed over the whole transcript, so filtering
     today's facts to those dated at or before `until` would keep a pass a later
     run overturned. The transcript is append-only, so its prefix up to the
-    first record stamped after `until` is what a press at that moment read.
+    first record stamped after `until` is what a press at that moment read,
+    and so is each subagent transcript's.
     """
-    stood: list[bytes] = []
-    with open(transcript_path, "rb") as handle:
-        for raw in handle:
-            try:
-                record = json.loads(raw)
-            except (ValueError, RecursionError):
-                record = None
-            at = _record_timestamp(record) if isinstance(record, dict) else None
-            if at is not None and at > until:
-                break
-            stood.append(raw)
     # The press's own bound, over the file as it stood rather than as it is:
     # `_work_records` reads the newest `turn_scan_max_bytes`, and a transcript
     # that grew since would push the moment's records out of today's window.
-    kept: list[bytes] = []
-    size = 0
-    for raw in reversed(stood):
-        size += len(raw)
-        if size > config.turn_scan_max_bytes:
-            break
-        kept.append(raw)
-    cut: list[dict[str, Any]] = []
-    for raw in reversed(kept):
-        try:
-            record = json.loads(raw)
-        except (ValueError, RecursionError):
-            continue
-        if isinstance(record, dict):
-            cut.append(record)
-    tally = _ToolReportTally(_tool_result_blocks(cut))
-    for call in _claude_tool_uses(cut):
-        tally.add(*call)
+    cut = _newest_records(_stood_lines(transcript_path, until), config.turn_scan_max_bytes)
+    subagents, unread = _stood_subagents(config, transcript_path, until)
+    tally = _tally_of(cut, subagents, unread)
     facts = [
         _semantic_fact_from_event(row, str(row["kind"]), _SEMANTIC_FACT_TYPES[row["kind"]], "")
         for row in tally.entries(sid)

@@ -1247,7 +1247,10 @@ no grant, and in the unasked lane always, it drops it, and nothing in it leaves 
 named read is listed under Irreversible actions.
 
 The content class is what a Claude Code transcript recorded about the checks a session ran and the
-files it wrote. A check is a shell command segment whose runner is on the ruling's closed list, and
+files it wrote. Since 2026-09-28 that includes the session's subagents, read from their own
+transcripts under the session's directory, newest first within the parent's own byte bound, with
+each subagent entry labelled `worker_kind: "subagent"`
+([the amendment](docs/design-reading-a-session.md#amended-2026-09-28-a-subagents-checks-and-writes-are-the-parents)). A check is a shell command segment whose runner is on the ruling's closed list, and
 a program file counts only when `test` or `tests` stands alone as a word in its name. Its bounds:
 the check's own segment, never the rest of the shell line, with a substituted command shown as
 `$(…)`, a brace expansion and the word after it shown as `…`, no redirection, here-string word or heredoc delimiter
@@ -2238,7 +2241,8 @@ The operator-cockpit prototype also reads dispatch evidence:
   output is capped at 100 rows and semantic lines at 112 characters.
 - `project_context.claude_tool_reports` reads a Claude Code session's `Bash` calls and the path
   of its `Write`, `Edit`, `MultiEdit` and `NotebookEdit` calls (`file_path`, or `notebook_path`),
-  for the checks it ran and the files it wrote. Of a file-write call it reads the path, and of its
+  for the checks it ran and the files it wrote, its subagents' calls included through the same
+  expression. Of a file-write call it reads the path, and of its
   result the error flag alone. [Tool output in a Claude Code
   reading](#tool-output-in-a-claude-code-reading) states its bounds and where the result may go.
 

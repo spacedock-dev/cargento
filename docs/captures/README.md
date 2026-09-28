@@ -26,6 +26,14 @@ An error-flagged shell result sets `is_error` and stores `toolUseResult` as a ba
 separate stdout, stderr or exit code. A file write's result carries no `is_error` field at all, so an
 absent flag there means nothing about success.
 
+[Claude subagent transcript shapes](claude/subagent-transcript-shapes-2.1.281-macos.jsonl) is taken
+the same way, by field name and type name only, from a Claude Code 2.1.281 session on this machine
+that delegated work to a subagent. A subagent writes its own transcript at
+`<session id>/subagents/agent-<id>.jsonl`, its shell call and file write have the parent's shapes,
+every record is a sidechain carrying the parent's `sessionId`, and the parent's Agent result
+carries `toolUseResult.agentId`, which names the file. The meta file beside it carries
+`toolUseId` and `spawnDepth`. DEC-23's amendment of 2026-09-28 reads these.
+
 ## What is in a record, and what is deliberately not
 
 Each line is one hook invocation, written by `scripts/capture_hook.py`. It records the **names** of
