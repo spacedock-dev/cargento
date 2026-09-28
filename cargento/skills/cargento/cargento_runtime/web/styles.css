@@ -904,6 +904,10 @@ input::placeholder,textarea::placeholder{color:var(--ink2)}
    and analyze" or a no-reader reason takes the full width above them. */
 .next-cockpit-reading-ask{display:flex;flex-wrap:wrap;gap:8px 12px;align-items:center}
 .next-cockpit-reading-ask>p{flex:1 1 100%;margin:0}
+.next-cockpit-steer-box{display:flex;flex-direction:column;gap:8px;margin-top:10px}
+.next-cockpit-steer-box textarea{width:100%;min-height:120px;box-sizing:border-box;resize:vertical;padding:7px;border:1px solid var(--line);background:var(--panel);color:var(--ink-value);font:var(--fs-body)/1.55 var(--sans)}
+.next-cockpit-steer-tools{display:flex;flex-wrap:wrap;gap:8px 12px;align-items:center}
+.next-cockpit-steer-tools>p{flex:1 1 12em;margin:0}
 .next-session-current{padding:14px 17px;border:1px solid var(--rule);border-left:2px solid var(--line);border-radius:var(--r-card);background:var(--panel)}
 .next-session-detail[data-tone="want"] .next-session-current{border-left-color:var(--amber)}
 .next-session-detail[data-tone="bad"] .next-session-current{border-left-color:var(--clay)}

@@ -918,6 +918,73 @@ class DirectionRouteTest(_ClaudeSession):
         self.assertEqual({"text": edited, "source": "entry", "source_id": fact_id}, lines[5])
         self.assertNotIn(opened["text"], json.dumps(annotation_store.load(self.config)))
 
+    def test_a_settled_direction_that_is_not_the_latest_prompt_is_added_from_its_entry(
+        self,
+    ) -> None:
+        # Update intent instead (DRC-4697): after an analysis's Keep settled every direction,
+        # the one a departure cites is added from its own entry, with later prompts after it,
+        # and the goal is kept.
+        annotation_store.annotate(
+            self.config,
+            self.state,
+            "claude",
+            SHORT,
+            goal="Ship the placeholder parser",
+            lines=["The parser tests pass"],
+            now=20.0,
+        )
+        self.session.prompt("Later still: rename the placeholder lexer.")
+        self.session.save(self.path)
+        latest = max(
+            (f for f in self.facts() if f.get("type") == "user_message"),
+            key=lambda f: float(f["at"]),
+        )
+        annotation_store.settle(
+            self.config,
+            self.state,
+            "claude",
+            SHORT,
+            through=latest["at"],
+            now=NOW,
+            expected_revision=1,
+        )
+        fact_id = str(
+            min(
+                (
+                    f
+                    for f in self.facts()
+                    if f.get("type") == "user_message" and float(f["at"]) > FIRST_AT
+                ),
+                key=lambda f: float(f["at"]),
+            )["fact_id"]
+        )
+        self.assertNotEqual(fact_id, latest["fact_id"])
+        with self._serving() as port:
+            _, opened = self._open(port, fact_id)
+            self.assertIs(True, opened["ok"])
+            status, stored = self._post(
+                port,
+                "/api/annotate",
+                {
+                    "harness": "claude",
+                    "sid": SHORT,
+                    "add_direction": fact_id,
+                    "text": "Use the placeholder lexer for every token",
+                    "expected_revision": 1,
+                },
+            )
+        self.assertEqual((200, "stored"), (status, stored["outcome"]))
+        revision = annotation_store.load(self.config)[0]["revisions"][-1]
+        self.assertEqual("Ship the placeholder parser", revision["goal"])
+        self.assertEqual(
+            {
+                "text": "Use the placeholder lexer for every token",
+                "source": "entry",
+                "source_id": fact_id,
+            },
+            revision["lines"][1],
+        )
+
     def test_add_over_the_draft_adopts_it_in_the_same_request(self) -> None:
         fact_id = str(self.direction()["fact_id"])
         with self._serving() as port:

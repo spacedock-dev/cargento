@@ -1320,6 +1320,22 @@ function nextCockpitLinesChanged(draft, annotation){
     JSON.stringify(nextCockpitSavedLines(annotation));
 }
 
+/* Where a saved line came from, named by the entry itself (DRC-4697, owner
+   2026-09-28): "added from #12" where the list numbers it, "added from your
+   direction at 14:04" where it does not, from `line_N_source_id` on every
+   render, as every "#<n>" here is. With no record read, or the entry gone from
+   it, the kind of source alone. */
+function nextCockpitLineSource(line, session, source){
+  if(!line || line.source !== "entry" || !line.sourceId) return nextOutcomeLineSource(line);
+  if(!source || (source.state !== "read" && source.state !== "empty")) return nextOutcomeLineSource(line);
+  const n = nextCockpitEntryNumbers(session, source).get(line.sourceId);
+  if(n != null) return `added from #${n}`;
+  const entry = (source.all || source.entries || []).find(item => String(item.id || "") === line.sourceId);
+  const at = entry ? nextNumber(entry.at) : null;
+  return at != null && at > 0 ? `added from your direction at ${nextSessionClock(at)}`
+    : nextOutcomeLineSource(line);
+}
+
 function nextCockpitHeldLines(session, annotation, cap, source = null){
   const key = nextCockpitHeldKey(session, "lines");
   const saved = nextAnnotationLines(annotation);
@@ -1345,7 +1361,7 @@ function nextCockpitHeldLines(session, annotation, cap, source = null){
       `${String(text).length}/${cap}</span>` +
       (place ? `<span class="next-cockpit-held-source" data-next-cockpit-held-line-source="${index}"` +
         `${line ? "" : " data-next-cockpit-held-line-source-stale"}>` +
-        `${esc(nextOutcomeLineSource(place))}</span>` : "") +
+        `${esc(nextCockpitLineSource(place, session, source))}</span>` : "") +
       `<button type="button" data-next-cockpit-action="held-line-remove" data-arg="${index}" ` +
       `data-next-focus="${esc(`${key}:remove:${index}`)}">remove</button></li>`;
   }).join("") + nextCockpitDirectionLine(session, annotation, cap, source);
@@ -1410,8 +1426,14 @@ function nextCockpitDirectionLine(session, annotation, cap, source = null){
      gone once its direction is no longer open: a number kept from the press
      can name a row the list no longer draws (layout F2, Codex 7). */
   const read = Boolean(source) && (source.state === "read" || source.state === "empty");
-  if(read && !nextCockpitDirectionsOpen(session, annotation, source)
-    .some(entry => String(entry.id || "") === held.factId)){
+  /* Opened by Update intent instead, a direction an analysis's Keep already
+     settled is still one to add (DRC-4697), so that line stands while its
+     direction is any later direction; the question's own Add keeps the
+     narrower open set. */
+  const open = held.later
+    ? nextCockpitLaterDirections(annotation, source.all || source.entries, session)
+    : nextCockpitDirectionsOpen(session, annotation, source);
+  if(read && !open.some(entry => String(entry.id || "") === held.factId)){
     nextCockpitDirectionLines.delete(key);
     return "";
   }
@@ -1448,7 +1470,7 @@ function nextCockpitDirectionLine(session, annotation, cap, source = null){
     (cue ? `<small class="next-cockpit-held-cue">${esc(cue)}</small>` : "") + "</li>";
 }
 
-async function nextCockpitOpenDirection(session, factId, n){
+async function nextCockpitOpenDirection(session, factId, n, later = false){
   const key = sessKey(session);
   /* A second press while a line is pending goes to that line: reopening it
      would put the server's text back over the reader's edits (layout F2). */
@@ -1457,7 +1479,7 @@ async function nextCockpitOpenDirection(session, factId, n){
     if(!open.opening) renderNext({named: `direction:${key}`});
     return;
   }
-  nextCockpitDirectionLines.set(key, {factId, n, opening: true});
+  nextCockpitDirectionLines.set(key, {factId, n, later, opening: true});
   renderNext();
   let held;
   try{
@@ -1469,15 +1491,15 @@ async function nextCockpitOpenDirection(session, factId, n){
     if(response && response.ok && answer && answer.ok === true && typeof answer.text === "string"){
       /* The store's own collapse, so a multi-line direction is the one line
          the store would hold. The scrub is not a summary. */
-      held = {factId, n, text: answer.text.replace(NEXT_COCKPIT_HELD_UNSAFE, " "),
+      held = {factId, n, later, text: answer.text.replace(NEXT_COCKPIT_HELD_UNSAFE, " "),
         clipped: answer.clipped === true, replace: null};
     }else if(response && response.ok && answer && answer.ok === false){
-      held = {factId, n, error: String(answer.why || NEXT_COCKPIT_DIRECTION_UNOPENED)};
+      held = {factId, n, later, error: String(answer.why || NEXT_COCKPIT_DIRECTION_UNOPENED)};
     }else{
       throw new Error("direction not opened");
     }
   }catch(_error){
-    held = {factId, n, error: NEXT_COCKPIT_DIRECTION_UNOPENED};
+    held = {factId, n, later, error: NEXT_COCKPIT_DIRECTION_UNOPENED};
   }
   nextCockpitDirectionLines.set(key, held);
   renderNext(held.error ? {} : {named: `direction:${key}`});
@@ -3406,7 +3428,197 @@ function nextCockpitReadingJobCues(){
   }
 }
 
-function nextCockpitReadingControl(session, annotation, model, primary = true){
+/* Steer back (DRC-4681): the server's correction, composed from the reader's
+   words, each line's state and the cited entries' times (`correction.py`),
+   shown for the reader to edit and copy. Item 7 of
+   [DEC-24](docs/design-reading-a-session.md#dec-24-your-intent-is-a-drafted-goal-and-a-checklist-and-a-correction-is-yours-to-copy):
+   Copy only, and nothing goes to the session. Per session, in memory only:
+   whether the box is open, the server's parts, the reader's text once edited
+   or copied, the refusal and the Copy cue. docs/design-reader-state.md holds
+   the rows. */
+const nextCockpitCorrections = new Map();
+const NEXT_COCKPIT_CORRECTION_CAP = 2000;
+const NEXT_COCKPIT_STEER_HARNESSES = ["claude"];
+const NEXT_COCKPIT_CORRECTION_HINT =
+  "Cargento never sends this. Copy it and paste it into the session.";
+const NEXT_COCKPIT_CORRECTION_NOTHING =
+  "Nothing recorded now gives a correction to steer back from.";
+const NEXT_COCKPIT_CORRECTION_FAILED =
+  "Could not compose a correction. Press Steer back again to retry.";
+
+/* Whether there is anything to steer from, by the server's own rule
+   (`correction.compose`) over what this page holds, or null: saved words, and
+   a departure that survives in a reading of those words, a failed check after
+   them, or a later direction. `departed` places the control. Claude Code only,
+   as the copy route is, so a paste of it can be recognised coming back. */
+function nextCockpitSteerOffer(session, annotation, source, shape){
+  if(!NEXT_COCKPIT_STEER_HARNESSES.includes(String(session && session.harness || ""))) return null;
+  if(!(nextData && nextData.annotate === true) || nextIntentDrafted(session, annotation)) return null;
+  if(!String(annotation && annotation.goal || "").trim() &&
+      !nextAnnotationLines(annotation).length) return null;
+  if(!source || (source.state !== "read" && source.state !== "empty")) return null;
+  const entries = source.all || source.entries || [];
+  const current = Boolean(shape && !shape.malformed && shape.revisionRead != null &&
+    shape.revisionRead === nextNumber(annotation && annotation.revision));
+  const departed = current && shape.departures.length > 0;
+  const opened = nextNumber(session.annotation_window_start) || 0;
+  const failed = entries.some(entry => entry.type === "tool_report" && entry.subject === "check" &&
+    entry.result === "failed" && nextNumber(entry.at) > 0 &&
+    (nextReadingEvidenceAt(entry) || 0) > 0 && nextReadingEvidenceAt(entry) >= opened);
+  const later = nextCockpitLaterDirections(annotation, entries, session).length > 0;
+  return departed || failed || later ? {departed} : null;
+}
+
+/* The direction Update intent instead offers (owner, 2026-09-28): the later
+   direction a surviving departure cites, else the latest, else none. */
+function nextCockpitOfferedDirection(annotation, entries, session, shape){
+  const later = nextCockpitLaterDirections(annotation, entries, session);
+  const ids = new Set(later.map(entry => String(entry.id || "")));
+  const cited = shape ? shape.departures.flatMap(row => row.citedIds || [])
+    .find(id => ids.has(String(id))) : null;
+  if(cited) return String(cited);
+  return later.length ? String(later[later.length - 1].id || "") : "";
+}
+
+/* The parts with "#n" filled from the list's own numbers: the first number
+   drawn reads "(#n in Cargento)", the rest "(#n)", and an entry the list does
+   not number keeps only its time, which the server already wrote (owner,
+   2026-09-28). The server counts every placeholder at its widest, so the text
+   stays within the cap. */
+function nextCockpitCorrectionText(parts, numbers){
+  let first = true;
+  return (parts || []).map(part => {
+    if(typeof part === "string") return part;
+    const n = numbers.get(String(part && part.entry || ""));
+    if(n == null) return "";
+    const said = first ? ` (#${n} in Cargento)` : ` (#${n})`;
+    first = false;
+    return said;
+  }).join("");
+}
+
+function nextCockpitCorrectionDraft(session, held, source){
+  if(typeof held.text === "string") return held.text;
+  const read = source && (source.state === "read" || source.state === "empty");
+  return nextCockpitCorrectionText(held.parts, read ? nextCockpitEntryNumbers(session, source)
+    : new Map());
+}
+
+function nextCockpitSteerButton(session, primary){
+  const key = sessKey(session);
+  const held = nextCockpitCorrections.get(key);
+  return `<button type="button" class="next-action${primary ? " next-action--primary" : ""}" ` +
+    `data-next-cockpit-action="steer-back" aria-expanded="${held && held.open ? "true" : "false"}" ` +
+    `data-next-focus="steer-back:${esc(key)}">Steer back</button>`;
+}
+
+/* The design's steer box with Copy-only wording: "Correction to copy" and the
+   hint the issue gives in place of the Send hint. Copy's label is its cue, the
+   More menu's "Copied" and "Copy unavailable" (owner, 2026-09-28). */
+function nextCockpitSteerBox(session, source){
+  const key = sessKey(session);
+  const held = nextCockpitCorrections.get(key);
+  if(!held || !held.open || held.pending) return "";
+  if(held.why){
+    return `<p class="next-cockpit-reading-why" role="status" data-next-steer-refused>` +
+      `${esc(held.why)}</p>`;
+  }
+  if(!Array.isArray(held.parts)) return "";
+  const label = held.cue === "copied" ? "Copied" : held.cue === "failed" ? "Copy unavailable" : "Copy";
+  return '<div class="next-cockpit-steer-box" data-next-steer-box>' +
+    '<label class="next-cockpit-held-label" for="next-cockpit-correction">Correction to copy</label>' +
+    `<textarea id="next-cockpit-correction" rows="6" maxlength="${NEXT_COCKPIT_CORRECTION_CAP}" ` +
+    `data-next-cockpit-correction-key="${esc(key)}" data-next-focus="correction:${esc(key)}" ` +
+    'aria-describedby="next-cockpit-correction-hint">' +
+    `${esc(nextCockpitCorrectionDraft(session, held, source))}</textarea>` +
+    '<div class="next-cockpit-steer-tools">' +
+    '<button type="button" class="next-action" data-next-cockpit-action="correction-copy" ' +
+    `data-next-copy-correction="${esc(key)}" data-next-focus="correction-copy:${esc(key)}" ` +
+    `data-next-correction-cue>${label}</button>` +
+    `<p class="next-cockpit-reading-why" id="next-cockpit-correction-hint">` +
+    `${NEXT_COCKPIT_CORRECTION_HINT}</p></div></div>`;
+}
+
+function nextCockpitCorrectionParts(parts){
+  return Array.isArray(parts) && parts.every(part => typeof part === "string" ||
+    (part && typeof part === "object" && typeof part.entry === "string")) ? parts : null;
+}
+
+/* The press opens the box and asks the server, naming the session and nothing
+   else, so no text the page holds can reach the composition. A second press
+   closes it. A text the reader edited or copied is kept across a close. */
+async function nextCockpitSteerBack(session){
+  const key = sessKey(session);
+  const held = nextCockpitCorrections.get(key);
+  if(held && held.pending) return;
+  if(held && held.open){
+    held.open = false;
+    renderNext({named: `steer-back:${key}`});
+    return;
+  }
+  if(held && typeof held.text === "string" && Array.isArray(held.parts)){
+    held.open = true;
+    renderNext({named: `correction:${key}`});
+    return;
+  }
+  const next = {open: true, pending: true, parts: null, text: null, why: "", cue: ""};
+  nextCockpitCorrections.set(key, next);
+  renderNext();
+  try{
+    const response = await fetch("/api/correction", {method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({harness: session.harness, sid: session.sid})});
+    const answer = response && typeof response.json === "function"
+      ? await response.json().catch(() => null) : null;
+    const parts = answer && answer.ok === true ? nextCockpitCorrectionParts(answer.parts) : null;
+    if(response && response.ok && parts){
+      next.parts = parts;
+    }else if(response && response.ok && answer && answer.ok === false){
+      next.why = answer.reason === "too-long" && typeof answer.why === "string" ? answer.why
+        : answer.reason === "nothing" ? NEXT_COCKPIT_CORRECTION_NOTHING : NEXT_COCKPIT_CORRECTION_FAILED;
+    }else{
+      throw new Error("correction not composed");
+    }
+  }catch(_error){
+    next.why = NEXT_COCKPIT_CORRECTION_FAILED;
+  }
+  next.pending = false;
+  renderNext({named: next.why ? `steer-back:${key}` : `correction:${key}`});
+}
+
+/* Copy writes the box's exact text and only then records it, through
+   DRC-4678's route, so a paste of it coming back reads as Cargento's words.
+   The text is frozen at the press, so what is recorded is what was shown. */
+async function nextCockpitCopyCorrection(session, target, source){
+  const key = sessKey(session);
+  const held = nextCockpitCorrections.get(key);
+  if(!held || !Array.isArray(held.parts) || held.copying) return;
+  const text = nextCockpitCorrectionDraft(session, held, source);
+  held.text = text;
+  held.copying = true;
+  const copied = await nextCopyToClipboard(target, text);
+  held.copying = false;
+  held.cue = copied ? "copied" : "failed";
+  renderNext({named: `correction-copy:${key}`});
+  if(!copied) return;
+  try{
+    await fetch("/api/correction/copied", {method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({harness: session.harness, sid: session.sid, text})});
+  }catch(_error){
+    /* Unrecorded, a paste reads as the reader's own words: the safe side. */
+  }
+}
+
+/* `steer` is Steer back's controls and box in this slot
+   (`nextCockpitReadingParts` decides): under a departure, the primary with
+   Update intent instead beside it, ahead of Analyze drift (`lead`); with no
+   reader, the primary beside the route's reason; with a reader and no
+   departure, a secondary after Analyze drift. */
+function nextCockpitReadingControl(session, annotation, model, primary = true, steer = null){
+  const steerButton = steer ? steer.button : "";
+  const lead = Boolean(steer && steer.lead);
+  const steerBox = steer ? steer.box : "";
   const reason = nextPromptReadingRefusal(session, annotation, model);
   const key = sessKey(session);
   let request = nextCockpitReadingRequests.get(key);
@@ -3490,7 +3702,8 @@ function nextCockpitReadingControl(session, annotation, model, primary = true){
     return '<div class="next-cockpit-reading-ask next-cockpit-reading-ask--none">' +
       `<p class="next-cockpit-reading-why" tabindex="-1" data-next-focus="reading:${esc(key)}" ` +
       `data-next-reading-no-reader${nextAbsenceAttr(NEXT_READING_REFUSAL_ABSENCE.get(noReader))}>` +
-      `${esc(noReader)}</p>` + off + '</div>' + said(answered === noReader ? "" : answered) + counted;
+      `${esc(noReader)}</p>` + off + steerButton + '</div>' + steerBox +
+      said(answered === noReader ? "" : answered) + counted;
   }
   /* `aria-disabled` rather than `disabled`, so the control keeps its place in
      the tab order and its reason is announced. The press this lets back in is
@@ -3508,8 +3721,8 @@ function nextCockpitReadingControl(session, annotation, model, primary = true){
     `${enabled ? "" : ' aria-disabled="true"'}` +
     `${described ? ` aria-describedby="${described}"` : ""}>` +
     `${confirming ? "Allow and analyze" : "Analyze drift"}</button>`;
-  return '<div class="next-cockpit-reading-ask">' + (confirming ? disclosure : "") + button + off +
-    '</div>' +
+  return '<div class="next-cockpit-reading-ask">' + (confirming ? disclosure : "") +
+    (lead ? steerButton + button : button + steerButton) + off + '</div>' + steerBox +
     (readHint ? `<p class="next-cockpit-reading-why">${esc(readHint)}</p>` : "") +
     (confirming ? "" : disclosure) + said(answered) +
     counted +
@@ -3591,11 +3804,32 @@ function nextCockpitReadingParts(session, annotation, entries, model, observed, 
   /* The question before the press stands in the control's place while a
      later direction is unsettled: Keep is then the stage's one primary. */
   const question = source ? nextCockpitDirectionQuestion(session, annotation, source, model, primary) : "";
-  const control = '<div class="next-session-drift-check">' +
-    (question || nextCockpitReadingControl(session, annotation, model, primary)) + '</div>';
-  const header = '<section class="next-cockpit-reading"><header><h2>READING</h2>';
   const limit = nextReadingOutputLimit(String(session.harness || ""));
   const raw = annotation && annotation.assessment;
+  /* Steer back, drawn only where there is something to steer from, and never
+     beside the question, which owns this slot. It takes the control's slot on
+     the first screen rather than the result's rows, which run past the fold
+     at six lines (measured: 2,567px at 1440x900): under a departure it is the
+     one primary with Update intent instead beside it (C4), and Analyze drift
+     follows as the design's "Analyze again"; with no reader it is the primary
+     beside the route's reason; otherwise a secondary after Analyze drift
+     (DRC-4681). Nothing is added to the result stage, which DRC-4695 fills. */
+  const early = raw ? nextCockpitReadingShape(raw, annotation, entries, limit, unsettled) : null;
+  const offer = question ? null : nextCockpitSteerOffer(session, annotation, source, early);
+  const departed = Boolean(offer && offer.departed);
+  const noReader = nextData && nextData.annotate === true ? nextReadingRouteRefusal(session) : "";
+  const update = departed
+    ? '<button type="button" class="next-action" data-next-cockpit-action="update-intent" ' +
+      `data-arg="${esc(nextCockpitOfferedDirection(annotation, entries, session, early))}" ` +
+      `data-next-focus="update-intent:${esc(sessKey(session))}">Update intent instead</button>`
+    : "";
+  const slotted = offer ? {lead: departed,
+    button: nextCockpitSteerButton(session, primary && (departed || Boolean(noReader))) + update,
+    box: nextCockpitSteerBox(session, source)} : null;
+  const control = '<div class="next-session-drift-check">' +
+    (question || nextCockpitReadingControl(session, annotation, model, primary && !departed, slotted)) +
+    '</div>';
+  const header = '<section class="next-cockpit-reading"><header><h2>READING</h2>';
   const withheld = String(annotation && annotation.reading_withheld || "");
   /* `defined` rather than sniffing the composed body: the no-reading arm
      already renders NEXT_READING_OFFER, which says what a reading is at more
@@ -3641,7 +3875,7 @@ function nextCockpitReadingParts(session, annotation, entries, model, observed, 
     const offer = `<p class="next-cockpit-reading-why">${NEXT_READING_OFFER}${verification}</p>`;
     return close(refused + offer + why, null, true);
   }
-  const shape = nextCockpitReadingShape(raw, annotation, entries, limit, unsettled);
+  const shape = early;
   if(shape.malformed){
     /* A refusal is a substitution and never an omission: the block still
        renders, names the field it could not read, and draws no verdict of
@@ -5849,6 +6083,27 @@ function nextCockpitAfterRender(){
   nextCockpitTerminalScreen = null;
 }
 
+/* A new empty outcome line, focused, or the six-line refusal said in place. */
+function nextCockpitLinesAdd(session){
+  const key = nextCockpitHeldKey(session, "lines");
+  const draft = nextCockpitLinesDraft(session, nextCockpitAnnotation(session));
+  const origins = nextCockpitLinesOrigins(key, draft);
+  if(draft.length >= NEXT_OUTCOME_LINES_MAX){
+    // Refused in place: nothing is added, and the sentence beside the
+    // control is said aloud, because an inert control that goes silent
+    // reads as a dead one.
+    nextCockpitAnnounceCue(key, NEXT_COCKPIT_LINES_FULL, false);
+    return;
+  }
+  // An empty list is drawn as one empty box, so adding to it adds the second.
+  if(!draft.length){ draft.push(""); origins.push(null); }
+  draft.push("");
+  origins.push(null);
+  nextCockpitLinesKeep(key, draft, origins);
+  nextCockpitHeldDrop(key);
+  renderNext({named: `${key}:${Math.max(0, draft.length - 1)}`});
+}
+
 function nextCockpitActionTarget(event){
   return event.target && event.target.closest
     ? event.target.closest("[data-next-cockpit-action]") : null;
@@ -5874,6 +6129,26 @@ document.addEventListener("input", event => {
     : null;
   if(cue) cue.textContent = nextCockpitMemoStates.get(key) === "saved"
     ? "Saved in this browser" : "Browser storage unavailable";
+});
+
+/* The correction box, edited in place with no redraw, for the held fields'
+   measured reason below. Capped at the copy route's 2,000 characters and
+   never otherwise cut; an edit clears the Copy cue, which described the text
+   before it. */
+document.addEventListener("input", event => {
+  const input = event.target && event.target.closest
+    ? event.target.closest("[data-next-cockpit-correction-key]") : null;
+  if(!input) return;
+  const held = nextCockpitCorrections.get(String(input.dataset.nextCockpitCorrectionKey || ""));
+  if(!held) return;
+  const value = String(input.value || "").slice(0, NEXT_COCKPIT_CORRECTION_CAP);
+  if(value !== input.value) input.value = value;
+  held.text = value;
+  if(!held.cue) return;
+  held.cue = "";
+  const box = input.closest ? input.closest("[data-next-steer-box]") : null;
+  const cue = box && box.querySelector ? box.querySelector("[data-next-correction-cue]") : null;
+  if(cue) cue.textContent = "Copy";
 });
 
 /* No redraw on a keystroke, and this is measured rather than copied from the
@@ -5998,28 +6273,37 @@ document.addEventListener("click", event => {
     const session = group ? nextCockpitFocusedSession(group) : null;
     if(!session) return;
     event.preventDefault();
+    if(action === "held-line-add"){
+      nextCockpitLinesAdd(session);
+      return;
+    }
     const key = nextCockpitHeldKey(session, "lines");
     const draft = nextCockpitLinesDraft(session, nextCockpitAnnotation(session));
     const origins = nextCockpitLinesOrigins(key, draft);
-    if(action === "held-line-add" && draft.length >= NEXT_OUTCOME_LINES_MAX){
-      // Refused in place: nothing is added, and the sentence beside the
-      // control is said aloud, because an inert control that goes silent
-      // reads as a dead one.
-      nextCockpitAnnounceCue(key, NEXT_COCKPIT_LINES_FULL, false);
-      return;
-    }
-    if(action === "held-line-add"){
-      // An empty list is drawn as one empty box, so adding to it adds the second.
-      if(!draft.length){ draft.push(""); origins.push(null); }
-      draft.push("");
-      origins.push(null);
-    }else{
-      draft.splice(Number(target.dataset.arg), 1);
-      origins.splice(Number(target.dataset.arg), 1);
-    }
+    draft.splice(Number(target.dataset.arg), 1);
+    origins.splice(Number(target.dataset.arg), 1);
     nextCockpitLinesKeep(key, draft, origins);
     nextCockpitHeldDrop(key);
     renderNext({named: `${key}:${Math.max(0, draft.length - 1)}`});
+    return;
+  }
+  if(["steer-back", "correction-copy", "update-intent"].includes(action)){
+    const session = group ? nextCockpitFocusedSession(group) : null;
+    if(!session) return;
+    event.preventDefault();
+    if(action === "steer-back"){
+      nextCockpitSteerBack(session);
+    }else if(action === "correction-copy"){
+      nextCockpitCopyCorrection(session, target, nextCockpitWorkSource(group, session));
+    }else if(action === "update-intent"){
+      /* Update intent instead: the offered direction opens as the pending line
+         through Add's own path, or, with none, an empty line (owner,
+         2026-09-28). The goal is never touched. */
+      const factId = String(target.dataset.arg || "");
+      const n = nextCockpitEntryNumbers(session, nextCockpitWorkSource(group, session)).get(factId);
+      if(factId) nextCockpitOpenDirection(session, factId, n == null ? null : n, true);
+      else nextCockpitLinesAdd(session);
+    }
     return;
   }
   if(action === "tab"){

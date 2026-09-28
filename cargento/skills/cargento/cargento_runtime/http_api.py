@@ -23,6 +23,7 @@ from cargento_runtime import annotations as annotation_store
 from cargento_runtime import asks as runtime_asks
 from cargento_runtime import (
     copied_corrections,
+    correction,
     departures,
     dismissals,
     notifications,
@@ -2090,6 +2091,58 @@ class _RequestHandler(BaseHTTPRequestHandler):
             }
         self._send(json.dumps(answer, separators=(",", ":")).encode(), "application/json")
 
+    def _correction(self) -> None:
+        """Compose Steer back's correction for one session (DRC-4681).
+
+        Reads and writes nothing but the reply, which `correction.compose`
+        builds from the session's published row, its observed record and the
+        later-direction floor, never from anything the page sends beyond which
+        session. Guarded as `POST /api/direction` is, because the reply carries
+        the reader's whole goal and lines. Every session it will not compose
+        for answers one 200 body, for `_focus`'s ruling.
+        """
+        application = self.server.application
+        config = application.config
+        if not config.annotations_enabled:
+            self._reject(503)
+            return
+        if self._is_document_navigation() or not self._loopback_resource_ok():
+            self._reject(403)
+            return
+        try:
+            length = int(self.headers.get("Content-Length") or 0)
+        except ValueError:
+            length = -1
+        if not 0 <= length <= config.annotation_body_cap_bytes:
+            self._reject(413)
+            return
+        try:
+            payload = json.loads(self._read_body(length) or b"{}")
+        except (ValueError, json.JSONDecodeError, RecursionError):
+            payload = {}
+        if not isinstance(payload, dict):
+            payload = {}
+        harness, sid = payload.get("harness"), payload.get("sid")
+        if not all(isinstance(part, str) and part for part in (harness, sid)):
+            self._reject(400)
+            return
+        row = self._session_row(str(harness), str(sid)) if harness in correction.HARNESSES else None
+        # An unknown session and another harness answer what a session with nothing to steer
+        # from does, so a refusal says nothing about which sessions exist.
+        answer: dict[str, Any] = {"ok": False, "reason": correction.REASON_NOTHING}
+        if row is not None:
+            entry = annotation_store.find(
+                annotation_store.active(config, application.state), str(harness), str(sid)
+            )
+            route = runtime_reading_route.resolve(str(harness))
+            answer = correction.compose(
+                row,
+                self._session_facts(row),
+                floor=annotation_store.direction_floor(entry, row),
+                lines_judged=bool(route["provider"] and route["destination"]),
+            )
+        self._send(json.dumps(answer, separators=(",", ":")).encode(), "application/json")
+
     def _correction_copied(self) -> None:
         """Record that the reader copied this correction for this session (DRC-4678).
 
@@ -2555,6 +2608,7 @@ class _RequestHandler(BaseHTTPRequestHandler):
             "/api/tripwire": self._tripwire,
             "/api/annotate": self._annotate,
             "/api/direction": self._direction,
+            "/api/correction": self._correction,
             "/api/correction/copied": self._correction_copied,
             "/api/reading": self._reading,
             "/api/reading/cancel": self._reading_cancel,
