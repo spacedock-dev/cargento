@@ -1608,7 +1608,12 @@ model detail, stay in `~/.cargento/drift-levels/readings.json`. `results.json` c
 tokens, marks, levels, outcomes, the digests and a timestamp. It carries no session id, path,
 command, intent text, fact id or model prose, and a test asserts that none of the local fields
 appears in it. Scoring calls no model and writes to neither the annotation store nor the reading
-route. The [drift levels documentation](docs/drift-levels/README.md) owns its format.
+route. `levels_cases.py --read` is the one mode that calls a model, and it runs only when the owner
+says to. It sends one case's frozen facts and intent to Codex, the way a press sends a Claude Code
+session's record, but with no check output, since the cases froze none. It charges the reading
+home's reading ledger and never writes the annotation store. What comes back stays in
+`~/.cargento/drift-levels/replayed-readings.json`. Its record, `replay.json`, holds case ids and
+closed tokens only. The [drift levels documentation](docs/drift-levels/README.md) owns its format.
 
 A violation here is a committed file under `docs/abstention/` or `docs/drift-levels/` carrying a
 session id, prompt text, a recorded command or path, or model prose, or a scoring run that reaches

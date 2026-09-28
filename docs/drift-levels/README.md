@@ -9,7 +9,9 @@ both. The levels themselves, and why each source has its own floor, are in
 DRC-4692 builds the two functions in `cargento_runtime/levels.py` and measures them here before any
 reader sees a level. The live estimate reads a Claude Code session's recorded checks and written
 paths beside the saved intent. The analysis level reads a stored reading's per-line results. Neither
-calls a model, so scoring spends nothing and can be re-run.
+calls a model, so scoring spends nothing and can be re-run. The readings the analysis level needs
+come from `--read`, the one mode that calls a model (see
+[Readings replayed from the frozen cases](#readings-replayed-from-the-frozen-cases)).
 
 ## What lives here
 
@@ -32,8 +34,9 @@ appears in the summary.
 
 ## What does not live here
 
-The spec the owner writes, the frozen cases (`~/.cargento/drift-levels/cases.json`), the marks and
-the attached readings (`readings.json`) stay on the machine that made them. The cases hold the
+The spec the owner writes, the frozen cases (`~/.cargento/drift-levels/cases.json`), the marks,
+the replayed readings (`replayed-readings.json`, with `replay.json` recording what each case got)
+and the attached readings (`readings.json`) stay on the machine that made them. The cases hold the
 transcript path, the session id, the working directory, the recorded check lines and written paths
 layer 1 publishes, and the intent the owner set for the case. `levels_cases.py --build` refuses a
 `CARGENTO_HOME` inside the repository.
@@ -84,6 +87,9 @@ A mark written after seeing an output is agreement, not a mark, so the tool enfo
 
 3. Commit `marks-digest.json`.
 
+   Then make the readings, with `--read` (next section), on the owner's go-ahead. It is the only
+   step that spends.
+
 4. Attach readings. `--attach-readings` takes `{"v": 1, "readings": {"<case id>": <reading>}}`,
    where each reading is a stored reading in the annotation store's own shape. It refuses every one
    unless the digest is committed and the local marks still hash to it, each case id is in those
@@ -105,9 +111,78 @@ python3 scripts/levels_cases.py --build ~/.cargento/drift-levels/spec.json
 python3 scripts/levels_cases.py                 # mark: both levels per case, no default
 python3 scripts/levels_cases.py --report        # how far through the key you are
 git add docs/drift-levels/marks-digest.json && git commit -s
-python3 scripts/levels_cases.py --attach-readings ~/.cargento/drift-levels/readings-spec.json
+python3 scripts/levels_cases.py --read --reading-home ~/.cargento/drift-levels-readings --dry-run
+python3 scripts/levels_cases.py --read --reading-home ~/.cargento/drift-levels-readings   # spends
+python3 scripts/levels_cases.py --attach-readings ~/.cargento/drift-levels/replayed-readings.json
 python3 scripts/levels_cases.py --score         # writes results.json
 ```
+
+## Readings replayed from the frozen cases
+
+The owner ruled on 2026-09-28 that the analysis readings are made by replaying the frozen cases,
+not by pressing Check for drift on a live board and not by recording new sessions.
+
+A live press cannot read these cases. The sessions are old, and the board has no turn stop or
+session end for them. `reading.end_kind` counts a stop only from a row's `finished_at` or
+`ended_at`, which come from hook events, and the history store holds only state snapshots for
+them. So the press withholds `idle-unknown` before any model call. That happened on the first try,
+and seeding the reading home's history from the real store did not change it. A case cut before
+its session's end had a second problem: the board reads the session as it stands now, which is more
+than the frozen facts, so the prep left all three cut cases out as `cut-not-live`.
+
+`--read` calls the same producer a press calls, `reading.produce`, with the case's own record:
+
+- The evidence is the case's frozen facts, the same facts the owner marked against and `--score`
+  reads. The board is never read.
+- The intent is the case's goal and lines, as one revision stamped at 1.0, before every record. The
+  owner marked each line against the whole frozen record, so the evidence window opens before all
+  of it. DRC-4666's replay stamps its intent the same way.
+- The row is a Claude Code session stopped at the case's own `captured_at` (its cut, or its last
+  recorded fact). That is the moment the case stands at, and the moment the owner marked. It is the
+  one input the replay supplies that the recording does not hold, and the reason replay is possible
+  at all. The reading's scope reads "through the last turn".
+- The route is Codex to OpenAI, the board's route for a Claude Code session on this machine. The run
+  refuses if `reading_route.destination("codex")` names anything else. The prompt, the evidence
+  rules, the admission of a turn stop and the outcome lines are the press's. With a stored grant
+  for tool output to OpenAI, each check goes with its line, result, times and changed-after flag.
+  The cases froze no output tails, so no check's output is sent. Without a grant, the checks stay
+  off the prompt and the cutoff says so, as it does on a press.
+
+**One count.** Every call is charged where the board charges a press: `reading_policy.reserve`, on
+the reading home's `cargento-reading-permission.sqlite3`, through the same `GuardedModel` seam. A
+charge happens after every check `produce` makes and before the subprocess, so a case the producer
+withholds costs nothing. A call that starts and then fails is still charged. `--reading-home` names
+the home the reading board ran on. The run refuses before any call if Codex is not allowed there,
+or if the calls it needs do not fit in the ledger's rolling 12. That ledger counts a rolling day. The
+owner's DRC-4692 authorization is a total (12 readings, 5 spent before this), and nothing on disk
+holds that total, so whoever runs `--read` adds its calls to the count logged on DRC-4692.
+
+**Refused before any call:** a digest that is not committed, local marks that no longer hash to it,
+cases that changed since they were marked (the marks file carries the case set's digest, and the
+committed digest binds the marks file), or a chosen case that is unmarked, has no analysis mark, is
+not a Claude Code case, or has an intent that was never saved or has no outcome line.
+
+**Refused by the producer:** whatever `produce` withholds is recorded in `replay.json` as `refused`
+with its reason token. A reading the annotation store's validator would refuse is recorded as
+`store-refused`. Nothing stands in for a refused case. It reaches `--score` as a case with no
+reading, which `counts.no_reading` counts.
+
+Two cases with the same producer inputs share one call, and the reading is attached to both. The
+same session and cut, frozen as two kinds, is one reading: 3f4e7b30 is `check-not-recorded` and
+`work-left-out`. A case that already has a replayed reading is kept and not read again, so running
+the command twice does not spend twice.
+
+`--read` writes `replayed-readings.json` in exactly the shape `--attach-readings` takes, and
+`--attach-readings` and `--score` run on it unchanged. `replay.json` holds, per case id, the status,
+the withheld token, whether the call spent, whether it was charged, and when. It holds no session id,
+intent text or model prose. `--dry-run` runs the producer up to the model with a stub that sends
+nothing, and prints only case ids, the number of calls, prompt sizes, fact counts and the ledger's
+count. It makes no call, charges nothing and writes no file.
+
+With no `--case`, `--read` reads the cases the marking prep named, the four uncut sessions
+1b4a141f, 3f4e7b30, cfc97e82 and a2364dbf. That is five case ids and four calls. `--case <id>`,
+repeated, chooses others. The cut cases can be read this way too, since replay reads them as they
+were frozen.
 
 ## How to argue with a result
 
