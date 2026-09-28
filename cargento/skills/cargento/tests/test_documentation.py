@@ -2148,11 +2148,27 @@ class FocusCommandContractDocumentationTest(unittest.TestCase):
             'path.startswith("/api/events/")' in do_post
         )
         gated = len(re.findall(r"\bcoordinator\.(?:focus_)?authorized\(", source))
-        self.assertEqual(15, routes)
+        self.assertEqual(16, routes)
         self.assertEqual(2, gated)
-        self.assertIn("Writing is the fifteen POST routes", self.FLAT)
-        self.assertIn("There is nothing to authenticate with on thirteen of them", self.FLAT)
+        self.assertIn("Writing is the sixteen POST routes", self.FLAT)
+        self.assertIn("There is nothing to authenticate with on fourteen of them", self.FLAT)
         self.assertIn("Two carry a capability and they are not worth the same.", self.FLAT)
+
+    def test_the_copied_correction_route_is_named_counted_and_its_residual_stated(self) -> None:
+        # DRC-4678: the thirteenth mutating endpoint and the sixth disk writer, the
+        # local-process residual, where the digests live and what clears them, and the
+        # exemption of a reader's edits inside a copied correction from the floor.
+        self.assertIn("Thirteen endpoints mutate", self.FLAT)
+        self.assertIn("Six write to disk.", self.FLAT)
+        self.assertIn("`POST /api/correction/copied`", self.FLAT)
+        self.assertIn("`cargento-copied-corrections.json`", self.FLAT)
+        self.assertIn(
+            "any process that can reach the loopback route can record a digest", self.FLAT
+        )
+        self.assertIn(
+            "Reader edits inside a copied correction are exempt from the later-direction floor",
+            self.FLAT,
+        )
 
     def test_the_documented_framing_header_is_the_one_the_server_sends(self) -> None:
         # The paragraph sits in Known and accepted, beside the capability count

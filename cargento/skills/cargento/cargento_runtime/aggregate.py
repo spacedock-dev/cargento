@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING, Any, Final, Protocol, TypeAlias
 
 from . import annotations as annotation_store
 from . import (
+    copied_corrections,
     deliveries,
     departures,
     dismissals,
@@ -948,6 +949,7 @@ class Application:
                 # once and both attaches the per-row sentences and returns the
                 # board-wide counts.
                 **self._delivery_fields(out_sessions),
+                **self._copied_fields(out_sessions),
                 **self._unasked_fields(out_sessions, annotation_entries, now=now),
                 **history_fields,
             }
@@ -1064,6 +1066,15 @@ class Application:
         return hashlib.sha256(
             json.dumps(source, sort_keys=True, separators=(",", ":")).encode()
         ).hexdigest()
+
+    def _copied_fields(self, rows: list[Session]) -> dict[str, Any]:
+        """Attach each row's messages recognised as a copied correction (DRC-4678).
+
+        Adds no payload key: it is called from inside the update for the reason
+        `_delivery_fields` is, `collect`'s statement cap.
+        """
+        copied_corrections.attach(self.config, self.state, rows)
+        return {}
 
     def _unasked_fields(
         self,

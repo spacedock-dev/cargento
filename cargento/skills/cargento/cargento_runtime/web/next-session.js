@@ -53,7 +53,8 @@ function nextSessionSourceOwner(session){
 
 function nextSessionInstruction(session, label){
   const instruction = session && session.instruction;
-  if(!instruction || typeof instruction !== "object" || Array.isArray(instruction)) return null;
+  if(!instruction || typeof instruction !== "object" || Array.isArray(instruction) ||
+    nextPromptCopied(session, "instruction")) return null;
   if(String(instruction.label || "") !== label) return null;
   return String(instruction.text == null ? "" : instruction.text).trim() ? instruction : null;
 }

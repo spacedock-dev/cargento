@@ -292,7 +292,8 @@ function nextObservedHistory(project, evidence){
    last drew (DRC-4509). Null is an absence with a reason, not "just now". */
 function nextObservedGoal(source){
   const instruction = source.instruction;
-  if(instruction && instruction.label === "asked" && nextObservedString(instruction.text)){
+  if(instruction && instruction.label === "asked" && nextObservedString(instruction.text) &&
+    !nextPromptCopied(source, "instruction")){
     return {text: instruction.text, src: `${source.harness} · latest assignment`,
       at: nextNumber(instruction.at)};
   }

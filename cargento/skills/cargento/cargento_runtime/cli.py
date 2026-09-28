@@ -15,6 +15,7 @@ from typing import TYPE_CHECKING
 
 from cargento_runtime import (
     aggregate,
+    copied_corrections,
     diagnostics,
     ends,
     history,
@@ -693,6 +694,16 @@ def run_one_shot(
                     "changed; move or repair that file and run --forget again"
                 ),
             }[swept],
+            print,
+        )
+        # The digests of corrections the reader copied (DRC-4678): no text, and
+        # the machine's memory of an act, the class the discard records are in.
+        # Deleted with the other two, and the refusal above returns before it.
+        copies_path = copied_corrections.store_path(config)
+        runtime_io.diag(
+            f"Cargento: deleted {copies_path}"
+            if copied_corrections.forget(config)
+            else f"Cargento: no copied-correction store at {copies_path}",
             print,
         )
         permission_forgotten = reading_policy.forget(config)
