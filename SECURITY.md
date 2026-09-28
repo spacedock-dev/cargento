@@ -1413,8 +1413,9 @@ chose it, and every request names the revision it was drafted against. The line,
 through that direction's time and, over an unsaved draft, the adopted goal go in one store write.
 Keep names its revision too, on both routes, and a stale one settles nothing; Keep never adopts
 over a saved goal holding other words, and a settlement never moves back over one already given.
-The revision check holds inside one dashboard process. Two dashboards sharing the store have no
-lock between them, and this write shares that gap with every other save (DRC-4661).
+The revision check holds across dashboards too: every store write takes the store's lock file, as
+the annotation store section above describes (DRC-4661), and the check reads the revision from disk
+under it.
 
 The background job, built with DRC-4686. An admitted press answers `202` with a job the server
 owns, before the model is called, and the reading runs on a thread of its own under the
