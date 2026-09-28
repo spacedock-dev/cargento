@@ -410,9 +410,10 @@ class TheReplayIsBoundedTest(_Replay):
         started = time.perf_counter()
         self.estimate()
         live = time.perf_counter() - started
-        # Generous for a loaded machine; the unbounded replay took about 150 times the
-        # record's cost on this transcript.
-        self.assertLess(live, 1.0 + 20 * record, (live, record))
+        # The unbounded replay took about 150 times the record's cost on this transcript.
+        # The bounded one measured about 11 times on macOS and 23 times on the Windows
+        # runner (PR #429), so the bound catches the regression without timing the runner.
+        self.assertLess(live, 1.0 + 50 * record, (live, record))
 
 
 class TheReplayMatchesTheRecordTest(_Replay):
