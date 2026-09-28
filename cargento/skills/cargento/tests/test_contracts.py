@@ -1399,10 +1399,12 @@ class RuntimeImportGraphTest(unittest.TestCase):
             "cargento_runtime.state",
             "cargento_runtime.unasked",
         },
-        # Not a leaf: it re-reads a Claude Code transcript tail and recomputes
-        # fact ids through `project_context`, as `direction_text` does, rather
-        # than editing that module, which the abstention qualification freezes
-        # (DRC-4678). Only `aggregate`, `http_api` and `cli` reach it.
+        # Not a leaf: it re-reads a Claude Code transcript and recomputes fact
+        # ids through `project_context`, as `direction_text` does, rather than
+        # editing that module, which the abstention qualification freezes
+        # (DRC-4678), and renders each message as `transcripts` renders a row's
+        # prompt fields, to place those fields on the message they quote. Only
+        # `aggregate`, `http_api` and `cli` reach it.
         "cargento_runtime.copied_corrections": {
             "cargento_runtime.config",
             "cargento_runtime.io",
@@ -1411,6 +1413,7 @@ class RuntimeImportGraphTest(unittest.TestCase):
             "cargento_runtime.reading",
             "cargento_runtime.records",
             "cargento_runtime.state",
+            "cargento_runtime.transcripts",
         },
         # A leaf over the same four as `dismissals`, for the same reason: the
         # lane writes it, the application publishes it and a review surface

@@ -535,9 +535,20 @@ function nextInstructionEchoes(text, title){
   return head.endsWith("…") && line.startsWith(head.slice(0, -1));
 }
 
+/* Whether the row's `field` ("instruction" or "first_prompt") quotes a
+   correction the reader copied from Cargento, which is never presented as
+   their words. The server places each field on the message it quotes by fact
+   id (`reading.prompt_copied`, DRC-4678), so this reads its answer. */
+function nextPromptCopied(session, field){
+  const entries = session && Array.isArray(session.copied_prompts) ? session.copied_prompts : [];
+  return entries.some(entry => entry && Array.isArray(entry.quoted_as) &&
+    entry.quoted_as.includes(field));
+}
+
 function nextInstructionLine(session, title, className, tag){
   const instruction = session && session.instruction;
-  if(!instruction || typeof instruction !== "object" || Array.isArray(instruction)) return "";
+  if(!instruction || typeof instruction !== "object" || Array.isArray(instruction) ||
+    nextPromptCopied(session, "instruction")) return "";
   const label = NEXT_INSTRUCTION_LABELS.get(String(instruction.label || ""));
   const text = String(instruction.text == null ? "" : instruction.text).trim();
   if(!label || !text || nextInstructionEchoes(text, title)) return "";

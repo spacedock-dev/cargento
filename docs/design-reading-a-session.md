@@ -1558,15 +1558,21 @@ the later-direction floor (item 9).
    outcome line under item 4's rules. It never replaces the goal.
 9. A copied correction coming back. The server records a digest of the exact text the reader
    copied, edited or not, per session: bounded per session, one use per digest, matched only after
-   the copy. The Claude collector computes each user message's digest from its raw text before any
-   clipping. A later message that matches exactly is Cargento-assisted: not adopted as the goal,
-   not person-authored evidence, and not an unsettled later direction. No match, no special
-   treatment. SECURITY.md names the route and its local-process residual. Built by DRC-4678 to the
-   owner's rulings of 2026-09-28: both sides normalise CRLF and CR to LF and a tab to four spaces
-   and are trimmed at both ends, which is what a live paste into Claude Code 2.1.283 measured;
-   eight digests per session, the oldest dropped; and the activity list labels a recognised
-   message "You · Copied from Cargento". An edited paste, a backspace that wipes it included, is
-   the reader's own words.
+   the copy. Each user message's digest is computed from its raw text before any clipping. A later
+   message that matches exactly is Cargento-assisted: not adopted as the goal, not person-authored
+   evidence, and not an unsettled later direction. No match, no special treatment. SECURITY.md
+   names the route and its local-process residual. Built by DRC-4678 to the owner's rulings of
+   2026-09-28: both sides normalise CRLF and CR to LF and a tab to four spaces and are trimmed at
+   both ends, which is what a live paste into Claude Code 2.1.283 measured; eight digests per
+   session, the oldest dropped; and the activity list labels a recognised message "You · Copied
+   from Cargento". An edited paste, a backspace that wipes it included, is the reader's own words.
+   The review round added three things. "After the copy" is a position in the transcript, not a
+   clock: a message counts only if it was written past where the transcript ended when the text
+   was copied. A recognised message is stored by its fact id and stays recognised after the tail
+   moves on, up to 32 per session, apart from the eight waiting digests. Adoption and every
+   surface that shows a prompt as the reader's words (the stated goal, the assignment, an exact
+   direction) compare fact ids, so a prompt typed in the same second as a paste stays the
+   reader's.
 10. Not accurate. A token the reader can set on a reading, stored with the annotation entry and
     removed with it. `--forget` does not reach it. It is never sent, never counted and never entered
     into abstention marks, and SECURITY.md notes it.

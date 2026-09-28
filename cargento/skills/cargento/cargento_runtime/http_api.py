@@ -2097,9 +2097,13 @@ class _RequestHandler(BaseHTTPRequestHandler):
         `--no-annotations`, whose flag turns the store off, and refused to a
         document navigation and to a same-site or cross-site fetch, because a
         forged copy would let a page mark the reader's next message as
-        Cargento's. An unknown session, a harness whose messages are not read
-        and a digest already held answer one 200 body, for `_focus`'s ruling.
+        Cargento's. Every accepted registration answers one body, whether the
+        session exists, whether its messages are read and whether the text was
+        copied before, so the reply tells a caller nothing it did not send.
         """
+        # The copy is the press, so it is timed on arrival: a board collection and
+        # a lock wait come after, and a paste inside them would be dated before it.
+        now = self.server.application.clock()
         application = self.server.application
         config = application.config
         if not config.annotations_enabled:
@@ -2131,23 +2135,27 @@ class _RequestHandler(BaseHTTPRequestHandler):
             self._reject(400)
             return
         outcome = copied_corrections.OUTCOME_REFUSED
-        if harness in copied_corrections.HARNESSES and self._session_row(str(harness), str(sid)):
-            outcome = copied_corrections.register(
-                config,
-                harness,
-                sid,
-                text,
-                now=application.clock(),
-                diagnostic_sink=application.diagnostic_sink,
+        if harness in copied_corrections.HARNESSES:
+            # Where the transcript ends is read before the lookup's collection too, for the
+            # clock's reason: only a message past it can match.
+            position = copied_corrections.transcript_position(
+                config, application.state, str(harness), str(sid)
             )
-            # The next collection must read the store again, not a cached board.
-            application.state.snapshot.clear()
+            # No snapshot is cleared after this: the lookup cleared it before collecting, and a
+            # copy changes no row until its message is written.
+            if self._session_row(str(harness), str(sid)):
+                outcome = copied_corrections.register(
+                    config,
+                    harness,
+                    sid,
+                    text,
+                    now=now,
+                    position=position,
+                    diagnostic_sink=application.diagnostic_sink,
+                )
         unwritable = outcome == copied_corrections.OUTCOME_UNWRITABLE
         self._send(
-            json.dumps(
-                {"ok": not unwritable, "registered": outcome == copied_corrections.OUTCOME_STORED},
-                separators=(",", ":"),
-            ).encode(),
+            json.dumps({"ok": not unwritable}, separators=(",", ":")).encode(),
             "application/json",
             503 if unwritable else 200,
         )

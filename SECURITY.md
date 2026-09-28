@@ -1469,24 +1469,36 @@ The copied-correction route, built with DRC-4678. `POST /api/correction/copied` 
 and the exact text the reader copied, at most 2,000 characters, and the server records its digest:
 a SHA-256 of the text after one normalisation, applied to both sides, which is what Claude Code
 2.1.283 was measured doing to a paste: CRLF and CR become LF, a tab becomes four spaces, and
-whitespace is trimmed at both ends. Only the digest and the moment of the copy are stored, never the
-text, in `cargento-copied-corrections.json` beside the annotation store, owner-only through a temp
-file and a rename, under an OS lock on the `.lock` file beside it and bounded at eight digests per
-session, the oldest dropped. `--forget` deletes the file, and `--no-annotations` turns it off. A
-digest the session already holds answers without storing anything, so registering one twice earns
-no second match. Only Claude Code sessions are read for a match: a later user message in the
-transcript tail Cargento already reads, whose digest computed from its raw text before any
-redaction or clipping matches exactly, is Cargento-assisted. Each digest binds the first such
-message after its copy, and nothing before it. An assisted message is `derived` rather than
-person-authored evidence, is never adopted as the goal, does not open the evidence window of typed
-words, cannot be opened by `POST /api/direction` and is not an unsettled later direction. Reader
-edits inside a copied correction are exempt from the later-direction floor: an edit made in
-Cargento's box before copying is inside the digest, while an edit after pasting, a backspace that
-wipes the paste included, makes a different message that is the reader's own. The route is guarded
-as `POST /api/direction` is: loopback only, same-origin, refused to a document navigation and to a
-same-site or cross-site fetch, and 503 under `--no-annotations`. An unknown session, a harness whose
-messages are not read and a digest already held answer one 200 body, so the route says nothing
-about which sessions exist. The correction is composed without a model from the reader's goal,
+whitespace is trimmed at both ends. The store holds the digest, the moment of the copy and where the
+session's transcript ended at that moment (its inode and size), and, once a message is recognised,
+that message's fact id and time. It never holds the text. It is `cargento-copied-corrections.json`
+beside the annotation store, owner-only through a temp file and a rename, under an OS lock on the
+`.lock` file beside it. It is bounded at eight digests per session still waiting for their message
+and 32 recognised messages per session, the oldest of each dropped. Dropping the oldest waiting
+digest drops only a copy whose message never arrived: a message already recognised keeps its mark
+until 32 later recognised messages in that session push it out, and then it reads as the reader's
+own words again. `--forget` deletes the file, and `--no-annotations` turns it off. A digest still
+waiting answers without storing anything, so registering one twice earns no second match. Only
+Claude Code sessions are read for a match. A user message written after the point the transcript
+had reached when the text was copied, whose digest computed from its raw text before any redaction
+or clipping matches exactly, is Cargento-assisted, whatever either clock says. The transcript is
+read from that point to its end, at most its newest 32 MiB, the bound the semantic history store
+reads a source to, so a paste the bounded tail never held is still recognised. Each digest binds the
+first such message, and nothing before it, and a recognised message stays recognised after the
+tail moves past it. An assisted message is `derived` rather than person-authored evidence, is never
+adopted as the goal, does not open the evidence window of typed words, cannot be opened by
+`POST /api/direction`, is not an unsettled later direction, and is never shown as the stated goal,
+the assignment or an exact direction. Reader edits inside a copied correction are exempt from the
+later-direction floor: an edit made in Cargento's box before copying is inside the digest, while an
+edit after pasting, a backspace that wipes the paste included, makes a different message that is
+the reader's own. The route is guarded as `POST /api/direction` is: loopback only, same-origin,
+refused to a document navigation and to a same-site or cross-site fetch, and 503 under
+`--no-annotations`. Every accepted registration answers the same `{"ok": true}`, whether the session
+exists, whether its harness is read and whether that text was copied before, so the route says
+nothing about which sessions exist. Two things remain. Each probe of a real Claude Code session
+stores a digest and takes one of its eight waiting slots, pushing out the oldest copy still waiting.
+And a store that cannot be written answers 503 only when a write was attempted, which happens only
+for a real Claude Code session. The correction is composed without a model from the reader's goal,
 outcome lines with their state, and cited entry numbers and times, and never from model prose, tool
 output or a recorded command; the Copy button that calls this route arrives with DRC-4681. The
 residual is a local process: any process that can reach the loopback route can record a digest.

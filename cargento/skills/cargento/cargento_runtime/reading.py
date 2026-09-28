@@ -232,6 +232,10 @@ AUTHOR_DERIVED = "derived"
 # makes the three one rule.
 COPIED_FLAG = "copied"
 COPIED_PROMPTS = "copied_prompts"
+# Which of the row's prompt fields quote a recognised message, on that message's entry:
+# `"instruction"`, `"first_prompt"`, or both. `copied_corrections.attach` decides it by fact id, so
+# a message the reader typed in the same second as a paste stays theirs.
+QUOTED_AS = "quoted_as"
 
 # Which cited entries may carry a verdict about a deliverable. rule 7
 # keyed this on WHO wrote an entry, and the captain amended it on 2026-09-10
@@ -2451,6 +2455,19 @@ class ClaudeReadingModel:
         """A missing executable is known before reserving a reading attempt."""
         binary = self.binary_resolver("claude")
         return bool(binary and os.path.isabs(binary))
+
+
+def prompt_copied(row: Mapping[str, Any], field: str) -> bool:
+    """Whether the row's `field` ("instruction" or "first_prompt") quotes a copied correction.
+
+    Adoption, the board's assignment and every other surface that presents that field as the
+    reader's words read this one answer (DRC-4678); the page's `nextPromptCopied` is the same rule.
+    """
+    entries = row.get(COPIED_PROMPTS)
+    return any(
+        isinstance(entry, dict) and field in (entry.get(QUOTED_AS) or ())
+        for entry in (entries if isinstance(entries, list) else ())
+    )
 
 
 def valid_prompt_time(value: Any) -> float | None:

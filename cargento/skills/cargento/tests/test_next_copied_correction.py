@@ -13,6 +13,7 @@ from __future__ import annotations
 import re
 import shutil
 import unittest
+from typing import Any
 
 from .test_next_intent_draft import TYPED, _DraftPage, drift_of, intent_of, visible_text
 
@@ -27,7 +28,7 @@ COPIED = (
     "const __fa = __semantic.facts.find(f => f.fact_id === 'fo-a');\n"
     f"__fa.summary = {SUMMARY!r};\n"
     "__fa.copied = true;\n"
-    "__s.copied_prompts = [{fact_id:'fo-a', at:104}];\n"
+    "__s.copied_prompts = [{fact_id:'fo-a', at:104, quoted_as:['instruction']}];\n"
     f"__s.instruction = {{label:'asked', text:{CORRECTION[:80]!r}, at:104}};\n"
 )
 
@@ -74,7 +75,8 @@ class CopiedCorrectionPageTest(_DraftPage):
             self.html(
                 latest_only
                 + COPIED.replace("__fa.copied = true;\n", "").replace(
-                    "__s.copied_prompts = [{fact_id:'fo-a', at:104}];\n", ""
+                    "__s.copied_prompts = [{fact_id:'fo-a', at:104, quoted_as:['instruction']}];\n",
+                    "",
                 )
             )
         )
@@ -99,3 +101,91 @@ class CopiedCorrectionPageTest(_DraftPage):
         self.assertIs(False, out["person"])
         self.assertIn("1 direction you gave", out["mix"])
         self.assertIn("1 copied from Cargento", out["mix"])
+
+
+# The server placed the row's instruction on a message the reader typed in the same second as
+# the paste: the copied entry is quoted by nothing.
+TYPED_SAME_SECOND = "__s.copied_prompts = [{fact_id:'fo-a', at:104, quoted_as:[]}];\n"
+# Newest first, fo-a is the direction every surface below would otherwise present.
+PROMOTED = (
+    "for(const f of __semantic.facts){ if(f.type === 'user_message') f.intent_promoted = true; }\n"
+)
+
+
+@unittest.skipUnless(shutil.which("node"), "node not available")
+class CopiedCorrectionEverySurfaceTest(_DraftPage):
+    """A recognised copy is never presented as the reader's words, on any surface (DRC-4678
+    review, matching F2), and a message typed in the same second as it stays theirs (Codex 1)."""
+
+    def ask(self, setup: str, expression: str) -> Any:
+        return self.drive(setup, f"console.log(JSON.stringify({expression}));")
+
+    def test_a_prompt_typed_in_the_same_second_as_a_paste_is_still_drafted(self) -> None:
+        latest_only = '__s.first_prompt = ""; __s.first_prompt_at = null;\n'
+        candidate = self.ask(latest_only + COPIED + TYPED_SAME_SECOND, "nextPromptCandidate(__s)")
+        self.assertEqual(CORRECTION[:80], candidate["text"])
+        self.assertIsNone(self.ask(latest_only + COPIED, "nextPromptCandidate(__s)"))
+
+    def test_the_stated_goal_is_never_the_copied_correction(self) -> None:
+        expression = "nextObservedGoal(__s)"
+        typed = self.ask(COPIED + TYPED_SAME_SECOND, expression)
+        self.assertEqual(CORRECTION[:80], typed["text"])
+        goal = self.ask(COPIED, expression)
+        self.assertFalse(goal and CORRECTION[:40] in str(goal.get("text")))
+
+    def test_the_assignment_is_never_the_copied_correction(self) -> None:
+        expression = (
+            "(nextCockpitSubstantiveDirection({label:'cargento', sessions:[__s]}, __semantic)"
+            " || {}).fact_id"
+        )
+        plain = COPIED.replace("__fa.copied = true;\n", "")
+        self.assertEqual("fo-a", self.ask(PROMOTED + plain, expression))
+        self.assertNotEqual("fo-a", self.ask(PROMOTED + COPIED, expression))
+
+    def test_no_exact_direction_row_is_the_copied_correction(self) -> None:
+        expression = "nextCockpitCourseDirections(__semantic, []).map(f => f.fact_id)"
+        plain = COPIED.replace("__fa.copied = true;\n", "")
+        self.assertIn("fo-a", self.ask(PROMOTED + plain, expression))
+        self.assertNotIn("fo-a", self.ask(PROMOTED + COPIED, expression))
+
+    def test_the_board_rows_assignment_is_never_the_copied_correction(self) -> None:
+        expression = "nextOperationsAssignment(__s)"
+        self.assertIn("ASSIGNMENT", self.ask(COPIED + TYPED_SAME_SECOND, expression))
+        self.assertEqual("", self.ask(COPIED, expression))
+
+    def test_the_session_page_never_says_you_asked_the_copied_correction(self) -> None:
+        asked = 'data-next-instruction="asked"'
+        self.assertIn(asked, self.html(COPIED + TYPED_SAME_SECOND))
+        html = self.html(COPIED)
+        self.assertNotIn(asked, html)
+
+    def test_no_course_episode_names_the_copied_correction_as_its_direction(self) -> None:
+        semantic = (
+            "const __course = copied => ({work_items:[{work_item_id:'w1', label:'Parser'}],"
+            " facts:[{fact_id:'d1', type:'user_message', at:1, work_item_id:'w1',"
+            " summary:'Steer back', copied},"
+            " {fact_id:'r1', type:'gate_decision', decision:'approved', at:2, work_item_id:'w1'}],"
+            " projections:{operator_intents:[{projection_id:'i1', derived_from:'d1'}],"
+            " steering_episodes:[{adaptation_fact:'r1', intent_id:'i1'}]}});\n"
+        )
+        expression = (
+            "[false, true].map(copied => nextCockpitCourseEpisodes(__course(copied), [])"
+            ".map(e => e.directionFact && e.directionFact.fact_id))"
+        )
+        plain, copied = self.drive(semantic, f"console.log(JSON.stringify({expression}));")
+        self.assertIn("d1", plain)
+        self.assertNotIn("d1", copied)
+
+    def test_a_copied_first_prompt_is_never_drafted(self) -> None:
+        quoted = "__s.copied_prompts = [{fact_id:'fo-first', at:99, quoted_as:QUOTED}];\n"
+        expression = "nextPromptCandidate(__s, 'first-prompt')"
+        typed = self.ask(quoted.replace("QUOTED", "[]"), expression)
+        self.assertEqual("Build the retry queue for failed events", typed["text"])
+        self.assertIsNone(self.ask(quoted.replace("QUOTED", "['first_prompt']"), expression))
+
+    def test_no_instruction_line_quotes_the_copied_correction(self) -> None:
+        expression = "nextInstructionLine(__s, '', 'next-activity-instruction', 'span')"
+        self.assertIn(
+            'data-next-instruction="asked"', self.ask(COPIED + TYPED_SAME_SECOND, expression)
+        )
+        self.assertEqual("", self.ask(COPIED, expression))

@@ -726,7 +726,7 @@ function nextCockpitSubstantiveDirection(group, semantic){
   const facts = semantic && Array.isArray(semantic.facts) ? semantic.facts : [];
   const candidates = facts.filter(fact => {
     if(!fact || fact.type !== "user_message" || fact.intent_promoted === false ||
-      !fact.evidence || fact.evidence.confidence !== "exact") return false;
+      !fact.evidence || fact.evidence.confidence !== "exact" || nextReadingCopied(fact)) return false;
     const source = nextCockpitFactSessionKey(fact);
     const summary = String(fact.summary || "").trim();
     if(!source || !known.has(source) || !summary) return false;
@@ -5498,8 +5498,8 @@ function nextCockpitCourseEpisodes(semantic, lanes){
       String(direction && direction.work_item_id || "") === String(fact.work_item_id || "");
     const ordered = Number.isFinite(Number(direction && direction.at)) &&
       Number.isFinite(Number(fact.at)) && Number(direction.at) <= Number(fact.at);
-    return direction && direction.type === "user_message" && exactlyBound(direction) &&
-      sameTask && ordered ? direction : null;
+    return direction && direction.type === "user_message" && !nextReadingCopied(direction) &&
+      exactlyBound(direction) && sameTask && ordered ? direction : null;
   };
   const contributorNames = fact => [...new Set((lanes || []).filter(lane =>
     !fact.work_item_id || String(lane.workItemId || "") === String(fact.work_item_id))
@@ -5542,7 +5542,7 @@ function nextCockpitCourseDirections(semantic, episodes){
   const projected = new Set((semantic.projections && semantic.projections.operator_intents || [])
     .map(intent => String(intent && intent.derived_from || "")).filter(Boolean));
   return (semantic.facts || []).filter(fact => fact && fact.type === "user_message" &&
-    !used.has(String(fact.fact_id || "")) &&
+    !nextReadingCopied(fact) && !used.has(String(fact.fact_id || "")) &&
     (fact.intent_promoted === true || projected.has(String(fact.fact_id || ""))))
     .sort((left, right) => Number(left.at || 0) - Number(right.at || 0));
 }
@@ -6269,6 +6269,10 @@ function nextPromptCandidate(session, source = "latest-prompt"){
   if(!session || !["claude", "codex"].includes(session.harness)) return null;
   let text = "", at = null;
   if(source === "first-prompt"){
+    /* A correction the reader copied from Cargento is never their goal, as
+       `annotations.prompt_candidate` refuses it (DRC-4678); the latest-prompt
+       arm refuses it through `nextSessionInstruction`. */
+    if(nextPromptCopied(session, "first_prompt")) return null;
     text = String(session.first_prompt || ""); at = nextNumber(session.first_prompt_at);
   }else if(source === "latest-prompt" && session.harness === "claude"){
     const asked = nextSessionInstruction(session, "asked");
@@ -6276,10 +6280,6 @@ function nextPromptCandidate(session, source = "latest-prompt"){
   }else if(source === "latest-prompt" && session.prompt_states_work === true){
     text = String(session.title || ""); at = nextNumber(session.prompt_at);
   }
-  /* A correction the reader copied from Cargento is never their goal, as
-     `annotations.prompt_candidate` refuses it (DRC-4678). */
-  if(at != null && (Array.isArray(session.copied_prompts) ? session.copied_prompts : [])
-    .some(entry => entry && nextNumber(entry.at) === at)) return null;
   return text ? {text, at: at != null && at > 0 ? at : null, source} : null;
 }
 

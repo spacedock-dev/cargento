@@ -2430,32 +2430,20 @@ def prompt_candidate(row: dict[str, Any], source: str) -> tuple[str, float | Non
     if harness not in {"claude", "codex"}:
         return "", None
     if source == "first-prompt":
+        # A correction the reader copied from Cargento is not their goal (DRC-4678).
+        if reading.prompt_copied(row, "first_prompt"):
+            return "", None
         text, at = row.get("first_prompt"), row.get("first_prompt_at")
     elif source == "latest-prompt" and harness == "claude":
         instruction = records.as_dict(row.get("instruction"))
-        if instruction.get("label") != "asked":
+        if instruction.get("label") != "asked" or reading.prompt_copied(row, "instruction"):
             return "", None
         text, at = instruction.get("text"), instruction.get("at")
     elif source == "latest-prompt" and row.get("prompt_states_work") is True:
         text, at = row.get("title"), row.get("prompt_at")
     else:
         return "", None
-    moment = reading.valid_prompt_time(at)
-    if moment is not None and moment in _copied_times(row):
-        # A correction the reader copied from Cargento is not their goal (DRC-4678).
-        return "", None
-    return (text if isinstance(text, str) else "", moment)
-
-
-def _copied_times(row: Mapping[str, Any]) -> frozenset[float]:
-    """The times of this row's messages recognised as a copied correction."""
-    entries = row.get(reading.COPIED_PROMPTS)
-    return frozenset(
-        at
-        for entry in (entries if isinstance(entries, list) else ())
-        if isinstance(entry, dict)
-        and (at := reading.valid_prompt_time(entry.get("at"))) is not None
-    )
+    return (text if isinstance(text, str) else "", reading.valid_prompt_time(at))
 
 
 # One keyword per field an adoption carries, for `annotate`'s reason.

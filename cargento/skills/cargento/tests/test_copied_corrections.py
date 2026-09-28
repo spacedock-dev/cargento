@@ -20,6 +20,7 @@ import http.client
 import json
 import os
 import stat
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -37,6 +38,7 @@ from cargento_runtime.config import build_runtime_config
 from cargento_runtime.state import build_runtime_state
 
 from .support import make_server, serve_until_closed
+from .test_annotations_shared_home import _HOLD_LOCK
 from .test_claude_checks import SHORT, START, Transcript
 from .test_history import isolated_environment, no_instance, run_one_shot_cli
 
@@ -132,8 +134,13 @@ class _Store(unittest.TestCase):
         self.session.bash("pytest", "5 passed")
         self.session.save(self.path)
 
+    def position(self) -> tuple[int, int]:
+        """Where the transcript ends now: the boundary a copy made now matches after."""
+        info = os.stat(self.path)
+        return (info.st_ino, info.st_size)
+
     def register(self, text: str = COPIED, *, now: float, sid: str = SHORT) -> str:
-        return copies.register(self.config, "claude", sid, text, now=now)
+        return copies.register(self.config, "claude", sid, text, now=now, position=self.position())
 
     def facts(self) -> list[dict[str, Any]]:
         context = project_context.collect(
@@ -152,7 +159,7 @@ class CopyStoreTest(_Store):
     def test_a_copy_is_stored_once_and_a_second_registration_changes_nothing(self) -> None:
         self.assertEqual(copies.OUTCOME_STORED, self.register(now=100.0))
         self.assertEqual(copies.OUTCOME_UNCHANGED, self.register(now=200.0))
-        held = copies.load(self.config)[("claude", SHORT)]
+        held = copies.load(self.config)[("claude", SHORT)].copies
         self.assertEqual(1, len(held))
         # The first copy's time stands: a second registration cannot move where it matches from.
         self.assertEqual(100.0, held[0]["copied_at"])
@@ -161,7 +168,7 @@ class CopyStoreTest(_Store):
     def test_eight_digests_per_session_and_the_oldest_goes(self) -> None:
         for n in range(10):
             self.register(f"Correction number {n} for the placeholder parser.", now=100.0 + n)
-        held = copies.load(self.config)[("claude", SHORT)]
+        held = copies.load(self.config)[("claude", SHORT)].copies
         self.assertEqual(copies.COPIES_PER_SESSION, len(held))
         self.assertEqual(8, copies.COPIES_PER_SESSION)
         self.assertEqual([102.0 + n for n in range(8)], [copy["copied_at"] for copy in held])
@@ -188,8 +195,14 @@ class CopyStoreTest(_Store):
             with self.subTest(case=label):
                 self.assertEqual(
                     copies.OUTCOME_REFUSED,
-                    copies.register(self.config, harness, SHORT, text, now=100.0),
+                    copies.register(
+                        self.config, harness, SHORT, text, now=100.0, position=self.position()
+                    ),
                 )
+        self.assertEqual(
+            copies.OUTCOME_REFUSED,
+            copies.register(self.config, "claude", SHORT, COPIED, now=100.0, position=None),
+        )
         self.assertFalse(os.path.lexists(copies.store_path(self.config)))
         self.assertEqual(
             copies.OUTCOME_STORED,
@@ -199,6 +212,28 @@ class CopyStoreTest(_Store):
     def test_nothing_is_stored_with_annotations_off(self) -> None:
         self.config = dataclasses.replace(self.config, annotations_enabled=False)
         self.assertEqual(copies.OUTCOME_REFUSED, self.register(now=100.0))
+        self.assertFalse(os.path.lexists(copies.store_path(self.config)))
+
+    def test_the_store_keeps_the_sessions_copied_from_most_recently(self) -> None:
+        self.config = dataclasses.replace(self.config, annotation_max_sessions=2)
+        for n, sid in enumerate(("first", "second", "third")):
+            copies.register(self.config, "claude", sid, COPIED, now=100.0 + n, position=(1, 0))
+        self.assertEqual({("claude", "second"), ("claude", "third")}, set(copies.load(self.config)))
+
+    def test_a_copy_waits_for_another_dashboards_lock_and_stores_nothing_without_it(self) -> None:
+        lock = copies.store_path(self.config) + ".lock"
+        os.makedirs(os.path.dirname(lock), exist_ok=True)
+        holder = subprocess.Popen(
+            [sys.executable, "-c", _HOLD_LOCK, str(Path(copies.__file__).parents[1]), lock, "hold"],
+            stdout=subprocess.PIPE,
+            text=True,
+        )
+        self.addCleanup(holder.wait, 10)
+        self.addCleanup(holder.kill)
+        assert holder.stdout is not None
+        self.assertEqual(runtime_io.LOCK_HELD, holder.stdout.readline().strip())
+        with mock.patch.object(copies, "_LOCK_WAIT_SECONDS", 0.2):
+            self.assertEqual(copies.OUTCOME_UNWRITABLE, self.register(now=100.0))
         self.assertFalse(os.path.lexists(copies.store_path(self.config)))
 
     def test_forget_deletes_the_store(self) -> None:
@@ -363,6 +398,175 @@ class TreatedAsCargentoAssistedTest(_App):
         )
 
 
+LINE = STORED.split("\n", maxsplit=1)[0]
+# Enough later transcript to push a message out of the shortened tail these tests read.
+BULK = "x" * 1500
+
+
+class DurableRecognitionTest(_App):
+    """A recognised message stays recognised: the tail moving on, a clock stepping back, or a
+    paste the tail never held does not change what it was (DRC-4678 review, matching F1)."""
+
+    def setUp(self) -> None:
+        super().setUp()
+        self.config = dataclasses.replace(self.config, tail_bytes=8192)
+
+    def push_out_of_the_tail(self) -> None:
+        for _ in range(20):
+            self.session.bash("cat build.log", BULK)
+        self.session.save(self.path)
+        self.assertNotIn(LINE, "".join(runtime_io.read_tail(self.config, str(self.path))))
+
+    def test_a_recognised_paste_pushed_past_the_tail_stays_recognised_and_is_never_adopted(
+        self,
+    ) -> None:
+        self.register(now=START.timestamp() + self.session.seconds + 1)
+        pasted_at = _paste(self.session, STORED)
+        self.session.save(self.path)
+        latest = {"label": "asked", "text": LINE, "at": pasted_at}
+        app = self.app(first_prompt="", first_prompt_at=None, instruction=latest)
+        before = app.collect(show_all=True)["sessions"][0]["copied_prompts"]
+        self.assertEqual([pasted_at], [entry["at"] for entry in before])
+        self.push_out_of_the_tail()
+        self.state.snapshot.clear()
+        row = app.collect(show_all=True)["sessions"][0]
+        self.assertEqual(before, row["copied_prompts"])
+        self.assertEqual(("", None), annotation_store.prompt_candidate(row, "latest-prompt"))
+        self.assertIsNone(annotation_store.direction_floor(None, row))
+        # Whatever still publishes the message, history included, publishes it as Cargento's.
+        fact = {
+            "type": "user_message",
+            "fact_id": before[0]["fact_id"],
+            "at": pasted_at,
+            "source_session": {"harness": "claude", "sid": SHORT},
+        }
+        marked = copies.mark({"semantic": {"facts": [fact]}}, [row])
+        self.assertIs(True, marked["semantic"]["facts"][0].get("copied"))
+
+    def test_a_paste_the_tail_never_held_is_recognised(self) -> None:
+        self.register(now=START.timestamp() + self.session.seconds + 1)
+        pasted_at = _paste(self.session, STORED)
+        self.push_out_of_the_tail()
+        self.assertEqual([pasted_at], [entry["at"] for entry in self.matched()])
+
+    def test_a_clock_stepped_back_never_marks_a_message_written_before_the_copy(self) -> None:
+        typed_at = _paste(self.session, STORED)
+        self.session.save(self.path)
+        # The copy's clock reads earlier than the message already in the transcript.
+        self.register(now=typed_at - 600)
+        self.assertEqual((), self.matched())
+
+    def test_a_paste_after_the_copy_is_recognised_though_the_clock_stepped_back(self) -> None:
+        self.register(now=START.timestamp() + 86400)
+        pasted_at = _paste(self.session, STORED)
+        self.session.save(self.path)
+        self.assertEqual([pasted_at], [entry["at"] for entry in self.matched()])
+
+    def test_dropping_the_oldest_waiting_copy_never_unmarks_a_recognised_message(self) -> None:
+        self.register(now=START.timestamp() + self.session.seconds + 1)
+        pasted_at = _paste(self.session, STORED)
+        self.session.save(self.path)
+        self.assertEqual([pasted_at], [entry["at"] for entry in self.matched()])
+        for n in range(copies.COPIES_PER_SESSION):
+            self.register(f"Probe number {n} for the placeholder parser.", now=NOW + n)
+        self.assertEqual([pasted_at], [entry["at"] for entry in self.matched()])
+        held = copies.load(self.config)[("claude", SHORT)]
+        self.assertEqual(copies.COPIES_PER_SESSION, len(held.copies))
+        self.assertEqual([pasted_at], [match["at"] for match in held.matches])
+
+    def test_recognised_messages_are_bounded_per_session_and_the_oldest_goes(self) -> None:
+        self.assertEqual(32, copies.MATCHES_PER_SESSION)
+        pasted: list[float] = []
+        for n in range(copies.MATCHES_PER_SESSION + 1):
+            text = f"Correction {n}: rerun the placeholder parser tests."
+            self.register(text, now=START.timestamp() + self.session.seconds + 1)
+            pasted.append(_paste(self.session, text))
+            self.session.save(self.path)
+            self.matched()
+        self.assertEqual(pasted[1:], [entry["at"] for entry in self.matched()])
+        on_disk = json.loads(Path(copies.store_path(self.config)).read_text(encoding="utf-8"))
+        self.assertEqual(copies.MATCHES_PER_SESSION, len(on_disk["entries"][0]["matches"]))
+        self.assertNotIn("rerun the placeholder", json.dumps(on_disk))
+
+
+class AdoptionByFactIdTest(_App):
+    """Adoption refuses the copied message itself, never a typed one that shares its time
+    (DRC-4678 review, Codex 1)."""
+
+    def shared_moment(self) -> tuple[float, float]:
+        self.register(now=START.timestamp() + self.session.seconds + 1)
+        pasted_at = _paste(self.session, STORED)
+        self.session.seconds -= 5
+        own_at = _paste(self.session, OWN)
+        self.session.save(self.path)
+        self.assertEqual(pasted_at, own_at)
+        return pasted_at, own_at
+
+    def row(self, text: str, at: float) -> dict[str, Any]:
+        latest = {"label": "asked", "text": text, "at": at}
+        app = self.app(first_prompt="", first_prompt_at=None, instruction=latest)
+        row: dict[str, Any] = app.collect(show_all=True)["sessions"][0]
+        return row
+
+    def test_a_typed_prompt_sharing_a_pasted_corrections_time_is_still_adoptable(self) -> None:
+        pasted_at, own_at = self.shared_moment()
+        row = self.row(OWN, own_at)
+        self.assertEqual([pasted_at], [entry["at"] for entry in row["copied_prompts"]])
+        self.assertEqual([], row["copied_prompts"][0]["quoted_as"])
+        self.assertEqual((OWN, own_at), annotation_store.prompt_candidate(row, "latest-prompt"))
+
+    def test_the_pasted_correction_at_that_time_is_still_refused(self) -> None:
+        pasted_at, _ = self.shared_moment()
+        row = self.row(LINE, pasted_at)
+        self.assertEqual(["instruction"], row["copied_prompts"][0]["quoted_as"])
+        self.assertEqual(("", None), annotation_store.prompt_candidate(row, "latest-prompt"))
+
+    def test_a_line_no_message_explains_falls_back_to_refusing_by_time(self) -> None:
+        pasted_at, _ = self.shared_moment()
+        row = self.row("A line no message in the transcript renders to.", pasted_at)
+        self.assertEqual(("", None), annotation_store.prompt_candidate(row, "latest-prompt"))
+
+
+class FirstPromptTest(_App):
+    """The first-prompt arm is reachable only where the transcript held no user message when the
+    copy was made; there, a pasted first prompt is refused as the latest one is."""
+
+    def test_a_pasted_first_prompt_is_never_adopted(self) -> None:
+        self.session = Transcript(self.root / "work" / "billing")
+        self.path.write_bytes(b"")
+        self.register(now=START.timestamp())
+        pasted_at = _paste(self.session, STORED)
+        self.session.save(self.path)
+        row = self.app(first_prompt=LINE, first_prompt_at=pasted_at).collect(show_all=True)[
+            "sessions"
+        ][0]
+        self.assertEqual(["first_prompt"], row["copied_prompts"][0]["quoted_as"])
+        self.assertEqual(("", None), annotation_store.prompt_candidate(row, "first-prompt"))
+        plain = {**row, "copied_prompts": []}
+        self.assertEqual(
+            (LINE, pasted_at), annotation_store.prompt_candidate(plain, "first-prompt")
+        )
+
+
+class MarkTest(unittest.TestCase):
+    def test_marking_one_session_never_marks_another(self) -> None:
+        def fact(sid: str) -> dict[str, Any]:
+            return {
+                "type": "user_message",
+                "fact_id": "fact:0123456789abcdef",
+                "source_session": {"harness": "claude", "sid": sid},
+            }
+
+        copied = [{"fact_id": "fact:0123456789abcdef", "at": 1.0}]
+        rows: list[dict[str, Any]] = [
+            {"harness": "claude", "sid": "one", "copied_prompts": copied},
+            {"harness": "claude", "sid": "two", "copied_prompts": []},
+        ]
+        marked = copies.mark({"semantic": {"facts": [fact("one"), fact("two")]}}, rows)
+        flags = [item.get("copied") for item in marked["semantic"]["facts"]]
+        self.assertEqual([True, None], flags)
+
+
 class CopiedRouteTest(_App):
     """`POST /api/correction/copied` over a real socket."""
 
@@ -415,23 +619,34 @@ class CopiedRouteTest(_App):
     def test_a_copy_through_the_route_recognises_the_paste_that_follows(self) -> None:
         with self.serving() as port:
             status, answer = self.post(port, self.body())
-        self.assertEqual((200, {"ok": True, "registered": True}), (status, answer))
-        self.assertEqual(NOW, copies.load(self.config)[("claude", SHORT)][0]["copied_at"])
+        self.assertEqual((200, {"ok": True}), (status, answer))
+        self.assertEqual(NOW, copies.load(self.config)[("claude", SHORT)].copies[0]["copied_at"])
 
-    def test_a_second_registration_answers_that_nothing_new_was_registered(self) -> None:
+    def test_a_second_registration_answers_the_same_body_and_stores_nothing_new(self) -> None:
         with self.serving() as port:
             self.post(port, self.body())
             status, answer = self.post(port, self.body())
-        self.assertEqual((200, {"ok": True, "registered": False}), (status, answer))
-        self.assertEqual(1, len(copies.load(self.config)[("claude", SHORT)]))
+        self.assertEqual((200, {"ok": True}), (status, answer))
+        self.assertEqual(1, len(copies.load(self.config)[("claude", SHORT)].copies))
 
     def test_an_unknown_session_answers_one_body_and_stores_nothing(self) -> None:
         with self.serving() as port:
             unknown = self.post(port, self.body(sid="unknown-session"))
             other = self.post(port, self.body(harness="codex"))
-        self.assertEqual((200, {"ok": True, "registered": False}), unknown)
-        self.assertEqual((200, {"ok": True, "registered": False}), other)
+        self.assertEqual((200, {"ok": True}), unknown)
+        self.assertEqual((200, {"ok": True}), other)
         self.assertFalse(os.path.lexists(copies.store_path(self.config)))
+
+    def test_every_accepted_registration_answers_one_body(self) -> None:
+        with self.serving() as port:
+            answers = {
+                self.post(port, self.body())[1].__repr__(),
+                self.post(port, self.body())[1].__repr__(),
+                self.post(port, self.body(text="A new text."))[1].__repr__(),
+                self.post(port, self.body(sid="unknown-session"))[1].__repr__(),
+                self.post(port, self.body(harness="codex"))[1].__repr__(),
+            }
+        self.assertEqual({repr({"ok": True})}, answers)
 
     def test_a_forged_cross_origin_copy_is_refused_and_stores_nothing(self) -> None:
         cases = (
@@ -462,6 +677,54 @@ class CopiedRouteTest(_App):
                 with self.subTest(body=str(bad)[:40]):
                     self.assertEqual(400, self.post(port, bad)[0])
         self.assertFalse(os.path.lexists(copies.store_path(self.config)))
+
+    def test_a_body_that_is_not_an_object_is_refused(self) -> None:
+        with self.serving() as port:
+            for bad in ([1, 2], "x", [self.body()]):
+                with self.subTest(body=str(bad)[:40]):
+                    self.assertEqual(400, self.post(port, bad)[0])
+        self.assertFalse(os.path.lexists(copies.store_path(self.config)))
+
+    def test_a_store_that_cannot_be_written_answers_503(self) -> None:
+        # A directory where the store's file belongs: the rename over it fails.
+        os.makedirs(copies.store_path(self.config))
+        with self.serving() as port:
+            self.assertEqual((503, {"ok": False}), self.post(port, self.body()))
+
+    def test_the_copy_is_timed_when_it_arrives_not_after_the_board_is_collected(self) -> None:
+        arrived = self.now
+        looked_up = http_api._RequestHandler._session_row
+
+        def slow(handler: Any, harness: str, sid: str) -> Any:
+            self.now = arrived + 60
+            return looked_up(handler, harness, sid)
+
+        with (
+            mock.patch.object(http_api._RequestHandler, "_session_row", slow),
+            self.serving() as port,
+        ):
+            self.post(port, self.body())
+        self.assertEqual(
+            arrived, copies.load(self.config)[("claude", SHORT)].copies[0]["copied_at"]
+        )
+
+    def test_the_transcript_is_measured_when_the_copy_arrives(self) -> None:
+        # A message written while the lookup collects the board is past the copy.
+        self.now = START.timestamp() + self.session.seconds + 1
+        looked_up = http_api._RequestHandler._session_row
+        pasted: list[float] = []
+
+        def paste_meanwhile(handler: Any, harness: str, sid: str) -> Any:
+            pasted.append(_paste(self.session, STORED))
+            self.session.save(self.path)
+            return looked_up(handler, harness, sid)
+
+        with (
+            mock.patch.object(http_api._RequestHandler, "_session_row", paste_meanwhile),
+            self.serving() as port,
+        ):
+            self.post(port, self.body())
+        self.assertEqual(pasted, [entry["at"] for entry in self.matched()])
 
     def test_the_route_answers_503_with_annotations_off(self) -> None:
         self.config = dataclasses.replace(self.config, annotations_enabled=False)
@@ -540,7 +803,7 @@ class ForgetTest(unittest.TestCase):
         return code, " ".join(str(call.args[0]) for call in diag.call_args_list)
 
     def test_forget_deletes_the_copied_correction_store_and_says_so(self) -> None:
-        copies.register(self.config, "claude", SHORT, COPIED, now=100.0)
+        copies.register(self.config, "claude", SHORT, COPIED, now=100.0, position=(1, 0))
         path = copies.store_path(self.config)
         self.assertTrue(os.path.exists(path))
         code, said = self.said(["--forget"])

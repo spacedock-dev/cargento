@@ -681,7 +681,8 @@ function nextAttentionHarnessLabel(model, harness){
 function nextAttentionAskedAssignment(session){
   const instruction = session && session.instruction;
   if(!instruction || typeof instruction !== "object" || Array.isArray(instruction) ||
-    instruction.label !== "asked" || typeof instruction.text !== "string") return "";
+    instruction.label !== "asked" || typeof instruction.text !== "string" ||
+    nextPromptCopied(session, "instruction")) return "";
   return instruction.text.trim();
 }
 
