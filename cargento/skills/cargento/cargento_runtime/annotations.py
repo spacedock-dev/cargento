@@ -475,6 +475,10 @@ class Annotation(TypedDict):
     refused_raw: NotRequired[Any]
     readings: NotRequired[int]
     withheld: NotRequired[str]
+    # The reader's Not accurate mark on the reading above (`mark_not_accurate`):
+    # the token and nothing else, so no reason, text or time rides with it. A
+    # new reading clears it, because it was about the one it replaces.
+    not_accurate: NotRequired[bool]
     # A discard record, and the only entry shape with no revisions at all
     # (DRC-4565). `discarded` is when the act happened; `discarded_revision` is
     # the last revision number that went, kept so the next save mints n+1
@@ -945,6 +949,10 @@ def _entry(value: Any, *, text_cap: int, revision_cap: int) -> Annotation | None
         # nothing to show.
         entry["refused"] = True
         entry["refused_raw"] = value["assessment"]
+    # Only the token itself, and only beside a reading it can be about: any
+    # other value a local process writes here reads back as no mark.
+    if value.get("not_accurate") is True and ("assessment" in entry or entry.get("refused")):
+        entry["not_accurate"] = True
     return _counters(entry, value)
 
 
@@ -1537,6 +1545,9 @@ def published(entry: Annotation | None, *, binding_why: str = BINDING_EXACT) -> 
         "assessment": entry.get("assessment") if entry else None,
         "reading_count": entry.get("readings", 0) if entry else 0,
         "reading_withheld": entry.get("withheld", "") if entry else "",
+        # The reader's mark on that reading, a bool and nothing more: never
+        # sent, never counted, and not in `history.OBSERVATION_FIELDS`.
+        "not_accurate": bool(entry and entry.get("not_accurate") and entry.get("assessment")),
     }
 
 
@@ -1572,7 +1583,11 @@ def _carried(existing: Annotation, updated: Annotation) -> Annotation:
     silently discards the reader's reading, and nothing about the row would
     look wrong afterwards.
     """
-    for name in ("settled", "assessment", "readings", "withheld", "jobs"):
+    # The mark was about the reading a new one replaces, so it stays behind.
+    fresh = "assessment" in updated
+    for name in ("settled", "assessment", "readings", "withheld", "jobs", "not_accurate"):
+        if name == "not_accurate" and fresh:
+            continue
         if name not in updated and name in existing:
             updated[name] = existing[name]
     return updated
@@ -2246,6 +2261,66 @@ def settle(
         # is not None, and the endpoint reads back through it on the same
         # request, so a settle that skipped this would answer with the mark it
         # had just written missing.
+        return _commit(
+            config, state, store, key, [*others, updated], diagnostic_sink=diagnostic_sink
+        )
+
+
+def mark_not_accurate(
+    config: RuntimeConfig,
+    state: RuntimeState,
+    harness: Any,
+    sid: Any,
+    *,
+    read_at: Any,
+    on: Any,
+    diagnostic_sink: Callable[[str], None] = print,
+) -> str:
+    """Set or remove the reader's Not accurate mark on a reading. Returns an `OUTCOMES` token.
+
+    Item 10 of
+    [DEC-24](docs/design-reading-a-session.md#dec-24-your-intent-is-a-drafted-goal-and-a-checklist-and-a-correction-is-yours-to-copy):
+    a token stored with the annotation entry and removed with it. `read_at`
+    names the reading the reader was shown, checked under the lock, so a tab
+    drawn before a newer reading landed marks nothing rather than the newer
+    one. The token is all the mark adds: no reason and no text. Like any
+    store write it updates the entry's `written` time, which eviction at
+    the cap reads.
+    """
+    key = _key(harness, sid)
+    if (
+        not config.annotations_enabled
+        or not key[0]
+        or not key[1]
+        or not isinstance(on, bool)
+        or isinstance(read_at, bool)
+        or not isinstance(read_at, (int, float))
+        or not math.isfinite(read_at)
+    ):
+        return OUTCOME_REFUSED
+    with _locked_store(config, state, diagnostic_sink) as store:
+        refused = _unwritten(store, key)
+        if store is None or refused:
+            return refused
+        current = store.entries
+        existing = find(current, *key)
+        assessment = existing.get("assessment") if existing else None
+        if existing is None or not assessment or assessment.get("read_at") != float(read_at):
+            return OUTCOME_REFUSED
+        if bool(existing.get("not_accurate")) == on:
+            return OUTCOME_UNCHANGED
+        updated: Annotation = {
+            "harness": existing["harness"],
+            "sid": existing["sid"],
+            "revisions": existing["revisions"],
+        }
+        updated = _carried(existing, updated)
+        if on:
+            updated["not_accurate"] = True
+        else:
+            updated.pop("not_accurate", None)
+        updated["written"] = time.time()
+        others = [e for e in current if (e["harness"], e["sid"]) != key]
         return _commit(
             config, state, store, key, [*others, updated], diagnostic_sink=diagnostic_sink
         )

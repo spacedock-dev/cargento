@@ -102,7 +102,7 @@ function nextCockpitAnnotation(session){
     "line_5", "line_5_source", "line_5_source_id", "line_6", "line_6_source", "line_6_source_id",
     "revision", "revision_count", "at", "goal_source", "goal_source_at", "goal_saved_at", "window_start", "binding_why", "settled_at", "settled_through",
     "settled_revision", "assessment", "reading_count", "reading_withheld",
-    "reading_refused", "discarded_at", "discarded_why"];
+    "reading_refused", "not_accurate", "discarded_at", "discarded_why"];
   const known = fields.some(name => {
     const value = session[`annotation_${name}`];
     return value !== undefined && value !== null && value !== "" && value !== 0;
@@ -2216,8 +2216,15 @@ function nextReadingNamesConstraint(key){
    and never today's lines. A line typed after the reading was never asked,
    and drawing it made the row say the reading failed on it. The goal alone
    falls back to today's words, because every reading asks it. */
-function nextReadingConstraints(rows, annotation){
-  const keys = new Set(["goal", ...Object.keys(rows || {}).filter(nextReadingNamesConstraint)]);
+/* `current` is a reading of the words shown now: then every line typed now
+   was a line it read, and one it returned no result for is drawn as missing
+   rather than left out (item 14 of
+   [DEC-24](docs/design-reading-a-session.md#dec-24-your-intent-is-a-drafted-goal-and-a-checklist-and-a-correction-is-yours-to-copy)). */
+function nextReadingConstraints(rows, annotation, current = false){
+  const typed = current
+    ? nextAnnotationLines(annotation).map(line => `line_${line.k}`) : [];
+  const keys = new Set(["goal", ...Object.keys(rows || {}).filter(nextReadingNamesConstraint),
+    ...typed.filter(key => !(rows && rows.output && key === "line_1"))]);
   const order = key => key === "goal" ? 0 : key === "output" ? 1
     : Number(NEXT_READING_OUTCOME_LINE.exec(key)[1]);
   return [...keys].sort((left, right) => order(left) - order(right))
@@ -2639,7 +2646,6 @@ function nextCockpitReadingCriterion(key, label, clause, raw, entries, limit, un
       why = NEXT_READING_CHECK_DOES_NOT_SHOW_IT;
     }
   }
-  const fromPerson = citations.filter(nextReadingPersonAuthored);
   const shows = citations.filter(nextReadingDemonstratesWork);
   const authors = citations.map(nextReadingAuthor);
   const derivedOnly = authors.length > 0 && authors.every(name => name === "derived");
@@ -2681,30 +2687,19 @@ function nextCockpitReadingCriterion(key, label, clause, raw, entries, limit, un
     if(stored === "not-asked") limitText = NEXT_READING_STORED_WHY[stored];
     else why = NEXT_READING_STORED_WHY[stored];
   }
-  // Rule 7, the Goal half. A departure on the agent's own narration stands,
-  // because a stated change of direction is what that evidence is good for,
-  // and a `consistent` resting only on it says so rather than reading as
-  // corroborated.
-  /* Three sentences, because one covered two cases and was FALSE for the
-     second in the flattering direction: an observer snapshot is Cargento's
-     own derived summary, not the agent's account, and calling it the latter
-     credits the session with having said something it did not. */
-  /* The label item 6 of
-     [DEC-24](docs/design-reading-a-session.md#dec-24-your-intent-is-a-drafted-goal-and-a-checklist-and-a-correction-is-yours-to-copy)
-     gives a consistent resting on a check: what the tool reported, never an
-     inspection. Named by the check's own command: the activity list numbers
-     its entries now (item 11), and the "#<n>" wording is DRC-4695's. */
-  const reported = result === NEXT_READING_CONSISTENT
-    ? citations.find(entry => String(entry.type || "") === "tool_report") : null;
-  const restsOn = result !== NEXT_READING_CONSISTENT || fromPerson.length ? ""
-    : (authors.indexOf("derived") >= 0
-      ? "Rests on the agent's own account and Cargento's derived summary of it, and on " +
-        "nothing a person wrote."
-      : "Rests on the agent's own account alone.");
-  const narration = reported
-    ? `Consistent with the check "${String(reported.summary || "")}", as the tool reported; ` +
-      "not inspected."
-    : restsOn;
+  /* What a consistent row names as its source, by the cited entry's type
+     (item 6 of
+     [DEC-24](docs/design-reading-a-session.md#dec-24-your-intent-is-a-drafted-goal-and-a-checklist-and-a-correction-is-yours-to-copy)):
+     a tool outcome (a Claude Code tool report, or any harness's check) is what
+     the tool reported, never an inspection; otherwise it is what the session
+     said. The number is the list's, filled in where the row is drawn. */
+  const tool = result === NEXT_READING_CONSISTENT
+    ? citations.find(entry => String(entry.type || "") === "tool_report" ||
+      entry.subject === "check") : null;
+  const said = result === NEXT_READING_CONSISTENT && !tool
+    ? citations.find(entry => nextReadingAuthor(entry) === "agent") : null;
+  const restsOn = tool ? "tool" : said ? "agent" : "";
+  const restsOnEntry = tool || said || null;
   return {
     key, label,
     clause: clause || NEXT_READING_CLAUSE_UNRETAINED,
@@ -2716,7 +2711,7 @@ function nextCockpitReadingCriterion(key, label, clause, raw, entries, limit, un
        departure prose underneath the demoted result -- the reader saw the
        finding and the refusal of it at once. */
     detail: result === NEXT_READING_DEPARTURE ? String(raw && raw.detail || "") : "",
-    why, narration, limit: limitText,
+    why, restsOn, restsOnEntry, limit: limitText,
     // Mutually exclusive with `limit`, and never both blank: a row states its
     // evidence or states why it has none.
     evidence: limitText ? [] : citations.map(entry =>
@@ -2741,13 +2736,14 @@ function nextCockpitReadingCriterion(key, label, clause, raw, entries, limit, un
 /* A line's row names where the line came from, but only while the reading
    read the words shown now: under a reading of an older revision today's
    source would be a claim about words it never read. */
-function nextCockpitLineLabel(key, label, row, annotation, historical){
+function nextCockpitLineLabel(key, label, row, annotation, historical,
+    lineSource = nextOutcomeLineSource){
   const match = NEXT_READING_OUTCOME_LINE.exec(String(key));
   if(!match || historical) return label;
   const line = nextAnnotationLines(annotation).find(item => item.k === Number(match[1]));
   const clause = String(row && row.clause || "").trim();
   if(!line || (clause && clause !== line.text)) return label;
-  return `${label} · ${nextOutcomeLineSource(line).toUpperCase()}`;
+  return `${label} · ${lineSource(line).toUpperCase()}`;
 }
 
 function nextCockpitReadingClause(key, row, annotation, historical){
@@ -2763,7 +2759,11 @@ function nextCockpitReadingClause(key, row, annotation, historical){
    ([the shape contract](docs/design-reading-a-session.md#dec-17-the-shape-contract)).
    Whoever adds a producer adds the published field with it and re-derives
    these assertions from that field. */
-function nextCockpitReadingShape(raw, annotation, entries, limit, unsettled){
+/* `lineSource` names a saved line's source; the panel passes the one that
+   numbers an added line by the list ("added from #12"), as the saved line
+   above it reads (DRC-4697), so the result renders it anew (DRC-4695). */
+function nextCockpitReadingShape(raw, annotation, entries, limit, unsettled,
+    lineSource = nextOutcomeLineSource){
   const source = raw && typeof raw === "object" ? raw : {};
   /* Unknown keys are fatal; MISSING keys are not. That asymmetry is the
      whole point. A producer that omits a field renders a reading with less
@@ -2795,11 +2795,13 @@ function nextCockpitReadingShape(raw, annotation, entries, limit, unsettled){
   const windowStart = nextNumber(source.window_start) != null ? nextNumber(source.window_start)
     : nextNumber(["latest-prompt", "first-prompt"].includes(source.goal_source)
       ? source.goal_source_at : source.revision_read_at);
-  const constraints = nextReadingConstraints(rows, annotation);
+  const constraints = nextReadingConstraints(rows, annotation,
+    revisionRead != null && current != null && !historical);
   const criteria = constraints
     .map(([key, label]) => nextCockpitReadingCriterion(
       key, key === "goal" && ["latest-prompt", "first-prompt"].includes(source.goal_source)
-        ? "GOAL FROM YOUR PROMPT" : nextCockpitLineLabel(key, label, rows[key], annotation, historical),
+        ? "GOAL FROM YOUR PROMPT"
+        : nextCockpitLineLabel(key, label, rows[key], annotation, historical, lineSource),
       nextCockpitReadingClause(key, rows[key], annotation, historical),
       rows[key], entries, nextReadingIsOutcomeLine(key) ? limit : "", unsettled, windowStart));
   return {
@@ -2880,19 +2882,223 @@ function nextCockpitReadingClauseCell(row){
     `${esc(row.clause)}</span>`;
 }
 
-function nextCockpitReadingCriterionRow(row){
+/* Each line's words, verbatim from item 6 of
+   [DEC-24](docs/design-reading-a-session.md#dec-24-your-intent-is-a-drafted-goal-and-a-checklist-and-a-correction-is-yours-to-copy),
+   and never "Done" or a check mark. The number is the activity list's own
+   (`nextCockpitEntryNumbers`), so the "#<n>" is a row on screen; an entry the
+   list does not number keeps its time instead, as a saved line added from an
+   unnumbered entry does. */
+const NEXT_RESULT_CANT_TELL = "Can't tell";
+const NEXT_RESULT_NOTHING_SHOWS = "Can't tell: nothing recorded shows this yet";
+
+function nextCockpitResultWhere(entry, numbers){
+  if(!entry) return "";
+  const n = numbers.get(String(entry.id || ""));
+  if(n != null) return `#${n}`;
+  const at = nextNumber(entry.at);
+  return at != null && at > 0 ? nextSessionClock(at) : "";
+}
+
+function nextCockpitResultStatus(row, numbers, byId){
+  if(row.result === NEXT_READING_DEPARTURE){
+    const where = nextCockpitResultWhere(byId.get(String((row.citedIds || [])[0] || "")), numbers);
+    return where ? `Departs at ${where}` : "Departs";
+  }
+  if(row.result === NEXT_READING_CONSISTENT && row.restsOn){
+    const where = nextCockpitResultWhere(row.restsOnEntry, numbers);
+    if(where){
+      return row.restsOn === "tool"
+        ? `Consistent with ${where}, as the tool reported; not inspected`
+        : `Consistent with what the session said at ${where}; not a check`;
+    }
+  }
+  /* A consistent the page cannot place is no claim it can word, so it is
+     said as what it is to the reader: nothing shown. */
+  return row.why || row.limit ? NEXT_RESULT_CANT_TELL : NEXT_RESULT_NOTHING_SHOWS;
+}
+
+function nextCockpitResultState(row){
+  return row.result === NEXT_READING_DEPARTURE ? "departs"
+    : row.result === NEXT_READING_CONSISTENT && row.restsOn ? "consistent" : "cant-tell";
+}
+
+function nextCockpitReadingCriterionRow(row, numbers = null, byId = null){
+  const numbered = numbers instanceof Map ? numbers : new Map();
+  const entries = byId instanceof Map ? byId : new Map(
+    (row.restsOnEntry ? [row.restsOnEntry] : []).map(entry => [String(entry.id || ""), entry]));
   const tail = row.limit
     ? `<span class="next-cockpit-reading-limit">limit · ${esc(row.limit)}</span>`
     : row.evidence.map(line =>
       `<span class="next-cockpit-reading-evidence">${esc(line)}</span>`).join("");
-  return '<div class="next-cockpit-reading-row">' +
+  /* The departure's own account renders once, in the headline's account
+     above the rows, with its citation. */
+  return `<div class="next-cockpit-reading-row" data-next-result-state="${nextCockpitResultState(row)}">` +
     `<span class="next-cockpit-reading-name">${esc(row.label)}</span>` +
     nextCockpitReadingClauseCell(row) +
-    `<em class="next-cockpit-reading-result">${esc(row.result)}</em>` +
-    (row.detail ? `<em class="next-cockpit-reading-detail">${esc(row.detail)}</em>` : "") +
+    `<em class="next-cockpit-reading-result">${esc(nextCockpitResultStatus(row, numbered, entries))}</em>` +
     (row.why ? `<span class="next-cockpit-reading-why">${esc(row.why)}</span>` : "") +
-    (row.narration ? `<span class="next-cockpit-reading-why">${esc(row.narration)}</span>` : "") +
     tail + '</div>';
+}
+
+/* Item 14's answer reducer, over the rows after every page rule. Any valid
+   departure departs, whatever the other lines say; otherwise a failed check in
+   the reading's window, where a check with no time counts as inside it, as
+   `levels.analysis_level` reads it; otherwise any line without a valid
+   verdict, a malformed or missing result included, cannot tell; otherwise
+   nothing was found. A reading with no outcome line cannot tell either: the
+   goal row alone is not an answer against what the work was for. */
+function nextDriftAnswer(shape, entries){
+  const departures = shape.criteria.filter(row => row.result === NEXT_READING_DEPARTURE);
+  if(departures.length) return {kind: "departs", count: departures.length, departures};
+  const start = shape.windowStart;
+  const failed = (entries || []).filter(entry => entry && entry.subject === "check" &&
+    entry.result === "failed" && (start == null || (nextReadingEvidenceAt(entry) || start) >= start));
+  if(failed.length){
+    const latest = failed.reduce((a, b) =>
+      (nextReadingEvidenceAt(b) || 0) >= (nextReadingEvidenceAt(a) || 0) ? b : a);
+    return {kind: "failed-check", failed: latest};
+  }
+  const verdict = row => row.result === NEXT_READING_CONSISTENT && row.restsOn;
+  if(!shape.criteria.some(row => nextReadingIsOutcomeLine(row.key)) ||
+      !shape.criteria.every(verdict)) return {kind: "cant-tell"};
+  return {kind: "nothing-found"};
+}
+
+const NEXT_RESULT_DEPARTS = "Departs from your intent";
+const NEXT_RESULT_NOTHING_FOUND =
+  "Nothing found against what it read. This is not a check that the work was done.";
+
+/* The answer, and under a departure the headline with its count and a short
+   account built from each departure's detail and its citation, never a
+   model's narrative (item 6). The count renders only here. */
+function nextCockpitResultAnswer(answer, numbers, byId){
+  const open = '<div class="next-cockpit-result-answer">';
+  if(answer.kind === "departs"){
+    const count = `${answer.count} departure${answer.count === 1 ? "" : "s"}`;
+    const account = answer.departures.map(row => {
+      const where = nextCockpitResultWhere(byId.get(String((row.citedIds || [])[0] || "")), numbers);
+      const detail = String(row.detail || "").trim();
+      return detail
+        ? `<p class="next-cockpit-reading-detail">${esc(detail)}${where ? ` (${esc(where)})` : ""}</p>`
+        : "";
+    }).join("");
+    return open + '<p class="next-cockpit-result-headline">' +
+      `<span>${NEXT_RESULT_DEPARTS}</span>` +
+      `<span class="next-cockpit-result-count">${esc(count)}</span></p>${account}</div>`;
+  }
+  if(answer.kind === "failed-check"){
+    const where = nextCockpitResultWhere(answer.failed, numbers);
+    return open + `<p class="next-cockpit-result-line">${esc(where
+      ? `A check failed at ${where}.` : "A check failed.")}</p></div>`;
+  }
+  return open + `<p class="next-cockpit-result-line">${esc(answer.kind === "cant-tell"
+    ? NEXT_RESULT_CANT_TELL : NEXT_RESULT_NOTHING_FOUND)}</p></div>`;
+}
+
+/* Where the work went: the written paths the list numbers in the window,
+   grouped by folder without a model (item 6). A path with no folder is the
+   working directory, where `claude_tool_reports` publishes it relative to.
+   The listing keeps at most twelve checks and files, so the scan's count says
+   how many more were written and not listed; a figure from the rows alone
+   would read as the whole. */
+function nextCockpitResultWork(entries, numbers, scan){
+  const writes = (entries || []).filter(entry => entry && entry.type === "tool_report" &&
+    entry.subject === "write" && numbers.has(String(entry.id || "")));
+  if(!writes.length) return "";
+  const groups = new Map();
+  for(const entry of writes){
+    const path = String(entry.summary || "");
+    const cut = path.lastIndexOf("/");
+    const folder = cut > 0 ? path.slice(0, cut) : "";
+    if(!groups.has(folder)) groups.set(folder, []);
+    groups.get(folder).push(entry);
+  }
+  const ordered = [...groups].sort((a, b) => b[1].length - a[1].length ||
+    (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0));
+  const items = ordered.map(([folder, rows]) =>
+    '<li class="next-cockpit-result-folder">' +
+    `<span class="next-cockpit-result-path">${esc(folder || "The working directory")}</span>` +
+    `<span>${rows.length} file${rows.length === 1 ? "" : "s"}</span>` +
+    `<span>${esc(rows.map(entry => `#${numbers.get(String(entry.id || ""))}`).join(", "))}</span>` +
+    '</li>').join("");
+  const listed = (entries || []).filter(entry => entry && entry.type === "tool_report" &&
+    entry.subject === "write").length;
+  const counted = scan && typeof scan === "object" ? nextNumber(scan.written_paths) : null;
+  const more = counted != null ? Math.max(0, counted - listed) : 0;
+  const unlisted = more
+    ? `<p class="next-cockpit-reading-why">${more} more written ${more === 1 ? "file is" : "files are"} ` +
+      "counted and not listed.</p>" : "";
+  return '<div class="next-cockpit-result-work"><h3>Where the work went</h3>' +
+    `<ul>${items}</ul>${unlisted}</div>`;
+}
+
+/* The two stale states of item 6, from the revision the reading read and the
+   newest entry it saw (`evidence_through`), each with Analyze again where a
+   press would run. The words changing says why with the revision sentence the
+   raises use; new work is any entry after the reading's newest. A reading
+   stored with no such time counts from when it read instead, so an older row
+   still owns up to work that landed after it. */
+function nextCockpitResultStale(shape, raw, annotation, entries, again){
+  const current = nextNumber(annotation && annotation.revision);
+  const superseded = nextRevisionSuperseded("This reading", shape.revisionRead, current);
+  const evidence = nextNumber(raw && raw.evidence_through);
+  const through = evidence != null ? evidence : nextNumber(raw && raw.read_at);
+  const newer = !superseded && through != null &&
+    (entries || []).some(entry => (nextNumber(entry && entry.at) || 0) > through);
+  if(!superseded && !newer) return "";
+  const head = superseded ? "Your intent changed after this analysis." : "New work since this analysis.";
+  return `<div class="next-cockpit-result-stale" data-next-result-stale="${superseded ? "intent" : "work"}">` +
+    `<p class="next-cockpit-result-stale-head">${head}</p>` +
+    (superseded ? `<p class="next-cockpit-reading-stale">${esc(superseded)}</p>` : "") +
+    again + '</div>';
+}
+
+/* Not accurate (item 10): a token on this reading, posted with the reading's
+   time so a newer one is never marked by a tab drawn before it. Pressed again
+   it takes the mark back. It is never sent anywhere else and never counted. */
+const NEXT_RESULT_NOT_ACCURATE = "Not accurate?";
+const NEXT_RESULT_MARKED = "You marked this analysis not accurate.";
+const NEXT_RESULT_MARK_UNSAVED = "Your mark was not saved. Press Not accurate? again to retry.";
+/* Per session, for the life of the tab: the one press whose mark the store
+   did not take, until the next press. docs/design-reader-state.md holds the row. */
+const nextCockpitNotAccurateUnsaved = new Set();
+
+function nextCockpitResultFoot(session, annotation, raw){
+  const readAt = nextNumber(raw && raw.read_at);
+  if(readAt == null || !(nextData && nextData.annotate === true)) return "";
+  const marked = annotation && annotation.not_accurate === true;
+  const key = sessKey(session);
+  return '<div class="next-cockpit-result-foot">' +
+    '<button type="button" class="next-cockpit-result-mark" data-next-cockpit-action="not-accurate" ' +
+    `data-arg="${esc(String(readAt))}" aria-pressed="${marked ? "true" : "false"}" ` +
+    `data-next-focus="not-accurate:${esc(key)}">${NEXT_RESULT_NOT_ACCURATE}</button>` +
+    (marked ? `<span class="next-cockpit-result-marked">${NEXT_RESULT_MARKED}</span>` : "") +
+    (nextCockpitNotAccurateUnsaved.has(key)
+      ? `<p class="next-cockpit-reading-why" role="status">${NEXT_RESULT_MARK_UNSAVED}</p>` : "") +
+    '</div>';
+}
+
+async function nextCockpitMarkNotAccurate(session, readAt){
+  const key = sessKey(session);
+  const annotation = nextCockpitAnnotation(session);
+  const on = !(annotation && annotation.not_accurate === true);
+  nextCockpitNotAccurateUnsaved.delete(key);
+  let saved = false;
+  try{
+    const response = await fetch("/api/annotate", {method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({harness: session.harness, sid: session.sid, not_accurate: on,
+        read_at: readAt})});
+    const answer = response && typeof response.json === "function"
+      ? await response.json().catch(() => null) : null;
+    saved = Boolean(response && response.ok && answer && answer.persisted !== false &&
+      ["stored", "unchanged"].includes(String(answer.outcome || "")));
+  }catch(_error){
+    saved = false;
+  }
+  if(!saved) nextCockpitNotAccurateUnsaved.add(key);
+  await refreshNext();
+  renderNext({named: `not-accurate:${key}`});
 }
 
 /* One sentence, two places. Note 4 of the design records that the steer box
@@ -3954,7 +4160,8 @@ function nextCockpitReadingParts(session, annotation, entries, model, observed, 
      follows as the design's "Analyze again"; with no reader it is the primary
      beside the route's reason; otherwise a secondary after Analyze drift
      (DRC-4681). Nothing is added to the result stage, which DRC-4695 fills. */
-  const early = raw ? nextCockpitReadingShape(raw, annotation, entries, limit, unsettled) : null;
+  const early = raw ? nextCockpitReadingShape(raw, annotation, entries, limit, unsettled,
+    line => nextCockpitLineSource(line, session, source)) : null;
   const steerable = nextCockpitSteerOffer(session, annotation, source, early);
   nextCockpitCorrectionFollow(session, annotation, source, steerable);
   const offer = question ? null : steerable;
@@ -4026,15 +4233,27 @@ function nextCockpitReadingParts(session, annotation, entries, model, observed, 
       `<p class="next-cockpit-reading-why">${esc(NEXT_READING_UNKNOWN_KEY)}</p>` +
       `<p class="next-cockpit-reading-why">Unrecognised: ${esc(shape.malformed)}.</p>`, shape);
   }
-  const current = nextNumber(annotation && annotation.revision);
-  /* The one warm ink the design allows near a reading, and it is not part of
-     one: which revision was read is an observation about revisions. The
-     characters are `nextRevisionSuperseded`'s, because the raises below this
-     block say the same thing about themselves. */
-  const superseded = nextRevisionSuperseded("This reading", shape.revisionRead, current);
-  const stale = superseded
-    ? `<p class="next-cockpit-reading-stale">${esc(superseded)}</p>`
-    : "";
+  /* The result (DRC-4695): why it is stale, the answer, each line, where
+     the work went, and Not accurate. Numbers are the activity list's, from the
+     same record the rows cite. The revision sentence is the one warm ink the
+     design allows near a reading, and it is not part of one: which revision
+     was read is an observation about revisions, worded as the raises below
+     word it about themselves. */
+  const record = source && (source.all || source.entries) ? source : {all: entries || []};
+  const numbers = nextCockpitEntryNumbers(session, record);
+  const held = record.all || record.entries || [];
+  const byId = new Map(held.map(entry => [String(entry.id || ""), entry]));
+  const routed = nextReadingRoute(session);
+  /* Where a press would run: a reader, no refusal, no job, and no question
+     before the press standing in the control's place, which Keep answers. */
+  const again = !question && !noReader && routed && routed.provider && !nextReadingJob(session) &&
+    !nextPromptReadingRefusal(session, annotation, model)
+    ? '<button type="button" class="next-action" data-next-cockpit-action="reading-ask" ' +
+      `data-next-focus="reading-again:${esc(sessKey(session))}">Analyze again</button>` : "";
+  const stale = nextCockpitResultStale(shape, raw, annotation, held, again);
+  const answer = shape.criteria.length || shape.departures.length
+    ? nextCockpitResultAnswer(nextDriftAnswer(shape, held), numbers, byId) : "";
+  const work = nextCockpitResultWork(held, numbers, source && source.scan);
   /* From the reading rather than from the live row. A reading describes the
      moment it was taken, and the producer already agreed with the HOW IT
      LANDED cards next door because both derive the ending the same way and
@@ -4045,8 +4264,12 @@ function nextCockpitReadingParts(session, annotation, entries, model, observed, 
     reading: header +
       (shape.stamp ? `<span class="next-cockpit-reading-stamp">${esc(shape.stamp)}</span>` : "") +
       '</header>' + `<p class="next-cockpit-define">${NEXT_COCKPIT_READING_DEFINITION}</p>` +
-      stale + (shape.promptSource ? '<p class="next-cockpit-reading-why">Baseline from your prompt.</p>' : "") + nextCockpitReadingBaseline(shape) + scope + why +
-      shape.criteria.map(nextCockpitReadingCriterionRow).join("") + '</section>',
+      stale + answer +
+      shape.criteria.map(row => nextCockpitReadingCriterionRow(row, numbers, byId)).join("") +
+      work +
+      (shape.promptSource ? '<p class="next-cockpit-reading-why">Baseline from your prompt.</p>' : "") +
+      nextCockpitReadingBaseline(shape) + scope + why +
+      nextCockpitResultFoot(session, annotation, raw) + '</section>',
     departures: nextCockpitDepartures(shape, source, session),
     /* What the activity list flags "Cited": the entries the surviving
        departures rest on, from this one stored reading and nothing earlier
@@ -4644,6 +4867,44 @@ function nextDriftEstimate(group, session){
     rose: from && n != null && row.rose_from !== "not_enough" ? `Rose from ${from} at #${n}.` : ""};
 }
 
+/* The analysis-derived level (DRC-4695): the server's `levels.analysis_level`
+   over the stored reading and the record as it is now, recomputed on every
+   fetch and never stored. Drawn only for the reading the panel shows, only
+   while that reading read the saved revision, and with its own source line (items 1, 2 and 6 of
+   [DEC-26](docs/design-reading-a-session.md#dec-26-four-drift-levels-and-a-live-estimate-after-every-turn)).
+   The page holds "None or low" to its own rows as well: a level of None or
+   low beside a line the panel cannot show as consistent would reassure past
+   what the rows say, so it reads "Not enough recorded yet" instead. */
+function nextDriftAnalysisRow(group, session){
+  const entry = group ? nextCockpitContexts.get(nextCockpitContextKey(group, session)) : null;
+  const work = entry && entry.data && entry.data.sources && entry.data.sources.work;
+  const rows = work && Array.isArray(work.analysis_levels) ? work.analysis_levels : [];
+  return rows.find(row => row && sessKey(row) === sessKey(session)) || null;
+}
+
+function nextDriftAnalysis(group, session, annotation, shape){
+  const raw = annotation && annotation.assessment;
+  if(!raw || !shape || shape.malformed) return null;
+  const readAt = nextNumber(raw.read_at);
+  const row = nextDriftAnalysisRow(group, session);
+  if(readAt == null || !row || nextNumber(row.read_at) !== readAt ||
+      nextNumber(row.revision_read) !== nextNumber(raw.revision_read)) return null;
+  // A level for words the reader has replaced yields to the live estimate, as
+  // the live one does for a revision the panel does not show
+  // ([What the live estimate build decided](docs/design-reading-a-session.md#what-the-live-estimate-build-decided-2026-09-28)).
+  const current = nextNumber(annotation && annotation.revision);
+  if(current != null && nextNumber(raw.revision_read) !== current) return null;
+  let level = String(row.level || "");
+  if(!NEXT_DRIFT_LEVEL_NAMES[level]) return null;
+  const shown = shape.criteria.length > 0 && shape.criteria.every(line =>
+    line.result === NEXT_READING_CONSISTENT && line.restsOn);
+  if(level === "none_or_low" && !shown) level = "not_enough";
+  const clock = nextSessionClock(readAt);
+  return {level, label: NEXT_DRIFT_LEVEL_NAMES[level], source: `Analysis · ${clock}`,
+    line: `From the analysis at ${clock}: each line of your intent against the checks and ` +
+      "messages it cited.", analysis: true, rose: ""};
+}
+
 /* The switch sits beside the Drift heading, as the design places it. */
 function nextDriftMonitorSwitch(session){
   if(!NEXT_LIVE_HARNESSES.has(String(session && session.harness || "")) ||
@@ -4679,16 +4940,18 @@ function nextDriftPill(estimate){
 /* The level, its source and time, the meter, the source line and where it
    rose, then the nudge at High. No live region: the nudge is drawn, never
    announced, because the live estimate raises nothing (item 5). */
-function nextDriftLevel(session, annotation = null, group = null, estimate = undefined){
+function nextDriftLevel(session, annotation = null, group = null, estimate = undefined,
+    analysis = null){
   const harness = String(session && session.harness || "");
   if(harness === "claude" || harness === "pi"){
     /* No level over an unsaved draft (item 2 of
        [DEC-26](docs/design-reading-a-session.md#dec-26-four-drift-levels-and-a-live-estimate-after-every-turn)):
        an estimate of drift from words the reader has not yet chosen measures
-       nothing of theirs. */
-    const found = estimate === undefined ? nextDriftEstimate(group, session) : estimate;
+       nothing of theirs. A result's own level is drawn over the live
+       estimate, as the design's result stage draws it. */
+    const found = analysis || (estimate === undefined ? nextDriftEstimate(group, session) : estimate);
     const drafted = nextIntentDrafted(session, annotation);
-    const live = NEXT_LIVE_HARNESSES.has(harness) && nextLiveMonitorOn(session);
+    const live = NEXT_LIVE_HARNESSES.has(harness) && nextLiveMonitorOn(session) && !analysis;
     if(live && (drafted || found && found.save)){
       return `<p class="next-session-drift-limit" data-next-drift-save>${esc(NEXT_DRIFT_LIVE_SAVE)}</p>`;
     }
@@ -4702,7 +4965,8 @@ function nextDriftLevel(session, annotation = null, group = null, estimate = und
        a press the page refuses, so it goes; the level is over the saved words. */
     const running = Boolean(nextReadingJob(session));
     const detail = found.level && !running
-      ? [NEXT_DRIFT_LIVE_LINE, found.rose].filter(Boolean).join(" ") : "";
+      ? [found.analysis ? found.line : NEXT_DRIFT_LIVE_LINE, found.rose].filter(Boolean).join(" ")
+      : "";
     return '<div class="next-session-drift-live" data-next-drift-level>' +
       '<p class="next-session-drift-live-head">' +
       `<span class="next-session-drift-level">${esc(String(found.label))}</span>` +
@@ -4712,7 +4976,7 @@ function nextDriftLevel(session, annotation = null, group = null, estimate = und
         `${nextDriftMeter(found.level)}</p>` : "") +
       (detail ? `<p class="next-session-drift-detail">${esc(detail)}</p>` : "") +
       '</div>' +
-      (high && !running && !nextIntentUnsaved(session, annotation)
+      (high && !found.analysis && !running && !nextIntentUnsaved(session, annotation)
         ? `<p class="next-session-drift-nudge">${esc(NEXT_DRIFT_NUDGE)}</p>` : "");
   }
   return `<p class="next-session-drift-limit" data-next-drift-limit>${esc(NEXT_DRIFT_HARNESS_LIMIT)}</p>`;
@@ -4738,7 +5002,18 @@ function nextDriftLevel(session, annotation = null, group = null, estimate = und
 function nextCockpitDriftBlock(group, session, primary){
   const annotated = nextData && nextData.annotate === true ? nextCockpitAnnotation(session) : null;
   const estimate = nextDriftEstimate(group, session);
-  const pill = estimate && !nextIntentDrafted(session, annotated) ? nextDriftPill(estimate) : "";
+  let analysis = null;
+  if(annotated && annotated.assessment){
+    const known = nextCockpitWorkSource(group, session);
+    const held = known.all || known.entries;
+    analysis = nextDriftAnalysis(group, session, annotated, nextCockpitReadingShape(
+      annotated.assessment, annotated, held, nextReadingOutputLimit(String(session.harness || "")),
+      Boolean(nextCockpitConflictCandidates(annotated, held, session).length)));
+  }
+  /* The analysis level is unaffected by the switch (item 4), so its pill
+     shows whichever way the switch is set. */
+  const shown = analysis || estimate;
+  const pill = shown && !nextIntentDrafted(session, annotated) ? nextDriftPill(shown) : "";
   /* `data-next-session-drift` marks the whole panel, which is where the
      drift block's contents now live. */
   const open = '<aside class="next-session-panel" data-next-session-drift aria-label="Intent and drift">';
@@ -4748,7 +5023,7 @@ function nextCockpitDriftBlock(group, session, primary){
     '<h2 id="next-session-drift-heading" class="next-session-drift-heading">Drift</h2>' +
     `<p class="next-session-drift-sub">${esc(NEXT_DRIFT_SUBTITLE)}</p></div>` +
     `${nextDriftMonitorSwitch(session)}</header>` +
-    nextDriftLevel(session, annotated, group, estimate);
+    nextDriftLevel(session, annotated, group, estimate, analysis);
   /* No field at all when the store is off, which is what `--no-annotations`
      promises. A box whose every save answers 503 is worse than none, and the
      reason is on screen rather than left to the reader. Any standing raise
@@ -6682,6 +6957,14 @@ document.addEventListener("click", event => {
     if(!session) return;
     event.preventDefault();
     nextCockpitCancelReading(session);
+    return;
+  }
+  if(action === "not-accurate"){
+    const session = group ? nextCockpitFocusedSession(group) : null;
+    const readAt = Number(target.dataset.arg);
+    if(!session || !String(target.dataset.arg || "").trim() || !Number.isFinite(readAt)) return;
+    event.preventDefault();
+    nextCockpitMarkNotAccurate(session, readAt);
     return;
   }
   if(action === "reading-ask" || action === "reading-allow"){

@@ -26,6 +26,7 @@ from cargento_runtime import (
     correction,
     departures,
     dismissals,
+    levels,
     live_estimate,
     notifications,
     quota,
@@ -90,8 +91,19 @@ def _annotation_body_refused(payload: dict[str, Any]) -> bool:
     # `add_direction` names the fact and `text` is the reader's review of it;
     # the server, not the body, makes the line an entry line.
     texts = (goal, output, payload.get("add_direction"), payload.get("text"))
+    # Not accurate is a bool naming the reading it marks by its time
+    # (`annotations.mark_not_accurate` checks it against the reading it holds).
+    marked, read_at = payload.get("not_accurate"), payload.get("read_at")
     return (
         any(value is not None and not isinstance(value, str) for value in texts)
+        or (
+            "not_accurate" in payload
+            and (
+                not isinstance(marked, bool)
+                or isinstance(read_at, bool)
+                or not isinstance(read_at, (int, float))
+            )
+        )
         or (
             replace is not None
             and (isinstance(replace, bool) or not isinstance(replace, int) or replace < 0)
@@ -319,19 +331,20 @@ def _latest_revision(entry: annotation_store.Annotation | None) -> int:
     return entry["revisions"][-1]["n"] if entry and entry["revisions"] else 0
 
 
-def _with_live_level(
+def _with_levels(
     application: Any,
     context: dict[str, Any],
     rows: list[dict[str, Any]],
     focus: tuple[str, str],
     project: str,
 ) -> dict[str, Any]:
-    """The focused session's project context with its live drift estimate (DRC-4696).
+    """The focused session's project context with its two drift levels (DRC-4696, DRC-4695).
 
     On this route alone, the page's: `_session_context` is what the reading
     route and the unasked lane read, and neither is given a level (item 5 of
     [DEC-26](docs/design-reading-a-session.md#dec-26-four-drift-levels-and-a-live-estimate-after-every-turn)).
-    With annotations off there are no saved words to estimate against.
+    With annotations off there are no saved words to estimate against, and no
+    reading either.
     """
     config = application.config
     harness, sid = focus
@@ -352,23 +365,81 @@ def _with_live_level(
     ):
         return context
     row = matching[0]
-    transcript = runtime_observer.resolve_transcript(config, application.state, harness, sid)
-    if not transcript:
-        return context
     entry = annotation_store.find(annotation_store.active(config, application.state), harness, sid)
-    live = live_estimate.for_session(
-        config,
-        row,
-        transcript,
-        _facts_of(context),
-        floor=annotation_store.direction_floor(entry, row),
-        now=application.clock(),
-    )
+    floor = annotation_store.direction_floor(entry, row)
     raw_sources = context.get("sources")
     sources: dict[str, Any] = raw_sources if isinstance(raw_sources, dict) else {}
     raw_work = sources.get("work")
-    work: dict[str, Any] = raw_work if isinstance(raw_work, dict) else {}
-    return {**context, "sources": {**sources, "work": {**work, "live_levels": [live]}}}
+    work: dict[str, Any] = dict(raw_work) if isinstance(raw_work, dict) else {}
+    work["analysis_levels"] = _analysis_levels(application, context, row, entry, floor)
+    transcript = runtime_observer.resolve_transcript(config, application.state, harness, sid)
+    if transcript:
+        live = live_estimate.for_session(
+            config, row, transcript, _facts_of(context), floor=floor, now=application.clock()
+        )
+        work["live_levels"] = [live]
+    return {**context, "sources": {**sources, "work": work}}
+
+
+def _analysis_levels(
+    application: Any,
+    context: dict[str, Any],
+    row: dict[str, Any],
+    entry: annotation_store.Annotation | None,
+    floor: float | None,
+) -> list[dict[str, Any]]:
+    """The analysis-derived level of the stored reading, recomputed now and never stored.
+
+    `levels.analysis_level` over the reading and the record as the context
+    holds it: the session's tool reports, their full-scan counts and its
+    unsettled later directions (items 1, 2 and 6 of
+    [DEC-26](docs/design-reading-a-session.md#dec-26-four-drift-levels-and-a-live-estimate-after-every-turn)).
+    The lines it must answer are those of the revision it read, not today's;
+    a revision the store no longer holds gives no level rather than a guess.
+    """
+    assessment = entry.get("assessment") if entry else None
+    if not entry or not assessment:
+        return []
+    read = next(
+        (rev for rev in entry["revisions"] if rev["n"] == assessment.get("revision_read")), None
+    )
+    if read is None:
+        return []
+    harness, sid = str(row.get("harness") or ""), str(row.get("sid") or "")
+    facts = _facts_of(context)
+    mine = tuple(
+        fact
+        for fact in facts
+        if isinstance(fact, dict)
+        and fact.get("type") == "tool_report"
+        and isinstance(fact.get("source_session"), dict)
+        and (fact["source_session"].get("harness"), fact["source_session"].get("sid"))
+        == (harness, sid)
+    )
+    work = (context.get("sources") or {}).get("work") or {}
+    scans = work.get("tool_reports") if isinstance(work, dict) else None
+    scan = next(
+        (
+            s
+            for s in (scans if isinstance(scans, list) else [])
+            if isinstance(s, dict) and s.get("harness") == harness and s.get("sid") == sid
+        ),
+        {},
+    )
+    evidence = levels.Evidence(mine, scan, correction.unsettled_directions(row, facts, floor=floor))
+    level = levels.analysis_level(assessment, evidence, outcome_lines=len(read["lines"]))
+    return [
+        {
+            "harness": harness,
+            "sid": sid,
+            "revision_read": assessment.get("revision_read"),
+            "read_at": assessment.get("read_at"),
+            "computed_at": application.clock(),
+            "level": level.level,
+            "reasons": list(level.reasons),
+            "cites": list(level.cites),
+        }
+    ]
 
 
 def _facts_of(context: dict[str, Any]) -> list[Any]:
@@ -908,7 +979,7 @@ class _RequestHandler(BaseHTTPRequestHandler):
         # `copied_corrections` cites).
         result = copied_corrections.mark(result, collected["sessions"])
         if focus is not None:
-            result = _with_live_level(application, result, collected["sessions"], focus, project)
+            result = _with_levels(application, result, collected["sessions"], focus, project)
         self._send(
             json.dumps(result, ensure_ascii=False, separators=(",", ":")).encode(),
             "application/json",
@@ -1547,6 +1618,19 @@ class _RequestHandler(BaseHTTPRequestHandler):
             withdrew = _withdraw_raises(application, outcome, harness, sid)
         elif "add_direction" in payload:
             outcome = self._add_direction(harness, sid, payload)
+        elif "not_accurate" in payload:
+            # A fourth arm on this route, for the settle arm's reason: the
+            # subject is the same session's annotation and the reply shape is
+            # the same. Only the token is stored, and nothing else is read.
+            outcome = annotation_store.mark_not_accurate(
+                config,
+                state,
+                harness,
+                sid,
+                read_at=payload.get("read_at"),
+                on=payload.get("not_accurate"),
+                diagnostic_sink=application.diagnostic_sink,
+            )
         elif "adopt" in payload:
             # With `settle_through` beside it this is Keep where no analysis
             # can start (no reader, or readings off): the draft is adopted and

@@ -2223,6 +2223,62 @@ saved-line labels. The calls the rulings left open:
   from it, it keeps "added from an entry". The reading's row label beside a line still says "ADDED
   FROM AN ENTRY", which DRC-4695's result renders anew.
 
+### What the result build decided, 2026-09-28
+
+DRC-4695 built items 6, 10 and 14 on the session page, with the analysis-derived level of
+[DEC-26](#dec-26-four-drift-levels-and-a-live-estimate-after-every-turn). The rulings left these open,
+and each was settled on the withholding side.
+
+- The level is the server's. `http_api` calls `levels.analysis_level` over the stored reading and
+  the record as the focused project context holds it, and publishes it as
+  `sources.work.analysis_levels` on that answer alone, recomputed on every fetch and never written.
+  The lines a reading must answer are those of the revision it read, not today's; a revision the
+  store no longer holds gives no level. The page draws it only for the reading it shows, matched by
+  `read_at` and revision, in the level slot, labelled "Analysis" with its time and item 1's source
+  line. It is drawn over the live estimate, as the design's result stage draws it, and its pill
+  shows whichever way the live monitor is set, since the switch hides the live level only. A
+  reading of a revision other than the saved one draws no level, in the slot or the pill, so the
+  live estimate stands when the switch is on and nothing does when it is off. The server scores that
+  reading against the lines it read, and a level for words the reader has since replaced says
+  nothing about today's, which is the live estimate's own rule below. The reading keeps its
+  "Your intent changed" banner and "Analyze again".
+- The page holds "None or low" to its own rows. Where the level says None or low and a line the
+  panel draws is not a consistent it can word, the level reads "Not enough recorded yet". The
+  validated function counts a departure the page has demoted (an unsettled later direction, say),
+  so the level can read Medium beside an answer of "Can't tell". That is the cautious direction and
+  was left as validated rather than re-ruled here.
+- Each line reads "Departs at #n", "Consistent with #n, as the tool reported; not inspected" for a
+  Claude Code tool report or any harness's check, "Consistent with what the session said at #n; not
+  a check" otherwise, or "Can't tell". The number is the activity list's. An entry the list does not
+  number is named by its time, as a line added from an unnumbered entry is. "Can't tell" carries
+  the page's own reason beneath it where the page has one, and reads "Can't tell: nothing recorded
+  shows this yet" where it has none. A line added from an entry is labelled by the list's number,
+  "ADDED FROM #n", as the saved line above it reads.
+- The answer reducer runs over the rows after every page rule. Under a surviving departure it is
+  the headline "Departs from your intent" with the count beside it and, as the short account, each
+  departure's detail followed by its citation. With none, a failed check in the reading's window,
+  where a check with no time counts as inside it as `analysis_level` reads it, gives "A check failed
+  at #n." naming the latest; then any line without a valid verdict gives "Can't tell"; then
+  "Nothing found against what it read. This is not a check that the work was done." That last
+  rung needs at least one outcome line among the rows: otherwise a reading of a goal with no line,
+  which the producer does not withhold, answers "Can't tell", as the level beside it reads "Not enough
+  recorded yet" (DEC-26 item 1). A reading of
+  the words shown now draws every line typed now, so a line it returned nothing for is a missing
+  result and cannot tell; a reading of older words draws only the lines it read.
+- Where the work went groups the written paths the list numbers in the window by folder, with each
+  entry's number, and a path with no folder under "The working directory". The listing keeps at
+  most twelve checks and files, so the scan's count says how many more were written and not listed.
+  With no write listed there is no section.
+- Stale says why. Changed words give "Your intent changed after this analysis." with the revision
+  sentence the raises use; otherwise an entry newer than the reading's `evidence_through` gives "New
+  work since this analysis.". A reading stored without that time, which only rows from before
+  2026-09-24 are, counts from its `read_at` instead, so work after it still says so. "Analyze again"
+  is drawn in the banner only where a press would run: a reader, no refusal, no job, and no question
+  before the press standing, which Keep answers.
+- Not accurate is a toggle on the reading shown, posted through `POST /api/annotate` with the
+  reading's `read_at`, and the store refuses a mark naming any other reading. Only the token is
+  stored. A press the store does not take says so under the button until the next press.
+
 ## DEC-26: four drift levels, and a live estimate after every turn
 
 Decided 2026-09-24 (DRC-4691). DRC-4692 defines and validates the levels on recorded Claude Code

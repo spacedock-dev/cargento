@@ -667,6 +667,9 @@ def base_session(harness: str, sid: Any, project: str) -> Session:
         "annotation_reading_count": 0,
         "annotation_reading_withheld": "",
         "annotation_reading_refused": False,
+        # The reader's Not accurate mark on that reading (DRC-4695): a bool,
+        # never sent, never counted and never in session history.
+        "annotation_not_accurate": False,
         # The messages in this session recognised as a correction the reader
         # copied from Cargento, each `{"fact_id", "at"}` (DRC-4678). `[]` is
         # every row with none, which is also every row nothing was copied for:

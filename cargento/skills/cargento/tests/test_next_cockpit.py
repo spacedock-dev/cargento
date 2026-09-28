@@ -6515,7 +6515,8 @@ console.log(JSON.stringify({
         # One stamp, in the header, rather than one per block.
         self.assertEqual(1, out["stamps"])
         self.assertEqual("observer model · consented at 13:36", out["stamp"])
-        self.assertEqual("departure", out["result"])
+        # Item 6's words, with the list's number (DRC-4695).
+        self.assertEqual("Departs at #3", out["result"])
         self.assertTrue(out["departures"])
         self.assertTrue(out["cutoff"])
 
@@ -7535,16 +7536,15 @@ const output = (result, cites, entries) => nextCockpitReadingShape(
             self.ENTRIES
             + """
 const row = output("consistent with the evidence read", ["c1"], [check("c1", "passed")]);
-console.log(JSON.stringify({result: row.result, narration: row.narration}));
+console.log(JSON.stringify({result: row.result, restsOn: row.restsOn,
+  status: nextCockpitResultStatus(row, new Map([["c1", 7]]), new Map())}));
 """
         )
         assert isinstance(out, dict)
         self.assertEqual("consistent with the evidence read", out["result"])
-        self.assertEqual(
-            'Consistent with the check "python3 -m pytest tests/test_retry.py", as the tool '
-            "reported; not inspected.",
-            out["narration"],
-        )
+        self.assertEqual("tool", out["restsOn"])
+        # Named by the list's number, never by the check's own command (DRC-4695).
+        self.assertEqual("Consistent with #7, as the tool reported; not inspected", out["status"])
 
     def test_a_check_that_does_not_show_the_verdict_is_withdrawn_on_the_page_too(self) -> None:
         out = self.run_fixture(
@@ -8008,7 +8008,7 @@ const rows = (criteria, limit) =>
   shape(criteria, limit).criteria.map(nextCockpitReadingCriterionRow).join("");
 const row = (key, why, limit) => rows(
     {[key]: {result: unv, cites: [], detail: "", clause: "typed words", why}}, limit)
-  .split('<div class="next-cockpit-reading-row">').filter(Boolean)
+  .split(/<div class="next-cockpit-reading-row"[^>]*>/).filter(Boolean)
   .find(r => r.includes(key === "line_1" ? "EXPECTED OUTCOME" : "TYPED GOAL"));
 console.log(JSON.stringify({
   notAsked: row("line_1", "not-asked", ""),
@@ -8019,7 +8019,7 @@ console.log(JSON.stringify({
   // because the row with `result` present is a shape the producer cannot
   // emit for this token, and it is the only one the case above proves.
   producerUnreadable: rows({goal: {cites: [], detail: "", clause: "typed words",
-    why: "unreadable"}}, "").split('<div class="next-cockpit-reading-row">').filter(Boolean)
+    why: "unreadable"}}, "").split(/<div class="next-cockpit-reading-row"[^>]*>/).filter(Boolean)
     .find(r => r.includes("TYPED GOAL")),
   uncited: row("goal", "uncited", ""),
   stands: row("goal", "", ""),
@@ -8077,7 +8077,9 @@ const html = [
   // and demotes now. This case exists to show the third result string
   // rendering, so it cites something that corroborates.
   {goal:{result:"consistent with the evidence read", cites:["a1"]}},
-].map(criteria => shape(criteria).criteria.map(nextCockpitReadingCriterionRow).join("")).join("");
+].map(criteria => shape(criteria).criteria.map(row => nextCockpitReadingCriterionRow(row,
+  new Map([["u1", 1], ["a1", 2]]), new Map(entries.map(entry => [entry.id, entry]))))
+  .join("")).join("");
 console.log(JSON.stringify({
   // The detail is the producer's prose and is escaped, not filtered: the rule
   // is about the RESULT, which is only ever one of three constants.
@@ -8089,12 +8091,12 @@ console.log(JSON.stringify({
         assert isinstance(out, dict)
         # One row per case: each reading carries the goal alone, and a reading
         # draws only the constraints it read.
-        unverifiable = "not verifiable from available evidence"
+        # Item 6's words (DRC-4695), escaped as the page writes them.
         self.assertEqual(
             [
-                unverifiable,
-                "departure",
-                "consistent with the evidence read",
+                "Can&#39;t tell",
+                "Departs at #1",
+                "Consistent with what the session said at #2; not a check",
             ],
             out["resultStrings"],
         )
@@ -8186,8 +8188,8 @@ console.log(JSON.stringify({
   // Goal keeps a departure on the agent's own narration.
   goalOnAgent: results({goal:{result:"departure", cites:shows}}),
   // A goal `consistent` resting only on the agent says so...
-  narration: shape({goal:{result:"consistent with the evidence read",
-    cites:shows}}).criteria[0].narration,
+  narration: nextCockpitResultStatus(shape({goal:{result:"consistent with the evidence read",
+    cites:shows}}).criteria[0], new Map([["a1", 3]]), new Map()),
   // ...and one resting only on the reader's own request is circular.
   goalConsistentOnRequest: shape({goal:{result:"consistent with the evidence read",
     cites:asked}}).criteria[0].result,
@@ -8210,7 +8212,9 @@ console.log(JSON.stringify({
         # Goal is unchanged: a stated change of direction is exactly what the
         # agent's own account is good for.
         self.assertEqual("departure", out["goalOnAgent"]["goal"])
-        self.assertEqual("Rests on the agent's own account alone.", out["narration"])
+        self.assertEqual(
+            "Consistent with what the session said at #3; not a check", out["narration"]
+        )
         # But agreeing with the request is agreeing with yourself.
         self.assertEqual(unverifiable, out["goalConsistentOnRequest"])
 
@@ -8410,8 +8414,9 @@ console.log(JSON.stringify({has: __els.app.innerHTML.includes('class="next-cockp
         # Demoted in the row, not filtered from the departures list: filtering
         # would leave the word `departure` rendered above it, which is the
         # drift verdict DRC-4511 forbids.
-        self.assertEqual("not verifiable from available evidence", open_case["result"])
-        self.assertEqual("departure", settled["result"])
+        # Item 6's words (DRC-4695), escaped as the page writes them.
+        self.assertEqual("Can&#39;t tell", open_case["result"])
+        self.assertRegex(settled["result"], r"^Departs at #\d+$")
 
     def test_a_settled_baseline_says_when_and_against_which_revision(self) -> None:
         out = self.held(
@@ -8484,7 +8489,7 @@ console.log(JSON.stringify({
         self.assertIn("has not been read yet", block)
         self.assertIn("unknown, not none", block)
         # And the departure does not stand on a record nobody read.
-        self.assertEqual("not verifiable from available evidence", out["result"])
+        self.assertEqual("Can&#39;t tell", out["result"])
 
 
 @unittest.skipUnless(shutil.which("node"), "node not available")

@@ -379,14 +379,16 @@ await refreshNext();
         html = self.page(CONSISTENT)
 
         row = re.search(
-            r'<div class="next-cockpit-reading-row">(?:(?!<div class="next-cockpit-reading-row">)'
-            r"[\s\S])*?consistent with the evidence read[\s\S]*?</div>",
+            r'<div class="next-cockpit-reading-row" data-next-result-state="consistent">'
+            r"[\s\S]*?</div>",
             html,
         )
         self.assertIsNotNone(row)
         assert row is not None
         self.assertIn("next-cockpit-reading-evidence", row.group(0))
-        self.assertEqual(1, html.count(">consistent with the evidence read<"))
+        # Item 6's words, never the stored token (DRC-4695).
+        self.assertEqual(1, html.count('data-next-result-state="consistent"'))
+        self.assertNotIn(">consistent with the evidence read<", html)
 
     def test_no_state_of_the_page_says_a_session_has_no_drift(self) -> None:
         states = {
