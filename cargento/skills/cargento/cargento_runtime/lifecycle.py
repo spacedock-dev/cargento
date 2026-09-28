@@ -906,6 +906,21 @@ def _register_sigterm_exit() -> Any:
     return previous or None
 
 
+def unignore_sigterm() -> None:
+    """Let SIGTERM stop a process that inherited it ignored, before any handler is in.
+
+    `serve` installs the clean exit, but only once it reaches the state file;
+    until then an inherited SIG_IGN would drop a `kill` for good (DRC-4737).
+    The default action is what a launch that inherited nothing would do, and
+    before the bind there is nothing of this run's to clean up.
+    """
+    if sys.platform == "win32":
+        return
+    with contextlib.suppress(ValueError, AttributeError):
+        if signal.getsignal(signal.SIGTERM) is signal.SIG_IGN:
+            signal.signal(signal.SIGTERM, signal.SIG_DFL)
+
+
 def _restore_sigterm(handlers: Any) -> None:
     if not isinstance(handlers, dict):
         return
@@ -942,40 +957,44 @@ def serve(
             return
     runtime_io.diag(f"Cargento: http://127.0.0.1:{port}/", diagnostic_sink)
     observation = getattr(server, "observation", None)
-    write_state(
-        config,
-        port,
-        started=started,
-        # Published here rather than at assembly because the tokens name a
-        # *serving* process. A run that never binds writes no state file, so it
-        # publishes no capability either.
-        capabilities=observation.capabilities() if observation is not None else None,
-        diagnostic_sink=diagnostic_sink,
-    )
-    if announce_fd is not None:
-        # After write_state, so --status works the instant the parent returns.
-        daemon_announce(announce_fd)
-    # Started here rather than at assembly: on the daemon path serve() runs
-    # after the fork, so no thread is ever created in a process about to be
-    # replaced. The coordinator subsumes the producer's periodic tick, so exactly
-    # one of the two runs and they can never both collect.
-    served = getattr(server, "application", None)
-    if served is not None:
-        # In the serving process, after the fork, so the pid a marker is
-        # compared against is a daemon's and never the parent that exits.
-        with contextlib.suppress(Exception):
-            reading_jobs.recover(served, alive=functools.partial(dashboard_alive, config))
     producer_stop = threading.Event()
     producer: threading.Thread | None = None
-    if observation is not None:
-        observation.start()
-    else:
-        producer = threading.Thread(
-            target=run_producer, args=(server,), kwargs={"stop": producer_stop}, daemon=True
-        )
-        producer.start()
+    # Before the state file, and the state file inside the `try`: a `kill` sent
+    # the moment it appears must unwind through the cleanup below. Installed
+    # after recovery, a SIGTERM that arrived first met the inherited ignore
+    # and was lost, and the server served on (DRC-4737).
     orig_term = _register_sigterm_exit()
     try:
+        write_state(
+            config,
+            port,
+            started=started,
+            # Published here rather than at assembly because the tokens name a
+            # *serving* process. A run that never binds writes no state file, so
+            # it publishes no capability either.
+            capabilities=observation.capabilities() if observation is not None else None,
+            diagnostic_sink=diagnostic_sink,
+        )
+        if announce_fd is not None:
+            # After write_state, so --status works the instant the parent returns.
+            daemon_announce(announce_fd)
+        # Started here rather than at assembly: on the daemon path serve() runs
+        # after the fork, so no thread is ever created in a process about to be
+        # replaced. The coordinator subsumes the producer's periodic tick, so
+        # exactly one of the two runs and they can never both collect.
+        served = getattr(server, "application", None)
+        if served is not None:
+            # In the serving process, after the fork, so the pid a marker is
+            # compared against is a daemon's and never the parent that exits.
+            with contextlib.suppress(Exception):
+                reading_jobs.recover(served, alive=functools.partial(dashboard_alive, config))
+        if observation is not None:
+            observation.start()
+        else:
+            producer = threading.Thread(
+                target=run_producer, args=(server,), kwargs={"stop": producer_stop}, daemon=True
+            )
+            producer.start()
         server.serve_forever()
     finally:
         # First, while the jobs can still write what the kill did to them. A
