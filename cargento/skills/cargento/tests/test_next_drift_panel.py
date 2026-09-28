@@ -60,7 +60,7 @@ NEVER = (
     "None/Low",
     "Extreme",
     "Drift:",
-    "Live monitor",
+    # "Live monitor" is drawn since DRC-4696, off by default, so no level or pill still.
     "Check for drift",
     "Allow and check",
     "on Pi alone",

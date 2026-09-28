@@ -4562,31 +4562,158 @@ const NEXT_DRIFT_SUBTITLE = "How far the session has moved from the goal";
    as its own sentence. */
 const NEXT_DRIFT_HARNESS_LIMIT = "Cargento can't read work from this harness.";
 
-/* The slot the level and meter take once a level is published: the analysis
-   level (DRC-4695) and the live estimate (DRC-4696). Until then it draws
-   nothing on Claude Code, because a meter with no level behind it would read
-   the same on every session whether or not anything was read. Elsewhere the
+/* The slot the level and meter take once a level is published: the live
+   estimate (DRC-4696) now, the analysis level (DRC-4695) later. Elsewhere the
    harness limit stands in it and replaces only the level: Analyze drift stays
    wherever the route names a reader (owner, DRC-4680). Never on Pi, whose work
    results are read, so the sentence would be false there. */
-/* The level a later layer publishes (DRC-4695, DRC-4696), or null: nothing
-   does yet. The seam exists so the draft guard below is consulted by
-   whichever layer fills it, and so a test can prove that guard can fail. */
-function nextDriftEstimate(_session){
-  return null;
+
+/* The live monitor switch (DRC-4696): off by default, and remembered per
+   session in this browser only (item 4 of
+   [DEC-26](docs/design-reading-a-session.md#dec-26-four-drift-levels-and-a-live-estimate-after-every-turn)).
+   Nothing about it is ever sent: the server publishes the focused session's
+   estimate whichever way it is set, and this decides only whether it is drawn.
+   The in-memory map answers when storage throws, so the switch still works
+   for the tab. */
+const NEXT_LIVE_ESTIMATE_KEY = "cargento.next.live-estimate:";
+const nextLiveMonitorMemory = new Map();
+const NEXT_LIVE_HARNESSES = new Set(["claude"]);
+
+function nextLiveMonitorOn(session){
+  const key = NEXT_LIVE_ESTIMATE_KEY + sessKey(session);
+  if(nextLiveMonitorMemory.has(key)) return nextLiveMonitorMemory.get(key);
+  try{ return localStorage.getItem(key) === "1"; }catch(_error){ return false; }
 }
 
-function nextDriftLevel(session, annotation = null){
+function nextLiveMonitorSet(session, on){
+  const key = NEXT_LIVE_ESTIMATE_KEY + sessKey(session);
+  nextLiveMonitorMemory.set(key, on);
+  try{
+    if(on) localStorage.setItem(key, "1");
+    else localStorage.removeItem(key);
+  }catch(_error){ /* kept for the tab */ }
+}
+
+/* The design's copy, as ruled: the level names
+   [DEC-26](docs/design-reading-a-session.md#dec-26-four-drift-levels-and-a-live-estimate-after-every-turn)
+   fixes, "Not enough recorded yet" in place of a level, and the live
+   estimate's own source line (item 1: it reads checks and file paths, not
+   what the intent says). */
+const NEXT_DRIFT_LEVEL_NAMES = {none_or_low:"None or low", medium:"Medium", high:"High",
+  extreme:"Extreme", not_enough:"Not enough recorded yet"};
+const NEXT_DRIFT_SCALE = ["none_or_low", "medium", "high", "extreme"];
+const NEXT_DRIFT_LIVE_LINE = "Reads checks and file paths, not what your intent says.";
+const NEXT_DRIFT_LIVE_HINT = "Turn on for a quick, low-cost drift check after every turn. " +
+  "The level shows here and in the header.";
+const NEXT_DRIFT_LIVE_SAVE = "Save your intent to see a live estimate.";
+const NEXT_DRIFT_NUDGE =
+  "This is a quick estimate. Analyze to see what drifted and how to steer back.";
+
+/* The focused context's live row for this session, only while it read the
+   words saved now: a level measured against an earlier revision is about
+   words the panel no longer shows. */
+function nextDriftLiveRow(group, session){
+  const entry = group ? nextCockpitContexts.get(nextCockpitContextKey(group, session)) : null;
+  const work = entry && entry.data && entry.data.sources && entry.data.sources.work;
+  const rows = work && Array.isArray(work.live_levels) ? work.live_levels : [];
+  return rows.find(row => row && sessKey(row) === sessKey(session)) || null;
+}
+
+/* The level to draw, or null. The seam the draft guard in `nextDriftLevel`
+   consults, so a test can prove that guard can fail; the analysis level
+   (DRC-4695) joins it. "Rose from <level> at #<n>" is the server's replay with
+   the number filled from this page's own list, and withheld where the list
+   does not number that entry (item 6: recomputed, never stored). */
+function nextDriftEstimate(group, session){
+  if(!NEXT_LIVE_HARNESSES.has(String(session && session.harness || "")) ||
+      !nextLiveMonitorOn(session)) return null;
+  const row = nextDriftLiveRow(group, session);
+  if(!row) return null;
+  const level = String(row.level || "");
+  if(level === "no_live_level") return {save: true};
+  const label = NEXT_DRIFT_LEVEL_NAMES[level];
+  const annotation = nextCockpitAnnotation(session);
+  if(!label || nextNumber(row.revision) !== (nextNumber(annotation && annotation.revision) || 0)){
+    return null;
+  }
+  const at = nextNumber(row.computed_at);
+  const numbers = nextCockpitEntryNumbers(session, nextCockpitWorkSource(group, session));
+  const n = numbers.get(String(row.rose_at || ""));
+  const from = NEXT_DRIFT_LEVEL_NAMES[String(row.rose_from || "")];
+  return {level, label, source: at != null ? `Live estimate · ${nextSessionClock(at)}` : "Live estimate",
+    rose: from && n != null && row.rose_from !== "not_enough" ? `Rose from ${from} at #${n}.` : ""};
+}
+
+/* The switch sits beside the Drift heading, as the design places it. */
+function nextDriftMonitorSwitch(session){
+  if(!NEXT_LIVE_HARNESSES.has(String(session && session.harness || "")) ||
+      !(nextData && nextData.annotate === true)) return "";
+  const on = nextLiveMonitorOn(session);
+  return '<div class="next-session-drift-monitor">' +
+    '<span id="next-session-drift-monitor-label">Live monitor</span>' +
+    '<button type="button" class="next-session-drift-switch" role="switch" ' +
+    `aria-checked="${on ? "true" : "false"}" aria-labelledby="next-session-drift-monitor-label" ` +
+    'data-next-cockpit-action="live-monitor" ' +
+    `data-next-focus="live-monitor:${esc(sessKey(session))}">` +
+    '<span class="next-session-drift-track" aria-hidden="true"><span></span></span>' +
+    '</button></div>';
+}
+
+function nextDriftMeter(level){
+  const on = NEXT_DRIFT_SCALE.indexOf(level);
+  return NEXT_DRIFT_SCALE.map((name, i) =>
+    `<span class="next-session-drift-seg" data-level="${esc(level)}"` +
+    `${on >= 0 && i <= on ? " data-on" : ""}></span>`).join("");
+}
+
+/* The header pill: a level on the scale only, never "Not enough recorded
+   yet", and never on a Sessions row (item 3). Not a link: the page routes on
+   its fragment, and the Drift section leads the column at narrow widths. */
+function nextDriftPill(estimate){
+  if(!estimate || !NEXT_DRIFT_SCALE.includes(estimate.level)) return "";
+  return '<span class="next-session-drift-pill" data-next-drift-pill>' +
+    `<span class="next-session-drift-pill-meter" aria-hidden="true">${nextDriftMeter(estimate.level)}` +
+    `</span><span>Drift: <strong>${esc(estimate.label)}</strong></span></span>`;
+}
+
+/* The level, its source and time, the meter, the source line and where it
+   rose, then the nudge at High. No live region: the nudge is drawn, never
+   announced, because the live estimate raises nothing (item 5). */
+function nextDriftLevel(session, annotation = null, group = null, estimate = undefined){
   const harness = String(session && session.harness || "");
   if(harness === "claude" || harness === "pi"){
     /* No level over an unsaved draft (item 2 of
        [DEC-26](docs/design-reading-a-session.md#dec-26-four-drift-levels-and-a-live-estimate-after-every-turn)):
        an estimate of drift from words the reader has not yet chosen measures
        nothing of theirs. */
-    const estimate = nextIntentDrafted(session, annotation) ? null : nextDriftEstimate(session);
-    return estimate && estimate.label
-      ? `<p class="next-session-drift-level" data-next-drift-level>${esc(String(estimate.label))}</p>`
-      : "";
+    const found = estimate === undefined ? nextDriftEstimate(group, session) : estimate;
+    const drafted = nextIntentDrafted(session, annotation);
+    const live = NEXT_LIVE_HARNESSES.has(harness) && nextLiveMonitorOn(session);
+    if(live && (drafted || found && found.save)){
+      return `<p class="next-session-drift-limit" data-next-drift-save>${esc(NEXT_DRIFT_LIVE_SAVE)}</p>`;
+    }
+    if(drafted || !found || !found.label){
+      return NEXT_LIVE_HARNESSES.has(harness) && nextData && nextData.annotate === true && !live
+        ? `<p class="next-session-drift-hint">${esc(NEXT_DRIFT_LIVE_HINT)}</p>` : "";
+    }
+    const high = found.level === "high" || found.level === "extreme";
+    /* While an analysis runs the design keeps the title and dims the meter,
+       and drops the detail line. Over an unsaved edit the nudge would point at
+       a press the page refuses, so it goes; the level is over the saved words. */
+    const running = Boolean(nextReadingJob(session));
+    const detail = found.level && !running
+      ? [NEXT_DRIFT_LIVE_LINE, found.rose].filter(Boolean).join(" ") : "";
+    return '<div class="next-session-drift-live" data-next-drift-level>' +
+      '<p class="next-session-drift-live-head">' +
+      `<span class="next-session-drift-level">${esc(String(found.label))}</span>` +
+      (found.source ? `<span class="next-session-drift-source">${esc(found.source)}</span>` : "") +
+      '</p>' +
+      (found.level ? `<p class="next-session-drift-meter" aria-hidden="true"${running ? " data-dim" : ""}>` +
+        `${nextDriftMeter(found.level)}</p>` : "") +
+      (detail ? `<p class="next-session-drift-detail">${esc(detail)}</p>` : "") +
+      '</div>' +
+      (high && !running && !nextIntentUnsaved(session, annotation)
+        ? `<p class="next-session-drift-nudge">${esc(NEXT_DRIFT_NUDGE)}</p>` : "");
   }
   return `<p class="next-session-drift-limit" data-next-drift-limit>${esc(NEXT_DRIFT_HARNESS_LIMIT)}</p>`;
 }
@@ -4609,15 +4736,19 @@ function nextDriftLevel(session, annotation = null){
    check never outranks. The word drift names the section and the control and
    nothing else: no sentence here may say a session has none. */
 function nextCockpitDriftBlock(group, session, primary){
+  const annotated = nextData && nextData.annotate === true ? nextCockpitAnnotation(session) : null;
+  const estimate = nextDriftEstimate(group, session);
+  const pill = estimate && !nextIntentDrafted(session, annotated) ? nextDriftPill(estimate) : "";
   /* `data-next-session-drift` marks the whole panel, which is where the
      drift block's contents now live. */
   const open = '<aside class="next-session-panel" data-next-session-drift aria-label="Intent and drift">';
   const head = '<section class="next-session-drift" id="next-session-drift" ' +
     'aria-labelledby="next-session-drift-heading">' +
-    '<header class="next-session-drift-head">' +
+    '<header class="next-session-drift-head"><div class="next-session-drift-titles">' +
     '<h2 id="next-session-drift-heading" class="next-session-drift-heading">Drift</h2>' +
-    `<p class="next-session-drift-sub">${esc(NEXT_DRIFT_SUBTITLE)}</p></header>` +
-    nextDriftLevel(session, nextData && nextData.annotate === true ? nextCockpitAnnotation(session) : null);
+    `<p class="next-session-drift-sub">${esc(NEXT_DRIFT_SUBTITLE)}</p></div>` +
+    `${nextDriftMonitorSwitch(session)}</header>` +
+    nextDriftLevel(session, annotated, group, estimate);
   /* No field at all when the store is off, which is what `--no-annotations`
      promises. A box whose every save answers 503 is worse than none, and the
      reason is on screen rather than left to the reader. Any standing raise
@@ -4630,7 +4761,7 @@ function nextCockpitDriftBlock(group, session, primary){
       nextCockpitReadingControl(session, null, null, primary) + '</div>';
     return {panel: open + head + check + nextCockpitDepartures(null, source, session) +
       '</section></aside>', list: nextCockpitWorkEvidence(session, source), record: "",
-      count: nextCockpitEntryTotal(session, source)};
+      count: nextCockpitEntryTotal(session, source), pill: ""};
   }
   const annotation = nextCockpitAnnotation(session);
   const workSource = nextCockpitWorkSource(group, session);
@@ -4719,7 +4850,7 @@ function nextCockpitDriftBlock(group, session, primary){
      session's facts. */
   const list = nextCockpitWorkEvidence(session, workSource, reading.cited);
   const record = nextCockpitLanded(observed) + nextCockpitDeparturesKept();
-  return {panel, list, record, count: nextCockpitEntryTotal(session, workSource)};
+  return {panel, list, record, count: nextCockpitEntryTotal(session, workSource), pill};
 }
 
 /* The header's "N entries": the numbers given, and nothing where the record
@@ -6479,6 +6610,14 @@ document.addEventListener("click", event => {
   if(!target) return;
   const action = String(target.dataset.nextCockpitAction || "");
   const group = nextCockpitRouteGroup();
+  if(action === "live-monitor"){
+    const session = group ? nextCockpitFocusedSession(group) : null;
+    if(!session) return;
+    event.preventDefault();
+    nextLiveMonitorSet(session, !nextLiveMonitorOn(session));
+    renderNext();
+    return;
+  }
   if(action === "held-line-add" || action === "held-line-remove"){
     const session = group ? nextCockpitFocusedSession(group) : null;
     if(!session) return;

@@ -885,7 +885,42 @@ input::placeholder,textarea::placeholder{color:var(--ink2)}
 /* The Drift section: one card holding the control, the reading, any later
    direction, the caveats and the departures. */
 .next-session-drift{margin:0;padding:0 0 4px;border:1px solid var(--rule);border-radius:var(--r-card);background:var(--panel)}
-.next-session-drift-head{padding:8px 16px 10px}
+/* The row gap is the wrapped layout's alone: it clears the switch's -13px, so
+   at phone widths its 44px target starts below the subtitle rather than over
+   it, where a tap on the text toggled the switch (review of d2854fc1, P-2).
+   Centring the switch on the titles instead also cleared it, and pushed the
+   track past a 900px first screen with six outcome lines. */
+.next-session-drift-head{display:flex;flex-wrap:wrap;align-items:flex-start;justify-content:space-between;gap:16px 12px;padding:8px 16px 10px}
+.next-session-drift-titles{min-width:0}
+/* The live monitor switch (DRC-4696), beside the heading as the design places it. */
+/* The button keeps the 44px target every control here has; the track it draws
+   is 24px, centred on the heading's line so it stays on a 900px first screen
+   with six outcome lines (DRC-4696 walk). */
+.next-session-drift-monitor{display:flex;align-items:center;gap:8px;flex-shrink:0;margin-top:-13px;color:var(--ink);font-size:var(--fs-label);font-weight:500}
+.next-session-drift-switch{display:inline-flex;align-items:center;justify-content:center;padding:0;border:0;background:transparent;cursor:pointer}
+.next-session-drift-track{display:flex;align-items:center;justify-content:flex-start;box-sizing:border-box;width:40px;height:24px;padding:2px;border:1px solid var(--line);border-radius:var(--r-pill);background:var(--sunk)}
+.next-session-drift-track>span{width:18px;height:18px;border-radius:50%;background:var(--ink2)}
+.next-session-drift-switch[aria-checked="true"]>.next-session-drift-track{justify-content:flex-end;border-color:var(--accent-dim);background:var(--accent-dim)}
+.next-session-drift-switch[aria-checked="true"]>.next-session-drift-track>span{background:var(--ink)}
+.next-session-drift-switch:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.next-session-drift-hint{margin:0 16px 10px;color:var(--ink2);font-size:var(--fs-body);line-height:1.5}
+.next-session-drift-live{display:grid;gap:6px;margin:0 16px 12px}
+.next-session-drift-live-head{display:flex;flex-wrap:wrap;align-items:baseline;justify-content:space-between;gap:4px 12px;margin:0}
+.next-session-drift-level{color:var(--ink);font-size:var(--fs-value);font-weight:600}
+.next-session-drift-source{color:var(--ink2);font-family:var(--mono);font-size:var(--fs-label)}
+.next-session-drift-meter{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:4px;margin:0}
+.next-session-drift-meter[data-dim]{opacity:.45}
+.next-session-drift-seg{display:block;height:8px;border-radius:4px;background:var(--rule)}
+.next-session-drift-pill-meter{display:inline-flex;gap:2px}
+.next-session-drift-pill-meter>.next-session-drift-seg{width:6px;height:12px;border-radius:2px}
+.next-session-drift-seg[data-on][data-level="none_or_low"]{background:var(--accent-dim)}
+.next-session-drift-seg[data-on][data-level="medium"]{background:var(--amber)}
+.next-session-drift-seg[data-on][data-level="high"],.next-session-drift-seg[data-on][data-level="extreme"]{background:var(--clay)}
+.next-session-drift-detail{margin:0;color:var(--ink2);font-size:var(--fs-body);line-height:1.5}
+.next-session-drift-nudge{margin:0 16px 12px;padding:10px 12px;border:1px solid var(--amber);border-radius:var(--r-control);color:var(--ink);font-size:var(--fs-body);line-height:1.5}
+/* Beside "N entries" in the header's measured row; it wraps rather than
+   widening the page at 320px (DRC-4671). */
+.next-session-drift-pill{display:inline-flex;align-items:center;gap:8px;max-width:100%;padding:3px 10px;border:1px solid var(--line);border-radius:var(--r-pill);color:var(--ink);font-size:var(--fs-label)}
 .next-session-drift-heading{margin:0;color:var(--ink-label);font-family:var(--mono);font-size:var(--fs-label);font-weight:600;letter-spacing:.07em}
 /* The Intent heading takes focus when the Sessions link lands on it; the
    page's accent ring there, not the browser's default (DRC-4736). */

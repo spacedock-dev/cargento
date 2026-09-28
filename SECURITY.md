@@ -1341,9 +1341,11 @@ It is quoted into the prompt as untrusted data, never into an instruction Cargen
 check is one numbered row whose result words are Cargento's own, and its output tail is one
 JSON-quoted field on that row with line breaks and the menu heading neutralised. A reply that obeys
 an instruction in that output is held to the same shape rules as any other. The unasked lane never
-receives it until DEC-18's rubric thresholds exist. The live drift estimate (DEC-26, not built yet)
-will read it on this machine and publish a derived level on the session payload only, never on a
-row, in history or in any off-machine payload.
+receives it until DEC-18's rubric thresholds exist. The live drift estimate (DEC-26, DRC-4696) reads
+the check results and written paths on this machine, never the output tail, and publishes a derived
+level on the focused session's project context only: never on a row, in history, in the reading
+route's context or in any off-machine payload. It starts no model and no process, writes nothing,
+and whether the reader turned it on is kept in the browser and never sent.
 
 What it cannot remove: a reported success is what the tool said, not an inspection of the work, and
 a reading labels it that way. Two settings sources are not read and so cannot be named or refused:
