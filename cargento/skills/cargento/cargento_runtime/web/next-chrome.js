@@ -797,7 +797,7 @@ document.addEventListener("click", event => {
     navigateNext(nextRouteFromFragment(`#n=${routeTarget.dataset.nextRoute}`));
     if(goalFocus && nextData && nextData.annotate === true && nextRoute.view === "session"){
       const session = nextSessionFind(nextRoute.project, nextRoute.harness, nextRoute.session);
-      if(session) nextRestoreFocus({named: nextCockpitHeldKey(session, "goal")}, nextAttention);
+      if(session) nextRestoreFocus({named: nextCockpitGoalLanding(session)}, nextAttention);
     }
     return;
   }

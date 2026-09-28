@@ -710,11 +710,11 @@ class TheSaveReadsTheAnswerTheEndpointSendsTest(unittest.TestCase):
         body = body[: body.index("\n    def ", 1)]
         sent = set(re.findall(r'^\s+"([a-z_]+)": ', body, re.MULTILINE))
         self.assertIn("ok", sent)
-        # Both handlers that read this reply, not one. The settle handler read
-        # only `ok` when this oracle was written and was left out of it, so
-        # the day it started reading `outcome` nothing bound that read to the
-        # endpoint.
-        for name in ("nextCockpitHeldSave", "nextCockpitConflictSettle"):
+        # Both handlers that read this reply as `saved`, not one. The settle
+        # handler that stood here read only `ok` when this oracle was written
+        # and was left out of it; it went with the conflict block's buttons
+        # (DRC-4682), and the added-direction save reads the same reply.
+        for name in ("nextCockpitHeldSave", "nextCockpitSaveDirection"):
             with self.subTest(handler=name):
                 handler = self.PAGE[self.PAGE.index(f"async function {name}(") :]
                 # Up to the next top-level function of either kind.

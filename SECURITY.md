@@ -1353,16 +1353,18 @@ analyze", with DRC-4680. When idle the disclosure sits under "Analyze drift", wh
 asks for the Allow first or runs under one already given after this same disclosure; at the
 confirming press it sits before "Allow and analyze". The permission and rolling budget above are otherwise unchanged, except
 that an allow given before the disclosure named tool output does not cover it
-([Tool output in a Claude Code reading](#tool-output-in-a-claude-code-reading)). "Keep my intent
-and analyze" counts as the allow when the disclosure beside it has not been allowed yet.
+([Tool output in a Claude Code reading](#tool-output-in-a-claude-code-reading)). Keep never counts
+as the allow (owner, 2026-09-27): where the disclosure has not been allowed, it reads "Keep my
+intent", settles through `POST /api/annotate` with no `allow` and no `tool_output`, and leaves
+"Allow and analyze", with its disclosure, as the press that sends.
 
 Keeping your intent and adding a later direction, built with DRC-4682. "Keep my intent and
 analyze" settles every unsettled later direction before anything else in the press, so a press
 that then starts no analysis (another provider, the budget, one already in flight) has still
-settled. Where no analysis can start at all, no reader or readings turned off, the same answer is
-the `settle_through` field of a `POST /api/annotate` body and reads nothing. Over an unsaved draft
-either one adopts the draft and records the settlement in one store write, and a refused adoption
-settles nothing.
+settled. Where no analysis can start at all, no reader or readings turned off, or where an Allow
+is still owed, the same answer is the `settle_through` field of a `POST /api/annotate` body and
+reads nothing. Over an unsaved draft either one adopts the draft and records the settlement in one
+store write, and a refused adoption settles nothing.
 
 "Add it to my intent" is two requests. The first, `POST /api/direction`, names a session and one
 fact id and returns that message's whole text for review, where the published record holds only

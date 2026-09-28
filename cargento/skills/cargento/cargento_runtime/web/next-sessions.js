@@ -360,9 +360,15 @@ function nextSessionsGoal(source, route){
   const prompt = asked ? String(asked.text || "").trim()
     : source && source.harness === "codex" && source.prompt_states_work === true
       ? String(source.title || "").trim() : "";
-  const text = typed || prompt;
+  /* The words the session page drafts, so the link lands on the words the
+     cell named: the first prompt, or the latest where no first one with a
+     time is published (DRC-4682). */
+  const draft = typed ? null : nextIntentDraft(source, null);
+  const text = typed || (draft ? draft.text : prompt);
   const label = typed ? (["latest-prompt", "first-prompt"].includes(source.annotation_goal_source)
-    ? "GOAL · FROM YOUR PROMPT" : "GOAL · YOUR WORDS") : prompt ? "GOAL · YOUR LATEST PROMPT" : "GOAL";
+    ? "GOAL · FROM YOUR PROMPT" : "GOAL · YOUR WORDS")
+    : draft && draft.source === "first-prompt" ? "GOAL · YOUR FIRST PROMPT"
+    : text ? "GOAL · YOUR LATEST PROMPT" : "GOAL";
   const content = typed ? `<strong>${esc(text)}</strong>`
     : `<a class="next-operation-goal-link${text ? "" : " next-absence"}" ` +
       `href="#n=${esc(route)}" data-next-route="${esc(route)}" data-next-goal-focus>` +
@@ -502,7 +508,7 @@ function nextSessionsView(){
       "The Active now figure counts active evidence only; a recorded departure adds no active session.") +
     nextCockpitWhy("sessions-goal-source", "Goal sources",
       nextData && nextData.annotate === true
-        ? "Your latest prompt comes from Claude Code or Codex; other harnesses show only your typed words. " +
+        ? "Your first prompt, or your latest where the first is not published, comes from Claude Code or Codex; other harnesses show only your typed words. " +
           "A goal marked from your prompt was adopted by you; showing a prompt alone adopts nothing, and Drift names a recorded departure."
         : "Annotations are off, so goals cannot be typed and Drift marks are not shown.") +
     '</header>' +

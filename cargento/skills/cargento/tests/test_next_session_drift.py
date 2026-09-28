@@ -508,29 +508,26 @@ __fetchImpl = async url => ({ok: true, json: async () =>
                 # One next step, not two: the refusal ends on the step it names.
                 self.assertTrue(said.endswith(step), said)
 
-    def test_conflict_to_settle_names_only_an_unsettled_later_direction(self) -> None:
-        """DEC-20 item 3: "Conflict to settle" is the label for an unsettled later direction.
-
-        Nothing since, a settled baseline and an unread record have nothing to settle, so they
-        keep the neutral heading rather than asking the reader to act on nothing.
-        """
+    def test_an_unsettled_later_direction_is_asked_before_the_press_and_draws_no_block(
+        self,
+    ) -> None:
+        """DEC-20 item 3's "Conflict to settle" block is replaced by the question before the
+        press (owner, DRC-4682). Nothing since, a settled baseline and an unread record keep the
+        neutral "A LATER DIRECTION" block, which asks the reader to act on nothing."""
+        pending = self.page("__dashboard.sessions[0].annotation_goal_saved_at = 100;\n")
+        self.assertIn("data-next-cockpit-direction-question", pending)
+        self.assertNotIn('<section class="next-cockpit-conflict">', pending)
+        self.assertNotIn("CONFLICT TO SETTLE", pending)
         states = {
-            # The fixture's own person-authored facts land at 102 and 104, after words saved at 100.
-            "pending": ("", "CONFLICT TO SETTLE"),
-            "nothing since": (
-                "__dashboard.sessions[0].annotation_at = 106;\n",
-                "A LATER DIRECTION",
-            ),
+            "nothing since": "",
             "settled": (
-                (
-                    "__dashboard.sessions[0].annotation_settled_at = 300;\n"
-                    "__dashboard.sessions[0].annotation_settled_through = 300;\n"
-                    "__dashboard.sessions[0].annotation_settled_revision = 2;\n"
-                ),
-                "A LATER DIRECTION",
+                "__dashboard.sessions[0].annotation_goal_saved_at = 100;\n"
+                "__dashboard.sessions[0].annotation_settled_at = 300;\n"
+                "__dashboard.sessions[0].annotation_settled_through = 300;\n"
+                "__dashboard.sessions[0].annotation_settled_revision = 2;\n"
             ),
         }
-        for name, (setup, heading) in states.items():
+        for name, setup in states.items():
             with self.subTest(state=name):
                 html = self.page(setup)
                 block = re.search(
@@ -538,9 +535,8 @@ __fetchImpl = async url => ({ok: true, json: async () =>
                 )
                 self.assertIsNotNone(block, html)
                 assert block is not None
-                other = {"CONFLICT TO SETTLE", "A LATER DIRECTION"} - {heading}
-                self.assertIn(f"<h2>{heading}</h2>", block.group(0))
-                self.assertNotIn(other.pop(), html)
+                self.assertIn("<h2>A LATER DIRECTION</h2>", block.group(0))
+                self.assertNotIn("data-next-cockpit-direction-question", html)
         # And a record this page could not read: whether a later direction exists is unknown.
         out = self.run_fixture(
             ANNOTATED

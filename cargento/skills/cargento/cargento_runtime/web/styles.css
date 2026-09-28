@@ -204,9 +204,12 @@ input::placeholder,textarea::placeholder{color:var(--ink2)}
 .next-header nav[aria-label="Primary"]{display:flex;align-items:center;gap:20px;font-family:var(--sans);font-size:var(--fs-label);font-weight:700}
 .next-header nav[aria-label="Primary"] a{display:inline-flex;align-items:center;min-block-size:44px;min-inline-size:44px;border-bottom:2px solid transparent;color:var(--ink2);text-decoration:none}
 .next-header nav[aria-label="Primary"] a[aria-current="page"]{border-bottom-color:var(--accent);color:var(--ink)}
-.next-breadcrumb{display:flex;align-items:center;gap:9px;padding-top:14px;font-family:var(--sans);font-size:var(--fs-label);color:var(--ink2)}
+.next-breadcrumb{display:flex;flex-wrap:wrap;align-items:center;gap:9px;padding-top:14px;font-family:var(--sans);font-size:var(--fs-label);color:var(--ink2)}
 .next-crumb,.next-menu button{border:0;background:none;color:inherit;font:inherit;cursor:pointer}
-.next-crumb{padding:0;text-decoration:none}
+/* A crumb keeps its word width, so "Projects" never breaks mid-word at 320
+   (DRC-4671); the row wraps instead, and a crumb longer than the whole line
+   is the one case that breaks inside itself. */
+.next-crumb{flex-shrink:0;max-width:100%;padding:0;text-decoration:none;overflow-wrap:anywhere}
 .next-crumb:hover{color:var(--ink)}
 .next-running{color:var(--ink2)}
 .next-gate{appearance:none;padding:5px 9px;border:1px solid var(--line);border-radius:var(--r-pill);background:none;color:var(--amber);font:inherit;cursor:pointer}
@@ -269,7 +272,7 @@ input::placeholder,textarea::placeholder{color:var(--ink2)}
 @media(max-width:760px){
   #app{padding:24px 18px 48px}
   .next-breadcrumb-current-separator{display:none}
-  .next-breadcrumb [aria-current="page"]{display:block;margin-top:4px;overflow-wrap:anywhere}
+  .next-breadcrumb [aria-current="page"]{display:block;flex-basis:100%;margin-top:4px;overflow-wrap:anywhere}
   .next-header,.next-header-right,.next-tabs-row{align-items:flex-start;flex-direction:column}
 }
 @media(max-width:360px){
@@ -840,11 +843,23 @@ input::placeholder,textarea::placeholder{color:var(--ink2)}
 .next-session-panel .next-cockpit-held-field>textarea:not(:focus){height:calc(var(--fs-body)*1.55*2 + 9px);min-height:0;padding-bottom:0;overflow:hidden}
 .next-session-panel .next-cockpit-held-line textarea:focus{white-space:pre-wrap;field-sizing:content}
 .next-session-panel .next-cockpit-held-field>textarea:focus{field-sizing:content}
+/* An untouched draft and the pending line are as tall as their text whether
+   focused or not. A box that grew on focus and shrank on the mousedown that
+   blurred it moved the button below it out from under the press, so the click
+   landed beside it (consent F4, verifier V3); a box held at its at-rest
+   height under focus hid the rest of the draft Keep adopts (verifier V1).
+   Both are words a press is about to act on, so neither is clipped. */
+.next-session-panel .next-cockpit-held-field[data-next-cockpit-drafted]>textarea{field-sizing:content;height:auto;min-height:0;padding-bottom:0}
+.next-session-panel .next-cockpit-held-line.next-cockpit-direction-line>textarea{field-sizing:content;height:auto;white-space:pre-wrap;text-overflow:clip}
 /* Where `field-sizing` is missing the box cannot size to its text, so focus
-   gives it several rows and it scrolls inside them (verifier V-3). */
+   gives it several rows and it scrolls inside them (verifier V-3). The two
+   boxes above take those rows at rest too, so focus still moves nothing; the
+   rest of a longer draft scrolls into view under focus. */
 @supports not (field-sizing: content){
   .next-session-panel .next-cockpit-held-line textarea:focus{height:calc(var(--fs-body)*1.55*4 + 16px)}
   .next-session-panel .next-cockpit-held-field>textarea:focus{height:calc(var(--fs-body)*1.55*6 + 16px)}
+  .next-session-panel .next-cockpit-held-field[data-next-cockpit-drafted]>textarea{height:calc(var(--fs-body)*1.55*6 + 16px)}
+  .next-session-panel .next-cockpit-held-line.next-cockpit-direction-line>textarea{height:calc(var(--fs-body)*1.55*4 + 16px)}
 }
 /* Top-aligned, each item one control tall, so a field's count and controls
    stay on the heading's first line and never float beside an open "Use a
@@ -951,6 +966,10 @@ input::placeholder,textarea::placeholder{color:var(--ink2)}
   .next-session-panel .next-cockpit-held-line{grid-template-columns:auto auto minmax(0,1fr)}
   .next-session-panel .next-cockpit-held-field .next-cockpit-held-line textarea{grid-column:1/-1}
   .next-session-panel .next-cockpit-held-line>button{justify-self:start}
+  /* The pending line's save and remove take their own row: in the third,
+     shrinkable track they collapsed to nothing and spilled past the page
+     beside the unnumbered source (layout F3). */
+  .next-session-panel .next-cockpit-direction-tools{grid-column:1/-1;justify-self:start}
   .next-session-facts>div{grid-template-columns:90px minmax(0,1fr);gap:12px}
   .next-session-command-facts{grid-template-columns:1fr}
   .next-session-command-facts>section+section{border-top:1px solid var(--rule);border-left:0}
@@ -1241,6 +1260,27 @@ input::placeholder,textarea::placeholder{color:var(--ink2)}
 .next-cockpit-held-field .next-cockpit-held-line textarea{min-height:34px;grid-column:auto}
 .next-cockpit-held-source{color:var(--ink-caption);font-family:var(--mono);font-size:var(--fs-label)}
 .next-cockpit-held-source[hidden]{display:none}
+/* Hidden while the box no longer holds the saved line, and still taking its
+   space, so the box keeps its width under the caret (DRC-4714). */
+.next-cockpit-held-source[data-next-cockpit-held-line-source-stale]{visibility:hidden}
+/* The drafted goal (DRC-4682): the box on the sunk ground, as the design
+   tints an unsaved draft, and its source on the dashed hairline this sheet
+   keeps for words not yet saved to the server. */
+.next-cockpit-held-field[data-next-cockpit-drafted]>textarea{background:var(--sunk)}
+.next-intent-draft-marks{display:inline-flex;flex-wrap:wrap;align-items:center;gap:4px 8px;min-height:44px}
+.next-intent-draft-marks[hidden]{display:none}
+.next-intent-draft-source{padding:1px 8px;border:1px dashed var(--line);border-radius:var(--r-pill);color:var(--ink2);font-size:var(--fs-label)}
+.next-intent-draft-marks>.next-cockpit-held-cue{grid-column:auto}
+.next-cockpit-held-field .next-intent-draft-marks>button{color:var(--ink);font-weight:600;text-decoration:underline;text-underline-offset:3px}
+.next-cockpit-held-confirmed{margin-right:auto;color:var(--ink2);font-family:var(--sans);font-size:var(--fs-label)}
+.next-cockpit-direction-line{grid-template-columns:minmax(0,1fr) auto auto}
+.next-cockpit-direction-line>textarea{grid-column:1/-1}
+.next-cockpit-direction-tools,.next-cockpit-direction-replace{display:inline-flex;flex-wrap:wrap;align-items:center;gap:4px 8px}
+.next-cockpit-direction-replace{grid-column:1/-1;color:var(--ink2);font-size:var(--fs-label)}
+.next-cockpit-direction-replace button[aria-pressed="true"]{color:var(--ink);font-weight:700;text-decoration:underline}
+.next-cockpit-direction-line>.next-cockpit-held-full,.next-cockpit-direction-line>.next-cockpit-held-cue{grid-column:1/-1}
+.next-cockpit-direction-question{display:flex;flex-direction:column;gap:8px}
+.next-cockpit-direction-said{margin:0;color:var(--ink);font:500 var(--fs-body)/1.5 var(--sans);overflow-wrap:anywhere}
 .next-cockpit-held-full{grid-column:1/-1;margin:0;color:var(--ink2);font-size:var(--fs-body);line-height:1.5}
 .next-cockpit-held-full[hidden]{display:none}
 /* Section scope, outside the field grid: the act is per annotation and the
@@ -1488,16 +1528,6 @@ input::placeholder,textarea::placeholder{color:var(--ink2)}
 .next-intent-revision,.next-intent-why{color:var(--ink2);font:500 var(--fs-body)/1.55 var(--sans);max-width:var(--measure)}
 .next-cockpit-conflict{display:flex;flex-direction:column;gap:8px;padding:10px 12px;border:1px solid var(--rule);background:var(--panel)}
 .next-cockpit-conflict-why,.next-cockpit-conflict-settled{margin:0;color:var(--ink2);font:500 var(--fs-body)/1.55 var(--sans);max-width:var(--measure)}
-/* The settle cue, in the held-cue register and its own class, per next-cockpit.js. */
-.next-cockpit-conflict-cue{color:var(--ink2);font:500 var(--fs-body)/1.55 var(--sans);max-width:var(--measure)}
-.next-cockpit-conflict-open{margin:0;color:var(--ink);font:500 var(--fs-body)/1.55 var(--sans);max-width:var(--measure)}
-.next-cockpit-conflict-row{display:flex;flex-direction:column;gap:2px;padding-left:9px;border-left:1px solid var(--rule)}
-/* A direction is prose the reader typed, so sans, the same register the
-   observed record's own summary row takes. */
-.next-cockpit-conflict-text{font:var(--fs-body)/1.5 var(--sans);color:var(--ink2);overflow-wrap:anywhere}
-.next-cockpit-conflict-at{color:var(--ink-caption);font-family:var(--mono);font-size:var(--fs-label)}
-.next-cockpit-conflict-choices{display:flex;flex-wrap:wrap;gap:8px}
-.next-cockpit-conflict-choices button{padding:5px 10px;background:var(--panel)}
 .next-cockpit-landed-cards{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;align-items:start}
 .next-cockpit-landed-card{display:flex;flex-direction:column;gap:4px;padding-left:9px;border-left:1px solid var(--rule)}
 .next-cockpit-landed-label{color:var(--ink-label);font-family:var(--mono);font-size:var(--fs-label);font-weight:600;letter-spacing:.07em}

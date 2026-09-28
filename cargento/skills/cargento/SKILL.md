@@ -109,9 +109,9 @@ the session's name and its state (working, needs input or idle), a session waiti
 question first. Below that the page has two columns, one above the other on a narrow screen. The
 **Intent and drift** panel comes first: an **Intent** section with the goal and the expected
 outcome lines you typed, then a **Drift** section with the `Analyze drift` control, what an
-analysis reads and sends under it, the reading, any direction you gave after you saved those words
-(labelled "Conflict to settle", which asks a question and records no finding), and every departure
-on record, asked for or not. The **Session activity** column beside it holds the agent's current
+analysis reads and sends under it, the reading, and every departure on record, asked for or not.
+While a direction you gave after your intent is unsettled, the question about it stands where
+`Analyze drift` would be (see below). The **Session activity** column beside it holds the agent's current
 activity, the session's numbered entries, the recorded request, tasks, subagents, token measurements
 and how the session landed. On a harness other than Claude Code or Pi the Drift section says "Cargento
 can't read work from this harness" where a drift level will go; `Analyze drift` stays wherever a
@@ -335,15 +335,16 @@ Binding is per session, and the board says when it is not exact. Where a harness
 short identity prefix, another session sharing that prefix would share these words, and the row says
 so rather than leaving you to assume otherwise.
 
-Below the two fields the Drift section runs in reading order: `Analyze drift`, the reading, a
-later direction and the notes about your saved words, and the departures on record. The agent's
+Below the two fields the Drift section runs in reading order: `Analyze drift` (or the question
+about a later direction), the reading, the notes about your saved words, and the departures on record. The agent's
 current activity leads the Session activity column beside it, and the session's entries follow it,
 numbered. The departures section appears only with `--unasked-readings` on, or once a reading or a
 departure is on record. How it landed follows the session's own facts further down. With saved
 words the list starts at #1, the entry where their evidence window opens; earlier entries are
 counted and not listed, and with nothing saved the whole record is numbered. The header's second
 row gives the count, and leaves it out when the record was not read. It lists the twenty most
-recent entries in the window and every check and file in the window, each at its own number, and says how many it counted and
+recent entries in the window, every check and file in the window and every later direction still
+to settle, each at its own number, and says how many it counted and
 did not list. An entry a departure cites is flagged "Cited" and always listed, and a direction you
 gave after saving is flagged "A later direction you gave", which records no finding. Numbers are
 worked out again on every render, so a check that re-runs or a file written again moves the entries
@@ -362,12 +363,30 @@ Long caveats keep their claim on the page and put the rest behind a summary you 
 the session page's drift block and Console. Nothing is removed by that: an opened one stays open when the board redraws,
 and a closed one still holds every word it was written with.
 
-A later direction gets its own block, labelled "Conflict to settle". Every instruction you gave after your newest save is listed
-there with its age, and nothing there decides whether it changes what you asked for: that is yours,
-and Cargento does not write into the session either way. Marking the baseline as still applying
-settles them through the newest one shown, which is what `settle_through` records. The retype
-control only moves the caret to the goal field, because Cargento cannot author your words. While a
-later direction is unsettled a reading states no departure at all.
+A goal-less Claude Code or Codex session arrives with its goal drafted from your first prompt, as
+Cargento publishes it, or from your latest prompt, marked "latest", where no first prompt with a
+time is published. The draft is marked "from your prompt", an excerpt says "Shown excerpt only.",
+the box is tinted, and the stamp still reads "No revision saved yet": nothing is saved until you
+press Looks right, edit the box and save, or press `Analyze drift`, which adopts the draft. "Use a
+prompt" still offers your latest prompt. Analyze drift, Keep and an added line's save are refused
+while the goal box or the outcome lines hold an edit you have not saved, because each would stand
+on words that are not on screen; your edit stays in the box. No drift level or pill is drawn over
+an unsaved draft. Once a goal is saved the Intent heading reads "Confirmed".
+
+A direction you gave after your intent (after the saved goal's words, or after the drafted prompt)
+is asked about before the press, in the control's place: "You gave a later direction at #n" names
+the entry by its number in the list (of several, it quotes the earliest, the one Add opens), and
+every unsettled one is listed at its own number past the twenty-row bound. Nothing there decides whether it changes what you asked for: that is yours, and
+Cargento does not write into the session either way. `Keep my intent and analyze` settles them
+through the newest one shown, adopting a draft in the same write, and starts the analysis. Keep
+never gives the Allow: where none is given yet it reads `Keep my intent`, settles, and asks you to
+press `Allow and analyze`, beside its disclosure, to send it; where no analysis can start it reads
+`Keep my intent`, settles, and says no analysis was started. `Add it to my intent` opens the
+earliest unsettled direction's whole text as a pending line under Expected outcome, marked "not
+saved", for you to edit, and its save settles through that direction only, so the question comes
+back for any later one: a line over 240 characters is refused rather than clipped, and at six
+lines you choose the line it replaces. While
+a later direction is unsettled a reading states no departure at all.
 
 `DEPARTURES RAISED TO YOU` is where a raise is reviewed, and the one place on the session page it
 appears; it keeps two collections apart. One
@@ -398,8 +417,9 @@ raise does not bring the window forward. Where either is missing the section say
 sends anything to the session. The Intent log carries the same raises a line at a time, and keeps
 them after the session leaves the board.
 
-Sessions labels your typed goal beside NOW, or shows your latest prompt from Claude Code or
-Codex when its source permits that; other harnesses show typed words only. A slot without a typed
+Sessions labels your typed goal beside NOW, or shows the prompt the session page drafts ("GOAL ·
+YOUR FIRST PROMPT", or your latest where no first one is published) from Claude Code or Codex;
+other harnesses show typed words only. A slot without a typed
 goal opens the session page with the cursor in its goal field. Showing a prompt does not save it.
 A recorded departure adds a Drift mark with its age and moves the session after blocked sessions
 and before working ones, even if it is idle; it does not add to the Active now figure. Earlier
@@ -609,7 +629,7 @@ Paths 2 and 3 are complementary and can both be installed. Keep `Notification` o
 
 | Flag / URL | Effect |
 |---|---|
-| `--observer-model` / `--no-observer-model` | Offer optional Codex goal summaries, or refuse every model call for this run (refusal wins, including unasked checks). Goal summaries are off by default and retain their separate browser consent. On a goal-less Claude Code or Codex session, Analyze drift adopts the published latest prompt when its source time is available. The goal field also offers the first prompt and adoption without checking. Adopted goals say "from your prompt" and never enable unasked readings; editing the goal makes typed words. Reader-requested readings need no startup flag: the first Analyze drift presents its disclosure and Allow and analyze. The answer is remembered across tabs and restarts; Turn off readings revokes it. They spend Codex capacity and are capped at twelve reserved or actual attempts per rolling twenty-four hours. Failed attempts are not refunded; off/on and `--forget` do not reset that budget. Each prompt is bounded to 16,384 redacted bytes, with one call in flight per session and a 60-second timeout. Quota consent authorizes neither path. |
+| `--observer-model` / `--no-observer-model` | Offer optional Codex goal summaries, or refuse every model call for this run (refusal wins, including unasked checks). Goal summaries are off by default and retain their separate browser consent. On a goal-less Claude Code or Codex session the goal is drafted from the published first prompt (the latest where no first one with a time is published), and Analyze drift or Looks right adopts it. The goal field also offers the latest prompt without checking. Adopted goals say "from your prompt" and never enable unasked readings; editing the goal makes typed words. Reader-requested readings need no startup flag: the first Analyze drift presents its disclosure and Allow and analyze. The answer is remembered across tabs and restarts; Turn off readings revokes it. They spend Codex capacity and are capped at twelve reserved or actual attempts per rolling twenty-four hours. Failed attempts are not refunded; off/on and `--forget` do not reset that budget. Each prompt is bounded to 16,384 redacted bytes, with one call in flight per session and a 60-second timeout. Quota consent authorizes neither path. |
 | `--interaction-origin-session <harness:sid>` / `--interaction-origin-registration-file <private-file>` | Enable the prototype terminal for one exact session only when both flags are supplied. The generated private file supplies the registration capability; registration must happen inside that session's tmux pane. Output is read-only and bounded; no terminal input is accepted. |
 | `--port N` | Change port (default 4553; valid range 1–65535). If the port is busy, check `--status` first — a running dashboard may already be there; don't kill it blindly. |
 | `--host A` | Bind address: `127.0.0.1` (default) or `0.0.0.0`, IPv4 only. Nothing narrower — a single-interface bind is refused rather than half-supported, because `--status`, `--stop` and the hook forwarders all reach the dashboard over loopback and such a bind does not answer there. **Nothing authenticates a remote reader**: anything that reaches the port reads every session's titles, prompts and paths, and can answer a question a session is waiting on. Prefer `ssh -L 4553:127.0.0.1:4553`; use `--host` only on a network the user would hand the transcripts to. |
