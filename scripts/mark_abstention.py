@@ -107,6 +107,10 @@ def _reading() -> Any:
 
 
 HOME = os.environ.get("CARGENTO_HOME") or os.path.expanduser("~/.cargento")
+# Read once, with HOME: a report from the default home was once posted as the
+# marks for a packet that lived elsewhere, so every mode that reads a packet
+# says when this was the case.
+DEFAULT_HOME = not os.environ.get("CARGENTO_HOME")
 CASES_PATH = os.path.join(HOME, "abstention-cases.json")
 MARKS_PATH = os.path.join(HOME, "abstention-marks.json")
 
@@ -137,6 +141,106 @@ STORE_HOME = os.path.join(abstention_ledger.real_home(), ".cargento")
 # with whichever harness ran most today. v2 had this constant and no bucketing,
 # which is how a six case corpus came to be six Claude sessions in one state.
 PER_BUCKET = 3
+
+
+# What each case format's cases carry, as the code that writes them writes
+# them: `build` for 3, `freeze_case` for 5, and for 4, which nothing writes any
+# more, what the marker reads. A packet short of these was written by another
+# version of this file, and `_show` died on the first missing key (DRC-4666).
+_CASE_FIELDS: dict[int, tuple[str, ...]] = {
+    3: (
+        "id",
+        "harness",
+        "sid",
+        "end_shape",
+        "facts",
+        "citable",
+        "work_results",
+        "reached",
+        "asks_output",
+    ),
+    4: ("id", "harness", "sid", "producer_facts"),
+    5: (
+        "id",
+        "harness",
+        "sid",
+        "origin",
+        "captured_at",
+        "row_snapshot",
+        "intent",
+        "producer_facts",
+        "unconfirmed",
+    ),
+}
+_CLAUDE_FROZEN_FIELDS = ("tool_output", "transcript_bytes", "parser")
+
+
+def display_path(path: str) -> str:
+    """A path under the account's home in `~` form, spelled with `/` on every platform."""
+    home = abstention_ledger.real_home()
+    if path == home or path.startswith(home + os.sep):
+        return "~" + path[len(home) :].replace(os.sep, "/")
+    return path
+
+
+def packet_lines(path: str, body: dict[str, Any]) -> list[str]:
+    """Which packet was read, said first by every mode that reads one."""
+    cases = body.get("cases")
+    count = len(cases) if isinstance(cases, list) else 0
+    held = f"{count} case" + ("" if count == 1 else "s")
+    lines = [f"Packet: {display_path(path)} ({held if os.path.exists(path) else 'not found'})"]
+    if DEFAULT_HOME:
+        lines.append(
+            f"CARGENTO_HOME is not set, so this read the default home, {display_path(HOME)}. "
+            "Set CARGENTO_HOME to the packet's directory if this is not the packet you meant."
+        )
+    return lines
+
+
+def print_packet(path: str, body: dict[str, Any]) -> None:
+    for line in packet_lines(path, body):
+        print(line)
+
+
+def packet_mismatch(body: dict[str, Any]) -> str:
+    """Why this version cannot read the packet's cases, or empty."""
+    version = body.get("v")
+    if "v" not in body:
+        return "It names no case format."
+    if type(version) is not int or version not in _CASE_FIELDS:
+        return f"It is case format {version}, and this version reads formats 3, 4 and 5."
+    raw = body.get("cases")
+    cases: list[Any] = raw if isinstance(raw, list) else []
+    short: list[str] = []
+    for index, case in enumerate(cases, 1):
+        if not isinstance(case, dict):
+            return f"Its case {index} is not an object."
+        needs = _CASE_FIELDS[version]
+        if version == FORMAT_INTENT and case.get("harness") == "claude":
+            needs += _CLAUDE_FROZEN_FIELDS
+        missing = [field for field in needs if field not in case]
+        if missing:
+            name = case.get("id") if isinstance(case.get("id"), str) else ""
+            short.append(f"case {index}{f' ({name})' if name else ''} lacks {', '.join(missing)}")
+    if not short:
+        return ""
+    return (
+        f"{len(short)} of {len(cases)} cases lack fields this version needs; the first: {short[0]}."
+    )
+
+
+def _refuse_mismatch(body: dict[str, Any], nothing: str) -> bool:
+    """True, having said why and what to do, when the packet is not this version's."""
+    why = packet_mismatch(body)
+    if not why:
+        return False
+    print("Refused: this packet was frozen by a different version of these scripts.")
+    print(f"  {why}")
+    print("  Run from an up-to-date checkout (git pull) and try again. If this checkout is")
+    print("  current, the packet is older than these scripts: build or freeze a new one in a")
+    print("  fresh CARGENTO_HOME.")
+    print(nothing)
+    return True
 
 
 def cases_digest(body: dict[str, Any]) -> str:
@@ -1053,13 +1157,14 @@ def _show(case: dict[str, Any], position: str) -> None:
     print("\n" + "=" * 72)
     stands = case.get("stands_for") or 1
     also = f"   (this shape covers {stands} sessions)" if stands > 1 else ""
-    print(f"  {position}   {case['harness']} - {case.get('project') or 'no project'}{also}")
+    harness = case.get("harness") or "unknown harness"
+    print(f"  {position}   {harness} - {case.get('project') or 'no project'}{also}")
 
     print("\n  YOU ASKED IT TO")
     if asked:
         print(f"    {_short(asked, 260)}")
     elif case.get("title"):
-        print(f"    {case['title']}   (a title Cargento derived; the ask was not recorded)")
+        print(f"    {case.get('title')}   (a title Cargento derived; the ask was not recorded)")
     else:
         print("    nothing Cargento managed to record")
     if latest and latest[:60] != asked[:60]:
@@ -1068,13 +1173,14 @@ def _show(case: dict[str, Any], position: str) -> None:
     print("\n  WHAT CARGENTO HAS TO GO ON")
     if not case.get("reached"):
         print("    the evidence ledger could not be read")
-    elif case["citable"]:
+    elif case.get("citable"):
         print(
-            f"    {case['citable']} citable facts, {case['work_results']} of them showing work done"
+            f"    {case.get('citable')} citable facts, "
+            f"{case.get('work_results') or 0} of them showing work done"
         )
     else:
         print("    nothing. no facts it could cite.")
-    print(f"    {case['end_shape']}")
+    print(f"    {case.get('end_shape') or 'how it ended was not recorded'}")
 
 
 def _question(case: dict[str, Any]) -> str:
@@ -1100,11 +1206,11 @@ def _show_intent_case(body: dict[str, Any], case: dict[str, Any], position: str)
     """A format 5 screen: the case's own intent, then the frozen record, checks included."""
     revision = case_revision(case)
     print("\n" + "=" * 72)
-    print(f"  {position}   {case['harness']} - {case.get('title') or case['id']}")
+    print(f"  {position}   {case.get('harness')} - {case.get('title') or case.get('id')}")
     print(f"  Recorded lifecycle: {_reading().end_kind(case.get('row_snapshot') or {})}")
     print(f"  Captured at: {case.get('captured_at')}")
     if case.get("asked_for"):
-        print(f"  Opening request (review context): {_short(case['asked_for'], 260)}")
+        print(f"  Opening request (review context): {_short(case.get('asked_for') or '', 260)}")
     print(f"\n  GOAL: {revision['goal']}")
     for k, line in enumerate(revision["lines"], 1):
         text = line.get("text") if isinstance(line, dict) else line
@@ -1137,15 +1243,15 @@ def _show_mark_case(body: dict[str, Any], case: dict[str, Any], position: str) -
         _show(case, position)
         return
     print("\n" + "=" * 72)
-    print(f"  {position}   {case['harness']} - {case.get('title') or case['id']}")
+    print(f"  {position}   {case.get('harness')} - {case.get('title') or case.get('id')}")
     print(f"  Recorded lifecycle: {_reading().end_kind(case.get('row_snapshot') or {})}")
     if case.get("asked_for"):
-        print(f"  Opening request (review context): {_short(case['asked_for'], 260)}")
+        print(f"  Opening request (review context): {_short(case.get('asked_for') or '', 260)}")
     print(f"\n  GOAL YARDSTICK: {body.get('goal') or ''}")
     print(f"  OUTPUT YARDSTICK: {body.get('output') or ''}")
     print("  FROZEN PRODUCER LEDGER (review excerpts are not model evidence)")
     for entry in _reading().build_ledger(
-        case.get("producer_facts") or [], case["harness"], case["sid"]
+        case.get("producer_facts") or [], str(case.get("harness") or ""), str(case.get("sid") or "")
     ):
         print(f"    {entry['id']} | {entry['type']} | {entry['source']} | {entry['summary']}")
 
@@ -1188,7 +1294,9 @@ def _mark_asks_output(body: dict[str, Any], case: dict[str, Any]) -> bool:
         return bool(_reading().asks_output(text, case_ledger(body, case)))
     if body.get("v") == 4:
         ledger = _reading().build_ledger(
-            case.get("producer_facts") or [], case["harness"], case["sid"]
+            case.get("producer_facts") or [],
+            str(case.get("harness") or ""),
+            str(case.get("sid") or ""),
         )
         return bool(_reading().asks_output(str(body.get("output") or ""), ledger))
     return bool(case.get("asks_output"))
@@ -1242,12 +1350,15 @@ def _ledger_refusal() -> bool:
 
 
 def mark() -> int:
+    body = _load(CASES_PATH)
+    print_packet(CASES_PATH, body)
     if _ledger_refusal():
         return 1
-    body = _load(CASES_PATH)
     cases = body.get("cases") if isinstance(body.get("cases"), list) else None
     if not cases:
         print(f"No cases at {CASES_PATH}. Run --build first.")
+        return 1
+    if _refuse_mismatch(body, "Nothing was shown or marked."):
         return 1
     saved = _load(MARKS_PATH)
     entries = _marks(saved)
@@ -1315,9 +1426,12 @@ def _warn_if_unanimous(entries: dict[str, Any], cases: list[dict[str, Any]]) -> 
 
 def report() -> int:
     body = _load(CASES_PATH)
+    print_packet(CASES_PATH, body)
     cases = body.get("cases") if isinstance(body.get("cases"), list) else []
     if not cases:
         print("No cases built yet.")
+        return 1
+    if _refuse_mismatch(body, "Nothing was counted."):
         return 1
     entries = _marks(_load(MARKS_PATH))
     live = {c["id"] for c in cases}

@@ -183,6 +183,11 @@ reads (DRC-4711):
   `reading.py` written at freeze, does not match the scorer's. Every case would differ, so this is
   named on its own rather than read as tampering. Freeze again on the tree you score on, with the
   freeze board started from that same checkout, since the board derives the user messages.
+  `--score` does not get this far: it compares every stamp with this checkout's before the ledger
+  is opened, and refuses the whole run when any differs, since each such case would only be
+  withheld while the rest were charged. It names the fix: check out the commit the packet was
+  frozen on, or re-freeze from this checkout and mark the new packet. `--report` says the same at
+  the preflight.
 
 Turns appended after `captured_at` are not a mismatch. A Codex case has no transcript this check
 reads, and under the per-producer floor it is a control that never covers. A case that fails any of
@@ -250,6 +255,18 @@ directory, the user name or the state directory. The OAuth pass adds whether the
 is in the disclosed block the CLI adds and whether the email or UUID appear anywhere else. It exits
 0 only when the first two are yes and every leak is no, and it writes no result and charges
 nothing. It says only what reached its stub; run it under an OS sandbox to know nothing else left.
+
+Every mode that reads a packet, `mark_abstention.py`, its `--report` and `score_abstention.py`,
+prints the packet's path and case count on its first line, in `~` form, and says so on the next
+when `CARGENTO_HOME` is unset and the default home was read. A report from the wrong home looks
+like a finished key: check that line before posting one.
+
+The marker also refuses a packet this version of the scripts cannot read, before it shows a case:
+a case format other than 3, 4 or 5, or cases missing a field that `--build` (format 3) or
+`--freeze` (format 5) writes. Format 5 Claude Code cases also need `tool_output`,
+`transcript_bytes` and `parser`. The usual cause is a checkout older or newer than the one that froze
+the packet, and the message says to `git pull`. If the checkout is already current, the packet is
+older than the scripts and needs building or freezing again in a fresh `CARGENTO_HOME`.
 
 The owner's commands, in order. `CARGENTO_HOME` holds the packet; the ledger does not move with it:
 

@@ -123,6 +123,11 @@ def _claude_case() -> dict[str, Any]:
             "lines": [{"text": LINE_ONE, "source": "typed"}, {"text": LINE_TWO, "source": "typed"}],
         },
         "tool_output": {"tails": {"toolu_9": TAIL}, "changed_after": []},
+        # What the freeze stamps on a Claude Code case, so the marker's shape
+        # check and the scorer's parser check see a packet this checkout froze.
+        "transcript_bytes": 0,
+        "parser": mark_abstention.parser_digest(),
+        "unconfirmed": [],
     }
 
 
@@ -137,6 +142,7 @@ def _codex_case() -> dict[str, Any]:
         "row_snapshot": {"harness": "codex", "sid": CODEX_SID, "state": "working"},
         "producer_facts": [_fact("x1", sid=CODEX_SID, harness="codex", at=150.0)],
         "intent": {"goal": GOAL, "lines": [{"text": LINE_ONE}]},
+        "unconfirmed": [],
     }
 
 
@@ -213,10 +219,14 @@ class _Packet(unittest.TestCase):
         resume: dict[str, Any] | None = None,
         binding: dict[str, str] | None = None,
         vouch: Any = None,
+        printed: list[str] | None = None,
     ) -> int:
+        sink = printed if printed is not None else []
         with (
             mock.patch.object(score_abstention, "_get", side_effect=AssertionError("live read")),
-            mock.patch("builtins.print"),
+            mock.patch(
+                "builtins.print", side_effect=lambda *a, **_k: sink.append(" ".join(map(str, a)))
+            ),
         ):
             return score_abstention.score(
                 1,
@@ -2387,6 +2397,66 @@ class N4OnlyAWellFormedChainIsAccepted(_Ledgered):
         model = _Model()
         self.assertEqual(2, self.score(model))
         self.assertEqual([], model.prompts)
+
+
+class AScoreFromAnotherParserIsRefusedBeforeAnyChargeTest(_Ledgered):
+    """A checkout whose parser differs from the freeze demotes every Claude Code case.
+
+    Before this refusal the run still went ahead: each such case was withheld
+    unscored, while every other case was charged against the nineteen calls.
+    """
+
+    def stale_packet(self) -> None:
+        self.cases[0]["parser"] = "0" * 64
+        codex = _codex_case()
+        self.cases.append(codex)
+        self.marks[codex["id"]] = {"goal": "judge", "line_1": "abstain"}
+
+    def as_the_machine_would(self, case: Any) -> list[str]:
+        # The score-time re-check's own verdict on a stamp that does not match.
+        stamped = case.get("parser", mark_abstention.parser_digest())
+        return [] if stamped == mark_abstention.parser_digest() else ["frozen-on-another-parser"]
+
+    def test_nothing_is_charged_called_or_written(self) -> None:
+        self.stale_packet()
+        model, printed = _Model(), list[str]()
+        code = self.score(model, vouch=self.as_the_machine_would, printed=printed)
+        said = "\n".join(printed)
+        self.assertEqual(2, code, said)
+        self.assertEqual([], model.prompts)
+        self.assertFalse(self.ledger_path.exists() and self.calls())
+        self.assertFalse(self.summary.exists())
+        self.assertFalse(self.result.exists())
+        for words in (
+            "project_context.py or reading.py differs from the one these cases were frozen on",
+            "every one of them would be demoted",
+            "check out the commit the packet was frozen on",
+            "re-freeze",
+            "Nothing was charged",
+        ):
+            self.assertIn(words, said)
+
+    def test_it_refuses_before_the_ledger_is_even_consulted(self) -> None:
+        self.stale_packet()
+        with mock.patch.object(
+            abstention_ledger.Ledger, "check", side_effect=AssertionError("ledger read")
+        ):
+            self.assertEqual(2, self.score(_Model(), vouch=self.as_the_machine_would))
+
+    def test_the_preflight_report_says_the_score_will_refuse(self) -> None:
+        self.stale_packet()
+        printed: list[str] = []
+        with mock.patch("builtins.print", side_effect=_collect_into(printed)):
+            score_abstention.report(self.corpus(), None, vouch=self.as_the_machine_would)
+        said = "\n".join(printed)
+        self.assertIn("--score will refuse: this checkout's project_context.py", said)
+        self.assertIn("1 of 2 cases carry another parser digest", said)
+
+    def test_a_packet_this_checkout_froze_is_scored(self) -> None:
+        model = _Model()
+        self.score(model, vouch=self.as_the_machine_would)
+        self.assertEqual(1, len(model.prompts))
+        self.assertEqual(1, len(self.calls()))
 
 
 class ADeclaredSyntheticCaseIsScoredAndCanFail(_Ledgered):
