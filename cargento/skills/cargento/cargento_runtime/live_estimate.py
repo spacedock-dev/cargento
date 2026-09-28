@@ -201,7 +201,10 @@ def _replay(
         return dataclasses.replace(previous, found=dict(previous.found))
     first = max(0, len(calls) - LIVE_REPLAY_STEPS)
     kept = previous.steps if previous is not None and valid else {}
-    steps = {p: level for p, level in kept.items() if first - 1 <= p < valid}
+    # The last call's step is always asked afresh, because `current` is whatever the
+    # loop asked last: kept from a longer transcript that lost its tail, it left the
+    # level of an older call published (review of d1cfa929, V1).
+    steps = {p: level for p, level in kept.items() if first - 1 <= p < min(valid, len(calls) - 1)}
     rows: list[dict[str, Any]] = []
 
     def level_now(position: int) -> levels.Level:

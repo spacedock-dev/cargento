@@ -331,6 +331,72 @@ class TheReplayIsBoundedTest(_Replay):
         live_estimate._cache.clear()
         self.assertEqual(self.estimate(), grown)
 
+    def tail_that_raises_the_level(self, n: int) -> None:
+        # The shape from the review of the replay cache (V1): passing checks and
+        # writes inside the words, then a tail of failures and writes outside them,
+        # so each call near the end moves the level.
+        cwd = self.session.cwd
+        for i in range(n):
+            if i < n - 8:
+                if i % 2:
+                    self.session.bash("pytest tests", "5 passed in 0.1s")
+                else:
+                    self.session.edit(f"{cwd}/src/f{i}.py")
+            elif i % 2:
+                self.session.write(f"{cwd}/docs/out{i}.md")
+            else:
+                self.session.bash("pytest tests", "Exit code 1\n1 failed", is_error=True)
+
+    def assert_reads_the_last_call(self, case: str) -> None:
+        cached = self.estimate()
+        facts = tuple(self.facts_now())
+        _rows, scan = project_context.claude_tool_reports(self.config, str(self.path), SHORT)
+        intent = live_estimate.saved_intent(saved_row())
+        evidence = levels.Evidence(facts, scan, 0, str(self.session.cwd))
+        frozen = levels.live_level(evidence, intent).level
+        live_estimate._cache.clear()
+        fresh = self.estimate()
+        with self.subTest(case=case):
+            self.assertEqual(frozen, cached["level"])
+            self.assertEqual(
+                {k: v for k, v in fresh.items() if k != "computed_at"},
+                {k: v for k, v in cached.items() if k != "computed_at"},
+            )
+
+    def truncated(self, n: int, drop: int) -> None:
+        # A rewind or a replaced file can shorten a transcript at its tail. The step the
+        # cache holds for the call now last was right, but the level published must be
+        # asked at that call, not at the last step the replay happened to recompute.
+        self.tail_that_raises_the_level(n)
+        self.estimate()
+        del self.session.rows[-2 * drop :]
+        self.assert_reads_the_last_call(f"{n} calls, last {drop} dropped")
+
+    def test_seventy_calls_that_lose_three_read_the_call_now_last(self) -> None:
+        self.truncated(70, 3)
+
+    def test_seventy_calls_that_lose_six_read_the_call_now_last(self) -> None:
+        self.truncated(70, 6)
+
+    def test_two_hundred_calls_that_lose_five_read_the_call_now_last(self) -> None:
+        self.truncated(200, 5)
+
+    def test_a_truncated_transcript_that_grows_again_reads_the_call_now_last(self) -> None:
+        self.tail_that_raises_the_level(70)
+        self.estimate()
+        dropped = self.session.rows[-12:]
+        # Six calls gone, three of them back before the next read: still a prefix.
+        del self.session.rows[-12:]
+        self.session.rows.extend(dropped[:6])
+        self.assert_reads_the_last_call("70 calls, 6 dropped, 3 back")
+        # Then new calls after a read of the truncated file.
+        del self.session.rows[-6:]
+        self.estimate()
+        self.session.calls = 200
+        self.session.bash("pytest tests", "5 passed in 0.1s")
+        self.session.write(self.session.cwd + "/src/new.py")
+        self.assert_reads_the_last_call("70 calls, 6 dropped, 2 new")
+
     def test_a_long_transcript_costs_about_what_the_record_itself_costs(self) -> None:
         if sys.gettrace() is not None or "coverage" in sys.modules:
             # Measured: tracing slowed the replay's many small calls about 22 times and the
