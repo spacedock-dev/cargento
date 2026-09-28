@@ -2281,7 +2281,7 @@ class ReaderStateInventoryTest(unittest.TestCase):
 
     def test_the_lanes_the_derivation_cannot_see_are_still_named_and_real(self) -> None:
         # The test above derives only `Capture`/`Restore` names, so these
-        # nine survive a redraw with nothing deriving their rows. Renaming any
+        # eleven survive a redraw with nothing deriving their rows. Renaming any
         # would otherwise leave the table citing a symbol that is gone. Two
         # joined on 2026-09-11: both landed with rows in the table and
         # neither was pinned here, which is the gap this test exists to close.
@@ -2301,6 +2301,9 @@ class ReaderStateInventoryTest(unittest.TestCase):
             ("next-chrome.js", "nextCockpitCueAlertElement"),
             ("next-cockpit.js", "nextCockpitAnnouncedCues"),
             ("next-cockpit.js", "nextCockpitArmedAnnouncedKey"),
+            # DRC-4726 and DRC-4732: the analyses a tab has seen, and Keep's whole texts.
+            ("next-cockpit.js", "nextCockpitReadingJobsSeen"),
+            ("next-cockpit.js", "nextCockpitDirectionWhole"),
         ):
             with self.subTest(lane=lane):
                 self.assertIn(f"{lane}", (self.WEB / name).read_text(encoding="utf-8"))

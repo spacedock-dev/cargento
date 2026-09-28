@@ -300,9 +300,9 @@ stored words back. Each saved line shows where it came from: typed, or added fro
 reading reads each line on its own and shows one row per line.
 
 `POST /api/annotate` with a harness, a session id and `goal` or `lines` (a list of strings, the
-whole checklist) does the same thing without the page; `expected_revision` refuses a list saved
-from a view of an older revision, and a seventh line or a line over 240 characters is refused
-rather than clipped. It writes a numbered revision; an earlier revision is never edited, so anything citing
+whole checklist) does the same thing without the page; `expected_revision` refuses a goal or a list
+saved from a view of an older revision (the page sends it with both and keeps what you typed), and
+a seventh line or a line over 240 characters is refused rather than clipped. It writes a numbered revision; an earlier revision is never edited, so anything citing
 revision 1 still means what it meant. Send `{"clear": true}` to forget a session's words entirely,
 or `settle_through` with a timestamp to mark the directions given up to that moment as settled
 against the current baseline. The reply says what happened: `persisted` is whether the words are
@@ -378,7 +378,9 @@ is asked about before the press, in the control's place: "You gave a later direc
 the entry by its number in the list (of several, it quotes the earliest, the one Add opens), and
 every unsettled one is listed at its own number past the twenty-row bound. Nothing there decides whether it changes what you asked for: that is yours, and
 Cargento does not write into the session either way. `Keep my intent and analyze` settles them
-through the newest one shown, adopting a draft in the same write, and starts the analysis. Keep
+through the newest one shown, adopting a draft in the same write, and starts the analysis. Of two
+or more, the first press shows each whole and settles nothing, and the next press settles what was
+shown. Keep
 never gives the Allow: where none is given yet it reads `Keep my intent`, settles, and asks you to
 press `Allow and analyze`, beside its disclosure, to send it; where no analysis can start it reads
 `Keep my intent`, settles, and says no analysis was started. `Add it to my intent` opens the
@@ -436,7 +438,8 @@ where the control would be. The accepted case review enables that control; the e
 whether or not you ask for a reading. A press starts an analysis the server runs in the background,
 and while it runs the control is replaced by an "Analyzing drift" box listing its real steps
 (preparing what is sent, waiting for the named provider, checking the reply), the one under way
-marked, with the attempt count and disclosure still beside it. The box comes from the published
+marked, with the attempt count and disclosure still beside it. A screen reader hears "Analyzing drift" once
+when the box appears and how the analysis ended once when it goes, never again on a redraw or reload. The box comes from the published
 board, so a reload or another tab shows the same analysis at the same step, and a second press
 starts nothing. The result, or why there is none, replaces the box when it is stored; an analysis
 a stop or restart cut short is recorded as an interrupted attempt. The box offers Cancel, which stops the call and records a cancelled attempt that still counts, or one that spent nothing when it landed before anything was sent. A failed request says its result could
@@ -669,7 +672,7 @@ Paths 2 and 3 are complementary and can both be installed. Keep `Notification` o
 | `POST /api/direction` | Open one later direction you gave for review before adding it as a line. Body is `{"harness", "sid", "fact_id"}`. Answers the message's whole text, redacted, on one line and bounded at 2,000 characters, with `clipped` and `fits` (whether the store would take it as a line); every direction it will not open answers one `{"ok": false, "reason": "unavailable"}` body. Writes nothing. Loopback-only and refused on a document navigation; 503 under `--no-annotations`. |
 | `/api/cleared` | The sessions marked handled: a harness key, a session id and when each was marked, and nothing else. 503 under `--no-dismiss`. |
 | `/api/annotations` | Every session you have typed a goal or an expected outcome line against, including sessions no longer on the board, with what an unasked check raised against each. Serves the words themselves, so it is read when the Intent log is opened rather than on the refresh loop. 503 under `--no-annotations`. |
-| `POST /api/reading` | Ask for one reading against the words typed against a session. Body is `{"harness", "sid", "provider", "press": true, "observer_model": 1}`, where `provider` is the one the page's route for that harness named (`codex` or `claude`); the first authorized press adds `"allow": true`, which allows that provider only. `{"consent":"off","press":true,"observer_model":1}` revokes permission. `settle_through` with `expected_revision` settles later directions before anything else in the press, adopting a draft with it when `adopt` is sent, and every reply then carries the store's token as `settled`; a refused one answers 422. Bodies are capped at 12,288 bytes, loopback-only and refused on a document navigation. 503 under `--no-annotations`, the explicit model off switch, a closed reading gate, or unavailable permission storage; 403 without consent; 429 at the rolling cap, with its retry time. 409 while that session has a reading in flight. 409 with `"reason": "provider-changed"` and the current `route` when `provider` is missing or no longer the one that would run: nothing was saved or spent, so read the route's disclosure and press again. 503 with the `route` and its `reason` when no provider can read that harness on this machine. 200 with `produced: false` when no annotated session by that name exists. |
+| `POST /api/reading` | Ask for one reading against the words typed against a session. Body is `{"harness", "sid", "provider", "press": true, "observer_model": 1}`, where `provider` is the one the page's route for that harness named (`codex` or `claude`); the first authorized press adds `"allow": true`, which allows that provider only. `{"consent":"off","press":true,"observer_model":1}` revokes permission. `settle_through` with `expected_revision` settles later directions before anything else in the press, adopting a draft with it when `adopt` is sent, and every reply then carries the store's token as `settled`; a refused one answers 422. Without `settle_through`, an `expected_revision` that is not the stored revision answers 409 with `"reason": "revision-changed"` before anything else in the press, so nothing is allowed, adopted or started; the page sends the revision it drew. Bodies are capped at 12,288 bytes, loopback-only and refused on a document navigation. 503 under `--no-annotations`, the explicit model off switch, a closed reading gate, or unavailable permission storage; 403 without consent; 429 at the rolling cap, with its retry time. 409 while that session has a reading in flight. 409 with `"reason": "provider-changed"` and the current `route` when `provider` is missing or no longer the one that would run: nothing was saved or spent, so read the route's disclosure and press again. 503 with the `route` and its `reason` when no provider can read that harness on this machine. 200 with `produced: false` when no annotated session by that name exists. |
 
 ## Interpretation notes (share with the user if asked)
 

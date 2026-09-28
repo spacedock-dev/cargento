@@ -758,6 +758,8 @@ function renderNext(focus = nextCaptureFocus()){
      the same mutation ([reader state](docs/design-reader-state.md#the-inventory)). */
   nextCockpitCueStatus(app);
   nextCockpitCueAlert(app);
+  // After the regions exist, for the rule above: an analysis's start and end.
+  nextCockpitReadingJobCues();
   nextRestoreFocus(focus, nextAttention);
   nextRenderObserved = null;
 }

@@ -1047,6 +1047,12 @@ writes no consent and reserves nothing; if no provider can read the session, it 
 the reason. One model runs per press. If its CLI is missing at launch, or the call fails, no other
 provider is tried.
 
+A press names the revision its page drew. The route checks it against the annotation store read
+from disk under the store's lock, not this process's copy, before the route, any Allow write and
+the job, and checks the entry it hands the job again the same way. A save another dashboard on
+the same home made in between, or one landing between the check and the job, answers 409
+`revision-changed`, so the model never reads words the page did not show.
+
 ### Observer model calls
 
 Goal summaries are off unless `--observer-model` was supplied and their disclosure accepted.
@@ -1376,7 +1382,7 @@ word after `--password`, `--token` or `-p`, an `Authorization:` or `X-Api-Key:` 
 of the break, with a zero-width space, soft hyphen and the other invisible characters that can
 hide a flag removed first, while the joiners that spell words and emoji are kept), then redacted by
 shape like every published string, with line breaks and control characters as spaces, bounded at 2,000 characters with a flag saying whether
-it was clipped, and a flag saying whether the store would take it as a line (at most 240
+it was clipped (a message the record reader already cut at that bound counts as clipped), and a flag saying whether the store would take it as a line (at most 240
 characters). It returns nothing for a message that is not a person's message in that session's
 own record, one not later than the words it would join, or one older than the tail of the
 transcript Cargento already reads: all of those, an unknown session and an unknown fact alike,
@@ -1407,8 +1413,9 @@ chose it, and every request names the revision it was drafted against. The line,
 through that direction's time and, over an unsaved draft, the adopted goal go in one store write.
 Keep names its revision too, on both routes, and a stale one settles nothing; Keep never adopts
 over a saved goal holding other words, and a settlement never moves back over one already given.
-The revision check holds inside one dashboard process. Two dashboards sharing the store have no
-lock between them, and this write shares that gap with every other save (DRC-4661).
+The revision check holds across dashboards too: every store write takes the store's lock file, as
+the annotation store section above describes (DRC-4661), and the check reads the revision from disk
+under it.
 
 The background job, built with DRC-4686. An admitted press answers `202` with a job the server
 owns, before the model is called, and the reading runs on a thread of its own under the

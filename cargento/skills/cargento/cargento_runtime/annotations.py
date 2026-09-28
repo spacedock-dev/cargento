@@ -1310,7 +1310,7 @@ def _commit(
     kept = _kept(config, entries, keep=key, raw=raw)
     if kept is None:
         return OUTCOME_UNWRITABLE
-    state.annotations = _stored(kept)
+    _cache(state, kept)
     if not store.writable:
         _say_unwritten(config, diagnostic_sink)
         return OUTCOME_UNWRITABLE
@@ -1339,18 +1339,52 @@ def _unwritten(store: _Store | None, key: tuple[str, str]) -> str:
     return OUTCOME_UNREADABLE if _held(store, key) else ""
 
 
+def _cache(state: RuntimeState, entries: tuple[Annotation, ...]) -> None:
+    """Set this process's copy from a read made under the store's lock, the caller holding it."""
+    state.annotations = _stored(entries)
+    state.annotation_generation += 1
+
+
 def refresh(config: RuntimeConfig, state: RuntimeState) -> tuple[Annotation, ...]:
     """Re-read the store into this process's copy, and return it.
 
     Two dashboards can bind on one machine and the file is the record, so a save
     made in one is picked up by the other on its next collection. Whether the
     file could be read whole is kept beside it, for `store_notice`.
+
+    Read outside every lock, so a save that commits during the read is newer
+    than it: the copy is then left as that save set it, and returned, rather
+    than overwritten with the older read (the a11y lens's Keep over a draft,
+    where the press after the adoption found no entry).
     """
+    with state.annotation_lock:
+        generation = state.annotation_generation
     store = _read_store(config) if config.annotations_enabled else _Store((), (), trusted=True)
     with state.annotation_lock:
+        if state.annotation_generation != generation and state.annotations is not None:
+            return cast("tuple[Annotation, ...]", state.annotations)
         state.annotations = _stored(store.entries)
         state.annotations_trusted = store.trusted
     return store.entries
+
+
+def fresh(
+    config: RuntimeConfig,
+    state: RuntimeState,
+    diagnostic_sink: Callable[[str], None] = print,
+) -> tuple[Annotation, ...] | None:
+    """The store as it is on disk now, read under its lock, or None when it cannot be.
+
+    For a press about to hand an entry to the model: this process's copy
+    misses a save another dashboard made since the last collection, and the
+    file read under the lock cannot be a write half done (wire review F3).
+    None when the lock stayed busy or the file cannot be trusted.
+    """
+    with _locked_store(config, state, diagnostic_sink) as store:
+        if store is None or not store.trusted:
+            return None
+        _cache(state, store.entries)
+        return store.entries
 
 
 def store_notice(state: RuntimeState) -> str:
@@ -1961,7 +1995,11 @@ def direction_review(raw: str, cap: int) -> tuple[str, bool, bool]:
     masked = records.mask_prose(raw)
     whole = " ".join(records.safe_text(masked, 2 * len(masked) + 64).split())
     text = records.redact_clip(whole, DIRECTION_TEXT_CAP_CHARS)
-    clipped = text != whole
+    # Raw text at the cap counts as clipped: the record reader already cut the
+    # message there (`records.EXTRACT_TEXT_CAP_CHARS`), so `whole` never shows
+    # the overflow (wire review F2). A direction of exactly the cap is flagged
+    # too, cautiously: saying less was shown than was is the safe error.
+    clipped = text != whole or len(raw) >= DIRECTION_TEXT_CAP_CHARS
     return text, clipped, not clipped and _typed_lines([text], cap) == [text]
 
 
@@ -2056,7 +2094,7 @@ def _annotate(  # noqa: PLR0913
                 # dashboards share this file, and returning early with a stale
                 # cache is how this process went on reporting "no goal typed"
                 # for words the other one had already saved.
-                state.annotations = _stored(_bounded(current, config.annotation_max_sessions))
+                _cache(state, _bounded(current, config.annotation_max_sessions))
                 return OUTCOME_UNCHANGED
             revision: Revision = {
                 **source_fields,

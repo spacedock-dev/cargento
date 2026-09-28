@@ -73,6 +73,11 @@ for(const fact of __semantic.facts){
 """
 )
 
+# Keep settles in one press only a sole direction whose whole text is the summary the
+# question quotes; of two, the first press draws both whole (DRC-4732, wire review F1). The
+# tests of what Keep does once it settles keep fo-a alone, so one press still settles.
+SOLE = "__semantic.facts = __semantic.facts.filter(f => f.fact_id !== 'fo-b');\n"
+
 TYPED = """
 __s.annotation_goal = "Ship the retry queue";
 __s.annotation_goal_why = "";
@@ -108,15 +113,27 @@ const __renders = [];
 const __renderNext = renderNext;
 renderNext = (...args) => { __renders.push(args.length ? args[0] : undefined); return __renderNext(...args); };
 let __posts = [];
+// Keep opens every direction it settles (DRC-4732). Where a test gives no
+// reply for that route, each opens as its own summary, so the whole text is
+// already on screen and one press settles; those opens are kept in `__opened`
+// rather than `__posts`, which then holds what the press itself sent.
+let __opened = [];
 const __reply = {};
+const __replyByDefault = {"/api/direction": body => {
+  const fact = __semantic.facts.find(f => f.fact_id === body.fact_id);
+  return {status:200, body:{ok:true, fact_id:body.fact_id, text:fact ? fact.summary : "",
+    clipped:false, fits:true}};
+}};
 const __upstream = __fetchImpl;
 __fetchImpl = async (url, init) => {
   if(!init || init.method !== "POST" || String(url).startsWith("/api/tripwire")){
     return __upstream(url, init);
   }
   const body = JSON.parse(init.body);
-  __posts.push({url:String(url), body});
-  const made = (__reply[String(url)] || (() => ({ok:true, status:200, body:{ok:true}})))(body);
+  (__reply[String(url)] || !__replyByDefault[String(url)] ? __posts : __opened)
+    .push({url:String(url), body});
+  const made = (__reply[String(url)] || __replyByDefault[String(url)] ||
+    (() => ({ok:true, status:200, body:{ok:true}})))(body);
   return {ok:made.status < 400, status:made.status, json:async () => made.body};
 };
 """
@@ -375,7 +392,7 @@ class TheQuestionBeforeThePressTest(_DraftPage):
 class KeepInEveryRouteStateTest(_DraftPage):
     def keep(self, setup: str = "", reply: str = "") -> dict[str, Any]:
         out = self.drive(
-            setup + reply,
+            SOLE + setup + reply,
             '__press("direction-keep");\nawait __settle();\nawait __settle();\n'
             "console.log(JSON.stringify({posts:__posts, html:__els.app.innerHTML}));",
         )
@@ -427,7 +444,9 @@ class KeepInEveryRouteStateTest(_DraftPage):
 
     def test_the_allow_after_keep_is_the_press_that_sends(self) -> None:
         out = self.drive(
-            '__dashboard.reading = {consent:false, reason:"consent-required"};\n' + self.STORED,
+            SOLE
+            + '__dashboard.reading = {consent:false, reason:"consent-required"};\n'
+            + self.STORED,
             '__press("direction-keep");\nawait __settle();\nawait __settle();\n'
             '__press("reading-allow");\nawait __settle();\n'
             "console.log(JSON.stringify(__posts));",
@@ -676,7 +695,7 @@ class SessionsRowAndJourneyTest(_DraftPage):
         self,
     ) -> None:
         out = self.drive(
-            '__reply["/api/reading"] = () => ({status:202, body:{ok:true, produced:false,'
+            SOLE + '__reply["/api/reading"] = () => ({status:202, body:{ok:true, produced:false,'
             ' settled:"stored", job:{id:"j1", phase:"preparing", steps:[]}}});\n',
             """
 let presses = 0;
@@ -957,7 +976,7 @@ class UnsavedEditsRefuseThePressTest(_DraftPage):
 
     def test_a_goal_typed_while_keep_is_open_is_not_dropped(self) -> None:
         out = self.run_after(
-            '__reply["/api/reading"] = () => { __typeGoal("typed meanwhile");'
+            SOLE + '__reply["/api/reading"] = () => { __typeGoal("typed meanwhile");'
             ' return {status:202, body:{ok:true, produced:false, settled:"stored",'
             ' job:{id:"j1", phase:"preparing", steps:[]}}}; };\n',
             '__press("direction-keep");\nawait __settle();\nawait __settle();\n',
@@ -979,12 +998,14 @@ class UnsavedEditsRefuseThePressTest(_DraftPage):
     def test_a_box_put_back_at_the_draft_is_cleared_once_a_press_adopts_it(self) -> None:
         back = f"__typeGoal({json.dumps(FIRST + 'x')});\n__typeGoal({json.dumps(FIRST)});\n"
         kept = self.run_after(
-            STARTED, back + '__press("direction-keep");\nawait __settle();\nawait __settle();\n'
+            SOLE + STARTED,
+            back + '__press("direction-keep");\nawait __settle();\nawait __settle();\n',
         )
         self.assertEqual(["/api/reading"], [post["url"] for post in kept["posts"]])
         self.assertIsNone(kept["goal"])
         settled_only = self.run_after(
-            '__dashboard.reading = {consent:true, reason:"run-disabled"};\n'
+            SOLE
+            + '__dashboard.reading = {consent:true, reason:"run-disabled"};\n'
             + KeepInEveryRouteStateTest.STORED,
             back + '__press("direction-keep");\nawait __settle();\nawait __settle();\n',
         )
@@ -1140,7 +1161,7 @@ class KeepSettlesWithoutConsentTest(_DraftPage):
 
     def keep(self, setup: str, after: str = "") -> dict[str, Any]:
         out = self.drive(
-            setup,
+            SOLE + setup,
             '__press("direction-keep");\nawait __settle();\nawait __settle();\n' + after + REPORT,
         )
         assert isinstance(out, dict)
@@ -1293,7 +1314,7 @@ class EveryOpenDirectionIsDrawnTest(_DraftPage):
 class KeepOutcomeReachesTheReaderTest(_DraftPage):
     """Layout F4 and consent F7: Keep's sentence is announced, and focus lands on a control."""
 
-    DOM = cockpit_tests.CockpitCuesReachTheReaderTest.ANNOUNCER_DOM
+    DOM = cockpit_tests.CockpitCuesReachTheReaderTest.ANNOUNCER_DOM + SOLE
 
     def test_both_keep_outcomes_are_written_to_the_polite_region(self) -> None:
         out = self.drive(
@@ -1401,7 +1422,8 @@ class KeepOutcomeReachesTheReaderTest(_DraftPage):
             self.PRESS_KEEP + '__press("reading-allow");\nawait __settle();\nawait __settle();\n'
             'console.log(JSON.stringify(wrote("next-cockpit-cue-status")));',
         )
-        self.assertEqual([KEEP_ALLOW, ""], out)
+        # The Allow's own press then starts a job, announced once (DRC-4736).
+        self.assertEqual([KEEP_ALLOW, "", "Analyzing drift"], out)
 
     def test_the_unsaved_edit_refusal_is_written_to_the_region(self) -> None:
         out = self.drive(

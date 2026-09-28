@@ -887,6 +887,13 @@ input::placeholder,textarea::placeholder{color:var(--ink2)}
 .next-session-drift{margin:0;padding:0 0 4px;border:1px solid var(--rule);border-radius:var(--r-card);background:var(--panel)}
 .next-session-drift-head{padding:8px 16px 10px}
 .next-session-drift-heading{margin:0;color:var(--ink-label);font-family:var(--mono);font-size:var(--fs-label);font-weight:600;letter-spacing:.07em}
+/* The Intent heading takes focus when the Sessions link lands on it; the
+   page's accent ring there, not the browser's default (DRC-4736). */
+#next-session-intent-heading:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.next-cockpit-direction-whole{margin:6px 0 8px;padding:0;list-style:none;display:grid;gap:6px}
+.next-cockpit-direction-whole-item{display:grid;grid-template-columns:auto minmax(0,1fr);column-gap:8px;align-items:baseline;color:var(--ink);font-size:var(--fs-body);line-height:1.5;overflow-wrap:anywhere}
+.next-cockpit-direction-whole-text{grid-column:2}
+.next-cockpit-direction-whole-item>.next-cockpit-held-full{grid-column:2}
 .next-session-drift-sub{margin:4px 0 0;color:var(--ink2);font-size:var(--fs-label)}
 .next-session-drift-limit{margin:0 16px 10px;color:var(--ink2);font-size:var(--fs-body);line-height:1.5}
 .next-session-drift>.next-cockpit-conflict{margin:0 16px 14px}

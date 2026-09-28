@@ -933,6 +933,37 @@ class ThreadsInOneProcessTest(_SharedHomeCase):
         self.assert_every_save_kept(outcomes)
 
 
+class ARefreshCannotUndoASaveTest(_SharedHomeCase):
+    """A collection that read the store before a save must not put its copy over it.
+
+    The a11y lens's Keep over a draft (cccc0013, dddd0013): a collection's
+    `refresh` read the file, Keep's adoption committed, and the refresh then
+    assigned its older copy, so the press that followed found no entry.
+    """
+
+    def test_a_refresh_that_read_before_a_save_keeps_the_saved_entry(self) -> None:
+        real = annotation_store._read_store
+        saved: list[str] = []
+
+        def read_then_save(config: Any) -> Any:
+            store = real(config)
+            if not saved:
+                # Marked first: the save reads the store again, through this same patch.
+                saved.append("")
+                saved[0] = annotation_store.annotate(
+                    self.config, self.first, "claude", SID, goal=FIRST, now=FIRST_AT
+                )
+            return store
+
+        with mock.patch.object(annotation_store, "_read_store", side_effect=read_then_save):
+            annotation_store.refresh(self.config, self.first)
+        self.assertEqual([annotation_store.OUTCOME_STORED], saved)
+        entry = annotation_store.find(
+            annotation_store.active(self.config, self.first), "claude", SID
+        )
+        self.assertIsNotNone(entry, "the refresh put its older copy over the save")
+
+
 class AWriterInsideAWriterTest(_SharedHomeCase):
     """A writer called while this thread already writes the store fails at once."""
 

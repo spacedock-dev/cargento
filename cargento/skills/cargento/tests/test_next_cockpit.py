@@ -5305,8 +5305,9 @@ console.log(JSON.stringify({
         # half a reader cannot infer: an absent row reads as "no work" unless
         # the page says the path that would have found it was never taken.
         # "Cargento reads those on Pi alone" is retired (DRC-4680): Claude
-        # Code's checks are read too.
+        # Code's checks are read too, and the line names both (DRC-4734).
         self.assertEqual(
+            "Cargento reads work results from Claude Code and Pi only. "
             "Codex publishes no demonstrated work results, so nothing above is an "
             "inspected file, test or deliverable.",
             out["limit"],
@@ -5570,6 +5571,8 @@ console.log(JSON.stringify({posts,
                     "harness": "codex",
                     "sid": "focus-1",
                     "goal": "A different goal",
+                    # The revision the box was drawn against (DRC-4732).
+                    "expected_revision": 2,
                 },
             ],
             out["posts"],
@@ -5623,7 +5626,8 @@ console.log(JSON.stringify({before, during, other, calls}));
         self.assertIn("Runs in the background.", out["before"])
         during = out["during"]
         self.assertIn("Analyzing drift", during)
-        self.assertIn('role="status"', during)
+        # No role: the page's persistent region announces it once (DRC-4736).
+        self.assertNotIn('role="status"', during)
         for text in ("Preparing what is sent", "Waiting for Codex", "Checking the reply"):
             self.assertIn(text, during)
         self.assertRegex(during, r'data-state="active"[^>]*>(?:(?!</li>).)*Preparing what is sent')
@@ -7645,8 +7649,7 @@ class ACheckWhoseResultLandedAfterTheWordsIsReadOnThePageTest(NextPageJsHarness)
     FIXTURE = NextCockpitCompositionTest.FIXTURE
     ENTRIES = WhatTheBoardShowsOfAReadingThatCitedACheck.ENTRIES
     # (call time, result time, result, aged, verdict, window start): each row
-    # is read by both rules. `changed_after` is left out on purpose: the page's
-    # copy does not read it yet, a divergence filed on its own.
+    # is read by both rules, and again with `changed_after` set (DRC-4734).
     CASES: ClassVar[list[tuple[Any, Any, str, bool, str, Any]]] = [
         (40, 60, "failed", False, "departure", 50),
         (40, 50, "failed", False, "departure", 50),
@@ -7705,10 +7708,12 @@ console.log(JSON.stringify({
                     "at": at,
                     "resultAt": result_at,
                     "beforeLastChange": aged,
+                    "changedAfter": changed,
                 },
                 "verdict": verdict,
                 "window": window,
             }
+            for changed in (False, True)
             for at, result_at, result, aged, verdict, window in self.CASES
         ]
         out = self.run_fixture(
@@ -7725,10 +7730,12 @@ console.log(JSON.stringify({
                     "at": at,
                     "result_at": result_at,
                     "stale": aged,
+                    "changed_after": changed,
                 },
                 verdict,
                 0.0 if window is None else window,
             )
+            for changed in (False, True)
             for at, result_at, result, aged, verdict, window in self.CASES
         ]
         self.assertEqual(server, out)
@@ -13580,12 +13587,15 @@ console.log(JSON.stringify({limit: texts("next-cockpit-work-limit"),
         # Codex no longer claims Pi is the only harness read (DRC-4680); Pi
         # reads exactly what it read before.
         self.assertEqual(
+            "Cargento reads work results from Claude Code and Pi only. "
             "Codex publishes no demonstrated work results, so nothing above is an inspected"
             " file, test or deliverable.",
             out["codex"],
         )
         self.assertEqual(
-            "Pi publishes demonstrated work results, and they are read here.", out["pi"]
+            "Cargento reads work results from Claude Code and Pi only. "
+            "Pi publishes demonstrated work results, and they are read here.",
+            out["pi"],
         )
         # Where the route names where the checks go, a reading can carry them
         # after the reader allows tool output, so nothing demotes Expected

@@ -1149,6 +1149,7 @@ class NextPageAssetContractTest(unittest.TestCase):
         ".next-cockpit-decision-summary,.next-cockpit-viewing-session,\n.next-cockpit-now-state small,.next-project-workflow-definition>small,\n.next-cockpit-system-details ul,.next-cockpit-memos label>small",
         ".next-cockpit-define",
         ".next-cockpit-direction-said",
+        ".next-cockpit-direction-whole-item",
         ".next-cockpit-departures-kept",
         ".next-cockpit-empty,.next-cockpit-evidence-missing",
         ".next-cockpit-held-absent",
@@ -1364,7 +1365,8 @@ class NextPageAssetContractTest(unittest.TestCase):
         # activity list's sentences saying where #1 starts and what is counted and not listed.
         # DRC-4682 retires three with the "Conflict to settle" block (its cue, its open
         # sentence and its direction rows) and adds one: the question before the press.
-        self.assertEqual(113, len(above))
+        # DRC-4732 adds one: each direction's whole text, drawn before Keep settles it.
+        self.assertEqual(114, len(above))
         self.assertEqual(self.SENTENCE_TIER_RULES, {selector for selector, _size in above})
         self.assertEqual(
             self.SUB_SENTENCE_FLOOR_INVENTORY, {(size, selector) for selector, size in below}
@@ -1918,8 +1920,8 @@ class NextPageAssetContractTest(unittest.TestCase):
                 "81e7f6490f9d6c2e128549aff8bb54c2f6bebaec15b03bfebe3e057b4ef8f587",
             ),
             "next-chrome.js": (
-                42_153,
-                "7021b769122c0c349af657277ce0d8975963b9a127e17f16f5842148c328ac94",
+                42_263,
+                "1931f8ec3eacd92697aa95a66741a20e64e3a6ce46d69c4671e9b0f829865ae6",
             ),
             "next-capacity.js": (
                 32_261,
@@ -1962,8 +1964,8 @@ class NextPageAssetContractTest(unittest.TestCase):
                 "7d3250df229af732ebb668171e4cb284f0c1e00e4b0241710d1e5f0ac2a76777",
             ),
             "next-cockpit.js": (
-                340_965,
-                "2dae439307bc4f4d48813cdedb7bd23793de7a0e4f5d6a410f9c3f01d32d93fd",
+                354_439,
+                "ef541fd93b23beaf9d05a4b6c0579fa3462404f7f8a8660bac7f026dc6d62eb3",
             ),
             "next-render.js": (
                 12_231,
@@ -1982,16 +1984,16 @@ class NextPageAssetContractTest(unittest.TestCase):
                 self.assertEqual(digest, hashlib.sha256(data).hexdigest())
 
         styles = frontend_page.asset_path("styles.css").read_bytes()
-        self.assertEqual(153_877, len(styles))
+        self.assertEqual(154_542, len(styles))
         self.assertEqual(
-            "2f4096efbea4198db6aed413cdad45feed0f21421b4bc1a48c94f0116d37b47e",
+            "4be945aeb004391329324483273880baaba91862ad36059b1629f435f24b305e",
             hashlib.sha256(styles).hexdigest(),
         )
 
         assembled = frontend_page.load_page()
-        self.assertEqual(1_197_378, len(assembled))
+        self.assertEqual(1_211_627, len(assembled))
         self.assertEqual(
-            "2704e55e7ac509bb9e3efd8a15c324c887b218f4df3cee833cee24d339054b66",
+            "986f529cd204ddaafa107e1c3421eece907b592df21752521906a82e5b85f0bd",
             hashlib.sha256(assembled).hexdigest(),
         )
 
