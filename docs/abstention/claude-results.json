@@ -1,0 +1,855 @@
+{
+  "argv_digest": "62a4261eb62d8fbd8f2f2310121cd9a0054d4c252f9214ad47126fa4b837d843",
+  "binary": "~/.local/share/claude/versions/2.1.283",
+  "cases": {
+    "07cbaf2f2d58341e": {
+      "asks_output": true,
+      "basis": {
+        "goal": "",
+        "line_1": "",
+        "line_2": "",
+        "line_3": ""
+      },
+      "harness": "claude",
+      "marks": {
+        "goal": "abstain",
+        "line_1": "judge",
+        "line_2": "abstain",
+        "line_3": "judge"
+      },
+      "outcomes": {
+        "goal": "abstained",
+        "line_1": "abstained",
+        "line_2": "abstained",
+        "line_3": "abstained"
+      },
+      "reached_model": true
+    },
+    "29446cfcb048e1e5": {
+      "asks_output": true,
+      "basis": {
+        "goal": "",
+        "line_1": "",
+        "line_2": "tool"
+      },
+      "harness": "claude",
+      "marks": {
+        "goal": "abstain",
+        "line_1": "abstain",
+        "line_2": "judge"
+      },
+      "outcomes": {
+        "goal": "abstained",
+        "line_1": "abstained",
+        "line_2": "judged:departure"
+      },
+      "reached_model": true
+    },
+    "296f33ffac7c4768": {
+      "asks_output": true,
+      "basis": {
+        "goal": "",
+        "line_1": "",
+        "line_2": "",
+        "line_3": ""
+      },
+      "harness": "claude",
+      "marks": {
+        "goal": "abstain",
+        "line_1": "abstain",
+        "line_2": "abstain",
+        "line_3": "abstain"
+      },
+      "outcomes": {
+        "goal": "abstained",
+        "line_1": "abstained",
+        "line_2": "abstained",
+        "line_3": "abstained"
+      },
+      "reached_model": true
+    },
+    "3ad687659fdaa638": {
+      "asks_output": false,
+      "basis": {
+        "goal": "",
+        "line_1": "",
+        "line_2": ""
+      },
+      "harness": "codex",
+      "marks": {
+        "goal": "abstain",
+        "line_1": "abstain",
+        "line_2": "abstain"
+      },
+      "outcomes": {
+        "goal": "abstained",
+        "line_1": "abstained",
+        "line_2": "abstained"
+      },
+      "reached_model": true
+    },
+    "4e47167bb603374f": {
+      "asks_output": true,
+      "basis": {
+        "goal": "",
+        "line_1": "",
+        "line_2": ""
+      },
+      "harness": "claude",
+      "marks": {
+        "goal": "abstain",
+        "line_1": "judge",
+        "line_2": "abstain"
+      },
+      "outcomes": {
+        "goal": "abstained",
+        "line_1": "abstained",
+        "line_2": "abstained"
+      },
+      "reached_model": true
+    },
+    "551b14b63c90ade8": {
+      "asks_output": true,
+      "basis": {
+        "goal": "",
+        "line_1": "",
+        "line_2": ""
+      },
+      "harness": "claude",
+      "marks": {
+        "goal": "abstain",
+        "line_1": "abstain",
+        "line_2": "abstain"
+      },
+      "outcomes": {
+        "goal": "abstained",
+        "line_1": "abstained",
+        "line_2": "abstained"
+      },
+      "reached_model": true
+    },
+    "62266021c8e4a256": {
+      "asks_output": false,
+      "basis": {
+        "goal": "",
+        "line_1": "",
+        "line_2": ""
+      },
+      "harness": "codex",
+      "marks": {
+        "goal": "abstain",
+        "line_1": "abstain",
+        "line_2": "abstain"
+      },
+      "outcomes": {
+        "goal": "abstained",
+        "line_1": "abstained",
+        "line_2": "abstained"
+      },
+      "reached_model": true
+    },
+    "7450417b95fdb6d7": {
+      "asks_output": true,
+      "basis": {
+        "goal": "",
+        "line_1": "",
+        "line_2": ""
+      },
+      "harness": "claude",
+      "marks": {
+        "goal": "abstain",
+        "line_1": "abstain",
+        "line_2": "abstain"
+      },
+      "outcomes": {
+        "goal": "abstained",
+        "line_1": "abstained",
+        "line_2": "abstained"
+      },
+      "reached_model": true
+    },
+    "8985ee92a345f5b0": {
+      "asks_output": true,
+      "basis": {
+        "goal": "",
+        "line_1": "",
+        "line_2": ""
+      },
+      "harness": "claude",
+      "marks": {
+        "goal": "abstain",
+        "line_1": "abstain",
+        "line_2": "abstain"
+      },
+      "outcomes": {
+        "goal": "abstained",
+        "line_1": "abstained",
+        "line_2": "abstained"
+      },
+      "reached_model": true
+    },
+    "a3458822654ec47a": {
+      "asks_output": true,
+      "basis": {
+        "goal": "tool",
+        "line_1": "tool",
+        "line_2": "tool"
+      },
+      "harness": "claude",
+      "marks": {
+        "goal": "abstain",
+        "line_1": "abstain",
+        "line_2": "judge"
+      },
+      "outcomes": {
+        "goal": "judged:consistent",
+        "line_1": "judged:consistent",
+        "line_2": "judged:consistent"
+      },
+      "reached_model": true
+    },
+    "a3c76f898154b2fa": {
+      "asks_output": true,
+      "basis": {
+        "goal": "person",
+        "line_1": "",
+        "line_2": "",
+        "line_3": "tool"
+      },
+      "harness": "claude",
+      "marks": {
+        "goal": "judge",
+        "line_1": "abstain",
+        "line_2": "abstain",
+        "line_3": "abstain"
+      },
+      "outcomes": {
+        "goal": "judged:departure",
+        "line_1": "abstained",
+        "line_2": "abstained",
+        "line_3": "judged:consistent"
+      },
+      "reached_model": true
+    },
+    "c0e06e53fcdad7f0": {
+      "asks_output": true,
+      "basis": {
+        "goal": "tool",
+        "line_1": "",
+        "line_2": "tool"
+      },
+      "harness": "claude",
+      "marks": {
+        "goal": "abstain",
+        "line_1": "abstain",
+        "line_2": "judge"
+      },
+      "outcomes": {
+        "goal": "judged:consistent",
+        "line_1": "abstained",
+        "line_2": "judged:consistent"
+      },
+      "reached_model": true
+    },
+    "dbb344cfffd3692f": {
+      "asks_output": true,
+      "basis": {
+        "goal": "",
+        "line_1": "",
+        "line_2": "tool"
+      },
+      "harness": "claude",
+      "marks": {
+        "goal": "judge",
+        "line_1": "judge",
+        "line_2": "judge"
+      },
+      "outcomes": {
+        "goal": "abstained",
+        "line_1": "abstained",
+        "line_2": "judged:departure"
+      },
+      "reached_model": true
+    }
+  },
+  "cli_version": "2.1.283 (Claude Code)",
+  "counts": {
+    "cases": 13,
+    "goal_consistent_on_account": 0,
+    "outcomes": {
+      "abstained": 33,
+      "judged:consistent": 6,
+      "judged:departure": 3
+    },
+    "output_not_asked": 2,
+    "reached_model": 13,
+    "withheld": 0
+  },
+  "coverage": {
+    "claude": {
+      "kinds": 5,
+      "missing": [],
+      "not_produced": [],
+      "role": "scored"
+    },
+    "codex": {
+      "kinds": 1,
+      "missing": [],
+      "not_produced": [
+        "supported-departure",
+        "legitimate-change",
+        "matching-intent-incorrect-execution",
+        "misleading-completion"
+      ],
+      "role": "control"
+    }
+  },
+  "dec17": {
+    "failed": [
+      "a3458822654ec47a",
+      "a3c76f898154b2fa",
+      "c0e06e53fcdad7f0"
+    ],
+    "held": [
+      "07cbaf2f2d58341e",
+      "4e47167bb603374f",
+      "dbb344cfffd3692f"
+    ]
+  },
+  "destination": "Anthropic",
+  "inputs_digest": "bcedfc535d54cb068a6ed222bb2281fa81a60aa51af1793e408e8b347e542b2c",
+  "ledger_chain": {
+    "calls": 13,
+    "first": "92c26ee2b2b24750a1e2870aec5beb43",
+    "head": "11a4422e4fd35579aed7451a7e54ba2b8c9f7328b5b6fefe2154c04e7da00707"
+  },
+  "marks": {
+    "07cbaf2f2d58341e": {
+      "goal": "abstain",
+      "line_1": "judge",
+      "line_2": "abstain",
+      "line_3": "judge"
+    },
+    "29446cfcb048e1e5": {
+      "goal": "abstain",
+      "line_1": "abstain",
+      "line_2": "judge"
+    },
+    "296f33ffac7c4768": {
+      "goal": "abstain",
+      "line_1": "abstain",
+      "line_2": "abstain",
+      "line_3": "abstain"
+    },
+    "3ad687659fdaa638": {
+      "goal": "abstain",
+      "line_1": "abstain",
+      "line_2": "abstain"
+    },
+    "4e47167bb603374f": {
+      "goal": "abstain",
+      "line_1": "judge",
+      "line_2": "abstain"
+    },
+    "551b14b63c90ade8": {
+      "goal": "abstain",
+      "line_1": "abstain",
+      "line_2": "abstain"
+    },
+    "62266021c8e4a256": {
+      "goal": "abstain",
+      "line_1": "abstain",
+      "line_2": "abstain"
+    },
+    "7450417b95fdb6d7": {
+      "goal": "abstain",
+      "line_1": "abstain",
+      "line_2": "abstain"
+    },
+    "8985ee92a345f5b0": {
+      "goal": "abstain",
+      "line_1": "abstain",
+      "line_2": "abstain"
+    },
+    "a3458822654ec47a": {
+      "goal": "abstain",
+      "line_1": "abstain",
+      "line_2": "judge"
+    },
+    "a3c76f898154b2fa": {
+      "goal": "judge",
+      "line_1": "abstain",
+      "line_2": "abstain",
+      "line_3": "abstain"
+    },
+    "c0e06e53fcdad7f0": {
+      "goal": "abstain",
+      "line_1": "abstain",
+      "line_2": "judge"
+    },
+    "dbb344cfffd3692f": {
+      "goal": "judge",
+      "line_1": "judge",
+      "line_2": "judge"
+    }
+  },
+  "marks_digest": "8decc64870f2f026f3f37b5d0456e47fc694d6d8628c0b4090e6b74f702e8cb5",
+  "model": "claude-sonnet-5",
+  "producer": "claude",
+  "rubric": {
+    "cases": {
+      "07cbaf2f2d58341e": {
+        "admitted": true,
+        "extraction": {
+          "goal": {
+            "extra": 6,
+            "hit": 0,
+            "miss": 0
+          },
+          "line_1": {
+            "extra": 1,
+            "hit": 1,
+            "miss": 2
+          },
+          "line_2": {
+            "extra": 3,
+            "hit": 0,
+            "miss": 0
+          },
+          "line_3": {
+            "extra": 0,
+            "hit": 0,
+            "miss": 1
+          }
+        },
+        "harness": "claude",
+        "judgement": {
+          "goal": "correct",
+          "line_1": "missed-departure",
+          "line_2": "correct",
+          "line_3": "missed-departure"
+        },
+        "kind": "supported-departure",
+        "origin": "recorded",
+        "reached_model": true,
+        "refused": "",
+        "scored": true,
+        "unknown_expectations": 0
+      },
+      "29446cfcb048e1e5": {
+        "admitted": true,
+        "extraction": {
+          "goal": {
+            "extra": 2,
+            "hit": 0,
+            "miss": 0
+          },
+          "line_1": {
+            "extra": 2,
+            "hit": 0,
+            "miss": 0
+          },
+          "line_2": {
+            "extra": 0,
+            "hit": 1,
+            "miss": 0
+          }
+        },
+        "harness": "claude",
+        "judgement": {
+          "goal": "correct",
+          "line_1": "correct",
+          "line_2": "correct"
+        },
+        "kind": "matching-intent-incorrect-execution",
+        "origin": "recorded",
+        "reached_model": true,
+        "refused": "",
+        "scored": true,
+        "unknown_expectations": 0
+      },
+      "296f33ffac7c4768": {
+        "admitted": true,
+        "extraction": {
+          "goal": {
+            "extra": 2,
+            "hit": 0,
+            "miss": 0
+          },
+          "line_1": {
+            "extra": 2,
+            "hit": 0,
+            "miss": 0
+          },
+          "line_2": {
+            "extra": 2,
+            "hit": 0,
+            "miss": 0
+          },
+          "line_3": {
+            "extra": 0,
+            "hit": 0,
+            "miss": 0
+          }
+        },
+        "harness": "claude",
+        "judgement": {
+          "goal": "correct",
+          "line_1": "correct",
+          "line_2": "correct",
+          "line_3": "correct"
+        },
+        "kind": "insufficient-evidence",
+        "origin": "recorded",
+        "reached_model": true,
+        "refused": "",
+        "scored": true,
+        "unknown_expectations": 0
+      },
+      "3ad687659fdaa638": {
+        "admitted": true,
+        "extraction": {
+          "goal": {
+            "extra": 1,
+            "hit": 0,
+            "miss": 0
+          },
+          "line_1": {
+            "extra": 0,
+            "hit": 0,
+            "miss": 0
+          },
+          "line_2": {
+            "extra": 0,
+            "hit": 0,
+            "miss": 0
+          }
+        },
+        "harness": "codex",
+        "judgement": {
+          "goal": "correct",
+          "line_1": "correct",
+          "line_2": "correct"
+        },
+        "kind": "insufficient-evidence",
+        "origin": "recorded",
+        "reached_model": true,
+        "refused": "",
+        "scored": true,
+        "unknown_expectations": 0
+      },
+      "4e47167bb603374f": {
+        "admitted": true,
+        "extraction": {
+          "goal": {
+            "extra": 0,
+            "hit": 0,
+            "miss": 0
+          },
+          "line_1": {
+            "extra": 0,
+            "hit": 1,
+            "miss": 0
+          },
+          "line_2": {
+            "extra": 0,
+            "hit": 0,
+            "miss": 0
+          }
+        },
+        "harness": "claude",
+        "judgement": {
+          "goal": "correct",
+          "line_1": "missed-departure",
+          "line_2": "correct"
+        },
+        "kind": "matching-intent-incorrect-execution",
+        "origin": "recorded",
+        "reached_model": true,
+        "refused": "",
+        "scored": true,
+        "unknown_expectations": 0
+      },
+      "551b14b63c90ade8": {
+        "admitted": true,
+        "extraction": {
+          "goal": {
+            "extra": 5,
+            "hit": 0,
+            "miss": 0
+          },
+          "line_1": {
+            "extra": 0,
+            "hit": 0,
+            "miss": 0
+          },
+          "line_2": {
+            "extra": 1,
+            "hit": 0,
+            "miss": 0
+          }
+        },
+        "harness": "claude",
+        "judgement": {
+          "goal": "correct",
+          "line_1": "correct",
+          "line_2": "correct"
+        },
+        "kind": "misleading-completion",
+        "origin": "recorded",
+        "reached_model": true,
+        "refused": "",
+        "scored": true,
+        "unknown_expectations": 0
+      },
+      "62266021c8e4a256": {
+        "admitted": true,
+        "extraction": {
+          "goal": {
+            "extra": 1,
+            "hit": 0,
+            "miss": 0
+          },
+          "line_1": {
+            "extra": 0,
+            "hit": 0,
+            "miss": 0
+          },
+          "line_2": {
+            "extra": 0,
+            "hit": 0,
+            "miss": 0
+          }
+        },
+        "harness": "codex",
+        "judgement": {
+          "goal": "correct",
+          "line_1": "correct",
+          "line_2": "correct"
+        },
+        "kind": "insufficient-evidence",
+        "origin": "recorded",
+        "reached_model": true,
+        "refused": "",
+        "scored": true,
+        "unknown_expectations": 0
+      },
+      "7450417b95fdb6d7": {
+        "admitted": true,
+        "extraction": {
+          "goal": {
+            "extra": 1,
+            "hit": 0,
+            "miss": 0
+          },
+          "line_1": {
+            "extra": 1,
+            "hit": 0,
+            "miss": 0
+          },
+          "line_2": {
+            "extra": 1,
+            "hit": 0,
+            "miss": 0
+          }
+        },
+        "harness": "claude",
+        "judgement": {
+          "goal": "correct",
+          "line_1": "correct",
+          "line_2": "correct"
+        },
+        "kind": "insufficient-evidence",
+        "origin": "recorded",
+        "reached_model": true,
+        "refused": "",
+        "scored": true,
+        "unknown_expectations": 0
+      },
+      "8985ee92a345f5b0": {
+        "admitted": true,
+        "extraction": {
+          "goal": {
+            "extra": 0,
+            "hit": 0,
+            "miss": 0
+          },
+          "line_1": {
+            "extra": 0,
+            "hit": 0,
+            "miss": 0
+          },
+          "line_2": {
+            "extra": 1,
+            "hit": 0,
+            "miss": 0
+          }
+        },
+        "harness": "claude",
+        "judgement": {
+          "goal": "correct",
+          "line_1": "correct",
+          "line_2": "correct"
+        },
+        "kind": "insufficient-evidence",
+        "origin": "recorded",
+        "reached_model": true,
+        "refused": "",
+        "scored": true,
+        "unknown_expectations": 0
+      },
+      "a3458822654ec47a": {
+        "admitted": true,
+        "extraction": {
+          "goal": {
+            "extra": 1,
+            "hit": 0,
+            "miss": 0
+          },
+          "line_1": {
+            "extra": 1,
+            "hit": 0,
+            "miss": 0
+          },
+          "line_2": {
+            "extra": 0,
+            "hit": 1,
+            "miss": 0
+          }
+        },
+        "harness": "claude",
+        "judgement": {
+          "goal": "false-reassurance",
+          "line_1": "false-reassurance",
+          "line_2": "correct"
+        },
+        "kind": "misleading-completion",
+        "origin": "recorded",
+        "reached_model": true,
+        "refused": "",
+        "scored": true,
+        "unknown_expectations": 0
+      },
+      "a3c76f898154b2fa": {
+        "admitted": true,
+        "extraction": {
+          "goal": {
+            "extra": 1,
+            "hit": 1,
+            "miss": 0
+          },
+          "line_1": {
+            "extra": 0,
+            "hit": 0,
+            "miss": 0
+          },
+          "line_2": {
+            "extra": 0,
+            "hit": 0,
+            "miss": 0
+          },
+          "line_3": {
+            "extra": 1,
+            "hit": 0,
+            "miss": 0
+          }
+        },
+        "harness": "claude",
+        "judgement": {
+          "goal": "correct",
+          "line_1": "correct",
+          "line_2": "correct",
+          "line_3": "false-reassurance"
+        },
+        "kind": "legitimate-change",
+        "origin": "recorded",
+        "reached_model": true,
+        "refused": "",
+        "scored": true,
+        "unknown_expectations": 0
+      },
+      "c0e06e53fcdad7f0": {
+        "admitted": true,
+        "extraction": {
+          "goal": {
+            "extra": 1,
+            "hit": 0,
+            "miss": 0
+          },
+          "line_1": {
+            "extra": 0,
+            "hit": 0,
+            "miss": 0
+          },
+          "line_2": {
+            "extra": 0,
+            "hit": 1,
+            "miss": 0
+          }
+        },
+        "harness": "claude",
+        "judgement": {
+          "goal": "false-reassurance",
+          "line_1": "correct",
+          "line_2": "correct"
+        },
+        "kind": "insufficient-evidence",
+        "origin": "recorded",
+        "reached_model": true,
+        "refused": "",
+        "scored": true,
+        "unknown_expectations": 0
+      },
+      "dbb344cfffd3692f": {
+        "admitted": true,
+        "extraction": {
+          "goal": {
+            "extra": 0,
+            "hit": 0,
+            "miss": 1
+          },
+          "line_1": {
+            "extra": 0,
+            "hit": 0,
+            "miss": 1
+          },
+          "line_2": {
+            "extra": 1,
+            "hit": 0,
+            "miss": 1
+          }
+        },
+        "harness": "claude",
+        "judgement": {
+          "goal": "missed-departure",
+          "line_1": "over-abstention",
+          "line_2": "correct"
+        },
+        "kind": "matching-intent-incorrect-execution",
+        "origin": "recorded",
+        "reached_model": true,
+        "refused": "",
+        "scored": true,
+        "unknown_expectations": 0
+      }
+    },
+    "counts": {
+      "correct": 33,
+      "false-alarm": 0,
+      "false-reassurance": 4,
+      "missed-departure": 4,
+      "over-abstention": 1,
+      "unscored:bad-expectation": 0,
+      "unscored:missing-expectation": 0,
+      "unscored:unknown-constraint": 0
+    }
+  },
+  "scored_at": 1790594511.151188,
+  "signature": "Developer ID Q6L2SF6YDW com.anthropic.claude-code",
+  "spend": {
+    "cap": 19,
+    "charged": 13
+  },
+  "v": 1,
+  "verdict": "failed"
+}
