@@ -243,7 +243,8 @@ Hard caps: at most 64 KiB read from a README and 8 KiB from an entity file, 400 
 scanned, 32 stage names taken, 120 characters of the README's `title`, 96 entity files read per
 workflow (newest first), 12 entities rendered per workflow, and 8 workflows per session. Display
 entity reads are cached on `(realpath, st_mtime_ns, st_size)`; the README cache also checks device,
-inode and change time. Stage conditions read current entity frontmatter within the same caps on
+inode and change time. Neither caches a file modified in the last two seconds, because a same-size
+rewrite inside one timestamp tick would leave every part of that key unchanged. Stage conditions read current entity frontmatter within the same caps on
 each collection, independently of the display cache. Entity files older than the freshness window
 are not opened; future file stamps cannot become stage-condition evidence.
 

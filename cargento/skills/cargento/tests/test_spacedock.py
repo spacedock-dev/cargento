@@ -1078,6 +1078,10 @@ class SpacedockReadContractTest(unittest.TestCase):
             lines: list[str] = real(cfg, p, limit, expect)
             return lines
 
+        # Written long enough ago to be settled: a file still inside its
+        # timestamp tick is re-read on purpose (the racy-stat tests below).
+        os.utime(path, (now - 60, now - 60))
+
         with mock.patch.object(spacedock, "read_frontmatter", counting):
             spacedock.read_entities(config, state, str(entity_state), stages, now, 3600)
             spacedock.read_entities(config, state, str(entity_state), stages, now, 3600)
@@ -1089,6 +1093,66 @@ class SpacedockReadContractTest(unittest.TestCase):
                 spacedock.read_entities(config, state, str(entity_state), stages, now + 2, 3600),
             )
         self.assertEqual(2, len(reads))
+
+    @staticmethod
+    def _same_tick(info: os.stat_result, first: os.stat_result) -> os.stat_result:
+        """``info`` as Windows reports a rewrite inside ``first``'s timestamp tick.
+
+        ``st_ctime`` there is the creation time, so it never moves on a write, and
+        ``st_mtime`` only moves when the clock has ticked since the last write.
+        """
+        fields: list[Any] = [*list(info)[:10]]
+        fields += [info.st_atime, first.st_mtime, first.st_ctime]
+        fields += [info.st_atime_ns, first.st_mtime_ns, first.st_ctime_ns]
+        return os.stat_result(fields)
+
+    def test_a_same_size_readme_rewrite_inside_one_timestamp_tick_is_reread(self) -> None:
+        # DRC-4707: on windows-latest a README renamed a stage and was restored
+        # within one tick, at the same size, and the board kept the renamed
+        # taxonomy: every part of the stat key matched the first reading.
+        config, state = runtime()
+        root = self.workflow(self.README)
+        readme = root / "README.md"
+        first = os.lstat(readme)
+        self.assertIn("review", (spacedock.read_workflow(config, state, str(root)) or {})["stages"])
+        readme.write_text(self.README.replace("name: review", "name: verify"), encoding="utf-8")
+        real = os.lstat
+
+        def lstat(path: Any, *args: Any, **kwargs: Any) -> os.stat_result:
+            info = real(path, *args, **kwargs)
+            return self._same_tick(info, first) if os.fspath(path) == str(readme) else info
+
+        with mock.patch.object(os, "lstat", lstat):
+            result = spacedock.read_workflow(config, state, str(root))
+        self.assertEqual(["intake", "verify", "posted"], (result or {})["stages"])
+
+    def test_a_settled_readme_is_read_once(self) -> None:
+        config, state = runtime()
+        root = self.workflow(self.README)
+        settled = time.time() - 60
+        os.utime(root / "README.md", (settled, settled))
+        reads: list[str] = []
+        real = spacedock.read_frontmatter
+
+        def counting(cfg: Any, p: str, limit: int, expect: os.stat_result) -> list[str]:
+            reads.append(p)
+            lines: list[str] = real(cfg, p, limit, expect)
+            return lines
+
+        with mock.patch.object(spacedock, "read_frontmatter", counting):
+            spacedock.read_workflow(config, state, str(root))
+            spacedock.read_workflow(config, state, str(root))
+        self.assertEqual(1, len(reads))
+
+    def test_a_same_size_entity_rewrite_inside_one_timestamp_tick_is_reread(self) -> None:
+        config, state = runtime()
+        root = self.workflow(self.README)
+        path = self.entity(root / ".spacedock-state", "drc-1", "review")
+        first = os.lstat(path)
+        self.assertEqual("review", spacedock.entity_stage(config, state, str(path), first))
+        self.entity(root / ".spacedock-state", "drc-1", "verify")
+        same_tick = self._same_tick(os.lstat(path), first)
+        self.assertEqual("verify", spacedock.entity_stage(config, state, str(path), same_tick))
 
     def test_the_entity_dir_is_taken_from_boot_and_must_be_absolute(self) -> None:
         records: list[dict[str, Any]] = [

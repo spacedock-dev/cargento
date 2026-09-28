@@ -13,6 +13,7 @@ import json
 import os
 import re
 import stat as stat_module
+import time
 from typing import TYPE_CHECKING, Any, TypeGuard
 
 from cargento_runtime import records, sessions
@@ -55,6 +56,26 @@ SPACEDOCK_FO = "spacedock:first-officer"
 
 
 SPACEDOCK_ENSIGN = "spacedock:ensign"
+
+
+# A stat key cannot tell two writes apart when they land inside one filesystem
+# timestamp tick at the same size ("racy git"), and on Windows `st_ctime` is the
+# creation time, so it does not move on a write either. A file read inside its
+# tick is therefore re-read rather than cached, or the first reading is served
+# until the file next changes. Measured on windows-latest (DRC-4707): a README
+# restored within one tick of a same-size stage rename kept the renamed stages.
+# Two seconds covers the coarsest mtime in common use (FAT); NTFS ticks in about
+# 16 ms and HFS+ in one second.
+RACY_STAT_NS = 2_000_000_000
+
+
+def _settled(info: os.stat_result) -> bool:
+    """Whether a later write is certain to change ``info``'s mtime.
+
+    Compared against the wall clock, not the application's clock: this is a
+    question about the filesystem's own timestamps.
+    """
+    return time.time_ns() - info.st_mtime_ns >= RACY_STAT_NS
 
 
 SD_STAGE_RE = re.compile(r"^[a-z0-9][a-z0-9-]*[a-z0-9]$")
@@ -730,10 +751,11 @@ def read_workflow(
                 # project-authored prose, not a grammar-checked slug.
                 "goal": records.safe_text(scalar(lines, "title"), config.spacedock_goal_cap_chars),
             }
-    with state.cache_lock:
-        runtime_state.bounded_put(
-            state.spacedock_workflow_cache, key, result, limit=config.max_cache_entries
-        )
+    if _settled(info):
+        with state.cache_lock:
+            runtime_state.bounded_put(
+                state.spacedock_workflow_cache, key, result, limit=config.max_cache_entries
+            )
     return result
 
 
@@ -742,8 +764,9 @@ def entity_stage(
 ) -> str:
     """The ``status`` scalar in one entity file's frontmatter, or "".
 
-    Cached on ``(path, st_mtime_ns, st_size)``, so a state directory in which
-    only one entity is moving costs one read per refresh and a stat per file.
+    Cached on ``(path, st_mtime_ns, st_size)`` once settled (``RACY_STAT_NS``),
+    so a state directory in which only one entity is moving costs one read per
+    refresh and a stat per file.
     """
     key = (path, info.st_mtime_ns, info.st_size)
     with state.cache_lock:
@@ -755,10 +778,11 @@ def entity_stage(
     except SdMismatchError:
         return ""
     stage = scalar(lines, "status")
-    with state.cache_lock:
-        runtime_state.bounded_put(
-            state.spacedock_entity_cache, key, stage, limit=config.max_cache_entries
-        )
+    if _settled(info):
+        with state.cache_lock:
+            runtime_state.bounded_put(
+                state.spacedock_entity_cache, key, stage, limit=config.max_cache_entries
+            )
     return stage
 
 

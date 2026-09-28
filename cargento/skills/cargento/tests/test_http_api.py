@@ -1485,11 +1485,20 @@ class AskEndpointTest(RuntimeTestCase):
         # `_register` walks to the next candidate port and registers the question
         # on a second dashboard, while the first keeps a card that cannot be
         # withdrawn because its id was in the lost reply.
+        #
+        # So the client's reply arrives BEFORE the notifier runs, and nothing joins
+        # the handler thread: asserting as soon as the POST returns raced the
+        # thread, and lost on a slow macOS runner (DRC-4707). Wait on the notifier
+        # itself, inside the server's lifetime, and on `handle_error` too so its
+        # patch is still in place when the raised traceback reaches it.
         config, state = self._runtime(platform_name="darwin")
         calls: list[tuple[str, str]] = []
+        notified = threading.Event()
+        handled = threading.Event()
 
         def boom(title: str, message: str) -> None:
             calls.append((title, message))
+            notified.set()
             raise RuntimeError("osascript exploded after the reply")
 
         application = aggregate.Application(
@@ -1504,7 +1513,9 @@ class AskEndpointTest(RuntimeTestCase):
         with (
             # The traceback is the point of the test, not a surprise: keep it out
             # of the run's output.
-            mock.patch.object(http_api.CargentoHTTPServer, "handle_error", lambda *_a: None),
+            mock.patch.object(
+                http_api.CargentoHTTPServer, "handle_error", lambda *_a: handled.set()
+            ),
             self._serving(application) as port,
         ):
             status, body = self._post(
@@ -1519,11 +1530,13 @@ class AskEndpointTest(RuntimeTestCase):
                     }
                 ).encode(),
             )
+            self.assertTrue(notified.wait(5), "the notifier never ran")
+            handled.wait(5)
         self.assertEqual(200, status)
         payload = json.loads(body)
         self.assertIs(True, payload["ok"])
         self.assertTrue(payload["id"])
-        self.assertEqual(1, len(calls), "the notifier never ran")
+        self.assertEqual(1, len(calls), "the notifier ran more than once")
 
 
 class AskShutdownTest(RuntimeTestCase):
