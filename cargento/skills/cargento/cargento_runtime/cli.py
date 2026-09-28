@@ -721,6 +721,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     exit is a returned code, so the CLI is callable from a test without
     catching SystemExit.
     """
+    lifecycle.unignore_sigterm()
     parser = build_parser()
     args = parser.parse_args(argv)
     # Sampled before the combination check: the start stamp names this process,

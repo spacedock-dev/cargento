@@ -2012,7 +2012,14 @@ class AnIgnoredHangupStaysIgnoredTest(unittest.TestCase):
         server.terminate()
         self.assertEqual(0, server.wait(timeout=15))
 
-    def _start_ignoring(self, name: str) -> tuple[subprocess.Popen[bytes], int]:
+    def _start_ignoring(
+        self, name: str, *, stall_in: str | None = None
+    ) -> tuple[subprocess.Popen[bytes], int]:
+        """Start a server with `name` ignored, and return once it reached its point.
+
+        Without `stall_in` the point is the state file. With it, the server parks
+        in that step until killed, and the point is the step being entered.
+        """
         number = getattr(signal, name)
         home = Path(tempfile.mkdtemp())
         self.addCleanup(shutil.rmtree, home, True)
@@ -2021,20 +2028,35 @@ class AnIgnoredHangupStaysIgnoredTest(unittest.TestCase):
             port = int(listener.getsockname()[1])
         env = {**os.environ, "CARGENTO_HOME": str(home), "PYTHONNOUSERSITE": "1"}
         env.pop("PYTHONPATH", None)
+        arguments = ["--port", str(port), "--no-events"]
+        reached = home / f"cargento-{port}.json"
+        command = [sys.executable, str(SERVER_PATH), *arguments]
+        if stall_in is not None:
+            reached = home / "stalled"
+            command = [
+                sys.executable,
+                "-c",
+                _STALLED_SERVER,
+                str(SERVER_PATH.parent),
+                stall_in,
+                str(reached),
+                *arguments,
+            ]
         server = subprocess.Popen(
-            [sys.executable, str(SERVER_PATH), "--port", str(port), "--no-events"],
+            command,
             env=env,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
             start_new_session=True,
             preexec_fn=lambda: signal.signal(number, signal.SIG_IGN),  # noqa: PLW1509
         )
+        self.addCleanup(server.wait)  # cleanups run last-first: reaped after the kill
         self.addCleanup(server.kill)
-        state = home / f"cargento-{port}.json"
+        self.state = home / f"cargento-{port}.json"
         deadline = time.monotonic() + 20
-        while not state.exists() and server.poll() is None and time.monotonic() < deadline:
+        while not reached.exists() and server.poll() is None and time.monotonic() < deadline:
             time.sleep(0.05)
-        self.assertTrue(state.exists(), "the server never started")
+        self.assertTrue(reached.exists(), "the server never reached the point under test")
         return server, number
 
     def test_a_server_run_under_nohup_survives_a_hangup(self) -> None:
@@ -2051,6 +2073,30 @@ class AnIgnoredHangupStaysIgnoredTest(unittest.TestCase):
             0, server.wait(timeout=15), "an inherited ignore kept SIGTERM from stopping it"
         )
 
+    def test_sigterm_between_the_state_file_and_the_serve_loop_still_stops_it(self) -> None:
+        """DRC-4737: the state file is out before the serve loop, so a `kill` can land between.
+
+        The inherited ignore used to hold until the exit handler went in after
+        recovery, and a SIGTERM in that gap was dropped for good. Recovery is
+        stalled here so the signal lands there every run, and the server must
+        exit cleanly and take its state file with it.
+        """
+        server, _ = self._start_ignoring("SIGTERM", stall_in="recover")
+        self.assertTrue(self.state.exists(), "the state file precedes recovery")
+        os.kill(server.pid, signal.SIGTERM)
+        self.assertEqual(0, server.wait(timeout=15), "a SIGTERM before the serve loop was dropped")
+        self.assertFalse(self.state.exists(), "a stopped server left its state file")
+
+    def test_sigterm_during_assembly_still_stops_it(self) -> None:
+        """DRC-4737: before the bind there is nothing to clean up, so it stops as by default."""
+        server, _ = self._start_ignoring("SIGTERM", stall_in="assembly")
+        os.kill(server.pid, signal.SIGTERM)
+        self.assertEqual(
+            -signal.SIGTERM,
+            server.wait(timeout=15),
+            "a SIGTERM during assembly was dropped",
+        )
+
 
 class ADashboardIsAliveOnlyByItsStateFileTest(unittest.TestCase):
     """Review F4: a reused pid is not a dashboard unless a state file here names it."""
@@ -2065,6 +2111,31 @@ class ADashboardIsAliveOnlyByItsStateFileTest(unittest.TestCase):
         self.assertTrue(lifecycle.dashboard_alive(config, parent))
         Path(home, "cargento-4598.json").write_text(json.dumps({"pid": 999_999_9, "port": 4598}))
         self.assertFalse(lifecycle.dashboard_alive(config, 999_999_9), "a dead pid is no dashboard")
+
+
+# The server with one step parked: it announces the step, then waits there for
+# a signal. `recover` runs after the state file is written, `assembly` before
+# the bind. A dropped SIGTERM reads as the wait outliving the test's own.
+_STALLED_SERVER = """
+import sys, time
+from pathlib import Path
+sys.path.insert(0, sys.argv[1])
+from cargento_runtime import cli, reading_jobs
+step, reached = sys.argv[2], Path(sys.argv[3])
+
+def parked(real):
+    def park(*args, **kwargs):
+        reached.write_text(step)
+        time.sleep(30)
+        return real(*args, **kwargs)
+    return park
+
+if step == "recover":
+    reading_jobs.recover = parked(reading_jobs.recover)
+else:
+    cli.build_application = parked(cli.build_application)
+raise SystemExit(cli.main(sys.argv[4:]))
+"""
 
 
 _HANGUP_DAEMON = """
