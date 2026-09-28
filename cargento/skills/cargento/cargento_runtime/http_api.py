@@ -1644,7 +1644,10 @@ class _RequestHandler(BaseHTTPRequestHandler):
     def _reading_press(self, harness: str, sid: str, payload: dict[str, Any]) -> None:
         """An admitted press on one session: Keep's settlement, route, permission, job."""
         self._keep_outcome = None
-        if "settle_through" in payload and not self._keep(harness, sid, payload):
+        if "settle_through" in payload:
+            if not self._keep(harness, sid, payload):
+                return
+        elif not self._press_revision_current(harness, sid, payload):
             return
         route = self._reading_route(harness, payload)
         if route is None:
@@ -1654,6 +1657,34 @@ class _RequestHandler(BaseHTTPRequestHandler):
             self._reading_permission_reply(permission)
             return
         self._reading_adoption(harness, sid, payload, route)
+
+    def _press_revision_current(self, harness: str, sid: str, payload: dict[str, Any]) -> bool:
+        """Whether a plain press names the revision stored now, or names none (DRC-4732).
+
+        Checked first, before the route, any Allow write, the adoption and the
+        job: the analysis composes from the stored entry, so a page drawn
+        against an older revision would have the model read words its reader
+        never saw. Keep checks its own revision in the store write it makes.
+        A press that names none is an older page's, and is read as it was.
+        """
+        if "expected_revision" not in payload:
+            return True
+        expected = payload["expected_revision"]
+        if isinstance(expected, bool) or not isinstance(expected, int):
+            self._reject(400)
+            return False
+        config = self.server.application.config
+        state = self.server.application.state
+        entry = annotation_store.find(annotation_store.active(config, state), harness, sid)
+        stored = entry["revisions"][-1]["n"] if entry and entry["revisions"] else 0
+        if expected == stored:
+            return True
+        self._send(
+            self._reading_json({"ok": False, "produced": False, "reason": "revision-changed"}),
+            "application/json",
+            409,
+        )
+        return False
 
     def _reading_cancel(self) -> None:
         """Cancel the named running analysis (DRC-4693).

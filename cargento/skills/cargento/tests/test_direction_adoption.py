@@ -29,10 +29,12 @@ from cargento_runtime import (
     http_api,
     observer,
     project_context,
+    reading_policy,
     reading_route,
     records,
 )
 from cargento_runtime import annotations as annotation_store
+from cargento_runtime import reading as runtime_reading
 from cargento_runtime import reading_jobs as runtime_reading_jobs
 from cargento_runtime import sessions as runtime_sessions
 from cargento_runtime.config import build_runtime_config
@@ -1069,8 +1071,10 @@ class DirectionRouteTest(_ClaudeSession):
         )
 
 
-class KeepRouteTest(unittest.TestCase):
-    """Keep on both routes: settling needs no reader, and a press settles first."""
+class _ReadingRouteHandler(unittest.TestCase):
+    """A handler over a real store, whose replies are recorded rather than sent."""
+
+    replies: list[tuple[dict[str, Any], int]]
 
     def _runtime(self) -> Any:
         home = tempfile.mkdtemp()
@@ -1094,6 +1098,10 @@ class KeepRouteTest(unittest.TestCase):
         handler.client_address = ("127.0.0.1", 10000)
         handler.rfile = io.BytesIO(body)
         return handler
+
+
+class KeepRouteTest(_ReadingRouteHandler):
+    """Keep on both routes: settling needs no reader, and a press settles first."""
 
     KEEP: dict[str, Any] = {  # noqa: RUF012
         "harness": "claude",
@@ -1216,6 +1224,92 @@ class KeepRouteTest(unittest.TestCase):
             self._press(config, state)
         answer, code = self.replies[-1]
         self.assertEqual((503, "stored"), (code, answer.get("settled")))
+
+
+class APlainPressNamesItsRevisionTest(_ReadingRouteHandler):
+    """DRC-4732: Analyze from a page drawn against an older revision starts nothing.
+
+    Before the route, the permission, any Allow write, the adoption and the job,
+    so a stale tab's press neither reads words its reader never saw nor records
+    anything. A press that names no revision (an older page) is unchanged.
+    """
+
+    def _plain(self, config: Any, state: Any, **over: Any) -> Any:
+        payload = {
+            "harness": "claude",
+            "sid": SHORT,
+            "press": True,
+            "observer_model": 1,
+            "provider": "codex",
+            **over,
+        }
+        payload = {k: v for k, v in payload.items() if v is not None}
+        handler = self._handler(config, state, payload)
+        with (
+            mock.patch.object(shutil, "which", lambda name: f"/usr/local/bin/{name}"),
+            mock.patch.object(reading_route, "destination", return_value=""),
+            mock.patch.object(
+                handler, "_compose_reading", return_value=(None, "test", False)
+            ) as compose,
+        ):
+            handler._reading()
+        return compose
+
+    def _saved(self, config: Any, state: Any) -> None:
+        annotation_store.annotate(config, state, "claude", SHORT, goal="My goal", now=FIRST_AT)
+
+    def test_a_press_naming_the_current_revision_starts_the_analysis(self) -> None:
+        config, state = self._runtime()
+        self._saved(config, state)
+        compose = self._plain(config, state, allow=True, expected_revision=1)
+        self.assertEqual(1, compose.call_count)
+        self.assertEqual(202, self.replies[-1][1])
+
+    def test_a_stale_press_starts_nothing_and_records_no_allow(self) -> None:
+        config, state = self._runtime()
+        self._saved(config, state)
+        annotation_store.annotate(config, state, "claude", SHORT, goal="Newer", now=FIRST_AT + 1)
+        compose = self._plain(config, state, allow=True, expected_revision=1)
+        self.assertEqual(0, compose.call_count)
+        answer, code = self.replies[-1]
+        self.assertEqual((409, "revision-changed", False), (code, answer["reason"], answer["ok"]))
+        self.assertEqual({}, runtime_reading.published_jobs(config))
+        self.assertFalse(
+            reading_policy.status(config, now=NOW, provider="codex")["consent"],
+            "a refused press recorded the Allow it carried",
+        )
+
+    def test_a_stale_press_over_a_draft_adopts_nothing(self) -> None:
+        config, state = self._runtime()
+        self._saved(config, state)
+        compose = self._plain(
+            config,
+            state,
+            allow=True,
+            adopt="first-prompt",
+            expected_prompt=FIRST,
+            expected_prompt_at=FIRST_AT,
+            expected_revision=0,
+        )
+        self.assertEqual(0, compose.call_count)
+        self.assertEqual(409, self.replies[-1][1])
+        self.assertEqual("My goal", annotation_store.load(config)[0]["revisions"][-1]["goal"])
+
+    def test_a_press_that_names_no_revision_is_read_as_before(self) -> None:
+        config, state = self._runtime()
+        self._saved(config, state)
+        annotation_store.annotate(config, state, "claude", SHORT, goal="Newer", now=FIRST_AT + 1)
+        compose = self._plain(config, state, allow=True)
+        self.assertEqual(1, compose.call_count)
+
+    def test_a_revision_that_is_not_a_number_is_refused(self) -> None:
+        config, state = self._runtime()
+        self._saved(config, state)
+        for bad in ("1", True, 1.0):
+            with self.subTest(bad=bad):
+                compose = self._plain(config, state, allow=True, expected_revision=bad)
+                self.assertEqual(0, compose.call_count)
+                self.assertEqual(400, self.replies[-1][1])
 
 
 if __name__ == "__main__":
