@@ -27,7 +27,7 @@ from typing import TYPE_CHECKING, Any
 from . import reading
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable, Mapping
+    from collections.abc import Iterable, Mapping, Sequence
 
 NONE_OR_LOW = "none_or_low"
 MEDIUM = "medium"
@@ -549,3 +549,27 @@ def _cites(row: Mapping[str, Any]) -> list[str]:
     return (
         [str(c) for c in raw if isinstance(c, str) and c] if isinstance(raw, (list, tuple)) else []
     )
+
+
+def rose_from(steps: Sequence[str]) -> tuple[str, int] | None:
+    """Where the latest level was reached from a lower one, or None.
+
+    `steps` is one source's level after each step of a run, oldest first. The
+    answer is the level before the final run of the current level and the
+    index of the step that began it, only when both are on the drift scale and
+    the current one is higher: "Not enough recorded yet" is no level to rise
+    from, and a fall or a hold says nothing rose. Recomputed from the steps on
+    every call and never stored (the ruling's item 6).
+    """
+    if not steps or steps[-1] not in DRIFT_SCALE:
+        return None
+    current = steps[-1]
+    start = len(steps) - 1
+    while start > 0 and steps[start - 1] == current:
+        start -= 1
+    if start == 0:
+        return None
+    before = steps[start - 1]
+    if before not in DRIFT_SCALE or DRIFT_SCALE.index(before) >= DRIFT_SCALE.index(current):
+        return None
+    return before, start

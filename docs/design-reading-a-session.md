@@ -2365,3 +2365,25 @@ part of what the owner's marks validate.
 - A level passes the owner's mark when it matches or reassures less. "Not enough recorded yet" is
   more cautious than "None or low" only. Said of a case marked Medium or higher, it hides drift the
   owner saw.
+
+### What the live estimate build decided, 2026-09-28
+
+DRC-4696 built the live estimate in the panel and the header. The ruling left these open, and each
+was settled on the withholding side.
+
+- The server computes it, not the page. `live_estimate.py` replays the focused session's calls
+  through the same tally the record is published from and asks `levels.live_level` after every write
+  or shell call, so the level now is the validated function over the published facts and "Rose from"
+  comes from the same replay. It is published on the focused project context only. The reading
+  route's context, which the unasked lane reads, carries none, and neither does a row.
+- The switch is never sent, so the server computes the estimate for the focused session whenever it
+  has a saved intent, and the page decides whether to draw it.
+- "Rose from <level> at #<n>" is said only when both levels are on the scale and the entry the rise
+  came from is still in the record the page numbers. "Not enough recorded yet" is no level to rise
+  from, and a call whose entry a later run replaced has no number, so the sentence is left out
+  rather than pointed at another entry.
+- A level computed against a revision other than the one the panel shows is not drawn.
+- The pill shows a level on the scale only. "Not enough recorded yet" stays in the Drift section,
+  and the pill is not a link, because the page routes on its fragment.
+- The nudge is drawn and never announced: no live region, because the live estimate raises nothing
+  (item 5). It is not drawn while an analysis runs.

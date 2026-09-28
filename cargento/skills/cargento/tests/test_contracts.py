@@ -1703,9 +1703,17 @@ class RuntimeImportGraphTest(unittest.TestCase):
         },
         # The drift levels (DEC-26) read the producer's closed vocabulary: its
         # result sentences, `why` tokens and outcome-line names, spelt once
-        # there. Nothing imports `levels` yet; DRC-4696 and DRC-4695 will.
+        # there. `live_estimate` imports it (DRC-4696); DRC-4695 will too.
         "cargento_runtime.levels": {
             "cargento_runtime.reading",
+        },
+        # The live estimate (DRC-4696) replays `project_context`'s own tally and
+        # counts later directions by Steer back's rule, with no model.
+        "cargento_runtime.live_estimate": {
+            "cargento_runtime.config",
+            "cargento_runtime.correction",
+            "cargento_runtime.levels",
+            "cargento_runtime.project_context",
         },
         # A reading job's thread (DRC-4686): it writes the outcome through the
         # store and reads the job registry beside the slot in `reading`. The
@@ -1801,6 +1809,8 @@ class RuntimeImportGraphTest(unittest.TestCase):
             "cargento_runtime.copied_corrections",
             # `POST /api/correction`, Steer back's correction (DRC-4681).
             "cargento_runtime.correction",
+            # The focused project context's live drift estimate (DRC-4696).
+            "cargento_runtime.live_estimate",
             # Resolves the one provider a press may reach (DRC-4650).
             "cargento_runtime.reading_route",
             "cargento_runtime.tripwires",

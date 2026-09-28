@@ -26,6 +26,7 @@ from cargento_runtime import (
     correction,
     departures,
     dismissals,
+    live_estimate,
     notifications,
     quota,
     reading_policy,
@@ -316,6 +317,48 @@ def _session_context(application: Any, row: dict[str, Any]) -> dict[str, Any]:
 def _latest_revision(entry: annotation_store.Annotation | None) -> int:
     """The number of an entry's latest revision, or 0 where it holds none."""
     return entry["revisions"][-1]["n"] if entry and entry["revisions"] else 0
+
+
+def _with_live_level(
+    application: Any,
+    context: dict[str, Any],
+    rows: list[dict[str, Any]],
+    focus: tuple[str, str],
+) -> dict[str, Any]:
+    """The focused session's project context with its live drift estimate (DRC-4696).
+
+    On this route alone, the page's: `_session_context` is what the reading
+    route and the unasked lane read, and neither is given a level (item 5 of
+    [DEC-26](docs/design-reading-a-session.md#dec-26-four-drift-levels-and-a-live-estimate-after-every-turn)).
+    With annotations off there are no saved words to estimate against.
+    """
+    config = application.config
+    harness, sid = focus
+    matching = [r for r in rows if r.get("harness") == harness and r.get("sid") == sid]
+    if (
+        harness not in live_estimate.HARNESSES
+        or not config.annotations_enabled
+        or len(matching) != 1
+    ):
+        return context
+    row = matching[0]
+    transcript = runtime_observer.resolve_transcript(config, application.state, harness, sid)
+    if not transcript:
+        return context
+    entry = annotation_store.find(annotation_store.active(config, application.state), harness, sid)
+    live = live_estimate.for_session(
+        config,
+        row,
+        transcript,
+        _facts_of(context),
+        floor=annotation_store.direction_floor(entry, row),
+        now=application.clock(),
+    )
+    raw_sources = context.get("sources")
+    sources: dict[str, Any] = raw_sources if isinstance(raw_sources, dict) else {}
+    raw_work = sources.get("work")
+    work: dict[str, Any] = raw_work if isinstance(raw_work, dict) else {}
+    return {**context, "sources": {**sources, "work": {**work, "live_levels": [live]}}}
 
 
 def _facts_of(context: dict[str, Any]) -> list[Any]:
@@ -854,6 +897,8 @@ class _RequestHandler(BaseHTTPRequestHandler):
         # reading route see; the unasked lane receives no copy (item 12 of the ruling
         # `copied_corrections` cites).
         result = copied_corrections.mark(result, collected["sessions"])
+        if focus is not None:
+            result = _with_live_level(application, result, collected["sessions"], focus)
         self._send(
             json.dumps(result, ensure_ascii=False, separators=(",", ":")).encode(),
             "application/json",
