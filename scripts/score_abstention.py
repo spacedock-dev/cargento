@@ -352,7 +352,9 @@ class BinaryError(Exception):
 
 def _display_path(path: str) -> str:
     home = abstention_ledger.real_home()
-    return "~" + path[len(home) :] if path == home or path.startswith(home + os.sep) else path
+    if path == home or path.startswith(home + os.sep):
+        return "~" + path[len(home) :].replace(os.sep, "/")
+    return path
 
 
 # The native CLI's signer, measured with `codesign -dv` on 2.1.283

@@ -176,9 +176,11 @@ _CLAUDE_FROZEN_FIELDS = ("tool_output", "transcript_bytes", "parser")
 
 
 def display_path(path: str) -> str:
-    """A path under the account's home in `~` form."""
+    """A path under the account's home in `~` form, spelled with `/` on every platform."""
     home = abstention_ledger.real_home()
-    return "~" + path[len(home) :] if path == home or path.startswith(home + os.sep) else path
+    if path == home or path.startswith(home + os.sep):
+        return "~" + path[len(home) :].replace(os.sep, "/")
+    return path
 
 
 def packet_lines(path: str, body: dict[str, Any]) -> list[str]:
