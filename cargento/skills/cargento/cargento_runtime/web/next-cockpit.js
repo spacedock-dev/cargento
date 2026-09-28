@@ -3449,6 +3449,15 @@ const NEXT_COCKPIT_CORRECTION_OLDER =
   "This was composed from an older record. Recompose replaces your edit with a correction from " +
   "the record as it stands.";
 
+/* The failed checks after the words, by the server's rule (`_failed_checks`):
+   the correction's "A check failed at" names the latest of them. */
+function nextCockpitFailedChecks(session, entries){
+  const opened = nextNumber(session && session.annotation_window_start) || 0;
+  return entries.filter(entry => entry.type === "tool_report" && entry.subject === "check" &&
+    entry.result === "failed" && nextNumber(entry.at) > 0 &&
+    (nextReadingEvidenceAt(entry) || 0) > 0 && nextReadingEvidenceAt(entry) >= opened);
+}
+
 /* Whether there is anything to steer from, by the server's own rule
    (`correction.compose`) over what this page holds, or null: saved words, and
    a departure that survives in a reading of those words, a failed check after
@@ -3464,10 +3473,7 @@ function nextCockpitSteerOffer(session, annotation, source, shape){
   const current = Boolean(shape && !shape.malformed && shape.revisionRead != null &&
     shape.revisionRead === nextNumber(annotation && annotation.revision));
   const departed = current && shape.departures.length > 0;
-  const opened = nextNumber(session.annotation_window_start) || 0;
-  const failed = entries.some(entry => entry.type === "tool_report" && entry.subject === "check" &&
-    entry.result === "failed" && nextNumber(entry.at) > 0 &&
-    (nextReadingEvidenceAt(entry) || 0) > 0 && nextReadingEvidenceAt(entry) >= opened);
+  const failed = nextCockpitFailedChecks(session, entries).length > 0;
   const later = nextCockpitLaterDirections(annotation, entries, session).length > 0;
   return departed || failed || later ? {departed} : null;
 }
@@ -3538,14 +3544,24 @@ function nextCockpitCorrectionIds(source){
     : null;
 }
 
-/* Whether the held correction was composed from a record that no longer holds.
-   An unread record says nothing either way, so it never marks one stale. */
-function nextCockpitCorrectionStale(held, annotation, source){
+function nextCockpitCorrectionFailedIds(session, source){
+  const read = source && (source.state === "read" || source.state === "empty");
+  return read ? nextCockpitFailedChecks(session, source.all || source.entries || [])
+    .map(entry => String(entry.id || "")) : null;
+}
+
+/* Whether the held correction was composed from a record that no longer holds:
+   a stamp that moved, a cited entry gone, or a failed check it did not see,
+   which would leave "A check failed at" naming an older one (V3). An unread
+   record says nothing either way, so it never marks one stale. */
+function nextCockpitCorrectionStale(held, annotation, source, session){
   if(!held || !Array.isArray(held.parts)) return false;
   if(held.stale) return true;
   if(held.stamp != null && held.stamp !== nextCockpitCorrectionStamp(annotation)) return true;
   const ids = nextCockpitCorrectionIds(source);
-  return Boolean(ids && Array.isArray(held.cited) && held.cited.some(id => !ids.has(id)));
+  if(ids && Array.isArray(held.cited) && held.cited.some(id => !ids.has(id))) return true;
+  const failed = session ? nextCockpitCorrectionFailedIds(session, source) : null;
+  return Boolean(failed && Array.isArray(held.failed) && failed.some(id => !held.failed.includes(id)));
 }
 
 /* On every render of the slot. Unedited, a correction from a record that no
@@ -3560,12 +3576,13 @@ function nextCockpitCorrectionFollow(session, annotation, source, offer){
      there is anything to steer from is not known, and a box closed then would
      close on a gap in the page rather than a change in the record. */
   const ids = nextCockpitCorrectionIds(source);
-  if(!held || held.pending || !Array.isArray(held.parts) || !ids) return;
+  if(!held || held.pending || held.recomposing || !Array.isArray(held.parts) || !ids) return;
   if(!Array.isArray(held.cited)){
     held.cited = held.parts.filter(part => typeof part !== "string")
       .map(part => String(part.entry || "")).filter(id => ids.has(id));
   }
-  if(!nextCockpitCorrectionStale(held, annotation, source)) return;
+  if(!Array.isArray(held.failed)) held.failed = nextCockpitCorrectionFailedIds(session, source);
+  if(!nextCockpitCorrectionStale(held, annotation, source, session)) return;
   if(held.edited){
     held.stale = true;
     return;
@@ -3574,10 +3591,12 @@ function nextCockpitCorrectionFollow(session, annotation, source, offer){
     nextCockpitCorrections.delete(key);
     return;
   }
-  held.pending = true;
+  /* The old box stays drawn while the request is out, so a key typed into it
+     lands in it rather than nowhere (V5). */
+  held.recomposing = true;
   const stamp = nextCockpitCorrectionStamp(annotation);
   /* After this render: a render never starts a request inside itself. */
-  Promise.resolve().then(() => nextCockpitComposeCorrection(session, stamp, {quiet: true}));
+  Promise.resolve().then(() => nextCockpitComposeCorrection(session, stamp, {quiet: held}));
 }
 
 function nextCockpitSteerButton(session, primary){
@@ -3652,16 +3671,20 @@ function nextCockpitSteerBack(session, stamp){
   return nextCockpitComposeCorrection(session, stamp);
 }
 
-/* One request for the session's correction. `quiet` is a recomposition the
-   reader did not press for (`nextCockpitCorrectionFollow`): the box is already
-   hidden, and with nothing left to steer from it closes rather than refusing
-   a press nobody made. */
-async function nextCockpitComposeCorrection(session, stamp, {quiet = false} = {}){
+/* One request for the session's correction. `quiet` is the held entry of a
+   recomposition the reader did not press for (`nextCockpitCorrectionFollow`):
+   that box stays drawn until the answer, an edit made to it meanwhile keeps
+   it as the reader's, the answer is drawn with the ordinary focus capture so
+   a reader typing elsewhere stays there (V1), and with nothing left to steer
+   from it closes rather than refusing a press nobody made. */
+async function nextCockpitComposeCorrection(session, stamp, {quiet = null} = {}){
   const key = sessKey(session);
   const next = {open: true, pending: true, parts: null, text: null, edited: false, why: "",
-    cue: "", stamp, cited: null};
-  nextCockpitCorrections.set(key, next);
-  if(!quiet) renderNext();
+    cue: "", stamp, cited: null, failed: null};
+  if(!quiet){
+    nextCockpitCorrections.set(key, next);
+    renderNext();
+  }
   try{
     const response = await fetch("/api/correction", {method: "POST",
       headers: {"Content-Type": "application/json"},
@@ -3680,14 +3703,20 @@ async function nextCockpitComposeCorrection(session, stamp, {quiet = false} = {}
   }catch(_error){
     next.why = NEXT_COCKPIT_CORRECTION_FAILED;
   }
-  /* Replaced or closed while the request was out: that answer is not this box's. */
-  if(nextCockpitCorrections.get(key) !== next) return;
   next.pending = false;
-  if(quiet && next.why === NEXT_COCKPIT_CORRECTION_NOTHING){
-    nextCockpitCorrections.delete(key);
+  if(quiet){
+    /* Replaced, closed or edited while the request was out: that answer is not
+       this box's, and an edit keeps the reader's text with Recompose beside it. */
+    if(nextCockpitCorrections.get(key) !== quiet) return;
+    quiet.recomposing = false;
+    if(quiet.edited) quiet.stale = true;
+    else if(!quiet.open || next.why === NEXT_COCKPIT_CORRECTION_NOTHING) nextCockpitCorrections.delete(key);
+    else nextCockpitCorrections.set(key, next);
     renderNext();
     return;
   }
+  /* Replaced or closed while the request was out: that answer is not this box's. */
+  if(nextCockpitCorrections.get(key) !== next) return;
   renderNext({named: next.why ? `steer-back:${key}` : `correction:${key}`});
 }
 
@@ -3700,7 +3729,7 @@ async function nextCockpitCopyCorrection(session, target, source){
   if(!held || !Array.isArray(held.parts) || held.copying || held.pending) return;
   /* Never a text composed from a record that no longer holds, unless the
      reader made it theirs: the redraw recomposes it instead. */
-  if(!held.edited && nextCockpitCorrectionStale(held, nextCockpitAnnotation(session), source)){
+  if(!held.edited && nextCockpitCorrectionStale(held, nextCockpitAnnotation(session), source, session)){
     renderNext();
     return;
   }
@@ -6244,9 +6273,67 @@ document.addEventListener("input", event => {
     ? "Saved in this browser" : "Browser storage unavailable";
 });
 
+/* The run of code points an edit inserted into `before` to give `typed`: the
+   common head and tail, with the caret, where the field has one, deciding
+   which of two equal runs moved. */
+function nextCockpitCorrectionEdit(before, typed, caret){
+  const was = [...before];
+  const now = [...typed];
+  let tail = 0;
+  if(typeof caret === "number" && caret >= 0 && caret <= typed.length){
+    const after = [...typed.slice(caret)];
+    if(after.length <= was.length && before.endsWith(after.join(""))) tail = after.length;
+  }
+  let head = 0;
+  const most = Math.min(was.length, now.length) - tail;
+  while(head < most && was[head] === now[head]) head += 1;
+  if(!(typeof caret === "number")){
+    while(tail < Math.min(was.length, now.length) - head &&
+      was[was.length - 1 - tail] === now[now.length - 1 - tail]) tail += 1;
+  }
+  return {head: now.slice(0, head).join(""), run: now.slice(head, now.length - tail),
+    tail: now.slice(now.length - tail).join("")};
+}
+
+/* The leading whole characters of `run` that fit in `room` code points: by
+   grapheme where the platform segments text, and otherwise never ending on a
+   base whose combining mark or joined character is left behind. */
+function nextCockpitCorrectionWhole(run, room){
+  if(room <= 0) return "";
+  const text = run.join("");
+  if(typeof Intl === "object" && typeof Intl.Segmenter === "function"){
+    let kept = "";
+    let count = 0;
+    for(const {segment} of new Intl.Segmenter(undefined, {granularity: "grapheme"}).segment(text)){
+      const width = [...segment].length;
+      if(count + width > room) break;
+      kept += segment;
+      count += width;
+    }
+    return kept;
+  }
+  let cut = Math.min(room, run.length);
+  const joined = /^[\p{M}\u200d\ufe0e\ufe0f]$/u;
+  while(cut > 0 && cut < run.length && (joined.test(run[cut]) || run[cut - 1] === "\u200d")) cut -= 1;
+  return run.slice(0, cut).join("");
+}
+
+/* An edit past the cap keeps the reader's existing text and cuts the inserted
+   run (V2), or null when the edit fits. A first version kept the first 2,000
+   code points of the whole value, so a paste in the middle cut the text's end
+   and left a bare "e" where "é" had been split. */
+function nextCockpitCorrectionFit(before, typed, caret){
+  if(nextCockpitCorrectionLength(typed) <= NEXT_COCKPIT_CORRECTION_CAP) return null;
+  const edit = nextCockpitCorrectionEdit(before, typed, caret);
+  const kept = nextCockpitCorrectionLength(edit.head) + nextCockpitCorrectionLength(edit.tail);
+  const run = nextCockpitCorrectionWhole(edit.run, NEXT_COCKPIT_CORRECTION_CAP - kept);
+  return {value: edit.head + run + edit.tail, caret: edit.head.length + run.length};
+}
+
 /* The correction box, edited in place with no redraw, for the held fields'
    measured reason below. Capped at the copy route's 2,000 characters, counted
-   as the server counts them, whole characters kept, and never otherwise cut;
+   as the server counts them, cut from what the edit inserted and never from
+   the text already there;
    an edit makes the text the reader's own and clears the Copy cue, which
    described the text before it. */
 document.addEventListener("input", event => {
@@ -6256,9 +6343,13 @@ document.addEventListener("input", event => {
   const held = nextCockpitCorrections.get(String(input.dataset.nextCockpitCorrectionKey || ""));
   if(!held) return;
   const typed = String(input.value || "");
-  const value = nextCockpitCorrectionLength(typed) > NEXT_COCKPIT_CORRECTION_CAP
-    ? [...typed].slice(0, NEXT_COCKPIT_CORRECTION_CAP).join("") : typed;
-  if(value !== input.value) input.value = value;
+  const before = typeof held.text === "string" ? held.text : String(input.defaultValue || "");
+  const fitted = nextCockpitCorrectionFit(before, typed, input.selectionEnd);
+  const value = fitted ? fitted.value : typed;
+  if(fitted && value !== input.value){
+    input.value = value;
+    if(typeof input.setSelectionRange === "function") input.setSelectionRange(fitted.caret, fitted.caret);
+  }
   held.text = value;
   held.edited = true;
   const box = input.closest ? input.closest("[data-next-steer-box]") : null;

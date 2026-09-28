@@ -2183,7 +2183,10 @@ saved-line labels. The calls the rulings left open:
 - Consistent lines are dropped one at a time, the last first, until the text fits. Every
   placeholder is counted at six digits, so the page's text never passes 2,000 whatever it numbers.
   Both sides count characters as code points: the page has no `maxlength`, which counts UTF-16
-  units, so a correction of emoji is shown whole and one keystroke never cuts it.
+  units, so a correction of emoji is shown whole and one keystroke never cuts it. An edit past
+  the cap is cut from the run it inserted, by whole characters, and never from the text already
+  there: keeping the first 2,000 code points of the whole value cut a mid-text paste's tail and
+  split "é" into a bare "e".
 - Claude Code only, as the copy route is, so a paste of the correction can be recognised coming
   back. An unknown session and another harness answer what a session with nothing to steer from
   does.

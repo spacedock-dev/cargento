@@ -769,6 +769,186 @@ class SteerBackPressesTest(_DraftPage):
         self.assertEqual("Copied", out)
 
 
+# The reply to a recompose, held until the test lets it go, so what the page shows while the
+# request is out can be read (V5).
+HOLD = """
+let __holding = false, __release = null;
+const __heldFetch = __fetchImpl;
+__fetchImpl = async (url, init) => {
+  if(__holding && String(url) === "/api/correction"){
+    await new Promise(resolve => { __release = resolve; });
+  }
+  return __heldFetch(url, init);
+};
+"""
+# A second failing check that supersedes nothing: the correction's "A check failed at" is about
+# the latest failed check, so the box no longer says what the record does (V3).
+NEWFAIL = (
+    '__semantic.facts.push({fact_id:"c-fail-2", at:104.9, type:"tool_report", subject:"check",'
+    ' result:"failed", summary:"pytest tests/unit", source_session:{harness:"claude",'
+    ' sid:"focus-1"}, evidence:{source:"Claude Bash call and paired result",'
+    ' confidence:"exact"}});\n' + REDRAW
+)
+
+
+@unittest.skipUnless(shutil.which("node"), "node not available")
+class ABackgroundRecomposeLeavesTheReaderAloneTest(_DraftPage):
+    """A recompose nobody pressed for never moves focus or hides the box (V1, V5)."""
+
+    SETUP = TYPED + QUIET + LINES + CHECK + DEPARTURE + reply(composed()) + INPUT + COPY + HOLD
+
+    def test_it_names_no_focus_target_so_the_reader_stays_where_they_are(self) -> None:
+        out = self.drive(
+            self.SETUP,
+            '__press("steer-back");\nawait __settle();\nawait __settle();\n'
+            + reply(FRESH).replace("\n", "")
+            + "\n__renders.length = 0;\n"
+            + REREAD
+            + "console.log(JSON.stringify({html:__els.app.innerHTML, posts:__posts,"
+            " renders:__renders}));",
+        )
+        self.assertEqual(2, len(correction_posts(out)))
+        self.assertEqual(
+            "Back to my goal: fresh.\nPlease continue from here.", textarea_of(out["html"])
+        )
+        self.assertNotIn({"named": f"correction:{KEY}"}, out["renders"])
+        self.assertNotIn({"named": f"steer-back:{KEY}"}, out["renders"])
+
+    def test_the_old_box_stays_drawn_while_the_request_is_out(self) -> None:
+        out = self.drive(
+            self.SETUP,
+            '__press("steer-back");\nawait __settle();\nawait __settle();\n'
+            + reply(FRESH).replace("\n", "")
+            + "\n__holding = true;\n"
+            + REREAD
+            + "const __during = __els.app.innerHTML;\n"
+            "__release();\nawait __settle();\nawait __settle();\nawait __settle();\n"
+            "console.log(JSON.stringify({during:__during, html:__els.app.innerHTML,"
+            " posts:__posts}));",
+        )
+        self.assertEqual(2, len(correction_posts(out)))
+        self.assertIn("departed at", textarea_of(out["during"]))
+        self.assertEqual(
+            "Back to my goal: fresh.\nPlease continue from here.", textarea_of(out["html"])
+        )
+
+    def test_what_the_reader_types_while_it_is_out_is_kept_as_theirs(self) -> None:
+        mine = "Back to my goal: typed while it was out."
+        out = self.drive(
+            self.SETUP,
+            '__press("steer-back");\nawait __settle();\nawait __settle();\n'
+            + reply(FRESH).replace("\n", "")
+            + "\n__holding = true;\n"
+            + REREAD
+            + f"__typeCorrection({json.dumps(mine)});\n"
+            "__release();\nawait __settle();\nawait __settle();\nawait __settle();\n"
+            "console.log(JSON.stringify({html:__els.app.innerHTML, posts:__posts}));",
+        )
+        self.assertEqual(mine, textarea_of(out["html"]))
+        self.assertIn(STALE_NOTE, visible_text(drift_of(out["html"])))
+        self.assertIn(">Recompose</button>", out["html"])
+
+
+@unittest.skipUnless(shutil.which("node"), "node not available")
+class ANewFailedCheckRecomposesTest(_DraftPage):
+    SETUP = TYPED + QUIET + LINES + CHECK + DEPARTURE + reply(composed()) + INPUT + COPY
+
+    def test_a_failed_check_after_the_press_recomposes_an_unedited_box(self) -> None:
+        out = self.drive(
+            self.SETUP,
+            '__press("steer-back");\nawait __settle();\nawait __settle();\n'
+            + reply(FRESH).replace("\n", "")
+            + "\n"
+            + NEWFAIL
+            + "console.log(JSON.stringify({html:__els.app.innerHTML, posts:__posts}));",
+        )
+        self.assertEqual(2, len(correction_posts(out)))
+        self.assertEqual(
+            "Back to my goal: fresh.\nPlease continue from here.", textarea_of(out["html"])
+        )
+
+
+# 314 characters, as the verifier's box was, ending in the sentence an end-cut loses first.
+BASE = "Back to my goal: " + "q" * 270 + "\nPlease continue from here."
+ACUTE = "é"
+# An insertion into the box at a code-point offset, as a keystroke or a paste lands: the field's
+# value after the edit, the caret after the inserted run, and the text the box was drawn with.
+INSERT = """
+const __insertCorrection = (at, text, drawn) => {
+  const before = __lastCorrection === null ? drawn : __lastCorrection;
+  const cps = [...before];
+  const head = cps.slice(0, at).join("");
+  const el = {value: head + text + cps.slice(at).join(""), defaultValue: drawn,
+    selectionStart: head.length + text.length, selectionEnd: head.length + text.length,
+    setSelectionRange(start, end){ this.selectionStart = start; this.selectionEnd = end; },
+    dataset:{nextCockpitCorrectionKey:"claude:focus-1"},
+    closest(selector){ return selector === "[data-next-cockpit-correction-key]" ? this : null; }};
+  __fire("input", {target: el});
+  __lastCorrection = el.value;
+  return {value: el.value, caret: [el.selectionStart, el.selectionEnd]};
+};
+let __lastCorrection = null;
+"""
+
+
+def units(text: str) -> int:
+    return len(text.encode("utf-16-le")) // 2
+
+
+@unittest.skipUnless(shutil.which("node"), "node not available")
+class AnEditAtTheCapCutsOnlyTheInsertionTest(_DraftPage):
+    """Past the cap the inserted run is cut, never the reader's existing text (V2)."""
+
+    SETUP = TYPED + QUIET + LINES + CHECK + DEPARTURE + INPUT + INSERT + COPY
+
+    def inserted(self, *edits: tuple[int, str]) -> Any:
+        calls = "".join(
+            f"__edits.push(__insertCorrection({at}, {json.dumps(text)}, {json.dumps(BASE)}));\n"
+            for at, text in edits
+        )
+        return self.drive(
+            self.SETUP + reply({"ok": True, "parts": [BASE]}),
+            '__press("steer-back");\nawait __settle();\nawait __settle();\n'
+            "const __edits = [];\n" + calls + '__press("correction-copy");\n'
+            "await __settle();\nawait __settle();\n"
+            "console.log(JSON.stringify({edits:__edits, copied:__copied}));",
+        )
+
+    def test_the_verifiers_paste_keeps_the_tail_and_whole_characters(self) -> None:
+        paste = "\U0001f680" * 1000 + ACUTE * 600
+        out = self.inserted((50, paste))
+        room = 2000 - len(BASE)
+        kept = "\U0001f680" * 1000 + ACUTE * ((room - 1000) // 2)
+        expected = BASE[:50] + kept + BASE[50:]
+        self.assertEqual(2000, len(expected))
+        self.assertEqual(expected, out["edits"][0]["value"])
+        self.assertTrue(out["edits"][0]["value"].endswith("Please continue from here."))
+        self.assertEqual([units(BASE[:50] + kept)] * 2, out["edits"][0]["caret"])
+        self.assertEqual([expected], out["copied"])
+
+    def test_an_odd_character_left_over_never_leaves_a_bare_base(self) -> None:
+        # One code point of room past the rockets: the next "é" is two, so none of it goes in.
+        base_room = 2000 - len(BASE) - 1000
+        paste = "\U0001f680" * 1000 + "x" * (base_room - 3) + ACUTE * 5
+        out = self.inserted((50, paste))
+        value = out["edits"][0]["value"]
+        self.assertEqual(
+            BASE[:50] + "\U0001f680" * 1000 + "x" * (base_room - 3) + ACUTE,
+            value[: 50 + 1000 + base_room - 3 + 2],
+        )
+        self.assertTrue(value.endswith(BASE[50:]))
+        self.assertEqual(1999, len(value))
+
+    def test_typing_at_the_cap_does_nothing_to_the_existing_text(self) -> None:
+        fill = "z" * (2000 - len(BASE))
+        out = self.inserted((50, fill), (20, "Z"))
+        full = BASE[:50] + fill + BASE[50:]
+        self.assertEqual(full, out["edits"][0]["value"])
+        self.assertEqual(full, out["edits"][1]["value"])
+        self.assertEqual([20, 20], out["edits"][1]["caret"])
+        self.assertEqual([full], out["copied"])
+
+
 @unittest.skipUnless(shutil.which("node"), "node not available")
 class OnlyClaudeCodeIsOfferedSteerBackTest(_DraftPage):
     def test_a_codex_session_with_a_departure_and_a_failed_check_has_no_steer_back(self) -> None:
