@@ -2298,6 +2298,24 @@ saved-line labels. The calls the rulings left open:
   the cap is cut from the run it inserted, by whole characters, and never from the text already
   there: keeping the first 2,000 code points of the whole value cut a mid-text paste's tail and
   split "é" into a bare "e".
+  DRC-4739 intercepts ordinary cap-crossing insertions before they land, using the browser's native
+  edit transaction. On Chrome, assigning the trimmed value after a paste erased Undo; inserting
+  the fitted text through the native edit command kept Undo and Redo. Paste uses its clipboard
+  event because textarea `beforeinput` carried neither `data` nor `dataTransfer`. An unavailable
+  native insertion refuses the edit and keeps the existing text. Return's null-data
+  `insertLineBreak` and `insertParagraph` events mean a newline; one that fits, including by
+  replacing a selection, proceeds as an ordinary edit. At the cap it keeps all existing text.
+  Composition is different: its
+  provisional text stands until the commit, and an overflowing commit is refused whole. Native
+  Undo is used only when it restores the exact pre-composition text; otherwise that text is
+  restored by assignment, with a sentence saying Undo is unavailable for the refused edit. This
+  is preservation of the reader's words, not a claim that every browser supports the native edit.
+  Automatic paints wait while the edited correction has focus, with a visible sentence saying
+  updates are paused until the reader leaves the box. New payloads still arrive in memory. Blur
+  draws the latest record after any pointer click dispatch and keeps the committed text;
+  native Undo is preserved during editing,
+  and ends when that redraw replaces the editor. Retaining and moving the same textarea did not
+  keep Chrome's Undo history, even through a continuously connected atomic move.
 - Claude Code only, as the copy route is, so a paste of the correction can be recognised coming
   back. An unknown session and another harness answer what a session with nothing to steer from
   does.
@@ -2314,6 +2332,8 @@ saved-line labels. The calls the rulings left open:
   "Nothing recorded now gives a correction to steer back from." and "Could not compose a
   correction. Press Steer back again to retry." on 2026-09-28. A press over either refusal asks
   again, in one press.
+  Copy during a recomposition reads "Copy unavailable" and copies nothing; an active native
+  composition is not copied either.
 - An open box follows the record. The press stamps what composition read: the saved words'
   revision, the settlement, the stored reading's `read_at`, and the entries the parts cite. A
   change in any of them drops a text the reader has not edited, which is recomposed from the server
@@ -2321,6 +2341,10 @@ saved-line labels. The calls the rulings left open:
   a text composed from a record that no longer holds. An edited text stays the reader's, marked
   "This was composed from an older record. Recompose replaces your edit with a correction from the
   record as it stands." beside a Recompose button; both wait on the owner.
+  While a quiet recomposition is out, the old box keeps its exact last rendered text, including its
+  old entry numbers. An edit or input-method composition begun before the answer keeps the reader's
+  text and sets that answer aside. The [reader-state inventory](design-reader-state.md) owns the
+  focused-edit and composition paint pauses.
 - Update intent instead offers the direction a surviving departure cites, else the latest later
   direction, through Add's own `POST /api/direction`, skipping any direction already saved as a
   line; with none left it adds the empty line. The store refuses an entry already saved as another

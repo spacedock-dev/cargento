@@ -1332,7 +1332,7 @@ console.log(JSON.stringify({
         self.assertIn('<h1 tabindex="-1">Attention</h1>', out["attention"]["html"])
         self.assertEqual([], out["assigned"])
         self.assertEqual("?all=1", out["search"])
-        self.assertEqual(2, out["keydownListeners"])
+        self.assertEqual(3, out["keydownListeners"])
         self.assertEqual(4, out["focusMovements"])
 
     def test_projects_shortcut_keeps_modifier_and_form_field_guards(self) -> None:
