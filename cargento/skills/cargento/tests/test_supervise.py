@@ -20,7 +20,7 @@ import threading
 import time
 import unittest
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 from unittest import mock
 
 from cargento_runtime import supervise
@@ -45,6 +45,155 @@ def _wait_until(predicate: Any, timeout: float = 10.0) -> bool:
             return True
         time.sleep(0.05)
     return bool(predicate())
+
+
+class GroupQuiescenceTest(unittest.TestCase):
+    def test_only_a_running_member_of_the_group_keeps_its_output_open(self) -> None:
+        for output, expected in (
+            ("42 S\n42 Z\n", True),
+            ("42 Z+\n17 S\n", False),
+            ("42 Z\n17 ?\n", False),
+            ("17 S\n", None),
+            ("42 ?\n", None),
+            ("not a snapshot\n", None),
+            ("", None),
+        ):
+            with self.subTest(snapshot=output):
+                self.assertIs(expected, supervise._group_state(output, 42))
+
+    @unittest.skipIf(sys.platform == "win32", "native POSIX process states")
+    def test_the_native_probe_distinguishes_a_running_group_from_its_zombie(self) -> None:
+        process = subprocess.Popen(
+            [sys.executable, "-c", "import time; time.sleep(30)"], start_new_session=True
+        )
+        try:
+            self.assertIs(True, supervise._group_running(process.pid, 1.0))
+            process.kill()
+            self.assertTrue(_wait_until(lambda: supervise._state(process.pid, 0.0) == "exited"))
+            self.assertIs(False, supervise._group_running(process.pid, 1.0))
+            self.assertIsNone(process.returncode, "the probe reaped the reserved leader identity")
+        finally:
+            with contextlib.suppress(OSError):
+                process.kill()
+            process.wait()
+
+    def test_a_probe_spawn_that_stalls_cannot_hold_the_reap_past_its_bound(self) -> None:
+        started, release, cleaned = threading.Event(), threading.Event(), threading.Event()
+
+        class Probe:
+            stdout = None
+
+            def poll(self) -> None:
+                return None
+
+            def kill(self) -> None:
+                pass
+
+            def communicate(self) -> None:
+                cleaned.set()
+
+        def spawn(*_a: Any, **_kw: Any) -> Probe:
+            started.set()
+            release.wait(3)
+            return Probe()
+
+        try:
+            with mock.patch.object(subprocess, "Popen", spawn):
+                before = time.monotonic()
+                self.assertIsNone(supervise._group_running(42, 0.05))
+                self.assertLess(time.monotonic() - before, 0.5)
+                self.assertTrue(started.is_set())
+                release.set()
+                self.assertTrue(cleaned.wait(1), "a late probe was not killed and reaped")
+        finally:
+            release.set()
+
+    def test_an_unreadable_snapshot_does_not_prove_the_group_stopped(self) -> None:
+        with mock.patch.object(subprocess, "Popen", side_effect=OSError("unavailable")):
+            self.assertIsNone(supervise._group_running(42, 1.0))
+
+    def test_a_failed_native_probe_cannot_prove_the_group_stopped(self) -> None:
+        process = mock.Mock(returncode=1)
+        process.communicate.return_value = ("42 Z\n", None)
+        process.poll.return_value = 1
+        with mock.patch.object(subprocess, "Popen", return_value=process):
+            self.assertIsNone(supervise._group_running(42, 1.0))
+        process.stdout.close.assert_called_once()
+
+    def test_a_probe_read_timeout_kills_and_reaps_only_that_probe(self) -> None:
+        process = mock.Mock(returncode=None)
+        process.communicate.side_effect = (subprocess.TimeoutExpired("ps", 0.01), ("", None))
+        process.poll.return_value = None
+        with mock.patch.object(subprocess, "Popen", return_value=process):
+            self.assertIsNone(supervise._group_running(42, 1.0))
+        process.kill.assert_called_once()
+        self.assertEqual(2, process.communicate.call_count)
+        process.stdout.close.assert_called_once()
+
+    def test_a_probe_thread_that_cannot_start_does_not_prove_the_group_stopped(self) -> None:
+        with mock.patch.object(threading.Thread, "start", side_effect=RuntimeError("unavailable")):
+            self.assertIsNone(supervise._group_running(42, 1.0))
+
+    def test_an_expired_group_deadline_starts_no_further_probe(self) -> None:
+        group = supervise.Group(_FakeWindowsProcess(exits=True))  # type: ignore[arg-type]
+        with (
+            mock.patch.object(supervise, "_group_running") as probe,
+            self.assertRaises(supervise.UnstoppedError),
+        ):
+            group._wait_group(time.monotonic() - 1)
+        probe.assert_not_called()
+
+    def test_a_group_that_remains_live_exhausts_the_same_deadline(self) -> None:
+        group = supervise.Group(_FakeWindowsProcess(exits=True))  # type: ignore[arg-type]
+        before = time.monotonic()
+        with (
+            mock.patch.object(supervise, "_group_running", return_value=True) as probe,
+            self.assertRaises(supervise.UnstoppedError),
+        ):
+            group._wait_group(before + 0.025)
+        self.assertTrue(probe.called)
+        self.assertLess(time.monotonic() - before, 0.5)
+
+    @unittest.skipIf(sys.platform == "win32", "POSIX leader identity")
+    def test_failed_quiescence_observation_refuses_and_reaps_the_killed_leader(self) -> None:
+        process = subprocess.Popen(
+            [sys.executable, "-c", "import time; time.sleep(30)"], start_new_session=True
+        )
+        group = supervise.Group(process)
+        try:
+            with (
+                mock.patch.object(supervise, "_group_running", return_value=None),
+                self.assertRaises(supervise.UnstoppedError),
+            ):
+                group._finish()
+            self.assertIsNotNone(process.returncode)
+            with mock.patch.object(os, "killpg", side_effect=AssertionError("reused group")):
+                group.kill()
+        finally:
+            with contextlib.suppress(OSError):
+                process.kill()
+            process.wait()
+
+    def test_a_windows_job_whose_writers_do_not_stop_has_one_reap_deadline(self) -> None:
+        group = supervise.Group(_FakeWindowsProcess(exits=True), job=7)  # type: ignore[arg-type]
+        group._reap_by = time.monotonic() + 0.05
+        before = time.monotonic()
+        with (
+            mock.patch.object(supervise._windows, "terminate", return_value=True),
+            mock.patch.object(supervise._windows, "active", return_value=1),
+            self.assertRaises(supervise.UnstoppedError),
+        ):
+            group._finish_windows()
+        self.assertLess(time.monotonic() - before, 0.5)
+
+    def test_a_failed_windows_job_query_cannot_publish_a_normal_reply(self) -> None:
+        group = supervise.Group(_FakeWindowsProcess(exits=True), job=7)  # type: ignore[arg-type]
+        with (
+            mock.patch.object(supervise._windows, "terminate", return_value=True),
+            mock.patch.object(supervise._windows, "active", side_effect=OSError("query failed")),
+            self.assertRaises(supervise.UnstoppedError),
+        ):
+            group._finish_windows()
 
 
 class SupervisedRunTest(unittest.TestCase):
@@ -844,6 +993,86 @@ class AnOutputFileHasABoundTest(unittest.TestCase):
                 output_limit=(str(out), 1 << 20),
             )
 
+    @unittest.skipIf(sys.platform == "win32", "the Job Object has its own completion test")
+    def test_a_helpers_last_write_is_checked_after_the_whole_group_stops(self) -> None:
+        out = self.home / "reply.txt"
+        pid_file, ready, release = (self.home / name for name in ("helper.pid", "ready", "release"))
+        helper = (
+            "import pathlib, sys, time\n"
+            "ready, release = map(pathlib.Path, sys.argv[1:])\n"
+            "ready.touch()\n"
+            "deadline = time.monotonic() + 10\n"
+            "while not release.exists() and time.monotonic() < deadline: time.sleep(0.005)\n"
+            "if not release.exists(): sys.exit(1)\n"
+            "sys.stdout.buffer.write(bytes(2 << 20)); sys.stdout.flush()\n"
+        )
+        leader = (
+            "import pathlib, subprocess, sys, time\n"
+            "child = subprocess.Popen([sys.executable, '-c', sys.argv[4], sys.argv[2], sys.argv[3]])\n"
+            "pathlib.Path(sys.argv[1]).write_text(str(child.pid))\n"
+            "while not pathlib.Path(sys.argv[2]).exists(): time.sleep(0.005)\n"
+        )
+        real_probe = getattr(supervise, "_group_running", None)
+        probes: list[int] = []
+        groups: list[supervise.Group] = []
+        finished = False
+
+        def probe(pgid: int, timeout: float) -> bool | None:
+            # The helper's last write is held until quiescence is actually
+            # observed, so a leader-only wait always sees an empty file.
+            release.touch()
+            probes.append(pgid)
+            assert real_probe is not None
+            return cast("bool | None", real_probe(pgid, timeout))
+
+        try:
+            with (
+                mock.patch.object(supervise, "kill_group", return_value=True),
+                mock.patch.object(supervise, "_group_running", probe, create=True),
+                out.open("wb") as handle,
+                self.assertRaises(supervise.OversizedError),
+            ):
+                supervise.run(
+                    [sys.executable, "-c", leader, str(pid_file), str(ready), str(release), helper],
+                    stdout=handle,
+                    stderr=subprocess.DEVNULL,
+                    timeout=10,
+                    output_limit=(str(out), 1 << 20),
+                    on_spawn=groups.append,
+                )
+            finished = True
+            self.assertTrue(probes)
+            self.assertEqual(2 << 20, out.stat().st_size)
+        finally:
+            if not finished and groups and pid_file.exists():
+                with contextlib.suppress(OSError):
+                    pid = int(pid_file.read_text())
+                    if os.getpgid(pid) == groups[0].pid:
+                        os.kill(pid, signal.SIGKILL)
+
+    def test_a_windows_helpers_last_write_is_checked_after_the_job_stops(self) -> None:
+        out = self.home / "reply.txt"
+        out.write_bytes(b"")
+        process = _FakeWindowsProcess(exits=True)
+        group = supervise.Group(process, job=7)  # type: ignore[arg-type]
+        states = iter((1, 0))
+
+        def active(_job: int) -> int:
+            count = next(states)
+            if count == 0:
+                out.write_bytes(bytes(2 << 20))
+            return count
+
+        with (
+            mock.patch.object(sys, "platform", "win32"),
+            mock.patch.object(supervise._windows, "terminate", return_value=True),
+            mock.patch.object(supervise._windows, "active", active, create=True),
+            mock.patch.object(supervise._windows, "close"),
+            mock.patch.object(supervise, "_spawn", return_value=group),
+            self.assertRaises(supervise.OversizedError),
+        ):
+            supervise.run(["cli"], stdout=subprocess.DEVNULL, output_limit=(str(out), 1 << 20))
+
     @unittest.skipIf(sys.platform == "win32", "a Job Object has no unwatchable exit")
     def test_the_poll_fallback_still_reports_a_burst_that_exits_at_once(self) -> None:
         """Codex P1, the part the poll can reach: the final size is still read."""
@@ -911,6 +1140,7 @@ class AnOutputFileHasABoundTest(unittest.TestCase):
         with (
             mock.patch.object(sys, "platform", "win32"),
             mock.patch.object(supervise._windows, "terminate", terminate),
+            mock.patch.object(supervise._windows, "active", return_value=0),
             mock.patch.object(supervise._windows, "close", lambda _job: None),
             mock.patch.object(supervise, "_spawn", lambda *_a, **_k: group),
             self.assertRaises(supervise.OversizedError),

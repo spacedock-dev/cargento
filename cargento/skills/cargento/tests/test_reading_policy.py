@@ -594,6 +594,21 @@ class TheJobLedgerTest(unittest.TestCase):
                 db.close()
                 self.assertIsNone(self._charged("j2", started_at=1_000.0, now=2_000.0))
 
+    def test_a_job_at_the_watermark_cannot_be_called_uncharged(self) -> None:
+        assert runtime_io.sqlite_module is not None
+        with runtime_io.sqlite_module.connect(reading_policy.store_path(self.config)) as db:
+            watermark = db.execute("SELECT at FROM spend_jobs_since WHERE id = 1").fetchone()[0]
+        self.assertIsNone(self._charged("absent", started_at=watermark, now=watermark + 1.0))
+        self.assertIs(
+            False, self._charged("absent", started_at=watermark + 0.5, now=watermark + 1.0)
+        )
+
+    def test_a_missing_watermark_cannot_answer_for_an_absent_job(self) -> None:
+        assert runtime_io.sqlite_module is not None
+        with runtime_io.sqlite_module.connect(reading_policy.store_path(self.config)) as db:
+            db.execute("DELETE FROM spend_jobs_since")
+        self.assertIsNone(self._charged("absent", started_at=100.0, now=200.0))
+
     def test_a_reservation_records_its_job_and_no_other(self) -> None:
         reading_policy.reserve(self.config, now=100.0, job_id="j1")
         self.assertIs(True, self._charged("j1"))

@@ -1887,8 +1887,10 @@ the poll-fallback limit on DRC-4713.
   after the charge was the alternative, and it only moves the window: a death between the commit
   and the rewrite leaves a charged attempt uncounted.
 - An output file past 1 MiB stops the call. The wait looks at the output file's size every
-  0.01 s while the CLI runs, and once more when it has exited, before the group or Job Object is let
-  go, and past `observer.OUTPUT_FILE_LIMIT_BYTES` it kills the CLI's group or Job Object the way a
+  0.01 s while the CLI runs, and once more after the group or Job Object has no live writer
+  (DRC-4729). Watched POSIX cleanup keeps the leader unreaped while it observes group states;
+  Windows waits for the Job Object's active-process count to reach zero. An uncertain or timed-out
+  observation refuses the reply. The documented poll fallback cannot prove this quiescence. Past `observer.OUTPUT_FILE_LIMIT_BYTES` it kills the CLI's group or Job Object the way a
   Cancel does. The slice was 0.1 s in the first build, and an unpaused writer put 286 to 600 MiB on
   disk before the first look; at 0.01 s it measured 41 to 89 MiB. A CLI that wrote past the bound
   and exited inside one slice first read as an ordinary reply, which the look after the exit
