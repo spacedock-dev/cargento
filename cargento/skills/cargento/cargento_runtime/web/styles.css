@@ -935,6 +935,7 @@ input::placeholder,textarea::placeholder{color:var(--ink2)}
 /* The control with its hint and send disclosure, first in the Drift section,
    and the caveats on the reader's words below the reading (DRC-4639). */
 .next-session-drift-check,.next-session-drift-caveats{display:flex;flex-direction:column;gap:8px;padding:0 16px 14px}
+.next-session-drift>.next-cockpit-held-lede{margin:0 16px 14px}
 /* One narrow column: the buttons share a row, and a disclosure before "Allow
    and analyze" or a no-reader reason takes the full width above them. */
 .next-cockpit-reading-ask{display:flex;flex-wrap:wrap;gap:8px 12px;align-items:center}

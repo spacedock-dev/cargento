@@ -12452,44 +12452,17 @@ console.log(JSON.stringify({
         assert isinstance(out, dict)
         return out
 
-    def test_the_lede_is_the_first_thing_on_the_tab(self) -> None:
-        """AC-1. Falsified by emitting it after the fields grid, or omitting it."""
+    def test_the_saved_introduction_follows_the_action_and_precedes_the_reading(self) -> None:
+        """The first-screen action takes priority over saved onboarding (DRC-4748)."""
         out = self.tab()
         html = out["html"]
         assert isinstance(html, str)
-        # The tab, not the page. The chrome and the scope rail state absences of
-        # their own above every panel, and this criterion is about what the tab
-        # opens on. Sliced from the panel to the end of the document rather than
-        # to a matching `</section>`, which nested sections make unfindable by
-        # scan; anything after the panel is also after the lede, so the slice
-        # can only ever add elements the assertion still holds for.
         panel = html[html.index("data-next-session-drift") :]
         at = panel.index('class="next-cockpit-held-lede"')
-        self.assertLess(at, panel.index('class="next-cockpit-held-fields"'))
-        # Every absence element the board rendered, found by the same convention
-        # `test_next_page._absence_rules` sweeps the stylesheet with: an
-        # `-absent` class-name segment, or one of the three absence attributes.
-        #
-        # The four-string list this replaces failed twice over one gap, and the
-        # second failure is why adding a fifth string could not have fixed it:
-        # the strings were passed through `if absence in html`, so an absence
-        # this tab renders and nobody listed was both off the list AND filtered
-        # out of the comparison -- the loop then ran over the three that did
-        # render and reported success. A list that silently drops its own
-        # misses is not a shorter version of this sweep; it is a different
-        # assertion.
-        absences = [
-            match.start()
-            for match in re.finditer(
-                r'<\w+[^>]*?(?:class="[^"]*-absent[^"]*"'
-                r"|data-absence=|data-next-absent|data-next-withheld)[^>]*>",
-                panel,
-            )
-        ]
-        self.assertGreater(len(absences), 3, "no absence element rendered to be measured against")
-        for start in absences:
-            with self.subTest(absence=panel[start : start + 60]):
-                self.assertLess(at, start)
+        self.assertLess(panel.index('class="next-cockpit-held-fields"'), at)
+        self.assertLess(panel.index('data-next-cockpit-action="direction-keep"'), at)
+        self.assertLess(at, panel.index("<h2>READING</h2>"))
+        self.assertEqual(1, panel.count('class="next-cockpit-held-lede"'))
 
     def test_the_lede_claims_no_automatic_reading(self) -> None:
         """AC-2, on the default board -- the one the `--unasked-readings`

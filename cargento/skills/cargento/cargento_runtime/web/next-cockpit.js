@@ -5106,7 +5106,7 @@ function nextCockpitDriftBlock(group, session, primary){
     '<header><h2 id="next-session-intent-heading" tabindex="-1" ' +
     `data-next-focus="${esc(nextCockpitIntentHeadingKey(session))}">Intent</h2>` + confirmed +
     `<span class="next-cockpit-held-bound">${esc(sessKey(session))}</span></header>` +
-    lede +
+    (drafted ? lede : "") +
     (nextCockpitStoreUnreadable()
       ? `<p class="next-cockpit-held-absent">${esc(nextCockpitStoreUnreadable())}</p>` : "") +
     /* One line, the stamp and what it means, rather than two (DRC-4680 fold). */
@@ -5126,7 +5126,12 @@ function nextCockpitDriftBlock(group, session, primary){
   const discard = nextCockpitHeldDiscardBlock(session, annotation);
   const caveats = ended || discarded || binding || discard
     ? `<div class="next-session-drift-caveats">${ended}${discarded}${binding}${discard}</div>` : "";
-  const panel = open + intent + head + reading.control + reading.reading +
+  /* The saved introduction took 69.75px above the fields and put Analyze at
+     892.5–936.5 with three lines and High on a 1440x900 board (DRC-4748).
+     Keep its words below the action; the first-prompt draft's guide stays
+     with the fields the reader is being asked to choose. */
+  const savedIntroduction = drafted ? "" : lede;
+  const panel = open + intent + head + reading.control + savedIntroduction + reading.reading +
     nextCockpitConflict(session, annotation, workSource) + caveats + reading.departures +
     '</section></aside>';
   /* In the activity column: the numbered list the reading cites right after
