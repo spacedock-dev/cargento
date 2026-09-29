@@ -7,6 +7,7 @@ operator's sessions, and the shell examples are parsed rather than executed.
 from __future__ import annotations
 
 import os
+import shlex
 import unittest
 from types import SimpleNamespace
 from typing import Any, cast
@@ -224,7 +225,9 @@ class ChecksUseTheirShellsDirectory(ClaudeChecksTestCase):
 
     def test_a_literal_absolute_cd_recovers_placement_after_cdpath(self) -> None:
         self.session.bash(
-            f"CDPATH=/elsewhere cd sub; cd {self.cwd}; pytest > result", "", is_error=False
+            f"CDPATH=/elsewhere cd sub; cd {shlex.quote(str(self.cwd))}; pytest > result",
+            "",
+            is_error=False,
         )
         rows, counts = self.read()
         self.assertEqual(["result"], [r["title"] for r in rows if r["subject"] == "write"])
