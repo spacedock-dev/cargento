@@ -1020,10 +1020,22 @@ class AnOutputFileHasABoundTest(unittest.TestCase):
         def probe(pgid: int, timeout: float) -> bool | None:
             # The helper's last write is held until quiescence is actually
             # observed, so a leader-only wait always sees an empty file.
+            deadline = time.monotonic() + timeout
             release.touch()
             probes.append(pgid)
             assert real_probe is not None
-            return cast("bool | None", real_probe(pgid, timeout))
+            helper_pid = int(pid_file.read_text())
+            # macOS can show this exiting helper as `?E`. The controlled
+            # fixture waits for its exit; production still refuses that state.
+            self.assertTrue(
+                _wait_until(
+                    lambda: not process_alive(helper_pid),
+                    timeout=max(0.0, deadline - time.monotonic()),
+                ),
+                "the controlled helper did not finish its last write and exit",
+            )
+            self.assertEqual(2 << 20, out.stat().st_size)
+            return cast("bool | None", real_probe(pgid, max(0.0, deadline - time.monotonic())))
 
         try:
             with (
