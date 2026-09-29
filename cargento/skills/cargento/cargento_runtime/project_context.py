@@ -2071,12 +2071,16 @@ class _ShellLexer:
         previous, self.bodies = self.bodies, []
         try:
             self._skip_group(arithmetic=arithmetic)
+            nested = self.bodies
         finally:
             self.bodies = previous
         body = self.text[start : self.pos - 1]
         if not arithmetic:
             self.bodies.append(body)
             return _SUBSTITUTED
+        # Arithmetic effects stay unknown, while its actual executable
+        # substitutions still supply private named values to tail masking.
+        self.bodies.extend(nested)
         if "$(" in body or "`" in body:
             self.bodies.append(_UNREAD_BODY)
         return _ARITHMETIC
@@ -2204,6 +2208,8 @@ class _ShellLexer:
                 raise _Unbalanced
             if char == "$" and after == "{":
                 self._braced()
+            elif arithmetic and ((char == "$" and after == "(") or char == "`"):
+                self._substitution()
             elif self._skip_quoted(char):
                 pass
             elif arithmetic:
@@ -2350,6 +2356,7 @@ def _body_facts(body: str) -> tuple[bool, tuple[str, ...]]:
         return False, ()
     reads = all(
         not part.hides_change
+        and not _writes_a_file(part.redirects)
         and (
             not part.words
             or part.words[0] == "cd"
@@ -2407,11 +2414,12 @@ def _call_parts(text: str, depth: int = 0) -> list[_Part]:
         wrapper = tuple((r, offset) for r in _without(segment.redirects, segment.outer))
         # Its script is parsed into inner words below. Treating that entire
         # script as one assignment also masks ordinary runner/summary words.
-        prefix = segment.words[: len(segment.words) - len(words) + inner[1]] if inner else []
+        script = len(segment.words) - len(words) + inner[1] if inner else 0
+        outer_words = [*segment.words[:script], *segment.words[script + 1 :]]
         parts.extend(
             part._replace(
                 outer=(*((r, at + offset) for r, at in part.outer), *outer, *wrapper),
-                raw=(*prefix, *part.raw) if index == 0 else part.raw,
+                raw=(*outer_words, *part.raw) if index == 0 else part.raw,
                 hidden_values=(*hidden_values, *part.hidden_values)
                 if index == 0
                 else part.hidden_values,

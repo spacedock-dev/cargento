@@ -1392,7 +1392,8 @@ item 5's fields and the closed lists.
    named by its path counts. The option set is closed: single-letter clusters over `e`, `u`, `l` and
    `c`, `-o pipefail`, `--login`, `--noprofile` and `--norc`, with `-c` the last option and
    exactly one command word after it. Words after that are `$0` and the positional arguments, and
-   are neither matched nor published. The command word is parsed again and its segments are spliced
+   are neither matched as runners nor published. Their named values still enter private masking
+   and written-path withholding. The command word is parsed again and its segments are spliced
    in place of the wrapper's: the last inner segment takes the wrapper's joiner, so every attribution
    rule applies unchanged and only withholds. A wrapper sent to the background sends every inner
    segment with it, a background launch inside one is counted, a redirection on the wrapper applies
@@ -1411,7 +1412,9 @@ item 5's fields and the closed lists.
    from `$'…'` ends that string, as it ends the argument the program receives. An unquoted word
    holding a brace expansion (`{a,b}`, `{x..y}`) is published as `…`, since the words it becomes are
    unknown, and so is the word after it, since `--{x,password} value` expands to a named flag and
-   its value. Each named value masked anywhere in the call, assignments, wrapper prefixes and executed substitutions included, and each piece of it of four characters or more, is also removed from the output tail
+   its value. Each named value masked anywhere in the call, assignments, wrapper arguments and
+   executed substitutions included, and each piece of it of four characters or more, is also
+   removed from the output tail
    before redaction and clipping. Literal and shell re-quoted spellings, including xtrace's split
    apostrophe, match at filename and identifier boundaries, so masking `test` leaves `test_a.py`,
    `contest` and `src/test` readable. A wrapper's script is read as its inner words rather than as
@@ -1430,7 +1433,11 @@ item 5's fields and the closed lists.
    as a change unless its own command is read-only by the closed lists, read with these same rules.
    A segment that is only a redirection into a file (`> build/output`) writes that file, so it is a
    change too.
-   `$((…))` is arithmetic and runs nothing unless it holds a substitution. This also settles
+   `$((…))` is arithmetic and runs nothing unless it holds a substitution. Nested executable
+   commands supply private named values without reading arithmetic literal text as shell commands;
+   arithmetic holding a substitution keeps its unknown, changing classification. A file redirect
+   inside an executable body is checked before the empty-word and `cd` shortcuts, so neither can
+   hide a write. This also settles
    DRC-4724's second acceptance criterion.
 
 No published field was added or removed. Titles change for a wrapper and for values that are now

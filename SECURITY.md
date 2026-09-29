@@ -1311,8 +1311,9 @@ flag and its value are masked as a pair even with a redirection between them, an
 program. A value after any other flag is published as typed unless it has a credential shape.
 
 The output tail is covered by credential-shape redaction, and by one more step: each named value
-masked anywhere in the call, assignments, wrapper prefixes and executed substitutions included, and each piece of it of
-four characters or more, is removed before redaction and the 180-character clip. This covers the
+masked anywhere in the call, assignments, wrapper arguments and executed substitutions included,
+and each piece of it of four characters or more, is removed before redaction and the 180-character
+clip. This covers the
 literal value and its shell re-quoting, including an apostrophe split by xtrace, since an echoed
 command (`set -x`, a runner printing its arguments) repeats it. Matching respects filename and
 identifier boundaries: a password `test` does not rewrite `test_a.py`, `contest` or `src/test`.
