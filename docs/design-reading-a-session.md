@@ -1219,8 +1219,17 @@ Runners, matched on the first word or words of a stripped segment:
 - Type-check: `mypy`, `pyright`, `tsc --noEmit`, `cargo check`, `go vet`.
 
 Read-only commands, matched the same way, for segments that are not checks: `git status`,
-`git log`, `git diff`, `git show`, `ls`, `cat`, `head`, `tail`, `grep`, `rg`, `find`, `wc`, `pwd`,
-`echo`, `which`, `file`, `stat`, `tree` and `less`. Any other segment that is not a check, run after
+`git log`, `git diff`, `git show`, `git rev-parse`, `git merge-base`, `ls`, `cat`, `head`, `tail`,
+`grep`, `rg`, `find`, `wc`, `pwd`, `echo`, `which`, `file`, `stat`, `tree` and `less`; the portable
+`date` display forms (no arguments or one `+format`, optionally with `-u`, `--utc` or `--universal`);
+and REST `gh api` with one endpoint, no field, body, header or cache flags, and no method or an
+explicit `GET`. Its accepted options are `--paginate`, `--slurp`, `--silent`, `--include`, `-i`,
+`--verbose`, `--allow-escape-sequences`, `--jq`, `-q`, `--template`, `-t` and `--hostname`, plus
+`--method` or `-X` for `GET`. Unknown options and the `graphql` endpoint stay changes. This is a
+closed set: numeric clock-setting operands and GNU `date --set` stay changes, and BSD date parsing
+forms are left unread. GitHub CLI fields imply `POST` unless a method overrides them, but field
+forms remain outside this set even with explicit `GET`.
+Any other segment that is not a check, run after
 any check's latest passing run, is the blocker item 3 names. This list is closed too. A segment is
 not read-only, whatever its command, when it holds a command or process substitution whose own
 command is not read-only by these same rules, a redirect `>` into anything but `/dev/null` or
@@ -1360,8 +1369,14 @@ item 5's fields and the closed lists.
    `<<<`, a heredoc operator) ends the word before it and is kept apart from the words, because the
    shell strips it before the program receives its arguments: `--password 2>&1 value` reaches the
    program as a flag and its value side by side. A heredoc is recognised only as an unquoted `<<` or
-   `<<-`, its delimiter is any word, quote-removed, and each body is skipped in order after the line
-   ends. A body without its closing line runs to the end of the call, as bash reads it. Before this,
+   `<<-`, its delimiter is any word, quote-removed, and each body is read in order after the line
+   ends. Quoting any part of the delimiter makes the body literal. In an unquoted body, command
+   substitutions execute even between literal quote marks; backslash quotes `$`, backtick and
+   backslash, and a backslash-newline joins only when the backslash was not itself escaped. Joining
+   precedes delimiter matching, so a continued body line cannot expose later literal commands.
+   Only those substitutions are read for their effects, never literal body lines, and no body text is
+   published. The nesting bound still applies through a body inside a substitution.
+   A body without its closing line runs to the end of the call, as bash reads it. Before this,
    a quoted `<<END` hid every line after it and a delimiter such as `MY-EOF` was not recognised, so
    its body was read as commands.
 2. Unbalanced quoting means the call did not run. An unterminated `'`, `"`, `$'`, `$(`, `${` or
@@ -1396,13 +1411,20 @@ item 5's fields and the closed lists.
    from `$'…'` ends that string, as it ends the argument the program receives. An unquoted word
    holding a brace expansion (`{a,b}`, `{x..y}`) is published as `…`, since the words it becomes are
    unknown, and so is the word after it, since `--{x,password} value` expands to a named flag and
-   its value. Each value the check line masked, and each piece of it of four characters or more, is
-   also removed from the output tail before redaction runs over it, since an echoed command repeats
-   it. The named forms are unchanged: these forms and no others.
+   its value. Each named value masked anywhere in the call, assignments, wrapper prefixes and executed substitutions included, and each piece of it of four characters or more, is also removed from the output tail
+   before redaction and clipping. Literal and shell re-quoted spellings, including xtrace's split
+   apostrophe, match at filename and identifier boundaries, so masking `test` leaves `test_a.py`,
+   `contest` and `src/test` readable. A wrapper's script is read as its inner words rather than as
+   one assignment value; its ordinary runner and summary words are not masked. The named forms
+   are unchanged: these forms and no others. Short pieces and arbitrary encodings remain outside
+   this scrub.
 6. A redirection is not an argument and is not published: not its target, not a here-string's
    word, not a heredoc's delimiter. A heredoc body and a here-string word are stdin data. Amended
    2026-09-27: a check segment's redirect target inside the working directory is published as a
-   written path, below.
+   written path, below. The operator and decoded target stay separate: `> '&1'` writes a file
+   named `&1`, whereas `>&1` duplicates a descriptor and `>&-` closes one. A named descriptor
+   redirect into `/dev/null` remains harmless. An input redirect on a pipeline filter, heredocs
+   included, cannot credit that input's summary to the check upstream.
 7. A substitution runs whatever it names. A command or process substitution anywhere in a call, in
    a check's own arguments, an assignment, a redirection target or a wrapper's other words, counts
    as a change unless its own command is read-only by the closed lists, read with these same rules.

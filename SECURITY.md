@@ -1275,8 +1275,11 @@ each subagent entry labelled `worker_kind: "subagent"`
 a program file counts only when `test` or `tests` stands alone as a word in its name. Its bounds:
 the check's own segment, never the rest of the shell line, with a substituted command shown as
 `$(…)`, a brace expansion and the word after it shown as `…`, no redirection, here-string word or heredoc delimiter
-published in it, a heredoc body never read as a command, and a trailing comment dropped, after credential redaction and masking of the forms redaction cannot
-recognise, clipped to 120 characters. Behind `bash -c`, `sh -c`, `zsh -c` or `bash -lc`, it is the
+published in it, and a trailing comment dropped, after credential redaction and masking of the forms
+redaction cannot recognise, clipped to 120 characters. A heredoc body is never listed or read as
+literal commands. Command substitutions in an unquoted body do execute, however, and age a prior
+pass unless their own commands meet the closed read-only rules. A quoted delimiter keeps its body
+literal. Behind `bash -c`, `sh -c`, `zsh -c` or `bash -lc`, it is the
 inner segment alone, never the wrapper. A call with an unterminated quote is a syntax error and is
 read as not run, so nothing of its text is published; the last 180 characters of output, with redaction run over the whole read
 window before the clip; and a written path relative to the working directory. A written path is a
@@ -1307,11 +1310,14 @@ the key it is. Redirections, a named descriptor such as `{fd}>` included, are se
 flag and its value are masked as a pair even with a redirection between them, and a NUL decoded from `$'…'` ends the argument as it does for the
 program. A value after any other flag is published as typed unless it has a credential shape.
 
-The output tail is covered by credential-shape redaction, and by one more step: each value the
-check's line masked, and each piece of it of four characters or more, is removed from the tail
-before redaction, since an echoed command (`set -x`, a runner printing its arguments) repeats it. A
-shapeless value the line did not mask, or a masked piece shorter than four characters, can still
-reach the prompt through the tail.
+The output tail is covered by credential-shape redaction, and by one more step: each named value
+masked anywhere in the call, assignments, wrapper prefixes and executed substitutions included, and each piece of it of
+four characters or more, is removed before redaction and the 180-character clip. This covers the
+literal value and its shell re-quoting, including an apostrophe split by xtrace, since an echoed
+command (`set -x`, a runner printing its arguments) repeats it. Matching respects filename and
+identifier boundaries: a password `test` does not rewrite `test_a.py`, `contest` or `src/test`.
+A shapeless value no named form masked, a masked piece shorter than four characters, or an arbitrary
+encoding of a value can still reach the prompt through the tail.
 
 The destination rule: it may go to the reading producer that reads the session, or to the fallback
 route `reading_route.resolve` selects and discloses before the press, and on either only after a
