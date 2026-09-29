@@ -5,7 +5,9 @@ from __future__ import annotations
 import base64
 import shlex
 
-from .test_check_line_parser import CheckLineTestCase, project_context, reading
+from cargento_runtime import project_context, reading
+
+from .test_check_line_parser import CheckLineTestCase
 
 
 class HeredocExpansionEffectsTest(CheckLineTestCase):
