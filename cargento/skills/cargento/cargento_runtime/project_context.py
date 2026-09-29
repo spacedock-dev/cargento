@@ -2210,7 +2210,9 @@ class _ShellLexer:
                 self._braced()
             elif arithmetic and ((char == "$" and after == "(") or char == "`"):
                 self._substitution()
-            elif self._skip_quoted(char):
+            # Arithmetic executes nested commands between single quote
+            # characters before rejecting the resulting expression.
+            elif (not arithmetic or char != "'") and self._skip_quoted(char):
                 pass
             elif arithmetic:
                 depth += {"(": 1, ")": -1}.get(char, 0)

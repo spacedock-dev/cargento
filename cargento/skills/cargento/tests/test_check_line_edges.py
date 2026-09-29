@@ -253,7 +253,7 @@ class CallWideNamedTailMaskingTest(CheckLineTestCase):
         self.assertIn(encoded, tail)
 
 
-class CoordinatedSecurityCorrectionTest(CheckLineTestCase):
+class _SelectedPromptTestCase(CheckLineTestCase):
     def assert_selected_prompt_omits(self, placeholder: str) -> None:
         prompt, selection = reading.build_prompt(
             self.ledger, goal="Keep synthetic checks correct", max_bytes=65536
@@ -263,6 +263,8 @@ class CoordinatedSecurityCorrectionTest(CheckLineTestCase):
         self.assertNotIn(placeholder, prompt)
         self.assertIn("pytest", prompt)
 
+
+class CoordinatedSecurityCorrectionTest(_SelectedPromptTestCase):
     def test_wrapper_postscript_named_args_remain_private_without_masking_runner_text(self) -> None:
         placeholder = "EXAMPLEpositional973"
         for wrapper in ("bash -c", "sh -c", "bash -lc"):
@@ -364,3 +366,79 @@ class CoordinatedSecurityCorrectionTest(CheckLineTestCase):
                 self.assertEqual(1, len(checks))
                 self.assertIs(False, checks[0]["changed_after"])
                 self.assert_selected_prompt_omits("/dev/null")
+
+
+class ArithmeticQuoteCorrectionTest(_SelectedPromptTestCase):
+    def test_failed_arithmetic_single_quote_and_ansi_text_still_masks_executed_bodies(self) -> None:
+        placeholder = "EXAMPLEarithquote4725"
+        for nested in (
+            f"$(echo --password {placeholder} >&2; echo 1)",
+            f"`echo --password {placeholder} >&2; echo 1`",
+        ):
+            for quote in ("'", "$'"):
+                for heredoc in (False, True):
+                    with self.subTest(
+                        backtick=nested.startswith("`"), ansi=quote == "$'", heredoc=heredoc
+                    ):
+                        self.fresh()
+                        expression = "$(( " + quote + nested + "' + 1 ))"
+                        command = "pytest; " + ("cat <<EOF\n" if heredoc else "echo ") + expression
+                        if heredoc:
+                            command += "\nEOF"
+                        # Bash emits the nested echo before rejecting the expanded
+                        # arithmetic expression. The fixture adds Exit code 1.
+                        self.session.bash(
+                            command,
+                            f"1 passed\n--password {placeholder}\nbash: '1' + 1: syntax error: operand expected",
+                            is_error=True,
+                        )
+                        text, checks, scan = self.published()
+                        self.assertEqual(1, len(checks))
+                        self.assertEqual("not-recorded", checks[0]["result"])
+                        self.assertIs(True, checks[0]["changed_after"])
+                        self.assertEqual(0, scan["not_run"])
+                        self.assertNotIn(placeholder, text)
+                        self.assert_selected_prompt_omits(placeholder)
+
+    def test_ordinary_shell_literal_quotes_and_escaped_arithmetic_collect_no_executable_masks(
+        self,
+    ) -> None:
+        placeholder = "EXAMPLEarithquote4725"
+        nested = f"$(echo --password {placeholder} >&2; echo 1)"
+        for later, changing in (
+            ("echo '" + nested + "'", False),
+            ("echo $'" + nested + "'", False),
+            ("echo $(( \\" + nested + " + 1 ))", True),
+            ("echo $(( 'TOKEN=" + placeholder + "' + 1 ))", False),
+        ):
+            with self.subTest(later=later[:14]):
+                self.fresh()
+                command = "pytest; " + later
+                self.session.bash(command, "1 passed", is_error=True)
+                _text, checks, _scan = self.published()
+                self.assertEqual(1, len(checks))
+                self.assertIs(changing, checks[0]["changed_after"])
+                call = project_context._ShellCall(0, str(self.cwd), {"command": command})
+                self.assertEqual(set(), call.masked_values)
+
+    def test_double_quoted_arithmetic_executable_masks_remain_private(self) -> None:
+        placeholder = "EXAMPLEarithquote4725"
+        nested = f"$(echo --password {placeholder} >&2; echo 1)"
+        for heredoc in (False, True):
+            with self.subTest(heredoc=heredoc):
+                self.fresh()
+                command = (
+                    "pytest; "
+                    + ("cat <<EOF\n" if heredoc else "echo ")
+                    + '$(( "'
+                    + nested
+                    + '" + 1 ))'
+                )
+                if heredoc:
+                    command += "\nEOF"
+                self.session.bash(command, f"1 passed\n--password {placeholder}\n2", is_error=False)
+                text, checks, _scan = self.published()
+                self.assertEqual(1, len(checks))
+                self.assertIs(True, checks[0]["changed_after"])
+                self.assertNotIn(placeholder, text)
+                self.assert_selected_prompt_omits(placeholder)

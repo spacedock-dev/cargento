@@ -1435,7 +1435,9 @@ item 5's fields and the closed lists.
    change too.
    `$((…))` is arithmetic and runs nothing unless it holds a substitution. Nested executable
    commands supply private named values without reading arithmetic literal text as shell commands;
-   arithmetic holding a substitution keeps its unknown, changing classification. A file redirect
+   arithmetic holding a substitution keeps its unknown, changing classification. Single quote
+   characters there, including the `$'…'` spelling, do not suppress nested command execution; a
+   command can emit its named value before the expanded expression errors. A file redirect
    inside an executable body is checked before the empty-word and `cd` shortcuts, so neither can
    hide a write. This also settles
    DRC-4724's second acceptance criterion.
