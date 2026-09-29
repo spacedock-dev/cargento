@@ -33,6 +33,8 @@ def check(
         "before_last_change": stale,
         "changed_after": changed,
         "at": at,
+        "source_session": {"harness": "claude", "sid": "s"},
+        "evidence": {"source": "Claude Bash call and paired result", "confidence": "recorded"},
     }
 
 
@@ -100,7 +102,18 @@ def a_reading(**criteria: dict[str, Any]) -> dict[str, Any]:
 
 
 PASSING = evidence(
-    [wrote("w1", SAVE + 10, "index.html"), check("c1", SAVE + 20, "passed")],
+    [
+        wrote("w1", SAVE + 10, "index.html"),
+        check("c1", SAVE + 20, "passed"),
+        {
+            "fact_id": "m1",
+            "type": "agent_message",
+            "summary": "Synthetic final account",
+            "at": SAVE + 20,
+            "source_session": {"harness": "claude", "sid": "s"},
+            "evidence": {"source": "Claude assistant message", "confidence": "recorded"},
+        },
+    ],
     scan(passed=1, written_paths=1),
 )
 SUPPORTED = a_reading(
@@ -434,7 +447,13 @@ class ExtremeTest(unittest.TestCase):
         self.assertEqual(got.level, levels.HIGH)
 
     def test_a_departure_on_no_failed_check_is_medium(self) -> None:
-        got = analyze(a_reading(line_1=criterion(reading.RESULT_DEPARTURE, "m1")), PASSING)
+        got = analyze(
+            a_reading(
+                goal=criterion(reading.RESULT_DEPARTURE, "m1"),
+                line_1=criterion(reading.RESULT_UNVERIFIABLE),
+            ),
+            PASSING,
+        )
         self.assertEqual(got.level, levels.MEDIUM)
         self.assertIn(levels.REASON_DEPARTURE, got.reasons)
 

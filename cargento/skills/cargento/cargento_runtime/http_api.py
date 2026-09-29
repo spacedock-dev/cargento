@@ -411,7 +411,6 @@ def _analysis_levels(
         fact
         for fact in facts
         if isinstance(fact, dict)
-        and fact.get("type") == "tool_report"
         and isinstance(fact.get("source_session"), dict)
         and (fact["source_session"].get("harness"), fact["source_session"].get("sid"))
         == (harness, sid)

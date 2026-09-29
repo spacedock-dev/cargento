@@ -103,11 +103,12 @@ _WRITE_SUBJECT = "write"
 class Evidence:
     """What both sources may read of one Claude Code session.
 
-    `facts` are its `tool_report` facts as published, `scan` the full-scan
-    counts published beside them (`sources.work.tool_reports`), and
+    `facts` are its current session-owned facts, `scan` the full-scan
+    check counts published beside them (`sources.work.tool_reports`), and
     `unsettled_directions` how many later directions the reader has not
-    settled. Every figure about checks comes from `scan`; `facts` hold at
-    most twelve entries and give times and paths only (the record's item 4).
+    settled. Check figures come from `scan`; at most twelve check and path
+    facts are listed (the record's item 4). An analysis also needs the
+    messages a stored Goal may cite; the live source filters checks and paths.
     """
 
     facts: tuple[Mapping[str, Any], ...]
@@ -406,7 +407,7 @@ def _number(value: Any) -> float | None:
 class _LineTally:
     """What a reading's rows say, row by row, before a level is chosen."""
 
-    by_id: Mapping[str, Mapping[str, Any]]
+    by_id: Mapping[str, reading.LedgerEntry]
     window: float | None = None
     departed: bool = False
     aged: bool = False
@@ -414,43 +415,79 @@ class _LineTally:
     cites: list[str] = field(default_factory=list)
     shown: list[str] = field(default_factory=list)
 
-    def read(self, row: Mapping[str, Any], *, outcome_line: bool) -> None:
+    def read(self, row: Mapping[str, Any], *, name: str) -> None:
         result, why = row.get("result"), row.get("why") or ""
-        if result == reading.RESULT_DEPARTURE:
+        window = self.window or 0.0
+        cited = [
+            self.by_id[c]
+            for c in _cites(row)
+            if c in self.by_id
+            and reading._citable(self.by_id[c])  # noqa: SLF001 - the resolver owns citation validity
+            and not reading._before_window(self.by_id[c], window)  # noqa: SLF001
+        ]
+        # Stored verdicts are read against today's entries by the same
+        # resolver that first accepted them. Explanatory prose is not read
+        # again: only the verdict token and its current citation handles.
+        resolved = reading._resolve_one(  # noqa: SLF001 - reuse the seven-rule evidence contract
+            {
+                "token": next((t for t, r in reading.RESULT_BY_TOKEN.items() if r == result), ""),
+                "cites": list(range(1, len(cited) + 1)),
+                "detail": "",
+            },
+            dict(enumerate(cited, 1)),
+            name=name,
+            clause="",
+            detail_cap_chars=0,
+            window_start=window,
+        )
+        if resolved.get("result") == reading.RESULT_DEPARTURE:
             self.departed = True
-            self.cites.extend(_cites(row))
+            self.cites.extend(resolved["cites"])
             return
-        if not outcome_line:
+        if not reading.is_outcome_line(name):
             # The Goal may rest on the session's own account (the ruling's item 1).
             return
-        cited = [self.by_id[c] for c in _cites(row) if c in self.by_id]
-        passes = [f for f in cited if f.get("result") == reading.RESULT_PASSED]
+        passes = [
+            f
+            for f in cited
+            if f.get("subject") == "check"
+            and f.get("result") == reading.RESULT_PASSED
+            and f.get("work") is True
+        ]
         # A cited pass aged now, or said to have aged when read, is a pass
         # followed by a change, whatever `why` the reading stored (L5).
-        stale = [
-            f
-            for f in passes
-            if f.get("before_last_change") is True or f.get("changed_after") is True
-        ]
+        stale = [f for f in passes if f.get("stale") is True or f.get("changed_after") is True]
         if stale or why == reading.WHY_CHANGED_AFTER_CHECK:
             self.aged = True
-            self.cites.extend(_ids(stale or passes))
+            self.cites.extend(f["id"] for f in stale or passes)
             self.not_shown += 1
             return
         # A pass shows a line only inside the reading's window, as
         # `reading.check_supports` requires (V5), read by when its result
         # arrived (DRC-4702); one with no time cannot.
-        inside_window = [
-            f
-            for f in passes
-            if f.get("read_incomplete") is not True
-            and (at := reading.evidence_at(f)) is not None
-            and (self.window is None or at >= self.window)
-        ]
-        if result == reading.RESULT_CONSISTENT and not why and inside_window:
-            self.shown.extend(_ids(inside_window))
+        if resolved.get("result") == reading.RESULT_CONSISTENT and not why and passes:
+            self.shown.extend(resolved["cites"])
         else:
             self.not_shown += 1
+
+
+def _analysis_entries(facts: Sequence[Mapping[str, Any]]) -> dict[str, reading.LedgerEntry]:
+    entries: dict[str, reading.LedgerEntry] = {}
+    for fact in facts:
+        session = fact.get("source_session")
+        if not isinstance(session, dict):
+            continue
+        for entry in reading.build_ledger(
+            [dict(fact)],
+            str(session.get("harness") or ""),
+            str(session.get("sid") or ""),
+            tool_output={},
+        ):
+            # No press and no output read: the published flag is today's
+            # observation, not a pair recovered from an output grant.
+            entry["changed_after"] = fact.get("changed_after") is True
+            entries[entry["id"]] = entry
+    return entries
 
 
 def _well_formed(criteria: Any, outcome_lines: int) -> bool:
@@ -505,11 +542,9 @@ def analysis_level(
         )
     rows: Mapping[str, Mapping[str, Any]] = criteria if isinstance(criteria, dict) else {}
     window = _number(reading_row.get("window_start"))
-    tally = _LineTally(
-        {str(f.get("fact_id")): f for f in evidence.facts if f.get("fact_id")}, window
-    )
+    tally = _LineTally(_analysis_entries(evidence.facts), window)
     for name, row in rows.items():
-        tally.read(row, outcome_line=reading.is_outcome_line(name))
+        tally.read(row, name=name)
 
     failed = [f for f in _checks(evidence) if f.get("result") == reading.RESULT_FAILED]
     in_window = [
