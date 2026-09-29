@@ -960,7 +960,7 @@ def _pi_check_runs(
     flag = _pi_flag(result) if result is not None else None
     tail = str(result.get("tail") or "") if result is not None else ""
     all_and = all(joiner == "&&" for joiner in call.joiners()[:-1])
-    attributable = len(call.checks) == 1 and not call.changing_others
+    attributable = call.output_attributable()
     runs = []
     for index in call.checks:
         words, rtk = call.words[index]
@@ -1697,6 +1697,7 @@ class _Segment(NamedTuple):
     # Redirections after a `)`, which the outer shell opens where the group
     # started: each with the index of the segment that opened it (review W3).
     outer: tuple[tuple[str, int], ...] = ()
+    syntax: tuple[str, ...] = ()
 
 
 class _ShellLexer:
@@ -1725,6 +1726,8 @@ class _ShellLexer:
         self.opens = self.closes = 0
         self.outer: list[tuple[str, int]] = []
         self.group: int | None = None
+        self.syntax: list[str] = []
+        self.cases: list[str] = []
 
     def _at(self, offset: int = 0) -> str:
         index = self.pos + offset
@@ -1746,30 +1749,37 @@ class _ShellLexer:
                 self._skip_group(arithmetic=True)
                 words.append(_ARITHMETIC)
                 continue
-            if self._parenthesis(words, found) or self._skip_space():
+            if self._parenthesis(words, found) or self._skip_space() or self._pattern_alternative():
                 continue
             joiner = self._joiner()
             if joiner is None:
                 redirect = self._redirection()
                 if redirect is None:
-                    word = self._word()
-                    words.append(_WITHHELD if hide_next else word)
-                    hide_next = word == _WITHHELD
+                    hide_next = self._add_word(words, hide_next=hide_next)
                 else:
                     self._add_redirect(redirect)
                 continue
-            if words or self.redirects or self.bodies:
+            if words or self.redirects or self.bodies or self.syntax:
                 found.append(self._segment(words, joiner))
                 # An open before an empty segment waits for the next one.
                 self.opens = self.closes = 0
             words, self.redirects, self.bodies, hide_next = [], [], [], False
             self.outer, self.group = [], None
+            self.syntax = []
             if joiner == "\n":
                 self._skip_bodies(self.heredocs)
                 self.heredocs = []
-        if words or self.redirects or self.bodies:
+        if words or self.redirects or self.bodies or self.syntax:
             found.append(self._segment(words, ""))
         return found
+
+    def _add_word(self, words: list[str], *, hide_next: bool) -> bool:
+        start = self.pos
+        word = self._word()
+        literal = self.text[start : self.pos] == word
+        if not self._syntax_word(word, literal=literal, words=words):
+            words.append(_WITHHELD if hide_next else word)
+        return word == _WITHHELD
 
     def _add_redirect(self, redirect: str) -> None:
         self.redirects.append(redirect)
@@ -1785,7 +1795,30 @@ class _ShellLexer:
             self.opens,
             self.closes,
             tuple(self.outer),
+            tuple(self.syntax),
         )
+
+    def _syntax_word(self, word: str, *, literal: bool, words: list[str]) -> bool:
+        if not literal:
+            return False
+        if not words and word in {"{", "}", "if", "then", "else", "elif", "fi"}:
+            self.syntax.append(word)
+            return True
+        if not words and word == "case":
+            self.cases.append("selector")
+            self.syntax.append("case")
+        elif self.cases and self.cases[-1] == "selector" and word == "in" and len(words) >= 2:
+            self.cases[-1] = "pattern"
+        elif not words and self.cases and word == "esac":
+            self.cases.pop()
+            self.syntax.append("esac")
+        return False
+
+    def _pattern_alternative(self) -> bool:
+        if self.cases and self.cases[-1] == "pattern" and self._at() == "|":
+            self.pos += 1
+            return True
+        return False
 
     def _parenthesis(self, words: list[str], found: list[_Segment]) -> bool:
         """A subshell's `(` or `)`, consumed and counted on its segment (DRC-4724).
@@ -1795,13 +1828,28 @@ class _ShellLexer:
         closes nothing.
         """
         char = self._at()
+        if char in "()" and char and self.cases and self.cases[-1] == "pattern":
+            if char == ")":
+                self.cases[-1] = "body"
+                # A pattern's close starts its command, not the enclosing
+                # subshell's end. Retain the selector as a separate opaque
+                # part so it cannot establish that an arm's check ran.
+                found.append(self._segment(list(words), ";"))
+                words.clear()
+                self.redirects, self.bodies, self.syntax, self.outer = [], [], [], []
+                self.syntax.append("case-arm")
+                self.opens = self.closes = 0
+                self.group = None
+            self.pos += 1
+            return True
         if char == "(":
-            self.parens.append(None if words or self.redirects else len(found))
+            prefix = words not in ([], ["time"], ["time", "-p"])
+            self.parens.append(None if prefix or self.redirects else len(found))
             self.opens += self.parens[-1] is not None
         elif char == ")":
             opened = self.parens.pop() if self.parens else None
             if opened is not None:
-                if words or self.redirects or self.bodies:
+                if words or self.redirects or self.bodies or self.syntax:
                     self.closes += 1
                     self.group = opened
                 elif self.opens:
@@ -1836,6 +1884,8 @@ class _ShellLexer:
             return "\n"
         if char == ";":
             # `;;` and `;&` end a case arm; they join like `;`.
+            if after in (";", "&") and self.cases:
+                self.cases[-1] = "pattern"
             self.pos += 1
             while self._at() and self._at() in ";&":
                 self.pos += 1
@@ -2209,6 +2259,7 @@ class _Part(NamedTuple):
     # The segment's words before any stripping, assignments included, and a
     # wrapper's own words on its first inner part: what masking may hide.
     raw: tuple[str, ...] = ()
+    syntax: tuple[str, ...] = ()
 
 
 def _body_reads_only(body: str) -> bool:
@@ -2262,7 +2313,8 @@ def _call_parts(text: str, depth: int = 0) -> list[_Part]:
         if not spliced:
             parts.append(
                 _Part(words, rtk, segment.joiner, segment.redirects, hides, background,
-                      launches, segment.opens, segment.closes, outer, tuple(segment.words))
+                      launches, segment.opens, segment.closes, outer, tuple(segment.words),
+                      segment.syntax)
             )  # fmt: skip
             continue
         last, offset = len(spliced) - 1, len(parts)
@@ -2272,6 +2324,7 @@ def _call_parts(text: str, depth: int = 0) -> list[_Part]:
             part._replace(
                 outer=(*((r, at + offset) for r, at in part.outer), *outer, *wrapper),
                 raw=(*segment.words, *part.raw) if index == 0 else part.raw,
+                syntax=(*segment.syntax, *part.syntax) if index == 0 else part.syntax,
                 rtk=part.rtk or rtk,
                 joiner=segment.joiner if index == last else part.joiner,
                 redirects=[*part.redirects, *segment.redirects],
@@ -2413,10 +2466,53 @@ def _changed_directory(current: str, known: bool, args: list[str]) -> tuple[str,
     return target, known or os.path.isabs(args[0])
 
 
-def _check_identity(directory: str, words: list[str]) -> str:
+def _conditional_directory(
+    state: tuple[str, bool, bool], conditions: list[tuple[str, bool, bool]], syntax: tuple[str, ...]
+) -> tuple[str, bool, bool]:
+    current, known, cdpath = state
+    for word in syntax:
+        if word in {"if", "case"}:
+            conditions.append((current, known, cdpath))
+            known = False
+        elif word in {"else", "elif", "case-arm"} and conditions:
+            current, _known, cdpath = conditions[-1]
+            known = False
+        elif word in {"fi", "esac"} and conditions:
+            conditions.pop()
+            known = False
+    return current, known, cdpath
+
+
+def _pipe_filter(part: _Part) -> bool:
+    """Only stdin transforms: file operands or an input redirect can print
+    an unrelated check summary even though the command is read-only."""
+    if any("<" in redirect for redirect in part.redirects) or not part.words:
+        return False
+    command, *args = part.words
+    if command in {"tail", "head"}:
+        return (
+            re.fullmatch(
+                r"(?:(?:-\d+|-[nc](?:\s+)?\d+|--(?:lines|bytes)(?:=|\s+)\d+)\s*)*(?:-)?",
+                " ".join(args),
+            )
+            is not None
+        )
+    if command != "grep":
+        return False
+    while args and re.fullmatch(r"-[EFGivwxonqschHab]+|--line-buffered|--color=\w+", args[0]):
+        args = args[1:]
+    if args[:1] == ["--"]:
+        args = args[1:]
+    return len(args) == 1 or (len(args) == 2 and args[1] == "-")
+
+
+def _check_identity(directory: str, words: list[str], *, unplaced: str = "") -> str:
     """Item 4's "same check": the directory it ran in and its stripped segment,
     without redirects (review, 2026-09-24: the directory is part of it)."""
-    return directory + "\0" + " ".join(word for word in words if not _REDIRECT_RE.match(word))
+    identity = directory + "\0" + " ".join(word for word in words if not _REDIRECT_RE.match(word))
+    # Unknown placement must not erase a failure at a known path, or claim
+    # a later unknown run was the same check (DRC-4727/4728).
+    return identity + "\0unplaced\0" + unplaced if unplaced else identity
 
 
 class _Result(NamedTuple):
@@ -2591,6 +2687,7 @@ class _ShellCall:
         except Exception:  # noqa: BLE001 - any parser fault fails closed, as unbalanced does
             self.unbalanced, self.parts = True, []
         self.words: list[tuple[list[str], bool]] = [(p.words, p.rtk) for p in self.parts]
+        self.printing_directories: set[int] = set()
         self.directories, self.placed = self._directories(cwd)
         self.meaningful = [
             i for i, (words, _rtk) in enumerate(self.words) if words and words[0] != "cd"
@@ -2644,21 +2741,40 @@ class _ShellCall:
         absolute `cd`, or the close of the group, places it again (review W2).
         The directory string still names the check, as it always did.
         """
-        current, known = cwd, bool(cwd)
+        current, known, cdpath = cwd, bool(cwd), False
         found: list[str] = []
         placed: list[bool] = []
-        entered: list[tuple[str, bool]] = []
-        for part in self.parts:
-            entered.extend([(current, known)] * part.opens)
+        entered: list[tuple[str, bool, bool]] = []
+        conditions: list[tuple[str, bool, bool]] = []
+        detached: tuple[str, bool, bool] | None = None
+        for index, part in enumerate(self.parts):
+            if detached is not None and not part.background:
+                current, known, cdpath = detached
+                detached = None
+            if part.background and detached is None:
+                detached = current, known, cdpath
+            entered.extend([(current, known, cdpath)] * part.opens)
+            current, known, cdpath = _conditional_directory(
+                (current, known, cdpath), conditions, part.syntax
+            )
             found.append(current)
             placed.append(known)
             words = part.words
-            if words[:1] == ["cd"]:
+            assigned = next((word[7:] for word in part.raw if word.startswith("CDPATH=")), None)
+            if assigned is not None and (not words or words[:1] == ["export"]):
+                cdpath = bool(assigned)
+            piped = part.joiner == "|" or (index > 0 and self.parts[index - 1].joiner == "|")
+            if words[:1] == ["cd"] and not piped:
+                lookup = cdpath if assigned is None else bool(assigned)
+                if "-" in words[1:] or (lookup and words[1:] and not os.path.isabs(words[-1])):
+                    self.printing_directories.add(index)
+                if lookup and words[1:] and not os.path.isabs(words[-1]):
+                    known = False
                 current, known = _changed_directory(current, known, words[1:])
             elif words[:1] in (["pushd"], ["popd"]):
                 known = False
             for _ in range(part.closes):
-                current, known = entered.pop()
+                current, known, cdpath = entered.pop()
         return found, placed
 
     def written_path(self, target: str, at: int, cwd: str) -> str | None:
@@ -2676,6 +2792,30 @@ class _ShellCall:
 
     def joiners(self) -> list[str]:
         return [part.joiner for part in self.parts]
+
+    def output_attributable(self) -> bool:
+        """A read-only command may print its own summary; only pipe filters
+        preserve the check's output provenance (DRC-4733)."""
+        if len(self.checks) != 1 or self.changing_others or self.substituted:
+            return False
+        check = self.checks[0]
+        return all(
+            i == check
+            or (i < check and not words)
+            or (
+                i < check
+                and words[0] == "cd"
+                and i not in self.printing_directories
+                and all(_placeable(word) for word in words[1:])
+            )
+            or (
+                i > check
+                and all(part.joiner == "|" for part in self.parts[check:i])
+                and _pipe_filter(self.parts[i])
+                and self._reads_only(i)
+            )
+            for i, (words, _rtk) in enumerate(self.words)
+        )
 
     def background(self, index: int) -> bool:
         return self.all_background or self.parts[index].background
@@ -2821,7 +2961,7 @@ class _ToolReportTally:
         all_and = all(joiner == "&&" for joiner in call.joiners()[:-1])
         # V8: output speaks for a check only when it is the call's one check,
         # background ones counted, and nothing else in the call may print.
-        attributable = len(call.checks) == 1 and not call.changing_others
+        attributable = call.output_attributable()
         for index in call.checks:
             words, rtk = call.words[index]
             background = call.background(index)
@@ -2846,7 +2986,12 @@ class _ToolReportTally:
                 self.scan["unknown_flags"] += (
                     result is not None and not isinstance(flag, bool) and outcome == "not-recorded"
                 )
-            self.runs.setdefault(_check_identity(call.directories[index], words), []).append(
+            identity = _check_identity(
+                call.directories[index],
+                words,
+                unplaced=f"{worker}:{call_id}:{index}" if not call.placed[index] else "",
+            )
+            self.runs.setdefault(identity, []).append(
                 {
                     "at": call.at,
                     "record_id": call_id,

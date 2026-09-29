@@ -206,11 +206,11 @@ class PisErrorFlagSpeaksOnlyAsTheCaptureShowsIt(PiRecord):
         self.bash("pytest -q", is_error=True, text="Tool call blocked by an extension")
         self.assertEqual([], self.checks())
 
-    def test_a_swallowed_exit_still_reads_the_failure_from_text(self) -> None:
-        # A clear flag after `;` speaks for the last segment only, so the
-        # failure summary decides.
+    def test_a_swallowed_exit_with_another_print_has_no_attributed_result(self) -> None:
+        # The flag speaks for echo, and its output may include a summary of
+        # its own (DRC-4733), so even failure text has no established source.
         self.bash("pytest -q; echo done", is_error=False, text="1 failed, 1 passed\ndone")
-        self.assertEqual("failed", self.one()["result"])
+        self.assertEqual("not-recorded", self.one()["result"])
 
     def test_the_captures_swallowed_run_is_not_recorded_as_claude_codes_would_be(self) -> None:
         # The capture's `swallowed` run. `true` is not on the read-only list, so

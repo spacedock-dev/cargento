@@ -1267,6 +1267,16 @@ after a verifier reproduced false results against the first clarification:
 - an `rtk` check with a passing flag and failure text in its output reads "ran, result not
   recorded", never passed.
 
+DRC-4733 tightens the output attribution rule on 2026-09-29. Read-only means a command does not
+record a change; it does not mean the command's output came from a check. Summary lines, failure
+markers and Pi's check counts attribute only to a single check with no independent output-producing
+segment. A following `head` or `tail` with a numeric line or byte limit, or `grep` with its pattern,
+may preserve that attribution when connected only by pipes and reading only stdin. File operands,
+an input redirect, another print before or after the check, and a preceding `cd` that can print its
+destination withhold it. `pytest || echo '5 passed'` and `pytest; echo '5 passed'` therefore read
+"ran, result not recorded". A trustworthy passing `&&` flag still establishes a pass, but an
+independent print never supplies its count. The read-only list and write-ageing rules are unchanged.
+
 Summary lines, source (ii), read from the recorded output tail, may record a pass or a failure:
 pytest's `N passed`, `N failed` and `N error` or `N errors`; unittest's `OK`, only as the whole line, and `FAILED (`; jest's
 and vitest's `Tests:` line with its passed and failed counts; node's `ℹ pass N` and `ℹ fail N`
@@ -1431,8 +1441,17 @@ and item 3's measured note that a written path comes only from a file-write tool
    it. A `)` that matches no `(`, such as a `case` arm's, and the parentheses of `f()` or
    `a=(1 2)`, open and close nothing. No published byte changed; only a check's identity moved.
    Measured on this machine's transcripts (counts only): 7 of 9,703 check calls change directory,
-   and none gains or loses a check. A `cd` after `{`, `then` or `do` is still not followed, which
-   was filed separately.
+   and none gains or loses a check. DRC-4727, DRC-4728 and DRC-4730 amend placement on 2026-09-29: unquoted
+   braces and `then` put their commands in the current shell, so a brace group's `cd` persists
+   after `}`. Conditional arms and the commands after an `if` or `case` leave relative placement
+   unknown when the recorded call cannot establish which branch ran. A `case` pattern's `)` closes
+   no enclosing subshell, and `time ( ... )` opens one. A `cd` in a pipeline or background list does
+   not move the foreground shell. A nonempty explicit `CDPATH` makes a relative destination unknown;
+   a literal absolute `cd` or the enclosing subshell's close restores placement. A `cd` after `do`
+   is still outside the supported placement forms. When Claude's recorded cwd can no longer place
+   a check, its private identity is specific to that call and segment. It cannot supersede a known
+   check or another unplaced run. Checks in a known directory still share their existing identity;
+   no guessed folder is published.
 2. A file redirect on a check segment is a recorded write by its call, its target read from the
    directory that segment ran in. A target inside the working directory is published as a written
    path, as a file-write tool's path is, through the same redaction. A target outside it, or one the
@@ -2441,6 +2460,14 @@ Six sub-questions were ruled the same day, each as recommended.
    "Rose from Medium at #33" from recorded evidence within the run. Each source keeps its own line
    from item 1: the live estimate says it reads checks and file paths, not what the intent says, and
    the analysis says it read each line of the intent against the checks and messages it cited.
+
+DRC-4728 amends that recomputation on 2026-09-29. A stored departure must still have current,
+citable evidence inside the reading's window, under the same source, authorship, work and check
+rules that accepted the reading. A vanished citation or an aged-out entry cannot keep the level
+raised. The server supplies all current facts from the cited session, including the person's
+messages that may support a Goal departure; limiting the lookup to check rows would retract those
+legitimate departures. This revalidation reads the published facts and calls no model or output
+grant.
 
 The owner answered two questions from review the same day, and both answers are part of this ruling
 rather than an amendment. A shell command that is neither a check nor read-only, run after any
