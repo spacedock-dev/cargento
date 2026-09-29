@@ -547,7 +547,7 @@ console.log(JSON.stringify({
         self.assertNotIn("data-next-guardrail-input", out["afterEscape"])
         self.assertIn("Never render &lt;script&gt;", out["html"])
         self.assertNotIn("Never render <script>", out["html"])
-        self.assertEqual(2, out["keydownListeners"])
+        self.assertEqual(3, out["keydownListeners"])
         self.assertEqual(2, out["focusMovements"])
         self.assertEqual([{"text": "Never render <script>", "enabled": True}], out["stored"])
 
