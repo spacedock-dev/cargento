@@ -594,3 +594,39 @@ class AMismatchedPacketIsRefusedBeforeItIsShownTest(_Home):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class IncompleteFrozenCheckTest(unittest.TestCase):
+    def test_the_frozen_pair_withholds_a_consistent_without_claiming_a_change(self) -> None:
+        case = {
+            "harness": "claude",
+            "sid": "s1",
+            "tool_output": {
+                "tails": {},
+                "changed_after": [],
+                "read_incomplete": [["call-1", "pytest"]],
+            },
+            "producer_facts": [
+                {
+                    "fact_id": "c1",
+                    "type": "tool_report",
+                    "subject": "check",
+                    "summary": "pytest",
+                    "result": "passed",
+                    "result_source": "flag",
+                    "at": 95.0,
+                    "branch": {"record_id": "call-1"},
+                    "source_session": {"harness": "claude", "sid": "s1"},
+                    "evidence": {
+                        "source": "Claude Bash call and paired result",
+                        "confidence": "exact",
+                    },
+                }
+            ],
+        }
+        (entry,) = mark_abstention.case_ledger({"v": 5}, case)
+        reading = mark_abstention._reading()
+        self.assertFalse(reading.check_supports(entry, reading.RESULT_CONSISTENT, 50.0))
+        self.assertIs(False, entry["changed_after"])
+        self.assertIs(True, entry.get("read_incomplete"))
+        self.assertIn("work record was not read", entry["summary"])

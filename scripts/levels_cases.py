@@ -80,6 +80,7 @@ KINDS = (
     "failed-check",
     "check-not-recorded",
     "pass-then-write",
+    "pass-older-than-read",
     "own-account-only",
     "intent-names-no-folder",
     "draft-unsaved",
@@ -381,6 +382,7 @@ def _show(case: Mapping[str, Any], position: str, say: Any) -> None:
             extra += (
                 ", a command after it may have changed files" if fact.get("changed_after") else ""
             )
+            extra += ", work record not fully read" if fact.get("read_incomplete") else ""
             line = _clip(fact.get("summary"), 90)
             say(f"    -{ago:6.0f}s  check  {fact.get('result')}{extra}: {line}")
         else:
@@ -942,13 +944,13 @@ def _replay_revision(case: Mapping[str, Any]) -> dict[str, Any]:
     }
 
 
-def _changed_after(case: Mapping[str, Any]) -> frozenset[tuple[str, str]]:
+def _check_pairs(case: Mapping[str, Any], flag: str) -> frozenset[tuple[str, str]]:
     """The (record id, check line) pairs a press carries, from the frozen facts' own flag."""
     pairs = set()
     for fact in case.get("facts") or ():
         branch = fact.get("branch") if isinstance(fact, dict) else None
         record = branch.get("record_id") if isinstance(branch, dict) else None
-        if fact.get("changed_after") is True and isinstance(record, str):
+        if fact.get(flag) is True and isinstance(record, str):
             pairs.add((record, str(fact.get("summary") or "")))
     return frozenset(pairs)
 
@@ -1306,7 +1308,8 @@ class _Press:
             destination=self.where,
             label=reading_route.LABELS[READ_PROVIDER],
             tails={},
-            changed_after=_changed_after(case),
+            changed_after=_check_pairs(case, "changed_after"),
+            read_incomplete=_check_pairs(case, "read_incomplete"),
         )
 
 

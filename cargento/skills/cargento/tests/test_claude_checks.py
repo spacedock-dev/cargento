@@ -440,7 +440,9 @@ class WhatAReaderSeesOfTheChecksASessionRan(ClaudeChecksTestCase):
         self.assertEqual("not-recorded", check["result"])
         self.assertIn("no result recorded yet", check["source"])
 
-    def test_a_subagents_checks_are_left_for_their_own_layer(self) -> None:
+    def test_a_sidechain_record_inside_the_parents_own_file_is_not_read(self) -> None:
+        # A subagent is read from its own transcript (test_subagent_checks);
+        # none of 300 sampled parent transcripts holds a sidechain record.
         call_id = self.session.call("Bash", {"command": "pytest"}, sidechain=True)
         self.session.result(call_id, "", is_error=True)
         events, scan = self.read()

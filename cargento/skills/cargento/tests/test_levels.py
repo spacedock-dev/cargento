@@ -109,6 +109,43 @@ SUPPORTED = a_reading(
 )
 
 
+class AnIncompletePassIsCautionTest(unittest.TestCase):
+    def test_it_does_not_meet_the_live_floor(self) -> None:
+        facts = evidence(
+            [{**check("c1", SAVE + 20, "passed"), "read_incomplete": True}], scan(passed=1)
+        )
+        got = levels.live_level(facts, intent("Tests pass"))
+        self.assertEqual(levels.NOT_ENOUGH, got.level)
+        self.assertIn("pass-older-than-read", got.reasons)
+        self.assertNotIn("command-after-pass", got.reasons)
+
+    def test_it_does_not_show_a_consistent_line_or_claim_a_change_in_analysis(self) -> None:
+        facts = evidence(
+            [{**check("c1", SAVE + 20, "passed"), "read_incomplete": True}], scan(passed=1)
+        )
+        got = analyze(a_reading(line_1=criterion(reading.RESULT_CONSISTENT, "c1")), facts)
+        self.assertEqual(levels.NOT_ENOUGH, got.level)
+        self.assertNotIn("pass-then-write", got.reasons)
+
+    def test_a_stored_incomplete_reason_without_a_cited_fact_still_withholds(self) -> None:
+        got = analyze(
+            a_reading(line_1=criterion(reading.RESULT_UNVERIFIABLE, why="check-read-incomplete")),
+            PASSING,
+        )
+        self.assertEqual(levels.NOT_ENOUGH, got.level)
+        self.assertNotIn("pass-then-write", got.reasons)
+
+    def test_an_independent_failure_remains_high(self) -> None:
+        facts = evidence(
+            [
+                {**check("c1", SAVE + 20, "passed"), "read_incomplete": True},
+                check("c2", SAVE + 30, "failed"),
+            ],
+            scan(passed=1, failed=1),
+        )
+        self.assertEqual(levels.HIGH, levels.live_level(facts, intent("Tests pass")).level)
+
+
 class FailedCheckTest(unittest.TestCase):
     """The latest run of a check failed: High on both sources (starting definitions)."""
 

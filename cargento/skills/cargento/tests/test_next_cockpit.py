@@ -7531,6 +7531,28 @@ const output = (result, cites, entries) => nextCockpitReadingShape(
             storage_prelude({}) + NextCockpitCompositionTest.FIXTURE,
         )
 
+    def test_an_incomplete_pass_is_withdrawn_with_its_own_reason(self) -> None:
+        out = self.run_fixture(
+            self.ENTRIES
+            + """
+const mapped = nextCockpitWorkEntries({harness:"claude", sid:"s1"}, {facts:[
+  {fact_id:"c1", type:"tool_report", subject:"check", result:"passed", at:95,
+   read_incomplete:true, evidence:{source:"Claude subagent Bash call and paired result", confidence:"exact"},
+   source_session:{harness:"claude", sid:"s1"}}]});
+console.log(JSON.stringify({
+  row: output("consistent with the evidence read", ["c1"], mapped),
+  failed: output("departure", ["c2"], [check("c2", "failed", {readIncomplete:true})]).result,
+}));
+"""
+        )
+        assert isinstance(out, dict)
+        self.assertEqual("not verifiable from available evidence", out["row"]["result"])
+        self.assertEqual(
+            "The check passed, but part of the work record was not read, so it does not show this.",
+            out["row"]["why"],
+        )
+        self.assertEqual("departure", out["failed"])
+
     def test_a_consistent_resting_on_a_fresh_pass_is_labelled_as_the_tool_reported(self) -> None:
         out = self.run_fixture(
             self.ENTRIES

@@ -294,33 +294,40 @@ def case_constraints(body: dict[str, Any], case: dict[str, Any]) -> tuple[str, .
 
 def case_checks(
     body: dict[str, Any], case: dict[str, Any]
-) -> tuple[dict[str, str] | None, frozenset[tuple[str, str]]]:
-    """The frozen tails and changed-after pairs, or None where no check is read.
+) -> tuple[dict[str, str] | None, frozenset[tuple[str, str]], frozenset[tuple[str, str]]]:
+    """Frozen tails, later-command pairs and incomplete-read pairs.
 
-    Only a format 5 Claude Code case carries checks, because only that harness
-    publishes them and only this packet froze them at the capture.
+    Only a format 5 Claude Code case carries checks. Older packets lack the
+    incomplete-read field; an absent field means no such pass was frozen.
     """
     if not is_intent_packet(body) or case.get("harness") != "claude":
-        return None, frozenset()
+        return None, frozenset(), frozenset()
     raw = case.get("tool_output")
     frozen: dict[str, Any] = raw if isinstance(raw, dict) else {}
     tails = frozen.get("tails")
-    pairs = frozen.get("changed_after")
+
+    def pairs(key: str) -> frozenset[tuple[str, str]]:
+        values = frozen.get(key)
+        return (
+            frozenset(
+                (str(pair[0]), str(pair[1]))
+                for pair in values or ()
+                if isinstance(pair, (list, tuple)) and len(pair) == 2
+            )
+            if isinstance(values, list)
+            else frozenset()
+        )
+
     return (
         {str(k): str(v) for k, v in tails.items()} if isinstance(tails, dict) else {},
-        frozenset(
-            (str(pair[0]), str(pair[1]))
-            for pair in pairs or ()
-            if isinstance(pair, (list, tuple)) and len(pair) == 2
-        )
-        if isinstance(pairs, list)
-        else frozenset(),
+        pairs("changed_after"),
+        pairs("read_incomplete"),
     )
 
 
 def case_ledger(body: dict[str, Any], case: dict[str, Any]) -> tuple[Any, ...]:
     """The frozen ledger the producer will read, checks included where frozen."""
-    tails, changed = case_checks(body, case)
+    tails, changed, incomplete = case_checks(body, case)
     return tuple(
         _reading().build_ledger(
             case.get("producer_facts") or [],
@@ -328,6 +335,7 @@ def case_ledger(body: dict[str, Any], case: dict[str, Any]) -> tuple[Any, ...]:
             str(case.get("sid") or ""),
             tool_output=tails,
             changed_after=changed,
+            read_incomplete=incomplete,
         )
     )
 
@@ -747,6 +755,7 @@ def _frozen_checks(
         {
             "tails": dict(press.tails),
             "changed_after": sorted([list(pair) for pair in press.changed_after]),
+            "read_incomplete": sorted([list(pair) for pair in press.read_incomplete]),
         },
         size,
     )
@@ -823,8 +832,12 @@ def content_refusal(config: Any, case: dict[str, Any], transcript: str) -> list[
     frozen = {
         "tails": tails,
         "changed_after": sorted([list(pair) for pair in press.changed_after]),
+        "read_incomplete": sorted([list(pair) for pair in press.read_incomplete]),
     }
-    if json.loads(json.dumps(frozen)) != case.get("tool_output"):
+    captured_output = case.get("tool_output")
+    if isinstance(captured_output, dict):
+        captured_output = {"read_incomplete": [], **captured_output}
+    if json.loads(json.dumps(frozen)) != captured_output:
         reasons.append("tool-output-differs")
     facts = [f for f in case.get("producer_facts") or () if isinstance(f, dict)]
     tool = reading.TOOL_REPORT_TYPE
@@ -837,6 +850,7 @@ def content_refusal(config: Any, case: dict[str, Any], transcript: str) -> list[
                 sid,
                 tool_output=tails,
                 changed_after=press.changed_after,
+                read_incomplete=press.read_incomplete,
             )
         )
 
@@ -1223,6 +1237,7 @@ def _show_intent_case(body: dict[str, Any], case: dict[str, Any], position: str)
             word
             for word, on in (
                 ("changed after", entry.get("changed_after") is True),
+                ("work record not fully read", entry.get("read_incomplete") is True),
                 ("stale", entry.get("stale") is True),
             )
             if on

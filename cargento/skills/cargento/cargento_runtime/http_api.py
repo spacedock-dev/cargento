@@ -2568,6 +2568,7 @@ class _RequestHandler(BaseHTTPRequestHandler):
                 label=route["label"],
                 tails=press.tails,
                 changed_after=press.changed_after,
+                read_incomplete=press.read_incomplete,
             )
         elif harness in runtime_reading_route.TOOL_OUTPUT_HARNESSES:
             # Named, and no grant for it when the reading ran: never given, or

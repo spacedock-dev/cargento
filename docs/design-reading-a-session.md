@@ -1461,7 +1461,86 @@ and item 3's measured note that a written path comes only from a file-write tool
    lands after the later call's, which moves the fact id. A stored citation of the old id then
    reads uncited, which errs safe.
 
-DRC-4709's third item, a subagent's writes, waits for DRC-4687.
+DRC-4709's third item, a subagent's writes, landed with DRC-4687 in
+[the amendment of 2026-09-28](#amended-2026-09-28-a-subagents-checks-and-writes-are-the-parents).
+
+### Amended 2026-09-28: a subagent's checks and writes are the parent's
+
+The owner ruled on DRC-4687 and on DRC-4709's subagent item together on 2026-09-28: count both
+ways. A subagent's checks count for the parent session, labelled as the subagent's, and its writes
+count against the parent's earlier passes. Landing only the writes would have marked down exactly
+the sessions that delegated their tests, since their subagent's edits would age a pass while its
+checks went uncredited. This amends item 3's "a shell command", item 4's "each distinct check" and
+the measured note that DEC-23 reads the root session's calls alone.
+
+1. A subagent is a transcript Claude Code writes beside its parent, under the parent's session
+   directory: `subagents/agent-<id>.jsonl` for a Task or Agent call, and
+   `subagents/workflows/<run>/agent-<id>.jsonl` for a workflow's agents. Every record in it is a
+   sidechain carrying the parent's `sessionId`, and the parent's Agent result names the id
+   ([the capture](captures/claude/subagent-transcript-shapes-2.1.281-macos.jsonl)). A file named
+   `agent-<kind>-<id>` is a forked context, not a subagent: compaction, an aside question and a
+   prompt suggestion replay the parent's context under the parent's own call ids, so reading them
+   would count the parent's calls twice. A sidechain record inside the parent's own file is not read.
+   A teammate of an agent team, which writes its own top-level transcript, and the older layout's
+   `agent-*.jsonl` beside the project's sessions, are not read here; their checks count toward no
+   session yet.
+2. A subagent's checks count for the parent, read by the same parser and the same rules. A
+   check's identity is still its directory and its segment, whoever ran it, so a check the parent
+   and a subagent both ran is one check: its latest run counts, chosen by result time, and
+   `earlier_failed` spans both. A failing subagent check is a failing check of the session, and a
+   subagent's pass supports what a parent's would.
+3. A subagent's entry is labelled in the record. The event and its published fact carry
+   `worker_kind: "subagent"`, a key the fact already allows, on a check whose latest run was a
+   subagent's and on a path a subagent wrote last. The parent's own entries carry none. The page
+   renders no word for the key itself, so the evidence source line names the worker instead:
+   "Claude subagent Bash call and paired result", "Claude subagent Edit call", and so on. The owner
+   chose that wording on 2026-09-28 because the page already shows the source line and it needs no
+   web change.
+4. A subagent's writes count against the parent's earlier passes, with the same fields: a
+   file-write tool's path, a check's own redirect, a fixer, and every changing shell command set
+   `before_last_change`, `changed_after` and `last_changing_command_at` exactly as the parent's
+   do. A parent write after a subagent's pass ages it the same way, and one subagent's write ages
+   another's pass. A subagent working in another checkout still ages the parent's passes, as a write
+   outside the working directory always has, and its written paths are relative to its own working
+   directory.
+5. One order across all of them. Each transcript keeps its own order, and the transcripts are
+   merged by call time, the parent's first at a tie. The result time decides which run of a check
+   is latest, across parent and subagent alike, as item 4 of the 2026-09-27 amendment set it; every
+   change comparison keeps the call time, for the reason that amendment measured. A subagent run
+   in the background beside its parent is ordered by its own records' times.
+6. An Agent call is not itself a change. DRC-4709 named "an Agent call after a pass" because a
+   subagent's work was unread; it is read now. The exposure left is a subagent whose transcript is
+   not on this machine, whose writes Cargento cannot see.
+7. The bound. A session's subagents share one `turn_scan_max_bytes`, the parent's own 8 MiB, read
+   newest transcript first by modification time. A transcript the bound reaches into is read for
+   its newest bytes, as the parent is, and the rest are counted in `subagent_transcripts_unread`
+   beside `subagent_transcripts`, the number read. A transcript that yields no record, because it
+   failed to open or its newest line outgrew the bound, counts as unread, since a real one always
+   holds its prompt. Each stream is bounded on its own, so what one leaves out is not older than
+   everything the others read: a parent's later write can fall out of its window while a
+   subagent's earlier pass is still read. The scan therefore publishes `reads_from`, the latest of
+   where each cut transcript's read begins and the newest time each unread transcript can hold
+   (its modification time). A pass called before `reads_from` is marked `read_incomplete`.
+   It cannot support a consistent outcome or the live "None or low" floor; incompleteness alone
+   is not evidence of departure. It is not dropped, because dropping older calls would drop an
+   older failure too. Neither count blocks the live estimate by itself; an unread transcript
+   can withhold the floor through `reads_from`. With no subagent and nothing cut
+   there is no `reads_from`, and with only the parent cut every pass it holds is at or after it,
+   so such a session reads as it did. The abstention packet's frozen moment reads each transcript
+   as it stood, newest by the last record it then held, and marks the same passes, bounding a
+   transcript it cannot open by the earlier of its modification time and the moment.
+8. Where it goes is unchanged. A subagent's checks are the parent session's record, so items 6, 7,
+   9 and 10 apply to them as written, and a press carries a subagent check's tail only under the
+   tool-output grant the parent's needs.
+
+Measured on this machine on 2026-09-28, counts only: 9,443 agent files under 594 sessions'
+`subagents` directories, 9,119 of them plain subagents, 234 compactions, 74 prompt suggestions
+and 16 aside questions. Of the forked contexts that held a call, 15 of 16 aside questions and 21 of
+39 compactions replayed the parent's own call ids; 245 of 245 sampled subagents shared none with
+their parent, and 60 sampled sessions' subagents shared none with each other. In 150 sampled
+sessions, all 1,107 agent ids an Agent result named had a transcript. 3,000 agent files, forks
+included, held 41,205 Bash, 11,944 Edit and 2,903 Write calls. The largest session held 389
+subagent transcripts totalling 405 MB, and the 95th percentile 69 and 23 MB.
 
 ## DEC-24: your intent is a drafted goal and a checklist, and a correction is yours to copy
 
@@ -2089,8 +2168,8 @@ question before the press in place of "Conflict to settle", and Add adopting a d
   before the route, any Allow write, the adoption or the job, reading the store from disk under
   its lock and checking the entry handed to the job again, so another dashboard's save is caught, and the page says the approved stale
   sentence; the store already refused a stale goal save, and the typed words stay in the box.
-  `nextReadingCheckSupports` mirrors `check_supports` on every harness, including `changed_after`
-  and the subjectless Pi rows an older build stored, held by a test built from the server's own Pi
+  `nextReadingCheckSupports` mirrors `check_supports` on every harness, including `changed_after`,
+  `read_incomplete` and the subjectless Pi rows an older build stored, held by a test built from the server's own Pi
   fixture; the record column opens with "Cargento reads work results from Claude Code and Pi
   only." The analyzing box lost `role="status"`, which re-announced it on every render: its start
   and its outcome are written once each to the persistent polite region. The question adds no

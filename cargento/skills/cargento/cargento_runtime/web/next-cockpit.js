@@ -1872,6 +1872,7 @@ function nextCockpitWorkEntries(session, semantic){
         earlierFailed: fact.earlier_failed === true,
         beforeLastChange: fact.before_last_change === true,
         changedAfter: fact.changed_after === true,
+        readIncomplete: fact.read_incomplete === true,
         source: [evidence.source, evidence.confidence].map(value =>
           String(value == null ? "" : value).trim()).filter(Boolean).join(" · "),
       };
@@ -2376,6 +2377,8 @@ const NEXT_READING_CHECK_DOES_NOT_SHOW_IT =
 const NEXT_READING_CHANGED_AFTER_CHECK =
   "The check it cited passed, and a later command may have changed files, so it does not " +
   "show this.";
+const NEXT_READING_CHECK_READ_INCOMPLETE =
+  "The check passed, but part of the work record was not read, so it does not show this.";
 const NEXT_READING_CHECKS_NOT_READ =
   "No check this session recorded had room in the reading, so your expected output was not " +
   "put to it.";
@@ -2400,6 +2403,7 @@ const NEXT_READING_STORED_WHY = {
   "check-does-not-show-it": NEXT_READING_CHECK_DOES_NOT_SHOW_IT,
   "failed-check-unread": NEXT_READING_FAILED_CHECK_UNREAD,
   "changed-after-check": NEXT_READING_CHANGED_AFTER_CHECK,
+  "check-read-incomplete": NEXT_READING_CHECK_READ_INCOMPLETE,
   "checks-not-read": NEXT_READING_CHECKS_NOT_READ,
 };
 
@@ -2475,7 +2479,8 @@ function nextReadingCheckSupports(entry, result, windowStart){
   if(at == null || at <= 0 || (windowStart != null && at < windowStart)) return false;
   if(result === NEXT_READING_DEPARTURE) return entry.result === "failed";
   if(result === NEXT_READING_CONSISTENT){
-    return entry.result === "passed" && !entry.beforeLastChange && !entry.changedAfter;
+    return entry.result === "passed" && !entry.beforeLastChange && !entry.changedAfter &&
+      !entry.readIncomplete;
   }
   return false;
 }
@@ -2638,12 +2643,16 @@ function nextCockpitReadingCriterion(key, label, clause, raw, entries, limit, un
   }
   let droppedCheck = false;
   if(result !== NEXT_READING_UNVERIFIABLE){
+    const incompletePass = result === NEXT_READING_CONSISTENT && citations.some(entry =>
+      entry.readIncomplete && nextReadingCheckSupports({...entry, readIncomplete:false},
+        result, windowStart));
     const supporting = citations.filter(entry => nextReadingCheckSupports(entry, result, windowStart));
     droppedCheck = supporting.length < citations.length;
     citations = supporting;
     if(!citations.length){
       result = NEXT_READING_UNVERIFIABLE;
-      why = NEXT_READING_CHECK_DOES_NOT_SHOW_IT;
+      why = incompletePass ? NEXT_READING_CHECK_READ_INCOMPLETE
+        : NEXT_READING_CHECK_DOES_NOT_SHOW_IT;
     }
   }
   const shows = citations.filter(nextReadingDemonstratesWork);
