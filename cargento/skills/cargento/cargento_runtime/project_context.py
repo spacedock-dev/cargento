@@ -1590,7 +1590,9 @@ _READ_ONLY_WORDS = frozenset(
     {"ls", "cat", "head", "tail", "grep", "rg", "find", "wc", "pwd", "echo", "which", "file",
      "stat", "tree", "less"}
 )  # fmt: skip
-_READ_ONLY_PAIRS = frozenset({"git status", "git log", "git diff", "git show"})
+_READ_ONLY_PAIRS = frozenset(
+    {"git status", "git log", "git diff", "git show", "git rev-parse", "git merge-base"}
+)
 # Options that make a read-only command write or run something, per command:
 # `find -o` is an OR and stays read-only, `tree -o` writes a file.
 _WRITING_OPTIONS = {
@@ -1603,16 +1605,11 @@ _WRITING_OPTIONS = {
     "git show": frozenset({"--output"}),
 }
 # A device that stores nothing, whichever operator writes to it (review W5).
-_HARMLESS_REDIRECT_RE = re.compile(
-    r"^(?:\d*>&\d+|(?:\d+|\{[A-Za-z_][A-Za-z0-9_]*\})?(?:&>>|&>|>>|>\||>)"
-    r"/dev/(?:null|stdout|stderr|tty|fd/\d+))$"
-)
+_HARMLESS_DEVICE_RE = re.compile(r"^/dev/(?:null|stdout|stderr|tty|fd/\d+)$")
 _CD_OPTION_RE = re.compile(r"^-[LPe@]+$")
 # A written redirection's operator, its optional descriptor first, and the
 # target word after it.
-_WRITE_REDIRECT_RE = re.compile(
-    r"^(?:\d+|\{[A-Za-z_][A-Za-z0-9_]*\})?(?P<op>&>>|&>|>>|>&|>\||<>|>)(?P<target>.*)$", re.DOTALL
-)
+_WRITE_OPERATORS = frozenset({"&>>", "&>", ">>", ">&", ">|", "<>", ">"})
 
 
 def _skip_options(words: list[str], takes_value: frozenset[str]) -> list[str]:
@@ -1679,13 +1676,29 @@ class _Unbalanced(Exception):  # noqa: N818 - a parse outcome, not an error the 
     target, or nesting past the cap: the call is read as not run."""
 
 
+class _Redirect(NamedTuple):
+    # Quoting belongs to the target, never to the operator. Joining them
+    # made `> '&1'` indistinguishable from `>&1` (DRC-4725).
+    operator: str
+    target: str
+    kind: str
+
+
+class _Heredoc(NamedTuple):
+    delimiter: str
+    strip: bool
+    expand: bool
+    # The declaring segment's list survives the newline that resets the lexer.
+    bodies: list[str]
+
+
 class _Segment(NamedTuple):
     words: list[str]
     joiner: str
     # Redirections, kept out of `words` because the shell strips them before
     # argv is built: `--password 2>&1 value` reaches the program as a flag and
     # its value side by side, and masking must see them that way.
-    redirects: list[str]
+    redirects: list[_Redirect]
     # The command text of each substitution in the segment, read afterwards
     # with the same rules, since whatever it runs runs whether or not the
     # segment is a check.
@@ -1696,7 +1709,7 @@ class _Segment(NamedTuple):
     closes: int = 0
     # Redirections after a `)`, which the outer shell opens where the group
     # started: each with the index of the segment that opened it (review W3).
-    outer: tuple[tuple[str, int], ...] = ()
+    outer: tuple[tuple[_Redirect, int], ...] = ()
     syntax: tuple[str, ...] = ()
 
 
@@ -1716,18 +1729,19 @@ class _ShellLexer:
     def __init__(self, text: str) -> None:
         self.text = text
         self.pos = 0
-        self.heredocs: list[tuple[str, bool]] = []
-        self.redirects: list[str] = []
+        self.heredocs: list[_Heredoc] = []
+        self.redirects: list[_Redirect] = []
         self.bodies: list[str] = []
         self.depth = 0
         # One entry per open parenthesis: the index of the segment a subshell
         # opened at, or None where it opened none.
         self.parens: list[int | None] = []
         self.opens = self.closes = 0
-        self.outer: list[tuple[str, int]] = []
+        self.outer: list[tuple[_Redirect, int]] = []
         self.group: int | None = None
         self.syntax: list[str] = []
         self.cases: list[str] = []
+        self.literal = False
 
     def _at(self, offset: int = 0) -> str:
         index = self.pos + offset
@@ -1781,7 +1795,7 @@ class _ShellLexer:
             words.append(_WITHHELD if hide_next else word)
         return word == _WITHHELD
 
-    def _add_redirect(self, redirect: str) -> None:
+    def _add_redirect(self, redirect: _Redirect) -> None:
         self.redirects.append(redirect)
         if self.group is not None:
             self.outer.append((redirect, self.group))
@@ -1902,16 +1916,20 @@ class _ShellLexer:
         while self._at() in (" ", "\t") and self._at():
             self.pos += 1
 
-    def _target(self) -> str:
+    def _target(self, *, literal: bool = False) -> str:
         """The word a redirection or heredoc operator takes; a missing one is a
         syntax error."""
         self._skip_blanks()
         substitution = self._at() in ("<", ">") and self._at(1) == "("
         if self._at() in ("", "\n", ";", "|", "&", "(", ")", "<", ">") and not substitution:
             raise _Unbalanced
-        return self._word()
+        previous, self.literal = self.literal, literal
+        try:
+            return self._word()
+        finally:
+            self.literal = previous
 
-    def _redirection(self) -> str | None:
+    def _redirection(self) -> _Redirect | None:
         """A redirection with its optional descriptor and its target, consumed
         and returned as one token (`2>&1`, `>out`, `<<EOF`, `<<<…`); None when
         the next thing is a word. A descriptor counts only as a whole word:
@@ -1923,35 +1941,64 @@ class _ShellLexer:
         self.pos = match.end()
         if operator.endswith("<<<"):
             self._target()  # stdin data: never published, though it is still read
-            return operator + "…"
+            return _Redirect(operator, "…", match.group("op"))
         if operator.endswith(("<<", "<<-")):
-            delimiter = self._target()
-            self.heredocs.append((delimiter, operator.endswith("-")))
-            return operator + delimiter
-        return operator + self._target()
+            pending = self._heredoc_target(operator.endswith("-"))
+            self.heredocs.append(pending)
+            return _Redirect(operator, pending.delimiter, match.group("op"))
+        return _Redirect(operator, self._target(), match.group("op"))
 
     def _process_substitution(self, match: re.Match[str]) -> bool:
         """`<(…)` and `>(…)` are words, not redirections."""
         bare = match.group("op") in ("<", ">")
         return bare and self.text[match.end() : match.end() + 1] == "("
 
-    def _heredoc(self, pending: list[tuple[str, bool]]) -> None:
+    def _heredoc_target(self, strip: bool) -> _Heredoc:
+        self._skip_blanks()
+        start = self.pos
+        delimiter = self._target(literal=True)
+        raw = self.text[start : self.pos].replace("\\\n", "")
+        return _Heredoc(delimiter, strip, not any(c in raw for c in "'\"\\"), self.bodies)
+
+    def _heredoc(self, pending: list[_Heredoc]) -> None:
         """A heredoc operator inside a substitution, and its delimiter word."""
         self.pos += 2
         strip = self._at() == "-"
         self.pos += strip
-        pending.append((self._target(), strip))
+        pending.append(self._heredoc_target(strip))
 
-    def _skip_bodies(self, pending: list[tuple[str, bool]]) -> None:
+    def _skip_bodies(self, pending: list[_Heredoc], *, nested: bool = False) -> None:
         """Each pending heredoc body in order, a line equal to its delimiter
         closing it; an unclosed one runs to the end, as bash reads it."""
-        for delimiter, strip in pending:
+        for here in pending:
+            body: list[str] = []
             while self.pos < len(self.text):
-                end = self.text.find("\n", self.pos)
-                line = self.text[self.pos : len(self.text) if end == -1 else end]
-                self.pos = len(self.text) if end == -1 else end + 1
-                if (line.lstrip("\t") if strip else line) == delimiter:
+                line = self._heredoc_line()
+                physical = [line]
+                logical = line.lstrip("\t") if here.strip else line
+                # Unquoted backslash-newline removal precedes delimiter
+                # matching; an escaped backslash keeps the physical newline.
+                while (
+                    here.expand
+                    and (len(logical) - len(logical.rstrip("\\"))) % 2
+                    and self.pos < len(self.text)
+                ):
+                    line = self._heredoc_line()
+                    physical.append(line)
+                    logical = logical[:-1] + (line.lstrip("\t") if here.strip else line)
+                if logical == here.delimiter:
                     break
+                body.extend(physical)
+            if here.expand:
+                expanded = self._heredoc_expansions("\n".join(body))
+                if not nested:
+                    here.bodies.extend(expanded)
+
+    def _heredoc_line(self) -> str:
+        end = self.text.find("\n", self.pos)
+        line = self.text[self.pos : len(self.text) if end == -1 else end]
+        self.pos = len(self.text) if end == -1 else end + 1
+        return line
 
     def _word(self) -> str:
         out: list[str] = []
@@ -1973,7 +2020,7 @@ class _ShellLexer:
             out.append(part)
         if self.pos == start:
             self.pos += 1
-        if _BRACE_EXPANSION_RE.search("".join(bare)):
+        if not self.literal and _BRACE_EXPANSION_RE.search("".join(bare)):
             # `{--password=,x}value` becomes `--password=value` and `xvalue`,
             # and `AKIA{…,}` a whole key: the words are unknown, so withheld.
             return _WITHHELD
@@ -1990,9 +2037,9 @@ class _ShellLexer:
         if char == '"' or (char == "$" and after == '"'):
             self.pos += 1 if char == '"' else 2
             return self._double_quoted()
-        if char == "$" and after == "{":
+        if not self.literal and char == "$" and after == "{":
             return self._braced()
-        if (char in "$<>" and after == "(") or char == "`":
+        if not self.literal and ((char in "$<>" and after == "(") or char == "`"):
             return self._substitution()
         return None
 
@@ -2019,11 +2066,21 @@ class _ShellLexer:
         arithmetic = self.text.startswith("$((", self.pos)
         self.pos += 2
         start = self.pos
-        self._skip_group(arithmetic=arithmetic)
+        # The containing body is parsed below. Collecting its nested bodies
+        # here as well makes later effect/masking reads grow exponentially.
+        previous, self.bodies = self.bodies, []
+        try:
+            self._skip_group(arithmetic=arithmetic)
+            nested = self.bodies
+        finally:
+            self.bodies = previous
         body = self.text[start : self.pos - 1]
         if not arithmetic:
             self.bodies.append(body)
             return _SUBSTITUTED
+        # Arithmetic effects stay unknown, while its actual executable
+        # substitutions still supply private named values to tail masking.
+        self.bodies.extend(nested)
         if "$(" in body or "`" in body:
             self.bodies.append(_UNREAD_BODY)
         return _ARITHMETIC
@@ -2040,9 +2097,9 @@ class _ShellLexer:
             if char == "\\" and after in ('"', "\\", "$", "`", "\n"):
                 out.append("" if after == "\n" else after)
                 self.pos += 2
-            elif char == "$" and after == "{":
+            elif not self.literal and char == "$" and after == "{":
                 out.append(self._braced())
-            elif (char == "$" and after == "(") or char == "`":
+            elif not self.literal and ((char == "$" and after == "(") or char == "`"):
                 out.append(self._substitution())
             else:
                 out.append(char)
@@ -2144,14 +2201,18 @@ class _ShellLexer:
         `)` closes nothing."""
         self._nest()
         depth, previous, cases = 1, "(", 0
-        pending: list[tuple[str, bool]] = []
+        pending: list[_Heredoc] = []
         while depth:
             char, after = self._at(), self._at(1)
             if not char:
                 raise _Unbalanced
             if char == "$" and after == "{":
                 self._braced()
-            elif self._skip_quoted(char):
+            elif arithmetic and ((char == "$" and after == "(") or char == "`"):
+                self._substitution()
+            # Arithmetic executes nested commands between single quote
+            # characters before rejecting the resulting expression.
+            elif (not arithmetic or char != "'") and self._skip_quoted(char):
                 pass
             elif arithmetic:
                 depth += {"(": 1, ")": -1}.get(char, 0)
@@ -2167,7 +2228,7 @@ class _ShellLexer:
         self.depth -= 1
 
     def _skip_group_char(
-        self, char: str, after: str, previous: str, pending: list[tuple[str, bool]]
+        self, char: str, after: str, previous: str, pending: list[_Heredoc]
     ) -> None:
         if char == "#" and previous in _COMMAND_STARTS:
             end = self.text.find("\n", self.pos)
@@ -2178,10 +2239,30 @@ class _ShellLexer:
             self._heredoc(pending)
         elif char == "\n":
             self.pos += 1
-            self._skip_bodies(pending)
+            self._skip_bodies(pending, nested=True)
             pending.clear()
         else:
             self.pos += 1
+
+    def _heredoc_expansions(self, body: str) -> list[str]:
+        """Only substitutions execute here; quotes and literal lines are data.
+
+        Retain the depth bound across a heredoc inside a substitution. The
+        containing substitution is read later on its own, so nested bodies
+        validate here without also being added to its parent's effect list.
+        """
+        logical = re.sub(r"(?<!\\)((?:\\\\)*)\\\n", r"\1", body)
+        lexer = _ShellLexer(logical)
+        lexer.depth = self.depth
+        while lexer.pos < len(lexer.text):
+            char, after = lexer._at(), lexer._at(1)
+            if char == "\\" and after in ("$", "`", "\\"):
+                lexer.pos += 2
+            elif (char == "$" and after == "(") or char == "`":
+                lexer._substitution()
+            else:
+                lexer.pos += 1
+        return lexer.bodies
 
     def _skip_quoted(self, char: str) -> bool:
         """An escape, a quoted string or a backtick run inside a group, skipped."""
@@ -2214,10 +2295,10 @@ def _backgrounds(joiners: list[str]) -> list[bool]:
     return found[::-1]
 
 
-def _shell_wrapper_line(words: list[str]) -> str | None:
+def _shell_wrapper_line(words: list[str]) -> tuple[str, int] | None:
     """The command string of `bash -c '…'`, `sh -c`, `zsh -c` or `bash -lc`
-    under the closed option set, or None. Words after it are `$0` and the
-    positional arguments, and are neither matched nor published."""
+    under the closed option set, and its word index; otherwise None. Words
+    after it are `$0` and positional arguments, neither matched nor published."""
     if not words or os.path.basename(words[0]) not in _SHELLS:
         return None
     rest = words[1:]
@@ -2228,7 +2309,7 @@ def _shell_wrapper_line(words: list[str]) -> str | None:
             rest = rest[2:]
         elif _SHELL_FLAGS_RE.match(rest[0]):
             if "c" in rest[0]:
-                return rest[1] if len(rest) > 1 else None
+                return (rest[1], len(words) - len(rest) + 1) if len(rest) > 1 else None
             rest = rest[1:]
         else:
             return None
@@ -2241,7 +2322,7 @@ class _Part(NamedTuple):
     words: list[str]
     rtk: bool
     joiner: str
-    redirects: list[str]
+    redirects: list[_Redirect]
     # A substitution in it runs something that is not read-only.
     hides_change: bool
     background: bool
@@ -2255,24 +2336,29 @@ class _Part(NamedTuple):
     # A group's or a wrapper's own redirections, each with the index of the
     # part whose starting directory the outer shell opens it in (review W3).
     # They are in `redirects` as well, for every other rule.
-    outer: tuple[tuple[str, int], ...] = ()
+    outer: tuple[tuple[_Redirect, int], ...] = ()
     # The segment's words before any stripping, assignments included, and a
     # wrapper's own words on its first inner part: what masking may hide.
     raw: tuple[str, ...] = ()
     syntax: tuple[str, ...] = ()
+    # Named values in executed substitutions can be echoed into the same tail.
+    hidden_values: tuple[str, ...] = ()
 
 
-def _body_reads_only(body: str) -> bool:
-    """Whether a substitution's command text runs only what the read-only list
-    names, read with the same rules as a segment (review, 2026-09-27)."""
+def _body_facts(body: str) -> tuple[bool, tuple[str, ...]]:
+    """A substitution's effects and masked values, under the same segment rules.
+
+    The text stays private: only its named values reach the call's tail scrub.
+    """
     if body == _UNREAD_BODY:
-        return False
+        return False, ()
     try:
         parts = _call_parts(body)
     except _Unbalanced:
-        return False
-    return all(
+        return False, ()
+    reads = all(
         not part.hides_change
+        and not _writes_a_file(part.redirects)
         and (
             not part.words
             or part.words[0] == "cd"
@@ -2280,6 +2366,12 @@ def _body_reads_only(body: str) -> bool:
         )
         for part in parts
     )
+    masked = tuple(
+        value
+        for part in parts
+        for value in (*records.masked_values(list(part.raw)), *part.hidden_values)
+    )
+    return reads, masked
 
 
 def _call_parts(text: str, depth: int = 0) -> list[_Part]:
@@ -2301,10 +2393,12 @@ def _call_parts(text: str, depth: int = 0) -> list[_Part]:
         first_part.append(len(parts))
         outer = tuple((redirect, first_part[at]) for redirect, at in segment.outer)
         words, rtk = _stripped(segment.words)
-        hides = not all(_body_reads_only(body) for body in segment.bodies)
+        bodies = [_body_facts(body) for body in segment.bodies]
+        hides = not all(reads for reads, _values in bodies)
+        hidden_values = tuple(value for _reads, values in bodies for value in values)
         inner = _shell_wrapper_line(words) if depth < _SHELL_WRAPPER_DEPTH else None
         try:
-            spliced = _call_parts(inner, depth + 1) if inner is not None else []
+            spliced = _call_parts(inner[0], depth + 1) if inner is not None else []
         except _Unbalanced:
             # The inner shell fails and the rest of the call runs: only this
             # segment is unread, and it stays a change (review, 2026-09-27).
@@ -2314,16 +2408,23 @@ def _call_parts(text: str, depth: int = 0) -> list[_Part]:
             parts.append(
                 _Part(words, rtk, segment.joiner, segment.redirects, hides, background,
                       launches, segment.opens, segment.closes, outer, tuple(segment.words),
-                      segment.syntax)
+                      segment.syntax, hidden_values)
             )  # fmt: skip
             continue
         last, offset = len(spliced) - 1, len(parts)
         # The wrapper's own redirections open where the wrapper started.
         wrapper = tuple((r, offset) for r in _without(segment.redirects, segment.outer))
+        # Its script is parsed into inner words below. Treating that entire
+        # script as one assignment also masks ordinary runner/summary words.
+        script = len(segment.words) - len(words) + inner[1] if inner else 0
+        outer_words = [*segment.words[:script], *segment.words[script + 1 :]]
         parts.extend(
             part._replace(
                 outer=(*((r, at + offset) for r, at in part.outer), *outer, *wrapper),
-                raw=(*segment.words, *part.raw) if index == 0 else part.raw,
+                raw=(*outer_words, *part.raw) if index == 0 else part.raw,
+                hidden_values=(*hidden_values, *part.hidden_values)
+                if index == 0
+                else part.hidden_values,
                 syntax=(*segment.syntax, *part.syntax) if index == 0 else part.syntax,
                 rtk=part.rtk or rtk,
                 joiner=segment.joiner if index == last else part.joiner,
@@ -2339,7 +2440,7 @@ def _call_parts(text: str, depth: int = 0) -> list[_Part]:
     return parts
 
 
-def _without(redirects: list[str], outer: Iterable[tuple[str, int]]) -> list[str]:
+def _without(redirects: list[_Redirect], outer: Iterable[tuple[_Redirect, int]]) -> list[_Redirect]:
     """`redirects` with one occurrence of each outer redirection taken out."""
     left = list(redirects)
     for redirect, _at in outer:
@@ -2399,26 +2500,25 @@ def _is_check(words: list[str]) -> bool:
     return _is_named_runner(words) or _is_test_program(words)
 
 
-def _writes_a_file(redirects: list[str]) -> bool:
+def _harmless_redirect(redirect: _Redirect) -> bool:
+    if redirect.kind == ">&" and (redirect.target.isdigit() or redirect.target == "-"):
+        return True
+    return redirect.kind in _WRITE_OPERATORS and bool(
+        _HARMLESS_DEVICE_RE.fullmatch(redirect.target)
+    )
+
+
+def _writes_a_file(redirects: list[_Redirect]) -> bool:
     """A `>` into anything but `/dev/null` or another descriptor."""
-    return any(">" in target and not _HARMLESS_REDIRECT_RE.match(target) for target in redirects)
+    return any(r.kind in _WRITE_OPERATORS and not _harmless_redirect(r) for r in redirects)
 
 
-def _file_targets(redirects: list[str]) -> list[str]:
+def _file_targets(redirects: list[_Redirect]) -> list[str]:
     """The target word of each redirection into a file, as written.
 
     `>&-` and `>&2` name a descriptor, not a file.
     """
-    targets = []
-    for redirect in redirects:
-        match = _WRITE_REDIRECT_RE.match(redirect)
-        if match is None or _HARMLESS_REDIRECT_RE.match(redirect):
-            continue
-        target = match.group("target")
-        if match.group("op") == ">&" and (target == "-" or target.isdigit()):
-            continue
-        targets.append(target)
-    return targets
+    return [r.target for r in redirects if r.kind in _WRITE_OPERATORS and not _harmless_redirect(r)]
 
 
 def _placeable(target: str) -> bool:
@@ -2431,18 +2531,63 @@ def _placeable(target: str) -> bool:
     )
 
 
-def _reads_only(redirects: list[str], words: list[str]) -> bool:
+def _reads_only(redirects: list[_Redirect], words: list[str]) -> bool:
     """Whether one segment is on the closed read-only list.
 
     A redirect into a file writes something the list does not name (review,
-    2026-09-24); a substitution is read on its own, by `_body_reads_only`.
+    2026-09-24); a substitution is read on its own, by `_body_facts`.
     """
     if _writes_a_file(redirects):
         return False
+    if words[0] == "date":
+        # Both GNU and BSD accept a positional clock-setting operand. Keep
+        # the portable display forms closed rather than just excluding -s.
+        args = [w for w in words[1:] if w not in {"-u", "--utc", "--universal"}]
+        return not args or (len(args) == 1 and args[0].startswith("+"))
+    if words[:2] == ["gh", "api"]:
+        return _gh_api_reads_only(words[2:])
     writing = _WRITING_OPTIONS.get(words[0]) or _WRITING_OPTIONS.get(" ".join(words[:2]))
     if writing and writing & {w.split("=", 1)[0] for w in words[1:]}:
         return False
     return " ".join(words[:2]) in _READ_ONLY_PAIRS or words[0] in _READ_ONLY_WORDS
+
+
+def _gh_api_reads_only(args: list[str]) -> bool:
+    """A REST GET without body/field flags, headers, caching or unknown options.
+
+    gh changes its default method to POST when fields are supplied. Cache
+    writes locally; a header may override the HTTP method at the endpoint.
+    """
+    value_options = {"-X", "--method", "-q", "--jq", "-t", "--template", "--hostname"}
+    boolean_options = {
+        "--paginate",
+        "--slurp",
+        "--silent",
+        "--include",
+        "-i",
+        "--verbose",
+        "--allow-escape-sequences",
+    }
+    endpoints: list[str] = []
+    while args:
+        word, args = args[0], args[1:]
+        option, sep, value = word.partition("=")
+        if not sep and word[:2] in {"-X", "-q", "-t"} and len(word) > 2:
+            option, value = word[:2], word[2:]
+        if option in value_options:
+            if not value:
+                if not args:
+                    return False
+                value, args = args[0], args[1:]
+            if option in {"-X", "--method"} and value != "GET":
+                return False
+        elif word in boolean_options:
+            continue
+        elif word.startswith("-"):
+            return False
+        else:
+            endpoints.append(word)
+    return len(endpoints) == 1 and endpoints[0].lstrip("/") != "graphql"
 
 
 def _evidence_at(run: dict[str, Any]) -> float:
@@ -2486,7 +2631,7 @@ def _conditional_directory(
 def _pipe_filter(part: _Part) -> bool:
     """Only stdin transforms: file operands or an input redirect can print
     an unrelated check summary even though the command is read-only."""
-    if any("<" in redirect for redirect in part.redirects) or not part.words:
+    if any("<" in redirect.kind for redirect in part.redirects) or not part.words:
         return False
     command, *args = part.words
     if command in {"tail", "head"}:
@@ -2626,17 +2771,41 @@ def _check_line(words: list[str]) -> str:
     return records.safe_text(bounded, len(bounded))
 
 
-def _scrubbed_tail(text: str, words: list[str]) -> str:
-    """The output tail with every value the check line masked removed first:
+def _scrubbed_tail(text: str, values: Iterable[str]) -> str:
+    """The output tail with every value the call masked removed first:
     an echoed command repeats it, and the tail reaches the prompt row
     (review, 2026-09-27). Redaction then runs over the whole window, and the
     cut comes last (item 5)."""
-    for value in records.masked_values(words):
-        pieces = {value, *value.split()}
-        for piece in sorted(
-            (p for p in pieces if len(p) >= _SCRUB_MIN_CHARS), key=len, reverse=True
-        ):
-            text = text.replace(piece, records.SECRET_MARKER)
+    # Filename/path characters stay inside the word. A password `test` must
+    # not change `test_a.py`, `test-file.py` or `src/test` into a redacted name.
+    boundary = r"[\w./:@+\-]"
+    spellings = {
+        spelling
+        for value in values
+        for piece in (value, *value.split())
+        if len(piece) >= _SCRUB_MIN_CHARS
+        for spelling in (
+            piece,
+            shlex.quote(piece),
+            "'" + piece.replace("'", "'\\''") + "'",
+            piece.replace("'", "'\\''"),
+            piece.replace("'", "'\"'\"'"),
+        )
+    }
+    for spelling in sorted(spellings, key=len, reverse=True):
+        text = re.sub(
+            rf"(?<!{boundary}){re.escape(spelling)}(?!{boundary})", records.SECRET_MARKER, text
+        )
+        text = re.sub(
+            rf"(?<!{boundary})(-[pP]){re.escape(spelling)}(?!{boundary})",
+            lambda match: match[1] + records.SECRET_MARKER,
+            text,
+        )
+        text = re.sub(
+            rf"((?:[A-Za-z][A-Za-z0-9+.-]*://)?[^\s:/@'\"]+:){re.escape(spelling)}(@)",
+            lambda match: match[1] + records.SECRET_MARKER + match[2],
+            text,
+        )
     return records.redact_secrets(text)[-TOOL_REPORT_TAIL_CHARS:]
 
 
@@ -2707,10 +2876,14 @@ class _ShellCall:
         ]
         # Every value masking hides anywhere in the call, as the tail scrub
         # reads them (review W1).
+        self.masked_values = {
+            value
+            for part in self.parts
+            for value in (*records.masked_values(list(part.raw)), *part.hidden_values)
+        }
         self.masked = {
             piece
-            for part in self.parts
-            for value in records.masked_values(list(part.raw))
+            for value in self.masked_values
             for piece in (value, *value.split())
             if len(piece) >= _SCRUB_MIN_CHARS
         }
@@ -3005,7 +3178,7 @@ class _ToolReportTally:
                     "background": background,
                     # Held for the press only (`claude_check_tails`); never
                     # copied onto the published entry.
-                    "tail": _scrubbed_tail(text, words) if result is not None else "",
+                    "tail": _scrubbed_tail(text, call.masked_values) if result is not None else "",
                     "seq": self.shell_seq,
                     "worker": worker,
                     "changes_later_in_call": any(
