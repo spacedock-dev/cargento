@@ -1110,14 +1110,32 @@ helper still writing after the leader's exit is not reached at all, whether it w
 writing under the bound or starts afterwards: the poll that sees the exit is the reap, the caller then removes the file, and the helper's writes to
 the removed file are bounded by nothing but the disk until the helper exits. Seeing the exit
 without reaping needs a third watcher, which is the fix the owner ruled documented rather than
-built. A call's output file is bounded on disk as well as on read (DRC-4667): the runner checks its
-size every 0.01 s while the CLI runs, and once more when it has exited, before its group or Job
-Object is let go. Past **1 MiB** it kills the CLI's group or Job Object as a Cancel does. A reading
+built. On the watched POSIX path, the runner keeps the leader unreaped while it kills the group
+and waits for every member to stop, then reaps the leader. It observes group ids and process
+states through the native `/bin/ps -axo pgid=,stat=`; it reads no command lines, arguments or
+environment, and publishes or stores none of the snapshot. Zombies cannot write and count as
+stopped. The probe runs with only `LC_ALL=C` in its environment, never a shell or a PATH-selected
+executable. An unavailable probe, an unreadable snapshot or a group still running at the deadline
+refuses the call as `unstopped`, even if the leader exited. On Windows, the runner terminates the
+Job Object and waits until the kernel's `ActiveProcesses` count reaches zero before releasing it.
+Observation and leader reap share the existing five-second bound. A stalled POSIX probe spawn
+cannot hold the caller beyond it: the probe runs on a daemon thread, and a spawn that finishes
+after the bound is killed and reaped by that thread. An OS call that never returns can leave that
+thread pending until the daemon exits. The first failed or timed-out probe ends that call's
+cleanup, so a call cannot accumulate concurrent probe workers. The native probe was measured on macOS; Linux's native
+probe and Windows's job query are checked by their platform tests. A POSIX host without this native
+`ps` command's fields refuses the call rather than assuming its helpers stopped.
+
+A call's output file is bounded on disk as well as on read (DRC-4667): the runner checks its
+size every 0.01 s while the CLI runs, and once more after its group or Job Object has no live
+writer (DRC-4729). The unwatchable POSIX fallback above still cannot make that guarantee. Past
+**1 MiB** it kills the CLI's group or Job Object as a Cancel does. A reading
 records a spent `oversized` attempt; the goal lane falls back as on any failed call and records
 nothing. The file can exceed 1 MiB by what the CLI writes in one 0.01 s slice, which is bounded by
-disk speed rather than by the limit: an unpaused writer on an APFS SSD was measured at 41 to 89 MiB
+disk speed rather than by the limit, and a write already in flight can finish after the kill:
+an unpaused writer on an APFS SSD was measured at 41 to 89 MiB
 before the kill, which landed 11 to 15 ms after the bound was passed (286 to 600 MiB at the earlier
-0.1 s slice). The file is removed once the group is reaped. A kill whose child has not exited within five
+0.1 s slice). The file is removed after the bounded cleanup. A kill whose group has not stopped within five
 seconds ends the call anyway and is recorded as its own withheld reason, which says the process
 may still be running. Because a child in its own group no longer receives the terminal's signals,
 SIGTERM, SIGHUP and SIGQUIT all unwind through the daemon's cleanup, which shuts the runner (a
@@ -1225,7 +1243,7 @@ with it set it looked up none. Nothing in this repository proves that from a rea
 probe below can only say what reached its stub.
 
 Stdout goes to an owner-only temp file under the state directory, never a pipe, and at most `annotation_text_cap_chars * 8` bytes of
-it are read. The file is bounded on disk at 1 MiB plus one 0.01 s slice of writes, as
+it are read. The file's 1 MiB bound allows one 0.01 s slice of writes and a write already in flight at the kill, as
 [Observer model calls](#observer-model-calls) describes, with the measured overshoot. Stderr is
 discarded. The timeout is the shared **60 seconds**. The directory and the
 file are removed on every path, including a timeout or an OS error, and only once the CLI and

@@ -15,10 +15,9 @@ moment the child exists, which is the seam a reading job uses to say it is
 waiting on the provider and a Cancel reaches the CLI through (`Group.cancel`). Output goes to a file
 or nowhere, never to a pipe: every model call writes its reply to a file. `output_limit`
 bounds that file (DRC-4667): the wait looks at its size every `_LIMIT_POLL_SEC`,
-and once more when the CLI has exited, before the group or Job Object is let
-go. Past the limit the call kills the group as a Cancel does and raises
-`OversizedError`, so the file can outgrow the limit by at most one slice of
-writes before the caller removes it.
+and once more after the group or Job Object has no live writer (DRC-4729).
+Past the limit the call kills the group as a Cancel does and raises
+`OversizedError`; the last write already in flight can finish after that kill.
 
 When neither `waitid` nor kqueue can watch the exit, the call polls, and the
 poll reaps the leader: helpers still in its group after a normal exit are then
@@ -159,6 +158,75 @@ def _state_kqueue(pid: int, timeout: float) -> str:
     return _EXITED
 
 
+def _group_state(output: str, pgid: int) -> bool | None:
+    running = False
+    found = False
+    for line in output.splitlines():
+        parts = line.split()
+        if len(parts) != 2 or not parts[0].isdigit():
+            return None
+        if int(parts[0]) == pgid:
+            found = True
+            if not parts[1][0].isalpha():
+                return None
+            running |= not parts[1].startswith("Z")
+    return running if found else None
+
+
+def _group_running(pgid: int, timeout: float) -> bool | None:
+    """Whether a POSIX group still has a live member, ignoring its unreaped zombies.
+
+    A zero signal cannot distinguish zombies from writers. The native `ps`
+    reads only group ids and states, and its spawn is kept off the waiting
+    thread: subprocess timeouts do not include process creation. A probe
+    that cannot finish inside the remaining reap bound answers unknown.
+    """
+    deadline = time.monotonic() + timeout
+    done, abandoned = threading.Event(), threading.Event()
+    result: list[bool | None] = []
+
+    def read() -> None:
+        process: subprocess.Popen[str] | None = None
+        try:
+            process = subprocess.Popen(
+                ["/bin/ps", "-axo", "pgid=,stat="],
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.DEVNULL,
+                text=True,
+                env={"LC_ALL": "C"},
+            )
+            remaining = deadline - time.monotonic()
+            if abandoned.is_set() or remaining <= 0:
+                return
+            output, _ = process.communicate(timeout=remaining)
+            if process.returncode:
+                return
+            result.append(_group_state(output, pgid))
+        except (OSError, subprocess.SubprocessError):
+            pass
+        finally:
+            if process is not None and process.poll() is None:
+                with contextlib.suppress(OSError):
+                    process.kill()
+                # This worker owns only the native probe, not a model group.
+                # Its reap may outlast the bound; it never holds the caller.
+                with contextlib.suppress(OSError):
+                    process.communicate()
+            if process is not None and process.stdout is not None:
+                process.stdout.close()
+            done.set()
+
+    try:
+        threading.Thread(target=read, daemon=True).start()
+    except RuntimeError:
+        return None
+    if not done.wait(max(0.0, deadline - time.monotonic())):
+        abandoned.set()
+        return None
+    return result[0] if result else None
+
+
 class Group:
     """One supervised child and everything in its process group."""
 
@@ -176,6 +244,7 @@ class Group:
         # The output file and its bound, and whether the bound was passed.
         self._limit: tuple[str, int] | None = None
         self._oversized = False
+        self._reap_by: float | None = None
 
     @property
     def pid(self) -> int:
@@ -279,21 +348,45 @@ class Group:
 
         After a normal exit the leader is a zombie still holding the group id,
         so the sweep reaches the helpers it left behind and nothing else. After
-        a timeout it is the kill itself. The reap is bounded: whether it comes
-        is the one sign a kill worked, since `killpg`'s answer is not (EPERM on
-        macOS for a group of one zombie).
+        a timeout it is the kill itself. A killed helper can still finish a
+        write, so group quiescence is observed before releasing the leader's
+        identity. Observation and reap share one deadline; a failed observation
+        cannot authorize a normal reply (DRC-4729).
         """
         with self._lock:
             if self._reaped:
                 return
+            deadline = time.monotonic() + REAP_TIMEOUT_SEC
             if _state(self._process.pid, 0.0) != _REAPED:
                 self._kill()
-            # No signal after this point, whatever the reap does.
+                # Keep the leader's identity until every group writer is gone.
+                # A helper can finish a write after its SIGKILL was sent.
+                try:
+                    self._wait_group(deadline)
+                except BaseException:
+                    # No signal after a reap, including on a failed observation.
+                    self._reaped = True
+                    with contextlib.suppress(subprocess.TimeoutExpired):
+                        self._process.wait(timeout=max(0.0, deadline - time.monotonic()))
+                    raise
             self._reaped = True
             try:
-                self._process.wait(timeout=REAP_TIMEOUT_SEC)
+                self._process.wait(timeout=max(0.0, deadline - time.monotonic()))
             except subprocess.TimeoutExpired as exc:
                 raise UnstoppedError(self._process.pid) from exc
+
+    def _wait_group(self, deadline: float) -> None:
+        while True:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise UnstoppedError(self.pid)
+            running = _group_running(self.pid, remaining)
+            if running is False:
+                return
+            remaining = deadline - time.monotonic()
+            if running is None or remaining <= 0:
+                raise UnstoppedError(self.pid)
+            time.sleep(min(_LIMIT_POLL_SEC, remaining))
 
     def close(self) -> None:
         if sys.platform == "win32" and self._job:
@@ -302,6 +395,29 @@ class Group:
                 # KILL_ON_JOB_CLOSE: closing the last handle ends any straggler.
                 _windows.close(self._job)
                 self._job = 0
+
+    def _finish_windows(self) -> None:
+        """End the job and wait for all its writers before the final size check."""
+        if not self._job:
+            return
+        deadline = (
+            self._reap_by if self._reap_by is not None else time.monotonic() + REAP_TIMEOUT_SEC
+        )
+        with self._lock:
+            if not _windows.terminate(self._job):
+                raise UnstoppedError(self.pid)
+            while True:
+                try:
+                    active = _windows.active(self._job)
+                except OSError as exc:
+                    raise UnstoppedError(self.pid) from exc
+                if active == 0:
+                    self._reaped = True
+                    return
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    raise UnstoppedError(self.pid)
+                time.sleep(min(_LIMIT_POLL_SEC, remaining))
 
 
 def live() -> frozenset[Group]:
@@ -439,12 +555,15 @@ def run(  # noqa: PLR0913 (subprocess.run's keywords, one each)
     group._limit = output_limit  # noqa: SLF001 (set before any wait reads it)
     try:
         if sys.platform == "win32":
-            returncode = _run_windows(group, input, timeout, on_spawn)
+            try:
+                returncode = _run_windows(group, input, timeout, on_spawn)
+            finally:
+                group._finish_windows()  # noqa: SLF001
         else:
             returncode = _run_posix(group, input, timeout, on_spawn)
-        # The final size, for a CLI that wrote past the bound and exited inside
-        # one slice (Codex P2). Before `close`, so on Windows the Job Object can
-        # still be ended; on POSIX the reap has already swept the group.
+        # After quiescence: a helper's last write may finish after the kill,
+        # so checking between the kill and the group wait once missed it.
+        # The documented poll fallback is the exception: it already reaped.
         group._over_limit()  # noqa: SLF001
     finally:
         with _LOCK:
@@ -531,9 +650,10 @@ def _run_windows(
     except UnstoppedError:
         raise
     except BaseException:
+        group._reap_by = time.monotonic() + REAP_TIMEOUT_SEC  # noqa: SLF001
         group.kill()
         try:
-            process.wait(timeout=REAP_TIMEOUT_SEC)
+            process.wait(timeout=max(0.0, group._reap_by - time.monotonic()))  # noqa: SLF001
         except subprocess.TimeoutExpired as exc:
             raise UnstoppedError(process.pid) from exc
         raise
@@ -563,8 +683,9 @@ def _wait_windows(group: Group, timeout: float | None) -> None:
         group._over_limit()  # noqa: SLF001 (cancels the call past its bound)
         if group.cancelled():
             if reap_by is None:
-                group.kill()
                 reap_by = time.monotonic() + REAP_TIMEOUT_SEC
+                group._reap_by = reap_by  # noqa: SLF001
+                group.kill()
             elif time.monotonic() >= reap_by:
                 raise UnstoppedError(process.pid)
         elif deadline is not None and time.monotonic() >= deadline:
@@ -597,6 +718,13 @@ class _Windows:
             )
             kernel32.AssignProcessToJobObject.argtypes = (wintypes.HANDLE, wintypes.HANDLE)
             kernel32.TerminateJobObject.argtypes = (wintypes.HANDLE, wintypes.UINT)
+            kernel32.QueryInformationJobObject.argtypes = (
+                wintypes.HANDLE,
+                ctypes.c_int,
+                ctypes.c_void_p,
+                wintypes.DWORD,
+                ctypes.c_void_p,
+            )
             kernel32.CloseHandle.argtypes = (wintypes.HANDLE,)
             ntdll = ctypes.WinDLL("ntdll")  # type: ignore[attr-defined]
             ntdll.NtResumeProcess.argtypes = (wintypes.HANDLE,)
@@ -671,6 +799,31 @@ class _Windows:
     def terminate(self, job: int) -> bool:
         kernel32, _ = self._load()
         return bool(kernel32.TerminateJobObject(job, 1))
+
+    def active(self, job: int) -> int:
+        """The kernel's count of job processes that have not exited yet."""
+        import ctypes  # noqa: PLC0415 (Windows only)
+        from ctypes import wintypes  # noqa: PLC0415
+
+        class Accounting(ctypes.Structure):
+            _fields_ = [
+                ("TotalUserTime", ctypes.c_longlong),
+                ("TotalKernelTime", ctypes.c_longlong),
+                ("ThisPeriodTotalUserTime", ctypes.c_longlong),
+                ("ThisPeriodTotalKernelTime", ctypes.c_longlong),
+                ("TotalPageFaultCount", wintypes.DWORD),
+                ("TotalProcesses", wintypes.DWORD),
+                ("ActiveProcesses", wintypes.DWORD),
+                ("TotalTerminatedProcesses", wintypes.DWORD),
+            ]
+
+        kernel32, _ = self._load()
+        info = Accounting()
+        if not kernel32.QueryInformationJobObject(
+            job, 1, ctypes.byref(info), ctypes.sizeof(info), None
+        ):
+            raise ctypes.WinError(ctypes.get_last_error())  # type: ignore[attr-defined]
+        return int(info.ActiveProcesses)
 
     def close(self, job: int) -> None:
         kernel32, _ = self._load()
