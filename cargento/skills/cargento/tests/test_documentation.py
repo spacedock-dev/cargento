@@ -1910,7 +1910,7 @@ class HandOffRequestContractDocumentationTest(unittest.TestCase):
         # falsifies both the old number and the closing clause (DRC-4434).
         self.assertNotIn("Two kinds of outbound request are in scope", self.FLAT)
         self.assertIn(
-            "Three kinds of outbound request are in scope, two implemented and one written down",
+            "Three kinds of outbound request are implemented",
             self.FLAT,
         )
         readme = (self.ROOT / "README.md").read_text(encoding="utf-8")
