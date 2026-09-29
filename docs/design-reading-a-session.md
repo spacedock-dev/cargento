@@ -1567,24 +1567,28 @@ the measured note that DEC-23 reads the root session's calls alone.
 6. An Agent call is not itself a change. DRC-4709 named "an Agent call after a pass" because a
    subagent's work was unread; it is read now. The exposure left is a subagent whose transcript is
    not on this machine, whose writes Cargento cannot see.
-7. The bound. A session's subagents share one `turn_scan_max_bytes`, the parent's own 8 MiB, read
-   newest transcript first by modification time. A transcript the bound reaches into is read for
-   its newest bytes, as the parent is, and the rest are counted in `subagent_transcripts_unread`
-   beside `subagent_transcripts`, the number read. A transcript that yields no record, because it
-   failed to open or its newest line outgrew the bound, counts as unread, since a real one always
-   holds its prompt. Each stream is bounded on its own, so what one leaves out is not older than
-   everything the others read: a parent's later write can fall out of its window while a
-   subagent's earlier pass is still read. The scan therefore publishes `reads_from`, the latest of
-   where each cut transcript's read begins and the newest time each unread transcript can hold
-   (its modification time). A pass called before `reads_from` is marked `read_incomplete`.
-   It cannot support a consistent outcome or the live "None or low" floor; incompleteness alone
-   is not evidence of departure. It is not dropped, because dropping older calls would drop an
-   older failure too. Neither count blocks the live estimate by itself; an unread transcript
-   can withhold the floor through `reads_from`. With no subagent and nothing cut
-   there is no `reads_from`, and with only the parent cut every pass it holds is at or after it,
-   so such a session reads as it did. The abstention packet's frozen moment reads each transcript
-   as it stood, newest by the last record it then held, and marks the same passes, bounding a
-   transcript it cannot open by the earlier of its modification time and the moment.
+7. The bound, amended 2026-09-30. One check-evidence scan spends at most
+   `turn_scan_max_bytes` (normally 8 MiB) on the parent and all admitted children together. It
+   charges actual binary bytes returned, including invalid records, discarded partial lines and a
+   frozen cutoff search. A smaller explicit override, including zero, is honored. The parent reads
+   first. Live children follow newest modification time, then stable session-relative path. A
+   frozen moment reads children by stable session-relative path, replacing the earlier
+   last-record-time ranking; today's mtime cannot reorder historical evidence. It searches each
+   transcript forward to the first stamped record after the moment or the held file's end, using
+   the same allowance and never rereading a discovered prefix. If the parent's cutoff is beyond
+   that allowance, the frozen check read refuses. A child whose cutoff cannot be reached is unread.
+   No historical packet is rewritten and no persisted scan manifest is needed for this rule.
+
+   `subagent_transcripts_unread` counts admitted children with no readable work and valid plain
+   hex IDs named by paired parent Agent or legacy Task results whose child work is unavailable.
+   Repeated IDs count once, and a discovered unread file is not counted twice. A numeric
+   `reads_from` horizon still marks passes older than a partial window or unread child's possible
+   work. Any valid named child that remains unavailable marks every held passing check
+   `read_incomplete`, even if the parent passed later. A failed check that was actually read keeps
+   its failure and High level. An incomplete pass cannot support a consistent outcome or the live
+   "None or low" floor; incompleteness alone is not a departure. Collection, press and frozen check
+   scans each get their own allowance. Activity, identity and user-message reads are separate, so
+   this is not a bound on the entire frozen admission or validation operation.
 8. Where it goes is unchanged. A subagent's checks are the parent session's record, so items 6, 7,
    9 and 10 apply to them as written, and a press carries a subagent check's tail only under the
    tool-output grant the parent's needs.

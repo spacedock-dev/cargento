@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import dataclasses
 import datetime as dt
+import heapq
 import json
 import os
 from pathlib import Path
@@ -146,6 +147,82 @@ class ASubagentsCheckIsTheParents(SubagentChecksTestCase):
         self.assertEqual(("claude", SHORT), (checks[0]["harness"], checks[0]["sid"]))
         self.assertEqual(1, scan["check_runs"])
         self.assertEqual(1, scan["subagent_transcripts"])
+
+    def test_a_named_child_without_a_transcript_withholds_every_parent_pass(self) -> None:
+        self.session.bash("pytest", "5 passed", is_error=False)
+        missing = self.delegate()
+        self.returns(missing)
+        self.session.bash("ruff check .", "All checks passed!", is_error=False)
+        self.session.save(self.path)
+        events, scan = project_context.claude_tool_reports(self.config, str(self.path), SHORT)
+        passes = [e for e in events if e["subject"] == "check"]
+        self.assertEqual(1, scan["subagent_transcripts_unread"])
+        self.assertEqual(2, len(passes))
+        self.assertTrue(all(e["read_incomplete"] for e in passes))
+        press = project_context.claude_check_press(self.config, str(self.path))
+        self.assertEqual({e["record_id"] for e in passes}, {i for i, _ in press.read_incomplete})
+        self.save_all = lambda: None  # type: ignore[method-assign]
+        self.assertEqual(levels.NOT_ENOUGH, self.live().level)
+
+    def test_repeated_legacy_task_result_counts_one_missing_child(self) -> None:
+        self.session.bash("pytest", "5 passed", is_error=False)
+        call = self.session.call("Task", {"prompt": "Run checks"})
+        for _ in range(2):
+            self.session.result(call, "Done", tool_use_result={"agentId": "a1b2c3d4"})
+        events, scan = self.read()
+        self.assertEqual(1, scan["subagent_transcripts_unread"])
+        self.assertTrue(next(e for e in events if e["subject"] == "check")["read_incomplete"])
+
+    def test_unpaired_and_invalid_agent_ids_do_not_invent_missing_work(self) -> None:
+        self.session.bash("pytest", "5 passed", is_error=False)
+        unrelated = self.session.call("Bash", {"command": "ls"})
+        self.session.result(unrelated, "", tool_use_result={"agentId": "a1b2c3d4"})
+        agent = self.session.call("Agent", {"prompt": "Run checks"})
+        self.session.result(agent, "agentId feedface", tool_use_result={"agentId": "not-hex"})
+        events, scan = self.read()
+        self.assertEqual(0, scan["subagent_transcripts_unread"])
+        self.assertFalse(next(e for e in events if e["subject"] == "check")["read_incomplete"])
+
+    def test_equal_call_and_result_times_keep_the_parent_first(self) -> None:
+        parent_id = self.session.bash("pytest", "5 passed", is_error=False)
+        sub = self.delegate()
+        sub_id = sub.bash("pytest", "1 failed", is_error=True)
+        self.returns(sub)
+        # The two independent streams can record calls and results at one instant.
+        parent_call = next(
+            r
+            for r in self.session.rows
+            if r["type"] == "assistant" and r["message"]["content"][0].get("id") == parent_id
+        )
+        parent_result = next(
+            r
+            for r in self.session.rows
+            if r["type"] == "user" and r["message"]["content"][0].get("tool_use_id") == parent_id
+        )
+        sub_call = next(r for r in sub.rows if r["type"] == "assistant")
+        sub_result = next(
+            r
+            for r in sub.rows
+            if r["type"] == "user" and r["message"]["content"][0].get("tool_use_id") == sub_id
+        )
+        sub_call["timestamp"] = parent_call["timestamp"]
+        sub_result["timestamp"] = parent_result["timestamp"]
+        check = next(e for e in self.read()[0] if e["subject"] == "check")
+        self.assertEqual(
+            ("failed", sub_id, "subagent"),
+            (check["result"], check["record_id"], check["worker_kind"]),
+        )
+        press = project_context.claude_check_press(self.config, str(self.path))
+        self.assertIn(sub_id, press.tails)
+        self.assertNotIn(parent_id, press.tails)
+        merge = heapq.merge
+
+        def reversed_streams(*streams: Any, **kwargs: Any) -> Any:
+            return merge(*reversed(streams), **kwargs)
+
+        with mock.patch.object(heapq, "merge", side_effect=reversed_streams):
+            mutant = next(e for e in self.read()[0] if e["subject"] == "check")
+        self.assertEqual(parent_id, mutant["record_id"])
 
     def test_the_parents_own_check_carries_no_subagent_label(self) -> None:
         self.session.bash("pytest", "5 passed", is_error=False)
@@ -372,8 +449,10 @@ class SubagentTranscriptsShareOneBound(SubagentChecksTestCase):
         # The older transcript is older on disk too, and the bound holds only the newer.
         stamp = START.timestamp()
         os.utime(old_path, (stamp, stamp))
-        # Exactly the newer transcript: the bound is spent on it, and the older is not read.
-        self.config = dataclasses.replace(self.config, turn_scan_max_bytes=new_path.stat().st_size)
+        # Parent first, then exactly the newer transcript; the older is unread.
+        self.config = dataclasses.replace(
+            self.config, turn_scan_max_bytes=self.path.stat().st_size + new_path.stat().st_size
+        )
         events, scan = project_context.claude_tool_reports(self.config, str(self.path), SHORT)
         self.assertEqual(["pytest"], [e["title"] for e in events if e["subject"] == "check"])
         self.assertEqual(1, scan["subagent_transcripts"])
@@ -404,21 +483,20 @@ class APassTheBoundCannotVouchForIsNotCurrent(SubagentChecksTestCase):
         self.save_all = lambda: None  # type: ignore[method-assign]
 
     def older_pass_with_the_parents_write_cut(self) -> None:
+        self.session.bash("pytest", "5 passed", is_error=False)
         sub = self.delegate()
-        sub.bash("pytest", "5 passed", is_error=False)
+        sub.edit(self.file("src/retry.py"))
         self.returns(sub)
-        self.session.edit(self.file("src/retry.py"))
-        for i in range(20):
-            self.session.bash(f"ls dir{i}", PAD, is_error=False)
-        self.config = dataclasses.replace(self.config, turn_scan_max_bytes=6000)
+        self.save_all()
+        self.config = dataclasses.replace(self.config, turn_scan_max_bytes=self.path.stat().st_size)
 
     def test_unread_read_only_work_withholds_without_claiming_a_later_change(self) -> None:
+        self.session.bash("pytest", "5 passed", is_error=False)
         sub = self.delegate()
-        sub.bash("pytest", "5 passed", is_error=False)
+        sub.bash("ls src", "retry.py", is_error=False)
         self.returns(sub)
-        for i in range(20):
-            self.session.bash(f"ls dir{i}", PAD, is_error=False)
-        self.config = dataclasses.replace(self.config, turn_scan_max_bytes=6000)
+        self.save_all()
+        self.config = dataclasses.replace(self.config, turn_scan_max_bytes=self.path.stat().st_size)
         context = self.collect()
         facts = tuple(f for f in context["semantic"]["facts"] if f.get("type") == "tool_report")
         check = next(f for f in facts if f["subject"] == "check")
@@ -445,14 +523,14 @@ class APassTheBoundCannotVouchForIsNotCurrent(SubagentChecksTestCase):
         self.assertEqual(levels.NOT_ENOUGH, analysis.level)
         self.assertNotIn("pass-then-write", analysis.reasons)
 
-    def test_a_subagent_pass_older_than_the_parents_window_does_not_meet_the_floor(self) -> None:
+    def test_a_parent_pass_with_an_unread_child_does_not_meet_the_floor(self) -> None:
         self.older_pass_with_the_parents_write_cut()
         events, scan = self.read()
         check = next(e for e in events if e["subject"] == "check")
-        # Withheld, not dropped: the pass is still listed.
+        # Withheld, not dropped: the parent's measured pass is still listed.
         self.assertEqual(("pytest", "passed"), (check["title"], check["result"]))
         self.assertIs(True, check["read_incomplete"])
-        self.assertGreater(scan["reads_from"], check["at"])
+        self.assertEqual(1, scan["subagent_transcripts_unread"])
         got = self.live()
         self.assertEqual(levels.NOT_ENOUGH, got.level, got)
         self.assertNotIn(levels.REASON_FLOOR_MET, got.reasons)
@@ -460,12 +538,12 @@ class APassTheBoundCannotVouchForIsNotCurrent(SubagentChecksTestCase):
     def test_a_failure_older_than_the_window_is_kept_and_unmarked(self) -> None:
         # Withholding marks passes only: a failure still reads High, and is
         # not said to have been changed after.
+        self.session.bash("pytest", "1 failed, 4 passed", is_error=True)
         sub = self.delegate()
-        sub.bash("pytest", "1 failed, 4 passed", is_error=True)
+        sub.edit(self.file("src/retry.py"))
         self.returns(sub)
-        for i in range(20):
-            self.session.bash(f"ls dir{i}", PAD, is_error=False)
-        self.config = dataclasses.replace(self.config, turn_scan_max_bytes=6000)
+        self.save_all()
+        self.config = dataclasses.replace(self.config, turn_scan_max_bytes=self.path.stat().st_size)
         check = next(e for e in self.read()[0] if e["subject"] == "check")
         self.assertEqual("failed", check["result"])
         self.assertIs(False, check["read_incomplete"])
@@ -519,7 +597,9 @@ class APassTheBoundCannotVouchForIsNotCurrent(SubagentChecksTestCase):
         self.returns(new)
         self.settle()
         old_path, new_path = (p for _s, p in self.subagents)
-        self.config = dataclasses.replace(self.config, turn_scan_max_bytes=new_path.stat().st_size)
+        self.config = dataclasses.replace(
+            self.config, turn_scan_max_bytes=self.path.stat().st_size + new_path.stat().st_size
+        )
         events, scan = project_context.claude_tool_reports(self.config, str(self.path), SHORT)
         self.assertEqual(1, scan["subagent_transcripts_unread"])
         self.assertEqual(old_path.stat().st_mtime, scan["reads_from"])
@@ -536,18 +616,18 @@ class APassTheBoundCannotVouchForIsNotCurrent(SubagentChecksTestCase):
         sub_path = self.subagents[0][1]
         self.config = dataclasses.replace(self.config, turn_scan_max_bytes=6000)
         self.assertLess(sub_path.stat().st_size, 6000)
-        real = project_context._work_records
+        real = runtime_io.scan_reverse_lines
 
-        def grows_first(config: Any, path: str, **kw: Any) -> list[dict[str, Any]]:
+        def grows_first(config: Any, path: str, budget: Any, **kw: Any) -> Any:
             # Appended between the stat and the read: the window now starts
             # after the subagent's edit, which postdates the parent's pass.
             if path == str(sub_path):
                 for i in range(20):
                     sub.bash(f"cat f{i}", PAD, is_error=False)
                 sub.save(sub_path)
-            return real(config, path, **kw)
+            return real(config, path, budget, **kw)
 
-        with mock.patch.object(project_context, "_work_records", side_effect=grows_first):
+        with mock.patch.object(runtime_io, "scan_reverse_lines", side_effect=grows_first):
             events, scan = project_context.claude_tool_reports(self.config, str(self.path), SHORT)
         self.assertEqual(0, scan["written_paths"])
         self.assertIs(True, next(e for e in events if e["title"] == "pytest")["read_incomplete"])
@@ -563,14 +643,14 @@ class ATranscriptThatYieldsNothingWasNotRead(SubagentChecksTestCase):
 
     def test_one_that_fails_to_open_is_unread_and_withholds_the_floor(self) -> None:
         self.pass_then_subagent_edit()
-        real = runtime_io._open_binary
+        real = runtime_io._open_scan_binary
 
         def refuse(path: str, **kw: Any) -> Any:
             if "subagents" in str(path):
                 raise PermissionError(13, "denied", path)
             return real(path, **kw)
 
-        with mock.patch.object(runtime_io, "_open_binary", side_effect=refuse):
+        with mock.patch.object(runtime_io, "_open_scan_binary", side_effect=refuse):
             events, scan = project_context.claude_tool_reports(self.config, str(self.path), SHORT)
         self.assertEqual(
             (0, 1), (scan["subagent_transcripts"], scan["subagent_transcripts_unread"])
@@ -596,14 +676,14 @@ class ATranscriptThatYieldsNothingWasNotRead(SubagentChecksTestCase):
 
     def test_the_frozen_moment_counts_an_unopenable_one_as_unread(self) -> None:
         self.pass_then_subagent_edit()
-        real = project_context._stood_lines
+        real = runtime_io._open_scan_binary
 
-        def refuse(path: str, until: float, **kw: Any) -> list[bytes]:
+        def refuse(path: str, **kw: Any) -> Any:
             if "subagents" in str(path):
                 raise PermissionError(13, "denied", path)
-            return real(path, until, **kw)
+            return real(path, **kw)
 
-        with mock.patch.object(project_context, "_stood_lines", side_effect=refuse):
+        with mock.patch.object(runtime_io, "_open_scan_binary", side_effect=refuse):
             facts, _press = project_context.frozen_claude_checks(
                 self.config, str(self.path), SID, until=self.NOW
             )

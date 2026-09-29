@@ -1269,10 +1269,16 @@ named read is listed under Irreversible actions.
 
 The content class is what a Claude Code transcript recorded about the checks a session ran and the
 files it wrote. Since 2026-09-28 that includes the session's subagents, read from their own
-transcripts under the session's directory, newest first within the parent's own byte bound, with
-each subagent entry labelled `worker_kind: "subagent"`
+transcripts under the session's directory. One check-evidence scan spends at most the configured
+8 MiB byte allowance across the parent first and all admitted children, charged by actual binary
+content bytes returned, including malformed or discarded lines. Live children follow newest
+modification time and stable relative path; a frozen check reads children by stable relative path
+after a bounded parent cutoff search. A parent cutoff it cannot establish within that same
+allowance refuses the frozen check read. Each subagent entry is labelled `worker_kind: "subagent"`
 ([the amendment](docs/design-reading-a-session.md#amended-2026-09-28-a-subagents-checks-and-writes-are-the-parents)). A check is a shell command segment whose runner is on the ruling's closed list, and
-a program file counts only when `test` or `tests` stands alone as a word in its name. Its bounds:
+a program file counts only when `test` or `tests` stands alone as a word in its name. This check
+allowance does not bound the separate activity, identity or user-message reads made during a full
+frozen admission or validation. Its publication bounds:
 the check's own segment, never the rest of the shell line, with a substituted command shown as
 `$(…)`, a brace expansion and the word after it shown as `…`, no redirection, here-string word or heredoc delimiter
 published in it, and a trailing comment dropped, after credential redaction and masking of the forms
