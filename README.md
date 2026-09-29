@@ -139,8 +139,9 @@ that can send session content off the machine through the installed Codex CLI. I
 The Console tab carries that disclosure for one exact session, keeps the answer in this browser,
 and sends nothing until the reader asks for a summary.
 Dashboard assets, including the optional terminal's vendored xterm files, need no external fetch.
-A third outbound pathway, counts-only nudges to an operator-supplied endpoint, remains documented
-and unimplemented. See [SECURITY.md](SECURITY.md) for all three, and before you use `--host`.
+A third outbound pathway sends counts-only nudges to an operator-supplied endpoint. It stays off
+until you configure a URL, and `--no-reach` disables it. See [SECURITY.md](SECURITY.md) for all
+three, and before you use `--host`.
 
 The dashboard opens on Sessions. Projects, one click away, groups sessions by the label their
 harness publishes, and each project opens a cockpit with a Scope rail, a persistent assignment/execution/command briefing,

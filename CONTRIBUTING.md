@@ -272,7 +272,7 @@ allowlist changes only in a PR that makes a reviewed ownership decision.
   between 8px and 15px; new sizes still need a named role.
 - Reach an ink through its role register, not through its hex. `--ink-label`, `--ink-value`,
   `--ink-absence` and `--ink-caption` are declared in the one `:root` block, and a label or absence
-  rule that spells `var(--ink3)` in its own declaration block fails a test. Two of the four resolve
+  rule that spells `var(--ink3)` in its own declaration block fails a test. Three of the four resolve
   to the same ink on purpose; the stylesheet contract says why, and why an absence separates on
   shape rather than on brightness.
 - Preserve the fixed palette's contrast. The asset test pins its tokens and checks every text ink
