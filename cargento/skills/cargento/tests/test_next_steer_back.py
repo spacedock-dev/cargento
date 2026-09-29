@@ -135,11 +135,42 @@ def reply(answer: dict[str, Any]) -> str:
     return f'__reply["/api/correction"] = () => ({{status:200, body:{json.dumps(answer)}}});\n'
 
 
-INPUT = """
-const __typeCorrection = value => __fire("input", {target:{value,
-  dataset:{nextCockpitCorrectionKey:"claude:focus-1"},
-  closest(selector){ return selector === "[data-next-cockpit-correction-key]" ? this : null; }}});
+NATIVE_INSERT = """
+let __nativeInput = null;
+document.execCommand = (command, _show, inserted) => {
+  if(command !== "insertText" || !__nativeInput) return false;
+  const input = __nativeInput;
+  input.value = input.value.slice(0,input.selectionStart) + inserted + input.value.slice(input.selectionEnd);
+  input.selectionStart = input.selectionEnd = input.selectionStart + inserted.length;
+  __fire("input", {target:input, isComposing:false, inputType:"insertText"});
+  return true;
+};
 """
+
+INPUT = (
+    NATIVE_INSERT
+    + """
+const __typeCorrection = value => {
+  const held = nextCockpitCorrections.get("claude:focus-1");
+  const before = typeof held.text === "string" ? held.text : held.shownText;
+  const input = {value:before, defaultValue:before, selectionStart:0, selectionEnd:before.length,
+    dataset:{nextCockpitCorrectionKey:"claude:focus-1"},
+    closest(selector){ return selector === "[data-next-cockpit-correction-key]" ? this : null; },
+    setSelectionRange(start,end){this.selectionStart=start;this.selectionEnd=end;}};
+  __nativeInput = input;
+  document.activeElement = input;
+  let cancelled = false;
+  __fire("beforeinput", {target:input, data:value, cancelable:true, inputType:"insertText",
+    preventDefault(){cancelled=true;}});
+  if(!cancelled){
+    input.value = value; input.selectionStart = input.selectionEnd = value.length;
+    __fire("input", {target:input, inputType:"insertText"});
+  }
+  document.activeElement = null;
+  __fire("blur", {target:input});
+};
+"""
+)
 
 
 def box_of(html: str) -> str:
@@ -797,6 +828,65 @@ class ABackgroundRecomposeLeavesTheReaderAloneTest(_DraftPage):
 
     SETUP = TYPED + QUIET + LINES + CHECK + DEPARTURE + reply(composed()) + INPUT + COPY + HOLD
 
+    def renumbering(self, after: str = "") -> Any:
+        return self.drive(
+            self.SETUP,
+            '__press("steer-back");\nawait __settle();\nawait __settle();\n'
+            "const __before = __els.app.innerHTML;\n" + reply(FRESH) + "__holding = true;\n"
+            '__semantic.facts.push({fact_id:"earlier-entry", at:101, type:"user_message",'
+            ' summary:"An earlier direction", source_session:{harness:"claude", sid:"focus-1"},'
+            ' evidence:{source:"root transcript", confidence:"exact"}});\n'
+            + REREAD
+            + "const __during = __els.app.innerHTML;\n"
+            + after
+            + "const __afterPress = __els.app.innerHTML;\n"
+            "__release();\nawait __settle();\nawait __settle();\nawait __settle();\n"
+            "console.log(JSON.stringify({before:__before, during:__during, afterPress:__afterPress,"
+            " html:__els.app.innerHTML, posts:__posts, copied:__copied}));",
+        )
+
+    def test_the_visible_old_text_stays_exact_when_the_record_renumbers_during_recompose(
+        self,
+    ) -> None:
+        out = self.renumbering()
+        self.assertIn("(#4 in Cargento)", textarea_of(out["before"]))
+        self.assertEqual(textarea_of(out["before"]), textarea_of(out["during"]))
+        self.assertEqual(
+            "Back to my goal: fresh.\nPlease continue from here.", textarea_of(out["html"])
+        )
+
+    def test_copy_during_recompose_explains_why_the_old_text_was_not_copied(self) -> None:
+        out = self.renumbering(
+            "const __g = nextCockpitRouteGroup(); const __f = nextCockpitFocusedSession(__g);\n"
+            "await nextCockpitCopyCorrection(__f, {dataset:{nextCopyCorrection:'claude:focus-1'}},"
+            " nextCockpitWorkSource(__g, __f));\n"
+        )
+        self.assertEqual([], out["copied"])
+        self.assertIn(">Copy unavailable</button>", box_of(out["afterPress"]))
+        self.assertEqual([], [p for p in out["posts"] if p["url"] == "/api/correction/copied"])
+
+    def test_a_composition_started_before_the_answer_keeps_the_committed_reader_text(self) -> None:
+        mine = "Back to my goal: a composed direction漢字"
+        out = self.drive(
+            self.SETUP,
+            '__press("steer-back");\nawait __settle();\nawait __settle();\n'
+            + reply(FRESH)
+            + "__holding = true;\n"
+            + REREAD
+            + "const __input = {value:'Back to my goal', selectionStart:15, selectionEnd:15,"
+            " dataset:{nextCockpitCorrectionKey:'claude:focus-1'},"
+            " closest(selector){return selector === '[data-next-cockpit-correction-key]' ? this : null;}};\n"
+            '__fire("compositionstart", {target:__input});\n'
+            f"__input.value = {json.dumps(mine)};\n"
+            '__fire("input", {target:__input, isComposing:true});\n'
+            "__release();\nawait __settle();\nawait __settle();\n"
+            '__fire("compositionend", {target:__input, data:"漢字"});\n'
+            "await __settle();\n"
+            "console.log(JSON.stringify({html:__els.app.innerHTML}));",
+        )
+        self.assertEqual(mine, textarea_of(out["html"]))
+        self.assertIn(STALE_NOTE, visible_text(out["html"]))
+
     def test_it_names_no_focus_target_so_the_reader_stays_where_they_are(self) -> None:
         out = self.drive(
             self.SETUP,
@@ -878,12 +968,21 @@ const __insertCorrection = (at, text, drawn) => {
   const before = __lastCorrection === null ? drawn : __lastCorrection;
   const cps = [...before];
   const head = cps.slice(0, at).join("");
-  const el = {value: head + text + cps.slice(at).join(""), defaultValue: drawn,
-    selectionStart: head.length + text.length, selectionEnd: head.length + text.length,
+  const el = {value: before, defaultValue: drawn,
+    selectionStart: head.length, selectionEnd: head.length,
     setSelectionRange(start, end){ this.selectionStart = start; this.selectionEnd = end; },
     dataset:{nextCockpitCorrectionKey:"claude:focus-1"},
     closest(selector){ return selector === "[data-next-cockpit-correction-key]" ? this : null; }};
-  __fire("input", {target: el});
+  __nativeInput = el;
+  document.activeElement = el;
+  let cancelled = false;
+  __fire("paste", {target:el, clipboardData:{getData(){return text;}},
+    preventDefault(){cancelled=true;}});
+  if(!cancelled){
+    el.value = head + text + cps.slice(at).join("");
+    el.selectionStart = el.selectionEnd = head.length + text.length;
+    __fire("input", {target: el});
+  }
   __lastCorrection = el.value;
   return {value: el.value, caret: [el.selectionStart, el.selectionEnd]};
 };
@@ -947,6 +1046,336 @@ class AnEditAtTheCapCutsOnlyTheInsertionTest(_DraftPage):
         self.assertEqual(full, out["edits"][1]["value"])
         self.assertEqual([20, 20], out["edits"][1]["caret"])
         self.assertEqual([full], out["copied"])
+
+
+@unittest.skipUnless(shutil.which("node"), "node not available")
+class ACompositionCommitsWholeTest(_DraftPage):
+    """An input-method commit is one edit, never a prefix fitted to the cap."""
+
+    def composing(self, before: str, committed: str, *, remove: int = 0) -> Any:
+        setup = TYPED + QUIET + LINES + CHECK + DEPARTURE + COPY
+        return self.drive(
+            setup + reply({"ok": True, "parts": [before]}),
+            '__press("steer-back");\nawait __settle();\nawait __settle();\n'
+            f"const __base = {json.dumps(before)}; const __commit = {json.dumps(committed)};\n"
+            f"const __start = __base.length - {remove};\n"
+            "const __input = {value:__base, defaultValue:__base, selectionStart:__start,"
+            " selectionEnd:__base.length, dataset:{nextCockpitCorrectionKey:'claude:focus-1'},"
+            " closest(selector){return selector === '[data-next-cockpit-correction-key]' ? this : null;},"
+            " setSelectionRange(start,end){this.selectionStart=start;this.selectionEnd=end;}};\n"
+            '__fire("compositionstart", {target:__input});\n'
+            "__input.value = __base.slice(0,__start) + __commit;\n"
+            "__input.selectionStart = __input.selectionEnd = __input.value.length;\n"
+            '__fire("input", {target:__input, isComposing:true, inputType:"insertCompositionText"});\n'
+            "const __during = __input.value;\n"
+            '__fire("compositionend", {target:__input, data:__commit});\n'
+            '__fire("input", {target:__input, isComposing:false, inputType:"insertFromComposition"});\n'
+            "const __after = __input.value;\n"
+            "const __g = nextCockpitRouteGroup(); const __f = nextCockpitFocusedSession(__g);\n"
+            "await nextCockpitCopyCorrection(__f, {dataset:{nextCopyCorrection:'claude:focus-1'}},"
+            " nextCockpitWorkSource(__g, __f));\n"
+            "console.log(JSON.stringify({during:__during, value:__after,"
+            " caret:[__input.selectionStart,__input.selectionEnd], copied:__copied}));",
+        )
+
+    def test_provisional_composition_text_is_not_cut_before_the_commit(self) -> None:
+        before = "q" * 1999
+        out = self.composing(before, "漢字")
+        self.assertEqual(before + "漢字", out["during"])
+
+    def test_a_commit_that_would_cross_the_cap_keeps_none_of_the_inserted_text(self) -> None:
+        before = "q" * 1999
+        out = self.composing(before, "漢字")
+        self.assertEqual(before, out["value"])
+        self.assertEqual([before], out["copied"])
+        self.assertEqual([1999, 1999], out["caret"])
+
+    def test_a_commit_that_fits_keeps_every_character(self) -> None:
+        before = "q" * 1998
+        out = self.composing(before, "漢字")
+        self.assertEqual(before + "漢字", out["value"])
+        self.assertEqual([before + "漢字"], out["copied"])
+
+    def test_a_commit_may_replace_selected_text_when_the_whole_value_fits(self) -> None:
+        before = "q" * 1999
+        out = self.composing(before, "漢字", remove=1)
+        self.assertEqual("q" * 1998 + "漢字", out["value"])
+        self.assertEqual(["q" * 1998 + "漢字"], out["copied"])
+
+
+@unittest.skipUnless(shutil.which("node"), "node not available")
+class AClipboardPasteUsesTheNativeEditTransactionTest(_DraftPage):
+    def paste(self, *, native: bool) -> Any:
+        before = "q" * 1995 + "TAIL"
+        setup = TYPED + QUIET + LINES + CHECK + DEPARTURE + COPY + NATIVE_INSERT
+        return self.drive(
+            setup + reply({"ok": True, "parts": [before]}),
+            '__press("steer-back");\nawait __settle();\nawait __settle();\n'
+            f"const __before = {json.dumps(before)};\n"
+            "const __input = {value:__before, defaultValue:__before, selectionStart:1999, selectionEnd:1999,"
+            " dataset:{nextCockpitCorrectionKey:'claude:focus-1'},"
+            " closest(selector){return selector === '[data-next-cockpit-correction-key]' ? this : null;}};\n"
+            "__nativeInput = __input; document.activeElement = __input; let __cancelled = false;\n"
+            + ("document.execCommand = () => false;\n" if not native else "")
+            + '__fire("paste", {target:__input, clipboardData:{getData(){return "ABCDE";}},'
+            " preventDefault(){__cancelled=true;}});\n"
+            "document.activeElement = null; __fire('blur', {target:__input});\n"
+            "renderNext();\n"
+            "console.log(JSON.stringify({cancelled:__cancelled, value:__input.value, html:__els.app.innerHTML}));",
+        )
+
+    def test_an_over_cap_paste_uses_the_clipboard_text_without_cutting_existing_text(self) -> None:
+        out = self.paste(native=True)
+        self.assertTrue(out["cancelled"])
+        self.assertEqual("q" * 1995 + "TAILA", out["value"])
+        self.assertEqual(out["value"], textarea_of(out["html"]))
+
+    def test_an_unavailable_native_insert_refuses_the_paste_and_keeps_the_baseline(self) -> None:
+        out = self.paste(native=False)
+        self.assertTrue(out["cancelled"])
+        self.assertEqual("q" * 1995 + "TAIL", out["value"])
+        self.assertIn("Your text is kept", visible_text(out["html"]))
+
+    def test_a_mismatched_native_restore_keeps_the_baseline_in_the_editor_and_copy(self) -> None:
+        before = "q" * 1995 + "TAIL"
+        out = self.drive(
+            TYPED
+            + QUIET
+            + LINES
+            + CHECK
+            + DEPARTURE
+            + COPY
+            + reply({"ok": True, "parts": [before]}),
+            '__press("steer-back");\nawait __settle();\nawait __settle();\n'
+            f"const __before = {json.dumps(before)};\n"
+            "const __input = {value:__before, selectionStart:1999, selectionEnd:1999,"
+            " dataset:{nextCockpitCorrectionKey:'claude:focus-1'},"
+            " closest(s){return s === '[data-next-cockpit-correction-key]' ? this : null;}};\n"
+            "document.activeElement = __input;\n"
+            "document.execCommand = command => {\n"
+            " __input.value = command === 'undo' ? 'A different authored draft' : 'A mismatched insert';\n"
+            " __fire('input', {target:__input, inputType:command === 'undo' ? 'historyUndo' : 'insertText'});\n"
+            " return true;};\n"
+            "__fire('paste', {target:__input, clipboardData:{getData(){return 'ABCDE';}},"
+            " preventDefault(){}});\n"
+            "document.activeElement = null; __fire('blur', {target:__input});\n"
+            "const __g = nextCockpitRouteGroup(); const __f = nextCockpitFocusedSession(__g);\n"
+            "await nextCockpitCopyCorrection(__f, {dataset:{nextCopyCorrection:'claude:focus-1'}},"
+            " nextCockpitWorkSource(__g, __f));\n"
+            "console.log(JSON.stringify({value:__input.value,copied:__copied}));",
+        )
+        self.assertEqual(before, out["value"])
+        self.assertEqual([before], out["copied"])
+
+
+@unittest.skipUnless(shutil.which("node"), "node not available")
+class ALineBreakIsANativeCorrectionEditTest(_DraftPage):
+    def newline(self, before: str, kind: str, *, remove: int = 0) -> Any:
+        return self.drive(
+            TYPED + QUIET + LINES + CHECK + DEPARTURE + reply({"ok": True, "parts": [before]}),
+            '__press("steer-back");\nawait __settle();\nawait __settle();\n'
+            f"const __before = {json.dumps(before)}; const __kind = {json.dumps(kind)};\n"
+            f"const __start = __before.length - {remove};\n"
+            "const __input = {value:__before, defaultValue:__before, selectionStart:__start,"
+            " selectionEnd:__before.length, dataset:{nextCockpitCorrectionKey:'claude:focus-1'},"
+            " closest(s){return s === '[data-next-cockpit-correction-key]' ? this : null;}};\n"
+            "let __prevented = false;\n"
+            "__fire('beforeinput', {target:__input,inputType:__kind,data:null,dataTransfer:null,"
+            " cancelable:true,preventDefault(){__prevented=true;}});\n"
+            "if(!__prevented){__input.value = __before.slice(0,__start) + '\\n';"
+            " __fire('input', {target:__input,inputType:__kind});}\n"
+            "console.log(JSON.stringify({prevented:__prevented,value:__input.value,"
+            " held:nextCockpitCorrections.get('claude:focus-1').text}));",
+        )
+
+    def test_return_with_null_data_inserts_a_newline_below_the_cap(self) -> None:
+        for kind in ("insertLineBreak", "insertParagraph"):
+            with self.subTest(kind=kind):
+                out = self.newline("line one", kind)
+                self.assertFalse(out["prevented"])
+                self.assertEqual("line one\n", out["value"])
+                self.assertEqual(out["value"], out["held"])
+
+    def test_return_at_the_cap_keeps_all_pre_existing_text(self) -> None:
+        before = "q" * 1996 + "TAIL"
+        for kind in ("insertLineBreak", "insertParagraph"):
+            with self.subTest(kind=kind):
+                out = self.newline(before, kind)
+                self.assertTrue(out["prevented"])
+                self.assertEqual(before, out["value"])
+
+    def test_return_can_replace_a_selection_when_the_whole_value_fits(self) -> None:
+        before = "q" * 1996 + "TAIL"
+        for kind in ("insertLineBreak", "insertParagraph"):
+            with self.subTest(kind=kind):
+                out = self.newline(before, kind, remove=1)
+                self.assertFalse(out["prevented"])
+                self.assertEqual(before[:-1] + "\n", out["value"])
+                self.assertEqual(out["value"], out["held"])
+
+
+@unittest.skipUnless(shutil.which("node"), "node not available")
+class ARefreshKeepsTheNativeCorrectionEditorTest(_DraftPage):
+    SETUP = TYPED + QUIET + LINES + CHECK + DEPARTURE + reply(composed())
+
+    def test_a_focused_authored_editor_never_moves_or_repaints_even_with_atomic_move(self) -> None:
+        out = self.drive(
+            self.SETUP,
+            '__press("steer-back");\nawait __settle();\nawait __settle();\n'
+            "const __held = nextCockpitCorrections.get('claude:focus-1');\n"
+            "__held.text = 'A correction I edited'; __held.edited = true;\n"
+            "renderNext();\n"
+            "let __moves = 0; let __paints = 0; let __html = __els.app.innerHTML;\n"
+            "const __cue = {textContent:'',hidden:true};\n"
+            "const __input = {value:__held.text, dataset:{nextCockpitCorrectionKey:'claude:focus-1'},"
+            " closest(selector){return selector === '[data-next-cockpit-correction-key]' ? this"
+            " : selector === '[data-next-steer-box]' ? {querySelector(s){"
+            " return s === '[data-next-correction-paint-why]' ? __cue : null;}} : null;},remove(){}};\n"
+            "document.activeElement = __input; document.body = {moveBefore(){__moves++;}};\n"
+            "__els.app.querySelector = s => s === '[data-next-cockpit-correction-key]' ? __input : null;\n"
+            "Object.defineProperty(__els.app, 'innerHTML', {get(){return __html;},"
+            " set(value){__paints++; __html=value;}});\n"
+            "nextData.sessions[0].title = 'A title received while editing'; renderNext();\n"
+            "console.log(JSON.stringify({moves:__moves,paints:__paints,why:__cue.textContent}));",
+        )
+        self.assertEqual(0, out["moves"], "moving even a connected editor clears native Undo")
+        self.assertEqual(0, out["paints"])
+        self.assertIn("Updates are paused", out["why"])
+
+    def test_an_edited_correction_pauses_paint_until_the_reader_leaves(self) -> None:
+        out = self.drive(
+            self.SETUP,
+            '__press("steer-back");\nawait __settle();\nawait __settle();\n'
+            "const __held = nextCockpitCorrections.get('claude:focus-1');\n"
+            "__held.text = 'A correction I edited'; __held.edited = true; renderNext();\n"
+            "const __before = __els.app.innerHTML; const __cue = {textContent:'',hidden:true};\n"
+            "const __input = {value:__held.text, dataset:{nextCockpitCorrectionKey:'claude:focus-1'},"
+            " closest(selector){return selector === '[data-next-cockpit-correction-key]' ? this"
+            " : selector === '[data-next-steer-box]' ? {querySelector(s){"
+            " return s === '[data-next-correction-paint-why]' ? __cue : null;}} : null;}};\n"
+            "document.activeElement = __input;\n"
+            "nextData.sessions[0].title = 'A title received while editing'; renderNext();\n"
+            "const __during = __els.app.innerHTML; const __why = __cue.textContent;\n"
+            "document.activeElement = null;\n"
+            '__fire("blur", {target:__input});\nawait __settle();\n'
+            "console.log(JSON.stringify({before:__before,during:__during,why:__why,html:__els.app.innerHTML}));",
+        )
+        self.assertEqual(out["before"], out["during"])
+        self.assertIn("Updates are paused", out["why"])
+        self.assertIn("A title received while editing", out["html"])
+        self.assertEqual("A correction I edited", textarea_of(out["html"]))
+
+    def pointer_action(self, action: str) -> Any:
+        return self.drive(
+            self.SETUP + COPY,
+            '__press("steer-back");\nawait __settle();\nawait __settle();\n'
+            "const __held = nextCockpitCorrections.get('claude:focus-1');\n"
+            "__held.text = 'A correction I edited'; __held.edited = true; renderNext();\n"
+            "const __input = {value:__held.text,dataset:{nextCockpitCorrectionKey:'claude:focus-1'},"
+            " closest(s){return s === '[data-next-cockpit-correction-key]' ? this : null;}};\n"
+            "const __button = {connected:true,dataset:{},closest(s){"
+            " return s === '[data-next-cockpit-correction-key]' ? null : this;}};\n"
+            "let __html = __els.app.innerHTML;\n"
+            "Object.defineProperty(__els.app, 'innerHTML', {get(){return __html;},"
+            " set(value){__button.connected=false; __html=value;}});\n"
+            "document.activeElement = __input;\n"
+            "nextData.sessions[0].title = 'A title received while editing'; renderNext();\n"
+            "__fire('pointerdown', {target:__button,pointerId:1,button:0,isPrimary:true});\n"
+            "document.activeElement = __button; __fire('blur', {target:__input,relatedTarget:__button});\n"
+            "await __settle();\nawait __settle();\n"
+            "const __whileHeld = __button.connected;\n"
+            "renderNext(); await __settle();\n"
+            "const __duringRefresh = __button.connected;\n"
+            "__fire('pointerup', {target:__button,pointerId:1,button:0,isPrimary:true});\n"
+            "await __settle();\n"
+            "const __beforeClick = __button.connected;\n"
+            f"if(__button.connected) __press({json.dumps(action)});\n"
+            "await new Promise(resolve => setTimeout(resolve,0));\nawait __settle();\nawait __settle();\n"
+            "console.log(JSON.stringify({held:__whileHeld,duringRefresh:__duringRefresh,"
+            " beforeClick:__beforeClick,copied:__copied,posts:__posts,html:__els.app.innerHTML}));",
+        )
+
+    def test_a_held_pointer_copy_runs_once_before_the_paused_paint(self) -> None:
+        out = self.pointer_action("correction-copy")
+        self.assertTrue(out["held"])
+        self.assertTrue(out["duringRefresh"])
+        self.assertTrue(out["beforeClick"])
+        self.assertEqual(["A correction I edited"], out["copied"])
+        self.assertEqual(1, len([p for p in out["posts"] if p["url"] == "/api/correction/copied"]))
+        self.assertIn("A title received while editing", out["html"])
+
+    def test_a_held_pointer_recompose_runs_once_before_the_paused_paint(self) -> None:
+        out = self.pointer_action("correction-recompose")
+        self.assertTrue(out["held"])
+        self.assertTrue(out["beforeClick"])
+        self.assertEqual(2, len(correction_posts(out)))
+        self.assertNotEqual("A correction I edited", textarea_of(out["html"]))
+        self.assertIn("A title received while editing", out["html"])
+
+    def test_tab_cancellation_and_release_away_flush_without_waiting_for_a_click(self) -> None:
+        for finish in (
+            "__fire('keydown', {key:'Tab'});",
+            "__fire('pointercancel', {pointerId:1});",
+            "__fire('pointerup', {target:__outside,pointerId:1});",
+        ):
+            with self.subTest(finish=finish):
+                out = self.drive(
+                    self.SETUP,
+                    '__press("steer-back");\nawait __settle();\nawait __settle();\n'
+                    "const __held = nextCockpitCorrections.get('claude:focus-1');\n"
+                    "__held.text = 'A correction I edited'; __held.edited=true; renderNext();\n"
+                    "const __input = {dataset:{nextCockpitCorrectionKey:'claude:focus-1'},"
+                    " closest(s){return s === '[data-next-cockpit-correction-key]' ? this : null;}};\n"
+                    "const __outside = {dataset:{},closest(){return null;}};\n"
+                    "document.activeElement = __input;\n"
+                    "nextData.sessions[0].title = 'New work after leaving'; renderNext();\n"
+                    "__fire('pointerdown', {target:{},pointerId:1,button:0,isPrimary:true});\n"
+                    "document.activeElement = __outside; __fire('blur', {target:__input});\n"
+                    + finish
+                    + "\nawait __settle();\nconsole.log(JSON.stringify({html:__els.app.innerHTML}));",
+                )
+                self.assertIn("New work after leaving", out["html"])
+                self.assertEqual("A correction I edited", textarea_of(out["html"]))
+
+    def test_explicit_navigation_leaves_the_old_session_pointer_pause(self) -> None:
+        out = self.drive(
+            self.SETUP,
+            '__press("steer-back");\nawait __settle();\nawait __settle();\n'
+            "const __held = nextCockpitCorrections.get('claude:focus-1');\n"
+            "__held.text='A correction I edited'; __held.edited=true; renderNext();\n"
+            "const __input = {dataset:{nextCockpitCorrectionKey:'claude:focus-1'},"
+            " closest(s){return s === '[data-next-cockpit-correction-key]' ? this : null;}};\n"
+            "document.activeElement=__input; renderNext();\n"
+            "__fire('pointerdown', {target:{},pointerId:1,button:0,isPrimary:true});\n"
+            "document.activeElement=null; __fire('blur', {target:__input});\n"
+            "navigateNext({view:'sessions'}); await __settle();\n"
+            "console.log(JSON.stringify({route:nextRoute.view,html:__els.app.innerHTML,draft:__held.text}));",
+        )
+        self.assertEqual("sessions", out["route"])
+        self.assertNotIn('data-next-cockpit-correction-key="claude:focus-1"', out["html"])
+        self.assertEqual("A correction I edited", out["draft"])
+
+    def test_a_render_waits_until_a_native_composition_finishes(self) -> None:
+        out = self.drive(
+            self.SETUP,
+            '__press("steer-back");\nawait __settle();\nawait __settle();\n'
+            "const __before = __els.app.innerHTML;\n"
+            "const __input = {value:'A correction', selectionStart:12, selectionEnd:12,"
+            " dataset:{nextCockpitCorrectionKey:'claude:focus-1'},"
+            " closest(selector){return selector === '[data-next-cockpit-correction-key]' ? this : null;}};\n"
+            '__fire("compositionstart", {target:__input});\n'
+            "__s.title = 'A title received during composition';\n"
+            "nextData.sessions[0].title = __s.title; renderNext();\n"
+            "const __during = __els.app.innerHTML;\n"
+            "__input.value = 'A correction漢字';\n"
+            '__fire("input", {target:__input, isComposing:true});\n'
+            '__fire("compositionend", {target:__input, data:"漢字"});\n'
+            '__fire("input", {target:__input, isComposing:false});\n'
+            "await __settle();\n"
+            "console.log(JSON.stringify({before:__before,during:__during,html:__els.app.innerHTML}));",
+        )
+        self.assertEqual(out["before"], out["during"])
+        self.assertIn("A correction漢字", textarea_of(out["html"]))
 
 
 @unittest.skipUnless(shutil.which("node"), "node not available")

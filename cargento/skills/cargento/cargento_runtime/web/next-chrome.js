@@ -718,10 +718,11 @@ function nextHistoryResetNotice(){
 }
 
 function renderNext(focus = nextCaptureFocus()){
+  if(nextCockpitCorrectionDefersRender(focus)) return;
   const app = document.getElementById("app");
   if(!app) return;
   const inputs = nextCaptureInputState(app);
-  nextCockpitBeforeRender();
+  nextCockpitBeforeRender(focus);
   // Before the assignment below discards the DOM, which is the ordering rule in
   // docs/design-reader-state.md and the reason a draft is read first: it is the
   // one lane that cannot be rebuilt from a key.

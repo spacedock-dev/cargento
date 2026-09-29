@@ -3663,6 +3663,14 @@ const NEXT_COCKPIT_CORRECTION_FAILED =
 const NEXT_COCKPIT_CORRECTION_OLDER =
   "This was composed from an older record. Recompose replaces your edit with a correction from " +
   "the record as it stands.";
+const NEXT_COCKPIT_CORRECTION_EDIT_REFUSED =
+  "This edit is unavailable here. Your text is kept.";
+const NEXT_COCKPIT_CORRECTION_COMPOSITION_REFUSED =
+  "This composition would exceed 2,000 characters and was not kept.";
+const NEXT_COCKPIT_CORRECTION_UNDO_UNAVAILABLE =
+  "The previous text was restored. Undo is unavailable for this refused edit.";
+const NEXT_COCKPIT_CORRECTION_PAINT_PAUSED =
+  "Updates are paused while you edit this correction. Leave the box to show new work.";
 
 /* The failed checks after the words, by the server's rule (`_failed_checks`):
    the correction's "A check failed at" names the latest of them. */
@@ -3727,6 +3735,7 @@ function nextCockpitCorrectionText(parts, numbers){
 
 function nextCockpitCorrectionDraft(session, held, source){
   if(typeof held.text === "string") return held.text;
+  if(held.recomposing && typeof held.recomposeText === "string") return held.recomposeText;
   const read = source && (source.state === "read" || source.state === "empty");
   return nextCockpitCorrectionText(held.parts, read ? nextCockpitEntryNumbers(session, source)
     : new Map());
@@ -3807,7 +3816,10 @@ function nextCockpitCorrectionFollow(session, annotation, source, offer){
     return;
   }
   /* The old box stays drawn while the request is out, so a key typed into it
-     lands in it rather than nowhere (V5). */
+     lands in it rather than nowhere (V5). Freeze its last rendering before
+     this record can renumber the old server parts (DRC-4739). */
+  held.recomposeText = typeof held.shownText === "string" ? held.shownText
+    : nextCockpitCorrectionDraft(session, held, source);
   held.recomposing = true;
   const stamp = nextCockpitCorrectionStamp(annotation);
   /* After this render: a render never starts a request inside itself. */
@@ -3836,6 +3848,7 @@ function nextCockpitSteerBox(session, source){
   if(!Array.isArray(held.parts)) return "";
   const label = held.cue === "copied" ? "Copied" : held.cue === "failed" ? "Copy unavailable" : "Copy";
   const draft = nextCockpitCorrectionDraft(session, held, source);
+  held.shownText = draft;
   /* No `maxlength`: it counts UTF-16 units, and the cap is in characters. The
      input handler holds the cap, and the count says where it stands. */
   const older = held.stale
@@ -3855,6 +3868,10 @@ function nextCockpitSteerBox(session, source){
     `data-next-correction-cue>${label}</button>` +
     `<span class="next-cockpit-held-count" data-next-correction-count>` +
     `${nextCockpitCorrectionLength(draft)}/${NEXT_COCKPIT_CORRECTION_CAP}</span>` + older +
+    `<p class="next-cockpit-reading-why" data-next-correction-edit-why${held.editWhy ? "" : " hidden"}>` +
+    `${esc(held.editWhy || "")}</p>` +
+    `<p class="next-cockpit-reading-why" data-next-correction-paint-why${held.paintWhy ? "" : " hidden"}>` +
+    `${esc(held.paintWhy || "")}</p>` +
     `<p class="next-cockpit-reading-why" id="next-cockpit-correction-hint">` +
     `${NEXT_COCKPIT_CORRECTION_HINT}</p></div></div>`;
 }
@@ -3924,7 +3941,8 @@ async function nextCockpitComposeCorrection(session, stamp, {quiet = null} = {})
        this box's, and an edit keeps the reader's text with Recompose beside it. */
     if(nextCockpitCorrections.get(key) !== quiet) return;
     quiet.recomposing = false;
-    if(quiet.edited) quiet.stale = true;
+    if(quiet.edited || nextCockpitCorrectionComposition &&
+        nextCockpitCorrectionComposition.held === quiet) quiet.stale = true;
     else if(!quiet.open || next.why === NEXT_COCKPIT_CORRECTION_NOTHING) nextCockpitCorrections.delete(key);
     else nextCockpitCorrections.set(key, next);
     renderNext();
@@ -3942,10 +3960,16 @@ async function nextCockpitCopyCorrection(session, target, source){
   const key = sessKey(session);
   const held = nextCockpitCorrections.get(key);
   if(!held || !Array.isArray(held.parts) || held.copying || held.pending) return;
+  if(nextCockpitCorrectionComposition && nextCockpitCorrectionComposition.held === held){
+    held.cue = "failed";
+    nextCockpitCorrectionUpdateTools(nextCockpitCorrectionComposition.input, held);
+    return;
+  }
   /* Never a text composed from a record that no longer holds, unless the
      reader made it theirs: the redraw recomposes it instead. */
   if(!held.edited && nextCockpitCorrectionStale(held, nextCockpitAnnotation(session), source, session)){
-    renderNext();
+    held.cue = "failed";
+    renderNext({named: `correction-copy:${key}`});
     return;
   }
   const text = nextCockpitCorrectionDraft(session, held, source);
@@ -6618,7 +6642,7 @@ function nextProjectCockpit(context, observation, commandAttention){
     nextCockpitPanel(context, focus, observation, commandAttention);
 }
 
-function nextCockpitBeforeRender(){
+function nextCockpitBeforeRender(focus){
   nextCockpitReadingJobsDrawn.clear();
   const app = document.getElementById("app");
   for(const details of nextCockpitHadDisclosures && app && app.querySelectorAll ? app.querySelectorAll("[data-next-cockpit-disclosure]") : []){
@@ -6750,6 +6774,244 @@ function nextCockpitCorrectionFit(before, typed, caret){
   return {value: edit.head + run + edit.tail, caret: edit.head.length + run.length};
 }
 
+let nextCockpitCorrectionComposition = null;
+let nextCockpitCorrectionPendingRender = null;
+let nextCockpitCorrectionPointer = null;
+
+function nextCockpitCorrectionInput(event){
+  return event.target && event.target.closest
+    ? event.target.closest("[data-next-cockpit-correction-key]") : null;
+}
+
+function nextCockpitCorrectionUpdateTools(input, held){
+  const box = input.closest ? input.closest("[data-next-steer-box]") : null;
+  if(!box || !box.querySelector) return;
+  const count = box.querySelector("[data-next-correction-count]");
+  if(count) count.textContent = `${nextCockpitCorrectionLength(input.value)}/${NEXT_COCKPIT_CORRECTION_CAP}`;
+  const cue = box.querySelector("[data-next-correction-cue]");
+  if(cue) cue.textContent = held.cue === "copied" ? "Copied"
+    : held.cue === "failed" ? "Copy unavailable" : "Copy";
+  const why = box.querySelector("[data-next-correction-edit-why]");
+  if(why){ why.textContent = held.editWhy || ""; why.hidden = !held.editWhy; }
+  const paint = box.querySelector("[data-next-correction-paint-why]");
+  if(paint){ paint.textContent = held.paintWhy || ""; paint.hidden = !held.paintWhy; }
+}
+
+function nextCockpitCorrectionEditRefused(input, held, why){
+  held.editWhy = why;
+  nextCockpitCorrectionUpdateTools(input, held);
+  const key = `correction-edit:${String(input.dataset.nextCockpitCorrectionKey || "")}`;
+  nextCockpitAnnouncedCues.delete(key);
+  nextCockpitAnnounceCue(key, why, false);
+}
+
+function nextCockpitCorrectionNative(input, command, text){
+  if(document.activeElement !== input || typeof document.execCommand !== "function") return false;
+  try{ return document.execCommand(command, false, text); }
+  catch(_error){ return false; }
+}
+
+function nextCockpitCorrectionRestore(input, before, start, end){
+  const held = nextCockpitCorrections.get(String(input.dataset.nextCockpitCorrectionKey || ""));
+  let undone = false;
+  /* Native undo may synchronously publish input. A mismatched undo must
+     never replace the held draft with the text being refused. */
+  if(held) held.restoring = true;
+  try{ undone = nextCockpitCorrectionNative(input, "undo") && input.value === before; }
+  finally{ if(held) held.restoring = false; }
+  /* A browser without native undo still keeps every pre-composition word.
+     Assignment loses its undo history, so that fallback says so. */
+  if(!undone) input.value = before;
+  if(typeof input.setSelectionRange === "function" && typeof start === "number"){
+    input.setSelectionRange(start, typeof end === "number" ? end : start);
+  }
+  return undone;
+}
+
+/* Intercept before the browser inserts an over-cap run. The native edit
+   command keeps that insertion in its undo transaction; assigning .value
+   after input erased the preceding edit as well (DRC-4739, Chrome measured).
+   Paste needs its own event: textarea beforeinput may carry no paste data. */
+function nextCockpitCorrectionInsert(event, text){
+  const input = nextCockpitCorrectionInput(event);
+  if(!input || event.isComposing || nextCockpitCorrectionComposition) return;
+  const held = nextCockpitCorrections.get(String(input.dataset.nextCockpitCorrectionKey || ""));
+  if(!held || event.cancelable === false) return;
+  const before = String(input.value || "");
+  const start = typeof input.selectionStart === "number" ? input.selectionStart : before.length;
+  const end = typeof input.selectionEnd === "number" ? input.selectionEnd : start;
+  const typed = before.slice(0, start) + text + before.slice(end);
+  const fitted = nextCockpitCorrectionFit(before, typed, start + text.length);
+  if(!fitted) return;
+  event.preventDefault();
+  if(fitted.value === before) return;
+  const tail = before.slice(end);
+  const inserted = fitted.value.slice(start, fitted.value.length - tail.length);
+  let accepted = false;
+  held.restoring = true;
+  try{ accepted = nextCockpitCorrectionNative(input, "insertText", inserted); }
+  finally{ held.restoring = false; }
+  if(accepted && input.value === fitted.value){
+    held.text = fitted.value;
+    held.edited = true;
+    held.cue = "";
+    held.editWhy = "";
+    nextCockpitCorrectionUpdateTools(input, held);
+    return;
+  }
+  const undone = input.value === before || nextCockpitCorrectionRestore(input, before, start, end);
+  nextCockpitCorrectionEditRefused(input, held, NEXT_COCKPIT_CORRECTION_EDIT_REFUSED +
+    (undone ? "" : ` ${NEXT_COCKPIT_CORRECTION_UNDO_UNAVAILABLE}`));
+}
+
+document.addEventListener("paste", event => {
+  if(!nextCockpitCorrectionInput(event) || !event.clipboardData) return;
+  nextCockpitCorrectionInsert(event, event.clipboardData.getData("text/plain"));
+});
+
+document.addEventListener("beforeinput", event => {
+  const input = nextCockpitCorrectionInput(event);
+  if(!input || event.isComposing || nextCockpitCorrectionComposition) return;
+  const kind = String(event.inputType || "");
+  if(kind === "insertFromPaste" || !kind.startsWith("insert")) return;
+  if(kind === "insertLineBreak" || kind === "insertParagraph"){
+    nextCockpitCorrectionInsert(event, "\n");
+    return;
+  }
+  const text = typeof event.data === "string" ? event.data : event.dataTransfer
+    && typeof event.dataTransfer.getData === "function" ? event.dataTransfer.getData("text/plain") : null;
+  if(text !== null){ nextCockpitCorrectionInsert(event, text); return; }
+  const held = nextCockpitCorrections.get(String(input.dataset.nextCockpitCorrectionKey || ""));
+  if(held && event.cancelable !== false){
+    event.preventDefault();
+    nextCockpitCorrectionEditRefused(input, held, NEXT_COCKPIT_CORRECTION_EDIT_REFUSED);
+  }
+});
+
+/* Even an atomic connected move cleared Chrome's native undo. Payloads can
+   still arrive, but their paint waits until the reader leaves this editor. */
+function nextCockpitCorrectionPausePaint(input, held, focus){
+  nextCockpitCorrectionPendingRender = {focus};
+  held.paintWhy = NEXT_COCKPIT_CORRECTION_PAINT_PAUSED;
+  nextCockpitCorrectionUpdateTools(input, held);
+}
+
+function nextCockpitCorrectionDefersRender(focus){
+  if(nextCockpitCorrectionComposition){
+    nextCockpitCorrectionPendingRender = {focus};
+    return true;
+  }
+  if(nextCockpitCorrectionPointer){
+    if(nextRoute.view === "session" &&
+        nextCockpitCorrectionPointer.key === `${nextRoute.harness}:${nextRoute.session}`){
+      nextCockpitCorrectionPendingRender = {focus};
+      return true;
+    }
+    nextCockpitCorrectionPointer = null;
+  }
+  const input = nextCockpitCorrectionInput({target: document.activeElement});
+  const key = input && String(input.dataset.nextCockpitCorrectionKey || "");
+  const held = key && nextCockpitCorrections.get(key);
+  if(!held || !held.edited || nextRoute.view !== "session" ||
+      key !== `${nextRoute.harness}:${nextRoute.session}`) return false;
+  nextCockpitCorrectionPausePaint(input, held, focus);
+  return true;
+}
+
+function nextCockpitCorrectionResumePaint(){
+  Promise.resolve().then(() => {
+    if(nextCockpitCorrectionPointer) return;
+    const pending = nextCockpitCorrectionPendingRender;
+    nextCockpitCorrectionPendingRender = null;
+    if(pending) renderNext();
+  });
+}
+
+/* Blur runs between pointer down and click. Replacing the pressed control
+   there swallowed Chrome's first Copy. Wait for dispatch, not a timer: a
+   reader may hold the pointer down longer than any guessed delay. */
+document.addEventListener("pointerdown", event => {
+  if(event.button !== 0 || event.isPrimary === false || nextCockpitCorrectionInput(event)) return;
+  const input = nextCockpitCorrectionInput({target: document.activeElement});
+  const key = input && String(input.dataset.nextCockpitCorrectionKey || "");
+  const held = key && nextCockpitCorrections.get(key);
+  if(!held || !held.edited) return;
+  const target = event.target && event.target.closest
+    ? event.target.closest("button,a,summary,[role=button]") || event.target : event.target;
+  nextCockpitCorrectionPointer = {id: event.pointerId, target, key};
+}, true);
+
+function nextCockpitCorrectionPointerDone(){
+  nextCockpitCorrectionPointer = null;
+  nextCockpitCorrectionResumePaint();
+}
+
+document.addEventListener("click", () => {
+  if(!nextCockpitCorrectionPointer) return;
+  /* Listener microtask checkpoints may precede the bubble action handler. */
+  setTimeout(nextCockpitCorrectionPointerDone, 0);
+}, true);
+
+document.addEventListener("pointerup", event => {
+  const pointer = nextCockpitCorrectionPointer;
+  if(!pointer || event.pointerId !== pointer.id) return;
+  if(pointer.target === event.target || pointer.target && pointer.target.contains &&
+      pointer.target.contains(event.target)) return;
+  nextCockpitCorrectionPointerDone();
+}, true);
+
+document.addEventListener("pointercancel", event => {
+  if(nextCockpitCorrectionPointer && event.pointerId === nextCockpitCorrectionPointer.id){
+    nextCockpitCorrectionPointerDone();
+  }
+}, true);
+window.addEventListener("blur", nextCockpitCorrectionPointerDone);
+document.addEventListener("keydown", event => {
+  if(event.key === "Tab" && nextCockpitCorrectionPointer) nextCockpitCorrectionPointerDone();
+}, true);
+
+document.addEventListener("blur", event => {
+  const input = nextCockpitCorrectionInput(event);
+  if(!input) return;
+  const held = nextCockpitCorrections.get(String(input.dataset.nextCockpitCorrectionKey || ""));
+  if(held) held.paintWhy = "";
+  nextCockpitCorrectionResumePaint();
+}, true);
+
+document.addEventListener("compositionstart", event => {
+  const input = nextCockpitCorrectionInput(event);
+  if(!input) return;
+  const key = String(input.dataset.nextCockpitCorrectionKey || "");
+  const held = nextCockpitCorrections.get(key);
+  if(!held) return;
+  nextCockpitCorrectionComposition = {input, held, before: String(input.value || ""),
+    edited: held.edited, start: input.selectionStart, end: input.selectionEnd};
+});
+
+document.addEventListener("compositionend", event => {
+  const composition = nextCockpitCorrectionComposition;
+  if(!composition || event.target !== composition.input) return;
+  nextCockpitCorrectionComposition = null;
+  const {input, held, before, start, end} = composition;
+  if(nextCockpitCorrectionLength(input.value) > NEXT_COCKPIT_CORRECTION_CAP){
+    const undone = nextCockpitCorrectionRestore(input, before, start, end);
+    held.text = before;
+    held.edited = composition.edited;
+    held.compositionRefused = before;
+    nextCockpitCorrectionEditRefused(input, held, NEXT_COCKPIT_CORRECTION_COMPOSITION_REFUSED +
+      (undone ? "" : ` ${NEXT_COCKPIT_CORRECTION_UNDO_UNAVAILABLE}`));
+  }else if(input.value !== before){
+    held.text = input.value;
+    held.edited = true;
+    held.cue = "";
+    held.editWhy = "";
+    nextCockpitCorrectionUpdateTools(input, held);
+  }
+  /* Browsers may publish the final input after compositionend. Let that
+     update the held draft before drawing a payload received during the edit. */
+  nextCockpitCorrectionResumePaint();
+});
+
 /* The correction box, edited in place with no redraw, for the held fields'
    measured reason below. Capped at the copy route's 2,000 characters, counted
    as the server counts them, cut from what the edit inserted and never from
@@ -6757,28 +7019,27 @@ function nextCockpitCorrectionFit(before, typed, caret){
    an edit makes the text the reader's own and clears the Copy cue, which
    described the text before it. */
 document.addEventListener("input", event => {
-  const input = event.target && event.target.closest
-    ? event.target.closest("[data-next-cockpit-correction-key]") : null;
+  const input = nextCockpitCorrectionInput(event);
   if(!input) return;
+  if(event.isComposing || nextCockpitCorrectionComposition &&
+      nextCockpitCorrectionComposition.input === input) return;
   const held = nextCockpitCorrections.get(String(input.dataset.nextCockpitCorrectionKey || ""));
-  if(!held) return;
+  if(!held || held.restoring) return;
   const typed = String(input.value || "");
+  if(held.compositionRefused === typed) return;
+  delete held.compositionRefused;
   const before = typeof held.text === "string" ? held.text : String(input.defaultValue || "");
-  const fitted = nextCockpitCorrectionFit(before, typed, input.selectionEnd);
-  const value = fitted ? fitted.value : typed;
-  if(fitted && value !== input.value){
-    input.value = value;
-    if(typeof input.setSelectionRange === "function") input.setSelectionRange(fitted.caret, fitted.caret);
+  if(nextCockpitCorrectionLength(typed) > NEXT_COCKPIT_CORRECTION_CAP){
+    const undone = nextCockpitCorrectionRestore(input, before, before.length, before.length);
+    nextCockpitCorrectionEditRefused(input, held, NEXT_COCKPIT_CORRECTION_EDIT_REFUSED +
+      (undone ? "" : ` ${NEXT_COCKPIT_CORRECTION_UNDO_UNAVAILABLE}`));
+    return;
   }
-  held.text = value;
+  held.text = typed;
   held.edited = true;
-  const box = input.closest ? input.closest("[data-next-steer-box]") : null;
-  const count = box && box.querySelector ? box.querySelector("[data-next-correction-count]") : null;
-  if(count) count.textContent = `${nextCockpitCorrectionLength(value)}/${NEXT_COCKPIT_CORRECTION_CAP}`;
-  if(!held.cue) return;
   held.cue = "";
-  const cue = box && box.querySelector ? box.querySelector("[data-next-correction-cue]") : null;
-  if(cue) cue.textContent = "Copy";
+  held.editWhy = "";
+  nextCockpitCorrectionUpdateTools(input, held);
 });
 
 /* No redraw on a keystroke, and this is measured rather than copied from the

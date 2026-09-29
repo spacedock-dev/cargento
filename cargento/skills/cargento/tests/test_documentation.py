@@ -2297,7 +2297,7 @@ class ReaderStateInventoryTest(unittest.TestCase):
 
     def test_the_lanes_the_derivation_cannot_see_are_still_named_and_real(self) -> None:
         # The test above derives only `Capture`/`Restore` names, so these
-        # twelve survive a redraw with nothing deriving their rows. Renaming any
+        # fifteen survive a redraw with nothing deriving their rows. Renaming any
         # would otherwise leave the table citing a symbol that is gone. Two
         # joined on 2026-09-11: both landed with rows in the table and
         # neither was pinned here, which is the gap this test exists to close.
@@ -2322,6 +2322,10 @@ class ReaderStateInventoryTest(unittest.TestCase):
             ("next-cockpit.js", "nextCockpitDirectionWhole"),
             # DRC-4696: the live monitor switch, per session, in this browser only.
             ("next-cockpit.js", "nextLiveMonitorMemory"),
+            # DRC-4739: native editor state cannot be restored into a new textarea.
+            ("next-cockpit.js", "nextCockpitCorrectionComposition"),
+            ("next-cockpit.js", "nextCockpitCorrectionPendingRender"),
+            ("next-cockpit.js", "nextCockpitCorrectionPointer"),
         ):
             with self.subTest(lane=lane):
                 self.assertIn(f"{lane}", (self.WEB / name).read_text(encoding="utf-8"))
