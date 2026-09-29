@@ -12,10 +12,12 @@ answer key. The runtime publishes `accepted`; no scoring verdict is implied. The
 owns enablement. The scoring format and verdicts below remain available for evaluating the producer.
 
 That acceptance covers the Codex producer only. The Claude Code producer built by DRC-4650 has its
-own gate, `annotations.CLAUDE_ABSTENTION_CHECK`, and it is recorded `not-run`. No recorded Claude
-Code case has been read by that producer, and the accepted packet was reviewed against Codex
-readings. The scorer can now drive either producer (`--producer claude` or `--producer codex`),
-and format 5 below is the packet DRC-4666 qualifies Claude Code against. Writing a Claude Code
+own gate, `annotations.CLAUDE_ABSTENTION_CHECK`, and it is recorded `not-run`. No Claude Code
+qualification has passed. The committed [Claude Code run](claude-results.json) failed, with
+four false reassurances; the accepted packet was reviewed against Codex readings. The scorer can
+report either producer (`--producer claude` or `--producer codex`), but this qualification scores
+Claude Code only. Format 5 below is the packet DRC-4666 qualifies Claude Code against. A fresh
+qualification is separate work. Writing a Claude Code
 result opens nothing: the gate moves only in its own reviewed commit. Until then, Codex keeps
 reading Claude Code sessions and the page says so before the press. The
 [amendment](../design-reading-a-session.md#amended-2026-09-23-claude-code-is-built-and-gated) owns
@@ -128,7 +130,7 @@ yardstick. Each case carries every format 4 field, plus:
 | Field | Meaning |
 |---|---|
 | `intent` | `goal` and `lines`, one to six `{text, source}` outcome lines, as a reader would save them. Each line is its own constraint, `line_1` onwards, marked and scored on its own. An optional `at` stamps when the intent counts as typed, and `window_start` opens the evidence window as a stored revision's would; without them the intent counts as typed at 1.0, before every session end. |
-| `tool_output` | Claude Code only: `tails`, each check's redacted output tail by call id, and `changed_after`, the `[call id, check line]` pairs a later command may have changed. Both as a press read them at `captured_at`. |
+| `tool_output` | Claude Code only: `tails`, each check's redacted output tail by call id; `changed_after`, the `[call id, check line]` pairs a later command may have changed; and `read_incomplete`, the pairs whose pass was called before the bounded work record's read horizon. Each is frozen as a press read it at `captured_at`. An older packet with no `read_incomplete` field reads as an empty list. |
 | `transcript_bytes` | Claude Code only: the transcript's length in bytes when the case was frozen, taken before the freeze reads it. The score-time check reads the board's tail of the file as it stood then. |
 
 Build a packet with `mark_abstention.py --freeze <spec>`. It spends nothing. The spec is a local
@@ -164,8 +166,9 @@ reads (DRC-4711):
 
 - `checks-differ`: the check facts are not exactly the transcript's. An invented, altered or
   dropped check all land here.
-- `tool-output-differs`: `tool_output`, the tails and changed-after pairs, is not exactly what a
-  press at `captured_at` read.
+- `tool-output-differs`: `tool_output`, the tails, changed-after pairs and incomplete-read pairs,
+  is not exactly what a press at `captured_at` read. An absent `read_incomplete` field in an older
+  packet is compared as an empty list.
 - `facts-unconfirmed`: the packet's user messages are not the newest ones the transcript holds up
   to `captured_at`, in order, with none missing between them and none repeated, or are fewer than
   the board's bounded tail reads of the file's first `transcript_bytes` bytes. An older message may

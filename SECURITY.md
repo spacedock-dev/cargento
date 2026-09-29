@@ -47,15 +47,16 @@ The posture rests on two invariants:
    and the MCP server refuse to reach anywhere but loopback, ignore proxy environment variables, and
    do not follow redirects. `--host` is the one way that first clause moves, it is an explicit
    argument nothing sets for you, and what it costs is under Known and accepted.
-   Three kinds of outbound request are in scope, two implemented and one written down before it
-   exists, and they are named apart rather than counted together because they are not the same
+   Three kinds of outbound request are implemented, and they are named apart rather than counted
+   together because they are not the same
    exposure. The quota poll carries a vendor token out and quota numbers back, and no session
    content whatever. A harness invocation, described in Light harness usage below, can carry
    session-derived text: it is the one pathway by which the operator's own words may leave this
    machine. A nudge to an endpoint the operator supplies, described in Off-machine nudges below,
-   would carry two counts and nothing that names a session. The observer model implements the
-   second pathway behind explicit enablement and consent. Nudges remain unbuilt; these are the
-   contracts the first feature to use each has to satisfy, `--no-harness-usage` and `--no-reach` included.
+   carries two counts and nothing that names a session. The observer model and reader-requested
+   readings implement the second pathway behind their own enablement and consent. Nudges stay off
+   until an endpoint is configured. `--no-harness-usage` refuses model calls, and `--no-reach`
+   disables nudges.
    Nothing else Cargento does reaches the network. One further pathway is written down and reaches
    no network on Cargento's own account: the hand-off request in Hand-off requests below writes one
    line to a socket on this machine, and what travels afterwards travels on the receiving session's
@@ -1135,7 +1136,9 @@ is still trusted code; replacing it as the owning user is outside this boundary.
 `reading.ClaudeReadingModel` calls `observer.claude_exec`, one bounded `claude --print` call
 through the Claude Code CLI the operator has already signed in to. It reaches Anthropic on the
 operator's own authentication and spends their Claude Code capacity. **It is gated.**
-`annotations.CLAUDE_ABSTENTION_CHECK` is `not-run`, because no eligible recorded case exists
+`annotations.CLAUDE_ABSTENTION_CHECK` remains `not-run`: the committed
+[qualification run](docs/abstention/claude-results.json) failed with four false reassurances, so
+the Claude Code producer has not qualified
 ([DEC-21](docs/design-reading-a-session.md#amended-2026-09-23-claude-code-is-built-and-gated)).
 While it stays there, `reading_route` never selects the provider or even looks for its CLI, and no
 route, fallback, unasked lane, goal summary or forged request can invoke it. Codex's `accepted`

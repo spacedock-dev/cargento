@@ -73,6 +73,11 @@ current turn it is, and an estimate of when that turn ends. It tells you when th
 of making you poll. The first screen sets your goal or a permitted prompt beside current activity
 and brings recorded departures forward. The session page asks once before a reading, remembers
 your answer, and offers an off switch and a way back into the session, without steering it for you.
+On Claude Code sessions, you can turn on a live drift estimate in the panel and header after every
+turn, based on recorded checks and file paths rather than the meaning of your intent. An analysis
+shows its level, each outcome line against the recorded work with its source, where files were
+written, and why a result is stale. Recorded checks and file paths include subagent work, labelled
+as such.
 Reader-requested readings are capped at twelve attempts per rolling twenty-four hours. With no saved
 goal, a check can adopt your latest Claude Code or Codex prompt; the goal field also offers your
 first prompt. Adopted words are marked, and missing source times refuse adoption.
@@ -92,6 +97,11 @@ one stage-entry condition per observed Spacedock workflow, with rule management 
 the source disappears. The first qualifying entity trips it once until Rearm; first sight and gaps
 establish a baseline, skipped stages imply nothing, and notification service acceptance does not
 prove a banner appeared. See [workflow stage conditions](design-tripwires.md).
+
+The Claude Code live monitor is off by default and remembered for the session in your browser.
+It calls no model and raises no notification. An analysis result keeps the source beside each
+outcome line, groups written paths by folder, and states whether your words changed or new work
+arrived after it. Both levels are recomputed from the evidence and are never stored.
 
 The Intent log brings every board session and retained annotation/discard record into one list,
 with typed goals/output, cached deterministic goals and published workflow titles labeled
@@ -126,6 +136,11 @@ than leaving an empty list to read as no work done.
 On Claude Code, the observed record lists the checks a session ran and the files it wrote, with what
 the harness recorded as each check's result
 ([DEC-23](design-reading-a-session.md#dec-23-a-claude-code-sessions-record-of-its-checks-may-show-the-work)).
+That includes subagent checks and writes, labelled by their source. A pass older than the part of
+the work record read cannot reassure, and incompleteness alone establishes no departure. The live
+estimate reads checks and file paths, not the meaning of your intent; too little evidence reads
+"Not enough recorded yet"
+([DEC-26](design-reading-a-session.md#dec-26-four-drift-levels-and-a-live-estimate-after-every-turn)).
 A reading reads them only after you allow tool output for the destination the page names, and
 where Cargento cannot name that destination it sends none and says so. A recorded pass is what the
 tool reported, never an inspection of the work, and a reading labels it that way; a result the
