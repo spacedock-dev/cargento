@@ -197,6 +197,7 @@ WHY_FAILED_CHECK_UNREAD = "failed-check-unread"
 # same call after it or in a later call, which the record does not show as a
 # write (the blocker item 3 of the ruling `build_ledger` cites, applied to a reading).
 WHY_CHANGED_AFTER_CHECK = "changed-after-check"
+WHY_CHECK_READ_INCOMPLETE = "check-read-incomplete"
 # The reader typed an expected output and allowed tool output, and no check had
 # room in the prompt, so Expected Output was not posed for want of room rather
 # than for want of work.
@@ -213,6 +214,7 @@ WHY_TOKENS = (
     WHY_CHECK_DOES_NOT_SHOW_IT,
     WHY_FAILED_CHECK_UNREAD,
     WHY_CHANGED_AFTER_CHECK,
+    WHY_CHECK_READ_INCOMPLETE,
     WHY_CHECKS_NOT_READ,
 )
 
@@ -314,6 +316,7 @@ class ToolOutput:
     # may have changed files after: in the same call after it, or in a later
     # call. Read at the press with the tails.
     changed_after: frozenset[tuple[str, str]] = frozenset()
+    read_incomplete: frozenset[tuple[str, str]] = frozenset()
     # False when a destination was named and the grant was gone by the time
     # the reading ran, so the cutoff says which of the two kept checks back.
     allowed: bool = True
@@ -699,6 +702,7 @@ class LedgerEntry(TypedDict):
     stale: NotRequired[bool]
     earlier_failed: NotRequired[bool]
     changed_after: NotRequired[bool]
+    read_incomplete: NotRequired[bool]
     # When a check's result arrived, where one did (DRC-4702).
     result_at: NotRequired[float]
     tail: NotRequired[str]
@@ -1143,7 +1147,9 @@ def _menu_field(value: str) -> str:
     return value.replace(MENU_SEPARATOR, " - ")
 
 
-def _tool_report_summary(fact: Mapping[str, Any], cap_chars: int) -> str:
+def _tool_report_summary(
+    fact: Mapping[str, Any], cap_chars: int, *, read_incomplete: bool = False
+) -> str:
     """A check's or a written path's row text, composed by the code.
 
     The result words are Cargento's and are never clipped: the command or path
@@ -1161,6 +1167,8 @@ def _tool_report_summary(fact: Mapping[str, Any], cap_chars: int) -> str:
             words.append(CHECK_EARLIER_FAILED)
         if fact.get("before_last_change") is True:
             words.append(CHECK_BEFORE_LAST_CHANGE)
+        if read_incomplete or fact.get("read_incomplete") is True:
+            words.append("part of the work record was not read")
         suffix = f" ({'; '.join(words)})"
     else:
         suffix = f" ({PATH_WRITTEN})"
@@ -1183,6 +1191,7 @@ def build_ledger(
     cap_chars: int = LEDGER_SUMMARY_CAP_CHARS,
     tool_output: Mapping[str, str] | None = None,
     changed_after: frozenset[tuple[str, str]] = frozenset(),
+    read_incomplete: frozenset[tuple[str, str]] = frozenset(),
 ) -> tuple[LedgerEntry, ...]:
     """Every entry naming this session, oldest first.
 
@@ -1251,7 +1260,7 @@ def build_ledger(
             "work": fact.get("type") in WORK_EVIDENCE_BY_HARNESS.get(harness, frozenset()),
         }
         if is_report and tool_output is not None:
-            _add_report_fields(row, fact, cap_chars, tool_output, changed_after)
+            _add_report_fields(row, fact, cap_chars, tool_output, changed_after, read_incomplete)
         elif fact.get("subject") == CHECK_SUBJECT:
             _add_check_fields(row, fact)
         rows.append(row)
@@ -1265,10 +1274,10 @@ def _add_report_fields(
     cap_chars: int,
     tool_output: Mapping[str, str],
     changed_after: frozenset[tuple[str, str]],
+    read_incomplete: frozenset[tuple[str, str]],
 ) -> None:
     """A `TOOL_REPORT_TYPE` row's own fields, which `build_ledger` admits only
     when tool output was given."""
-    row["summary"] = _tool_report_summary(fact, cap_chars)
     row["subject"] = str(fact.get("subject") or "")
     row["result"] = str(fact.get("result") or "")
     row["stale"] = fact.get("before_last_change") is True
@@ -1279,6 +1288,10 @@ def _add_report_fields(
     if row["subject"] == CHECK_SUBJECT and tail:
         row["tail"] = _tail_field(tail)
     row["changed_after"] = (record_id, fact.get("summary")) in changed_after
+    row["read_incomplete"] = (
+        fact.get("read_incomplete") is True or (record_id, fact.get("summary")) in read_incomplete
+    )
+    row["summary"] = _tool_report_summary(fact, cap_chars, read_incomplete=row["read_incomplete"])
     result_at = _number(fact.get("result_at"))
     if row["subject"] == CHECK_SUBJECT and result_at is not None and result_at > 0:
         row["result_at"] = result_at
@@ -1293,6 +1306,7 @@ def _add_check_fields(row: LedgerEntry, fact: Mapping[str, Any]) -> None:
     row["stale"] = fact.get("before_last_change") is True
     row["earlier_failed"] = fact.get("earlier_failed") is True
     row["changed_after"] = fact.get("changed_after") is True
+    row["read_incomplete"] = fact.get("read_incomplete") is True
     result_at = _number(fact.get("result_at"))
     if result_at is not None and result_at > 0:
         row["result_at"] = result_at
@@ -1809,6 +1823,7 @@ def check_supports(entry: Mapping[str, Any], result: str, window_start: float) -
             entry.get("result") == RESULT_PASSED
             and entry.get("stale") is not True
             and entry.get("changed_after") is not True
+            and entry.get("read_incomplete") is not True
         )
     return False
 
@@ -1831,7 +1846,14 @@ def _subjectless_pi_check(entry: Mapping[str, Any]) -> bool:
 def _changed_after_pass(entry: Mapping[str, Any], window_start: float) -> bool:
     """A check that would carry a consistent but for a later command."""
     return entry.get("changed_after") is True and check_supports(
-        {**entry, "changed_after": False}, RESULT_CONSISTENT, window_start
+        {**entry, "changed_after": False, "read_incomplete": False}, RESULT_CONSISTENT, window_start
+    )
+
+
+def _incomplete_pass(entry: Mapping[str, Any], window_start: float) -> bool:
+    """A pass withheld solely because later work was not fully read."""
+    return entry.get("read_incomplete") is True and check_supports(
+        {**entry, "read_incomplete": False}, RESULT_CONSISTENT, window_start
     )
 
 
@@ -1893,13 +1915,23 @@ def _evidence_rules(
     ):
         why = WHY_CHANGED_AFTER_CHECK
     if (
+        why == WHY_CHECK_DOES_NOT_SHOW_IT
+        and result == RESULT_CONSISTENT
+        and any(_incomplete_pass(entry, window_start) for entry in cited)
+    ):
+        why = WHY_CHECK_READ_INCOMPLETE
+    if (
         not why
         and is_outcome_line(name)
         and result == RESULT_CONSISTENT
         and any(check_supports(entry, RESULT_DEPARTURE, window_start) for entry in unread_failures)
     ):
         why = WHY_FAILED_CHECK_UNREAD
-    withdrawn = why in {WHY_CHECK_DOES_NOT_SHOW_IT, WHY_CHANGED_AFTER_CHECK}
+    withdrawn = why in {
+        WHY_CHECK_DOES_NOT_SHOW_IT,
+        WHY_CHANGED_AFTER_CHECK,
+        WHY_CHECK_READ_INCOMPLETE,
+    }
     return ([] if withdrawn else supporting), why
 
 
@@ -2213,6 +2245,7 @@ def produce(  # noqa: PLR0913
         sid,
         tool_output=tails,
         changed_after=tool_output.changed_after if tool_output is not None else frozenset(),
+        read_incomplete=tool_output.read_incomplete if tool_output is not None else frozenset(),
     )
     ledger, stopped, left_out, withheld = _ledger_to_read(ledger, row, scope, window_start(latest))
     if withheld:

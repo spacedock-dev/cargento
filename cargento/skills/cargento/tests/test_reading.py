@@ -828,7 +828,7 @@ class WhichConstraintsWerePutToTheReading(unittest.TestCase):
                 self.assertIn(expected, reading.WHY_TOKENS)
                 seen.add(expected)
         self.assertEqual(4, len(seen))
-        self.assertEqual(12, len(reading.WHY_TOKENS))
+        self.assertEqual(13, len(reading.WHY_TOKENS))
         self.assertIn(reading.WHY_STANDS, reading.WHY_TOKENS)
 
 
@@ -2485,6 +2485,36 @@ class TheAgentsFinalAnswerIsNotWorkOnAnyHarness(AClaudeCodeReadingProducer):
         self.assertEqual(
             [False], [row["work"] for row in reading.build_ledger(codex, "codex", "s1")]
         )
+
+
+class APassOlderThanTheReadIsCaution(AClaudeCodeReadingProducer):
+    def test_a_consistent_on_an_incomplete_pass_is_withheld_without_claiming_a_change(self) -> None:
+        fact = check_fact(result="passed", read_incomplete=True)
+        answer = json.dumps({"line_1": {"result": "consistent", "cites": [2], "detail": ""}})
+        assessment, _why, _spent = self._produce(
+            [WORDS_FACT, fact],
+            model=self._model(answer),
+            tool_output=ADMITTED,
+        )
+        row = assessment["criteria"]["line_1"]
+        self.assertEqual(reading.RESULT_UNVERIFIABLE, row["result"])
+        self.assertEqual("check-read-incomplete", row["why"])
+        self.assertEqual((), row["cites"])
+
+    def test_the_model_sees_incompleteness_in_the_check_summary(self) -> None:
+        fact = check_fact(result="passed", read_incomplete=True)
+        self._produce([WORDS_FACT, fact], tool_output=ADMITTED)
+        self.assertIn("work record was not read", self.prompts[0])
+        self.assertNotIn("before the last change", self.prompts[0])
+
+    def test_a_failed_check_still_supports_departure_when_the_read_is_incomplete(self) -> None:
+        answer = json.dumps({"line_1": {"result": "departure", "cites": [2], "detail": "x"}})
+        assessment, _why, _spent = self._produce(
+            [WORDS_FACT, check_fact(read_incomplete=True)],
+            model=self._model(answer),
+            tool_output=ADMITTED,
+        )
+        self.assertEqual(reading.RESULT_DEPARTURE, assessment["criteria"]["line_1"]["result"])
 
 
 class ALaterCommandMayHaveChangedFiles(AClaudeCodeReadingProducer):

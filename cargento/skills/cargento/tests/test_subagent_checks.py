@@ -19,7 +19,7 @@ from typing import Any
 from unittest import mock
 
 from cargento_runtime import io as runtime_io
-from cargento_runtime import levels, observer, project_context
+from cargento_runtime import levels, observer, project_context, reading
 from cargento_runtime.state import build_runtime_state
 
 from .test_claude_checks import SHORT, SID, START, ClaudeChecksTestCase, Transcript
@@ -393,8 +393,7 @@ def _last_stamp(path: Path) -> float:
 
 
 class APassTheBoundCannotVouchForIsNotCurrent(SubagentChecksTestCase):
-    """The reads-from horizon: a pass older than what every bounded transcript read reaches
-    back to may have been changed by a write the bound left out."""
+    """The reads-from horizon: an incomplete read withholds a pass without claiming a change."""
 
     def settle(self) -> None:
         """Save every transcript with its mtime at its own last record, then keep them."""
@@ -413,13 +412,46 @@ class APassTheBoundCannotVouchForIsNotCurrent(SubagentChecksTestCase):
             self.session.bash(f"ls dir{i}", PAD, is_error=False)
         self.config = dataclasses.replace(self.config, turn_scan_max_bytes=6000)
 
+    def test_unread_read_only_work_withholds_without_claiming_a_later_change(self) -> None:
+        sub = self.delegate()
+        sub.bash("pytest", "5 passed", is_error=False)
+        self.returns(sub)
+        for i in range(20):
+            self.session.bash(f"ls dir{i}", PAD, is_error=False)
+        self.config = dataclasses.replace(self.config, turn_scan_max_bytes=6000)
+        context = self.collect()
+        facts = tuple(f for f in context["semantic"]["facts"] if f.get("type") == "tool_report")
+        check = next(f for f in facts if f["subject"] == "check")
+        scan = context["sources"]["work"]["tool_reports"][0]
+        self.assertEqual(0, scan["written_paths"])
+        self.assertIs(False, check["changed_after"])
+        self.assertIs(False, check["before_last_change"])
+        self.assertIs(True, check.get("read_incomplete"))
+        live = self.live()
+        self.assertEqual(levels.NOT_ENOUGH, live.level)
+        self.assertIn("pass-older-than-read", live.reasons)
+        self.assertNotIn("command-after-pass", live.reasons)
+        reading_row = {
+            "window_start": START.timestamp(),
+            "criteria": {
+                "line_1": {"result": reading.RESULT_CONSISTENT, "cites": [check["fact_id"]]}
+            },
+        }
+        analysis = levels.analysis_level(
+            reading_row,
+            levels.Evidence(facts=facts, scan=scan, unsettled_directions=0),
+            outcome_lines=1,
+        )
+        self.assertEqual(levels.NOT_ENOUGH, analysis.level)
+        self.assertNotIn("pass-then-write", analysis.reasons)
+
     def test_a_subagent_pass_older_than_the_parents_window_does_not_meet_the_floor(self) -> None:
         self.older_pass_with_the_parents_write_cut()
         events, scan = self.read()
         check = next(e for e in events if e["subject"] == "check")
         # Withheld, not dropped: the pass is still listed.
         self.assertEqual(("pytest", "passed"), (check["title"], check["result"]))
-        self.assertIs(True, check["changed_after"])
+        self.assertIs(True, check["read_incomplete"])
         self.assertGreater(scan["reads_from"], check["at"])
         got = self.live()
         self.assertEqual(levels.NOT_ENOUGH, got.level, got)
@@ -436,14 +468,14 @@ class APassTheBoundCannotVouchForIsNotCurrent(SubagentChecksTestCase):
         self.config = dataclasses.replace(self.config, turn_scan_max_bytes=6000)
         check = next(e for e in self.read()[0] if e["subject"] == "check")
         self.assertEqual("failed", check["result"])
-        self.assertIs(False, check["changed_after"])
+        self.assertIs(False, check["read_incomplete"])
         self.assertEqual(levels.HIGH, self.live().level)
 
     def test_the_press_carries_the_same_withheld_pass(self) -> None:
         self.older_pass_with_the_parents_write_cut()
         self.save_all()
         press = project_context.claude_check_press(self.config, str(self.path))
-        self.assertEqual(["pytest"], [title for _id, title in press.changed_after])
+        self.assertEqual(["pytest"], [title for _id, title in press.read_incomplete])
 
     def test_the_frozen_moment_withholds_it_too(self) -> None:
         self.older_pass_with_the_parents_write_cut()
@@ -453,8 +485,8 @@ class APassTheBoundCannotVouchForIsNotCurrent(SubagentChecksTestCase):
         )
         check = next(f for f in facts if f.get("subject") == "check")
         self.assertEqual("passed", check["result"])
-        self.assertIs(True, check["changed_after"])
-        self.assertEqual(["pytest"], [title for _id, title in press.changed_after])
+        self.assertIs(True, check["read_incomplete"])
+        self.assertEqual(["pytest"], [title for _id, title in press.read_incomplete])
 
     def test_a_parent_only_window_reads_as_it_did(self) -> None:
         # Every pass the parent's own window holds is at or after its oldest record.
@@ -464,7 +496,7 @@ class APassTheBoundCannotVouchForIsNotCurrent(SubagentChecksTestCase):
         self.config = dataclasses.replace(self.config, turn_scan_max_bytes=6000)
         events, scan = self.read()
         check = next(e for e in events if e["subject"] == "check")
-        self.assertIs(False, check["changed_after"])
+        self.assertIs(False, check["read_incomplete"])
         self.assertIn("reads_from", scan)
         self.assertEqual(levels.NONE_OR_LOW, self.live().level)
 
@@ -492,7 +524,7 @@ class APassTheBoundCannotVouchForIsNotCurrent(SubagentChecksTestCase):
         self.assertEqual(1, scan["subagent_transcripts_unread"])
         self.assertEqual(old_path.stat().st_mtime, scan["reads_from"])
         check = next(e for e in events if e["title"] == "pytest")
-        self.assertIs(True, check["changed_after"])
+        self.assertIs(True, check["read_incomplete"])
         self.assertEqual(levels.NOT_ENOUGH, self.live().level)
 
     def test_a_transcript_that_grew_past_the_bound_while_read_leaves_a_horizon(self) -> None:
@@ -518,7 +550,7 @@ class APassTheBoundCannotVouchForIsNotCurrent(SubagentChecksTestCase):
         with mock.patch.object(project_context, "_work_records", side_effect=grows_first):
             events, scan = project_context.claude_tool_reports(self.config, str(self.path), SHORT)
         self.assertEqual(0, scan["written_paths"])
-        self.assertIs(True, next(e for e in events if e["title"] == "pytest")["changed_after"])
+        self.assertIs(True, next(e for e in events if e["title"] == "pytest")["read_incomplete"])
 
 
 class ATranscriptThatYieldsNothingWasNotRead(SubagentChecksTestCase):
@@ -544,7 +576,7 @@ class ATranscriptThatYieldsNothingWasNotRead(SubagentChecksTestCase):
             (0, 1), (scan["subagent_transcripts"], scan["subagent_transcripts_unread"])
         )
         self.assertIn("reads_from", scan)
-        self.assertIs(True, next(e for e in events if e["subject"] == "check")["changed_after"])
+        self.assertIs(True, next(e for e in events if e["subject"] == "check")["read_incomplete"])
 
     def test_one_whose_only_line_outgrew_the_bound_is_unread(self) -> None:
         self.session.bash("pytest", "5 passed", is_error=False)
@@ -576,7 +608,7 @@ class ATranscriptThatYieldsNothingWasNotRead(SubagentChecksTestCase):
                 self.config, str(self.path), SID, until=self.NOW
             )
         check = next(f for f in facts if f.get("subject") == "check")
-        self.assertIs(True, check["changed_after"])
+        self.assertIs(True, check["read_incomplete"])
 
 
 class ALinkOutOfTheSessionDirectoryIsNotASubagent(SubagentChecksTestCase):

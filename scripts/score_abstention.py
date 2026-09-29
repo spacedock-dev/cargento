@@ -731,6 +731,7 @@ def score_case(  # noqa: PLR0913 - one keyword per thing a case decides
         str((row or {}).get("sid") or ""),
         tool_output=tails,
         changed_after=tool_output.changed_after if tool_output is not None else frozenset(),
+        read_incomplete=tool_output.read_incomplete if tool_output is not None else frozenset(),
     )
     return {
         "id": str(case.get("id") or ""),
@@ -1394,17 +1395,18 @@ def intent_refusal(case: Mapping[str, Any]) -> str:
         return ""
     if case.get("harness") != "claude" or not isinstance(frozen, dict):
         return "replay-bad-tool-output"
-    tails, pairs = frozen.get("tails", {}), frozen.get("changed_after", [])
+    tails = frozen.get("tails", {})
+    pairs = [frozen.get(key, []) for key in ("changed_after", "read_incomplete")]
     tails_ok = isinstance(tails, dict) and all(
         isinstance(k, str) and isinstance(v, str) for k, v in tails.items()
     )
-    if (
-        not tails_ok
-        or not isinstance(pairs, list)
-        or not all(
+    if not tails_ok or not all(
+        isinstance(values, list)
+        and all(
             isinstance(p, list) and len(p) == 2 and all(isinstance(x, str) for x in p)
-            for p in pairs
+            for p in values
         )
+        for values in pairs
     ):
         return "replay-bad-tool-output"
     return ""
@@ -1547,11 +1549,15 @@ def _tool_output(
     publishes no checks. An empty destination is refused before this runs.
     """
     _config, reading, _records = _runtime()
-    tails, changed = mark_abstention.case_checks(dict(body), dict(case))
+    tails, changed, incomplete = mark_abstention.case_checks(dict(body), dict(case))
     if destination is None or tails is None:
         return None
     return reading.ToolOutput(
-        destination=destination, label=label, tails=tails, changed_after=changed
+        destination=destination,
+        label=label,
+        tails=tails,
+        changed_after=changed,
+        read_incomplete=incomplete,
     )
 
 

@@ -2711,7 +2711,7 @@ class _ToolReportTally:
         self.shell_seq = 0
         self.changing_seqs: list[int] = []
         # The reads-from horizon (`_tally_of`): a pass called before it may
-        # have been changed by a write the byte bound left unread.
+        # lack a complete read of later work; no change is established by it.
         self.reads_from: float | None = None
         self.scan: dict[str, Any] = {
             "last_changing_command_at": None,
@@ -2947,6 +2947,7 @@ class _ToolReportTally:
             # `changed_after`, published so the live level can block on it
             # (DRC-4692). Timestamps cannot order two segments of one call.
             "changed_after": self._changed_after(latest),
+            "read_incomplete": self._read_incomplete(latest),
             "source": source,
             "rank": _RESULT_ORDER[latest["result"]],
         }
@@ -3002,14 +3003,22 @@ class _ToolReportTally:
         }
 
     def _changed_after(self, run: dict[str, Any]) -> bool:
+        return bool(run["changes_later_in_call"]) or any(
+            seq > run["seq"] for seq in self.changing_seqs
+        )
+
+    def _read_incomplete(self, run: dict[str, Any]) -> bool:
         return (
-            bool(run["changes_later_in_call"])
-            or any(seq > run["seq"] for seq in self.changing_seqs)
-            or (
-                run["result"] == "passed"
-                and self.reads_from is not None
-                and run["at"] < self.reads_from
-            )
+            run["result"] == "passed"
+            and self.reads_from is not None
+            and run["at"] < self.reads_from
+        )
+
+    def read_incomplete(self) -> frozenset[tuple[str, str]]:
+        """Latest passes called before the scan's reads-from horizon."""
+        latest = (history[self._latest(history)] for history in self.runs.values())
+        return frozenset(
+            (run["record_id"], run["title"]) for run in latest if self._read_incomplete(run)
         )
 
     def changed_after(self) -> frozenset[tuple[str, str]]:
@@ -3030,13 +3039,14 @@ class PressChecks(NamedTuple):
 
     tails: dict[str, str]
     changed_after: frozenset[tuple[str, str]]
+    read_incomplete: frozenset[tuple[str, str]] = frozenset()
 
 
 def claude_check_press(
     config: RuntimeConfig, transcript_path: str, *, max_bytes: int | None = None
 ) -> PressChecks:
-    """The output tails a press may carry to a model, and the passes a later
-    command may have changed, both keyed by the call's record id.
+    """The output tails, later-command flags and incomplete-read flags a press
+    may carry, keyed by the call's record id and check line.
 
     Read again at the press rather than published: the owner ruled that the
     model sees each check's redacted tail (DRC-4677, Q1), and it stays off the
@@ -3045,7 +3055,7 @@ def claude_check_press(
     `claude_tool_reports`, so both belong to the run that fact lists.
     """
     tally = _claude_tally(config, transcript_path, max_bytes=max_bytes)
-    return PressChecks(tally.tails(), tally.changed_after())
+    return PressChecks(tally.tails(), tally.changed_after(), tally.read_incomplete())
 
 
 def claude_check_tails(
@@ -3182,7 +3192,7 @@ def _tally_of(
     `reads_from` is the latest of: where each transcript the bound cut begins,
     and the newest time each unread one can hold. Each stream is bounded on its
     own, so a write one leaves out may still postdate a pass another read; a
-    pass called before the horizon is marked `changed_after` rather than
+    pass called before the horizon is marked `read_incomplete` rather than
     dropped, since dropping calls would drop an older failure too. With only
     the parent cut, every pass it holds is at or after the horizon, so it reads
     as it did (item 7 of the 2026-09-28 amendment).
@@ -3360,7 +3370,7 @@ def frozen_claude_checks(
         _semantic_fact_from_event(row, str(row["kind"]), _SEMANTIC_FACT_TYPES[row["kind"]], "")
         for row in tally.entries(sid)
     ]
-    return facts, PressChecks(tally.tails(), tally.changed_after())
+    return facts, PressChecks(tally.tails(), tally.changed_after(), tally.read_incomplete())
 
 
 def _user_message_facts(
@@ -4350,6 +4360,7 @@ def _semantic_fact_from_event(
         "earlier_failed",
         "before_last_change",
         "changed_after",
+        "read_incomplete",
         "result_at",
     ):
         if source_event.get(key) not in (None, ""):

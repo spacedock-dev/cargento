@@ -2501,3 +2501,28 @@ class ADeclaredSyntheticCaseIsScoredAndCanFail(_Ledgered):
         said = "\n".join(printed)
         self.assertIn("withheld without a model call", said)
         self.assertNotIn("scored as synthetic", said)
+
+
+class FrozenIncompleteReadReplayTest(unittest.TestCase):
+    def test_replay_carries_the_distinct_incomplete_pairs(self) -> None:
+        case = {
+            "harness": "claude",
+            "tool_output": {
+                "tails": {},
+                "changed_after": [],
+                "read_incomplete": [["call-1", "pytest"]],
+            },
+        }
+        output = score_abstention._tool_output(case, "Anthropic", "Claude Code", {"v": 5})
+        self.assertEqual(
+            frozenset({("call-1", "pytest")}), getattr(output, "read_incomplete", None)
+        )
+        self.assertEqual(frozenset(), output.changed_after)
+
+    def test_replay_refuses_malformed_incomplete_pairs(self) -> None:
+        case = {
+            "harness": "claude",
+            "intent": {"goal": "Run tests", "lines": ["Tests pass"]},
+            "tool_output": {"tails": {}, "changed_after": [], "read_incomplete": [["call-1"]]},
+        }
+        self.assertEqual("replay-bad-tool-output", score_abstention.intent_refusal(case))

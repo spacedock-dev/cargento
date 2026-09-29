@@ -1520,10 +1520,11 @@ the measured note that DEC-23 reads the root session's calls alone.
    everything the others read: a parent's later write can fall out of its window while a
    subagent's earlier pass is still read. The scan therefore publishes `reads_from`, the latest of
    where each cut transcript's read begins and the newest time each unread transcript can hold
-   (its modification time). A pass called before it is marked `changed_after`, which withholds
-   the live floor and reaches the press as any later change does. It is not dropped, because
-   dropping older calls would drop an older failure too. Neither count blocks the live estimate
-   by itself; an unread transcript does through `reads_from`. With no subagent and nothing cut
+   (its modification time). A pass called before `reads_from` is marked `read_incomplete`.
+   It cannot support a consistent outcome or the live "None or low" floor; incompleteness alone
+   is not evidence of departure. It is not dropped, because dropping older calls would drop an
+   older failure too. Neither count blocks the live estimate by itself; an unread transcript
+   can withhold the floor through `reads_from`. With no subagent and nothing cut
    there is no `reads_from`, and with only the parent cut every pass it holds is at or after it,
    so such a session reads as it did. The abstention packet's frozen moment reads each transcript
    as it stood, newest by the last record it then held, and marks the same passes, bounding a
@@ -2167,8 +2168,8 @@ question before the press in place of "Conflict to settle", and Add adopting a d
   before the route, any Allow write, the adoption or the job, reading the store from disk under
   its lock and checking the entry handed to the job again, so another dashboard's save is caught, and the page says the approved stale
   sentence; the store already refused a stale goal save, and the typed words stay in the box.
-  `nextReadingCheckSupports` mirrors `check_supports` on every harness, including `changed_after`
-  and the subjectless Pi rows an older build stored, held by a test built from the server's own Pi
+  `nextReadingCheckSupports` mirrors `check_supports` on every harness, including `changed_after`,
+  `read_incomplete` and the subjectless Pi rows an older build stored, held by a test built from the server's own Pi
   fixture; the record column opens with "Cargento reads work results from Claude Code and Pi
   only." The analyzing box lost `role="status"`, which re-announced it on every render: its start
   and its outcome are written once each to the persistent polite region. The question adds no

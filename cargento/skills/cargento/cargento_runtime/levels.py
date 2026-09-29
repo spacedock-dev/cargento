@@ -62,6 +62,7 @@ REASON_NO_PASSING_CHECK = "no-passing-check"
 REASON_CHECK_NOT_RECORDED = "check-not-recorded"
 REASON_BACKGROUND_RUN = "background-run"
 REASON_CHANGING_COMMAND = "command-after-pass"
+REASON_PASS_OLDER_THAN_READ = "pass-older-than-read"  # noqa: S105 - a reason token
 REASON_LATER_DIRECTION = "later-direction"
 REASON_UNLISTED = "entries-not-listed"
 REASON_FLOOR_MET = "floor-met"
@@ -82,6 +83,7 @@ REASONS = (
     REASON_CHECK_NOT_RECORDED,
     REASON_BACKGROUND_RUN,
     REASON_CHANGING_COMMAND,
+    REASON_PASS_OLDER_THAN_READ,
     REASON_LATER_DIRECTION,
     REASON_UNLISTED,
     REASON_FLOOR_MET,
@@ -387,6 +389,8 @@ def _live_floor_blockers(evidence: Evidence, passes: list[Mapping[str, Any]]) ->
     )
     if later or any(f.get("changed_after") is not False for f in passes):
         blockers.append(REASON_CHANGING_COMMAND)
+    if any(f.get("read_incomplete") is True for f in passes):
+        blockers.append(REASON_PASS_OLDER_THAN_READ)
     if evidence.unsettled_directions > 0:
         blockers.append(REASON_LATER_DIRECTION)
     return blockers
@@ -439,7 +443,8 @@ class _LineTally:
         inside_window = [
             f
             for f in passes
-            if (at := reading.evidence_at(f)) is not None
+            if f.get("read_incomplete") is not True
+            and (at := reading.evidence_at(f)) is not None
             and (self.window is None or at >= self.window)
         ]
         if result == reading.RESULT_CONSISTENT and not why and inside_window:
