@@ -29,7 +29,7 @@ if TYPE_CHECKING:
     from cargento_runtime.config import RuntimeConfig
 
 from cargento_runtime import annotations as annotation_store
-from cargento_runtime import events, reading, reading_route, records
+from cargento_runtime import events, observer, reading, reading_route, records
 
 SESSION = {"harness": "claude", "sid": "S1"}
 NOW = 1_700_100_000.0
@@ -2018,7 +2018,7 @@ class ACheckReachesAModelOnlyAfterYouAllowToolOutput(AClaudeCodeReadingProducer)
     def test_a_reader_is_not_charged_when_the_budget_cannot_fit_the_trusted_instructions(
         self,
     ) -> None:
-        with mock.patch.object(reading.observer, "OBSERVER_MODEL_MAX_PROMPT_BYTES", 900):
+        with mock.patch.object(observer, "OBSERVER_MODEL_MAX_PROMPT_BYTES", 900):
             assessment, why, spent = self._produce(
                 [WORDS_FACT, check_fact(result="passed")], tool_output=ADMITTED
             )
