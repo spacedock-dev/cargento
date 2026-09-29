@@ -1180,6 +1180,12 @@ holds for a Claude Code check; DEC-17 carries the amendment.
 
 ### The closed lists
 
+The producer prompt states item 8's relevance rule for the whole Goal or outcome line, outside
+the reader's words and quoted tool output. A generic passing suite does not establish a feature or
+browser behavior that it does not exercise. Relevance remains a model judgement: the resolver
+checks the recorded status, time and subsequent changes, but does not prove semantic coverage.
+These instructions do not establish a passing qualification or open the Claude Code gate.
+
 Writing these lists out is part of item 3, which names the kinds (test, build, lint and type-check
 runners) and leaves the list to this section. Each segment, split on `&&`, `||`, `;`, `|`, `&` and newlines, is matched
 after stripping `cd ...`, `NAME=value` assignments and the wrappers `uv run`, `poetry run`,
