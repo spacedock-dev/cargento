@@ -1983,6 +1983,11 @@ the analysis's recommendation.
   Measured at 1440x900 with a 198-character goal: three lines put Analyze drift's bottom at 788
   (Claude Code) and 820 (Codex); six lines put the Drift heading's bottom at 900 on both, with no
   margin, because the six-line notice ("An expected outcome holds six lines...") appears only then.
+- The saved-intent introduction follows the complete action block (DRC-4748). With a saved
+  55-character goal, three 240-character outcome lines and a High live estimate, its three
+  lines above the fields put Analyze drift at 892.5 to 936.5 on a 1440x900 board. Moving the
+  same words below the action put its bottom at 861.5. The drafted introduction stays with
+  the fields the reader is choosing; consent disclosures keep their own order.
 - The heading-row move is an owner-approved departure from C1's placement (2026-09-24): each
   field's count and controls sit beside the field's name rather than under its box.
 - One clean row, expand on focus (owner, 2026-09-24). A saved line longer than its box wrapped and

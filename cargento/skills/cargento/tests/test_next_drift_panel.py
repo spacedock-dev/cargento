@@ -435,13 +435,12 @@ class ThePanelKeepsAnalyzeOnTheFirstScreenTest(PanelPage):
         self.assertIn("flex-wrap:wrap", rule(".next-session-detail-title"))
         self.assertIn("flex-wrap:wrap", rule(".next-session-detail-bar"))
 
-    def test_the_intent_section_is_heading_lede_one_stamp_line_then_the_fields(self) -> None:
+    def test_the_intent_section_is_heading_one_stamp_line_then_the_fields(self) -> None:
         aside = aside_of(self.page())
         intent = aside[aside.index(">Intent</h2>") : aside.index(">Drift</h2>")]
         order = [
             intent.index(mark)
             for mark in (
-                'class="next-cockpit-held-lede"',
                 'class="next-cockpit-held-stamp"',
                 'class="next-cockpit-held-fields"',
             )
@@ -456,6 +455,24 @@ class ThePanelKeepsAnalyzeOnTheFirstScreenTest(PanelPage):
         self.assertIn(
             "grid-column:auto", rule(".next-cockpit-held-field .next-cockpit-held-line textarea")
         )
+
+    def test_saved_intent_introduction_does_not_push_the_action_below_the_fold(self) -> None:
+        introduction = (
+            "Choose a goal or use your prompt, then analyze drift: Cargento lists where this "
+            "session departed from it. It never writes into the session, so steering stays yours."
+        )
+        for html, action in (
+            (self.page(setup=THREE_LINES), "reading-ask"),
+            (self.confirming(), "reading-allow"),
+            (self.page(setup=JOB), "reading-cancel"),
+            (self.page("codex", READING), "reading-ask"),
+        ):
+            with self.subTest(action=action):
+                aside = aside_of(html)
+                text = visible_text(aside)
+                self.assertEqual(1, text.count(introduction))
+                before_action = aside[: aside.index(f'data-next-cockpit-action="{action}"')]
+                self.assertNotIn(introduction, visible_text(before_action))
 
     def test_each_fields_count_and_controls_share_its_heading_row(self) -> None:
         """Owner-reworded fold (DRC-4680 review): under the box the goal's count, clear and save,
