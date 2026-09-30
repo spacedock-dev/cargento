@@ -6,22 +6,24 @@ Items 2 to 6 of
 the same tally `project_context.claude_tool_reports` publishes from, one call at a time, and asks
 for the level after each of the last `LIVE_REPLAY_STEPS` calls that can move it, so the level now
 is the one the published record gives and "Rose from <level> at #<n>" comes from the same record.
-The replay is held in this process's memory until the transcript or the words change; nothing is
-written, and no model or process is started.
+The replay is held in this process's memory, keyed by the parent and delegated transcript
+inventory and the saved words. Nothing is written, and no model or process is started.
 
 The route publishes the answer on the focused session's project context only (`http_api`), never
 on a Sessions row, in history, or in the reading route's own context, which is what the unasked
 lane reads (items 3 and 5). Whether the reader has the switch on is never sent to the server
 (item 4), so this runs for the focused session whenever it has a saved intent.
 
-It reads `project_context`'s tally through its private names rather than a new public function:
-DRC-4666's freeze stamped a digest of that file, and any edit to it demotes every frozen case
-(DRC-4731), so the file stays as it is until the scored run is committed.
+It reads the same private check scan, result pairing and call order as `project_context`'s
+published tally. That file is in DRC-4666's qualification digest, so edits here require a fresh
+qualified run before an unqualified frozen-case result is used as evidence.
 """
 
 from __future__ import annotations
 
 import dataclasses
+import hashlib
+import os
 import threading
 from collections import OrderedDict
 from typing import TYPE_CHECKING, Any
@@ -46,29 +48,41 @@ _MOVING_TOOLS = frozenset({*pc._WRITE_TOOLS, "Bash"})  # noqa: SLF001
 # turns, and a rise older than that is withheld rather than guessed at.
 LIVE_REPLAY_STEPS = 64
 # One replay per session and set of words, kept in this process only. A request
-# that finds the transcript unchanged reads nothing; one that finds it grown
-# asks only after the calls it has not seen, because the transcript is append
-# only and a step's level depends on no later call. A handful of entries covers
-# the sessions a reader has open; beyond that the oldest goes.
+# that finds all inputs unchanged reads no transcript content. A changed scan
+# can reuse a stable prefix or a safely removable head and re-evaluates the
+# current 64-step window. A handful of entries covers the sessions a reader
+# has open; beyond that the oldest goes.
 _CACHE_ENTRIES = 16
+# Two normalized tallies may be held per entry. Bound the aggregate source
+# window represented by the LRU as well as its session count.
+_CACHE_SCAN_BYTES = 32 * 1024 * 1024
 
 
 @dataclasses.dataclass
 class _Replayed:
-    signature: tuple[int, int]
+    signature: tuple[Any, ...]
     # Each moving call read, in order, with its result or None. A call whose
     # mark differs, including a result that arrived since, changes its own
     # step and every one after it; the steps before it stand.
-    marks: list[tuple[Any, ...]]
+    marks: list[bytes]
+    context: tuple[Any, ...]
     # The level after each moving call by its position, and -1 for before the first.
     steps: dict[int, str]
     # The level, its reasons and where it rose; and the whole answer last published.
     found: dict[str, Any]
     published: dict[str, Any] = dataclasses.field(default_factory=dict)
+    # A normalized tally before the last 64 moving calls. It holds no raw
+    # paired results or output tails; a shifted scan can delete safe old head
+    # calls from it and replay only the current window.
+    checkpoint: pc._ToolReportTally | None = None
+    safe_head: list[tuple[str, int] | None] = dataclasses.field(default_factory=list)
+    final_tally: pc._ToolReportTally | None = None
+    scanned_bytes: int = 0
 
 
 _cache: OrderedDict[tuple[Any, ...], _Replayed] = OrderedDict()
 _cache_lock = threading.Lock()
+_flights: dict[tuple[Any, ...], threading.Event] = {}
 
 
 def saved_intent(row: Mapping[str, Any]) -> levels.Intent:
@@ -113,6 +127,21 @@ def _fact(row: Mapping[str, Any]) -> dict[str, Any]:
     return pc._semantic_fact_from_event(dict(row), str(row["kind"]), "tool_report", "")  # noqa: SLF001
 
 
+def _live_signature(config: RuntimeConfig, transcript_path: str) -> tuple[Any, ...] | None:
+    """Metadata identity for every input the shared live check scan may admit."""
+    paths = [transcript_path, *pc._subagent_transcripts(transcript_path)]  # noqa: SLF001
+    found: list[tuple[Any, ...]] = []
+    try:
+        for path in paths:
+            stat = os.stat(path, follow_symlinks=path == transcript_path)
+            found.append(
+                (path, stat.st_dev, stat.st_ino, stat.st_size, stat.st_mtime_ns, stat.st_ctime_ns)
+            )
+    except OSError:
+        return None
+    return (config.turn_scan_max_bytes, config.reverse_chunk_bytes, *found)
+
+
 def for_session(
     config: RuntimeConfig,
     row: Mapping[str, Any],
@@ -143,29 +172,54 @@ def for_session(
         level = levels.live_level(levels.Evidence((), {}, 0), intent)
         return {**answer, "level": level.level, "reasons": list(level.reasons)}
     unsettled = correction.unsettled_directions(row, facts, floor=floor)
-    raw = pc._transcript_signature(transcript_path)  # noqa: SLF001
-    if raw is None:
-        return {**answer, **_replay(config, transcript_path, sid, intent, unsettled, None).found}
-    signature = (raw["size"], raw["mtime_ns"])
     key = (transcript_path, harness, sid, answer["revision"], intent.goal, intent.lines, unsettled)
-    with _cache_lock:
-        previous = _cache.get(key)
-        if previous is not None:
-            _cache.move_to_end(key)
-    if previous is not None and previous.signature == signature:
-        return dict(previous.published)
-    replayed = _replay(config, transcript_path, sid, intent, unsettled, previous)
-    replayed.signature = signature
-    replayed.published = {**answer, **replayed.found}
-    with _cache_lock:
-        _cache[key] = replayed
-        _cache.move_to_end(key)
-        while len(_cache) > _CACHE_ENTRIES:
-            _cache.popitem(last=False)
-    return dict(replayed.published)
+    while True:
+        signature = _live_signature(config, transcript_path)
+        if signature is None:
+            uncertain = _replay(
+                config, transcript_path, sid, intent, unsettled, None, force_incomplete=True
+            )
+            return {**answer, **uncertain.found}
+        with _cache_lock:
+            previous = _cache.get(key)
+            if previous is not None and previous.signature == signature:
+                _cache.move_to_end(key)
+                return dict(previous.published)
+            flight = _flights.get(key)
+            leader = flight is None
+            if flight is None:
+                flight = threading.Event()
+                _flights[key] = flight
+        if not leader:
+            flight.wait()
+            continue
+        try:
+            replayed = _replay(config, transcript_path, sid, intent, unsettled, previous)
+            after = _live_signature(config, transcript_path)
+            if after != signature:
+                # A moving file cannot support a complete cached assurance.
+                uncertain = _replay(
+                    config, transcript_path, sid, intent, unsettled, None, force_incomplete=True
+                )
+                return {**answer, **uncertain.found}
+            replayed.published = {**answer, **replayed.found}
+            replayed.signature = signature
+            with _cache_lock:
+                _cache[key] = replayed
+                _cache.move_to_end(key)
+                while (
+                    len(_cache) > _CACHE_ENTRIES
+                    or sum(item.scanned_bytes for item in _cache.values()) > _CACHE_SCAN_BYTES
+                ):
+                    _cache.popitem(last=False)
+            return dict(replayed.published)
+        finally:
+            with _cache_lock:
+                _flights.pop(key, None)
+                flight.set()
 
 
-def _reusable(previous: _Replayed | None, marks: list[tuple[Any, ...]]) -> int:
+def _reusable(previous: _Replayed | None, marks: list[bytes]) -> int:
     """How many leading steps of `previous` still stand for the calls read now."""
     valid = 0
     for old, new in zip(previous.marks if previous is not None else [], marks, strict=False):
@@ -175,6 +229,265 @@ def _reusable(previous: _Replayed | None, marks: list[tuple[Any, ...]]) -> int:
     return valid
 
 
+def _checkpoint(tally: pc._ToolReportTally) -> pc._ToolReportTally:
+    """Copy only normalized check state; never retain raw results or tails."""
+    saved = pc._ToolReportTally({})  # noqa: SLF001
+    saved._hash_identities = True  # noqa: SLF001
+    saved.runs = {
+        _cached_identity(identity, tally): [{**run, "tail": ""} for run in history]
+        for identity, history in tally.runs.items()
+    }
+    saved.writes = {path: dict(write) for path, write in tally.writes.items()}
+    saved.write_calls = list(tally.write_calls)
+    saved.shell_seq = tally.shell_seq
+    saved.changing_seqs = list(tally.changing_seqs)
+    saved.reads_from = tally.reads_from
+    saved.named_unread = tally.named_unread
+    saved.parent_failed = tally.parent_failed
+    saved.orphan_unread = tally.orphan_unread
+    saved.scan = dict(tally.scan)
+    saved._entry_cache = {  # noqa: SLF001
+        _cached_identity(identity, tally): dict(entry)
+        for identity, entry in tally._entry_cache.items()  # noqa: SLF001
+    }
+    return saved
+
+
+def _cached_identity(identity: str, tally: pc._ToolReportTally) -> str:
+    if tally._hash_identities:  # noqa: SLF001
+        return identity
+    return hashlib.sha256(identity.encode("utf-8", "replace")).hexdigest()
+
+
+def _safe_head_effect(
+    tally: pc._ToolReportTally,
+    before: tuple[dict[str, Any], int, int, int],
+    name: str,
+) -> tuple[str, int] | None:
+    """A head call whose entire contribution can be removed from a checkpoint."""
+    before_scan, writes, write_calls, changing_seqs = before
+    if name != "Bash" or len(tally._last_added_runs) != 1:  # noqa: SLF001
+        return None
+    identity, run = tally._last_added_runs[0]  # noqa: SLF001
+    if (
+        run["result"] != "passed"
+        or run["background"]
+        or run["fixes"]
+        or run["changes_later_in_call"]
+        # Redirects and fixers affect later passes even if `entries` has not
+        # yet copied their effects into scan counters.
+        or len(tally.writes) != writes
+        or len(tally.write_calls) != write_calls
+        or len(tally.changing_seqs) != changing_seqs
+        or tally.scan["shell_calls"] != before_scan["shell_calls"] + 1
+        or tally.scan["check_runs"] != before_scan["check_runs"] + 1
+    ):
+        return None
+    if any(
+        tally.scan[key] != value
+        for key, value in before_scan.items()
+        if key not in {"shell_calls", "check_runs"}
+    ):
+        return None
+    return _cached_identity(identity, tally), run["seq"]
+
+
+def _head_state(tally: pc._ToolReportTally) -> tuple[dict[str, Any], int, int, int]:
+    return (dict(tally.scan), len(tally.writes), len(tally.write_calls), len(tally.changing_seqs))
+
+
+def _suffix_offset(old: list[bytes], new: list[bytes]) -> int | None:
+    matches = [
+        offset
+        for offset, mark in enumerate(old)
+        if new
+        and mark == new[0]
+        and len(new) >= len(old) - offset
+        and new[: len(old) - offset] == old[offset:]
+    ]
+    return matches[0] if len(matches) == 1 else None
+
+
+def _drop_safe_head(tally: pc._ToolReportTally, effects: list[tuple[str, int] | None]) -> bool:
+    for effect in effects:
+        if effect is None:
+            return False
+        identity, seq = effect
+        history = tally.runs.get(identity)
+        if history is None:
+            return False
+        kept = [run for run in history if run["seq"] != seq]
+        if len(kept) != len(history) - 1:
+            return False
+        if kept:
+            # The identity's first surviving run would move behind other
+            # identities in a fresh scan. Keeping its dictionary slot changes
+            # stable ordering at the twelve-entry listing boundary.
+            return False
+        del tally.runs[identity]
+        tally._entry_cache.pop(identity, None)  # noqa: SLF001
+        tally.scan["shell_calls"] -= 1
+        tally.scan["check_runs"] -= 1
+    return True
+
+
+def _shifted_checkpoint(
+    previous: _Replayed | None,
+    marks: list[bytes],
+    context: tuple[Any, ...],
+    results: dict[str, Any],
+    *,
+    unread: int,
+) -> tuple[pc._ToolReportTally, int, list[tuple[str, int] | None]] | None:
+    """Reuse a checkpoint only for an exact old suffix plus a new tail."""
+    if previous is None or previous.checkpoint is None or not marks:
+        return None
+    # A moving child inventory, cwd or refusal state changes the meaning of
+    # the baseline. A new horizon alone is safe after every cached entry is
+    # invalidated: the last 64 levels are then evaluated against it afresh.
+    if previous.context[:2] + previous.context[3:] != context[:2] + context[3:]:
+        return None
+    offset = _suffix_offset(previous.marks, marks)
+    if offset is None or offset > len(previous.safe_head):
+        return None
+    tally = _checkpoint(previous.checkpoint)
+    if not _drop_safe_head(tally, previous.safe_head[:offset]):
+        return None
+    if previous.context[2] != context[2]:
+        tally._entry_cache.clear()  # noqa: SLF001
+    tally.reads_from = context[2]
+    if context[2] is None:
+        tally.scan.pop("reads_from", None)
+    else:
+        tally.scan["reads_from"] = context[2]
+    tally.scan["subagent_transcripts_unread"] = unread
+    tally.results = results
+    return tally, len(previous.safe_head) - offset, previous.safe_head[offset:].copy()
+
+
+def _found_from_steps(
+    current: levels.Level,
+    steps: dict[int, str],
+    rows: list[dict[str, Any]],
+    calls: list[tuple[float, str, str, str, dict[str, Any], str]],
+    first: int,
+) -> dict[str, Any]:
+    window = [steps[p] for p in range(first - 1, len(calls))]
+    rose = levels.rose_from(window)
+    found: dict[str, Any] = {"level": current.level, "reasons": list(current.reasons)}
+    if rose is not None:
+        call = calls[first - 1 + rose[1]]
+        # A call id can collide across streams, and a Bash call can publish
+        # both a check and a redirect write. Only cite a unique row belonging
+        # to this exact call in the final list; otherwise withhold the rise.
+        subject = "check" if call[3] == "Bash" else "write"
+        mine = [
+            row
+            for row in rows
+            if row.get("record_id") == call[2]
+            and row.get("at") == call[0]
+            and row.get("worker_kind", "") == call[5]
+            and row.get("subject") == subject
+        ]
+        if len(mine) == 1:
+            found.update(rose_from=rose[0], rose_at=_fact(mine[0])["fact_id"])
+    return found
+
+
+def _prefix_replay(  # noqa: PLR0913, PLR0917
+    previous: _Replayed | None,
+    calls: list[tuple[float, str, str, str, dict[str, Any], str]],
+    marks: list[bytes],
+    context: tuple[Any, ...],
+    results: dict[str, Any],
+    sid: str,
+    intent: levels.Intent,
+    unsettled: int,
+    scanned_bytes: int,
+) -> _Replayed | None:
+    """Append to an unchanged ordered window from normalized tally state."""
+    if (
+        previous is None
+        or previous.final_tally is None
+        or previous.checkpoint is None
+        or previous.context != context
+        or len(marks) <= len(previous.marks)
+        or marks[: len(previous.marks)] != previous.marks
+    ):
+        return None
+    first = max(0, len(calls) - LIVE_REPLAY_STEPS)
+    if first > len(previous.marks):
+        return None
+    checkpoint = _checkpoint(previous.checkpoint)
+    checkpoint.results = results
+    safe_head = previous.safe_head.copy()
+    for position in range(len(safe_head), first):
+        before = _head_state(checkpoint)
+        checkpoint.add(*calls[position])
+        safe_head.append(_safe_head_effect(checkpoint, before, calls[position][3]))
+    next_checkpoint = _checkpoint(checkpoint)
+    tally = _checkpoint(previous.final_tally)
+    tally.results = results
+    steps = {
+        p: value for p, value in previous.steps.items() if first - 1 <= p < len(previous.marks)
+    }
+    rows: list[dict[str, Any]] = []
+    current: levels.Level | None = None
+    cwd = str(context[0])
+    for position in range(len(previous.marks), len(calls)):
+        tally.add(*calls[position])
+        rows, scan = _published(tally, sid)
+        facts = tuple(_fact(row) for row in rows)
+        current = levels.live_level(levels.Evidence(facts, scan, unsettled, cwd), intent)
+        steps[position] = current.level
+    if current is None:
+        return None
+    return _Replayed(
+        (),
+        marks,
+        context,
+        steps,
+        _found_from_steps(current, steps, rows, calls, first),
+        checkpoint=next_checkpoint,
+        safe_head=safe_head,
+        final_tally=_checkpoint(tally),
+        scanned_bytes=scanned_bytes,
+    )
+
+
+def _new_tally(
+    scan: pc._CheckScan, results: dict[str, Any], *, force_incomplete: bool
+) -> pc._ToolReportTally:
+    tally = pc._ToolReportTally(results)  # noqa: SLF001
+    tally.reads_from = scan.horizon
+    tally.named_unread = scan.named_unread
+    tally.parent_failed = scan.parent_failed or force_incomplete
+    tally.orphan_unread = scan.orphan_unread
+    tally.scan.update(
+        subagent_transcripts=len(scan.children), subagent_transcripts_unread=scan.unread
+    )
+    if scan.horizon is not None:
+        tally.scan["reads_from"] = scan.horizon
+    return tally
+
+
+def _replay_seed(
+    scan: pc._CheckScan,
+    results: dict[str, Any],
+    previous: _Replayed | None,
+    marks: list[bytes],
+    context: tuple[Any, ...],
+    first: int,
+    *,
+    force_incomplete: bool,
+) -> tuple[pc._ToolReportTally, int, list[tuple[str, int] | None], bool]:
+    shifted = _shifted_checkpoint(previous, marks, context, results, unread=scan.unread)
+    if shifted is not None and shifted[1] <= first:
+        tally, start, safe_head = shifted
+        return tally, start, safe_head, True
+    return _new_tally(scan, results, force_incomplete=force_incomplete), 0, [], False
+
+
 def _replay(
     config: RuntimeConfig,
     transcript_path: str,
@@ -182,25 +495,57 @@ def _replay(
     intent: levels.Intent,
     unsettled: int,
     previous: _Replayed | None,
+    *,
+    force_incomplete: bool = False,
 ) -> _Replayed:
     """The level now and where it rose, over the last `LIVE_REPLAY_STEPS` moving calls."""
-    records = pc._work_records(config, transcript_path)  # noqa: SLF001
-    cwd = _cwd(records)
-    results = pc._tool_result_blocks(records)  # noqa: SLF001
-    tally = pc._ToolReportTally(results)  # noqa: SLF001
-    calls = [call for call in pc._claude_tool_uses(records) if call[3] in _MOVING_TOOLS]  # noqa: SLF001
+    scan = pc._live_check_scan(config, transcript_path)  # noqa: SLF001
+    cwd = _cwd(scan.parent)
+    results = pc._merged_check_results(scan.parent, scan.children)  # noqa: SLF001
+    context = (
+        cwd,
+        scan.unread,
+        scan.horizon,
+        scan.named_unread,
+        scan.parent_failed or force_incomplete,
+        scan.orphan_unread,
+        len(scan.children),
+    )
+    calls = [
+        call
+        for call in pc._merged_check_calls(scan.parent, scan.children)  # noqa: SLF001
+        if call[3] in _MOVING_TOOLS
+    ]
     ids = [call[2] for call in calls]
     found_results = [results.get(call_id) for call_id in ids]
     marks = [
-        (*call, None if got is None else (got.at, got.block))
+        hashlib.sha256(
+            repr((call, None if got is None else (got.at, got.block))).encode("utf-8", "replace")
+        ).digest()
         for call, got in zip(calls, found_results, strict=True)
     ]
-    valid = _reusable(previous, marks)
-    if previous is not None and valid == len(marks) == len(previous.marks):
+    valid = (
+        _reusable(previous, marks) if previous is not None and previous.context == context else 0
+    )
+    if (
+        previous is not None
+        and previous.context == context
+        and valid == len(marks) == len(previous.marks)
+    ):
         # No new moving call and no late result: the tally is as it was.
-        return dataclasses.replace(previous, found=dict(previous.found))
+        return dataclasses.replace(
+            previous, found=dict(previous.found), scanned_bytes=scan.budget.spent
+        )
+    prefix = _prefix_replay(
+        previous, calls, marks, context, results, sid, intent, unsettled, scan.budget.spent
+    )
+    if prefix is not None:
+        return prefix
     first = max(0, len(calls) - LIVE_REPLAY_STEPS)
-    kept = previous.steps if previous is not None and valid else {}
+    tally, start_position, safe_head, shifted = _replay_seed(
+        scan, results, previous, marks, context, first, force_incomplete=force_incomplete
+    )
+    kept = previous.steps if previous is not None and valid and not shifted else {}
     # The last call's step is always asked afresh, because `current` is whatever the
     # loop asked last: kept from a longer transcript that lost its tail, it left the
     # level of an older call published (review of d1cfa929, V1).
@@ -218,25 +563,32 @@ def _replay(
     # The first step is the level before the window, so a run of the current
     # level that reaches back past it reads as no rise (`rose_from`'s start 0).
     current = level_now(-1) if first == 0 and -1 not in steps else None
-    for position, call in enumerate(calls):
+    checkpoint = _checkpoint(tally) if first == 0 else None
+    if shifted and start_position == first and first > 0:
+        current = level_now(first - 1)
+        checkpoint = _checkpoint(tally)
+    for position in range(start_position, len(calls)):
+        call = calls[position]
+        before = _head_state(tally) if position < first else None
         tally.add(*call)
+        if before is not None:
+            safe_head.append(_safe_head_effect(tally, before, call[3]))
         if position >= first - 1 and position not in steps:
             current = level_now(position)
+        if position == first - 1:
+            checkpoint = _checkpoint(tally)
     if current is None:
         # Not reached: the last moving call is always read afresh here. Typed only.
         current = level_now(-1)
-    window = [steps[p] for p in range(first - 1, len(calls))]
-    rose = levels.rose_from(window)
-    found: dict[str, Any] = {"level": current.level, "reasons": list(current.reasons)}
-    if rose is not None:
-        call_id = ids[first - 1 + rose[1]]
-        # The entry the page numbers: the check or write that call left in the record
-        # now. A call whose entry a later one replaced has none, and then no sentence
-        # is published rather than one pointing at another entry.
-        mine = sorted(
-            (r for r in rows if r.get("record_id") == call_id),
-            key=lambda r: r.get("subject") != "check",
-        )
-        if mine:
-            found.update(rose_from=rose[0], rose_at=_fact(mine[0])["fact_id"])
-    return _Replayed((0, 0), marks, steps, found)
+    found = _found_from_steps(current, steps, rows, calls, first)
+    return _Replayed(
+        (),
+        marks,
+        context,
+        steps,
+        found,
+        checkpoint=checkpoint,
+        safe_head=safe_head,
+        final_tally=_checkpoint(tally),
+        scanned_bytes=scan.budget.spent,
+    )

@@ -3016,6 +3016,12 @@ class _ToolReportTally:
     def __init__(self, results: dict[str, _Result]) -> None:
         self.results = results
         self.runs: dict[str, list[dict[str, Any]]] = {}
+        self._hash_identities = False
+        self._last_added_runs: list[tuple[str, dict[str, Any]]] = []
+        # Replay asks for entries after nearby calls. A new check changes one
+        # identity; a write or changing command can age every pass, so it
+        # invalidates the whole private, bounded candidate cache.
+        self._entry_cache: dict[str, dict[str, Any]] = {}
         self.writes: dict[str, dict[str, Any]] = {}
         # (time, call id) of every recorded write and fixer run. A pass is aged
         # by one from another call at or after its own time, since recorded
@@ -3056,10 +3062,14 @@ class _ToolReportTally:
         tool_input: dict[str, Any],
         worker: str = "",
     ) -> None:
+        self._last_added_runs.clear()
+        changes_before = (len(self.write_calls), len(self.changing_seqs))
         if name in _WRITE_TOOLS:
             self._add_write(at, cwd, call_id, name, tool_input, worker)
         elif name == "Bash":
             self._add_shell(at, cwd, call_id, tool_input, worker)
+        if changes_before != (len(self.write_calls), len(self.changing_seqs)):
+            self._entry_cache.clear()
 
     def _add_write(
         self,
@@ -3171,6 +3181,9 @@ class _ToolReportTally:
                 words,
                 unplaced=f"{worker}:{call_id}:{index}" if not call.placed[index] else "",
             )
+            if self._hash_identities:
+                identity = hashlib.sha256(identity.encode("utf-8", "replace")).hexdigest()
+            self._entry_cache.pop(identity, None)
             self.runs.setdefault(identity, []).append(
                 {
                     "at": call.at,
@@ -3203,6 +3216,7 @@ class _ToolReportTally:
                     or any(j > index for j, _target, _at in call.redirect_writes),
                 }
             )
+            self._last_added_runs.append((identity, self.runs[identity][-1]))
 
     @staticmethod
     def _outcome(tail: str, *, rtk: bool, attributable: bool, flag_result: str) -> tuple[str, str]:
@@ -3287,8 +3301,18 @@ class _ToolReportTally:
     def entries(self, sid: str) -> list[dict[str, Any]]:
         # A check that only ever ran in the background has no run to list
         # (item 1); a background re-run still supersedes an earlier result.
-        histories = [h for h in self.runs.values() if not all(run["background"] for run in h)]
-        candidates = [self._check_entry(history) for history in histories]
+        histories = [
+            (identity, history)
+            for identity, history in self.runs.items()
+            if not all(run["background"] for run in history)
+        ]
+        candidates: list[dict[str, Any]] = []
+        for identity, history in histories:
+            entry = self._entry_cache.get(identity)
+            if entry is None:
+                entry = self._check_entry(history)
+                self._entry_cache[identity] = entry
+            candidates.append(entry)
         for entry in candidates:
             self.scan[str(entry["result"]).replace("-", "_")] += 1
         candidates.extend(
@@ -3601,25 +3625,39 @@ def _tally_of(
     unavailable child makes every held pass incomplete without inventing a
     timestamp. A measured failure remains a failure.
     """
-    results = _tool_result_blocks(parent)
-    for records_ in subagents:
-        for call_id, found in _tool_result_blocks(records_, sidechain=True).items():
-            results.setdefault(call_id, found)
-    tally = _ToolReportTally(results)
+    tally = _ToolReportTally(_merged_check_results(parent, subagents))
     tally.reads_from = reads_from
     tally.named_unread = named_unread
     tally.parent_failed = parent_failed
     tally.orphan_unread = orphan_unread
-    streams = [
-        _claude_tool_uses(parent),
-        *(_claude_tool_uses(records_, sidechain=True) for records_ in subagents),
-    ]
-    for call in heapq.merge(*streams, key=lambda row: row[0]):
+    for call in _merged_check_calls(parent, subagents):
         tally.add(*call)
     tally.scan.update(subagent_transcripts=len(subagents), subagent_transcripts_unread=unread)
     if reads_from is not None:
         tally.scan["reads_from"] = reads_from
     return tally
+
+
+def _merged_check_results(
+    parent: list[dict[str, Any]], subagents: list[list[dict[str, Any]]]
+) -> dict[str, _Result]:
+    """Pair results with the same parent-first collision rule as published work."""
+    results = _tool_result_blocks(parent)
+    for records_ in subagents:
+        for call_id, found in _tool_result_blocks(records_, sidechain=True).items():
+            results.setdefault(call_id, found)
+    return results
+
+
+def _merged_check_calls(
+    parent: list[dict[str, Any]], subagents: list[list[dict[str, Any]]]
+) -> Iterator[tuple[float, str, str, str, dict[str, Any], str]]:
+    """Parent first at equal call times, matching the published work record."""
+    streams = [
+        _claude_tool_uses(parent),
+        *(_claude_tool_uses(records_, sidechain=True) for records_ in subagents),
+    ]
+    return heapq.merge(*streams, key=lambda row: row[0])
 
 
 def _claude_tally(

@@ -15,6 +15,7 @@ import contextlib
 import dataclasses
 import http.client
 import json
+import statistics
 import subprocess
 import sys
 import time
@@ -28,6 +29,7 @@ from cargento_runtime import http_api, levels, live_estimate, observer, project_
 from .support import make_server, serve_until_closed
 from .test_claude_checks import SHORT, START
 from .test_copied_corrections import _App
+from .test_subagent_checks import Subagent
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -139,12 +141,24 @@ class TheLiveEstimateTest(_Replay):
                 self.subTest(row=row),
                 # Over a draft nothing is read at all, not merely no level drawn.
                 mock.patch.object(
-                    project_context, "_work_records", side_effect=AssertionError("read")
+                    project_context, "_live_check_scan", side_effect=AssertionError("read")
+                ),
+                mock.patch.object(
+                    live_estimate, "_live_signature", side_effect=AssertionError("stat")
                 ),
             ):
                 answer = self.estimate(row)
                 self.assertEqual(levels.NO_LIVE_LEVEL, answer["level"])
                 self.assertIsNone(answer["rose_from"])
+
+    def test_a_missing_child_recomputes_an_empty_moving_call_window(self) -> None:
+        self.session.rows = self.session.rows[:1]
+        self.estimate()
+        agent = self.session.call("Agent", {"prompt": "Run checks"})
+        self.session.result(agent, "Done", tool_use_result={"agentId": "a1b2c3d4"})
+        with mock.patch.object(levels, "live_level", wraps=levels.live_level) as level:
+            self.assertEqual(levels.NOT_ENOUGH, self.estimate()["level"])
+        self.assertGreater(level.call_count, 0)
 
     def test_a_level_that_fell_says_nothing_rose(self) -> None:
         self.session.bash("pytest", "1 failed", is_error=True)
@@ -252,7 +266,7 @@ class TheReplayIsBoundedTest(_Replay):
         self.session.bash("pytest", "1 failed", is_error=True)
         first = self.estimate()
         with mock.patch.object(
-            project_context, "_work_records", side_effect=AssertionError("replayed")
+            project_context, "_live_check_scan", side_effect=AssertionError("replayed")
         ):
             again = live_estimate.for_session(
                 self.config, saved_row(), str(self.path), [], floor=None, now=99999.0
@@ -270,7 +284,7 @@ class TheReplayIsBoundedTest(_Replay):
         }
         self.estimate()
         with mock.patch.object(
-            project_context, "_work_records", wraps=project_context._work_records
+            project_context, "_live_check_scan", wraps=project_context._live_check_scan
         ) as reads:
             self.assertEqual(2, self.estimate(saved_row(annotation_revision=2))["revision"])
             self.assertEqual(levels.NOT_ENOUGH, self.estimate(facts=[later], floor=10.0)["level"])
@@ -287,6 +301,116 @@ class TheReplayIsBoundedTest(_Replay):
         with mock.patch.object(levels, "live_level", wraps=levels.live_level) as spy:
             self.estimate()
         self.assertEqual(1, spy.call_count)
+
+    def test_a_shifted_window_replays_the_current_tail_instead_of_all_old_checks(self) -> None:
+        self.session.rows = self.session.rows[:1]
+        for i in range(160):
+            self.session.bash(
+                f"pytest tests/test_mod.py::test_case_{i}", "1 passed\n" + "x" * 60_000
+            )
+        self.session.save(self.path)
+        self.assertGreater(self.path.stat().st_size, 8 * 1024 * 1024)
+        self.estimate()
+        self.session.bash("pytest tests/test_mod.py::test_case_160", "1 passed\n" + "x" * 60_000)
+        real_add = project_context._ToolReportTally.add
+        added = 0
+
+        def counted(tally: Any, *args: Any) -> None:
+            nonlocal added
+            added += 1
+            real_add(tally, *args)
+
+        with mock.patch.object(project_context._ToolReportTally, "add", counted):
+            shifted = self.estimate()
+        self.assertLessEqual(added, live_estimate.LIVE_REPLAY_STEPS + 3)
+        live_estimate._cache.clear()
+        fresh = self.estimate()
+        self.assertEqual(
+            {k: v for k, v in shifted.items() if k != "computed_at"},
+            {k: v for k, v in fresh.items() if k != "computed_at"},
+        )
+
+    def test_mixed_checks_and_writes_match_a_fresh_scan_as_the_window_shifts(self) -> None:
+        self.config = dataclasses.replace(self.config, turn_scan_max_bytes=40_000)
+        self.session.rows = self.session.rows[:1]
+        for i in range(120):
+            if i % 5 == 0:
+                self.session.write(f"{self.session.cwd}/src/f{i}.py")
+            else:
+                self.session.bash(
+                    f"pytest tests/test_mod.py::test_case_{i}", "1 passed\n" + "x" * 100
+                )
+        self.session.save(self.path)
+        self.assertGreater(self.path.stat().st_size, self.config.turn_scan_max_bytes)
+        self.estimate()
+        actions: tuple[Callable[[], Any], ...] = (
+            lambda: self.session.write(self.session.cwd + "/docs/outside.md"),
+            lambda: self.session.bash(
+                "pytest tests/test_mod.py::test_case_121", "1 failed", is_error=True
+            ),
+            lambda: self.session.bash("pytest tests/test_mod.py::test_case_122", "1 passed"),
+            lambda: self.session.write(self.session.cwd + "/src/f0.py"),
+        )
+        for step, action in enumerate(actions):
+            action()
+            grown = self.estimate()
+            live_estimate._cache.clear()
+            fresh = self.estimate()
+            with self.subTest(step=step):
+                self.assertEqual(
+                    {k: v for k, v in fresh.items() if k != "computed_at"},
+                    {k: v for k, v in grown.items() if k != "computed_at"},
+                )
+
+    def test_an_evicted_redirected_check_does_not_keep_its_write(self) -> None:
+        self.session.rows = self.session.rows[:1]
+        self.session.bash("pytest > docs/outside.txt", "1 passed")
+        for i in range(69):
+            self.session.bash(f"pytest tests/test_mod.py::test_case_{i}", "1 passed")
+        self.session.save(self.path)
+        self.config = dataclasses.replace(self.config, turn_scan_max_bytes=self.path.stat().st_size)
+        intent = saved_row(annotation_goal="Only touch src/", annotation_line_1="Only touch src/")
+        self.estimate(intent)
+        self.session.bash("pytest tests/test_mod.py::test_case_70", "1 passed")
+        grown = self.estimate(intent)
+        live_estimate._cache.clear()
+        fresh = self.estimate(intent)
+        self.assertEqual(
+            {k: v for k, v in fresh.items() if k != "computed_at"},
+            {k: v for k, v in grown.items() if k != "computed_at"},
+        )
+
+    def test_a_turn_over_eight_megabytes_is_faster_than_a_fresh_replay(self) -> None:
+        if sys.gettrace() is not None or "coverage" in sys.modules:
+            self.skipTest("timed without a tracer only")
+        self.session.rows = self.session.rows[:1]
+        for i in range(5000):
+            self.session.bash(f"pytest tests/test_mod.py::test_case_{i}", "1 passed\n" + "x" * 1100)
+        self.session.save(self.path)
+        self.assertGreater(self.path.stat().st_size, 8 * 1024 * 1024)
+        self.estimate()
+        warm_times: list[float] = []
+        fresh_times: list[float] = []
+        for i in range(3):
+            self.session.bash(
+                f"pytest tests/test_mod.py::test_case_{5000 + i}",
+                "1 passed\n" + "x" * 4000,
+            )
+            self.session.save(self.path)
+            started = time.perf_counter()
+            warm = live_estimate.for_session(
+                self.config, saved_row(), str(self.path), (), floor=None, now=12345.0
+            )
+            warm_times.append(time.perf_counter() - started)
+            live_estimate._cache.clear()
+            started = time.perf_counter()
+            fresh = live_estimate.for_session(
+                self.config, saved_row(), str(self.path), (), floor=None, now=12345.0
+            )
+            fresh_times.append(time.perf_counter() - started)
+            self.assertEqual(warm, fresh)
+        warm_median, fresh_median = statistics.median(warm_times), statistics.median(fresh_times)
+        self.assertLess(warm_median, 0.85 * fresh_median + 0.05, (warm_times, fresh_times))
 
     def test_a_growing_transcript_reads_what_a_fresh_replay_reads(self) -> None:
         cwd = self.session.cwd
@@ -583,6 +707,31 @@ class TheRouteTest(_Replay):
         # Never on a Sessions row: the board's rows carry no level of any kind.
         self.assertNotIn("live_level", json.dumps(board))
         self.assertNotIn('"level"', json.dumps(board["sessions"]))
+
+    def test_a_delegated_failure_raises_the_focused_level_beside_its_recorded_check(self) -> None:
+        self.save_goal()
+        agent = self.session.call("Agent", {"description": "Run tests", "prompt": "Run tests."})
+        child = Subagent(self.session, "a1b2c3d4e5f60718")
+        child.prompt("Run tests.")
+        child.bash("pytest tests/test_sub.py", "1 failed", is_error=True)
+        self.session.result(
+            agent,
+            [{"type": "text", "text": "Done."}],
+            tool_use_result={"agentId": child.agent_id, "status": "completed"},
+        )
+        self.session.save(self.path)
+        child.save(self.path.with_suffix("") / "subagents" / f"agent-{child.agent_id}.jsonl")
+        with self.serving() as port:
+            focused = self.get(port, f"/api/project-context?project=billing&session=claude:{SHORT}")
+        live = focused["sources"]["work"]["live_levels"][0]
+        failures = [
+            fact
+            for fact in focused["semantic"]["facts"]
+            if fact.get("result") == "failed" and fact.get("worker_kind") == "subagent"
+        ]
+        self.assertEqual(1, len(failures))
+        self.assertEqual(levels.HIGH, live["level"])
+        self.assertEqual(failures[0]["fact_id"], live["rose_at"])
 
     def test_the_entry_it_rose_at_is_one_the_page_holds(self) -> None:
         self.save_goal()
