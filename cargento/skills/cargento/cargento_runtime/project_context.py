@@ -7,6 +7,7 @@ import copy
 import hashlib
 import heapq
 import json
+import math
 import os
 import re
 import shlex
@@ -3646,6 +3647,7 @@ def claude_tool_reports(
     sid: str,
     *,
     max_bytes: int | None = None,
+    window_start: float | None = None,
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     """The listed checks and written paths, and the full-scan counts behind them,
     a subagent's included and labelled.
@@ -3654,7 +3656,13 @@ def claude_tool_reports(
     [DEC-23](docs/design-reading-a-session.md#dec-23-a-claude-code-sessions-record-of-its-checks-may-show-the-work)
     """
     tally = _claude_tally(config, transcript_path, max_bytes=max_bytes)
-    return tally.entries(sid), tally.scan
+    entries = tally.entries(sid)
+    tally.scan["window_start"] = window_start
+    tally.scan["window_written_paths"] = sum(
+        write["at"] > 0 and (window_start is None or write["at"] >= window_start)
+        for write in tally.writes.values()
+    )
+    return entries, tally.scan
 
 
 def _json_dict(raw: bytes) -> dict[str, Any] | None:
@@ -3820,10 +3828,34 @@ def claude_activity_between(transcript_path: str, after: float, until: float) ->
     return False
 
 
+def _window_start(value: Any) -> float | None:
+    return (
+        float(value)
+        if isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value)
+        else None
+    )
+
+
+def _assessment_window_start(session: Mapping[str, Any]) -> float | None:
+    """The stored reading's cutoff, not the newest intent revision's cutoff."""
+    assessment = session.get("annotation_assessment")
+    if not isinstance(assessment, dict):
+        return None
+    opened = _window_start(assessment.get("window_start"))
+    if opened is not None:
+        return opened
+    fallback = (
+        assessment.get("goal_source_at")
+        if assessment.get("goal_source") in {"latest-prompt", "first-prompt"}
+        else assessment.get("revision_read_at")
+    )
+    return _window_start(fallback)
+
+
 def _session_work_evidence(
     config: RuntimeConfig,
     transcript_path: str,
-    identity: dict[str, str],
+    session: Mapping[str, Any],
     events: list[dict[str, Any]],
     tool_report_scans: list[dict[str, Any]],
 ) -> dict[str, int]:
@@ -3832,11 +3864,14 @@ def _session_work_evidence(
     Not for the history source: `_semantic_history_source_events` calls
     `_work_evidence` alone, which is what keeps the checks out of the store.
     """
-    harness, sid = identity["harness"], identity["sid"]
+    harness, sid = str(session.get("harness") or ""), str(session.get("sid") or "")
+    identity = {"harness": harness, "sid": sid}
     rows, support = _work_evidence(config, transcript_path, harness, sid)
     events.extend(rows)
     if harness == "claude":
-        report_rows, scan = claude_tool_reports(config, transcript_path, sid)
+        report_rows, scan = claude_tool_reports(
+            config, transcript_path, sid, window_start=_assessment_window_start(session)
+        )
         events.extend(report_rows)
         tool_report_scans.append({**identity, **scan})
     return support
@@ -6103,7 +6138,7 @@ def collect(
             )
         events.extend(instruction_events(config, transcript_path, harness, sid))
         work_support = _session_work_evidence(
-            config, transcript_path, identity, events, tool_report_scans
+            config, transcript_path, session, events, tool_report_scans
         )
         backfill_rows, signature = _incremental_history_events(
             config, state, project, transcript_path, harness, sid, now=now

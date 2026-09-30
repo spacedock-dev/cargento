@@ -2438,10 +2438,13 @@ and each was settled on the withholding side.
   recorded yet" (DEC-26 item 1). A reading of
   the words shown now draws every line typed now, so a line it returned nothing for is a missing
   result and cannot tell; a reading of older words draws only the lines it read.
-- Where the work went groups the written paths the list numbers in the window by folder, with each
-  entry's number, and a path with no folder under "The working directory". The listing keeps at
-  most twelve checks and files, so the scan's count says how many more were written and not listed.
-  With no write listed there is no section.
+- Where the work went groups written paths in the saved analysis window by folder, with a path
+  without a folder under "The working directory". Its count comes from the scan's distinct paths
+  at or after that reading's cutoff, before the twelve-entry check and file listing is capped. A
+  path last written before that cutoff is absent from both the rows and the count. The section can
+  still show a count when all its paths fell out of the listing. A path retained from the saved
+  window but absent from today's numbered view is labelled as unnumbered; it is not assigned a
+  number from another entry. If the matching count is unavailable, the section says so.
 - Stale says why. Changed words give "Your intent changed after this analysis." with the revision
   sentence the raises use; otherwise an entry newer than the reading's `evidence_through` gives "New
   work since this analysis.". A reading stored without that time, which only rows from before

@@ -15,6 +15,7 @@ from __future__ import annotations
 import contextlib
 import http.client
 import json
+from pathlib import Path
 from typing import Any, cast
 
 from cargento_runtime import annotations as annotation_store
@@ -276,6 +277,30 @@ class NotAccurateRouteTest(_Result):
                     status, _answer = self.post(port, "/api/annotate", body)
                     self.assertEqual(400, status)
         self.assertNotIn("not_accurate", self.raw_entry())
+
+
+class WrittenPathWindowCountOnFocusedContextTest(_Result):
+    def test_stored_analysis_cutoff_counts_only_distinct_later_paths(self) -> None:
+        self.session.write(str(Path(self.session.cwd) / "old.py"))
+        cutoff = START.timestamp() + self.session.seconds + 1
+        self.save_goal()
+        self.session.write(str(Path(self.session.cwd) / "later.py"))
+        self.session.edit(str(Path(self.session.cwd) / "later.py"))
+        self.session.save(self.path)
+        self.record(
+            _reading(
+                {"goal": _unverifiable(), "line_1": _unverifiable()},
+                revision_read_at=cutoff,
+                window_start=cutoff,
+            )
+        )
+
+        with self.serving() as port:
+            focused = self.get(port, FOCUSED)
+        (scan,) = [row for row in focused["sources"]["work"]["tool_reports"] if row["sid"] == SHORT]
+        self.assertEqual(2, scan["written_paths"])
+        self.assertEqual(cutoff, scan["window_start"])
+        self.assertEqual(1, scan["window_written_paths"])
 
 
 class TheAnalysisLevelIsRecomputedOnRenderTest(_Result):
