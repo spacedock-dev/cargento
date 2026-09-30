@@ -2617,11 +2617,14 @@ was settled on the withholding side.
   comes from the same replay. It is published on the focused project context only, and only when
   the request's project is the session's. The reading route's context, which the unasked lane
   reads, carries none, and neither does a row.
-- The replay asks for the level after the last 64 writes or shell calls only. Each ask re-derives
-  the entries from the whole tally, and an unbounded replay took 24 s on a 3,000-call transcript of
-  targeted checks. A rise older than that window is withheld. The replay is held in the server's
-  memory per session and saved words, never written: an unchanged transcript is not read again, and
-  a grown one is asked only after its new calls.
+- The replay asks for the level after the last 64 writes or shell calls only. An unbounded replay
+  took 24 s on a 3,000-call transcript of targeted checks. A rise older than that window is
+  withheld. The replay is held in the server's memory per session and saved words, never written.
+  An unchanged parent and child inventory reads no transcript content. A changed inventory gets
+  the same bounded scan as the published record. Exact append growth or a safely removable old
+  head reuses normalized tally state, while the current window is evaluated again. An unsafe head
+  change or uncertain overlap takes the fresh path. Concurrent requests for the same words and
+  evidence share one computation.
 - The switch is never sent, so the server computes the estimate for the focused session whenever it
   has a saved intent, and the page decides whether to draw it.
 - "Rose from <level> at #<n>" is said only when both levels are on the scale and the entry the rise
