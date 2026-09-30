@@ -1202,7 +1202,8 @@ function nextIntentDraftMarks(session, draft){
     `<span class="next-intent-draft-source">from your prompt${which}</span>` +
     (clipped ? `<span class="next-cockpit-held-cue">${clipped.trim()}</span>` : "") +
     '<button type="button" data-next-cockpit-action="draft-confirm" ' +
-    `data-next-focus="${esc(nextCockpitHeldKey(session, "goal"))}:confirm">Looks right</button></span>`;
+    `data-next-focus="${esc(nextCockpitHeldKey(session, "goal"))}:confirm" ` +
+    `data-next-focus-fallback="${esc(nextCockpitHeldKey(session, "goal"))}">Looks right</button></span>`;
 }
 
 /* Where the Sessions goal link lands. Over an untouched draft it is the

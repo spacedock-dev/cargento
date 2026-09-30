@@ -821,7 +821,7 @@ input::placeholder,textarea::placeholder{color:var(--ink2)}
    and nothing sticky, so docs/design-reader-state.md gains no row. */
 .next-session-detail{margin:12px 0 0;padding:0 0 34px;box-shadow:none}
 .next-session-columns{display:grid;grid-template-columns:minmax(0,1fr) 460px;gap:var(--sp-5);align-items:start}
-.next-session-panel{grid-column:2;grid-row:1;display:flex;flex-direction:column;gap:var(--sp-2);min-width:0}
+.next-session-panel{grid-column:2;grid-row:1;display:flex;flex-direction:column;gap:var(--sp-1);min-width:0}
 .next-session-activity{grid-column:1;grid-row:1;min-width:0}
 .next-session-activity-heading{margin:0 0 var(--sp-3);color:var(--ink-label);font-family:var(--mono);font-size:var(--fs-label);font-weight:600;letter-spacing:.07em}
 .next-session-panel .next-cockpit-held{gap:6px;padding:0}
@@ -890,7 +890,7 @@ input::placeholder,textarea::placeholder{color:var(--ink2)}
    it, where a tap on the text toggled the switch (review of d2854fc1, P-2).
    Centring the switch on the titles instead also cleared it, and pushed the
    track past a 900px first screen with six outcome lines. */
-.next-session-drift-head{display:flex;flex-wrap:wrap;align-items:flex-start;justify-content:space-between;gap:16px 12px;padding:8px 16px 10px}
+.next-session-drift-head{display:flex;flex-wrap:wrap;align-items:flex-start;justify-content:space-between;gap:16px 12px;padding:8px 16px 2px}
 .next-session-drift-titles{min-width:0}
 /* The live monitor switch (DRC-4696), beside the heading as the design places it. */
 /* The button keeps the 44px target every control here has; the track it draws
@@ -904,7 +904,7 @@ input::placeholder,textarea::placeholder{color:var(--ink2)}
 .next-session-drift-switch[aria-checked="true"]>.next-session-drift-track>span{background:var(--ink)}
 .next-session-drift-switch:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .next-session-drift-hint{margin:0 16px 10px;color:var(--ink2);font-size:var(--fs-body);line-height:1.5}
-.next-session-drift-live{display:grid;gap:6px;margin:0 16px 12px}
+.next-session-drift-live{display:grid;gap:6px;margin:0 16px 2px}
 .next-session-drift-live-head{display:flex;flex-wrap:wrap;align-items:baseline;justify-content:space-between;gap:4px 12px;margin:0}
 .next-session-drift-level{color:var(--ink);font-size:var(--fs-value);font-weight:600}
 .next-session-drift-source{color:var(--ink2);font-family:var(--mono);font-size:var(--fs-label)}
@@ -917,7 +917,7 @@ input::placeholder,textarea::placeholder{color:var(--ink2)}
 .next-session-drift-seg[data-on][data-level="medium"]{background:var(--amber)}
 .next-session-drift-seg[data-on][data-level="high"],.next-session-drift-seg[data-on][data-level="extreme"]{background:var(--clay)}
 .next-session-drift-detail{margin:0;color:var(--ink2);font-size:var(--fs-body);line-height:1.5}
-.next-session-drift-nudge{margin:0 16px 12px;padding:10px 12px;border:1px solid var(--amber);border-radius:var(--r-control);color:var(--ink);font-size:var(--fs-body);line-height:1.5}
+.next-session-drift-nudge{margin:0 16px 2px;padding:10px 12px;border:1px solid var(--amber);border-radius:var(--r-control);color:var(--ink);font-size:var(--fs-body);line-height:1.5}
 /* Beside "N entries" in the header's measured row; it wraps rather than
    widening the page at 320px (DRC-4671). */
 .next-session-drift-pill{display:inline-flex;align-items:center;gap:8px;max-width:100%;padding:3px 10px;border:1px solid var(--line);border-radius:var(--r-pill);color:var(--ink);font-size:var(--fs-label)}

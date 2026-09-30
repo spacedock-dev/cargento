@@ -713,10 +713,10 @@ console.log(JSON.stringify({{found: Boolean(press), tag: active ? active.tagName
                 self.assertIn("min-width:0", body)
         self.assertIn("flex:1 1 100%", rule(".next-cockpit-reading-ask>p"))
         self.assertIn("margin:0 0 0 auto", rule(".next-session-controls"))
-        # Verifier V-5: the spacing the six-line fold's 7px margin rests on, and the two margins
-        # that put a field's count and controls at the end of its heading row.
-        self.assertIn("gap:var(--sp-2)", rule(".next-session-panel"))
-        self.assertIn("padding:8px 16px 10px", rule(".next-session-drift-head"))
+        # DRC-4718: a focused third outcome expands to two rows. The measured
+        # High case leaves Analyze 2.75px above a 900px fold with these gaps.
+        self.assertIn("gap:var(--sp-1)", rule(".next-session-panel"))
+        self.assertIn("padding:8px 16px 2px", rule(".next-session-drift-head"))
         self.assertIn("margin-left:auto", rule(".next-cockpit-held-tools"))
         self.assertIn(
             "margin-left:auto", rule(".next-cockpit-held-heading>.next-cockpit-held-count")

@@ -258,6 +258,32 @@ class TheGoalArrivesDraftedTest(_DraftPage):
             out[0]["body"],
         )
 
+    def test_looks_right_returns_focus_to_the_saved_goal(self) -> None:
+        out = self.drive(
+            cockpit_tests.NextCockpitCompositionTest.FOCUS_DOM,
+            """
+const confirm = controls.find(control => control.dataset.nextCockpitAction === "draft-confirm");
+confirm.focus();
+__reply["/api/annotate"] = () => {
+  Object.assign(__s, {annotation_goal:__s.first_prompt,
+    annotation_goal_source:"first-prompt", annotation_goal_source_at:99,
+    annotation_revision:1, annotation_revision_count:1});
+  return {status:200, body:{ok:true,persisted:true}};
+};
+__press("draft-confirm");
+await __settle(); await __settle(); await __settle();
+console.log(JSON.stringify({
+  confirmed: !controls.some(control => control.dataset.nextCockpitAction === "draft-confirm"),
+  focus:document.activeElement?.dataset.nextFocus || null,
+  tag:document.activeElement?.tagName || null,
+}));
+""",
+        )
+        assert isinstance(out, dict)
+        self.assertTrue(out["confirmed"])
+        self.assertEqual(GOAL_KEY, out["focus"])
+        self.assertEqual("TEXTAREA", out["tag"])
+
     def test_save_with_the_box_back_at_the_draft_adopts_rather_than_typing(self) -> None:
         out = self.drive(
             after=f"__typeGoal({json.dumps(FIRST + 'x')});\n"
