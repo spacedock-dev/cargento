@@ -4,10 +4,33 @@ from __future__ import annotations
 
 import base64
 import shlex
+from typing import SupportsIndex, overload
 
 from cargento_runtime import project_context, reading
 
 from .test_check_line_parser import CheckLineTestCase
+
+
+class _CountedArguments(list[str]):
+    def __init__(self, values: list[str], visits: list[int]) -> None:
+        super().__init__(values)
+        self.visits = visits
+
+    @overload
+    def __getitem__(self, key: SupportsIndex) -> str: ...
+
+    @overload
+    def __getitem__(self, key: slice) -> _CountedArguments: ...
+
+    def __getitem__(self, key: SupportsIndex | slice) -> str | _CountedArguments:
+        result = super().__getitem__(key)
+        if isinstance(key, slice):
+            assert isinstance(result, list)
+            self.visits[0] += len(result)
+            return _CountedArguments(result, self.visits)
+        assert isinstance(result, str)
+        self.visits[0] += 1
+        return result
 
 
 class HeredocExpansionEffectsTest(CheckLineTestCase):
@@ -86,6 +109,16 @@ class InputRedirectSummaryTest(CheckLineTestCase):
 
 
 class SafeCommonSubstitutionFormsTest(CheckLineTestCase):
+    def test_a_long_read_only_gh_api_command_visits_arguments_linearly(self) -> None:
+        args = ["repos/example/repo", *(["--silent"] * 2_000)]
+        visits = [0]
+        self.assertTrue(project_context._gh_api_reads_only(_CountedArguments(args, visits)))
+        self.assertLess(visits[0], 6 * len(args))
+
+        self.session.bash("pytest", "1 passed", is_error=False)
+        self.session.bash("echo $(gh api " + " ".join(args) + ")", "", is_error=False)
+        self.assertIs(False, self.only_check()["changed_after"])
+
     def test_safe_common_reads_preserve_the_pass(self) -> None:
         for body in (
             "git rev-parse HEAD",

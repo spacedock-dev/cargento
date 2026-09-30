@@ -2570,16 +2570,19 @@ def _gh_api_reads_only(args: list[str]) -> bool:
         "--allow-escape-sequences",
     }
     endpoints: list[str] = []
-    while args:
-        word, args = args[0], args[1:]
+    index = 0
+    while index < len(args):
+        word = args[index]
+        index += 1
         option, sep, value = word.partition("=")
         if not sep and word[:2] in {"-X", "-q", "-t"} and len(word) > 2:
             option, value = word[:2], word[2:]
         if option in value_options:
             if not value:
-                if not args:
+                if index == len(args):
                     return False
-                value, args = args[0], args[1:]
+                value = args[index]
+                index += 1
             if option in {"-X", "--method"} and value != "GET":
                 return False
         elif word in boolean_options:
@@ -4175,6 +4178,31 @@ def _dedupe_project_events(
         deduped.setdefault(key, event)
     ordered = sorted(deduped.values(), key=lambda event: float(event["at"]), reverse=True)
     return ordered[:limit] if limit is not None else ordered
+
+
+def _project_timeline(
+    events: list[dict[str, Any]], focus: tuple[str, str] | None
+) -> list[dict[str, Any]]:
+    if focus is None:
+        return _dedupe_project_events(events, limit=MAX_PROJECT_EVENTS)
+    own_checks: list[dict[str, Any]] = []
+    own_other: list[dict[str, Any]] = []
+    surrounding: list[dict[str, Any]] = []
+    for event in events:
+        if (event.get("harness"), event.get("sid")) != focus:
+            surrounding.append(event)
+        elif event.get("subject") == "check":
+            own_checks.append(event)
+        else:
+            own_other.append(event)
+    # A later semantic focus filter cannot restore a check removed by the
+    # project cap. Reserve its own evidence before the busy neighbours' rows.
+    selected: list[dict[str, Any]] = []
+    for group in (own_checks, own_other, surrounding):
+        selected.extend(_dedupe_project_events(group, limit=MAX_PROJECT_EVENTS - len(selected)))
+        if len(selected) == MAX_PROJECT_EVENTS:
+            break
+    return sorted(selected, key=lambda event: float(event["at"]), reverse=True)
 
 
 def _merge_support_counts(target: dict[str, int], incoming: Mapping[str, int]) -> None:
@@ -6172,7 +6200,7 @@ def collect(
         semantic_history.read(config, state, project),
     )
 
-    timeline = _dedupe_project_events(events, limit=MAX_PROJECT_EVENTS)
+    timeline = _project_timeline(events, focus)
     history_timeline = _dedupe_project_events(history_events)
     gate_count, steer_count, work_count = _timeline_counts(timeline)
     semantic = _semantic_model(timeline, observers, now=now)
