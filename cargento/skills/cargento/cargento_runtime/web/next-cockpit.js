@@ -3029,13 +3029,18 @@ function nextCockpitResultWork(entries, numbers, scan, resultWindow){
   }
   const ordered = [...groups].sort((a, b) => b[1].length - a[1].length ||
     (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0));
-  const items = ordered.map(([folder, rows]) =>
-    '<li class="next-cockpit-result-folder">' +
-    `<span class="next-cockpit-result-path">${esc(folder || "The working directory")}</span>` +
-    `<span>${rows.length} file${rows.length === 1 ? "" : "s"}</span>` +
-    `<span>${esc(rows.map(entry => numbers.has(String(entry.id || ""))
-      ? `#${numbers.get(String(entry.id || ""))}` : "not numbered in the current view").join(", "))}</span>` +
-    '</li>').join("");
+  const items = ordered.map(([folder, rows]) => {
+    const numbered = rows.filter(entry => numbers.has(String(entry.id || "")))
+      .map(entry => `#${numbers.get(String(entry.id || ""))}`);
+    const unnumbered = rows.length - numbered.length;
+    const references = [...numbered,
+      ...(unnumbered ? [`${unnumbered} not numbered in the current view`] : [])];
+    return '<li class="next-cockpit-result-folder">' +
+      `<span class="next-cockpit-result-path">${esc(folder || "The working directory")}</span>` +
+      `<span>${rows.length} file${rows.length === 1 ? "" : "s"}</span>` +
+      `<span>${esc(references.join(", "))}</span>` +
+      '</li>';
+  }).join("");
   const more = counted != null && counted >= writes.length ? counted - writes.length : 0;
   const unlisted = more
     ? `<p class="next-cockpit-reading-why">${more} more written ${more === 1 ? "file is" : "files are"} ` +

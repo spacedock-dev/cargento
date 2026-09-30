@@ -536,8 +536,7 @@ class WhereTheWorkWentTest(_ResultPage):
         work = self.work_of(
             self.page(MIXED, levels.HIGH, extra="__s.annotation_window_start = 110;\n")
         )
-        self.assertIn("src/parser 2 files", work)
-        self.assertIn("not numbered in the current view", work)
+        self.assertIn("src/parser 2 files 2 not numbered in the current view", work)
         self.assertIn("1 more written file is counted and not listed.", work)
         self.assertNotIn("#5", work)
 
