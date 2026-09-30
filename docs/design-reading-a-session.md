@@ -1202,6 +1202,17 @@ browser behavior that it does not exercise. Relevance remains a model judgement:
 checks the recorded status, time and subsequent changes, but does not prove semantic coverage.
 These instructions do not establish a passing qualification or open the Claude Code gate.
 
+The owner kept that admission contract on 2026-09-30 (DRC-4749). A command-status-only rule would
+make ordinary feature and browser clauses not verifiable even when a relevant check ran. Keyword
+overlap and a coverage flag supplied by the model would instead call an unproved connection proof.
+The record scan selects each check's latest run. The resolver enforces what that selected record
+can settle: provenance, result, evidence window and later changes. An always-consistent fake model
+can test those guards and the agent-account boundary, but cannot establish whether an arbitrary
+check covers a whole requested outcome. A fresh recorded DEC-17 qualification must include
+premarked cases where a passing check does not cover the requested feature or browser behavior to
+measure that semantic failure class; its general coverage floor alone does not require them. Until
+that qualification passes, the Claude Code producer gate stays closed.
+
 Writing these lists out is part of item 3, which names the kinds (test, build, lint and type-check
 runners) and leaves the list to this section. Each segment, split on `&&`, `||`, `;`, `|`, `&` and newlines, is matched
 after stripping `cd ...`, `NAME=value` assignments and the wrappers `uv run`, `poetry run`,
