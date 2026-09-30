@@ -1262,7 +1262,13 @@ class DRC4731VerifiedPrivateBytesTest(_InstalledLayout):
             self.assertEqual(0o500, copied.stat().st_mode & 0o777)
         self.assertEqual(verified.path, self.ran[0][-1])
         self.assertEqual([verified.path, "--version"], self.ran[1])
-        self.assertEqual(str(self.binary.resolve()), verified.shown)
+        installed = self.binary.resolve()
+        shown = (
+            "~/" + installed.relative_to(Path.home()).as_posix()
+            if installed.is_relative_to(Path.home())
+            else str(installed)
+        )
+        self.assertEqual(shown, verified.shown)
         verified.close()
         self.assertFalse(copied.parent.exists())
 
