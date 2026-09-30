@@ -151,6 +151,59 @@ class ClaudeChecksTestCase(unittest.TestCase):
         return found[0]
 
 
+class WindowedWrittenPathCount(ClaudeChecksTestCase):
+    def read_window(self, cutoff: float | None) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+        self.session.save(self.path)
+        return project_context.claude_tool_reports(
+            self.config, str(self.path), SHORT, window_start=cutoff
+        )
+
+    def cutoff(self) -> float:
+        last = self.session.rows[-1]["timestamp"]
+        return dt.datetime.fromisoformat(last).timestamp() + 0.5
+
+    def test_explicit_unknown_window_keeps_the_default_replay_scan_unchanged(self) -> None:
+        self.session.write(self.file("src/one.py"))
+        self.session.write(self.file("src/two.py"))
+
+        _entries, replay_scan = self.read()
+        _entries, result_scan = self.read_window(None)
+
+        self.assertNotIn("window_written_paths", replay_scan)
+        self.assertIsNone(result_scan["window_start"])
+        self.assertEqual(2, result_scan["window_written_paths"])
+
+    def test_pre_window_and_untallied_rows_do_not_enter_the_result_count(self) -> None:
+        self.session.write(self.file("old/one.py"))
+        self.session.write(self.file("old/two.py"))
+        cutoff = self.cutoff()
+        self.session.write(self.file("new/one.py"))
+        self.session.write(self.file("new/two.py"))
+        # Failed checks take the twelve listing slots, but the scan still
+        # knows both in-window paths and excludes the old pair.
+        for index in range(13):
+            self.session.bash(f"pytest tests/test_{index}.py", "1 failed", is_error=True)
+
+        entries, scan = self.read_window(cutoff)
+
+        self.assertFalse([row for row in entries if row["subject"] == "write"])
+        self.assertEqual(4, scan["written_paths"])
+        self.assertEqual(cutoff, scan["window_start"])
+        self.assertEqual(2, scan["window_written_paths"])
+
+    def test_latest_write_of_a_path_sets_its_window_membership_once(self) -> None:
+        self.session.write(self.file("shared.py"))
+        cutoff = self.cutoff()
+        self.session.edit(self.file("shared.py"))
+        self.session.write(self.file("new.py"))
+
+        entries, scan = self.read_window(cutoff)
+
+        self.assertEqual(2, scan["written_paths"])
+        self.assertEqual(2, scan["window_written_paths"])
+        self.assertEqual(2, len([row for row in entries if row["subject"] == "write"]))
+
+
 class WhatAReaderSeesOfTheChecksASessionRan(ClaudeChecksTestCase):
     def test_a_fixed_check_reads_as_passed_with_its_earlier_failure_noted_once(self) -> None:
         self.session.write(self.file("src/retry.py"))

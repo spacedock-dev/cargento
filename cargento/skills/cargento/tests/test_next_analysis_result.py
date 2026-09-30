@@ -57,7 +57,8 @@ def _report(fact_id: str, at: float, subject: str, **extra: Any) -> dict[str, An
 
 # The fixture numbers the session's entries from the window at 100: fo-b #1, task-a #2 (the
 # agent's own dispatch), fo-a #3; these follow at #4 to #8. A write before the window is not
-# numbered and is not where this work went.
+# numbered and is not where this work went. The scan also found one pre-window and one in-window
+# distinct path that the twelve-row tool-report listing left out.
 FACTS = (
     _report("c-pass", 104.5, "check", result="passed", summary="pytest tests/parser"),
     _report("w-lex", 104.6, "write", summary="src/parser/lex.py"),
@@ -82,7 +83,9 @@ SCAN = {
     "passed": 1,
     "not_recorded": 0,
     "background": 0,
-    "written_paths": 5,
+    "written_paths": 6,
+    "window_written_paths": 4,
+    "window_start": 100,
     "outside_paths": 0,
     "more": 0,
     "last_changing_command_at": None,
@@ -92,15 +95,17 @@ SCAN = {
 
 
 def scan_for(facts: tuple[dict[str, Any], ...]) -> dict[str, Any]:
-    """The full-scan counts for these facts, with one written path the listing left out."""
+    """Full and numbered-window counts, with omitted paths on both sides."""
     checks = [f for f in facts if f["subject"] == "check"]
+    writes = [f for f in facts if f["subject"] == "write"]
     return {
         **SCAN,
         "failed": sum(1 for f in checks if f.get("result") == "failed"),
         "passed": sum(1 for f in checks if f.get("result") == "passed"),
         "check_runs": len(checks),
         "distinct_checks": len(checks),
-        "written_paths": sum(1 for f in facts if f["subject"] == "write") + 1,
+        "written_paths": len(writes) + (2 if writes else 0),
+        "window_written_paths": sum(f["at"] >= 100 for f in writes) + (1 if writes else 0),
     }
 
 
@@ -154,6 +159,7 @@ def serve(
 ) -> str:
     """The focused project context answers with this analysis level and the session's scan."""
     live = row.pop("live", None)
+    scan_override = row.pop("scan_override", None)
     answer = (
         [
             {
@@ -172,7 +178,7 @@ def serve(
         else []
     )
     return (
-        f"let __analysis = {json.dumps(answer)};\nlet __scan = {json.dumps(scan_for(facts))};\n"
+        f"let __analysis = {json.dumps(answer)};\nlet __scan = {json.dumps(scan_for(facts) if scan_override is None else scan_override)};\n"
         f"let __live = {json.dumps([live] if live else [])};\n"
         """
 const __ctxUpstream2 = __fetchImpl;
@@ -520,9 +526,25 @@ class WhereTheWorkWentTest(_ResultPage):
         self.assertNotIn("old", work)
 
     def test_writes_the_listing_left_out_are_counted(self) -> None:
-        # The scan counts five written paths and the page holds four of them.
+        # Four paths belong to the window: three listed, one omitted. Two other
+        # distinct paths are before the window; only one is among retained facts.
         work = self.work_of(self.page(MIXED, levels.HIGH))
         self.assertIn("1 more written file is counted and not listed.", work)
+        self.assertNotIn("2 more written files", work)
+
+    def test_stale_result_keeps_its_old_window_without_inventing_current_numbers(self) -> None:
+        work = self.work_of(
+            self.page(MIXED, levels.HIGH, extra="__s.annotation_window_start = 110;\n")
+        )
+        self.assertIn("src/parser 2 files 2 not numbered in the current view", work)
+        self.assertIn("1 more written file is counted and not listed.", work)
+        self.assertNotIn("#5", work)
+
+    def test_count_survives_when_listing_keeps_no_written_path(self) -> None:
+        checks = tuple(f for f in FACTS if f["subject"] == "check")
+        scan = {**scan_for(checks), "written_paths": 2, "window_written_paths": 2}
+        work = self.work_of(self.page(MIXED, levels.HIGH, facts=checks, scan_override=scan))
+        self.assertIn("2 more written files are counted and not listed.", work)
 
     def test_with_no_write_listed_there_is_no_section(self) -> None:
         checks = tuple(f for f in FACTS if f["subject"] == "check")

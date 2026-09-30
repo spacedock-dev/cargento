@@ -3004,16 +3004,21 @@ function nextCockpitResultAnswer(answer, numbers, byId){
     ? NEXT_RESULT_CANT_TELL : NEXT_RESULT_NOTHING_FOUND)}</p></div>`;
 }
 
-/* Where the work went: the written paths the list numbers in the window,
+/* Where the work went: the written paths in this analysis window,
    grouped by folder without a model (item 6). A path with no folder is the
    working directory, where `claude_tool_reports` publishes it relative to.
-   The listing keeps at most twelve checks and files, so the scan's count says
-   how many more were written and not listed; a figure from the rows alone
-   would read as the whole. */
-function nextCockpitResultWork(entries, numbers, scan){
+   The twelve-entry listing cannot count its own omissions; the scan supplies
+   a distinct-path count for the same cutoff, including paths it did not list.
+   A saved result keeps that cutoff even when the current intent window moves. */
+function nextCockpitResultWork(entries, numbers, scan, resultWindow){
   const writes = (entries || []).filter(entry => entry && entry.type === "tool_report" &&
-    entry.subject === "write" && numbers.has(String(entry.id || "")));
-  if(!writes.length) return "";
+    entry.subject === "write" && nextNumber(entry.at) > 0 &&
+    (resultWindow == null || entry.at >= resultWindow));
+  const counted = scan && typeof scan === "object" &&
+    nextNumber(scan.window_start) === resultWindow &&
+    Number.isSafeInteger(scan.window_written_paths) && scan.window_written_paths >= 0
+    ? scan.window_written_paths : null;
+  if(!writes.length && !counted) return "";
   const groups = new Map();
   for(const entry of writes){
     const path = String(entry.summary || "");
@@ -3024,19 +3029,24 @@ function nextCockpitResultWork(entries, numbers, scan){
   }
   const ordered = [...groups].sort((a, b) => b[1].length - a[1].length ||
     (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0));
-  const items = ordered.map(([folder, rows]) =>
-    '<li class="next-cockpit-result-folder">' +
-    `<span class="next-cockpit-result-path">${esc(folder || "The working directory")}</span>` +
-    `<span>${rows.length} file${rows.length === 1 ? "" : "s"}</span>` +
-    `<span>${esc(rows.map(entry => `#${numbers.get(String(entry.id || ""))}`).join(", "))}</span>` +
-    '</li>').join("");
-  const listed = (entries || []).filter(entry => entry && entry.type === "tool_report" &&
-    entry.subject === "write").length;
-  const counted = scan && typeof scan === "object" ? nextNumber(scan.written_paths) : null;
-  const more = counted != null ? Math.max(0, counted - listed) : 0;
+  const items = ordered.map(([folder, rows]) => {
+    const numbered = rows.filter(entry => numbers.has(String(entry.id || "")))
+      .map(entry => `#${numbers.get(String(entry.id || ""))}`);
+    const unnumbered = rows.length - numbered.length;
+    const references = [...numbered,
+      ...(unnumbered ? [`${unnumbered} not numbered in the current view`] : [])];
+    return '<li class="next-cockpit-result-folder">' +
+      `<span class="next-cockpit-result-path">${esc(folder || "The working directory")}</span>` +
+      `<span>${rows.length} file${rows.length === 1 ? "" : "s"}</span>` +
+      `<span>${esc(references.join(", "))}</span>` +
+      '</li>';
+  }).join("");
+  const more = counted != null && counted >= writes.length ? counted - writes.length : 0;
   const unlisted = more
     ? `<p class="next-cockpit-reading-why">${more} more written ${more === 1 ? "file is" : "files are"} ` +
-      "counted and not listed.</p>" : "";
+      "counted and not listed.</p>" : counted == null || counted < writes.length
+      ? '<p class="next-cockpit-reading-why">The total written in this window is unavailable.</p>'
+      : "";
   return '<div class="next-cockpit-result-work"><h3>Where the work went</h3>' +
     `<ul>${items}</ul>${unlisted}</div>`;
 }
@@ -4286,7 +4296,7 @@ function nextCockpitReadingParts(session, annotation, entries, model, observed, 
   const stale = nextCockpitResultStale(shape, raw, annotation, held, again);
   const answer = shape.criteria.length || shape.departures.length
     ? nextCockpitResultAnswer(nextDriftAnswer(shape, held), numbers, byId) : "";
-  const work = nextCockpitResultWork(held, numbers, source && source.scan);
+  const work = nextCockpitResultWork(held, numbers, source && source.scan, shape.windowStart);
   /* From the reading rather than from the live row. A reading describes the
      moment it was taken, and the producer already agreed with the HOW IT
      LANDED cards next door because both derive the ending the same way and
