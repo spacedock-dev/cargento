@@ -1696,7 +1696,13 @@ stamp. A mismatch still refuses the whole scoring run before consulting or charg
 and the contents check still requires the facts derived at capture to match. On Windows the home falls back to `USERPROFILE`, so the
 `HOME` protection is POSIX only. The ledger stops at nineteen calls across every
 run and producer, refuses every call when it cannot be read, refuses calls under other digests, and
-freezes the marks once it holds one. It holds case ids, times, statuses and digests only. The
+freezes each packet's marks once it holds one. A failed run may be followed by a fresh packet only
+through a reviewed, fixed-path continuation grant: its marking phase binds the old result's exact
+ledger prefix and a new case digest, and its sealed phase binds the new marks and cases-and-rubric
+digests before scoring. The old prefix and any new suffix are checked under the charge lock against
+the same nineteen-call cap. The failed result cannot be overwritten, and a grant is not permission
+to send real session evidence or increase spend; both need separate owner authorization. The
+ledger holds case ids, times, statuses and digests only. The
 scorer does not pass through the reader's rolling budget, so that ledger is the bound.
 `--probe-argv` writes and charges nothing, and it cannot reach a real model through anything the
 operator configured. It starts its own stub on `127.0.0.1` and runs the verified CLI twice, once
@@ -1711,12 +1717,14 @@ when the reply carries a nonce only the stub knew (DRC-4710: refused, not charge
 only yes or no facts about each request, never its text: whether the home path, the user name or
 the state directory appear anywhere, and in the OAuth pass whether the placeholder email appears
 in the disclosed block and whether the email or UUID appear anywhere else. Any of those found
-fails it. It cannot see traffic that went elsewhere; only an OS sandbox can. A Claude Code result is its
-own file, `docs/abstention/claude-results.json`, and opens no gate by being written. A case the producer refuses before the model, an empty ledger or a session the
-board no longer lists, spends nothing. The yardstick is handed to the producer as an argument, so
-the run writes nothing to `cargento-annotations.json` and increments no reading count. Historical
-replay reads the frozen row, facts and clock instead of the live board. Reviewer excerpts and
-later context are not model inputs. Its file format and checks are owned by the
+fails it. It cannot see traffic that went elsewhere; only an OS sandbox can. The failed Claude Code
+result is `docs/abstention/claude-results.json`; an authorized continuation has its own file, as
+[the abstention documentation](docs/abstention/README.md#the-spend-ledger) specifies. Neither opens
+the gate by being written. A case the producer refuses before the model, an empty ledger or a
+session the board no longer lists, spends nothing. The yardstick is handed to the producer as an
+argument; the run writes nothing to `cargento-annotations.json` and increments no reading count.
+Historical replay reads the frozen row, facts and clock instead of the live board. Reviewer
+excerpts and later context are not model inputs. Its file format and checks are owned by the
 [abstention documentation](docs/abstention/README.md#historical-replay-case-format-4).
 
 Synthesised cases are admissible in the rubric expectation file, cross-verified by a different

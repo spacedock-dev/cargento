@@ -26,8 +26,10 @@ that ruling.
 ## What lives here
 
 `results.json` for the Codex producer and `claude-results.json` for Claude Code, once a scoring
-run has been committed, written by `scripts/score_abstention.py --score --producer <name>`. One
-file per producer, one run each. It holds:
+run has been committed, written by `scripts/score_abstention.py --score --producer <name>`. A new
+Claude Code packet, if authorized after the failed run, writes `claude-results-continuation.json`
+and leaves the failed file in place. The handoff is `claude-continuation.json` and must be reviewed
+before scoring. Each result holds:
 
 - `producer`, `model` and `argv_digest`: which producer ran, the model id it passed, and the
   sha256 of the argv its exec builds, read without starting a process. A later change to a flag,
@@ -228,20 +230,41 @@ case the cap stopped is withheld as `spend-cap`.
 - The cap check and the charge happen under an exclusive lock, so concurrent runs cannot pass it.
 - A missing ledger is an empty one. A ledger that cannot be read, or holds anything but this
   script's own shape, refuses every call and is left as it is.
-- Once a call is charged, the key is frozen. `mark_abstention.py` refuses to write marks or
-  `--reset`, and `--score` refuses a packet whose marks or cases hash differently from the calls
+- Once a call is charged, that packet's key is frozen. `mark_abstention.py` refuses to write marks
+  or `--reset`, and `--score` refuses a packet whose marks or cases hash differently from the calls
   already charged. A mark written after an output was seen is agreement, not a mark.
 - The committed result records `ledger_chain`: the first charge id, the number of calls and a hash
   chain over each charge's id and the two digests it was charged under. A later `--score` refuses
   while the ledger does not begin with that chain, reading the result at
   `docs/abstention/claude-results.json` as well as any `--out`, and refuses a committed result
   with no chain at all. Deleting, replacing or rewriting the ledger therefore does not unfreeze the
-  key, and once a result is committed the marker stays frozen.
-- `--report` flags a result as stale when the ledger holds a call charged under other digests, or
-  no longer begins with the result's chain.
+  key, and once a result is committed that packet's marks stay frozen.
+- `--report` flags a result as stale when the ledger holds a call charged under unapproved digests,
+  or no longer begins with the result's chain.
 - `--resume` re-reads the local results and re-calls only the cases whose call failed
   (`withheld:model-failed`). It carries the other records over only when they hash to what the
   ledger recorded as the last run, so a hand-edited outcome is refused.
+
+After a failed qualification, a fresh packet needs a reviewed continuation grant at the fixed
+repository path `docs/abstention/claude-continuation.json`. Prepare it during that review.
+Its first, `marking` phase binds the old failed result's chain and digests and the new cases file's
+digest. `mark_abstention.py --continue-mark` then permits marking only that case set in a fresh
+`CARGENTO_HOME`, while the account-home ledger contains exactly the old committed charges. It
+cannot reset, build or freeze, and ordinary marking remains closed. After every mark and rubric
+expectation has been reviewed and the marker has exited, the `sealed` phase also binds the new
+marks and combined cases-and-rubric digests. The scorer checks those values under the ledger lock
+before each charge. The grant and failed result must be bounded regular repository files, not
+symlinks, so the new result cannot replace what the old fixed path reads. The old charges remain
+the prefix. New charges may use only the sealed key, and both count toward the same 19-call cap.
+A grant does not authorize sending real session evidence to a provider or
+raising that cap. Those require separate owner authorization.
+
+The failed `docs/abstention/claude-results.json` remains fixed. A continuation writes its summary
+only to `docs/abstention/claude-results-continuation.json` and its local results to
+`abstention-claude-continuation-results.json` in the fresh packet home. Scoring checks both fixed
+summary chains, and reports accept the old prefix followed by only the granted new-key suffix.
+Deleting or rewriting either packet's ledger charges makes the affected result stale. A second
+packet cannot reset the spend or reinterpret the failed verdict.
 
 `--probe-argv` is the one way to watch what the CLI sends without spending. It starts its own stub
 on `127.0.0.1` and runs the verified CLI twice with a fixed sentence: once signed in with a
