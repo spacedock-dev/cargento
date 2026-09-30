@@ -75,6 +75,13 @@ class DelegatedEvidenceBudget(SubagentChecksTestCase):
         self.returns(second)
         self.save_all()
         first_path, second_path = (path for _sub, path in self.subagents)
+        # Windows can stamp both children with the same mtime after save_all.
+        # Make the intended newest-child ordering explicit for this budget test.
+        second_stat = second_path.stat()
+        os.utime(
+            second_path,
+            ns=(second_stat.st_atime_ns, first_path.stat().st_mtime_ns + 2_000_000_000),
+        )
         cap = self.path.stat().st_size + second_path.stat().st_size // 2
         self.config = dataclasses.replace(self.config, turn_scan_max_bytes=cap)
         reads: list[tuple[str, int]] = []
