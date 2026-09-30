@@ -3026,6 +3026,9 @@ class _ToolReportTally:
         # The reads-from horizon (`_tally_of`): a pass called before it may
         # lack a complete read of later work; no change is established by it.
         self.reads_from: float | None = None
+        self.named_unread = False
+        self.parent_failed = False
+        self.orphan_unread = False
         self.scan: dict[str, Any] = {
             "last_changing_command_at": None,
             **dict.fromkeys(
@@ -3326,14 +3329,15 @@ class _ToolReportTally:
         )
 
     def _read_incomplete(self, run: dict[str, Any]) -> bool:
-        return (
-            run["result"] == "passed"
-            and self.reads_from is not None
-            and run["at"] < self.reads_from
+        return run["result"] == "passed" and (
+            self.named_unread
+            or self.parent_failed
+            or self.orphan_unread
+            or (self.reads_from is not None and run["at"] < self.reads_from)
         )
 
     def read_incomplete(self) -> frozenset[tuple[str, str]]:
-        """Latest passes called before the scan's reads-from horizon."""
+        """Latest passes the bounded scan or missing named child cannot vouch for."""
         latest = (history[self._latest(history)] for history in self.runs.values())
         return frozenset(
             (run["record_id"], run["title"]) for run in latest if self._read_incomplete(run)
@@ -3442,55 +3446,131 @@ def _later(a: float | None, b: float | None) -> float | None:
     return b if a is None else a if b is None else max(a, b)
 
 
-def _subagent_records(
-    config: RuntimeConfig, transcript_path: str
-) -> tuple[list[list[dict[str, Any]]], int, float | None]:
-    """The subagents' records, newest transcript first, how many went unread,
-    and the reads-from horizon they leave (`_tally_of`).
+def _scan_budget(config: RuntimeConfig, max_bytes: int | None = None) -> runtime_io.ReadBudget:
+    limit = config.turn_scan_max_bytes
+    return runtime_io.ReadBudget(limit if max_bytes is None else min(limit, max(0, max_bytes)))
 
-    All of a session's subagents share one `turn_scan_max_bytes` bound, the
-    parent's own: measured 2026-09-28, one session held 389 subagent
-    transcripts and 405 MB, and every collection reads them. A transcript the
-    bound reaches into is read for its newest bytes, as the parent is. One
-    that yields no record, because it failed to open or its newest line
-    outgrew the bound, was not read: a real one always holds its prompt.
-    """
-    dated: list[tuple[float, int, str]] = []
-    for path in _subagent_transcripts(transcript_path):
-        try:
-            found = os.stat(path)
-        except OSError:
+
+def _scan_records(read: runtime_io.TranscriptRead) -> list[dict[str, Any]]:
+    return [record for raw in read.lines if (record := _json_dict(raw)) is not None]
+
+
+def _agent_result_ids(parent: list[dict[str, Any]]) -> tuple[set[str], set[str]]:
+    """Pair known Agent results; keep valid orphan results private for clipped reads."""
+    calls = {
+        call_id
+        for _at, _cwd, call_id, name, _tool_input, _worker in _claude_tool_uses(parent)
+        if name in {"Agent", "Task"}
+    }
+    named: set[str] = set()
+    orphan: set[str] = set()
+    for record in parent:
+        if record.get("type") != "user" or record.get("isSidechain") is True:
             continue
-        dated.append((found.st_mtime, found.st_size, path))
-    dated.sort(key=lambda row: (-row[0], row[2]))
-    budget = config.turn_scan_max_bytes
-    read: list[list[dict[str, Any]]] = []
-    unread = 0
-    horizon: float | None = None
-    for mtime, size, path in dated:
-        got = (
-            _work_records(config, path, max_bytes=budget, follow_links=False) if budget > 0 else []
+        result = record.get("toolUseResult")
+        if not isinstance(result, dict) or not isinstance(result.get("agentId"), str):
+            continue
+        agent_id = result["agentId"]
+        if re.fullmatch(r"[0-9a-f]+", agent_id) is None:
+            continue
+        content = records.message_dict(record).get("content")
+        result_ids = (
+            {
+                block["tool_use_id"]
+                for block in content
+                if isinstance(block, dict)
+                and block.get("type") == "tool_result"
+                and isinstance(block.get("tool_use_id"), str)
+                and block["tool_use_id"]
+            }
+            if isinstance(content, list)
+            else set()
         )
-        if not got:
-            # Every record it holds is at or before its mtime.
-            unread += 1
-            horizon = _later(horizon, mtime)
-        else:
-            read.append(got)
-            # Stat again after the read: an append since the first stat can
-            # push the window past the file's start (append-only, so the size
-            # now is at least the size read).
-            if max(size, _size(path)) > budget:
+        if result_ids & calls:
+            named.add(agent_id)
+        elif result_ids:
+            orphan.add(agent_id)
+    return named, orphan
+
+
+def _named_agent_ids(parent: list[dict[str, Any]]) -> set[str]:
+    """Only a paired parent Agent/legacy Task result may name missing work."""
+    return _agent_result_ids(parent)[0]
+
+
+def _child_id(path: str) -> str:
+    return os.path.basename(path)[len("agent-") : -len(".jsonl")]
+
+
+class _CheckScan(NamedTuple):
+    parent: list[dict[str, Any]]
+    children: list[list[dict[str, Any]]]
+    unread: int
+    horizon: float | None
+    named_unread: bool
+    parent_failed: bool
+    orphan_unread: bool
+    budget: runtime_io.ReadBudget
+    source_reads: tuple[tuple[str, runtime_io.TranscriptRead | None], ...]
+
+
+def _live_check_scan(
+    config: RuntimeConfig, transcript_path: str, *, max_bytes: int | None = None
+) -> _CheckScan:
+    """Parent-first actual bytes; metadata sorts children without spending B."""
+    budget = _scan_budget(config, max_bytes)
+    parent_read = runtime_io.scan_reverse_lines(config, transcript_path, budget)
+    parent = _scan_records(parent_read)
+    horizon = None if parent_read.complete else _oldest_at(parent) or _mtime(transcript_path)
+    session_dir = transcript_path[: -len(".jsonl")]
+    paths = _subagent_transcripts(transcript_path)
+    paths.sort(key=lambda path: (-(_mtime(path) or 0), os.path.relpath(path, session_dir)))
+    children: list[list[dict[str, Any]]] = []
+    source_reads: list[tuple[str, runtime_io.TranscriptRead | None]] = [
+        (transcript_path, parent_read)
+    ]
+    unread_ids: set[str] = set()
+    read_ids: set[str] = set()
+    complete_ids: set[str] = set()
+    unread = 0
+    for path in paths:
+        mtime = _mtime(path)
+        read = (
+            runtime_io.scan_reverse_lines(config, path, budget, follow_links=False)
+            if budget.remaining
+            else None
+        )
+        source_reads.append((path, read))
+        got = _scan_records(read) if read is not None else []
+        if got:
+            children.append(got)
+            read_ids.add(_child_id(path))
+            if read is not None and read.complete:
+                complete_ids.add(_child_id(path))
+            if read is not None and not read.complete:
                 horizon = _later(horizon, _oldest_at(got) or mtime)
-        budget -= size
-    return read, unread, horizon
-
-
-def _size(path: str) -> int:
-    try:
-        return os.stat(path).st_size
-    except OSError:
-        return 0
+        else:
+            unread += 1
+            unread_ids.add(_child_id(path))
+            horizon = _later(horizon, mtime)
+    named, orphan = _agent_result_ids(parent)
+    missing = named - read_ids
+    unread += len(missing - unread_ids)
+    # A clipped parent may keep a result but lose its earlier Agent call. It
+    # cannot prove a named missing child, yet neither can its pass prove that
+    # unread delegated work did not change files.
+    orphan_unread = not parent_read.complete and bool(orphan - complete_ids)
+    return _CheckScan(
+        parent,
+        children,
+        unread,
+        horizon,
+        bool(missing),
+        parent_read.failed,
+        orphan_unread,
+        budget,
+        tuple(source_reads),
+    )
 
 
 def _tally_of(
@@ -3498,6 +3578,10 @@ def _tally_of(
     subagents: list[list[dict[str, Any]]],
     unread: int,
     reads_from: float | None = None,
+    *,
+    named_unread: bool = False,
+    parent_failed: bool = False,
+    orphan_unread: bool = False,
 ) -> _ToolReportTally:
     """One tally over a parent's calls and its subagents', in call time order.
 
@@ -3507,13 +3591,11 @@ def _tally_of(
     change comparison is by call time (the 2026-09-27 amendment's item 4); the
     result time still picks a check's latest run, across both.
 
-    `reads_from` is the latest of: where each transcript the bound cut begins,
-    and the newest time each unread one can hold. Each stream is bounded on its
-    own, so a write one leaves out may still postdate a pass another read; a
-    pass called before the horizon is marked `read_incomplete` rather than
-    dropped, since dropping calls would drop an older failure too. With only
-    the parent cut, every pass it holds is at or after the horizon, so it reads
-    as it did (item 7 of the 2026-09-28 amendment).
+    `reads_from` is the latest of where a cut read begins and the newest time
+    an unread child can hold. A pass before it is incomplete rather than
+    dropped, since dropping calls would drop an older failure too. A named
+    unavailable child makes every held pass incomplete without inventing a
+    timestamp. A measured failure remains a failure.
     """
     results = _tool_result_blocks(parent)
     for records_ in subagents:
@@ -3521,6 +3603,9 @@ def _tally_of(
             results.setdefault(call_id, found)
     tally = _ToolReportTally(results)
     tally.reads_from = reads_from
+    tally.named_unread = named_unread
+    tally.parent_failed = parent_failed
+    tally.orphan_unread = orphan_unread
     streams = [
         _claude_tool_uses(parent),
         *(_claude_tool_uses(records_, sidechain=True) for records_ in subagents),
@@ -3536,12 +3621,16 @@ def _tally_of(
 def _claude_tally(
     config: RuntimeConfig, transcript_path: str, *, max_bytes: int | None = None
 ) -> _ToolReportTally:
-    parent = _work_records(config, transcript_path, max_bytes=max_bytes)
-    subagents, unread, horizon = _subagent_records(config, transcript_path)
-    # Stat after the read, as `_subagent_records` does.
-    if _size(transcript_path) > (max_bytes or config.turn_scan_max_bytes):
-        horizon = _later(horizon, _oldest_at(parent) or _mtime(transcript_path))
-    return _tally_of(parent, subagents, unread, horizon)
+    scan = _live_check_scan(config, transcript_path, max_bytes=max_bytes)
+    return _tally_of(
+        scan.parent,
+        scan.children,
+        scan.unread,
+        scan.horizon,
+        named_unread=scan.named_unread,
+        parent_failed=scan.parent_failed,
+        orphan_unread=scan.orphan_unread,
+    )
 
 
 def _mtime(path: str) -> float | None:
@@ -3568,99 +3657,78 @@ def claude_tool_reports(
     return tally.entries(sid), tally.scan
 
 
-def _stood_lines(path: str, until: float, *, follow_links: bool = True) -> list[bytes]:
-    """A transcript's lines up to the first record stamped after `until`."""
-    stood: list[bytes] = []
-    with (
-        open(path, "rb")
-        if follow_links
-        else os.fdopen(
-            os.open(path, os.O_RDONLY | getattr(os, "O_BINARY", 0) | getattr(os, "O_NOFOLLOW", 0)),
-            "rb",
-        )
-    ) as handle:
-        for raw in handle:
-            try:
-                record = json.loads(raw)
-            except (ValueError, RecursionError):
-                record = None
-            at = _record_timestamp(record) if isinstance(record, dict) else None
-            if at is not None and at > until:
-                break
-            stood.append(raw)
-    return stood
-
-
-def _newest_records(lines: list[bytes], max_bytes: int) -> list[dict[str, Any]]:
-    """The records in the newest `max_bytes` of these lines, oldest first."""
-    kept: list[bytes] = []
-    size = 0
-    for raw in reversed(lines):
-        size += len(raw)
-        if size > max_bytes:
-            break
-        kept.append(raw)
-    cut: list[dict[str, Any]] = []
-    for raw in reversed(kept):
-        try:
-            record = json.loads(raw)
-        except (ValueError, RecursionError):
-            continue
-        if isinstance(record, dict):
-            cut.append(record)
-    return cut
-
-
-def _stood_subagents(
-    config: RuntimeConfig, transcript_path: str, until: float
-) -> tuple[list[list[dict[str, Any]]], int, float | None]:
-    """`_subagent_records` as the transcripts stood at `until`: newest by the
-    last record each held then, rather than by today's modification time.
-
-    One that fails to open is unread, and could hold records up to `until`
-    or its mtime, whichever is earlier."""
-    dated: list[tuple[float, str, list[bytes]]] = []
-    unread = 0
-    horizon: float | None = None
-    for path in _subagent_transcripts(transcript_path):
-        try:
-            stood = _stood_lines(path, until, follow_links=False)
-        except OSError:
-            unread += 1
-            mtime = _mtime(path)
-            horizon = _later(horizon, until if mtime is None else min(mtime, until))
-            continue
-        stamps = [
-            at
-            for raw in stood
-            if (record := _json_dict(raw)) is not None
-            and (at := _record_timestamp(record)) is not None
-        ]
-        if stamps:
-            dated.append((max(stamps), path, stood))
-    dated.sort(key=lambda row: (-row[0], row[1]))
-    budget = config.turn_scan_max_bytes
-    read: list[list[dict[str, Any]]] = []
-    for newest, _path, stood in dated:
-        size = sum(len(raw) for raw in stood)
-        got = _newest_records(stood, budget) if budget > 0 else []
-        if not got:
-            unread += 1
-            horizon = _later(horizon, newest)
-        else:
-            read.append(got)
-            if size > budget:
-                horizon = _later(horizon, _oldest_at(got) or newest)
-        budget -= size
-    return read, unread, horizon
-
-
 def _json_dict(raw: bytes) -> dict[str, Any] | None:
     try:
         record = json.loads(raw)
     except (ValueError, RecursionError):
         return None
     return record if isinstance(record, dict) else None
+
+
+class FrozenCheckCutoffUnreachableError(RuntimeError):
+    """The parent's first future stamp or EOF is outside the check budget."""
+
+
+def _frozen_check_scan(config: RuntimeConfig, transcript_path: str, until: float) -> _CheckScan:
+    """One bounded forward pass finds each moment's cutoff and its evidence."""
+    budget = _scan_budget(config)
+
+    def future(raw: bytes) -> bool:
+        record = _json_dict(raw)
+        return record is not None and (at := _record_timestamp(record)) is not None and at > until
+
+    parent_read = runtime_io.scan_stood_lines(transcript_path, budget, future)
+    if not parent_read.cutoff_reached:
+        raise FrozenCheckCutoffUnreachableError(
+            "parent check cutoff unreachable within byte budget"
+        )
+    parent = _scan_records(parent_read)
+    session_dir = transcript_path[: -len(".jsonl")]
+    paths = sorted(
+        _subagent_transcripts(transcript_path),
+        key=lambda path: os.path.relpath(path, session_dir),
+    )
+    children: list[list[dict[str, Any]]] = []
+    source_reads: list[tuple[str, runtime_io.TranscriptRead | None]] = [
+        (transcript_path, parent_read)
+    ]
+    read_ids: set[str] = set()
+    unread_ids: set[str] = set()
+    unread = 0
+    horizon: float | None = None
+    for path in paths:
+        read = (
+            runtime_io.scan_stood_lines(path, budget, future, follow_links=False)
+            if budget.remaining
+            else None
+        )
+        source_reads.append((path, read))
+        if read is not None and read.cutoff_reached:
+            got = _scan_records(read)
+            if got:
+                children.append(got)
+                read_ids.add(_child_id(path))
+                continue
+            if read.byte_end and not read.lines:
+                # Its first stamped record is later than the frozen moment.
+                continue
+        unread += 1
+        unread_ids.add(_child_id(path))
+        mtime = _mtime(path)
+        horizon = _later(horizon, until if mtime is None else min(mtime, until))
+    missing = _named_agent_ids(parent) - read_ids
+    unread += len(missing - unread_ids)
+    return _CheckScan(
+        parent,
+        children,
+        unread,
+        horizon,
+        bool(missing),
+        parent_read.failed,
+        False,
+        budget,
+        tuple(source_reads),
+    )
 
 
 def frozen_claude_checks(
@@ -3672,18 +3740,19 @@ def frozen_claude_checks(
     `before_last_change` are computed over the whole transcript, so filtering
     today's facts to those dated at or before `until` would keep a pass a later
     run overturned. The transcript is append-only, so its prefix up to the
-    first record stamped after `until` is what a press at that moment read,
-    and so is each subagent transcript's.
+    first record stamped after `until` is what a press at that moment read.
+    The bounded forward lookup spends from the same check budget as its
+    children; an unreachable parent cutoff refuses the frozen read.
     """
-    # The press's own bound, over the file as it stood rather than as it is:
-    # `_work_records` reads the newest `turn_scan_max_bytes`, and a transcript
-    # that grew since would push the moment's records out of today's window.
-    lines = _stood_lines(transcript_path, until)
-    cut = _newest_records(lines, config.turn_scan_max_bytes)
-    subagents, unread, horizon = _stood_subagents(config, transcript_path, until)
-    if sum(len(raw) for raw in lines) > config.turn_scan_max_bytes:
-        horizon = _later(horizon, _oldest_at(cut) or until)
-    tally = _tally_of(cut, subagents, unread, horizon)
+    scan = _frozen_check_scan(config, transcript_path, until)
+    tally = _tally_of(
+        scan.parent,
+        scan.children,
+        scan.unread,
+        scan.horizon,
+        named_unread=scan.named_unread,
+        parent_failed=scan.parent_failed,
+    )
     facts = [
         _semantic_fact_from_event(row, str(row["kind"]), _SEMANTIC_FACT_TYPES[row["kind"]], "")
         for row in tally.entries(sid)

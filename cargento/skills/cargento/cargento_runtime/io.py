@@ -13,6 +13,7 @@ import secrets
 import stat
 import sys
 import time
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, BinaryIO
 from urllib.parse import quote
 
@@ -49,6 +50,133 @@ def _open_binary(path: str, *, follow_links: bool) -> BinaryIO:
         return open(path, "rb")
     flags = os.O_RDONLY | getattr(os, "O_BINARY", 0) | getattr(os, "O_NOFOLLOW", 0)
     return os.fdopen(os.open(path, flags), "rb")
+
+
+@dataclass
+class ReadBudget:
+    """Actual transcript-content bytes spent by one check-evidence scan."""
+
+    limit: int
+    spent: int = 0
+
+    @property
+    def remaining(self) -> int:
+        return max(0, self.limit - self.spent)
+
+    def charge(self, raw: bytes) -> None:
+        self.spent += len(raw)
+
+
+@dataclass(frozen=True)
+class TranscriptRead:
+    """Private evidence and extent for one input in a shared read budget."""
+
+    lines: tuple[bytes, ...]
+    consumed: int
+    byte_end: int | None
+    read_start: int
+    complete: bool
+    cutoff_reached: bool = False
+    failed: bool = False
+
+
+def _open_scan_binary(path: str, *, follow_links: bool) -> BinaryIO:
+    """No BufferedReader prefetch may escape a check scan's byte allowance."""
+    if follow_links:
+        return open(path, "rb", buffering=0)
+    flags = os.O_RDONLY | getattr(os, "O_BINARY", 0) | getattr(os, "O_NOFOLLOW", 0)
+    return os.fdopen(os.open(path, flags), "rb", buffering=0)
+
+
+def scan_reverse_lines(
+    config: RuntimeConfig,
+    path: str,
+    budget: ReadBudget,
+    *,
+    follow_links: bool = True,
+) -> TranscriptRead:
+    """Read the newest complete lines, charging each returned binary byte."""
+    before = budget.spent
+    byte_end: int | None = None
+    position = 0
+    chunks: list[bytes] = []
+    failed = False
+    try:
+        with _open_scan_binary(path, follow_links=follow_links) as source:
+            byte_end = os.fstat(source.fileno()).st_size
+            position = byte_end
+            while position and budget.remaining:
+                size = min(config.reverse_chunk_bytes, position, budget.remaining)
+                position -= size
+                source.seek(position)
+                raw = source.read(size)
+                budget.charge(raw)
+                if len(raw) != size:
+                    failed = True
+                    break
+                chunks.append(raw)
+    except (OSError, ValueError):
+        failed = True
+    data = b"".join(reversed(chunks))
+    lines = data.split(b"\n")
+    if data.endswith(b"\n"):
+        lines.pop()
+    if position or failed:
+        # The first line might start before the bounded window. Its bytes
+        # still cost the allowance; they cannot establish a record.
+        lines = lines[1:]
+    return TranscriptRead(
+        tuple(lines),
+        budget.spent - before,
+        byte_end,
+        position,
+        not position and not failed,
+        failed=failed,
+    )
+
+
+def scan_stood_lines(
+    path: str,
+    budget: ReadBudget,
+    is_future: Callable[[bytes], bool],
+    *,
+    follow_links: bool = True,
+) -> TranscriptRead:
+    """Find the first future record or held EOF within the same byte budget."""
+    before = budget.spent
+    byte_end: int | None = None
+    lines: list[bytes] = []
+    reached = False
+    failed = False
+    try:
+        with _open_scan_binary(path, follow_links=follow_links) as source:
+            byte_end = os.fstat(source.fileno()).st_size
+            while source.tell() < byte_end and budget.remaining:
+                raw = source.readline(min(budget.remaining, byte_end - source.tell()))
+                budget.charge(raw)
+                if not raw:
+                    failed = True
+                    break
+                if not raw.endswith(b"\n") and source.tell() < byte_end:
+                    failed = True
+                    break
+                if is_future(raw):
+                    reached = True
+                    break
+                lines.append(raw)
+            else:
+                reached = source.tell() >= byte_end
+    except (OSError, ValueError):
+        failed = True
+    return TranscriptRead(
+        tuple(lines),
+        budget.spent - before,
+        byte_end,
+        0,
+        not failed and reached,
+        reached,
+        failed=failed,
+    )
 
 
 def read_tail(
