@@ -146,6 +146,10 @@ SUMMARY_PATH = os.path.join(_ROOT, "docs", "abstention", "results.json")
 # acceptance of 2026-09-14 does not qualify Claude, and one file per producer
 # keeps the one from being read as the other.
 CLAUDE_SUMMARY_PATH = abstention_ledger.CLAUDE_SUMMARY_PATH
+# A fresh packet never overwrites the scored failure that froze the first key.
+CLAUDE_CONTINUATION_SUMMARY_PATH = os.path.join(
+    _ROOT, "docs", "abstention", "claude-results-continuation.json"
+)
 PRODUCERS = ("claude", "codex")
 # The owner's authorization of 2026-09-24: at most twenty real readings, one of
 # them the browser walk. `abstention_ledger` owns the cap and the one ledger.
@@ -1727,10 +1731,20 @@ def _write_halves(
     summary_path: str,
 ) -> None:
     mark_abstention._write(results_path, local_results(list(records.values()), summary, home=HOME))  # noqa: SLF001
-    os.makedirs(os.path.dirname(summary_path) or ".", exist_ok=True)
-    with open(summary_path, "w", encoding="utf-8") as handle:
-        json.dump(summary, handle, indent=2, sort_keys=True)
-        handle.write("\n")
+    folder = os.path.dirname(summary_path) or "."
+    os.makedirs(folder, exist_ok=True)
+    descriptor, tmp = tempfile.mkstemp(prefix=".result-", suffix=".tmp", dir=folder)
+    try:
+        with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+            json.dump(summary, handle, indent=2, sort_keys=True)
+            handle.write("\n")
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.chmod(tmp, 0o600)
+        os.replace(tmp, summary_path)
+    finally:
+        with contextlib.suppress(FileNotFoundError):
+            os.unlink(tmp)
     print()
     for line in render(summary):
         print(line)
@@ -1748,7 +1762,23 @@ def _chain_holds(ledger: abstention_ledger.Ledger | None, summary_path: str) -> 
     """
     if ledger is None:
         return True
-    paths = dict.fromkeys((abstention_ledger.CLAUDE_SUMMARY_PATH, summary_path))
+    try:
+        continuing = abstention_ledger.continuation() is not None
+    except abstention_ledger.LedgerError as error:
+        print(f"Refused: {error}.")
+        return False
+    if continuing and os.path.abspath(summary_path) != os.path.abspath(
+        CLAUDE_CONTINUATION_SUMMARY_PATH
+    ):
+        print("Refused: a continuation writes only its fixed separate result file.")
+        return False
+    paths = dict.fromkeys(
+        (
+            abstention_ledger.CLAUDE_SUMMARY_PATH,
+            CLAUDE_CONTINUATION_SUMMARY_PATH if continuing else summary_path,
+            summary_path,
+        )
+    )
     for path in paths:
         committed = abstention_ledger.committed_chain(path)
         if committed is None:
@@ -1914,6 +1944,7 @@ def score(  # noqa: PLR0913 - one keyword per thing a run is bound to
             marks_digest=marks_digest(corpus),
             inputs_digest=_inputs_digest(corpus),
             producer=str((binding or {}).get("producer") or ""),
+            cases_digest=mark_abstention.cases_digest(dict(corpus.cases)),
         )
         if ledger_path
         else None
@@ -2154,6 +2185,7 @@ def _ledger_drift(summary: Mapping[str, Any]) -> str:
         return ""
     try:
         calls = abstention_ledger.read(abstention_ledger.LEDGER_PATH)["calls"]
+        grant = abstention_ledger.continuation()
     except abstention_ledger.LedgerError as error:
         return f"The spend ledger cannot vouch for this result: {error}."
     held = summary.get("ledger_chain")
@@ -2165,6 +2197,8 @@ def _ledger_drift(summary: Mapping[str, Any]) -> str:
             "deleted or replaced after the result was written."
         )
     bound = (summary.get("marks_digest"), summary.get("inputs_digest"))
+    if grant is not None:
+        return _continuation_drift(bound, calls, grant)
     other = [c for c in calls if (c["marks_digest"], c["inputs_digest"]) != bound]
     if other:
         return (
@@ -2172,6 +2206,32 @@ def _ledger_drift(summary: Mapping[str, Any]) -> str:
             "cases than this result was scored against."
         )
     return ""
+
+
+def _continuation_drift(
+    bound: tuple[Any, Any], calls: list[dict[str, Any]], grant: Mapping[str, Any]
+) -> str:
+    previous = grant["previous"]
+    prior = previous["ledger_chain"]
+    if not abstention_ledger.begins_with(abstention_ledger.LEDGER_PATH, prior):
+        return "The spend ledger lost the failed result's chain."
+    old_pair = (previous["marks_digest"], previous["inputs_digest"])
+    if grant["phase"] != "sealed":
+        if bound == old_pair and len(calls) == prior["calls"]:
+            return ""
+        return "The continuation grant is not sealed."
+    next_packet = grant["next"]
+    new_pair = (next_packet["marks_digest"], next_packet["inputs_digest"])
+    split = prior["calls"]
+    old_holds = all(
+        (call["marks_digest"], call["inputs_digest"]) == old_pair for call in calls[:split]
+    )
+    new_holds = all(
+        (call["marks_digest"], call["inputs_digest"]) == new_pair for call in calls[split:]
+    )
+    if bound in (old_pair, new_pair) and old_holds and new_holds:
+        return ""
+    return "The spend ledger does not follow the granted old and new packet keys."
 
 
 def _load_corpus(rubric_path: str) -> Corpus:
@@ -2190,8 +2250,21 @@ def _load_corpus(rubric_path: str) -> Corpus:
 def results_path_for(producer: str) -> str:
     """The local half, one per producer, so a resume never picks up the other's run."""
     if producer == "claude":
+        if os.path.exists(abstention_ledger.CONTINUATION_PATH):
+            return os.path.join(HOME, "abstention-claude-continuation-results.json")
         return os.path.join(HOME, "abstention-claude-results.json")
     return RESULTS_PATH
+
+
+def summary_path_for(producer: str | None, out: str | None) -> str:
+    """The failed result remains a fixed, read-only predecessor of a continuation."""
+    if out is not None:
+        return out
+    if producer != "claude":
+        return SUMMARY_PATH
+    if os.path.exists(abstention_ledger.CONTINUATION_PATH):
+        return CLAUDE_CONTINUATION_SUMMARY_PATH
+    return CLAUDE_SUMMARY_PATH
 
 
 def _argument_refusal(args: argparse.Namespace) -> str:  # noqa: PLR0911 - one per line
@@ -2566,7 +2639,7 @@ def main(argv: list[str] | None = None) -> int:  # noqa: PLR0911 - one refusal p
             return probe_argv(
                 config, probed.path, pinned=PinnedClaude(probed.path, probed.identity)
             )
-    out = args.out or (CLAUDE_SUMMARY_PATH if args.producer == "claude" else SUMMARY_PATH)
+    out = summary_path_for(args.producer, args.out)
     corpus = _load_corpus(args.rubric)
     mark_abstention.print_packet(CASES_PATH, dict(corpus.cases))
     if not corpus.cases.get("cases"):

@@ -36,6 +36,7 @@ import json
 import math
 import os
 import re
+import stat
 import sys
 import tempfile
 import time
@@ -89,11 +90,15 @@ CLAUDE_SUMMARY_PATH = os.path.join(
     "abstention",
     "claude-results.json",
 )
+# A reviewed handoff may authorize a second packet without moving the old
+# result or the account-home ledger. Absence preserves the one-packet rule.
+CONTINUATION_PATH = os.path.join(os.path.dirname(CLAUDE_SUMMARY_PATH), "claude-continuation.json")
 # Twenty authorized, one of them the AC2 browser walk the scorer cannot see.
 MAX_CALLS = 19
 STATUSES = ("charged", "ok", "failed", "unavailable")
 _DIGEST = re.compile(r"^[0-9a-f]{64}$")
 _CASE = re.compile(r"^[0-9a-f]{16}$")
+_MISSING = object()
 
 
 class LedgerError(Exception):
@@ -171,6 +176,98 @@ def read(path: str | None) -> dict[str, Any]:
     return body
 
 
+def continuation() -> dict[str, Any] | None:
+    """The fixed, reviewed handoff, bound to the committed failed result.
+
+    The `marking` phase names only the new case digest. Once the owner has
+    agreed to every mark and rubric entry, `sealed` also names the two digests
+    the scorer charges under. Neither phase by itself authorizes a real call.
+    """
+    grant = _review_json(CONTINUATION_PATH, "continuation grant", cap=32 * 1024, optional=True)
+    if grant is _MISSING:
+        return None
+    if not isinstance(grant, dict) or type(grant.get("v")) is not int or grant["v"] != 1:
+        raise LedgerError("the continuation grant has an invalid version")
+    phase = grant.get("phase")
+    previous, next_packet = grant.get("previous"), grant.get("next")
+    if (
+        phase not in ("marking", "sealed")
+        or not isinstance(previous, dict)
+        or not isinstance(next_packet, dict)
+        or not isinstance(previous.get("ledger_chain"), dict)
+        or not well_formed(previous["ledger_chain"])
+        or not all(
+            isinstance(previous.get(key), str) and _DIGEST.fullmatch(previous[key])
+            for key in ("marks_digest", "inputs_digest")
+        )
+        or not isinstance(next_packet.get("cases_digest"), str)
+        or not _DIGEST.fullmatch(next_packet["cases_digest"])
+        or (
+            phase == "sealed"
+            and not all(
+                isinstance(next_packet.get(key), str) and _DIGEST.fullmatch(next_packet[key])
+                for key in ("marks_digest", "inputs_digest")
+            )
+        )
+    ):
+        raise LedgerError("the continuation grant is malformed")
+    summary = _review_json(CLAUDE_SUMMARY_PATH, "prior committed result", cap=2 * 1024 * 1024)
+    if (
+        not isinstance(summary, dict)
+        or summary.get("verdict") != "failed"
+        or summary.get("producer") != "claude"
+        or any(summary.get(key) != previous.get(key) for key in ("marks_digest", "inputs_digest"))
+        or summary.get("ledger_chain") != previous["ledger_chain"]
+    ):
+        raise LedgerError("the continuation grant disagrees with the failed result")
+    return grant
+
+
+def _review_json(path: str, label: str, *, cap: int, optional: bool = False) -> Any:
+    """Read a bounded regular repository artifact, never following a symlink."""
+    if os.path.islink(path):
+        raise LedgerError(f"the {label} is a symlink")
+    flags = os.O_RDONLY | getattr(os, "O_NONBLOCK", 0) | getattr(os, "O_NOFOLLOW", 0)
+    try:
+        descriptor = os.open(path, flags)
+    except FileNotFoundError:
+        if optional:
+            return _MISSING
+        raise LedgerError(f"the {label} is missing") from None
+    except OSError as error:
+        raise LedgerError(f"the {label} cannot be opened") from error
+    try:
+        with os.fdopen(descriptor, "rb") as handle:
+            info = os.fstat(handle.fileno())
+            if not stat.S_ISREG(info.st_mode) or info.st_size > cap:
+                raise LedgerError(f"the {label} is not a bounded regular file")
+            payload = handle.read(cap + 1)
+            if len(payload) > cap:
+                raise LedgerError(f"the {label} grew beyond its read bound")
+            return json.loads(payload)
+    except (OSError, ValueError, RecursionError) as error:
+        raise LedgerError(f"the {label} cannot be read") from error
+
+
+def marking_refusal(cases_digest: str, ledger_path: str | None = None) -> str:
+    """Why the marker cannot write this fresh case set, or empty."""
+    try:
+        grant = continuation()
+        if grant is None or grant["phase"] != "marking":
+            return "there is no marking-phase continuation grant"
+        if grant["next"]["cases_digest"] != cases_digest:
+            return "this is not the case set named by the continuation grant"
+        path = ledger_path or LEDGER_PATH
+        prior = grant["previous"]["ledger_chain"]
+        if not begins_with(path, prior):
+            return "the spend ledger no longer begins with the failed result's chain"
+        if len(read(path)["calls"]) != prior["calls"]:
+            return "a continuation call has already been charged"
+    except LedgerError as error:
+        return str(error)
+    return ""
+
+
 def _lock_file(handle: IO[bytes]) -> None:
     if sys.platform == "win32":
         import msvcrt  # noqa: PLC0415 - Windows only
@@ -228,7 +325,14 @@ class Ledger:
     """The ledger as one packet sees it: its digests, and the cap it runs under."""
 
     def __init__(
-        self, path: str | None, *, cap: int, marks_digest: str, inputs_digest: str, producer: str
+        self,
+        path: str | None,
+        *,
+        cap: int,
+        marks_digest: str,
+        inputs_digest: str,
+        producer: str,
+        cases_digest: str = "",
     ) -> None:
         if path is None:
             raise LedgerError("the account's canonical home is unavailable")
@@ -237,8 +341,35 @@ class Ledger:
         self.marks_digest = marks_digest
         self.inputs_digest = inputs_digest
         self.producer = producer
+        self.cases_digest = cases_digest
 
     def _refuse_other(self, body: Mapping[str, Any]) -> None:
+        grant = continuation()
+        if grant is not None:
+            prior = grant["previous"]["ledger_chain"]
+            if not begins_with(self.path, prior):
+                raise OtherPacketError("the spend ledger lost the failed result's chain")
+            if grant["phase"] != "sealed":
+                raise OtherPacketError("the new packet's marks and rubric are not sealed")
+            next_packet = grant["next"]
+            if (self.marks_digest, self.inputs_digest) != (
+                next_packet["marks_digest"],
+                next_packet["inputs_digest"],
+            ) or self.cases_digest != next_packet["cases_digest"]:
+                raise OtherPacketError("the packet differs from the sealed continuation grant")
+            old_pair = (
+                grant["previous"]["marks_digest"],
+                grant["previous"]["inputs_digest"],
+            )
+            new_pair = (self.marks_digest, self.inputs_digest)
+            split = prior["calls"]
+            if any(
+                (c["marks_digest"], c["inputs_digest"]) != old_pair for c in body["calls"][:split]
+            ) or any(
+                (c["marks_digest"], c["inputs_digest"]) != new_pair for c in body["calls"][split:]
+            ):
+                raise OtherPacketError("the spend ledger is not the authorized old and new packets")
+            return
         for call in body["calls"]:
             if (call["marks_digest"], call["inputs_digest"]) != (
                 self.marks_digest,
