@@ -8,10 +8,13 @@ Claude Code case's checks frozen as they stood at the capture.
 
 from __future__ import annotations
 
+import contextlib
+import dataclasses
 import datetime as dt
 import hashlib
 import json
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -152,6 +155,7 @@ BINDING = {
     "argv_digest": "ab" * 32,
     "destination": "Anthropic",
     "binary": "~/.local/share/claude/versions/2.1.281",
+    "binary_sha256": "cd" * 32,
     "cli_version": "2.1.281 (Claude Code)",
     "signature": "Developer ID Q6L2SF6YDW com.anthropic.claude-code",
 }
@@ -161,7 +165,7 @@ _VERIFIED = score_abstention.VerifiedClaude(
     BINDING["cli_version"],
     "/abs/claude",
     BINDING["signature"],
-    (0, 0, 0, 0, 0, ""),
+    (0, 0, 0, 0, 0, BINDING["binary_sha256"]),
 )
 
 _LEDGER_PATCH: Any = None
@@ -824,11 +828,12 @@ class Q3TheDestinationAndBinaryAreBoundTest(_Packet):
             return mock.Mock(return_value=mock.Mock(returncode=0, stdout=f"{version}\n"))
 
         with mock.patch.object(score_abstention, "CLAUDE_VERSIONS_ROOTS", (str(versions),)):
-            path, version, absolute, _signed, _identity = score_abstention.verify_claude_binary(
+            verified = score_abstention.verify_claude_binary(
                 resolver=lambda _name: str(real), runner=run("2.1.281 (Claude Code)")
             )
-            self.assertEqual("2.1.281 (Claude Code)", version)
-            self.assertEqual(str(real.resolve()), absolute)
+            self.addCleanup(verified.close)
+            self.assertEqual("2.1.281 (Claude Code)", verified.version)
+            self.assertNotEqual(str(real.resolve()), verified.path)
             for resolver, runner in (
                 (lambda _name: str(stub), run("2.1.281 (Claude Code)")),
                 (lambda _name: str(lookalike), run("2.1.281 (Claude Code)")),
@@ -838,7 +843,7 @@ class Q3TheDestinationAndBinaryAreBoundTest(_Packet):
             ):
                 with self.subTest(), self.assertRaises(score_abstention.BinaryError):
                     score_abstention.verify_claude_binary(resolver=resolver, runner=runner)
-        self.assertNotIn(str(Path.home()), path)
+        self.assertNotIn(str(Path.home()), verified.shown)
 
     def test_the_probe_writes_no_result_and_charges_nothing(self) -> None:
         results = self.home / "claude-results.json"
@@ -1185,11 +1190,472 @@ class _InstalledLayout(unittest.TestCase):
         return run
 
     def verify(self, platform: str, *, signed: bool) -> score_abstention.VerifiedClaude:
-        return score_abstention.verify_claude_binary(
+        verified = score_abstention.verify_claude_binary(
             resolver=lambda _name: str(self.binary),
             runner=self.runner(signed=signed),
             platform=platform,
         )
+        self.addCleanup(verified.close)
+        return verified
+
+
+class DRC4731VerifiedPrivateBytesTest(_InstalledLayout):
+    """Install-path changes must never select the executable after verification."""
+
+    def test_oversized_source_refuses_before_allocating_a_copy(self) -> None:
+        with self.binary.open("wb") as source:
+            source.truncate(2 << 20)
+        destination = Path(self.temp.name, "oversized-copy")
+        with (
+            mock.patch.object(score_abstention, "MAX_CLAUDE_COPY_BYTES", 1 << 20, create=True),
+            self.assertRaises(score_abstention.BinaryError),
+        ):
+            score_abstention._copy_claude(str(self.binary), str(destination))
+        self.assertFalse(destination.exists())
+
+    def test_growing_source_cannot_write_past_the_copy_limit(self) -> None:
+        self.binary.write_bytes(b"x" * (1 << 19))
+        destination = Path(self.temp.name, "growing-copy")
+        native_open = score_abstention._open_cli
+        source_path = self.binary
+
+        class GrowingStream:
+            def __init__(self, stream: Any) -> None:
+                self.stream = stream
+                self.grew = False
+
+            def __enter__(self) -> Any:
+                self.stream.__enter__()
+                return self
+
+            def __exit__(self, *exc: object) -> None:
+                self.stream.__exit__(*exc)
+
+            def fileno(self) -> int:
+                return int(self.stream.fileno())
+
+            def read(self, count: int) -> bytes:
+                if not self.grew:
+                    with source_path.open("ab") as source:
+                        source.write(b"y" * (1 << 20))
+                    self.grew = True
+                return bytes(self.stream.read(count))
+
+        def opened(path: str) -> GrowingStream:
+            return GrowingStream(native_open(path))
+
+        with (
+            mock.patch.object(score_abstention, "MAX_CLAUDE_COPY_BYTES", 1 << 20, create=True),
+            mock.patch.object(score_abstention, "_open_cli", side_effect=opened),
+            self.assertRaises(score_abstention.BinaryError),
+        ):
+            score_abstention._copy_claude(str(self.binary), str(destination))
+        self.assertLessEqual(destination.stat().st_size, 1 << 20)
+
+    def test_signature_and_version_execute_only_an_owner_private_copy(self) -> None:
+        verified = self.verify("darwin", signed=True)
+        self.assertNotEqual(str(self.binary.resolve()), verified.path)
+        copied = Path(verified.path)
+        self.assertEqual(self.binary.read_bytes(), copied.read_bytes())
+        if os.name != "nt":  # POSIX modes; Windows uses profile ACLs/read-only attributes.
+            self.assertEqual(0o700, copied.parent.stat().st_mode & 0o777)
+            self.assertEqual(0o500, copied.stat().st_mode & 0o777)
+        self.assertEqual(verified.path, self.ran[0][-1])
+        self.assertEqual([verified.path, "--version"], self.ran[1])
+        installed = self.binary.resolve()
+        shown = (
+            "~/" + installed.relative_to(Path.home()).as_posix()
+            if installed.is_relative_to(Path.home())
+            else str(installed)
+        )
+        self.assertEqual(shown, verified.shown)
+        verified.close()
+        self.assertFalse(copied.parent.exists())
+
+    def test_install_swap_after_copy_does_not_replace_the_version_executable(self) -> None:
+        original = self.binary.read_bytes()
+
+        def run(command: list[str], **_kwargs: Any) -> Any:
+            if Path(command[0]).name == "codesign":
+                self.binary.write_bytes(b"replacement install bytes")
+                return mock.Mock(returncode=0, stdout="", stderr="")
+            self.assertNotEqual(str(self.binary.resolve()), command[0])
+            self.assertEqual(original, Path(command[0]).read_bytes())
+            return mock.Mock(returncode=0, stdout="9.9.9 (Claude Code)\n", stderr="")
+
+        verified = score_abstention.verify_claude_binary(
+            resolver=lambda _name: str(self.binary), runner=run, platform="darwin"
+        )
+        self.addCleanup(verified.close)
+        self.assertEqual(original, Path(verified.path).read_bytes())
+
+    @unittest.skipIf(os.name == "nt", "controlled POSIX helper, not an authentic CLI measurement")
+    def test_a_reading_executes_verified_bytes_after_the_install_is_rewritten(self) -> None:
+        self.binary.write_bytes(
+            b'#!/bin/sh\nif [ "$1" = "--version" ]; then\n'
+            b"printf '9.9.9 (Claude Code)\\n'\nelse\nprintf 'verified-reading'\nfi\n"
+        )
+        config = _state_config()
+        self.addCleanup(shutil.rmtree, config.state_home, True)
+        with score_abstention.verify_claude_binary(
+            resolver=lambda _name: str(self.binary), platform="linux"
+        ) as verified:
+            self.binary.write_bytes(b"#!/bin/sh\nprintf 'replacement-reading'\n")
+            model = reading.ClaudeReadingModel(
+                config,
+                binary_resolver=score_abstention.PinnedClaude(verified.path, verified.identity),
+            )
+            self.assertEqual(("verified-reading", "ok"), model("synthetic", output_cap_bytes=64))
+        self.assertFalse(Path(verified.path).exists())
+
+    def test_signature_refusal_removes_the_private_copy(self) -> None:
+        with self.assertRaises(score_abstention.BinaryError):
+            self.verify("darwin", signed=False)
+        self.assertEqual(1, len(self.ran))
+        self.assertFalse(Path(self.ran[0][-1]).parent.exists())
+
+    def test_version_refusal_removes_the_private_copy(self) -> None:
+        paths: list[Path] = []
+
+        def runner(command: list[str], **_kwargs: Any) -> Any:
+            paths.append(Path(command[0]))
+            return mock.Mock(returncode=0, stdout="8.8.8 (Claude Code)", stderr="")
+
+        with self.assertRaises(score_abstention.BinaryError):
+            score_abstention.verify_claude_binary(
+                resolver=lambda _name: str(self.binary), runner=runner, platform="linux"
+            )
+        self.assertEqual(1, len(paths))
+        self.assertFalse(paths[0].parent.exists())
+
+    def interrupted_verification_cleans(self, phase: str) -> None:
+        root = Path(self.temp.name, "copies")
+        root.mkdir()
+        for error in (KeyboardInterrupt(), SystemExit(7)):
+            with self.subTest(phase=phase, interruption=type(error).__name__):
+
+                def runner(
+                    command: list[str], *, interruption: BaseException = error, **_kwargs: Any
+                ) -> Any:
+                    signature = Path(command[0]).name == "codesign"
+                    if signature == (phase == "signature"):
+                        raise interruption
+                    return subprocess.CompletedProcess(
+                        command, 0, stdout="9.9.9 (Claude Code)\n", stderr=""
+                    )
+
+                with (
+                    mock.patch.object(observer, "reading_workdir_root", return_value=str(root)),
+                    self.assertRaises(type(error)) as interrupted,
+                ):
+                    score_abstention.verify_claude_binary(
+                        resolver=lambda _name: str(self.binary), runner=runner, platform="darwin"
+                    )
+                self.assertIs(error, interrupted.exception)
+                self.assertEqual([], list(root.iterdir()), "interrupted verification left its copy")
+
+    def test_signature_interruption_removes_the_private_copy(self) -> None:
+        self.interrupted_verification_cleans("signature")
+
+    def test_version_interruption_removes_the_private_copy(self) -> None:
+        self.interrupted_verification_cleans("version")
+
+    def test_cleanup_removes_a_copy_on_a_host_that_denies_read_only_deletion(self) -> None:
+        verified = self.verify("linux", signed=False)
+        copied = Path(verified.path)
+        native = shutil.rmtree
+
+        def readonly_sensitive(path: str, **kwargs: Any) -> None:
+            if copied.exists() and not copied.stat().st_mode & 0o200:
+                return  # The Windows read-only attribute makes ignore_errors leave the file.
+            native(path, **kwargs)
+
+        with mock.patch.object(shutil, "rmtree", side_effect=readonly_sensitive):
+            verified.close()
+        self.assertFalse(copied.parent.exists())
+
+    def test_a_source_change_while_copying_refuses_before_any_executable_runs(self) -> None:
+        native = os.fdopen
+
+        class SourceStream:
+            def __init__(self, stream: Any) -> None:
+                self.stream = stream
+                self.changed = False
+
+            def __enter__(self) -> Any:
+                return self
+
+            def __exit__(self, *_exc: object) -> None:
+                self.stream.close()
+
+            def fileno(self) -> int:
+                return int(self.stream.fileno())
+
+            def read(inner, count: int) -> bytes:  # noqa: N805 - enclosing test owns `self`
+                block: bytes = inner.stream.read(count)
+                if not inner.changed:
+                    self.binary.write_bytes(b"source changed during held-handle copy")
+                    inner.changed = True
+                return block
+
+        def opened(descriptor: int, mode: str) -> Any:
+            return SourceStream(native(descriptor, mode))
+
+        with (
+            mock.patch.object(os, "fdopen", side_effect=opened),
+            self.assertRaises(score_abstention.BinaryError),
+        ):
+            self.verify("darwin", signed=True)
+        self.assertEqual([], self.ran)
+
+    @unittest.skipIf(os.name == "nt", "POSIX FIFO and nonblocking file open")
+    def test_a_fifo_in_the_install_layout_refuses_within_the_local_bound(self) -> None:
+        self.binary.unlink()
+        os.mkfifo(self.binary, 0o600)
+        code = (
+            "import sys; sys.path.insert(0, sys.argv[3]); import score_abstention as s; "
+            "s.CLAUDE_VERSIONS_ROOTS=(sys.argv[2],); "
+            "\ndef runner(*a,**kw): raise AssertionError('an executable ran')"
+            "\ntry: s.verify_claude_binary(resolver=lambda _:sys.argv[1],runner=runner)"
+            "\nexcept s.BinaryError: sys.exit(0)"
+            "\nraise AssertionError('FIFO was accepted')"
+        )
+        result = subprocess.run(
+            [
+                sys.executable,
+                "-c",
+                code,
+                str(self.binary),
+                str(self.binary.parent),
+                str(ROOT / "scripts"),
+            ],
+            capture_output=True,
+            timeout=2,
+            check=False,
+        )
+        self.assertEqual(0, result.returncode, result.stderr.decode())
+
+    def test_a_private_identity_read_detects_a_change_during_hashing(self) -> None:
+        native = os.fstat
+        reads = 0
+
+        class ChangedStat:
+            def __init__(self, value: os.stat_result) -> None:
+                self.value = value
+
+            def __getattr__(self, name: str) -> Any:
+                return getattr(self.value, name) + (1 if name == "st_ctime_ns" else 0)
+
+        def changed(fd: int) -> Any:
+            nonlocal reads
+            reads += 1
+            value = native(fd)
+            return ChangedStat(value) if reads > 2 else value
+
+        with mock.patch.object(os, "fstat", side_effect=changed), self.assertRaises(OSError):
+            score_abstention.file_identity(str(self.binary))
+
+
+class DRC4731PreparationBeforeChargeTest(unittest.TestCase):
+    """Local refusal creates no charged row, even when the binary resolves."""
+
+    def setUp(self) -> None:
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.config = _state_config()
+        self.addCleanup(shutil.rmtree, self.config.state_home, True)
+        self.ledger_path = Path(self.temp.name, "ledger.json")
+        self.ledger = abstention_ledger.Ledger(
+            path=str(self.ledger_path),
+            cap=19,
+            marks_digest="a" * 64,
+            inputs_digest="b" * 64,
+            producer="claude",
+        )
+        self.runs: list[str] = []
+
+        def runner(command: list[str], **kwargs: Any) -> Any:
+            self.runs.append(command[0])
+            kwargs["stdout"].write(b"{}")
+            return subprocess.CompletedProcess(command, 0)
+
+        self.model = reading.ClaudeReadingModel(
+            self.config, runner=runner, binary_resolver=lambda _name: "/synthetic/claude"
+        )
+
+    def refused(self) -> None:
+        charged = score_abstention._Charged(self.ledger, "c" * 16, self.model)
+        try:
+            result = charged("prompt", output_cap_bytes=32)
+        except (KeyError, OSError) as error:
+            self.fail(f"local preparation escaped instead of refusing: {error}")
+        self.assertEqual([], self.runs)
+        self.assertFalse(self.ledger_path.exists(), "preparation spent a model call")
+        self.assertEqual(("", "failed"), result)
+
+    @unittest.skipIf(os.name == "nt", "password database is POSIX")
+    def test_missing_password_database_entry_refuses_without_a_charge(self) -> None:
+        with mock.patch.object(observer, "_account", side_effect=KeyError("no account")):
+            self.refused()
+
+    @unittest.skipIf(os.name == "nt", "password database is POSIX")
+    def test_root_home_refuses_without_a_charge(self) -> None:
+        with mock.patch.object(observer, "_account", return_value=("/", "root")):
+            self.refused()
+
+    def test_unwritable_private_workdir_refuses_without_a_charge(self) -> None:
+        with mock.patch.object(tempfile, "mkdtemp", side_effect=PermissionError("no")):
+            self.refused()
+
+    def test_unwritable_output_directory_refuses_without_a_charge(self) -> None:
+        native = tempfile.mkstemp
+
+        def mkstemp(**kwargs: Any) -> tuple[int, str]:
+            if kwargs.get("prefix") == "reading-claude-":
+                raise PermissionError("no")
+            return native(**kwargs)
+
+        with mock.patch.object(tempfile, "mkstemp", side_effect=mkstemp):
+            self.refused()
+
+    def test_failed_output_stream_creation_closes_the_raw_descriptor(self) -> None:
+        native = tempfile.mkstemp
+        descriptors: list[int] = []
+
+        def mkstemp(**kwargs: Any) -> tuple[int, str]:
+            descriptor, path = native(**kwargs)
+            if kwargs.get("prefix") == "reading-claude-":
+                descriptors.append(descriptor)
+            return descriptor, path
+
+        with (
+            mock.patch.object(tempfile, "mkstemp", side_effect=mkstemp),
+            mock.patch.object(os, "fdopen", side_effect=OSError("cannot open stream")),
+        ):
+            self.refused()
+        self.assertEqual(1, len(descriptors))
+        try:
+            with self.assertRaises(OSError):
+                os.fstat(descriptors[0])
+        finally:
+            with contextlib.suppress(OSError):
+                os.close(descriptors[0])
+
+    def interrupted_preparation_cleans(self, phase: str) -> None:
+        root = Path(self.temp.name, "cwd")
+        root.mkdir()
+        native = tempfile.mkstemp
+        for error in (KeyboardInterrupt(), SystemExit(7)):
+            with self.subTest(phase=phase, interruption=type(error).__name__):
+                descriptors: list[int] = []
+
+                def mkstemp(
+                    *,
+                    interruption: BaseException = error,
+                    captured: list[int] = descriptors,
+                    **kwargs: Any,
+                ) -> tuple[int, str]:
+                    if phase == "output":
+                        raise interruption
+                    descriptor, path = native(**kwargs)
+                    captured.append(descriptor)
+                    return descriptor, path
+
+                try:
+                    with (
+                        mock.patch.object(observer, "reading_workdir_root", return_value=str(root)),
+                        mock.patch.object(tempfile, "mkstemp", side_effect=mkstemp),
+                        mock.patch.object(os, "fdopen", side_effect=error),
+                        self.assertRaises(type(error)) as interrupted,
+                    ):
+                        score_abstention._Charged(self.ledger, "c" * 16, self.model)(
+                            "prompt", output_cap_bytes=32
+                        )
+                    self.assertIs(error, interrupted.exception)
+                    self.assertEqual([], self.runs)
+                    self.assertFalse(self.ledger_path.exists(), "interruption charged a model call")
+                    for descriptor in descriptors:
+                        with self.assertRaises(OSError):
+                            os.fstat(descriptor)
+                    self.assertEqual([], list(root.iterdir()), "interruption left a private cwd")
+                    self.assertEqual([], list(self.config.state_dir.iterdir()))
+                finally:
+                    for descriptor in descriptors:
+                        with contextlib.suppress(OSError):
+                            os.close(descriptor)
+
+    def test_output_allocation_interruption_removes_the_private_cwd(self) -> None:
+        self.interrupted_preparation_cleans("output")
+
+    def test_stream_open_interruption_closes_the_descriptor_and_removes_private_files(self) -> None:
+        self.interrupted_preparation_cleans("stream")
+
+    def test_prepared_files_are_removed_when_the_ledger_refuses(self) -> None:
+        with (
+            mock.patch.object(
+                self.ledger, "charge", side_effect=abstention_ledger.LedgerError("locked")
+            ),
+            self.assertRaises(abstention_ledger.LedgerError),
+        ):
+            score_abstention._Charged(self.ledger, "c" * 16, self.model)(
+                "prompt", output_cap_bytes=32
+            )
+        self.assertEqual([], list(self.config.state_dir.iterdir()))
+        self.assertEqual([], self.runs)
+
+    def test_success_charges_once_after_private_files_exist(self) -> None:
+        charged = score_abstention._Charged(self.ledger, "c" * 16, self.model)
+        self.assertEqual(("{}", "ok"), charged("prompt", output_cap_bytes=32))
+        self.assertEqual(["/synthetic/claude"], self.runs)
+        calls = abstention_ledger.read(str(self.ledger_path))["calls"]
+        self.assertEqual(1, len(calls))
+        self.assertEqual("ok", calls[0]["status"])
+        self.assertEqual([], list(self.config.state_dir.iterdir()))
+
+
+class DRC4731CodeSensitiveParserStampTest(unittest.TestCase):
+    """The stamp ignores layout, while changed derivation still invalidates packets."""
+
+    def setUp(self) -> None:
+        self.actual_parser_files = mark_abstention._PARSER_FILES
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        runtime = Path(self.temp.name, "cargento_runtime")
+        runtime.mkdir()
+        self.parser = runtime / "sample.py"
+        patch = mock.patch.multiple(
+            mark_abstention, _SKILL=self.temp.name, _PARSER_FILES=("sample.py",)
+        )
+        patch.start()
+        self.addCleanup(patch.stop)
+
+    def stamp(self, source: str) -> str:
+        self.parser.write_text(source)
+        return mark_abstention.parser_digest()
+
+    def test_comments_and_formatting_keep_the_same_stamp(self) -> None:
+        first = self.stamp("def derive(row):\n    return row.get('result', 0)\n")
+        second = self.stamp(
+            "# prose changed\ndef derive( row ):\n\n    # another comment\n"
+            '    return row.get( "result", 0 )\n'
+        )
+        self.assertEqual(first, second)
+
+    def test_changed_derivation_invalidates_the_stamp(self) -> None:
+        first = self.stamp("def derive(row):\n    return row.get('result', 0)\n")
+        second = self.stamp("def derive(row):\n    return row.get('result', 1)\n")
+        self.assertNotEqual(first, second)
+
+    def test_shared_byte_reader_change_invalidates_a_frozen_packet(self) -> None:
+        runtime = Path(self.temp.name, "cargento_runtime")
+        for name in ("project_context.py", "reading.py", "io.py"):
+            shutil.copy2(SKILL / "cargento_runtime" / name, runtime / name)
+        with mock.patch.object(mark_abstention, "_PARSER_FILES", self.actual_parser_files):
+            before = mark_abstention.parser_digest()
+            with (runtime / "io.py").open("a") as handle:
+                handle.write("\nDERIVATION_PROBE = 1\n")
+            after = mark_abstention.parser_digest()
+        self.assertNotEqual(before, after)
 
 
 class DRC4710TheCliIsBoundByItsSignatureTest(_InstalledLayout):
@@ -1209,7 +1675,7 @@ class DRC4710TheCliIsBoundByItsSignatureTest(_InstalledLayout):
         self.assertIn('certificate leaf[subject.OU] = "Q6L2SF6YDW"', requirement)
         self.assertIn('identifier "com.anthropic.claude-code"', requirement)
         self.assertIn("anchor apple generic", requirement)
-        self.assertEqual(str(self.binary.resolve()), codesign[-1])
+        self.assertNotEqual(str(self.binary.resolve()), codesign[-1])
         self.assertEqual("Developer ID Q6L2SF6YDW com.anthropic.claude-code", signature)
         self.assertEqual("--version", self.ran[1][1])
 
@@ -1248,7 +1714,7 @@ class DRC4710TheVerifiedFileIsTheOneThatRunsTest(_InstalledLayout):
         # 3.12 on Windows gives `os.stat` the creation time as `st_ctime` and
         # `os.fstat` the change time, which differ whenever the write lands a
         # clock tick after the create (DRC-4707, PR #419 run 36359883058).
-        with self.binary.open("rb") as handle:
+        with open(verified.path, "rb") as handle:
             stat = os.fstat(handle.fileno())
         self.assertEqual(
             (stat.st_dev, stat.st_ino, stat.st_size, stat.st_mtime_ns, stat.st_ctime_ns,
@@ -1261,24 +1727,29 @@ class DRC4710TheVerifiedFileIsTheOneThatRunsTest(_InstalledLayout):
         pinned = score_abstention.PinnedClaude(verified.path, verified.identity)
         with mock.patch("builtins.print"):
             self.assertEqual(verified.path, pinned("claude"))
-            replacement = self.binary.with_name("swap")
+            copied = Path(verified.path)
+            if os.name == "nt":
+                copied.chmod(0o700)  # Windows cannot replace a read-only destination.
+            replacement = copied.with_name("swap")
             replacement.write_bytes(b"#!/bin/sh\necho stub\n")
-            os.replace(replacement, self.binary)
+            os.replace(replacement, copied)
             self.assertIsNone(pinned("claude"))
             self.assertIsNone(pinned("claude"), "a refusal is not undone by the next call")
 
     def test_a_file_rewritten_in_place_is_refused(self) -> None:
         verified = self.verify("darwin", signed=True)
         pinned = score_abstention.PinnedClaude(verified.path, verified.identity)
-        original = self.binary.read_bytes()
+        copied = Path(verified.path)
+        copied.chmod(0o700)
+        original = copied.read_bytes()
         with mock.patch("builtins.print"):
-            with self.binary.open("r+b") as handle:
+            with copied.open("r+b") as handle:
                 handle.write(b"X")
             self.assertIsNone(pinned("claude"))
         fresh = score_abstention.PinnedClaude(verified.path, verified.identity)
-        self.binary.write_bytes(original)
-        stat = self.binary.stat()
-        os.utime(self.binary, ns=(stat.st_atime_ns, verified.identity[3]))
+        copied.write_bytes(original)
+        stat = copied.stat()
+        os.utime(copied, ns=(stat.st_atime_ns, verified.identity[3]))
         with mock.patch("builtins.print"):
             # Review N2: identical bytes and mtime no longer pass, because
             # the write moved the inode's ctime, which `os.utime` cannot set.
@@ -1320,7 +1791,9 @@ class DRC4710TheVerifiedFileIsTheOneThatRunsTest(_InstalledLayout):
     def test_a_file_changed_between_the_signature_and_the_version_is_refused(self) -> None:
         def run(command: list[str], **_kwargs: Any) -> Any:
             if Path(command[0]).name == "codesign":
-                self.binary.write_bytes(b"#!/bin/sh\necho '9.9.9 (Claude Code)' # swapped\n")
+                copied = Path(command[-1])
+                copied.chmod(0o700)
+                copied.write_bytes(b"#!/bin/sh\necho '9.9.9 (Claude Code)' # swapped\n")
                 return mock.Mock(returncode=0, stdout="", stderr="")
             return mock.Mock(returncode=0, stdout="9.9.9 (Claude Code)\n", stderr="")
 
@@ -1608,6 +2081,50 @@ class DRC4711TheContentsAreCheckedAgainstTheTranscriptTest(_Packet):
         with self.assertRaises(mark_abstention.FreezeError) as raised:
             self.genuine(extra=(_asked(self.start, CLAUDE_SID, 25),))
         self.assertEqual("activity-after-stop", str(raised.exception))
+
+    def test_administrative_records_after_stop_do_not_demote_a_case(self) -> None:
+        case = self.genuine(
+            extra=(
+                {
+                    "type": "system",
+                    "subtype": "turn_duration",
+                    "durationMs": 4,
+                    "timestamp": _stamp(self.start, 25),
+                },
+                {
+                    "type": "progress",
+                    "data": {"type": "hook_progress"},
+                    "timestamp": _stamp(self.start, 26),
+                },
+            )
+        )
+        self.assertEqual("recorded", case["origin"])
+        self.assertEqual([], self.vouch()(case))
+
+    def test_a_tool_result_after_stop_is_still_activity(self) -> None:
+        result = {
+            "type": "user", "isSidechain": False, "cwd": "/w", "sessionId": CLAUDE_SID,
+            "timestamp": _stamp(self.start, 25), "message": {"role": "user", "content": [
+                {"type": "tool_result", "tool_use_id": "synthetic", "content": "29 passed"}]},
+        }  # fmt: skip
+        with self.assertRaises(mark_abstention.FreezeError) as raised:
+            self.genuine(extra=(result,))
+        self.assertEqual("activity-after-stop", str(raised.exception))
+
+    def test_the_freeze_refuses_a_parent_check_cutoff_beyond_its_byte_budget(self) -> None:
+        self.config = dataclasses.replace(self.config, turn_scan_max_bytes=1)
+        with self.assertRaises(mark_abstention.FreezeError) as raised:
+            self.genuine()
+        self.assertEqual("check-cutoff-unreachable", str(raised.exception))
+
+    def test_score_time_recheck_demotes_an_unreachable_parent_check_cutoff(self) -> None:
+        case = self.genuine()
+        config = dataclasses.replace(self.config, turn_scan_max_bytes=1)
+        transcript = self.index[CLAUDE_SID[:8]]
+        self.assertEqual(
+            ["check-cutoff-unreachable"],
+            mark_abstention.content_refusal(config, case, transcript),
+        )
 
     def test_a_dropped_newer_message_is_demoted(self) -> None:
         # Scoring F2 and Codex 2: the redirect is what tells a prompt-directed
@@ -2011,6 +2528,24 @@ class Q9AResumeTrustsOnlyRecordsTheLedgerVouchesForTest(_Ledgered):
         self.assertIn(TAIL, model.prompts[0])
         self.assertEqual(3, len(self.calls()))
 
+    def test_a_newly_demoted_case_does_not_carry_its_prior_record(self) -> None:
+        self.score(_Model((_reply(goal=("consistent", (1,))), "ok")))
+        previous = self.local()
+        case_id = self.cases[0]["id"]
+        self.assertTrue(previous["records"][case_id]["reached_model"])
+        calls = self.calls()
+        model = _Model()
+        self.assertEqual(
+            0,
+            self.score(model, resume=previous, vouch=lambda _case: ["transcript-missing"]),
+        )
+        self.assertEqual([], model.prompts)
+        self.assertEqual(calls, self.calls())
+        record = self.local()["records"][case_id]
+        self.assertFalse(record["reached_model"])
+        self.assertEqual(score_abstention.WITHHELD_NOT_RECORDED, record["withheld"])
+        self.assertEqual(0, self.committed()["counts"]["reached_model"])
+
     def test_a_hand_edited_record_refuses_the_resume(self) -> None:
         self.two_cases()
         self.score(_Model(("", "failed"), ("{}", "ok")))
@@ -2030,7 +2565,208 @@ class Q9AResumeTrustsOnlyRecordsTheLedgerVouchesForTest(_Ledgered):
         self.assertEqual([], model.prompts)
 
 
+class DRC4731ResumeBindsTheVerifiedProducerTest(_Ledgered):
+    """Editable summary metadata cannot relabel the producer of authenticated records."""
+
+    def assert_resume_refused(self, previous: dict[str, Any], binding: dict[str, str]) -> None:
+        before = {path: path.read_bytes() for path in (self.result, self.summary, self.ledger_path)}
+        model = _Model()
+        self.assertEqual(2, self.score(model, resume=previous, binding=binding))
+        self.assertEqual([], model.prompts)
+        self.assertEqual(before, {path: path.read_bytes() for path in before})
+
+    def test_editing_the_summary_cannot_rebind_any_owned_producer_field(self) -> None:
+        replacements = {
+            "producer": "codex",
+            "model": "another-model",
+            "argv_digest": "ef" * 32,
+            "destination": "another-destination",
+            "binary": "~/.local/share/claude/versions/9.9.9",
+            "binary_sha256": "ef" * 32,
+            "cli_version": "9.9.9 (Claude Code)",
+            "signature": "unchecked sha256:" + "ef" * 32,
+        }
+        for name, replacement in replacements.items():
+            with self.subTest(binding=name):
+                self.score(_Model())
+                previous = self.local()
+                binding = {**BINDING, name: replacement}
+                previous["summary"][name] = replacement
+                self.assert_resume_refused(previous, binding)
+
+    def test_a_legacy_records_only_ledger_run_cannot_resume(self) -> None:
+        self.score(_Model())
+        previous = self.local()
+        self.packet_ledger().record_run(abstention_ledger.digest(previous["records"]))
+        self.assert_resume_refused(previous, BINDING)
+
+    def test_the_same_binding_carries_records_without_another_call(self) -> None:
+        self.score(_Model())
+        previous = self.local()
+        calls = self.calls()
+        model = _Model()
+        self.assertEqual(0, self.score(model, resume=previous))
+        self.assertEqual([], model.prompts)
+        self.assertEqual(calls, self.calls())
+        self.assertEqual(previous["records"], self.local()["records"])
+
+    def test_a_new_copied_digest_refuses_an_unedited_resume(self) -> None:
+        self.score(_Model())
+        self.assert_resume_refused(self.local(), {**BINDING, "binary_sha256": "ef" * 32})
+
+    def test_a_resume_without_the_copied_digest_refuses(self) -> None:
+        self.score(_Model())
+        previous = self.local()
+        del previous["summary"]["binary_sha256"]
+        self.assert_resume_refused(previous, BINDING)
+
+
 # ------------------------------------------------------------------ DRC-4666 verifier round
+
+
+@unittest.skipIf(os.name == "nt", "missing passwd admission is POSIX only")
+class DRC4731ColdAccountAdmissionTest(unittest.TestCase):
+    """Missing account authority is refused before importing runtime or touching evidence/spend."""
+
+    CHILD = r"""
+import argparse, contextlib, importlib, io, json, os, pwd, runpy, sys, types
+from pathlib import Path
+scripts, mode, canonical = sys.argv[1:]
+sys.path.insert(0, scripts)
+counts = {'data_reads': 0, 'writes': 0, 'children': 0, 'network': 0, 'runtime': 0}
+def audit(event, args):
+    if event == 'subprocess.Popen':
+        counts['children'] += 1
+        raise AssertionError('nested process forbidden')
+    if event in ('socket.connect', 'socket.bind'):
+        counts['network'] += 1
+        raise AssertionError('network forbidden')
+    if event == 'import' and str(args[0]).startswith('cargento_runtime'):
+        counts['runtime'] += 1
+        raise AssertionError('runtime must not be reached')
+    if event in ('os.mkdir', 'os.remove', 'os.rename', 'os.rmdir', 'os.link', 'os.symlink', 'os.chmod'):
+        counts['writes'] += 1
+        raise AssertionError('filesystem mutation forbidden')
+    if event == 'open':
+        path, _mode, flags = args
+        if isinstance(flags, int) and flags & (os.O_WRONLY | os.O_RDWR | os.O_CREAT | os.O_TRUNC):
+            counts['writes'] += 1
+            raise AssertionError('file write forbidden')
+        if isinstance(path, str) and path.endswith(('.json', '.jsonl', '.sqlite', '.db', '.lock')):
+            counts['data_reads'] += 1
+            raise AssertionError('evidence or ledger read forbidden')
+sys.addaudithook(audit)
+def absent(_uid):
+    raise KeyError('synthetic missing passwd entry')
+known = lambda _uid: types.SimpleNamespace(pw_dir=canonical, pw_name='synthetic_account')
+pwd.getpwuid = absent if mode.startswith('missing') or mode == 'recovered_cli' else known
+result = {'mode': mode}
+try:
+    if mode in ('missing_cli', 'recovered_cli'):
+        if mode == 'recovered_cli':
+            importlib.import_module('score_abstention')
+            pwd.getpwuid = known
+        sys.argv = [str(Path(scripts, 'score_abstention.py')), '--score', '--producer', 'claude', '--max-calls', '1']
+        captured = io.StringIO()
+        with contextlib.redirect_stdout(captured):
+            try:
+                runpy.run_path(sys.argv[0], run_name='__main__')
+            except SystemExit as exit:
+                result['exit_code'] = exit.code
+        result['stdout'] = captured.getvalue()
+    else:
+        score = importlib.import_module('score_abstention')
+        ledger = importlib.import_module('abstention_ledger')
+        marker = importlib.import_module('mark_abstention')
+        result['imported'] = True
+        if mode == 'missing_import':
+            result['unavailable_roots'] = ledger.LEDGER_PATH is None and marker.CLAUDE_PROJECTS_ROOT is None and marker.STORE_HOME is None and score.CLAUDE_VERSIONS_ROOTS == ()
+            result['home_guard_closed'] = ledger.home_moved() is True
+            try:
+                ledger.read(ledger.LEDGER_PATH)
+            except ledger.LedgerError:
+                result['default_read_refused'] = True
+            try:
+                ledger.Ledger(ledger.LEDGER_PATH, cap=1, marks_digest='a' * 64, inputs_digest='b' * 64, producer='claude').charge('c' * 16)
+            except ledger.LedgerError:
+                result['default_charge_refused'] = True
+        else:
+            result['canonical_roots'] = ledger.LEDGER_PATH == os.path.join(canonical, '.cargento', 'drc-4666-spend.json') and marker.CLAUDE_PROJECTS_ROOT == os.path.join(canonical, '.claude', 'projects') and marker.STORE_HOME == os.path.join(canonical, '.cargento') and score.CLAUDE_VERSIONS_ROOTS == (os.path.join(canonical, '.local', 'share', 'claude', 'versions'),)
+            args = argparse.Namespace(score=True, probe_argv=False, producer='claude', max_calls=1, resume=False)
+            result['refusal'] = score._argument_refusal(args)
+            result['home_moved'] = ledger.home_moved()
+except BaseException as error:
+    result['exception'] = type(error).__name__
+result['counts'] = counts
+print(json.dumps(result))
+"""
+
+    def run_cold(self, mode: str) -> dict[str, Any]:
+        with tempfile.TemporaryDirectory(prefix="qualification-cold-account-") as temporary:
+            canonical = str(Path(temporary, "canonical-account"))
+            environ = {
+                **os.environ,
+                "HOME": canonical + ("-other" if mode == "moved_home" else ""),
+                "CARGENTO_HOME": str(Path(temporary, "private-packet")),
+                "PYTHONDONTWRITEBYTECODE": "1",
+            }
+            result = subprocess.run(
+                [sys.executable, "-B", "-c", self.CHILD, str(ROOT / "scripts"), mode, canonical],
+                cwd=temporary,
+                env=environ,
+                capture_output=True,
+                text=True,
+                timeout=5,
+                check=False,
+            )
+        self.assertEqual(0, result.returncode, result.stderr)
+        observed: dict[str, Any] = json.loads(result.stdout)
+        self.assertEqual(
+            {"data_reads": 0, "writes": 0, "children": 0, "network": 0, "runtime": 0},
+            observed["counts"],
+            observed,
+        )
+        return observed
+
+    def test_missing_passwd_cold_import_keeps_canonical_roots_unavailable(self) -> None:
+        observed = self.run_cold("missing_import")
+        self.assertNotIn("exception", observed)
+        for name in (
+            "imported",
+            "unavailable_roots",
+            "home_guard_closed",
+            "default_read_refused",
+            "default_charge_refused",
+        ):
+            self.assertIs(True, observed.get(name), observed)
+
+    def test_missing_passwd_actual_score_cli_refuses_before_any_action(self) -> None:
+        observed = self.run_cold("missing_cli")
+        self.assertNotIn("exception", observed)
+        self.assertEqual(2, observed.get("exit_code"), observed)
+        self.assertIn("Refused:", observed.get("stdout", ""))
+        self.assertIn("unavailable", observed.get("stdout", "").lower())
+
+    def test_account_recovery_cannot_skip_the_cached_unavailable_default_ledger(self) -> None:
+        observed = self.run_cold("recovered_cli")
+        self.assertNotIn("exception", observed)
+        self.assertEqual(2, observed.get("exit_code"), observed)
+        self.assertIn("Refused:", observed.get("stdout", ""))
+        self.assertIn("unavailable", observed.get("stdout", "").lower())
+
+    def test_canonical_account_roots_and_matching_home_are_preserved(self) -> None:
+        observed = self.run_cold("canonical")
+        self.assertNotIn("exception", observed)
+        self.assertIs(True, observed.get("canonical_roots"), observed)
+        self.assertIs(False, observed.get("home_moved"), observed)
+        self.assertEqual("", observed.get("refusal"), observed)
+
+    def test_moved_home_still_refuses_without_touching_canonical_roots(self) -> None:
+        observed = self.run_cold("moved_home")
+        self.assertNotIn("exception", observed)
+        self.assertIs(True, observed.get("canonical_roots"), observed)
+        self.assertIs(True, observed.get("home_moved"), observed)
+        self.assertIn("Refused: HOME", observed.get("refusal", ""))
 
 
 def _real_home() -> str:
@@ -2428,7 +3164,7 @@ class AScoreFromAnotherParserIsRefusedBeforeAnyChargeTest(_Ledgered):
         self.assertFalse(self.summary.exists())
         self.assertFalse(self.result.exists())
         for words in (
-            "project_context.py or reading.py differs from the one these cases were frozen on",
+            "io.py, project_context.py or reading.py differs from the one these cases were frozen on",
             "every one of them would be demoted",
             "check out the commit the packet was frozen on",
             "re-freeze",
@@ -2449,7 +3185,7 @@ class AScoreFromAnotherParserIsRefusedBeforeAnyChargeTest(_Ledgered):
         with mock.patch("builtins.print", side_effect=_collect_into(printed)):
             score_abstention.report(self.corpus(), None, vouch=self.as_the_machine_would)
         said = "\n".join(printed)
-        self.assertIn("--score will refuse: this checkout's project_context.py", said)
+        self.assertIn("--score will refuse: this checkout's io.py", said)
         self.assertIn("1 of 2 cases carry another parser digest", said)
 
     def test_a_packet_this_checkout_froze_is_scored(self) -> None:

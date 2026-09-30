@@ -505,6 +505,22 @@ marking; the key binds to its digest, and the producer's lifecycle rules still a
 time. The format and procedure live in the
 [abstention documentation](abstention/README.md#historical-replay-case-format-4).
 
+The qualification's parser stamp now hashes parsed derivation code, with a versioned hash domain,
+rather than source bytes (DRC-4731, 2026-09-29). A comment or layout edit used to demote every
+recorded case despite deriving the same facts. Those edits now keep the stamp; changes to literals,
+expressions or control flow still invalidate the packet. Old byte-stamped packets are not rewritten,
+and the exact contents check still applies. The stamp includes `io.py`, since its bounded byte
+reader decides which check records were reachable at the freeze. A parent cutoff that the check
+budget cannot reach refuses a freeze and demotes a score-time contents check. Administrative
+records after a recorded stop do not count as resumed work; user and assistant messages do. Freeze
+a fresh packet after the final producer changes.
+
+The scorer prepares its local files before charging, and executes a verified private CLI copy so an
+installation update cannot select different bytes for a later call. The native copy measurements and
+the remaining same-owner limits are owned by
+[the security ruling](../SECURITY.md#the-abstention-check). These preparation changes do not supply
+a passing score, alter existing marks or open the Claude Code reading gate.
+
 Each (case, constraint) lands in exactly one of `withheld:<reason>`, `unparsed`, `abstained`,
 `judged:consistent` or `judged:departure`. Withheld is its own column because the corpus this was
 written against made the trap concrete: twenty of twenty three cases had an empty ledger, so the

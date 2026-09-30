@@ -3864,14 +3864,20 @@ def frozen_claude_user_messages(
 
 
 def claude_activity_between(transcript_path: str, after: float, until: float) -> bool:
-    """Whether any record in the transcript is stamped after `after` and at or before `until`."""
+    """Whether a user/assistant message was recorded after `after` and through `until`.
+
+    Administrative records such as trailing turn_duration do not resume work.
+    Tool results remain messages (Claude serializes them in user records).
+    """
     with open(transcript_path, "rb") as handle:
         for raw in handle:
             try:
                 record = json.loads(raw)
             except (ValueError, RecursionError):
                 continue
-            at = _record_timestamp(record) if isinstance(record, dict) else None
+            if not isinstance(record, dict) or record.get("type") not in {"user", "assistant"}:
+                continue
+            at = _record_timestamp(record)
             if at is not None and after < at <= until:
                 return True
     return False

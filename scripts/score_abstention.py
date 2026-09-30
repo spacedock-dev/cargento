@@ -97,6 +97,7 @@ import os
 import pathlib
 import re
 import shutil
+import stat
 import subprocess
 import sys
 import tempfile
@@ -105,7 +106,7 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
-from typing import TYPE_CHECKING, Any, NamedTuple, Self
+from typing import TYPE_CHECKING, Any, BinaryIO, Self
 
 import abstention_ledger
 import mark_abstention
@@ -152,9 +153,8 @@ MAX_CALLS = abstention_ledger.MAX_CALLS
 # Where the native installer puts each Claude Code version, one file per version
 # named for it. A `claude` resolving anywhere else is refused: a PATH stub
 # answered as `claude-sonnet-5` in review, and nothing in the result showed it.
-CLAUDE_VERSIONS_ROOTS = (
-    os.path.join(abstention_ledger.real_home(), ".local", "share", "claude", "versions"),
-)
+_CLAUDE_VERSIONS_ROOT = abstention_ledger.canonical_path(".local", "share", "claude", "versions")
+CLAUDE_VERSIONS_ROOTS = () if _CLAUDE_VERSIONS_ROOT is None else (_CLAUDE_VERSIONS_ROOT,)
 _CLAUDE_VERSION_RE = re.compile(r"^(\d+\.\d+\.\d+) \(Claude Code\)$")
 
 # DEC-15's five kinds, as the rubric file must spell them.
@@ -312,6 +312,7 @@ BINDING_KEYS = (
     "argv_digest",
     "destination",
     "binary",
+    "binary_sha256",
     "cli_version",
     "signature",
 )
@@ -337,13 +338,30 @@ class _Charged:
         self.unavailable_reason: str | None = getattr(model, "unavailable_reason", None)
 
     def __call__(self, prompt: str, *, output_cap_bytes: int) -> tuple[str, str]:
+        from cargento_runtime import observer, reading  # noqa: PLC0415 - see `_runtime`
+
         available = getattr(self.model, "available", None)
         if available is not None and not available():
             return "", "unavailable"
-        charge = self.ledger.charge(self.case_id)
-        raw, status = self.model(prompt, output_cap_bytes=output_cap_bytes)
-        self.ledger.settle(charge, status)
-        return raw, status
+        # Only Claude needs the empty cwd, but the charged and live producers
+        # share its preparation rather than predicting whether mkdir will work.
+        context = (
+            observer.prepare_claude_exec(
+                self.model.config,
+                runner=self.model.runner,
+                binary_resolver=self.model.binary_resolver,
+            )
+            if isinstance(self.model, reading.ClaudeReadingModel)
+            else contextlib.nullcontext(self.model)
+        )
+        try:
+            with context as prepared:
+                charge = self.ledger.charge(self.case_id)
+                raw, status = prepared(prompt, output_cap_bytes=output_cap_bytes)
+                self.ledger.settle(charge, status)
+                return raw, status
+        except observer.ClaudePreparationError as error:
+            return "", error.status
 
 
 class BinaryError(Exception):
@@ -351,8 +369,8 @@ class BinaryError(Exception):
 
 
 def _display_path(path: str) -> str:
-    home = abstention_ledger.real_home()
-    if path == home or path.startswith(home + os.sep):
+    home = abstention_ledger.canonical_home()
+    if home is not None and (path == home or path.startswith(home + os.sep)):
         return "~" + path[len(home) :].replace(os.sep, "/")
     return path
 
@@ -406,45 +424,78 @@ def _signature(real: str, *, platform: str, runner: Callable[..., Any]) -> str:
 Identity = tuple[int, int, int, int, int, str]
 
 
-def file_identity(path: str) -> Identity:
-    """(device, inode, size, mtime, ctime in ns, sha256) of a file, read from one open handle.
+def _open_cli(path: str) -> BinaryIO:
+    # Nonblocking prevents a swapped FIFO from hanging before fstat; nofollow
+    # refuses a new symlink after realpath. Neither flag changes regular reads.
+    flags = os.O_RDONLY | getattr(os, "O_NONBLOCK", 0) | getattr(os, "O_NOFOLLOW", 0)
+    descriptor = os.open(path, flags)
+    try:
+        _metadata(os.fstat(descriptor))
+        return os.fdopen(descriptor, "rb")
+    except BaseException:
+        os.close(descriptor)
+        raise
 
-    The change time is there because no caller can set it (review N2): a
-    rename away and back, which keeps inode, size, mtime and bytes, moves it.
+
+def _metadata(value: os.stat_result) -> tuple[int, int, int, int, int]:
+    if not stat.S_ISREG(value.st_mode):
+        raise OSError("the CLI is not a regular file")
+    return value.st_dev, value.st_ino, value.st_size, value.st_mtime_ns, value.st_ctime_ns
+
+
+def file_identity(path: str) -> Identity:
+    """The identity and sha256 of one stable regular-file handle.
+
+    Change time catches swap-and-restore even with identical bytes/mtime.
+    Sampling before and after hashing refuses a concurrent rewrite.
     """
     digest = hashlib.sha256()
-    with open(path, "rb") as handle:
-        stat = os.fstat(handle.fileno())
+    with _open_cli(path) as handle:
+        before = os.fstat(handle.fileno())
         for block in iter(lambda: handle.read(1 << 20), b""):
             digest.update(block)
-    return (
-        stat.st_dev,
-        stat.st_ino,
-        stat.st_size,
-        stat.st_mtime_ns,
-        stat.st_ctime_ns,
-        digest.hexdigest(),
-    )
+        if _metadata(os.fstat(handle.fileno())) != _metadata(before):
+            raise OSError("the CLI changed while its identity was read")
+    return (*_metadata(before), digest.hexdigest())
 
 
-class VerifiedClaude(NamedTuple):
+@dataclasses.dataclass(frozen=True)
+class VerifiedClaude:
+    """A verified private executable, kept until scoring/probing finishes."""
+
     shown: str
     version: str
     path: str
     signature: str
     identity: Identity
+    directory: str = dataclasses.field(default="", repr=False, compare=False)
+
+    def __enter__(self) -> Self:
+        return self
+
+    def __exit__(self, *_exc: object) -> None:
+        self.close()
+
+    def close(self) -> None:
+        if self.directory:
+            _remove_claude_copy(self.directory, self.path)
+
+
+def _remove_claude_copy(directory: str, copied: str) -> None:
+    # Windows refuses to delete a read-only file. Restore owner write only
+    # once the copy is no longer eligible to run, before removing its directory.
+    with contextlib.suppress(OSError):
+        os.chmod(copied, 0o700)
+    shutil.rmtree(directory, ignore_errors=True)
 
 
 class PinnedClaude:
-    """A binary resolver that answers only while the file is the one verified (Sent F4).
+    """Refuse changed private bytes before every call, permanently for this run.
 
-    Called before every call, as `claude_exec` resolves its binary. A changed
-    device, inode, size, mtime, ctime or sha256 refuses that call and every
-    later one: identical bytes mean the signature checked at verification
-    still holds, so the hash stands in for re-running `codesign`. `codesign`
-    reads the path rather than a handle, so a swap of the parent directory
-    during verification, and a same-inode rewrite between this check and the
-    spawn, are narrowed rather than closed; SECURITY.md says so.
+    The installed path is no longer used after the held-handle copy. The
+    owner-only directory prevents another account replacing the verified
+    executable, but cannot defend against another process of this owner
+    rewriting it between the identity check and spawn (SECURITY.md).
     """
 
     def __init__(self, path: str, identity: Identity) -> None:
@@ -466,44 +517,98 @@ class PinnedClaude:
         return None if self.refused else self.path
 
 
+MAX_CLAUDE_COPY_BYTES = 512 << 20
+
+
+def _copy_claude(source: str, destination: str) -> str:
+    """Copy one held regular-file handle, refusing changes during the read."""
+    digest = hashlib.sha256()
+    with _open_cli(source) as original:
+        before = os.fstat(original.fileno())
+        if before.st_size > MAX_CLAUDE_COPY_BYTES:
+            raise BinaryError("`claude` exceeds the private-copy size limit")
+        copied_bytes = 0
+        with open(destination, "xb") as copied:
+            for block in iter(lambda: original.read(1 << 20), b""):
+                copied_bytes += len(block)
+                if copied_bytes > MAX_CLAUDE_COPY_BYTES:
+                    raise BinaryError("`claude` grew past the private-copy size limit")
+                digest.update(block)
+                copied.write(block)
+        after = os.fstat(original.fileno())
+        if _metadata(before) != _metadata(after):
+            raise BinaryError("`claude` changed while its private copy was read")
+    os.chmod(destination, 0o500)
+    return digest.hexdigest()
+
+
 def verify_claude_binary(
     *,
     resolver: Callable[[str], str | None] = shutil.which,
     runner: Callable[..., Any] = subprocess.run,
     platform: str = sys.platform,
 ) -> VerifiedClaude:
-    """The real Claude Code CLI: display path, `--version` line, path, signature and identity.
+    """Verify and run only a private copy of the native installed CLI.
 
-    Real means the native installer's layout: the command resolves into one of
-    `CLAUDE_VERSIONS_ROOTS`, to a file named for the version it reports as
-    `<x.y.z> (Claude Code)`, and on macOS signed by Anthropic (`_signature`),
-    checked before the file is run at all. `--version` starts no model and
-    spends nothing.
+    A single held handle supplies the bytes. The copy is checked before it
+    executes even `--version`, and survives until the caller closes the
+    returned context. The display path names the installation provenance;
+    the identity and sha256 name the executable that actually runs.
     """
+    _runtime()
+    from cargento_runtime import observer  # noqa: PLC0415 - see `_runtime`
+
     found = resolver("claude")
     if not found or not os.path.isabs(found):
-        msg = "no absolute `claude` on PATH"
-        raise BinaryError(msg)
+        raise BinaryError("no absolute `claude` on PATH")
     real = os.path.realpath(found)
     roots = [os.path.realpath(root) for root in CLAUDE_VERSIONS_ROOTS]
     if os.path.dirname(real) not in roots:
-        msg = f"`claude` resolves to {_display_path(real)}, outside the installed versions"
-        raise BinaryError(msg)
-    identity = file_identity(real)
-    signature = _signature(real, platform=platform, runner=runner)
-    result = runner([real, "--version"], capture_output=True, text=True, timeout=30, check=False)
+        raise BinaryError(
+            f"`claude` resolves to {_display_path(real)}, outside the installed versions"
+        )
+    root = observer.reading_workdir_root()
+    if root is None:
+        raise BinaryError("no private CLI-copy location outside the account's home")
+    directory = ""
+    copied = ""
+    try:
+        directory = tempfile.mkdtemp(prefix="reading-claude-bin-", dir=root)
+        copied = os.path.join(directory, os.path.basename(real))
+        digest = _copy_claude(real, copied)
+        return _verify_private_claude(real, copied, digest, directory, platform, runner)
+    except BaseException as error:
+        if directory:
+            _remove_claude_copy(directory, copied)
+        if isinstance(error, (OSError, subprocess.SubprocessError)):
+            raise BinaryError("the private CLI copy could not be prepared or verified") from error
+        raise
+
+
+def _verify_private_claude(
+    source: str,
+    copied: str,
+    digest: str,
+    directory: str,
+    platform: str,
+    runner: Callable[..., Any],
+) -> VerifiedClaude:
+    identity = file_identity(copied)
+    if identity[-1] != digest:
+        raise BinaryError("the private CLI copy differs from the held source bytes")
+    signature = _signature(copied, platform=platform, runner=runner)
+    if file_identity(copied) != identity:
+        raise BinaryError("the private CLI copy changed during signature verification")
+    result = runner([copied, "--version"], capture_output=True, text=True, timeout=30, check=False)
     line = str(getattr(result, "stdout", "") or "").strip()
     match = _CLAUDE_VERSION_RE.fullmatch(line)
     if getattr(result, "returncode", 1) != 0 or match is None:
-        msg = "`claude --version` did not answer as Claude Code"
-        raise BinaryError(msg)
-    if match.group(1) != os.path.basename(real):
-        msg = "`claude --version` names another version than the file it runs"
-        raise BinaryError(msg)
-    if file_identity(real) != identity:
-        msg = "`claude` changed while it was being verified"
-        raise BinaryError(msg)
-    return VerifiedClaude(_display_path(real), line, real, signature, identity)
+        raise BinaryError("`claude --version` did not answer as Claude Code")
+    if match.group(1) != os.path.basename(source):
+        raise BinaryError("`claude --version` names another version than its source file")
+    if file_identity(copied) != identity:
+        raise BinaryError("the private CLI copy changed while it was being verified")
+    return VerifiedClaude(_display_path(source), line, copied, signature, identity, directory)
 
 
 class _ArgvCapturedError(Exception):
@@ -1561,6 +1666,22 @@ def _tool_output(
     )
 
 
+def _run_digest(records: Mapping[str, Any], binding: Mapping[str, str] | None) -> str:
+    """Authenticate the producer with its records in the ledger's opaque run digest.
+
+    Summary fields are editable, so matching them cannot vouch for the bytes
+    that produced carried records. The domain also refuses records-only legacy
+    run digests rather than attaching a new copied-byte claim to old results.
+    """
+    return abstention_ledger.digest(
+        {
+            "domain": "cargento-scoring-run-v1",
+            "records": records,
+            "binding": {key: (binding or {}).get(key) for key in BINDING_KEYS},
+        }
+    )
+
+
 def _resume_matches(
     resume: Mapping[str, Any],
     corpus: Corpus,
@@ -1586,7 +1707,7 @@ def _resume_matches(
         and before.get("marks_digest") == marks_digest(corpus)
         and all(before.get(k) == (binding or {}).get(k) for k in BINDING_KEYS)
         and last is not None
-        and last["records_digest"] == abstention_ledger.digest(records)
+        and last["records_digest"] == _run_digest(records, binding)
         and (last["marks_digest"], last["inputs_digest"])
         == (marks_digest(corpus), _inputs_digest(corpus))
     )
@@ -1700,7 +1821,7 @@ def parser_mismatch(corpus: Corpus) -> list[str]:
         return []
     return [
         (
-            "Refused: this checkout's project_context.py or reading.py differs from the one "
+            "Refused: this checkout's io.py, project_context.py or reading.py differs from the one "
             "these cases were frozen on."
         ),
         (
@@ -1828,7 +1949,11 @@ def score(  # noqa: PLR0913 - one keyword per thing a run is bound to
         if case is None:
             continue
         prior = kept.get(case_id)
-        if isinstance(prior, dict) and prior.get("withheld") != reading.WITHHELD_MODEL_FAILED:
+        if (
+            isinstance(prior, dict)
+            and prior.get("withheld") != reading.WITHHELD_MODEL_FAILED
+            and not (intents and case.get("demoted"))
+        ):
             records[case_id] = prior
             print(case_line(prior))
             continue
@@ -1879,7 +2004,7 @@ def score(  # noqa: PLR0913 - one keyword per thing a run is bound to
     if ledger is not None:
         summary["spend"] = {"charged": ledger.used(), "cap": ledger.cap}
         summary["ledger_chain"] = abstention_ledger.chain_of(ledger.path)
-        ledger.record_run(abstention_ledger.digest(records))
+        ledger.record_run(_run_digest(records, binding))
     _write_halves(records, summary, results_path=results_path, summary_path=summary_path)
     if any(r["withheld"] == WITHHELD_SPEND_CAP for r in records.values()):
         print(f"STOPPED at the spend ledger's cap of {ledger.cap if ledger else MAX_CALLS} calls.")
@@ -2070,6 +2195,14 @@ def results_path_for(producer: str) -> str:
 
 
 def _argument_refusal(args: argparse.Namespace) -> str:  # noqa: PLR0911 - one per line
+    if (
+        abstention_ledger.LEDGER_PATH is None
+        or mark_abstention.CLAUDE_PROJECTS_ROOT is None
+        or mark_abstention.STORE_HOME is None
+        or not CLAUDE_VERSIONS_ROOTS
+        or abstention_ledger.canonical_home() is None
+    ):
+        return "Refused: this account's canonical home is unavailable. Nothing ran."
     if (args.score or args.probe_argv) and abstention_ledger.home_moved():
         # V1: every path this check trusts is the account's, so a HOME that
         # names another directory is a second machine's worth of ledger.
@@ -2429,7 +2562,10 @@ def main(argv: list[str] | None = None) -> int:  # noqa: PLR0911 - one refusal p
         except BinaryError as error:
             print(f"Refused: {error}.")
             return 2
-        return probe_argv(config, probed.path, pinned=PinnedClaude(probed.path, probed.identity))
+        with probed:
+            return probe_argv(
+                config, probed.path, pinned=PinnedClaude(probed.path, probed.identity)
+            )
     out = args.out or (CLAUDE_SUMMARY_PATH if args.producer == "claude" else SUMMARY_PATH)
     corpus = _load_corpus(args.rubric)
     mark_abstention.print_packet(CASES_PATH, dict(corpus.cases))
@@ -2454,40 +2590,42 @@ def main(argv: list[str] | None = None) -> int:  # noqa: PLR0911 - one refusal p
     except BinaryError as error:
         print(f"Refused: {error}.")
         return 2
-    binding = {
-        "producer": "claude",
-        "model": observer.CLAUDE_READING_MODEL,
-        "argv_digest": argv_digest("claude", config),
-        "destination": destination,
-        "binary": verified.shown,
-        "cli_version": verified.version,
-        "signature": verified.signature,
-    }
-    results_path = results_path_for("claude")
-    resume = None
-    if args.resume:
-        resume = mark_abstention._load(results_path)  # noqa: SLF001
-        if not resume:
-            print(f"No earlier run at {results_path} to resume.")
-            return 2
-    return score(
-        args.port,
-        corpus,
-        config=config,
-        # Pinned to the file the result names, re-checked before every call.
-        model=reading.ClaudeReadingModel(
-            config, binary_resolver=PinnedClaude(verified.path, verified.identity)
-        ),
-        results_path=results_path,
-        summary_path=out,
-        now=time.time(),
-        binding=binding,
-        tool_destination=destination,
-        ledger_path=abstention_ledger.LEDGER_PATH,
-        max_calls=args.max_calls,
-        resume=resume,
-        vouch=mark_abstention.machine_vouch(mark_abstention.STORE_HOME),
-    )
+    with verified:
+        binding = {
+            "producer": "claude",
+            "model": observer.CLAUDE_READING_MODEL,
+            "argv_digest": argv_digest("claude", config),
+            "destination": destination,
+            "binary": verified.shown,
+            "binary_sha256": verified.identity[-1],
+            "cli_version": verified.version,
+            "signature": verified.signature,
+        }
+        results_path = results_path_for("claude")
+        resume = None
+        if args.resume:
+            resume = mark_abstention._load(results_path)  # noqa: SLF001
+            if not resume:
+                print(f"No earlier run at {results_path} to resume.")
+                return 2
+        return score(
+            args.port,
+            corpus,
+            config=config,
+            # The private copy, re-checked before each call; never the install path.
+            model=reading.ClaudeReadingModel(
+                config, binary_resolver=PinnedClaude(verified.path, verified.identity)
+            ),
+            results_path=results_path,
+            summary_path=out,
+            now=time.time(),
+            binding=binding,
+            tool_destination=destination,
+            ledger_path=abstention_ledger.LEDGER_PATH,
+            max_calls=args.max_calls,
+            resume=resume,
+            vouch=mark_abstention.machine_vouch(mark_abstention.STORE_HOME),
+        )
 
 
 if __name__ == "__main__":

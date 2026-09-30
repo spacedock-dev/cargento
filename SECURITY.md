@@ -1233,8 +1233,11 @@ unless that path sits under the account's home, or has a path component containi
 shell or a `~/tmp` convention does. Both tests ignore case, and "under home" asks the filesystem
 whether any parent is the home, because on a case-insensitive volume `/Users/ALICE` is the home
 and the CLI names its canonical spelling (review N1). It then falls back to `/tmp`, and when that fails the same test
-the reading is refused before anything runs. On Windows the system temp directory is inside the
-user's profile and no fallback is tried, so the user name is still sent there.
+the reading is refused before anything runs. A missing password-database entry, a root home of
+`/`, or an unwritable directory also refuses. The qualification prepares both the private cwd and
+output file before charging a call, so these local refusals consume none of its allowance. On
+Windows the system temp directory is inside the user's profile and no fallback is tried, so the
+user name is still sent there.
 
 The reading runs with `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1`, forced even when the operator
 set it to `0`. Measured under a no-egress sandbox on 2.1.283, the CLI otherwise looked up six other
@@ -1626,26 +1629,49 @@ through Apple's Developer ID chain, identifier `com.anthropic.claude-code`, team
 so is a machine where `codesign` cannot run (DRC-4710). No other platform checks a signature. Linux
 has none to check, and whether the Windows CLI carries an Authenticode signature was never measured.
 There the committed result records the binary's sha256 as `unchecked sha256:<hex>`, which names
-the file that ran and not who built it. A process running as the reader can rewrite the install
-directory either way, so this guards against a wrong or planted binary being recorded as the
-qualified producer, not against the account itself. The committed summary names the producer, the
-model, the argv digest, the destination, the CLI path with the home directory written `~`, its
-version and that signature phrase. The file's device, inode, size, mtime, ctime and sha256 are
-recorded at the check, confirmed unchanged after `--version`, and compared again before every call
-(`score_abstention.PinnedClaude`). A changed file refuses that call and every later one. That is
-the smaller of the two options the review offered; the other, executing a verified private copy,
-was not taken because the CLI's behaviour outside its install layout is unmeasured. Identical
-bytes keep the signature valid, so the hash stands in for re-running `codesign`. Two windows
-remain, both open only to a process running as the reader. `codesign` and `--version` read the
-path, not the handle the identity came from, so a signed copy swapped in for them and the original
-put back afterwards passes if the swap is of the parent directory. Swapping the file itself is
-refused, because a rename away and back moves the file's ctime, which nothing can set back (review
-N2). And a same-inode rewrite between the last check and the spawn still runs: the ctime and sha256
-re-check before each call narrows that window to the time between the check and `exec`, but does
-not close it. Every call is charged before it runs to one ledger at a fixed path,
+the file that ran and not who built it. The scorer copies bytes from one held regular-file handle
+into an owner-only (0700) private directory, checks the handle's identity before and after the
+copy, and makes the executable read-only to its owner (0500). It refuses a source larger than
+512 MiB before allocating the destination and stops if the source grows past that limit during the
+copy. Signature verification and
+`--version` run against that copy, and every scoring/probe call uses it. Rewriting or replacing
+the installation after the copy cannot select the executable for those calls. The context removes
+the copy when scoring or probing ends, including refusal paths and interrupted verification (DRC-4731).
+
+The committed summary names the producer, model, argv digest, destination, installation path
+with the home directory written `~`, version, signature phrase and copied-byte digest
+(`binary_sha256`). A resume carries records only when a versioned ledger run digest binds them
+to the full current producer binding, including the copied-byte digest. Editing the local summary
+cannot supply that match, and legacy records-only run digests refuse resume. A resumed case whose
+source no longer passes provenance checks replaces its former result with a withheld record without
+another model call. The private file's
+device, inode, size, mtime, ctime and sha256 are confirmed
+unchanged before and after `--version`, and compared before every call
+(`score_abstention.PinnedClaude`). Each identity read samples metadata before and after hashing.
+A changed copy refuses that call and every later one. A process running as the reader can still
+rewrite or replace files inside its own private directory between a check and spawn; this does
+not defend against the account itself. On macOS the authentic CLI's held-handle copy was measured
+on 2026-09-29: equal sha256, valid pinned code signature, and successful `--version` and `--help`
+under an OS no-egress sandbox, with zero model calls. The same version's authentic Linux ARM64
+ELF was measured the same day: its signed release manifest and pinned Anthropic signing-key
+fingerprint vouched for the source hash, the held-handle copy had equal sha256, and both commands
+succeeded as a nonroot user in a container with no network, no capabilities, and an isolated
+HOME/config/cwd. Both platforms returned 22 stdout bytes for `--version`, 22,114 for `--help`,
+and no stderr. Linux x64 and Windows copied-CLI behavior remain unmeasured. On Windows Python
+3.11.0 through 3.11.9, a shared temporary directory may not honor the requested owner-only ACL; this
+platform has not been qualified for real scoring. Synthetic helpers
+establish copy/cleanup mechanics, and do not replace those native measurements. The previous
+installation-path pin was chosen while copied-CLI behavior was unmeasured; the macOS and Linux
+ARM64 prerequisites are now satisfied, and the same-owner limit remains explicit.
+
+Local preparation owns its cwd, output file and descriptor before yielding. An interruption before
+charge removes them and is re-raised. Every call is charged after successful local preparation and
+before it runs to one ledger at a fixed path,
 `~/.cargento/drc-4666-spend.json`, under an exclusive lock, with the digests of the marks and the
 cases it was made under. It never follows `CARGENTO_HOME` or `HOME`: the home is the account's
-own, and scoring refuses while `HOME` names another. The committed result records a hash chain
+own, and scoring refuses while `HOME` names another. Without an observable account home,
+canonical roots stay unavailable and scoring refuses before runtime configuration, packet reads
+or executable verification. The committed result records a hash chain
 over the ledger's charges and their digests, and scoring refuses while the ledger does not begin
 with it, reading the committed result at its fixed path whatever `--out` says. The scorer also
 re-checks each case's provenance against this machine's transcripts, history and ends, and spends
@@ -1656,10 +1682,18 @@ newest ones up to the capture, in order, with none missing between them, none re
 least as many as the board's bounded tail reads of the transcript as it stood at the freeze, whose
 length the case records (`transcript_bytes`). An older message may be absent, because the board read
 a bounded tail when the packet was frozen. A transcript now shorter than that length, or a case that
-records none, is demoted (`transcript-truncated`). A capture with any record between the
-recorded stop and itself is refused at freeze and demoted at score time (`activity-after-stop`),
-and a case frozen under other parser code is named as such (`frozen-on-another-parser`) rather
-than read as tampered. On Windows the home falls back to `USERPROFILE`, so the
+records none, is demoted (`transcript-truncated`). A capture with a user or assistant message
+between the recorded stop and itself is refused at freeze and demoted at score time
+(`activity-after-stop`); administrative records such as turn duration do not resume work.
+If the bounded parent check scan cannot reach the capture cutoff, freezing refuses and the
+score-time contents check demotes the case (`check-cutoff-unreachable`). A case frozen under other
+parser code is named as such (`frozen-on-another-parser`) rather
+than read as tampered. The stamp hashes a versioned AST representation of the derivation files:
+the shared byte reader, check producer and reading producer. Comments and formatting do not move
+it, while literals, expressions and control flow do. Existing
+byte-stamped packets remain incompatible; neither cases nor marks are rewritten to fit the new
+stamp. A mismatch still refuses the whole scoring run before consulting or charging its ledger,
+and the contents check still requires the facts derived at capture to match. On Windows the home falls back to `USERPROFILE`, so the
 `HOME` protection is POSIX only. The ledger stops at nineteen calls across every
 run and producer, refuses every call when it cannot be read, refuses calls under other digests, and
 freezes the marks once it holds one. It holds case ids, times, statuses and digests only. The
