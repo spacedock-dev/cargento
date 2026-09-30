@@ -752,6 +752,7 @@ class Q2OneLedgerThatFailsClosedTest(_Ledgered):
         # unlocked ledger loses charges: without the lock this over-charges.
         script = (
             "import sys, time; sys.path.insert(0, sys.argv[1]); import abstention_ledger as L\n"
+            "L.CONTINUATION_PATH = sys.argv[5]\n"
             "read = L.read\n"
             "def slow(path):\n    body = read(path); time.sleep(0.05); return body\n"
             "L.read = slow\n"
@@ -765,6 +766,7 @@ class Q2OneLedgerThatFailsClosedTest(_Ledgered):
             str(self.ledger_path),
             score_abstention.marks_digest(corpus),
             score_abstention._inputs_digest(corpus),
+            str(self.home / "no-continuation-grant.json"),
         ]
         runs = [
             subprocess.Popen(

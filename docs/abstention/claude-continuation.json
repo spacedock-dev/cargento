@@ -1,0 +1,18 @@
+{
+  "v": 1,
+  "phase": "sealed",
+  "previous": {
+    "ledger_chain": {
+      "calls": 13,
+      "first": "92c26ee2b2b24750a1e2870aec5beb43",
+      "head": "11a4422e4fd35579aed7451a7e54ba2b8c9f7328b5b6fefe2154c04e7da00707"
+    },
+    "marks_digest": "8decc64870f2f026f3f37b5d0456e47fc694d6d8628c0b4090e6b74f702e8cb5",
+    "inputs_digest": "bcedfc535d54cb068a6ed222bb2281fa81a60aa51af1793e408e8b347e542b2c"
+  },
+  "next": {
+    "cases_digest": "8733bf2e404713d5b79307182c37ed1fce79a1ef53d097a6b450484016c208fd",
+    "marks_digest": "c7fddf080a50649869f0698cd6fbc65bae9bdb73e362a806813a56013ae91748",
+    "inputs_digest": "98adf9b8d1af3f4506245c82f9d04e30e96b02c604be7aa2a873f3e0b07411d3"
+  }
+}
