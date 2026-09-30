@@ -13,8 +13,11 @@ owns enablement. The scoring format and verdicts below remain available for eval
 
 That acceptance covers the Codex producer only. The Claude Code producer built by DRC-4650 has its
 own gate, `annotations.CLAUDE_ABSTENTION_CHECK`, and it is recorded `not-run`. No Claude Code
-qualification has passed. The committed [Claude Code run](claude-results.json) failed, with
-four false reassurances; the accepted packet was reviewed against Codex readings. The scorer can
+qualification has passed. The committed [first Claude Code run](claude-results.json) failed with
+four false reassurances. The [reviewed continuation](claude-continuation.json) bound five cases
+re-frozen from that recorded packet to the same spend ledger; its
+[result](claude-results-continuation.json) also failed, with five false reassurances. The accepted
+packet was reviewed against Codex readings. The scorer can
 report either producer (`--producer claude` or `--producer codex`), but this qualification scores
 Claude Code only. Format 5 below is the packet DRC-4666 qualifies Claude Code against. A fresh
 qualification is separate work. Writing a Claude Code
