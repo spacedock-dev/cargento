@@ -69,6 +69,7 @@ a file that is the reader's.
 from __future__ import annotations
 
 import argparse
+import ast
 import hashlib
 import json
 import os
@@ -132,10 +133,10 @@ INTENT_AT = 1.0
 ORIGIN_SYNTHETIC = "synthetic"
 # Where a recorded session's words can come from. A transcript anywhere else
 # was written by somebody, not recorded by the harness.
-CLAUDE_PROJECTS_ROOT = os.path.join(abstention_ledger.real_home(), ".claude", "projects")
+CLAUDE_PROJECTS_ROOT = abstention_ledger.canonical_path(".claude", "projects")
 # Where the freeze reads the dashboard's own history and ends: the store the
 # lifecycle was observed into, never the packet's directory.
-STORE_HOME = os.path.join(abstention_ledger.real_home(), ".cargento")
+STORE_HOME = abstention_ledger.canonical_path(".cargento")
 
 # Cases per (harness, end shape), so the corpus spreads instead of filling up
 # with whichever harness ran most today. v2 had this constant and no bucketing,
@@ -177,8 +178,8 @@ _CLAUDE_FROZEN_FIELDS = ("tool_output", "transcript_bytes", "parser")
 
 def display_path(path: str) -> str:
     """A path under the account's home in `~` form, spelled with `/` on every platform."""
-    home = abstention_ledger.real_home()
-    if path == home or path.startswith(home + os.sep):
+    home = abstention_ledger.canonical_home()
+    if home is not None and (path == home or path.startswith(home + os.sep)):
         return "~" + path[len(home) :].replace(os.sep, "/")
     return path
 
@@ -366,6 +367,8 @@ def _transcript_index() -> dict[str, str]:
         return _TRANSCRIPTS
     index: dict[str, str] = {}
     root = CLAUDE_PROJECTS_ROOT
+    if root is None:
+        return index
     try:
         for base, _dirs, names in os.walk(root):
             for name in names:
@@ -657,7 +660,9 @@ class FreezeError(ValueError):
     """Why a spec entry cannot become a recorded case. Closed words, no session text."""
 
 
-def _inside(path: str, root: str) -> bool:
+def _inside(path: str, root: str | None) -> bool:
+    if root is None:
+        return False
     real, base = os.path.realpath(path), os.path.realpath(root)
     return real.startswith(base + os.sep)
 
@@ -749,7 +754,12 @@ def _frozen_checks(
     stop = _stop(snapshot)
     if stop is not None and project_context.claude_activity_between(transcript, stop, captured):
         raise FreezeError("activity-after-stop")
-    checks, press = project_context.frozen_claude_checks(config, transcript, sid, until=captured)
+    try:
+        checks, press = project_context.frozen_claude_checks(
+            config, transcript, sid, until=captured
+        )
+    except project_context.FrozenCheckCutoffUnreachableError as error:
+        raise FreezeError("check-cutoff-unreachable") from error
     return (
         checks,
         {
@@ -762,17 +772,24 @@ def _frozen_checks(
 
 
 # The files whose code turns a transcript into the facts and checks a case holds
-# (review, Scoring F7). A packet frozen under other bytes is named as such
+# (review, Scoring F7). A packet frozen under other code is named as such
 # rather than read as tampered, since every case would then differ.
-_PARSER_FILES = ("project_context.py", "reading.py")
+_PARSER_FILES = ("io.py", "project_context.py", "reading.py")
 
 
 def parser_digest() -> str:
-    """sha256 over the runtime files that derive a case's facts, stamped into each case."""
-    digest = hashlib.sha256()
+    """Versioned AST digest: comments/layout do not change the derivation contract.
+
+    Literal strings, expressions and control flow remain part of the stamp.
+    The format prefix keeps old byte stamps conservatively incompatible;
+    neither frozen packets nor owner marks are rewritten to fit new code.
+    """
+    digest = hashlib.sha256(b"cargento-parser-ast-v1\0")
     for name in _PARSER_FILES:
         with open(os.path.join(_SKILL, "cargento_runtime", name), "rb") as handle:
-            digest.update(handle.read())
+            tree = ast.parse(handle.read(), filename=name)
+        digest.update(name.encode() + b"\0")
+        digest.update(ast.dump(tree, include_attributes=False).encode() + b"\0")
     return digest.hexdigest()
 
 
@@ -784,14 +801,16 @@ def _stop(snapshot: dict[str, Any]) -> float | None:
     return None
 
 
-def content_refusal(config: Any, case: dict[str, Any], transcript: str) -> list[str]:
+# Keep the ordered provenance refusals together: the parser-stamp check must
+# precede any transcript read, and an unreachable check cutoff has its own reason.
+def content_refusal(config: Any, case: dict[str, Any], transcript: str) -> list[str]:  # noqa: C901
     """Why a Claude Code case's contents are not what its transcript holds (DRC-4711).
 
     Rebuilt as the freeze built them, at the case's own `captured_at`, so turns
     appended since are not a mismatch, and compared as the ledger rows the
-    producer reads. A capture with any record between its stop and itself is
-    not the moment the stop recorded (`activity-after-stop`). The checks and
-    the press reads must be exactly the transcript's, since dropping a failed
+    producer reads. A capture with a user or assistant message between its
+    stop and itself is not the moment the stop recorded (`activity-after-stop`).
+    The checks and the press reads must be exactly the transcript's, since dropping a failed
     check changes a verdict as surely as inventing a pass. The user messages
     must be the newest ones up to the capture, in order, none missing between
     and none twice, and at least as many as the board's bounded tail reads of
@@ -825,6 +844,8 @@ def content_refusal(config: Any, case: dict[str, Any], transcript: str) -> list[
         moved = stop is not None and project_context.claude_activity_between(
             transcript, stop, captured
         )
+    except project_context.FrozenCheckCutoffUnreachableError:
+        return ["check-cutoff-unreachable"]
     except OSError:
         return ["transcript-missing"]
     reasons: list[str] = ["activity-after-stop"] if moved else []
@@ -918,7 +939,7 @@ def make_vouch(*, observations: Any, ends: Any, index: dict[str, str], config: A
     return vouch
 
 
-def machine_vouch(store_home: str) -> Any:
+def machine_vouch(store_home: str | None) -> Any:
     """`make_vouch` over this machine's history, ends and Claude Code transcripts."""
     observations, ends = _observed_stores(store_home)
     return make_vouch(
@@ -1013,8 +1034,10 @@ def freeze_case(
     return case
 
 
-def _observed_stores(store_home: str) -> tuple[Any, Any]:
+def _observed_stores(store_home: str | None) -> tuple[Any, Any]:
     """The dashboard's history observations and session ends, read from `store_home`."""
+    if store_home is None:
+        raise FreezeError("account-home-unavailable")
     _reading()
     from cargento_runtime import config as config_mod  # noqa: PLC0415 - see `_reading`
     from cargento_runtime import ends, history  # noqa: PLC0415 - see `_reading`
@@ -1481,6 +1504,14 @@ def main(argv: list[str] | None = None) -> int:  # noqa: PLR0911 - one exit per 
         "--store-home", default=STORE_HOME, help="where the dashboard's history and ends live"
     )
     args = parser.parse_args(argv)
+    if (
+        abstention_ledger.LEDGER_PATH is None
+        or CLAUDE_PROJECTS_ROOT is None
+        or STORE_HOME is None
+        or abstention_ledger.canonical_home() is None
+    ):
+        print("Refused: this account's canonical home is unavailable. Nothing ran.")
+        return 2
     if args.freeze:
         return freeze(args.port, args.freeze, force=args.force, store_home=args.store_home)
     if args.build and args.reset:

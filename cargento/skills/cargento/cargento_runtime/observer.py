@@ -32,7 +32,8 @@ from . import io as runtime_io
 from . import records, spacedock, supervise, transcripts
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Mapping
+    from collections.abc import Callable, Iterator, Mapping
+    from typing import BinaryIO
 
     from .config import RuntimeConfig
     from .state import RuntimeState
@@ -374,7 +375,12 @@ def reading_workdir_root() -> str | None:
     """
     if os.name == "nt":
         return tempfile.gettempdir()
-    home, name = _account()
+    try:
+        home, name = _account()
+    except (KeyError, OSError):
+        return None
+    if not home or os.path.realpath(home) == os.path.abspath(os.sep) or not name:
+        return None
     for candidate in (tempfile.gettempdir(), READING_FALLBACK_TMP):
         if os.path.isdir(candidate) and not _names_the_account(candidate, home, name):
             return os.path.realpath(candidate)
@@ -401,7 +407,7 @@ def claude_environment(environ: Mapping[str, str]) -> dict[str, str]:
     return env
 
 
-def claude_exec(  # noqa: PLR0911 - one return per status
+def claude_exec(
     config: RuntimeConfig,
     prompt: str,
     *,
@@ -436,25 +442,45 @@ def claude_exec(  # noqa: PLR0911 - one return per status
     is made in the system temp directory, because the CLI still tells the
     model its working directory, platform, shell, OS version and the date.
     """
-    binary = binary_resolver("claude")
-    if not binary or not os.path.isabs(binary):
-        return "", "unavailable"
-    # Outside the state directory, whose path carries the account's home: the
-    # CLI names its working directory to the model even under
-    # `--system-prompt` (measured on 2.1.283). Owner-only and empty either way.
-    root = reading_workdir_root()
-    if root is None:
-        return "", "failed"
-    os.makedirs(config.state_dir, mode=0o700, exist_ok=True)
-    workdir = ""
-    output_path = ""
     try:
-        workdir = tempfile.mkdtemp(prefix="reading-claude-cwd-", dir=root)
-        descriptor, output_path = tempfile.mkstemp(
-            prefix="reading-claude-", suffix=".txt", dir=config.state_dir
-        )
+        with prepare_claude_exec(
+            config, runner=runner, binary_resolver=binary_resolver, on_spawn=on_spawn
+        ) as prepared:
+            return prepared(prompt, output_cap_bytes=output_cap_bytes)
+    except ClaudePreparationError as error:
+        return "", error.status
+
+
+class ClaudePreparationError(Exception):
+    """A local refusal before a Claude call can be charged or started."""
+
+    def __init__(self, status: str) -> None:
+        super().__init__(status)
+        self.status = status
+
+
+class PreparedClaude:
+    """A single call whose private files already exist; the context owns cleanup."""
+
+    def __init__(
+        self,
+        binary: str,
+        workdir: str,
+        output_path: str,
+        output: Any,
+        runner: Any,
+        on_spawn: Callable[[supervise.Group], None] | None,
+    ) -> None:
+        self.binary = binary
+        self.workdir = workdir
+        self.output_path = output_path
+        self.output = output
+        self.runner = runner
+        self.on_spawn = on_spawn
+
+    def __call__(self, prompt: str, *, output_cap_bytes: int) -> tuple[str, str]:
         command = [
-            binary,
+            self.binary,
             "--print",
             "--safe-mode",
             "--restricted",
@@ -479,43 +505,86 @@ def claude_exec(  # noqa: PLR0911 - one return per status
             "--system-prompt",
             CLAUDE_READING_SYSTEM_PROMPT,
         ]
-        # A file rather than a pipe, so the reply is bounded on read rather
-        # than buffered whole into this process.
-        with os.fdopen(descriptor, "wb") as output:
-            result = runner(
+        try:
+            result = self.runner(
                 command,
                 input=prompt,
-                cwd=workdir,
-                stdout=output,
+                cwd=self.workdir,
+                stdout=self.output,
                 stderr=subprocess.DEVNULL,
                 env=claude_environment(os.environ),
                 text=True,
                 encoding="utf-8",
                 timeout=OBSERVER_MODEL_TIMEOUT_SEC,
                 check=False,
-                **_spawn_hook(on_spawn, runner, output_path),
+                **_spawn_hook(self.on_spawn, self.runner, self.output_path),
             )
-        if result.returncode != 0:
+            self.output.flush()
+            if result.returncode != 0:
+                return "", "failed"
+            return (
+                runtime_io.read_prefix_bytes(self.output_path, max_bytes=output_cap_bytes)
+                .decode("utf-8", "replace")
+                .strip()
+            ), "ok"
+        except supervise.UnstoppedError:
+            return "", "unstopped"
+        except supervise.OversizedError:
+            return "", "oversized"
+        except (OSError, subprocess.SubprocessError):
             return "", "failed"
-        return (
-            runtime_io.read_prefix_bytes(output_path, max_bytes=output_cap_bytes)
-            .decode("utf-8", "replace")
-            .strip()
-        ), "ok"
-    except supervise.UnstoppedError:
-        # Killed and not gone within the bound: said as its own status, since
-        # "did not complete" would hide that the CLI may still be running.
-        return "", "unstopped"
-    except supervise.OversizedError:
-        return "", "oversized"
-    except (OSError, subprocess.SubprocessError):
-        return "", "failed"
+
+
+@contextlib.contextmanager
+def prepare_claude_exec(
+    config: RuntimeConfig,
+    *,
+    runner: Any = supervise.run,
+    binary_resolver: Any = shutil.which,
+    on_spawn: Callable[[supervise.Group], None] | None = None,
+) -> Iterator[PreparedClaude]:
+    """Prepare the private cwd and output before qualification spends a call.
+
+    The charged seam enters this context before the ledger, so an unknown
+    account or unwritable local directory cannot consume the call allowance.
+    Normal readings enter the same context through `claude_exec`.
+    """
+    workdir = ""
+    output_path = ""
+    descriptor = -1
+    output: BinaryIO | None = None
+    try:
+        try:
+            binary = binary_resolver("claude")
+            if not binary or not os.path.isabs(binary):
+                raise ClaudePreparationError("unavailable")
+            root = reading_workdir_root()
+            if root is None:
+                raise ClaudePreparationError("failed")
+            os.makedirs(config.state_dir, mode=0o700, exist_ok=True)
+            workdir = tempfile.mkdtemp(prefix="reading-claude-cwd-", dir=root)
+            descriptor, output_path = tempfile.mkstemp(
+                prefix="reading-claude-", suffix=".txt", dir=config.state_dir
+            )
+            output = os.fdopen(descriptor, "wb")
+        except (KeyError, OSError) as error:
+            raise ClaudePreparationError("failed") from error
+        yield PreparedClaude(binary, workdir, output_path, output, runner, on_spawn)
     finally:
-        if output_path:
-            with contextlib.suppress(OSError):
-                os.unlink(output_path)
-        if workdir:
-            shutil.rmtree(workdir, ignore_errors=True)
+        # Ownership starts at allocation, before a stream or yielded context
+        # exists. Cancellation keeps its exception and cannot strand the cwd.
+        try:
+            if output is not None:
+                output.close()
+            elif descriptor >= 0:
+                with contextlib.suppress(OSError):
+                    os.close(descriptor)
+        finally:
+            if output_path:
+                with contextlib.suppress(OSError):
+                    os.unlink(output_path)
+            if workdir:
+                shutil.rmtree(workdir, ignore_errors=True)
 
 
 class CodexGoalModel:

@@ -50,9 +50,8 @@ def real_home() -> str:
     """The account's home directory, which no environment variable can move.
 
     Windows has no password database, so there this falls back to
-    `expanduser("~")`, which `USERPROFILE` moves, and `home_moved` is always
-    False. The V1 protection holds on POSIX only; nothing refuses to score on
-    Windows, where this qualification is not run.
+    `expanduser("~")`, which `USERPROFILE` moves. `home_moved` cannot detect
+    a moved Windows profile; the V1 protection holds on POSIX only.
     """
     if sys.platform == "win32":
         return os.path.expanduser("~")
@@ -61,13 +60,28 @@ def real_home() -> str:
     return pwd.getpwuid(os.getuid()).pw_dir
 
 
+def canonical_home() -> str | None:
+    """Unavailable account authority stays absent, never replaced by environment HOME."""
+    try:
+        home = real_home()
+    except (KeyError, OSError):
+        return None
+    return home if home and os.path.isabs(home) else None
+
+
+def canonical_path(*parts: str) -> str | None:
+    home = canonical_home()
+    return None if home is None else os.path.join(home, *parts)
+
+
 def home_moved() -> bool:
     """Whether `HOME` names another directory than the account's own."""
-    return os.path.realpath(os.path.expanduser("~")) != os.path.realpath(real_home())
+    home = canonical_home()
+    return home is None or os.path.realpath(os.path.expanduser("~")) != os.path.realpath(home)
 
 
 # Under the account's ~/.cargento at a fixed name, never under CARGENTO_HOME or HOME.
-LEDGER_PATH = os.path.join(real_home(), ".cargento", "drc-4666-spend.json")
+LEDGER_PATH = canonical_path(".cargento", "drc-4666-spend.json")
 # The committed result whose ledger chain freezes the key even if the ledger is deleted.
 CLAUDE_SUMMARY_PATH = os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
@@ -130,8 +144,10 @@ def _valid_run(run: Any) -> bool:
     )
 
 
-def read(path: str) -> dict[str, Any]:
+def read(path: str | None) -> dict[str, Any]:
     """The ledger, or `LedgerError`. Only a file that does not exist reads as empty."""
+    if path is None:
+        raise LedgerError("the account's canonical home is unavailable")
     try:
         with open(path, encoding="utf-8") as handle:
             body = json.load(handle)
@@ -212,8 +228,10 @@ class Ledger:
     """The ledger as one packet sees it: its digests, and the cap it runs under."""
 
     def __init__(
-        self, path: str, *, cap: int, marks_digest: str, inputs_digest: str, producer: str
+        self, path: str | None, *, cap: int, marks_digest: str, inputs_digest: str, producer: str
     ) -> None:
+        if path is None:
+            raise LedgerError("the account's canonical home is unavailable")
         self.path = path
         self.cap = min(cap, MAX_CALLS)
         self.marks_digest = marks_digest
@@ -313,7 +331,7 @@ def chain_of(path: str) -> dict[str, Any]:
     return {"first": calls[0]["id"] if calls else "", "calls": len(calls), "head": chain(calls)}
 
 
-def begins_with(path: str, committed: Mapping[str, Any]) -> bool:
+def begins_with(path: str | None, committed: Mapping[str, Any]) -> bool:
     """Whether the ledger still starts with the chain a committed result recorded.
 
     A deleted or replaced ledger reads as empty or as another run's, and a
@@ -374,7 +392,7 @@ def committed_chain(summary_path: str = "") -> dict[str, Any] | None:
     return dict(held) if isinstance(held, dict) else {}
 
 
-def has_calls(path: str = "") -> bool:
+def has_calls(path: str | None = "") -> bool:
     """Whether any call is charged. An unreadable ledger answers yes: fail closed."""
     try:
         return bool(read(path or LEDGER_PATH)["calls"])
