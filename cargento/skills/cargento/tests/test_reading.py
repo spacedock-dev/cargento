@@ -475,8 +475,12 @@ class WhatADepartureIsAllowedToRestOn(unittest.TestCase):
                 lines=(),
                 detail_cap_chars=200,
             )
-        _, selection = reading.build_prompt(ledger, goal="g", lines=(), max_bytes=1500)
+        header_bytes = len(reading._header("g", (), tool_note=False).encode())
+        _, selection = reading.build_prompt(
+            ledger, goal="g", lines=(), max_bytes=header_bytes + 300
+        )
         self.assertIsInstance(selection, reading.Selection)
+        self.assertTrue(selection.entries)
         self.assertLess(len(selection.entries), len(ledger))
         cited = reading.resolve(parsed, selection, goal="g", lines=(), detail_cap_chars=200)[
             reading.CONSTRAINT_GOAL
@@ -2013,6 +2017,18 @@ class ACheckReachesAModelOnlyAfterYouAllowToolOutput(AClaudeCodeReadingProducer)
                 self.assertRegex(instructions, r"latest relevant run.*evidence window")
                 self.assertRegex(instructions, r"[Pp]artial or unknown coverage.*unverifiable")
                 self.assertRegex(instructions, r"agent's own account cannot support an outcome")
+                self.assertRegex(
+                    instructions,
+                    r"[Cc]heck must cover the whole constraint",
+                )
+                self.assertRegex(
+                    instructions,
+                    r"[Ss]uite pass cannot prove a toggle, scorekeeping.*it did not exercise",
+                )
+                self.assertRegex(
+                    instructions,
+                    r"[Tt]est counts are not the agent's report to the person",
+                )
                 self.assertEqual(6, values.count('<outcome_line n="'))
 
     def test_a_reader_is_not_charged_when_the_budget_cannot_fit_the_trusted_instructions(
@@ -2696,6 +2712,21 @@ class TheResolverTakesTheQuestionFromThePrompt(unittest.TestCase):
     """K8: whether Expected Output was posed travels on the Selection from the
     header the prompt actually used, so a verdict volunteered on a clause the
     model never saw is never published."""
+
+    def test_six_full_length_outcomes_still_reach_the_reader_with_a_check(self) -> None:
+        ledger = reading.build_ledger(
+            [WORDS_FACT, check_fact(result="passed")], "claude", "s1", tool_output={}
+        )
+        words = "😀" * 240
+        prompt, selection = reading.build_prompt(
+            ledger,
+            goal=words,
+            lines=[words] * 6,
+            max_bytes=16_384,
+        )
+        self.assertTrue(selection.asked_output)
+        self.assertEqual(6, prompt.count('<outcome_line n="'))
+        self.assertTrue(selection.entries)
 
     def test_an_expected_output_the_header_had_no_room_for_is_not_answered(self) -> None:
         ledger = reading.build_ledger(
