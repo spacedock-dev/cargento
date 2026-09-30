@@ -133,6 +133,26 @@ class SubagentChecksTestCase(ClaudeChecksTestCase):
 
 
 class ASubagentsCheckIsTheParents(SubagentChecksTestCase):
+    def test_clipped_parent_agent_result_withholds_without_claiming_a_paired_child(self) -> None:
+        agent = self.session.call("Agent", {"prompt": "Run checks"})
+        self.session.result(agent, "Done", tool_use_result={"agentId": "a1b2c3d4"})
+        self.session.bash("pytest", "5 passed", is_error=False)
+        self.session.save(self.path)
+        raw = self.path.read_bytes()
+        result = json.dumps(self.session.rows[-3]).encode()
+        # Begin one byte before the result: the earlier Agent call is outside
+        # the bounded tail, while its result and the passing check remain.
+        cap = len(raw) - raw.index(result) + 1
+        self.config = dataclasses.replace(self.config, turn_scan_max_bytes=cap)
+
+        events, scan = project_context.claude_tool_reports(self.config, str(self.path), SHORT)
+        check = next(row for row in events if row["subject"] == "check")
+        self.assertEqual(0, scan["subagent_transcripts_unread"])
+        self.assertTrue(check["read_incomplete"])
+        press = project_context.claude_check_press(self.config, str(self.path))
+        self.assertIn((check["record_id"], check["title"]), press.read_incomplete)
+        self.assertEqual(levels.NOT_ENOUGH, self.live().level)
+
     def test_a_subagents_check_appears_on_the_parent_labelled_as_the_subagents(self) -> None:
         sub = self.delegate()
         sub.bash("pytest", "5 passed in 0.2s", is_error=False)

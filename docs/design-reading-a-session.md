@@ -1583,7 +1583,10 @@ the measured note that DEC-23 reads the root session's calls alone.
    hex IDs named by paired parent Agent or legacy Task results whose child work is unavailable.
    Repeated IDs count once, and a discovered unread file is not counted twice. A numeric
    `reads_from` horizon still marks passes older than a partial window or unread child's possible
-   work. Any valid named child that remains unavailable marks every held passing check
+   work. If a clipped live parent keeps a valid Agent result but loses its earlier call, that
+   result does not increase the named-child count. Until its child can be read completely, it
+   still makes held passes incomplete; the missing call cannot certify that delegated work was
+   absent. Any valid named child that remains unavailable marks every held passing check
    `read_incomplete`, even if the parent passed later. A failed check that was actually read keeps
    its failure and High level. An incomplete pass cannot support a consistent outcome or the live
    "None or low" floor; incompleteness alone is not a departure. Collection, press and frozen check

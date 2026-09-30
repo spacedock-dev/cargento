@@ -1275,7 +1275,9 @@ content bytes returned, including malformed or discarded lines. Live children fo
 modification time and stable relative path; a frozen check reads children by stable relative path
 after a bounded parent cutoff search. A parent cutoff it cannot establish within that same
 allowance refuses the frozen check read. Each subagent entry is labelled `worker_kind: "subagent"`
-([the amendment](docs/design-reading-a-session.md#amended-2026-09-28-a-subagents-checks-and-writes-are-the-parents)). A check is a shell command segment whose runner is on the ruling's closed list, and
+([the amendment](docs/design-reading-a-session.md#amended-2026-09-28-a-subagents-checks-and-writes-are-the-parents)).
+A clipped parent Agent result without its earlier call withholds a passing check when that child
+cannot be read completely; it does not count as a verified named child. A check is a shell command segment whose runner is on the ruling's closed list, and
 a program file counts only when `test` or `tests` stands alone as a word in its name. This check
 allowance does not bound the separate activity, identity or user-message reads made during a full
 frozen admission or validation. Its publication bounds:

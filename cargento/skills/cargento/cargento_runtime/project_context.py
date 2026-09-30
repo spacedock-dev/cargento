@@ -3028,6 +3028,7 @@ class _ToolReportTally:
         self.reads_from: float | None = None
         self.named_unread = False
         self.parent_failed = False
+        self.orphan_unread = False
         self.scan: dict[str, Any] = {
             "last_changing_command_at": None,
             **dict.fromkeys(
@@ -3331,6 +3332,7 @@ class _ToolReportTally:
         return run["result"] == "passed" and (
             self.named_unread
             or self.parent_failed
+            or self.orphan_unread
             or (self.reads_from is not None and run["at"] < self.reads_from)
         )
 
@@ -3453,14 +3455,15 @@ def _scan_records(read: runtime_io.TranscriptRead) -> list[dict[str, Any]]:
     return [record for raw in read.lines if (record := _json_dict(raw)) is not None]
 
 
-def _named_agent_ids(parent: list[dict[str, Any]]) -> set[str]:
-    """Only a paired parent Agent/legacy Task result may name missing work."""
+def _agent_result_ids(parent: list[dict[str, Any]]) -> tuple[set[str], set[str]]:
+    """Pair known Agent results; keep valid orphan results private for clipped reads."""
     calls = {
         call_id
         for _at, _cwd, call_id, name, _tool_input, _worker in _claude_tool_uses(parent)
         if name in {"Agent", "Task"}
     }
     named: set[str] = set()
+    orphan: set[str] = set()
     for record in parent:
         if record.get("type") != "user" or record.get("isSidechain") is True:
             continue
@@ -3471,14 +3474,28 @@ def _named_agent_ids(parent: list[dict[str, Any]]) -> set[str]:
         if re.fullmatch(r"[0-9a-f]+", agent_id) is None:
             continue
         content = records.message_dict(record).get("content")
-        if isinstance(content, list) and any(
-            isinstance(block, dict)
-            and block.get("type") == "tool_result"
-            and block.get("tool_use_id") in calls
-            for block in content
-        ):
+        result_ids = (
+            {
+                block["tool_use_id"]
+                for block in content
+                if isinstance(block, dict)
+                and block.get("type") == "tool_result"
+                and isinstance(block.get("tool_use_id"), str)
+                and block["tool_use_id"]
+            }
+            if isinstance(content, list)
+            else set()
+        )
+        if result_ids & calls:
             named.add(agent_id)
-    return named
+        elif result_ids:
+            orphan.add(agent_id)
+    return named, orphan
+
+
+def _named_agent_ids(parent: list[dict[str, Any]]) -> set[str]:
+    """Only a paired parent Agent/legacy Task result may name missing work."""
+    return _agent_result_ids(parent)[0]
 
 
 def _child_id(path: str) -> str:
@@ -3492,6 +3509,7 @@ class _CheckScan(NamedTuple):
     horizon: float | None
     named_unread: bool
     parent_failed: bool
+    orphan_unread: bool
     budget: runtime_io.ReadBudget
     source_reads: tuple[tuple[str, runtime_io.TranscriptRead | None], ...]
 
@@ -3513,6 +3531,7 @@ def _live_check_scan(
     ]
     unread_ids: set[str] = set()
     read_ids: set[str] = set()
+    complete_ids: set[str] = set()
     unread = 0
     for path in paths:
         mtime = _mtime(path)
@@ -3526,14 +3545,21 @@ def _live_check_scan(
         if got:
             children.append(got)
             read_ids.add(_child_id(path))
+            if read is not None and read.complete:
+                complete_ids.add(_child_id(path))
             if read is not None and not read.complete:
                 horizon = _later(horizon, _oldest_at(got) or mtime)
         else:
             unread += 1
             unread_ids.add(_child_id(path))
             horizon = _later(horizon, mtime)
-    missing = _named_agent_ids(parent) - read_ids
+    named, orphan = _agent_result_ids(parent)
+    missing = named - read_ids
     unread += len(missing - unread_ids)
+    # A clipped parent may keep a result but lose its earlier Agent call. It
+    # cannot prove a named missing child, yet neither can its pass prove that
+    # unread delegated work did not change files.
+    orphan_unread = not parent_read.complete and bool(orphan - complete_ids)
     return _CheckScan(
         parent,
         children,
@@ -3541,6 +3567,7 @@ def _live_check_scan(
         horizon,
         bool(missing),
         parent_read.failed,
+        orphan_unread,
         budget,
         tuple(source_reads),
     )
@@ -3554,6 +3581,7 @@ def _tally_of(
     *,
     named_unread: bool = False,
     parent_failed: bool = False,
+    orphan_unread: bool = False,
 ) -> _ToolReportTally:
     """One tally over a parent's calls and its subagents', in call time order.
 
@@ -3577,6 +3605,7 @@ def _tally_of(
     tally.reads_from = reads_from
     tally.named_unread = named_unread
     tally.parent_failed = parent_failed
+    tally.orphan_unread = orphan_unread
     streams = [
         _claude_tool_uses(parent),
         *(_claude_tool_uses(records_, sidechain=True) for records_ in subagents),
@@ -3600,6 +3629,7 @@ def _claude_tally(
         scan.horizon,
         named_unread=scan.named_unread,
         parent_failed=scan.parent_failed,
+        orphan_unread=scan.orphan_unread,
     )
 
 
@@ -3695,6 +3725,7 @@ def _frozen_check_scan(config: RuntimeConfig, transcript_path: str, until: float
         horizon,
         bool(missing),
         parent_read.failed,
+        False,
         budget,
         tuple(source_reads),
     )
