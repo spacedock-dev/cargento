@@ -1372,13 +1372,19 @@ def _mark_one(body: dict[str, Any], case: dict[str, Any]) -> dict[str, str] | No
     return answers
 
 
-def _ledger_refusal() -> bool:
+def _ledger_refusal(*, continuation: bool = False, cases_digest: str = "") -> bool:
     """True, having said why, once the qualification has charged any call.
 
     A mark written after an output was seen is agreement, not a mark, so the
     key is frozen from the first charge (review, F1). An unreadable ledger
     counts as charged: fail closed.
     """
+    if continuation:
+        why = abstention_ledger.marking_refusal(cases_digest)
+        if not why:
+            return False
+        print(f"The fresh packet cannot be marked: {why}.")
+        return True
     committed = abstention_ledger.committed_chain(abstention_ledger.CLAUDE_SUMMARY_PATH)
     if not abstention_ledger.has_calls(abstention_ledger.LEDGER_PATH) and committed is None:
         return False
@@ -1387,10 +1393,28 @@ def _ledger_refusal() -> bool:
     return True
 
 
-def mark() -> int:
+def _save_marks(body: dict[str, Any], entries: dict[str, Any], *, continuation: bool) -> bool:
+    """Save the key, sharing the charge lock only for a continuation's final write."""
+    if not continuation:
+        _write(MARKS_PATH, _bound_marks(body, entries))
+        return True
+    path = abstention_ledger.LEDGER_PATH
+    if path is None:
+        print("The account's canonical spend ledger is unavailable.")
+        return False
+    # The interactive questions stay unlocked. Only the final recheck and
+    # write share the scorer's charge lock: a new call cannot slip between.
+    with abstention_ledger.locked(path):
+        if _ledger_refusal(continuation=True, cases_digest=cases_digest(body)):
+            return False
+        _write(MARKS_PATH, _bound_marks(body, entries))
+    return True
+
+
+def mark(*, continuation: bool = False) -> int:  # noqa: PLR0911 - guard before and after marking
     body = _load(CASES_PATH)
     print_packet(CASES_PATH, body)
-    if _ledger_refusal():
+    if _ledger_refusal(continuation=continuation, cases_digest=cases_digest(body)):
         return 1
     cases = body.get("cases") if isinstance(body.get("cases"), list) else None
     if not cases:
@@ -1431,7 +1455,8 @@ def mark() -> int:
         entries[case["id"]] = answers
         done += 1
 
-    _write(MARKS_PATH, _bound_marks(body, entries))
+    if not _save_marks(body, entries, continuation=continuation):
+        return 1
     _warn_if_unanimous(entries, cases)
 
     left = len([c for c in cases if c.get("id") not in entries])
@@ -1499,6 +1524,11 @@ def main(argv: list[str] | None = None) -> int:  # noqa: PLR0911 - one exit per 
     parser.add_argument("--force", action="store_true", help="rebuild even if it orphans marks")
     parser.add_argument("--report", action="store_true", help="how far through the key you are")
     parser.add_argument("--reset", action="store_true", help="discard the marks and start over")
+    parser.add_argument(
+        "--continue-mark",
+        action="store_true",
+        help="mark the reviewed fresh case set after a failed run",
+    )
     parser.add_argument("--freeze", metavar="SPEC", help="freeze a format 5 packet from a spec")
     parser.add_argument(
         "--store-home", default=STORE_HOME, help="where the dashboard's history and ends live"
@@ -1511,6 +1541,9 @@ def main(argv: list[str] | None = None) -> int:  # noqa: PLR0911 - one exit per 
         or abstention_ledger.canonical_home() is None
     ):
         print("Refused: this account's canonical home is unavailable. Nothing ran.")
+        return 2
+    if args.continue_mark and (args.build or args.reset or args.report or args.freeze):
+        print("--continue-mark only marks; it cannot build, reset, freeze or report.")
         return 2
     if args.freeze:
         return freeze(args.port, args.freeze, force=args.force, store_home=args.store_home)
@@ -1530,7 +1563,7 @@ def main(argv: list[str] | None = None) -> int:  # noqa: PLR0911 - one exit per 
         return build(args.port, force=args.force)
     if args.report:
         return report()
-    return mark()
+    return mark(continuation=args.continue_mark)
 
 
 if __name__ == "__main__":

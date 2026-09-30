@@ -179,6 +179,7 @@ def setUpModule() -> None:
         abstention_ledger,
         LEDGER_PATH=str(Path(folder, "never-real.json")),
         CLAUDE_SUMMARY_PATH=str(Path(folder, "never-committed.json")),
+        CONTINUATION_PATH=str(Path(folder, "never-continuation.json")),
     )
     _LEDGER_PATCH.start()
 
