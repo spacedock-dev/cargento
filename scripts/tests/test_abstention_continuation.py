@@ -232,7 +232,8 @@ class AFailedQualificationKeepsItsLedger(unittest.TestCase):
         ):
             self.assertEqual(0, mark_abstention.mark(continuation=True))
         for worker in threads:
-            worker.join(1)
+            # Windows' blocking file lock may retry at one-second intervals.
+            worker.join(15)
         self.assertTrue(completed.is_set())
         self.assertEqual([], errors)
         self.assertTrue(marks.exists())
