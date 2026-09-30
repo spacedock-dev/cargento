@@ -152,7 +152,7 @@ class ClaudeChecksTestCase(unittest.TestCase):
 
 
 class WindowedWrittenPathCount(ClaudeChecksTestCase):
-    def read_window(self, cutoff: float) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    def read_window(self, cutoff: float | None) -> tuple[list[dict[str, Any]], dict[str, Any]]:
         self.session.save(self.path)
         return project_context.claude_tool_reports(
             self.config, str(self.path), SHORT, window_start=cutoff
@@ -161,6 +161,17 @@ class WindowedWrittenPathCount(ClaudeChecksTestCase):
     def cutoff(self) -> float:
         last = self.session.rows[-1]["timestamp"]
         return dt.datetime.fromisoformat(last).timestamp() + 0.5
+
+    def test_explicit_unknown_window_keeps_the_default_replay_scan_unchanged(self) -> None:
+        self.session.write(self.file("src/one.py"))
+        self.session.write(self.file("src/two.py"))
+
+        _entries, replay_scan = self.read()
+        _entries, result_scan = self.read_window(None)
+
+        self.assertNotIn("window_written_paths", replay_scan)
+        self.assertIsNone(result_scan["window_start"])
+        self.assertEqual(2, result_scan["window_written_paths"])
 
     def test_pre_window_and_untallied_rows_do_not_enter_the_result_count(self) -> None:
         self.session.write(self.file("old/one.py"))

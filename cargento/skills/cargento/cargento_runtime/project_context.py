@@ -3641,13 +3641,20 @@ def _mtime(path: str) -> float | None:
         return None
 
 
+class _WindowNotRequested:
+    __slots__ = ()
+
+
+_WINDOW_NOT_REQUESTED = _WindowNotRequested()
+
+
 def claude_tool_reports(
     config: RuntimeConfig,
     transcript_path: str,
     sid: str,
     *,
     max_bytes: int | None = None,
-    window_start: float | None = None,
+    window_start: float | _WindowNotRequested | None = _WINDOW_NOT_REQUESTED,
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     """The listed checks and written paths, and the full-scan counts behind them,
     a subagent's included and labelled.
@@ -3657,11 +3664,12 @@ def claude_tool_reports(
     """
     tally = _claude_tally(config, transcript_path, max_bytes=max_bytes)
     entries = tally.entries(sid)
-    tally.scan["window_start"] = window_start
-    tally.scan["window_written_paths"] = sum(
-        write["at"] > 0 and (window_start is None or write["at"] >= window_start)
-        for write in tally.writes.values()
-    )
+    if not isinstance(window_start, _WindowNotRequested):
+        tally.scan["window_start"] = window_start
+        tally.scan["window_written_paths"] = sum(
+            write["at"] > 0 and (window_start is None or write["at"] >= window_start)
+            for write in tally.writes.values()
+        )
     return entries, tally.scan
 
 
