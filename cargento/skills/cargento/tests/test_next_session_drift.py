@@ -23,6 +23,7 @@ from cargento_runtime import annotations as annotation_store
 
 from . import test_next_cockpit as cockpit_tests
 from .next_harness import NextPageJsHarness, storage_prelude
+from .visible_text import visible_text as seen_text
 
 FIXTURE = cockpit_tests.NextCockpitCompositionTest.FIXTURE
 FOCUS_DOM = cockpit_tests.CockpitHeldToTabTest.FOCUS_DOM
@@ -854,9 +855,9 @@ class AnEndedSessionKeepsItsCheckOnTheFirstScreenTest(NextPageJsHarness):
         drift = self.drift(self.page(ended=True, setup=READING + UNASKED))
         self.assertEqual(1, drift.count(ENDED_NOTE))
         inner = caveats_block(drift)
-        self.assertTrue(
-            inner.startswith(f'<p class="next-cockpit-held-absent">{ENDED_NOTE}</p>'), inner
-        )
+        # First in the caveats, under its worded summary (DRC-4758 polish).
+        self.assertTrue(inner.startswith('<details class="next-cockpit-why'), inner)
+        self.assertLess(inner.index(ENDED_NOTE), inner.index("</details>"))
         departures = drift.index('class="next-cockpit-departures"')
         self.assertLess(drift.index(ENDED_NOTE), departures)
         self.assertLess(
@@ -871,6 +872,24 @@ class AnEndedSessionKeepsItsCheckOnTheFirstScreenTest(NextPageJsHarness):
         self.assertEqual(1, drift.count(ENDED_NOTE), drift)
         self.assertIn(ENDED_NOTE, caveats_block(drift))
         self.assertNotIn(ENDED_NOTE, self.drift(self.page(ended=False, setup=UNTYPED)))
+
+    def test_the_ended_note_and_the_binding_wait_behind_one_worded_summary(self) -> None:
+        """The owner's walk: these two sentences were the last always-visible paragraphs at
+        the foot of the Drift card. Neither is the next thing to do, so both sit behind one
+        summary the reader can open, and stay in the markup for a screen reader."""
+        binding = "Bound by an eight-character identity prefix."
+        drift = self.drift(
+            self.page(
+                ended=True,
+                setup=f'__dashboard.sessions[0].annotation_binding_why = "{binding}";\n',
+            )
+        )
+        shown = seen_text(drift)
+        for sentence in (ENDED_NOTE, binding):
+            with self.subTest(sentence=sentence):
+                self.assertIn(sentence, drift)
+                self.assertNotIn(sentence, shown)
+        self.assertIn("About these saved words", shown)
 
     def test_between_the_fields_and_the_check_an_ended_page_adds_nothing(self) -> None:
         """From the fields to the control, the markup is the same live or ended. What may

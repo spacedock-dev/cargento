@@ -5726,8 +5726,16 @@ function nextCockpitDriftBlock(group, session, primary){
      is the next thing to do, and above the control they pushed it off the
      first screen. */
   const discard = nextCockpitHeldDiscardBlock(session, annotation);
-  const caveats = ended || discarded || binding || discard
-    ? `<div class="next-session-drift-caveats">${ended}${discarded}${binding}${discard}</div>` : "";
+  /* The ended note and the binding stay in the DOM but behind one summary: they
+     were the last always-visible paragraphs at the foot of the card in the
+     owner's walk (DRC-4758), and neither is the next thing to do. The discard
+     account stays in view, because it says what became of the reader's words. */
+  const about = ended || binding
+    ? '<details class="next-cockpit-why next-session-drift-saved-about"' +
+      `${nextCockpitDisclosureAttr("held-saved-about")}><summary>About these saved words` +
+      `</summary>${ended}${binding}</details>` : "";
+  const caveats = about || discarded || discard
+    ? `<div class="next-session-drift-caveats">${about}${discarded}${discard}</div>` : "";
   /* The saved introduction took 69.75px above the fields and put Analyze at
      892.5–936.5 with three lines and High on a 1440x900 board (DRC-4748).
      Keep its words below the action; the first-prompt draft's guide stays
