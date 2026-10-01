@@ -1680,7 +1680,12 @@ or executable verification. The committed result records a hash chain
 over the ledger's charges and their digests, and scoring refuses while the ledger does not begin
 with it, reading the committed result at its fixed path whatever `--out` says. The scorer also
 re-checks each case's provenance against this machine's transcripts, history and ends, and spends
-nothing on a case that claims recorded and is not vouched for. For a Claude Code case that includes
+nothing on a case that claims recorded and is not vouched for. One lifecycle may be vouched by the
+transcript rather than the history store: a Claude Code turn stop older than the store's oldest
+observation, which the transcript's own top-level `stop_hook_summary` for that session marks at
+that moment. A stop the store still reaches is never vouched that way. Whoever can edit the
+transcript or empty the history store can already forge either record, which is the local-process
+exposure this document accepts throughout. For a Claude Code case that includes
 its contents (DRC-4711), rebuilt from the transcript as it stood at the case's `captured_at`. The
 checks and their output tails must be exactly the transcript's. The user messages must be the
 newest ones up to the capture, in order, with none missing between them, none repeated, and at

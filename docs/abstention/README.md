@@ -157,7 +157,12 @@ for it does not change that. `unconfirmed` lists why, as closed tokens:
   `working` row needs a history observation in `working` at `captured_at` itself. A turn stop needs
   an `idle` observation whose `last_activity` is the `finished_at`. An end needs the ends store's
   stamp. The freeze reads `cargento-history.json` and `cargento-ends.json` from `--store-home`,
-  `~/.cargento` by default, never from the packet's own directory.
+  `~/.cargento` by default, never from the packet's own directory. The history store is capped
+  and rolls, so a Claude Code turn stop older than its oldest observation is vouched instead by the
+  transcript's own top-level `stop_hook_summary` for that session at the `finished_at`, one whose
+  hooks did not keep the turn going. A stop the store still reaches never falls back. The case
+  records which vouched for it in `lifecycle_from`: `history`, `transcript`, or null when neither
+  did ([DEC-17, amended 2026-10-01](../design-reading-a-session.md#amended-2026-10-01-a-readers-correction-and-a-transcript-stop)).
 
 A Codex case is a recorded history `working` observation frozen at its last activity, because
 Codex has no session-end hook and is never read at a turn stop.
@@ -374,6 +379,8 @@ Kept beside the cases, never here. Its shape, so a case set can be written again
 departure the case's own prompt asked for does not count as `supported-departure`: tag it only when
 the agent left the stated scope on its own
 ([DEC-17, amended 2026-09-27](../design-reading-a-session.md#amended-2026-09-27-the-floor-is-judged-per-producer)).
+Its departure may rest on the reader's own correction rather than a failed check
+([amended 2026-10-01](../design-reading-a-session.md#amended-2026-10-01-a-readers-correction-and-a-transcript-stop)).
 `result` is one of `departure`, `consistent` and `unverifiable`, the producer's own three tokens. A
 `recorded` entry names a case in the cases file by id and carries no body, and against a format 5
 case its `expect` is keyed `goal` and `line_1` onwards. Every asked constraint of a rubric case is
