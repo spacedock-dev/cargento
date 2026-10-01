@@ -20,7 +20,11 @@ re-frozen from that recorded packet to the same spend ledger; its
 [second continuation](claude-continuation-2.json) scored a fourth packet, with a supported departure
 resting on the reader's own correction, after the producer's evidence instruction (#450) and the
 reader's whole words (#467) changed; its [result](claude-results-continuation-2.json) failed too,
-with one false reassurance and fifteen correct judgements, and spent the last of the 23 calls. The
+with one false reassurance and fifteen correct judgements, and spent the last of the 23 calls. A
+[third continuation](claude-continuation-3.json), after the rule that withdraws a line about what the
+agent tells you (#471), scored the same five cases; its [result](claude-results-continuation-3.json)
+failed with one false reassurance on a different constraint (a goal the second run had right), and
+spent the last of the 28 calls the owner authorized. The
 owner then kept the gate shut and authorized one more five-case run past that ceiling, as a third
 continuation: 28 scorer calls, beside 31 Claude CLI invocations overall. The
 [amendment](../design-reading-a-session.md#amended-2026-10-01-a-readers-correction-and-a-transcript-stop)
