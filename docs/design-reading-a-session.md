@@ -1276,6 +1276,8 @@ the reader's words and quoted tool output. A generic passing suite does not esta
 browser behavior that it does not exercise. Relevance remains a model judgement: the resolver
 checks the recorded status, time and subsequent changes, but does not prove semantic coverage.
 These instructions do not establish a passing qualification or open the Claude Code gate.
+One class of line is the server's to settle instead: see
+[the 2026-10-01 amendment](#amended-2026-10-01-a-line-about-what-the-agent-tells-you-cannot-be-shown).
 
 The owner kept that admission contract on 2026-09-30 (DRC-4749). A command-status-only rule would
 make ordinary feature and browser clauses not verifiable even when a relevant check ran. Keyword
@@ -1433,16 +1435,27 @@ count or piping it did not exercise, and that test counts are not the agent's re
 The model gave the same verdict anyway.
 
 The owner chose a server-side rule over more prompt wording. When an outcome line's own text says
-the agent reports, tells, explains, summarises, says, describes or mentions something, or asks it
-to let the reader know, the resolver withdraws a `consistent` on that line to not verifiable. The
-stored reason is the existing `check-does-not-show-it`, so the page needs no new sentence. Matching
-is on whole words and ignores case. "Report" matches as a noun as well as a verb, while "reporter",
-"reportage" and "sayings" do not match. Nor does a word that is part of a path, such as
-`report.csv` or `reports/summary.md`, because a path names a file rather than something the agent
-said. The rule only ever moves a verdict toward abstaining. A
-departure on such a line stands, the Goal is never touched, and a line that already rests only on
-the agent's account keeps rule 7's `no-work-shown`. It runs in `reading._resolve_one`, the step
-every reading goes through, the unasked lane included.
+the agent reports, tells, explains, summarises, says, describes or mentions something, or lets the
+reader know, the resolver withdraws a `consistent` on that line to not verifiable. The stored
+reason is `tells-the-person`, and the page says the line is about what the session told you, which
+nothing in the record can show. The existing `check-does-not-show-it` sentence was not reused,
+because it says the check's latest run did not pass with no change after it, and here it did.
+
+Matching is on whole words and ignores case, and it reads the whole line rather than the
+240-character clause stored on the row, so a telling word past that cap still counts. "Report"
+matches as a noun as well as a verb, and "reporter", "reportage" and "sayings" do not match. The
+one other exclusion is a word followed directly by `.` or `/` and then a letter, digit or
+underscore, such as `report.csv` or `reports/summary.md`. Nothing else about paths or tools is
+read, so "src/report", "~/report", "report-card.js", "npm run report", "the CLI reports 0 failures"
+and "describe blocks pass" all abstain. That over-abstains on purpose: the ruling accepts it, and
+telling the agent's account apart from a tool's would mean parsing the line's grammar.
+
+The rule only ever moves a verdict toward abstaining. A departure on such a line stands, the Goal
+is never touched, and a line that already rests only on the agent's account keeps rule 7's
+`no-work-shown`. It runs in `reading._evidence_rules`, which every reading goes through, the
+unasked lane included. The drift level that `levels.analysis_level` derives from a stored reading
+runs the same resolver over each line's text, so a `consistent` stored before this rule existed
+does not count as shown there either.
 
 This knowingly narrows the coverage ruling above (DRC-4749), which left relevance to the model.
 For this one class of line the server decides, because a passing check cannot speak to it whatever

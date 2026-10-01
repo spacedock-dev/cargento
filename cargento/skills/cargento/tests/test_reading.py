@@ -832,7 +832,7 @@ class WhichConstraintsWerePutToTheReading(unittest.TestCase):
                 self.assertIn(expected, reading.WHY_TOKENS)
                 seen.add(expected)
         self.assertEqual(4, len(seen))
-        self.assertEqual(13, len(reading.WHY_TOKENS))
+        self.assertEqual(14, len(reading.WHY_TOKENS))
         self.assertIn(reading.WHY_STANDS, reading.WHY_TOKENS)
 
 
@@ -2246,9 +2246,19 @@ class ALineAboutWhatTheAgentTellsYouCannotBeShown(AClaudeCodeReadingProducer):
     def test_the_measured_line_with_a_passing_check_is_not_verifiable(self) -> None:
         row = self._read(self.FAILED_LINE, "consistent")
         self.assertEqual(reading.RESULT_UNVERIFIABLE, row["result"])
-        self.assertEqual(reading.WHY_CHECK_DOES_NOT_SHOW_IT, row["why"])
+        self.assertEqual(reading.WHY_TELLS_THE_PERSON, row["why"])
         self.assertEqual((), row["cites"])
         self.assertEqual(self.FAILED_LINE, row["clause"])
+
+    def test_a_telling_verb_past_the_display_cap_is_still_read(self) -> None:
+        # The clause published on the row is capped at 240 characters; the rule
+        # reads the whole line, so a verb past the cap cannot escape it.
+        line = "node --test tests/game.test.js " + "runs every case " * 20 + "and is reported"
+        self.assertGreater(len(line), self.config.annotation_text_cap_chars)
+        row = self._read(line, "consistent")
+        self.assertEqual(reading.RESULT_UNVERIFIABLE, row["result"])
+        self.assertEqual(reading.WHY_TELLS_THE_PERSON, row["why"])
+        self.assertNotIn("reported", row["clause"])
 
     def test_a_departure_on_the_same_line_stands(self) -> None:
         row = self._read(self.FAILED_LINE, "departure", check="failed")
@@ -2299,13 +2309,26 @@ class ALineAboutWhatTheAgentTellsYouCannotBeShown(AClaudeCodeReadingProducer):
             "let me know the counts",
             "Let   us know when it passes",
             "it will let you know",
+            "it lets you know the counts",
+            "the agent lets us know",
+            "letting me know which tests ran",
+            # The ruling accepts over-abstention, and these are its exact edges: a
+            # tool or argument named by a telling word is withdrawn too, and so is
+            # a path whose telling word is not followed by `.` or `/` and a word.
+            "the CLI reports 0 failures",
+            "pytest --report passes",
+            "npm run report passes",
+            "describe blocks pass",
+            "src/report exists",
+            "~/report exists",
+            "report-card.js renders",
         )
         for line in lines:
             with self.subTest(line=line):
                 self.prompts.clear()
                 row = self._read(line, "consistent")
                 self.assertEqual(reading.RESULT_UNVERIFIABLE, row["result"])
-                self.assertEqual(reading.WHY_CHECK_DOES_NOT_SHOW_IT, row["why"])
+                self.assertEqual(reading.WHY_TELLS_THE_PERSON, row["why"])
 
     def test_a_word_that_only_contains_a_telling_verb_is_not_one(self) -> None:
         # Whole words only: a noun built on the stem names a thing, not what the

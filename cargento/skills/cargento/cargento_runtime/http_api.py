@@ -426,7 +426,12 @@ def _analysis_levels(
         {},
     )
     evidence = levels.Evidence(mine, scan, correction.unsettled_directions(row, facts, floor=floor))
-    level = levels.analysis_level(assessment, evidence, outcome_lines=len(read["lines"]))
+    level = levels.analysis_level(
+        assessment,
+        evidence,
+        outcome_lines=len(read["lines"]),
+        lines=runtime_reading.outcome_lines(read),
+    )
     return [
         {
             "harness": harness,

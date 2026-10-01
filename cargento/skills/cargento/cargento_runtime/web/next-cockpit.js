@@ -2397,6 +2397,12 @@ const NEXT_READING_CHECK_READ_INCOMPLETE =
 const NEXT_READING_CHECKS_NOT_READ =
   "No check this session recorded had room in the reading, so your expected output was not " +
   "put to it.";
+/* A line about what the agent tells the reader (`tells-the-person`), read
+   from the store: the rule keys on the line's whole text, which the page does
+   not re-read. */
+const NEXT_READING_TELLS_THE_PERSON =
+  "This line is about what the session told you, and nothing in the record can show that, " +
+  "so it reads as not verifiable.";
 const NEXT_READING_FAILED_CHECK_UNREAD =
   "A check that failed was not read, because the reading had no room for it, so nothing here " +
   "says the output is consistent.";
@@ -2420,6 +2426,7 @@ const NEXT_READING_STORED_WHY = {
   "changed-after-check": NEXT_READING_CHANGED_AFTER_CHECK,
   "check-read-incomplete": NEXT_READING_CHECK_READ_INCOMPLETE,
   "checks-not-read": NEXT_READING_CHECKS_NOT_READ,
+  "tells-the-person": NEXT_READING_TELLS_THE_PERSON,
 };
 
 /* Who wrote an evidence entry. A closed set on the person side, because the
