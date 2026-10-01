@@ -5071,8 +5071,8 @@ async function nextCockpitKeepIntent(session, model){
         nextIntentForgetAdopted(session, draft);
         /* The confirming step the idle control draws: its Allow, beside the
            disclosure naming the receiver, is the press that sends. The draft
-           is saved now, so that press adopts nothing. */
-        if(owed){ request.consent = true; request.adoption = {}; }
+           is saved now, so that press finds nothing to adopt. */
+        if(owed) request.consent = true;
       }
       await refreshNext();
       return;
@@ -5750,21 +5750,27 @@ async function nextCockpitAskForReading(session, model, allow = false){
      can refuse one given about an endpoint that has since moved. */
   const destination = String(route.destination || "");
   if(nextReadingNeedsAllow(route) && !allow){
-    nextCockpitReadingRequests.set(key, {consent:true, adoption:nextImplicitAdoption(session)});
+    nextCockpitReadingRequests.set(key, {consent:true, adoption:nextImplicitAdoption(session),
+      chosen:nextIntentChosenPrompts.get(nextCockpitHeldKey(session, "goal")) || null});
     renderNext();
     return;
   }
   /* Pending only until the server answers with its job, which it does before
      the model runs (DRC-4686); from then on the job is the state, published
      over the push, so it survives a reload the way this map never could. */
+  /* Allow sends the prompt the card was opened over, so a record that moved
+     underneath is refused by the server rather than read unseen. A choice the
+     reader made or undid while the card was up is theirs, so it is what the
+     box holds now that Allow sends (DRC-4758 fix round, INT-1). */
   const confirmation = nextCockpitReadingRequests.get(key);
-  const adoption = allow && confirmation && confirmation.consent
-    ? confirmation.adoption : nextImplicitAdoption(session);
+  const chosenNow = nextIntentChosenPrompts.get(nextCockpitHeldKey(session, "goal")) || null;
+  const adoption = allow && confirmation && confirmation.consent && confirmation.adoption &&
+    confirmation.chosen === chosenNow ? confirmation.adoption : nextImplicitAdoption(session);
   /* The revision this panel drew, so a press from a page another tab has
      since moved on is refused before anything starts (DRC-4732): the model
      would otherwise read words this reader never saw. */
   const expected = nextNumber(nextCockpitAnnotation(session)?.revision) || 0;
-  const request = {pending: true, message: "", adoption};
+  const request = {pending: true, message: "", adoption, chosen: chosenNow};
   nextCockpitReadingRequests.set(key, request);
   renderNext();
   try{

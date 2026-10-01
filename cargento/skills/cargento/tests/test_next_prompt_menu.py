@@ -24,6 +24,7 @@ from typing import Any
 from cargento_runtime import reading as runtime_reading
 
 from . import test_next_cockpit as cockpit_tests
+from .test_next_drift_panel import routes
 from .test_next_intent_draft import (
     ADD_EDITED,
     EDITED,
@@ -397,6 +398,54 @@ class ChoosingOverASavedGoalTest(_DraftPage):
         self.assertNotEqual(EDITED, out["refusal"])
         # Saved adopted words read as the reader's prompt, not as typed.
         self.assertIn("from your prompt", visible_text(intent))
+
+
+@unittest.skipUnless(shutil.which("node"), "node not available")
+class AllowSendsWhatTheBoxHoldsNowTest(_DraftPage):
+    """The consent card is open while the reader is still free to change the box. Allow sends
+    the words in the box at the press, never the ones captured when the card opened (INT-1)."""
+
+    CONSENT = (
+        "__dashboard.reading_routes = "
+        + json.dumps(routes(installed=("codex", "claude")))
+        + ";\n__dashboard.reading = {consent:false, reason:'consent-required', used:0, limit:12};\n"
+    )
+    ASK = '__press("reading-ask");\nawait __settle();\nawait __settle();\n'
+    ALLOW = '__press("reading-allow");\nawait __settle();\nawait __settle();\n'
+    SENT = (
+        "console.log(JSON.stringify({card:__els.app.innerHTML.includes('Allow and analyze'), "
+        "posts:__posts.filter(p => p.url === '/api/reading').map(p => p.body)}));"
+    )
+
+    def page(self, after: str) -> Any:
+        return self.drive(SERVE_CHOICES + self.CONSENT, after)
+
+    def test_a_choice_made_while_the_card_is_open_is_what_allow_sends(self) -> None:
+        out = self.page(self.ASK + CHOOSE + self.ALLOW + self.SENT)
+        assert isinstance(out, dict)
+        self.assertEqual(1, len(out["posts"]), out)
+        body = out["posts"][0]
+        self.assertEqual(runtime_reading.PROMPT_CHOSEN, body["adopt"])
+        self.assertEqual("p-latest", body["prompt_fact"])
+        self.assertEqual(CHOSEN, body["expected_prompt"])
+        self.assertEqual(140, body["expected_prompt_at"])
+        self.assertTrue(body["allow"])
+
+    def test_undo_while_the_card_is_open_sends_the_first_prompt_back(self) -> None:
+        out = self.page(
+            CHOOSE
+            + self.ASK
+            + '__press("held-undo", "intent");\nawait __settle();\n'
+            + self.ALLOW
+            + self.SENT
+        )
+        assert isinstance(out, dict)
+        self.assertEqual(1, len(out["posts"]), out)
+        body = out["posts"][0]
+        self.assertEqual("first-prompt", body["adopt"])
+        self.assertEqual(FIRST, body["expected_prompt"])
+        self.assertEqual(99, body["expected_prompt_at"])
+        self.assertNotIn("prompt_fact", body)
 
 
 @unittest.skipUnless(shutil.which("node"), "node not available")
