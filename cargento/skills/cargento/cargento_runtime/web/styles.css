@@ -981,6 +981,9 @@ input::placeholder,textarea::placeholder{color:var(--ink2)}
 .next-session-controls{display:flex;flex-wrap:wrap;gap:7px;margin:0 0 0 auto}
 .next-session-controls .next-session-copy,.next-session-controls .next-session-raise{margin:0}
 .next-session-controls .next-session-raise{font-weight:700}
+/* A missing way back, said once beside the controls it is about (DRC-4758 slice E). */
+.next-session-reentry-none{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 10px;flex:1 1 100%;justify-content:flex-end;color:var(--ink2);font-size:var(--fs-body)}
+.next-session-reentry-none .next-departure-reentry-why{margin:4px 0 0}
 .next-session-section[data-next-session-section="ask"]{padding:13px 16px;border:1px solid var(--rule);border-left:2px solid var(--amber);border-radius:var(--r-card);background:var(--panel)}
 .next-session-ask-callout{margin:0;padding:0;border:0;background:transparent}
 .next-session-ask-callout>span{color:var(--amber);font-size:var(--fs-label);letter-spacing:.07em}
@@ -988,6 +991,8 @@ input::placeholder,textarea::placeholder{color:var(--ink2)}
 .next-session-wait[data-known="true"]{color:var(--amber);font-family:var(--mono);font-size:var(--fs-label)}
 .next-session-ask-callout h2{margin:7px 0 0;color:var(--ink-label);font-family:var(--mono);font-size:var(--fs-label);font-weight:600;letter-spacing:.07em}
 .next-session-facts{margin:20px 0 0}
+.next-session-facts-more{margin:10px 0 0}
+.next-session-facts-more>.next-session-facts{margin:6px 0 0}
 .next-session-facts>div{display:grid;grid-template-columns:120px minmax(0,1fr);gap:18px;align-items:baseline;padding:10px 0;border-bottom:1px solid var(--rule)}
 .next-session-facts dt{color:var(--ink-label);font-family:var(--mono);font-size:var(--fs-label);font-weight:600;letter-spacing:.07em}
 .next-session-facts dd{min-width:0;margin:0;color:var(--ink2);font-family:var(--sans);font-size:var(--fs-body);line-height:1.55;overflow-wrap:anywhere}

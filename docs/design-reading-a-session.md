@@ -2440,7 +2440,7 @@ criterion.
   inferred. After `session_ended` pops the overlay, the state falls back to the collector's
   `working` or `idle` while the ask stays open, and the chip read "working" beside "ended".
 
-#### Amended 2026-10-01: the panel's text is tiered to a word budget
+#### Amended 2026-10-01: the session page's text is tiered to a word budget
 
 Owner, 2026-10-01 (DRC-4758 slice E; Q9 of the decision block, and the complaint "so much text it
 is unclear where to look"). The panel is held to a measured budget, counted by the shared
@@ -2476,6 +2476,25 @@ on stay in view.
   per-departure way back are not drawn, and the reading's cutoff moved into "What it read". The
   result-placement bullet's "a malformed reading, a refused one and no reading keep it" now reads
   "a malformed reading and a refused one keep it".
+- The activity column beside the panel is tiered the same way (328 visible words to 125 on the
+  idle-drafted fixture). Under the record, where the harness's work results are read, one clause
+  stays in view ("Results are as the tool reported; not inspected.") and the mix, the bounds, the
+  check scan and the full limit sit behind "About this record"; where none are read, the limit is
+  the absence and stays in view. The route's tool-output sentence is said once on the page, in
+  "What is sent"; the record's line no longer repeats it. The facts keep NEXT STEP and BLOCKED in
+  view and put TURN, OUTCOME, GIT STATE and PROJECT behind "Session facts: <outcome> · <git
+  state>", because HOW IT LANDED says both again; a block note that only restates its value
+  ("Reporter available", "No block-state reading available") is not drawn, here or on the
+  Sessions list. Command-shape reports, on the session page, are one summary while off or
+  unsupported, and the list or "No command-shape reports." with the caveats behind "About these
+  reports" while on; Attention keeps its whole section. A missing way back is one clause beside
+  the header's controls ("No resume command", "No terminal to raise", "Terminal raise off"),
+  said once per page before any departure (DRC-4658), with the cause behind "Why". HOW IT LANDED
+  keeps "Neither card implies the other." in view with its reason behind "Why two cards", and the
+  Intent-log pointer is the link with what it keeps behind "What it keeps".
+- Not built here, noted as follow-ups: a per-row source behind a row-level disclosure; the ended
+  note's shorter form; "Run setup" beside an off command-shape section; the same tiering on
+  Attention's command-shape section.
 
 ### What the numbering build decided, 2026-09-25
 

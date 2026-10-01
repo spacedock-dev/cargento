@@ -227,7 +227,7 @@ function nextOperationsBlocked(session, asks, harnesses){
   }
   if(nextOperationsReportsBlocks(session, harnesses)){
     return nextOperationsFact(
-      "blocked", "BLOCKED", "No reported block", "Reporter available", "clear",
+      "blocked", "BLOCKED", "No reported block", "", "clear",
     );
   }
   return nextOperationsFact(

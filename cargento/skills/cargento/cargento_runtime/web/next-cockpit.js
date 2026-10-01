@@ -1758,18 +1758,18 @@ function nextCockpitWorkEvidenceLimit(harness){
   return `${NEXT_COCKPIT_WORK_READ_FROM} ${nextCockpitWorkEvidenceOwn(harness)}`;
 }
 
-function nextCockpitWorkEvidenceOwn(harness){
+function nextCockpitWorkEvidenceOwn(harness, sent = true){
   const label = nextHarnessLabels().get(harness) || nextCockpitHumanLabel(harness);
   if(harness === "pi") return `${label} publishes demonstrated work results, and they are read here.`;
   if(harness === "claude"){
     /* The route's own sentence says what a reading sends of them and to whom,
        or that it sends none, so the line under the checks and the disclosure
        beside the button cannot word it two ways. */
-    const route = nextReadingRoute({harness});
-    const sent = route && route.provider ? String(route.tool_output || "") : "";
+    const route = sent ? nextReadingRoute({harness}) : null;
+    const output = route && route.provider ? String(route.tool_output || "") : "";
     return `${label} records the checks a session ran and the files it wrote, and they are ` +
       "listed here. A result is what the tool reported; Cargento inspects no file, test or " +
-      "deliverable." + (sent ? ` ${sent}` : "");
+      "deliverable." + (output ? ` ${output}` : "");
   }
   /* "Cargento reads those on Pi alone" stood here, and stopped being true
      when Claude Code's checks were read too. The panel's own harness limit is
@@ -2224,13 +2224,35 @@ function nextCockpitWorkEvidence(session, source, cited = new Set()){
     (rows ? `<div class="next-cockpit-work-rows" role="list">${rows}</div>`
       : unnumbered ? ""
       : '<p class="next-cockpit-work-absent">' + `${esc(nextCockpitWorkAbsence(source))}</p>`) +
-    (numbered.length ? `<p class="next-cockpit-work-mix">${esc(nextCockpitWorkMix(numbered))}</p>`
-      : "") +
-    unlisted.map(said => `<p class="next-cockpit-work-earlier">${esc(said)}</p>`).join("") +
-    (source.scan ? `<p class="next-cockpit-work-checks">${esc(nextCockpitCheckScan(source.scan))}` +
-      "</p>" : "") + bound +
-    '<p class="next-cockpit-work-limit">' +
-    `${esc(nextCockpitWorkEvidenceLimit(String(session.harness || "")))}</p></section>`;
+    nextCockpitWorkFooter(session, (numbered.length
+      ? `<p class="next-cockpit-work-mix">${esc(nextCockpitWorkMix(numbered))}</p>` : "") +
+      unlisted.map(said => `<p class="next-cockpit-work-earlier">${esc(said)}</p>`).join("") +
+      (source.scan ? `<p class="next-cockpit-work-checks">${esc(nextCockpitCheckScan(source.scan))}` +
+        "</p>" : "") + bound) + '</section>';
+}
+
+/* The record's footer, tiered (DRC-4758 slice E, tier 2 of
+   [NUI-19](docs/design-next-ui.md#nui-19-a-caveat-has-three-tiers)). Where the
+   harness's work results are read, one clause stays in view and the mix, the
+   bounds, the scan and the full limit sit behind "About this record"; where
+   none are read, the limit is the absence and stays in view. The route's
+   tool-output sentence is not repeated here: "What is sent" beside the
+   control owns it, and it said the same words twice on one page. */
+const NEXT_COCKPIT_WORK_AS_REPORTED = "Results are as the tool reported; not inspected.";
+
+function nextCockpitWorkFooter(session, about){
+  const harness = String(session && session.harness || "");
+  const reads = harness === "claude" || harness === "pi";
+  const limit = reads
+    ? `${NEXT_COCKPIT_WORK_READ_FROM} ${nextCockpitWorkEvidenceOwn(harness, false)}`
+    : nextCockpitWorkEvidenceLimit(harness);
+  const line = reads
+    ? `<p class="next-cockpit-work-limit next-cockpit-work-reported">${esc(NEXT_COCKPIT_WORK_AS_REPORTED)}</p>`
+    : `<p class="next-cockpit-work-limit">${esc(limit)}</p>`;
+  const body = about + (reads ? `<p class="next-cockpit-work-limit">${esc(limit)}</p>` : "");
+  return line + (body ? `<details class="next-cockpit-why next-cockpit-work-about"` +
+    `${nextCockpitDisclosureAttr("work-about")}><summary>About this record</summary>` +
+    `${body}</details>` : "");
 }
 
 /* What the rows actually are, counted from the rows themselves.
@@ -3372,8 +3394,10 @@ function nextCockpitDepartures(shape, source, session){
    IT LANDED is a block of it, and appending it inside the departures section
    put it above HOW IT LANDED at every measured offset. */
 function nextCockpitDeparturesKept(){
-  return '<p class="next-cockpit-departures-kept"><a href="#n=intent">The Intent log</a> keeps ' +
-    'what you saved and what was raised against it after the session leaves the board.</p>';
+  /* The link in view and what it keeps one click away (DRC-4758 slice E). */
+  return '<div class="next-cockpit-departures-kept"><a href="#n=intent">Intent log</a>' +
+    nextCockpitWhy("kept-why", "What it keeps", "The Intent log keeps what you saved and what " +
+      "was raised against it after the session leaves the board.") + '</div>';
 }
 
 /* What the unasked lane raised, in the section named for it.
@@ -4697,8 +4721,11 @@ function nextCockpitLanded(observed){
     card("END EVIDENCE", landing.endText, landing.endKnown, "") +
     card("WHO CLAIMS IT FINISHED", landing.claimText, landing.claimKnown,
       landing.independentText) +
-    '</div><p class="next-cockpit-reading-why">Neither card implies the other. Evidence of ' +
-    'an end and a claim of completion are separate questions.</p></section>';
+    /* The claim inline and its reason one click away (DRC-4758 slice E, tier 2
+       of [NUI-19](docs/design-next-ui.md#nui-19-a-caveat-has-three-tiers)). */
+    '</div><p class="next-cockpit-reading-why">Neither card implies the other.</p>' +
+    nextCockpitWhy("landed-why", "Why two cards",
+      "Evidence of an end and a claim of completion are separate questions.") + '</section>';
 }
 
 /* The block, gated on the annotation alone rather than on a reading existing,

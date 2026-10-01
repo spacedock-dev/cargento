@@ -209,7 +209,10 @@ function nextObservedSession(source, asks, harness, generated, shared){
       (gaps.includes("block state") ? "Block state could not be read" : "Harness does not report blocks")),
     blockKnown,
     blockNote: question || (needs ? (source.wait_unconfirmed ? "Unconfirmed: no positive observation in 5m; prompt may still be standing" : nextObservedString(source.state_detail) || "Block reported") :
-      (reporter ? "Reporter available" : "No block-state reading available")),
+      /* Nothing beside a value it would only restate: "Reporter available"
+         under "No reported block", and "No block-state reading available"
+         under "Harness does not report blocks" (DRC-4758 slice E). */
+      ""),
     // Stops and ends are published; readership and termination cause are not.
     // Their absence belongs in open/coverage, never in an inferred outcome.
     ...nextObservedPair("outcome", outcome, "No stop or end observed"),

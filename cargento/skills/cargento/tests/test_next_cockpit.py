@@ -13675,9 +13675,10 @@ console.log(JSON.stringify({limit: texts("next-cockpit-work-limit"),
         )
         # Where the route names where the checks go, a reading can carry them
         # after the reader allows tool output, so nothing demotes Expected
-        # Output, and the line under the checks says what is sent and to whom.
+        # Output. What is sent and to whom is said once, in "What is sent" beside the
+        # control; the line under the checks no longer repeats it (DRC-4758 slice E).
         self.assertEqual("", out["readingClaude"])
-        self.assertIn("to Codex, which reaches OpenAI", out["limit"][0])
+        self.assertNotIn("to Codex, which reaches OpenAI", out["limit"][0])
         # The reading row has its own sentence since the DRC-4680 review (C-5): it sits in the
         # panel, beside the record rather than under it, so it names the record instead of
         # pointing "above" at it.

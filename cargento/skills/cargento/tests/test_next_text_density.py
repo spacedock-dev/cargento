@@ -18,7 +18,8 @@ import unittest
 
 from cargento_runtime import annotations as annotation_store
 
-from .test_next_drift_panel import READING, PanelPage, aside_of
+from .next_harness import storage_prelude
+from .test_next_drift_panel import FIXTURE, READING, PanelPage, aside_of
 from .test_next_intent_draft import DRAFT
 from .visible_text import visible_text
 
@@ -199,3 +200,113 @@ class MovedTextStaysOnThePageTest(PanelPage):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+def activity_of(html: str) -> str:
+    start = html.index("data-next-session-activity")
+    return html[start:]
+
+
+def header_of(html: str) -> str:
+    start = html.index('<header class="next-session-detail-header"')
+    return html[start : html.index("</header>", start)]
+
+
+TOOL_OUTPUT = "For this session a reading can also send tool output"
+
+
+@unittest.skipUnless(shutil.which("node"), "node not available")
+class TheActivityColumnIsTieredTest(PanelPage):
+    def test_the_tool_output_sentence_is_said_once_on_the_page(self) -> None:
+        html = self.page("claude", IDLE_DRAFTED)
+        self.assertEqual(1, html.count(TOOL_OUTPUT))
+        drift = html[html.index('id="next-session-drift-heading"') : html.index("</aside>")]
+        self.assertIn(TOOL_OUTPUT, drift)
+
+    def test_the_record_footer_keeps_one_clause_in_view(self) -> None:
+        activity = activity_of(self.page("claude", IDLE_DRAFTED))
+        text = visible_text(activity)
+        self.assertIn("Results are as the tool reported; not inspected.", text)
+        self.assertIn("About this record", text)
+        for behind in ("1 observed of what it did", "Claude records the checks a session ran"):
+            with self.subTest(behind=behind):
+                self.assertIn(behind, activity)
+                self.assertNotIn(behind, text)
+
+    def test_a_harness_whose_work_is_not_read_keeps_its_limit_in_view(self) -> None:
+        activity = activity_of(self.page("codex", ELIGIBLE))
+        self.assertIn("Codex publishes no demonstrated work results", visible_text(activity))
+
+    def test_command_shape_reports_off_is_one_summary(self) -> None:
+        activity = activity_of(self.page("claude", IDLE_DRAFTED))
+        text = visible_text(activity)
+        self.assertIn("Command-shape reports: off", text)
+        for behind in (
+            "Command-shape reports are disabled for this run.",
+            "A shape match does not prove the action succeeded.",
+        ):
+            with self.subTest(behind=behind):
+                self.assertIn(behind, activity)
+                self.assertNotIn(behind, text)
+
+    def test_command_shape_reports_on_with_none_says_so_in_view(self) -> None:
+        activity = activity_of(
+            self.page("claude", IDLE_DRAFTED + "__dashboard.irreversible_enabled = true;\n")
+        )
+        text = visible_text(activity)
+        self.assertIn("No command-shape reports.", text)
+        self.assertIn("About these reports", text)
+        self.assertNotIn("A shape match does not prove the action succeeded.", text)
+
+    def test_the_facts_keep_next_step_and_blocked_in_view(self) -> None:
+        activity = activity_of(self.page("claude", IDLE_DRAFTED))
+        text = visible_text(activity)
+        self.assertIn("NEXT STEP", text)
+        self.assertIn("BLOCKED", text)
+        self.assertRegex(text, r"Session facts: \S")
+        for label in ("TURN", "GIT STATE", "PROJECT"):
+            with self.subTest(label=label):
+                self.assertIn(f"<dt>{label}</dt>", activity)
+                self.assertNotIn(f" {label} ", f" {text} ")
+
+    def test_a_missing_way_back_is_one_clause_beside_the_controls(self) -> None:
+        html = self.page("claude", IDLE_DRAFTED)
+        header = header_of(html)
+        why = "This session published no usable id this run"
+        self.assertIn("No resume command", visible_text(header))
+        self.assertIn(why, header)
+        self.assertNotIn(why, visible_text(header))
+        self.assertEqual(1, html.count(why))
+
+    def test_how_it_landed_keeps_its_claim_and_the_intent_log_its_link(self) -> None:
+        activity = activity_of(self.page("claude", IDLE_DRAFTED))
+        text = visible_text(activity)
+        self.assertIn("Neither card implies the other.", text)
+        self.assertNotIn("separate questions", text)
+        self.assertIn('<a href="#n=intent">Intent log</a>', activity)
+        self.assertIn("after the session leaves the board", activity)
+        self.assertNotIn("after the session leaves the board", text)
+
+    def test_the_activity_column_word_count(self) -> None:
+        activity = activity_of(self.page("claude", IDLE_DRAFTED))
+        count = len(visible_text(activity).split())
+        print(f"\nidle-drafted activity column: {count} visible words")
+
+
+@unittest.skipUnless(shutil.which("node"), "node not available")
+class NothingRestatesItsValueTest(PanelPage):
+    def test_no_block_note_restates_the_value_beside_it(self) -> None:
+        sessions = self._run_page_js(
+            "await __settle();\nawait __settle();\n"
+            "for(const s of __dashboard.sessions){ s.harness = 'claude'; }\n"
+            "await refreshNext();\nawait __settle();\n"
+            "navigateNext({view:'sessions'});\nawait __settle();\n"
+            "console.log(JSON.stringify(__els.app.innerHTML));",
+            storage_prelude({}) + FIXTURE,
+        )
+        assert isinstance(sessions, str)
+        self.assertIn('data-next-operation-fact="blocked"', sessions)
+        page = self.page("claude", IDLE_DRAFTED)
+        for html in (sessions, page):
+            self.assertNotIn("Reporter available", html)
+            self.assertNotIn("No block-state reading available", html)

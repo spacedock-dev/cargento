@@ -96,15 +96,28 @@ function nextSessionFacts(observed, asks){
     ["GIT STATE", "git", observed.gitText, observed.gitKnown],
     ["PROJECT", "project", observed.project, true],
   ];
-  return '<dl class="next-session-facts">' + rows.map(([label, key, text, known]) => {
+  const row = ([label, key, text, known]) => {
     let value = `<span${known ? "" : ' class="next-session-absent"'}>${esc(text)}</span>`;
     if(key === "next" && known && !asks.length){
       value = `<section data-next-session-command-fact="next">${value}</section>`;
     }
-    const note = key === "block"
+    const note = key === "block" && observed.blockNote
       ? `<span class="next-session-fact-note">${esc(observed.blockNote)}</span>` : "";
     return `<div data-next-session-fact="${key}"><dt>${label}</dt><dd>${value}${note}</dd></div>`;
-  }).join("") + "</dl>";
+  };
+  /* What the reader acts on stays in view: the next step and whether it is
+     blocked. Turn, outcome, git state and project sit behind "Session facts"
+     (DRC-4758 slice E, tier 2 of
+     [NUI-19](docs/design-next-ui.md#nui-19-a-caveat-has-three-tiers)), with the
+     outcome and git state in the summary, because HOW IT LANDED below says
+     both again. */
+  const shown = rows.filter(([, key]) => key === "next" || key === "block");
+  const behind = rows.filter(([, key]) => key !== "next" && key !== "block");
+  const summary = `Session facts: ${observed.outcomeText} · ${observed.gitText}`;
+  return '<dl class="next-session-facts">' + shown.map(row).join("") + "</dl>" +
+    `<details class="next-cockpit-why next-session-facts-more"${nextCockpitDisclosureAttr("session-facts")}>` +
+    `<summary>${esc(summary)}</summary>` +
+    '<dl class="next-session-facts">' + behind.map(row).join("") + "</dl></details>";
 }
 
 function nextSessionTitle(session){
@@ -598,13 +611,34 @@ function nextCommandReports(session = null){
     return `<li class="next-attention-risk-identity"><h3>${route ? `<a href="#n=${esc(route)}" data-next-route="${esc(route)}">${esc(text)}</a>` : esc(text)}</h3>` +
       `<p class="next-attention-risk-source">${esc(identity)}${esc(report.tool_name)} · ${esc(new Date(report.timestamp * 1000).toISOString())}</p></li>`;
   }).join("");
+  const caveats = '<p>A shape match does not prove the action succeeded.</p>' +
+    '<p>Claude Code and Codex after-tool hooks only. Reports may repeat or arrive out of order. ' +
+    'This run keeps up to 1,000 reports, 20 per session, for at most 24 hours; restarting clears them.</p>';
+  /* On the session page the section is tiered (DRC-4758 slice E, tier 2 of
+     [NUI-19](docs/design-next-ui.md#nui-19-a-caveat-has-three-tiers)): off or
+     unsupported it is one summary naming that state, with its sentence and the
+     caveats behind it; on, the list or "No command-shape reports" stays in
+     view and the caveats sit behind "About these reports". Attention keeps
+     its whole section, which is that page's subject. */
+  if(session){
+    const why = (summary, body) => `<details class="next-cockpit-why"` +
+      `${nextCockpitDisclosureAttr("command-reports")}><summary>${esc(summary)}</summary>` +
+      `${body}</details>`;
+    const off = disabled || unsupported;
+    return '<section class="next-attention-section" data-next-command-reports>' +
+      (off
+        ? why(disabled ? "Command-shape reports: off" : "Command-shape reports: unsupported here",
+          `<p>${esc(absent)}</p>${caveats}`)
+        : '<div class="next-attention-section-heading"><h2>Command-shape reports</h2>' +
+          (reports.length ? `<p>${reports.length} report${reports.length === 1 ? "" : "s"} shown · newest first</p>` : "") +
+          '</div>' + (reports.length ? `<ol>${rows}</ol>` : "<p>No command-shape reports.</p>") +
+          why("About these reports", (reports.length ? "" : `<p>${esc(absent)}</p>`) + caveats)) +
+      "</section>";
+  }
   return '<section class="next-attention-section" data-next-command-reports>' +
     '<div class="next-attention-section-heading"><h2>Command-shape reports</h2>' +
     (reports.length ? `<p>${reports.length} report${reports.length === 1 ? "" : "s"} shown · newest first</p>` : "") +
-    '</div>' + (reports.length ? `<ol>${rows}</ol>` : `<p>${esc(absent)}</p>`) +
-    '<p>A shape match does not prove the action succeeded.</p>' +
-    '<p>Claude Code and Codex after-tool hooks only. Reports may repeat or arrive out of order. ' +
-    'This run keeps up to 1,000 reports, 20 per session, for at most 24 hours; restarting clears them.</p></section>';
+    '</div>' + (reports.length ? `<ol>${rows}</ol>` : `<p>${esc(absent)}</p>`) + caveats + '</section>';
 }
 
 function nextSessionView(project, harness, sid, openDisclosures = new Set()){
@@ -662,7 +696,19 @@ function nextSessionView(project, harness, sid, openDisclosures = new Set()){
   const waiting = observed.isNeeds || observed.askKnown;
   const raise = observed.isNeeds ? nextSessionRaiseControl(session, true) : "";
   const reentryLimit = nextDepartureReentryLimit(session);
-  const missingReentry = reentryLimit.resume + (nextSessionRaiseControl(session) ? "" : reentryLimit.raise);
+  /* Said once per page, beside the controls it is about, before any departure
+     (DRC-4658): one clause naming what is missing, and the cause sentences
+     behind "Why" (DRC-4758 slice E). */
+  const noRaise = !nextSessionRaiseControl(session);
+  const missing = [reentryLimit.resume ? "No resume command" : "",
+    noRaise ? (nextFocusCapability() ? "No terminal to raise" : "Terminal raise off") : ""]
+    .filter(Boolean);
+  const missingReentry = missing.length
+    ? '<div class="next-session-reentry-none">' +
+      `<span class="next-session-reentry-clause">${esc(missing.join(" · "))}</span>` +
+      `<details class="next-cockpit-why"${nextCockpitDisclosureAttr("reentry-why")}>` +
+      `<summary>Why</summary>${reentryLimit.resume}${noRaise ? reentryLimit.raise : ""}</details></div>`
+    : "";
   const controls = nextSessionCopyControl(session) + nextSessionLinkControl(session) +
     nextSessionResumeControl(session) + raise;
   const assignment = nextSessionInstruction(session, "asked")
@@ -689,7 +735,8 @@ function nextSessionView(project, harness, sid, openDisclosures = new Set()){
     `<h1${titleClass}>${esc(observed.titleText)}</h1>` +
     `<p class="next-session-identity">${esc(observed.harness)} · ${esc(observed.sid)}${rate}</p>` +
     '</div><div class="next-session-detail-bar">' +
-    `${metaLine}${drift.pill || ""}<div class="next-session-controls">${controls}</div></div></header>`;
+    `${metaLine}${drift.pill || ""}<div class="next-session-controls">${controls}</div>` +
+    `${missingReentry}</div></header>`;
   /* Identity, then what is waiting on the reader, both full width; then the
      Intent and drift panel and the session's activity as two columns
      (DRC-4680). The answer sits above both because it outranks the check.
@@ -707,7 +754,7 @@ function nextSessionView(project, harness, sid, openDisclosures = new Set()){
     nextSessionFacts(observed, asks) +
     `<div class="next-session-evidence">${assignment}${coverage}</div>` +
     nextSessionHealth(session) + nextSessionTasks(observed) +
-    nextCommandReports(session) + nextSessionDelivery(session) + missingReentry + drift.record +
+    nextCommandReports(session) + nextSessionDelivery(session) + drift.record +
     "</div>";
   return `<article class="next-session-detail${blocked}" data-next-session-detail="${esc(session.sid)}"` +
     `${stateAttr} data-tone="${esc(observed.tone)}">` + identity +
