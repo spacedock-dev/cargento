@@ -5624,13 +5624,13 @@ function nextCockpitDriftBlock(group, session, primary){
   const unsettled = Boolean(
     nextCockpitConflictCandidates(annotation, workSource.all || entries, session).length);
   const cap = nextCockpitHeldCap();
-  /* The header line, and the discard stamp takes its slot rather than sitting
-     under it (DRC-4565). Both answer "what state are these two boxes in", and
-     "No revision saved yet" is the answer for a session nobody typed against
-     -- printing it above a record of a deletion is the false sentence this
-     issue removes. */
-  const revision = nextAnnotationDiscardStamp(annotation) ||
-    nextProjectRevisionLine(annotation) || "No revision saved yet";
+  /* The discard stamp stays in view, since it is the only sentence about a
+     landed deletion (DRC-4565). A saved revision is a "Saved" summary whose
+     details hold the revision line, what a revision is and the store key
+     (plan slice D, critic 13): the reference draws none of the three, and
+     an unsaved session draws nothing here at all (DRC-4758 fix round). */
+  const discardStamp = nextAnnotationDiscardStamp(annotation);
+  const revisionLine = discardStamp ? "" : nextProjectRevisionLine(annotation);
   /* What became of the words, in the board's own voice, and the second
      sentence only where a raise still quotes them. Not gated on the offer to
      discard: `revision_count` is 0 once a discard lands, and gating the
@@ -5671,22 +5671,26 @@ function nextCockpitDriftBlock(group, session, primary){
   /* "Saved", without the design's check mark: a check in this panel reads as
      a verdict (owner, DRC-4682), and the design's "Confirmed" claimed what
      nothing did, since a saved revision is the reader's own words (owner,
-     2026-10-01, critic 13). */
-  const confirmed = String(annotation && annotation.goal || "").trim()
-    ? '<span class="next-cockpit-held-confirmed">Saved</span>' : "";
-  /* Named, because the reader has to know whose words these are: the harness
-     and the session id are what the store keys on. */
+     2026-10-01, critic 13). The store key is in its details because the
+     reader may need whose words these are, and the page's title already
+     names the session. */
+  const saved = revisionLine
+    ? '<details class="next-cockpit-why next-cockpit-held-stamp"' +
+      `${nextCockpitDisclosureAttr("held-stamp")}><summary>Saved</summary>` +
+      `<span class="next-cockpit-held-revision">${esc(revisionLine)}</span>` +
+      `<span class="next-cockpit-define">${NEXT_COCKPIT_REVISION_DEFINITION}</span>` +
+      `<span class="next-cockpit-held-bound">${esc(sessKey(session))}</span></details>` : "";
   const intent = '<section class="next-cockpit-held">' +
     '<header><h2 id="next-session-intent-heading" tabindex="-1" ' +
-    `data-next-focus="${esc(nextCockpitIntentHeadingKey(session))}">Intent</h2>` + confirmed +
-    `<span class="next-cockpit-held-bound">${esc(sessKey(session))}</span></header>` +
+    `data-next-focus="${esc(nextCockpitIntentHeadingKey(session))}">Intent</h2></header>` +
+    /* Under the heading rather than in its header, so the revision line keeps
+       the sentence tier (DRC-4587). */
+    saved +
     (drafted ? "" : noDraft) +
     (nextCockpitStoreUnreadable()
       ? `<p class="next-cockpit-held-absent">${esc(nextCockpitStoreUnreadable())}</p>` : "") +
-    /* One line, the stamp and what it means, rather than two (DRC-4680 fold). */
-    '<div class="next-cockpit-held-stamp">' +
-    `<span class="next-cockpit-held-revision">${esc(revision)}</span>` +
-    `<span class="next-cockpit-define">${NEXT_COCKPIT_REVISION_DEFINITION}</span></div>` +
+    (discardStamp ? '<div class="next-cockpit-held-stamp">' +
+      `<span class="next-cockpit-held-revision">${esc(discardStamp)}</span></div>` : "") +
     '<div class="next-cockpit-held-fields">' +
     NEXT_COCKPIT_HELD_FIELDS.map(spec =>
       nextCockpitHeldField(session, annotation, spec, cap)).join("") +

@@ -4443,7 +4443,8 @@ console.log(JSON.stringify({
         self.assertTrue(out["goalWhy"])
         self.assertTrue(out["outputWhy"])
         self.assertEqual(0, out["clears"])
-        self.assertTrue(out["revision"])
+        # Nobody typed against it, so no stamp is drawn rather than an absence sentence.
+        self.assertFalse(out["revision"])
         self.assertEqual(["0/240", "0/240"], out["counts"])
 
     def test_a_pasted_line_break_collapses_in_the_box_not_silently_at_the_store(self) -> None:
@@ -7518,27 +7519,20 @@ class AnAbsenceNeverOutranksTheValueItReplacesTest(unittest.TestCase):
                 self.assertNotIn("two axes, read separately", body)
                 self.assertNotIn("next-cockpit-landed-axes", body)
 
-    def test_the_revision_slot_cannot_invert_because_one_class_carries_both(self) -> None:
+    def test_the_revision_slot_cannot_invert_because_the_stamp_excludes_the_line(self) -> None:
         """The other raised absence has no value to be read beside.
 
-        `nextCockpitHeldTo` fills one span from a chain: a discard stamp, then a
-        revision line, then "No revision saved yet". Value and absence are the
-        same element with the same class, so they resolve identically whatever
-        the tier is. That is a stronger guarantee than a comparison, and it
-        holds only while the chain stays in one assignment, which is what this
-        asserts.
+        `nextCockpitHeldTo` draws a discard stamp in view or a revision line under "Saved",
+        never both, and no absence sentence for a session nobody typed against: the reference
+        draws none, and "No revision saved yet" was always-visible text the owner's walk cut
+        (DRC-4758 fix round). The exclusion holds only while the line is derived from the
+        stamp in one assignment, which is what this asserts.
         """
-        chain = (
-            "nextAnnotationDiscardStamp(annotation) ||\n"
-            '    nextProjectRevisionLine(annotation) || "No revision saved yet"'
-        )
+        chain = 'const revisionLine = discardStamp ? "" : nextProjectRevisionLine(annotation);'
         self.assertIn(chain, self.cockpit_js)
+        self.assertNotIn("No revision saved yet", self.cockpit_js)
         emitted = re.findall(r'class="next-cockpit-held-revision"', self.cockpit_js)
-        self.assertEqual(
-            1,
-            len(emitted),
-            "the revision slot is emitted more than once, so the chain may have split",
-        )
+        self.assertEqual(2, len(emitted), "a third revision slot may not share the exclusion")
 
 
 @unittest.skipUnless(shutil.which("node"), "node not available")
@@ -8678,8 +8672,9 @@ console.log(JSON.stringify({
         self.assertIn(annotation_store.NO_GOAL_TYPED, never)
         self.assertNotIn(annotation_store.NO_GOAL_TYPED, discarded)
         self.assertNotIn(annotation_store.NO_LINES_TYPED, discarded)
-        self.assertIn("No revision saved yet", never)
-        self.assertNotIn("No revision saved yet", discarded)
+        # A never-typed session draws no stamp at all; the discarded one keeps its record.
+        self.assertNotIn("No revision saved yet", never + discarded)
+        self.assertNotIn("Saved", never)
         # And nothing on the never-typed block invents a discard.
         self.assertNotIn(annotation_store.DISCARD_RECORD, never)
         self.assertNotIn("discarded", never)

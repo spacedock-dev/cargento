@@ -854,6 +854,8 @@ input::placeholder,textarea::placeholder{color:var(--ink2)}
    so it is one label tall rather than one control (28px back for the fold). */
 .next-session-panel .next-cockpit-held-lines>.next-cockpit-held-heading>.next-cockpit-held-label{min-height:0}
 .next-cockpit-held-stamp{display:flex;flex-wrap:wrap;gap:0 8px}
+details.next-cockpit-held-stamp{display:block}
+details.next-cockpit-held-stamp[open]>span{display:block}
 .next-session-state{display:inline-block;margin:0;padding:2px var(--sp-2);border:1px solid var(--line);border-radius:var(--r-pill);color:var(--ink2);font-family:var(--mono);font-size:var(--fs-label)}
 /* Two rows: state, name and id; then the measured line with the controls on
    its right. One element per line took 205px and pushed Analyze drift to
@@ -1343,7 +1345,6 @@ input::placeholder,textarea::placeholder{color:var(--ink2)}
 .next-intent-draft-source{padding:1px 8px;border:1px dashed var(--line);border-radius:var(--r-pill);color:var(--ink2);font-size:var(--fs-label)}
 .next-intent-draft-marks>.next-cockpit-held-cue{grid-column:auto}
 .next-cockpit-held-field .next-intent-draft-marks>button{color:var(--ink);font-weight:600;text-decoration:underline;text-underline-offset:3px}
-.next-cockpit-held-confirmed{margin-right:auto;color:var(--ink2);font-family:var(--sans);font-size:var(--fs-label)}
 .next-cockpit-direction-line{grid-template-columns:minmax(0,1fr) auto auto}
 .next-cockpit-direction-line>textarea{grid-column:1/-1}
 .next-cockpit-direction-tools,.next-cockpit-direction-replace{display:inline-flex;flex-wrap:wrap;align-items:center;gap:4px 8px}
@@ -1551,7 +1552,7 @@ input::placeholder,textarea::placeholder{color:var(--ink2)}
 .next-cockpit-landed{display:flex;flex-direction:column;gap:8px;padding:0 16px 14px}
 .next-cockpit-landed>header{display:flex;justify-content:space-between;align-items:baseline;gap:10px}
 .next-cockpit-landed h2{margin:0;color:var(--ink-label);font-family:var(--mono);font-size:var(--fs-label);font-weight:600;letter-spacing:.07em}
-.next-cockpit-held-bound{margin-left:auto;color:var(--ink-caption);font-family:var(--mono);font-size:var(--fs-label)}
+.next-cockpit-held-bound{color:var(--ink-caption);font-family:var(--mono);font-size:var(--fs-label)}
 /* What the unasked lane raised. The same label shape as every other fact on
    this panel, for the reason the delivery block beside it carries one.
 

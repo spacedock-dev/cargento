@@ -204,7 +204,9 @@ class TheGoalArrivesDraftedTest(_DraftPage):
         self.assertNotIn("from your prompt · latest", text)
         self.assertIn("Looks right", text)
         self.assertIn(MEASURED, text)
-        self.assertIn("No revision saved yet", text)
+        # Nothing is saved, so no stamp is drawn (DRC-4758 fix round).
+        self.assertNotIn("No revision saved yet", text)
+        self.assertNotIn("Saved", text)
         self.assertNotIn("Confirmed", text)
         # The draft's tint marks the field, and the design line replaces the lede.
         self.assertIn("data-next-cockpit-drafted", intent)

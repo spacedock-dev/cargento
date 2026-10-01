@@ -450,13 +450,19 @@ class ThePanelKeepsAnalyzeOnTheFirstScreenTest(PanelPage):
         order = [
             intent.index(mark)
             for mark in (
-                'class="next-cockpit-held-stamp"',
+                "next-cockpit-held-stamp",
                 'class="next-cockpit-held-fields"',
             )
         ]
         self.assertEqual(sorted(order), order)
-        stamp = re.search(r'<div class="next-cockpit-held-stamp">([\s\S]*?)</div>', intent)
+        # The stamp is a "Saved" summary over the revision line and its definition, so
+        # neither costs the panel a visible line (DRC-4758 fix round).
+        stamp = re.search(
+            r'<details class="next-cockpit-why next-cockpit-held-stamp"[^>]*>([\s\S]*?)</details>',
+            intent,
+        )
         assert stamp is not None
+        self.assertIn("<summary>Saved</summary>", stamp.group(1))
         self.assertIn('class="next-cockpit-held-revision"', stamp.group(1))
         self.assertIn("Each save is a revision.", stamp.group(1))
         self.assertIn("flex-wrap:wrap", rule(".next-cockpit-held-stamp"))

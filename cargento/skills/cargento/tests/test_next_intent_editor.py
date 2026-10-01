@@ -342,12 +342,24 @@ class TheStampSaysSavedTest(_DraftPage):
     def test_saved_words_wear_saved_not_confirmed(self) -> None:
         intent = intent_of(self.html(TYPED))
         self.assertNotIn("Confirmed", intent)
-        self.assertIn("Saved", visible_text(intent[: intent.index("</header>")]))
+        head = intent[: intent.index('class="next-cockpit-held-fields"')]
+        self.assertIn("Saved", visible_text(head))
+        # The revision line, what a revision is and the store key sit in its details
+        # (DRC-4758 fix round): none of the three is in view until it is opened.
+        self.assertRegex(
+            head, r"<details[^>]*next-cockpit-held-stamp[^>]*><summary>Saved</summary>"
+        )
+        for hidden in ("revision 2 of 2", "Each save is a revision.", "claude:focus-1"):
+            self.assertIn(hidden, head)
+            self.assertNotIn(hidden, visible_text(head))
 
     def test_no_stamp_over_a_draft(self) -> None:
         intent = intent_of(self.html())
         self.assertIn(FIRST, intent)
-        self.assertNotIn("Saved", visible_text(intent[: intent.index("</header>")]))
+        head = intent[: intent.index('class="next-cockpit-held-fields"')]
+        self.assertNotIn("Saved", visible_text(head))
+        for gone in ("No revision saved yet", "Each save is a revision.", "claude:focus-1"):
+            self.assertNotIn(gone, visible_text(head))
 
 
 if __name__ == "__main__":
