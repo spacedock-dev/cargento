@@ -18,7 +18,7 @@ import unittest
 from cargento_runtime import reading
 
 from .next_harness import storage_prelude
-from .test_next_drift_panel import FIXTURE, PanelPage, drift_of
+from .test_next_drift_panel import FIXTURE, PanelPage, drift_of, routes
 from .visible_text import visible_text
 
 ASK = re.compile(r'<button\b[^>]*data-next-cockpit-action="reading-(?:ask|allow)"[^>]*>')
@@ -198,3 +198,93 @@ class WhatAPressCameToStandsBesideTheButtonTest(PanelPage):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+CONSENT_NEEDED = (
+    '__dashboard.reading = {consent:false, reason:"consent-required", used:0, limit:12};\n'
+)
+FIRST_PRESS = (
+    "const REPLY = {ok:true, json:async()=>({ok:true, produced:true})};\n"
+    + POSTS
+    + "await nextCockpitAskForReading(__dashboard.sessions[0], null);\n"
+    + "renderNext();\nawait __settle();\n"
+)
+SHOW_POSTS = '__els.app.innerHTML = `<i data-posts="${posts.length}"></i>` + __els.app.innerHTML;\n'
+CARD = re.compile(r'<div class="next-cockpit-reading-consent"[\s\S]*?</ul>')
+
+
+@unittest.skipUnless(shutil.which("node"), "node not available")
+class TheFirstPressAsksBeforeItSendsTest(PanelPage):
+    """Owner Q1, 2026-10-01: the first press that would send anything is a consent step."""
+
+    def test_the_first_press_asks_a_question_over_the_disclosure_parts_and_sends_nothing(
+        self,
+    ) -> None:
+        html = self.page("codex", CONSENT_NEEDED, after=FIRST_PRESS + SHOW_POSTS)
+        self.assertIn('<i data-posts="0"></i>', html)
+        drift = drift_of(html)
+        card = CARD.search(drift)
+        assert card is not None, "no consent card drawn"
+        heading = re.search(r"<h3\b[^>]*>([^<]*)</h3>", card.group(0))
+        assert heading is not None
+        self.assertEqual("Send this session to Codex for analysis?", heading.group(1))
+        # The server's parts, in its order and unreworded, each its own item and in view.
+        parts = routes()["codex"]["disclosure_parts"]
+        items = [visible_text(item) for item in re.findall(r"<li>([\s\S]*?)</li>", card.group(0))]
+        self.assertEqual([visible_text(part) for part in parts], items)
+        shown = visible_text(drift)
+        for part in parts:
+            self.assertIn(visible_text(part), shown)
+        # Then Allow and analyze, the stage's one primary, then Not now.
+        allow = shown.index("Allow and analyze")
+        self.assertLess(shown.index(visible_text(parts[-1])), allow)
+        self.assertLess(allow, shown.index("Not now"))
+        self.assertEqual(
+            ["Allow and analyze"], re.findall(r"next-action--primary[^>]*>([^<]*)<", drift)
+        )
+        self.assertNotIn('data-next-cockpit-action="reading-ask"', drift)
+
+    def test_the_card_takes_the_press_s_focus_key_so_a_second_enter_cannot_allow(self) -> None:
+        drift = drift_of(self.page("codex", CONSENT_NEEDED, after=FIRST_PRESS))
+        heading = re.search(r"<h3\b[^>]*>", drift)
+        assert heading is not None
+        self.assertIn('data-next-focus="reading:codex:focus-1"', heading.group(0))
+        self.assertIn('tabindex="-1"', heading.group(0))
+        allow = re.search(r'<button\b[^>]*data-next-cockpit-action="reading-allow"[^>]*>', drift)
+        assert allow is not None
+        self.assertIn('data-next-focus="reading-allow:codex:focus-1"', allow.group(0))
+        not_now = re.search(
+            r'<button\b[^>]*data-next-cockpit-action="reading-not-now"[^>]*>', drift
+        )
+        assert not_now is not None
+        self.assertIn('data-next-focus="reading-not-now:codex:focus-1"', not_now.group(0))
+        # Not now's key falls back to the press, which Analyze drift carries once the card goes.
+        self.assertIn('data-next-focus-fallback="reading:codex:focus-1"', not_now.group(0))
+
+    def test_not_now_restores_the_idle_button_and_sends_nothing(self) -> None:
+        html = self.page(
+            "codex",
+            CONSENT_NEEDED,
+            after=FIRST_PRESS
+            + "nextCockpitReadingNotNow(__dashboard.sessions[0]);\nawait __settle();\n"
+            + SHOW_POSTS,
+        )
+        self.assertIn('<i data-posts="0"></i>', html)
+        drift = drift_of(html)
+        self.assertIsNone(CARD.search(drift))
+        self.assertNotIn("Allow and analyze", drift)
+        button = ASK.search(drift)
+        assert button is not None
+        self.assertIn("next-action--primary", button.group(0))
+        self.assertIn('data-next-focus="reading:codex:focus-1"', button.group(0))
+
+    def test_not_now_is_reached_by_its_click(self) -> None:
+        html = self.page(
+            "codex",
+            CONSENT_NEEDED,
+            after=FIRST_PRESS
+            + "const notNow = {dataset:{nextCockpitAction:'reading-not-now'},"
+            + " closest(selector){ return selector.includes('data-next-cockpit-action') ? this : null; }};\n"
+            + "__fire('click', {target:notNow, preventDefault(){}});\nawait __settle();\n",
+        )
+        self.assertIsNone(CARD.search(drift_of(html)))

@@ -1864,7 +1864,11 @@ the later-direction floor (item 9).
    arrives after it. Amended 2026-09-24 (owner, DRC-4693): a cancel that lands before anything is
    reserved spends nothing. The hint under the button says what is read ("Reads the session up to
    <cutoff> against your intent. Runs in the background.") and carries the DEC-21 disclosure. The
-   button reads "Allow and analyze" until allowed.
+   button reads "Allow and analyze" until allowed. Amended 2026-10-01 (owner, Q1, DRC-4758): the
+   button reads "Analyze drift" in every state, and the first press that would send anything opens
+   a consent step that shows the full disclosure, as the server's parts, before "Allow and
+   analyze", with "Not now" beside it
+   ([the consent step](#amended-2026-10-01-the-first-press-is-a-consent-step)).
 6. The result. Per line: "Departs at #<n>" with its cited evidence, only for a valid departure. A
    consistent line names its source by the cited entry's type: "Consistent with #<n>, as the tool
    reported; not inspected" for a tool outcome, "Consistent with what the session said at #<n>; not
@@ -2092,6 +2096,24 @@ section below the fold.
   disclosure: the refusal, this tab's last answer (including "Could not confirm the reading"), and
   a stored withhold as "Last analysis, 3m ago: <sentence>", aged from `reading_withheld_at`. The
   READING section no longer repeats the withheld sentence.
+
+#### Amended 2026-10-01: the first press is a consent step
+
+Owner ruling Q1, 2026-10-01 (DRC-4758 slice B). The first press asked its question by relabelling the
+button "Allow and analyze" and moving it below the whole ~180-word disclosure, so the owner's walk
+read it as a press that did nothing.
+
+- The press that needs an Allow replaces the button's slot with a bordered step: the question "Send
+  this session to <receiver> for analysis?", the disclosure as `route.disclosure_parts`, a short
+  list in the server's order and unreworded and never inside a disclosure, then "Allow and analyze"
+  (the stage's one primary) and "Not now". The parts join to the whole disclosure (a server test
+  holds `" ".join(parts) == disclosure`), so DEC-21 item 1 and the account-details condition in
+  SECURITY.md still hold before the consenting press.
+- "Not now" sends, allows and records nothing, and brings the idle button back.
+- The question takes the press's focus key, as the analyzing box's title does, so focus lands on
+  it and a second Enter or the rest of a double-click cannot give consent unread. Allow carries
+  `reading-allow:<key>`; Not now carries `reading-not-now:<key>` and falls back to the press's key.
+- The step comes back whenever an Allow is needed again, such as a new tool-output destination.
 
 ### What the Cancel build decided, 2026-09-24
 

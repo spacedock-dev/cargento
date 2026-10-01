@@ -4126,6 +4126,15 @@ function nextCockpitReadingControl(session, annotation, model, primary = true, s
   const disclosure = provider && route.disclosure
     ? `<p class="next-cockpit-reading-why" id="${NEXT_READING_DISCLOSURE_ID}">` +
       `${esc(route.disclosure)}</p>` : "";
+  /* Confirming, the same disclosure as the server's own parts, a short list
+     in its order and unreworded, so "Allow and analyze" no longer drops below
+     one long block (owner Q1, 2026-10-01). A route from before the parts
+     were published shows its whole disclosure as one item. */
+  const parts = provider && Array.isArray(route.disclosure_parts) && route.disclosure_parts.length
+    ? route.disclosure_parts : provider && route.disclosure ? [route.disclosure] : [];
+  const disclosureParts = parts.length
+    ? `<ul class="next-cockpit-reading-parts" id="${NEXT_READING_DISCLOSURE_ID}">` +
+      parts.map(part => `<li>${esc(String(part))}</li>`).join("") + "</ul>" : "";
   /* What an analysis will read, under the control, and only where a press
      could read it: a provider, no refusal beside it, saved words, and words
      given before any observed end, which the server withholds by the same
@@ -4218,11 +4227,44 @@ function nextCockpitReadingControl(session, annotation, model, primary = true, s
   /* Every account of a press -- why it cannot run, what the last one came to,
      what this tab's press was answered with -- sits directly under the
      button's row, before the hint and the disclosure (DRC-4758 slice B). */
-  return '<div class="next-cockpit-reading-ask">' + (confirming ? disclosure : "") +
+  const accounts = refused + said(answered) + outcome + steerBox +
+    (readHint ? `<p class="next-cockpit-reading-why">${esc(readHint)}</p>` : "");
+  if(confirming){
+    /* The consent step stands in the button's slot: a question naming the
+       receiver, the disclosure's parts in view, then the press that is the
+       consent and the way out. The heading takes the press's focus key, as
+       the job box's title does, so focus lands on the question rather than
+       on Allow, and a second Enter or the rest of a double-click cannot give
+       consent unread. Not now falls back to that key, which Analyze drift
+       carries again once the card goes. */
+    const label = String(route.label || provider);
+    const steers = steerButton ? `<div class="next-cockpit-reading-ask">${steerButton}</div>` : "";
+    return (lead ? steers : "") +
+      '<div class="next-cockpit-reading-consent" role="group" ' +
+      'aria-labelledby="next-cockpit-reading-consent-title">' +
+      '<h3 class="next-cockpit-reading-consent-title" id="next-cockpit-reading-consent-title" ' +
+      `tabindex="-1" data-next-focus="reading:${esc(key)}">` +
+      `${esc(`Send this session to ${label} for analysis?`)}</h3>` + disclosureParts +
+      '<div class="next-cockpit-reading-ask">' +
+      button.replace(`data-next-focus="reading:${esc(key)}"`, `data-next-focus="reading-allow:${esc(key)}"`) +
+      '<button type="button" class="next-action" data-next-cockpit-action="reading-not-now" ' +
+      `data-next-focus="reading-not-now:${esc(key)}" data-next-focus-fallback="reading:${esc(key)}">` +
+      "Not now</button></div></div>" +
+      (lead ? "" : steers) + (off ? `<div class="next-cockpit-reading-ask">${off}</div>` : "") +
+      accounts + counted;
+  }
+  return '<div class="next-cockpit-reading-ask">' +
     (lead ? steerButton + button : button + steerButton) + off + '</div>' +
-    refused + said(answered) + outcome + steerBox +
-    (readHint ? `<p class="next-cockpit-reading-why">${esc(readHint)}</p>` : "") +
-    (confirming ? "" : disclosure) + counted;
+    accounts + disclosure + counted;
+}
+
+/* "Not now" on the consent step: nothing is sent, allowed or recorded, and
+   the idle button comes back. The adoption the step held goes with it. */
+function nextCockpitReadingNotNow(session){
+  const key = sessKey(session);
+  const request = nextCockpitReadingRequests.get(key);
+  if(request && request.consent && !request.pending) nextCockpitReadingRequests.delete(key);
+  renderNext();
 }
 
 /* No positional word. The record is in the activity column and this sentence
@@ -7358,6 +7400,13 @@ document.addEventListener("click", event => {
   if(action === "reading-off"){
     event.preventDefault();
     nextCockpitReadingOff();
+    return;
+  }
+  if(action === "reading-not-now"){
+    const session = group ? nextCockpitFocusedSession(group) : null;
+    if(!session) return;
+    event.preventDefault();
+    nextCockpitReadingNotNow(session);
     return;
   }
   if(action === "reading-cancel"){

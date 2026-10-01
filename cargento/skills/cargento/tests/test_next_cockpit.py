@@ -4244,9 +4244,10 @@ __els.app = {
     this.html = html;
     __els.renders += 1;
     document.activeElement = null;
-    // A span is a control here only when it is focusable, as the analysis
-    // box's title is (tabindex="-1").
-    controls = [...html.matchAll(/<(button|a|textarea|span(?=[^>]*\btabindex=))\b([^>]*)>/g)].map(match => {
+    // A span or a heading is a control here only when it is focusable, as
+    // the analysis box's title and the consent step's question are
+    // (tabindex="-1").
+    controls = [...html.matchAll(/<(button|a|textarea|(?:span|h3)(?=[^>]*\btabindex=))\b([^>]*)>/g)].map(match => {
       const attrs = Object.fromEntries([...match[2].matchAll(/([\w-]+)="([^"]*)"/g)]
         .map(attr => [attr[1], decode(attr[2])]));
       const dataset = Object.fromEntries(Object.entries(attrs)
