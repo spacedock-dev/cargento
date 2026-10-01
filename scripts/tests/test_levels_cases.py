@@ -15,6 +15,7 @@ import subprocess
 import sys
 import tempfile
 import time
+import types
 import unittest
 from pathlib import Path
 from typing import Any
@@ -1074,6 +1075,37 @@ class ReadTest(CaseToolTestCase):
         self.assertEqual(readings[first], readings[second])
         entry = self.record()["cases"][second]
         self.assertEqual((entry["status"], entry["charged"], entry["call"]), ("read", False, first))
+
+
+class AScoredCaseReadsEveryLineWholeTest(unittest.TestCase):
+    """The drift-level rule for a line about what the agent tells you reads the whole
+    line, so the cases tool must pass the line text as the page's route does."""
+
+    def test_the_cases_tool_passes_each_outcome_line_to_the_level(self) -> None:
+        seen: dict[str, Any] = {}
+
+        class _Levels:
+            Evidence = staticmethod(lambda **kw: kw)
+            Intent = staticmethod(lambda **kw: kw)
+
+            @staticmethod
+            def live_level(*_a: Any, **_k: Any) -> Any:
+                return types.SimpleNamespace(level="x", reasons=())
+
+            @staticmethod
+            def analysis_level(*_a: Any, **kwargs: Any) -> Any:
+                seen.update(kwargs)
+                return types.SimpleNamespace(level="x", reasons=())
+
+        case = {
+            "kind": "other",
+            "intent": {"saved": True, "goal": "g", "lines": ["first line", "it is reported"]},
+        }
+        levels_cases._score_case(
+            _Levels, case, {"live": "x", "analysis": "x"}, ({"criteria": {}}, "")
+        )
+        self.assertEqual(("first line", "it is reported"), tuple(seen["lines"]))
+        self.assertEqual(2, seen["outcome_lines"])
 
 
 class CommittedTextTest(unittest.TestCase):
