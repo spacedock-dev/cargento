@@ -368,12 +368,12 @@ Cargento publishes it, or from your latest prompt, marked "latest", where no fir
 time is published. A session that opened with a harness control such as `/clear` drafts nothing,
 not even the latest prompt, and says there is no first prompt to draft from, so you type a goal.
 The draft is marked "from your prompt", an excerpt says "Shown excerpt only.",
-the box is tinted, and the stamp still reads "No revision saved yet": nothing is saved until you
-press Looks right, edit the box and save, or press `Analyze drift`, which adopts the draft. "Use a
-prompt" still offers your latest prompt. Analyze drift, Keep and an added line's save are refused
+and the box is tinted: nothing is saved until you press Looks right, edit the box and save, or
+press `Analyze drift`, which adopts the draft. `Use your prompt` lists up to five of your own
+prompts, and choosing one fills the goal box for you to save. Analyze drift, Keep and an added line's save are refused
 while the goal box or the outcome lines hold an edit you have not saved, because each would stand
 on words that are not on screen; your edit stays in the box. No drift level or pill is drawn over
-an unsaved draft. Once a goal is saved the Intent heading reads "Confirmed".
+an unsaved draft. Once a goal is saved, a "Saved" disclosure under the Intent heading holds the revision line.
 
 A direction you gave after your intent (after the saved goal's words, or after the drafted prompt)
 is asked about before the press, in the control's place: "You gave a later direction at #n" names
