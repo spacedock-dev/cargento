@@ -2487,6 +2487,51 @@ and each was settled on the withholding side.
   reading's `read_at`, and the store refuses a mark naming any other reading. Only the token is
   stored. A press the store does not take says so under the button until the next press.
 
+### What the slash-command build decided, 2026-10-01
+
+DRC-4764. A Claude Code reader who directed work with `/pr-review-response 1287 …` or `/review`
+had given a later direction that the observed record dropped, so a reading could call the work
+they asked for a departure. The command is the reader's message in the harness's markup, and every
+line of that markup opens with `<`, which the record reader skips.
+
+- A prompt command is a direction, with arguments or without. It is published as
+  `transcripts.prompt_title` renders it, `/name` and its arguments on one line, redacted and then
+  bounded as any message is. It is a person entry in a reading's ledger and a later direction on
+  the page, and "Add it to my intent" offers the command as typed, not its tags.
+- A local command is not, with arguments or without: `/compact keep the notes` drives the harness.
+  The record says which a command is by the tag it opens with. Measured over the local store's
+  main-thread records: all 1,477 that open with `<command-message>` are followed by the command's
+  expanded prompt, and all 945 that open with `<command-name>` are followed by the harness's own
+  output, 903 of them after its local-command caveat. No command name falls in both. The local
+  names seen were `/clear`, `/login`, `/plugin`, `/mcp`, `/compact`, `/add-dir`,
+  `/reload-plugins`, `/model`, `/exit`, `/design-login`, `/chrome`, `/reload-skills`, `/effort`,
+  `/rate-limit-options`, `/context`, `/install-github-app`, `/stickers`, `/usage-credits` and
+  `/permissions`. The rule reads the tag rather than this list, so a new local command is refused
+  without being named.
+- A prompt command on `records.harness_control`'s list, `/insights` the one seen, is refused too.
+- The goal slot and the instruction line beneath a title read controls by the same predicate,
+  `transcripts.harness_control_prompt`, so the three cannot disagree. Before, they matched that
+  list against the rendered line, which only a bare command can match, and published
+  `/compact keep notes` as a goal and as the work asked for. Over the local store this refuses
+  152 more prompts and refuses none it used to: `/compact` 90, `/add-dir` 21, `/plugin` 19,
+  `/design-login` 7, `/chrome` 4, and 11 more records under six other names. A local command carrying arguments, `/model opus`
+  for one, is a control now where it once published.
+- The draft from your first prompt is not changed by this. On 550 of 1,601 local Claude sessions
+  that first prompt is a control, `/clear` on 326 of them, and skipping it would mean drafting from
+  a later record, which the first-prompt read refuses to do. That is left for its own decision.
+- Whether a direction may be drafted as your intent is unchanged: the same three-word test as any
+  message, so `/create-pr` alone is a direction and not a drafted intent.
+- A command's arguments over several lines once published the last line, closing tag and all; 12
+  such records in the local store change summary, and 3 local commands with such arguments stop
+  being listed. Those facts' ids move. For up to 24 hours after the upgrade the semantic history
+  store still holds the old facts, so an old citation resolves to the old row and a retitled
+  record can show twice; once the history window ages them out, a citation stored to one no
+  longer resolves.
+- A command longer than the record reader's 2,000 characters loses its closing `</command-args>`
+  (2 of the 1,477 measured). It is published with the arguments that arrived rather than as
+  the bare name, and "Add it to my intent" offers them ending in an ellipsis and reports them
+  clipped, so the reader edits the line before saving it and it is never offered as whole.
+
 ## DEC-26: four drift levels, and a live estimate after every turn
 
 Decided 2026-09-24 (DRC-4691). DRC-4692 defines and validates the levels on recorded Claude Code

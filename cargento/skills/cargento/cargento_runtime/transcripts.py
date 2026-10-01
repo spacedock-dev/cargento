@@ -241,6 +241,74 @@ def prompt_title(config: RuntimeConfig, text: str, limit: int = 80) -> str | Non
     return None
 
 
+# Which tag a Claude Code slash-command record opens with says who ran the
+# command. Measured 2026-10-01 over the local store's main-thread, non-meta user
+# records carrying `<command-name>`: all 1,477 that open with `<command-message>`
+# are followed by an `isMeta` record holding the command's expanded prompt (a
+# skill, or a built-in such as `/review` that asks the model for work), and all
+# 945 that open with `<command-name>` are followed by `<local-command-stdout>`,
+# `-stderr` or a system record, 903 of them after a `<local-command-caveat>` (a
+# local command the harness ran itself: `/clear`, `/login`, `/plugin`, `/compact`
+# and 15 more). No command name falls in both. The cross-record signals agree
+# with the tag order, but a per-record reader cannot see them, so the order is
+# the signal and they are the evidence for it.
+_LOCAL_COMMAND_RE = re.compile(r"^\s*<command-name>")
+_PROMPT_COMMAND_RE = re.compile(r"^\s*<command-message>")
+
+
+def harness_control_prompt(config: RuntimeConfig, text: str) -> bool:
+    """Whether a raw user prompt drives the harness rather than the work.
+
+    The one rule the observed record (`command_direction`), the goal slot
+    (`observer._user_directives`) and the instruction line (`states_work`) read,
+    so the three cannot disagree about a command again. A local command is a
+    control by the tag it opens with, arguments or none: `/compact keep notes`
+    rendered past `records.harness_control`'s bare-token match and was published
+    as both a goal and the work asked for. A prompt command is a control only by
+    name on that list (`/insights`). Anything else, a Codex `/login` typed as
+    plain text included, is asked of the list on the line `prompt_title` renders.
+    """
+    if _LOCAL_COMMAND_RE.match(text):
+        return True
+    if _PROMPT_COMMAND_RE.match(text):
+        name = _COMMAND_NAME_RE.search(text)
+        return name is None or records.harness_control(name.group(1))
+    return records.harness_control(prompt_title(config, text, records.INSTRUCTION_CAP_CHARS))
+
+
+def command_direction(config: RuntimeConfig, text: str) -> str | None:
+    """A Claude Code slash-command record as the direction it gives, rendered whole.
+
+    None when ``text`` is not a slash-command record, so the caller reads it as
+    any other message. "" when `harness_control_prompt` calls it a control.
+    Otherwise `prompt_title`'s own rendering, unclipped: the caller bounds it
+    after redaction, as it bounds an ordinary message.
+    """
+    if not (_LOCAL_COMMAND_RE.match(text) or _PROMPT_COMMAND_RE.match(text)):
+        return None
+    if harness_control_prompt(config, text):
+        return ""
+    if command_cut(text):
+        name = _COMMAND_NAME_RE.search(text)
+        arrived = _PROMPT_TAG_RE.sub(" ", text.split("<command-args>", 1)[1])
+        joined = " ".join(shorten_paths(config, arrived).split())
+        command = name.group(1).strip() if name else ""
+        return f"{command} {joined}".strip() + "\u2026"
+    return prompt_title(config, text, limit=len(text)) or ""
+
+
+def command_cut(text: str) -> bool:
+    """Whether a command's arguments were cut before their closing tag arrived.
+
+    The record reader bounds a message at `records.EXTRACT_TEXT_CAP_CHARS`, and
+    a command over it loses `</command-args>`: 2 of the 1,477 measured prompt
+    commands. `prompt_title` then finds no arguments at all and renders the bare
+    name as if it were the whole command, so the summary, the ledger and "Add it
+    to my intent" all called a cut command whole (DRC-4764 review).
+    """
+    return "<command-args>" in text and "</command-args>" not in text
+
+
 # ---------------------------------------------------------------------------
 # The instruction line
 #
@@ -301,8 +369,9 @@ def states_work(config: RuntimeConfig, text: str) -> bool:
     # slot they are indistinguishable from an instruction: 202 of 1,906 lines on
     # the local Claude corpus. The same predicate the observer's goal slot uses,
     # deliberately, because two primitives disagreeing about whether `/clear` is
-    # an objective is the class of bug this shares with DRC-4265.
-    if records.harness_control(rendered):
+    # an objective is the class of bug this shares with DRC-4265. Read off the
+    # raw prompt, since only that says a command was a local one (DRC-4764).
+    if harness_control_prompt(config, text):
         return False
     # A slash command names work by construction, however short. `/release` is
     # two words rendered and a whole instruction meant, and the word count is the

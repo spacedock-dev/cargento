@@ -1451,7 +1451,11 @@ not read from the transcript file itself. Another account on the machine can rea
 it can reach `/api/data` (Known and accepted), and for that account it is wider: the whole text of
 any later direction in any session's transcript tail, each fact id listed by
 `GET /api/project-context`, where that route gives only the first sentence. A loop over those ids
-reads every one of them, so the ids bound nothing. Why it is no narrower: the reader edits a long direction down to one line of
+reads every one of them, so the ids bound nothing. A Claude Code slash command is the one message
+the record names by more than its first sentence: the record and this route both give the command
+as typed, its name and arguments on one line rather than the tags they arrived in, under the same
+redaction and bounds, and a harness control such as `/clear` is in neither (DRC-4764). Its
+arguments go nowhere an ordinary message's words do not. Why it is no narrower: the reader edits a long direction down to one line of
 their own, so the page must show more than fits, and a summary in its place would be the one thing
 DEC-24 item 4 forbids saving.
 
