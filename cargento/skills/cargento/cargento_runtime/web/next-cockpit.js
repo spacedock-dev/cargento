@@ -4398,7 +4398,8 @@ function nextCockpitReadingControl(session, annotation, model, primary = true, s
      The four cockpit tabs have no action to mark at all (DRC-4590, DRC-4603). */
   const described = reason ? NEXT_READING_REFUSED_ID : disclosure ? NEXT_READING_DISCLOSURE_ID : "";
   const button =
-    `<button type="button" class="next-action${primary && provider && !inert ? " next-action--primary" : ""}" ` +
+    `<button type="button" class="next-action${primary && provider && !inert ? " next-action--primary"
+      : again && !confirming ? " next-action--secondary" : ""}" ` +
     `data-next-cockpit-action="${confirming ? 'reading-allow' : 'reading-ask'}" ` +
     `data-next-focus="reading:${esc(sessKey(session))}"` +
     `${enabled ? "" : ' aria-disabled="true"'}` +

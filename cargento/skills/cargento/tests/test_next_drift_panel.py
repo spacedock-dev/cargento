@@ -233,6 +233,10 @@ class IntentAndDriftPanelTest(PanelPage):
         self.assertIn("It changed the board.", result)
         self.assertNotIn(">Analyze drift</button>", result)
         self.assertEqual(1, result.count(">Analyze again</button>"))
+        # Drawn as the secondary tier, not a bare control (owner Q3).
+        again = re.search(r'<button[^>]*class="([^"]*)"[^>]*>Analyze again</button>', result)
+        assert again is not None
+        self.assertIn("next-action--secondary", again.group(1))
 
     def test_no_stage_draws_a_level_a_pill_a_stop_control_or_an_old_label(self) -> None:
         for name, html in self.stages().items():
