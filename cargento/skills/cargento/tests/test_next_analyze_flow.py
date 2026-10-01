@@ -375,6 +375,24 @@ class IdleTheDisclosureIsOneWordedClickAwayTest(PanelPage):
         row = drift[drift.index('<div class="next-cockpit-reading-ask">') :]
         self.assertIn("2 requests", visible_text(row[: row.index("</div>")]))
 
+    def test_a_fallback_route_names_its_receiver_even_once_allowed(self) -> None:
+        # A Codex session read by Claude Code sends straight away once Claude Code is allowed,
+        # so the summary in view is what names the second provider before that press (F1;
+        # DEC-21 item 4).
+        drift = drift_of(
+            self.page(
+                "codex",
+                "__dashboard.reading = {consent:true, providers:{claude:true}, used:0, limit:12};\n",
+                routed=routes(installed=("claude",), enabled=("claude", "codex")),
+            )
+        )
+        sent = SENT.search(drift)
+        assert sent is not None
+        summary = re.search(r"<summary>([^<]*)</summary>", sent.group(0))
+        assert summary is not None
+        self.assertEqual("What is sent to Claude Code", summary.group(1))
+        self.assertIn("What is sent to Claude Code", after_button(drift))
+
     def test_while_analyzing_the_disclosure_is_not_drawn_and_the_count_stays(self) -> None:
         drift = drift_of(self.page("codex", ALLOWED + JOB))
         self.assertIn("data-next-analyzing", drift)

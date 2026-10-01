@@ -2151,11 +2151,16 @@ comes first and the DEC-21 disclosure follows it with the hint" for the idle sta
 - Idle, the order is the button, with the attempt count on its row ("0 requests" to the eye, the
   whole "0 model requests recorded for this session." to a screen reader), any account of a press,
   the one hint line, then the DEC-21 disclosure under a closed summary: "What is sent to
-  <receiver>" until that receiver is allowed, then "What is sent". The button stays described by the
-  disclosure's paragraph. Turn off readings sits inside the summary, still on the page.
-- Idle sends nothing, so nothing is sent before the receiver is named: the press that would send
-  opens [the consent step](#amended-2026-10-01-the-first-press-is-a-consent-step), which shows the
-  whole disclosure before "Allow and analyze".
+  <receiver>" until that receiver is allowed, and always while the route is a fallback, then "What
+  is sent". The button stays described by the disclosure's paragraph. Turn off readings sits inside
+  the summary, still on the page.
+- Idle sends nothing, so nothing is sent before the receiver is named. A press owed an Allow opens
+  [the consent step](#amended-2026-10-01-the-first-press-is-a-consent-step), which shows the whole
+  disclosure before "Allow and analyze". A press under an Allow already given sends at once, and
+  the receiver it reaches was named either by that step or, on a fallback route, by the summary in
+  view beside the button. An Allow given on another harness's session lets a fallback press reach
+  its second provider with no step of its own, which is why that summary keeps the receiver's
+  name. DEC-21 item 4 holds that way (fix round, 2026-10-01).
 - While analyzing, the box stands alone with the count after it; the disclosure is not drawn,
   because the job sends nothing more.
 - The summary's open state survives a redraw through `nextCockpitDisclosureAttr`, keyed by session,

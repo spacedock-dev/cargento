@@ -4441,9 +4441,12 @@ function nextCockpitReadingControl(session, annotation, model, primary = true, s
   }
   /* Idle: the button and its count, the accounts and the one hint line, then
      the provider disclosure one click away under a worded summary that names
-     the receiver until it is allowed (owner Q1, 2026-10-01). Idle sends
-     nothing: the press that would send either opens the consent step above or
-     runs under an Allow given after these same words. The button stays
+     the receiver until it is allowed, and always on a fallback route, whose
+     receiver is a second provider that an Allow given on another harness's
+     session lets a press reach at once (owner Q1, 2026-10-01; item 4 of the
+     ruling linked below).
+     Idle sends nothing: the press that would send either opens the consent
+     step above or runs under an Allow given after these same words. The button stays
      described by the paragraph, which a closed summary still lets a screen
      reader read. Turn off readings sits inside it, still on the page, as item 1 of
      [DEC-21](docs/design-reading-a-session.md#dec-21-a-reading-works-the-first-time-you-ask)
@@ -4452,7 +4455,8 @@ function nextCockpitReadingControl(session, annotation, model, primary = true, s
   const sent = disclosure
     ? `<details class="next-cockpit-why next-cockpit-reading-sent"` +
       `${nextCockpitDisclosureAttr("reading-sent")}>` +
-      `<summary>${esc(nextReadingNeedsAllow(route) ? `What is sent to ${label}` : "What is sent")}` +
+      `<summary>${esc(route.fallback === true || nextReadingNeedsAllow(route)
+        ? `What is sent to ${label}` : "What is sent")}` +
       `</summary>${disclosure}` +
       (about ? `<p class="next-cockpit-reading-why">${esc(about)}</p>` : "") +
       (off ? `<div class="next-cockpit-reading-ask">${off}</div>` : "") + "</details>"
