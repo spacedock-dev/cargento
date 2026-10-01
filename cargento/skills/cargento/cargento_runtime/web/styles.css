@@ -917,6 +917,12 @@ input::placeholder,textarea::placeholder{color:var(--ink2)}
 .next-session-drift-seg[data-on][data-level="medium"]{background:var(--amber)}
 .next-session-drift-seg[data-on][data-level="high"],.next-session-drift-seg[data-on][data-level="extreme"]{background:var(--clay)}
 .next-session-drift-detail{margin:0;color:var(--ink2);font-size:var(--fs-body);line-height:1.5}
+/* The meter's four labels, one under each segment, the current one in ink
+   at 600, as the design draws them (DRC-4758 slice C). */
+.next-session-drift-scale{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:4px;margin:0;color:var(--ink2);font-size:var(--fs-label);line-height:1.2}
+.next-session-drift-scale>[data-current]{color:var(--ink);font-weight:600}
+.next-session-drift-range,.next-session-drift-reason{margin:0;color:var(--ink2);font-size:var(--fs-body);line-height:1.5}
+.next-session-drift-reason{color:var(--ink)}
 .next-session-drift-nudge{margin:0 16px 2px;padding:10px 12px;border:1px solid var(--amber);border-radius:var(--r-control);color:var(--ink);font-size:var(--fs-body);line-height:1.5}
 /* Beside "N entries" in the header's measured row; it wraps rather than
    widening the page at 320px (DRC-4671). */
@@ -1504,6 +1510,27 @@ input::placeholder,textarea::placeholder{color:var(--ink2)}
 .next-cockpit-result-mark[aria-pressed="true"]{color:var(--ink)}
 .next-cockpit-result-mark:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .next-cockpit-result-marked{color:var(--ink2);font:var(--fs-body)/1.5 var(--sans)}
+/* The result in the button's place (DRC-4758 slice C): a column like the
+   design's result stage, each checklist line a glyph beside its words and
+   status. The glyph is shape: a cross for departs, in the one clay the
+   panel allows (owner Q10), a neutral filled dot for consistent, never a
+   check and never green, and a dashed circle for can't tell. */
+.next-cockpit-result{gap:14px}
+.next-cockpit-result-checklist{display:flex;flex-direction:column;gap:8px}
+.next-cockpit-result-checklist h3{margin:0;color:var(--ink);font:600 var(--fs-body)/1.45 var(--sans)}
+.next-cockpit-result-lines{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:10px}
+.next-cockpit-result .next-cockpit-reading-row{flex-direction:row;align-items:flex-start;gap:10px;padding-left:0;border-left:0}
+.next-cockpit-result .next-cockpit-reading-row+.next-cockpit-reading-row{margin-top:0}
+.next-cockpit-result-body{display:flex;flex-direction:column;gap:2px;min-width:0}
+.next-cockpit-result .next-cockpit-reading-clause{color:var(--ink);font:500 var(--fs-body)/1.45 var(--sans)}
+.next-cockpit-result .next-cockpit-reading-result{font-style:normal}
+.next-cockpit-result-glyph{position:relative;flex:0 0 auto;width:14px;height:14px;margin-top:3px;border:1.5px solid var(--ink2);border-radius:50%;box-sizing:border-box}
+[data-next-result-state="consistent"]>.next-cockpit-result-glyph{background:radial-gradient(circle,var(--ink2) 0 38%,transparent 42%)}
+[data-next-result-state="cant-tell"]>.next-cockpit-result-glyph{border-style:dashed}
+[data-next-result-state="departs"]>.next-cockpit-result-glyph{border-color:var(--clay)}
+[data-next-result-state="departs"]>.next-cockpit-result-glyph::before,[data-next-result-state="departs"]>.next-cockpit-result-glyph::after{content:"";position:absolute;left:50%;top:50%;width:7px;height:1.5px;background:var(--clay);transform:translate(-50%,-50%) rotate(45deg)}
+[data-next-result-state="departs"]>.next-cockpit-result-glyph::after{transform:translate(-50%,-50%) rotate(-45deg)}
+.next-cockpit-result-press{display:flex;flex-direction:column;gap:8px}
 /* HOW IT LANDED. Two cards side by side and never one verdict: what ended and
    who says the work finished are different questions. The board is talking
    here, not a source and not a model, so sans throughout and no colour under

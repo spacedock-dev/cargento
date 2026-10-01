@@ -2971,6 +2971,29 @@ function nextCockpitReadingCriterionRow(row, numbers = null, byId = null){
     tail + '</div>';
 }
 
+/* One line of the result's checklist, in the Drift card (DRC-4758 slice C):
+   a glyph by state, the line's own words as its title, the ruled status
+   beneath, and the source tag, why and limit one click away under
+   "Evidence". The glyph is shape first: a cross for departs, a neutral
+   filled dot for consistent (never a check, never green), a dashed circle
+   for can't tell; the clay on the cross is the one colour (owner Q10,
+   2026-10-01). */
+function nextCockpitResultItem(row, numbers, byId, tag = "li"){
+  const tail = row.limit
+    ? `<span class="next-cockpit-reading-limit">limit · ${esc(row.limit)}</span>`
+    : row.evidence.map(line =>
+      `<span class="next-cockpit-reading-evidence">${esc(line)}</span>`).join("");
+  const evidence = `<span class="next-cockpit-reading-name">${esc(row.label)}</span>` +
+    (row.why ? `<span class="next-cockpit-reading-why">${esc(row.why)}</span>` : "") + tail;
+  return `<${tag} class="next-cockpit-reading-row" data-next-result-state="${nextCockpitResultState(row)}"` +
+    `${tag === "li" ? "" : " data-next-result-goal"}>` +
+    '<span class="next-cockpit-result-glyph" aria-hidden="true"></span>' +
+    '<span class="next-cockpit-result-body">' + nextCockpitReadingClauseCell(row) +
+    `<em class="next-cockpit-reading-result">${esc(nextCockpitResultStatus(row, numbers, byId))}</em>` +
+    `<details class="next-cockpit-why"${nextCockpitDisclosureAttr(`result-evidence:${row.key}`)}>` +
+    `<summary>Evidence</summary>${evidence}</details></span></${tag}>`;
+}
+
 /* Item 14's answer reducer, over the rows after every page rule. Any valid
    departure departs, whatever the other lines say; otherwise a failed check in
    the reading's window, where a check with no time counts as inside it, as
@@ -3653,7 +3676,9 @@ function nextReadingJobShown(session, job){
 /* How an analysis ended, said once (DRC-4726). A withheld, cancelled or
    interrupted end is the server's own `reading_withheld` sentence; a stored
    reading is this one (owner, 2026-09-28). */
-const NEXT_READING_FINISHED = "The analysis finished. Its reading is in the Reading section.";
+/* No positional word, so it is true at every width: the result stands in
+   the Drift card, in the button's place (DRC-4758 slice C). */
+const NEXT_READING_FINISHED = "The analysis finished. Its result is in the Drift section.";
 /* The job ids drawn by the render in progress, cleared before each one. */
 const nextCockpitReadingJobsDrawn = new Set();
 /* Per session, the running job this tab has seen, whether the last render
@@ -4080,7 +4105,12 @@ async function nextCockpitCopyCorrection(session, target, source){
    Update intent instead beside it, ahead of Analyze drift (`lead`); with no
    reader, the primary beside the route's reason; with a reader and no
    departure, a secondary after Analyze drift. */
-function nextCockpitReadingControl(session, annotation, model, primary = true, steer = null){
+/* `again` draws the press at the foot of a stored result (owner Q3,
+   2026-10-01): "Analyze again", with every refusal, consent step and count it
+   has as "Analyze drift", and no hint line. Its caller passes `primary`
+   false: it is never the stage's primary. */
+function nextCockpitReadingControl(session, annotation, model, primary = true, steer = null,
+    again = false){
   const steerButton = steer ? steer.button : "";
   const lead = Boolean(steer && steer.lead);
   const steerBox = steer ? steer.box : "";
@@ -4145,7 +4175,7 @@ function nextCockpitReadingControl(session, annotation, model, primary = true, s
   const endedAt = nextSessionEndedAt(session);
   const hint = provider && !reason && String(annotation && annotation.goal || "").trim() &&
     !(endedAt != null && given != null && given > endedAt) ? nextObservedReadHint(session) : "";
-  const readHint = hint ? `${hint} ${NEXT_READING_BACKGROUND}` : "";
+  const readHint = hint && !again ? `${hint} ${NEXT_READING_BACKGROUND}` : "";
   const job = nextReadingJob(session);
   const off = nextReadingAnyConsent()
     ? '<button type="button" class="next-action" data-next-cockpit-action="reading-off" ' +
@@ -4211,7 +4241,7 @@ function nextCockpitReadingControl(session, annotation, model, primary = true, s
     `data-next-focus="reading:${esc(sessKey(session))}"` +
     `${enabled ? "" : ' aria-disabled="true"'}` +
     `${described ? ` aria-describedby="${described}"` : ""}>` +
-    `${confirming ? "Allow and analyze" : "Analyze drift"}</button>`;
+    `${confirming ? "Allow and analyze" : again ? "Analyze again" : "Analyze drift"}</button>`;
   /* The announcement and the description are one node while a refusal
      stands. Printing the stored message and the reason separately rendered
      the same sentence twice, adjacent and identical, where the contract is
@@ -4305,7 +4335,7 @@ const NEXT_READING_OFFER =
   "this session\u2019s activity and the goal and output you saved, and nothing else. It does not " +
   "read a diff, a file, a test or a deliverable.";
 
-function nextCockpitReadingBaseline(shape){
+function nextCockpitReadingBaseline(shape, extra = ""){
   /* What the reading actually read, verbatim, rather than only which revision
      it was. Naming the revision says a reading is historical; it does not let
      the reader see what it said, and a reading of revision 1 sitting beside
@@ -4314,7 +4344,10 @@ function nextCockpitReadingBaseline(shape){
 
      A disclosure rather than open prose: this is reference for a reader who
      doubts the reading, not part of it, and the block is long already. */
-  if(shape.revisionRead == null) return "";
+  if(shape.revisionRead == null){
+    return extra ? `<details${nextCockpitDisclosureAttr("reading-baseline")}>` +
+      `<summary>What it read</summary>${extra}</details>` : "";
+  }
   const typed = shape.revisionReadAt != null
     ? `${shape.promptSource ? "saved" : "typed"} ${esc(fmtDur(Math.max(0, (nextData && nextData.generated || 0) - shape.revisionReadAt)))} ago`
     : (shape.promptSource ? "when it was saved was not recorded" : "when it was typed was not recorded");
@@ -4339,7 +4372,7 @@ function nextCockpitReadingBaseline(shape){
   }).join("");
   return `<details${nextCockpitDisclosureAttr("reading-baseline")}>` +
     `<summary>What it read: revision ${shape.revisionRead}, ${typed}${opened}</summary>` +
-    rows + "</details>";
+    extra + rows + "</details>";
 }
 
 /* The three parts in the page's order, joined. The drift block places them
@@ -4453,14 +4486,16 @@ function nextCockpitReadingParts(session, annotation, entries, model, observed, 
   const numbers = nextCockpitEntryNumbers(session, record);
   const held = record.all || record.entries || [];
   const byId = new Map(held.map(entry => [String(entry.id || ""), entry]));
-  const routed = nextReadingRoute(session);
-  /* Where a press would run: a reader, no refusal, no job, and no question
-     before the press standing in the control's place, which Keep answers. */
-  const again = !question && !noReader && routed && routed.provider && !nextReadingJob(session) &&
-    !nextPromptReadingRefusal(session, annotation, model)
-    ? '<button type="button" class="next-action" data-next-cockpit-action="reading-ask" ' +
-      `data-next-focus="reading-again:${esc(sessKey(session))}">Analyze again</button>` : "";
-  const stale = nextCockpitResultStale(shape, raw, annotation, held, again);
+  /* The result in the button's place (owner Q3, 2026-10-01; DRC-4758 slice
+     C): under the level, the stale callout if any, the headline, the goal row,
+     the checklist against the expected outcome, where the work went, then the
+     one press, "Analyze again" -- inert with its reason wherever "Analyze
+     drift" would be -- beside Steer back, and Not accurate. "Analyze drift" is
+     not drawn. While a job runs the box takes the slot alone, as the design's
+     analyzing stage does; the question before the press keeps the slot's head
+     and no press is drawn under it. */
+  const job = nextReadingJob(session);
+  const staleState = Boolean(nextCockpitResultStale(shape, raw, annotation, held, ""));
   const answer = shape.criteria.length || shape.departures.length
     ? nextCockpitResultAnswer(nextDriftAnswer(shape, held), numbers, byId) : "";
   const work = nextCockpitResultWork(held, numbers, source && source.scan, shape.windowStart);
@@ -4470,16 +4505,37 @@ function nextCockpitReadingParts(session, annotation, entries, model, observed, 
      a test asserts the two derivations match. */
   const scope = shape.scopeText
     ? `<p class="next-cockpit-reading-why">${esc(shape.scopeText)}</p>` : "";
-  return {control,
-    reading: header +
-      (shape.stamp ? `<span class="next-cockpit-reading-stamp">${esc(shape.stamp)}</span>` : "") +
-      '</header>' + `<p class="next-cockpit-define">${NEXT_COCKPIT_READING_DEFINITION}</p>` +
-      stale + answer +
-      shape.criteria.map(row => nextCockpitReadingCriterionRow(row, numbers, byId)).join("") +
-      work +
-      (shape.promptSource ? '<p class="next-cockpit-reading-why">Baseline from your prompt.</p>' : "") +
-      nextCockpitReadingBaseline(shape) + scope +
-      nextCockpitResultFoot(session, annotation, raw) + '</section>',
+  const goal = shape.criteria.filter(row => !nextReadingIsOutcomeLine(row.key));
+  const lines = shape.criteria.filter(row => nextReadingIsOutcomeLine(row.key));
+  const checklist = goal.map(row => nextCockpitResultItem(row, numbers, byId, "div")).join("") +
+    (lines.length
+      ? '<div class="next-cockpit-result-checklist"><h3>Against expected outcome</h3>' +
+        '<ol class="next-cockpit-result-lines">' +
+        lines.map(row => nextCockpitResultItem(row, numbers, byId)).join("") + "</ol></div>"
+      : "");
+  /* What it read, one click away: the definition, the model stamp, the
+     baseline's source, the cutoff and the revision it read. */
+  const read = `<p class="next-cockpit-define">${NEXT_COCKPIT_READING_DEFINITION}</p>` +
+    (shape.stamp ? `<p class="next-cockpit-reading-stamp">${esc(shape.stamp)}</p>` : "") +
+    (shape.promptSource ? '<p class="next-cockpit-reading-why">Baseline from your prompt.</p>' : "") +
+    scope;
+  /* Stale, the callout holds the one "Analyze again" and Steer back keeps
+     its own row below; otherwise the press sits beside Steer back at the
+     foot. Never both (owner Q3). */
+  const press = question ? "" : nextCockpitReadingControl(session, annotation, model,
+    false, staleState ? null : slotted, true);
+  const stale = nextCockpitResultStale(shape, raw, annotation, held, staleState ? press : "");
+  const steers = staleState && slotted && !question
+    ? `<div class="next-cockpit-reading-ask">${slotted.button}</div>${slotted.box}` : "";
+  const foot = staleState ? steers : press;
+  const result = job ? control
+    : '<div class="next-session-drift-check next-cockpit-result" data-next-result>' +
+      question + stale + answer + checklist + work +
+      (foot ? `<div class="next-cockpit-result-press">${foot}</div>` : "") +
+      nextCockpitResultFoot(session, annotation, raw) +
+      nextCockpitReadingBaseline(shape, read) + '</div>';
+  return {control: result,
+    reading: "",
     departures: nextCockpitDepartures(shape, source, session),
     /* What the activity list flags "Cited": the entries the surviving
        departures rest on, from this one stored reading and nothing earlier
@@ -5039,6 +5095,7 @@ const NEXT_DRIFT_LIVE_LINE = "Reads checks and file paths, not what your intent 
 const NEXT_DRIFT_LIVE_HINT = "Turn on for a quick, low-cost drift check after every turn. " +
   "The level shows here and in the header.";
 const NEXT_DRIFT_LIVE_SAVE = "Save your intent to see a live estimate.";
+const NEXT_DRIFT_UNCHECKED = "Not checked yet";
 const NEXT_DRIFT_NUDGE =
   "This is a quick estimate. Analyze to see what drifted and how to steer back.";
 
@@ -5070,11 +5127,14 @@ function nextDriftEstimate(group, session){
     return null;
   }
   const at = nextNumber(row.computed_at);
-  const numbers = nextCockpitEntryNumbers(session, nextCockpitWorkSource(group, session));
+  const work = nextCockpitWorkSource(group, session);
+  const numbers = nextCockpitEntryNumbers(session, work);
   const n = numbers.get(String(row.rose_at || ""));
   const from = NEXT_DRIFT_LEVEL_NAMES[String(row.rose_from || "")];
   return {level, label, source: at != null ? `Live estimate · ${nextSessionClock(at)}` : "Live estimate",
-    rose: from && n != null && row.rose_from !== "not_enough" ? `Rose from ${from} at #${n}.` : ""};
+    rose: from && n != null && row.rose_from !== "not_enough" ? `Rose from ${from} at #${n}.` : "",
+    reasons: nextDriftReasons(level, row.reasons, row.cites, work.all || work.entries || [],
+      numbers, new Set())};
 }
 
 /* The analysis-derived level (DRC-4695): the server's `levels.analysis_level`
@@ -5110,9 +5170,92 @@ function nextDriftAnalysis(group, session, annotation, shape){
     line.result === NEXT_READING_CONSISTENT && line.restsOn);
   if(level === "none_or_low" && !shown) level = "not_enough";
   const clock = nextSessionClock(readAt);
-  return {level, label: NEXT_DRIFT_LEVEL_NAMES[level], source: `Analysis · ${clock}`,
+  /* The time is said once, in the ruled line; the source chip names the
+     source alone and the caption carries the range alone (DRC-4758 slice C). */
+  const source = nextCockpitWorkSource(group, session);
+  const numbers = nextCockpitEntryNumbers(session, source);
+  const held = source.all || source.entries || [];
+  return {level, label: NEXT_DRIFT_LEVEL_NAMES[level], source: "Analysis",
     line: `From the analysis at ${clock}: each line of your intent against the checks and ` +
-      "messages it cited.", analysis: true, rose: ""};
+      "messages it cited.", analysis: true, rose: "",
+    range: nextDriftRange(held, numbers, nextNumber(raw.window_start),
+      nextNumber(raw.evidence_through) ?? readAt),
+    reasons: nextDriftReasons(level, row.reasons, row.cites, held, numbers,
+      new Set(shape.criteria.filter(line => line.result === NEXT_READING_DEPARTURE)
+        .flatMap(line => line.citedIds || []).map(String)))};
+}
+
+/* "#a to #b": the first and last entries the activity list numbers inside
+   the window the reading read, "#a" alone when they are one entry, and
+   nothing when the list numbers none of them: "#n", never "turn n", as item 11 of
+   [DEC-24](docs/design-reading-a-session.md#dec-24-your-intent-is-a-drafted-goal-and-a-checklist-and-a-correction-is-yours-to-copy)
+   rules. */
+function nextDriftRange(entries, numbers, start, through){
+  const inside = (entries || []).map(entry => {
+    const at = nextNumber(entry && entry.at);
+    const n = numbers.get(String(entry && entry.id || ""));
+    return n != null && at != null && (start == null || at >= start) &&
+      (through == null || at <= through) ? n : null;
+  }).filter(n => n != null);
+  if(!inside.length) return "";
+  const first = Math.min(...inside), last = Math.max(...inside);
+  return first === last ? `#${first}` : `#${first} to #${last}`;
+}
+
+/* Why a level is what it is, one page-owned sentence per closed token from
+   `levels.REASONS` (a test walks the set, and each token has exactly one
+   home). A reason the level rests on reads first under the meter; what
+   holds a level back from None or low reads behind "Why not None or low".
+   A later direction is said as yours and unsettled, never as drift
+   ([DEC-16](docs/design-reading-a-session.md#dec-16-cargento-does-not-write-into-a-session)).
+   An unknown token renders nothing: no producer text reaches the page
+   through this field. */
+const NEXT_DRIFT_REASON_LINES = {
+  "failed-check": n => n ? `A check failed at ${n}.` : "A check failed.",
+  "departure": n => n ? `The session departed from your intent at ${n}.`
+    : "The session departed from your intent.",
+  "pass-then-write": () => "A check passed, then files were written after it.",
+  "writes-outside-folders": () => "Some files were written outside the folders your intent names.",
+  "most-writes-outside-folders": () =>
+    "Most files were written outside the folders your intent names.",
+};
+const NEXT_DRIFT_BLOCKER_LINES = {
+  "no-passing-check": "No check has passed yet.",
+  "check-not-recorded": "A check ran and its result was not recorded.",
+  "background-run": "A check ran in the background, so its result is not known.",
+  "command-after-pass": "A command that can change files ran after the last pass.",
+  "pass-older-than-read": "The last pass is older than the work it would show.",
+  "later-direction": "A later direction of yours is unsettled.",
+  "entries-not-listed": "Some written files were counted and not listed.",
+  "intent-names-no-folder": "Your intent names no folder, so where files went is not weighed.",
+  "scan-incomplete": "The record was not read in full.",
+  "line-not-shown-by-a-check": "A line of your intent is not shown by any check.",
+  "no-outcome-line": "No expected outcome line was saved.",
+  "reading-malformed": "Part of the stored analysis could not be read.",
+};
+const NEXT_DRIFT_REASON_SILENT = new Set(["floor-met", "no-reading", "draft-unsaved"]);
+
+function nextDriftReasons(level, tokens, cites, entries, numbers, departing){
+  const said = Array.isArray(tokens) ? tokens.map(String) : [];
+  const cited = (Array.isArray(cites) ? cites : []).map(String);
+  const byId = new Map((entries || []).map(entry => [String(entry && entry.id || ""), entry]));
+  const number = test => {
+    const id = cited.find(fid => numbers.has(fid) && test(byId.get(fid), fid));
+    return id ? `#${numbers.get(id)}` : "";
+  };
+  const finders = {
+    "failed-check": entry => entry && entry.subject === "check" && entry.result === "failed",
+    "departure": (_entry, fid) => departing.has(fid),
+  };
+  if(level === "not_enough"){
+    const held = said.map(token => NEXT_DRIFT_BLOCKER_LINES[token] ||
+      (NEXT_DRIFT_REASON_LINES[token] ? NEXT_DRIFT_REASON_LINES[token]("") : "")).filter(Boolean);
+    return {first: "", blockers: [...new Set(held)]};
+  }
+  const token = said.find(name => NEXT_DRIFT_REASON_LINES[name]);
+  const finder = token && finders[token];
+  return {first: token ? NEXT_DRIFT_REASON_LINES[token](finder ? number(finder) : "") : "",
+    blockers: []};
 }
 
 /* The switch sits beside the Drift heading, as the design places it. */
@@ -5135,6 +5278,23 @@ function nextDriftMeter(level){
   return NEXT_DRIFT_SCALE.map((name, i) =>
     `<span class="next-session-drift-seg" data-level="${esc(level)}"` +
     `${on >= 0 && i <= on ? " data-on" : ""}></span>`).join("");
+}
+
+/* The four labels under the meter's segments, the current one marked, as
+   the design draws them. Hidden from a screen reader, which has the level
+   word already and would otherwise hear all four after it. */
+function nextDriftScale(level){
+  return '<p class="next-session-drift-scale" aria-hidden="true">' +
+    NEXT_DRIFT_SCALE.map(name => `<span${name === level ? " data-current" : ""}>` +
+      `${esc(NEXT_DRIFT_LEVEL_NAMES[name])}</span>`).join("") + "</p>";
+}
+
+/* "Not checked yet" (owner Q2, 2026-10-01): a saved intent, no level from
+   any source, and no reading stored. It names a process state, never "no
+   drift", and the pill stays level-only. */
+function nextDriftUnchecked(session, annotation){
+  if(!(nextData && nextData.annotate === true) || !annotation || annotation.assessment) return false;
+  return Boolean(String(annotation.goal || "").trim() || nextAnnotationLines(annotation).length);
 }
 
 /* The header pill: a level on the scale only, never "Not enough recorded
@@ -5165,27 +5325,47 @@ function nextDriftLevel(session, annotation = null, group = null, estimate = und
     if(live && (drafted || found && found.save)){
       return `<p class="next-session-drift-limit" data-next-drift-save>${esc(NEXT_DRIFT_LIVE_SAVE)}</p>`;
     }
+    /* The design's rows: the hint (where the switch can be turned on and no
+       reading is stored), then the level block, then the control slot the
+       drift block appends. */
+    const hint = NEXT_LIVE_HARNESSES.has(harness) && nextData && nextData.annotate === true &&
+      !live && !(annotation && annotation.assessment)
+      ? `<p class="next-session-drift-hint">${esc(NEXT_DRIFT_LIVE_HINT)}</p>` : "";
+    const running = Boolean(nextReadingJob(session));
     if(drafted || !found || !found.label){
-      return NEXT_LIVE_HARNESSES.has(harness) && nextData && nextData.annotate === true && !live
-        ? `<p class="next-session-drift-hint">${esc(NEXT_DRIFT_LIVE_HINT)}</p>` : "";
+      if(drafted || !nextDriftUnchecked(session, annotation)) return hint;
+      return hint + '<div class="next-session-drift-live" data-next-drift-unchecked>' +
+        '<p class="next-session-drift-live-head">' +
+        `<span class="next-session-drift-level">${esc(NEXT_DRIFT_UNCHECKED)}</span></p>` +
+        `<p class="next-session-drift-meter" aria-hidden="true"${running ? " data-dim" : ""}>` +
+        `${nextDriftMeter("")}</p>${nextDriftScale("")}</div>`;
     }
     const high = found.level === "high" || found.level === "extreme";
     /* While an analysis runs the design keeps the title and dims the meter,
        and drops the detail line. Over an unsaved edit the nudge would point at
        a press the page refuses, so it goes; the level is over the saved words. */
-    const running = Boolean(nextReadingJob(session));
     const detail = found.level && !running
       ? [found.analysis ? found.line : NEXT_DRIFT_LIVE_LINE, found.rose].filter(Boolean).join(" ")
       : "";
-    return '<div class="next-session-drift-live" data-next-drift-level>' +
+    const reasons = !running && found.reasons ? found.reasons : {first: "", blockers: []};
+    const blockers = reasons.blockers.length
+      ? `<details class="next-cockpit-why"${nextCockpitDisclosureAttr("drift-why-not-low")}>` +
+        "<summary>Why not None or low</summary>" +
+        reasons.blockers.map(line => `<p class="next-cockpit-reading-why">${esc(line)}</p>`).join("") +
+        "</details>" : "";
+    return hint + '<div class="next-session-drift-live" data-next-drift-level>' +
       '<p class="next-session-drift-live-head">' +
       `<span class="next-session-drift-level">${esc(String(found.label))}</span>` +
       (found.source ? `<span class="next-session-drift-source">${esc(found.source)}</span>` : "") +
       '</p>' +
       (found.level ? `<p class="next-session-drift-meter" aria-hidden="true"${running ? " data-dim" : ""}>` +
-        `${nextDriftMeter(found.level)}</p>` : "") +
+        `${nextDriftMeter(found.level)}</p>${nextDriftScale(found.level)}` : "") +
       (detail ? `<p class="next-session-drift-detail">${esc(detail)}</p>` : "") +
-      '</div>' +
+      (found.range && !running ? `<p class="next-session-drift-range">${esc(found.range)}</p>` : "") +
+      (reasons.first ? `<p class="next-session-drift-reason">${esc(reasons.first)}</p>` : "") +
+      blockers + '</div>' +
+      /* The design's C2 callout, placed definitely: directly under the live
+         level at High or Extreme, before the control it points at. */
       (high && !found.analysis && !running && !nextIntentUnsaved(session, annotation)
         ? `<p class="next-session-drift-nudge">${esc(NEXT_DRIFT_NUDGE)}</p>` : "");
   }

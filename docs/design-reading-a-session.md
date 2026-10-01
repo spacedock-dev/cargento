@@ -2291,7 +2291,11 @@ the analysis's recommendation.
   gives consent still follows the text naming the receiver.
 - No meter, no header pill and no "Not checked yet" before a level exists (DRC-4695, DRC-4696). The
   design's idle title becomes false the moment a reading is stored, and a grey scale drawn with no
-  level behind it reads the same on every session whether or not anything was read.
+  level behind it reads the same on every session whether or not anything was read. Amended
+  2026-10-01 (owner, Q2, DRC-4758): with a saved intent and no level from any source, and no
+  reading stored, "Not checked yet" stands over the unlit four-segment meter and its labels
+  ([the result in the button's place](#amended-2026-10-01-the-result-takes-the-buttons-place)).
+  The pill stays level-only.
 - The header shows the state in Cargento's own words (working, needs input, idle), not the design's
   "Running", which would rename a state across the product from one page.
 - The panel is not a scroll container and is not sticky; the page scrolls as one document, so the
@@ -2303,7 +2307,9 @@ the analysis's recommendation.
   eye once the record moved to the other column. It now names the column.
 - One primary per stage: `Analyze drift` when idle and under a stored reading (DRC-4695 and DRC-4681
   change that later), "Allow and analyze" while confirming, none while analyzing and none with no
-  reader.
+  reader. Amended 2026-10-01 (owner, Q3, DRC-4758): under a stored reading the result takes the
+  button's place, "Analyze drift" is not drawn, its one "Analyze again" is secondary, and Steer
+  back is that stage's primary where a departure stands.
 - No Stop session control (DEC-16).
 - The fold, measured on a live board at 1440x900: the first build stacked the header one element
   per line (205px) and put Analyze drift's bottom at 1022 on a Claude Code session and 1085 on a
@@ -2738,6 +2744,57 @@ and each was settled on the withholding side.
 - Not accurate is a toggle on the reading shown, posted through `POST /api/annotate` with the
   reading's `read_at`, and the store refuses a mark naming any other reading. Only the token is
   stored. A press the store does not take says so under the button until the next press.
+
+#### Amended 2026-10-01: the result takes the button's place
+
+Owner rulings Q2, Q3 and Q10, 2026-10-01 (DRC-4758 slice C). The owner's walk never saw a level: the
+result sat in a READING section below the fold, under a second "Analyze drift", and read as nothing
+having happened. This supersedes the placement in the bullets above; their wording rules are kept.
+
+- The Drift card's rows are the design's: "Drift" with its subtitle and the Live monitor switch;
+  the one hint line where the switch can be turned on and no reading is stored; the level block;
+  then the slot that holds the control or the result. Nothing is built from the rejected designs A
+  and B.
+- The level block is the level word with its source beside it, the four-segment meter, and the
+  meter's labels "None or low", "Medium", "High", "Extreme" under its segments with the current one
+  marked. The labels are hidden from a screen reader, which already has the level word.
+- "Not checked yet" (Q2) is drawn over the unlit meter and its labels with a saved intent, no level
+  from any source and no reading stored. It names a process state, never "no drift", is never drawn
+  over an unsaved draft or once a reading is stored, and draws no pill.
+- The time is said once. The source chip reads "Analysis" alone, the item 1 line keeps "From the
+  analysis at <time>", and a caption under it carries the range alone: "#a to #b", the first and
+  last entries the activity list numbers inside the window the reading read, or "#a" when they are
+  one entry.
+- Why the level is what it is: one page-owned sentence per closed `levels.REASONS` token
+  (`NEXT_DRIFT_REASON_LINES` for what a level rests on, `NEXT_DRIFT_BLOCKER_LINES` for what holds one
+  back, `NEXT_DRIFT_REASON_SILENT` for the three that need no sentence; a test walks the set and
+  gives each token exactly one home). Under Medium and above the first reason reads under the
+  meter, numbered from the level's cites where the cite is the kind the token names; under "Not
+  enough recorded yet" the blockers sit behind "Why not None or low". A later direction is said as
+  yours and unsettled, never as drift. An unknown token renders nothing. The live estimate's level
+  uses the same maps.
+- The live estimate's callout, "This is a quick estimate. Analyze to see what drifted and how to
+  steer back.", sits directly under its level at High or Extreme, before the control; the
+  analyzing box keeps "You can keep working. The result will appear here." under its steps.
+- Under a stored, readable reading and no job, the slot holds the result in this order: the stale
+  callout if any; the headline and its account under a departure only; the goal row; "Against
+  expected outcome", an ordered list with one item per outcome line; Where the work went; Steer back
+  and Update intent instead; "Analyze again"; Not accurate; then "What it read", one click away with
+  the definition, the model stamp, the baseline's source, the cutoff and the revision. The READING
+  section is not drawn there. A malformed reading, a refused one and no reading keep it.
+- Each checklist line is a glyph, the line's own words as its title, the ruled status beneath, and
+  "Evidence" one click away holding the source tag, the why and the limit. The glyph is shape first:
+  a cross for departs in the panel's clay (Q10), a neutral filled dot for consistent, never a check
+  and never green, and a dashed circle for can't tell. "#n" stays text, not a link, because the page
+  routes on its fragment.
+- One "Analyze again" (Q3). It is the same control as "Analyze drift", so it keeps every refusal,
+  the consent step and the count, and is inert with its reason wherever the press would be refused.
+  It is never the stage's primary. A stale result holds it in the callout, and Steer back keeps its
+  own row at the foot; a current result holds it at the foot beside Steer back. While the question
+  before the press stands, no press is drawn under the result. While a job runs the analyzing box
+  takes the slot alone and the old result is not drawn.
+- The end of a job that stored a reading is announced as "The analysis finished. Its result is in
+  the Drift section.", with no positional word, so it is true at every width.
 
 ### What the slash-command build decided, 2026-10-01
 

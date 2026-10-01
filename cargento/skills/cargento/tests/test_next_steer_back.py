@@ -210,8 +210,9 @@ class WhereSteerBackIsDrawnTest(_DraftPage):
         ]
         self.assertEqual(sorted(order), order)
         self.assertIn(">Update intent instead</button>", drift)
-        reading = drift[drift.index("<h2>READING</h2>") :]
-        self.assertNotIn("steer-back", reading[: reading.index("</section>")])
+        # The result stands in the button's place (DRC-4758 slice C), and Steer back follows
+        # what it found, once.
+        self.assertLess(drift.index("data-next-result"), drift.index("steer-back"))
         self.assertEqual(1, drift.count('data-next-cockpit-action="steer-back"'))
 
     def test_with_no_reader_it_is_the_one_primary_where_analyze_would_be(self) -> None:

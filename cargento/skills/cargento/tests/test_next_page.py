@@ -1190,6 +1190,9 @@ class NextPageAssetContractTest(unittest.TestCase):
         ".next-cockpit-reading-consent-title",
         ".next-cockpit-reading-parts",
         ".next-cockpit-reading-count--row",
+        ".next-session-drift-range,.next-session-drift-reason",
+        ".next-cockpit-result-checklist h3",
+        ".next-cockpit-result .next-cockpit-reading-clause",
         ".next-cockpit-recovery .next-project-goal-text",
         ".next-cockpit-recovery .next-project-goal-text.next-project-value--absent,\n.next-cockpit-recovery .next-project-goal-gap",
         ".next-cockpit-recovery details>summary,.next-course-evidence>summary,\n.next-cockpit-plan-details>summary,.next-cockpit-console-status>summary,\n.next-cockpit-console-setup>summary",
@@ -1390,8 +1393,11 @@ class NextPageAssetContractTest(unittest.TestCase):
         # DRC-4695 adds eight: the analysis result's headline, count, answer line, stale
         # banner head, Where the work went's heading and folders, and Not accurate with
         # its mark. DRC-4758 adds three: the consent step's question, the list of the
-        # disclosure's parts, and the attempt count on the button's row.
-        self.assertEqual(129, len(above))
+        # disclosure's parts, and the attempt count on the button's row; and three for
+        # the result in the button's place: the range and level reason under the meter,
+        # the checklist's heading, and each line's own words as its title. The meter's
+        # four labels are labels, set at a label line-height, so off this tier.
+        self.assertEqual(132, len(above))
         self.assertEqual(self.SENTENCE_TIER_RULES, {selector for selector, _size in above})
         self.assertEqual(
             self.SUB_SENTENCE_FLOOR_INVENTORY, {(size, selector) for selector, size in below}

@@ -40,6 +40,9 @@ SIX = [
 ]
 FULL = "An expected outcome holds six lines. Replace or merge a line to add another."
 
+# The result stands in the Drift card's control slot (DRC-4758 slice C).
+RESULT = '<div class="next-session-drift-check next-cockpit-result"'
+
 
 def lines_setup(texts: list[str], sources: list[str] | None = None) -> str:
     """The published flat fields for these lines, as `annotations.published` writes them."""
@@ -248,7 +251,7 @@ console.log(JSON.stringify({removed, saveShown, restored}));
 
         html = self.page(lines_setup(SIX) + self.reading(criteria))
 
-        block = html[html.index("<h2>READING</h2>") :]
+        block = html[html.index(RESULT) :]
         text = visible_text(block)
         for k, line in enumerate(SIX, start=1):
             with self.subTest(line=k):
@@ -268,7 +271,7 @@ console.log(JSON.stringify({removed, saveShown, restored}));
 
         html = self.page(lines_setup(["a CSV export"]) + self.reading(criteria))
 
-        text = visible_text(html[html.index("<h2>READING</h2>") :])
+        text = visible_text(html[html.index(RESULT) :])
         self.assertIn("TYPED GOAL", text)
         self.assertIn("EXPECTED OUTCOME", text)
         self.assertIn("a CSV export", text)
@@ -323,7 +326,7 @@ class TheCorrectionRoundOnThePageTest(_ChecklistPage):
     UNV = f'result:"{reading.RESULT_UNVERIFIABLE}", cites:[], detail:"", why:""'
 
     def reading_block(self, html: str) -> str:
-        return visible_text(html[html.index("<h2>READING</h2>") :])
+        return visible_text(html[html.index(RESULT) :])
 
     def test_a_line_typed_after_a_reading_gets_no_row_under_it(self) -> None:
         # The reading read revision 1, which had one line. Revision 2 holds three.

@@ -123,8 +123,8 @@ class TheSessionPageLeadsWithDriftTest(NextPageJsHarness):
         ):
             with self.subTest(later=later):
                 self.assertLess(drift, html.index(later))
-        # Inside it, in the reader's order: their words, the control, the reading, then every
-        # departure on record. The agent's direction leads the activity column beside the panel
+        # Inside it, in the reader's order: their words, the reading in the control's place with
+        # its one press (DRC-4758 slice C), then every departure on record. The agent's direction leads the activity column beside the panel
         # (DRC-4680), after the panel in the markup.
         block = html[drift : html.index("</aside>")]
         order = [
@@ -132,8 +132,8 @@ class TheSessionPageLeadsWithDriftTest(NextPageJsHarness):
             for mark in (
                 ">Intent</h2>",
                 ">Drift</h2>",
+                "data-next-result",
                 'data-next-cockpit-action="reading-ask"',
-                "<h2>READING</h2>",
                 "DEPARTURES RAISED TO YOU",
             )
         ]
@@ -379,8 +379,8 @@ await refreshNext();
         html = self.page(CONSISTENT)
 
         row = re.search(
-            r'<div class="next-cockpit-reading-row" data-next-result-state="consistent">'
-            r"[\s\S]*?</div>",
+            r'<(li|div) class="next-cockpit-reading-row" data-next-result-state="consistent"'
+            r"[\s\S]*?</\1>",
             html,
         )
         self.assertIsNotNone(row)
@@ -408,9 +408,10 @@ __dashboard.sessions[0].annotation_revision_count = 0;
             with self.subTest(state=name):
                 text = visible_text(self.page(setup))
                 self.assertIsNone(DRIFT_ABSENCE.search(text), DRIFT_ABSENCE.findall(text))
-                # And the word is present where it names the block and the control.
+                # And the word is present where it names the block and the control, which
+                # reads "Analyze again" under a stored result (owner Q3, DRC-4758 slice C).
                 self.assertIn(" Drift ", text)
-                self.assertIn("Analyze drift", text)
+                self.assertRegex(text, r"Analyze (drift|again)")
 
     def test_goal_summary_model_state_does_not_disable_a_consented_reading(self) -> None:
         for model in (None, {"enabled": False}):

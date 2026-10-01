@@ -12074,8 +12074,9 @@ console.log(JSON.stringify({
     /<section class="next-cockpit-landed">[\\s\\S]*?<\\/section>/) || [""])[0],
   departures: (html.match(
     /<section class="next-cockpit-departures">[\\s\\S]*?<\\/section>/) || [""])[0],
+  // The result stands in the control's slot since DRC-4758 slice C, up to the departures.
   reading: (html.match(
-    /<div class="next-session-drift-check">[\\s\\S]*?<section class="next-cockpit-reading">[\\s\\S]*?<\\/section>/) || [""])[0],
+    /<div class="next-session-drift-check next-cockpit-result"[\\s\\S]*?(?=<section class="next-cockpit-departures"|<\\/aside>)/) || [""])[0],
 }));
 """,
             storage_prelude({}) + self.FIXTURE,
@@ -12397,12 +12398,13 @@ console.log(JSON.stringify({keys, kept, closed: disclosures.map(row => row.open)
         html, reading = out["html"], out["reading"]
         assert isinstance(html, str) and isinstance(reading, str)
         self.assertIn("This covers only the work so far", reading)
-        # No tier-2 control anywhere inside the reading section -- the four
-        # sites this change touches all sit after it.
-        self.assertNotIn("next-cockpit-why", reading)
+        # No tier-2 control from the four sites this change touches inside the
+        # result -- they all sit after it. Its own per-line Evidence and the
+        # disclosure under its press are the result's, not those (DRC-4758 C).
+        self.assertNotIn("--unasked-readings", reading)
         # And the first `reading-why` in a slice to end of document is still
-        # the reading section's own, not one tiered from below it.
-        block = html[html.index('class="next-cockpit-reading"') :]
+        # the result's own, not one tiered from below it.
+        block = html[html.index("data-next-result") :]
         first = re.search(r'class="next-cockpit-reading-why">([^<]*)<', block)
         assert first is not None
         self.assertLess(
@@ -13679,7 +13681,7 @@ __dashboard.annotate_cap = 240;
 navigateNext({view:"project", project:"cargento", focus:"claude:claude-idle", tab:"held-to"});
 await __settle();
 const html = __els.app.innerHTML;
-const reading = html.slice(html.indexOf("<h2>READING</h2>"), html.indexOf("</aside>"));
+const reading = html.slice(html.indexOf("data-next-result"), html.indexOf("</aside>"));
 console.log(JSON.stringify({reading}));
 """
         )

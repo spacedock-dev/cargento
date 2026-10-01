@@ -816,7 +816,7 @@ console.log(JSON.stringify({presses, landed, posts:__posts.map(p => p.url),
         assert isinstance(out, dict)
         self.assertTrue(out["landed"])
         self.assertEqual(["/api/reading"], out["posts"])
-        self.assertIn("<h2>READING</h2>", out["html"])
+        self.assertIn("data-next-result", out["html"])
         self.assertLessEqual(out["presses"], 3)
         self.assertEqual(2, out["presses"])
 

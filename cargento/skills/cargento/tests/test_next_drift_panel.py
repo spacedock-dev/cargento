@@ -50,15 +50,14 @@ __dashboard.reading_jobs = {[`${__dashboard.sessions[0].harness}:focus-1`]: {id:
     {phase:"waiting", text:"Waiting for Codex"}, {phase:"checking", text:"Checking the reply"}]}};
 """
 
-# Strings the design draws that no layer may show yet, or ever: the level and meter belong to
-# DRC-4695 and DRC-4696, "Stop session" is not offered (DEC-16), and the old labels are renamed.
+# Strings the design draws that no layer may show yet, or ever: a level belongs to DRC-4695 and
+# DRC-4696, "Stop session" is not offered (DEC-16), and the old labels are renamed. "Not checked
+# yet" and the meter's four labels are drawn over a saved intent with no level since owner Q2
+# (DRC-4758 slice C), and `test_no_stage_draws_a_level...` holds that meter unlit.
 NEVER = (
     "Stop session",
-    "Not checked yet",
     "Not enough recorded yet",
-    "None or low",
     "None/Low",
-    "Extreme",
     "Drift:",
     # "Live monitor" is drawn since DRC-4696, off by default, so no level or pill still.
     "Check for drift",
@@ -205,7 +204,9 @@ class IntentAndDriftPanelTest(PanelPage):
             "idle": "Analyze drift",
             "confirming": "Allow and analyze",
             "analyzing": None,
-            "result": "Analyze drift",
+            # The result takes the button's place; "Analyze again" is secondary, and this
+            # Codex reading offers no Steer back, so nothing is primary (owner Q3).
+            "result": None,
             "no reader": None,
         }
         for name, html in stages.items():
@@ -225,10 +226,13 @@ class IntentAndDriftPanelTest(PanelPage):
         )
         assert cancel is not None
         self.assertIn('class="next-action"', cancel.group(0))
-        # The stored reading renders in the Drift section.
+        # The stored reading renders in the Drift section, in the button's place.
         result = drift_of(stages["result"])
-        self.assertIn("<h2>READING</h2>", result)
+        self.assertIn("data-next-result", result)
+        self.assertNotIn("<h2>READING</h2>", result)
         self.assertIn("It changed the board.", result)
+        self.assertNotIn(">Analyze drift</button>", result)
+        self.assertEqual(1, result.count(">Analyze again</button>"))
 
     def test_no_stage_draws_a_level_a_pill_a_stop_control_or_an_old_label(self) -> None:
         for name, html in self.stages().items():
@@ -238,6 +242,11 @@ class IntentAndDriftPanelTest(PanelPage):
                     self.assertNotIn(never, text)
                 self.assertNotIn("data-next-drift-level", html)
                 self.assertNotIn("data-next-drift-pill", html)
+                # Where a saved intent has no level, "Not checked yet" stands over the meter,
+                # and nothing on it is lit or marked current.
+                self.assertNotIn("data-on", drift_of(html))
+                self.assertNotIn("data-current", drift_of(html))
+                self.assertEqual(name != "result", "Not checked yet" in text)
 
     def test_the_disclosure_follows_analyze_when_idle_and_precedes_allow_when_confirming(
         self,
