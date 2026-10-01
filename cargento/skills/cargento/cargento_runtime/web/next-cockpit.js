@@ -1345,6 +1345,10 @@ function nextCockpitHeldLines(session, annotation, cap, source = null){
   const full = draft.length >= NEXT_OUTCOME_LINES_MAX;
   const why = nextCockpitStoreUnreadable() ? "" : String(annotation && annotation.lines_why || "");
   const cue = nextCockpitHeldCue(key);
+  /* An open later direction says the list is full beside its own save, so the
+     list's sentence is hidden under it rather than drawn twice (DRC-4760). It
+     stays in the DOM for the add control's `aria-describedby`. */
+  const direction = nextCockpitDirectionLine(session, annotation, cap, source);
   const rows = boxes.map((text, index) => {
     // The source is a fact about saved words, so it shows only while the box
     // still holds the line saved in that place. Its space is kept while it is
@@ -1365,7 +1369,7 @@ function nextCockpitHeldLines(session, annotation, cap, source = null){
         `${esc(nextCockpitLineSource(place, session, source))}</span>` : "") +
       `<button type="button" data-next-cockpit-action="held-line-remove" data-arg="${index}" ` +
       `data-next-focus="${esc(`${key}:remove:${index}`)}">remove</button></li>`;
-  }).join("") + nextCockpitDirectionLine(session, annotation, cap, source);
+  }).join("") + direction;
   const add = '<button type="button" data-next-cockpit-action="held-line-add" data-arg="lines"' +
     ` data-next-focus="${esc(`${key}:add`)}"` +
     (full ? ' aria-disabled="true" aria-describedby="next-cockpit-held-full"' : "") +
@@ -1380,7 +1384,7 @@ function nextCockpitHeldLines(session, annotation, cap, source = null){
       true, why ? nextCockpitHeldAbsentId("lines") : "", `${key}:save`) + '</span></div>' +
     `<ol class="next-cockpit-held-list">${rows}</ol>` +
     '<p class="next-cockpit-held-full" id="next-cockpit-held-full" data-next-cockpit-held-full' +
-    `${full ? "" : " hidden"}>${esc(NEXT_COCKPIT_LINES_FULL)}</p>` +
+    `${full && !direction ? "" : " hidden"}>${esc(NEXT_COCKPIT_LINES_FULL)}</p>` +
     (why ? `<p class="next-cockpit-held-absent" id="${nextCockpitHeldAbsentId("lines")}" ` +
       `data-next-cockpit-held-absent="lines"` +
       `${nextCockpitLinesToSend(draft).length ? " hidden" : ""}>${esc(why)}</p>` : "") +

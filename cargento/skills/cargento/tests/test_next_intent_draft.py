@@ -671,6 +671,37 @@ class AddItToMyIntentTest(_DraftPage):
         self.assertEqual(2, body["expected_revision"])
         self.assertNotIn("adopt", body)
 
+    def test_a_reader_adding_to_a_full_list_is_told_it_is_full_once(self) -> None:
+        """DRC-4760. The list's own notice and the open line's reason said the same sentence twice.
+
+        Counted over drawn paragraphs only: a `hidden` one is kept for the add control's
+        `aria-describedby` and is not on screen.
+        """
+        six = (
+            "".join(
+                f'__s.annotation_line_{k} = "Line {k}"; __s.annotation_line_{k}_source = "typed";'
+                for k in range(1, 7)
+            )
+            + TYPED
+        )
+
+        def shown(html: str) -> list[str]:
+            return [
+                attrs
+                for attrs, text in re.findall(r"<p\b([^>]*)>([^<]*)</p>", intent_of(html))
+                if visible_text(text).strip() == FULL and not re.search(r"\shidden\b", attrs)
+            ]
+
+        closed = self.drive(six, "console.log(JSON.stringify(__els.app.innerHTML));")
+        assert isinstance(closed, str)
+        self.assertEqual(1, len(shown(closed)), "a full list says so with no line open")
+        out = self.opened(LATEST, six)
+        said = shown(out["html"])
+        self.assertEqual(1, len(said), "the notice is drawn once while the line is open")
+        # The one beside the line's save, which names it.
+        self.assertIn("data-next-cockpit-direction-why", said[0])
+        self.assertIn(FULL, visible_text(self.pending(out["html"])))
+
     def test_a_direction_the_server_cannot_open_says_why_and_opens_nothing(self) -> None:
         why = annotation_store.DIRECTION_UNAVAILABLE
         out = self.drive(
