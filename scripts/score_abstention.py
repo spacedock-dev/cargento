@@ -19,8 +19,8 @@ Codex spend is authorized. A result names the producer, the model, a digest of
 the argv, the destination and the CLI it ran under, and goes to its own file,
 `docs/abstention/claude-results.json`, or a continuation's own fixed file beside
 it. Every model call is charged first to the one ledger `abstention_ledger`
-owns, which stops at 23 calls across every run (DRC-4666; the ceiling the owner
-approved in DRC-4758).
+owns, which stops at 28 calls across every run (DRC-4666: the DRC-4758 ceiling
+of 23, and the five more the owner authorized on 2026-10-01).
 
 ## Two corpora, two files, two questions
 
@@ -147,17 +147,12 @@ SUMMARY_PATH = os.path.join(_ROOT, "docs", "abstention", "results.json")
 # acceptance of 2026-09-14 does not qualify Claude, and one file per producer
 # keeps the one from being read as the other.
 CLAUDE_SUMMARY_PATH = abstention_ledger.CLAUDE_SUMMARY_PATH
-# A fresh packet never overwrites the scored failure that froze the first key.
-CLAUDE_CONTINUATION_SUMMARY_PATH = os.path.join(
-    _ROOT, "docs", "abstention", "claude-results-continuation.json"
-)
-# Nor does a second continuation overwrite the first continuation's failure.
-CLAUDE_CONTINUATION_2_SUMMARY_PATH = os.path.join(
-    _ROOT, "docs", "abstention", "claude-results-continuation-2.json"
-)
+# A fresh packet never overwrites the scored failure that froze the key before
+# it: each continuation writes its own generation's file, which
+# `abstention_ledger.result_path` names.
 PRODUCERS = ("claude", "codex")
-# The ceiling the owner approved in DRC-4758: 23 real readings across every
-# packet. `abstention_ledger` owns the cap and the one ledger.
+# The owner's ceiling, 28 real readings across every packet since 2026-10-01
+# (DRC-4666). `abstention_ledger` owns the cap and the one ledger.
 MAX_CALLS = abstention_ledger.MAX_CALLS
 # Where the native installer puts each Claude Code version, one file per version
 # named for it. A `claude` resolving anywhere else is refused: a PATH stub
@@ -1790,9 +1785,8 @@ def _chain_holds(ledger: abstention_ledger.Ledger | None, summary_path: str) -> 
         print("Refused: a continuation writes only its fixed separate result file.")
         return False
     # Every committed result the chain runs through, then this run's own.
-    earlier = [abstention_ledger.CLAUDE_SUMMARY_PATH]
-    if grant is not None and len(grant["segments"]) > 1:
-        earlier.append(CLAUDE_CONTINUATION_SUMMARY_PATH)
+    count = 1 if grant is None else len(grant["segments"])
+    earlier = [abstention_ledger.result_path(k) for k in range(count)]
     paths = dict.fromkeys((*earlier, fixed or summary_path, summary_path))
     for path in paths:
         committed = abstention_ledger.committed_chain(path)
@@ -1817,7 +1811,7 @@ def _overwrites(
 
     A written result is the record of what its key spent. A fresh run over it
     would re-spend that key and replace the record, which the old cap of 19
-    bounded to one call and the ceiling of 23 does not; `--resume` re-calls
+    bounded to one call and the ceiling of 28 does not; `--resume` re-calls
     only the calls that failed. A result that charged nothing records no
     spend, so it may be replaced. One that cannot be read counts as spent.
     """
@@ -2282,9 +2276,7 @@ def _continuation_summary(grant: Mapping[str, Any] | None) -> str | None:
     """The fixed result file the active grant writes, or None with no grant."""
     if grant is None:
         return None
-    if len(grant["segments"]) > 1:
-        return CLAUDE_CONTINUATION_2_SUMMARY_PATH
-    return CLAUDE_CONTINUATION_SUMMARY_PATH
+    return abstention_ledger.result_path(len(grant["segments"]))
 
 
 def _load_corpus(rubric_path: str) -> Corpus:
@@ -2303,12 +2295,17 @@ def _load_corpus(rubric_path: str) -> Corpus:
 def results_path_for(producer: str) -> str:
     """The local half, one per producer, so a resume never picks up the other's run."""
     if producer == "claude":
-        if os.path.lexists(abstention_ledger.CONTINUATION_2_PATH):
-            return os.path.join(HOME, "abstention-claude-continuation-2-results.json")
-        if os.path.exists(abstention_ledger.CONTINUATION_PATH):
-            return os.path.join(HOME, "abstention-claude-continuation-results.json")
-        return os.path.join(HOME, "abstention-claude-results.json")
+        return local_results_path(abstention_ledger.generation())
     return RESULTS_PATH
+
+
+def local_results_path(generation: int) -> str:
+    """Packet `generation`'s local half, beside the committed one `result_path` names."""
+    if generation == 0:
+        return os.path.join(HOME, "abstention-claude-results.json")
+    if generation == 1:
+        return os.path.join(HOME, "abstention-claude-continuation-results.json")
+    return os.path.join(HOME, f"abstention-claude-continuation-{generation}-results.json")
 
 
 def summary_path_for(producer: str | None, out: str | None) -> str:
@@ -2317,11 +2314,8 @@ def summary_path_for(producer: str | None, out: str | None) -> str:
         return out
     if producer != "claude":
         return SUMMARY_PATH
-    if os.path.lexists(abstention_ledger.CONTINUATION_2_PATH):
-        return CLAUDE_CONTINUATION_2_SUMMARY_PATH
-    if os.path.exists(abstention_ledger.CONTINUATION_PATH):
-        return CLAUDE_CONTINUATION_SUMMARY_PATH
-    return CLAUDE_SUMMARY_PATH
+    generation = abstention_ledger.generation()
+    return abstention_ledger.result_path(generation) if generation else CLAUDE_SUMMARY_PATH
 
 
 def _argument_refusal(args: argparse.Namespace) -> str:  # noqa: PLR0911 - one per line

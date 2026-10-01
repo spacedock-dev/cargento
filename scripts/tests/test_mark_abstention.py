@@ -27,6 +27,12 @@ import mark_abstention
 _LEDGER_PATCH: Any = None
 
 
+def _never(stem: str) -> tuple[str, ...]:
+    """Every continuation generation, at a throwaway path no test writes."""
+    folder = tempfile.mkdtemp()
+    return tuple(str(Path(folder, f"{stem}-{k}.json")) for k in range(abstention_ledger.MAX_GRANTS))
+
+
 def setUpModule() -> None:
     """Never the real spend ledger: the marker refuses to write once it holds a call."""
     global _LEDGER_PATCH  # noqa: PLW0603
@@ -34,9 +40,8 @@ def setUpModule() -> None:
         abstention_ledger,
         LEDGER_PATH=str(Path(tempfile.mkdtemp(), "never-real.json")),
         CLAUDE_SUMMARY_PATH=str(Path(tempfile.mkdtemp(), "never-committed.json")),
-        CONTINUATION_PATH=str(Path(tempfile.mkdtemp(), "never-continuation.json")),
-        CONTINUATION_2_PATH=str(Path(tempfile.mkdtemp(), "never-continuation-2.json")),
-        CONTINUATION_SUMMARY_PATH=str(Path(tempfile.mkdtemp(), "never-continuation-result.json")),
+        CONTINUATION_PATHS=_never("never-continuation"),
+        CONTINUATION_SUMMARY_PATHS=_never("never-continuation-result"),
     )
     _LEDGER_PATCH.start()
 

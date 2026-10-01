@@ -182,9 +182,14 @@ def setUpModule() -> None:
         abstention_ledger,
         LEDGER_PATH=str(Path(folder, "never-real.json")),
         CLAUDE_SUMMARY_PATH=str(Path(folder, "never-committed.json")),
-        CONTINUATION_PATH=str(Path(folder, "never-continuation.json")),
-        CONTINUATION_2_PATH=str(Path(folder, "never-continuation-2.json")),
-        CONTINUATION_SUMMARY_PATH=str(Path(folder, "never-continuation-result.json")),
+        CONTINUATION_PATHS=tuple(
+            str(Path(folder, f"never-continuation-{k}.json"))
+            for k in range(abstention_ledger.MAX_GRANTS)
+        ),
+        CONTINUATION_SUMMARY_PATHS=tuple(
+            str(Path(folder, f"never-continuation-result-{k}.json"))
+            for k in range(abstention_ledger.MAX_GRANTS)
+        ),
     )
     _LEDGER_PATCH.start()
 
@@ -307,7 +312,7 @@ class TheClaudeProducerIsChosenExplicitlyTest(unittest.TestCase):
             ("docs", "abstention", "claude-results.json"), Path(seen["summary_path"]).parts[-3:]
         )
         self.assertEqual({**BINDING, "argv_digest": "cd" * 32}, dict(seen["binding"]))
-        self.assertEqual(23, seen["max_calls"])
+        self.assertEqual(28, seen["max_calls"])
         self.assertEqual(abstention_ledger.LEDGER_PATH, seen["ledger_path"])
 
     def test_the_argv_digest_is_read_without_running_anything(self) -> None:
@@ -716,11 +721,12 @@ class Q2OneLedgerThatFailsClosedTest(_Ledgered):
         self.assertNotIn("fresh", path)
 
     def test_the_cap_is_the_owners_ceiling_and_cannot_be_raised(self) -> None:
-        # 23 scorer calls across every packet, the ceiling the owner approved (DRC-4758).
-        self.assertEqual(23, abstention_ledger.MAX_CALLS)
+        # 28 scorer calls across every packet: the owner's 2026-10-01 ruling (DRC-4666)
+        # added five past the DRC-4758 ceiling of 23 for one more qualification run.
+        self.assertEqual(28, abstention_ledger.MAX_CALLS)
         with mock.patch("builtins.print"):
             self.assertEqual(
-                2, score_abstention.main(["--score", "--producer", "claude", "--max-calls", "24"])
+                2, score_abstention.main(["--score", "--producer", "claude", "--max-calls", "29"])
             )
 
     def test_the_cap_counts_every_earlier_run(self) -> None:
@@ -764,8 +770,7 @@ class Q2OneLedgerThatFailsClosedTest(_Ledgered):
         # unlocked ledger loses charges: without the lock this over-charges.
         script = (
             "import sys, time; sys.path.insert(0, sys.argv[1]); import abstention_ledger as L\n"
-            "L.CONTINUATION_PATH = sys.argv[5]\n"
-            "L.CONTINUATION_2_PATH = sys.argv[5] + '-2'\n"
+            "L.CONTINUATION_PATHS = tuple(f'{sys.argv[5]}-{k}' for k in range(L.MAX_GRANTS))\n"
             "read = L.read\n"
             "def slow(path):\n    body = read(path); time.sleep(0.05); return body\n"
             "L.read = slow\n"
