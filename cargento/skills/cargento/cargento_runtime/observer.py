@@ -43,6 +43,13 @@ NO_GOAL_REASON = "generic-opener-only-no-work"
 OBSERVER_MODEL = "gpt-5.6-luna"
 OBSERVER_MODEL_REASONING_EFFORT = "max"
 OBSERVER_MODEL_TIMEOUT_SEC = 60
+# A reading's own timeout (DRC-4759); goal summaries keep the 60 above. Measured
+# 2026-10-01 on the Codex lane at max effort: five synthetic readings of 3-16 KiB
+# took 23.8-81.7 s, two past 60 including a small one, so the time is provider
+# variance, not prompt size. 180 is about 2.2x the slowest seen. Applied inside
+# the execs rather than passed by the reading models, because `reading.py` is in
+# the parser digest `scripts/mark_abstention.py` freezes; a goal summary passes 60.
+OBSERVER_READING_TIMEOUT_SEC = 180
 # The most a model call's output file may hold before the CLI is killed
 # (DRC-4667). Checked every 0.1 s, so the file can pass it by one slice of
 # writes. 128 times the reading's read cap, and never near it on purpose: a
@@ -185,6 +192,7 @@ def codex_exec(
     runner: Any = supervise.run,
     binary_resolver: Any = shutil.which,
     on_spawn: Callable[[supervise.Group], None] | None = None,
+    timeout: float | None = None,
 ) -> tuple[str, str]:
     """One bounded, ephemeral Codex call. Returns the output and a status.
 
@@ -252,7 +260,7 @@ def codex_exec(
             stderr=subprocess.DEVNULL,
             text=True,
             encoding="utf-8",
-            timeout=OBSERVER_MODEL_TIMEOUT_SEC,
+            timeout=OBSERVER_READING_TIMEOUT_SEC if timeout is None else timeout,
             check=False,
             **_spawn_hook(on_spawn, runner, output_path),
         )
@@ -282,8 +290,9 @@ def codex_exec(
 # CLI update cannot silently change it. Unmeasured: whether every signed-in
 # account may use this id. A refusal is an ordinary nonzero exit, `failed`.
 CLAUDE_READING_MODEL = "claude-sonnet-5"
-# Bounded below the CLI's top levels so one reading fits the shared 60-second
-# timeout that `OBSERVER_MODEL_TIMEOUT_SEC` already gives the Codex lane.
+# Bounded below the CLI's top levels so one reading fit the 60 seconds readings
+# then had. Both lanes now share `OBSERVER_READING_TIMEOUT_SEC`; this effort was
+# not re-measured against it.
 CLAUDE_READING_EFFORT = "high"
 # Replaces Claude Code's default system prompt, about 13,000 characters of agent
 # instructions on 2.1.283 (owner ruling, DRC-4666, 2026-09-27). The CLI still
@@ -515,7 +524,7 @@ class PreparedClaude:
                 env=claude_environment(os.environ),
                 text=True,
                 encoding="utf-8",
-                timeout=OBSERVER_MODEL_TIMEOUT_SEC,
+                timeout=OBSERVER_READING_TIMEOUT_SEC,
                 check=False,
                 **_spawn_hook(self.on_spawn, self.runner, self.output_path),
             )
@@ -670,6 +679,7 @@ class CodexGoalModel:
             output_cap_bytes=self.config.observer_goal_cap_chars * 4,
             runner=self.runner,
             binary_resolver=self.binary_resolver,
+            timeout=OBSERVER_MODEL_TIMEOUT_SEC,
         )
         if status != "ok":
             self.status = status

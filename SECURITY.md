@@ -1094,10 +1094,11 @@ before UTF-8 clipping to **16,384 bytes (16 KiB)**. This caps the prompt Cargent
 not the CLI's added protocol or system instructions. Redaction recognizes credential shapes;
 it does not remove arbitrary private prose. One call per session may be in flight, including
 concurrent HTTP refreshes, and a reading takes the same one-in-flight gate per session; both slots
-are released on failure. Each invocation has a **60-second**
-timeout, and every model call, the goal lane's, the unasked lane's and a pressed reading's, runs
-through `supervise.run`: the CLI leads a process group of its own (a kill-on-close Job Object on
-Windows, the child held suspended until it is inside the job), a timeout kills its process group
+are released on failure. A goal summary has a **60-second** timeout and a reading, pressed or
+unasked, on either provider, a **180-second** one. Every model call, the goal lane's, the
+unasked lane's and a pressed reading's, runs through `supervise.run`: the CLI leads a process
+group of its own (a kill-on-close Job Object on Windows, the child held suspended until it is
+inside the job), a timeout kills its process group
 rather than only the direct child, and the daemon's own group is never signalled. The limit on
 POSIX: a helper that leaves the group, by `setsid` or `setpgid`, is not reached; a Job Object has
 no such exit. The group is signalled only while its leader is unreaped, so its id cannot have been
@@ -1248,7 +1249,7 @@ probe below can only say what reached its stub.
 Stdout goes to an owner-only temp file under the state directory, never a pipe, and at most `annotation_text_cap_chars * 8` bytes of
 it are read. The file's 1 MiB bound allows one 0.01 s slice of writes and a write already in flight at the kill, as
 [Observer model calls](#observer-model-calls) describes, with the measured overshoot. Stderr is
-discarded. The timeout is the shared **60 seconds**. The directory and the
+discarded. The timeout is the reading's **180 seconds**, as on the Codex lane. The directory and the
 file are removed on every path, including a timeout or an OS error, and only once the CLI and
 anything it started have been killed and reaped. An absent or relative
 `shutil.which("claude")` spends nothing and creates nothing. The prompt is the reading prompt Codex
