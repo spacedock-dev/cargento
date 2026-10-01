@@ -1220,6 +1220,10 @@ def build_ledger(
     default every other caller keeps, the unasked lane included, drops them.
     Given, it maps a check's record id to its redacted output tail. Item 7:
     [DEC-23](docs/design-reading-a-session.md#dec-23-a-claude-code-sessions-record-of-its-checks-may-show-the-work)
+
+    A second difference: a person's message reads its `WORDS_FIELD` here,
+    where the page, which is never sent them, shows its first sentence. Both
+    name the same fact id, so a citation still resolves against the page.
     """
     if not harness.strip() or not sid.strip():
         return ()

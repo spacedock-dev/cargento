@@ -605,6 +605,42 @@ Claude Code case's user messages and `transcript_bytes` are frozen from the tran
 at `captured_at`, because the board reads only the last 400 KB of today's file: the correction the
 supported-departure case rests on sat 750 KB from the end of a session that ran on.
 
+#### Amended 2026-10-01: a reading sees the reader's whole message
+
+The overlay [DEC-15](#dec-15-the-floor-and-the-overlay) admits reads the session's evidence against
+the words a person typed, and until this amendment a person's message reached it as its title: the
+first sentence of its first line, at most 112 characters, which the ledger then cut at 180. Measured
+the same day on a real correction, that dropped the point. The reader's message asked what an
+unexplained status meant, and then, in later sentences, said the original goal included merging and
+that the branches were not being merged back. The model received only the opening question, so a
+departure the reader had named in their own words could not rest on them, which is the case item 1
+of the amendment above allows.
+
+The owner ruled to send the whole message, bounded, knowing it sends more of the reader's own words
+to the provider and moves a [SECURITY.md](../SECURITY.md#observer-model-calls) boundary.
+
+1. Every user-role message in the observed record carries its words beside its title: the whole
+   message on one line, through the same redaction as the title, at most 1,000 characters. That
+   holds for a Claude Code message (a slash command is its command as typed), every other
+   harness's user-role message, and an Antigravity direction.
+2. A person's message reads its words in the ledger, under a 1,000-character cap of its own, with
+   the menu-field scrub that stops a separator forging a column. Every other entry is unchanged,
+   and so is a copied correction, which is Cargento's text rather than the reader's. A fact with no
+   words, from a packet frozen earlier or republished by the history store, reads its title as
+   before.
+3. The 16 KiB prompt bound and the selection order still govern the total. Person entries are
+   reserved first, so a session with more than about fifteen long messages now leaves less room
+   for work and checks than it did. That cost was accepted rather than given a second budget.
+4. The words are not stored and not published. The history store keeps its field allowlist, the
+   page keeps showing titles, and `/api/project-context` drops the words before it answers. The
+   reading route, the unasked lane and the abstention packet read them on the server. Fact ids do
+   not include them, so no stored citation moves.
+
+The provider each reading may reach is still the one [DEC-21](#dec-21-a-reading-works-the-first-time-you-ask)
+item 4 names, and the disclosure before the press is unchanged. The parser digest the abstention
+packets are stamped with moves with this change, so a packet frozen before it is refused as
+`frozen-on-another-parser` and is frozen again.
+
 ### Repeated calls
 
 A reading is produced only in response to a discrete reader action, asserted rather than assumed,
