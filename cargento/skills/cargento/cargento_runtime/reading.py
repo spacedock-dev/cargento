@@ -673,6 +673,13 @@ def _negated(words: list[str], targets: frozenset[str], reach: int) -> bool:
 # handle for the model to cite, not the evidence itself, and a long summary
 # crowds out entries that would otherwise fit.
 LEDGER_SUMMARY_CAP_CHARS = 180
+# A person's message is the request itself rather than a handle, so it is read whole up to
+# `project_context.READER_WORDS_CAP_CHARS`: its first sentence dropped the point of a measured
+# correction. Its amendment, in the reading design doc:
+# docs/design-reading-a-session.md#amended-2026-10-01-a-reading-sees-the-readers-whole-message
+LEDGER_WORDS_CAP_CHARS = 1_000
+# The fact field holding those words, which `project_context` writes on a user message only.
+WORDS_FIELD = "words"
 # How much of the cutoff sentence the store keeps. It was the annotation text
 # cap, 240, and the counted sentence alone runs to about 180, so the clauses
 # saying the checks were not sent, or had no room, were cut off in the store
@@ -1246,16 +1253,25 @@ def build_ledger(
             MENU_SEPARATOR.join(p for p in (named_source, confidence) if p) if named_source else ""
         )
         stamp = _number(fact.get("at"))
+        author = author_of(fact)
+        words = fact.get(WORDS_FIELD)
+        # A packet frozen before the words existed, or a fact the history store republished,
+        # has none and reads its summary as before.
+        text, cap = (
+            (words, LEDGER_WORDS_CAP_CHARS)
+            if fact.get("type") == "user_message" and author == AUTHOR_PERSON and words
+            else (fact.get("summary"), cap_chars)
+        )
         row: LedgerEntry = {
             "id": fact_id,
             "type": _menu_field(records.safe_text(fact.get("type"), 64)).strip(),
             "by": records.safe_text(fact.get("by"), 64),
-            "summary": _menu_field(records.safe_text(fact.get("summary"), cap_chars)).strip(),
+            "summary": _menu_field(records.safe_text(text, cap)).strip(),
             # 0.0 means NOT OBSERVED here, exactly as it does on a row, and
             # the cutoff sentence counts these separately rather than
             # reading them as the epoch.
             "at": stamp if stamp is not None and stamp > 0 else 0.0,
-            "author": author_of(fact),
+            "author": author,
             "source": _menu_field(records.safe_text(source, 160)),
             "work": fact.get("type") in WORK_EVIDENCE_BY_HARNESS.get(harness, frozenset()),
         }

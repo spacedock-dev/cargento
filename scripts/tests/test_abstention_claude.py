@@ -2320,10 +2320,13 @@ class DRC4711TheContentsAreCheckedAgainstTheTranscriptTest(_Packet):
             _fact("a-invented", sid=CLAUDE_SID, harness="claude", at=self.start + 6)
         )
         self.assertIn("facts-unconfirmed", self.vouch()(case))
+        # A user message reaches the ledger as its `words` since the 2026-10-01 ruling, so
+        # that is the field an invention must change to reach the producer.
         case = self.genuine()
         for fact in case["producer_facts"]:
             if fact["type"] == "user_message":
-                fact["summary"] = "INVENTED words the reader never typed"
+                self.assertTrue(fact.get("words"), fact)
+                fact["words"] = "INVENTED words the reader never typed"
         self.assertIn("facts-unconfirmed", self.vouch()(case))
 
     def test_a_transcript_that_grew_after_the_capture_is_not_demoted(self) -> None:
