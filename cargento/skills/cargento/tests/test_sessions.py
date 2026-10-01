@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Any
 from unittest import mock
 
-from cargento_runtime import aggregate, observer, records
+from cargento_runtime import aggregate, observer, reading, records
 from cargento_runtime import annotations as annotation_store
 from cargento_runtime import events as runtime_events
 from cargento_runtime import sessions as runtime_sessions
@@ -146,6 +146,7 @@ DECLARED_SESSION_FIELDS = frozenset(
         "annotation_assessment",
         "annotation_reading_count",
         "annotation_reading_withheld",
+        "reading_eligibility",
         "annotation_reading_refused",
         "annotation_not_accurate",
         "copied_prompts",
@@ -1469,6 +1470,38 @@ class PublishedSessionFieldSetTest(HarnessContractTestCase):
                 self.assertTrue(rows[0]["annotation_lines_why"], "an absence with no reason")
                 self.assertEqual(0, rows[0]["annotation_revision_count"])
                 self.assertIsNone(rows[0]["annotation_revision"])
+
+    def test_every_published_row_says_whether_a_press_could_read_it(self) -> None:
+        # Computed on every row by the collection, never left at the
+        # constructor's None while annotations are on (DRC-4758 slice A2), and
+        # it is the answer the press check gives for the row as published.
+        for key, build in HARNESSES:
+            with self.subTest(harness=key, fixture=build.__name__):
+                rows = self.sessions_for(self.collect(build, when=self.NOW), key)
+                published = rows[0]["reading_eligibility"]
+                self.assertIsInstance(published, dict)
+                self.assertSetEqual({"ok", "reason", "until"}, set(published))
+                self.assertEqual(published["ok"], published["reason"] is None)
+                if published["reason"] is not None:
+                    self.assertIn(published["reason"], reading.PRESS_WITHHELD)
+                config, _state = support_runtime()
+                self.assertEqual(
+                    reading.press_eligibility(
+                        rows[0], (), now=self.NOW, settle_sec=config.reading_settle_sec
+                    ),
+                    published,
+                )
+
+    def test_an_idle_row_with_no_stop_and_no_end_is_published_as_unreadable(self) -> None:
+        key, build = next((k, b) for k, b in HARNESSES if k == "codex")
+        # Written ten minutes before the collection, so the row is idle.
+        rows = self.sessions_for(self.collect(build, when=self.NOW - 600), key)
+        self.assertEqual("idle", rows[0]["state"], "the fixture is not the idle case")
+        self.assertIsNone(rows[0]["finished_at"])
+        self.assertEqual(
+            {"ok": False, "reason": reading.WITHHELD_IDLE_UNKNOWN, "until": None},
+            rows[0]["reading_eligibility"],
+        )
 
     def test_a_stored_annotation_reaches_the_published_row_through_collect(self) -> None:
         # The wiring nothing else covered. `AnnotationOnTheRowTest` calls the

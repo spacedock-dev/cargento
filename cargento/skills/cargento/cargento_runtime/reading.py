@@ -1424,6 +1424,72 @@ def eligibility(
     return SCOPE_FINAL, ""
 
 
+# The withheld tokens a press can be refused with before any job starts, and
+# the only ones `press_eligibility` publishes (DRC-4758 slice A2). Each is a
+# fact about the row's ending that the collection already holds, so computing
+# it costs no model call and no record read. Every other `WITHHELD` token is
+# job-time: the observed record (`record_withheld` reads it, which is a
+# transcript read the collect path must not make per row per poll), the
+# ledger, the model, the budget and consent. Those still reach the reader as a
+# job's outcome. `nothing-typed` and `discarded` are left out on purpose: a
+# press over a drafted prompt adopts it first, so a session with no saved
+# words is not one a press cannot serve.
+PRESS_WITHHELD = (
+    WITHHELD_IDLE_UNKNOWN,
+    WITHHELD_UNOBSERVABLE,
+    WITHHELD_TURN_STOP,
+    WITHHELD_SETTLING,
+    WITHHELD_STOP_SETTLING,
+    WITHHELD_REVISION_AFTER_END,
+)
+
+
+class Eligibility(TypedDict):
+    """Whether a press on this row could start a reading now, and why not.
+
+    `reason` is one of `PRESS_WITHHELD` or None. `until` is when a settling
+    row stops settling, an epoch, else None.
+    """
+
+    ok: bool
+    reason: str | None
+    until: float | None
+
+
+def press_eligibility(
+    row: Mapping[str, Any],
+    revisions: Sequence[Mapping[str, Any]],
+    *,
+    now: float,
+    settle_sec: float,
+) -> Eligibility:
+    """The press-time half of `_readable`, on the arguments the reading route passes it.
+
+    The same `eligibility` call the job makes, with `admit_turn_stop` from the
+    row's harness exactly as `http_api._compose_reading` sets it, so the board,
+    the press check and the job agree by construction; a test holds them to it
+    over a shared table. No revision is a draft a press would adopt, and then
+    there is no saved moment to hold against an end, so `revision-after-end`
+    waits for the job.
+    """
+    latest = revisions[-1] if revisions else None
+    _scope, withheld = eligibility(
+        row,
+        latest_revision_at=baseline_at(latest) if latest is not None else 0.0,
+        now=now,
+        settle_sec=settle_sec,
+        admit_turn_stop=str(row.get("harness") or "") in TURN_STOP_HARNESSES,
+    )
+    if not withheld:
+        return {"ok": True, "reason": None, "until": None}
+    moment = {
+        WITHHELD_SETTLING: _number(row.get("ended_at")),
+        WITHHELD_STOP_SETTLING: _number(row.get("finished_at")),
+    }.get(withheld)
+    until = moment + settle_sec if moment is not None else None
+    return {"ok": False, "reason": withheld, "until": until}
+
+
 def _last_turn(row: Mapping[str, Any], *, now: float, settle_sec: float) -> tuple[str, str]:
     """A turn stop the reader pressed on: read through it once it has settled.
 

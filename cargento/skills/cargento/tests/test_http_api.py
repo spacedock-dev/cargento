@@ -3856,11 +3856,71 @@ class ReadingRouteTest(unittest.TestCase):
             self._serving(self._app(config, state, "codex", row=self.WAITING)) as port,
         ):
             status, body = self._post(port, self._press(harness="codex"))
-        self.assertEqual(202, status, body)
-        answer = self.outcomes[-1]
+        # Answered at the press since DRC-4758 slice A2: 200, no job, nothing
+        # recorded, where it used to be a 202 whose job then withheld.
+        self.assertEqual(200, status, body)
+        answer = json.loads(body)
+        self.assertEqual("withheld", answer["reason"])
+        self.assertEqual(runtime_reading.WITHHELD_TURN_STOP, answer["withheld"])
+        self.assertEqual(runtime_reading.WITHHELD[answer["withheld"]], answer["sentence"])
         self.assertFalse(answer["produced"])
-        self.assertEqual(runtime_reading.WITHHELD_TURN_STOP, answer["reason"])
+        self.assertEqual([], self.outcomes, "a job ran for a press the board refused")
         self.assertEqual([], calls)
+
+    IDLE_UNKNOWN: ClassVar[dict[str, Any]] = {
+        "state": "idle",
+        "active": False,
+        "acquisition": "event",
+    }
+
+    def test_a_press_the_board_says_cannot_read_starts_no_job_and_counts_no_attempt(
+        self,
+    ) -> None:
+        config, state = self._runtime()
+        reading_policy.set_consent(config, False, now=1_700_000_100.0)
+        started: list[str] = []
+        start_job = runtime_reading.start_job
+
+        def counted(*args: Any, **kwargs: Any) -> Any:
+            started.append(str(args[1]))
+            return start_job(*args, **kwargs)
+
+        with (
+            mock.patch.object(runtime_reading, "start_job", counted),
+            self._counting_model(harness="codex") as calls,
+            self._serving(self._app(config, state, "codex", row=self.IDLE_UNKNOWN)) as port,
+        ):
+            status, body = self._post(port, self._press(harness="codex", allow=True))
+            published = self._published_row(port, "codex")
+        self.assertEqual(200, status, body)
+        answer = json.loads(body)
+        self.assertEqual(runtime_reading.WITHHELD_IDLE_UNKNOWN, answer["withheld"])
+        self.assertIsNone(answer["until"])
+        # The same answer the board published before the press.
+        self.assertEqual(
+            {"ok": False, "reason": runtime_reading.WITHHELD_IDLE_UNKNOWN, "until": None},
+            published["reading_eligibility"],
+        )
+        self.assertEqual([], started, "a reading job was registered")
+        self.assertEqual({}, runtime_reading.published_jobs(config))
+        self.assertEqual([], calls)
+        self.assertEqual([], self.outcomes)
+        entry = annotation_store.find(annotation_store.load(config), "codex", "s1")
+        assert entry is not None
+        self.assertEqual(0, entry.get("readings", 0), "an attempt was counted")
+        self.assertEqual(0, reading_policy.status(config, now=1_700_000_100.0)["used"])
+        # The Allow the press carried is still the reader's answer.
+        self.assertTrue(self._consents(config)["codex"])
+
+    def _published_row(self, port: int, harness: str) -> dict[str, Any]:
+        conn = http.client.HTTPConnection("127.0.0.1", port, timeout=5)
+        try:
+            conn.request("GET", "/api/data")
+            rows = json.loads(conn.getresponse().read())["sessions"]
+        finally:
+            conn.close()
+        row: dict[str, Any] = next(r for r in rows if r["harness"] == harness)
+        return row
 
     @staticmethod
     def _save(port: int, payload: dict[str, Any]) -> tuple[int, bytes]:

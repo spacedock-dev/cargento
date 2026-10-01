@@ -610,7 +610,11 @@ def _attach_cached_goals(config: RuntimeConfig, rows: list[Session]) -> None:
 
 
 def _attach_annotations(
-    rows: list[Session], entries: tuple[annotation_store.Annotation, ...]
+    rows: list[Session],
+    entries: tuple[annotation_store.Annotation, ...],
+    *,
+    now: float | None = None,
+    settle_sec: float = 0.0,
 ) -> None:
     """Put what the reader typed onto every row, including the rows with none.
 
@@ -621,6 +625,12 @@ def _attach_annotations(
 
     Bound on the full `sid` rather than the eight-character `session` prefix
     beside it. Both are on the row, and the prefix can collide.
+
+    `now` also publishes `reading_eligibility`, the press-time withhold the
+    reading route would answer with (`reading.press_eligibility`). Here and not
+    earlier because it reads `state`, `finished_at` and `ended_at`, which only
+    `_apply_overlays` writes, and the entry's revisions, which this pass finds.
+    None leaves the declared None: annotations are off and nothing can be read.
     """
     for row in rows:
         # Reported rather than claimed away: every Claude row binds by prefix,
@@ -628,8 +638,13 @@ def _attach_annotations(
         # rule and the reason, and the delivery attach reads the same one.
         sid = row.get("sid")
         by_prefix = _identity_is_a_prefix(row)
+        entry = annotation_store.find(entries, row.get("harness"), sid)
+        if now is not None:
+            row["reading_eligibility"] = reading.press_eligibility(
+                row, entry["revisions"] if entry else (), now=now, settle_sec=settle_sec
+            )
         published = annotation_store.published(
-            annotation_store.find(entries, row.get("harness"), sid),
+            entry,
             binding_why=(
                 annotation_store.BINDING_BY_PREFIX if by_prefix else annotation_store.BINDING_EXACT
             ),
@@ -832,7 +847,12 @@ class Application:
         # first meant every row read None and every `final` reading was
         # retracted, on every collection, with a sentence saying the end was no
         # longer published about an end published seconds later.
-        _attach_annotations(out_sessions, annotation_entries)
+        _attach_annotations(
+            out_sessions,
+            annotation_entries,
+            now=now if config.annotations_enabled else None,
+            settle_sec=config.reading_settle_sec,
+        )
         # After the overlays, which is load-bearing: a wait only an event knows
         # about is a wait, and reading the collector's state is what left the
         # overlay lane silent on every harness.

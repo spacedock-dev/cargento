@@ -2009,6 +2009,32 @@ issue, and the rest were made within them.
   check shape beside a reading is close enough to its reason that the design's check circle was
   not copied.
 
+#### Amended 2026-10-01: a press the board says cannot read starts no job
+
+DRC-4758 (slice A2). A walk on a board no hook reached found the press offered, a `202` job started,
+and the reason it then withheld landing far below the button. The press-time withholds are now
+decided once, before any job, by `reading.press_eligibility`, and the board publishes the same
+answer on every row as `reading_eligibility: {ok, reason, until}`. None there means not computed
+(annotations off), which is not the same reading as `ok: false`.
+
+- The tokens it can publish are named in `reading.PRESS_WITHHELD`: `idle-unknown`, `unobservable`,
+  `turn-stop`, `settling`, `stop-settling` and `revision-after-end`. Each is a fact the collection
+  already holds about how the row ended. `until` is set for the two settling tokens, as the stop or
+  end plus `reading_settle_sec`.
+- Every other withheld token stays a job outcome. `record-unread` and `no-record-reader` need the
+  observed record, which is a transcript read the collection must not make per row per poll, so
+  `record_withheld` is left out. Consent, the budget, the CLI and the ledger are read where they
+  were. `nothing-typed` and `discarded` are left out because a press over a draft adopts it first.
+- An ineligible press answers `200` with `reason: "withheld"`, the token, its `WITHHELD` sentence
+  and `until`. It registers no job, writes no outcome and counts no attempt. An Allow it carried is
+  still recorded. This replaces the `202` such a press used to get, the first bullet above, for these
+  tokens only.
+- The page, the press check and the job read one function with the same `admit_turn_stop`, so they
+  agree by construction. A test holds the job's pre-model withhold to the published one over a
+  table of rows that reaches every token.
+- Cost, measured on `bench_collect --simulate claude=40`: 0.05 ms for 40 rows against a 33 ms
+  collect, under the 5% bar the plan set.
+
 ### What the Cancel build decided, 2026-09-24
 
 DRC-4693 built Cancel, the rest of item 5. The owner ruled the spend, the unconfirmed kill and the

@@ -2431,6 +2431,8 @@ class _RequestHandler(BaseHTTPRequestHandler):
                 422,
             )
             return
+        if self._press_withheld(rows[0], entry):
+            return
         key = f"{harness}:{sid}"
         job = runtime_reading.start_job(
             config, key, provider=route["provider"], label=route["label"], now=application.clock()
@@ -2478,6 +2480,42 @@ class _RequestHandler(BaseHTTPRequestHandler):
             "application/json",
             202,
         )
+
+    def _press_withheld(self, row: dict[str, Any], entry: annotation_store.Annotation) -> bool:
+        """Answer a press the board already says cannot read, before any job, and say so.
+
+        The same `reading.press_eligibility` the collection publishes as
+        `reading_eligibility` and the job's own `eligibility` call reads, so the
+        page, this check and the job cannot disagree (DRC-4758 slice A2). 200
+        and not 202: nothing started, nothing was spent, and no attempt is
+        counted. Recorded nowhere, because the published eligibility already
+        says it on every collection. A recorded Allow stands, as it did when
+        the job withheld this later.
+        """
+        application = self.server.application
+        answer = runtime_reading.press_eligibility(
+            row,
+            entry["revisions"],
+            now=application.clock(),
+            settle_sec=application.config.reading_settle_sec,
+        )
+        reason = answer["reason"]
+        if reason is None:
+            return False
+        self._send(
+            self._reading_json(
+                {
+                    "ok": False,
+                    "produced": False,
+                    "reason": "withheld",
+                    "withheld": reason,
+                    "sentence": runtime_reading.WITHHELD[reason],
+                    "until": answer["until"],
+                }
+            ),
+            "application/json",
+        )
+        return True
 
     def _adoption_matches(
         self, entry: annotation_store.Annotation, payload: dict[str, Any]

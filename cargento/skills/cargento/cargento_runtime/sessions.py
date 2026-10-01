@@ -675,6 +675,12 @@ def base_session(harness: str, sid: Any, project: str) -> Session:
         "annotation_reading_count": 0,
         "annotation_reading_withheld": "",
         "annotation_reading_refused": False,
+        # Whether a press could start a reading now, `{ok, reason, until}`
+        # from `reading.press_eligibility`, filled by
+        # `aggregate._attach_annotations`. None is not computed (annotations
+        # off), which is a different reading from `{"ok": False}`. Nested, and
+        # never in session history, for the reason `delivery_departure` gives.
+        "reading_eligibility": None,
         # The reader's Not accurate mark on that reading (DRC-4695): a bool,
         # never sent, never counted and never in session history.
         "annotation_not_accurate": False,

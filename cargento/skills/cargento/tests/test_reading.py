@@ -1209,6 +1209,149 @@ class WhenAReadingMayCallItselfFinal(unittest.TestCase):
         self.assertNotIn("through that end", text)
 
 
+class WhetherAPressCouldReadIsSaidBeforeThePress(unittest.TestCase):
+    """`press_eligibility`: the board's answer before any job (DRC-4758 slice A2).
+
+    A press the server would only withhold after starting a job was offered as
+    though it could be honoured, and the reason landed far below the button.
+    The board now publishes the press-time withhold, and the press check and
+    the job read the same function, so they cannot disagree.
+    """
+
+    class _Config:
+        reading_settle_sec = 8.0
+        annotation_text_cap_chars = 240
+
+    END = 1_700_000_000.0
+    REVISIONS: ClassVar[list[dict[str, Any]]] = [
+        {"n": 1, "at": END - 100.0, "goal": "ship the export", "output": ""}
+    ]
+
+    def _press(
+        self, row: dict[str, Any], *, now: float | None = None, revisions: Any = None
+    ) -> Any:
+        return reading.press_eligibility(
+            row,
+            self.REVISIONS if revisions is None else revisions,
+            now=self.END + 60.0 if now is None else now,
+            settle_sec=8.0,
+        )
+
+    def test_an_idle_session_with_no_stop_and_no_end_is_refused_before_the_press(self) -> None:
+        row = {"harness": "claude", "state": "idle", "acquisition": "event"}
+        self.assertEqual(
+            {"ok": False, "reason": reading.WITHHELD_IDLE_UNKNOWN, "until": None}, self._press(row)
+        )
+
+    def test_a_claude_session_whose_turn_stopped_can_be_read(self) -> None:
+        row = {"harness": "claude", "state": "idle", "finished_at": self.END}
+        self.assertEqual({"ok": True, "reason": None, "until": None}, self._press(row))
+
+    def test_a_stop_still_settling_says_when_it_settles(self) -> None:
+        row = {"harness": "claude", "state": "idle", "finished_at": self.END}
+        self.assertEqual(
+            {"ok": False, "reason": reading.WITHHELD_STOP_SETTLING, "until": self.END + 8.0},
+            self._press(row, now=self.END + 3.0),
+        )
+
+    def test_an_end_still_settling_says_when_it_settles(self) -> None:
+        row = {"harness": "codex", "state": "idle", "ended_at": self.END}
+        self.assertEqual(
+            {"ok": False, "reason": reading.WITHHELD_SETTLING, "until": self.END + 8.0},
+            self._press(row, now=self.END + 3.0),
+        )
+
+    def test_an_idle_codex_session_is_refused_at_its_turn_stop(self) -> None:
+        # Codex is not in TURN_STOP_HARNESSES (owner, Q8): it reads only while
+        # a turn runs or after a session end.
+        row = {"harness": "codex", "state": "idle", "finished_at": self.END}
+        self.assertEqual(reading.WITHHELD_TURN_STOP, self._press(row)["reason"])
+        working = {"harness": "codex", "state": "working", "finished_at": self.END}
+        self.assertTrue(self._press(working)["ok"])
+
+    def test_a_scan_only_row_is_refused_as_unobservable(self) -> None:
+        row = {"harness": "goose", "state": "idle", "acquisition": "scan-only"}
+        self.assertEqual(reading.WITHHELD_UNOBSERVABLE, self._press(row)["reason"])
+
+    def test_words_saved_after_the_end_are_refused(self) -> None:
+        row = {"harness": "codex", "state": "idle", "ended_at": self.END}
+        after = [{"n": 1, "at": self.END + 30.0, "goal": "g", "output": ""}]
+        self.assertEqual(
+            reading.WITHHELD_REVISION_AFTER_END, self._press(row, revisions=after)["reason"]
+        )
+
+    def test_a_draft_with_no_saved_revision_is_not_refused_for_having_none(self) -> None:
+        # A press over a drafted prompt adopts it first, so no revision is not
+        # a reason the press cannot be served.
+        row = {"harness": "claude", "state": "idle", "finished_at": self.END}
+        self.assertTrue(self._press(row, revisions=[])["ok"])
+
+    def test_every_published_reason_is_one_of_the_named_press_tokens(self) -> None:
+        self.assertLessEqual(set(reading.PRESS_WITHHELD), set(reading.WITHHELD))
+        seen: set[str] = set()
+        for row, revisions in self._table():
+            answer = self._press(row, revisions=revisions)
+            self.assertEqual(answer["ok"], answer["reason"] is None)
+            if answer["reason"] is not None:
+                self.assertIn(answer["reason"], reading.PRESS_WITHHELD)
+                seen.add(answer["reason"])
+            if answer["until"] is not None:
+                self.assertIn(
+                    answer["reason"], {reading.WITHHELD_SETTLING, reading.WITHHELD_STOP_SETTLING}
+                )
+        # The table reaches every named token, so this test can fail for each.
+        self.assertSetEqual(set(reading.PRESS_WITHHELD), seen)
+
+    def _table(self) -> list[tuple[dict[str, Any], list[dict[str, Any]]]]:
+        table = []
+        for harness in ("claude", "codex"):
+            for state in ("idle", "working", "needs_input"):
+                for ended in (None, self.END, self.END + 57.0):
+                    for finished in (None, self.END, self.END + 57.0):
+                        for acquisition in ("event", "scan-only"):
+                            for at in (self.END - 100.0, self.END + 30.0):
+                                row = {
+                                    "harness": harness,
+                                    "sid": "s1",
+                                    "state": state,
+                                    "ended_at": ended,
+                                    "finished_at": finished,
+                                    "acquisition": acquisition,
+                                }
+                                revisions = [{"n": 1, "at": at, "goal": "ship it", "output": ""}]
+                                table.append((row, revisions))
+        return table
+
+    def test_the_board_the_press_and_the_job_agree_over_one_table(self) -> None:
+        """The job's own pre-model withhold equals the published one, row by row."""
+        for row, revisions in self._table():
+            with self.subTest(row=row, at=revisions[0]["at"]):
+                calls: list[str] = []
+
+                def model(prompt: str, calls: list[str] = calls, **_kw: Any) -> tuple[str, str]:
+                    calls.append(prompt)
+                    return "{}", "ok"
+
+                _a, why, _spent = reading.produce(
+                    cast("Any", self._Config()),
+                    row,
+                    revisions,
+                    [],
+                    now=self.END + 60.0,
+                    stamp_text="",
+                    model=model,
+                    read_lines=True,
+                    # As `http_api._compose_reading` passes it.
+                    admit_turn_stop=row["harness"] in reading.TURN_STOP_HARNESSES,
+                )
+                published = self._press(row, revisions=revisions)
+                if published["ok"]:
+                    self.assertNotIn(why, reading.PRESS_WITHHELD)
+                else:
+                    self.assertEqual(published["reason"], why)
+                    self.assertEqual([], calls)
+
+
 class WhatTheReaderIsToldTheReadingCovered(unittest.TestCase):
     """`cutoff_text`: the one sentence saying how much of the session was read."""
 
