@@ -364,7 +364,9 @@ function nextSessionsGoal(source, route){
      cell named: the first prompt, or the latest where no first one with a
      time is published (DRC-4682). */
   const draft = typed ? null : nextIntentDraft(source, null);
-  const text = typed || (draft ? draft.text : prompt);
+  /* Over a session that opened with a harness control the page drafts
+     nothing, so the cell names nothing either (DRC-4766). */
+  const text = typed || (draft ? draft.text : nextIntentOpenedWithControl(source) ? "" : prompt);
   const label = typed ? (["latest-prompt", "first-prompt"].includes(source.annotation_goal_source)
     ? "GOAL · FROM YOUR PROMPT" : "GOAL · YOUR WORDS")
     : draft && draft.source === "first-prompt" ? "GOAL · YOUR FIRST PROMPT"

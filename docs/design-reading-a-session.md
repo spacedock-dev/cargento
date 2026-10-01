@@ -2518,7 +2518,7 @@ line of that markup opens with `<`, which the record reader skips.
   for one, is a control now where it once published.
 - The draft from your first prompt is not changed by this. On 550 of 1,601 local Claude sessions
   that first prompt is a control, `/clear` on 326 of them, and skipping it would mean drafting from
-  a later record, which the first-prompt read refuses to do. That is left for its own decision.
+  a later record, which the first-prompt read refuses to do. The next section records the ruling.
 - Whether a direction may be drafted as your intent is unchanged: the same three-word test as any
   message, so `/create-pr` alone is a direction and not a drafted intent.
 - A command's arguments over several lines once published the last line, closing tag and all; 12
@@ -2531,6 +2531,33 @@ line of that markup opens with `<`, which the record reader skips.
   (2 of the 1,477 measured). It is published with the arguments that arrived rather than as
   the bare name, and "Add it to my intent" offers them ending in an ellipsis and reports them
   clipped, so the reader edits the line before saving it and it is never offered as whole.
+
+### What the control-first build decided, 2026-10-01
+
+DRC-4766, built to the owner's ruling of the same date: a session whose first prompt is a harness
+control drafts no goal, and the page says there is no first prompt to draft from, so the reader
+types one.
+
+- No draft at all, not a later one. The latest prompt is a later record, and the first-prompt read
+  never drafts from one, so a control-first session does not fall back to it either. Skipping the
+  control to the first prompt that states work was the alternative, and the ruling refused it.
+- The server decides. `transcripts.first_prompt` publishes `first_prompt_control`, true when the
+  first record is a control by `transcripts.harness_control_prompt`, the same rule the goal slot
+  and the instruction line read. The page renders that verdict and does not classify the prompt
+  itself. `annotations.prompt_candidate` refuses to adopt such a first prompt, so a request built
+  by hand cannot save the command as the goal either.
+- `first_prompt` still publishes the control, `/clear` or `/compact keep notes`, and session
+  history keeps it as before. It is what the session opened with, and the history record is not a
+  draft. The new field is a boolean, so it is not prompt text and needs no allowlist entry.
+- The page says "This session opened with /clear, so there is no first prompt to draft a goal
+  from." in the slot the draft's lede uses, so it costs the fold no row. It names the command and
+  not its arguments. The Sessions goal cell shows "Add a goal" over such a session rather than
+  the latest prompt, because the cell names what the session page drafts. "Use a prompt" still
+  offers the latest prompt, which the reader chooses rather than receives.
+- Measured over the local store, counts only: 550 of 1,601 Claude Code sessions with a first prompt
+  publish it as a control (`/clear` 326, `/login` 115, `/plugin` 36, `/mcp` 24), and 9 of 469
+  Codex sessions do. Before, every one of them drafted the command as the goal; now none does,
+  and the other 1,051 Claude Code sessions draft as before.
 
 ## DEC-26: four drift levels, and a live estimate after every turn
 

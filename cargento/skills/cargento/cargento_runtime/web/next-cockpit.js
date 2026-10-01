@@ -5145,6 +5145,10 @@ function nextCockpitDriftBlock(group, session, primary){
     : '<p class="next-cockpit-held-lede">Choose a goal or use your prompt, then analyze ' +
       'drift: Cargento lists where this session departed from it. It never writes into the ' +
       'session, so steering stays yours.</p>';
+  /* In the lede's slot, so it costs the fold no row a draft would not. */
+  const why = drafted ? "" : nextIntentNoDraftWhy(session, annotation);
+  const noDraft = why
+    ? `<p class="next-cockpit-held-lede" data-next-intent-no-draft>${esc(why)}</p>` : "";
   /* The design's word once words are saved, without its check mark: a check
      in this panel reads as a verdict (owner, DRC-4682). */
   const confirmed = String(annotation && annotation.goal || "").trim()
@@ -5155,7 +5159,7 @@ function nextCockpitDriftBlock(group, session, primary){
     '<header><h2 id="next-session-intent-heading" tabindex="-1" ' +
     `data-next-focus="${esc(nextCockpitIntentHeadingKey(session))}">Intent</h2>` + confirmed +
     `<span class="next-cockpit-held-bound">${esc(sessKey(session))}</span></header>` +
-    (drafted ? lede : "") +
+    (drafted ? lede : noDraft) +
     (nextCockpitStoreUnreadable()
       ? `<p class="next-cockpit-held-absent">${esc(nextCockpitStoreUnreadable())}</p>` : "") +
     /* One line, the stamp and what it means, rather than two (DRC-4680 fold). */
@@ -7493,6 +7497,25 @@ function nextCockpitHandleKeydown(event){
 }
 
 
+/* The server's verdict, never re-derived here: `transcripts.first_prompt`
+   asks the one control rule the goal slot and the instruction line share. */
+function nextIntentOpenedWithControl(session){
+  return Boolean(session && ["claude", "codex"].includes(session.harness) &&
+    session.first_prompt_control === true);
+}
+
+/* Why the goal box arrives empty over such a session, or "" where it does
+   not: the command's name alone, since its arguments are not the reader's
+   goal either (DRC-4766). */
+function nextIntentNoDraftWhy(session, annotation){
+  if(!(nextData && nextData.annotate === true) || nextCockpitStoreUnreadable()) return "";
+  const goal = annotation ? annotation.goal : session && session.annotation_goal;
+  if(String(goal || "").trim() || !nextIntentOpenedWithControl(session)) return "";
+  const command = String(session.first_prompt || "").trim().split(/\s+/)[0];
+  return command ? `This session opened with ${command}, so there is no first prompt to ` +
+    "draft a goal from." : "";
+}
+
 function nextPromptCandidate(session, source = "latest-prompt"){
   if(!session || !["claude", "codex"].includes(session.harness)) return null;
   let text = "", at = null;
@@ -7523,6 +7546,10 @@ function nextIntentDraft(session, annotation){
   if(!(nextData && nextData.annotate === true) || nextCockpitStoreUnreadable()) return null;
   const goal = annotation ? annotation.goal : session && session.annotation_goal;
   if(String(goal || "").trim()) return null;
+  /* A session that opened with a harness control has no first prompt to
+     draft, and the latest is a later record, which the first-prompt read
+     never drafts from (DRC-4766, SECURITY.md). */
+  if(nextIntentOpenedWithControl(session)) return null;
   for(const source of ["first-prompt", "latest-prompt"]){
     const candidate = nextPromptCandidate(session, source);
     if(candidate && candidate.at != null) return candidate;
@@ -7588,7 +7615,10 @@ function nextPromptReadingRefusal(session, annotation, model){
   if(nextIntentUnsaved(session, annotation)) return NEXT_INTENT_EDITED;
   if(!String(annotation && annotation.goal || "").trim()){
     const draft = nextIntentDraft(session, annotation);
-    const candidate = draft || nextPromptCandidate(session);
+    /* Over a control-first session the latest prompt is no goal either, so
+       the press falls to the refusal for nothing typed (DRC-4766). */
+    const candidate = draft ||
+      (nextIntentOpenedWithControl(session) ? null : nextPromptCandidate(session));
     if(candidate && candidate.at == null){
       return "The prompt time was not published, so it cannot be adopted. Type a goal to analyze drift.";
     }

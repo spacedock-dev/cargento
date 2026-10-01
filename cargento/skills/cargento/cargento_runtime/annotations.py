@@ -1991,6 +1991,9 @@ def direction_floor(
     latest = entry["revisions"][-1] if entry and entry["revisions"] else None
     if latest and str(latest.get("goal") or "").strip():
         return float(latest.get("goal_source_at") or latest.get("goal_saved_at") or latest["at"])
+    # A control-first session drafts nothing, so it has no draft time either (DRC-4766).
+    if row.get("first_prompt_control") is True:
+        return None
     for source in ("first-prompt", "latest-prompt"):
         text, at = prompt_candidate(dict(row), source)
         if text and at is not None:
@@ -2518,6 +2521,9 @@ def prompt_candidate(row: dict[str, Any], source: str) -> tuple[str, float | Non
     if source == "first-prompt":
         # A correction the reader copied from Cargento is not their goal (DRC-4678).
         if reading.prompt_copied(row, "first_prompt"):
+            return "", None
+        # Nor is a harness control it opened with (DRC-4766).
+        if row.get("first_prompt_control") is True:
             return "", None
         text, at = row.get("first_prompt"), row.get("first_prompt_at")
     elif source == "latest-prompt" and harness == "claude":

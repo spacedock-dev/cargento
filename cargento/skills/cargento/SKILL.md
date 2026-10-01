@@ -365,7 +365,9 @@ and a closed one still holds every word it was written with.
 
 A goal-less Claude Code or Codex session arrives with its goal drafted from your first prompt, as
 Cargento publishes it, or from your latest prompt, marked "latest", where no first prompt with a
-time is published. The draft is marked "from your prompt", an excerpt says "Shown excerpt only.",
+time is published. A session that opened with a harness control such as `/clear` drafts nothing,
+not even the latest prompt, and says there is no first prompt to draft from, so you type a goal.
+The draft is marked "from your prompt", an excerpt says "Shown excerpt only.",
 the box is tinted, and the stamp still reads "No revision saved yet": nothing is saved until you
 press Looks right, edit the box and save, or press `Analyze drift`, which adopts the draft. "Use a
 prompt" still offers your latest prompt. Analyze drift, Keep and an added line's save are refused
@@ -421,7 +423,8 @@ them after the session leaves the board.
 
 Sessions labels your typed goal beside NOW, or shows the prompt the session page drafts ("GOAL ·
 YOUR FIRST PROMPT", or your latest where no first one is published) from Claude Code or Codex;
-other harnesses show typed words only. A slot without a typed
+other harnesses show typed words only, and a session that opened with a harness control shows "Add
+a goal". A slot without a typed
 goal opens the session page with the cursor in its goal field. Showing a prompt does not save it.
 A recorded departure adds a Drift mark with its age and moves the session after blocked sessions
 and before working ones, even if it is idle; it does not add to the Active now figure. Earlier
@@ -650,7 +653,7 @@ Paths 2 and 3 are complementary and can both be installed. Keep `Notification` o
 
 | Flag / URL | Effect |
 |---|---|
-| `--observer-model` / `--no-observer-model` | Offer optional Codex goal summaries, or refuse every model call for this run (refusal wins, including unasked checks). Goal summaries are off by default and retain their separate browser consent. On a goal-less Claude Code or Codex session the goal is drafted from the published first prompt (the latest where no first one with a time is published), and Analyze drift or Looks right adopts it. The goal field also offers the latest prompt without checking. Adopted goals say "from your prompt" and never enable unasked readings; editing the goal makes typed words. Reader-requested readings need no startup flag: the first Analyze drift presents its disclosure and Allow and analyze. The answer is remembered across tabs and restarts; Turn off readings revokes it. They spend Codex capacity and are capped at twelve reserved or actual attempts per rolling twenty-four hours. Failed attempts are not refunded; off/on and `--forget` do not reset that budget. Each prompt is bounded to 16,384 redacted bytes, with one call in flight per session; a reading has a 180-second timeout and a goal summary a 60-second one. Quota consent authorizes neither path. |
+| `--observer-model` / `--no-observer-model` | Offer optional Codex goal summaries, or refuse every model call for this run (refusal wins, including unasked checks). Goal summaries are off by default and retain their separate browser consent. On a goal-less Claude Code or Codex session the goal is drafted from the published first prompt (the latest where no first one with a time is published), and Analyze drift or Looks right adopts it. A session whose first prompt is a harness control such as `/clear` drafts nothing, says so, and never drafts a later prompt in its place. The goal field also offers the latest prompt without checking. Adopted goals say "from your prompt" and never enable unasked readings; editing the goal makes typed words. Reader-requested readings need no startup flag: the first Analyze drift presents its disclosure and Allow and analyze. The answer is remembered across tabs and restarts; Turn off readings revokes it. They spend Codex capacity and are capped at twelve reserved or actual attempts per rolling twenty-four hours. Failed attempts are not refunded; off/on and `--forget` do not reset that budget. Each prompt is bounded to 16,384 redacted bytes, with one call in flight per session; a reading has a 180-second timeout and a goal summary a 60-second one. Quota consent authorizes neither path. |
 | `--interaction-origin-session <harness:sid>` / `--interaction-origin-registration-file <private-file>` | Enable the prototype terminal for one exact session only when both flags are supplied. The generated private file supplies the registration capability; registration must happen inside that session's tmux pane. Output is read-only and bounded; no terminal input is accepted. |
 | `--port N` | Change port (default 4553; valid range 1–65535). If the port is busy, check `--status` first — a running dashboard may already be there; don't kill it blindly. |
 | `--host A` | Bind address: `127.0.0.1` (default) or `0.0.0.0`, IPv4 only. Nothing narrower — a single-interface bind is refused rather than half-supported, because `--status`, `--stop` and the hook forwarders all reach the dashboard over loopback and such a bind does not answer there. **Nothing authenticates a remote reader**: anything that reaches the port reads every session's titles, prompts and paths, and can answer a question a session is waiting on. Prefer `ssh -L 4553:127.0.0.1:4553`; use `--host` only on a network the user would hand the transcripts to. |

@@ -1302,8 +1302,17 @@ def first_prompt(
     A bounded prefix scan fails absent if a huge initial record hides the first
     prompt; it must not call a later prompt first. The cache follows file identity
     as well as size/mtime, so replacing a transcript cannot preserve an old source.
+
+    A first record that drives the harness (`/clear`, `/login`) is still the
+    first prompt, and `first_prompt_control` says so, so the goal drafted from
+    it (DRC-4766) offers nothing rather than the command. The read stops there
+    either way: a later record is never called first.
     """
-    empty: dict[str, Any] = {"first_prompt": "", "first_prompt_at": None}
+    empty: dict[str, Any] = {
+        "first_prompt": "",
+        "first_prompt_at": None,
+        "first_prompt_control": False,
+    }
     try:
         stat = os.stat(path)
     except OSError:
@@ -1339,6 +1348,9 @@ def first_prompt(
                 result = {
                     "first_prompt": records.safe_text(rendered, records.INSTRUCTION_CAP_CHARS + 1),
                     "first_prompt_at": at if at > 0 else None,
+                    # The raw body, as the shared rule requires: only its
+                    # opening tag says a command was a local one (DRC-4764).
+                    "first_prompt_control": harness_control_prompt(config, body),
                 }
                 break
     except OSError:

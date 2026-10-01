@@ -2199,7 +2199,9 @@ fields make an annotated session's records larger than one did, so the size cap 
 sessions out sooner; the owner accepted that on 2026-09-24. Unknown versions still refuse. First prompts come
 from a bounded two-MiB transcript-prefix scan, excluding generated titles, compaction summaries
 and recognized injected messages. An unread prefix yields no first prompt; it never substitutes
-a later record. Source text is at most 140 characters plus the clipping mark. The page names an
+a later record. A first prompt that is a harness control such as `/clear` is still the first
+prompt, published with the boolean `first_prompt_control`. No goal is drafted from it, none is
+drafted from a later record in its place, and the server refuses to adopt it. Source text is at most 140 characters plus the clipping mark. The page names an
 excerpt rather than silently adopting a longer prompt. Missing source times prevent adoption.
 
 The revision number beside them, `annotation_revision`, is in the record and not on this list. It
