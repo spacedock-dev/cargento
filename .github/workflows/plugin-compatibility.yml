@@ -78,7 +78,9 @@ jobs:
         # bootstrap script itself is pinned by hash so CI never executes
         # unreviewed shell fetched over the network.
         env:
-          AGY_INSTALLER_SHA256: ee1ea43ce4e9e56356c4ab6dad907ef357ae4bdfcaadb682735909fb57c9c640
+          # Reviewed 2026-10-01 (DRC-4762): the only change from ee1ea43c picks an
+          # Android build when `uname -o` is Android; Linux runners are unaffected.
+          AGY_INSTALLER_SHA256: 62966c07365423bd4dc209355060744058fb30d60f5323e2d360e39de64e5042
         run: |
           set -euo pipefail
           curl -fsSL https://antigravity.google/cli/install.sh -o "$RUNNER_TEMP/install-agy.sh"
