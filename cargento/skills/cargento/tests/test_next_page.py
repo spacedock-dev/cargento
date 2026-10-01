@@ -1169,6 +1169,7 @@ class NextPageAssetContractTest(unittest.TestCase):
         ".next-cockpit-held-absent",
         ".next-cockpit-held-full",
         ".next-cockpit-held-hint",
+        ".next-intent-prompt-menu>summary",
         ".next-cockpit-held-field textarea",
         ".next-cockpit-steer-box textarea",
         ".next-cockpit-held-lede",
@@ -1398,8 +1399,10 @@ class NextPageAssetContractTest(unittest.TestCase):
         # the result in the button's place: the range and level reason under the meter,
         # the checklist's heading, and each line's own words as its title. The meter's
         # four labels are labels, set at a label line-height, so off this tier.
-        # DRC-4758 D1 adds one: the editor's footer hint under both fields.
-        self.assertEqual(133, len(above))
+        # DRC-4758 D1 adds one: the editor's footer hint under both fields. D2 adds one:
+        # the "Use your prompt" menu's summary, a disclosure's worded summary at the body
+        # floor.
+        self.assertEqual(134, len(above))
         self.assertEqual(self.SENTENCE_TIER_RULES, {selector for selector, _size in above})
         self.assertEqual(
             self.SUB_SENTENCE_FLOOR_INVENTORY, {(size, selector) for selector, size in below}
