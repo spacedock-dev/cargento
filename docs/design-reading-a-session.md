@@ -2416,9 +2416,12 @@ saved-line labels. The calls the rulings left open:
   line through the same refusal a stale revision gets, so no route can add it twice. The pending line it opens stands while its
   direction is any later direction, settled or not, where Add's own line stands only while its
   direction is unsettled. With no later direction it adds an empty outcome line, focused, and at
-  six lines it says the existing six-line sentence and adds nothing. While a pending line is open
-  over a full list, that line says the sentence beside its own save and the list's copy is hidden,
-  so it is drawn once rather than above and below the replace choices (DRC-4760). The server already added a
+  six lines it says the existing six-line sentence and adds nothing. Where a pending line's reason is
+  that sentence (six saved lines, no line chosen to replace), it says it beside its own save and
+  the list's copy is hidden, so it is drawn once rather than above and below the replace choices
+  (DRC-4760). A line giving another reason (over the character bound, or an unsaved edit while the
+  draft holds six lines) leaves the list's copy drawn, so the disabled add control keeps a reason
+  on screen. Once a line to replace is chosen the line gives no reason and the list's copy stands. The server already added a
   settled direction: `annotations.direction_floor` never read the settlement.
 - A saved line added from an entry reads "added from #12" where the list numbers that entry and
   "added from your direction at 14:04" where it does not. With no record read, or the entry gone
