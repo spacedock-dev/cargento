@@ -860,28 +860,28 @@ def _frozen_checks(
 def capture_prefix(transcript: str, captured: float) -> int:
     """The transcript's length in bytes as it stood at `captured`.
 
-    The end of the last line stamped at or before the capture. Lines after it
-    were appended later; an unstamped line belongs to whichever side its next
-    stamped neighbour does not reach, so it is left out.
+    Everything before the first line stamped after the capture, the cut the
+    check scan makes too: an append-only file holds nothing written later
+    before that line, and a line stamped earlier after it was written later.
     """
     from cargento_runtime import project_context  # noqa: PLC0415 - see `_reading`
 
-    end = offset = 0
+    offset = 0
     with open(transcript, "rb") as handle:
         for line in handle:
-            offset += len(line)
             try:
                 record = json.loads(line)
             except (ValueError, RecursionError):
-                continue
+                record = None
             at = (
                 project_context._record_timestamp(record)  # noqa: SLF001
                 if isinstance(record, dict)
                 else None
             )
-            if at is not None and at <= captured:
-                end = offset
-    return end
+            if at is not None and at > captured:
+                return offset
+            offset += len(line)
+    return offset
 
 
 # The files whose code turns a transcript into the facts and checks a case holds
@@ -941,11 +941,12 @@ def content_refusal(config: Any, case: dict[str, Any], transcript: str) -> list[
         return ["transcript-missing"]
     if type(size) is not int or size < 0 or size > on_disk:
         return ["transcript-truncated"]
-    # A packet frozen at the capture's own length must still name that length;
-    # a shorter one would shrink the tail and excuse dropped messages.
-    cut_differs = case.get("transcript_cut") == "capture" and size != capture_prefix(
-        transcript, float(case["captured_at"])
-    )
+    # A packet frozen at the capture's own length must still name that length,
+    # and no packet may name less: a shorter one would shrink the tail and
+    # excuse dropped messages. Every earlier freeze recorded at least that much,
+    # so the floor holds for packets with no `transcript_cut` too.
+    prefix = capture_prefix(transcript, float(case["captured_at"]))
+    cut_differs = size < prefix or (case.get("transcript_cut") == "capture" and size != prefix)
     reading = _reading()
     sid = str(case.get("sid") or "")
     captured = float(case["captured_at"])

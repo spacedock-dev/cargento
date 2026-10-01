@@ -394,6 +394,26 @@ class ASecondFailedContinuationChainsAThirdPacket(_OneFailedResult):
         with self.assertRaises(abstention_ledger.LedgerError):
             abstention_ledger.continuation()
 
+    def test_the_first_grants_next_key_must_be_the_seconds_previous(self) -> None:
+        self.grant_2()
+        body = json.loads(self.grant_path.read_text())
+        body["next"]["marks_digest"] = "f" * 64
+        self.grant_path.write_text(json.dumps(body))
+        with self.assertRaises(abstention_ledger.LedgerError):
+            abstention_ledger.continuation()
+
+    def test_marking_the_third_packet_leaves_both_failures_unstale_until_a_charge(self) -> None:
+        self.grant_2("marking")
+        first = json.loads(self.summary_path.read_text())
+        second = json.loads(self.new_summary_path.read_text())
+        for summary in (first, second):
+            self.assertEqual("", score_abstention._ledger_drift(summary))
+        stray = abstention_ledger.read(str(self.ledger_path))
+        stray["calls"].append({**stray["calls"][-1], "id": "9" * 32})
+        self.ledger_path.write_text(json.dumps(stray))
+        for summary in (first, second):
+            self.assertNotEqual("", score_abstention._ledger_drift(summary))
+
     def test_each_segment_must_carry_its_own_key(self) -> None:
         # The hash chain catches a re-digested charge; this catches a genuine chain
         # whose charges ran under another packet's key than the grant names.

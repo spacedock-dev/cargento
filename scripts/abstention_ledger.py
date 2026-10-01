@@ -1,9 +1,10 @@
 """The one spend ledger for DRC-4666's qualification: every model call, charged first.
 
 The owner authorized at most twenty real Claude Code readings for this
-qualification (2026-09-24), and the browser walk that follows a pass is one of
-them. So the scorer may make nineteen, across every run, every packet directory
-and every producer, and this file is the only thing that counts them.
+qualification (2026-09-24), and later raised the ceiling to 23 scorer calls
+beside 26 Claude CLI invocations, the browser walk among them (DRC-4758). So the
+scorer may make 23, across every run, every packet directory and every
+producer, and this file is the only thing that counts them.
 
 Four properties, each closing a bypass the review of 2026-09-24 reproduced:
 

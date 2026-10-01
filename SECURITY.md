@@ -1692,9 +1692,12 @@ is the local-process exposure this document accepts throughout. For a Claude Cod
 its contents (DRC-4711), rebuilt from the transcript as it stood at the case's `captured_at`. The
 checks and their output tails must be exactly the transcript's. The user messages must be the
 newest ones up to the capture, in order, with none missing between them, none repeated, and at
-least as many as the board's bounded tail reads of the transcript as it stood at the freeze, whose
-length the case records (`transcript_bytes`). An older message may be absent, because the board read
-a bounded tail when the packet was frozen. A transcript now shorter than that length, or a case that
+least as many as the board's bounded tail reads of the transcript as it stood at the capture, whose
+length the case records (`transcript_bytes`), and no case may name less than that length
+(`transcript-bytes-differ`). A case the freeze cut at its capture (`transcript_cut`) must name it
+exactly; its user messages come from the transcript as it then stood, never from the board. An
+older message may be absent, because the board read a bounded tail. A fresh `--score` never
+replaces a written result that charged calls; only `--resume` rewrites one. A transcript now shorter than that length, or a case that
 records none, is demoted (`transcript-truncated`). A capture with a user or assistant message
 between the recorded stop and itself is refused at freeze and demoted at score time
 (`activity-after-stop`); administrative records such as turn duration do not resume work.

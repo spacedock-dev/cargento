@@ -138,7 +138,7 @@ yardstick. Each case carries every format 4 field, plus:
 |---|---|
 | `intent` | `goal` and `lines`, one to six `{text, source}` outcome lines, as a reader would save them. Each line is its own constraint, `line_1` onwards, marked and scored on its own. An optional `at` stamps when the intent counts as typed, and `window_start` opens the evidence window as a stored revision's would; without them the intent counts as typed at 1.0, before every session end. |
 | `tool_output` | Claude Code only: `tails`, each check's redacted output tail by call id; `changed_after`, the `[call id, check line]` pairs a later command may have changed; and `read_incomplete`, the pairs whose pass was called before the bounded work record's read horizon. Each is frozen as a press read it at `captured_at`. An older packet with no `read_incomplete` field reads as an empty list. |
-| `transcript_bytes` | Claude Code only: the transcript's length in bytes as it stood at `captured_at`, the end of the last line stamped at or before it. The score-time check reads the board's tail of the file as it stood then. A case whose `transcript_cut` is `capture` must still name exactly that length (`transcript-bytes-differ`); an older packet recorded the file's length when frozen. |
+| `transcript_bytes` | Claude Code only: the transcript's length in bytes as it stood at `captured_at`: everything before the first line stamped after it, the cut the check scan makes. The score-time check reads the board's tail of the file as it stood then. A case whose `transcript_cut` is `capture` must still name exactly that length (`transcript-bytes-differ`); an older packet recorded the file's length when frozen. |
 
 Build a packet with `mark_abstention.py --freeze <spec>`. It spends nothing. The spec is a local
 file listing, per case, the `harness`, `sid`, `project`, `captured_at`, the `row` lifecycle
@@ -194,9 +194,10 @@ reads (DRC-4711):
   the board's bounded tail reads of the file's first `transcript_bytes` bytes. An older message may
   be absent, because the board read a bounded tail when the packet was frozen, of a file no larger
   than that. The tail ends there rather than at today's end, so a session that ran on past the tail
-  after the freeze cannot empty it. Measured on three
-  recorded sessions, a user message is the only fact a Claude Code case carries besides its
-  checks, so any other fact lands here too.
+  after the freeze cannot empty it. A case frozen at its capture names exactly the capture's
+  length, and no case may name less (`transcript-bytes-differ`). A Claude Code case carries only
+  its user messages and its checks. The board also publishes facts of other types for a Claude
+  Code session, such as an observer snapshot, and a packet holding one lands here.
 - `activity-after-stop`: the transcript holds a record stamped after the recorded stop or end and
   at or before `captured_at`. Moving the capture later would otherwise carry a later turn into a
   case vouched for at the stop. The freeze refuses the same capture with the same word.
@@ -285,10 +286,14 @@ raising that cap. Those require separate owner authorization.
 
 The failed `docs/abstention/claude-results.json` remains fixed. A continuation writes its summary
 only to `docs/abstention/claude-results-continuation.json` and its local results to
-`abstention-claude-continuation-results.json` in the fresh packet home. Scoring checks both fixed
-summary chains, and reports accept the old prefix followed by only the granted new-key suffix.
-Deleting or rewriting either packet's ledger charges makes the affected result stale. A second
-packet cannot reset the spend or reinterpret the failed verdict.
+`abstention-claude-continuation-results.json` in the fresh packet home. Under the second grant the
+packet writes `docs/abstention/claude-results-continuation-2.json` and
+`abstention-claude-continuation-2-results.json` instead, and both earlier results stay fixed.
+Scoring checks every fixed summary chain the grants run through, and reports accept each earlier
+packet's charges followed by only the granted new-key suffix. Deleting or rewriting any packet's
+ledger charges makes the affected result stale. A later packet cannot reset the spend or
+reinterpret a failed verdict, and a fresh `--score` never replaces a written result that charged
+calls; only `--resume` rewrites one, re-calling the calls that failed.
 
 `--probe-argv` is the one way to watch what the CLI sends without spending. It starts its own stub
 on `127.0.0.1` and runs the verified CLI twice with a fixed sentence: once signed in with a
@@ -332,6 +337,15 @@ python3 scripts/mark_abstention.py --report
 python3 scripts/score_abstention.py --score --producer claude
 python3 scripts/score_abstention.py --score --producer claude --resume   # only if a call failed
 ```
+
+A packet after a failed result runs the same commands with three differences. The grant comes
+first: commit its `marking` phase, naming the new cases file's digest, at the next free fixed path
+(`claude-continuation.json`, then `claude-continuation-2.json`). Marking uses
+`mark_abstention.py --continue-mark`, because ordinary marking is closed once the ledger holds a
+call. And before `--score`, commit the grant's `sealed` phase, naming the two digests the
+scorer charges under: the marks file's, and the cases and rubric's together. No command prints
+them; they are `marks_digest` and `_inputs_digest` in `scripts/score_abstention.py`, computed over
+the packet as it will be scored.
 
 ## How to argue with a result
 

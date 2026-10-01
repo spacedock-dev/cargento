@@ -2082,6 +2082,43 @@ class Q4ATurnStopTheHistoryRolledPastIsVouchedByTheTranscriptTest(_RecordedCaseF
         self.assertIn("lifecycle-unconfirmed", covered)
 
 
+class TheCaptureCutIsTheFirstLineStampedAfterItTest(unittest.TestCase):
+    """`capture_prefix` cuts where the check scan cuts (review, DRC-4666)."""
+
+    def cut(self, lines: list[str], captured: float) -> tuple[int, bytes]:
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder, "t.jsonl")
+            data = "".join(lines).encode()
+            path.write_bytes(data)
+            end = mark_abstention.capture_prefix(str(path), captured)
+        return end, data[:end]
+
+    def line(self, seconds: int | None, text: str = "x") -> str:
+        start = dt.datetime(2026, 9, 24, 3, 0, 0, tzinfo=dt.UTC).timestamp()
+        body: dict[str, Any] = {"type": "user", "text": text}
+        if seconds is not None:
+            body["timestamp"] = _stamp(start, seconds)
+        return json.dumps(body) + "\n"
+
+    def at(self, seconds: int) -> float:
+        return dt.datetime(2026, 9, 24, 3, 0, 0, tzinfo=dt.UTC).timestamp() + seconds
+
+    def test_unstamped_lines_before_the_next_later_stamp_are_kept(self) -> None:
+        lines = [self.line(1), self.line(None, "kept"), self.line(9)]
+        _end, kept = self.cut(lines, self.at(5))
+        self.assertEqual("".join(lines[:2]).encode(), kept)
+
+    def test_an_earlier_stamp_after_a_later_one_is_not_pulled_in(self) -> None:
+        lines = [self.line(1), self.line(9), self.line(3, "out of order")]
+        _end, kept = self.cut(lines, self.at(5))
+        self.assertEqual(lines[0].encode(), kept)
+
+    def test_a_capture_before_any_stamp_keeps_nothing_and_after_all_keeps_all(self) -> None:
+        lines = [self.line(4), self.line(6)]
+        self.assertEqual(0, self.cut(lines, self.at(1))[0])
+        self.assertEqual(len("".join(lines).encode()), self.cut(lines, self.at(10))[0])
+
+
 def _asked(start: float, session_id: str, seconds: int = 5) -> dict[str, Any]:
     """A reader's typed turn, in the recorded shape."""
     return {
@@ -2210,6 +2247,32 @@ class DRC4711TheContentsAreCheckedAgainstTheTranscriptTest(_Packet):
             with self.subTest(size=size):
                 moved = {**case, "transcript_bytes": size}
                 self.assertIn("transcript-bytes-differ", self.vouch()(moved))
+
+    def test_a_packet_with_no_cut_marker_still_cannot_name_less_than_the_capture(self) -> None:
+        # Review: deleting the optional marker, zeroing the length and dropping the
+        # reader's only message once left a case vouched as recorded.
+        case = self.genuine(extra=self.later_work(self.config.tail_bytes + 50_000))
+        stripped = {k: v for k, v in case.items() if k != "transcript_cut"}
+        stripped["transcript_bytes"] = 0
+        stripped["producer_facts"] = [
+            f for f in case["producer_facts"] if f["type"] != "user_message"
+        ]
+        self.assertIn("transcript-bytes-differ", self.vouch()(stripped))
+        legacy = {**stripped, "producer_facts": case["producer_facts"],
+                  "transcript_bytes": os.path.getsize(self.index[CLAUDE_SID[:8]])}  # fmt: skip
+        self.assertNotIn("transcript-bytes-differ", self.vouch()(legacy))
+
+    def test_a_message_older_than_the_captures_tail_is_not_frozen(self) -> None:
+        # The board at the capture read only its last `tail_bytes`; a message before
+        # that is not what a press then saw, so the freeze leaves it out too.
+        early = _asked(self.start, CLAUDE_SID, 1)
+        bulk = tuple(
+            {**row, "timestamp": _stamp(self.start, 2)}
+            for row in self.later_work(self.config.tail_bytes + 50_000)
+        )
+        case = self.genuine(asks=(5,), extra=(early, *bulk))
+        said = [f["at"] for f in case["producer_facts"] if f["type"] == "user_message"]
+        self.assertEqual([self.start + 5], said)
 
     def test_the_freeze_ignores_the_boards_words_for_a_claude_case(self) -> None:
         rows, path = self.write(CLAUDE_SID, (5,), ())
@@ -3364,11 +3427,35 @@ class N4OnlyAWellFormedChainIsAccepted(_Ledgered):
         self.assertEqual([], model.prompts)
 
 
+class AWrittenResultThatSpentIsNeverReplacedByAFreshRunTest(_Ledgered):
+    """A fresh run over a result that charged calls would re-spend its key (review, DRC-4666)."""
+
+    def test_a_fresh_run_over_a_spent_result_is_refused_before_any_call(self) -> None:
+        self.assertNotEqual(2, self.score(_Model()))
+        spent = self.committed()["ledger_chain"]["calls"]
+        self.assertGreater(spent, 0)
+        before = self.summary.read_bytes()
+        model = _Model()
+        printed: list[str] = []
+        self.assertEqual(2, self.score(model, printed=printed))
+        self.assertEqual([], model.prompts)
+        self.assertEqual(spent, len(self.calls()))
+        self.assertEqual(before, self.summary.read_bytes())
+        self.assertTrue(any("A fresh run never replaces one" in line for line in printed))
+
+    def test_a_symlinked_result_path_is_refused(self) -> None:
+        target = self.summary.with_name("elsewhere.json")
+        target.write_text("{}")
+        self.summary.symlink_to(target)
+        self.assertEqual(2, self.score(_Model()))
+        self.assertEqual("{}", target.read_text())
+
+
 class AScoreFromAnotherParserIsRefusedBeforeAnyChargeTest(_Ledgered):
     """A checkout whose parser differs from the freeze demotes every Claude Code case.
 
     Before this refusal the run still went ahead: each such case was withheld
-    unscored, while every other case was charged against the nineteen calls.
+    unscored, while every other case was charged against the spend cap.
     """
 
     def stale_packet(self) -> None:

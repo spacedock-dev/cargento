@@ -17,9 +17,10 @@ continues to report measured outcomes and never substitutes acceptance for PASS.
 `--producer claude` is required to score, and is the only producer that may: no
 Codex spend is authorized. A result names the producer, the model, a digest of
 the argv, the destination and the CLI it ran under, and goes to its own file,
-`docs/abstention/claude-results.json`. Every model call is charged first to the
-one ledger `abstention_ledger` owns, which stops at nineteen calls across every
-run (DRC-4666, the owner's authorization of 2026-09-24, less the browser walk).
+`docs/abstention/claude-results.json`, or a continuation's own fixed file beside
+it. Every model call is charged first to the one ledger `abstention_ledger`
+owns, which stops at 23 calls across every run (DRC-4666; the ceiling the owner
+approved in DRC-4758).
 
 ## Two corpora, two files, two questions
 
@@ -1809,6 +1810,32 @@ def _chain_holds(ledger: abstention_ledger.Ledger | None, summary_path: str) -> 
     return True
 
 
+def _overwrites(
+    ledger: abstention_ledger.Ledger | None, resume: Mapping[str, Any] | None, summary_path: str
+) -> bool:
+    """Whether a fresh run would replace a written result that spent, which it refuses to.
+
+    A written result is the record of what its key spent. A fresh run over it
+    would re-spend that key and replace the record, which the old cap of 19
+    bounded to one call and the ceiling of 23 does not; `--resume` re-calls
+    only the calls that failed. A result that charged nothing records no
+    spend, so it may be replaced. One that cannot be read counts as spent.
+    """
+    if ledger is None or resume is not None:
+        return False
+    if os.path.islink(summary_path):
+        print(f"Refused: the result at {summary_path} is a symlink.")
+        return True
+    held = abstention_ledger.committed_chain(summary_path)
+    if held is None or (isinstance(held.get("calls"), int) and held["calls"] == 0):
+        return False
+    print(
+        f"Refused: a result is already written at {summary_path}. A fresh run never "
+        "replaces one: use --resume to re-call failed cases, or a new grant for a new packet."
+    )
+    return True
+
+
 def _default_vouch(
     vouch: Callable[[Mapping[str, Any]], list[str]] | None, binding: Mapping[str, str] | None
 ) -> Callable[[Mapping[str, Any]], list[str]] | None:
@@ -1967,8 +1994,10 @@ def score(  # noqa: PLR0913 - one keyword per thing a run is bound to
         else None
     )
     replay = _is_replay(corpus)
-    if not _may_score(corpus, tool_destination, resume, binding, ledger) or not _chain_holds(
-        ledger, summary_path
+    if (
+        not _may_score(corpus, tool_destination, resume, binding, ledger)
+        or not _chain_holds(ledger, summary_path)
+        or _overwrites(ledger, resume, summary_path)
     ):
         return 2
     intents = corpus.cases.get("v") == mark_abstention.FORMAT_INTENT
