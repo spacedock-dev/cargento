@@ -337,6 +337,24 @@ class ChoosingFillsTheGoalAsAPendingAdoptionTest(_DraftPage):
         assert isinstance(out, dict)
         self.assertEqual(["/api/direction"], [post["url"] for post in out["posts"]])
         self.assertIn(ADD_EDITED, out["html"])
+        # The sentence sends the reader to Save intent, so Save intent can be pressed (INT-5).
+        save = re.search(
+            r'<button[^>]*data-next-cockpit-action="held-save"[^>]*>', intent_of(out["html"])
+        )
+        assert save is not None
+        self.assertNotIn("aria-disabled", save.group(0))
+
+    def test_save_intent_over_an_empty_goal_adopts_the_choice(self) -> None:
+        out = self.page(
+            after='__press("prompt-choose", "p-first");\nawait __settle();\n'
+            '__press("held-save", "intent");\nawait __settle();\n'
+            "console.log(JSON.stringify(__posts.map(post => post.body)));"
+        )
+        assert isinstance(out, list)
+        self.assertEqual(1, len(out), out)
+        self.assertEqual(runtime_reading.PROMPT_CHOSEN, out[0]["adopt"])
+        self.assertEqual("p-first", out[0]["prompt_fact"])
+        self.assertNotIn("goal", out[0])
 
 
 @unittest.skipUnless(shutil.which("node"), "node not available")

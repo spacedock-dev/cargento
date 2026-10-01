@@ -1430,13 +1430,15 @@ function nextCockpitIntentChanges(session, annotation){
   const typed = nextCockpitHeldDrafts.has(goalKey) ? nextCockpitHeldDrafts.get(goalKey) : baseline;
   const goal = typed !== baseline && typed !== stored;
   const lines = nextCockpitLinesChanged(nextCockpitLinesDraft(session, annotation), annotation);
-  /* A prompt chosen over saved words is a change the box shows and the store
-     does not hold, so Save intent adopts it; over an empty goal it is the
-     draft, which Looks right adopts as it does the first prompt's. */
+  /* A prompt chosen from the menu is a change the box shows and the store
+     does not hold, so Save intent adopts it, over saved words or an empty
+     goal alike; over an empty goal Looks right adopts it too. A refusal that
+     sends the reader to Save intent therefore never finds it inert (DRC-4758
+     fix round, INT-5). */
   const chosen = typed === baseline && nextIntentChosenOverSaved(session, annotation);
   const pending = typed === baseline && nextIntentChosenPrompts.has(goalKey) &&
     Boolean(nextPromptCandidate(session, NEXT_PROMPT_CHOSEN));
-  return {goal, lines, typed, chosen, any: goal || lines || chosen,
+  return {goal, lines, typed, chosen, pending, any: goal || lines || pending,
     undoable: typed !== baseline || lines || pending};
 }
 
@@ -6044,7 +6046,7 @@ async function nextCockpitIntentSave(session){
      the gate cannot disagree. Without it an inert-but-reachable control mints
      a revision identical to the stored one. */
   const changes = nextCockpitIntentChanges(session, annotation);
-  if(changes.chosen){
+  if(changes.chosen || changes.pending){
     /* The choice first, as its own adoption naming the saved revision, then
        the lines against the revision that adoption minted: `/api/annotate`
        takes an adoption or typed words in one request, not both. */
