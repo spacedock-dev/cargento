@@ -1481,7 +1481,7 @@ class PublishedSessionFieldSetTest(HarnessContractTestCase):
                 rows = self.sessions_for(self.collect(build, when=self.NOW), key)
                 published = rows[0]["reading_eligibility"]
                 self.assertIsInstance(published, dict)
-                self.assertSetEqual({"ok", "reason", "until"}, set(published))
+                self.assertSetEqual({"ok", "reason", "until", "sentence"}, set(published))
                 self.assertEqual(published["ok"], published["reason"] is None)
                 if published["reason"] is not None:
                     self.assertIn(published["reason"], reading.PRESS_WITHHELD)
@@ -1500,7 +1500,12 @@ class PublishedSessionFieldSetTest(HarnessContractTestCase):
         self.assertEqual("idle", rows[0]["state"], "the fixture is not the idle case")
         self.assertIsNone(rows[0]["finished_at"])
         self.assertEqual(
-            {"ok": False, "reason": reading.WITHHELD_IDLE_UNKNOWN, "until": None},
+            {
+                "ok": False,
+                "reason": reading.WITHHELD_IDLE_UNKNOWN,
+                "until": None,
+                "sentence": reading.WITHHELD[reading.WITHHELD_IDLE_UNKNOWN],
+            },
             rows[0]["reading_eligibility"],
         )
 

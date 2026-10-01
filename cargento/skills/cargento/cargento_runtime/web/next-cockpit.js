@@ -102,7 +102,7 @@ function nextCockpitAnnotation(session){
     "line_5", "line_5_source", "line_5_source_id", "line_6", "line_6_source", "line_6_source_id",
     "revision", "revision_count", "at", "goal_source", "goal_source_at", "goal_saved_at", "window_start", "binding_why", "settled_at", "settled_through",
     "settled_revision", "assessment", "reading_count", "reading_withheld",
-    "reading_refused", "not_accurate", "discarded_at", "discarded_why"];
+    "reading_withheld_at", "reading_refused", "not_accurate", "discarded_at", "discarded_why"];
   const known = fields.some(name => {
     const value = session[`annotation_${name}`];
     return value !== undefined && value !== null && value !== "" && value !== 0;
@@ -3512,6 +3512,60 @@ function nextReadingNeedsAllow(route){
     Boolean(route.destination && !nextReadingToolOutputGranted(route));
 }
 
+/* The short line beside an inert Analyze drift, one per token the board can
+   publish as `reading_eligibility.reason` (`reading.PRESS_WITHHELD`, walked by
+   a test). Page copy keyed by the server's token; the server's own sentence
+   rides beside it, verbatim, under "Why it can't read". Codex, which reads
+   only while a turn runs and has no session end the board can observe, gets
+   its own line for both idle tokens (owner Q8, 2026-10-01). DRC-4758 slice B. */
+const NEXT_READING_PRESS_LINES = {
+  "idle-unknown": "Analyze opens once this session finishes a turn.",
+  "unobservable": "No events reach Cargento from this session, so it can't be analyzed.",
+  "turn-stop": "Analyze opens while a turn runs or once the session ends.",
+  "settling": "Ready in a few seconds.",
+  "stop-settling": "Ready in a few seconds.",
+  "revision-after-end": "Your intent was saved after this session ended.",
+};
+const NEXT_READING_PRESS_CODEX = "Codex sessions can be analyzed only while a turn is running.";
+
+/* Whether a press could read this row now, as the board published it, or as
+   this tab's last press was answered when the board has not published it (a
+   payload with annotations off, or one from before the field). Absent means
+   not computed, and a press is then offered and the server decides. A
+   settling row whose `until` has passed is read as eligible on the next
+   render or press, with no timer of its own: the next collection drops the
+   token anyway. */
+function nextReadingEligibility(session){
+  const published = session && session.reading_eligibility;
+  const answered = nextCockpitReadingRequests.get(sessKey(session));
+  const held = published && typeof published === "object" ? published
+    : answered && answered.eligibility || null;
+  if(!held || held.ok !== false || typeof held.reason !== "string") return null;
+  const until = nextNumber(held.until);
+  if(until != null && Date.now() / 1000 >= until) return null;
+  return held;
+}
+
+function nextReadingPressLine(session, eligibility){
+  const reason = String(eligibility.reason);
+  if(String(session && session.harness || "") === "codex" &&
+    ["idle-unknown", "turn-stop"].includes(reason)) return NEXT_READING_PRESS_CODEX;
+  return NEXT_READING_PRESS_LINES[reason] || String(eligibility.sentence || "");
+}
+
+function nextReadingPressRefusal(session){
+  const eligibility = nextReadingEligibility(session);
+  return eligibility ? nextReadingPressLine(session, eligibility) : "";
+}
+
+/* How long ago a stored withhold was written, for "Last analysis, 3m ago:". */
+function nextReadingWithheldAge(annotation){
+  const at = nextNumber(annotation && annotation.reading_withheld_at);
+  if(at == null) return "";
+  const age = Math.max(0, (nextData && nextData.generated || 0) - at);
+  return age < 60 ? "just now" : `${fmtDur(age)} ago`;
+}
+
 function nextReadingAnyConsent(){
   const policy = nextData && nextData.reading;
   const map = policy && policy.providers;
@@ -4046,7 +4100,13 @@ function nextCockpitReadingControl(session, annotation, model, primary = true, s
   const pending = request && request.pending;
   const route = nextReadingRoute(session);
   const provider = route && route.provider ? String(route.provider) : "";
-  const confirming = Boolean(provider && request && request.consent && nextReadingNeedsAllow(route));
+  /* A press the board says cannot read is inert and not the stage's primary,
+     and no Allow step is offered for it: the handler refuses on this same
+     reason before it would ask (DRC-4758 slice B). */
+  const pressed = nextReadingEligibility(session);
+  const inert = Boolean(pressed) && reason === nextReadingPressLine(session, pressed);
+  const confirming = Boolean(provider && !inert && request && request.consent &&
+    nextReadingNeedsAllow(route));
   /* `authorized` is no longer a second term here: an unauthorized check is
      one of the sentences `nextCockpitReadingRefusal` returns, so `!reason`
      already carries it. */
@@ -4126,28 +4186,43 @@ function nextCockpitReadingControl(session, annotation, model, primary = true, s
      The four cockpit tabs have no action to mark at all (DRC-4590, DRC-4603). */
   const described = reason ? NEXT_READING_REFUSED_ID : disclosure ? NEXT_READING_DISCLOSURE_ID : "";
   const button =
-    `<button type="button" class="next-action${primary && provider ? " next-action--primary" : ""}" ` +
+    `<button type="button" class="next-action${primary && provider && !inert ? " next-action--primary" : ""}" ` +
     `data-next-cockpit-action="${confirming ? 'reading-allow' : 'reading-ask'}" ` +
     `data-next-focus="reading:${esc(sessKey(session))}"` +
     `${enabled ? "" : ' aria-disabled="true"'}` +
     `${described ? ` aria-describedby="${described}"` : ""}>` +
     `${confirming ? "Allow and analyze" : "Analyze drift"}</button>`;
+  /* The announcement and the description are one node while a refusal
+     stands. Printing the stored message and the reason separately rendered
+     the same sentence twice, adjacent and identical, where the contract is
+     that it renders exactly once. The press is still announced, because this
+     node carries `role="status"` when it is the refusal. */
+  const refused = reason
+    ? `<p class="next-cockpit-reading-why"${request && request.refusal && !request.announced
+      ? ' role="status"' : ""}` +
+      ` id="${NEXT_READING_REFUSED_ID}"` +
+      `${nextAbsenceAttr(NEXT_READING_REFUSAL_ABSENCE.get(reason))}>${esc(reason)}</p>` +
+      (inert ? nextCockpitWhy(`reading-why:${key}`, "Why it can't read", pressed.sentence) : "")
+    : "";
+  /* What the last press came to when it was withheld, from the store, so a
+     reload and another tab say the same. It was the READING section's, far
+     below the button the reader pressed, which is where the owner's walk lost
+     it. Not announced here: the job's end already said it once through the
+     persistent region (`nextCockpitReadingJobCues`). Left out when the inert
+     line above already carries the same sentence. */
+  const stored = String(annotation && annotation.reading_withheld || "");
+  const age = nextReadingWithheldAge(annotation);
+  const outcome = stored && !(inert && String(pressed.sentence || "") === stored)
+    ? `<p class="next-cockpit-reading-why next-cockpit-reading-outcome">` +
+      `${esc(age ? `Last analysis, ${age}: ` : "Last analysis: ")}${esc(stored)}</p>` : "";
+  /* Every account of a press -- why it cannot run, what the last one came to,
+     what this tab's press was answered with -- sits directly under the
+     button's row, before the hint and the disclosure (DRC-4758 slice B). */
   return '<div class="next-cockpit-reading-ask">' + (confirming ? disclosure : "") +
-    (lead ? steerButton + button : button + steerButton) + off + '</div>' + steerBox +
+    (lead ? steerButton + button : button + steerButton) + off + '</div>' +
+    refused + said(answered) + outcome + steerBox +
     (readHint ? `<p class="next-cockpit-reading-why">${esc(readHint)}</p>` : "") +
-    (confirming ? "" : disclosure) + said(answered) +
-    counted +
-    /* The announcement and the description are one node while a refusal
-       stands. Printing the stored message and the reason separately rendered
-       the same sentence twice, adjacent and identical, where the contract is
-       that it renders exactly once. The press is still announced, because this
-       node carries `role="status"` when it is the refusal. */
-    (reason
-      ? `<p class="next-cockpit-reading-why"${request && request.refusal && !request.announced
-        ? ' role="status"' : ""}` +
-        ` id="${NEXT_READING_REFUSED_ID}"` +
-        `${nextAbsenceAttr(NEXT_READING_REFUSAL_ABSENCE.get(reason))}>${esc(reason)}</p>`
-      : "");
+    (confirming ? "" : disclosure) + counted;
 }
 
 /* No positional word. The record is in the activity column and this sentence
@@ -4244,7 +4319,6 @@ function nextCockpitReadingParts(session, annotation, entries, model, observed, 
     (question || nextCockpitReadingControl(session, annotation, model, primary && !departed, slotted)) +
     '</div>';
   const header = '<section class="next-cockpit-reading"><header><h2>READING</h2>';
-  const withheld = String(annotation && annotation.reading_withheld || "");
   /* `defined` rather than sniffing the composed body: the no-reading arm
      already renders NEXT_READING_OFFER, which says what a reading is at more
      length, and a second sentence saying the same thing is a regression
@@ -4256,8 +4330,9 @@ function nextCockpitReadingParts(session, annotation, entries, model, observed, 
     departures: nextCockpitDepartures(shape, source, session), cited: new Set()});
   /* A press that produced nothing is not the same as no press, and the
      reason it produced nothing is a sentence the producer chose from a
-     closed set rather than one this page infers. */
-  const why = withheld ? `<p class="next-cockpit-reading-why">${esc(withheld)}</p>` : "";
+     closed set rather than one this page infers. It is said beside the
+     control, as "Last analysis" (`nextCockpitReadingControl`), and this
+     section no longer repeats it (DRC-4758 slice B). */
   /* A reading already made renders whatever the model's state is now. The
      states below are about offering a NEW one, and a retained reading
      outliving the run that produced it is the whole point of storing it.
@@ -4287,7 +4362,7 @@ function nextCockpitReadingParts(session, annotation, entries, model, observed, 
     const verification = routed && routed.provider && routed.disclosure
       ? "" : ` ${NEXT_READING_NOT_A_VERIFICATION}`;
     const offer = `<p class="next-cockpit-reading-why">${NEXT_READING_OFFER}${verification}</p>`;
-    return close(refused + offer + why, null, true);
+    return close(refused + offer, null, true);
   }
   const shape = early;
   if(shape.malformed){
@@ -4333,7 +4408,7 @@ function nextCockpitReadingParts(session, annotation, entries, model, observed, 
       shape.criteria.map(row => nextCockpitReadingCriterionRow(row, numbers, byId)).join("") +
       work +
       (shape.promptSource ? '<p class="next-cockpit-reading-why">Baseline from your prompt.</p>' : "") +
-      nextCockpitReadingBaseline(shape) + scope + why +
+      nextCockpitReadingBaseline(shape) + scope +
       nextCockpitResultFoot(session, annotation, raw) + '</section>',
     departures: nextCockpitDepartures(shape, source, session),
     /* What the activity list flags "Cited": the entries the surviving
@@ -5326,6 +5401,19 @@ async function nextCockpitAskForReading(session, model, allow = false){
     if(answer && answer.route && !answer.route.provider){
       request.message = nextReadingRouteRefusal(session);
       request.refusal = true;
+      return;
+    }
+    if(answer && answer.reason === "withheld" && typeof answer.withheld === "string"){
+      /* Refused before any job (DRC-4758 slice A2): nothing started and
+         nothing was spent. Held as this press's answer until the board
+         publishes the row's own eligibility, which then wins, so the inert
+         line stands beside the button now rather than after the next poll. */
+      request.eligibility = {ok:false, reason:answer.withheld, until:nextNumber(answer.until),
+        sentence:String(answer.sentence || "")};
+      request.message = nextReadingPressLine(session, request.eligibility);
+      request.refusal = true;
+      request.consent = false;
+      await refreshNext();
       return;
     }
     if(answer && answer.adoption_refused){
@@ -7619,6 +7707,10 @@ function nextPromptReadingRefusal(session, annotation, model){
      step the page could name: saving a goal here would not let a check run. */
   const route = nextReadingRoute(session);
   if(route && !route.provider) return nextReadingRouteRefusal(session);
+  /* So does a press the board already says it cannot serve: saving or
+     choosing words would not let it read (DRC-4758 slice B). */
+  const press = nextReadingPressRefusal(session);
+  if(press) return press;
   if(nextIntentUnsaved(session, annotation)) return NEXT_INTENT_EDITED;
   if(!String(annotation && annotation.goal || "").trim()){
     const draft = nextIntentDraft(session, annotation);

@@ -2067,6 +2067,32 @@ answer on every row as `reading_eligibility: {ok, reason, until}`. None there me
 - Cost, measured on `bench_collect --simulate claude=40`: 0.05 ms for 40 rows against a 33 ms
   collect, under the 5% bar the plan set.
 
+#### Amended 2026-10-01: a press says beside the button what it can do
+
+DRC-4758 (slice B). The owner's walk pressed "Analyze drift" on a session the board could only
+withhold: the box flashed, the panel went back to the bare button, and the reason sat in the READING
+section below the fold.
+
+- Where the row publishes `reading_eligibility.ok: false`, "Analyze drift" is inert
+  (`aria-disabled`, never the stage's primary) and no Allow step is offered: the handler refuses on
+  the same reason before it would ask, per
+  [NUI-18](design-next-ui.md#nui-18-one-control-primitive-and-an-inert-control-stays-on-the-page).
+  Directly under the button's row is one page-owned line keyed by the token
+  (`NEXT_READING_PRESS_LINES`, one per `reading.PRESS_WITHHELD` token, each 12 words or fewer, walked
+  by a test), and the server's own `WITHHELD` sentence, published beside the token as
+  `reading_eligibility.sentence`, is under "Why it can't read". A Codex row between turns says
+  "Codex sessions can be analyzed only while a turn is running." (owner Q8, 2026-10-01: Claude Code
+  first). A Codex row whose turn is running is published eligible and can be pressed.
+- A settling row is inert until `until`, read at render and at the press. No timer is added; the
+  next collection drops the token.
+- A row with no published eligibility (annotations off, or an older payload) offers the press and
+  the server decides. A `200` withheld reply is held as that press's answer until the row publishes
+  its own, so the inert line stands beside the button at once.
+- Every account of a press sits directly under the button's row, before the hint and the
+  disclosure: the refusal, this tab's last answer (including "Could not confirm the reading"), and
+  a stored withhold as "Last analysis, 3m ago: <sentence>", aged from `reading_withheld_at`. The
+  READING section no longer repeats the withheld sentence.
+
 ### What the Cancel build decided, 2026-09-24
 
 DRC-4693 built Cancel, the rest of item 5. The owner ruled the spend, the unconfirmed kill and the

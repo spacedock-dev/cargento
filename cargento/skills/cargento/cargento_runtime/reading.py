@@ -1453,12 +1453,15 @@ class Eligibility(TypedDict):
     """Whether a press on this row could start a reading now, and why not.
 
     `reason` is one of `PRESS_WITHHELD` or None. `until` is when a settling
-    row stops settling, an epoch, else None.
+    row stops settling, an epoch, else None. `sentence` is `WITHHELD[reason]`,
+    published beside the token so the page shows the server's words verbatim
+    under its own short line rather than keeping a copy of them.
     """
 
     ok: bool
     reason: str | None
     until: float | None
+    sentence: str | None
 
 
 def press_eligibility(
@@ -1486,13 +1489,13 @@ def press_eligibility(
         admit_turn_stop=str(row.get("harness") or "") in TURN_STOP_HARNESSES,
     )
     if not withheld:
-        return {"ok": True, "reason": None, "until": None}
+        return {"ok": True, "reason": None, "until": None, "sentence": None}
     moment = {
         WITHHELD_SETTLING: _number(row.get("ended_at")),
         WITHHELD_STOP_SETTLING: _number(row.get("finished_at")),
     }.get(withheld)
     until = moment + settle_sec if moment is not None else None
-    return {"ok": False, "reason": withheld, "until": until}
+    return {"ok": False, "reason": withheld, "until": until, "sentence": WITHHELD[withheld]}
 
 
 def _last_turn(row: Mapping[str, Any], *, now: float, settle_sec: float) -> tuple[str, str]:

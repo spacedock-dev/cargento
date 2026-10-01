@@ -1240,24 +1240,42 @@ class WhetherAPressCouldReadIsSaidBeforeThePress(unittest.TestCase):
     def test_an_idle_session_with_no_stop_and_no_end_is_refused_before_the_press(self) -> None:
         row = {"harness": "claude", "state": "idle", "acquisition": "event"}
         self.assertEqual(
-            {"ok": False, "reason": reading.WITHHELD_IDLE_UNKNOWN, "until": None}, self._press(row)
+            {
+                "ok": False,
+                "reason": reading.WITHHELD_IDLE_UNKNOWN,
+                "until": None,
+                "sentence": reading.WITHHELD[reading.WITHHELD_IDLE_UNKNOWN],
+            },
+            self._press(row),
         )
 
     def test_a_claude_session_whose_turn_stopped_can_be_read(self) -> None:
         row = {"harness": "claude", "state": "idle", "finished_at": self.END}
-        self.assertEqual({"ok": True, "reason": None, "until": None}, self._press(row))
+        self.assertEqual(
+            {"ok": True, "reason": None, "until": None, "sentence": None}, self._press(row)
+        )
 
     def test_a_stop_still_settling_says_when_it_settles(self) -> None:
         row = {"harness": "claude", "state": "idle", "finished_at": self.END}
         self.assertEqual(
-            {"ok": False, "reason": reading.WITHHELD_STOP_SETTLING, "until": self.END + 8.0},
+            {
+                "ok": False,
+                "reason": reading.WITHHELD_STOP_SETTLING,
+                "until": self.END + 8.0,
+                "sentence": reading.WITHHELD[reading.WITHHELD_STOP_SETTLING],
+            },
             self._press(row, now=self.END + 3.0),
         )
 
     def test_an_end_still_settling_says_when_it_settles(self) -> None:
         row = {"harness": "codex", "state": "idle", "ended_at": self.END}
         self.assertEqual(
-            {"ok": False, "reason": reading.WITHHELD_SETTLING, "until": self.END + 8.0},
+            {
+                "ok": False,
+                "reason": reading.WITHHELD_SETTLING,
+                "until": self.END + 8.0,
+                "sentence": reading.WITHHELD[reading.WITHHELD_SETTLING],
+            },
             self._press(row, now=self.END + 3.0),
         )
 
@@ -1292,6 +1310,7 @@ class WhetherAPressCouldReadIsSaidBeforeThePress(unittest.TestCase):
         for row, revisions in self._table():
             answer = self._press(row, revisions=revisions)
             self.assertEqual(answer["ok"], answer["reason"] is None)
+            self.assertEqual(reading.WITHHELD.get(answer["reason"] or ""), answer["sentence"])
             if answer["reason"] is not None:
                 self.assertIn(answer["reason"], reading.PRESS_WITHHELD)
                 seen.add(answer["reason"])

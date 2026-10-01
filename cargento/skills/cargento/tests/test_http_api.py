@@ -3898,7 +3898,12 @@ class ReadingRouteTest(unittest.TestCase):
         self.assertIsNone(answer["until"])
         # The same answer the board published before the press.
         self.assertEqual(
-            {"ok": False, "reason": runtime_reading.WITHHELD_IDLE_UNKNOWN, "until": None},
+            {
+                "ok": False,
+                "reason": runtime_reading.WITHHELD_IDLE_UNKNOWN,
+                "until": None,
+                "sentence": answer["sentence"],
+            },
             published["reading_eligibility"],
         )
         self.assertEqual([], started, "a reading job was registered")
