@@ -4430,7 +4430,7 @@ function nextCockpitReadingControl(session, annotation, model, primary = true, s
       `tabindex="-1" data-next-focus="reading:${esc(key)}">` +
       `${esc(`Send this session to ${label} for analysis?`)}</h3>` + disclosureParts +
       '<div class="next-cockpit-reading-ask">' +
-      button.replace(`data-next-focus="reading:${esc(key)}"`, `data-next-focus="reading-allow:${esc(key)}"`) +
+      button.replace(`data-next-focus="reading:${esc(key)}"`, `data-next-focus="reading-allow:${esc(key)}" data-next-focus-fallback="reading:${esc(key)}"`) +
       '<button type="button" class="next-action" data-next-cockpit-action="reading-not-now" ' +
       `data-next-focus="reading-not-now:${esc(key)}" data-next-focus-fallback="reading:${esc(key)}">` +
       "Not now</button></div></div>" +

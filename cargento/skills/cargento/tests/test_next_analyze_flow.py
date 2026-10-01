@@ -17,6 +17,7 @@ import unittest
 
 from cargento_runtime import reading
 
+from . import test_next_cockpit as cockpit_tests
 from .next_harness import storage_prelude
 from .test_next_drift_panel import FIXTURE, JOB, PanelPage, drift_of, routes
 from .visible_text import visible_text
@@ -260,6 +261,33 @@ class TheFirstPressAsksBeforeItSendsTest(PanelPage):
         self.assertIn('data-next-focus="reading-not-now:codex:focus-1"', not_now.group(0))
         # Not now's key falls back to the press, which Analyze drift carries once the card goes.
         self.assertIn('data-next-focus-fallback="reading:codex:focus-1"', not_now.group(0))
+
+    def test_allow_hands_its_focus_to_the_pending_press(self) -> None:
+        # Pressing Allow redraws a pending Analyze drift and no Allow, so a keyboard reader's
+        # focus falls back to the press rather than to the page (INT-3).
+        stub = cockpit_tests.CockpitHeldToTabTest.FOCUS_DOM
+        focus_dom = stub.replace(
+            "(button|a|textarea|",
+            "(button|a|textarea|p(?=[^>]*\\btabindex=)|h3(?=[^>]*\\btabindex=)|",
+            1,
+        )
+        html = self.page(
+            "codex",
+            focus_dom + CONSENT_NEEDED,
+            after="const upstream = __fetchImpl;\n"
+            "__fetchImpl = async (url, init) => init && init.method === 'POST'"
+            " ? new Promise(() => {}) : upstream(url, init);\n"
+            "await nextCockpitAskForReading(__dashboard.sessions[0], null);\n"
+            "renderNext();\nawait __settle();\n"
+            "const allow = controls.find(c => c.dataset.nextCockpitAction === 'reading-allow');\n"
+            "allow.focus();\n"
+            "nextCockpitAskForReading(__dashboard.sessions[0], null, true);\n"
+            "await __settle();\n"
+            "const now = document.activeElement;\n"
+            '__els.app.innerHTML = `<i data-focused="${now && now.dataset ? '
+            "now.dataset.nextFocus : ''}\"></i>` + __els.app.innerHTML;\n",
+        )
+        self.assertIn('<i data-focused="reading:codex:focus-1"></i>', html)
 
     def test_not_now_restores_the_idle_button_and_sends_nothing(self) -> None:
         html = self.page(
