@@ -211,7 +211,7 @@ class TheGoalArrivesDraftedTest(_DraftPage):
         self.assertNotIn("Choose a goal or use your prompt", text)
         # Unsaved: saving is not offered over the untouched draft; Looks right is.
         save = re.search(
-            r'<button[^>]*data-next-cockpit-action="held-save" data-arg="goal"[^>]*>', intent
+            r'<button[^>]*data-next-cockpit-action="held-save" data-arg="intent"[^>]*>', intent
         )
         assert save is not None
         self.assertRegex(save.group(0), r"aria-disabled|hidden")
@@ -322,14 +322,18 @@ console.log(JSON.stringify({
         self.assertNotIn("data-next-cockpit-drafted", intent_of(out["before"]))
         self.assertIn(EDITED, visible_text(drift_of(out["after"])))
 
-    def test_a_saved_goal_reads_confirmed_with_no_check_mark(self) -> None:
+    def test_a_saved_goal_reads_saved_with_no_check_mark(self) -> None:
         html = self.html(TYPED)
         intent = intent_of(html)
-        self.assertIn("Confirmed", visible_text(intent))
+        # "Saved", not the design's "Confirmed": nothing confirmed the reader's words
+        # (owner, 2026-10-01).
+        self.assertIn("Saved", visible_text(intent))
+        self.assertNotIn("Confirmed", intent)
         self.assertNotIn("<svg", intent)
         self.assertNotIn("✓", intent)
         self.assertNotIn("Looks right", visible_text(intent))
-        self.assertNotIn(MEASURED, visible_text(intent))
+        # The design's hint is the footer's under both fields (owner Q6), said once.
+        self.assertEqual(1, visible_text(intent).count(MEASURED))
 
 
 @unittest.skipUnless(shutil.which("node"), "node not available")
@@ -1557,7 +1561,7 @@ class FocusKeysAndTypingTest(_DraftPage):
                 self.assertEqual([], duplicated)
                 for control in re.findall(
                     r"<(?:button|textarea)\b[^>]*data-next-cockpit-(?:action=\"(?:draft-confirm|"
-                    r"held-save|held-clear|held-line-remove|held-line-add|direction-save|"
+                    r"held-save|held-undo|held-clear|held-line-remove|held-line-add|direction-save|"
                     r"direction-cancel|direction-replace|direction-keep|direction-add|reading-off|"
                     r'reading-ask|reading-allow)"|direction-key=|held-kind=)[^>]*>',
                     aside_of(out),
@@ -1565,7 +1569,8 @@ class FocusKeysAndTypingTest(_DraftPage):
                     self.assertIn("data-next-focus=", control)
         drafted = self.html()
         self.assertIn(f'data-next-focus="{GOAL_KEY}:confirm"', drafted)
-        self.assertIn(f'data-next-focus="{GOAL_KEY}:save"', drafted)
+        self.assertIn('data-next-focus="held:claude:focus-1:intent:save"', drafted)
+        self.assertIn('data-next-focus="held:claude:focus-1:intent:undo"', drafted)
         idle = self.html(TYPED + "__s.annotation_settled_through = 104;\n")
         self.assertIn('data-next-focus="reading-off:claude:focus-1"', idle)
 
@@ -1581,8 +1586,13 @@ const field = {setAttribute(n){ attrs.add(n); }, removeAttribute(n){ attrs.delet
   querySelector(selector){
     if(selector === "[data-next-cockpit-draft-marks]") return marks;
     if(selector === "[data-next-cockpit-held-count]") return count;
-    if(selector === '[data-next-cockpit-action="held-save"]') return save;
     return null; }};
+// The one save is the footer's, under both fields (owner Q6), and the handler
+// reaches it from the page.
+__els.app.querySelector = selector => selector === ".next-cockpit-held-footer" ? {
+  querySelector(inner){
+    return inner === '[data-next-cockpit-action="held-save"]' ? save : null; },
+  closest(){ return null; }} : null;
 const html = __els.app.innerHTML;
 const saved = html.match(/data-next-cockpit-held-kind="goal"[^>]*data-next-cockpit-held-saved="([^"]*)"/)[1];
 const draft = html.match(/data-next-cockpit-held-kind="goal"[^>]*data-next-cockpit-draft="([^"]*)"/)[1];

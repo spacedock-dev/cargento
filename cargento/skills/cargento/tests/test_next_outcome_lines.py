@@ -217,7 +217,7 @@ __press("held-line-remove", 1);
 await __settle();
 const removed = [...__els.app.innerHTML.matchAll(
   /data-next-cockpit-held-line-index="\\d"[^>]*>([^<]*)<\\/textarea>/g)].map(m => m[1]);
-const saveShown = /data-next-cockpit-action="held-save" data-arg="lines">/.test(__els.app.innerHTML);
+const saveShown = /data-next-cockpit-action="held-save" data-arg="intent">/.test(__els.app.innerHTML);
 __escape(0);
 await __settle();
 const restored = [...__els.app.innerHTML.matchAll(

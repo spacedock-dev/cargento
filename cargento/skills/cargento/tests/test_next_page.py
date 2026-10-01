@@ -1168,6 +1168,7 @@ class NextPageAssetContractTest(unittest.TestCase):
         ".next-cockpit-empty,.next-cockpit-evidence-missing",
         ".next-cockpit-held-absent",
         ".next-cockpit-held-full",
+        ".next-cockpit-held-hint",
         ".next-cockpit-held-field textarea",
         ".next-cockpit-steer-box textarea",
         ".next-cockpit-held-lede",
@@ -1397,7 +1398,8 @@ class NextPageAssetContractTest(unittest.TestCase):
         # the result in the button's place: the range and level reason under the meter,
         # the checklist's heading, and each line's own words as its title. The meter's
         # four labels are labels, set at a label line-height, so off this tier.
-        self.assertEqual(132, len(above))
+        # DRC-4758 D1 adds one: the editor's footer hint under both fields.
+        self.assertEqual(133, len(above))
         self.assertEqual(self.SENTENCE_TIER_RULES, {selector for selector, _size in above})
         self.assertEqual(
             self.SUB_SENTENCE_FLOOR_INVENTORY, {(size, selector) for selector, size in below}
@@ -2306,10 +2308,20 @@ class TheBoardHasOneControlPrimitiveTest(unittest.TestCase):
         for hue in ("--clay", "--amber", "--accent"):
             with self.subTest(hue=hue):
                 self.assertNotIn(hue, block)
-        # And the per-field `clear` stays bare text, which is what makes the
-        # weight difference read at all. Boxing both removes the contrast this
-        # criterion exists for.
-        self.assertRegex(self.rule(".next-cockpit-held-field button"), r"(?:^|;)border:0")
+        # And `Clear` stays the lightest weight on the primitive, quiet's single
+        # underline against the discard's box and the armed control's 2px, which
+        # is what makes the weight difference read at all. Boxing both the same
+        # removes the contrast this criterion exists for. A real button now
+        # (owner Q5, 2026-10-01) rather than bare text, so this compares weights.
+        quiet = self.rule(".next-action.next-action--quiet")
+        self.assertRegex(quiet, r"(?:^|;)border:0")
+        self.assertRegex(quiet, r"border-bottom:1px")
+        self.assertRegex(armed, r"border-width:[2-9]")
+        page = (
+            Path(__file__).resolve().parents[1] / "cargento_runtime" / "web" / "next-cockpit.js"
+        ).read_text(encoding="utf-8")
+        self.assertIn('class="next-action next-action--${weight}"', page)
+        self.assertIn('nextCockpitHeldControl("held-clear", "Clear", kind,', page)
         # The discard control takes its box from the primitive, so its own
         # rule no longer contradicts it with a borderless recipe.
         self.assertNotRegex(discard, r"(?:^|;)border:0")

@@ -4301,6 +4301,26 @@ __els.app = {
           .map(([key, value]) => [camel(key), value]))};
     });
   },
+  // The footer under both fields, which holds the one save and the undo
+  // (owner Q6). The input handler reaches it from the page rather than from
+  // a field, and finds the save's description in the section around it.
+  querySelector(selector){
+    if(selector !== ".next-cockpit-held-footer" ||
+      !String(this.html || "").includes('class="next-cockpit-held-footer"')) return null;
+    return {
+      querySelector(inner){
+        const action = /action="([a-z-]+)"/.exec(inner);
+        return action ? controls.find(control => control.dataset.nextCockpitAction === action[1] &&
+          control.dataset.arg === "intent") || null : null;
+      },
+      closest(outer){
+        return outer === ".next-cockpit-held" ? {querySelectorAll(inner){
+          return inner === "[data-next-cockpit-held-absent]"
+            ? paras.filter(para => para.dataset.nextCockpitHeldAbsent !== undefined) : [];
+        }} : null;
+      },
+    };
+  },
   querySelectorAll(selector){
     return selector === "[data-next-focus]" ? controls.filter(control => control.dataset.nextFocus) : [];
   }
@@ -4493,7 +4513,9 @@ console.log(JSON.stringify({
   draft: nextCockpitHeldDrafts.get("held:codex:focus-1:goal"),
   // Updated in place, which is the whole of what replaces the redraw.
   liveCount: field.querySelector("[data-next-cockpit-held-count]").textContent,
-  liveSave: field.querySelector('[data-next-cockpit-action="held-save"]').hidden,
+  // The one save is the footer's, under both fields (owner Q6).
+  liveSave: "aria-disabled" in controls.find(control =>
+    control.dataset.nextCockpitAction === "held-save").attrs,
   liveClear: field.querySelector('[data-next-cockpit-action="held-clear"]').hidden,
   // What the field renders from that draft, on the next redraw the reader
   // does cause. Both controls exist either way; only their hidden state moves.
@@ -4501,7 +4523,7 @@ console.log(JSON.stringify({
     const html = __els.app.innerHTML;
     return {
       count: (html.match(/data-next-cockpit-held-count="goal">([^<]*)</) || [])[1],
-      save: /data-next-cockpit-action="held-save" data-arg="goal">/.test(html),
+      save: /data-next-cockpit-action="held-save" data-arg="intent">/.test(html),
       clear: /data-next-cockpit-action="held-clear" data-arg="goal">/.test(html),
       // The saved value rides on each field, because the handler compares
       // against it without a payload to hand. Both are read: the untouched
@@ -4587,7 +4609,7 @@ __fetchImpl = async (url, init) => String(url) === "/api/annotate"
 navigateNext({view:"project", project:"cargento", focus:"codex:focus-1", tab:"held-to"});
 await __settle();
 const save = kind => __fire("click", {target:controls.find(control =>
-  control.dataset.nextCockpitAction === "held-save" && control.dataset.arg === kind),
+  control.dataset.nextCockpitAction === "held-save"),
   preventDefault(){}});
 const type = (kind, value) => {
   const input = controls.find(control => control.dataset.nextCockpitHeldKind === kind);
@@ -4700,7 +4722,7 @@ console.log(JSON.stringify({
         self.assertTrue(out["why"])
         # And the per-field control keeps its own name, which is the half of
         # this the design draws and the half that already shipped.
-        self.assertEqual("clear", out["clearLabel"])
+        self.assertEqual("Clear", out["clearLabel"])
         self.assertEqual(0, out["absent"])
 
     def test_the_first_press_writes_nothing_and_the_second_one_discards(self) -> None:
@@ -4957,7 +4979,7 @@ await __settle();
 console.log(JSON.stringify({
   draft: nextCockpitHeldDrafts.get("held:codex:focus-1:goal"),
   saves: (__els.app.innerHTML.match(
-    /data-next-cockpit-action="held-save" data-arg="goal">/g) || []).length,
+    /data-next-cockpit-action="held-save" data-arg="intent">/g) || []).length,
 }));
 """
         )
@@ -4975,7 +4997,7 @@ __fetchImpl = async (url, init) => String(url) === "/api/annotate"
 navigateNext({view:"project", project:"cargento", focus:"codex:focus-1", tab:"held-to"});
 await __settle();
 const save = kind => __fire("click", {target:controls.find(control =>
-  control.dataset.nextCockpitAction === "held-save" && control.dataset.arg === kind),
+  control.dataset.nextCockpitAction === "held-save"),
   preventDefault(){}});
 const type = (kind, value) => {
   const input = controls.find(control => control.dataset.nextCockpitHeldKind === kind);
@@ -5156,7 +5178,7 @@ const type = value => { const box = input(); box.value = value; __fire("input", 
 type("Six screenshots");
 await __settle();
 __fire("click", {target:controls.find(control =>
-  control.dataset.nextCockpitAction === "held-save" && control.dataset.arg === "goal"),
+  control.dataset.nextCockpitAction === "held-save"),
   preventDefault(){}});
 type("Six screenshots, one per screen");
 
@@ -5244,7 +5266,7 @@ console.log(JSON.stringify({
   emptyShowsBinding: empty.includes("eight-character prefix"),
   // Rendered and hidden, not omitted: a keystroke does not redraw, so the
   // paragraph has to be an element the input handler can reach.
-  typedHidesReason: /<p class="next-cockpit-held-absent" [^>]*data-next-cockpit-held-absent="goal" hidden>/
+  typedHidesReason: /<p class="next-cockpit-held-absent[^"]*" [^>]*data-next-cockpit-held-absent="goal" hidden>/
     .test(__els.app.innerHTML),
   typedShowsOtherReason: /data-next-cockpit-held-absent="lines">No expected outcome typed\\./
     .test(__els.app.innerHTML),
@@ -5529,7 +5551,7 @@ const type = (kind, value) => {
   __fire("input", {target:input});
 };
 const save = kind => __fire("click", {target:controls.find(control =>
-  control.dataset.nextCockpitAction === "held-save" && control.dataset.arg === kind),
+  control.dataset.nextCockpitAction === "held-save"),
   preventDefault(){}});
 
 // When: type the expected outcome's first line alone and save the list.
@@ -6781,15 +6803,15 @@ console.log(JSON.stringify({refused, after, calls}));
 navigateNext({view:"project", project:"cargento", focus:"codex:focus-1", tab:"held-to"});
 await __settle();
 const saveTag = () => (__els.app.innerHTML.match(
-  /<button[^>]*data-next-cockpit-action="held-save" data-arg="goal"[^>]*>/) || [""])[0];
+  /<button[^>]*data-next-cockpit-action="held-save" data-arg="intent"[^>]*>/) || [""])[0];
 const clearTag = () => (__els.app.innerHTML.match(
   /<button[^>]*data-next-cockpit-action="held-clear" data-arg="goal"[^>]*>/) || [""])[0];
 const saveControl = () => controls.find(control =>
-  control.dataset.nextCockpitAction === "held-save" && control.dataset.arg === "goal");
+  control.dataset.nextCockpitAction === "held-save");
 const resting = saveTag();
 const restingClear = clearTag();
 const absentTag = (__els.app.innerHTML.match(
-  /<p class="next-cockpit-held-absent" id="[^"]*" data-next-cockpit-held-absent="goal"[^>]*>/) || [""])[0];
+  /<p class="next-cockpit-held-absent[^"]*" id="[^"]*" data-next-cockpit-held-absent="goal"[^>]*>/) || [""])[0];
 // A press while inert, before anything is typed.
 let posts = 0;
 const upstream = __fetchImpl;
@@ -6830,7 +6852,9 @@ console.log(JSON.stringify({
         assert described is not None
         absent_tag = out["absentTag"]
         assert isinstance(absent_tag, str)
-        self.assertIn(f'id="{described.group(1)}"', absent_tag)
+        # The one save under both fields is described by each empty field's sentence
+        # (owner Q6), the goal's among them.
+        self.assertIn(f'id="{described.group(1).split()[0]}"', absent_tag)
         # `clear` keeps `hidden`: there is nothing to clear and nothing to
         # explain, so an inert control there would be noise rather than an
         # affordance.
@@ -9375,6 +9399,7 @@ class CockpitHeldDraftSurvivesAnUnwritableStoreTest(NextPageJsHarness):
         out = self.run_fixture(
             """
 const key = nextCockpitHeldKey({harness:"codex", sid:"focus-1"}, "goal");
+const session = __dashboard.sessions.find(row => row.sid === "focus-1");
 const attempt = async persisted => {
   nextCockpitHeldDrafts.set(key, "hold it to what I asked");
   // Only the annotate call answers; the refresh the handler starts next is
@@ -9383,11 +9408,11 @@ const attempt = async persisted => {
   __fetchImpl = url => String(url).includes("/api/annotate")
     ? Promise.resolve({ok:true, json: async () => ({ok:true, persisted})})
     : Promise.resolve({ok:false, status:503, json: async () => ({})});
-  await nextCockpitHeldSave({harness:"codex", sid:"focus-1"}, "goal");
+  await nextCockpitIntentSave(session);
   return {
     kept: nextCockpitHeldDrafts.has(key),
     draft: nextCockpitHeldDrafts.get(key) || "",
-    cue: nextCockpitHeldCue(key),
+    cue: nextCockpitHeldCue(nextCockpitIntentKey(session)),
   };
 };
 const unpersisted = await attempt(false);
@@ -10163,7 +10188,7 @@ __fetchImpl = async (url, init) => String(url) === "/api/annotate"
 navigateNext({view:"project", project:"cargento", focus:"codex:focus-1", tab:"held-to"});
 await __settle();
 const save = kind => __fire("click", {target:controls.find(control =>
-  control.dataset.nextCockpitAction === "held-save" && control.dataset.arg === kind),
+  control.dataset.nextCockpitAction === "held-save"),
   preventDefault(){}});
 const type = (kind, value) => {
   const input = controls.find(control => control.dataset.nextCockpitHeldKind === kind);
@@ -10229,7 +10254,7 @@ __fetchImpl = async (url, init) => String(url) === "/api/annotate"
 navigateNext({view:"project", project:"cargento", focus:"codex:focus-1", tab:"held-to"});
 await __settle();
 const save = kind => __fire("click", {target:controls.find(control =>
-  control.dataset.nextCockpitAction === "held-save" && control.dataset.arg === kind),
+  control.dataset.nextCockpitAction === "held-save"),
   preventDefault(){}});
 const type = (kind, value) => {
   const input = controls.find(control => control.dataset.nextCockpitHeldKind === kind);
@@ -10242,7 +10267,7 @@ save("goal");
 await __settle();
 type("goal", "Six screenshots and a log");
 await __settle();
-const marked = nextCockpitHeldStates.has("held:codex:focus-1:goal");
+const marked = nextCockpitHeldStates.has("held:codex:focus-1:intent");
 save("goal");
 await __settle();
 console.log(JSON.stringify({marked, polite: wrote("next-cockpit-cue-status")}));
@@ -10281,7 +10306,7 @@ __fetchImpl = async (url, init) => String(url) === "/api/annotate"
 navigateNext({view:"project", project:"cargento", focus:"codex:focus-1", tab:"held-to"});
 await __settle();
 const save = kind => __fire("click", {target:controls.find(control =>
-  control.dataset.nextCockpitAction === "held-save" && control.dataset.arg === kind),
+  control.dataset.nextCockpitAction === "held-save"),
   preventDefault(){}});
 const type = (kind, value) => {
   const input = controls.find(control => control.dataset.nextCockpitHeldKind === kind);
@@ -10307,7 +10332,9 @@ console.log(JSON.stringify({
 """
         )
 
-        self.assertEqual(2, out["onScreen"])
+        # One cue on screen, the footer's, since one save serves both fields (owner Q6), and
+        # still one write per save: the line's keystroke dropped the first save's mark.
+        self.assertEqual(1, out["onScreen"])
         self.assertEqual(["Saved as a new revision."] * 2, out["polite"])
 
     def test_the_armed_control_carries_the_warning_as_its_description(self) -> None:

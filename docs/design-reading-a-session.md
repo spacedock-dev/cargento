@@ -2333,13 +2333,19 @@ the analysis's recommendation.
   Measured at 1440x900 with a 198-character goal: three lines put Analyze drift's bottom at 788
   (Claude Code) and 820 (Codex); six lines put the Drift heading's bottom at 900 on both, with no
   margin, because the six-line notice ("An expected outcome holds six lines...") appears only then.
+  Amended 2026-10-01 (owner, Q4, DRC-4758): the criterion is now that the Drift level and the
+  Analyze control are visible at 1440x900 with a goal and up to three lines, under the roomier
+  boxes of [the intent editor's boxes, buttons and footer](#amended-2026-10-01-the-intent-editors-boxes-buttons-and-footer).
 - The saved-intent introduction follows the complete action block (DRC-4748). With a saved
   55-character goal, three 240-character outcome lines and a High live estimate, its three
   lines above the fields put Analyze drift at 892.5 to 936.5 on a 1440x900 board. Moving the
   same words below the action put its bottom at 861.5. The drafted introduction stays with
   the fields the reader is choosing; consent disclosures keep their own order.
 - The heading-row move is an owner-approved departure from C1's placement (2026-09-24): each
-  field's count and controls sit beside the field's name rather than under its box.
+  field's count and controls sit beside the field's name rather than under its box. Reversed
+  2026-10-01 (owner, Q6, DRC-4758): the reader could not tell which box a save belonged to, so
+  each field is its label, box and counter again, with one footer under both
+  ([the intent editor's boxes, buttons and footer](#amended-2026-10-01-the-intent-editors-boxes-buttons-and-footer)).
 - One clean row, expand on focus (owner, 2026-09-24). A saved line longer than its box wrapped and
   showed a half-cut second row, and the goal box a half-cut third. At rest a line box is one
   unwrapped row ending in an ellipsis, and the goal box exactly two whole rows, with no bottom
@@ -2352,13 +2358,56 @@ the analysis's recommendation.
   A focused 102-character line grows to its full text at 1440, 375 and 320 with no horizontal
   overflow. Where an engine lacks `field-sizing` (it ships in Chromium), an `@supports not`
   fallback gives a focused line four rows and the goal six, and the box scrolls inside them.
+  Superseded 2026-10-01 (owner, Q4, DRC-4758): the boxes rest roomy and resize vertically, and the
+  focus rules are gone ([the intent editor's boxes, buttons and footer](#amended-2026-10-01-the-intent-editors-boxes-buttons-and-footer)).
 - At 760px and below, the sheet's existing narrow step, a line's box takes the whole first row and
   its count, source and remove follow on a second in the same order. Sharing one row, the box
   showed about 12 characters at 320; it is now 292px wide there and 327px at 375. At 1440 and 1100
   a line is still one row, so the fold numbers above do not move.
 - The goal's heading row is top-aligned, with the label and the count each one control tall, so an
   open "Use a prompt" menu no longer leaves the count, clear and save floating beside its entries
-  as though they were its controls.
+  as though they were its controls. Since 2026-10-01 (owner, Q6) the count and Clear sit under the
+  box and the save in the footer, so the heading holds only the label and the prompt marks.
+
+#### Amended 2026-10-01: the intent editor's boxes, buttons and footer
+
+Owner rulings Q4, Q5, Q6 and Q11, 2026-10-01 (DRC-4758 slice D1), on the owner's walk: the goal box
+was two rows and each line one, neither resizable; "clear", "save", "add a line" and "remove" read
+as bare text; and nothing said which box a save belonged to. This supersedes the heading-row move,
+"One clean row, expand on focus" and the goal heading row's alignment above, and rewords the fold
+criterion.
+
+- The boxes (Q4). The goal rests at three rows and each outcome line at two; both wrap and resize
+  vertically. A dragged height is an inline style that `nextCaptureInputState` carries across a
+  redraw (the reader-state inventory's resized-dimensions row), which a test holds, so no rule
+  sets a height that follows focus: the at-rest and focus pair put the box back over the drag on
+  every blur, which is why resizing had been off. The untouched draft and the pending line still
+  size to their text, and an inline height still outranks that. Fold criterion: the Drift level
+  and the Analyze control are visible at 1440x900 with a goal and up to three lines.
+- The controls (Q5) are the next-action primitive, secondary or quiet and never primary: Save
+  intent is secondary; Undo changes, Clear and + Add a line are quiet; a line's remove is a quiet
+  "×" named "Remove line N". Clear stays the lightest weight against the discard control's box and
+  its armed 2px border, so the irreversible act still reads heavier (DRC-4590 AC-5, kept as a
+  weight comparison). The field's own bare-button rule steps aside for the primitive.
+- The layout (Q6). Each field is its label, its box and its counter. Clear sits under the goal box
+  and + Add a line under the list. One footer under both fields holds the hint "Drift is measured
+  against these. Edit anything that is off.", said once whether or not the goal is drafted, then
+  Undo changes and Save intent, both inert while nothing has changed (NUI-18). The groups stand
+  22px apart.
+- Save intent writes both fields in one `POST /api/annotate`: `goal` where the box left the stored
+  words and is not back at the draft, `lines` and `origins` where the list changed, and an absent
+  or null field is left alone, with the revision both were drawn against. Over an untouched draft
+  with nothing else changed a press is Looks right, never a typed save of an excerpt. Undo changes
+  is Escape for both fields at once. Its cue is one, in the footer.
+- Absence (Q11). An empty field's absence is its empty box and placeholder. The sentence ("No goal
+  typed for this session.", "No expected outcome typed.") stays in the DOM, visually hidden, as
+  the inert save's description. The store-unreadable sentence stays in view, because it says the
+  words may exist where the box shows none.
+- The stamp over saved words reads "Saved", not the design's "Confirmed": a saved revision is the
+  reader's own words, and nothing confirmed them.
+- Not built here, noted as follow-ups: one multi-line Expected outcome box (the rows stay, drawn as
+  one checklist); Enter, Backspace and multi-line paste splitting lines (IE-7); the "Use your
+  prompt" menu, which is slice D2.
 - The header chip says "needs input" whenever a question is waiting, whatever state the collector
   inferred. After `session_ended` pops the overlay, the state falls back to the collector's
   `working` or `idle` while the ask stays open, and the chip read "working" beside "ended".

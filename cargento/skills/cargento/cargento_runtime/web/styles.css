@@ -825,48 +825,34 @@ input::placeholder,textarea::placeholder{color:var(--ink2)}
 .next-session-activity{grid-column:1;grid-row:1;min-width:0}
 .next-session-activity-heading{margin:0 0 var(--sp-3);color:var(--ink-label);font-family:var(--mono);font-size:var(--fs-label);font-weight:600;letter-spacing:.07em}
 .next-session-panel .next-cockpit-held{gap:6px;padding:0}
-.next-session-panel .next-cockpit-held-fields{grid-template-columns:minmax(0,1fr);gap:8px}
+/* 22px between the Goal and Expected outcome groups, inside the owner's 20-24 (Q6). */
+.next-session-panel .next-cockpit-held-fields{grid-template-columns:minmax(0,1fr);gap:22px}
 .next-session-panel .next-cockpit-held-list{gap:2px}
-/* One clean row at rest, the whole text on focus (owner, DRC-4680). A line
-   box wrapped and showed a half-cut second row, and the goal box a half-cut
-   third. At rest a line is one unwrapped row with an ellipsis where it runs
-   on; the goal is exactly two whole rows, with no bottom padding for a third
-   to show through. Focus lifts both to the full text. CSS alone, so focus
-   carries it through a redraw and there is no held state
-   (docs/design-reader-state.md gains no row). The at-rest rules take
-   `:not(:focus)` so focus gives the box back its own overflow rather than
-   declaring a scroll container. `resize` is off because a dragged height is
-   an inline style the redraw puts back over the focus rule.
-   The value and its count are the whole text either way. */
-.next-session-panel .next-cockpit-held-field textarea{resize:none}
-.next-session-panel .next-cockpit-held-line textarea:not(:focus){height:calc(var(--fs-body)*1.55 + 16px);min-height:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.next-session-panel .next-cockpit-held-field>textarea:not(:focus){height:calc(var(--fs-body)*1.55*2 + 9px);min-height:0;padding-bottom:0;overflow:hidden}
-.next-session-panel .next-cockpit-held-line textarea:focus{white-space:pre-wrap;field-sizing:content}
-.next-session-panel .next-cockpit-held-field>textarea:focus{field-sizing:content}
-/* An untouched draft and the pending line are as tall as their text whether
-   focused or not. A box that grew on focus and shrank on the mousedown that
-   blurred it moved the button below it out from under the press, so the click
-   landed beside it (consent F4, verifier V3); a box held at its at-rest
-   height under focus hid the rest of the draft Keep adopts (verifier V1).
-   Both are words a press is about to act on, so neither is clipped. */
-.next-session-panel .next-cockpit-held-field[data-next-cockpit-drafted]>textarea{field-sizing:content;height:auto;min-height:0;padding-bottom:0}
+/* Roomy and resizable (owner Q4, 2026-10-01): the goal rests at three rows
+   and each line at two (the `rows` attributes), both wrap, and both resize
+   vertically. A dragged height is an inline style `nextCaptureInputState`
+   carries across a redraw, so no rule here may set a height that follows
+   focus: the one-clean-row pair this replaces put the box back over the
+   reader's drag on every blur, which is why it had turned resizing off. */
+/* An untouched draft and the pending line are as tall as their text. A box
+   that grew on focus and shrank on the mousedown that blurred it moved the
+   button below it out from under the press, so the click landed beside it
+   (consent F4, verifier V3); a box held short hid the rest of the draft Keep
+   adopts (verifier V1). Both are words a press is about to act on, so neither
+   is clipped. A drag still wins: an inline height outranks this rule. */
+.next-session-panel .next-cockpit-held-field[data-next-cockpit-drafted]>textarea{field-sizing:content;height:auto;min-height:0}
 .next-session-panel .next-cockpit-held-line.next-cockpit-direction-line>textarea{field-sizing:content;height:auto;white-space:pre-wrap;text-overflow:clip}
-/* Where `field-sizing` is missing the box cannot size to its text, so focus
-   gives it several rows and it scrolls inside them (verifier V-3). The two
-   boxes above take those rows at rest too, so focus still moves nothing; the
-   rest of a longer draft scrolls into view under focus. */
+/* Where `field-sizing` is missing the box cannot size to its text, so the two
+   boxes above take several rows and the rest scrolls inside them (verifier
+   V-3). */
 @supports not (field-sizing: content){
-  .next-session-panel .next-cockpit-held-line textarea:focus{height:calc(var(--fs-body)*1.55*4 + 16px)}
-  .next-session-panel .next-cockpit-held-field>textarea:focus{height:calc(var(--fs-body)*1.55*6 + 16px)}
   .next-session-panel .next-cockpit-held-field[data-next-cockpit-drafted]>textarea{height:calc(var(--fs-body)*1.55*6 + 16px)}
   .next-session-panel .next-cockpit-held-line.next-cockpit-direction-line>textarea{height:calc(var(--fs-body)*1.55*4 + 16px)}
 }
-/* Top-aligned, each item one control tall, so a field's count and controls
-   stay on the heading's first line and never float beside an open "Use a
-   prompt" menu as though they were its controls (verifier V-4). */
-.next-session-panel .next-cockpit-held-heading{align-items:flex-start}
 .next-session-panel .next-cockpit-held-heading>.next-cockpit-held-label{display:inline-flex;min-height:44px;align-items:center}
-.next-session-panel .next-cockpit-held-heading>.next-cockpit-held-count{display:inline-flex;min-height:44px;align-items:center}
+/* The outcome's heading holds its label alone now that Add sits under the list,
+   so it is one label tall rather than one control (28px back for the fold). */
+.next-session-panel .next-cockpit-held-lines>.next-cockpit-held-heading>.next-cockpit-held-label{min-height:0}
 .next-cockpit-held-stamp{display:flex;flex-wrap:wrap;gap:0 8px}
 .next-session-state{display:inline-block;margin:0;padding:2px var(--sp-2);border:1px solid var(--line);border-radius:var(--r-pill);color:var(--ink2);font-family:var(--mono);font-size:var(--fs-label)}
 /* Two rows: state, name and id; then the measured line with the controls on
@@ -1291,21 +1277,32 @@ input::placeholder,textarea::placeholder{color:var(--ink2)}
 .next-cockpit-held-fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;align-items:start}
 .next-cockpit-held-field{display:grid;grid-template-columns:minmax(0,1fr) auto auto;align-items:baseline;gap:4px 8px;padding-left:9px;border-left:1px solid var(--rule)}
 .next-cockpit-held-heading{grid-column:1/-1;display:flex;flex-wrap:wrap;align-items:center;gap:4px 12px}
+/* Under a field's box: its counter, then the control that acts on that box
+   alone (Clear under the goal, + Add a line under the list). */
+.next-cockpit-held-under{grid-column:1/-1;display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:4px 12px}
+/* One footer under both fields: the hint, then Undo changes and Save intent
+   (owner Q6). */
+.next-cockpit-held-footer{display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px}
+.next-cockpit-held-hint{flex:1 1 200px;margin:0;color:var(--ink2);font:var(--fs-body)/1.55 var(--sans)}
+.next-cockpit-held-footer>.next-cockpit-held-cue{flex:1 1 100%}
+.next-cockpit-held-remove{min-inline-size:44px}
 /* The field's controls sit at the end of its heading row. */
 .next-cockpit-held-tools{display:flex;align-items:center;gap:4px 8px;margin-left:auto}
-.next-cockpit-held-heading>.next-cockpit-held-count{margin-left:auto}
-.next-cockpit-held-heading>.next-cockpit-held-count+.next-cockpit-held-tools{margin-left:0}
 .next-cockpit-held-adopt,.next-cockpit-prompt-choices{min-width:0;max-width:100%;overflow-wrap:anywhere}
 .next-cockpit-held-adopt>summary,.next-cockpit-prompt-choices>summary{min-height:44px;align-content:center;cursor:pointer}
 .next-cockpit-held-label{grid-column:1/-1;color:var(--ink-label);font-family:var(--mono);font-size:var(--fs-label);font-weight:600;letter-spacing:.07em}
 .next-cockpit-held-field textarea{grid-column:1/-1;width:100%;min-height:56px;box-sizing:border-box;resize:vertical;padding:7px;border:1px solid var(--line);background:var(--panel);color:var(--ink-value);font:var(--fs-body)/1.55 var(--sans)}
 .next-cockpit-held-count{color:var(--ink-caption);font-family:var(--mono);font-size:var(--fs-label)}
-.next-cockpit-held-field button{border:0;background:none;color:var(--ink2);font:var(--fs-label) var(--sans);cursor:pointer}
+/* The field's other buttons (Looks right, the prompt menu's, a pending line's)
+   keep the bare look; the field controls are the primitive (owner Q5), which
+   this rule outranks at (0,1,1) unless it steps aside. */
+.next-cockpit-held-field button:not(.next-action){border:0;background:none;color:var(--ink2);font:var(--fs-label) var(--sans);cursor:pointer}
 .next-cockpit-held-field button[hidden]{display:none}
-/* `save` is inert rather than absent, so it needs a resting look that reads
-   as refused. `clear` keeps the rule above it: nothing to clear is nothing
+/* A bare button that is inert rather than absent (a pending line's save)
+   needs a resting look that reads as refused; the primitive brings its own
+   hatch. A hidden Clear keeps the rule above it: nothing to clear is nothing
    to explain. */
-.next-cockpit-held-field button[aria-disabled="true"]{color:var(--ink3);cursor:not-allowed}
+.next-cockpit-held-field button:not(.next-action)[aria-disabled="true"]{color:var(--ink3);cursor:not-allowed}
 .next-cockpit-held-absent{grid-column:1/-1;margin:0;color:var(--ink-absence);font-size:var(--fs-body);line-height:1.5}
 .next-cockpit-held-cue{grid-column:1/-1;color:var(--ink2);font-size:var(--fs-label)}
 /* The expected outcome's checklist: one row per line, each its own box,

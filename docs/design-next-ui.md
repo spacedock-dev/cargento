@@ -1318,6 +1318,13 @@ or one click away. The rule sanctions one exception, for a claim stated twice: t
 `two axes, read separately` aside said what the footer under the same cards already said, and a
 duplicate is not a tier.
 
+Amended 2026-10-01 (owner, Q11, DRC-4758): in the intent editor an empty field's absence value is
+the empty box and its placeholder, which are always visible. The sentence naming the absence ("No
+goal typed for this session.") stays in the DOM, visually hidden, as the inert save's description,
+so it is still not deleted. A sentence saying the store could not be read stays tier 1, because it
+says the words may exist where the box shows none
+([the intent editor's boxes, buttons and footer](design-reading-a-session.md#amended-2026-10-01-the-intent-editors-boxes-buttons-and-footer)).
+
 ### Tier 3 ships no `docs/` href and no `DEC-N` token
 
 The obvious build of tier 3 is a link from the disclosure body to the design record. It cannot

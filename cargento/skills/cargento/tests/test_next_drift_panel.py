@@ -483,27 +483,34 @@ class ThePanelKeepsAnalyzeOnTheFirstScreenTest(PanelPage):
                 before_action = aside[: aside.index(f'data-next-cockpit-action="{action}"')]
                 self.assertNotIn(introduction, visible_text(before_action))
 
-    def test_each_fields_count_and_controls_share_its_heading_row(self) -> None:
-        """Owner-reworded fold (DRC-4680 review): under the box the goal's count, clear and save,
-        and the outcome's add and save, each cost a second 44px row in the panel's column. In the
-        heading row they also come before the box in reading order, as they are on screen."""
+    def test_each_field_is_label_box_counter_and_one_footer_saves_both(self) -> None:
+        """Owner Q6, 2026-10-01, reversing the DRC-4680 heading-row placement: with each field's
+        count and controls beside its name, the reader could not tell which box a save belonged
+        to. Each field is now its label, its box and its counter, Clear sits under the goal box,
+        + Add a line under the list, and one footer under both holds Undo changes and Save
+        intent."""
         html = self.page(setup=THREE_LINES)
-        for kind, inside in (
-            ("goal", ("data-next-cockpit-held-count", "held-clear", "held-save")),
-            ("lines", ("held-line-add", "held-save")),
+        for kind, under in (
+            ("goal", ("data-next-cockpit-held-count", "held-clear")),
+            ("lines", ("held-line-add",)),
         ):
             with self.subTest(field=kind):
                 start = html.index(f'data-next-cockpit-held-field="{kind}"')
                 field = html[start:]
                 heading = re.search(
-                    r'<div class="next-cockpit-held-heading">((?:(?!<textarea|<ol)[\s\S])*?)</div>',
-                    field,
+                    r'<div class="next-cockpit-held-heading">([\s\S]*?)</div>', field
                 )
                 assert heading is not None
-                for part in inside:
-                    self.assertIn(part, heading.group(1))
                 box = field.index("<textarea")
-                self.assertLess(field.index(heading.group(1)), box)
+                for part in under:
+                    self.assertNotIn(part, heading.group(1))
+                    self.assertGreater(field.index(part), box)
+                self.assertNotIn("held-save", heading.group(1))
+        aside = aside_of(html)
+        footer = aside.index('class="next-cockpit-held-footer"')
+        self.assertGreater(footer, aside.index('data-next-cockpit-held-field="lines"'))
+        self.assertEqual(1, aside.count('data-next-cockpit-action="held-save"'))
+        self.assertGreater(aside.index('data-next-cockpit-action="held-save"'), footer)
 
     def test_the_columns_put_the_panel_in_a_460px_track_that_is_neither_scrolled_nor_sticky(
         self,
@@ -729,67 +736,31 @@ console.log(JSON.stringify({{found: Boolean(press), tag: active ? active.tagName
         self.assertIn("gap:var(--sp-1)", rule(".next-session-panel"))
         self.assertIn("padding:8px 16px 2px", rule(".next-session-drift-head"))
         self.assertIn("margin-left:auto", rule(".next-cockpit-held-tools"))
-        self.assertIn(
-            "margin-left:auto", rule(".next-cockpit-held-heading>.next-cockpit-held-count")
-        )
-        self.assertIn(
-            "margin-left:0",
-            rule(".next-cockpit-held-heading>.next-cockpit-held-count+.next-cockpit-held-tools"),
-        )
 
-    def test_a_box_at_rest_shows_whole_rows_and_grows_to_the_full_text_on_focus(self) -> None:
-        """Owner, 2026-09-24: "one clean row, expand on focus". A saved line longer than its box
-        showed a half-cut second row, and the goal box a half-cut third. At rest a line is one
-        unwrapped row with its overflow faded, and the goal exactly two whole rows; on focus
-        both grow to the full text. Pure CSS, so focus carries it through a redraw and no
-        reader-state row is owed."""
-        line_rest = rule(".next-session-panel .next-cockpit-held-line textarea:not(:focus)")
-        for part in (
-            "height:calc(var(--fs-body)*1.55 + 16px)",
-            "white-space:nowrap",
-            "overflow:hidden",
-        ):
-            with self.subTest(line_rest=part):
-                self.assertIn(part, line_rest)
-        self.assertRegex(line_rest, r"(?:text-overflow:ellipsis|mask-image:)")
-        goal_rest = rule(".next-session-panel .next-cockpit-held-field>textarea:not(:focus)")
-        for part in (
-            "height:calc(var(--fs-body)*1.55*2 + 9px)",
-            "padding-bottom:0",
-            "overflow:hidden",
-        ):
-            with self.subTest(goal_rest=part):
-                self.assertIn(part, goal_rest)
-        for selector in (
-            ".next-session-panel .next-cockpit-held-line textarea:focus",
-            ".next-session-panel .next-cockpit-held-field>textarea:focus",
-        ):
-            with self.subTest(focus=selector):
-                # Focus takes the at-rest height, wrap and clip away (they are `:not(:focus)`)
-                # and sizes the box to its text; it declares no overflow of its own, so it adds
-                # no scroll container.
-                lifted = rule(selector)
-                self.assertIn("field-sizing:content", lifted)
-                self.assertNotIn("overflow", lifted)
-                self.assertNotIn("height:calc", lifted)
-        self.assertIn(
-            "white-space:pre-wrap",
-            rule(".next-session-panel .next-cockpit-held-line textarea:focus"),
-        )
-        self.assertIn("resize:none", rule(".next-session-panel .next-cockpit-held-field textarea"))
-        # The selectors reach the markup: the goal box is a direct child of its field, each line
-        # box is inside its line, and the whole text stays the box's value.
+    def test_both_boxes_are_roomy_resizable_and_no_focus_rule_fights_a_drag(self) -> None:
+        """Owner Q4, 2026-10-01, superseding "one clean row, expand on focus" (2026-09-24): the
+        goal rests at three rows and each line at two, both wrap and resize vertically, and a
+        dragged height survives a redraw through `nextCaptureInputState`. The at-rest and focus
+        height pair is gone, because it put the box back over the reader's drag on every blur.
+        tests/test_next_intent_editor.py holds the redraw round-trip."""
+        self.assertIn("resize:vertical", rule(".next-cockpit-held-field textarea"))
+        css = re.sub(r"/\*[\s\S]*?\*/", "", STYLES.read_text(encoding="utf-8"))
+        self.assertNotIn("held-line textarea:not(:focus)", css)
+        self.assertNotIn("held-field>textarea:not(:focus)", css)
+        self.assertNotIn("held-field>textarea:focus", css)
+        self.assertNotIn("held-line textarea:focus", css)
         html = self.page(setup=THREE_LINES)
-        self.assertRegex(
-            html, r'data-next-cockpit-held-field="goal">(?:(?!</div>)[\s\S])*</div><textarea '
-        )
+        self.assertRegex(html, r'<textarea rows="3" [^>]*data-next-cockpit-held-kind="goal"')
+        self.assertEqual(3, len(re.findall(r'<textarea rows="2" [^>]*held-line-index', html)))
+        # The whole text stays the box's value and its count.
         self.assertIn(">The toggle writes the choice to the settings store</textarea>", html)
         self.assertIn('data-next-cockpit-held-line-count="0">50/240<', html)
 
-    def test_a_box_without_field_sizing_still_opens_several_rows_on_focus(self) -> None:
-        """Verifier V-3: the focus expansion rests on `field-sizing:content`, which not every
-        engine ships. Where it is missing, a focused box takes a fixed height of several rows
-        and scrolls inside it; the at-rest rules are the same either way."""
+    def test_a_box_without_field_sizing_still_shows_a_draft_whole(self) -> None:
+        """Verifier V-3: the drafted goal and the pending line size to their text with
+        `field-sizing:content`, which not every engine ships. Where it is missing they take a
+        fixed height of several rows and scroll inside it. No focus rule stands there now
+        (owner Q4)."""
         css = re.sub(r"/\*[\s\S]*?\*/", "", STYLES.read_text(encoding="utf-8"))
         block = re.search(
             r"@supports not \(field-sizing: ?content\)\{((?:[^{}]*\{[^{}]*\})*)\s*\}", css
@@ -799,30 +770,36 @@ console.log(JSON.stringify({{found: Boolean(press), tag: active ? active.tagName
             sel.strip(): body for sel, body in re.findall(r"([^{}]+)\{([^{}]*)\}", block.group(1))
         }
         self.assertIn(
-            "height:calc(var(--fs-body)*1.55*4 + 16px)",
-            rules[".next-session-panel .next-cockpit-held-line textarea:focus"],
+            "height:calc(var(--fs-body)*1.55*6 + 16px)",
+            rules[
+                ".next-session-panel .next-cockpit-held-field[data-next-cockpit-drafted]>textarea"
+            ],
         )
         self.assertIn(
-            "height:calc(var(--fs-body)*1.55*6 + 16px)",
-            rules[".next-session-panel .next-cockpit-held-field>textarea:focus"],
+            "height:calc(var(--fs-body)*1.55*4 + 16px)",
+            rules[
+                ".next-session-panel .next-cockpit-held-line.next-cockpit-direction-line>textarea"
+            ],
         )
-        for body in rules.values():
+        for selector, body in rules.items():
+            self.assertNotIn(":focus", selector)
             self.assertNotIn("overflow", body)
 
-    def test_the_goals_heading_row_keeps_its_controls_on_the_top_line(self) -> None:
-        """Verifier V-4: centred, the count, clear and save floated beside an open "Use a
-        prompt" menu and read as its controls. Every item is one control tall and the row is
-        top-aligned, so they stay on the heading's first line whether the menu is open or not."""
-        self.assertIn(
-            "align-items:flex-start", rule(".next-session-panel .next-cockpit-held-heading")
+    def test_the_goals_heading_row_holds_its_name_and_where_its_words_came_from(self) -> None:
+        """Verifier V-4 asked that the count, clear and save never float beside an open "Use a
+        prompt" menu as though they were its controls. They now sit under the box (owner Q6), so
+        the heading holds the label one control tall and the prompt marks alone."""
+        html = self.page(setup=THREE_LINES)
+        start = html.index('data-next-cockpit-held-field="goal"')
+        heading = re.search(
+            r'<div class="next-cockpit-held-heading">([\s\S]*?)</textarea>', html[start:]
         )
-        for selector in (
-            ".next-session-panel .next-cockpit-held-heading>.next-cockpit-held-label",
-            ".next-session-panel .next-cockpit-held-heading>.next-cockpit-held-count",
-        ):
-            with self.subTest(item=selector):
-                self.assertIn("min-height:44px", rule(selector))
-                self.assertIn("align-items:center", rule(selector))
+        assert heading is not None
+        for control in ("held-count", "held-clear", "held-save"):
+            self.assertNotIn(control, heading.group(1)[: heading.group(1).index("<textarea")])
+        label = rule(".next-session-panel .next-cockpit-held-heading>.next-cockpit-held-label")
+        self.assertIn("min-height:44px", label)
+        self.assertIn("align-items:center", label)
 
     def test_on_a_narrow_screen_a_lines_box_takes_the_full_row(self) -> None:
         """At 320 the box shared its row with the count, source and remove and showed about 12
