@@ -1758,8 +1758,8 @@ through a reviewed, fixed-path continuation grant: its marking phase binds the o
 ledger prefix and a new case digest, and its sealed phase binds the new marks and cases-and-rubric
 digests before scoring. Each later grant may follow a continuation that also failed, bound to that
 result the same way, and only while every earlier grant is sealed with a `next` key equal to the
-following grant's `previous`. A grant without its predecessor, or numbered past the chain's fixed
-bound of nine, is refused. Every earlier packet's charges must carry its own key, in ledger order,
+following grant's `previous`. A grant without its predecessor, numbered past the chain's fixed
+bound of nine, or under a name the pattern never writes, is refused. Every earlier packet's charges must carry its own key, in ledger order,
 and the whole chain is checked under the charge lock against the same 28-call cap. The failed result cannot be overwritten, and a grant is not permission
 to send real session evidence or increase spend; both need separate owner authorization. The
 ledger holds case ids, times, statuses and digests only. The

@@ -101,7 +101,7 @@ CLAUDE_SUMMARY_PATH = os.path.join(
 # names rather than whatever a directory listing holds.
 MAX_GRANTS = 9
 _ABSTENTION_DIR = os.path.dirname(CLAUDE_SUMMARY_PATH)
-_BEYOND = re.compile(r"^claude-continuation-([0-9]+)\.json$")
+_GRANT_SHAPED = re.compile(r"claude-continuation.*\.json", re.DOTALL)
 
 
 def _numbered(stem: str, k: int) -> str:
@@ -213,9 +213,13 @@ def continuation() -> dict[str, Any] | None:
     one numbered past `MAX_GRANTS`. The returned grant carries `segments`: each
     earlier packet's last call count and its key, in ledger order.
     """
-    beyond = _beyond_bound()
-    if beyond:
-        raise LedgerError(f"continuation grant {beyond} is past the bound of {MAX_GRANTS}")
+    stray = _stray_grant()
+    if stray:
+        msg = (
+            f"{stray} is not a grant name the chain reads: claude-continuation.json, "
+            f"then claude-continuation-2.json up to -{MAX_GRANTS}.json"
+        )
+        raise LedgerError(msg)
     active: dict[str, Any] | None = None
     for k, path in enumerate(CONTINUATION_PATHS, start=1):
         grant = _grant(path, result_path(k - 1))
@@ -252,14 +256,20 @@ def generation() -> int:
     return max((k for k in range(1, MAX_GRANTS + 1) if grant_exists(k)), default=0)
 
 
-def _beyond_bound() -> int:
-    """A grant number past `MAX_GRANTS` beside the grants, or 0."""
+def _stray_grant() -> str:
+    """A grant-shaped file the naming pattern never writes, or empty.
+
+    Ignored, a misnamed or out-of-bound grant (`-0`, `-02`, `-10`) would leave
+    an earlier grant active and select that generation's packet unnoticed.
+    """
+    folder = os.path.dirname(CONTINUATION_PATHS[0])
     try:
-        names = os.listdir(os.path.dirname(CONTINUATION_PATHS[-1]))
+        names = os.listdir(folder)
     except OSError:
-        return 0
-    numbers = [int(m.group(1)) for m in map(_BEYOND.fullmatch, names) if m]
-    return max((n for n in numbers if n > MAX_GRANTS), default=0)
+        return ""
+    canonical = {os.path.basename(path) for path in CONTINUATION_PATHS}
+    strays = sorted(n for n in names if _GRANT_SHAPED.fullmatch(n) and n not in canonical)
+    return strays[0] if strays else ""
 
 
 def _segment(previous: Mapping[str, Any]) -> list[Any]:

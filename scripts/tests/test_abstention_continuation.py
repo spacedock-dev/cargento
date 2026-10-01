@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 import stat
 import sys
 import tempfile
@@ -635,6 +636,26 @@ class AThirdFailedContinuationChainsAFourthPacket(_TwoFailedResults):
         beyond.write_text(self.grant_3_path.read_text())
         with self.assertRaises(abstention_ledger.LedgerError):
             abstention_ledger.continuation()
+
+    def test_a_grant_under_a_name_the_pattern_never_writes_is_refused(self) -> None:
+        # Silently ignored, a misnamed third grant would leave the second active and
+        # select an earlier generation's packet without anyone noticing.
+        self.grant_3()
+        body = self.grant_3_path.read_text()
+        self.grant_3_path.unlink()
+        for name in ("claude-continuation-0.json", "claude-continuation-1.json",
+                     "claude-continuation-02.json", "claude-continuation-3a.json",
+                     "claude-continuation-.json", "claude-continuation3.json"):  # fmt: skip
+            with self.subTest(name=name):
+                stray = self.root / name
+                stray.write_text(body)
+                with self.assertRaisesRegex(abstention_ledger.LedgerError, re.escape(name)):
+                    abstention_ledger.continuation()
+                stray.unlink()
+        # With every stray gone, the second grant is the active one again.
+        grant = abstention_ledger.continuation()
+        assert grant is not None
+        self.assertEqual([13, 18], [end for end, _pair in grant["segments"]])
 
     def test_every_earlier_result_reads_not_stale(self) -> None:
         self.grant_3("marking")

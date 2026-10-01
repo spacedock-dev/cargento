@@ -723,11 +723,28 @@ class Q2OneLedgerThatFailsClosedTest(_Ledgered):
     def test_the_cap_is_the_owners_ceiling_and_cannot_be_raised(self) -> None:
         # 28 scorer calls across every packet: the owner's 2026-10-01 ruling (DRC-4666)
         # added five past the DRC-4758 ceiling of 23 for one more qualification run.
+        # Everything past the argument refusal raises, so a cap that let 29 through fails
+        # here at once instead of verifying the real CLI and scoring against this machine.
+        def unreachable(*_args: object, **_kwargs: object) -> None:
+            msg = "the --max-calls refusal let a raised cap reach the scoring path"
+            raise AssertionError(msg)
+
+        printed: list[str] = []
+        with (
+            mock.patch.object(abstention_ledger, "home_moved", return_value=False),
+            mock.patch.object(abstention_ledger, "Ledger", side_effect=unreachable),
+            mock.patch.object(score_abstention, "_runtime", side_effect=unreachable),
+            mock.patch.object(score_abstention, "verify_claude_binary", side_effect=unreachable),
+            mock.patch.object(score_abstention, "score", side_effect=unreachable),
+            mock.patch.object(score_abstention, "probe_argv", side_effect=unreachable),
+            mock.patch.object(score_abstention, "_load_corpus", side_effect=unreachable),
+            mock.patch.object(score_abstention, "summary_path_for", side_effect=unreachable),
+            mock.patch("builtins.print", side_effect=lambda *a, **_k: printed.append(str(a[0]))),
+        ):
+            code = score_abstention.main(["--score", "--producer", "claude", "--max-calls", "29"])
+        self.assertEqual(2, code)
+        self.assertEqual(["--max-calls must be between 1 and 28, the authorized spend."], printed)
         self.assertEqual(28, abstention_ledger.MAX_CALLS)
-        with mock.patch("builtins.print"):
-            self.assertEqual(
-                2, score_abstention.main(["--score", "--producer", "claude", "--max-calls", "29"])
-            )
 
     def test_the_cap_counts_every_earlier_run(self) -> None:
         self.precharge(18)

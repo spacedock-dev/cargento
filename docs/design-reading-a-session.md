@@ -599,8 +599,9 @@ The owner ruled two things on 2026-10-01, while looking for DRC-4666's supported
    `recorded_on_transcript_stop`, and never reads the packet's own `lifecycle_from` for it.
 
 The same day the owner directed the qualification to run to completion within the approved
-ceilings of 23 scorer calls and 26 Claude CLI invocations. Two changes follow from it. A second
-continuation grant may follow the first, which also failed, and the ledger cap is 23. And a
+ceilings of 23 scorer calls and 26 Claude CLI invocations. Two changes followed from it. A second
+continuation grant could follow the first, which also failed, and the ledger cap became 23; the
+ruling below has since raised it to 28. And a
 Claude Code case's user messages and `transcript_bytes` are frozen from the transcript as it stood
 at `captured_at`, because the board reads only the last 400 KB of today's file: the correction the
 supported-departure case rests on sat 750 KB from the end of a session that ran on.
@@ -608,8 +609,9 @@ supported-departure case rests on sat 750 KB from the end of a session that ran 
 The second continuation then failed too, and spent the last of the 23 calls. The owner kept the
 Claude Code gate shut and authorized one more five-case scored run past that ceiling, as a third
 continuation: the ledger cap is 28 scorer calls, beside 31 Claude CLI invocations overall, those
-five calls and the browser walk among them. The grant chain now reads any number of grants up to a
-fixed bound of nine, each binding the failed result before it, so the third needs no new code.
+five calls and the browser walk among them. The grant chain now reads grants by one naming
+pattern, at most nine of them, each binding the failed result before it, so the third needs no new
+code. A grant file under any other name, or numbered past nine, is refused rather than ignored.
 Raising the cap authorizes the run, not its packet: the third grant's `marking` and `sealed`
 phases are each committed in their own reviewed change, as the first two were.
 

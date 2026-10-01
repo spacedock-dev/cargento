@@ -300,7 +300,8 @@ Grant k, for k of 2 or more, at `docs/abstention/claude-continuation-<k>.json` b
 the same way: the second binds `claude-results-continuation.json`, the third
 `claude-results-continuation-2.json`. It is honoured only while every earlier grant is sealed and
 each grant's `next` key is the following grant's `previous`. A grant file whose predecessor is
-missing is refused, and so is one numbered past nine, the fixed bound on the chain. Each earlier
+missing is refused, and so is one numbered past nine, the fixed bound on the chain, or any
+`claude-continuation*.json` the pattern never writes (`-0`, `-1`, `-02`). Each earlier
 packet's charges must then carry that packet's own key, in ledger order, and a call is charged only
 under the last grant's sealed key.
 A grant does not authorize sending real session evidence to a provider or
