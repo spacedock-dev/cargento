@@ -853,3 +853,41 @@ __dashboard.sessions[0].subagents = [{name:"worker-a", state:"ended", model:"m",
 
 if __name__ == "__main__":
     unittest.main()
+
+
+REFUSED_READING = (
+    "__dashboard.sessions[0].annotation_reading_count = 1;\n"
+    "__dashboard.sessions[0].annotation_assessment = null;\n"
+    "__dashboard.sessions[0].annotation_reading_refused = true;\n"
+)
+
+
+@unittest.skipUnless(shutil.which("node"), "node not available")
+class AStoredReadingIsNeverNotCheckedTest(PanelPage):
+    """Owner Q2, 2026-10-01: "Not checked yet" is never drawn once a reading is stored, and a
+    reading this build refused to read is still stored (INT-4)."""
+
+    def test_a_refused_reading_draws_no_not_checked_yet_and_no_live_hint(self) -> None:
+        text = visible_text(drift_of(self.page(setup=REFUSED_READING)))
+        self.assertIn("this build could not read it", text)
+        self.assertNotIn("Not checked yet", text)
+        self.assertNotIn("Turn on for a quick", text)
+
+    def test_a_spent_request_alone_draws_no_not_checked_yet(self) -> None:
+        text = visible_text(
+            drift_of(self.page(setup="__dashboard.sessions[0].annotation_reading_count = 1;\n"))
+        )
+        self.assertNotIn("Not checked yet", text)
+
+    def test_the_unchecked_state_still_draws_before_any_request(self) -> None:
+        text = visible_text(drift_of(self.page()))
+        self.assertIn("Not checked yet", text)
+        self.assertIn("Turn on for a quick", text)
+
+    def test_a_refused_reading_with_no_count_published_is_still_stored(self) -> None:
+        text = visible_text(
+            drift_of(
+                self.page(setup=REFUSED_READING.replace("reading_count = 1", "reading_count = 0"))
+            )
+        )
+        self.assertNotIn("Not checked yet", text)

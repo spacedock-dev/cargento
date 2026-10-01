@@ -5460,11 +5460,19 @@ function nextDriftScale(level){
       `${esc(NEXT_DRIFT_LEVEL_NAMES[name])}</span>`).join("") + "</p>";
 }
 
+/* A reading is stored once one was spent, including one this build refused
+   to read: the validator nulls a refused assessment, so the assessment alone
+   would call a checked session unchecked (DRC-4758 fix round, INT-4). */
+function nextDriftReadingStored(annotation){
+  return Boolean(annotation && (annotation.assessment || annotation.reading_refused === true ||
+    (nextNumber(annotation.reading_count) || 0) > 0));
+}
+
 /* "Not checked yet" (owner Q2, 2026-10-01): a saved intent, no level from
    any source, and no reading stored. It names a process state, never "no
    drift", and the pill stays level-only. */
 function nextDriftUnchecked(session, annotation){
-  if(!(nextData && nextData.annotate === true) || !annotation || annotation.assessment) return false;
+  if(!(nextData && nextData.annotate === true) || !annotation || nextDriftReadingStored(annotation)) return false;
   return Boolean(String(annotation.goal || "").trim() || nextAnnotationLines(annotation).length);
 }
 
@@ -5500,7 +5508,7 @@ function nextDriftLevel(session, annotation = null, group = null, estimate = und
        reading is stored), then the level block, then the control slot the
        drift block appends. */
     const hint = NEXT_LIVE_HARNESSES.has(harness) && nextData && nextData.annotate === true &&
-      !live && !(annotation && annotation.assessment)
+      !live && !nextDriftReadingStored(annotation)
       ? `<p class="next-session-drift-hint">${esc(NEXT_DRIFT_LIVE_HINT)}</p>` : "";
     const running = Boolean(nextReadingJob(session));
     if(drafted || !found || !found.label){
