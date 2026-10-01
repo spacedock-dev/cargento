@@ -1411,6 +1411,10 @@ tool output was named does not cover it. What is built:
   closed, costs the reader tool output, and is left as it is.
 - A pass that a later command may have changed files after, in the same call or a later one, does
   not let a reading say the output is consistent, and its reason says so.
+- A passing check never makes an outcome line consistent when the line is about what the agent
+  tells the reader (reports, explains, says, lets you know). The record cannot show that, so the
+  resolver withdraws the verdict
+  ([the amendment](docs/design-reading-a-session.md#amended-2026-10-01-a-line-about-what-the-agent-tells-you-cannot-be-shown)).
 - Where the destination cannot be named, the reading still runs on the reader's words, and its
   cutoff sentence says the checks were not sent and why.
 
