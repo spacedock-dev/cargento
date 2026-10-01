@@ -344,7 +344,8 @@ class ACommandIsNeverShownWholeWhenItWasCutTest(_SlashSession):
         self.assertEqual(typed[: project_context.MAX_SEMANTIC_LINE], fact["summary"])
         ledger = reading.build_ledger(self.facts(), "claude", SHORT)
         (entry,) = [row for row in ledger if row["id"] == fact["fact_id"]]
-        self.assertEqual(typed, entry["summary"])
+        self.assertEqual(typed[: project_context.MAX_SEMANTIC_LINE], entry["summary"])
+        self.assertEqual(typed, entry.get("words"))
 
 
 @unittest.skipUnless(shutil.which("node"), "node not available")

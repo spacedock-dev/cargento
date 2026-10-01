@@ -679,7 +679,13 @@ LEDGER_SUMMARY_CAP_CHARS = 180
 # docs/design-reading-a-session.md#amended-2026-10-01-a-reading-sees-the-readers-whole-message
 LEDGER_WORDS_CAP_CHARS = 1_000
 # The fact field holding those words, which `project_context` writes on a user message only.
-WORDS_FIELD = "words"
+WORDS_FIELD = "reader_words"
+# The prompt bytes the words may take, as a divisor of the budget: half. Entries are chosen by
+# their summaries first, exactly as before the words existed, and the words replace summaries
+# only in what is left and inside this share. Review measured the alternative, words chosen
+# first: fourteen long messages pushed a failed check out with budget unused, and five CJK ones
+# every check, because the cap counts characters and the budget bytes.
+WORDS_SHARE_DIVISOR = 2
 # How much of the cutoff sentence the store keeps. It was the annotation text
 # cap, 240, and the counted sentence alone runs to about 180, so the clauses
 # saying the checks were not sent, or had no room, were cut off in the store
@@ -713,6 +719,9 @@ class LedgerEntry(TypedDict):
     # When a check's result arrived, where one did (DRC-4702).
     result_at: NotRequired[float]
     tail: NotRequired[str]
+    # A person's message whole, which the prompt sends in place of the summary
+    # only inside `WORDS_SHARE_DIVISOR`'s share. Absent on every other row.
+    words: NotRequired[str]
     # Whether this entry demonstrates work on its session's harness, stamped by
     # `build_ledger` from `WORK_EVIDENCE_BY_HARNESS`.
     work: NotRequired[bool]
@@ -1221,9 +1230,9 @@ def build_ledger(
     Given, it maps a check's record id to its redacted output tail. Item 7:
     [DEC-23](docs/design-reading-a-session.md#dec-23-a-claude-code-sessions-record-of-its-checks-may-show-the-work)
 
-    A second difference: a person's message reads its `WORDS_FIELD` here,
-    where the page, which is never sent them, shows its first sentence. Both
-    name the same fact id, so a citation still resolves against the page.
+    A second difference: a person's message carries its `WORDS_FIELD` as
+    `words` beside the summary the page shows, and the page is never sent
+    them. Both name the same fact id, so a citation still resolves.
     """
     if not harness.strip() or not sid.strip():
         return ()
@@ -1258,19 +1267,11 @@ def build_ledger(
         )
         stamp = _number(fact.get("at"))
         author = author_of(fact)
-        words = fact.get(WORDS_FIELD)
-        # A packet frozen before the words existed, or a fact the history store republished,
-        # has none and reads its summary as before.
-        text, cap = (
-            (words, LEDGER_WORDS_CAP_CHARS)
-            if fact.get("type") == "user_message" and author == AUTHOR_PERSON and words
-            else (fact.get("summary"), cap_chars)
-        )
         row: LedgerEntry = {
             "id": fact_id,
             "type": _menu_field(records.safe_text(fact.get("type"), 64)).strip(),
             "by": records.safe_text(fact.get("by"), 64),
-            "summary": _menu_field(records.safe_text(text, cap)).strip(),
+            "summary": _menu_field(records.safe_text(fact.get("summary"), cap_chars)).strip(),
             # 0.0 means NOT OBSERVED here, exactly as it does on a row, and
             # the cutoff sentence counts these separately rather than
             # reading them as the epoch.
@@ -1279,6 +1280,7 @@ def build_ledger(
             "source": _menu_field(records.safe_text(source, 160)),
             "work": fact.get("type") in WORK_EVIDENCE_BY_HARNESS.get(harness, frozenset()),
         }
+        _add_person_words(row, fact)
         if is_report and tool_output is not None:
             _add_report_fields(row, fact, cap_chars, tool_output, changed_after, read_incomplete)
         elif fact.get("subject") == CHECK_SUBJECT:
@@ -1286,6 +1288,20 @@ def build_ledger(
         rows.append(row)
     rows.sort(key=lambda row: row["at"])
     return tuple(rows)
+
+
+def _add_person_words(row: LedgerEntry, fact: Mapping[str, Any]) -> None:
+    """A person's message whole, beside its summary, on that message's row only.
+
+    Beside the summary, never in its place: `build_prompt` falls back to the
+    summary when the words do not fit. A packet frozen before them, or a fact
+    the history store republished, has none.
+    """
+    if fact.get("type") != "user_message" or row["author"] != AUTHOR_PERSON:
+        return
+    words = _menu_field(records.safe_text(fact.get(WORDS_FIELD), LEDGER_WORDS_CAP_CHARS)).strip()
+    if words:
+        row["words"] = words
 
 
 def _add_report_fields(
@@ -1633,11 +1649,12 @@ def build_prompt(
             lines=line_texts,
         )
 
-    def row_text(index: int, row: LedgerEntry) -> str:
+    def row_text(index: int, row: LedgerEntry, *, whole: bool = False) -> str:
         tail = row.get("tail", "")
+        text = row.get("words", row["summary"]) if whole else row["summary"]
         return records.redact_secrets(
             f"[{index}] {row['type']}{MENU_SEPARATOR}{row['source']}"
-            f"{MENU_SEPARATOR}{row['summary']}"
+            f"{MENU_SEPARATOR}{text}"
             + (f"{MENU_SEPARATOR}output tail, untrusted: {tail}" if tail else "")
             + "\n"
         )
@@ -1660,10 +1677,24 @@ def build_prompt(
             break
         used += sizes[i]
         chosen.append(i)
+    # Then the words, newest message first, each in place of its summary only where the
+    # whole row fits the words' share and the room left; one that does not keeps its summary.
+    whole: set[int] = set()
+    share = budget // WORDS_SHARE_DIVISOR
+    for i in sorted(
+        (i for i in chosen if citable[i].get("words")), key=lambda i: -citable[i]["at"]
+    ):
+        size = len(row_text(10**width - 1, citable[i], whole=True).encode("utf-8", "replace"))
+        if share >= size and budget - used >= size - sizes[i]:
+            share -= size
+            used += size - sizes[i]
+            whole.add(id(citable[i]))
     selected = tuple(citable[i] for i in sorted(chosen))
     if posed and not asks_output(" ".join(line_texts), selected):
         header, posed = without, False
-    body = "".join(row_text(index, row) for index, row in enumerate(selected, start=1))
+    body = "".join(
+        row_text(index, row, whole=id(row) in whole) for index, row in enumerate(selected, start=1)
+    )
     taken = {id(row) for row in selected}
     return header + body, Selection(
         selected,
