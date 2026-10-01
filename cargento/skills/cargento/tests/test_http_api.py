@@ -41,11 +41,15 @@ from cargento_runtime import reading_jobs as runtime_reading_jobs
 from cargento_runtime import reading_route as runtime_reading_route
 from cargento_runtime import sessions as runtime_sessions
 from cargento_runtime import supervise as runtime_supervise
+from cargento_runtime.config import CARGENTO_HOME_ENV
 
+from . import fixtures
 from .support import (
     PAGE_BYTES,
+    SERVER_STARTED,
     STORE_KEYS,
     RuntimeTestCase,
+    build_app,
     collect,
     collect_json,
     make_runtime,
@@ -5171,3 +5175,108 @@ class LaneRouteTest(unittest.TestCase):
 
         self.assertEqual(413, status)
         self.assertEqual(0.0, state.lane_reported_at)
+
+
+class ASaveDuringACollectionTest(RuntimeTestCase):
+    """DRC-4760 through the real route: the saving page's refresh carries what it saved.
+
+    A collection reads the annotation store near its start and publishes when its
+    harness scan ends. Here one starts (a poll, say) between the handler's window
+    read and its write, and is held inside its scan until the save has answered and
+    the page's refresh is queued behind it. Before the snapshot carried a
+    generation, the held collection published the pre-save words over the save's
+    clear and the refresh was served them.
+    """
+
+    @staticmethod
+    def _request(port: int, method: str, body: dict[str, Any] | None = None) -> Any:
+        conn = http.client.HTTPConnection("127.0.0.1", port, timeout=10)
+        try:
+            path = "/api/annotate" if body is not None else "/api/data"
+            payload = json.dumps(body).encode() if body is not None else None
+            headers = {"Content-Type": "text/plain"} if payload else {}
+            conn.request(method, path, body=payload, headers=headers)
+            return json.loads(conn.getresponse().read())
+        finally:
+            conn.close()
+
+    def test_a_reader_whose_save_lands_mid_collection_gets_the_saved_words_on_refresh(
+        self,
+    ) -> None:
+        pinned = SERVER_STARTED + 300.0
+        answers: dict[str, Any] = {}
+        inside, release = threading.Event(), threading.Event()
+        with tempfile.TemporaryDirectory() as tmp:
+            seeded = fixtures.build_claude(
+                Path(tmp), pinned - 120.0, "5eeded00-1111-2222-3333-444444444444", "seeded"
+            )
+            home = Path(tmp) / "home"
+            home.mkdir()
+            with (
+                store_patch(**seeded),
+                mock.patch.dict(os.environ, {CARGENTO_HOME_ENV: str(home)}),
+            ):
+                application = build_app()
+                # Pinned, so a kept body never ages past the floor on its own.
+                application.clock = lambda: pinned
+                httpd = make_server(application=application)
+                thread = serve_until_closed(httpd)
+                port = httpd.server_port
+                try:
+                    row = self._request(port, "GET")["sessions"][0]
+                    who = {"harness": row["harness"], "sid": row["sid"]}
+                    first = self._request(port, "POST", {**who, "goal": "First words"})
+                    self._request(port, "GET")
+                    held = {"armed": False}
+                    scan = application._collect_harnesses
+                    write = annotation_store.annotate
+
+                    def held_scan(*args: Any) -> Any:
+                        if held["armed"]:
+                            held["armed"] = False
+                            inside.set()
+                            release.wait(10)
+                        return scan(*args)
+
+                    def poll_then_write(*args: Any, **kwargs: Any) -> Any:
+                        # The published body has aged past the floor, so the
+                        # poll collects rather than reusing it.
+                        application.snapshot.clear()
+                        held["armed"] = True
+                        poll = threading.Thread(
+                            target=lambda: answers.__setitem__("poll", self._request(port, "GET"))
+                        )
+                        poll.start()
+                        answers["poll_thread"] = poll
+                        self.assertTrue(inside.wait(10), "the poll never reached its scan")
+                        return write(*args, **kwargs)
+
+                    with (
+                        mock.patch.object(application, "_collect_harnesses", side_effect=held_scan),
+                        mock.patch.object(
+                            annotation_store, "annotate", side_effect=poll_then_write
+                        ),
+                    ):
+                        saved = self._request(
+                            port,
+                            "POST",
+                            {**who, "goal": "Second words", "expected_revision": first["revision"]},
+                        )
+                        refresh = threading.Thread(
+                            target=lambda: answers.__setitem__(
+                                "refresh", self._request(port, "GET")
+                            )
+                        )
+                        refresh.start()
+                        release.set()
+                        answers["poll_thread"].join(10)
+                        refresh.join(10)
+                finally:
+                    release.set()
+                    httpd.shutdown()
+                    thread.join(timeout=5)
+
+        self.assertEqual("stored", saved["outcome"])
+        after = answers["refresh"]["sessions"][0]
+        self.assertEqual("Second words", after["annotation_goal"])
+        self.assertEqual(saved["revision"], after["annotation_revision"])

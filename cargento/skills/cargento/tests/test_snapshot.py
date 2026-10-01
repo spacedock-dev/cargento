@@ -3,11 +3,16 @@
 from __future__ import annotations
 
 import json
+import os
 import tempfile
 import unittest
 from pathlib import Path
+from typing import Any
+from unittest import mock
 
+from cargento_runtime import annotations as annotation_store
 from cargento_runtime import snapshot as runtime_snapshot
+from cargento_runtime.config import CARGENTO_HOME_ENV
 
 from . import fixtures, support
 
@@ -77,6 +82,16 @@ class SnapshotTest(unittest.TestCase):
         snap.clear()
         after = snap.publish((24.0, False), b"{}")
         self.assertGreater(after[1], before[1])
+
+    def test_a_body_collected_across_a_clear_is_answered_but_not_kept(self) -> None:
+        snap = self._snap()
+        before = snap.generation()
+        snap.clear()
+        late = snap.publish((24.0, False), b'{"old":1}', now=1.0, generation=before)
+        self.assertIsNone(snap.current((24.0, False)))
+        kept = snap.publish((24.0, False), b'{"new":1}', now=1.0, generation=snap.generation())
+        self.assertGreater(kept[1], late[1])
+        self.assertEqual(snap.current((24.0, False)), (kept, b'{"new":1}'))
 
     def test_format_revision_is_stable_and_restart_qualified(self) -> None:
         self.assertEqual(runtime_snapshot.format_revision((1700000000.0, 7)), "1700000000.7")
@@ -159,6 +174,58 @@ class ApplicationSnapshotTest(support.RuntimeTestCase):
         first.pop("generated", None)
         second.pop("generated", None)
         self.assertEqual(first, second)
+
+    def test_a_reader_who_saves_mid_collection_gets_the_saved_words_back_at_once(self) -> None:
+        """DRC-4760. The save's own refresh must not be answered with words it replaced.
+
+        A collection reads the annotation store near its start and publishes
+        at its end, seconds later on a real board. `/api/annotate` drops the
+        snapshot after its write, but a collection already past the store
+        read published the pre-save words over that drop with a fresh stamp,
+        so the page's refresh straight after the confirmed save was served
+        them for the whole freshness floor and the reader waited for the next
+        poll (6.6 s measured on the DRC-4719 walk).
+        """
+        pinned = support.SERVER_STARTED + 300.0
+        with tempfile.TemporaryDirectory() as tmp:
+            seeded = fixtures.build_claude(
+                Path(tmp), pinned - 120.0, "5eeded00-1111-2222-3333-444444444444", "seeded session"
+            )
+            home = Path(tmp) / "home"
+            home.mkdir()
+            with (
+                support.store_patch(**seeded),
+                mock.patch.dict(os.environ, {CARGENTO_HOME_ENV: str(home)}),
+            ):
+                app = support.build_app()
+                app.clock = lambda: pinned
+                row = json.loads(app.collect_json(show_all=False)[1])["sessions"][0]
+                harness, sid = row["harness"], row["sid"]
+
+                def save(goal: str) -> None:
+                    # What `_annotate` does: write, then drop the snapshot.
+                    annotation_store.annotate(
+                        app.config, app.state, harness, sid, goal=goal, now=pinned
+                    )
+                    app.snapshot.clear()
+
+                save("First words")
+                # The harness scan is the window the save lands in: after the
+                # store read, before the publish.
+                real = app._collect_harnesses
+
+                def collecting_while_the_reader_saves(*args: Any) -> Any:
+                    save("Second words")
+                    return real(*args)
+
+                with mock.patch.object(
+                    app, "_collect_harnesses", side_effect=collecting_while_the_reader_saves
+                ):
+                    app.collect_json(show_all=False)
+                after = json.loads(app.collect_json(show_all=False)[1])["sessions"][0]
+
+        self.assertEqual(after["annotation_goal"], "Second words")
+        self.assertEqual(after["annotation_revision"], 2)
 
     def test_a_stale_snapshot_recollects_and_mints_a_new_revision(self) -> None:
         app = support.build_app()

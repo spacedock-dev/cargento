@@ -591,6 +591,46 @@ class AStaleResultSaysWhyTest(_ResultPage):
         self.assertIn("New work since this analysis.", stale)
         self.assertIn("Analyze again", stale)
 
+    def test_a_reader_who_saves_new_words_sees_the_analysis_yield_as_the_save_confirms(
+        self,
+    ) -> None:
+        """DRC-4760. The save's own refresh carries the minted revision, so nothing waits for a poll.
+
+        The fake server publishes the save on the very next `/api/data`, which is what
+        `/api/annotate` dropping the snapshot now guarantees even when a collection was in
+        flight (`test_snapshot`). No poll runs here: the only refresh is the save's own.
+        """
+        saved = "Ship the retry queue and its docs"
+        after = (
+            '__reply["/api/annotate"] = body => {\n'
+            "  __s.annotation_goal = body.goal; __s.annotation_revision = 3;\n"
+            "  __s.annotation_revision_count = 3; __s.annotation_goal_saved_at = 108;\n"
+            '  return {status:200, body:{ok:true, persisted:true, outcome:"stored",\n'
+            "    revision:3, revision_count:3}};\n"
+            "};\n"
+            "const __before = __els.app.innerHTML;\n"
+            f"__typeGoal({json.dumps(saved)});\n"
+            '__press("held-save", "goal");\n'
+            "await __settle();\nawait __settle();\n"
+            "console.log(JSON.stringify({before: __before, after: __els.app.innerHTML,\n"
+            "  posts: __posts}));"
+        )
+        out = self.page(MIXED, levels.HIGH, after=after)
+        assert isinstance(out, dict)
+        self.assertEqual(1, len(out["posts"]), "the save was not sent")
+        before = out["before"]
+        self.assertIn(f"Analysis · {clock(READ_AT)}", visible_text(drift_of(before)))
+        self.assertEqual("", self.stale_of(before))
+        html = out["after"]
+        self.assertIn("Saved as a new revision.", visible_text(html))
+        drift = visible_text(drift_of(html))
+        self.assertNotIn("Analysis ·", drift)
+        self.assertNotIn("High", drift)
+        self.assertNotIn("data-next-drift-pill", html)
+        stale = self.stale_of(html)
+        self.assertIn("Your intent changed after this analysis.", stale)
+        self.assertIn("This reading read revision 2. Revision 3 is current", stale)
+
     def test_analyze_again_is_not_offered_while_the_question_before_the_press_stands(
         self,
     ) -> None:

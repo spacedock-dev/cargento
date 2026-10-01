@@ -44,13 +44,37 @@ class Snapshot:
         self.server_started = server_started
         self._lock: LockType = threading.Lock()
         self._counter = 0
+        self._generation = 0
         self._entries: dict[SnapshotKey, tuple[Revision, bytes, float]] = {}
 
-    def publish(self, key: SnapshotKey, body: bytes, *, now: float = 0.0) -> Revision:
+    def generation(self) -> int:
+        """How many times `clear` has run: read before collecting, passed to `publish`."""
+        with self._lock:
+            return self._generation
+
+    def publish(
+        self,
+        key: SnapshotKey,
+        body: bytes,
+        *,
+        now: float = 0.0,
+        generation: int | None = None,
+    ) -> Revision:
+        """Mint a revision for `body`, and keep it unless a `clear` came after `generation`.
+
+        A body collected across a `clear` is answered to the request that
+        collected it and never kept. A collection reads its stores near its
+        start and publishes seconds later, so without this a save's clear
+        landing in between was overwritten by the pre-save words with a fresh
+        stamp, and the saving page's own refresh was served them (DRC-4760).
+        The revision is still minted so the counter keeps ordering every body
+        a client was handed.
+        """
         with self._lock:
             self._counter += 1
             revision = (self.server_started, self._counter)
-            self._entries[key] = (revision, body, now)
+            if generation is None or generation == self._generation:
+                self._entries[key] = (revision, body, now)
             return revision
 
     def current(self, key: SnapshotKey) -> tuple[Revision, bytes] | None:
@@ -66,10 +90,12 @@ class Snapshot:
 
         The counter is deliberately not rewound. A client holding a cursor must
         see strictly higher revisions after an invalidation, or it would ignore
-        the state that follows one.
+        the state that follows one. The generation moves too, so a collection
+        already running is not kept over the drop (see `publish`).
         """
         with self._lock:
             self._entries.clear()
+            self._generation += 1
 
     def age(self, key: SnapshotKey, *, now: float) -> float | None:
         """Seconds since this variant was published, or None if it never was.

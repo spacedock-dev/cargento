@@ -671,6 +671,63 @@ class AddItToMyIntentTest(_DraftPage):
         self.assertEqual(2, body["expected_revision"])
         self.assertNotIn("adopt", body)
 
+    def test_a_reader_adding_to_a_full_list_is_told_it_is_full_once(self) -> None:
+        """DRC-4760. The list's own notice and the open line's reason said the same sentence twice.
+
+        Counted over drawn paragraphs only: a `hidden` one is kept for the add control's
+        `aria-describedby` and is not on screen.
+        """
+        six = (
+            "".join(
+                f'__s.annotation_line_{k} = "Line {k}"; __s.annotation_line_{k}_source = "typed";'
+                for k in range(1, 7)
+            )
+            + TYPED
+        )
+
+        def shown(html: str) -> list[str]:
+            return [
+                attrs
+                for attrs, text in re.findall(r"<p\b([^>]*)>([^<]*)</p>", intent_of(html))
+                if visible_text(text).strip() == FULL and not re.search(r"\shidden\b", attrs)
+            ]
+
+        closed = self.drive(six, "console.log(JSON.stringify(__els.app.innerHTML));")
+        assert isinstance(closed, str)
+        self.assertEqual(1, len(shown(closed)), "a full list says so with no line open")
+        out = self.opened(LATEST, six)
+        said = shown(out["html"])
+        self.assertEqual(1, len(said), "the notice is drawn once while the line is open")
+        # The one beside the line's save, which names it.
+        self.assertIn("data-next-cockpit-direction-why", said[0])
+        self.assertIn(FULL, visible_text(self.pending(out["html"])))
+        # Where the open line gives another reason, the list's notice is the only one, so the
+        # disabled "add a line" is not left without a reason on screen.
+        long = self.opened(LONG, six)
+        self.assertIn(
+            "A line holds 240 characters. Shorten this one to add it.",
+            visible_text(self.pending(long["html"])),
+        )
+        self.assertEqual(1, len(shown(long["html"])), "over the bound the list still says full")
+        self.assertNotIn("data-next-cockpit-direction-why", shown(long["html"])[0])
+        five = "".join(
+            f'__s.annotation_line_{k} = "Line {k}"; __s.annotation_line_{k}_source = "typed";'
+            for k in range(1, 6)
+        )
+        typed_sixth = self.opened(
+            LATEST,
+            five + TYPED,
+            f"nextCockpitHeldDrafts.set({json.dumps(LINES_KEY)}, "
+            f"{json.dumps([f'Line {k}' for k in range(1, 7)])});\nrenderNext();\n",
+        )
+        self.assertIn(ADD_EDITED, visible_text(self.pending(typed_sixth["html"])))
+        self.assertEqual(1, len(shown(typed_sixth["html"])), "six drafted lines still say full")
+        self.assertNotIn("data-next-cockpit-direction-why", shown(typed_sixth["html"])[0])
+        # A line chosen to replace gives no reason, and the list's notice stands alone.
+        chosen = self.opened(LATEST, six, REPLACE_THREE)
+        self.assertEqual(1, len(shown(chosen["html"])), "a chosen replace still says full once")
+        self.assertNotIn("data-next-cockpit-direction-why", shown(chosen["html"])[0])
+
     def test_a_direction_the_server_cannot_open_says_why_and_opens_nothing(self) -> None:
         why = annotation_store.DIRECTION_UNAVAILABLE
         out = self.drive(
@@ -1585,6 +1642,44 @@ console.log(JSON.stringify({over, fits:{count:count.textContent, said:said.hidde
             out["over"],
         )
         self.assertEqual({"count": "12/240", "said": True, "save": False}, out["fits"])
+
+    def test_typing_past_the_bound_over_a_full_list_hands_the_full_notice_back_to_the_list(
+        self,
+    ) -> None:
+        """DRC-4760: one of the two says the list is full while it is, as the reader types."""
+        six = "".join(
+            f'__s.annotation_line_{k} = "Line {k}"; __s.annotation_line_{k}_source = "typed";'
+            for k in range(1, 7)
+        )
+        out = self.drive(
+            OPENED + six + TYPED,
+            OPEN_ADD
+            + r"""
+const said = {textContent:"", hidden:false};
+const listSays = {hidden:true};
+const field = {querySelector(selector){
+  return selector === "[data-next-cockpit-held-full]" ? listSays : null; }};
+const line = {querySelector(selector){
+  return selector === "[data-next-cockpit-direction-why]" ? said : null; },
+  closest(selector){ return selector === "[data-next-cockpit-held-field]" ? field : null; }};
+const box = {value:"x".repeat(241), dataset:{nextCockpitDirectionKey:"claude:focus-1"},
+  closest(selector){
+    if(selector === "[data-next-cockpit-direction-key]") return this;
+    return selector === "[data-next-cockpit-direction-line]" ? line : null; }};
+__fire("input", {target:box});
+const over = {said:said.hidden ? "" : said.textContent, list:!listSays.hidden};
+box.value = "Short enough";
+__fire("input", {target:box});
+console.log(JSON.stringify({over, fits:{said:said.hidden ? "" : said.textContent,
+  list:!listSays.hidden}}));
+""",
+        )
+        assert isinstance(out, dict)
+        self.assertEqual(
+            {"said": "A line holds 240 characters. Shorten this one to add it.", "list": True},
+            out["over"],
+        )
+        self.assertEqual({"said": FULL, "list": False}, out["fits"])
 
     def test_typing_back_to_a_saved_line_after_a_redraw_shows_its_source_again(self) -> None:
         out = self.drive(

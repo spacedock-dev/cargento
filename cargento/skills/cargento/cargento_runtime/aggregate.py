@@ -1561,8 +1561,11 @@ class Application:
             published = self._fresh_snapshot(key)
             if published is not None:
                 return published
+            # Read before collecting: a clear while this collection runs means a
+            # write it may have missed, so its body is not kept (DRC-4760).
+            generation = self.snapshot.generation()
             body = json.dumps(self.collect(show_all=show_all)).encode()
-            revision = self.snapshot.publish(key, body, now=self.clock())
+            revision = self.snapshot.publish(key, body, now=self.clock(), generation=generation)
             # Only a freshly minted revision is worth announcing. A warm reuse
             # returns above without reaching this line, so a connected client is
             # never woken for a state it already has.
