@@ -365,7 +365,9 @@ and a closed one still holds every word it was written with.
 
 A goal-less Claude Code or Codex session arrives with its goal drafted from your first prompt, as
 Cargento publishes it, or from your latest prompt, marked "latest", where no first prompt with a
-time is published. The draft is marked "from your prompt", an excerpt says "Shown excerpt only.",
+time is published. A session that opened with a harness control such as `/clear` drafts nothing,
+not even the latest prompt, and says there is no first prompt to draft from, so you type a goal.
+The draft is marked "from your prompt", an excerpt says "Shown excerpt only.",
 the box is tinted, and the stamp still reads "No revision saved yet": nothing is saved until you
 press Looks right, edit the box and save, or press `Analyze drift`, which adopts the draft. "Use a
 prompt" still offers your latest prompt. Analyze drift, Keep and an added line's save are refused
@@ -421,7 +423,8 @@ them after the session leaves the board.
 
 Sessions labels your typed goal beside NOW, or shows the prompt the session page drafts ("GOAL ·
 YOUR FIRST PROMPT", or your latest where no first one is published) from Claude Code or Codex;
-other harnesses show typed words only. A slot without a typed
+other harnesses show typed words only, and a session that opened with a harness control shows "Add
+a goal". A slot without a typed
 goal opens the session page with the cursor in its goal field. Showing a prompt does not save it.
 A recorded departure adds a Drift mark with its age and moves the session after blocked sessions
 and before working ones, even if it is idle; it does not add to the Active now figure. Earlier

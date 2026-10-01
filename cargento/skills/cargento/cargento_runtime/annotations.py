@@ -2519,6 +2519,9 @@ def prompt_candidate(row: dict[str, Any], source: str) -> tuple[str, float | Non
         # A correction the reader copied from Cargento is not their goal (DRC-4678).
         if reading.prompt_copied(row, "first_prompt"):
             return "", None
+        # Nor is a harness control it opened with (DRC-4766).
+        if row.get("first_prompt_control") is True:
+            return "", None
         text, at = row.get("first_prompt"), row.get("first_prompt_at")
     elif source == "latest-prompt" and harness == "claude":
         instruction = records.as_dict(row.get("instruction"))
