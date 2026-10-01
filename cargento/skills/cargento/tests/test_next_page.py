@@ -1251,7 +1251,6 @@ class NextPageAssetContractTest(unittest.TestCase):
         ".next-session-facts dd",
         ".next-session-health",
         ".next-session-held-link",
-        ".next-session-source-coverage p",
         ".next-stalled",
         ".next-steer input,.next-guardrail-add-input input",
         ".next-steer-caveat",
@@ -1401,8 +1400,9 @@ class NextPageAssetContractTest(unittest.TestCase):
         # four labels are labels, set at a label line-height, so off this tier.
         # DRC-4758 D1 adds one: the editor's footer hint under both fields. D2 adds one:
         # the "Use your prompt" menu's summary, a disclosure's worded summary at the body
-        # floor.
-        self.assertEqual(134, len(above))
+        # floor. The DRC-4758 fix round retires one: the source coverage block's paragraph,
+        # which restated NEXT STEP's own absence.
+        self.assertEqual(133, len(above))
         self.assertEqual(self.SENTENCE_TIER_RULES, {selector for selector, _size in above})
         self.assertEqual(
             self.SUB_SENTENCE_FLOOR_INVENTORY, {(size, selector) for selector, size in below}

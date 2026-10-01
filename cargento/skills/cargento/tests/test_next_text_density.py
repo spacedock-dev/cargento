@@ -345,6 +345,28 @@ class TheActivityColumnIsTieredTest(PanelPage):
         self.assertIn("after the session leaves the board", activity)
         self.assertNotIn("after the session leaves the board", text)
 
+    def test_each_rows_source_stays_on_the_page_out_of_view(self) -> None:
+        # Plan slice E, D8: the per-row source was a full-width caption on every row, the same
+        # string five times on a leveled page (DRC-4758 fix round).
+        activity = activity_of(self.page("claude", IDLE_DRAFTED))
+        text = visible_text(activity)
+        sources = re.findall(
+            r'<span class="next-cockpit-work-source[^"]*">([^<]*)</span>', activity
+        )
+        self.assertTrue(sources)
+        for source in set(sources):
+            with self.subTest(source=source):
+                self.assertNotIn(source, text)
+        self.assertIn('class="next-cockpit-work-source next-visually-hidden"', activity)
+
+    def test_no_source_coverage_block_restates_the_next_step(self) -> None:
+        # D11: "<owner> did not publish a next action." restated NEXT STEP's own absence.
+        activity = activity_of(self.page("claude", IDLE_DRAFTED))
+        self.assertIn("NEXT STEP", visible_text(activity))
+        self.assertNotIn("SOURCE COVERAGE", activity)
+        self.assertNotIn("next-session-source-coverage", activity)
+        self.assertNotIn("did not publish a next action", activity)
+
     def test_the_activity_column_word_count(self) -> None:
         activity = activity_of(self.page("claude", IDLE_DRAFTED))
         count = len(visible_text(activity).split())

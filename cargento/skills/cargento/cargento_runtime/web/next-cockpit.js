@@ -2162,7 +2162,10 @@ function nextCockpitWorkEvidence(session, source, cited = new Set()){
         ? '<span class="next-visually-hidden">not numbered</span>' : `#${n}`}</span>` +
       `<div class="next-cockpit-work-body"><div class="next-cockpit-work-head">${head}${flags}` +
       `</div>${summary}` +
-      `<span class="next-cockpit-work-source">${esc(entry.source || "Source not published")}` +
+      /* Out of view and still read out: the same source on every row was a
+         full-width caption five times over (plan slice E, the per-row source;
+         DRC-4758 fix round). */
+      `<span class="next-cockpit-work-source next-visually-hidden">${esc(entry.source || "Source not published")}` +
       /* Only where it says something the source line does not. On most fact
          types `actor_claim` IS the evidence source, and appending it printed
          "timestamped non-meta user-role record · exact · timestamped non-meta

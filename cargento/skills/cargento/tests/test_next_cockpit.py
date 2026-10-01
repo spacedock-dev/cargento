@@ -5298,7 +5298,7 @@ const html = __els.app.innerHTML;
 const block = html.slice(html.indexOf('data-next-cockpit-work'));
 console.log(JSON.stringify({
   rows: [...block.matchAll(/data-next-cockpit-work-type="([^"]+)"/g)].map(m => m[1]),
-  sources: [...block.matchAll(/class="next-cockpit-work-source">([^<]*)</g)].map(m => m[1]),
+  sources: [...block.matchAll(/class="next-cockpit-work-source next-visually-hidden">([^<]*)</g)].map(m => m[1]),
   limit: (block.match(/class="next-cockpit-work-limit">([^<]*)</) || [])[1],
   heading: html.includes("OBSERVED RECORD"),
   numbers: [...block.matchAll(/class="next-cockpit-work-n">#(\\d+)</g)].map(m => Number(m[1])),
@@ -5439,7 +5439,7 @@ console.log(JSON.stringify({
   derived: (html.match(/class="next-cockpit-work-derived">([^<]*)</) || [])[1],
   claimShown: html.includes("model-derived observer snapshot"),
   // A claim the source line already carries is not repeated beside it.
-  sources: [...html.matchAll(/class="next-cockpit-work-source">([^<]*)</g)].map(m => m[1]),
+  sources: [...html.matchAll(/class="next-cockpit-work-source next-visually-hidden">([^<]*)</g)].map(m => m[1]),
   // A published line keeps the mono register beside it.
   published: (html.match(/class="next-cockpit-work-summary">([^<]*)</) || [])[1],
   mix: (html.match(/class="next-cockpit-work-mix">([^<]*)</) || [])[1],

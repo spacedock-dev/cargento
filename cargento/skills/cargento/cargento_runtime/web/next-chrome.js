@@ -24,7 +24,7 @@ const nextAttentionExpandedSections = new Set();
 
    The list is closed, so an attribute the page never wrote cannot grow the
    set -- the same guard the section keys beside it get. */
-const NEXT_DISCLOSURE_KEYS = ["attention-coverage", "session-source-coverage", "more"];
+const NEXT_DISCLOSURE_KEYS = ["attention-coverage", "more"];
 const nextOpenDisclosures = new Set();
 
 function nextDisclosureAttr(key, open){

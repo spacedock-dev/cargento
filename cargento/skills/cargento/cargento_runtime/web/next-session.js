@@ -42,30 +42,12 @@ function nextSessionAskingTitle(session){
   return `${nextSessionRegistryLabel(session) || "An agent"} is asking you`;
 }
 
-function nextSessionSourceOwner(session){
-  const harness = String(session && session.harness || "");
-  if(harness === "codex") return "Codex transcript";
-  if(harness === "claude") return "Claude transcript";
-  if(harness === "antigravity") return "AGY CLI log";
-  const label = nextSessionRegistryLabel(session);
-  return label ? `${label} session source` : "Session source";
-}
-
 function nextSessionInstruction(session, label){
   const instruction = session && session.instruction;
   if(!instruction || typeof instruction !== "object" || Array.isArray(instruction) ||
     nextPromptCopied(session, "instruction")) return null;
   if(String(instruction.label || "") !== label) return null;
   return String(instruction.text == null ? "" : instruction.text).trim() ? instruction : null;
-}
-
-function nextSessionSourceCoverage(owner, next, asks, openDisclosures){
-  if(asks.length || next) return "";
-  return '<details class="next-session-source-coverage"' +
-    `${nextDisclosureAttr("session-source-coverage", openDisclosures)}>` +
-    '<summary data-next-disclosure="session-source-coverage" ' +
-    'data-next-focus="session-source-coverage">SOURCE COVERAGE</summary>' +
-    `<p>${esc(owner)} did not publish a next action.</p></details>`;
 }
 
 function nextSessionCommandFact(kind, label, body){
@@ -714,8 +696,6 @@ function nextSessionView(project, harness, sid, openDisclosures = new Set()){
   const assignment = nextSessionInstruction(session, "asked")
     ? nextSessionCommandFact("assignment", "ASSIGNMENT",
       nextInstructionLine(session, "", "next-session-command-context")) : "";
-  const coverage = nextSessionSourceCoverage(nextSessionSourceOwner(session),
-    observed.nextKnown, asks, openDisclosures);
   /* The group the session belongs to, under its own label. A session with no
      project groups under "", so once this page is routed it renders the same
      block as any other. Whether such a session can reach this page at all is
@@ -752,7 +732,7 @@ function nextSessionView(project, harness, sid, openDisclosures = new Set()){
        2019px on a 900px screen when they shared CURRENT ACTIVITY's card. */
     nextSessionSubagents(observed) +
     nextSessionFacts(observed, asks) +
-    `<div class="next-session-evidence">${assignment}${coverage}</div>` +
+    `<div class="next-session-evidence">${assignment}</div>` +
     nextSessionHealth(session) + nextSessionTasks(observed) +
     nextCommandReports(session) + nextSessionDelivery(session) + drift.record +
     "</div>";

@@ -253,55 +253,10 @@ console.log(JSON.stringify(__els.app.innerHTML));
         self.assertNotIn('data-next-session-command-fact="assignment"', html)
         self.assertNotIn('data-next-session-command-fact="next"', html)
         self.assertNotIn('data-next-session-command-fact="request"', html)
-        self.assertIn("SOURCE COVERAGE", html)
-        self.assertIn("Claude transcript did not publish a next action", html)
+        # No source coverage block: it restated NEXT STEP's own absence (DRC-4758 fix round).
+        self.assertNotIn("SOURCE COVERAGE", html)
+        self.assertNotIn("did not publish a next action", html)
         self.assertNotIn("did not publish an assignment", html)
-        self.assertNotIn('<details class="next-session-source-coverage" open', html)
-
-    def test_the_source_coverage_keeps_the_readers_open_and_closed_choice_after_redraws(
-        self,
-    ) -> None:
-        # `renderNext` assigns the app's whole innerHTML, so the open state the
-        # browser keeps on a `<details>` node dies with the node: the panel
-        # closed itself under the reader on the next revision, or within 20
-        # seconds on the bare interval (DRC-4410). The page has to own it.
-        out = self.render(
-            """
-Object.assign(nextData.sessions[0], {state: "working", tasks: [], subagents: []});
-nextData.asks = [];
-const summary = () => __fire("click", {
-  target: {closest(candidate){
-    return candidate === "[data-next-disclosure]"
-      ? {dataset: {nextDisclosure: "session-source-coverage"}}
-      : null;
-  }},
-  preventDefault(){}, stopPropagation(){}
-});
-renderNext();
-const closed = __els.app.innerHTML;
-summary();
-renderNext();
-const opened = __els.app.innerHTML;
-renderNext();
-const survived = __els.app.innerHTML;
-summary();
-renderNext();
-const reclosed = __els.app.innerHTML;
-renderNext();
-const closedSurvived = __els.app.innerHTML;
-console.log(JSON.stringify({closed, opened, survived, reclosed, closedSurvived}));
-"""
-        )
-        assert isinstance(out, dict)
-
-        tag = '<details class="next-session-source-coverage"'
-        for html in (out["closed"], out["reclosed"], out["closedSurvived"]):
-            self.assertIn(f"{tag}>", html)
-            self.assertNotIn(f"{tag} open", html)
-        for html in (out["opened"], out["survived"]):
-            self.assertIn(f"{tag} open>", html)
-            self.assertIn("SOURCE COVERAGE", html)
-        self.assertEqual(out["closed"], out["reclosed"])
 
     def test_identity_leads_and_current_activity_sits_in_the_drift_block(self) -> None:
         html = self.render()
@@ -381,7 +336,7 @@ console.log(JSON.stringify(__els.app.innerHTML));
         self.assertIn("Ship &lt;script&gt;the full instruction&lt;/script&gt;", html)
         self.assertNotIn("Ship <script>", html)
 
-    def test_missing_next_action_names_its_source_without_assignment_placeholder(self) -> None:
+    def test_missing_next_action_is_next_steps_own_absence_without_a_placeholder(self) -> None:
         out = self.render(
             """
 nextData.asks = [];
@@ -398,9 +353,11 @@ console.log(JSON.stringify(variants));
         )
         assert isinstance(out, dict)
 
-        self.assertIn("Codex transcript did not publish a next action", out["codex"])
-        self.assertIn("AGY CLI log did not publish a next action", out["antigravity"])
+        # The missing next action is NEXT STEP's own absence; the source coverage block that
+        # restated it is gone (DRC-4758 fix round).
         for html in out.values():
+            self.assertIn("NEXT STEP", html)
+            self.assertNotIn("did not publish a next action", html)
             self.assertNotIn("Assignment unavailable", html)
             self.assertNotIn("did not publish an assignment", html)
             self.assertNotIn("Not published", html)
