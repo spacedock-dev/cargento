@@ -1998,6 +1998,61 @@ class Q4ATurnStopTheHistoryRolledPastIsVouchedByTheTranscriptTest(_RecordedCaseF
                 case = self.freeze(self.marked(), self.rolled(), row=row)
                 self.assertIn("lifecycle-unconfirmed", case["unconfirmed"])
 
+    def test_an_older_observation_keeps_the_stop_inside_the_stores_reach(self) -> None:
+        # The floor is the OLDEST observation: a newer one alone must not open the fallback.
+        both = [*self.rolled(), {**self.rolled()[0], "last_activity": self.start + 5}]
+        self.assertIn("lifecycle-unconfirmed", self.freeze(self.marked(), both)["unconfirmed"])
+
+    def test_a_stop_at_the_oldest_observation_is_still_inside_the_stores_reach(self) -> None:
+        at_floor = [{**self.rolled()[0], "last_activity": self.start + 20}]
+        self.assertIn("lifecycle-unconfirmed", self.freeze(self.marked(), at_floor)["unconfirmed"])
+
+    def test_an_end_or_a_running_row_stays_refused_even_with_a_stop_stamp(self) -> None:
+        for row in ({"state": "idle", "finished_at": self.start + 20, "ended_at": self.start + 20},
+                    {"state": "working", "finished_at": self.start + 20}):  # fmt: skip
+            with self.subTest(row=row):
+                case = self.freeze(self.marked(), self.rolled(), row=row)
+                self.assertIn("lifecycle-unconfirmed", case["unconfirmed"])
+
+    def test_the_scorer_refuses_a_stop_moved_past_the_capture(self) -> None:
+        case = self.freeze(self.marked(), self.rolled())
+        moved = {**case, "row_snapshot": {**case["row_snapshot"], "finished_at": self.start + 29}}
+        path = self.marked(at=29)
+        with mock.patch.object(mark_abstention, "CLAUDE_PROJECTS_ROOT", str(self.root)):
+            reasons = mark_abstention.provenance(
+                moved,
+                observations=self.rolled(),
+                ends=[],
+                index={CLAUDE_SID[:8]: path},
+                config=self.config,
+            )
+        self.assertIn("captured-before-settled", reasons)
+
+    def test_the_scorer_counts_the_stop_it_derived_not_the_one_the_packet_claims(self) -> None:
+        for derived, claimed in (("transcript", "history"), ("history", "transcript")):
+            with self.subTest(derived=derived):
+
+                def vouch(_case: Any) -> list[str]:
+                    return []
+
+                vouch.lifecycle = lambda _case, d=derived: d  # type: ignore[attr-defined]
+                case = {"id": "a" * 16, "origin": "recorded", "lifecycle_from": claimed}
+                self.assertEqual(derived, score_abstention._vouched(case, vouch)["stop_vouched_by"])
+
+    def test_the_summary_and_report_disclose_a_transcript_vouched_stop(self) -> None:
+        recorded = _rubric_record("supported-departure", "claude", {"goal": "correct"})
+        recorded["id"] = "a" * 16
+        synthetic = {**_rubric_record("legitimate-change", "claude", {"goal": "correct"}),
+                     "id": "b" * 16, "origin": "synthetic"}  # fmt: skip
+        summary = score_abstention.summarize(
+            [], marks={}, marks_bytes=b"", now=1.0, rubric_records=[recorded, synthetic],
+            binding=BINDING, transcript_stops={"a" * 16, "b" * 16},
+        )  # fmt: skip
+        # Only the recorded case counts; a synthetic one never meets the floor anyway.
+        self.assertEqual(1, summary["counts"]["recorded_on_transcript_stop"])
+        report = "\n".join(score_abstention.render(summary))
+        self.assertIn("recorded on a turn stop its transcript vouched for", report)
+
     def test_the_scorer_repeats_the_same_rule(self) -> None:
         path = self.marked()
         case = self.freeze(path, self.rolled())

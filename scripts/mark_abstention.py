@@ -768,9 +768,11 @@ def _transcript_stop(transcript: str, sid: str, stop: float) -> bool:
     """Whether the transcript records this session's turn ending at `stop`.
 
     Claude Code writes a `stop_hook_summary` when its Stop hooks run, the event
-    the dashboard stamps a turn stop from. Measured 2026-10-01 against the
-    history store's own window: 39 of 76 observed stops had one within a
-    second, so a stop with none is refused rather than guessed. A hook that
+    the dashboard stamps a turn stop from. The board stamps the hook's arrival,
+    not the record: measured 2026-10-01 over the store's 700 observed stops,
+    none sat within a millisecond of its record and 217 within a second, the
+    record about 115 ms earlier. So `finished_at` must be the record's own
+    stamp, copied from the transcript, and a stop with no record is refused. A hook that
     kept the turn going (`preventedContinuation`) is not a stop, and a
     subagent's record is not the session's. `sid` is matched as a prefix, as
     `_transcript_is_the_session` does, because a packet names a Claude Code
@@ -984,6 +986,15 @@ def provenance(
     if not isinstance(snapshot, dict) or not _epoch(captured):
         return ["lifecycle-unconfirmed"]
     reasons: list[str] = []
+    # The freeze refuses a capture taken before its stop or end settled; the
+    # packet is hand-editable, so the scorer refuses the same, or a lifecycle
+    # moved past the capture would be vouched by a stop that came later.
+    settle = float((config if config is not None else _runtime_config()).reading_settle_sec)
+    for field in ("ended_at", "finished_at"):
+        stamp = snapshot.get(field)
+        if stamp is not None and (not _epoch(stamp) or float(captured) < float(stamp) + settle):
+            reasons.append("captured-before-settled")
+            break
     sid = str(case.get("sid") or "")
     transcript = index.get(sid[:8]) if case.get("harness") == "claude" else None
     if not _lifecycle_recorded(snapshot, float(captured), observations, ends, transcript or ""):
@@ -1013,6 +1024,16 @@ def make_vouch(*, observations: Any, ends: Any, index: dict[str, str], config: A
             dict(case), observations=observations, ends=ends, index=index, config=config
         )
 
+    def lifecycle(case: Any) -> str | None:
+        """Which record vouched for the case's lifecycle, derived here, never read from it."""
+        snapshot, captured = case.get("row_snapshot"), case.get("captured_at")
+        if not isinstance(snapshot, dict) or not _epoch(captured):
+            return None
+        sid = str(case.get("sid") or "")
+        transcript = index.get(sid[:8]) if case.get("harness") == "claude" else None
+        return _lifecycle_recorded(snapshot, float(captured), observations, ends, transcript or "")
+
+    vouch.lifecycle = lifecycle  # type: ignore[attr-defined]
     return vouch
 
 
@@ -1037,7 +1058,9 @@ def freeze_case(
     The case is `recorded` only when the machine vouches for it: a Claude Code
     transcript inside `CLAUDE_PROJECTS_ROOT` whose records name this session,
     and a lifecycle the dashboard's history or ends store observed
-    (`observations`, `ends`). Anything short of that is `synthetic`, with the
+    (`observations`, `ends`), or, for a turn stop the history store has rolled
+    past, the transcript's own Stop-hook record (`_lifecycle_recorded`).
+    Anything short of that is `synthetic`, with the
     reasons listed in `unconfirmed`, and never counts toward the floor.
 
     Facts are kept only where dated at or before the capture. A Claude Code

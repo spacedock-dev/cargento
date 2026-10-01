@@ -153,23 +153,28 @@ for it does not change that. `unconfirmed` lists why, as closed tokens:
 
 - `transcript-outside-projects`: the Claude Code transcript is not under `~/.claude/projects`.
 - `transcript-other-session`: its records do not all name this session id.
-- `lifecycle-unconfirmed`: the dashboard's stores did not observe the lifecycle the spec gives. A
+- `lifecycle-unconfirmed`: neither the dashboard's stores nor, for a rolled-past turn stop, the
+  transcript vouch for the lifecycle the spec gives. A
   `working` row needs a history observation in `working` at `captured_at` itself. A turn stop needs
   an `idle` observation whose `last_activity` is the `finished_at`. An end needs the ends store's
   stamp. The freeze reads `cargento-history.json` and `cargento-ends.json` from `--store-home`,
   `~/.cargento` by default, never from the packet's own directory. The history store is capped
   and rolls, so a Claude Code turn stop older than its oldest observation is vouched instead by the
   transcript's own top-level `stop_hook_summary` for that session at the `finished_at`, one whose
-  hooks did not keep the turn going. A stop the store still reaches never falls back. The case
-  records which vouched for it in `lifecycle_from`: `history`, `transcript`, or null when neither
-  did ([DEC-17, amended 2026-10-01](../design-reading-a-session.md#amended-2026-10-01-a-readers-correction-and-a-transcript-stop)).
+  hooks did not keep the turn going. The board stamps a hook's arrival about a tenth of a second
+  after that record, so the spec's `finished_at` must be copied from the record itself. A stop the
+  store still reaches never falls back. The case records which vouched for it in
+  `lifecycle_from`: `history`, `transcript`, or null when neither did, and the scorer derives the
+  same answer itself and counts it in the summary as `recorded_on_transcript_stop` ([DEC-17, amended 2026-10-01](../design-reading-a-session.md#amended-2026-10-01-a-readers-correction-and-a-transcript-stop)).
 
 A Codex case is a recorded history `working` observation frozen at its last activity, because
 Codex has no session-end hook and is never read at a turn stop.
 
 The scorer repeats these checks at score time for every case the packet calls `recorded`, because
 the packet is hand-editable: the transcript found for that sid under `~/.claude/projects`, its
-session id, and the lifecycle in this machine's history and ends stores. For a Claude Code case it
+session id, and the lifecycle in this machine's history and ends stores, or for a rolled-past
+turn stop its transcript, refusing a stop or end that had not settled before `captured_at`
+(`captured-before-settled`). For a Claude Code case it
 also rebuilds the contents from that transcript as it stood at the case's `captured_at`, the same
 derivation the freeze used, and compares them with the packet as the ledger rows the producer
 reads (DRC-4711):
