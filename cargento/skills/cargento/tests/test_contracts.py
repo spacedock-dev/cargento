@@ -843,7 +843,9 @@ class TheAnnotationFieldListIsDerivedTest(unittest.TestCase):
         # Published by the store for a page layer that has not shipped yet,
         # and never read by the page until then. Disjoint from what the page
         # reads, so the entry must go the moment the page reads the field.
-        pending: set[str] = set()
+        # `reading_withheld_at`: DRC-4758 slice A3, read by the analyze-flow
+        # layer (slice B) when it shows a stored withhold's age.
+        pending: set[str] = {"reading_withheld_at"}
         self.assertEqual(set(), pending & rendered, "the page reads it now: drop it from pending")
         self.assertEqual(set(annotation_store.published(None)) - pending, rendered)
 

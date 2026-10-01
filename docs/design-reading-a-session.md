@@ -655,6 +655,13 @@ to the provider and moves a [SECURITY.md](../SECURITY.md#observer-model-calls) b
    not include them, so no stored citation moves. A departure's `detail` is the model's sentence
    and is stored and shown as before, so the model can now paraphrase a later sentence there.
 
+   Owner, 2026-10-01 (Q7): item 4 has one exception. Up to five of the reader's own messages are
+   published on the focused project context as `prompt_choices`, each clipped to the goal's
+   240-character cap, so "Use your prompt" can offer them
+   ([amendment](#amended-2026-10-01-up-to-five-of-your-prompts-may-be-chosen)). The words field
+   itself, and anything past that cap, is still neither stored nor published, and
+   `test_reader_words` holds both halves.
+
 The provider each reading may reach is still the one [DEC-21](#dec-21-a-reading-works-the-first-time-you-ask)
 item 4 names. The disclosure before the press now says the reader's own messages go in full, up to
 1,000 characters each, redacted, and that where the record is too long the oldest go by their first

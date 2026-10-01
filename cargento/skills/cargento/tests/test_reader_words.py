@@ -578,7 +578,12 @@ CONTEXT_READERS = {
     "_typed_window_start": "a window start, a number",
     "_later_direction": "a time and one message's text from `direction_text`, bounded on its own",
     "_correction": "Steer back's parts, from the reader's saved lines and fact ids",
+    "_chosen_prompt": "one `prompt_choices` entry, bounded at the goal's cap, adopted, not answered",
 }
+# The one published carrier of a reader message's words, by the owner's ruling Q7 of
+# 2026-10-01: up to five prompts, each clipped to the goal's 240-character cap, on the
+# focused project context only. Everything else on every route stays word-free.
+PROMPT_CHOICE_CAP = 240
 
 
 class EveryPageRouteDropsTheWordsTest(_Collected):
@@ -609,8 +614,35 @@ class EveryPageRouteDropsTheWordsTest(_Collected):
             for route, path in GET_ROUTES.items():
                 with self.subTest(route=route):
                     _status, body = self.request(port, "GET", path)
-                    self.assertNotIn(SENTINEL.encode(), body)
                     self.assertNotIn(FIELD.encode(), body)
+                    if route == "/api/project-context":
+                        body = self._without_prompt_choices(body)
+                    self.assertNotIn(SENTINEL.encode(), body)
+
+    def _without_prompt_choices(self, body: bytes) -> bytes:
+        """The focused context with its one reviewed carrier taken out, after checking it."""
+        context = json.loads(body)
+        choices = context.pop("prompt_choices")
+        self.assertEqual([SENTINEL], [choice["text"] for choice in choices])
+        for choice in choices:
+            self.assertLessEqual(len(choice["text"]), PROMPT_CHOICE_CAP)
+            self.assertSetEqual({"fact_id", "at", "text", "cut"}, set(choice))
+        return json.dumps(context).encode()
+
+    def test_a_long_message_reaches_the_page_only_as_a_bounded_choice(self) -> None:
+        long = SENTINEL + " " + "x" * 900 + " TAIL-PAST-THE-CAP"
+
+        def context(*_a: Any, **_k: Any) -> dict[str, Any]:
+            built = self.context()
+            built["semantic"]["facts"][0][FIELD] = long
+            return built
+
+        with mock.patch.object(project_context, "collect", context), self.serving() as port:
+            _status, body = self.request(port, "GET", GET_ROUTES["/api/project-context"])
+        self.assertNotIn(b"TAIL-PAST-THE-CAP", body)
+        (choice,) = json.loads(body)["prompt_choices"]
+        self.assertTrue(choice["cut"])
+        self.assertLessEqual(len(choice["text"]), PROMPT_CHOICE_CAP)
 
     def test_every_handler_reading_a_context_is_one_reviewed(self) -> None:
         readers = set()

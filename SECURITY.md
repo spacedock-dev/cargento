@@ -1089,7 +1089,10 @@ dropped the point of a measured correction
 The field holding the whole message (`reader_words`) is held in memory for the reading and is
 neither stored nor published: the history stores' field allowlists do not name it, and
 `/api/project-context` drops it (`project_context.for_page`), so the page still shows the first
-sentence and `/api/data` never carried it. What the model writes back is a different matter. A
+sentence and `/api/data` never carried it. One bounded copy is the exception, by the owner's ruling
+of 2026-10-01: the focused project context's `prompt_choices` offers up to five of the reader's own
+messages for adoption as the goal, each the field clipped to the goal's 240 characters, and the
+rest of the field past that cap is not published (Prompt-derived text, below). What the model writes back is a different matter. A
 departure's `detail` is the model's own sentence, and it is stored with the reading and published
 on the page, as it was before; the model can now paraphrase or quote a later sentence of a message
 there, which it could not when it saw only the first. The one copy of the field on disk is an
