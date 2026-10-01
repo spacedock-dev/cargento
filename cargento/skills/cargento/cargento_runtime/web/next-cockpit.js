@@ -1345,10 +1345,13 @@ function nextCockpitHeldLines(session, annotation, cap, source = null){
   const full = draft.length >= NEXT_OUTCOME_LINES_MAX;
   const why = nextCockpitStoreUnreadable() ? "" : String(annotation && annotation.lines_why || "");
   const cue = nextCockpitHeldCue(key);
-  /* An open later direction says the list is full beside its own save, so the
-     list's sentence is hidden under it rather than drawn twice (DRC-4760). It
-     stays in the DOM for the add control's `aria-describedby`. */
+  /* Where an open later direction already says the list is full beside its own
+     save, the list's sentence is hidden rather than drawn twice (DRC-4760). Only
+     then: the line checks saved lines and the list counts draft lines, and a line
+     giving another reason would leave the disabled add control with none. It
+     stays in the DOM for that control's `aria-describedby`. */
   const direction = nextCockpitDirectionLine(session, annotation, cap, source);
+  const said = Boolean(direction) && nextCockpitDirectionSaysFull(session, annotation, cap);
   const rows = boxes.map((text, index) => {
     // The source is a fact about saved words, so it shows only while the box
     // still holds the line saved in that place. Its space is kept while it is
@@ -1384,7 +1387,7 @@ function nextCockpitHeldLines(session, annotation, cap, source = null){
       true, why ? nextCockpitHeldAbsentId("lines") : "", `${key}:save`) + '</span></div>' +
     `<ol class="next-cockpit-held-list">${rows}</ol>` +
     '<p class="next-cockpit-held-full" id="next-cockpit-held-full" data-next-cockpit-held-full' +
-    `${full && !direction ? "" : " hidden"}>${esc(NEXT_COCKPIT_LINES_FULL)}</p>` +
+    `${full && !said ? "" : " hidden"}>${esc(NEXT_COCKPIT_LINES_FULL)}</p>` +
     (why ? `<p class="next-cockpit-held-absent" id="${nextCockpitHeldAbsentId("lines")}" ` +
       `data-next-cockpit-held-absent="lines"` +
       `${nextCockpitLinesToSend(draft).length ? " hidden" : ""}>${esc(why)}</p>` : "") +
@@ -1421,6 +1424,13 @@ function nextCockpitDirectionWhy(held, annotation, cap, session = null){
   }
   if(session && nextIntentUnsaved(session, annotation)) return NEXT_INTENT_EDITED_ADD;
   return "";
+}
+
+// Whether the open direction's reason is the list's own six-line sentence.
+function nextCockpitDirectionSaysFull(session, annotation, cap){
+  const held = nextCockpitDirectionLines.get(sessKey(session));
+  return Boolean(held) && typeof held.text === "string" &&
+    nextCockpitDirectionWhy(held, annotation, cap, session) === NEXT_COCKPIT_LINES_FULL;
 }
 
 function nextCockpitDirectionLine(session, annotation, cap, source = null){
@@ -7122,6 +7132,15 @@ document.addEventListener("input", event => {
   if(count) count.textContent = `${value.length}/${cap}`;
   const said = line.querySelector("[data-next-cockpit-direction-why]");
   if(said){ said.textContent = why; said.hidden = !why; }
+  /* The list's copy follows, so one of the two says full while the list is
+     (DRC-4760): typing past the bound swaps the line's reason in place. */
+  const field = typeof line.closest === "function" ? line.closest("[data-next-cockpit-held-field]") : null;
+  const listSays = field && field.querySelector ? field.querySelector("[data-next-cockpit-held-full]") : null;
+  if(listSays && session){
+    const annotation = nextCockpitAnnotation(session);
+    const full = nextCockpitLinesDraft(session, annotation).length >= NEXT_OUTCOME_LINES_MAX;
+    listSays.hidden = !full || why === NEXT_COCKPIT_LINES_FULL;
+  }
   const save = line.querySelector('[data-next-cockpit-action="direction-save"]');
   if(save){
     if(!why && value.trim()) save.removeAttribute("aria-disabled");
