@@ -16,7 +16,11 @@ own gate, `annotations.CLAUDE_ABSTENTION_CHECK`, and it is recorded `not-run`. N
 qualification has passed. The committed [first Claude Code run](claude-results.json) failed with
 four false reassurances. The [reviewed continuation](claude-continuation.json) bound five cases
 re-frozen from that recorded packet to the same spend ledger; its
-[result](claude-results-continuation.json) also failed, with five false reassurances. The accepted
+[result](claude-results-continuation.json) also failed, with five false reassurances. The
+[second continuation](claude-continuation-2.json) scored a fourth packet, with a supported departure
+resting on the reader's own correction, after the producer's evidence instruction (#450) and the
+reader's whole words (#467) changed; its [result](claude-results-continuation-2.json) failed too,
+with one false reassurance and fifteen correct judgements, and spent the last of the 23 calls. The accepted
 packet was reviewed against Codex readings. The scorer can
 report either producer (`--producer claude` or `--producer codex`), but this qualification scores
 Claude Code only. Format 5 below is the packet DRC-4666 qualifies Claude Code against. A fresh
