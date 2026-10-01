@@ -1,10 +1,12 @@
 """The one spend ledger for DRC-4666's qualification: every model call, charged first.
 
 The owner authorized at most twenty real Claude Code readings for this
-qualification (2026-09-24), and later raised the ceiling to 23 scorer calls
-beside 26 Claude CLI invocations, the browser walk among them (DRC-4758). So the
-scorer may make 23, across every run, every packet directory and every
-producer, and this file is the only thing that counts them.
+qualification (2026-09-24), later raised the ceiling to 23 scorer calls beside
+26 Claude CLI invocations, the browser walk among them (DRC-4758), and on
+2026-10-01 authorized one more five-case run past it: 28 scorer calls beside 31
+CLI invocations (DRC-4666). So the scorer may make 28, across every run, every
+packet directory and every producer, and this file is the only thing that
+counts them.
 
 Four properties, each closing a bypass the review of 2026-09-24 reproduced:
 
@@ -91,21 +93,31 @@ CLAUDE_SUMMARY_PATH = os.path.join(
     "abstention",
     "claude-results.json",
 )
-# A reviewed handoff may authorize a second packet without moving the old
-# result or the account-home ledger. Absence preserves the one-packet rule.
-CONTINUATION_PATH = os.path.join(os.path.dirname(CLAUDE_SUMMARY_PATH), "claude-continuation.json")
-# The first continuation's committed result, which a second grant chains to.
-CONTINUATION_SUMMARY_PATH = os.path.join(
-    os.path.dirname(CLAUDE_SUMMARY_PATH), "claude-results-continuation.json"
+# Reviewed handoffs, one per continuation packet, each binding the failed result
+# before it without moving that result or the account-home ledger. Absence of
+# the first preserves the one-packet rule. Grant k authorizes packet k, so the
+# original packet is generation 0. Nine is a bound, not a budget: the cap below
+# is what limits spend, and the bound keeps the chain a fixed, readable set of
+# names rather than whatever a directory listing holds.
+MAX_GRANTS = 9
+_ABSTENTION_DIR = os.path.dirname(CLAUDE_SUMMARY_PATH)
+_GRANT_SHAPED = re.compile(r"claude-continuation.*\.json", re.DOTALL)
+
+
+def _numbered(stem: str, k: int) -> str:
+    return os.path.join(_ABSTENTION_DIR, f"{stem}.json" if k == 1 else f"{stem}-{k}.json")
+
+
+# Grant k at index k-1: claude-continuation.json, then claude-continuation-<k>.json.
+CONTINUATION_PATHS = tuple(_numbered("claude-continuation", k) for k in range(1, MAX_GRANTS + 1))
+# Packet k's committed result at index k-1, which grant k+1 binds.
+CONTINUATION_SUMMARY_PATHS = tuple(
+    _numbered("claude-results-continuation", k) for k in range(1, MAX_GRANTS + 1)
 )
-# A second reviewed handoff, after the first continuation also failed (owner,
-# 2026-10-01, DRC-4666). It binds that result as the first binds the original.
-CONTINUATION_2_PATH = os.path.join(
-    os.path.dirname(CLAUDE_SUMMARY_PATH), "claude-continuation-2.json"
-)
-# The owner's approved ceiling (DRC-4758): 23 scorer calls across every packet,
-# beside 26 Claude CLI invocations overall, the browser walk among them.
-MAX_CALLS = 23
+# 28 scorer calls across every packet: the owner's 2026-10-01 ruling (DRC-4666)
+# authorized one more five-case run past the DRC-4758 ceiling of 23, beside 31
+# Claude CLI invocations overall, those five and the browser walk among them.
+MAX_CALLS = 28
 STATUSES = ("charged", "ok", "failed", "unavailable")
 _DIGEST = re.compile(r"^[0-9a-f]{64}$")
 _CASE = re.compile(r"^[0-9a-f]{16}$")
@@ -194,27 +206,70 @@ def continuation() -> dict[str, Any] | None:
     agreed to every mark and rubric entry, `sealed` also names the two digests
     the scorer charges under. Neither phase by itself authorizes a real call.
 
-    A second grant may follow a first continuation that also failed. It is
-    honoured only while the first is sealed and its `next` key is the second's
-    `previous`, so the chain reads original, first, second with no gap. The
-    returned grant carries `segments`: each earlier packet's last call count
-    and its key, in ledger order.
+    Grant k may follow continuation k-1 once that also failed. It is honoured
+    only while every earlier grant is sealed and each one's `next` key is the
+    following grant's `previous`, so the chain reads original, first, second
+    and on with no gap. A grant whose predecessor is missing is an error, as is
+    one numbered past `MAX_GRANTS`. The returned grant carries `segments`: each
+    earlier packet's last call count and its key, in ledger order.
     """
-    first = _grant(CONTINUATION_PATH, CLAUDE_SUMMARY_PATH)
-    if first is None:
-        if _grant_file_exists(CONTINUATION_2_PATH):
-            raise LedgerError("the second continuation grant has no first grant before it")
-        return None
-    first["segments"] = [_segment(first["previous"])]
-    second = _grant(CONTINUATION_2_PATH, CONTINUATION_SUMMARY_PATH)
-    if second is None:
-        return first
-    if first["phase"] != "sealed" or {
-        key: first["next"].get(key) for key in ("marks_digest", "inputs_digest")
-    } != {key: second["previous"][key] for key in ("marks_digest", "inputs_digest")}:
-        raise LedgerError("the second continuation grant does not follow the first")
-    second["segments"] = [*first["segments"], _segment(second["previous"])]
-    return second
+    stray = _stray_grant()
+    if stray:
+        msg = (
+            f"{stray} is not a grant name the chain reads: claude-continuation.json, "
+            f"then claude-continuation-2.json up to -{MAX_GRANTS}.json"
+        )
+        raise LedgerError(msg)
+    active: dict[str, Any] | None = None
+    for k, path in enumerate(CONTINUATION_PATHS, start=1):
+        grant = _grant(path, result_path(k - 1))
+        if grant is None:
+            later = [n for n in range(k + 1, MAX_GRANTS + 1) if grant_exists(n)]
+            if later:
+                msg = f"continuation grant {later[0]} has no grant {k} before it"
+                raise LedgerError(msg)
+            break
+        segments = [_segment(grant["previous"])]
+        if active is not None:
+            if active["phase"] != "sealed" or {
+                key: active["next"].get(key) for key in ("marks_digest", "inputs_digest")
+            } != {key: grant["previous"][key] for key in ("marks_digest", "inputs_digest")}:
+                raise LedgerError(f"continuation grant {k} does not follow grant {k - 1}")
+            segments = [*active["segments"], *segments]
+        grant["segments"] = segments
+        active = grant
+    return active
+
+
+def result_path(generation: int) -> str:
+    """Packet `generation`'s committed result: the original's at 0, continuation k's at k."""
+    return CLAUDE_SUMMARY_PATH if generation == 0 else CONTINUATION_SUMMARY_PATHS[generation - 1]
+
+
+def grant_exists(k: int) -> bool:
+    """Whether grant k's file is present at all, a symlink included."""
+    return os.path.lexists(CONTINUATION_PATHS[k - 1])
+
+
+def generation() -> int:
+    """The highest grant present, 0 with none: the packet a fresh run would write."""
+    return max((k for k in range(1, MAX_GRANTS + 1) if grant_exists(k)), default=0)
+
+
+def _stray_grant() -> str:
+    """A grant-shaped file the naming pattern never writes, or empty.
+
+    Ignored, a misnamed or out-of-bound grant (`-0`, `-02`, `-10`) would leave
+    an earlier grant active and select that generation's packet unnoticed.
+    """
+    folder = os.path.dirname(CONTINUATION_PATHS[0])
+    try:
+        names = os.listdir(folder)
+    except OSError:
+        return ""
+    canonical = {os.path.basename(path) for path in CONTINUATION_PATHS}
+    strays = sorted(n for n in names if _GRANT_SHAPED.fullmatch(n) and n not in canonical)
+    return strays[0] if strays else ""
 
 
 def _segment(previous: Mapping[str, Any]) -> list[Any]:
@@ -222,10 +277,6 @@ def _segment(previous: Mapping[str, Any]) -> list[Any]:
         previous["ledger_chain"]["calls"],
         [previous["marks_digest"], previous["inputs_digest"]],
     ]
-
-
-def _grant_file_exists(path: str) -> bool:
-    return os.path.lexists(path)
 
 
 def follows(
