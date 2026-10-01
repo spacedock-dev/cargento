@@ -2363,6 +2363,14 @@ class RejectedPostDrainTest(unittest.TestCase):
         contents, took the whole 250ms drain deadline on the shipped /api/ask
         route — per request, on the handler thread.
         """
+        # The shipped 250 ms drain was also the bound, so a healthy request had to
+        # finish its whole loopback round trip inside it, on a Windows runner
+        # measured at 0.47 s per loopback request (DRC-4648). A re-drain costs at
+        # least the drain, so a 3 s drain with half of it as the bound leaves 3x
+        # that round trip and 1.5 s between a healthy refusal and the defect.
+        drain = mock.patch.object(http_api._RequestHandler, "REJECT_DRAIN_SECONDS", 3.0)
+        drain.start()
+        self.addCleanup(drain.stop)
         httpd = make_server()
         thread = threading.Thread(target=poll_fast(httpd), daemon=True)
         thread.start()
@@ -2384,7 +2392,7 @@ class RejectedPostDrainTest(unittest.TestCase):
             elapsed = time.monotonic() - started
             self.assertLess(
                 elapsed,
-                http_api._RequestHandler.REJECT_DRAIN_SECONDS,
+                http_api._RequestHandler.REJECT_DRAIN_SECONDS / 2,
                 f"the refusal waited out the drain deadline, took {elapsed:.3f}s",
             )
         finally:

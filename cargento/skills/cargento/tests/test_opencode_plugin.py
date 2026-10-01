@@ -213,7 +213,13 @@ class OpenCodePluginTest(support.RuntimeTestCase):
         self.assertEqual([TOKEN, "next-token"], [r["token"] for r in self.records])
 
     def test_a_slow_server_cannot_hold_the_permission_callback(self) -> None:
-        self.response_delay = 1.0
+        # A healthy run ends with the runner's settle, 0.67 s plus node's startup.
+        # A deadline that resolves without destroying the socket holds the process
+        # for this delay plus 0.25 s, and no deadline holds it for twice the delay.
+        # The delay was 1.0 s against a 1.6 s bound, which a healthy Windows run
+        # crossed at 1.69 s (PR #456, run 36798591299). At 4.5 s, a 3.7 s bound
+        # leaves 3x that run's 1.02 s overhead and sits 1.1 s under either defect.
+        self.response_delay = 4.5
         result = self.run_plugin(
             [
                 {"event": native("permission.asked"), "delay": 10},
@@ -222,7 +228,7 @@ class OpenCodePluginTest(support.RuntimeTestCase):
             settle=650,
         )
         self.assertLess(max(result["times"]), 100)
-        self.assertLess(result["elapsed"], 1.6, "HTTP deadline did not release the host socket")
+        self.assertLess(result["elapsed"], 3.7, "HTTP deadline did not release the host socket")
         self.assertEqual(
             ["input_requested", "input_resolved"], [r["body"]["event"] for r in self.records]
         )
@@ -297,7 +303,10 @@ class OpenCodePluginTest(support.RuntimeTestCase):
         self.state.unlink()
         os.mkfifo(self.state)
         result = self.run_plugin([{"event": native("permission.asked")}])
-        self.assertLess(result["elapsed"], 1.6)
+        # A blocked FIFO read never ends, so the defect is the runner's 10 s
+        # timeout; the healthy floor is 0.41 s plus the same node startup that
+        # cost 1.02 s on Windows above. 1.6 s left no room for a slow runner.
+        self.assertLess(result["elapsed"], 4.0)
         self.assertEqual([], self.records)
 
     def test_request_overflow_never_claims_clearance_for_untracked_waits(self) -> None:
