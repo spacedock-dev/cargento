@@ -241,6 +241,43 @@ def prompt_title(config: RuntimeConfig, text: str, limit: int = 80) -> str | Non
     return None
 
 
+# Which tag a Claude Code slash-command record opens with says who ran the
+# command. Measured 2026-10-01 over the local store's main-thread, non-meta user
+# records carrying `<command-name>`: all 1,477 that open with `<command-message>`
+# are followed by an `isMeta` record holding the command's expanded prompt (a
+# skill, or a built-in such as `/review` that asks the model for work), and all
+# 945 that open with `<command-name>` are followed by `<local-command-stdout>`,
+# `-stderr` or a system record, 903 of them after a `<local-command-caveat>` (a
+# local command the harness ran itself: `/clear`, `/login`, `/plugin`, `/compact`
+# and 15 more). No command name falls in both. The cross-record signals agree
+# with the tag order, but a per-record reader cannot see them, so the order is
+# the signal and they are the evidence for it.
+_LOCAL_COMMAND_RE = re.compile(r"^\s*<command-name>")
+_PROMPT_COMMAND_RE = re.compile(r"^\s*<command-message>")
+
+
+def command_direction(config: RuntimeConfig, text: str) -> str | None:
+    """A Claude Code slash-command record as the direction it gives, rendered whole.
+
+    None when ``text`` is not a slash-command record, so the caller reads it as
+    any other message. "" when it is one the reader did not direct work with: a
+    local command, with or without arguments (`/compact keep the notes` drives
+    the harness, on 85 of the 90 measured), or a prompt command on the shared
+    `records.harness_control` list, so the goal slot, the instruction line and
+    the observed record agree about `/insights`. Otherwise `prompt_title`'s own
+    rendering, unclipped: the caller bounds it after redaction, as it bounds an
+    ordinary message.
+    """
+    if _LOCAL_COMMAND_RE.match(text):
+        return ""
+    if not _PROMPT_COMMAND_RE.match(text):
+        return None
+    name = _COMMAND_NAME_RE.search(text)
+    if name is None or records.harness_control(name.group(1)):
+        return ""
+    return prompt_title(config, text, limit=len(text)) or ""
+
+
 # ---------------------------------------------------------------------------
 # The instruction line
 #

@@ -441,7 +441,7 @@ def _instruction_event(
     text = message["text"].strip()
     if at is None or not text:
         return None
-    title = _semantic_line(text, min(MAX_SEMANTIC_LINE, config.observer_goal_cap_chars))
+    title = _message_title(config, text, harness)
     if not title:
         return None
     event: dict[str, Any] = {
@@ -469,6 +469,18 @@ def _instruction_event(
             event["tag_source"] = "explicit user-role wording"
             break
     return event
+
+
+def _message_title(config: RuntimeConfig, text: str, harness: str) -> str:
+    """A user message's one-line title, or "" when it names nothing."""
+    limit = min(MAX_SEMANTIC_LINE, config.observer_goal_cap_chars)
+    # A slash command is the reader's direction in the harness's markup, every
+    # line of which opens with `<` and so reads as empty to `_semantic_line`
+    # (DRC-4764). `records`' note on the command tags is the other half.
+    command = transcripts.command_direction(config, text) if harness == "claude" else None
+    if command is None:
+        return _semantic_line(text, limit)
+    return records.safe_text(command, limit)
 
 
 def _direction_event(
@@ -4022,7 +4034,12 @@ def direction_text(
                 direction = transcripts.antigravity_direction(record)
                 return direction.text if direction and not direction.truncated else ""
             message = observer.parse_message_record(record)
-            return str(message["text"]) if message else ""
+            if not message:
+                return ""
+            text = str(message["text"])
+            # The command as typed, never the tags it arrived in.
+            command = transcripts.command_direction(config, text) if harness == "claude" else None
+            return command or text
     return ""
 
 
