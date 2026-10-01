@@ -647,7 +647,8 @@ to the provider and moves a [SECURITY.md](../SECURITY.md#observer-model-calls) b
 
 The provider each reading may reach is still the one [DEC-21](#dec-21-a-reading-works-the-first-time-you-ask)
 item 4 names. The disclosure before the press now says the reader's own messages go in full, up to
-1,000 characters each, redacted; an answer given before that sentence existed is not asked again,
+1,000 characters each, redacted, and that where the record is too long the oldest go by their first
+sentence; an answer given before that sentence existed is not asked again,
 and whether it should be is filed separately. The parser digest the abstention
 packets are stamped with moves with this change, so a packet frozen before it is refused as
 `frozen-on-another-parser` and is frozen again.

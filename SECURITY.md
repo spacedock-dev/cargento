@@ -1078,7 +1078,8 @@ focused session and up to three active children whose assignment is unavailable.
 those words as well as the session's evidence, which is why it carries a disclosure of its own
 rather than reusing the observer's.
 The evidence includes the reader's own messages in the session's record, and since 2026-10-01 each
-is sent whole rather than as its first sentence: collapsed to one line, redacted by
+is sent whole rather than as its first sentence where the prompt has room (the newest first,
+within half the prompt; the rest go by their first sentence): collapsed to one line, redacted by
 `records.safe_text`, and cut at 1,000 characters (`project_context.READER_WORDS_CAP_CHARS`, held
 again by the ledger's `reading.LEDGER_WORDS_CAP_CHARS`), inside the same 16 KiB prompt bound. That
 sends more of what the reader typed than the first sentence did, including any private prose in a

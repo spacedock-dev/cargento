@@ -349,7 +349,8 @@ class TheReadersWordsNeverCostAVerdictItsEvidenceTest(unittest.TestCase):
                 text = reading_route._base_disclosure(provider)
                 self.assertIn(
                     f"your own messages in that record in full, up to {cap} each, "
-                    "with credential shapes redacted",
+                    "with credential shapes redacted; where the record is too long for that, "
+                    "your oldest messages go by their first sentence",
                     text,
                 )
 
