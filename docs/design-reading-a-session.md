@@ -2523,7 +2523,14 @@ line of that markup opens with `<`, which the record reader skips.
   message, so `/create-pr` alone is a direction and not a drafted intent.
 - A command's arguments over several lines once published the last line, closing tag and all; 12
   such records in the local store change summary, and 3 local commands with such arguments stop
-  being listed. Those facts' ids move, so a citation stored to one no longer resolves.
+  being listed. Those facts' ids move. For up to 24 hours after the upgrade the semantic history
+  store still holds the old facts, so an old citation resolves to the old row and a retitled
+  record can show twice; once the history window ages them out, a citation stored to one no
+  longer resolves.
+- A command longer than the record reader's 2,000 characters loses its closing `</command-args>`
+  (2 of the 1,477 measured). It is published with the arguments that arrived rather than as
+  the bare name, and "Add it to my intent" offers them ending in an ellipsis and reports them
+  clipped, so the reader edits the line before saving it and it is never offered as whole.
 
 ## DEC-26: four drift levels, and a live estimate after every turn
 

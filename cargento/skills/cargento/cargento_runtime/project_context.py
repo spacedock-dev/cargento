@@ -3993,9 +3993,20 @@ def instruction_events(
     return events
 
 
+class DirectionText(NamedTuple):
+    """A direction's text for review, and whether the record reader cut it short.
+
+    `cut` covers what the text's own length cannot show: a slash command whose
+    arguments lost their closing tag renders shorter than the cap it was cut at.
+    """
+
+    text: str
+    cut: bool = False
+
+
 def direction_text(
     config: RuntimeConfig, state: RuntimeState, harness: str, sid: str, fact_id: str
-) -> str:
+) -> DirectionText:
     """The whole text of one user message in the bounded tail, found by its fact id, or "".
 
     For DRC-4682's "Add it to my intent", which needs a direction's raw words
@@ -4012,7 +4023,7 @@ def direction_text(
         config, state, harness, sid
     ) or observer.resolve_directions(config, state, harness, sid)
     if not transcript_path:
-        return ""
+        return DirectionText("")
     seen: set[tuple[float, str]] = set()
     follow = harness not in observer.DIRECTION_HARNESSES
     for raw in runtime_io.read_tail(config, transcript_path, follow_links=follow):
@@ -4032,15 +4043,19 @@ def direction_text(
                 # A direction the harness cut short is refused rather than
                 # saved as the whole of what was typed.
                 direction = transcripts.antigravity_direction(record)
-                return direction.text if direction and not direction.truncated else ""
+                return DirectionText(
+                    direction.text if direction and not direction.truncated else ""
+                )
             message = observer.parse_message_record(record)
             if not message:
-                return ""
+                return DirectionText("")
             text = str(message["text"])
             # The command as typed, never the tags it arrived in.
             command = transcripts.command_direction(config, text) if harness == "claude" else None
-            return command or text
-    return ""
+            if command:
+                return DirectionText(command, transcripts.command_cut(text))
+            return DirectionText(text)
+    return DirectionText("")
 
 
 def _codex_dispatch_artifact(task_name: str) -> tuple[str, str, str, str] | None:

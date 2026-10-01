@@ -24,10 +24,20 @@ from pathlib import Path
 from typing import Any
 from unittest import mock
 
-from cargento_runtime import claude_data, correction, observer, project_context, reading, records
+from cargento_runtime import (
+    aggregate,
+    claude_data,
+    correction,
+    observer,
+    project_context,
+    reading,
+    records,
+)
 from cargento_runtime.config import build_runtime_config
 from cargento_runtime.state import build_runtime_state
 
+from . import test_direction_adoption as adoption
+from .support import make_server, serve_until_closed
 from .test_claude_checks import SHORT, START, Transcript
 from .test_direction_adoption import _row
 from .test_next_activity_numbers import WINDOW, WINDOWED, facts_js, rows_of
@@ -192,10 +202,10 @@ class ASlashCommandIsAReaderDirectionTest(_SlashSession):
     def test_add_it_to_my_intent_reads_the_command_not_its_markup(self) -> None:
         self.session.skill("pr-review-response", ARGS)
         (fact,) = [f for f in self.facts() if f.get("summary") == DIRECTED]
-        text = project_context.direction_text(
+        read = project_context.direction_text(
             self.config, self.state, "claude", SHORT, str(fact["fact_id"])
         )
-        self.assertEqual(DIRECTED, text)
+        self.assertEqual((DIRECTED, False), (read.text, read.cut))
 
 
 class WorkAfterASlashCommandWasAskedForTest(_SlashSession):
@@ -265,6 +275,75 @@ class OneControlRuleForTheGoalAndTheInstructionLineTest(_SlashSession):
         self.assertEqual("earlier", line["label"])
 
 
+# Over the record reader's 2,000 characters, so the cut lands inside `<command-args>` and its
+# closing tag never arrives: 2 of the 1,477 measured prompt commands.
+HUGE_ARGS = " ".join(f"word{n}" for n in range(400)) + " FINAL"
+# About 300 characters: whole, but more than a summary or an outcome line holds.
+WIDE_ARGS = " ".join(f"step{n:03d}" for n in range(37))
+
+
+class ACommandIsNeverShownWholeWhenItWasCutTest(_SlashSession):
+    """A command the record reader cut is told as cut, and one it did not cut is told whole."""
+
+    def opened(self, args: str) -> tuple[dict[str, Any], dict[str, Any]]:
+        """`POST /api/direction` over a real socket, as "Add it to my intent" opens it."""
+        self.session.skill("pr-review-response", args)
+        fact = next(f for f in self.facts() if str(f.get("summary") or "").startswith("/pr-"))
+
+        def collect(*_: Any) -> list[dict[str, Any]]:
+            return [_row()]
+
+        spec = aggregate.HarnessSpec(
+            key="claude", label="Claude", discover=lambda *_: True, collect=collect
+        )
+        application = aggregate.Application(
+            self.config,
+            self.state,
+            (spec,),
+            native_notifier=lambda _p: "",
+            popup_notifier=lambda _t, _b: None,
+            diagnostic_sink=lambda _m: None,
+            clock=lambda: NOW,
+        )
+        httpd = make_server(application=application)
+        thread = serve_until_closed(httpd)
+        try:
+            status, body = adoption.DirectionRouteTest._post(
+                httpd.server_port,
+                "/api/direction",
+                {"harness": "claude", "sid": SHORT, "fact_id": str(fact["fact_id"])},
+            )
+        finally:
+            httpd.shutdown()
+            thread.join(timeout=5)
+        self.assertEqual(200, status)
+        self.assertIs(True, body["ok"], body)
+        return fact, body
+
+    def test_a_cut_command_keeps_the_arguments_that_arrived(self) -> None:
+        self.assertGreater(len(prompt_command("pr-review-response", HUGE_ARGS)), 2000)
+        fact, _ = self.opened(HUGE_ARGS)
+        self.assertTrue(str(fact["summary"]).startswith("/pr-review-response word0 word1"), fact)
+        self.assertLessEqual(len(str(fact["summary"])), project_context.MAX_SEMANTIC_LINE)
+
+    def test_add_it_to_my_intent_says_a_cut_command_was_clipped(self) -> None:
+        _, body = self.opened(HUGE_ARGS)
+        self.assertEqual((True, False), (body["clipped"], body["fits"]))
+        self.assertTrue(body["text"].startswith("/pr-review-response word0 word1"), body)
+        self.assertNotIn("FINAL", body["text"])
+        self.assertTrue(body["text"].endswith("\u2026"), body["text"][-20:])
+
+    def test_a_whole_wide_command_reaches_add_whole_and_the_ledger_bounded(self) -> None:
+        typed = f"/pr-review-response {WIDE_ARGS}"
+        self.assertGreater(len(typed), 290)
+        fact, body = self.opened(WIDE_ARGS)
+        got = {key: body[key] for key in ("text", "clipped", "fits")}
+        self.assertEqual({"text": typed, "clipped": False, "fits": False}, got)
+        ledger = reading.build_ledger(self.facts(), "claude", SHORT)
+        (entry,) = [row for row in ledger if row["id"] == fact["fact_id"]]
+        self.assertEqual(typed[: project_context.MAX_SEMANTIC_LINE], entry["summary"])
+
+
 @unittest.skipUnless(shutil.which("node"), "node not available")
 class TheSessionPageListsTheCommandAsALaterDirectionTest(PanelPage):
     def test_the_collected_command_is_flagged_and_asked_about(self) -> None:
@@ -284,6 +363,20 @@ class TheSessionPageListsTheCommandAsALaterDirectionTest(PanelPage):
         self.assertEqual([DIRECTED], [row["summary"] for row in flagged])
         self.assertEqual(["A later direction you gave"], flagged[0]["flags"])
         self.assertIn(f"You gave a later direction at #4: &quot;{DIRECTED}&quot;.", html)
+
+    def test_a_cut_command_is_drawn_with_the_arguments_that_arrived(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            board = Board(Path(temp))
+            board.session.skill("pr-review-response", HUGE_ARGS)
+            summary = next(
+                str(f["summary"])
+                for f in board.facts()
+                if str(f.get("summary") or "").startswith("/pr-")
+            )
+        rows = [*WINDOWED, ("later", 120, "user_message", summary, {})]
+        html = self.page("claude", facts_js("claude", rows) + WINDOW)
+        (flagged,) = [row for row in rows_of(html) if row["flags"]]
+        self.assertTrue(flagged["summary"].startswith("/pr-review-response word0"), flagged)
 
 
 if __name__ == "__main__":

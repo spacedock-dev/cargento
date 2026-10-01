@@ -837,14 +837,14 @@ class AntigravityDirectionsAreRead(AntigravityHome):
             DIRECTION["content"],
             project_context.direction_text(
                 self.config, self.state, "antigravity", AGY_SID, fact["fact_id"]
-            ),
+            ).text,
         )
         self.write({**DIRECTION, "truncated_fields": ["content"]})
         self.assertEqual(
             "",
             project_context.direction_text(
                 self.config, self.state, "antigravity", AGY_SID, fact["fact_id"]
-            ),
+            ).text,
         )
 
 

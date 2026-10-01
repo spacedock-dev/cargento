@@ -288,7 +288,25 @@ def command_direction(config: RuntimeConfig, text: str) -> str | None:
         return None
     if harness_control_prompt(config, text):
         return ""
+    if command_cut(text):
+        name = _COMMAND_NAME_RE.search(text)
+        arrived = _PROMPT_TAG_RE.sub(" ", text.split("<command-args>", 1)[1])
+        joined = " ".join(shorten_paths(config, arrived).split())
+        command = name.group(1).strip() if name else ""
+        return f"{command} {joined}".strip() + "\u2026"
     return prompt_title(config, text, limit=len(text)) or ""
+
+
+def command_cut(text: str) -> bool:
+    """Whether a command's arguments were cut before their closing tag arrived.
+
+    The record reader bounds a message at `records.EXTRACT_TEXT_CAP_CHARS`, and
+    a command over it loses `</command-args>`: 2 of the 1,477 measured prompt
+    commands. `prompt_title` then finds no arguments at all and renders the bare
+    name as if it were the whole command, so the summary, the ledger and "Add it
+    to my intent" all called a cut command whole (DRC-4764 review).
+    """
+    return "<command-args>" in text and "</command-args>" not in text
 
 
 # ---------------------------------------------------------------------------
