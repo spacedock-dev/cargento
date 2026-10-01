@@ -18,7 +18,7 @@ import unittest
 from cargento_runtime import reading
 
 from .next_harness import storage_prelude
-from .test_next_drift_panel import FIXTURE, PanelPage, drift_of, routes
+from .test_next_drift_panel import FIXTURE, JOB, PanelPage, drift_of, routes
 from .visible_text import visible_text
 
 ASK = re.compile(r'<button\b[^>]*data-next-cockpit-action="reading-(?:ask|allow)"[^>]*>')
@@ -288,3 +288,67 @@ class TheFirstPressAsksBeforeItSendsTest(PanelPage):
             + "__fire('click', {target:notNow, preventDefault(){}});\nawait __settle();\n",
         )
         self.assertIsNone(CARD.search(drift_of(html)))
+
+
+ALLOWED = (
+    "__dashboard.reading = {consent:true, providers:{codex:true}, used:0, limit:12};\n"
+    "__dashboard.sessions[0].annotation_reading_count = 2;\n"
+)
+SENT = re.compile(r"<details\b[^>]*next-cockpit-reading-sent[^>]*>[\s\S]*?</details>")
+
+
+@unittest.skipUnless(shutil.which("node"), "node not available")
+class IdleTheDisclosureIsOneWordedClickAwayTest(PanelPage):
+    """Owner Q1, 2026-10-01: idle, the button, one hint line, then the disclosure under a summary."""
+
+    def test_idle_and_never_allowed_shows_the_count_the_hint_and_a_closed_summary(self) -> None:
+        drift = drift_of(self.page("codex", CONSENT_NEEDED))
+        disclosure = routes()["codex"]["disclosure"]
+        # The count on the button's row, short to the eye and whole to a screen reader.
+        row = drift[drift.index('<div class="next-cockpit-reading-ask">') :]
+        row = row[: row.index("</div>")]
+        self.assertIn("0 requests", visible_text(row))
+        self.assertRegex(row, r"\d+ model requests? recorded for this session\.")
+        self.assertNotIn("recorded for this session", visible_text(row))
+        # A screen reader hears the sentence once, not the short form before it.
+        self.assertIn('<span aria-hidden="true">0 requests</span>', row)
+        # Then only the hint and the summary are in view before the next section.
+        tail = after_button(drift)
+        hint = "Reads the session up to now against your intent. Runs in the background."
+        self.assertTrue(tail.startswith(f"{hint} What is sent to Codex"), tail)
+        self.assertNotIn(visible_text(disclosure)[:60], visible_text(drift))
+        sent = SENT.search(drift)
+        assert sent is not None
+        self.assertNotIn(" open", sent.group(0)[: sent.group(0).index(">")])
+        # Keyed by session through `nextCockpitDisclosureAttr`, the lane that puts an open
+        # summary back after `renderNext` (docs/design-reader-state.md).
+        self.assertIn(
+            'data-next-cockpit-disclosure="cargento\ncodex:focus-1\nreading-sent"', sent.group(0)
+        )
+        # The disclosure paragraph the button is described by is inside it, whole and tag-free.
+        button = ASK.search(drift)
+        assert button is not None
+        described = re.search(r'aria-describedby="([^"]+)"', button.group(0))
+        assert described is not None
+        bound = re.search(rf'<p\b[^>]*id="{described.group(1)}"[^>]*>([^<]*)</p>', sent.group(0))
+        assert bound is not None
+        self.assertEqual(visible_text(disclosure), visible_text(bound.group(1)))
+
+    def test_once_allowed_the_summary_is_what_is_sent_and_holds_turn_off(self) -> None:
+        drift = drift_of(self.page("codex", ALLOWED))
+        sent = SENT.search(drift)
+        assert sent is not None
+        summary = re.search(r"<summary>([^<]*)</summary>", sent.group(0))
+        assert summary is not None
+        self.assertEqual("What is sent", summary.group(1))
+        self.assertIn('data-next-cockpit-action="reading-off"', sent.group(0))
+        self.assertEqual(1, drift.count('data-next-cockpit-action="reading-off"'))
+        self.assertNotIn("Turn off readings", visible_text(drift))
+        row = drift[drift.index('<div class="next-cockpit-reading-ask">') :]
+        self.assertIn("2 requests", visible_text(row[: row.index("</div>")]))
+
+    def test_while_analyzing_the_disclosure_is_not_drawn_and_the_count_stays(self) -> None:
+        drift = drift_of(self.page("codex", ALLOWED + JOB))
+        self.assertIn("data-next-analyzing", drift)
+        self.assertNotIn(routes()["codex"]["disclosure"][:60], drift)
+        self.assertRegex(drift, r"2 model requests recorded for this session\.")

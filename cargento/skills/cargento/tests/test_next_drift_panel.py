@@ -638,11 +638,13 @@ __dashboard.asks = [{{id:"ask-1", harness:"claude", session_id:"focus-1", projec
                 self.assertIn('data-next-session-section="ask"', html)
                 self.assertIn("State: </span>needs input</span>", html)
 
-    def test_while_analyzing_the_box_comes_first_and_the_disclosure_once_after_it(self) -> None:
+    def test_while_analyzing_the_box_stands_alone_without_the_disclosure(self) -> None:
+        # Owner Q1, 2026-10-01 (DRC-4758 slice B): the job sends nothing more, and the reader
+        # allowed it, or it ran under an Allow, after the same words; the box stands alone.
         disclosure = routes()["claude"]["disclosure"][:60]
         drift = drift_of(self.page(setup=JOB))
-        self.assertEqual(1, drift.count(disclosure))
-        self.assertLess(drift.index("data-next-analyzing"), drift.index(disclosure))
+        self.assertIn("data-next-analyzing", drift)
+        self.assertEqual(0, drift.count(disclosure))
 
     def test_the_disclosure_renders_once_idle_and_confirming(self) -> None:
         disclosure = routes()["claude"]["disclosure"][:60]

@@ -4153,6 +4153,14 @@ function nextCockpitReadingControl(session, annotation, model, primary = true, s
   /* Only from a published annotation: with the store off there is no count
      to read, and "0 requests" would be a default standing in for one. */
   const counted = annotation ? `<span class="next-cockpit-reading-count">${esc(spent)}</span>` : "";
+  /* Idle, the count rides on the button's row, beside the control as item 1 of
+     [DEC-24](docs/design-reading-a-session.md#dec-24-your-intent-is-a-drafted-goal-and-a-checklist-and-a-correction-is-yours-to-copy)
+     keeps it: short to the eye, and the whole sentence to a screen reader,
+     which the short form is hidden from (DRC-4758 slice B). */
+  const rowCount = annotation
+    ? `<span class="next-cockpit-reading-count next-cockpit-reading-count--row">` +
+      `<span aria-hidden="true">${esc(`${count} request${count === 1 ? "" : "s"}`)}</span>` +
+      `<span class="next-visually-hidden">${esc(spent)}</span></span>` : "";
   /* What the last press or withdrawal came to, announced. Every arm prints
      it: a failed "Turn off readings" that says nothing leaves the reader
      believing a permission is gone that is still on record (review C-1). */
@@ -4163,10 +4171,13 @@ function nextCockpitReadingControl(session, annotation, model, primary = true, s
   /* While a job runs, the box stands where the button was, as the design
      draws it, with the disclosure and the count after it in the idle order.
      A refusal is about a new press, which is not offered, so it waits. */
+  /* The disclosure is not drawn under the box: nothing more is sent by
+     this job, and the reader allowed it, or it ran under an Allow, after the
+     same words (DRC-4758 slice B). */
   if(job){
     return nextReadingJobBox(job, key) +
       (off ? `<div class="next-cockpit-reading-ask">${off}</div>` : "") +
-      disclosure + said(answered) + counted;
+      said(answered) + counted;
   }
   /* No reader on this machine: the route's reason stands where the button
      would be, and no inert button is drawn, because there is no press to
@@ -4253,9 +4264,26 @@ function nextCockpitReadingControl(session, annotation, model, primary = true, s
       (lead ? "" : steers) + (off ? `<div class="next-cockpit-reading-ask">${off}</div>` : "") +
       accounts + counted;
   }
+  /* Idle: the button and its count, the accounts and the one hint line, then
+     the provider disclosure one click away under a worded summary that names
+     the receiver until it is allowed (owner Q1, 2026-10-01). Idle sends
+     nothing: the press that would send either opens the consent step above or
+     runs under an Allow given after these same words. The button stays
+     described by the paragraph, which a closed summary still lets a screen
+     reader read. Turn off readings sits inside it, still on the page, as item 1 of
+     [DEC-21](docs/design-reading-a-session.md#dec-21-a-reading-works-the-first-time-you-ask)
+     requires. */
+  const label = provider ? String(route.label || provider) : "";
+  const sent = disclosure
+    ? `<details class="next-cockpit-why next-cockpit-reading-sent"` +
+      `${nextCockpitDisclosureAttr("reading-sent")}>` +
+      `<summary>${esc(nextReadingNeedsAllow(route) ? `What is sent to ${label}` : "What is sent")}` +
+      `</summary>${disclosure}` +
+      (off ? `<div class="next-cockpit-reading-ask">${off}</div>` : "") + "</details>"
+    : off ? `<div class="next-cockpit-reading-ask">${off}</div>` : "";
   return '<div class="next-cockpit-reading-ask">' +
-    (lead ? steerButton + button : button + steerButton) + off + '</div>' +
-    accounts + disclosure + counted;
+    (lead ? steerButton + button : button + steerButton) + rowCount + '</div>' +
+    accounts + sent;
 }
 
 /* "Not now" on the consent step: nothing is sent, allowed or recorded, and

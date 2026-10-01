@@ -1189,6 +1189,7 @@ class NextPageAssetContractTest(unittest.TestCase):
         ".next-cockpit-reading-job-note",
         ".next-cockpit-reading-consent-title",
         ".next-cockpit-reading-parts",
+        ".next-cockpit-reading-count--row",
         ".next-cockpit-recovery .next-project-goal-text",
         ".next-cockpit-recovery .next-project-goal-text.next-project-value--absent,\n.next-cockpit-recovery .next-project-goal-gap",
         ".next-cockpit-recovery details>summary,.next-course-evidence>summary,\n.next-cockpit-plan-details>summary,.next-cockpit-console-status>summary,\n.next-cockpit-console-setup>summary",
@@ -1388,9 +1389,9 @@ class NextPageAssetContractTest(unittest.TestCase):
         # the nudge to analyze.
         # DRC-4695 adds eight: the analysis result's headline, count, answer line, stale
         # banner head, Where the work went's heading and folders, and Not accurate with
-        # its mark. DRC-4758 adds two: the consent step's question and the list of the
-        # disclosure's parts.
-        self.assertEqual(128, len(above))
+        # its mark. DRC-4758 adds three: the consent step's question, the list of the
+        # disclosure's parts, and the attempt count on the button's row.
+        self.assertEqual(129, len(above))
         self.assertEqual(self.SENTENCE_TIER_RULES, {selector for selector, _size in above})
         self.assertEqual(
             self.SUB_SENTENCE_FLOOR_INVENTORY, {(size, selector) for selector, size in below}

@@ -2115,6 +2115,24 @@ read it as a press that did nothing.
   `reading-allow:<key>`; Not now carries `reading-not-now:<key>` and falls back to the press's key.
 - The step comes back whenever an Allow is needed again, such as a new tool-output destination.
 
+#### Amended 2026-10-01: idle, the disclosure is one worded click away
+
+Owner ruling Q1, 2026-10-01 (DRC-4758 slice B). This supersedes the panel build's "Idle, the button
+comes first and the DEC-21 disclosure follows it with the hint" for the idle stage.
+
+- Idle, the order is the button, with the attempt count on its row ("0 requests" to the eye, the
+  whole "0 model requests recorded for this session." to a screen reader), any account of a press,
+  the one hint line, then the DEC-21 disclosure under a closed summary: "What is sent to
+  <receiver>" until that receiver is allowed, then "What is sent". The button stays described by the
+  disclosure's paragraph. Turn off readings sits inside the summary, still on the page.
+- Idle sends nothing, so nothing is sent before the receiver is named: the press that would send
+  opens [the consent step](#amended-2026-10-01-the-first-press-is-a-consent-step), which shows the
+  whole disclosure before "Allow and analyze".
+- While analyzing, the box stands alone with the count after it; the disclosure is not drawn,
+  because the job sends nothing more.
+- The summary's open state survives a redraw through `nextCockpitDisclosureAttr`, keyed by session,
+  under the existing reader-state row for tier-2 caveat bodies.
+
 ### What the Cancel build decided, 2026-09-24
 
 DRC-4693 built Cancel, the rest of item 5. The owner ruled the spend, the unconfirmed kill and the

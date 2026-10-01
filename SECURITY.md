@@ -1253,7 +1253,10 @@ by the OS (`score_abstention.py --probe-argv`, below):
   and the account UUID in `metadata.user_id`, which is empty under an API key. The CLI reads the
   email from its cached account and no flag removes it. The owner accepted this on 2026-09-27 on
   condition that it is said before the press, and the Claude Code disclosure names it
-  (`reading_route._base_disclosure`).
+  (`reading_route._base_disclosure`). Amended 2026-10-01 (owner, Q1, DRC-4758): the press it is
+  said before is the one that sends. Idle, the disclosure is one click away under "What is sent to
+  <receiver>", and a press there sends nothing; the press that would send opens a consent step
+  that shows the whole disclosure, as the server's parts, before "Allow and analyze".
 
 `--exclude-dynamic-system-prompt-sections` does not help: the CLI ignores it under
 `--system-prompt`.
@@ -1448,9 +1451,11 @@ Ruled 2026-09-24 by [DEC-24](docs/design-reading-a-session.md#dec-24-your-intent
 with the layer named beside it, and the route counts in Scope move in those layers, not here.
 
 The labels. "Check for drift" became "Analyze drift", and "Allow and check" became "Allow and
-analyze", with DRC-4680. When idle the disclosure sits under "Analyze drift", whose press either
-asks for the Allow first or runs under one already given after this same disclosure; at the
-confirming press it sits before "Allow and analyze". The permission and rolling budget above are otherwise unchanged, except
+analyze", with DRC-4680. When idle the disclosure sits one click away under "Analyze drift", in a
+summary reading "What is sent to <receiver>" until it is allowed (owner, 2026-10-01, Q1), and that
+press either opens the consent step first or runs under an Allow already given after this same
+disclosure; in the consent step it is shown whole, as the server's parts, before "Allow and
+analyze". The permission and rolling budget above are otherwise unchanged, except
 that an allow given before the disclosure named tool output does not cover it
 ([Tool output in a Claude Code reading](#tool-output-in-a-claude-code-reading)). Keep never counts
 as the allow (owner, 2026-09-27): where the disclosure has not been allowed, it reads "Keep my
