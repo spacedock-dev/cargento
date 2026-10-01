@@ -333,15 +333,19 @@ class ACommandIsNeverShownWholeWhenItWasCutTest(_SlashSession):
         self.assertNotIn("FINAL", body["text"])
         self.assertTrue(body["text"].endswith("\u2026"), body["text"][-20:])
 
-    def test_a_whole_wide_command_reaches_add_whole_and_the_ledger_bounded(self) -> None:
+    def test_a_whole_wide_command_reaches_add_and_the_ledger_whole(self) -> None:
         typed = f"/pr-review-response {WIDE_ARGS}"
         self.assertGreater(len(typed), 290)
         fact, body = self.opened(WIDE_ARGS)
         got = {key: body[key] for key in ("text", "clipped", "fits")}
         self.assertEqual({"text": typed, "clipped": False, "fits": False}, got)
+        # The published summary stays one title long; a reading reads the command whole
+        # (the 2026-10-01 ruling `test_reader_words` covers).
+        self.assertEqual(typed[: project_context.MAX_SEMANTIC_LINE], fact["summary"])
         ledger = reading.build_ledger(self.facts(), "claude", SHORT)
         (entry,) = [row for row in ledger if row["id"] == fact["fact_id"]]
         self.assertEqual(typed[: project_context.MAX_SEMANTIC_LINE], entry["summary"])
+        self.assertEqual(typed, entry.get("words"))
 
 
 @unittest.skipUnless(shutil.which("node"), "node not available")

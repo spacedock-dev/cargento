@@ -979,6 +979,8 @@ class _RequestHandler(BaseHTTPRequestHandler):
         result = copied_corrections.mark(result, collected["sessions"])
         if focus is not None:
             result = _with_levels(application, result, collected["sessions"], focus, project)
+        # The page shows titles; a reader message whole is for a reading only.
+        result = runtime_project_context.for_page(result)
         self._send(
             json.dumps(result, ensure_ascii=False, separators=(",", ":")).encode(),
             "application/json",

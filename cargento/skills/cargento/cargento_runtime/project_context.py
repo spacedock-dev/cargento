@@ -33,6 +33,13 @@ MAX_PROJECT_OBSERVERS = 3
 MAX_PROJECT_ATTENTION_SESSIONS = 64
 MAX_ACTIVE_CHILD_OBSERVERS = 3
 MAX_SEMANTIC_LINE = 112
+# A reading's bound on one reader message: about nine titles, so a correction's later sentences
+# arrive (owner ruling, 2026-10-01). How many go whole is the prompt's to decide, not this cap's:
+# `reading.WORDS_SHARE_DIVISOR` gives them half the 16 KiB: seven full-length ASCII messages,
+# or two CJK ones at three bytes a character, measured beside a failed check and a write.
+READER_WORDS_CAP_CHARS = 1_000
+# The fact field holding them, named so `for_page` can strip it at any depth without colliding.
+READER_WORDS_FIELD = "reader_words"
 SEMANTIC_CURRENT_HORIZON_SEC = 15 * 60
 SEMANTIC_BURST_EPSILON_SEC = 2
 MAX_PRIMARY_ACTIVITY_NODES = 5
@@ -449,6 +456,7 @@ def _instruction_event(
         "kind": "steer",
         "phase": "user-role instruction",
         "title": title,
+        READER_WORDS_FIELD: _message_words(config, text, harness),
         "source": "timestamped non-meta user-role record",
         "harness": harness,
         "sid": sid,
@@ -483,6 +491,30 @@ def _message_title(config: RuntimeConfig, text: str, harness: str) -> str:
     return records.safe_text(command, limit)
 
 
+def _message_words(config: RuntimeConfig, text: str, harness: str) -> str:
+    """A user message whole, as a reading reads it: one line, redacted, bounded.
+
+    Never the page's: `for_page` drops it from a published context, and the history store's
+    field allowlist does not name it. Why it exists, in its own amendment:
+    docs/design-reading-a-session.md#amended-2026-10-01-a-reading-sees-the-readers-whole-message
+    """
+    command = transcripts.command_direction(config, text) if harness == "claude" else None
+    return records.safe_text(" ".join((command or text).split()), READER_WORDS_CAP_CHARS)
+
+
+def for_page(value: Any) -> Any:
+    """A project context with every reader message's `words` removed, for a page route.
+
+    Walks the whole context rather than naming `events` and `semantic.facts`, so a projection
+    that later copies a fact cannot publish them by being missed.
+    """
+    if isinstance(value, dict):
+        return {key: for_page(item) for key, item in value.items() if key != READER_WORDS_FIELD}
+    if isinstance(value, list):
+        return [for_page(item) for item in value]
+    return value
+
+
 def _direction_event(
     config: RuntimeConfig, record: dict[str, Any], harness: str, sid: str
 ) -> dict[str, Any] | None:
@@ -500,6 +532,7 @@ def _direction_event(
         "kind": "steer",
         "phase": "user-role instruction",
         "title": title,
+        READER_WORDS_FIELD: _message_words(config, text, harness),
         "source": "timestamped explicit user input record",
         "harness": harness,
         "sid": sid,
@@ -4896,6 +4929,7 @@ def _semantic_fact_from_event(
         "changed_after",
         "read_incomplete",
         "result_at",
+        READER_WORDS_FIELD,
     ):
         if source_event.get(key) not in (None, ""):
             fact[key] = source_event[key]

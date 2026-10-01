@@ -605,6 +605,54 @@ Claude Code case's user messages and `transcript_bytes` are frozen from the tran
 at `captured_at`, because the board reads only the last 400 KB of today's file: the correction the
 supported-departure case rests on sat 750 KB from the end of a session that ran on.
 
+#### Amended 2026-10-01: a reading sees the reader's whole message
+
+The overlay [DEC-15](#dec-15-the-floor-and-the-overlay) admits reads the session's evidence against
+the words a person typed, and until this amendment a person's message reached it as its title: the
+first sentence of its first line, at most 112 characters, which the ledger then cut at 180. Measured
+the same day on a real correction, that dropped the point. The reader's message asked what an
+unexplained status meant, and then, in later sentences, said the original goal included merging and
+that the branches were not being merged back. The model received only the opening question, so a
+departure the reader had named in their own words could not rest on them, which is the case item 1
+of the amendment above allows.
+
+The owner ruled to send the whole message, bounded, knowing it sends more of the reader's own words
+to the provider and moves a [SECURITY.md](../SECURITY.md#observer-model-calls) boundary.
+
+1. Every user-role message in the observed record carries its words beside its title: the whole
+   message on one line, through the same redaction as the title, at most 1,000 characters. That
+   holds for a Claude Code message (a slash command is its command as typed), every other
+   harness's user-role message, and an Antigravity direction.
+2. A person's message carries its words in the ledger beside its title, under a 1,000-character
+   cap of its own, with the menu-field scrub that stops a separator forging a column. Every other
+   entry is unchanged, and so is a copied correction, which is Cargento's text rather than the
+   reader's. A fact with no words, from a packet frozen earlier or republished by the history
+   store, has its title alone.
+3. The reader's words may not cost a verdict its evidence. Entries are chosen by their titles,
+   exactly as before this amendment, and only then do the newest messages swap their title for
+   their words, each only where its whole row fits the room left and the words' own share, half
+   the 16 KiB budget counted in UTF-8 bytes. A message that does not fit is sent by its title. The
+   first build chose the words first, and review measured what that cost: fourteen long messages
+   left a failed check unread with budget to spare, a work entry stopped the outcome lines being
+   asked at fourteen messages where thirteen still asked them, and five 1,000-character CJK
+   messages, three bytes a character, dropped all three checks. 281 of 517 recent user messages
+   reach the 1,000-character cap, so that was the ordinary case. After the fix, beside a failed
+   check and a write, seven full-length ASCII messages or two CJK ones go whole, and every message
+   past them goes by its title, at 5, 14, 20 or 40 messages alike.
+4. The words are not stored and not published. The history store keeps its field allowlist, the
+   page keeps showing titles, and `/api/project-context` drops the words before it answers. The
+   reading route, the unasked lane and the abstention packet read them on the server. Fact ids do
+   not include them, so no stored citation moves. A departure's `detail` is the model's sentence
+   and is stored and shown as before, so the model can now paraphrase a later sentence there.
+
+The provider each reading may reach is still the one [DEC-21](#dec-21-a-reading-works-the-first-time-you-ask)
+item 4 names. The disclosure before the press now says the reader's own messages go in full, up to
+1,000 characters each, redacted, and that where the record is too long the oldest go by their first
+sentence; an answer given before that sentence existed is not asked again,
+and whether it should be is filed separately. The parser digest the abstention
+packets are stamped with moves with this change, so a packet frozen before it is refused as
+`frozen-on-another-parser` and is frozen again.
+
 ### Repeated calls
 
 A reading is produced only in response to a discrete reader action, asserted rather than assumed,

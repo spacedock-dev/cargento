@@ -2320,11 +2320,15 @@ class DRC4711TheContentsAreCheckedAgainstTheTranscriptTest(_Packet):
             _fact("a-invented", sid=CLAUDE_SID, harness="claude", at=self.start + 6)
         )
         self.assertIn("facts-unconfirmed", self.vouch()(case))
-        case = self.genuine()
-        for fact in case["producer_facts"]:
-            if fact["type"] == "user_message":
-                fact["summary"] = "INVENTED words the reader never typed"
-        self.assertIn("facts-unconfirmed", self.vouch()(case))
+        # A user message reaches the ledger by its summary and, since the 2026-10-01 ruling,
+        # its whole words beside it: an invention in either is demoted.
+        for field in ("summary", "reader_words"):
+            case = self.genuine()
+            for fact in case["producer_facts"]:
+                if fact["type"] == "user_message":
+                    self.assertTrue(fact.get(field), fact)
+                    fact[field] = "INVENTED words the reader never typed"
+            self.assertIn("facts-unconfirmed", self.vouch()(case), field)
 
     def test_a_transcript_that_grew_after_the_capture_is_not_demoted(self) -> None:
         case = self.genuine()

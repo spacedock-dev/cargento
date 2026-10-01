@@ -147,7 +147,14 @@ file listing, per case, the `harness`, `sid`, `project`, `captured_at`, the `row
 or before `captured_at`. A Claude Code case's user messages come instead from the transcript as it
 stood at `captured_at`, through the board's own derivation over the tail a press then read: read
 from today's file, a session that ran on past the board's 400 KB tail after the capture left none
-of the reader's words in the case. It never keeps a board check: those are computed over the whole transcript,
+of the reader's words in the case. Each user message's fact carries `reader_words`, the whole message
+on one line, redacted and cut at 1,000 characters, beside the one-sentence `summary`; the producer
+sends the words where the prompt has room and the summary otherwise, and the score-time check
+compares both
+([the amendment](../design-reading-a-session.md#amended-2026-10-01-a-reading-sees-the-readers-whole-message)).
+An older packet's facts lack `reader_words`, and the parser stamp below refuses it before that
+matters.
+It never keeps a board check: those are computed over the whole transcript,
 so a later run would reach back into the moment. It rebuilds the checks and the press reads from
 the transcript as it stood at `captured_at`. It refuses a capture taken before a recorded turn
 stop or end had settled.
@@ -205,8 +212,8 @@ reads (DRC-4711):
   case records no size. The file the case was frozen from is gone, so nothing is compared.
 - `transcript-bytes-differ`: a case frozen at the capture's own length (`transcript_cut` is
   `capture`) names another. A shorter length would shrink the tail and excuse a dropped message.
-- `frozen-on-another-parser`: the case's `parser` stamp, a sha256 over `project_context.py` and
-  `reading.py` written at freeze, does not match the scorer's. Every case would differ, so this is
+- `frozen-on-another-parser`: the case's `parser` stamp, a sha256 over the syntax trees of
+  `io.py`, `project_context.py` and `reading.py` written at freeze, does not match the scorer's. Every case would differ, so this is
   named on its own rather than read as tampering. Freeze again on the tree you score on, with the
   freeze board started from that same checkout, since the board derives the user messages.
   `--score` does not get this far: it compares every stamp with this checkout's before the ledger
