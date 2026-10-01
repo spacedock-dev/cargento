@@ -17,8 +17,17 @@ import shutil
 import unittest
 
 from cargento_runtime import annotations as annotation_store
+from cargento_runtime import levels
 
 from .next_harness import storage_prelude
+from .test_next_analysis_result import (
+    ALL_CANT_TELL,
+    ALL_CONSISTENT,
+    FACTS,
+    MIXED,
+    NO_FAILURE,
+    _ResultPage,
+)
 from .test_next_drift_panel import FIXTURE, READING, PanelPage, aside_of
 from .test_next_intent_draft import DRAFT
 from .visible_text import visible_text
@@ -44,7 +53,10 @@ __dashboard.sessions[0].departures = [{
   cutoff_text: "Read 4 of the 4 entries after your words.",
   evidence: "turn transcript"}];
 """
-IDLE_BUDGET = 90
+# The plan's figures are about 90 and about 160. The idle one is held at 80 since the stamp went
+# behind "Saved" (DRC-4758 fix round), so a sentence creeping back into view is caught before it
+# reaches the plan's ceiling.
+IDLE_BUDGET = 80
 STORED_BUDGET = 160
 
 OFFER = "A reading is a model\u2019s account of the evidence on this page"
@@ -82,6 +94,51 @@ class TheAsideHoldsToItsWordBudgetTest(PanelPage):
 
 
 @unittest.skipUnless(shutil.which("node"), "node not available")
+class ALeveledReadingHoldsToTheStoredBudgetTest(_ResultPage):
+    """The C4 layout a reader sees under a stored reading: a level over the meter, the ruled
+    headline, the checklist and where the work went. STORED above draws none of those, so the
+    budget is measured here as well (DRC-4758 fix round)."""
+
+    def test_each_leveled_state_shows_no_more_than_about_one_hundred_sixty(self) -> None:
+        for name, value, level, facts in (
+            ("mixed, high", MIXED, levels.HIGH, FACTS),
+            ("all consistent, none or low", ALL_CONSISTENT, levels.NONE_OR_LOW, NO_FAILURE),
+            ("all can't tell", ALL_CANT_TELL, None, FACTS),
+        ):
+            with self.subTest(state=name):
+                html = self.page(value, level, facts=facts)
+                assert isinstance(html, str)
+                aside = aside_of(html)
+                count = words(aside)
+                print(f"\nstored reading, {name}: {count} visible words outside field values")
+                self.assertLessEqual(count, STORED_BUDGET, visible_text(outside_fields(aside)))
+
+    def test_what_the_budget_moved_is_still_on_the_page(self) -> None:
+        html = self.page(ALL_CONSISTENT, levels.NONE_OR_LOW, facts=NO_FAILURE)
+        assert isinstance(html, str)
+        aside = aside_of(html)
+        text = visible_text(aside)
+        for moved in (
+            # Each line's qualifier, in full in its Evidence; the source stays named in view.
+            "as the tool reported; not inspected",
+            "said at #2; not a check",
+            # The unlisted count, behind its number.
+            "1 more written file is counted and not listed.",
+            # What it read, behind its worded summary.
+            "Revision 2, ",
+        ):
+            with self.subTest(moved=moved):
+                self.assertIn(moved, aside)
+                self.assertNotIn(moved, text)
+        self.assertIn("Consistent with what the session said at #2", text)
+        self.assertRegex(text, r"Consistent with #\d+ ")
+        self.assertIn("1 more", text)
+        self.assertIn("What it read", text)
+        # The tool qualifier stays in view once, in the activity record's footer.
+        self.assertIn("Results are as the tool reported; not inspected.", visible_text(html))
+
+
+@unittest.skipUnless(shutil.which("node"), "node not available")
 class MovedTextStaysOnThePageTest(PanelPage):
     def test_what_a_reading_is_moves_into_what_is_sent_and_no_reading_heading_is_drawn(
         self,
@@ -105,7 +162,8 @@ class MovedTextStaysOnThePageTest(PanelPage):
     def test_a_later_direction_is_a_summary_naming_its_state(self) -> None:
         aside = aside_of(self.page("claude", STORED))
         text = visible_text(aside)
-        self.assertIn("Later directions: none since your save", text)
+        self.assertIn("Later directions: none", text)
+        self.assertNotIn("none since your save", text)
         self.assertNotIn("A LATER DIRECTION", text)
         for sentence in (LATER_NONE, STEER):
             with self.subTest(sentence=sentence[:30]):

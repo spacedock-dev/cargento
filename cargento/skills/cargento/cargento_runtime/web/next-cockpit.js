@@ -3058,7 +3058,7 @@ function nextCockpitResultWhere(entry, numbers){
   return at != null && at > 0 ? nextSessionClock(at) : "";
 }
 
-function nextCockpitResultStatus(row, numbers, byId){
+function nextCockpitResultStatus(row, numbers, byId, short = false){
   if(row.result === NEXT_READING_DEPARTURE){
     const where = nextCockpitResultWhere(byId.get(String((row.citedIds || [])[0] || "")), numbers);
     return where ? `Departs at ${where}` : "Departs";
@@ -3066,6 +3066,14 @@ function nextCockpitResultStatus(row, numbers, byId){
   if(row.result === NEXT_READING_CONSISTENT && row.restsOn){
     const where = nextCockpitResultWhere(row.restsOnEntry, numbers);
     if(where){
+      /* `short` is the checklist's line in view: the source stays named, and
+         the qualifier is said in full in the line's Evidence and once in view
+         for every tool result, in the activity record's footer (DRC-4758 fix
+         round, the stored-reading word budget). */
+      if(short){
+        return row.restsOn === "tool" ? `Consistent with ${where}`
+          : `Consistent with what the session said at ${where}`;
+      }
       return row.restsOn === "tool"
         ? `Consistent with ${where}, as the tool reported; not inspected`
         : `Consistent with what the session said at ${where}; not a check`;
@@ -3111,13 +3119,16 @@ function nextCockpitResultItem(row, numbers, byId, tag = "li"){
     ? `<span class="next-cockpit-reading-limit">limit · ${esc(row.limit)}</span>`
     : row.evidence.map(line =>
       `<span class="next-cockpit-reading-evidence">${esc(line)}</span>`).join("");
+  const status = nextCockpitResultStatus(row, numbers, byId, true);
+  const full = nextCockpitResultStatus(row, numbers, byId);
   const evidence = `<span class="next-cockpit-reading-name">${esc(row.label)}</span>` +
+    (full === status ? "" : `<span class="next-cockpit-reading-evidence">${esc(full)}</span>`) +
     (row.why ? `<span class="next-cockpit-reading-why">${esc(row.why)}</span>` : "") + tail;
   return `<${tag} class="next-cockpit-reading-row" data-next-result-state="${nextCockpitResultState(row)}"` +
     `${tag === "li" ? "" : " data-next-result-goal"}>` +
     '<span class="next-cockpit-result-glyph" aria-hidden="true"></span>' +
     '<span class="next-cockpit-result-body">' + nextCockpitReadingClauseCell(row) +
-    `<em class="next-cockpit-reading-result">${esc(nextCockpitResultStatus(row, numbers, byId))}</em>` +
+    `<em class="next-cockpit-reading-result">${esc(status)}</em>` +
     `<details class="next-cockpit-why"${nextCockpitDisclosureAttr(`result-evidence:${row.key}`)}>` +
     `<summary>Evidence</summary>${evidence}</details></span></${tag}>`;
 }
@@ -3215,9 +3226,12 @@ function nextCockpitResultWork(entries, numbers, scan, resultWindow){
       '</li>';
   }).join("");
   const more = counted != null && counted >= writes.length ? counted - writes.length : 0;
+  /* Behind its count, so the list's own rows are what stands in view. */
   const unlisted = more
-    ? `<p class="next-cockpit-reading-why">${more} more written ${more === 1 ? "file is" : "files are"} ` +
-      "counted and not listed.</p>" : counted == null || counted < writes.length
+    ? `<details class="next-cockpit-why"${nextCockpitDisclosureAttr("result-work-more")}>` +
+      `<summary>${more} more</summary>` +
+      `<p class="next-cockpit-reading-why">${more} more written ${more === 1 ? "file is" : "files are"} ` +
+      "counted and not listed.</p></details>" : counted == null || counted < writes.length
       ? '<p class="next-cockpit-reading-why">The total written in this window is unavailable.</p>'
       : "";
   return '<div class="next-cockpit-result-work"><h3>Where the work went</h3>' +
@@ -4520,8 +4534,13 @@ function nextCockpitReadingBaseline(shape, extra = ""){
     return `<div class="next-cockpit-reading-criterion-clause">` +
       `<span class="next-cockpit-source">${esc(label)}</span>${body}</div>`;
   }).join("");
+  /* The summary is the worded tier-2 handle; the revision it read and when
+     are the first line inside it, as a short summary should be
+     ([NUI-19](docs/design-next-ui.md#nui-19-a-caveat-has-three-tiers); DRC-4758
+     fix round). */
   return `<details${nextCockpitDisclosureAttr("reading-baseline")}>` +
-    `<summary>What it read: revision ${shape.revisionRead}, ${typed}${opened}</summary>` +
+    "<summary>What it read</summary>" +
+    `<p class="next-cockpit-reading-why">Revision ${shape.revisionRead}, ${typed}${opened}.</p>` +
     extra + rows + "</details>";
 }
 
@@ -4773,7 +4792,7 @@ function nextCockpitConflict(session, annotation, source){
   const settledAt = nextNumber(annotation && annotation.settled_at);
   if(!pending.length){
     if(settledAt == null){
-      return block("none since your save", '<p class="next-cockpit-conflict-why">Nothing you ' +
+      return block("none", '<p class="next-cockpit-conflict-why">Nothing you ' +
         'have said since you saved these words is in the observed record read for this ' +
         'session.</p>');
     }

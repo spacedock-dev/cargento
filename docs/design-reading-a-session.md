@@ -1908,6 +1908,12 @@ the later-direction floor (item 9).
    a later direction ("A later direction you gave"). A reading stores `evidence_through`, and it is
    stale when the intent revision or the evidence after that time changes: "Your intent changed
    after this analysis" or "New work since this analysis", each with "Analyze again".
+   Amended 2026-10-01 (DRC-4758 fix round, the stored-reading word budget): in the Drift card's
+   checklist the line in view names its source without the qualifier, "Consistent with #<n>" for a
+   tool outcome and "Consistent with what the session said at #<n>" for the agent's own account.
+   The whole sentence above, qualifier included, is the first line of that line's Evidence, and the
+   tool qualifier stays in view once for the page in the activity record's footer ("Results are as
+   the tool reported; not inspected."). Never "Done" and never a check mark still holds.
 7. Steer back. The server composes a correction without a model, from these fields only: the goal,
    each outcome line with its state, and the cited entry numbers and times. No model prose, no tool
    output, and no recorded command as an instruction. It is editable before copying, at most 2,000
@@ -2850,7 +2856,8 @@ and each was settled on the withholding side.
   was left as validated rather than re-ruled here.
 - Each line reads "Departs at #n", "Consistent with #n, as the tool reported; not inspected" for a
   Claude Code tool report or any harness's check, "Consistent with what the session said at #n; not
-  a check" otherwise, or "Can't tell". The number is the activity list's. An entry the list does not
+  a check" otherwise, or "Can't tell". In the Drift card the qualifier is said in the line's Evidence rather than
+  in view (item 6's 2026-10-01 amendment). The number is the activity list's. An entry the list does not
   number is named by its time, as a line added from an unnumbered entry is. "Can't tell" carries
   the page's own reason beneath it where the page has one, and reads "Can't tell: nothing recorded
   shows this yet" where it has none. A line added from an entry is labelled by the list's number,
