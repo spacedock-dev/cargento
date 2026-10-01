@@ -2508,8 +2508,17 @@ line of that markup opens with `<`, which the record reader skips.
   `/rate-limit-options`, `/context`, `/install-github-app`, `/stickers`, `/usage-credits` and
   `/permissions`. The rule reads the tag rather than this list, so a new local command is refused
   without being named.
-- A prompt command on `records.harness_control`'s list, `/insights` the one seen, is refused too,
-  so the goal slot, the instruction line and the observed record agree.
+- A prompt command on `records.harness_control`'s list, `/insights` the one seen, is refused too.
+- The goal slot and the instruction line beneath a title read controls by the same predicate,
+  `transcripts.harness_control_prompt`, so the three cannot disagree. Before, they matched that
+  list against the rendered line, which only a bare command can match, and published
+  `/compact keep notes` as a goal and as the work asked for. Over the local store this refuses
+  152 more prompts and refuses none it used to: `/compact` 90, `/add-dir` 21, `/plugin` 19,
+  `/design-login` 7, `/chrome` 4, and 11 more records under six other names. A local command carrying arguments, `/model opus`
+  for one, is a control now where it once published.
+- The draft from your first prompt is not changed by this. On 550 of 1,601 local Claude sessions
+  that first prompt is a control, `/clear` on 326 of them, and skipping it would mean drafting from
+  a later record, which the first-prompt read refuses to do. That is left for its own decision.
 - Whether a direction may be drafted as your intent is unchanged: the same three-word test as any
   message, so `/create-pr` alone is a direction and not a drafted intent.
 - A command's arguments over several lines once published the last line, closing tag and all; 12

@@ -1426,8 +1426,10 @@ def harness_control(rendered: str | None) -> bool:
     the same reading of the same directive: `observer.py` picks a session goal,
     `transcripts.states_work` picks the instruction line beneath a session
     title, and `transcripts.command_direction` decides whether a command is a
-    direction in the observed record. Separate lists would be chances to
-    disagree about whether `/clear` is an objective.
+    direction in the observed record. None of them calls this directly: they
+    ask `transcripts.harness_control_prompt`, which reads the raw record for a
+    local command first and comes here for the name (DRC-4764). Separate lists
+    would be chances to disagree about whether `/clear` is an objective.
     """
     match = _BARE_COMMAND_RE.match(rendered or "")
     return match is not None and match.group(1).casefold() in _HARNESS_CONTROL_COMMANDS

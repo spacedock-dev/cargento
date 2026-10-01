@@ -973,9 +973,10 @@ def _extract_messages(config: RuntimeConfig, path: str) -> list[dict[str, str]]:
 def _user_directives(config: RuntimeConfig, messages: list[dict[str, str]]) -> list[str]:
     """Concrete user directives, newest last, openers and controls dropped.
 
-    Two rejections, and they read different spellings of the same message on
-    purpose: `_is_generic_opener` reads the raw text, `records.harness_control`
-    reads what `prompt_title` will publish. Filtering here rather than at the
+    Two rejections. `_is_generic_opener` reads the raw text, and
+    `transcripts.harness_control_prompt` reads the raw text for the tag a
+    command opens with and what `prompt_title` will publish for the name list,
+    the rule the instruction line and the observed record share. Filtering here rather than at the
     point of publication is what lets a `/clear` fall back to the objective
     the session already contains instead of erasing it.
     """
@@ -983,10 +984,7 @@ def _user_directives(config: RuntimeConfig, messages: list[dict[str, str]]) -> l
     for msg in messages:
         if msg["role"] != "user" or _is_generic_opener(msg["text"]):
             continue
-        rendered = transcripts.prompt_title(
-            config, msg["text"], limit=config.observer_goal_cap_chars
-        )
-        if records.harness_control(rendered):
+        if transcripts.harness_control_prompt(config, msg["text"]):
             continue
         kept.append(msg["text"])
     return kept

@@ -256,24 +256,37 @@ _LOCAL_COMMAND_RE = re.compile(r"^\s*<command-name>")
 _PROMPT_COMMAND_RE = re.compile(r"^\s*<command-message>")
 
 
+def harness_control_prompt(config: RuntimeConfig, text: str) -> bool:
+    """Whether a raw user prompt drives the harness rather than the work.
+
+    The one rule the observed record (`command_direction`), the goal slot
+    (`observer._user_directives`) and the instruction line (`states_work`) read,
+    so the three cannot disagree about a command again. A local command is a
+    control by the tag it opens with, arguments or none: `/compact keep notes`
+    rendered past `records.harness_control`'s bare-token match and was published
+    as both a goal and the work asked for. A prompt command is a control only by
+    name on that list (`/insights`). Anything else, a Codex `/login` typed as
+    plain text included, is asked of the list on the line `prompt_title` renders.
+    """
+    if _LOCAL_COMMAND_RE.match(text):
+        return True
+    if _PROMPT_COMMAND_RE.match(text):
+        name = _COMMAND_NAME_RE.search(text)
+        return name is None or records.harness_control(name.group(1))
+    return records.harness_control(prompt_title(config, text, records.INSTRUCTION_CAP_CHARS))
+
+
 def command_direction(config: RuntimeConfig, text: str) -> str | None:
     """A Claude Code slash-command record as the direction it gives, rendered whole.
 
     None when ``text`` is not a slash-command record, so the caller reads it as
-    any other message. "" when it is one the reader did not direct work with: a
-    local command, with or without arguments (`/compact keep the notes` drives
-    the harness, on 85 of the 90 measured), or a prompt command on the shared
-    `records.harness_control` list, so the goal slot, the instruction line and
-    the observed record agree about `/insights`. Otherwise `prompt_title`'s own
-    rendering, unclipped: the caller bounds it after redaction, as it bounds an
-    ordinary message.
+    any other message. "" when `harness_control_prompt` calls it a control.
+    Otherwise `prompt_title`'s own rendering, unclipped: the caller bounds it
+    after redaction, as it bounds an ordinary message.
     """
-    if _LOCAL_COMMAND_RE.match(text):
-        return ""
-    if not _PROMPT_COMMAND_RE.match(text):
+    if not (_LOCAL_COMMAND_RE.match(text) or _PROMPT_COMMAND_RE.match(text)):
         return None
-    name = _COMMAND_NAME_RE.search(text)
-    if name is None or records.harness_control(name.group(1)):
+    if harness_control_prompt(config, text):
         return ""
     return prompt_title(config, text, limit=len(text)) or ""
 
@@ -338,8 +351,9 @@ def states_work(config: RuntimeConfig, text: str) -> bool:
     # slot they are indistinguishable from an instruction: 202 of 1,906 lines on
     # the local Claude corpus. The same predicate the observer's goal slot uses,
     # deliberately, because two primitives disagreeing about whether `/clear` is
-    # an objective is the class of bug this shares with DRC-4265.
-    if records.harness_control(rendered):
+    # an objective is the class of bug this shares with DRC-4265. Read off the
+    # raw prompt, since only that says a command was a local one (DRC-4764).
+    if harness_control_prompt(config, text):
         return False
     # A slash command names work by construction, however short. `/release` is
     # two words rendered and a whole instruction meant, and the word count is the

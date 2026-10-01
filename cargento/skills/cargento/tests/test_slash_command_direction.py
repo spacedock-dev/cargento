@@ -24,7 +24,7 @@ from pathlib import Path
 from typing import Any
 from unittest import mock
 
-from cargento_runtime import correction, observer, project_context, reading, records
+from cargento_runtime import claude_data, correction, observer, project_context, reading, records
 from cargento_runtime.config import build_runtime_config
 from cargento_runtime.state import build_runtime_state
 
@@ -219,6 +219,50 @@ class WorkAfterASlashCommandWasAskedForTest(_SlashSession):
         first_at = next(float(f["at"]) for f in self.facts_now if f.get("summary") == FIRST)
         row = {"harness": "claude", "sid": SHORT}
         self.assertEqual(1, correction.unsettled_directions(row, self.facts_now, floor=first_at))
+
+
+class OneControlRuleForTheGoalAndTheInstructionLineTest(_SlashSession):
+    """The goal slot and the instruction line read controls by the event builder's rule.
+
+    Before this they asked `records.harness_control` of the rendered line, a name list that
+    matches only a bare command, so `/compact keep notes` was published as the session's goal and
+    as the work it was asked for.
+    """
+
+    def goal(self) -> str:
+        self.session.save(self.board.path)
+        result = observer.analyze(
+            self.config, self.state, str(self.board.path), now=NOW, window_sec=7 * 86400
+        )
+        return str(result["goal"])
+
+    def line(self) -> dict[str, Any] | None:
+        self.session.save(self.board.path)
+        return claude_data.session_instruction(self.config, self.state, str(self.board.path))
+
+    def test_a_local_command_with_arguments_is_never_the_goal(self) -> None:
+        self.session.control("compact", "keep notes")
+        self.assertEqual(FIRST, self.goal())
+
+    def test_a_local_command_with_arguments_is_never_the_instruction(self) -> None:
+        self.session.control("compact", "keep notes")
+        line = self.line()
+        assert line is not None
+        self.assertEqual(("earlier", FIRST), (line["label"], line["text"]))
+
+    def test_a_prompt_command_with_arguments_is_the_goal_and_the_instruction(self) -> None:
+        self.session.skill("review", "some args")
+        self.assertEqual("/review some args", self.goal())
+        line = self.line()
+        assert line is not None
+        self.assertEqual(("asked", "/review some args"), (line["label"], line["text"]))
+
+    def test_a_prompt_command_on_the_control_list_is_neither(self) -> None:
+        self.session.skill("insights", "for the week")
+        self.assertEqual(FIRST, self.goal())
+        line = self.line()
+        assert line is not None
+        self.assertEqual("earlier", line["label"])
 
 
 @unittest.skipUnless(shutil.which("node"), "node not available")
