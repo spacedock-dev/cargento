@@ -1889,7 +1889,7 @@ class ClaudeExecTest(unittest.TestCase):
         self.assertNotIn("shell", kwargs)
         self.assertNotIn("capture_output", kwargs)
         self.assertEqual(subprocess.DEVNULL, kwargs["stderr"])
-        self.assertEqual(observer.OBSERVER_MODEL_TIMEOUT_SEC, kwargs["timeout"])
+        self.assertEqual(observer.OBSERVER_READING_TIMEOUT_SEC, kwargs["timeout"])
         self.assertFalse(kwargs["check"])
 
     def test_the_model_runs_in_a_fresh_owner_only_empty_directory(self) -> None:
@@ -2109,6 +2109,82 @@ class ClaudeExecTest(unittest.TestCase):
             self._config(), "p", output_cap_bytes=1, runner=mock.Mock(), binary_resolver=resolver
         )
         resolver.assert_called_once_with("claude")
+
+
+class ReadingTimeoutTest(unittest.TestCase):
+    """A reading gets its own timeout; a goal summary keeps 60 s (DRC-4759).
+
+    Each test reads the timeout the runner was HANDED, not the constant, so a
+    producer that kept the shared 60-second figure turns one test red.
+    """
+
+    def _config(self) -> Any:
+        state_dir = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, state_dir, True)
+        return dataclasses.replace(make_config(), observer_model_enabled=True, state_dir=state_dir)
+
+    @staticmethod
+    def _runner(seen: list[float]) -> Any:
+        def runner(command: Any, **kwargs: Any) -> Any:
+            seen.append(kwargs["timeout"])
+            stdout = kwargs.get("stdout")
+            if stdout is not None and hasattr(stdout, "write"):
+                stdout.write(b"{}")
+            return subprocess.CompletedProcess(command, 0, "", "")
+
+        return runner
+
+    def test_the_two_figures(self) -> None:
+        self.assertEqual(180, observer.OBSERVER_READING_TIMEOUT_SEC)
+        self.assertEqual(60, observer.OBSERVER_MODEL_TIMEOUT_SEC)
+
+    def test_a_codex_reading_is_handed_the_reading_timeout(self) -> None:
+        from cargento_runtime import reading  # noqa: PLC0415
+
+        seen: list[float] = []
+        model = reading.CodexReadingModel(
+            self._config(),
+            runner=self._runner(seen),
+            binary_resolver=mock.Mock(return_value="/usr/bin/codex"),
+        )
+        model("a reading prompt", output_cap_bytes=64)
+        self.assertEqual([180], seen)
+
+    def test_a_claude_reading_is_handed_the_reading_timeout(self) -> None:
+        from cargento_runtime import reading  # noqa: PLC0415
+
+        seen: list[float] = []
+        model = reading.ClaudeReadingModel(
+            self._config(),
+            runner=self._runner(seen),
+            binary_resolver=mock.Mock(return_value="/usr/local/bin/claude"),
+        )
+        _, status = model("a reading prompt", output_cap_bytes=64)
+        self.assertEqual("ok", status)
+        self.assertEqual([180], seen)
+
+    def test_a_prepared_claude_call_is_handed_the_reading_timeout(self) -> None:
+        # The charged qualification path enters `prepare_claude_exec` itself.
+        seen: list[float] = []
+        with observer.prepare_claude_exec(
+            self._config(),
+            runner=self._runner(seen),
+            binary_resolver=mock.Mock(return_value="/usr/local/bin/claude"),
+        ) as prepared:
+            prepared("a reading prompt", output_cap_bytes=64)
+        self.assertEqual([180], seen)
+
+    def test_a_goal_summary_keeps_sixty_seconds(self) -> None:
+        seen: list[float] = []
+        caller = observer.CodexGoalModel(
+            self._config(),
+            runner=self._runner(seen),
+            binary_resolver=mock.Mock(return_value="/usr/bin/codex"),
+            consent=True,
+            session_key="codex:one",
+        )
+        caller("a transcript tail", "stage")
+        self.assertEqual([60], seen)
 
 
 class ObserverModelSecurityTest(unittest.TestCase):
@@ -2496,7 +2572,7 @@ class SupervisedModelCallTest(unittest.TestCase):
             "time.sleep(60)\n"
         )
         fake.chmod(0o700)
-        with mock.patch.object(observer, "OBSERVER_MODEL_TIMEOUT_SEC", 3):
+        with mock.patch.object(observer, "OBSERVER_READING_TIMEOUT_SEC", 3):
             _, status = observer.claude_exec(
                 config, "prompt", output_cap_bytes=64, binary_resolver=lambda _n: str(fake)
             )
