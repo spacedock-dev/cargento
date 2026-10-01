@@ -1664,7 +1664,9 @@ frozen from the transcript as it stood at the capture, with their redacted outpu
 with a tool-output grant would. The owner authorized that sending for this qualification only,
 2026-09-24, and bounded it at twenty calls, one of them the browser walk. The owner later
 raised the ceiling to 23 scorer calls and 26 Claude CLI invocations overall (DRC-4758), and on
-2026-10-01 directed the qualification to run to completion within it.
+2026-10-01 directed the qualification to run to completion within it. When the second
+continuation failed and had spent the last of those calls, the owner authorized one more five-case
+run past that ceiling the same day: 28 scorer calls and 31 Claude CLI invocations overall.
 
 The scorer refuses to start unless the call reaches Anthropic (`reading_route.destination` names
 `Anthropic`) through the native installer's CLI, whose version file and `--version` line agree, and
@@ -1749,15 +1751,16 @@ it, while literals, expressions and control flow do. Existing
 byte-stamped packets remain incompatible; neither cases nor marks are rewritten to fit the new
 stamp. A mismatch still refuses the whole scoring run before consulting or charging its ledger,
 and the contents check still requires the facts derived at capture to match. On Windows the home falls back to `USERPROFILE`, so the
-`HOME` protection is POSIX only. The ledger stops at 23 calls across every
+`HOME` protection is POSIX only. The ledger stops at 28 calls across every
 run and producer, refuses every call when it cannot be read, refuses calls under other digests, and
 freezes each packet's marks once it holds one. A failed run may be followed by a fresh packet only
 through a reviewed, fixed-path continuation grant: its marking phase binds the old result's exact
 ledger prefix and a new case digest, and its sealed phase binds the new marks and cases-and-rubric
-digests before scoring. A second grant may follow a first continuation that also failed, bound to
-that result the same way, and only while the first is sealed with a `next` key equal to the
-second's `previous`. Every earlier packet's charges must carry its own key, in ledger order, and
-the whole chain is checked under the charge lock against the same 23-call cap. The failed result cannot be overwritten, and a grant is not permission
+digests before scoring. Each later grant may follow a continuation that also failed, bound to that
+result the same way, and only while every earlier grant is sealed with a `next` key equal to the
+following grant's `previous`. A grant without its predecessor, or numbered past the chain's fixed
+bound of nine, is refused. Every earlier packet's charges must carry its own key, in ledger order,
+and the whole chain is checked under the charge lock against the same 28-call cap. The failed result cannot be overwritten, and a grant is not permission
 to send real session evidence or increase spend; both need separate owner authorization. The
 ledger holds case ids, times, statuses and digests only. The
 scorer does not pass through the reader's rolling budget, so that ledger is the bound.

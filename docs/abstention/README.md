@@ -20,7 +20,11 @@ re-frozen from that recorded packet to the same spend ledger; its
 [second continuation](claude-continuation-2.json) scored a fourth packet, with a supported departure
 resting on the reader's own correction, after the producer's evidence instruction (#450) and the
 reader's whole words (#467) changed; its [result](claude-results-continuation-2.json) failed too,
-with one false reassurance and fifteen correct judgements, and spent the last of the 23 calls. The accepted
+with one false reassurance and fifteen correct judgements, and spent the last of the 23 calls. The
+owner then kept the gate shut and authorized one more five-case run past that ceiling, as a third
+continuation: 28 scorer calls, beside 31 Claude CLI invocations overall. The
+[amendment](../design-reading-a-session.md#amended-2026-10-01-a-readers-correction-and-a-transcript-stop)
+records the ruling. No third grant is committed yet. The accepted
 packet was reviewed against Codex readings. The scorer can
 report either producer (`--producer claude` or `--producer codex`), but this qualification scores
 Claude Code only. Format 5 below is the packet DRC-4666 qualifies Claude Code against. A fresh
@@ -36,9 +40,11 @@ that ruling.
 run has been committed, written by `scripts/score_abstention.py --score --producer <name>`. A new
 Claude Code packet, if authorized after the failed run, writes `claude-results-continuation.json`
 and leaves the failed file in place. The handoff is `claude-continuation.json` and must be reviewed
-before scoring. After that continuation also failed, a second handoff,
-`claude-continuation-2.json`, may follow it, and its packet writes
-`claude-results-continuation-2.json`, leaving both earlier failures in place. Each result holds:
+before scoring. Each later continuation follows the same pattern: grant k is
+`claude-continuation-<k>.json`, and its packet writes `claude-results-continuation-<k>.json`, leaving
+every earlier failure in place. So the second is `claude-continuation-2.json`, writing
+`claude-results-continuation-2.json`, and the third `claude-continuation-3.json`, writing
+`claude-results-continuation-3.json`. Each result holds:
 
 - `producer`, `model` and `argv_digest`: which producer ran, the model id it passed, and the
   sha256 of the argv its exec builds, read without starting a process. A later change to a flag,
@@ -255,8 +261,10 @@ it never follows `CARGENTO_HOME`, so a fresh packet directory does not start the
 dashboard's stores), is the account's home from the password database, never `HOME`, and
 `--score` refuses to run while `HOME` names another directory. It
 holds case ids, times, statuses and two digests per call: the marks file's and the cases and
-rubric's. It stops the run at 23 calls across every run, the ceiling the owner approved
-in DRC-4758, beside 26 Claude CLI invocations overall, the browser walk after a pass among them. `--max-calls` can lower that and never raise it. A
+rubric's. It stops the run at 28 calls across every run: the ceiling of 23 the owner approved in
+DRC-4758, and the five more the owner authorized on 2026-10-01 for one more qualification run,
+beside 31 Claude CLI invocations overall, the browser walk after a pass among them. `--max-calls`
+can lower that and never raise it. A
 case the cap stopped is withheld as `spend-cap`.
 
 - The cap check and the charge happen under an exclusive lock, so concurrent runs cannot pass it.
@@ -287,19 +295,24 @@ expectation has been reviewed and the marker has exited, the `sealed` phase also
 marks and combined cases-and-rubric digests. The scorer checks those values under the ledger lock
 before each charge. The grant and failed result must be bounded regular repository files, not
 symlinks, so the new result cannot replace what the old fixed path reads. The old charges remain
-the prefix. New charges may use only the sealed key, and both count toward the same 23-call cap.
-A second grant at `docs/abstention/claude-continuation-2.json` binds the first continuation's
-failed result the same way, and is honoured only while the first grant is sealed and its `next`
-key is the second's `previous`. Each earlier packet's charges must then carry that packet's own
-key, in ledger order, and a call is charged only under the second grant's sealed key.
+the prefix. New charges may use only the sealed key, and both count toward the same 28-call cap.
+Grant k, for k of 2 or more, at `docs/abstention/claude-continuation-<k>.json` binds continuation k-1's failed result
+the same way: the second binds `claude-results-continuation.json`, the third
+`claude-results-continuation-2.json`. It is honoured only while every earlier grant is sealed and
+each grant's `next` key is the following grant's `previous`. A grant file whose predecessor is
+missing is refused, and so is one numbered past nine, the fixed bound on the chain. Each earlier
+packet's charges must then carry that packet's own key, in ledger order, and a call is charged only
+under the last grant's sealed key.
 A grant does not authorize sending real session evidence to a provider or
 raising that cap. Those require separate owner authorization.
 
 The failed `docs/abstention/claude-results.json` remains fixed. A continuation writes its summary
 only to `docs/abstention/claude-results-continuation.json` and its local results to
-`abstention-claude-continuation-results.json` in the fresh packet home. Under the second grant the
-packet writes `docs/abstention/claude-results-continuation-2.json` and
-`abstention-claude-continuation-2-results.json` instead, and both earlier results stay fixed.
+`abstention-claude-continuation-results.json` in the fresh packet home. Under grant k the packet
+writes `docs/abstention/claude-results-continuation-<k>.json` and
+`abstention-claude-continuation-<k>-results.json` instead (the third grant's are
+`claude-results-continuation-3.json` and `abstention-claude-continuation-3-results.json`), and
+every earlier result stays fixed.
 Scoring checks every fixed summary chain the grants run through, and reports accept each earlier
 packet's charges followed by only the granted new-key suffix. Deleting or rewriting any packet's
 ledger charges makes the affected result stale. A later packet cannot reset the spend or
@@ -351,7 +364,8 @@ python3 scripts/score_abstention.py --score --producer claude --resume   # only 
 
 A packet after a failed result runs the same commands with three differences. The grant comes
 first: commit its `marking` phase, naming the new cases file's digest, at the next free fixed path
-(`claude-continuation.json`, then `claude-continuation-2.json`). Marking uses
+(`claude-continuation.json`, then `claude-continuation-2.json`, then `claude-continuation-3.json`).
+Marking uses
 `mark_abstention.py --continue-mark`, because ordinary marking is closed once the ledger holds a
 call. And before `--score`, commit the grant's `sealed` phase, naming the two digests the
 scorer charges under: the marks file's, and the cases and rubric's together. No command prints

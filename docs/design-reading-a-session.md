@@ -605,6 +605,14 @@ Claude Code case's user messages and `transcript_bytes` are frozen from the tran
 at `captured_at`, because the board reads only the last 400 KB of today's file: the correction the
 supported-departure case rests on sat 750 KB from the end of a session that ran on.
 
+The second continuation then failed too, and spent the last of the 23 calls. The owner kept the
+Claude Code gate shut and authorized one more five-case scored run past that ceiling, as a third
+continuation: the ledger cap is 28 scorer calls, beside 31 Claude CLI invocations overall, those
+five calls and the browser walk among them. The grant chain now reads any number of grants up to a
+fixed bound of nine, each binding the failed result before it, so the third needs no new code.
+Raising the cap authorizes the run, not its packet: the third grant's `marking` and `sealed`
+phases are each committed in their own reviewed change, as the first two were.
+
 #### Amended 2026-10-01: a reading sees the reader's whole message
 
 The overlay [DEC-15](#dec-15-the-floor-and-the-overlay) admits reads the session's evidence against
