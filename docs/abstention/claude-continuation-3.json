@@ -1,0 +1,16 @@
+{
+  "v": 1,
+  "phase": "marking",
+  "previous": {
+    "ledger_chain": {
+      "calls": 23,
+      "first": "92c26ee2b2b24750a1e2870aec5beb43",
+      "head": "74acaf294373562a9c91877cf57515b092b80c97cbe45cba43a7e0bde90d3a5b"
+    },
+    "marks_digest": "2de19510784efc0e8ae37be75ab7da3a2c45efd38d02485f4684124135c44326",
+    "inputs_digest": "4d8ab2742c24c9c57e17678e51a7fb309a263fcb94729663f879bac21e8d51a8"
+  },
+  "next": {
+    "cases_digest": "b42f6351adbe450a0eeef2160cd90cd748a4e40108e93f97d9151f0714e3b3af"
+  }
+}
