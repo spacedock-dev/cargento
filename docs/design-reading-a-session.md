@@ -598,6 +598,13 @@ The owner ruled two things on 2026-10-01, while looking for DRC-4666's supported
    last assistant message. The scorer counts the cases it vouched this way itself, in
    `recorded_on_transcript_stop`, and never reads the packet's own `lifecycle_from` for it.
 
+The same day the owner directed the qualification to run to completion within the approved
+ceilings of 23 scorer calls and 26 Claude CLI invocations. Two changes follow from it. A second
+continuation grant may follow the first, which also failed, and the ledger cap is 23. And a
+Claude Code case's user messages and `transcript_bytes` are frozen from the transcript as it stood
+at `captured_at`, because the board reads only the last 400 KB of today's file: the correction the
+supported-departure case rests on sat 750 KB from the end of a session that ran on.
+
 ### Repeated calls
 
 A reading is produced only in response to a discrete reader action, asserted rather than assumed,

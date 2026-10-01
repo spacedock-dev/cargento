@@ -183,6 +183,8 @@ def setUpModule() -> None:
         LEDGER_PATH=str(Path(folder, "never-real.json")),
         CLAUDE_SUMMARY_PATH=str(Path(folder, "never-committed.json")),
         CONTINUATION_PATH=str(Path(folder, "never-continuation.json")),
+        CONTINUATION_2_PATH=str(Path(folder, "never-continuation-2.json")),
+        CONTINUATION_SUMMARY_PATH=str(Path(folder, "never-continuation-result.json")),
     )
     _LEDGER_PATCH.start()
 
@@ -305,7 +307,7 @@ class TheClaudeProducerIsChosenExplicitlyTest(unittest.TestCase):
             ("docs", "abstention", "claude-results.json"), Path(seen["summary_path"]).parts[-3:]
         )
         self.assertEqual({**BINDING, "argv_digest": "cd" * 32}, dict(seen["binding"]))
-        self.assertEqual(19, seen["max_calls"])
+        self.assertEqual(23, seen["max_calls"])
         self.assertEqual(abstention_ledger.LEDGER_PATH, seen["ledger_path"])
 
     def test_the_argv_digest_is_read_without_running_anything(self) -> None:
@@ -553,6 +555,8 @@ class TheFreezeKeepsOnlyWhatStoodAtTheCaptureTest(unittest.TestCase):
              "message": {"role": "user", "content": [
                  {"type": "tool_result", "tool_use_id": "toolu_2", "content": "1 failed", "is_error": True}]}},
         ]  # fmt: skip
+        rows.insert(0, _asked(start, CLAUDE_SID, 5))
+        rows.append(_asked(start, CLAUDE_SID, 50))
         with tempfile.TemporaryDirectory() as folder:
             transcript = Path(folder, "t.jsonl")
             transcript.write_text("\n".join(json.dumps(row) for row in rows) + "\n")
@@ -576,9 +580,13 @@ class TheFreezeKeepsOnlyWhatStoodAtTheCaptureTest(unittest.TestCase):
             with self.assertRaises(mark_abstention.FreezeError):
                 mark_abstention.freeze_case(config, {**entry, "captured_at": start + 25}, board)
         ids = [fact["fact_id"] for fact in case["producer_facts"]]
-        self.assertIn("early", ids)
-        for absent in ("late", "live", "other"):
+        # A Claude Code case takes the reader's words from the transcript as it stood
+        # at the capture, never from the board, so no board fact survives the freeze.
+        for absent in ("early", "late", "live", "other"):
             self.assertNotIn(absent, ids)
+        said = [f for f in case["producer_facts"] if f["type"] == "user_message"]
+        self.assertEqual([start + 5], [f["at"] for f in said])
+        self.assertEqual("capture", case["transcript_cut"])
         checks = [f for f in case["producer_facts"] if f["type"] == "tool_report"]
         self.assertEqual(["passed"], [c["result"] for c in checks])
         self.assertEqual({"toolu_1": "5 passed"}, case["tool_output"]["tails"])
@@ -707,11 +715,12 @@ class Q2OneLedgerThatFailsClosedTest(_Ledgered):
         self.assertEqual(str(Path("~/.cargento/drc-4666-spend.json").expanduser()), path)
         self.assertNotIn("fresh", path)
 
-    def test_the_cap_is_nineteen_and_cannot_be_raised(self) -> None:
-        self.assertEqual(19, abstention_ledger.MAX_CALLS)
+    def test_the_cap_is_the_owners_ceiling_and_cannot_be_raised(self) -> None:
+        # 23 scorer calls across every packet, the ceiling the owner approved (DRC-4758).
+        self.assertEqual(23, abstention_ledger.MAX_CALLS)
         with mock.patch("builtins.print"):
             self.assertEqual(
-                2, score_abstention.main(["--score", "--producer", "claude", "--max-calls", "20"])
+                2, score_abstention.main(["--score", "--producer", "claude", "--max-calls", "24"])
             )
 
     def test_the_cap_counts_every_earlier_run(self) -> None:
@@ -756,6 +765,7 @@ class Q2OneLedgerThatFailsClosedTest(_Ledgered):
         script = (
             "import sys, time; sys.path.insert(0, sys.argv[1]); import abstention_ledger as L\n"
             "L.CONTINUATION_PATH = sys.argv[5]\n"
+            "L.CONTINUATION_2_PATH = sys.argv[5] + '-2'\n"
             "read = L.read\n"
             "def slow(path):\n    body = read(path); time.sleep(0.05); return body\n"
             "L.read = slow\n"
@@ -2072,6 +2082,43 @@ class Q4ATurnStopTheHistoryRolledPastIsVouchedByTheTranscriptTest(_RecordedCaseF
         self.assertIn("lifecycle-unconfirmed", covered)
 
 
+class TheCaptureCutIsTheFirstLineStampedAfterItTest(unittest.TestCase):
+    """`capture_prefix` cuts where the check scan cuts (review, DRC-4666)."""
+
+    def cut(self, lines: list[str], captured: float) -> tuple[int, bytes]:
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder, "t.jsonl")
+            data = "".join(lines).encode()
+            path.write_bytes(data)
+            end = mark_abstention.capture_prefix(str(path), captured)
+        return end, data[:end]
+
+    def line(self, seconds: int | None, text: str = "x") -> str:
+        start = dt.datetime(2026, 9, 24, 3, 0, 0, tzinfo=dt.UTC).timestamp()
+        body: dict[str, Any] = {"type": "user", "text": text}
+        if seconds is not None:
+            body["timestamp"] = _stamp(start, seconds)
+        return json.dumps(body) + "\n"
+
+    def at(self, seconds: int) -> float:
+        return dt.datetime(2026, 9, 24, 3, 0, 0, tzinfo=dt.UTC).timestamp() + seconds
+
+    def test_unstamped_lines_before_the_next_later_stamp_are_kept(self) -> None:
+        lines = [self.line(1), self.line(None, "kept"), self.line(9)]
+        _end, kept = self.cut(lines, self.at(5))
+        self.assertEqual("".join(lines[:2]).encode(), kept)
+
+    def test_an_earlier_stamp_after_a_later_one_is_not_pulled_in(self) -> None:
+        lines = [self.line(1), self.line(9), self.line(3, "out of order")]
+        _end, kept = self.cut(lines, self.at(5))
+        self.assertEqual(lines[0].encode(), kept)
+
+    def test_a_capture_before_any_stamp_keeps_nothing_and_after_all_keeps_all(self) -> None:
+        lines = [self.line(4), self.line(6)]
+        self.assertEqual(0, self.cut(lines, self.at(1))[0])
+        self.assertEqual(len("".join(lines).encode()), self.cut(lines, self.at(10))[0])
+
+
 def _asked(start: float, session_id: str, seconds: int = 5) -> dict[str, Any]:
     """A reader's typed turn, in the recorded shape."""
     return {
@@ -2170,6 +2217,78 @@ class DRC4711TheContentsAreCheckedAgainstTheTranscriptTest(_Packet):
         return mark_abstention.make_vouch(
             observations=self.stops, ends=[], index=self.index, config=self.config
         )
+
+    def later_work(self, size: int) -> tuple[dict[str, Any], ...]:
+        """Turns appended after the capture, `size` bytes of them, the reader silent."""
+        filler = "x" * 2000
+        return tuple(
+            {"type": "assistant", "isSidechain": False, "cwd": "/w", "sessionId": CLAUDE_SID,
+             "timestamp": _stamp(self.start, 100 + index),
+             "message": {"role": "assistant", "content": [{"type": "text", "text": filler}]}}
+            for index in range(size // 2100 + 1)
+        )  # fmt: skip
+
+    def test_a_session_that_ran_on_past_the_boards_tail_keeps_the_readers_words(self) -> None:
+        # Measured 2026-10-01: the correction a supported departure rests on sat 750 KB from
+        # the end of a transcript whose session ran on, past the board's 400 KB tail.
+        case = self.genuine(extra=self.later_work(self.config.tail_bytes + 50_000))
+        said = [f for f in case["producer_facts"] if f["type"] == "user_message"]
+        self.assertEqual([self.start + 5], [f["at"] for f in said])
+        path = self.index[CLAUDE_SID[:8]]
+        self.assertLess(case["transcript_bytes"], os.path.getsize(path))
+        self.assertEqual(
+            case["transcript_bytes"], mark_abstention.capture_prefix(path, self.start + 30)
+        )
+        self.assertEqual([], self.vouch()(case))
+
+    def test_a_length_other_than_the_captures_is_demoted(self) -> None:
+        case = self.genuine(extra=self.later_work(self.config.tail_bytes + 50_000))
+        for size in (case["transcript_bytes"] - 1, case["transcript_bytes"] + 1):
+            with self.subTest(size=size):
+                moved = {**case, "transcript_bytes": size}
+                self.assertIn("transcript-bytes-differ", self.vouch()(moved))
+
+    def test_a_packet_with_no_cut_marker_still_cannot_name_less_than_the_capture(self) -> None:
+        # Review: deleting the optional marker, zeroing the length and dropping the
+        # reader's only message once left a case vouched as recorded.
+        case = self.genuine(extra=self.later_work(self.config.tail_bytes + 50_000))
+        stripped = {k: v for k, v in case.items() if k != "transcript_cut"}
+        stripped["transcript_bytes"] = 0
+        stripped["producer_facts"] = [
+            f for f in case["producer_facts"] if f["type"] != "user_message"
+        ]
+        self.assertIn("transcript-bytes-differ", self.vouch()(stripped))
+        legacy = {**stripped, "producer_facts": case["producer_facts"],
+                  "transcript_bytes": os.path.getsize(self.index[CLAUDE_SID[:8]])}  # fmt: skip
+        self.assertNotIn("transcript-bytes-differ", self.vouch()(legacy))
+
+    def test_a_message_older_than_the_captures_tail_is_not_frozen(self) -> None:
+        # The board at the capture read only its last `tail_bytes`; a message before
+        # that is not what a press then saw, so the freeze leaves it out too.
+        early = _asked(self.start, CLAUDE_SID, 1)
+        bulk = tuple(
+            {**row, "timestamp": _stamp(self.start, 2)}
+            for row in self.later_work(self.config.tail_bytes + 50_000)
+        )
+        case = self.genuine(asks=(5,), extra=(early, *bulk))
+        said = [f["at"] for f in case["producer_facts"] if f["type"] == "user_message"]
+        self.assertEqual([self.start + 5], said)
+
+    def test_the_freeze_ignores_the_boards_words_for_a_claude_case(self) -> None:
+        rows, path = self.write(CLAUDE_SID, (5,), ())
+        self.stops.append({"harness": "claude", "sid": CLAUDE_SID, "state": "idle",
+                           "last_activity": self.start + 20})  # fmt: skip
+        forged = _fact("forged", sid=CLAUDE_SID, harness="claude", at=self.start + 6)
+        case = mark_abstention.freeze_case(
+            self.config,
+            {"harness": "claude", "sid": CLAUDE_SID, "project": "p",
+             "captured_at": self.start + 30, "row": {"state": "idle", "finished_at": self.start + 20},
+             "intent": {"goal": GOAL, "lines": [{"text": LINE_ONE}]}, "transcript": str(path)},
+            [*_board_facts(self.config, rows, CLAUDE_SID), forged],
+            observations=self.stops, ends=[],
+        )  # fmt: skip
+        self.assertNotIn("forged", [f["fact_id"] for f in case["producer_facts"]])
+        self.assertEqual("recorded", case["origin"])
 
     def test_a_genuine_case_stays_vouched_for(self) -> None:
         case = self.genuine()
@@ -3308,11 +3427,35 @@ class N4OnlyAWellFormedChainIsAccepted(_Ledgered):
         self.assertEqual([], model.prompts)
 
 
+class AWrittenResultThatSpentIsNeverReplacedByAFreshRunTest(_Ledgered):
+    """A fresh run over a result that charged calls would re-spend its key (review, DRC-4666)."""
+
+    def test_a_fresh_run_over_a_spent_result_is_refused_before_any_call(self) -> None:
+        self.assertNotEqual(2, self.score(_Model()))
+        spent = self.committed()["ledger_chain"]["calls"]
+        self.assertGreater(spent, 0)
+        before = self.summary.read_bytes()
+        model = _Model()
+        printed: list[str] = []
+        self.assertEqual(2, self.score(model, printed=printed))
+        self.assertEqual([], model.prompts)
+        self.assertEqual(spent, len(self.calls()))
+        self.assertEqual(before, self.summary.read_bytes())
+        self.assertTrue(any("A fresh run never replaces one" in line for line in printed))
+
+    def test_a_symlinked_result_path_is_refused(self) -> None:
+        target = self.summary.with_name("elsewhere.json")
+        target.write_text("{}")
+        self.summary.symlink_to(target)
+        self.assertEqual(2, self.score(_Model()))
+        self.assertEqual("{}", target.read_text())
+
+
 class AScoreFromAnotherParserIsRefusedBeforeAnyChargeTest(_Ledgered):
     """A checkout whose parser differs from the freeze demotes every Claude Code case.
 
     Before this refusal the run still went ahead: each such case was withheld
-    unscored, while every other case was charged against the nineteen calls.
+    unscored, while every other case was charged against the spend cap.
     """
 
     def stale_packet(self) -> None:

@@ -813,10 +813,15 @@ def _frozen_checks(
     captured: float,
     unconfirmed: list[str],
     snapshot: dict[str, Any],
-) -> tuple[list[dict[str, Any]], dict[str, Any], int]:
-    """A Claude Code case's checks as they stood, and the transcript's size when frozen.
+) -> tuple[list[dict[str, Any]], dict[str, Any], int, list[dict[str, Any]]]:
+    """A Claude Code case's checks, length and user messages, as they stood at the capture.
 
-    Notes in `unconfirmed` what the transcript cannot vouch for.
+    Notes in `unconfirmed` what the transcript cannot vouch for. The user
+    messages are the board's own derivation over the bounded tail a press at
+    `captured_at` read, which ended where the transcript then ended. Read from
+    today's file instead, a session that ran on past the board's 400 KB tail
+    after the capture left none of the reader's words in the case (measured
+    2026-10-01: the supported-departure correction sat 750 KB from the end).
     """
     transcript = str(entry.get("transcript") or _transcript_index().get(sid[:8]) or "")
     if not transcript or not os.path.isfile(transcript):
@@ -827,9 +832,7 @@ def _frozen_checks(
         unconfirmed.append("transcript-other-session")
     from cargento_runtime import project_context  # noqa: PLC0415 - see `_reading`
 
-    # Taken before anything is read, so the score-time tail ending here reaches
-    # no further back than any read this freeze or its board made (review N3).
-    size = os.path.getsize(transcript)
+    size = capture_prefix(transcript, captured)
     stop = _stop(snapshot)
     if stop is not None and project_context.claude_activity_between(transcript, stop, captured):
         raise FreezeError("activity-after-stop")
@@ -839,6 +842,9 @@ def _frozen_checks(
         )
     except project_context.FrozenCheckCutoffUnreachableError as error:
         raise FreezeError("check-cutoff-unreachable") from error
+    _whole, said = project_context.frozen_claude_user_messages(
+        config, transcript, sid, until=captured, size=size
+    )
     return (
         checks,
         {
@@ -847,7 +853,35 @@ def _frozen_checks(
             "read_incomplete": sorted([list(pair) for pair in press.read_incomplete]),
         },
         size,
+        said,
     )
+
+
+def capture_prefix(transcript: str, captured: float) -> int:
+    """The transcript's length in bytes as it stood at `captured`.
+
+    Everything before the first line stamped after the capture, the cut the
+    check scan makes too: an append-only file holds nothing written later
+    before that line, and a line stamped earlier after it was written later.
+    """
+    from cargento_runtime import project_context  # noqa: PLC0415 - see `_reading`
+
+    offset = 0
+    with open(transcript, "rb") as handle:
+        for line in handle:
+            try:
+                record = json.loads(line)
+            except (ValueError, RecursionError):
+                record = None
+            at = (
+                project_context._record_timestamp(record)  # noqa: SLF001
+                if isinstance(record, dict)
+                else None
+            )
+            if at is not None and at > captured:
+                return offset
+            offset += len(line)
+    return offset
 
 
 # The files whose code turns a transcript into the facts and checks a case holds
@@ -907,6 +941,12 @@ def content_refusal(config: Any, case: dict[str, Any], transcript: str) -> list[
         return ["transcript-missing"]
     if type(size) is not int or size < 0 or size > on_disk:
         return ["transcript-truncated"]
+    # A packet frozen at the capture's own length must still name that length,
+    # and no packet may name less: a shorter one would shrink the tail and
+    # excuse dropped messages. Every earlier freeze recorded at least that much,
+    # so the floor holds for packets with no `transcript_cut` too.
+    prefix = capture_prefix(transcript, float(case["captured_at"]))
+    cut_differs = size < prefix or (case.get("transcript_cut") == "capture" and size != prefix)
     reading = _reading()
     sid = str(case.get("sid") or "")
     captured = float(case["captured_at"])
@@ -928,6 +968,8 @@ def content_refusal(config: Any, case: dict[str, Any], transcript: str) -> list[
     except OSError:
         return ["transcript-missing"]
     reasons: list[str] = ["activity-after-stop"] if moved else []
+    if cut_differs:
+        reasons.append("transcript-bytes-differ")
     tails = dict(press.tails)
     frozen = {
         "tails": tails,
@@ -1129,10 +1171,13 @@ def freeze_case(
         "lifecycle_from": lifecycle_from,
     }
     if harness == "claude":
-        checks, case["tool_output"], case["transcript_bytes"] = _frozen_checks(
+        checks, case["tool_output"], case["transcript_bytes"], said = _frozen_checks(
             config, entry, sid, captured, unconfirmed, snapshot
         )
-        kept.extend(checks)
+        # The reader's words as a press at the capture read them, not the board's
+        # tail of today's file (`_frozen_checks`); `transcript_cut` pins the length.
+        kept = [*said, *checks]
+        case["transcript_cut"] = "capture"
         case["parser"] = parser_digest()
     case["producer_facts"] = kept
     case["unconfirmed"] = unconfirmed

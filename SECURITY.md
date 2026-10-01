@@ -1623,7 +1623,9 @@ for the same session: a format 5 case's own goal and outcome lines in place of t
 words, and the bounded, redacted menu of ledger entries. A Claude Code case also carries its checks,
 frozen from the transcript as it stood at the capture, with their redacted output tails, as a press
 with a tool-output grant would. The owner authorized that sending for this qualification only,
-2026-09-24, and bounded it at twenty calls, one of them the browser walk.
+2026-09-24, and bounded it at twenty calls, one of them the browser walk. The owner later
+raised the ceiling to 23 scorer calls and 26 Claude CLI invocations overall (DRC-4758), and on
+2026-10-01 directed the qualification to run to completion within it.
 
 The scorer refuses to start unless the call reaches Anthropic (`reading_route.destination` names
 `Anthropic`) through the native installer's CLI, whose version file and `--version` line agree, and
@@ -1690,9 +1692,12 @@ is the local-process exposure this document accepts throughout. For a Claude Cod
 its contents (DRC-4711), rebuilt from the transcript as it stood at the case's `captured_at`. The
 checks and their output tails must be exactly the transcript's. The user messages must be the
 newest ones up to the capture, in order, with none missing between them, none repeated, and at
-least as many as the board's bounded tail reads of the transcript as it stood at the freeze, whose
-length the case records (`transcript_bytes`). An older message may be absent, because the board read
-a bounded tail when the packet was frozen. A transcript now shorter than that length, or a case that
+least as many as the board's bounded tail reads of the transcript as it stood at the capture, whose
+length the case records (`transcript_bytes`), and no case may name less than that length
+(`transcript-bytes-differ`). A case the freeze cut at its capture (`transcript_cut`) must name it
+exactly; its user messages come from the transcript as it then stood, never from the board. An
+older message may be absent, because the board read a bounded tail. A fresh `--score` never
+replaces a written result that charged calls; only `--resume` rewrites one. A transcript now shorter than that length, or a case that
 records none, is demoted (`transcript-truncated`). A capture with a user or assistant message
 between the recorded stop and itself is refused at freeze and demoted at score time
 (`activity-after-stop`); administrative records such as turn duration do not resume work.
@@ -1705,13 +1710,15 @@ it, while literals, expressions and control flow do. Existing
 byte-stamped packets remain incompatible; neither cases nor marks are rewritten to fit the new
 stamp. A mismatch still refuses the whole scoring run before consulting or charging its ledger,
 and the contents check still requires the facts derived at capture to match. On Windows the home falls back to `USERPROFILE`, so the
-`HOME` protection is POSIX only. The ledger stops at nineteen calls across every
+`HOME` protection is POSIX only. The ledger stops at 23 calls across every
 run and producer, refuses every call when it cannot be read, refuses calls under other digests, and
 freezes each packet's marks once it holds one. A failed run may be followed by a fresh packet only
 through a reviewed, fixed-path continuation grant: its marking phase binds the old result's exact
 ledger prefix and a new case digest, and its sealed phase binds the new marks and cases-and-rubric
-digests before scoring. The old prefix and any new suffix are checked under the charge lock against
-the same nineteen-call cap. The failed result cannot be overwritten, and a grant is not permission
+digests before scoring. A second grant may follow a first continuation that also failed, bound to
+that result the same way, and only while the first is sealed with a `next` key equal to the
+second's `previous`. Every earlier packet's charges must carry its own key, in ledger order, and
+the whole chain is checked under the charge lock against the same 23-call cap. The failed result cannot be overwritten, and a grant is not permission
 to send real session evidence or increase spend; both need separate owner authorization. The
 ledger holds case ids, times, statuses and digests only. The
 scorer does not pass through the reader's rolling budget, so that ledger is the bound.
