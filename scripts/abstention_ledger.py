@@ -93,8 +93,18 @@ CLAUDE_SUMMARY_PATH = os.path.join(
 # A reviewed handoff may authorize a second packet without moving the old
 # result or the account-home ledger. Absence preserves the one-packet rule.
 CONTINUATION_PATH = os.path.join(os.path.dirname(CLAUDE_SUMMARY_PATH), "claude-continuation.json")
-# Twenty authorized, one of them the AC2 browser walk the scorer cannot see.
-MAX_CALLS = 19
+# The first continuation's committed result, which a second grant chains to.
+CONTINUATION_SUMMARY_PATH = os.path.join(
+    os.path.dirname(CLAUDE_SUMMARY_PATH), "claude-results-continuation.json"
+)
+# A second reviewed handoff, after the first continuation also failed (owner,
+# 2026-10-01, DRC-4666). It binds that result as the first binds the original.
+CONTINUATION_2_PATH = os.path.join(
+    os.path.dirname(CLAUDE_SUMMARY_PATH), "claude-continuation-2.json"
+)
+# The owner's approved ceiling (DRC-4758): 23 scorer calls across every packet,
+# beside 26 Claude CLI invocations overall, the browser walk among them.
+MAX_CALLS = 23
 STATUSES = ("charged", "ok", "failed", "unavailable")
 _DIGEST = re.compile(r"^[0-9a-f]{64}$")
 _CASE = re.compile(r"^[0-9a-f]{16}$")
@@ -177,13 +187,61 @@ def read(path: str | None) -> dict[str, Any]:
 
 
 def continuation() -> dict[str, Any] | None:
-    """The fixed, reviewed handoff, bound to the committed failed result.
+    """The active reviewed handoff, bound to every committed failed result before it.
 
     The `marking` phase names only the new case digest. Once the owner has
     agreed to every mark and rubric entry, `sealed` also names the two digests
     the scorer charges under. Neither phase by itself authorizes a real call.
+
+    A second grant may follow a first continuation that also failed. It is
+    honoured only while the first is sealed and its `next` key is the second's
+    `previous`, so the chain reads original, first, second with no gap. The
+    returned grant carries `segments`: each earlier packet's last call count
+    and its key, in ledger order.
     """
-    grant = _review_json(CONTINUATION_PATH, "continuation grant", cap=32 * 1024, optional=True)
+    first = _grant(CONTINUATION_PATH, CLAUDE_SUMMARY_PATH)
+    if first is None:
+        if _grant_file_exists(CONTINUATION_2_PATH):
+            raise LedgerError("the second continuation grant has no first grant before it")
+        return None
+    first["segments"] = [_segment(first["previous"])]
+    second = _grant(CONTINUATION_2_PATH, CONTINUATION_SUMMARY_PATH)
+    if second is None:
+        return first
+    if first["phase"] != "sealed" or {
+        key: first["next"].get(key) for key in ("marks_digest", "inputs_digest")
+    } != {key: second["previous"][key] for key in ("marks_digest", "inputs_digest")}:
+        raise LedgerError("the second continuation grant does not follow the first")
+    second["segments"] = [*first["segments"], _segment(second["previous"])]
+    return second
+
+
+def _segment(previous: Mapping[str, Any]) -> list[Any]:
+    return [
+        previous["ledger_chain"]["calls"],
+        [previous["marks_digest"], previous["inputs_digest"]],
+    ]
+
+
+def _grant_file_exists(path: str) -> bool:
+    return os.path.lexists(path)
+
+
+def follows(
+    calls: list[dict[str, Any]], grant: Mapping[str, Any], new_pair: tuple[str, str]
+) -> bool:
+    """Whether each call was charged under its packet's key, the granted packet's last."""
+    start = 0
+    for end, pair in grant["segments"]:
+        if any([c["marks_digest"], c["inputs_digest"]] != list(pair) for c in calls[start:end]):
+            return False
+        start = end
+    return all((c["marks_digest"], c["inputs_digest"]) == new_pair for c in calls[start:])
+
+
+def _grant(path: str, failed_path: str) -> dict[str, Any] | None:
+    """One grant file, checked against the failed result it continues from."""
+    grant = _review_json(path, "continuation grant", cap=32 * 1024, optional=True)
     if grant is _MISSING:
         return None
     if not isinstance(grant, dict) or type(grant.get("v")) is not int or grant["v"] != 1:
@@ -211,7 +269,7 @@ def continuation() -> dict[str, Any] | None:
         )
     ):
         raise LedgerError("the continuation grant is malformed")
-    summary = _review_json(CLAUDE_SUMMARY_PATH, "prior committed result", cap=2 * 1024 * 1024)
+    summary = _review_json(failed_path, "prior committed result", cap=2 * 1024 * 1024)
     if (
         not isinstance(summary, dict)
         or summary.get("verdict") != "failed"
@@ -357,17 +415,7 @@ class Ledger:
                 next_packet["inputs_digest"],
             ) or self.cases_digest != next_packet["cases_digest"]:
                 raise OtherPacketError("the packet differs from the sealed continuation grant")
-            old_pair = (
-                grant["previous"]["marks_digest"],
-                grant["previous"]["inputs_digest"],
-            )
-            new_pair = (self.marks_digest, self.inputs_digest)
-            split = prior["calls"]
-            if any(
-                (c["marks_digest"], c["inputs_digest"]) != old_pair for c in body["calls"][:split]
-            ) or any(
-                (c["marks_digest"], c["inputs_digest"]) != new_pair for c in body["calls"][split:]
-            ):
+            if not follows(body["calls"], grant, (self.marks_digest, self.inputs_digest)):
                 raise OtherPacketError("the spend ledger is not the authorized old and new packets")
             return
         for call in body["calls"]:

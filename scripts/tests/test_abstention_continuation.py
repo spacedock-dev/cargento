@@ -19,7 +19,9 @@ import mark_abstention
 import score_abstention
 
 
-class AFailedQualificationKeepsItsLedger(unittest.TestCase):
+class _OneFailedResult(unittest.TestCase):
+    """A ledger holding the original packet's 13 charges and its committed failed result."""
+
     def setUp(self) -> None:
         folder = tempfile.TemporaryDirectory()
         self.addCleanup(folder.cleanup)
@@ -28,6 +30,8 @@ class AFailedQualificationKeepsItsLedger(unittest.TestCase):
         self.summary_path = self.root / "failed.json"
         self.grant_path = self.root / "continuation.json"
         self.new_summary_path = self.root / "new-result.json"
+        self.grant_2_path = self.root / "continuation-2.json"
+        self.third_summary_path = self.root / "third-result.json"
         self.old_marks = "a" * 64
         self.old_inputs = "b" * 64
         self.new_cases = "c" * 64
@@ -39,6 +43,13 @@ class AFailedQualificationKeepsItsLedger(unittest.TestCase):
             mock.patch.object(abstention_ledger, "CONTINUATION_PATH", str(self.grant_path)),
             mock.patch.object(
                 score_abstention, "CLAUDE_CONTINUATION_SUMMARY_PATH", str(self.new_summary_path)
+            ),
+            mock.patch.object(
+                abstention_ledger, "CONTINUATION_SUMMARY_PATH", str(self.new_summary_path)
+            ),
+            mock.patch.object(abstention_ledger, "CONTINUATION_2_PATH", str(self.grant_2_path)),
+            mock.patch.object(
+                score_abstention, "CLAUDE_CONTINUATION_2_SUMMARY_PATH", str(self.third_summary_path)
             ),
         )
         for patch in patches:
@@ -95,6 +106,8 @@ class AFailedQualificationKeepsItsLedger(unittest.TestCase):
             cases_digest=self.new_cases,
         )
 
+
+class AFailedQualificationKeepsItsLedger(_OneFailedResult):
     def test_a_second_packet_needs_a_sealed_grant_before_any_call(self) -> None:
         fresh = self.fresh()
         self.assertNotEqual("", fresh.check())
@@ -311,6 +324,161 @@ class AFailedQualificationKeepsItsLedger(unittest.TestCase):
         self.grant("marking")
         old_summary = json.loads(self.summary_path.read_text())
         self.assertEqual("", score_abstention._ledger_drift(old_summary))
+
+
+class ASecondFailedContinuationChainsAThirdPacket(_OneFailedResult):
+    """After the first continuation also failed, a second grant may follow it (DRC-4666)."""
+
+    def setUp(self) -> None:
+        super().setUp()
+        self.grant("sealed")
+        second = self.fresh()
+        for _ in range(5):
+            second.settle(second.charge("2" * 16), "ok")
+        self.second_chain = abstention_ledger.chain_of(str(self.ledger_path))
+        self.new_summary_path.write_text(json.dumps({
+            "verdict": "failed", "producer": "claude", "ledger_chain": self.second_chain,
+            "marks_digest": self.new_marks, "inputs_digest": self.new_inputs,
+        }))  # fmt: skip
+        self.third_cases, self.third_marks, self.third_inputs = "1" * 64, "2" * 64, "3" * 64
+
+    def grant_2(self, phase: str = "sealed", **previous: str) -> None:
+        nxt = {"cases_digest": self.third_cases}
+        if phase == "sealed":
+            nxt.update(marks_digest=self.third_marks, inputs_digest=self.third_inputs)
+        self.grant_2_path.write_text(json.dumps({
+            "v": 1, "phase": phase,
+            "previous": {"ledger_chain": self.second_chain, "marks_digest": self.new_marks,
+                         "inputs_digest": self.new_inputs, **previous},
+            "next": nxt,
+        }))  # fmt: skip
+
+    def third(self) -> abstention_ledger.Ledger:
+        return abstention_ledger.Ledger(
+            str(self.ledger_path), cap=23, marks_digest=self.third_marks,
+            inputs_digest=self.third_inputs, producer="claude", cases_digest=self.third_cases,
+        )  # fmt: skip
+
+    def test_a_third_packet_charges_only_under_a_sealed_second_grant(self) -> None:
+        self.assertNotEqual("", self.third().check())
+        self.grant_2("marking")
+        self.assertNotEqual("", self.third().check())
+        self.grant_2("sealed")
+        self.assertEqual("", self.third().check())
+        self.third().charge("3" * 16)
+        self.assertEqual(19, self.third().used())
+        self.assertTrue(abstention_ledger.begins_with(str(self.ledger_path), self.second_chain))
+
+    def test_the_cap_counts_all_three_packets(self) -> None:
+        self.grant_2()
+        third = self.third()
+        for _ in range(5):
+            third.charge("3" * 16)
+        self.assertEqual(23, third.used())
+        with self.assertRaises(abstention_ledger.SpendCapError):
+            third.charge("3" * 16)
+
+    def test_a_second_grant_needs_the_first_and_must_follow_it(self) -> None:
+        self.grant_2()
+        self.grant_path.unlink()
+        with self.assertRaises(abstention_ledger.LedgerError):
+            abstention_ledger.continuation()
+        self.grant("sealed")
+        self.grant_2(marks_digest="f" * 64)
+        with self.assertRaises(abstention_ledger.LedgerError):
+            abstention_ledger.continuation()
+
+    def test_a_second_grant_needs_the_first_sealed(self) -> None:
+        self.grant("marking")
+        self.grant_2()
+        with self.assertRaises(abstention_ledger.LedgerError):
+            abstention_ledger.continuation()
+
+    def test_each_segment_must_carry_its_own_key(self) -> None:
+        # The hash chain catches a re-digested charge; this catches a genuine chain
+        # whose charges ran under another packet's key than the grant names.
+        a, b, c = ("a" * 64, "b" * 64), ("c" * 64, "d" * 64), ("e" * 64, "f" * 64)
+        grant = {"segments": [[2, list(a)], [3, list(b)]]}
+
+        def call(pair: tuple[str, str]) -> dict[str, str]:
+            return {"marks_digest": pair[0], "inputs_digest": pair[1]}
+
+        self.assertTrue(abstention_ledger.follows([call(a), call(a), call(b), call(c)], grant, c))
+        for calls in ([call(a), call(b), call(b), call(c)],
+                      [call(a), call(a), call(a), call(c)],
+                      [call(a), call(a), call(b), call(b)]):  # fmt: skip
+            with self.subTest(calls=calls):
+                self.assertFalse(abstention_ledger.follows(calls, grant, c))
+
+    def test_a_second_grant_needs_the_first_continuation_to_have_failed(self) -> None:
+        self.grant_2()
+        self.new_summary_path.write_text(json.dumps({
+            **json.loads(self.new_summary_path.read_text()), "verdict": "passed"}))  # fmt: skip
+        with self.assertRaises(abstention_ledger.LedgerError):
+            abstention_ledger.continuation()
+
+    def test_every_earlier_packet_keeps_its_own_key(self) -> None:
+        self.grant_2()
+        for index in (0, 15):
+            with self.subTest(call=index):
+                self.grant_2()
+                body = abstention_ledger.read(str(self.ledger_path))
+                saved = body["calls"][index]["marks_digest"]
+                body["calls"][index]["marks_digest"] = self.third_marks
+                self.ledger_path.write_text(json.dumps(body))
+                self.assertNotEqual("", self.third().check())
+                body["calls"][index]["marks_digest"] = saved
+                self.ledger_path.write_text(json.dumps(body))
+        self.assertEqual("", self.third().check())
+
+    def test_marking_the_third_packet_is_scoped_and_stops_after_its_first_call(self) -> None:
+        self.grant_2("marking")
+        self.assertFalse(
+            mark_abstention._ledger_refusal(continuation=True, cases_digest=self.third_cases)
+        )
+        self.assertTrue(
+            mark_abstention._ledger_refusal(continuation=True, cases_digest=self.new_cases)
+        )
+        self.grant_2("sealed")
+        self.third().charge("3" * 16)
+        self.assertTrue(
+            mark_abstention._ledger_refusal(continuation=True, cases_digest=self.third_cases)
+        )
+
+    def test_the_third_result_has_its_own_files_and_reads_both_failures(self) -> None:
+        self.grant_2()
+        with mock.patch.object(score_abstention, "HOME", str(self.root)):
+            self.assertEqual(
+                str(self.third_summary_path), score_abstention.summary_path_for("claude", None)
+            )
+            self.assertTrue(
+                score_abstention.results_path_for("claude").endswith(
+                    "abstention-claude-continuation-2-results.json"
+                )
+            )
+        self.assertFalse(score_abstention._chain_holds(self.third(), str(self.new_summary_path)))
+        self.assertTrue(score_abstention._chain_holds(self.third(), str(self.third_summary_path)))
+        # Rewriting one of the first continuation's charges breaks its committed chain.
+        body = abstention_ledger.read(str(self.ledger_path))
+        body["calls"][14]["id"] = "f" * 32
+        self.ledger_path.write_text(json.dumps(body))
+        self.assertFalse(score_abstention._chain_holds(self.third(), str(self.third_summary_path)))
+
+    def test_every_result_accepts_only_its_granted_segment(self) -> None:
+        self.grant_2()
+        self.third().charge("3" * 16)
+        first = json.loads(self.summary_path.read_text())
+        second = json.loads(self.new_summary_path.read_text())
+        third = {"producer": "claude", "marks_digest": self.third_marks,
+                 "inputs_digest": self.third_inputs,
+                 "ledger_chain": abstention_ledger.chain_of(str(self.ledger_path))}  # fmt: skip
+        for summary in (first, second, third):
+            self.assertEqual("", score_abstention._ledger_drift(summary))
+        body = abstention_ledger.read(str(self.ledger_path))
+        body["calls"][-1]["marks_digest"] = self.new_marks
+        self.ledger_path.write_text(json.dumps(body))
+        for summary in (first, second, third):
+            self.assertNotEqual("", score_abstention._ledger_drift(summary))
 
 
 if __name__ == "__main__":

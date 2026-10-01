@@ -150,9 +150,13 @@ CLAUDE_SUMMARY_PATH = abstention_ledger.CLAUDE_SUMMARY_PATH
 CLAUDE_CONTINUATION_SUMMARY_PATH = os.path.join(
     _ROOT, "docs", "abstention", "claude-results-continuation.json"
 )
+# Nor does a second continuation overwrite the first continuation's failure.
+CLAUDE_CONTINUATION_2_SUMMARY_PATH = os.path.join(
+    _ROOT, "docs", "abstention", "claude-results-continuation-2.json"
+)
 PRODUCERS = ("claude", "codex")
-# The owner's authorization of 2026-09-24: at most twenty real readings, one of
-# them the browser walk. `abstention_ledger` owns the cap and the one ledger.
+# The ceiling the owner approved in DRC-4758: 23 real readings across every
+# packet. `abstention_ledger` owns the cap and the one ledger.
 MAX_CALLS = abstention_ledger.MAX_CALLS
 # Where the native installer puts each Claude Code version, one file per version
 # named for it. A `claude` resolving anywhere else is refused: a PATH stub
@@ -1776,22 +1780,19 @@ def _chain_holds(ledger: abstention_ledger.Ledger | None, summary_path: str) -> 
     if ledger is None:
         return True
     try:
-        continuing = abstention_ledger.continuation() is not None
+        grant = abstention_ledger.continuation()
     except abstention_ledger.LedgerError as error:
         print(f"Refused: {error}.")
         return False
-    if continuing and os.path.abspath(summary_path) != os.path.abspath(
-        CLAUDE_CONTINUATION_SUMMARY_PATH
-    ):
+    fixed = _continuation_summary(grant)
+    if fixed is not None and os.path.abspath(summary_path) != os.path.abspath(fixed):
         print("Refused: a continuation writes only its fixed separate result file.")
         return False
-    paths = dict.fromkeys(
-        (
-            abstention_ledger.CLAUDE_SUMMARY_PATH,
-            CLAUDE_CONTINUATION_SUMMARY_PATH if continuing else summary_path,
-            summary_path,
-        )
-    )
+    # Every committed result the chain runs through, then this run's own.
+    earlier = [abstention_ledger.CLAUDE_SUMMARY_PATH]
+    if grant is not None and len(grant["segments"]) > 1:
+        earlier.append(CLAUDE_CONTINUATION_SUMMARY_PATH)
+    paths = dict.fromkeys((*earlier, fixed or summary_path, summary_path))
     for path in paths:
         committed = abstention_ledger.committed_chain(path)
         if committed is None:
@@ -2236,23 +2237,25 @@ def _continuation_drift(
     prior = previous["ledger_chain"]
     if not abstention_ledger.begins_with(abstention_ledger.LEDGER_PATH, prior):
         return "The spend ledger lost the failed result's chain."
-    old_pair = (previous["marks_digest"], previous["inputs_digest"])
+    earlier = [tuple(pair) for _end, pair in grant["segments"]]
     if grant["phase"] != "sealed":
-        if bound == old_pair and len(calls) == prior["calls"]:
+        if bound in earlier and len(calls) == prior["calls"]:
             return ""
         return "The continuation grant is not sealed."
     next_packet = grant["next"]
     new_pair = (next_packet["marks_digest"], next_packet["inputs_digest"])
-    split = prior["calls"]
-    old_holds = all(
-        (call["marks_digest"], call["inputs_digest"]) == old_pair for call in calls[:split]
-    )
-    new_holds = all(
-        (call["marks_digest"], call["inputs_digest"]) == new_pair for call in calls[split:]
-    )
-    if bound in (old_pair, new_pair) and old_holds and new_holds:
+    if bound in (*earlier, new_pair) and abstention_ledger.follows(calls, grant, new_pair):
         return ""
     return "The spend ledger does not follow the granted old and new packet keys."
+
+
+def _continuation_summary(grant: Mapping[str, Any] | None) -> str | None:
+    """The fixed result file the active grant writes, or None with no grant."""
+    if grant is None:
+        return None
+    if len(grant["segments"]) > 1:
+        return CLAUDE_CONTINUATION_2_SUMMARY_PATH
+    return CLAUDE_CONTINUATION_SUMMARY_PATH
 
 
 def _load_corpus(rubric_path: str) -> Corpus:
@@ -2271,6 +2274,8 @@ def _load_corpus(rubric_path: str) -> Corpus:
 def results_path_for(producer: str) -> str:
     """The local half, one per producer, so a resume never picks up the other's run."""
     if producer == "claude":
+        if os.path.lexists(abstention_ledger.CONTINUATION_2_PATH):
+            return os.path.join(HOME, "abstention-claude-continuation-2-results.json")
         if os.path.exists(abstention_ledger.CONTINUATION_PATH):
             return os.path.join(HOME, "abstention-claude-continuation-results.json")
         return os.path.join(HOME, "abstention-claude-results.json")
@@ -2283,6 +2288,8 @@ def summary_path_for(producer: str | None, out: str | None) -> str:
         return out
     if producer != "claude":
         return SUMMARY_PATH
+    if os.path.lexists(abstention_ledger.CONTINUATION_2_PATH):
+        return CLAUDE_CONTINUATION_2_SUMMARY_PATH
     if os.path.exists(abstention_ledger.CONTINUATION_PATH):
         return CLAUDE_CONTINUATION_SUMMARY_PATH
     return CLAUDE_SUMMARY_PATH
