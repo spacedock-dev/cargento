@@ -2440,6 +2440,43 @@ criterion.
   inferred. After `session_ended` pops the overlay, the state falls back to the collector's
   `working` or `idle` while the ask stays open, and the chip read "working" beside "ended".
 
+#### Amended 2026-10-01: the panel's text is tiered to a word budget
+
+Owner, 2026-10-01 (DRC-4758 slice E; Q9 of the decision block, and the complaint "so much text it
+is unclear where to look"). The panel is held to a measured budget, counted by the shared
+visibility helper with the boxes' own words left out: an idle-drafted aside on Claude Code with
+consent given shows no more than about 90 words (79 at this build), and an aside under a stored
+reading no more than about 160 (96 at this build). Every sentence moved to meet it stays in the
+DOM behind a worded summary, under tier 2 of
+[NUI-19](design-next-ui.md#nui-19-a-caveat-has-three-tiers); absences and anything the reader acts
+on stay in view.
+
+- What a reading is (the offer that opened the READING section) sits inside "What is sent", after
+  the provider disclosure, while no reading is stored; where no disclosure is published it sits
+  behind "What a reading reads". The READING section is drawn only for a stored reading this build
+  could not read, and that sentence stays in view. A malformed reading keeps the section.
+- The saved introduction ("Choose a goal or use your prompt, then analyze drift...") sits behind
+  "What analysis does".
+- The later-direction block is one summary naming its state: "Later directions: none since your
+  save", "Later directions: settled 5m ago", or "Later directions: unknown (record unread)". The
+  unread state is in the summary, so it is never a silent all-clear
+  ([DEC-20](#dec-20-the-first-screen-shows-goal-beside-direction-and-drift-has-one-home)); the
+  state sentences and the steer paragraph sit behind it.
+- "Discard everything" is a summary holding the server's why, the `discard everything` control
+  and, once armed, its warning. Armed, it is drawn open and outside the restore lane, so a redraw
+  cannot shut the warning that describes the armed control (DRC-4564). The account of a landed or
+  failed discard stays in view.
+- Departures (Q9). The section is drawn only where the unasked lane holds rows, collapsed under
+  "Raised while you were away: N", and holds the definition, the rows with their ways back, how
+  each was raised, the counts and the steer paragraph. With the lane on and nothing raised, the
+  lane's own sentence (not checked, checked and found nothing, or a cap spent) stays in view with
+  the rest behind "About these checks", because those are three facts and silence reads as the
+  reassuring one. The reading's departures are said once, in the result: the section's "From the
+  reading you asked for" part, its "No reading has been made at your request" sentence and its
+  per-departure way back are not drawn, and the reading's cutoff moved into "What it read". The
+  result-placement bullet's "a malformed reading, a refused one and no reading keep it" now reads
+  "a malformed reading and a refused one keep it".
+
 ### What the numbering build decided, 2026-09-25
 
 DRC-4694 built item 11 and item 6's flags in the session's activity. The owner ruled the first four

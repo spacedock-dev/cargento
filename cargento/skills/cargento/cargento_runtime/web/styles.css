@@ -927,7 +927,7 @@ input::placeholder,textarea::placeholder{color:var(--ink2)}
 /* The control with its hint and send disclosure, first in the Drift section,
    and the caveats on the reader's words below the reading (DRC-4639). */
 .next-session-drift-check,.next-session-drift-caveats{display:flex;flex-direction:column;gap:8px;padding:0 16px 14px}
-.next-session-drift>.next-cockpit-held-lede{margin:0 16px 14px}
+.next-session-drift>.next-cockpit-held-lede,.next-session-drift>.next-session-drift-about{margin:0 16px 14px}
 /* One narrow column: the buttons share a row, and a disclosure before "Allow
    and analyze" or a no-reader reason takes the full width above them. */
 .next-cockpit-reading-ask{display:flex;flex-wrap:wrap;gap:8px 12px;align-items:center}
@@ -1354,6 +1354,7 @@ input::placeholder,textarea::placeholder{color:var(--ink2)}
    No colour on it -- `--clay` reads as an observation about the session under
    the design's rule 3, and this is a control. */
 .next-cockpit-held-discard{display:grid;gap:4px;justify-items:start;margin-top:10px}
+.next-cockpit-held-discard-offer[open]{display:grid;gap:6px;justify-items:start}
 .next-cockpit-held-discard button{color:var(--ink2);font-family:var(--sans)}
 /* Width, not hue, and not a second colour: the comment above rules colour out
    on this control, so the armed state -- one press from deleting every
@@ -1398,6 +1399,7 @@ input::placeholder,textarea::placeholder{color:var(--ink2)}
    revisions rather than part of the reading. */
 .next-cockpit-reading,.next-cockpit-departures{display:flex;flex-direction:column;gap:8px;padding:0 16px 14px}
 .next-cockpit-reading>header,.next-cockpit-departures>header{display:flex;justify-content:space-between;align-items:baseline;gap:10px}
+.next-cockpit-departures>.next-cockpit-why[open]{display:flex;flex-direction:column;gap:8px}
 /* The conflict block had no heading rule of its own, so on the Held to tab its
    h2 fell to the user agent's size and read louder than every section around
    it. Harmless there, glaring once the block moved into the session page's
@@ -1642,7 +1644,9 @@ input::placeholder,textarea::placeholder{color:var(--ink2)}
 .next-intent-gone{color:var(--ink2)}
 .next-intent-words{font:var(--fs-body)/1.5 var(--sans);color:var(--ink2);overflow-wrap:anywhere}
 .next-intent-revision,.next-intent-why{color:var(--ink2);font:500 var(--fs-body)/1.55 var(--sans);max-width:var(--measure)}
-.next-cockpit-conflict{display:flex;flex-direction:column;gap:8px;padding:10px 12px;border:1px solid var(--rule);background:var(--panel)}
+/* One summary line naming the state since DRC-4758 slice E; the sentences sit behind it. */
+.next-cockpit-conflict{display:flex;flex-direction:column;gap:8px}
+.next-cockpit-conflict>.next-cockpit-why[open]{display:flex;flex-direction:column;gap:8px}
 .next-cockpit-conflict-why,.next-cockpit-conflict-settled{margin:0;color:var(--ink2);font:500 var(--fs-body)/1.55 var(--sans);max-width:var(--measure)}
 .next-cockpit-landed-cards{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;align-items:start}
 .next-cockpit-landed-card{display:flex;flex-direction:column;gap:4px;padding-left:9px;border-left:1px solid var(--rule)}

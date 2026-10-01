@@ -1,0 +1,201 @@
+"""The Intent and drift panel holds to a visible word budget (DRC-4758 slice E).
+
+The owner's walk: "so much text it is unclear where to look". The plan's critic gave that a
+number, measured with the shared visibility helper: an idle-drafted aside (a Claude Code session,
+consent given, the goal drafted from the first prompt) shows no more than about 90 words outside
+the field values, and an aside under a stored reading no more than about 160. Every sentence
+moved to meet it stays in the DOM behind a worded `<details>`
+([NUI-19](docs/design-next-ui.md#nui-19-a-caveat-has-three-tiers)), so each test below also
+asserts the moved text is still on the page.
+"""
+
+from __future__ import annotations
+
+import json
+import re
+import shutil
+import unittest
+
+from cargento_runtime import annotations as annotation_store
+
+from .test_next_drift_panel import READING, PanelPage, aside_of
+from .test_next_intent_draft import DRAFT
+from .visible_text import visible_text
+
+ELIGIBLE = (
+    "__dashboard.sessions[0].reading_eligibility = "
+    '{"ok":true,"reason":null,"until":null,"sentence":null};\n'
+)
+# The design's C1: the first prompt drafted as the goal and no later direction since.
+NO_LATER = (
+    "__semantic.facts = __semantic.facts.filter("
+    "f => !(f.fact_id === 'fo-a' || f.fact_id === 'fo-b'));\n"
+)
+IDLE_DRAFTED = DRAFT + NO_LATER + ELIGIBLE
+STORED = '__dashboard.reading = {consent:true, reason:"", used:1, limit:12};\n' + READING + ELIGIBLE
+LANE = """
+__dashboard.unasked = true;
+__dashboard.sessions[0].departure_checked = true;
+__dashboard.sessions[0].departures = [{
+  constraint: "TYPED GOAL", clause: "do not change the board while capturing",
+  reading: "Two turns edited the running board.", revision: 2,
+  at: __dashboard.generated - 600, cutoff: __dashboard.generated - 600,
+  cutoff_text: "Read 4 of the 4 entries after your words.",
+  evidence: "turn transcript"}];
+"""
+IDLE_BUDGET = 90
+STORED_BUDGET = 160
+
+OFFER = "A reading is a model\u2019s account of the evidence on this page"
+LATER_NONE = (
+    "Nothing you have said since you saved these words is in the observed record read for "
+    "this session."
+)
+STEER = "Nothing here decides whether it changes what you are asking for."
+LEDE = "Choose a goal or use your prompt, then analyze drift"
+NOBODY_WATCHES = "Nothing watches for a departure on its own."
+
+
+def outside_fields(html: str) -> str:
+    """The markup without the boxes' own words, which are the reader's rather than the page's."""
+    return re.sub(r"<textarea\b[^>]*>[\s\S]*?</textarea>", " ", html)
+
+
+def words(html: str) -> int:
+    return len(visible_text(outside_fields(html)).split())
+
+
+@unittest.skipUnless(shutil.which("node"), "node not available")
+class TheAsideHoldsToItsWordBudgetTest(PanelPage):
+    def test_an_idle_drafted_aside_shows_no_more_than_about_ninety_words(self) -> None:
+        aside = aside_of(self.page("claude", IDLE_DRAFTED))
+        count = words(aside)
+        print(f"\nidle-drafted aside: {count} visible words outside field values")
+        self.assertLessEqual(count, IDLE_BUDGET, visible_text(outside_fields(aside)))
+
+    def test_a_stored_reading_aside_shows_no_more_than_about_one_hundred_sixty(self) -> None:
+        aside = aside_of(self.page("claude", STORED))
+        count = words(aside)
+        print(f"\nstored-reading aside: {count} visible words outside field values")
+        self.assertLessEqual(count, STORED_BUDGET, visible_text(outside_fields(aside)))
+
+
+@unittest.skipUnless(shutil.which("node"), "node not available")
+class MovedTextStaysOnThePageTest(PanelPage):
+    def test_what_a_reading_is_moves_into_what_is_sent_and_no_reading_heading_is_drawn(
+        self,
+    ) -> None:
+        aside = aside_of(self.page("claude", IDLE_DRAFTED))
+        self.assertIn(OFFER, aside)
+        self.assertNotIn(OFFER, visible_text(aside))
+        self.assertNotIn("READING", visible_text(aside))
+        sent = aside[aside.index("next-cockpit-reading-sent") :]
+        self.assertIn(OFFER, sent[: sent.index("</details>")])
+
+    def test_a_refused_reading_is_still_said_in_view(self) -> None:
+        aside = aside_of(
+            self.page(
+                "claude",
+                IDLE_DRAFTED + "__dashboard.sessions[0].annotation_reading_refused = true;\n",
+            )
+        )
+        self.assertIn("this build could not read it", visible_text(aside))
+
+    def test_a_later_direction_is_a_summary_naming_its_state(self) -> None:
+        aside = aside_of(self.page("claude", STORED))
+        text = visible_text(aside)
+        self.assertIn("Later directions: none since your save", text)
+        self.assertNotIn("A LATER DIRECTION", text)
+        for sentence in (LATER_NONE, STEER):
+            with self.subTest(sentence=sentence[:30]):
+                self.assertIn(sentence, aside)
+                self.assertNotIn(sentence, text)
+
+    def test_a_settled_direction_says_when_in_its_summary(self) -> None:
+        aside = aside_of(
+            self.page(
+                "claude",
+                STORED
+                + "__dashboard.sessions[0].annotation_settled_at = __dashboard.generated - 300;\n",
+            )
+        )
+        self.assertRegex(visible_text(aside), r"Later directions: settled( \d+[smhd] ago)?(?= |$)")
+
+    def test_what_analysis_does_is_behind_a_summary_under_a_saved_intent(self) -> None:
+        aside = aside_of(self.page("claude", STORED))
+        self.assertIn(LEDE, aside)
+        self.assertNotIn(LEDE, visible_text(aside))
+        self.assertIn("What analysis does", visible_text(aside))
+
+    def test_discard_everything_is_a_summary_with_the_button_inside(self) -> None:
+        aside = aside_of(
+            self.page(
+                "claude",
+                STORED
+                + "__dashboard.annotate_discard = "
+                + json.dumps(annotation_store.DISCARD_SENTENCES)
+                + ";\n",
+            )
+        )
+        text = visible_text(aside)
+        self.assertIn("Discard everything", text)
+        self.assertNotIn("discard everything", text)
+        self.assertIn('data-next-cockpit-action="held-discard"', aside)
+        why = annotation_store.DISCARD_SENTENCES["why"]
+        self.assertIn(why, aside)
+        self.assertNotIn(why, text)
+
+    def test_an_armed_discard_is_drawn_open_with_its_warning_inside(self) -> None:
+        aside = aside_of(
+            self.page(
+                "claude",
+                STORED
+                + "__dashboard.annotate_discard = "
+                + json.dumps(annotation_store.DISCARD_SENTENCES)
+                + ";\n",
+                after="nextCockpitHeldStates.set(nextCockpitHeldKey(__dashboard.sessions[0], "
+                '"discard"), {kind:"discard-armed", at:Date.now()});\nrenderNext();\n',
+            )
+        )
+        offer = re.search(r"<details[^>]*next-cockpit-held-discard-offer[^>]*>", aside)
+        assert offer is not None
+        # Open, and outside the restore lane, so no redraw can shut the warning that describes
+        # the armed control.
+        self.assertIn(" open", offer.group(0))
+        self.assertNotIn("data-next-cockpit-disclosure", offer.group(0))
+        self.assertIn(annotation_store.DISCARD_ARMED, visible_text(aside))
+        self.assertIn('aria-describedby="next-cockpit-discard-armed"', aside)
+
+    def test_no_departures_section_without_a_raise_from_the_lane(self) -> None:
+        aside = aside_of(self.page("claude", STORED + "__dashboard.unasked = true;\n"))
+        self.assertNotIn("next-cockpit-departures", aside)
+        self.assertNotIn(NOBODY_WATCHES, aside)
+        self.assertNotIn("DEPARTURES RAISED TO YOU", aside)
+
+    def test_with_the_lane_on_and_nothing_raised_its_absence_stays_in_view(self) -> None:
+        why = "Cargento has not checked this session against what you asked for."
+        aside = aside_of(
+            self.page(
+                "claude",
+                STORED
+                + "__dashboard.unasked = true;\n"
+                + f"__dashboard.sessions[0].departure_why = {json.dumps(why)};\n",
+            )
+        )
+        text = visible_text(aside)
+        self.assertIn(why, text)
+        self.assertIn("About these checks", text)
+        self.assertNotIn("Raised while you were away", text)
+
+    def test_raises_from_the_lane_collapse_under_their_count(self) -> None:
+        aside = aside_of(self.page("claude", STORED + LANE))
+        text = visible_text(aside)
+        self.assertIn("Raised while you were away: 1", text)
+        self.assertIn("Two turns edited the running board.", aside)
+        self.assertNotIn("Two turns edited the running board.", text)
+        # The reading's own departures are said once, in the result.
+        self.assertNotIn("FROM THE READING YOU ASKED FOR", aside)
+
+
+if __name__ == "__main__":
+    unittest.main()

@@ -3331,30 +3331,40 @@ function nextCockpitDepartureLaneCount(session){
 }
 
 function nextCockpitDepartures(shape, source, session){
-  const reading = nextCockpitReadingDepartures(shape, source, session);
   const lane = nextCockpitDepartureLaneCount(session);
   const laneRows = Array.isArray(session && session.departures) ? session.departures.length : 0;
-  /* Once for the section, and only where a departure is drawn: a missing way
-     back is worth saying beside the thing it would act on (DRC-4642). */
-  /* Drawn only with the unasked lane on or a departure on record. A panel on
-     every session of a board whose switch is off, saying nothing was raised by
-     a check nobody turned on, is noise (DRC-4543); a raise on record is not,
-     whichever way the switch is set (DRC-4559). A reading the reader asked for
-     keeps it too, even one that raised nothing: its cutoff is printed here and
-     nowhere else, and "raised nothing" is only worth the evidence it read. */
-  const onRecord = (reading.count || 0) + laneRows > 0;
-  if(!onRecord && !shape && !(nextData && nextData.unasked === true)) return "";
+  /* Drawn only where the unasked lane holds rows, collapsed under their count
+     (owner Q9, 2026-10-01; DRC-4758 slice E). The reading's own departures are
+     said once, in the result that stands in the control's slot, so this
+     section no longer repeats them; "nothing watches" and the off switch's
+     reason go with the section, because a session with nothing raised has
+     nothing for them to qualify. A raise on record is drawn whichever way the
+     switch is set (DRC-4559).
+
+     One exception, and it is an absence rather than a row: with the lane on
+     and nothing raised, the lane's own sentence -- not checked, checked and
+     found nothing, or a cap spent -- stays in view, because those are three
+     different facts and silence would read as the reassuring one (the first
+     Measured Invariant; absences are tier 1 under
+     [NUI-19](docs/design-next-ui.md#nui-19-a-caveat-has-three-tiers)). */
+  const laneOn = Boolean(nextData && nextData.unasked === true);
+  const why = laneOn && !laneRows
+    ? String(session && session.departure_why == null ? "" : session.departure_why) : "";
+  if(!laneRows && !why) return "";
   const limit = nextSessionRaiseControl(session) ? nextDepartureReentryLimit(session) : {raise:""};
-  return '<section class="next-cockpit-departures"><header>' +
-    '<h2>DEPARTURES RAISED TO YOU</h2>' +
-    `<p class="next-cockpit-define">${NEXT_COCKPIT_DEPARTURE_DEFINITION}</p></header>` +
-    reading.html +
-    nextCockpitUnaskedPart(session) + limit.raise +
+  const summary = laneRows ? `Raised while you were away: ${laneRows}` : "About these checks";
+  return '<section class="next-cockpit-departures">' +
+    (laneRows ? "" : nextCockpitUnaskedPart(session)) +
+    `<details class="next-cockpit-why"${nextCockpitDisclosureAttr("departures")}>` +
+    `<summary>${esc(summary)}</summary>` +
+    `<p class="next-cockpit-define">${NEXT_COCKPIT_DEPARTURE_DEFINITION}</p>` +
+    (laneRows ? nextCockpitUnaskedPart(session) + limit.raise : "") +
     nextCockpitDeliveryPart(session, Boolean(lane)) +
-    nextCockpitDepartureCounts(reading.count, lane) +
+    nextCockpitDepartureCounts(shape ? nextCockpitReadingDepartures(shape, source, session).count
+      : null, lane) +
     `<p class="next-cockpit-reading-why">${NEXT_COCKPIT_STEER_BY_HAND}</p>` +
     nextCockpitWhy("steer-why", "Why no raise goes further", NEXT_COCKPIT_STEER_BY_HAND_WHY) +
-    '</section>';
+    '</details></section>';
 }
 
 /* Where a raise is kept, in the tab's last slot. Separate from the section
@@ -4213,8 +4223,12 @@ async function nextCockpitCopyCorrection(session, target, source){
    2026-10-01): "Analyze again", with every refusal, consent step and count it
    has as "Analyze drift", and no hint line. Its caller passes `primary`
    false: it is never the stage's primary. */
+/* `about` is what a reading is, drawn inside "What is sent" while no reading
+   is stored: the READING section that carried it is drawn only to say a stored
+   reading could not be read (DRC-4758 slice E, tier 2 of
+   [NUI-19](docs/design-next-ui.md#nui-19-a-caveat-has-three-tiers)). */
 function nextCockpitReadingControl(session, annotation, model, primary = true, steer = null,
-    again = false){
+    again = false, about = ""){
   const steerButton = steer ? steer.button : "";
   const lead = Boolean(steer && steer.lead);
   const steerBox = steer ? steer.box : "";
@@ -4323,12 +4337,13 @@ function nextCockpitReadingControl(session, annotation, model, primary = true, s
   const noReader = nextData && nextData.annotate === true ? nextReadingRouteRefusal(session) : "";
   /* The reason takes the button's focus key, so a reader whose focus was on
      Analyze drift when the reader went away lands on why, not on the page. */
+  const aboutWhy = about ? nextCockpitWhy("reading-about", "What a reading reads", about) : "";
   if(noReader){
     return '<div class="next-cockpit-reading-ask next-cockpit-reading-ask--none">' +
       `<p class="next-cockpit-reading-why" tabindex="-1" data-next-focus="reading:${esc(key)}" ` +
       `data-next-reading-no-reader${nextAbsenceAttr(NEXT_READING_REFUSAL_ABSENCE.get(noReader))}>` +
       `${esc(noReader)}</p>` + steerButton + off + '</div>' + steerBox +
-      said(answered === noReader ? "" : answered) + counted;
+      said(answered === noReader ? "" : answered) + counted + aboutWhy;
   }
   /* `aria-disabled` rather than `disabled`, so the control keeps its place in
      the tab order and its reason is announced. The press this lets back in is
@@ -4396,7 +4411,7 @@ function nextCockpitReadingControl(session, annotation, model, primary = true, s
       `data-next-focus="reading-not-now:${esc(key)}" data-next-focus-fallback="reading:${esc(key)}">` +
       "Not now</button></div></div>" +
       (lead ? "" : steers) + (off ? `<div class="next-cockpit-reading-ask">${off}</div>` : "") +
-      accounts + counted;
+      accounts + counted + aboutWhy;
   }
   /* Idle: the button and its count, the accounts and the one hint line, then
      the provider disclosure one click away under a worded summary that names
@@ -4413,8 +4428,9 @@ function nextCockpitReadingControl(session, annotation, model, primary = true, s
       `${nextCockpitDisclosureAttr("reading-sent")}>` +
       `<summary>${esc(nextReadingNeedsAllow(route) ? `What is sent to ${label}` : "What is sent")}` +
       `</summary>${disclosure}` +
+      (about ? `<p class="next-cockpit-reading-why">${esc(about)}</p>` : "") +
       (off ? `<div class="next-cockpit-reading-ask">${off}</div>` : "") + "</details>"
-    : off ? `<div class="next-cockpit-reading-ask">${off}</div>` : "";
+    : (off ? `<div class="next-cockpit-reading-ask">${off}</div>` : "") + aboutWhy;
   return '<div class="next-cockpit-reading-ask">' +
     (lead ? steerButton + button : button + steerButton) + rowCount + '</div>' +
     accounts + sent;
@@ -4522,8 +4538,15 @@ function nextCockpitReadingParts(session, annotation, entries, model, observed, 
   const slotted = offer ? {lead: departed,
     button: nextCockpitSteerButton(session, primary && (departed || Boolean(noReader))) + update,
     box: nextCockpitSteerBox(session, source)} : null;
+  /* Said once. The send disclosure already ends on the server's "never a
+     verification that the work was done", so the page's own wording rides
+     with what a reading is only where no disclosure was published. */
+  const routed = nextReadingRoute(session);
+  const about = raw ? "" : NEXT_READING_OFFER +
+    (routed && routed.provider && routed.disclosure ? "" : ` ${NEXT_READING_NOT_A_VERIFICATION}`);
   const control = '<div class="next-session-drift-check">' +
-    (question || nextCockpitReadingControl(session, annotation, model, primary && !departed, slotted)) +
+    (question || nextCockpitReadingControl(session, annotation, model, primary && !departed, slotted,
+      false, about)) +
     '</div>';
   const header = '<section class="next-cockpit-reading"><header><h2>READING</h2>';
   /* `defined` rather than sniffing the composed body: the no-reading arm
@@ -4557,19 +4580,15 @@ function nextCockpitReadingParts(session, annotation, entries, model, observed, 
        the difference unaccounted for. The JS refusal below cannot reach this:
        the validator nulls the assessment before the page ever sees it, so
        that arm only fires in a tab left open across a server upgrade. */
+    /* The section is drawn only for this: what a reading is now sits inside
+       "What is sent" beside the control (DRC-4758 slice E). */
     const refused = annotation && annotation.reading_refused === true
       ? '<p class="next-cockpit-reading-why">A reading is stored for this session and this ' +
         "build could not read it, so nothing from it is shown. Asking again replaces it." +
         "</p>"
       : "";
-    /* Said once. The send disclosure beside the control already ends on the
-       server's "never a verification that the work was done", so the page's
-       own wording rides here only where no disclosure was published. */
-    const routed = nextReadingRoute(session);
-    const verification = routed && routed.provider && routed.disclosure
-      ? "" : ` ${NEXT_READING_NOT_A_VERIFICATION}`;
-    const offer = `<p class="next-cockpit-reading-why">${NEXT_READING_OFFER}${verification}</p>`;
-    return close(refused + offer, null, true);
+    const drawn = refused ? close(refused, null, false) : close("", null, true);
+    return refused ? drawn : {...drawn, reading: ""};
   }
   const shape = early;
   if(shape.malformed){
@@ -4622,7 +4641,10 @@ function nextCockpitReadingParts(session, annotation, entries, model, observed, 
   const read = `<p class="next-cockpit-define">${NEXT_COCKPIT_READING_DEFINITION}</p>` +
     (shape.stamp ? `<p class="next-cockpit-reading-stamp">${esc(shape.stamp)}</p>` : "") +
     (shape.promptSource ? '<p class="next-cockpit-reading-why">Baseline from your prompt.</p>' : "") +
-    scope;
+    scope +
+    /* The cutoff was the departures section's, which no longer repeats the
+       reading (owner Q9); "raised nothing" is worth only the evidence read. */
+    (shape.cutoff ? `<p class="next-cockpit-reading-why">${esc(shape.cutoff)}</p>` : "");
   /* Stale, the callout holds the one "Analyze again" and Steer back keeps
      its own row below; otherwise the press sits beside Steer back at the
      foot. Never both (owner Q3). */
@@ -4700,28 +4722,35 @@ function nextCockpitConflict(session, annotation, source){
      record ask the reader to act on nothing
      ([DEC-20](docs/design-reading-a-session.md#dec-20-the-first-screen-shows-goal-beside-direction-and-drift-has-one-home)).
      An unsettled direction is asked about before the press instead. */
-  const header = '<section class="next-cockpit-conflict"><header><h2>A LATER DIRECTION</h2></header>';
-  const steer = '<p class="next-cockpit-conflict-why">Nothing here decides whether it changes ' +
+  /* Tier 2 (DRC-4758 slice E): the summary names the state, so an unread
+     record is never a silent all-clear, and the sentences and the steer
+     paragraph sit behind it. */
+  const block = (state, body) => '<section class="next-cockpit-conflict">' +
+    `<details class="next-cockpit-why"${nextCockpitDisclosureAttr("later-direction")}>` +
+    `<summary>${esc(`Later directions: ${state}`)}</summary>${body}` +
+    '<p class="next-cockpit-conflict-why">Nothing here decides whether it changes ' +
     'what you are asking for. That is yours, and Cargento does not write into the session ' +
-    'either way.</p></section>';
+    'either way.</p></details></section>';
   if(source.state !== "read" && source.state !== "empty"){
-    return `${header}<p class="next-cockpit-conflict-why">` +
+    return block("unknown (record unread)", '<p class="next-cockpit-conflict-why">' +
       `${esc(nextCockpitWorkAbsence(source))} So whether you have given a later direction is ` +
-      'unknown, not none.</p>' + steer;
+      'unknown, not none.</p>');
   }
   const pending = nextCockpitConflictCandidates(annotation, source.all || source.entries, session);
   const settledAt = nextNumber(annotation && annotation.settled_at);
   if(!pending.length){
     if(settledAt == null){
-      return `${header}<p class="next-cockpit-conflict-why">Nothing you have said since you ` +
-        'saved these words is in the observed record read for this session.</p>' + steer;
+      return block("none since your save", '<p class="next-cockpit-conflict-why">Nothing you ' +
+        'have said since you saved these words is in the observed record read for this ' +
+        'session.</p>');
     }
     const age = nextDurationSince(settledAt);
     const revision = nextNumber(annotation && annotation.settled_revision);
-    return `${header}<p class="next-cockpit-conflict-settled">You settled this` +
+    return block(age == null ? "settled" : `settled ${age} ago`,
+      '<p class="next-cockpit-conflict-settled">You settled this' +
       `${age == null ? "" : ` ${esc(age)} ago`}` +
       `${revision == null ? "" : `, against revision ${revision}`}. A direction given after ` +
-      'that will raise it again.</p>' + steer;
+      'that will raise it again.</p>');
   }
   /* An unsettled one is asked about before the press, in the control's
      place (`nextCockpitDirectionQuestion`), which replaced this block's
@@ -5126,7 +5155,16 @@ function nextCockpitHeldDiscardBlock(session, annotation){
   const offer = nextNumber(annotation && annotation.revision_count) > 0;
   if(!offer && !landed) return "";
   const why = String(said.why || "");
+  /* Tier 2 (DRC-4758 slice E): the offer, its why and the armed warning sit
+     behind "Discard everything"; the account of a discard stays in view.
+     Armed, it is drawn open and outside the restore lane, so a redraw cannot
+     shut the warning that describes the armed control. */
+  const opening = armed
+    ? '<details class="next-cockpit-why next-cockpit-held-discard-offer" open>'
+    : `<details class="next-cockpit-why next-cockpit-held-discard-offer"` +
+      `${nextCockpitDisclosureAttr("held-discard")}>`;
   return '<div class="next-cockpit-held-discard">' +
+    (offer ? `${opening}<summary>Discard everything</summary>` : "") +
     (offer && why ? `<p class="next-cockpit-held-absent">${esc(why)}</p>` : "") +
     /* The warning is the control's description rather than the sibling after
        it (DRC-4564). Measured in the accessibility tree: a reader who tabs to
@@ -5144,6 +5182,7 @@ function nextCockpitHeldDiscardBlock(session, annotation){
     (offer && warning
       ? '<p class="next-cockpit-held-absent" id="next-cockpit-discard-armed">' +
         `${esc(warning)}</p>` : "") +
+    (offer ? "</details>" : "") +
     (landed ? `<small class="next-cockpit-held-cue">${esc(landed)}</small>` : "") +
     '</div>';
 }
@@ -5577,9 +5616,13 @@ function nextCockpitDriftBlock(group, session, primary){
      footer's hint under both fields now (owner Q6), so it is said once
      whether or not the goal is drafted. */
   const drafted = nextIntentDrafted(session, annotation);
-  const lede = '<p class="next-cockpit-held-lede">Choose a goal or use your prompt, then ' +
-    'analyze drift: Cargento lists where this session departed from it. It never writes into ' +
-    'the session, so steering stays yours.</p>';
+  /* Tier 2 under its summary (DRC-4758 slice E): it says what the press does,
+     which the button and its result already show. */
+  const lede = '<details class="next-cockpit-why next-session-drift-about"' +
+    `${nextCockpitDisclosureAttr("held-lede")}><summary>What analysis does</summary>` +
+    '<p class="next-cockpit-held-lede">Choose a goal or use your prompt, then analyze drift: ' +
+    'Cargento lists where this session departed from it. It never writes into the session, ' +
+    'so steering stays yours.</p></details>';
   /* In the lede's slot, so it costs the fold no row a draft would not. */
   const why = drafted ? "" : nextIntentNoDraftWhy(session, annotation);
   const noDraft = why

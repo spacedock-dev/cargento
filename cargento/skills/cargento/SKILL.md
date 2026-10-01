@@ -392,12 +392,13 @@ back for any later one: a line over 240 characters is refused rather than clippe
 lines you choose the line it replaces. While
 a later direction is unsettled a reading states no departure at all.
 
-`DEPARTURES RAISED TO YOU` is where a raise is reviewed, and the one place on the session page it
-appears; it keeps two collections apart. One
-holds what a reading you asked for raised; the other holds what the checks run while you were away
-raised, with the annotation revision each read against and where its evidence stopped. Where the
+A reading you asked for states its departures once, in its result. What the checks run while you
+were away raised is reviewed under `Raised while you were away: N`, drawn only where they raised
+something (with those checks on and nothing raised, their one sentence saying whether the session
+was checked stands in its place), and that is the one place on the session page a raise appears.
+Each row carries the annotation revision it read against and where its evidence stopped. Where the
 words have since moved to a later revision the row says so, in the same wording the reading block
-uses, and a raise whose revision was never recorded is not given today's number. Under both sits
+uses, and a raise whose revision was never recorded is not given today's number. Under them sits
 what became of that lane's raise, and a raise with no delivery record on file says that rather
 than showing nothing. Each raised constraint carries what a later check found, derived from later
 checks rather than from a second reading: the usual answer is that no later check has read the
@@ -411,11 +412,11 @@ the save after it keeps every earlier revision, so the raises quoting those word
 the whole annotation withdraws them: the quotations go from the departure record too, and what
 stays is the fact that a check ran and a record of the discard itself, holding when it happened
 and no text at all. That record is why a discarded session still has a line in the Intent log,
-and why the board never describes it as a session nobody typed against. That act is `discard everything`, under the two boxes and offered only
+and why the board never describes it as a session nobody typed against. That act is `discard everything`, behind `Discard everything` under the two boxes and offered only
 where a revision is stored; it takes two presses, and between them the board names what it will
 delete and what it will withdraw. That sentence is the control's own description, and it is
 written to the page's live region when the first press arms it, so it reaches a reader who is not
-looking at the screen. Beside each departure sit the command that resumes the session, on Claude
+looking at the screen. Beside each raised departure sit the command that resumes the session, on Claude
 Code and Codex, and the raise that selects its tmux pane, whatever state the session is in; the
 raise does not bring the window forward. Where either is missing the section says why once. Neither
 sends anything to the session. The Intent log carries the same raises a line at a time, and keeps
