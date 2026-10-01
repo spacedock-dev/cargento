@@ -1189,7 +1189,35 @@ of the reader's own prompts from the session's observed record, offered by "Use 
   keys the later-direction floor, eligibility and the evidence window as the other two sources do.
   A pasted correction's fact id, a forged id and changed words all adopt nothing.
 - Adding a direction over an unsaved chosen draft is not built: `add_direction`'s adoption still
-  resolves only first and latest, and refuses this source.
+  resolves only first and latest, and refuses this source. The page says so beside the pending
+  line, as it does over an unsaved edit, and sends nothing.
+
+### Amended 2026-10-01: "Use your prompt" fills the goal box
+
+Owner, 2026-10-01 (Q7, DRC-4758 slice D2), amending item 2's last sentence ("Choosing the first
+prompt, or adopting without checking, is in the goal field") and "Both source controls show the
+excerpt before adoption" under What prompt adoption preserves. The nested "Use a prompt" and
+"Your latest prompt" disclosures and the "Use latest prompt without checking" save are removed.
+
+- The goal's label row holds one `<details>` menu, summary "Use your prompt", listing the server's
+  `prompt_choices` in their order as buttons: "First prompt", then "Latest prompt", then "Earlier
+  prompt", each with its own time and its words clamped to two lines. Over a session that opened
+  with a harness control the first entry is named "Earliest prompt", since it is not the first.
+  An excerpt says "Shown excerpt only." in its option. A `<details>` of buttons rather than a
+  listbox popover or a `<select>`, because the disclosure lane restores its open state across a
+  poll redraw and each option keeps its own focus key, where a popover's open state and active
+  option are lost on every redraw (DRC-4758 critic 14).
+- Choosing one saves nothing. It fills the Goal box as a pending adoption, held in tab memory
+  (`nextIntentChosenPrompts`) and returned by `nextIntentDraft`, so the draft's tint, its marks
+  ("from your prompt · HH:MM", "Shown excerpt only." for an excerpt, Looks right), Analyze's
+  implicit adoption and Keep all read it. Focus moves to the box and the polite region says "Goal
+  filled from your prompt. Not saved."
+- Looks right, or Analyze over an empty goal, adopts it under `chosen-prompt` naming its fact id.
+  Over a saved goal, Save intent adopts it with the saved revision, and Analyze is refused with the
+  unsaved-edit sentence until then, because `/api/reading` refuses an implicit adoption over saved
+  words. One keystroke in the box makes the words typed (item 4).
+- The choice goes on Undo changes, Escape, Clear, a typed save, once its words are the saved goal,
+  and once the server no longer offers the same words at the same time under that fact.
 
 ## DEC-23: a Claude Code session's record of its checks may show the work
 
@@ -2365,7 +2393,7 @@ the analysis's recommendation.
   showed about 12 characters at 320; it is now 292px wide there and 327px at 375. At 1440 and 1100
   a line is still one row, so the fold numbers above do not move.
 - The goal's heading row is top-aligned, with the label and the count each one control tall, so an
-  open "Use a prompt" menu no longer leaves the count, clear and save floating beside its entries
+  open prompt menu no longer leaves the count, clear and save floating beside its entries
   as though they were its controls. Since 2026-10-01 (owner, Q6) the count and Clear sit under the
   box and the save in the footer, so the heading holds only the label and the prompt marks.
 
@@ -2910,8 +2938,9 @@ types one.
 - The page says "This session opened with /clear, so there is no first prompt to draft a goal
   from." in the slot the draft's lede uses, so it costs the fold no row. It names the command and
   not its arguments. The Sessions goal cell shows "Add a goal" over such a session rather than
-  the latest prompt, because the cell names what the session page drafts. "Use a prompt" still
-  offers the latest prompt, which the reader chooses rather than receives.
+  the latest prompt, because the cell names what the session page drafts. "Use your prompt" still
+  offers the reader's prompts, which the reader chooses rather than receives
+  ([amended 2026-10-01](#amended-2026-10-01-use-your-prompt-fills-the-goal-box)).
 - Measured over the local store, counts only: 550 of 1,601 Claude Code sessions with a first prompt
   publish it as a control (`/clear` 326, `/login` 115, `/plugin` 36, `/mcp` 24), and 9 of 469
   Codex sessions do. Before, every one of them drafted the command as the goal; now none does,

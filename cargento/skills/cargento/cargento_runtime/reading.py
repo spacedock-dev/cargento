@@ -145,8 +145,8 @@ def outcome_lines(revision: Mapping[str, Any]) -> tuple[str, ...]:
 # neither one noticing.
 # `chosen-prompt` is one of the reader's own prompts picked from the observed
 # record (`annotations.prompt_choices`, owner ruling Q7, 2026-10-01): adopted
-# words like the other two, keyed on their own time. The page learns it in the
-# layer that draws the menu; until then it reads such a goal as typed.
+# words like the other two, keyed on their own time. The page spells the same
+# three as `NEXT_PROMPT_SOURCES`, which a page test compares with this tuple.
 PROMPT_CHOSEN = "chosen-prompt"
 PROMPT_SOURCES = ("latest-prompt", "first-prompt", PROMPT_CHOSEN)
 

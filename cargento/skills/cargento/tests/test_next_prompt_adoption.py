@@ -21,10 +21,11 @@ console.log(JSON.stringify(nextCockpitConflictCandidates({at:30,goal_source:'fir
         out = self.run_page("""
 nextData.annotate=true;
 const session={harness:'claude',sid:'one',instruction:{label:'asked',text:'Latest prompt',at:20},first_prompt:'First prompt',first_prompt_at:10};
+nextCockpitContexts.set('demo\\nclaude:one',{data:{prompt_choices:[{fact_id:'p1',at:10,text:'First prompt',cut:false}]},revision:0});
 nextRoute={view:'session',project:'demo',harness:'claude',session:'one'};
 let nodes=[];
 const mount=()=>{
- const html=nextPromptAdoptControls(session);
+ const html=nextIntentPromptMenu(session);
  nodes=[...html.matchAll(/data-next-cockpit-disclosure="([^"]+)"/g)].map(match=>({
   open:false,getAttribute(){return match[1];},querySelector(){return {setAttribute(){}};}
  }));
@@ -37,9 +38,8 @@ const restored=nodes.map(node=>node.open);
 nextCockpitBeforeRender();nextRoute.session='two';mount();nextCockpitAfterRender();
 console.log(JSON.stringify({restored,other:nodes.map(node=>node.open)}));
 """)
-        # The menu and its one choice: the first prompt is the draft now, so the menu offers the
-        # latest alone (DRC-4682).
-        self.assertEqual({"restored": [True, True], "other": [False, False]}, out)
+        # One menu, "Use your prompt", with no disclosure nested inside it (owner Q7).
+        self.assertEqual({"restored": [True], "other": [False]}, out)
 
     def test_goalless_check_posts_the_exact_prompt_and_time(self) -> None:
         out = self.run_page("""
@@ -68,7 +68,7 @@ console.log(JSON.stringify({intent:nextIntentSources(row,null,true),revision:nex
         self.assertNotIn("Typed goal", out["intent"])
         self.assertNotIn("typed", out["revision"])
 
-    def test_non_user_sources_and_missing_times_offer_no_adopt_control(self) -> None:
+    def test_non_user_sources_and_missing_times_offer_nothing_to_adopt(self) -> None:
         out = self.run_page("""
 nextData.annotate=true;
 const cases=[
@@ -79,12 +79,16 @@ const cases=[
  {harness:'codex',title:'yes',prompt_states_work:false,prompt_at:10},
  {harness:'codex',title:'Build parser',prompt_states_work:true,prompt_at:null}
 ];
-console.log(JSON.stringify(cases.map(row=>nextPromptAdoptControls(row))));
+console.log(JSON.stringify(cases.map(row=>({candidate:nextPromptCandidate(row),
+ menu:nextIntentPromptMenu(row)}))));
 """)
         assert isinstance(out, list)
-        for html in out:
-            self.assertNotIn('data-next-cockpit-action="prompt-adopt"', html)
-        self.assertIn("Prompt time unavailable", out[-1])
+        for row in out[:-1]:
+            self.assertIsNone(row["candidate"])
+        # A prompt with no time is a candidate no adoption can name.
+        self.assertIsNone(out[-1]["candidate"]["at"])
+        # The menu lists only what the server published, and nothing was.
+        self.assertEqual([""] * len(out), [row["menu"] for row in out])
 
     def test_old_reading_keeps_its_adopted_evidence_label_after_a_typed_edit(self) -> None:
         out = self.run_page("""

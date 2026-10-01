@@ -1201,8 +1201,11 @@ function nextCockpitStoreUnreadable(){
    draft; the input handler hides them on the first edit, because a keystroke
    does not redraw, and a box put back to the draft redraws them. */
 function nextIntentDraftMarks(session, draft){
-  const which = draft.source === "latest-prompt" ? " \u00b7 latest" : "";
-  const clipped = draft.text.endsWith("\u2026") ? " Shown excerpt only." : "";
+  /* A chosen prompt is named by its own time, which is what tells it apart
+     from the others the menu listed. */
+  const which = draft.source === "latest-prompt" ? " \u00b7 latest"
+    : draft.source === NEXT_PROMPT_CHOSEN ? ` \u00b7 ${nextSessionClock(draft.at)}` : "";
+  const clipped = draft.cut === true || draft.text.endsWith("\u2026") ? " Shown excerpt only." : "";
   return '<span class="next-intent-draft-marks" data-next-cockpit-draft-marks>' +
     `<span class="next-intent-draft-source">from your prompt${which}</span>` +
     (clipped ? `<span class="next-cockpit-held-cue">${clipped.trim()}</span>` : "") +
@@ -1258,7 +1261,8 @@ function nextCockpitHeldField(session, annotation, spec, cap){
     '<div class="next-cockpit-held-heading">' +
     `<span class="next-cockpit-held-label">${esc(label)}</span>` +
     (untouched ? nextIntentDraftMarks(session, drafted) : "") +
-    (kind === "goal" ? nextPromptSourceLine(annotation) + nextPromptAdoptControls(session) : "") +
+    (kind === "goal" ? (untouched ? "" : nextPromptSourceLine(annotation)) +
+      nextIntentPromptMenu(session) : "") +
     '</div>' +
     `<textarea rows="3" maxlength="${cap}" data-next-cockpit-held-kind="${kind}" ` +
     `data-next-cockpit-held-key="${esc(key)}" data-next-cockpit-held-saved="${esc(saved)}" ` +
@@ -1426,7 +1430,14 @@ function nextCockpitIntentChanges(session, annotation){
   const typed = nextCockpitHeldDrafts.has(goalKey) ? nextCockpitHeldDrafts.get(goalKey) : baseline;
   const goal = typed !== baseline && typed !== stored;
   const lines = nextCockpitLinesChanged(nextCockpitLinesDraft(session, annotation), annotation);
-  return {goal, lines, typed, any: goal || lines, undoable: typed !== baseline || lines};
+  /* A prompt chosen over saved words is a change the box shows and the store
+     does not hold, so Save intent adopts it; over an empty goal it is the
+     draft, which Looks right adopts as it does the first prompt's. */
+  const chosen = typed === baseline && nextIntentChosenOverSaved(session, annotation);
+  const pending = typed === baseline && nextIntentChosenPrompts.has(goalKey) &&
+    Boolean(nextPromptCandidate(session, NEXT_PROMPT_CHOSEN));
+  return {goal, lines, typed, chosen, any: goal || lines || chosen,
+    undoable: typed !== baseline || lines || pending};
 }
 
 const NEXT_INTENT_MEASURED = "Drift is measured against these. Edit anything that is off.";
@@ -1512,6 +1523,10 @@ function nextCockpitDirectionWhy(held, annotation, cap, session = null){
     return NEXT_COCKPIT_LINES_FULL;
   }
   if(session && nextIntentUnsaved(session, annotation)) return NEXT_INTENT_EDITED_ADD;
+  /* `add_direction` adopts only the first or latest prompt, so over a chosen
+     one the save would be refused; the reader saves the choice first. */
+  const draft = session ? nextIntentDraft(session, annotation) : null;
+  if(draft && draft.source === NEXT_PROMPT_CHOSEN) return NEXT_INTENT_EDITED_ADD;
   return "";
 }
 
@@ -2159,7 +2174,7 @@ function nextCockpitWorkEvidence(session, source, cited = new Set()){
      latest one at or before the save for typed words, the prompt itself for
      adopted ones. A window at the save time is typed words with no earlier
      message, and nothing is expected there. */
-  const promptSource = annotation && ["latest-prompt", "first-prompt"].includes(annotation.goal_source);
+  const promptSource = annotation && NEXT_PROMPT_SOURCES.includes(annotation.goal_source);
   const saved = nextNumber(annotation && annotation.at);
   const expected = opened != null && (promptSource || (saved != null && opened < saved));
   const anchor = expected && numbers.size && !all.some(entry => nextNumber(entry.at) === opened)
@@ -2658,7 +2673,7 @@ function nextReadingCitations(raw, entries){
    build published); no goal at the draft's prompt (DRC-4682). A caller with no
    session keeps the revision time, which is what the page read before. */
 function nextCockpitBaselineAt(annotation, session){
-  if(annotation && ["latest-prompt", "first-prompt"].includes(annotation.goal_source)){
+  if(annotation && NEXT_PROMPT_SOURCES.includes(annotation.goal_source)){
     return nextNumber(annotation.goal_source_at);
   }
   if(String(annotation && annotation.goal || "").trim()){
@@ -2913,13 +2928,13 @@ function nextCockpitReadingShape(raw, annotation, entries, limit, unsettled,
      verdict on either side. A reading stored before it carried one opened
      where the producer's `baseline_at` did, and is derived that way. */
   const windowStart = nextNumber(source.window_start) != null ? nextNumber(source.window_start)
-    : nextNumber(["latest-prompt", "first-prompt"].includes(source.goal_source)
+    : nextNumber(NEXT_PROMPT_SOURCES.includes(source.goal_source)
       ? source.goal_source_at : source.revision_read_at);
   const constraints = nextReadingConstraints(rows, annotation,
     revisionRead != null && current != null && !historical);
   const criteria = constraints
     .map(([key, label]) => nextCockpitReadingCriterion(
-      key, key === "goal" && ["latest-prompt", "first-prompt"].includes(source.goal_source)
+      key, key === "goal" && NEXT_PROMPT_SOURCES.includes(source.goal_source)
         ? "GOAL FROM YOUR PROMPT"
         : nextCockpitLineLabel(key, label, rows[key], annotation, historical, lineSource),
       nextCockpitReadingClause(key, rows[key], annotation, historical),
@@ -2930,7 +2945,7 @@ function nextCockpitReadingShape(raw, annotation, entries, limit, unsettled,
     revisionRead,
     revisionReadAt: nextNumber(source.revision_read_at),
     windowStart,
-    promptSource: ["latest-prompt", "first-prompt"].includes(source.goal_source),
+    promptSource: NEXT_PROMPT_SOURCES.includes(source.goal_source),
     /* Through the same helper the criterion row uses, and filtered the same
        way. Read raw, the disclosure said "nothing typed in that revision" for
        an empty clause while the row beside it said the words were not
@@ -2939,7 +2954,7 @@ function nextCockpitReadingShape(raw, annotation, entries, limit, unsettled,
        can be honest. */
     readClauses: constraints
       .map(([key, label]) =>
-        [key === "goal" && ["latest-prompt", "first-prompt"].includes(source.goal_source)
+        [key === "goal" && NEXT_PROMPT_SOURCES.includes(source.goal_source)
           ? "GOAL FROM YOUR PROMPT" : label, nextCockpitReadingClause(key, rows[key], annotation, historical)]),
     stamp: String(source.stamp || ""),
     cutoff: String(source.cutoff || ""),
@@ -4259,7 +4274,7 @@ function nextCockpitReadingControl(session, annotation, model, primary = true, s
      given before any observed end, which the server withholds by the same
      time `nextCockpitConflictCandidates` floors on. */
   const given = nextNumber(annotation &&
-    (["latest-prompt", "first-prompt"].includes(annotation.goal_source)
+    (NEXT_PROMPT_SOURCES.includes(annotation.goal_source)
       ? annotation.goal_source_at : annotation.at));
   const endedAt = nextSessionEndedAt(session);
   const hint = provider && !reason && String(annotation && annotation.goal || "").trim() &&
@@ -4846,7 +4861,8 @@ function nextCockpitDirectionSentence(session, annotation, pending, numbers){
   const draft = String(annotation && annotation.goal || "").trim() ? null
     : nextIntentDraft(session, annotation);
   const since = !draft ? "since saving your intent"
-    : draft.source === "first-prompt" ? "since your first prompt" : "since your latest prompt";
+    : draft.source === "first-prompt" ? "since your first prompt"
+    : draft.source === NEXT_PROMPT_CHOSEN ? "since the prompt you chose" : "since your latest prompt";
   return `You gave ${pending.length} later directions ${since}, the earliest` +
     `${n == null ? "" : ` at #${n}`}: ${said}`;
 }
@@ -5944,6 +5960,14 @@ async function nextCockpitIntentSave(session){
      the gate cannot disagree. Without it an inert-but-reachable control mints
      a revision identical to the stored one. */
   const changes = nextCockpitIntentChanges(session, annotation);
+  if(changes.chosen){
+    /* The choice first, as its own adoption naming the saved revision, then
+       the lines against the revision that adoption minted: `/api/annotate`
+       takes an adoption or typed words in one request, not both. */
+    const adopted = await nextAdoptPrompt(session, NEXT_PROMPT_CHOSEN);
+    if(adopted && changes.lines) await nextCockpitIntentSave(session);
+    return;
+  }
   if(!changes.any){
     /* The goal back at the draft is Looks right, never a typed save of an
        excerpt (DRC-4682). */
@@ -5995,6 +6019,8 @@ async function nextCockpitIntentSave(session){
     if(onDisk && changes.goal && nextCockpitHeldDrafts.get(goalKey) === body.goal){
       nextCockpitHeldDrafts.delete(goalKey);
     }
+    // Typed words replaced the choice in the store, so it no longer stands in the box.
+    if(onDisk && changes.goal) nextIntentChosenPrompts.delete(goalKey);
     const held = nextCockpitHeldDrafts.get(linesKey);
     if(onDisk && sentLines && held &&
         JSON.stringify(nextCockpitLinesToSend(held)) === JSON.stringify(sentLines)){
@@ -6015,6 +6041,7 @@ async function nextCockpitIntentSave(session){
    render reads the store whenever the Map has no entry, so this is the one
    place the two cannot disagree. */
 function nextCockpitIntentUndo(session){
+  nextIntentChosenPrompts.delete(nextCockpitHeldKey(session, "goal"));
   for(const kind of ["goal", "lines"]){
     const key = nextCockpitHeldKey(session, kind);
     if(kind === "lines") nextCockpitLinesForget(key);
@@ -7688,10 +7715,10 @@ document.addEventListener("click", event => {
     nextRestoreFocus({named:"cockpit-tab:" + tab}, nextAttention);
     return;
   }
-  if(action === "prompt-adopt"){
+  if(action === "prompt-choose"){
     event.preventDefault();
     const session = group ? nextCockpitFocusedSession(group) : null;
-    if(session) nextAdoptPrompt(session, target.dataset.arg);
+    if(session) nextIntentChoosePrompt(session, String(target.dataset.arg || ""), target);
     return;
   }
   if(action === "reading-off"){
@@ -7800,6 +7827,7 @@ document.addEventListener("click", event => {
     // from the store, so `save` appears and the person commits the clearing
     // deliberately.
     nextCockpitHeldDrafts.set(key, "");
+    nextIntentChosenPrompts.delete(key);
     nextCockpitHeldDrop(key);
     renderNext({named: key});
     return;
@@ -7901,8 +7929,9 @@ function nextCockpitHandleKeydown(event){
     const key = String(held.dataset.nextCockpitHeldKey || "");
     // Drop the draft rather than write the saved value back into it: the
     // render reads the store whenever the Map has no entry, so this is the
-    // one place the two cannot disagree.
+    // one place the two cannot disagree. A chosen prompt goes with it.
     nextCockpitHeldDrafts.delete(key);
+    nextIntentChosenPrompts.delete(key);
     nextCockpitHeldDrop(key);
     renderNext({named: key});
     return true;
@@ -7959,9 +7988,49 @@ function nextIntentNoDraftWhy(session, annotation){
     "draft a goal from." : "";
 }
 
+/* The closed goal-source tokens an adopted goal carries, spelt as
+   `reading.PROMPT_SOURCES` spells them; a test compares the two. */
+const NEXT_PROMPT_CHOSEN = "chosen-prompt";
+const NEXT_PROMPT_SOURCES = ["latest-prompt", "first-prompt", NEXT_PROMPT_CHOSEN];
+
+/* The prompts "Use your prompt" offers (owner ruling Q7, 2026-10-01): the
+   server's own `prompt_choices` on this session's focused project context,
+   as `annotations.prompt_choices` built them, and nothing the page derives.
+   An entry without an id, a time or words is not offered, because the server
+   would refuse its adoption. [] until that context has loaded. */
+function nextIntentPromptChoices(session){
+  if(!session) return [];
+  const suffix = `\n${sessKey(session)}`;
+  for(const [key, entry] of nextCockpitContexts){
+    const choices = entry && entry.data && entry.data.prompt_choices;
+    if(!String(key).endsWith(suffix) || !Array.isArray(choices)) continue;
+    return choices.filter(choice => choice && typeof choice.fact_id === "string" &&
+      choice.fact_id && typeof choice.text === "string" && choice.text.trim() &&
+      (nextNumber(choice.at) || 0) > 0).map(choice => ({factId: choice.fact_id,
+      text: choice.text, at: nextNumber(choice.at), cut: choice.cut === true}));
+  }
+  return [];
+}
+
+/* The prompt a reader chose from the menu, per session goal key, as
+   {factId, text, at}: tab memory, never browser storage, and never the box's
+   typed draft, so the box holds it as a pending adoption the way it holds the
+   first-prompt draft (docs/design-reader-state.md). */
+const nextIntentChosenPrompts = new Map();
+
 function nextPromptCandidate(session, source = "latest-prompt"){
   if(!session || !["claude", "codex"].includes(session.harness)) return null;
   let text = "", at = null;
+  if(source === NEXT_PROMPT_CHOSEN){
+    /* Only while the server still offers the same words at the same time
+       under that fact: the adoption names all three, and a changed record
+       must not adopt new words under an old choice. */
+    const held = nextIntentChosenPrompts.get(nextCockpitHeldKey(session, "goal"));
+    const found = held && nextIntentPromptChoices(session).find(choice =>
+      choice.factId === held.factId && choice.text === held.text && choice.at === held.at);
+    return found ? {text: found.text, at: found.at, source, factId: found.factId,
+      cut: found.cut} : null;
+  }
   if(source === "first-prompt"){
     /* A correction the reader copied from Cargento is never their goal, as
        `annotations.prompt_candidate` refuses it (DRC-4678); the latest-prompt
@@ -7988,6 +8057,17 @@ function nextPromptCandidate(session, source = "latest-prompt"){
 function nextIntentDraft(session, annotation){
   if(!(nextData && nextData.annotate === true) || nextCockpitStoreUnreadable()) return null;
   const goal = annotation ? annotation.goal : session && session.annotation_goal;
+  /* A prompt chosen from "Use your prompt" stands in the box first, over a
+     saved goal as well (owner Q7): the reader picked it, so it is the pending
+     adoption every consumer of the draft reads. It goes once its words are the
+     saved goal, whichever press landed them, and once the server stops
+     offering it. */
+  const chosenKey = nextCockpitHeldKey(session, "goal");
+  if(nextIntentChosenPrompts.has(chosenKey)){
+    const chosen = nextPromptCandidate(session, NEXT_PROMPT_CHOSEN);
+    if(chosen && String(goal || "").trim() !== chosen.text) return chosen;
+    if(chosen || nextIntentChoicesSettled(session)) nextIntentChosenPrompts.delete(chosenKey);
+  }
   if(String(goal || "").trim()) return null;
   /* A session that opened with a harness control has no first prompt to
      draft, and the latest is a later record, which the first-prompt read
@@ -8000,12 +8080,32 @@ function nextIntentDraft(session, annotation){
   return null;
 }
 
+/* Whether this session's focused context has loaded without error, so a
+   choice it no longer offers was withdrawn rather than not yet fetched. */
+function nextIntentChoicesSettled(session){
+  const suffix = `\n${sessKey(session)}`;
+  for(const [key, entry] of nextCockpitContexts){
+    if(String(key).endsWith(suffix) && entry && entry.data && !entry.error) return true;
+  }
+  return false;
+}
+
+// A chosen prompt over saved words is in the box and not yet saved.
+function nextIntentChosenOverSaved(session, annotation){
+  const draft = nextIntentDraft(session, annotation);
+  const goal = annotation ? annotation.goal : session && session.annotation_goal;
+  return Boolean(draft) && draft.source === NEXT_PROMPT_CHOSEN && Boolean(String(goal || "").trim());
+}
+
 /* Whether a press would stand on words other than the ones on screen: the
    goal box differs from what it stands on (the draft, or the saved goal), or
    the outcome-lines draft differs from what the server holds. A box put back
    to those words is not an edit. Keep, Add's save and Analyze are refused
    over one, for goals saved or drafted alike (consent F1 and F2, Codex 2). */
 function nextIntentUnsaved(session, annotation){
+  /* `/api/reading` refuses an implicit adoption over a saved goal, so a
+     prompt chosen over one waits for its save as a typed edit does. */
+  if(nextIntentChosenOverSaved(session, annotation)) return true;
   const goalKey = nextCockpitHeldKey(session, "goal");
   if(nextCockpitHeldDrafts.has(goalKey)){
     const draft = nextIntentDraft(session, annotation);
@@ -8029,7 +8129,8 @@ function nextIntentForgetAdopted(session, draft){
    (DRC-4696) consult: over an unsaved draft neither is drawn (item 2 of
    [DEC-26](docs/design-reading-a-session.md#dec-26-four-drift-levels-and-a-live-estimate-after-every-turn)). */
 function nextIntentDrafted(session, annotation){
-  return Boolean(nextIntentDraft(session, annotation));
+  return Boolean(nextIntentDraft(session, annotation)) &&
+    !nextIntentChosenOverSaved(session, annotation);
 }
 
 /* Analyze or Keep over an unsaved edit would read words that are not on
@@ -8042,7 +8143,7 @@ const NEXT_INTENT_EDITED_ADD =
 
 function nextIntentAdoption(draft){
   return draft ? {adopt:draft.source, expected_prompt:draft.text,
-    expected_prompt_at:draft.at} : {};
+    expected_prompt_at:draft.at, ...(draft.factId ? {prompt_fact:draft.factId} : {})} : {};
 }
 
 function nextImplicitAdoption(session){
@@ -8075,28 +8176,65 @@ function nextPromptReadingRefusal(session, annotation, model){
 }
 
 function nextPromptSourceLine(annotation){
-  if(!annotation || !["latest-prompt", "first-prompt"].includes(annotation.goal_source)) return "";
-  const which = annotation.goal_source === "first-prompt" ? "first" : "latest";
+  if(!annotation || !NEXT_PROMPT_SOURCES.includes(annotation.goal_source)) return "";
+  const at = nextNumber(annotation.goal_source_at);
+  const which = annotation.goal_source === "first-prompt" ? "first"
+    : annotation.goal_source === "latest-prompt" ? "latest"
+    : at != null && at > 0 ? nextSessionClock(at) : "chosen";
   const clipped = String(annotation.goal || "").endsWith("…") ? " Shown excerpt only." : "";
   return `<small class="next-cockpit-held-cue">from your prompt · ${which}.${clipped}</small>`;
 }
 
-function nextPromptAdoptControls(session){
-  if(!(nextData && nextData.annotate === true)) return "";
-  /* The latest alone: the first prompt is the draft now, and Looks right is
-     its adoption, so a second "Use first prompt" would say it twice. */
-  const choices = ["latest-prompt"].map(source => {
-    const candidate = nextPromptCandidate(session, source);
-    if(!candidate) return "";
-    if(candidate.at == null) return '<small class="next-cockpit-held-cue">Prompt time unavailable; type a goal instead.</small>';
-    const which = source === "first-prompt" ? "first" : "latest";
-    const clipped = candidate.text.endsWith("…") ? " Shown excerpt only." : "";
-    return `<details class="next-cockpit-held-adopt"${nextCockpitDisclosureAttr("adopt:" + source)}><summary>Your ${which} prompt</summary>` +
-      `<p>${esc(candidate.text)}${clipped}</p>` +
-      `<button type="button" data-next-cockpit-action="prompt-adopt" data-arg="${source}">Use ${which} prompt without checking</button></details>`;
+/* "Use your prompt" (owner ruling Q7, 2026-10-01): one disclosure menu in the
+   goal's label row listing the server's `prompt_choices`, each a button that
+   fills the box as a pending adoption. A `<details>` of buttons rather than a
+   listbox popover or a `<select>` (DRC-4758 critic 14): the disclosure lane
+   restores its open state across a poll redraw, and each option's own focus
+   key keeps the reader's place, where a custom popover's open state and
+   active option would be lost on every redraw. It replaces the nested "Use a
+   prompt" and "Your latest prompt" disclosures and the save that skipped the
+   box. The first entry is the earliest prompt the record holds; over a
+   session that opened with a harness control that is not its first prompt,
+   so it is named the earliest. An excerpt says so in the option itself
+   (item 2 of
+   [DEC-24](docs/design-reading-a-session.md#dec-24-your-intent-is-a-drafted-goal-and-a-checklist-and-a-correction-is-yours-to-copy)). */
+function nextIntentPromptMenu(session){
+  if(!(nextData && nextData.annotate === true) || nextCockpitStoreUnreadable()) return "";
+  const choices = nextIntentPromptChoices(session);
+  if(!choices.length) return "";
+  const key = nextCockpitHeldKey(session, "goal");
+  const first = nextIntentOpenedWithControl(session) ? "Earliest prompt" : "First prompt";
+  const options = choices.map((choice, index) => {
+    const name = index === 0 ? first : index === 1 ? "Latest prompt" : "Earlier prompt";
+    return '<li><button type="button" class="next-action next-action--quiet next-intent-prompt-option" ' +
+      `data-next-cockpit-action="prompt-choose" data-arg="${esc(choice.factId)}" ` +
+      `data-next-focus="${esc(`${key}:prompt:${choice.factId}`)}">` +
+      `<span class="next-intent-prompt-when">${name} · ${esc(nextSessionClock(choice.at))}</span>` +
+      `<span class="next-intent-prompt-text">${esc(choice.text)}</span>` +
+      (choice.cut ? '<span class="next-cockpit-held-cue">Shown excerpt only.</span>' : "") +
+      '</button></li>';
   }).join("");
-  return choices ? `<details class="next-cockpit-prompt-choices"${nextCockpitDisclosureAttr("adopt:choices")}><summary>Use a prompt</summary>` +
-    choices + '</details>' : "";
+  return `<details class="next-intent-prompt-menu"${nextCockpitDisclosureAttr("adopt:choices")}>` +
+    `<summary>Use your prompt</summary><ul class="next-intent-prompt-options">${options}</ul></details>`;
+}
+
+const NEXT_INTENT_CHOSEN_SAID = "Goal filled from your prompt. Not saved.";
+
+/* Choosing fills the box and saves nothing: the choice replaces whatever the
+   box held, as a pending adoption the reader then confirms, edits or undoes.
+   Focus goes to the box, and the menu closes behind it. */
+function nextIntentChoosePrompt(session, factId, target){
+  const found = nextIntentPromptChoices(session).find(choice => choice.factId === factId);
+  if(!found) return;
+  const key = nextCockpitHeldKey(session, "goal");
+  nextIntentChosenPrompts.set(key, {factId: found.factId, text: found.text, at: found.at});
+  nextCockpitHeldDrafts.delete(key);
+  nextCockpitHeldDrop(key);
+  const menu = target && typeof target.closest === "function"
+    ? target.closest(".next-intent-prompt-menu") : null;
+  if(menu && "open" in menu) menu.open = false;
+  nextCockpitAnnounceCue(`${key}:chosen`, NEXT_INTENT_CHOSEN_SAID, false);
+  renderNext({named: key});
 }
 
 const NEXT_COCKPIT_ADOPT_REFUSED = {
@@ -8109,12 +8247,12 @@ const NEXT_COCKPIT_ADOPT_REFUSED = {
 
 async function nextAdoptPrompt(session, source){
   const candidate = nextPromptCandidate(session, source);
-  if(!candidate || candidate.at == null || !(nextData && nextData.annotate === true)) return;
+  if(!candidate || candidate.at == null || !(nextData && nextData.annotate === true)) return false;
   const key = nextCockpitHeldKey(session, "goal");
   try{
     const response = await fetch("/api/annotate", {method:"POST",headers:{"Content-Type":"application/json"},
-      body:JSON.stringify({harness:session.harness,sid:session.sid,adopt:source,
-        expected_prompt:candidate.text,expected_prompt_at:candidate.at,
+      body:JSON.stringify({harness:session.harness,sid:session.sid,
+        ...nextIntentAdoption(candidate),
         expected_revision:nextNumber(session.annotation_revision) || 0})});
     const answer = await response.json();
     if(response.ok && answer && ["untrusted", "unreadable"].includes(String(answer.outcome || ""))){
@@ -8122,12 +8260,15 @@ async function nextAdoptPrompt(session, source){
          saying the prompt changed would send the reader to the wrong place. */
       nextCockpitReadingRequests.set(sessKey(session), {message:
         NEXT_COCKPIT_ADOPT_REFUSED[String(answer.outcome)]});
-      return;
+      return false;
     }
     if(!response.ok || !answer.persisted) throw new Error("adoption not saved");
     nextCockpitHeldDrafts.delete(key);
+    nextIntentChosenPrompts.delete(key);
     await refreshNext();
+    return true;
   }catch(_error){
     nextCockpitReadingRequests.set(sessKey(session),{message:"The prompt or saved goal changed, or could not be saved. Review the goal before trying again."});
+    return false;
   }finally{renderNext();}
 }

@@ -228,11 +228,12 @@ class TheGoalArrivesDraftedTest(_DraftPage):
         self.assertEqual(LATEST, box.group(1))
         self.assertIn("from your prompt · latest", visible_text(intent))
 
-    def test_use_a_prompt_still_offers_the_latest_and_no_longer_the_first(self) -> None:
+    def test_the_nested_prompt_disclosures_are_gone(self) -> None:
+        # "Use your prompt" replaced them (owner Q7, DRC-4758 D2); test_next_prompt_menu
+        # holds the menu itself.
         text = visible_text(intent_of(self.html()))
-        self.assertIn("Use a prompt", text)
-        self.assertIn("Your latest prompt", text)
-        self.assertNotIn("Your first prompt", text)
+        for gone in ("Use a prompt", "Your latest prompt", "Your first prompt", "without checking"):
+            self.assertNotIn(gone, text)
 
     def test_no_draft_on_a_harness_that_publishes_no_prompt(self) -> None:
         html = self.html('__s.harness = "pi"; ' + ROUTE.replace("claude", "pi") + "\n")

@@ -208,7 +208,7 @@ function nextProjectRevisionLine(annotation){
   const count = nextNumber(annotation && annotation.revision_count);
   if(revision == null || count == null || count <= 0) return "";
   const age = nextDurationSince(nextNumber(annotation && annotation.at));
-  const verb = ["latest-prompt", "first-prompt"].includes(annotation.goal_source) ? "saved" : "typed";
+  const verb = NEXT_PROMPT_SOURCES.includes(annotation.goal_source) ? "saved" : "typed";
   const typed = age == null ? "" : ` · ${verb} ${age} ago`;
   return revision > count
     ? `revision ${revision}, ${count} kept${typed} · older revisions dropped`
@@ -336,7 +336,7 @@ function nextProjectGoal(project, annotation, focus){
   const revision = nextProjectRevisionLine(typed);
   let rows = "";
   if(typed && typed.goal){
-    rows += nextProjectGoalRow(["latest-prompt", "first-prompt"].includes(typed.goal_source)
+    rows += nextProjectGoalRow(NEXT_PROMPT_SOURCES.includes(typed.goal_source)
       ? "FROM YOUR PROMPT · GOAL" : "YOUR WORDS · GOAL", typed.goal, revision);
   }
   for(const line of nextAnnotationLines(typed)){

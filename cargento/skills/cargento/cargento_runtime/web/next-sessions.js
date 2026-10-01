@@ -367,9 +367,10 @@ function nextSessionsGoal(source, route){
   /* Over a session that opened with a harness control the page drafts
      nothing, so the cell names nothing either (DRC-4766). */
   const text = typed || (draft ? draft.text : nextIntentOpenedWithControl(source) ? "" : prompt);
-  const label = typed ? (["latest-prompt", "first-prompt"].includes(source.annotation_goal_source)
+  const label = typed ? (NEXT_PROMPT_SOURCES.includes(source.annotation_goal_source)
     ? "GOAL · FROM YOUR PROMPT" : "GOAL · YOUR WORDS")
     : draft && draft.source === "first-prompt" ? "GOAL · YOUR FIRST PROMPT"
+    : draft && draft.source === NEXT_PROMPT_CHOSEN ? "GOAL · YOUR CHOSEN PROMPT"
     : text ? "GOAL · YOUR LATEST PROMPT" : "GOAL";
   const content = typed ? `<strong>${esc(text)}</strong>`
     : `<a class="next-operation-goal-link${text ? "" : " next-absence"}" ` +
