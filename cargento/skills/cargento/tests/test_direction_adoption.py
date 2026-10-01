@@ -797,7 +797,7 @@ class DirectionReReadTest(_ClaudeSession):
             LONG,
             project_context.direction_text(
                 self.config, self.state, "claude", SHORT, str(fact["fact_id"])
-            ),
+            ).text,
         )
 
     def test_claude_user_message_ids_still_carry_no_record_id(self) -> None:
@@ -810,14 +810,14 @@ class DirectionReReadTest(_ClaudeSession):
         fact_id = str(self.direction()["fact_id"])
         self.assertEqual(
             "",
-            project_context.direction_text(self.config, self.state, "claude", SHORT, "fact:0"),
+            project_context.direction_text(self.config, self.state, "claude", SHORT, "fact:0").text,
         )
         for _ in range(40):
             self.session.bash("pytest", "p" * 200)
         self.session.save(self.path)
         narrow = dataclasses.replace(self.config, tail_bytes=4096)
         self.assertEqual(
-            "", project_context.direction_text(narrow, self.state, "claude", SHORT, fact_id)
+            "", project_context.direction_text(narrow, self.state, "claude", SHORT, fact_id).text
         )
 
 
@@ -1067,7 +1067,7 @@ class DirectionRouteTest(_ClaudeSession):
         fact_id = str(self.direction()["fact_id"])
         real = project_context.direction_text
 
-        def aged(config: Any, *rest: Any) -> str:
+        def aged(config: Any, *rest: Any) -> project_context.DirectionText:
             return real(dataclasses.replace(config, tail_bytes=16), *rest)
 
         with (

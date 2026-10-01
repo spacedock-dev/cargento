@@ -2510,7 +2510,10 @@ class ClaudeInstructionTest(unittest.TestCase):
         # deliberately invoked and shows an older line in its place.
         line = self.read(
             self._prompt(0, "Reconcile the harness registry with the docs"),
-            self._prompt(60, "<command-name>/release</command-name>"),
+            self._prompt(
+                60,
+                "<command-message>release</command-message>\n<command-name>/release</command-name>",
+            ),
         )
 
         assert line is not None
@@ -2601,27 +2604,36 @@ class ClaudeInstructionTest(unittest.TestCase):
             with self.subTest(skill=skill):
                 line = self.read(
                     self._prompt(0, "Reconcile the harness registry with the docs"),
-                    self._prompt(60, f"<command-name>{skill}</command-name>"),
+                    # The recorded shape: a prompt command opens with `<command-message>`.
+                    self._prompt(
+                        60,
+                        f"<command-message>{skill[1:]}</command-message>\n"
+                        f"<command-name>{skill}</command-name>",
+                    ),
                 )
 
                 assert line is not None
                 self.assertEqual("asked", line["label"])
                 self.assertEqual(skill, line["text"])
 
-    def test_a_control_name_carrying_arguments_still_publishes(self) -> None:
-        # `prompt_title` renders an argument-carrying command as `/name args`,
-        # which the bare-token shape never matches. `/model opus` is the operator
-        # telling the session to do something, not driving the harness blind.
+    def test_a_local_command_carrying_arguments_is_still_a_control(self) -> None:
+        # Reversed by the owner's ruling on DRC-4764, 2026-10-01. This once
+        # asserted that `/model opus for the rest` publishes, because the bare-token
+        # shape never matches a rendered `/name args`. But a record opening with
+        # `<command-name>` is a local command the harness ran itself, with
+        # arguments or none: `/compact keep notes` was published as work that way.
+        # No `/model` record in the local store carried arguments (0 of 40).
         line = self.read(
+            self._prompt(0, "Reconcile the harness registry with the docs"),
             self._prompt(
-                0,
+                60,
                 "<command-name>/model</command-name><command-args>opus for the rest</command-args>",
-            )
+            ),
         )
 
         assert line is not None
-        self.assertEqual("asked", line["label"])
-        self.assertEqual("/model opus for the rest", line["text"])
+        self.assertEqual("earlier", line["label"])
+        self.assertEqual("Reconcile the harness registry with the docs", line["text"])
 
     def test_the_prompt_is_found_behind_a_bounded_tail(self) -> None:
         # The newest real prompt sits a median 40 KB from EOF but p95 650 KB, so

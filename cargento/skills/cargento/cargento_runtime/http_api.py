@@ -979,6 +979,8 @@ class _RequestHandler(BaseHTTPRequestHandler):
         result = copied_corrections.mark(result, collected["sessions"])
         if focus is not None:
             result = _with_levels(application, result, collected["sessions"], focus, project)
+        # The page shows titles; a reader message whole is for a reading only.
+        result = runtime_project_context.for_page(result)
         self._send(
             json.dumps(result, ensure_ascii=False, separators=(",", ":")).encode(),
             "application/json",
@@ -2102,8 +2104,8 @@ class _RequestHandler(BaseHTTPRequestHandler):
 
     def _later_direction(
         self, row: dict[str, Any], fact_id: str, adopt_source: str | None = None
-    ) -> tuple[float, str] | None:
-        """A later direction's time and whole raw text, or None when it cannot be opened.
+    ) -> tuple[float, str, bool] | None:
+        """A later direction's time, whole raw text and whether it was cut, or None.
 
         Every check is the server's own: the fact must be a person's message
         in THIS session's published record, later than the words it would join
@@ -2130,10 +2132,10 @@ class _RequestHandler(BaseHTTPRequestHandler):
         floor = annotation_store.direction_floor(entry, row, adopt_source)
         if at is None or floor is None or at <= floor:
             return None
-        text = runtime_project_context.direction_text(
+        read = runtime_project_context.direction_text(
             application.config, application.state, harness, sid, fact_id
         )
-        return (at, text) if text.strip() else None
+        return (at, read.text, read.cut) if read.text.strip() else None
 
     def _add_direction(self, harness: str, sid: str, payload: dict[str, Any]) -> str:
         """The `add_direction` arm: a verified later direction saved as an outcome line.
@@ -2218,7 +2220,7 @@ class _RequestHandler(BaseHTTPRequestHandler):
             }
         else:
             text, clipped, fits = annotation_store.direction_review(
-                found[1], config.annotation_text_cap_chars
+                found[1], config.annotation_text_cap_chars, cut=found[2]
             )
             answer = {
                 "ok": True,

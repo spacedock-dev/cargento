@@ -697,33 +697,112 @@ def _lifecycle_recorded(
     captured: float,
     observations: Any,
     ends: Any,
-) -> bool:
-    """Whether the dashboard's own stores observed the lifecycle the spec claims.
+    transcript: str = "",
+) -> str | None:
+    """Which of the machine's records vouch for the lifecycle the spec claims, if any.
 
     A running row needs a `working` observation at the capture itself; an end
     needs the ends store's stamp; a turn stop needs an `idle` observation at
-    the stop. Anything else is hand-typed.
+    the stop. Anything else is hand-typed. Returns `history` for those.
+
+    A Claude Code turn stop older than the history store's oldest observation
+    is out of the store's reach: it is capped and rolls, so a stop it once held
+    or never saw reads the same. That stop alone may be vouched by the
+    transcript's own Stop-hook record at the stop, and returns `transcript`
+    (owner ruling, 2026-10-01, DRC-4666). A stop the store still reaches never
+    falls back, so its silence there stays a refusal.
     """
     key = (snapshot["harness"], snapshot["sid"])
     mine = [
         o for o in observations if isinstance(o, dict) and (o.get("harness"), o.get("sid")) == key
     ]
     if snapshot.get("ended_at") is not None:
-        return any(
-            isinstance(e, dict)
-            and (e.get("harness"), e.get("sid")) == key
-            and _same(e.get("at"), snapshot["ended_at"])
-            for e in ends
+        return (
+            "history"
+            if any(
+                isinstance(e, dict)
+                and (e.get("harness"), e.get("sid")) == key
+                and _same(e.get("at"), snapshot["ended_at"])
+                for e in ends
+            )
+            else None
         )
     if snapshot.get("state") == "working":
-        return any(
-            o.get("state") == "working" and _same(o.get("last_activity"), captured) for o in mine
+        return (
+            "history"
+            if any(
+                o.get("state") == "working" and _same(o.get("last_activity"), captured)
+                for o in mine
+            )
+            else None
         )
-    if snapshot.get("state") == "idle" and snapshot.get("finished_at") is not None:
-        return any(
-            o.get("state") == "idle" and _same(o.get("last_activity"), snapshot["finished_at"])
-            for o in mine
-        )
+    if snapshot.get("state") != "idle" or snapshot.get("finished_at") is None:
+        return None
+    stop = snapshot["finished_at"]
+    if any(o.get("state") == "idle" and _same(o.get("last_activity"), stop) for o in mine):
+        return "history"
+    floor = _history_floor(observations)
+    if (
+        snapshot["harness"] == "claude"
+        and transcript
+        and floor is not None
+        and _epoch(stop)
+        and float(stop) < floor
+        and _transcript_stop(transcript, str(snapshot["sid"]), float(stop))
+    ):
+        return "transcript"
+    return None
+
+
+def _history_floor(observations: Any) -> float | None:
+    """The oldest moment the history store still holds, across every session."""
+    stamps = [
+        float(o["last_activity"])
+        for o in observations
+        if isinstance(o, dict) and _epoch(o.get("last_activity"))
+    ]
+    return min(stamps) if stamps else None
+
+
+def _transcript_stop(transcript: str, sid: str, stop: float) -> bool:
+    """Whether the transcript records this session's turn ending at `stop`.
+
+    Claude Code writes a `stop_hook_summary` when its Stop hooks run, the event
+    the dashboard stamps a turn stop from. The board stamps the hook's arrival,
+    not the record: measured 2026-10-01 over the store's 700 observed stops,
+    none sat within a millisecond of its record and 217 within a second, the
+    record about 115 ms earlier. So `finished_at` must be the record's own
+    stamp, copied from the transcript, and a stop with no record is refused. A hook that
+    kept the turn going (`preventedContinuation`) is not a stop, and a
+    subagent's record is not the session's. `sid` is matched as a prefix, as
+    `_transcript_is_the_session` does, because a packet names a Claude Code
+    session by the eight characters the board publishes.
+    """
+    if len(sid) < 8:
+        return False
+    from cargento_runtime import project_context  # noqa: PLC0415 - see `_reading`
+
+    try:
+        with open(transcript, encoding="utf-8", errors="replace") as handle:
+            for line in handle:
+                try:
+                    record = json.loads(line)
+                except ValueError:
+                    continue
+                if not (
+                    isinstance(record, dict)
+                    and record.get("type") == "system"
+                    and record.get("subtype") == "stop_hook_summary"
+                    and record.get("isSidechain") is False
+                    and record.get("preventedContinuation") is False
+                    and isinstance(record.get("sessionId"), str)
+                    and record["sessionId"].startswith(sid)
+                ):
+                    continue
+                if _same(project_context._record_timestamp(record), stop):  # noqa: SLF001
+                    return True
+    except OSError:
+        return False
     return False
 
 
@@ -734,10 +813,15 @@ def _frozen_checks(
     captured: float,
     unconfirmed: list[str],
     snapshot: dict[str, Any],
-) -> tuple[list[dict[str, Any]], dict[str, Any], int]:
-    """A Claude Code case's checks as they stood, and the transcript's size when frozen.
+) -> tuple[list[dict[str, Any]], dict[str, Any], int, list[dict[str, Any]]]:
+    """A Claude Code case's checks, length and user messages, as they stood at the capture.
 
-    Notes in `unconfirmed` what the transcript cannot vouch for.
+    Notes in `unconfirmed` what the transcript cannot vouch for. The user
+    messages are the board's own derivation over the bounded tail a press at
+    `captured_at` read, which ended where the transcript then ended. Read from
+    today's file instead, a session that ran on past the board's 400 KB tail
+    after the capture left none of the reader's words in the case (measured
+    2026-10-01: the supported-departure correction sat 750 KB from the end).
     """
     transcript = str(entry.get("transcript") or _transcript_index().get(sid[:8]) or "")
     if not transcript or not os.path.isfile(transcript):
@@ -748,9 +832,7 @@ def _frozen_checks(
         unconfirmed.append("transcript-other-session")
     from cargento_runtime import project_context  # noqa: PLC0415 - see `_reading`
 
-    # Taken before anything is read, so the score-time tail ending here reaches
-    # no further back than any read this freeze or its board made (review N3).
-    size = os.path.getsize(transcript)
+    size = capture_prefix(transcript, captured)
     stop = _stop(snapshot)
     if stop is not None and project_context.claude_activity_between(transcript, stop, captured):
         raise FreezeError("activity-after-stop")
@@ -760,6 +842,9 @@ def _frozen_checks(
         )
     except project_context.FrozenCheckCutoffUnreachableError as error:
         raise FreezeError("check-cutoff-unreachable") from error
+    _whole, said = project_context.frozen_claude_user_messages(
+        config, transcript, sid, until=captured, size=size
+    )
     return (
         checks,
         {
@@ -768,7 +853,35 @@ def _frozen_checks(
             "read_incomplete": sorted([list(pair) for pair in press.read_incomplete]),
         },
         size,
+        said,
     )
+
+
+def capture_prefix(transcript: str, captured: float) -> int:
+    """The transcript's length in bytes as it stood at `captured`.
+
+    Everything before the first line stamped after the capture, the cut the
+    check scan makes too: an append-only file holds nothing written later
+    before that line, and a line stamped earlier after it was written later.
+    """
+    from cargento_runtime import project_context  # noqa: PLC0415 - see `_reading`
+
+    offset = 0
+    with open(transcript, "rb") as handle:
+        for line in handle:
+            try:
+                record = json.loads(line)
+            except (ValueError, RecursionError):
+                record = None
+            at = (
+                project_context._record_timestamp(record)  # noqa: SLF001
+                if isinstance(record, dict)
+                else None
+            )
+            if at is not None and at > captured:
+                return offset
+            offset += len(line)
+    return offset
 
 
 # The files whose code turns a transcript into the facts and checks a case holds
@@ -828,6 +941,12 @@ def content_refusal(config: Any, case: dict[str, Any], transcript: str) -> list[
         return ["transcript-missing"]
     if type(size) is not int or size < 0 or size > on_disk:
         return ["transcript-truncated"]
+    # A packet frozen at the capture's own length must still name that length,
+    # and no packet may name less: a shorter one would shrink the tail and
+    # excuse dropped messages. Every earlier freeze recorded at least that much,
+    # so the floor holds for packets with no `transcript_cut` too.
+    prefix = capture_prefix(transcript, float(case["captured_at"]))
+    cut_differs = size < prefix or (case.get("transcript_cut") == "capture" and size != prefix)
     reading = _reading()
     sid = str(case.get("sid") or "")
     captured = float(case["captured_at"])
@@ -849,6 +968,8 @@ def content_refusal(config: Any, case: dict[str, Any], transcript: str) -> list[
     except OSError:
         return ["transcript-missing"]
     reasons: list[str] = ["activity-after-stop"] if moved else []
+    if cut_differs:
+        reasons.append("transcript-bytes-differ")
     tails = dict(press.tails)
     frozen = {
         "tails": tails,
@@ -907,11 +1028,20 @@ def provenance(
     if not isinstance(snapshot, dict) or not _epoch(captured):
         return ["lifecycle-unconfirmed"]
     reasons: list[str] = []
-    if not _lifecycle_recorded(snapshot, float(captured), observations, ends):
+    # The freeze refuses a capture taken before its stop or end settled; the
+    # packet is hand-editable, so the scorer refuses the same, or a lifecycle
+    # moved past the capture would be vouched by a stop that came later.
+    settle = float((config if config is not None else _runtime_config()).reading_settle_sec)
+    for field in ("ended_at", "finished_at"):
+        stamp = snapshot.get(field)
+        if stamp is not None and (not _epoch(stamp) or float(captured) < float(stamp) + settle):
+            reasons.append("captured-before-settled")
+            break
+    sid = str(case.get("sid") or "")
+    transcript = index.get(sid[:8]) if case.get("harness") == "claude" else None
+    if not _lifecycle_recorded(snapshot, float(captured), observations, ends, transcript or ""):
         reasons.append("lifecycle-unconfirmed")
     if case.get("harness") == "claude":
-        sid = str(case.get("sid") or "")
-        transcript = index.get(sid[:8])
         if not transcript:
             reasons.append("transcript-missing")
         else:
@@ -936,6 +1066,16 @@ def make_vouch(*, observations: Any, ends: Any, index: dict[str, str], config: A
             dict(case), observations=observations, ends=ends, index=index, config=config
         )
 
+    def lifecycle(case: Any) -> str | None:
+        """Which record vouched for the case's lifecycle, derived here, never read from it."""
+        snapshot, captured = case.get("row_snapshot"), case.get("captured_at")
+        if not isinstance(snapshot, dict) or not _epoch(captured):
+            return None
+        sid = str(case.get("sid") or "")
+        transcript = index.get(sid[:8]) if case.get("harness") == "claude" else None
+        return _lifecycle_recorded(snapshot, float(captured), observations, ends, transcript or "")
+
+    vouch.lifecycle = lifecycle  # type: ignore[attr-defined]
     return vouch
 
 
@@ -960,7 +1100,9 @@ def freeze_case(
     The case is `recorded` only when the machine vouches for it: a Claude Code
     transcript inside `CLAUDE_PROJECTS_ROOT` whose records name this session,
     and a lifecycle the dashboard's history or ends store observed
-    (`observations`, `ends`). Anything short of that is `synthetic`, with the
+    (`observations`, `ends`), or, for a turn stop the history store has rolled
+    past, the transcript's own Stop-hook record (`_lifecycle_recorded`).
+    Anything short of that is `synthetic`, with the
     reasons listed in `unconfirmed`, and never counts toward the floor.
 
     Facts are kept only where dated at or before the capture. A Claude Code
@@ -1008,7 +1150,13 @@ def freeze_case(
         and fact["at"] <= captured
     ]
     unconfirmed: list[str] = []
-    if not _lifecycle_recorded(snapshot, captured, observations, ends):
+    transcript = (
+        str(entry.get("transcript") or _transcript_index().get(sid[:8]) or "")
+        if harness == "claude"
+        else ""
+    )
+    lifecycle_from = _lifecycle_recorded(snapshot, captured, observations, ends, transcript)
+    if lifecycle_from is None:
         unconfirmed.append("lifecycle-unconfirmed")
     case: dict[str, Any] = {
         "id": _case_id(harness, sid),
@@ -1020,12 +1168,16 @@ def freeze_case(
         "captured_at": captured,
         "row_snapshot": snapshot,
         "intent": intent,
+        "lifecycle_from": lifecycle_from,
     }
     if harness == "claude":
-        checks, case["tool_output"], case["transcript_bytes"] = _frozen_checks(
+        checks, case["tool_output"], case["transcript_bytes"], said = _frozen_checks(
             config, entry, sid, captured, unconfirmed, snapshot
         )
-        kept.extend(checks)
+        # The reader's words as a press at the capture read them, not the board's
+        # tail of today's file (`_frozen_checks`); `transcript_cut` pins the length.
+        kept = [*said, *checks]
+        case["transcript_cut"] = "capture"
         case["parser"] = parser_digest()
     case["producer_facts"] = kept
     case["unconfirmed"] = unconfirmed

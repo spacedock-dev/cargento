@@ -353,7 +353,10 @@ def _base_disclosure(provider: str) -> str:
     label, vendor = LABELS[provider], VENDORS[provider]
     return (
         "A reading sends the goal you chose, and a bounded list of entries from the "
-        f"observed record, to a {label} subprocess. {label} uses its own authentication to "
+        f"observed record, to a {label} subprocess. The entries include your own messages "
+        "in that record in full, up to 1,000 characters each, with credential shapes "
+        "redacted; where the record is too long for that, your oldest messages go by their "
+        f"first sentence. {label} uses its own authentication to "
         f"reach {vendor}, so this is one of the paths that sends session content off this "
         f"machine and spends your {label} capacity.{_CLI_ADDS.get(provider, '')} "
         "Your expected outcome lines are sent only when an entry sent is work evidence, and on "

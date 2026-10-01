@@ -1076,7 +1076,40 @@ Two requests can reach the model. A focused `/api/project-context` refresh can s
 focused session and up to three active children whose assignment is unavailable.
 `POST /api/reading` reads one annotated session against the words typed against it, and it sends
 those words as well as the session's evidence, which is why it carries a disclosure of its own
-rather than reusing the observer's. Merely opening a panel does not call the model, and neither
+rather than reusing the observer's.
+The evidence includes the reader's own messages in the session's record, and since 2026-10-01 each
+is sent whole rather than as its first sentence where the prompt has room (the newest first,
+within half the prompt; the rest go by their first sentence): collapsed to one line, redacted by
+`records.safe_text`, and cut at 1,000 characters (`project_context.READER_WORDS_CAP_CHARS`, held
+again by the ledger's `reading.LEDGER_WORDS_CAP_CHARS`), inside the same 16 KiB prompt bound. That
+sends more of what the reader typed than the first sentence did, including any private prose in a
+later sentence that redaction does not recognize. The owner accepted that, because a first sentence
+dropped the point of a measured correction
+([the amendment](docs/design-reading-a-session.md#amended-2026-10-01-a-reading-sees-the-readers-whole-message)).
+The field holding the whole message (`reader_words`) is held in memory for the reading and is
+neither stored nor published: the history stores' field allowlists do not name it, and
+`/api/project-context` drops it (`project_context.for_page`), so the page still shows the first
+sentence and `/api/data` never carried it. What the model writes back is a different matter. A
+departure's `detail` is the model's own sentence, and it is stored with the reading and published
+on the page, as it was before; the model can now paraphrase or quote a later sentence of a message
+there, which it could not when it saw only the first. The one copy of the field on disk is an
+abstention packet's frozen facts, which stay local under `~/.cargento` with the rest of that
+packet's prompt text (below).
+
+The whole message has one redaction limit the first sentence did not. The message is collapsed to
+one line before it is redacted, so a credential the reader's text broke across a line break becomes
+two runs. The part before the break is masked only when it is still long enough to match its shape
+on its own, and the part after it has no prefix to match and is never masked, the same
+shape-matching residual Published text describes for a control character. Measured on the
+documented AWS example key and on a GitHub token shape, each split partway through: neither half was
+masked. Before this change the part after the break was on a later line and never reached a model;
+now it reaches the provider. A message's words are also shared out of the prompt budget
+rather than taking it: every entry is chosen by its first sentence exactly as before, and the
+newest messages replace their first sentence with their words only inside half the 16 KiB
+(`reading.WORDS_SHARE_DIVISOR`), counted in UTF-8 bytes. A message whose words do not fit is sent
+as its first sentence.
+
+Merely opening a panel does not call the model, and neither
 does rendering, polling, reconnecting, resuming, changing focus or saving a revision. The
 server also requires `observer_model=1` on either request, following the quota consent pattern;
 the page sends it only on an explicit request. A reading additionally requires its durable
@@ -1223,8 +1256,9 @@ by the OS (`score_abstention.py --probe-argv`, below):
 `--system-prompt`.
 
 The prompt itself can still name paths. Under the tool-output ruling a check's command line and its
-redacted output tail are sent as the session recorded them, and a reader's own messages are sent as
-typed, so a home path or user name the session typed or printed reaches Anthropic that way.
+redacted output tail are sent as the session recorded them, and a reader's own messages are sent
+whole up to 1,000 characters each where the prompt has room (Observer model calls), redacted, so a home path or user name the session typed or
+printed reaches Anthropic that way.
 
 Because the working directory is sent, the process runs in a fresh owner-only (0700) empty
 directory made outside the state directory, whose path carries the account's home and so the user
@@ -1451,7 +1485,11 @@ not read from the transcript file itself. Another account on the machine can rea
 it can reach `/api/data` (Known and accepted), and for that account it is wider: the whole text of
 any later direction in any session's transcript tail, each fact id listed by
 `GET /api/project-context`, where that route gives only the first sentence. A loop over those ids
-reads every one of them, so the ids bound nothing. Why it is no narrower: the reader edits a long direction down to one line of
+reads every one of them, so the ids bound nothing. A Claude Code slash command is the one message
+the record names by more than its first sentence: the record and this route both give the command
+as typed, its name and arguments on one line rather than the tags they arrived in, under the same
+redaction and bounds, and a harness control such as `/clear` is in neither (DRC-4764). Its
+arguments go nowhere an ordinary message's words do not. Why it is no narrower: the reader edits a long direction down to one line of
 their own, so the page must show more than fits, and a summary in its place would be the one thing
 DEC-24 item 4 forbids saving.
 
@@ -1597,7 +1635,8 @@ The cases stay local and uncommitted. `scripts/mark_abstention.py --build` write
 `abstention-cases.json`, and that file stays on this machine, under `~/.cargento`: it names the
 session ids the cases were drawn from, and for a Claude session it carries the opening user turn,
 which is prompt text. Historical replay packets also carry the frozen session row and semantic
-facts; they have the same local-only boundary. It is never committed. Only the expectations and
+facts, a user message's fact with its whole words up to 1,000 characters as a reading reads them;
+they have the same local-only boundary. It is never committed. Only the expectations and
 the results are committed.
 `abstention-marks.json` holds one sixteen-character hash of `(harness, sid)` per case and two tokens,
 `judge` or `abstain`. Replay marks also hold a hash binding them to the frozen packet.
@@ -1619,7 +1658,9 @@ for the same session: a format 5 case's own goal and outcome lines in place of t
 words, and the bounded, redacted menu of ledger entries. A Claude Code case also carries its checks,
 frozen from the transcript as it stood at the capture, with their redacted output tails, as a press
 with a tool-output grant would. The owner authorized that sending for this qualification only,
-2026-09-24, and bounded it at twenty calls, one of them the browser walk.
+2026-09-24, and bounded it at twenty calls, one of them the browser walk. The owner later
+raised the ceiling to 23 scorer calls and 26 Claude CLI invocations overall (DRC-4758), and on
+2026-10-01 directed the qualification to run to completion within it.
 
 The scorer refuses to start unless the call reaches Anthropic (`reading_route.destination` names
 `Anthropic`) through the native installer's CLI, whose version file and `--version` line agree, and
@@ -1676,13 +1717,22 @@ or executable verification. The committed result records a hash chain
 over the ledger's charges and their digests, and scoring refuses while the ledger does not begin
 with it, reading the committed result at its fixed path whatever `--out` says. The scorer also
 re-checks each case's provenance against this machine's transcripts, history and ends, and spends
-nothing on a case that claims recorded and is not vouched for. For a Claude Code case that includes
+nothing on a case that claims recorded and is not vouched for. One lifecycle may be vouched by the
+transcript rather than the history store: a Claude Code turn stop older than the store's oldest
+observation, which the transcript's own top-level `stop_hook_summary` for that session marks at
+that moment. A stop the store still reaches is never vouched that way, and a stop or end that had
+not settled before the capture is refused at score time as it is at freeze. Whoever can edit the
+transcript or trim the history store's oldest observations can already forge either record, which
+is the local-process exposure this document accepts throughout. For a Claude Code case that includes
 its contents (DRC-4711), rebuilt from the transcript as it stood at the case's `captured_at`. The
 checks and their output tails must be exactly the transcript's. The user messages must be the
 newest ones up to the capture, in order, with none missing between them, none repeated, and at
-least as many as the board's bounded tail reads of the transcript as it stood at the freeze, whose
-length the case records (`transcript_bytes`). An older message may be absent, because the board read
-a bounded tail when the packet was frozen. A transcript now shorter than that length, or a case that
+least as many as the board's bounded tail reads of the transcript as it stood at the capture, whose
+length the case records (`transcript_bytes`), and no case may name less than that length
+(`transcript-bytes-differ`). A case the freeze cut at its capture (`transcript_cut`) must name it
+exactly; its user messages come from the transcript as it then stood, never from the board. An
+older message may be absent, because the board read a bounded tail. A fresh `--score` never
+replaces a written result that charged calls; only `--resume` rewrites one. A transcript now shorter than that length, or a case that
 records none, is demoted (`transcript-truncated`). A capture with a user or assistant message
 between the recorded stop and itself is refused at freeze and demoted at score time
 (`activity-after-stop`); administrative records such as turn duration do not resume work.
@@ -1695,13 +1745,15 @@ it, while literals, expressions and control flow do. Existing
 byte-stamped packets remain incompatible; neither cases nor marks are rewritten to fit the new
 stamp. A mismatch still refuses the whole scoring run before consulting or charging its ledger,
 and the contents check still requires the facts derived at capture to match. On Windows the home falls back to `USERPROFILE`, so the
-`HOME` protection is POSIX only. The ledger stops at nineteen calls across every
+`HOME` protection is POSIX only. The ledger stops at 23 calls across every
 run and producer, refuses every call when it cannot be read, refuses calls under other digests, and
 freezes each packet's marks once it holds one. A failed run may be followed by a fresh packet only
 through a reviewed, fixed-path continuation grant: its marking phase binds the old result's exact
 ledger prefix and a new case digest, and its sealed phase binds the new marks and cases-and-rubric
-digests before scoring. The old prefix and any new suffix are checked under the charge lock against
-the same nineteen-call cap. The failed result cannot be overwritten, and a grant is not permission
+digests before scoring. A second grant may follow a first continuation that also failed, bound to
+that result the same way, and only while the first is sealed with a `next` key equal to the
+second's `previous`. Every earlier packet's charges must carry its own key, in ledger order, and
+the whole chain is checked under the charge lock against the same 23-call cap. The failed result cannot be overwritten, and a grant is not permission
 to send real session evidence or increase spend; both need separate owner authorization. The
 ledger holds case ids, times, statuses and digests only. The
 scorer does not pass through the reader's rolling budget, so that ledger is the bound.
@@ -1818,7 +1870,8 @@ redaction as those, and the newest one is the row's title and last prompt when t
 not carry one, which it does not in 1.2.11. They are also kept in `semantic-work-history.json`,
 cut to 112 characters, like every harness's directives, and `--forget` does not clear that store.
 After a reader allows a reading, those directions may be sent to the reading model with the rest of
-the record, and the opt-in unasked lane, when switched on, may send them without a press, exactly
+the record, whole up to 1,000 characters where the prompt has room, as every harness's user
+messages are, and the opt-in unasked lane, when switched on, may send them without a press, exactly
 as it sends a Claude Code, Codex or Pi session's user messages. The file is kept apart from `observer.resolve_transcript` on purpose:
 every caller of that one reads work or tool output (the observer, the gate and Spacedock boot
 scans, the working-directory read, workflow discovery), and none of them is handed this path, so
@@ -1946,7 +1999,8 @@ because the operator passed a flag, so the flag's own help text is where that di
 
 What it sends is less than `POST /api/reading` sends, on the same path: the goal you typed, and the
 observed record the reading is allowed to read, to a `codex` subprocess running on your own machine
-under your own capacity. Your expected outcome lines are never sent by it, and a session with lines
+under your own capacity. That record carries your messages in the session whole, up to 1,000
+characters each where the prompt has room, as a pressed reading's does. Your expected outcome lines are never sent by it, and a session with lines
 and no goal is not read by it at all (item 12 of
 [DEC-24](docs/design-reading-a-session.md#dec-24-your-intent-is-a-drafted-goal-and-a-checklist-and-a-correction-is-yours-to-copy)).
 Nothing new leaves the machine that did not already leave it when you pressed the control by hand. What is new is that nobody is there
@@ -2195,7 +2249,9 @@ fields make an annotated session's records larger than one did, so the size cap 
 sessions out sooner; the owner accepted that on 2026-09-24. Unknown versions still refuse. First prompts come
 from a bounded two-MiB transcript-prefix scan, excluding generated titles, compaction summaries
 and recognized injected messages. An unread prefix yields no first prompt; it never substitutes
-a later record. Source text is at most 140 characters plus the clipping mark. The page names an
+a later record. A first prompt that is a harness control such as `/clear` is still the first
+prompt, published with the boolean `first_prompt_control`. No goal is drafted from it, none is
+drafted from a later record in its place, and the server refuses to adopt it. Source text is at most 140 characters plus the clipping mark. The page names an
 excerpt rather than silently adopting a longer prompt. Missing source times prevent adoption.
 
 The revision number beside them, `annotation_revision`, is in the record and not on this list. It

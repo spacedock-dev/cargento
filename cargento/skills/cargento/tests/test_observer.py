@@ -1069,7 +1069,13 @@ class ObserverRecordShapeTest(unittest.TestCase):
         # `_BARE_COMMAND_RE` alone and this goal disappears.
         result = self.analyze(
             [
-                _claude_message("u1", "user", "<command-name>/create-pr</command-name>"),
+                _claude_message(
+                    "u1",
+                    "user",
+                    # The recorded shape: a prompt command opens with `<command-message>`.
+                    "<command-message>create-pr</command-message>\n"
+                    "<command-name>/create-pr</command-name>",
+                ),
                 _claude_message("u2", "assistant", "Opening it.", ts="2026-08-17T02:01:00Z"),
             ]
         )

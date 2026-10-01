@@ -1010,6 +1010,13 @@ _PROMPT_LEADING_TAG_RE = re.compile(r"^</?([A-Za-z][A-Za-z0-9_-]*)[\s>/]")
 # every one was rejected, which left 213 of 3,100 collector-gated sessions with
 # no recoverable operator intent at all.
 #
+# The observed record's event builder (`project_context._instruction_event`)
+# reads them through `transcripts.command_direction`, which renders with
+# `prompt_title` and refuses a local command and a `harness_control` name, so a
+# skill command is a later direction and a person entry while `/clear` is
+# neither. Before that it kept the record and published nothing from it, every
+# line opening with `<` (DRC-4764).
+#
 # `<teammate-message>` stays listed, and the cost is accepted rather than
 # overlooked: a message from another agent is not the operator's instruction,
 # so the 563 sessions carrying one show nothing from it.
@@ -1415,11 +1422,14 @@ def harness_control(rendered: str | None) -> bool:
     commands are untouched either way; `prompt_title` renders those as
     `/code-review 1287 with fresh eyes`, which never matches here.
 
-    Lives in `records` rather than in either caller because two surfaces publish
-    the same reading of the same directive: `observer.py` picks a session goal
-    and `transcripts.states_work` picks the instruction line beneath a session
-    title. Two lists would be two chances to disagree about whether `/clear` is
-    an objective.
+    Lives in `records` rather than in any caller because three surfaces publish
+    the same reading of the same directive: `observer.py` picks a session goal,
+    `transcripts.states_work` picks the instruction line beneath a session
+    title, and `transcripts.command_direction` decides whether a command is a
+    direction in the observed record. None of them calls this directly: they
+    ask `transcripts.harness_control_prompt`, which reads the raw record for a
+    local command first and comes here for the name (DRC-4764). Separate lists
+    would be chances to disagree about whether `/clear` is an objective.
     """
     match = _BARE_COMMAND_RE.match(rendered or "")
     return match is not None and match.group(1).casefold() in _HARNESS_CONTROL_COMMANDS

@@ -1991,6 +1991,9 @@ def direction_floor(
     latest = entry["revisions"][-1] if entry and entry["revisions"] else None
     if latest and str(latest.get("goal") or "").strip():
         return float(latest.get("goal_source_at") or latest.get("goal_saved_at") or latest["at"])
+    # A control-first session drafts nothing, so it has no draft time either (DRC-4766).
+    if row.get("first_prompt_control") is True:
+        return None
     for source in ("first-prompt", "latest-prompt"):
         text, at = prompt_candidate(dict(row), source)
         if text and at is not None:
@@ -2005,7 +2008,7 @@ def _direction_later(existing: Annotation | None, options: Mapping[str, Any]) ->
     return floor is not None and at is not None and at > floor
 
 
-def direction_review(raw: str, cap: int) -> tuple[str, bool, bool]:
+def direction_review(raw: str, cap: int, *, cut: bool = False) -> tuple[str, bool, bool]:
     """A later direction's text for the reader to review: `(text, clipped, fits)`.
 
     Masked by named form first, as a check line is (`records.mask_prose`),
@@ -2023,7 +2026,9 @@ def direction_review(raw: str, cap: int) -> tuple[str, bool, bool]:
     # message there (`records.EXTRACT_TEXT_CAP_CHARS`), so `whole` never shows
     # the overflow (wire review F2). A direction of exactly the cap is flagged
     # too, cautiously: saying less was shown than was is the safe error.
-    clipped = text != whole or len(raw) >= DIRECTION_TEXT_CAP_CHARS
+    # `cut` is the record reader's own word that less arrived than was typed,
+    # for a command that renders shorter than the cap it was cut at.
+    clipped = cut or text != whole or len(raw) >= DIRECTION_TEXT_CAP_CHARS
     return text, clipped, not clipped and _typed_lines([text], cap) == [text]
 
 
@@ -2516,6 +2521,9 @@ def prompt_candidate(row: dict[str, Any], source: str) -> tuple[str, float | Non
     if source == "first-prompt":
         # A correction the reader copied from Cargento is not their goal (DRC-4678).
         if reading.prompt_copied(row, "first_prompt"):
+            return "", None
+        # Nor is a harness control it opened with (DRC-4766).
+        if row.get("first_prompt_control") is True:
             return "", None
         text, at = row.get("first_prompt"), row.get("first_prompt_at")
     elif source == "latest-prompt" and harness == "claude":

@@ -133,7 +133,7 @@ producer over those cases and reports, per case and per constraint, where each l
 `--freeze` and a live `--score` need the dashboard running; `--report` and marking read local files
 only. Scoring needs `--producer claude` and spends Anthropic capacity (Codex may report but not
 score): one call per case whose ledger holds anything citable, charged to the one spend ledger at
-`~/.cargento/drc-4666-spend.json`, which stops at nineteen calls across every run. Run `--report` first, which spends nothing, and `--score` on purpose. Neither
+`~/.cargento/drc-4666-spend.json`, which stops at 23 calls across every run. Run `--report` first, which spends nothing, and `--score` on purpose. Neither
 runs in CI, and neither may: the marks are a person's, and the run costs the operator's own quota.
 What each file may hold and where the committed half lands is in `SECURITY.md` under The abstention
 check, and the committed half's own README is `docs/abstention/README.md`.

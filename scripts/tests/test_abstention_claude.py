@@ -20,8 +20,11 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from unittest import mock
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
@@ -180,6 +183,8 @@ def setUpModule() -> None:
         LEDGER_PATH=str(Path(folder, "never-real.json")),
         CLAUDE_SUMMARY_PATH=str(Path(folder, "never-committed.json")),
         CONTINUATION_PATH=str(Path(folder, "never-continuation.json")),
+        CONTINUATION_2_PATH=str(Path(folder, "never-continuation-2.json")),
+        CONTINUATION_SUMMARY_PATH=str(Path(folder, "never-continuation-result.json")),
     )
     _LEDGER_PATCH.start()
 
@@ -302,7 +307,7 @@ class TheClaudeProducerIsChosenExplicitlyTest(unittest.TestCase):
             ("docs", "abstention", "claude-results.json"), Path(seen["summary_path"]).parts[-3:]
         )
         self.assertEqual({**BINDING, "argv_digest": "cd" * 32}, dict(seen["binding"]))
-        self.assertEqual(19, seen["max_calls"])
+        self.assertEqual(23, seen["max_calls"])
         self.assertEqual(abstention_ledger.LEDGER_PATH, seen["ledger_path"])
 
     def test_the_argv_digest_is_read_without_running_anything(self) -> None:
@@ -550,6 +555,8 @@ class TheFreezeKeepsOnlyWhatStoodAtTheCaptureTest(unittest.TestCase):
              "message": {"role": "user", "content": [
                  {"type": "tool_result", "tool_use_id": "toolu_2", "content": "1 failed", "is_error": True}]}},
         ]  # fmt: skip
+        rows.insert(0, _asked(start, CLAUDE_SID, 5))
+        rows.append(_asked(start, CLAUDE_SID, 50))
         with tempfile.TemporaryDirectory() as folder:
             transcript = Path(folder, "t.jsonl")
             transcript.write_text("\n".join(json.dumps(row) for row in rows) + "\n")
@@ -573,9 +580,13 @@ class TheFreezeKeepsOnlyWhatStoodAtTheCaptureTest(unittest.TestCase):
             with self.assertRaises(mark_abstention.FreezeError):
                 mark_abstention.freeze_case(config, {**entry, "captured_at": start + 25}, board)
         ids = [fact["fact_id"] for fact in case["producer_facts"]]
-        self.assertIn("early", ids)
-        for absent in ("late", "live", "other"):
+        # A Claude Code case takes the reader's words from the transcript as it stood
+        # at the capture, never from the board, so no board fact survives the freeze.
+        for absent in ("early", "late", "live", "other"):
             self.assertNotIn(absent, ids)
+        said = [f for f in case["producer_facts"] if f["type"] == "user_message"]
+        self.assertEqual([start + 5], [f["at"] for f in said])
+        self.assertEqual("capture", case["transcript_cut"])
         checks = [f for f in case["producer_facts"] if f["type"] == "tool_report"]
         self.assertEqual(["passed"], [c["result"] for c in checks])
         self.assertEqual({"toolu_1": "5 passed"}, case["tool_output"]["tails"])
@@ -704,11 +715,12 @@ class Q2OneLedgerThatFailsClosedTest(_Ledgered):
         self.assertEqual(str(Path("~/.cargento/drc-4666-spend.json").expanduser()), path)
         self.assertNotIn("fresh", path)
 
-    def test_the_cap_is_nineteen_and_cannot_be_raised(self) -> None:
-        self.assertEqual(19, abstention_ledger.MAX_CALLS)
+    def test_the_cap_is_the_owners_ceiling_and_cannot_be_raised(self) -> None:
+        # 23 scorer calls across every packet, the ceiling the owner approved (DRC-4758).
+        self.assertEqual(23, abstention_ledger.MAX_CALLS)
         with mock.patch("builtins.print"):
             self.assertEqual(
-                2, score_abstention.main(["--score", "--producer", "claude", "--max-calls", "20"])
+                2, score_abstention.main(["--score", "--producer", "claude", "--max-calls", "24"])
             )
 
     def test_the_cap_counts_every_earlier_run(self) -> None:
@@ -753,6 +765,7 @@ class Q2OneLedgerThatFailsClosedTest(_Ledgered):
         script = (
             "import sys, time; sys.path.insert(0, sys.argv[1]); import abstention_ledger as L\n"
             "L.CONTINUATION_PATH = sys.argv[5]\n"
+            "L.CONTINUATION_2_PATH = sys.argv[5] + '-2'\n"
             "read = L.read\n"
             "def slow(path):\n    body = read(path); time.sleep(0.05); return body\n"
             "L.read = slow\n"
@@ -1818,8 +1831,8 @@ class TheApprovedWordingIsPinnedTest(unittest.TestCase):
         )
 
 
-class Q4OnlyAGenuineCaseIsRecordedTest(unittest.TestCase):
-    """F4: a case is recorded only when the machine's own records say so."""
+class _RecordedCaseFixture(unittest.TestCase):
+    """A Claude Code transcript under a scratch projects root, and a freeze over it."""
 
     def setUp(self) -> None:
         self.temp = tempfile.TemporaryDirectory()
@@ -1857,6 +1870,10 @@ class Q4OnlyAGenuineCaseIsRecordedTest(unittest.TestCase):
         return [
             {"harness": "claude", "sid": CLAUDE_SID, "state": "idle", "last_activity": at},
         ]
+
+
+class Q4OnlyAGenuineCaseIsRecordedTest(_RecordedCaseFixture):
+    """F4: a case is recorded only when the machine's own records say so."""
 
     def test_a_transcript_in_projects_with_its_own_id_and_a_recorded_stop_is_recorded(
         self,
@@ -1900,6 +1917,206 @@ class Q4OnlyAGenuineCaseIsRecordedTest(unittest.TestCase):
                     self.config, entry, [], observations=observations, ends=[]
                 )
                 self.assertEqual(origin, case["origin"])
+
+
+class Q4ATurnStopTheHistoryRolledPastIsVouchedByTheTranscriptTest(_RecordedCaseFixture):
+    """Owner ruling 2026-10-01 (DRC-4666): the history store is capped and rolls, so a
+    turn stop older than its oldest observation is confirmed by the transcript's own
+    Stop-hook record instead, and only then."""
+
+    def marked(
+        self,
+        *,
+        at: int = 20,
+        sidechain: bool = False,
+        prevented: bool = False,
+        session_id: str = CLAUDE_SID,
+        subtype: str = "stop_hook_summary",
+    ) -> str:
+        path = self.transcript()
+        marker = {
+            "type": "system",
+            "subtype": subtype,
+            "isSidechain": sidechain,
+            "preventedContinuation": prevented,
+            "sessionId": session_id,
+            "timestamp": _stamp(self.start, at),
+        }
+        with open(path, "a", encoding="utf-8") as handle:
+            handle.write("\n" + json.dumps(marker))
+        return path
+
+    def rolled(self) -> list[dict[str, Any]]:
+        # Another session's observation, later than the stop: the store no longer reaches it.
+        return [
+            {
+                "harness": "claude",
+                "sid": "other-sid",
+                "state": "idle",
+                "last_activity": self.start + 3600,
+            }
+        ]
+
+    def test_a_stop_older_than_the_history_store_is_recorded_on_its_stop_hook_record(self) -> None:
+        case = self.freeze(self.marked(), self.rolled())
+        self.assertEqual("recorded", case["origin"])
+        self.assertEqual([], case["unconfirmed"])
+        self.assertEqual("transcript", case["lifecycle_from"])
+
+    def test_a_packet_naming_the_boards_short_id_is_vouched_too(self) -> None:
+        # Measured 2026-10-01: every Claude case in the real packets names 8 characters.
+        case = self.freeze(self.marked(), self.rolled(), sid=CLAUDE_SID[:8])
+        self.assertEqual("transcript", case["lifecycle_from"])
+        self.assertEqual("recorded", case["origin"])
+        shorter = self.freeze(self.marked(), self.rolled(), sid=CLAUDE_SID[:7])
+        self.assertIn("lifecycle-unconfirmed", shorter["unconfirmed"])
+
+    def test_a_stop_the_history_store_still_covers_needs_its_observation(self) -> None:
+        covering = [{**self.rolled()[0], "last_activity": self.start + 5}]
+        case = self.freeze(self.marked(), covering)
+        self.assertEqual("synthetic", case["origin"])
+        self.assertIn("lifecycle-unconfirmed", case["unconfirmed"])
+
+    def test_an_observed_stop_still_says_it_came_from_the_history_store(self) -> None:
+        case = self.freeze(self.marked(), self.stop(self.start + 20))
+        self.assertEqual("history", case["lifecycle_from"])
+
+    def test_no_history_at_all_vouches_for_nothing(self) -> None:
+        self.assertEqual("synthetic", self.freeze(self.marked(), [])["origin"])
+
+    def test_only_a_top_level_stop_of_this_session_at_that_moment_counts(self) -> None:
+        # Built inside the loop: every transcript here shares one path, so a tuple of
+        # paths built up front would leave each subtest reading the last one written.
+        builds: tuple[tuple[str, Callable[[], str]], ...] = (
+            ("no marker", self.transcript),
+            ("other moment", lambda: self.marked(at=19)),
+            ("sidechain", lambda: self.marked(sidechain=True)),
+            ("hook kept it going", lambda: self.marked(prevented=True)),
+            ("other session", lambda: self.marked(session_id="zz-other")),
+            ("another system record", lambda: self.marked(subtype="turn_duration")),
+        )
+        for name, build in builds:
+            with self.subTest(name=name):
+                case = self.freeze(build(), self.rolled())
+                self.assertEqual("synthetic", case["origin"])
+                self.assertIn("lifecycle-unconfirmed", case["unconfirmed"])
+
+    def test_an_end_or_a_running_row_is_never_vouched_by_the_transcript(self) -> None:
+        for row in ({"state": "idle", "ended_at": self.start + 20},
+                    {"state": "working"}):  # fmt: skip
+            with self.subTest(row=row):
+                case = self.freeze(self.marked(), self.rolled(), row=row)
+                self.assertIn("lifecycle-unconfirmed", case["unconfirmed"])
+
+    def test_an_older_observation_keeps_the_stop_inside_the_stores_reach(self) -> None:
+        # The floor is the OLDEST observation: a newer one alone must not open the fallback.
+        both = [*self.rolled(), {**self.rolled()[0], "last_activity": self.start + 5}]
+        self.assertIn("lifecycle-unconfirmed", self.freeze(self.marked(), both)["unconfirmed"])
+
+    def test_a_stop_at_the_oldest_observation_is_still_inside_the_stores_reach(self) -> None:
+        at_floor = [{**self.rolled()[0], "last_activity": self.start + 20}]
+        self.assertIn("lifecycle-unconfirmed", self.freeze(self.marked(), at_floor)["unconfirmed"])
+
+    def test_an_end_or_a_running_row_stays_refused_even_with_a_stop_stamp(self) -> None:
+        for row in ({"state": "idle", "finished_at": self.start + 20, "ended_at": self.start + 20},
+                    {"state": "working", "finished_at": self.start + 20}):  # fmt: skip
+            with self.subTest(row=row):
+                case = self.freeze(self.marked(), self.rolled(), row=row)
+                self.assertIn("lifecycle-unconfirmed", case["unconfirmed"])
+
+    def test_the_scorer_refuses_a_stop_moved_past_the_capture(self) -> None:
+        case = self.freeze(self.marked(), self.rolled())
+        moved = {**case, "row_snapshot": {**case["row_snapshot"], "finished_at": self.start + 29}}
+        path = self.marked(at=29)
+        with mock.patch.object(mark_abstention, "CLAUDE_PROJECTS_ROOT", str(self.root)):
+            reasons = mark_abstention.provenance(
+                moved,
+                observations=self.rolled(),
+                ends=[],
+                index={CLAUDE_SID[:8]: path},
+                config=self.config,
+            )
+        self.assertIn("captured-before-settled", reasons)
+
+    def test_the_scorer_counts_the_stop_it_derived_not_the_one_the_packet_claims(self) -> None:
+        for derived, claimed in (("transcript", "history"), ("history", "transcript")):
+            with self.subTest(derived=derived):
+
+                def vouch(_case: Any) -> list[str]:
+                    return []
+
+                vouch.lifecycle = lambda _case, d=derived: d  # type: ignore[attr-defined]
+                case = {"id": "a" * 16, "origin": "recorded", "lifecycle_from": claimed}
+                self.assertEqual(derived, score_abstention._vouched(case, vouch)["stop_vouched_by"])
+
+    def test_the_summary_and_report_disclose_a_transcript_vouched_stop(self) -> None:
+        recorded = _rubric_record("supported-departure", "claude", {"goal": "correct"})
+        recorded["id"] = "a" * 16
+        synthetic = {**_rubric_record("legitimate-change", "claude", {"goal": "correct"}),
+                     "id": "b" * 16, "origin": "synthetic"}  # fmt: skip
+        summary = score_abstention.summarize(
+            [], marks={}, marks_bytes=b"", now=1.0, rubric_records=[recorded, synthetic],
+            binding=BINDING, transcript_stops={"a" * 16, "b" * 16},
+        )  # fmt: skip
+        # Only the recorded case counts; a synthetic one never meets the floor anyway.
+        self.assertEqual(1, summary["counts"]["recorded_on_transcript_stop"])
+        report = "\n".join(score_abstention.render(summary))
+        self.assertIn("recorded on a turn stop its transcript vouched for", report)
+
+    def test_the_scorer_repeats_the_same_rule(self) -> None:
+        path = self.marked()
+        case = self.freeze(path, self.rolled())
+        index = {CLAUDE_SID[:8]: path}
+        with mock.patch.object(mark_abstention, "CLAUDE_PROJECTS_ROOT", str(self.root)):
+            vouched = mark_abstention.provenance(
+                case, observations=self.rolled(), ends=[], index=index, config=self.config
+            )
+            covered = mark_abstention.provenance(
+                case,
+                observations=[{**self.rolled()[0], "last_activity": self.start}],
+                ends=[],
+                index=index,
+                config=self.config,
+            )
+        self.assertNotIn("lifecycle-unconfirmed", vouched)
+        self.assertIn("lifecycle-unconfirmed", covered)
+
+
+class TheCaptureCutIsTheFirstLineStampedAfterItTest(unittest.TestCase):
+    """`capture_prefix` cuts where the check scan cuts (review, DRC-4666)."""
+
+    def cut(self, lines: list[str], captured: float) -> tuple[int, bytes]:
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder, "t.jsonl")
+            data = "".join(lines).encode()
+            path.write_bytes(data)
+            end = mark_abstention.capture_prefix(str(path), captured)
+        return end, data[:end]
+
+    def line(self, seconds: int | None, text: str = "x") -> str:
+        start = dt.datetime(2026, 9, 24, 3, 0, 0, tzinfo=dt.UTC).timestamp()
+        body: dict[str, Any] = {"type": "user", "text": text}
+        if seconds is not None:
+            body["timestamp"] = _stamp(start, seconds)
+        return json.dumps(body) + "\n"
+
+    def at(self, seconds: int) -> float:
+        return dt.datetime(2026, 9, 24, 3, 0, 0, tzinfo=dt.UTC).timestamp() + seconds
+
+    def test_unstamped_lines_before_the_next_later_stamp_are_kept(self) -> None:
+        lines = [self.line(1), self.line(None, "kept"), self.line(9)]
+        _end, kept = self.cut(lines, self.at(5))
+        self.assertEqual("".join(lines[:2]).encode(), kept)
+
+    def test_an_earlier_stamp_after_a_later_one_is_not_pulled_in(self) -> None:
+        lines = [self.line(1), self.line(9), self.line(3, "out of order")]
+        _end, kept = self.cut(lines, self.at(5))
+        self.assertEqual(lines[0].encode(), kept)
+
+    def test_a_capture_before_any_stamp_keeps_nothing_and_after_all_keeps_all(self) -> None:
+        lines = [self.line(4), self.line(6)]
+        self.assertEqual(0, self.cut(lines, self.at(1))[0])
+        self.assertEqual(len("".join(lines).encode()), self.cut(lines, self.at(10))[0])
 
 
 def _asked(start: float, session_id: str, seconds: int = 5) -> dict[str, Any]:
@@ -2001,6 +2218,78 @@ class DRC4711TheContentsAreCheckedAgainstTheTranscriptTest(_Packet):
             observations=self.stops, ends=[], index=self.index, config=self.config
         )
 
+    def later_work(self, size: int) -> tuple[dict[str, Any], ...]:
+        """Turns appended after the capture, `size` bytes of them, the reader silent."""
+        filler = "x" * 2000
+        return tuple(
+            {"type": "assistant", "isSidechain": False, "cwd": "/w", "sessionId": CLAUDE_SID,
+             "timestamp": _stamp(self.start, 100 + index),
+             "message": {"role": "assistant", "content": [{"type": "text", "text": filler}]}}
+            for index in range(size // 2100 + 1)
+        )  # fmt: skip
+
+    def test_a_session_that_ran_on_past_the_boards_tail_keeps_the_readers_words(self) -> None:
+        # Measured 2026-10-01: the correction a supported departure rests on sat 750 KB from
+        # the end of a transcript whose session ran on, past the board's 400 KB tail.
+        case = self.genuine(extra=self.later_work(self.config.tail_bytes + 50_000))
+        said = [f for f in case["producer_facts"] if f["type"] == "user_message"]
+        self.assertEqual([self.start + 5], [f["at"] for f in said])
+        path = self.index[CLAUDE_SID[:8]]
+        self.assertLess(case["transcript_bytes"], os.path.getsize(path))
+        self.assertEqual(
+            case["transcript_bytes"], mark_abstention.capture_prefix(path, self.start + 30)
+        )
+        self.assertEqual([], self.vouch()(case))
+
+    def test_a_length_other_than_the_captures_is_demoted(self) -> None:
+        case = self.genuine(extra=self.later_work(self.config.tail_bytes + 50_000))
+        for size in (case["transcript_bytes"] - 1, case["transcript_bytes"] + 1):
+            with self.subTest(size=size):
+                moved = {**case, "transcript_bytes": size}
+                self.assertIn("transcript-bytes-differ", self.vouch()(moved))
+
+    def test_a_packet_with_no_cut_marker_still_cannot_name_less_than_the_capture(self) -> None:
+        # Review: deleting the optional marker, zeroing the length and dropping the
+        # reader's only message once left a case vouched as recorded.
+        case = self.genuine(extra=self.later_work(self.config.tail_bytes + 50_000))
+        stripped = {k: v for k, v in case.items() if k != "transcript_cut"}
+        stripped["transcript_bytes"] = 0
+        stripped["producer_facts"] = [
+            f for f in case["producer_facts"] if f["type"] != "user_message"
+        ]
+        self.assertIn("transcript-bytes-differ", self.vouch()(stripped))
+        legacy = {**stripped, "producer_facts": case["producer_facts"],
+                  "transcript_bytes": os.path.getsize(self.index[CLAUDE_SID[:8]])}  # fmt: skip
+        self.assertNotIn("transcript-bytes-differ", self.vouch()(legacy))
+
+    def test_a_message_older_than_the_captures_tail_is_not_frozen(self) -> None:
+        # The board at the capture read only its last `tail_bytes`; a message before
+        # that is not what a press then saw, so the freeze leaves it out too.
+        early = _asked(self.start, CLAUDE_SID, 1)
+        bulk = tuple(
+            {**row, "timestamp": _stamp(self.start, 2)}
+            for row in self.later_work(self.config.tail_bytes + 50_000)
+        )
+        case = self.genuine(asks=(5,), extra=(early, *bulk))
+        said = [f["at"] for f in case["producer_facts"] if f["type"] == "user_message"]
+        self.assertEqual([self.start + 5], said)
+
+    def test_the_freeze_ignores_the_boards_words_for_a_claude_case(self) -> None:
+        rows, path = self.write(CLAUDE_SID, (5,), ())
+        self.stops.append({"harness": "claude", "sid": CLAUDE_SID, "state": "idle",
+                           "last_activity": self.start + 20})  # fmt: skip
+        forged = _fact("forged", sid=CLAUDE_SID, harness="claude", at=self.start + 6)
+        case = mark_abstention.freeze_case(
+            self.config,
+            {"harness": "claude", "sid": CLAUDE_SID, "project": "p",
+             "captured_at": self.start + 30, "row": {"state": "idle", "finished_at": self.start + 20},
+             "intent": {"goal": GOAL, "lines": [{"text": LINE_ONE}]}, "transcript": str(path)},
+            [*_board_facts(self.config, rows, CLAUDE_SID), forged],
+            observations=self.stops, ends=[],
+        )  # fmt: skip
+        self.assertNotIn("forged", [f["fact_id"] for f in case["producer_facts"]])
+        self.assertEqual("recorded", case["origin"])
+
     def test_a_genuine_case_stays_vouched_for(self) -> None:
         case = self.genuine()
         self.assertEqual(
@@ -2031,11 +2320,15 @@ class DRC4711TheContentsAreCheckedAgainstTheTranscriptTest(_Packet):
             _fact("a-invented", sid=CLAUDE_SID, harness="claude", at=self.start + 6)
         )
         self.assertIn("facts-unconfirmed", self.vouch()(case))
-        case = self.genuine()
-        for fact in case["producer_facts"]:
-            if fact["type"] == "user_message":
-                fact["summary"] = "INVENTED words the reader never typed"
-        self.assertIn("facts-unconfirmed", self.vouch()(case))
+        # A user message reaches the ledger by its summary and, since the 2026-10-01 ruling,
+        # its whole words beside it: an invention in either is demoted.
+        for field in ("summary", "reader_words"):
+            case = self.genuine()
+            for fact in case["producer_facts"]:
+                if fact["type"] == "user_message":
+                    self.assertTrue(fact.get(field), fact)
+                    fact[field] = "INVENTED words the reader never typed"
+            self.assertIn("facts-unconfirmed", self.vouch()(case), field)
 
     def test_a_transcript_that_grew_after_the_capture_is_not_demoted(self) -> None:
         case = self.genuine()
@@ -3138,11 +3431,35 @@ class N4OnlyAWellFormedChainIsAccepted(_Ledgered):
         self.assertEqual([], model.prompts)
 
 
+class AWrittenResultThatSpentIsNeverReplacedByAFreshRunTest(_Ledgered):
+    """A fresh run over a result that charged calls would re-spend its key (review, DRC-4666)."""
+
+    def test_a_fresh_run_over_a_spent_result_is_refused_before_any_call(self) -> None:
+        self.assertNotEqual(2, self.score(_Model()))
+        spent = self.committed()["ledger_chain"]["calls"]
+        self.assertGreater(spent, 0)
+        before = self.summary.read_bytes()
+        model = _Model()
+        printed: list[str] = []
+        self.assertEqual(2, self.score(model, printed=printed))
+        self.assertEqual([], model.prompts)
+        self.assertEqual(spent, len(self.calls()))
+        self.assertEqual(before, self.summary.read_bytes())
+        self.assertTrue(any("A fresh run never replaces one" in line for line in printed))
+
+    def test_a_symlinked_result_path_is_refused(self) -> None:
+        target = self.summary.with_name("elsewhere.json")
+        target.write_text("{}")
+        self.summary.symlink_to(target)
+        self.assertEqual(2, self.score(_Model()))
+        self.assertEqual("{}", target.read_text())
+
+
 class AScoreFromAnotherParserIsRefusedBeforeAnyChargeTest(_Ledgered):
     """A checkout whose parser differs from the freeze demotes every Claude Code case.
 
     Before this refusal the run still went ahead: each such case was withheld
-    unscored, while every other case was charged against the nineteen calls.
+    unscored, while every other case was charged against the spend cap.
     """
 
     def stale_packet(self) -> None:

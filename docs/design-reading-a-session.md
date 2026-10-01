@@ -578,6 +578,81 @@ amendment was scored.
 The format is owned by the
 [abstention documentation](abstention/README.md#how-to-argue-with-a-result).
 
+#### Amended 2026-10-01: a reader's correction and a transcript stop
+
+The owner ruled two things on 2026-10-01, while looking for DRC-4666's supported-departure case.
+
+1. A supported departure may rest on the reader's own correction rather than a failed check. The
+   resolver already lets a Goal departure stand on the reader's words, so this binds the search
+   and the rubric, not the code. A search for a failed check alone read no reader message: it
+   scanned 4,882 sessions and found no case, where a search of the reader's corrections found 87
+   sessions carrying one.
+2. A Claude Code turn stop the history store has rolled past is vouched by the transcript. The
+   store is capped at about 1 MiB and held 2026-09-17 to 2026-09-30 when measured, so every older
+   stop read as unobserved. Such a stop counts when the transcript's own top-level
+   `stop_hook_summary` for the session sits at the `finished_at` and its hooks did not keep the turn
+   going. A stop inside the store's reach still needs its observation. The board stamps the
+   hook's arrival rather than the record, so `finished_at` must be the record's own stamp: over the
+   store's 700 observed stops none sat within a millisecond of its record, and 217 within a second,
+   the record about 115 ms earlier. A stop with no record is refused rather than inferred from the
+   last assistant message. The scorer counts the cases it vouched this way itself, in
+   `recorded_on_transcript_stop`, and never reads the packet's own `lifecycle_from` for it.
+
+The same day the owner directed the qualification to run to completion within the approved
+ceilings of 23 scorer calls and 26 Claude CLI invocations. Two changes follow from it. A second
+continuation grant may follow the first, which also failed, and the ledger cap is 23. And a
+Claude Code case's user messages and `transcript_bytes` are frozen from the transcript as it stood
+at `captured_at`, because the board reads only the last 400 KB of today's file: the correction the
+supported-departure case rests on sat 750 KB from the end of a session that ran on.
+
+#### Amended 2026-10-01: a reading sees the reader's whole message
+
+The overlay [DEC-15](#dec-15-the-floor-and-the-overlay) admits reads the session's evidence against
+the words a person typed, and until this amendment a person's message reached it as its title: the
+first sentence of its first line, at most 112 characters, which the ledger then cut at 180. Measured
+the same day on a real correction, that dropped the point. The reader's message asked what an
+unexplained status meant, and then, in later sentences, said the original goal included merging and
+that the branches were not being merged back. The model received only the opening question, so a
+departure the reader had named in their own words could not rest on them, which is the case item 1
+of the amendment above allows.
+
+The owner ruled to send the whole message, bounded, knowing it sends more of the reader's own words
+to the provider and moves a [SECURITY.md](../SECURITY.md#observer-model-calls) boundary.
+
+1. Every user-role message in the observed record carries its words beside its title: the whole
+   message on one line, through the same redaction as the title, at most 1,000 characters. That
+   holds for a Claude Code message (a slash command is its command as typed), every other
+   harness's user-role message, and an Antigravity direction.
+2. A person's message carries its words in the ledger beside its title, under a 1,000-character
+   cap of its own, with the menu-field scrub that stops a separator forging a column. Every other
+   entry is unchanged, and so is a copied correction, which is Cargento's text rather than the
+   reader's. A fact with no words, from a packet frozen earlier or republished by the history
+   store, has its title alone.
+3. The reader's words may not cost a verdict its evidence. Entries are chosen by their titles,
+   exactly as before this amendment, and only then do the newest messages swap their title for
+   their words, each only where its whole row fits the room left and the words' own share, half
+   the 16 KiB budget counted in UTF-8 bytes. A message that does not fit is sent by its title. The
+   first build chose the words first, and review measured what that cost: fourteen long messages
+   left a failed check unread with budget to spare, a work entry stopped the outcome lines being
+   asked at fourteen messages where thirteen still asked them, and five 1,000-character CJK
+   messages, three bytes a character, dropped all three checks. 281 of 517 recent user messages
+   reach the 1,000-character cap, so that was the ordinary case. After the fix, beside a failed
+   check and a write, seven full-length ASCII messages or two CJK ones go whole, and every message
+   past them goes by its title, at 5, 14, 20 or 40 messages alike.
+4. The words are not stored and not published. The history store keeps its field allowlist, the
+   page keeps showing titles, and `/api/project-context` drops the words before it answers. The
+   reading route, the unasked lane and the abstention packet read them on the server. Fact ids do
+   not include them, so no stored citation moves. A departure's `detail` is the model's sentence
+   and is stored and shown as before, so the model can now paraphrase a later sentence there.
+
+The provider each reading may reach is still the one [DEC-21](#dec-21-a-reading-works-the-first-time-you-ask)
+item 4 names. The disclosure before the press now says the reader's own messages go in full, up to
+1,000 characters each, redacted, and that where the record is too long the oldest go by their first
+sentence; an answer given before that sentence existed is not asked again,
+and whether it should be is filed separately. The parser digest the abstention
+packets are stamped with moves with this change, so a packet frozen before it is refused as
+`frozen-on-another-parser` and is frozen again.
+
 ### Repeated calls
 
 A reading is produced only in response to a discrete reader action, asserted rather than assumed,
@@ -2486,6 +2561,78 @@ and each was settled on the withholding side.
 - Not accurate is a toggle on the reading shown, posted through `POST /api/annotate` with the
   reading's `read_at`, and the store refuses a mark naming any other reading. Only the token is
   stored. A press the store does not take says so under the button until the next press.
+
+### What the slash-command build decided, 2026-10-01
+
+DRC-4764. A Claude Code reader who directed work with `/pr-review-response 1287 …` or `/review`
+had given a later direction that the observed record dropped, so a reading could call the work
+they asked for a departure. The command is the reader's message in the harness's markup, and every
+line of that markup opens with `<`, which the record reader skips.
+
+- A prompt command is a direction, with arguments or without. It is published as
+  `transcripts.prompt_title` renders it, `/name` and its arguments on one line, redacted and then
+  bounded as any message is. It is a person entry in a reading's ledger and a later direction on
+  the page, and "Add it to my intent" offers the command as typed, not its tags.
+- A local command is not, with arguments or without: `/compact keep the notes` drives the harness.
+  The record says which a command is by the tag it opens with. Measured over the local store's
+  main-thread records: all 1,477 that open with `<command-message>` are followed by the command's
+  expanded prompt, and all 945 that open with `<command-name>` are followed by the harness's own
+  output, 903 of them after its local-command caveat. No command name falls in both. The local
+  names seen were `/clear`, `/login`, `/plugin`, `/mcp`, `/compact`, `/add-dir`,
+  `/reload-plugins`, `/model`, `/exit`, `/design-login`, `/chrome`, `/reload-skills`, `/effort`,
+  `/rate-limit-options`, `/context`, `/install-github-app`, `/stickers`, `/usage-credits` and
+  `/permissions`. The rule reads the tag rather than this list, so a new local command is refused
+  without being named.
+- A prompt command on `records.harness_control`'s list, `/insights` the one seen, is refused too.
+- The goal slot and the instruction line beneath a title read controls by the same predicate,
+  `transcripts.harness_control_prompt`, so the three cannot disagree. Before, they matched that
+  list against the rendered line, which only a bare command can match, and published
+  `/compact keep notes` as a goal and as the work asked for. Over the local store this refuses
+  152 more prompts and refuses none it used to: `/compact` 90, `/add-dir` 21, `/plugin` 19,
+  `/design-login` 7, `/chrome` 4, and 11 more records under six other names. A local command carrying arguments, `/model opus`
+  for one, is a control now where it once published.
+- The draft from your first prompt is not changed by this. On 550 of 1,601 local Claude sessions
+  that first prompt is a control, `/clear` on 326 of them, and skipping it would mean drafting from
+  a later record, which the first-prompt read refuses to do. The next section records the ruling.
+- Whether a direction may be drafted as your intent is unchanged: the same three-word test as any
+  message, so `/create-pr` alone is a direction and not a drafted intent.
+- A command's arguments over several lines once published the last line, closing tag and all; 12
+  such records in the local store change summary, and 3 local commands with such arguments stop
+  being listed. Those facts' ids move. For up to 24 hours after the upgrade the semantic history
+  store still holds the old facts, so an old citation resolves to the old row and a retitled
+  record can show twice; once the history window ages them out, a citation stored to one no
+  longer resolves.
+- A command longer than the record reader's 2,000 characters loses its closing `</command-args>`
+  (2 of the 1,477 measured). It is published with the arguments that arrived rather than as
+  the bare name, and "Add it to my intent" offers them ending in an ellipsis and reports them
+  clipped, so the reader edits the line before saving it and it is never offered as whole.
+
+### What the control-first build decided, 2026-10-01
+
+DRC-4766, built to the owner's ruling of the same date: a session whose first prompt is a harness
+control drafts no goal, and the page says there is no first prompt to draft from, so the reader
+types one.
+
+- No draft at all, not a later one. The latest prompt is a later record, and the first-prompt read
+  never drafts from one, so a control-first session does not fall back to it either. Skipping the
+  control to the first prompt that states work was the alternative, and the ruling refused it.
+- The server decides. `transcripts.first_prompt` publishes `first_prompt_control`, true when the
+  first record is a control by `transcripts.harness_control_prompt`, the same rule the goal slot
+  and the instruction line read. The page renders that verdict and does not classify the prompt
+  itself. `annotations.prompt_candidate` refuses to adopt such a first prompt, so a request built
+  by hand cannot save the command as the goal either.
+- `first_prompt` still publishes the control, `/clear` or `/compact keep notes`, and session
+  history keeps it as before. It is what the session opened with, and the history record is not a
+  draft. The new field is a boolean, so it is not prompt text and needs no allowlist entry.
+- The page says "This session opened with /clear, so there is no first prompt to draft a goal
+  from." in the slot the draft's lede uses, so it costs the fold no row. It names the command and
+  not its arguments. The Sessions goal cell shows "Add a goal" over such a session rather than
+  the latest prompt, because the cell names what the session page drafts. "Use a prompt" still
+  offers the latest prompt, which the reader chooses rather than receives.
+- Measured over the local store, counts only: 550 of 1,601 Claude Code sessions with a first prompt
+  publish it as a control (`/clear` 326, `/login` 115, `/plugin` 36, `/mcp` 24), and 9 of 469
+  Codex sessions do. Before, every one of them drafted the command as the goal; now none does,
+  and the other 1,051 Claude Code sessions draft as before.
 
 ## DEC-26: four drift levels, and a live estimate after every turn
 
