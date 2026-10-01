@@ -382,6 +382,37 @@ class ChoosingOverASavedGoalTest(_DraftPage):
         self.assertEqual(2, body["expected_revision"])
         self.assertNotIn("goal", body)
 
+    def test_the_lines_after_an_adopted_choice_name_the_revision_it_minted(self) -> None:
+        # A real refresh hands back new row objects, so the lines save must read the revision
+        # off the refreshed row, never the row the click held (INT-2).
+        out = self.drive(
+            SERVE_CHOICES + TYPED + '__s.annotation_line_1 = "old line";\n',
+            "let __rev = 2;\n"
+            '__reply["/api/annotate"] = () => { __rev += 1; return {status:200, body:{ok:true, '
+            'persisted:true, outcome:"stored", revision:__rev}}; };\n'
+            "const __plain = __fetchImpl;\n"
+            "__fetchImpl = async (url, init) => {\n"
+            "  const answer = await __plain(url, init);\n"
+            '  if(init || !String(url).startsWith("/api/data")) return answer;\n'
+            "  const data = JSON.parse(JSON.stringify(await answer.json()));\n"
+            "  if(data && data.sessions && data.sessions[0]) data.sessions[0].annotation_revision = __rev;\n"
+            "  return {ok:true, json:async () => data};\n"
+            "};\n" + CHOOSE + '__fire("input", {target:{value:"new line", dataset:'
+            '{nextCockpitHeldLineIndex:"0", nextCockpitHeldLinesKey:'
+            + json.dumps(GOAL_KEY.rsplit(":", 1)[0] + ":lines")
+            + '}, closest(selector){ return selector.includes("lines-key") || '
+            'selector.includes("line-index") ? this : null; }}});\n'
+            '__press("held-save", "intent");\n'
+            "await __settle();\nawait __settle();\nawait __settle();\n"
+            "console.log(JSON.stringify(__posts.map(post => post.body)));",
+        )
+        assert isinstance(out, list)
+        self.assertEqual(2, len(out), out)
+        self.assertEqual(runtime_reading.PROMPT_CHOSEN, out[0]["adopt"])
+        self.assertEqual(2, out[0]["expected_revision"])
+        self.assertEqual(["new line"], out[1]["lines"])
+        self.assertEqual(3, out[1]["expected_revision"])
+
     def test_a_landed_choice_lets_the_saved_words_stand(self) -> None:
         out = self.page(
             CHOOSE + "Object.assign(__s, {annotation_goal:" + json.dumps(CHOSEN) + ", "

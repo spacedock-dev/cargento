@@ -6041,7 +6041,14 @@ async function nextCockpitIntentSave(session){
        the lines against the revision that adoption minted: `/api/annotate`
        takes an adoption or typed words in one request, not both. */
     const adopted = await nextAdoptPrompt(session, NEXT_PROMPT_CHOSEN);
-    if(adopted && changes.lines) await nextCockpitIntentSave(session);
+    if(adopted && changes.lines){
+      /* The refresh after the adoption replaced the rows, so the revision it
+         minted is on the fresh row, not the one this press was handed. The
+         held lines are keyed by session, so the fresh row still finds them. */
+      const fresh = (nextData && nextData.sessions || [])
+        .find(row => sessKey(row) === sessKey(session)) || session;
+      await nextCockpitIntentSave(fresh);
+    }
     return;
   }
   if(!changes.any){
