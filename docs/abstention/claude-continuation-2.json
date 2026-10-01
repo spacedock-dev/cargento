@@ -1,6 +1,6 @@
 {
   "v": 1,
-  "phase": "marking",
+  "phase": "sealed",
   "previous": {
     "ledger_chain": {
       "calls": 18,
@@ -11,6 +11,8 @@
     "inputs_digest": "98adf9b8d1af3f4506245c82f9d04e30e96b02c604be7aa2a873f3e0b07411d3"
   },
   "next": {
-    "cases_digest": "8eb9ea4266b4e126ae8d9ede195d8b84a643f5f083084e8ff2bc25b94647afb2"
+    "cases_digest": "8eb9ea4266b4e126ae8d9ede195d8b84a643f5f083084e8ff2bc25b94647afb2",
+    "marks_digest": "2de19510784efc0e8ae37be75ab7da3a2c45efd38d02485f4684124135c44326",
+    "inputs_digest": "4d8ab2742c24c9c57e17678e51a7fb309a263fcb94729663f879bac21e8d51a8"
   }
 }
