@@ -475,6 +475,11 @@ class Annotation(TypedDict):
     refused_raw: NotRequired[Any]
     readings: NotRequired[int]
     withheld: NotRequired[str]
+    # When `withheld` was written, so a reload can say how long ago a press
+    # was withheld (DRC-4758 slice A3). Read only beside a non-empty
+    # `withheld`; an entry written before it existed has none, which
+    # publishes as an unknown time rather than a guessed one.
+    withheld_at: NotRequired[float]
     # The reader's Not accurate mark on the reading above (`mark_not_accurate`):
     # the token and nothing else, so no reason, text or time rides with it. A
     # new reading clears it, because it was about the one it replaces.
@@ -969,6 +974,9 @@ def _counters(entry: Annotation, value: dict[str, Any]) -> Annotation:
     withheld = _withheld(value.get("withheld"))
     if withheld:
         entry["withheld"] = withheld
+        withheld_at = records.norm_epoch(value.get("withheld_at"))
+        if withheld_at:
+            entry["withheld_at"] = float(withheld_at)
     written = records.norm_epoch(value.get("written"))
     if written:
         entry["written"] = float(written)
@@ -1545,6 +1553,11 @@ def published(entry: Annotation | None, *, binding_why: str = BINDING_EXACT) -> 
         "assessment": entry.get("assessment") if entry else None,
         "reading_count": entry.get("readings", 0) if entry else 0,
         "reading_withheld": entry.get("withheld", "") if entry else "",
+        # When that reason was written, or None: no reason, or one stored
+        # before the time was kept. A number and no prose.
+        "reading_withheld_at": (
+            entry.get("withheld_at") if entry and entry.get("withheld") else None
+        ),
         # The reader's mark on that reading, a bool and nothing more: never
         # sent, never counted, and not in `history.OBSERVATION_FIELDS`.
         "not_accurate": bool(entry and entry.get("not_accurate") and entry.get("assessment")),
@@ -1585,7 +1598,15 @@ def _carried(existing: Annotation, updated: Annotation) -> Annotation:
     """
     # The mark was about the reading a new one replaces, so it stays behind.
     fresh = "assessment" in updated
-    for name in ("settled", "assessment", "readings", "withheld", "jobs", "not_accurate"):
+    for name in (
+        "settled",
+        "assessment",
+        "readings",
+        "withheld",
+        "withheld_at",
+        "jobs",
+        "not_accurate",
+    ):
         if name == "not_accurate" and fresh:
             continue
         if name not in updated and name in existing:
@@ -1720,14 +1741,16 @@ def _record(  # noqa: PLR0913 (the two callers' fields, one keyword each)
         _recorded_job(updated, existing, job_id)
         if assessment is not None:
             updated["assessment"] = assessment
+        written = time.time()
         if withheld:
             updated["withheld"] = withheld
+            updated["withheld_at"] = written
         elif "withheld" in existing:
             # Cleared rather than carried: a reading arrived.
             updated["withheld"] = ""
         if spent:
             updated["readings"] = existing.get("readings", 0) + 1
-        updated["written"] = time.time()
+        updated["written"] = written
         others = [e for e in current if (e["harness"], e["sid"]) != key]
         return _commit(
             config,

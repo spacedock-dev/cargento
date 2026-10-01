@@ -1645,6 +1645,65 @@ class AReadingIsKeptBesideTheWordsItReadTest(unittest.TestCase):
                 assert entry is not None
                 self.assertEqual(expected, entry["assessment"]["read_at"])
 
+    def _published(self) -> dict[str, Any]:
+        entry = annotation_store.find(annotation_store.load(self.config), "claude", "s1")
+        return annotation_store.published(entry)
+
+    def test_a_withheld_press_publishes_when_it_was_withheld(self) -> None:
+        # DRC-4758 slice A3: a reload says how long ago, from the time the
+        # store already writes beside the reason, read back from disk.
+        with mock.patch("time.time", return_value=500.0):
+            annotation_store.record_withheld(
+                self.config,
+                self.state,
+                "claude",
+                "s1",
+                reason=runtime_reading.WITHHELD_LEDGER_EMPTY,
+                spent=False,
+            )
+        published = self._published()
+        self.assertTrue(published["reading_withheld"])
+        self.assertEqual(500.0, published["reading_withheld_at"])
+        # A later save moves the entry's write time, not the withheld time.
+        with mock.patch("time.time", return_value=900.0):
+            annotation_store.annotate(
+                self.config, self.state, "claude", "s1", goal="rename it", now=900.0
+            )
+        self.assertEqual(500.0, self._published()["reading_withheld_at"])
+
+    def test_a_reading_that_arrives_retires_the_withheld_time_with_its_reason(self) -> None:
+        annotation_store.record_withheld(
+            self.config,
+            self.state,
+            "claude",
+            "s1",
+            reason=runtime_reading.WITHHELD_LEDGER_EMPTY,
+            spent=False,
+        )
+        annotation_store.record_reading(
+            self.config, self.state, "claude", "s1", assessment=self._assessment()
+        )
+        published = self._published()
+        self.assertEqual("", published["reading_withheld"])
+        self.assertIsNone(published["reading_withheld_at"])
+        # The file still carries the old stamp beside the cleared reason, and
+        # a copy held in memory is published by the same rule.
+        entry = annotation_store.find(annotation_store.load(self.config), "claude", "s1")
+        assert entry is not None
+        held: Any = {**entry, "withheld": "", "withheld_at": 5.0}
+        self.assertIsNone(annotation_store.published(held)["reading_withheld_at"])
+
+    def test_a_reason_stored_before_its_time_was_kept_publishes_no_time(self) -> None:
+        path = annotation_store.store_path(self.config)
+        raw = json.loads(Path(path).read_text(encoding="utf-8"))
+        entries = raw["entries"] if isinstance(raw, dict) else raw
+        entries[0]["withheld"] = runtime_reading.WITHHELD[runtime_reading.WITHHELD_LEDGER_EMPTY]
+        Path(path).write_text(json.dumps(raw), encoding="utf-8")
+        published = self._published()
+        self.assertTrue(published["reading_withheld"])
+        self.assertIsNone(published["reading_withheld_at"], "an unknown time was guessed")
+        self.assertIsNone(annotation_store.published(None)["reading_withheld_at"])
+
     def test_a_reader_who_restarts_still_has_the_reading_they_asked_for(self) -> None:
         self.assertTrue(
             annotation_store.record_reading(

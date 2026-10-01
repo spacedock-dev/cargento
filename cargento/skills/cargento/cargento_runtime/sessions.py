@@ -674,6 +674,7 @@ def base_session(harness: str, sid: Any, project: str) -> Session:
         "annotation_assessment": None,
         "annotation_reading_count": 0,
         "annotation_reading_withheld": "",
+        "annotation_reading_withheld_at": None,
         "annotation_reading_refused": False,
         # Whether a press could start a reading now, `{ok, reason, until}`
         # from `reading.press_eligibility`, filled by
