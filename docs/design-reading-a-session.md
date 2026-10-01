@@ -623,21 +623,32 @@ to the provider and moves a [SECURITY.md](../SECURITY.md#observer-model-calls) b
    message on one line, through the same redaction as the title, at most 1,000 characters. That
    holds for a Claude Code message (a slash command is its command as typed), every other
    harness's user-role message, and an Antigravity direction.
-2. A person's message reads its words in the ledger, under a 1,000-character cap of its own, with
-   the menu-field scrub that stops a separator forging a column. Every other entry is unchanged,
-   and so is a copied correction, which is Cargento's text rather than the reader's. A fact with no
-   words, from a packet frozen earlier or republished by the history store, reads its title as
-   before.
-3. The 16 KiB prompt bound and the selection order still govern the total. Person entries are
-   reserved first, so a session with more than about fifteen long messages now leaves less room
-   for work and checks than it did. That cost was accepted rather than given a second budget.
+2. A person's message carries its words in the ledger beside its title, under a 1,000-character
+   cap of its own, with the menu-field scrub that stops a separator forging a column. Every other
+   entry is unchanged, and so is a copied correction, which is Cargento's text rather than the
+   reader's. A fact with no words, from a packet frozen earlier or republished by the history
+   store, has its title alone.
+3. The reader's words may not cost a verdict its evidence. Entries are chosen by their titles,
+   exactly as before this amendment, and only then do the newest messages swap their title for
+   their words, each only where its whole row fits the room left and the words' own share, half
+   the 16 KiB budget counted in UTF-8 bytes. A message that does not fit is sent by its title. The
+   first build chose the words first, and review measured what that cost: fourteen long messages
+   left a failed check unread with budget to spare, a work entry stopped the outcome lines being
+   asked at fourteen messages where thirteen still asked them, and five 1,000-character CJK
+   messages, three bytes a character, dropped all three checks. 281 of 517 recent user messages
+   reach the 1,000-character cap, so that was the ordinary case. After the fix, beside a failed
+   check and a write, seven full-length ASCII messages or two CJK ones go whole, and every message
+   past them goes by its title, at 5, 14, 20 or 40 messages alike.
 4. The words are not stored and not published. The history store keeps its field allowlist, the
    page keeps showing titles, and `/api/project-context` drops the words before it answers. The
    reading route, the unasked lane and the abstention packet read them on the server. Fact ids do
-   not include them, so no stored citation moves.
+   not include them, so no stored citation moves. A departure's `detail` is the model's sentence
+   and is stored and shown as before, so the model can now paraphrase a later sentence there.
 
 The provider each reading may reach is still the one [DEC-21](#dec-21-a-reading-works-the-first-time-you-ask)
-item 4 names, and the disclosure before the press is unchanged. The parser digest the abstention
+item 4 names. The disclosure before the press now says the reader's own messages go in full, up to
+1,000 characters each, redacted; an answer given before that sentence existed is not asked again,
+and whether it should be is filed separately. The parser digest the abstention
 packets are stamped with moves with this change, so a packet frozen before it is refused as
 `frozen-on-another-parser` and is frozen again.
 

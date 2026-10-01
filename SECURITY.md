@@ -1085,11 +1085,30 @@ sends more of what the reader typed than the first sentence did, including any p
 later sentence that redaction does not recognize. The owner accepted that, because a first sentence
 dropped the point of a measured correction
 ([the amendment](docs/design-reading-a-session.md#amended-2026-10-01-a-reading-sees-the-readers-whole-message)).
-The whole message is held in memory for the reading and is neither stored nor published:
-the history stores' field allowlists do not name it, and `/api/project-context` drops it
-(`project_context.for_page`), so the page still shows the first sentence and `/api/data` never
-carried it. The one copy on disk is an abstention packet's frozen facts, which stay local under
-`~/.cargento` with the rest of that packet's prompt text (below). Merely opening a panel does not call the model, and neither
+The field holding the whole message (`reader_words`) is held in memory for the reading and is
+neither stored nor published: the history stores' field allowlists do not name it, and
+`/api/project-context` drops it (`project_context.for_page`), so the page still shows the first
+sentence and `/api/data` never carried it. What the model writes back is a different matter. A
+departure's `detail` is the model's own sentence, and it is stored with the reading and published
+on the page, as it was before; the model can now paraphrase or quote a later sentence of a message
+there, which it could not when it saw only the first. The one copy of the field on disk is an
+abstention packet's frozen facts, which stay local under `~/.cargento` with the rest of that
+packet's prompt text (below).
+
+The whole message has one redaction limit the first sentence did not. The message is collapsed to
+one line before it is redacted, so a credential the reader's text broke across a line break becomes
+two runs. The part before the break is masked only when it is still long enough to match its shape
+on its own, and the part after it has no prefix to match and is never masked, the same
+shape-matching residual Published text describes for a control character. Measured on the
+documented AWS example key and on a GitHub token shape, each split partway through: neither half was
+masked. Before this change the part after the break was on a later line and never reached a model;
+now it reaches the provider. A message's words are also shared out of the prompt budget
+rather than taking it: every entry is chosen by its first sentence exactly as before, and the
+newest messages replace their first sentence with their words only inside half the 16 KiB
+(`reading.WORDS_SHARE_DIVISOR`), counted in UTF-8 bytes. A message whose words do not fit is sent
+as its first sentence.
+
+Merely opening a panel does not call the model, and neither
 does rendering, polling, reconnecting, resuming, changing focus or saving a revision. The
 server also requires `observer_model=1` on either request, following the quota consent pattern;
 the page sends it only on an explicit request. A reading additionally requires its durable
@@ -1237,7 +1256,7 @@ by the OS (`score_abstention.py --probe-argv`, below):
 
 The prompt itself can still name paths. Under the tool-output ruling a check's command line and its
 redacted output tail are sent as the session recorded them, and a reader's own messages are sent
-whole up to 1,000 characters each, redacted, so a home path or user name the session typed or
+whole up to 1,000 characters each where the prompt has room (Observer model calls), redacted, so a home path or user name the session typed or
 printed reaches Anthropic that way.
 
 Because the working directory is sent, the process runs in a fresh owner-only (0700) empty
@@ -1850,7 +1869,8 @@ redaction as those, and the newest one is the row's title and last prompt when t
 not carry one, which it does not in 1.2.11. They are also kept in `semantic-work-history.json`,
 cut to 112 characters, like every harness's directives, and `--forget` does not clear that store.
 After a reader allows a reading, those directions may be sent to the reading model with the rest of
-the record, each whole up to 1,000 characters as every harness's user messages are, and the opt-in unasked lane, when switched on, may send them without a press, exactly
+the record, whole up to 1,000 characters where the prompt has room, as every harness's user
+messages are, and the opt-in unasked lane, when switched on, may send them without a press, exactly
 as it sends a Claude Code, Codex or Pi session's user messages. The file is kept apart from `observer.resolve_transcript` on purpose:
 every caller of that one reads work or tool output (the observer, the gate and Spacedock boot
 scans, the working-directory read, workflow discovery), and none of them is handed this path, so
@@ -1979,7 +1999,7 @@ because the operator passed a flag, so the flag's own help text is where that di
 What it sends is less than `POST /api/reading` sends, on the same path: the goal you typed, and the
 observed record the reading is allowed to read, to a `codex` subprocess running on your own machine
 under your own capacity. That record carries your messages in the session whole, up to 1,000
-characters each, as a pressed reading's does. Your expected outcome lines are never sent by it, and a session with lines
+characters each where the prompt has room, as a pressed reading's does. Your expected outcome lines are never sent by it, and a session with lines
 and no goal is not read by it at all (item 12 of
 [DEC-24](docs/design-reading-a-session.md#dec-24-your-intent-is-a-drafted-goal-and-a-checklist-and-a-correction-is-yours-to-copy)).
 Nothing new leaves the machine that did not already leave it when you pressed the control by hand. What is new is that nobody is there

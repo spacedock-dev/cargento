@@ -147,11 +147,13 @@ file listing, per case, the `harness`, `sid`, `project`, `captured_at`, the `row
 or before `captured_at`. A Claude Code case's user messages come instead from the transcript as it
 stood at `captured_at`, through the board's own derivation over the tail a press then read: read
 from today's file, a session that ran on past the board's 400 KB tail after the capture left none
-of the reader's words in the case. Each user message's fact carries `words`, the whole message on
-one line, redacted and cut at 1,000 characters, and the producer's ledger reads that rather than
-the one-sentence `summary`
+of the reader's words in the case. Each user message's fact carries `reader_words`, the whole message
+on one line, redacted and cut at 1,000 characters, beside the one-sentence `summary`; the producer
+sends the words where the prompt has room and the summary otherwise, and the score-time check
+compares both
 ([the amendment](../design-reading-a-session.md#amended-2026-10-01-a-reading-sees-the-readers-whole-message)).
-An older packet's facts lack `words`, and the parser stamp below refuses it before that matters.
+An older packet's facts lack `reader_words`, and the parser stamp below refuses it before that
+matters.
 It never keeps a board check: those are computed over the whole transcript,
 so a later run would reach back into the moment. It rebuilds the checks and the press reads from
 the transcript as it stood at `captured_at`. It refuses a capture taken before a recorded turn
