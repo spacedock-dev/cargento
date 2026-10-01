@@ -2242,7 +2242,15 @@ The allowlist, one line per field:
   Its existing history retention, size cap, `--no-history` and `--forget` apply unchanged.
 
 [DEC-22](docs/design-reading-a-session.md#dec-22-your-own-prompt-may-become-your-goal) also admits
-an explicitly adopted latest or first prompt as `annotation_goal`. Authorship is inferred from the
+an explicitly adopted latest or first prompt as `annotation_goal`, and, since the owner's ruling of
+2026-10-01 ([amended](docs/design-reading-a-session.md#amended-2026-10-01-up-to-five-of-your-prompts-may-be-chosen)),
+one of up to five of the reader's own prompts chosen from the observed record, under the closed
+source token `chosen-prompt`. The five are published as `prompt_choices` on the focused project
+context only, each redacted by `records.safe_text` before it is bounded to the same 240 characters,
+and they are neither stored nor admitted here: no history field holds the list, and only the one
+the reader adopts is kept, as `annotation_goal`. A choice is resolved again on the server by its
+fact id, and refused unless it is still one of the five with the same text and time; a copied
+correction, a harness control and a local command are never offered. Authorship is inferred from the
 harness user-message shape and injected-prompt filter, which fails open; it is not proof a person
 wrote the message. The server resolves the published source again, requires its displayed text and
 source time to match, and refuses implicit adoption over an existing goal. Adoption uses the same
@@ -2729,8 +2737,9 @@ fields rather than glossed, because a prose alias is a name no test can check, t
 `aggregate`, and the instruction line's own `text` passes the same sweep beside them. It is a list
 of carriers rather than a list of every published string that could hold what the operator typed:
 more prompt text reaches the page through `records.safe_text` on the way, including the observer's
-derived goal, the ask question and its options, and a Codex `title`, which is a prompt because Codex
-writes no generated title. Some of what those carriers hold came from a tool call's input rather
+derived goal, the ask question and its options, a Codex `title`, which is a prompt because Codex
+writes no generated title, and the focused project context's `prompt_choices[].text`, up to five of
+the reader's prompts at 240 characters each. Some of what those carriers hold came from a tool call's input rather
 than from a prompt directly: a Claude plan's first line, an `AskUserQuestion` question, and a Codex
 plan's steps, each under the bounds Irreversible actions states. A sweep of the local Claude store
 on the machine this was built on found seven distinct live Anthropic credentials in ordinary prompt

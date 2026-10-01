@@ -843,7 +843,8 @@ class Lane:
 def _goal_source(value: Any) -> str | None:
     return (
         value
-        if isinstance(value, str) and value in {"typed", "latest-prompt", "first-prompt"}
+        if isinstance(value, str)
+        and value in {"typed", "latest-prompt", "first-prompt", "chosen-prompt"}
         else None
     )
 

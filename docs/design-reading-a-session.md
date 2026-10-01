@@ -1159,6 +1159,31 @@ first prompt as a draft marked "from your prompt", and pressing Analyze drift ad
 the same press. The evidence window of adopted words starts at their source time. A message that
 matches a correction you copied is never adopted as a goal.
 
+### Amended 2026-10-01: up to five of your prompts may be chosen
+
+Owner, 2026-10-01 (Q7 of the DRC-4758 decision block), amending item 1 and "What prompt adoption
+preserves". The closed latest/first choice gains a third source, `chosen-prompt`: one of up to five
+of the reader's own prompts from the session's observed record, offered by "Use your prompt".
+
+- The list is `annotations.prompt_choices`: the earliest prompt in the record first, then the most
+  recent, a repeated text offered once, at most five. Each is a `user_message` fact of this session
+  that `reading.author_of` calls the person's, with a valid time and its whole words. A correction
+  copied from Cargento, a harness control and a local command are refused exactly as the
+  first-prompt draft refuses them; a local command already reaches the record with no words.
+- Each is resolved whole: its words as a reading reads them, clipped to the goal's 240-character
+  cap with `cut` saying the offer is an excerpt. The text offered is the text an adoption stores.
+- It is published only on the focused `/api/project-context` as `prompt_choices`, beside the
+  levels, and never on `/api/data`. It is not stored, not in session history and not a history
+  field. Only an adopted choice's words become `annotation_goal`, the path the first and latest
+  prompt already take.
+- An adoption names the fact id (`prompt_fact`) with the displayed text and time. The server
+  recomputes the list from its own record and adopts only an entry with that id whose text and
+  time still match, under the source token `chosen-prompt` and the entry's own time, which then
+  keys the later-direction floor, eligibility and the evidence window as the other two sources do.
+  A pasted correction's fact id, a forged id and changed words all adopt nothing.
+- Adding a direction over an unsaved chosen draft is not built: `add_direction`'s adoption still
+  resolves only first and latest, and refuses this source.
+
 ## DEC-23: a Claude Code session's record of its checks may show the work
 
 Decided 2026-09-24 (DRC-4674). DRC-4676 builds the record and keeps it off every model prompt.

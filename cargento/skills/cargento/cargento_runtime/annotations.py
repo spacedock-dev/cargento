@@ -2561,6 +2561,81 @@ def prompt_candidate(row: dict[str, Any], source: str) -> tuple[str, float | Non
     return (text if isinstance(text, str) else "", reading.valid_prompt_time(at))
 
 
+# How many of the reader's own prompts "Use your prompt" may offer (owner, Q7,
+# 2026-10-01): the first, then the most recent, deduplicated, up to five.
+PROMPT_CHOICES_CAP = 5
+# The harnesses whose prompts may be adopted at all, as `prompt_candidate` reads.
+ADOPTION_HARNESSES = ("claude", "codex")
+
+
+class PromptChoice(TypedDict):
+    """One prompt the reader may adopt as the goal: its fact, its own time, its words.
+
+    `cut` says the words are longer than the goal may hold, so `text` is an
+    excerpt and the page must say so, item 2 of
+    [DEC-24](docs/design-reading-a-session.md#dec-24-your-intent-is-a-drafted-goal-and-a-checklist-and-a-correction-is-yours-to-copy).
+    """
+
+    fact_id: str
+    at: float
+    text: str
+    cut: bool
+
+
+def prompt_choices(
+    row: Mapping[str, Any], facts: Iterable[Mapping[str, Any]], cap: int
+) -> list[PromptChoice]:
+    """The reader's own prompts this session may adopt, first then most recent, or [].
+
+    Owner ruling Q7, 2026-10-01, recorded in
+    docs/design-reading-a-session.md#amended-2026-10-01-up-to-five-of-your-prompts-may-be-chosen.
+    From the observed record's person-authored
+    messages for THIS session, each resolved whole: the message as a reading
+    reads it (`reading.WORDS_FIELD`, already redacted and bounded), clipped to
+    the goal's cap through `records.safe_text`, so the text offered is the text
+    an adoption stores. Refused exactly as the first-prompt draft refuses: a
+    correction copied from Cargento, a harness control, and a local command
+    (which the record already publishes with no words, so it never arrives).
+    One function for the page and the adoption, so a choice the server would
+    refuse is never offered and one it offers is never refused.
+
+    Not stored and not in history: the list rides on the focused project
+    context only, and only an adopted choice's words become `annotation_goal`,
+    the path the first and latest prompt already take.
+    """
+    harness, sid = row.get("harness"), row.get("sid")
+    if harness not in ADOPTION_HARNESSES:
+        return []
+    found: list[PromptChoice] = []
+    for fact in facts:
+        if (
+            not isinstance(fact, dict)
+            or fact.get("type") != "user_message"
+            or fact.get("source_session") != {"harness": harness, "sid": sid}
+            or reading.author_of(fact) != reading.AUTHOR_PERSON
+        ):
+            continue
+        at = reading.valid_prompt_time(fact.get("at"))
+        words = fact.get(reading.WORDS_FIELD)
+        fact_id = fact.get("fact_id")
+        if at is None or not isinstance(words, str) or not isinstance(fact_id, str) or not fact_id:
+            continue
+        text = records.safe_text(words, cap).strip()
+        if not text or records.harness_control(text):
+            continue
+        found.append({"fact_id": fact_id, "at": at, "text": text, "cut": text != words.strip()})
+    found.sort(key=lambda choice: choice["at"])
+    ordered = found[:1] + sorted(found[1:], key=lambda choice: choice["at"], reverse=True)
+    choices: list[PromptChoice] = []
+    for choice in ordered:
+        if any(kept["text"] == choice["text"] for kept in choices):
+            continue
+        choices.append(choice)
+        if len(choices) == PROMPT_CHOICES_CAP:
+            break
+    return choices
+
+
 # One keyword per field an adoption carries, for `annotate`'s reason.
 def adopt(  # noqa: PLR0913
     config: RuntimeConfig,
@@ -2573,8 +2648,13 @@ def adopt(  # noqa: PLR0913
     now: float,
     expected_revision: int | None = None,
     settle_through: Any = None,
+    chosen: PromptChoice | None = None,
 ) -> str:
     """Adopt a prompt as the goal. Returns an `OUTCOMES` token.
+
+    `chosen` is the server's own `prompt_choices` entry for a `chosen-prompt`
+    adoption, found by the fact id the page sent; it is the only source that
+    resolves that token, so a page cannot name its own words.
 
     `settle_through` is Keep over an unsaved draft: the adoption and the
     later-direction settlement in one write, because `settle` refuses a
@@ -2583,7 +2663,7 @@ def adopt(  # noqa: PLR0913
     adopts over a saved goal holding other words: a press labelled "Keep my
     intent" must not replace the reader's own.
     """
-    options = _adoption(row, source, expected_text, expected_at, now)
+    options = _adoption(row, source, expected_text, expected_at, now, chosen=chosen)
     keep = settle_through is not None
     if (
         options is None
@@ -2610,10 +2690,19 @@ def adopt(  # noqa: PLR0913
 
 
 def _adoption(
-    row: Mapping[str, Any], source: str, expected_text: Any, expected_at: Any, now: float
+    row: Mapping[str, Any],
+    source: str,
+    expected_text: Any,
+    expected_at: Any,
+    now: float,
+    *,
+    chosen: PromptChoice | None = None,
 ) -> dict[str, Any] | None:
     """The source this adoption resolves to from the server's own row, or None to refuse."""
-    text, at = prompt_candidate(dict(row), source)
+    if source == reading.PROMPT_CHOSEN:
+        text, at = (chosen["text"], chosen["at"]) if chosen else ("", None)
+    else:
+        text, at = prompt_candidate(dict(row), source)
     if (
         not text
         or at is None

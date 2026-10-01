@@ -143,7 +143,12 @@ def outcome_lines(revision: Mapping[str, Any]) -> tuple[str, ...]:
 # `ReadingVocabularyIsSpeltOnceTest` compares them, because the measured
 # failure here is a producer and a renderer disagreeing about a key name and
 # neither one noticing.
-PROMPT_SOURCES = ("latest-prompt", "first-prompt")
+# `chosen-prompt` is one of the reader's own prompts picked from the observed
+# record (`annotations.prompt_choices`, owner ruling Q7, 2026-10-01): adopted
+# words like the other two, keyed on their own time. The page learns it in the
+# layer that draws the menu; until then it reads such a goal as typed.
+PROMPT_CHOSEN = "chosen-prompt"
+PROMPT_SOURCES = ("latest-prompt", "first-prompt", PROMPT_CHOSEN)
 
 ASSESSMENT_KEYS = (
     "goal_source",
