@@ -839,14 +839,16 @@ input::placeholder,textarea::placeholder{color:var(--ink2)}
    button below it out from under the press, so the click landed beside it
    (consent F4, verifier V3); a box held short hid the rest of the draft Keep
    adopts (verifier V1). Both are words a press is about to act on, so neither
-   is clipped. A drag still wins: an inline height outranks this rule. */
-.next-session-panel .next-cockpit-held-field[data-next-cockpit-drafted]>textarea{field-sizing:content;height:auto;min-height:0}
+   is clipped. A drag still wins: an inline height outranks this rule. Its
+   floor is the goal's three rows (owner Q4), which sizing to the text would
+   otherwise cancel and draw a short prompt one line tall. */
+.next-session-panel .next-cockpit-held-field[data-next-cockpit-drafted]>textarea{field-sizing:content;height:auto;min-height:calc(var(--fs-body)*1.55*3 + 16px)}
 .next-session-panel .next-cockpit-held-line.next-cockpit-direction-line>textarea{field-sizing:content;height:auto;white-space:pre-wrap;text-overflow:clip}
 /* Where `field-sizing` is missing the box cannot size to its text, so the two
-   boxes above take several rows and the rest scrolls inside them (verifier
-   V-3). */
+   boxes above take a fixed height and the rest scrolls inside them (verifier
+   V-3); the goal's is its three resting rows (owner Q4). */
 @supports not (field-sizing: content){
-  .next-session-panel .next-cockpit-held-field[data-next-cockpit-drafted]>textarea{height:calc(var(--fs-body)*1.55*6 + 16px)}
+  .next-session-panel .next-cockpit-held-field[data-next-cockpit-drafted]>textarea{height:calc(var(--fs-body)*1.55*3 + 16px)}
   .next-session-panel .next-cockpit-held-line.next-cockpit-direction-line>textarea{height:calc(var(--fs-body)*1.55*4 + 16px)}
 }
 .next-session-panel .next-cockpit-held-heading>.next-cockpit-held-label{display:inline-flex;min-height:44px;align-items:center}

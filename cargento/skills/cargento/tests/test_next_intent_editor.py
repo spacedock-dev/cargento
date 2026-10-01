@@ -93,6 +93,20 @@ class TheBoxesAreRoomyAndResizableTest(_DraftPage):
         for line in lines:
             self.assertIn('rows="2"', line)
 
+    def test_a_drafted_goal_rests_at_three_rows_too(self) -> None:
+        # The drafted box sizes to its text, which would cancel `rows="3"` and draw a short
+        # prompt one line tall, so its floor is three rows; where `field-sizing` is missing it
+        # rests at three rows as well (owner Q4; DRC-4758 fix round).
+        three = "calc(var(--fs-body)*1.55*3 + 16px)"
+        drafted = ".next-session-panel .next-cockpit-held-field[data-next-cockpit-drafted]>textarea"
+        bodies = [body for selector, body in rules() if selector == drafted]
+        self.assertEqual(2, len(bodies), bodies)
+        sized, fallback = bodies
+        self.assertIn("field-sizing:content", sized)
+        self.assertIn(f"min-height:{three}", sized)
+        self.assertNotIn("min-height:0", sized)
+        self.assertIn(f"height:{three}", fallback)
+
     def test_both_boxes_resize_vertically_and_no_rule_fights_a_drag(self) -> None:
         self.assertIn("resize:vertical", rule(".next-cockpit-held-field textarea"))
         for selector, body in rules():

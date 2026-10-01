@@ -765,8 +765,8 @@ console.log(JSON.stringify({{found: Boolean(press), tag: active ? active.tagName
     def test_a_box_without_field_sizing_still_shows_a_draft_whole(self) -> None:
         """Verifier V-3: the drafted goal and the pending line size to their text with
         `field-sizing:content`, which not every engine ships. Where it is missing they take a
-        fixed height of several rows and scroll inside it. No focus rule stands there now
-        (owner Q4)."""
+        fixed height and scroll inside it, the goal at its three resting rows. No focus rule
+        stands there now (owner Q4)."""
         css = re.sub(r"/\*[\s\S]*?\*/", "", STYLES.read_text(encoding="utf-8"))
         block = re.search(
             r"@supports not \(field-sizing: ?content\)\{((?:[^{}]*\{[^{}]*\})*)\s*\}", css
@@ -776,7 +776,7 @@ console.log(JSON.stringify({{found: Boolean(press), tag: active ? active.tagName
             sel.strip(): body for sel, body in re.findall(r"([^{}]+)\{([^{}]*)\}", block.group(1))
         }
         self.assertIn(
-            "height:calc(var(--fs-body)*1.55*6 + 16px)",
+            "height:calc(var(--fs-body)*1.55*3 + 16px)",
             rules[
                 ".next-session-panel .next-cockpit-held-field[data-next-cockpit-drafted]>textarea"
             ],
