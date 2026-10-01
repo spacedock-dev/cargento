@@ -8300,7 +8300,12 @@ function nextIntentPromptMenu(session){
   const choices = nextIntentPromptChoices(session);
   if(!choices.length) return "";
   const key = nextCockpitHeldKey(session, "goal");
-  const first = nextIntentOpenedWithControl(session) ? "Earliest prompt" : "First prompt";
+  /* "First" only for the row's own first prompt. The choices come from the
+     focused record, which holds the newest 100 events, so in a long session
+     its earliest prompt is a later message (DRC-4758 fix round, F2). */
+  const firstAt = nextNumber(session && session.first_prompt_at);
+  const first = !nextIntentOpenedWithControl(session) && firstAt != null &&
+    choices[0].at === firstAt ? "First prompt" : "Earliest prompt";
   const options = choices.map((choice, index) => {
     const name = index === 0 ? first : index === 1 ? "Latest prompt" : "Earlier prompt";
     return '<li><button type="button" class="next-action next-action--quiet next-intent-prompt-option" ' +

@@ -131,6 +131,15 @@ class TheMenuIsOneDisclosureOfButtonsTest(_DraftPage):
             self.assertIn("next-action", option)
             self.assertNotIn("next-action--primary", option)
 
+    def test_the_earliest_offered_is_first_only_when_it_is_the_first_prompt(self) -> None:
+        # The record the choices come from holds the newest 100 events, so in a long session
+        # its earliest prompt is a later message than the row's first prompt (F2).
+        out = self.page("__s.first_prompt_at = 50;\n", HTML)
+        assert isinstance(out, str)
+        label = visible_text(options_of(out)[0]).strip()
+        self.assertTrue(label.startswith("Earliest prompt · "), label)
+        self.assertNotIn("First prompt", visible_text(menu_of(out)))
+
     def test_every_option_keeps_its_own_focus_key_across_a_redraw(self) -> None:
         out = self.page(
             after="const before = __els.app.innerHTML; renderNext();\n"

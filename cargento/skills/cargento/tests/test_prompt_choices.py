@@ -21,12 +21,12 @@ from pathlib import Path
 from typing import Any, ClassVar
 
 from cargento_runtime import annotations as annotation_store
-from cargento_runtime import history, records
+from cargento_runtime import history, project_context, records
 from cargento_runtime import reading as runtime_reading
 
 from .support import make_runtime, make_server, serve_until_closed
 from .test_claude_checks import SHORT, START
-from .test_copied_corrections import FIRST, OWN, STORED, _App
+from .test_copied_corrections import FIRST, NOW, OWN, STORED, _App, _row, _Store
 
 CAP = 240
 
@@ -294,3 +294,23 @@ class TheMenuOverARealSocket(_App):
         self.assertIsNone(
             annotation_store.find(annotation_store.load(self.config), "claude", SHORT)
         )
+
+
+class ALongSessionsEarliestChoiceIsNotItsFirstPrompt(_Store):
+    """The choices come from the focused record, which holds the newest 100 events. A session
+    with more prompts than that after its opening one offers a later message first, so the page
+    calls that option "Earliest prompt" unless its time is the row's first prompt's (F2)."""
+
+    def test_more_than_a_hundred_later_prompts_push_the_first_out_of_the_choices(self) -> None:
+        for n in range(150):
+            self.session.prompt(f"tweak number {n}")
+        self.session.save(self.path)
+        row = _row()
+        context = project_context.collect(
+            self.config, self.state, [row], "billing", now=NOW, focus=("claude", SHORT)
+        )
+        choices = annotation_store.prompt_choices(row, context["semantic"]["facts"], 240)
+        self.assertTrue(choices)
+        self.assertNotIn(FIRST, [choice["text"] for choice in choices])
+        # The time the page compares against before it says "First prompt".
+        self.assertNotEqual(row["first_prompt_at"], choices[0]["at"])
