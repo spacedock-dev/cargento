@@ -394,6 +394,14 @@ def analyze_transcript(config: RuntimeConfig, state: RuntimeState, path: str) ->
         # from causes that are not the agent resuming, so a wait guard that
         # reads "has this session moved on" has to read this and not the mtime.
         "last_assistant_ts": 0,
+        # Newest conversation record (`user` or `assistant`, tool results
+        # included because Claude writes them as user records). The stop guard
+        # reads this rather than the mtime: Claude Code appends `system`
+        # records such as `away_summary` minutes after a turn stops, and read
+        # as mtime one retired every observed stop (DRC-4770). The same
+        # definition as `project_context.claude_activity_between`, which a
+        # test holds it to.
+        "last_conversation_ts": 0,
         "last_user_event": last_user_event(config, state, path),
     }
     pending: dict[Any, Any] = {}  # tool_use id -> {"name", "ts", "asks"} for INPUT_TOOLS only
@@ -408,6 +416,8 @@ def analyze_transcript(config: RuntimeConfig, state: RuntimeState, path: str) ->
         ep = records.parse_ts(d.get("timestamp") or "")
         if ep:
             info["last_event_ts"] = max(info["last_event_ts"], ep)
+            if t in {"user", "assistant"}:
+                info["last_conversation_ts"] = max(info["last_conversation_ts"], ep)
         if t == "last-prompt":
             info["last_prompt"] = d.get("lastPrompt")
         elif t == "assistant":

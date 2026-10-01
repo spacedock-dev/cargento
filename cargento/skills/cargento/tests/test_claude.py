@@ -2218,6 +2218,61 @@ class OwnActivityTest(RuntimeTestCase):
         self.assertAlmostEqual(now - 600, parent["own_activity"], delta=1.0)
 
 
+class LastConversationTest(unittest.TestCase):
+    """`last_conversation_ts` reads conversation records alone (DRC-4770).
+
+    The stop guard reads it, so every record type Claude Code appends while a
+    session sits parked has to be invisible to it, while a tool result (a
+    `user` record) is not.
+    """
+
+    def _info(self, rows: list[dict[str, Any]]) -> dict[str, Any]:
+        with tempfile.TemporaryDirectory() as tmp:
+            transcript = Path(tmp) / "session.jsonl"
+            transcript.write_text("\n".join(json.dumps(row) for row in rows) + "\n")
+            config, state = runtime()
+            return claude_data.analyze_transcript(config, state, str(transcript))
+
+    def test_bookkeeping_records_after_the_turn_do_not_move_it(self) -> None:
+        info = self._info(
+            [
+                {"type": "user", "timestamp": "2026-01-01T00:00:00Z", "message": {"content": "go"}},
+                {
+                    "type": "assistant",
+                    "timestamp": "2026-01-01T00:00:05Z",
+                    "message": {"content": []},
+                },
+                {"type": "system", "subtype": "away_summary", "timestamp": "2026-01-01T00:03:00Z"},
+                {"type": "attachment", "timestamp": "2026-01-01T00:03:01Z"},
+                {"type": "queue-operation", "timestamp": "2026-01-01T00:03:02Z"},
+                {"type": "last-prompt", "lastPrompt": "go", "timestamp": "2026-01-01T00:03:03Z"},
+            ]
+        )
+        self.assertEqual(records.parse_ts("2026-01-01T00:00:05Z"), info["last_conversation_ts"])
+        self.assertEqual(records.parse_ts("2026-01-01T00:03:03Z"), info["last_event_ts"])
+
+    def test_a_tool_result_is_conversation(self) -> None:
+        info = self._info(
+            [
+                {
+                    "type": "assistant",
+                    "timestamp": "2026-01-01T00:00:05Z",
+                    "message": {"content": []},
+                },
+                {
+                    "type": "user",
+                    "timestamp": "2026-01-01T00:00:09Z",
+                    "message": {"content": [{"type": "tool_result", "tool_use_id": "t"}]},
+                },
+            ]
+        )
+        self.assertEqual(records.parse_ts("2026-01-01T00:00:09Z"), info["last_conversation_ts"])
+
+    def test_a_tail_with_no_conversation_reports_zero(self) -> None:
+        info = self._info([{"type": "system", "timestamp": "2026-01-01T00:03:00Z"}])
+        self.assertEqual(0, info["last_conversation_ts"])
+
+
 class InputSummaryTest(unittest.TestCase):
     """What an open gate is asking, reduced to one bounded line. DRC-4015."""
 

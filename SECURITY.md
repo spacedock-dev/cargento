@@ -2083,8 +2083,11 @@ memory gives. A stored end also loses to later activity: a session resumed while
 down produced no `session_started` this process could see, so a file written more than the
 activity grace after its end is the only tell that the id is in use again, and the stored end is
 then not applied. Activity here is whatever the row counts as activity, which is wider than the
-session's own transcript: on Claude it is the newest of the task file, the parent transcript, the
-subagent transcripts, the agent files and the child sessions. The exposure accepted with that
+session's own transcript: on Claude it is the newest of the task file, the parent transcript's
+newest conversation record, the subagent transcripts, the agent files and the child sessions. The
+parent is read by its newest `user` or `assistant` record rather than its mtime since DRC-4770,
+because Claude Code appends bookkeeping records such as `away_summary` after a turn stops, and
+read as mtime one retired the stop it followed. The exposure accepted with that
 guard is stated rather than solved. A harness that writes any of those after `SessionEnd` would
 have its restored end dropped, and the row reads as it does today, no end observed, which is
 honest rather than wrong. A live end, observed by the running coordinator, takes no such guard,

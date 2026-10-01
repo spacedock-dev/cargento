@@ -642,6 +642,20 @@ def _attach_annotations(
             row[f"annotation_{name}"] = value
 
 
+def _work_activity(session: Session) -> float:
+    """The activity that retires an observed stop or end: `work_activity`, else `last_activity`.
+
+    Claude's collector publishes `work_activity`, which reads the parent
+    transcript by its newest conversation record so a bookkeeping append does
+    not retire a stop (DRC-4770). A collector that does not publish it leaves
+    None, and the whole-tree `last_activity` stands, as it always did.
+    """
+    work = session.get("work_activity")
+    if isinstance(work, (int, float)) and not isinstance(work, bool):
+        return float(work)
+    return float(session.get("last_activity") or 0.0)
+
+
 def _hide_unmeasured_rates(rows: list[Session], harnesses: tuple[HarnessSpec, ...]) -> None:
     """Replace a rate-blind collector's numeric placeholder with wire-level unknown."""
     reporting = {spec.key for spec in harnesses if spec.reports_rate}
@@ -1353,7 +1367,7 @@ class Application:
                     # what retires a stop no `turn_started` ever follows. A
                     # parked parent with a running child is working, so idle
                     # cannot key on `own_activity` the way a wait does.
-                    session_activity=float(session.get("last_activity") or 0.0),
+                    session_activity=_work_activity(session),
                     activity_grace_sec=self.config.overlay_wait_activity_grace_sec,
                     # Reduced rather than written straight onto the row, so the
                     # mark passes the same activity guard the idle overlay does
@@ -1416,10 +1430,11 @@ class Application:
         few seconds after the last write (5.581 s in the a1 arm of
         docs/captures/claude/session-end-2.1.261-macos.jsonl).
 
-        The tell is the row's `last_activity`, which is wider than the parent
-        transcript: on Claude it is the newest of five mtimes — the task file,
-        the parent transcript, the subagent transcripts, the agent files and the
-        child sessions (`collectors/claude.py`). So the exposure stated in
+        The tell is the row's activity as `_work_activity` reads it, which is
+        wider than the parent transcript: on Claude it is the newest of the task
+        file, the parent transcript's newest conversation record (DRC-4770), the
+        subagent transcripts, the agent files and the child sessions
+        (`collectors/claude.py`). So the exposure stated in
         SECURITY.md rather than solved covers all of them: a harness that writes
         any of those more than the grace after `SessionEnd` loses the restored
         end, and the row then reads as it does today, which is honest rather
@@ -1427,7 +1442,7 @@ class Application:
         """
         if not stored:
             return 0.0
-        activity = float(session.get("last_activity") or 0.0)
+        activity = _work_activity(session)
         if activity > stored + self.config.overlay_wait_activity_grace_sec:
             return 0.0
         return stored

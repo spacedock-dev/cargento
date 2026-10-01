@@ -777,6 +777,26 @@ def collect(
             else None
         )
 
+        # What retires an observed stop: `activity_sources` with the parent
+        # transcript read by its newest conversation record instead of its
+        # mtime (DRC-4770). Every other source stays an mtime, so a child
+        # writing still retires the stop (DRC-4101). An unanalyzed row, or a
+        # tail with no conversation record, falls back to the mtime, which
+        # retires rather than keeps: the direction DRC-4101 requires.
+        # `last_activity` itself is unchanged, because it also gates the
+        # display window and the notifications.
+        work_activity = runtime_sessions.newest_plausible(
+            config,
+            now,
+            (
+                latest_task_mtime,
+                (info or {}).get("last_conversation_ts") or transcript_mtime,
+                latest_agent_mtime,
+                latest_agent_file_mtime,
+                latest_child_mtime,
+                latest_grandchild_file_mtime,
+            ),
+        )
         session_state, state_detail = "idle", "awaiting your message"
         blocked_since = None
         # mtime floor: match the other collectors when the newest write has
@@ -961,6 +981,7 @@ def collect(
                 "blocked_since": blocked_since,
                 "active": active,
                 "last_activity": last_activity,
+                "work_activity": work_activity,
                 # The parent transcript alone, deliberately excluded from the
                 # subagent and task mtimes folded into `last_activity` above:
                 # this is what tells a resumed turn from a background agent
