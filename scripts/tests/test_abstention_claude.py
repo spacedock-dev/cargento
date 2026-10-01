@@ -20,8 +20,11 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from unittest import mock
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
@@ -1818,8 +1821,8 @@ class TheApprovedWordingIsPinnedTest(unittest.TestCase):
         )
 
 
-class Q4OnlyAGenuineCaseIsRecordedTest(unittest.TestCase):
-    """F4: a case is recorded only when the machine's own records say so."""
+class _RecordedCaseFixture(unittest.TestCase):
+    """A Claude Code transcript under a scratch projects root, and a freeze over it."""
 
     def setUp(self) -> None:
         self.temp = tempfile.TemporaryDirectory()
@@ -1857,6 +1860,10 @@ class Q4OnlyAGenuineCaseIsRecordedTest(unittest.TestCase):
         return [
             {"harness": "claude", "sid": CLAUDE_SID, "state": "idle", "last_activity": at},
         ]
+
+
+class Q4OnlyAGenuineCaseIsRecordedTest(_RecordedCaseFixture):
+    """F4: a case is recorded only when the machine's own records say so."""
 
     def test_a_transcript_in_projects_with_its_own_id_and_a_recorded_stop_is_recorded(
         self,
@@ -1900,6 +1907,169 @@ class Q4OnlyAGenuineCaseIsRecordedTest(unittest.TestCase):
                     self.config, entry, [], observations=observations, ends=[]
                 )
                 self.assertEqual(origin, case["origin"])
+
+
+class Q4ATurnStopTheHistoryRolledPastIsVouchedByTheTranscriptTest(_RecordedCaseFixture):
+    """Owner ruling 2026-10-01 (DRC-4666): the history store is capped and rolls, so a
+    turn stop older than its oldest observation is confirmed by the transcript's own
+    Stop-hook record instead, and only then."""
+
+    def marked(
+        self,
+        *,
+        at: int = 20,
+        sidechain: bool = False,
+        prevented: bool = False,
+        session_id: str = CLAUDE_SID,
+        subtype: str = "stop_hook_summary",
+    ) -> str:
+        path = self.transcript()
+        marker = {
+            "type": "system",
+            "subtype": subtype,
+            "isSidechain": sidechain,
+            "preventedContinuation": prevented,
+            "sessionId": session_id,
+            "timestamp": _stamp(self.start, at),
+        }
+        with open(path, "a", encoding="utf-8") as handle:
+            handle.write("\n" + json.dumps(marker))
+        return path
+
+    def rolled(self) -> list[dict[str, Any]]:
+        # Another session's observation, later than the stop: the store no longer reaches it.
+        return [
+            {
+                "harness": "claude",
+                "sid": "other-sid",
+                "state": "idle",
+                "last_activity": self.start + 3600,
+            }
+        ]
+
+    def test_a_stop_older_than_the_history_store_is_recorded_on_its_stop_hook_record(self) -> None:
+        case = self.freeze(self.marked(), self.rolled())
+        self.assertEqual("recorded", case["origin"])
+        self.assertEqual([], case["unconfirmed"])
+        self.assertEqual("transcript", case["lifecycle_from"])
+
+    def test_a_packet_naming_the_boards_short_id_is_vouched_too(self) -> None:
+        # Measured 2026-10-01: every Claude case in the real packets names 8 characters.
+        case = self.freeze(self.marked(), self.rolled(), sid=CLAUDE_SID[:8])
+        self.assertEqual("transcript", case["lifecycle_from"])
+        self.assertEqual("recorded", case["origin"])
+        shorter = self.freeze(self.marked(), self.rolled(), sid=CLAUDE_SID[:7])
+        self.assertIn("lifecycle-unconfirmed", shorter["unconfirmed"])
+
+    def test_a_stop_the_history_store_still_covers_needs_its_observation(self) -> None:
+        covering = [{**self.rolled()[0], "last_activity": self.start + 5}]
+        case = self.freeze(self.marked(), covering)
+        self.assertEqual("synthetic", case["origin"])
+        self.assertIn("lifecycle-unconfirmed", case["unconfirmed"])
+
+    def test_an_observed_stop_still_says_it_came_from_the_history_store(self) -> None:
+        case = self.freeze(self.marked(), self.stop(self.start + 20))
+        self.assertEqual("history", case["lifecycle_from"])
+
+    def test_no_history_at_all_vouches_for_nothing(self) -> None:
+        self.assertEqual("synthetic", self.freeze(self.marked(), [])["origin"])
+
+    def test_only_a_top_level_stop_of_this_session_at_that_moment_counts(self) -> None:
+        # Built inside the loop: every transcript here shares one path, so a tuple of
+        # paths built up front would leave each subtest reading the last one written.
+        builds: tuple[tuple[str, Callable[[], str]], ...] = (
+            ("no marker", self.transcript),
+            ("other moment", lambda: self.marked(at=19)),
+            ("sidechain", lambda: self.marked(sidechain=True)),
+            ("hook kept it going", lambda: self.marked(prevented=True)),
+            ("other session", lambda: self.marked(session_id="zz-other")),
+            ("another system record", lambda: self.marked(subtype="turn_duration")),
+        )
+        for name, build in builds:
+            with self.subTest(name=name):
+                case = self.freeze(build(), self.rolled())
+                self.assertEqual("synthetic", case["origin"])
+                self.assertIn("lifecycle-unconfirmed", case["unconfirmed"])
+
+    def test_an_end_or_a_running_row_is_never_vouched_by_the_transcript(self) -> None:
+        for row in ({"state": "idle", "ended_at": self.start + 20},
+                    {"state": "working"}):  # fmt: skip
+            with self.subTest(row=row):
+                case = self.freeze(self.marked(), self.rolled(), row=row)
+                self.assertIn("lifecycle-unconfirmed", case["unconfirmed"])
+
+    def test_an_older_observation_keeps_the_stop_inside_the_stores_reach(self) -> None:
+        # The floor is the OLDEST observation: a newer one alone must not open the fallback.
+        both = [*self.rolled(), {**self.rolled()[0], "last_activity": self.start + 5}]
+        self.assertIn("lifecycle-unconfirmed", self.freeze(self.marked(), both)["unconfirmed"])
+
+    def test_a_stop_at_the_oldest_observation_is_still_inside_the_stores_reach(self) -> None:
+        at_floor = [{**self.rolled()[0], "last_activity": self.start + 20}]
+        self.assertIn("lifecycle-unconfirmed", self.freeze(self.marked(), at_floor)["unconfirmed"])
+
+    def test_an_end_or_a_running_row_stays_refused_even_with_a_stop_stamp(self) -> None:
+        for row in ({"state": "idle", "finished_at": self.start + 20, "ended_at": self.start + 20},
+                    {"state": "working", "finished_at": self.start + 20}):  # fmt: skip
+            with self.subTest(row=row):
+                case = self.freeze(self.marked(), self.rolled(), row=row)
+                self.assertIn("lifecycle-unconfirmed", case["unconfirmed"])
+
+    def test_the_scorer_refuses_a_stop_moved_past_the_capture(self) -> None:
+        case = self.freeze(self.marked(), self.rolled())
+        moved = {**case, "row_snapshot": {**case["row_snapshot"], "finished_at": self.start + 29}}
+        path = self.marked(at=29)
+        with mock.patch.object(mark_abstention, "CLAUDE_PROJECTS_ROOT", str(self.root)):
+            reasons = mark_abstention.provenance(
+                moved,
+                observations=self.rolled(),
+                ends=[],
+                index={CLAUDE_SID[:8]: path},
+                config=self.config,
+            )
+        self.assertIn("captured-before-settled", reasons)
+
+    def test_the_scorer_counts_the_stop_it_derived_not_the_one_the_packet_claims(self) -> None:
+        for derived, claimed in (("transcript", "history"), ("history", "transcript")):
+            with self.subTest(derived=derived):
+
+                def vouch(_case: Any) -> list[str]:
+                    return []
+
+                vouch.lifecycle = lambda _case, d=derived: d  # type: ignore[attr-defined]
+                case = {"id": "a" * 16, "origin": "recorded", "lifecycle_from": claimed}
+                self.assertEqual(derived, score_abstention._vouched(case, vouch)["stop_vouched_by"])
+
+    def test_the_summary_and_report_disclose_a_transcript_vouched_stop(self) -> None:
+        recorded = _rubric_record("supported-departure", "claude", {"goal": "correct"})
+        recorded["id"] = "a" * 16
+        synthetic = {**_rubric_record("legitimate-change", "claude", {"goal": "correct"}),
+                     "id": "b" * 16, "origin": "synthetic"}  # fmt: skip
+        summary = score_abstention.summarize(
+            [], marks={}, marks_bytes=b"", now=1.0, rubric_records=[recorded, synthetic],
+            binding=BINDING, transcript_stops={"a" * 16, "b" * 16},
+        )  # fmt: skip
+        # Only the recorded case counts; a synthetic one never meets the floor anyway.
+        self.assertEqual(1, summary["counts"]["recorded_on_transcript_stop"])
+        report = "\n".join(score_abstention.render(summary))
+        self.assertIn("recorded on a turn stop its transcript vouched for", report)
+
+    def test_the_scorer_repeats_the_same_rule(self) -> None:
+        path = self.marked()
+        case = self.freeze(path, self.rolled())
+        index = {CLAUDE_SID[:8]: path}
+        with mock.patch.object(mark_abstention, "CLAUDE_PROJECTS_ROOT", str(self.root)):
+            vouched = mark_abstention.provenance(
+                case, observations=self.rolled(), ends=[], index=index, config=self.config
+            )
+            covered = mark_abstention.provenance(
+                case,
+                observations=[{**self.rolled()[0], "last_activity": self.start}],
+                ends=[],
+                index=index,
+                config=self.config,
+            )
+        self.assertNotIn("lifecycle-unconfirmed", vouched)
+        self.assertIn("lifecycle-unconfirmed", covered)
 
 
 def _asked(start: float, session_id: str, seconds: int = 5) -> dict[str, Any]:

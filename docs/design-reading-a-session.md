@@ -578,6 +578,26 @@ amendment was scored.
 The format is owned by the
 [abstention documentation](abstention/README.md#how-to-argue-with-a-result).
 
+#### Amended 2026-10-01: a reader's correction and a transcript stop
+
+The owner ruled two things on 2026-10-01, while looking for DRC-4666's supported-departure case.
+
+1. A supported departure may rest on the reader's own correction rather than a failed check. The
+   resolver already lets a Goal departure stand on the reader's words, so this binds the search
+   and the rubric, not the code. A search for a failed check alone read no reader message: it
+   scanned 4,882 sessions and found no case, where a search of the reader's corrections found 87
+   sessions carrying one.
+2. A Claude Code turn stop the history store has rolled past is vouched by the transcript. The
+   store is capped at about 1 MiB and held 2026-09-17 to 2026-09-30 when measured, so every older
+   stop read as unobserved. Such a stop counts when the transcript's own top-level
+   `stop_hook_summary` for the session sits at the `finished_at` and its hooks did not keep the turn
+   going. A stop inside the store's reach still needs its observation. The board stamps the
+   hook's arrival rather than the record, so `finished_at` must be the record's own stamp: over the
+   store's 700 observed stops none sat within a millisecond of its record, and 217 within a second,
+   the record about 115 ms earlier. A stop with no record is refused rather than inferred from the
+   last assistant message. The scorer counts the cases it vouched this way itself, in
+   `recorded_on_transcript_stop`, and never reads the packet's own `lifecycle_from` for it.
+
 ### Repeated calls
 
 A reading is produced only in response to a discrete reader action, asserted rather than assumed,

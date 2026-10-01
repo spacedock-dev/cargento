@@ -112,7 +112,7 @@ import abstention_ledger
 import mark_abstention
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Iterable, Mapping, Sequence
+    from collections.abc import Callable, Collection, Iterable, Mapping, Sequence
     from typing import TypeGuard
 
 _ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -1059,6 +1059,7 @@ def summarize(
     now: float,
     rubric_records: Sequence[Mapping[str, Any]] = (),
     binding: Mapping[str, str] | None = None,
+    transcript_stops: Collection[str] = (),
 ) -> dict[str, Any]:
     """The committable half. Ids, marks, outcomes, counts, coverage, digest, when.
 
@@ -1118,6 +1119,13 @@ def summarize(
                 and (r.get("basis") or {}).get("goal") == BASIS_ACCOUNT
             ),
             "outcomes": outcome_counts,
+            # Recorded cases whose turn stop the transcript vouched for, because
+            # the history store had rolled past it (DEC-17, amended 2026-10-01).
+            "recorded_on_transcript_stop": sum(
+                1
+                for r in rubric_records
+                if r["origin"] == ORIGIN_RECORDED and r["id"] in transcript_stops
+            ),
         },
         "dec17": dec17,
         "coverage": coverage,
@@ -1285,6 +1293,11 @@ def render(summary: Mapping[str, Any]) -> list[str]:
         lines.append(
             f"  goal judged consistent on the agent's own account, no check cited: "
             f"{counts['goal_consistent_on_account']} (never counted as tool-reported)"
+        )
+    if counts.get("recorded_on_transcript_stop"):
+        lines.append(
+            f"  recorded on a turn stop its transcript vouched for, the history store having "
+            f"rolled past it: {counts['recorded_on_transcript_stop']}"
         )
     if counts.get("output_not_asked"):
         lines.append(
@@ -1811,7 +1824,10 @@ def _vouched(
         return case
     reasons = vouch(case)
     if not reasons:
-        return case
+        # Derived at score time, never the packet's own `lifecycle_from`, which
+        # is hand-editable: the summary counts it (DEC-17, amended 2026-10-01).
+        lifecycle = getattr(vouch, "lifecycle", None)
+        return {**case, "stop_vouched_by": lifecycle(case) if lifecycle else None}
     print(
         f"Case {case.get('id')}: claims recorded and is not vouched for ({', '.join(reasons)}): "
         "withheld without a model call, and never counted toward coverage."
@@ -2029,6 +2045,11 @@ def score(  # noqa: PLR0913 - one keyword per thing a run is bound to
         now=now,
         rubric_records=rubric_records,
         binding=binding,
+        transcript_stops={
+            case_id
+            for case_id, case in cases.items()
+            if case.get("stop_vouched_by") == "transcript"
+        },
     )
     if replay:
         summary["inputs_digest"] = _inputs_digest(corpus)
