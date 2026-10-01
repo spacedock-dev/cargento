@@ -832,7 +832,7 @@ class WhichConstraintsWerePutToTheReading(unittest.TestCase):
                 self.assertIn(expected, reading.WHY_TOKENS)
                 seen.add(expected)
         self.assertEqual(4, len(seen))
-        self.assertEqual(13, len(reading.WHY_TOKENS))
+        self.assertEqual(14, len(reading.WHY_TOKENS))
         self.assertIn(reading.WHY_STANDS, reading.WHY_TOKENS)
 
 
@@ -2207,6 +2207,150 @@ class WhatACheckLetsAReadingSayAboutYourExpectedOutput(AClaudeCodeReadingProduce
         row = self._output([WORDS_FACT, passed, failed], "consistent", [2, 3])
         self.assertEqual(reading.RESULT_CONSISTENT, row["result"])
         self.assertEqual(("check-1",), row["cites"])
+
+
+class ALineAboutWhatTheAgentTellsYouCannotBeShown(AClaudeCodeReadingProducer):
+    """Owner ruling 2026-10-01, DRC-4742. A record can show that a check ran and
+    passed; it cannot show what the agent then told the reader, so a passing
+    check never makes `consistent` an outcome line whose subject is the agent's
+    account. The demotion only ever moves toward abstaining."""
+
+    FAILED_LINE = "node --test tests/game.test.js is run once, unpiped, and its counts are reported"
+
+    def _read(
+        self,
+        line: str,
+        token: str,
+        *,
+        check: str = "passed",
+        goal: str = "",
+        on: str = "line_1",
+        cites: tuple[int, ...] = (2,),
+    ) -> Any:
+        answer = json.dumps({on: {"result": token, "cites": list(cites), "detail": "the suite"}})
+        facts = [WORDS_FACT, check_fact(result=check, summary="node --test tests/game.test.js")]
+        assessment, why, _spent = reading.produce(
+            cast("Any", self.config),
+            {"harness": "claude", "sid": "s1", "state": "working", "ended_at": None},
+            [{"n": 1, "at": 50.0, "goal": goal or "add retry to the webhook", "output": line}],
+            [*facts, AGENT_FACT],
+            now=200.0,
+            stamp_text="read at 10:00",
+            model=self._model(answer),
+            tool_output=ADMITTED,
+            read_lines=True,
+        )
+        self.assertEqual("", why)
+        return cast("Any", assessment)["criteria"][on]
+
+    def test_the_measured_line_with_a_passing_check_is_not_verifiable(self) -> None:
+        row = self._read(self.FAILED_LINE, "consistent")
+        self.assertEqual(reading.RESULT_UNVERIFIABLE, row["result"])
+        self.assertEqual(reading.WHY_TELLS_THE_PERSON, row["why"])
+        self.assertEqual((), row["cites"])
+        self.assertEqual(self.FAILED_LINE, row["clause"])
+
+    def test_a_telling_verb_past_the_display_cap_is_still_read(self) -> None:
+        # The clause published on the row is capped at 240 characters; the rule
+        # reads the whole line, so a verb past the cap cannot escape it.
+        line = "node --test tests/game.test.js " + "runs every case " * 20 + "and is reported"
+        self.assertGreater(len(line), self.config.annotation_text_cap_chars)
+        row = self._read(line, "consistent")
+        self.assertEqual(reading.RESULT_UNVERIFIABLE, row["result"])
+        self.assertEqual(reading.WHY_TELLS_THE_PERSON, row["why"])
+        self.assertNotIn("reported", row["clause"])
+
+    def test_a_departure_on_the_same_line_stands(self) -> None:
+        row = self._read(self.FAILED_LINE, "departure", check="failed")
+        self.assertEqual(reading.RESULT_DEPARTURE, row["result"])
+        self.assertEqual(("check-1",), row["cites"])
+
+    def test_a_line_resting_only_on_the_agents_account_keeps_its_own_reason(self) -> None:
+        row = self._read(self.FAILED_LINE, "consistent", cites=(3,))
+        self.assertIn("All tests pass now", self.prompts[0])
+        self.assertEqual(reading.RESULT_UNVERIFIABLE, row["result"])
+        self.assertEqual(reading.WHY_NO_WORK_SHOWN, row["why"])
+
+    def test_a_line_without_a_telling_verb_keeps_its_consistent(self) -> None:
+        row = self._read("node --test tests/game.test.js passes", "consistent")
+        self.assertEqual(reading.RESULT_CONSISTENT, row["result"])
+        self.assertEqual(("check-1",), row["cites"])
+
+    def test_a_goal_that_mentions_a_report_is_not_touched(self) -> None:
+        row = self._read(
+            "node --test tests/game.test.js passes",
+            "consistent",
+            goal="fix the retry and report the test counts",
+            on=reading.CONSTRAINT_GOAL,
+        )
+        self.assertEqual(reading.RESULT_CONSISTENT, row["result"])
+        self.assertEqual(("check-1",), row["cites"])
+
+    def test_every_telling_form_is_withdrawn_whatever_its_case(self) -> None:
+        lines = (
+            "the agent reports the counts",
+            "it reported the counts",
+            "the counts are reported.",
+            "Reporting the counts back",
+            "the agent tells me the counts",
+            "you are told the counts",
+            "the agent TELL you which tests ran",
+            "it explains why the test was flaky",
+            "it explained the failure",
+            "the agent summarises the run",
+            "it summarized the run",
+            "a summarising note on the run",
+            "it says the suite ran once",
+            "the agent said which tests ran",
+            "it describes the fixture",
+            "the run is described",
+            "it mentions the skipped test",
+            "the agent mentioned the skip",
+            "let me know the counts",
+            "Let   us know when it passes",
+            "it will let you know",
+            "it lets you know the counts",
+            "the agent lets us know",
+            "letting me know which tests ran",
+            # The ruling accepts over-abstention, and these are its exact edges: a
+            # tool or argument named by a telling word is withdrawn too, and so is
+            # a path whose telling word is not followed by `.` or `/` and a word.
+            "the CLI reports 0 failures",
+            "pytest --report passes",
+            "npm run report passes",
+            "describe blocks pass",
+            "src/report exists",
+            "~/report exists",
+            "report-card.js renders",
+        )
+        for line in lines:
+            with self.subTest(line=line):
+                self.prompts.clear()
+                row = self._read(line, "consistent")
+                self.assertEqual(reading.RESULT_UNVERIFIABLE, row["result"])
+                self.assertEqual(reading.WHY_TELLS_THE_PERSON, row["why"])
+
+    def test_a_word_that_only_contains_a_telling_verb_is_not_one(self) -> None:
+        # Whole words only: a noun built on the stem names a thing, not what the
+        # agent told the reader. "report" itself still matches, noun or verb,
+        # which is the safe direction.
+        lines = (
+            "the reporter module writes JSON",
+            "reportage of the suite is in CI",
+            "the sayings file is parsed",
+            "tests/test_report_counts.js passes",
+            "the teller widget renders",
+            "the essay page renders",
+            "an untold edge case is covered",
+            "report.csv exists",
+            "out/reports/summary.md is written",
+            "let them know is not a phrase this matches",
+        )
+        for line in lines:
+            with self.subTest(line=line):
+                self.prompts.clear()
+                row = self._read(line, "consistent")
+                self.assertEqual(reading.RESULT_CONSISTENT, row["result"])
 
 
 class YourOwnWordsAreAlwaysInThePrompt(unittest.TestCase):

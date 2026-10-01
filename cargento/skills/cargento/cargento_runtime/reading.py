@@ -202,6 +202,9 @@ WHY_CHECK_READ_INCOMPLETE = "check-read-incomplete"
 # room in the prompt, so Expected Output was not posed for want of room rather
 # than for want of work.
 WHY_CHECKS_NOT_READ = "checks-not-read"
+# An outcome line about what the agent tells the reader, which no record can
+# show, whatever check passed (owner ruling 2026-10-01, DRC-4742).
+WHY_TELLS_THE_PERSON = "tells-the-person"
 WHY_TOKENS = (
     WHY_STANDS,
     WHY_NOT_ASKED,
@@ -216,6 +219,7 @@ WHY_TOKENS = (
     WHY_CHANGED_AFTER_CHECK,
     WHY_CHECK_READ_INCOMPLETE,
     WHY_CHECKS_NOT_READ,
+    WHY_TELLS_THE_PERSON,
 )
 
 # Rule 7 turns on who wrote an evidence entry, so the answer is a closed
@@ -1956,6 +1960,36 @@ def _rests_on_nothing(result: str, name: str, cited: Sequence[LedgerEntry]) -> s
     return WHY_STANDS
 
 
+# Whole words, so "reporter" and "sayings" name things and stay out; "report"
+# matches as a noun too, which abstains more often and never less. The one
+# exclusion is a word followed by `.` or `/` and a word character, such as
+# "report.csv exists" (an existing fixture here). Nothing else about a path or a
+# tool name is read: "src/report" and "npm run report" still abstain.
+_TELLS_THE_PERSON = re.compile(
+    r"\b(?:report(?:s|ed|ing)?|tell(?:s|ing)?|told|explain(?:s|ed|ing)?"
+    r"|summari[sz](?:e|es|ed|ing)|say(?:s|ing)?|said|describ(?:e|es|ed|ing)"
+    r"|mention(?:s|ed|ing)?|let(?:s|ting)?\s+(?:me|us|you)\s+know)\b(?![./]\w)",
+    re.IGNORECASE,
+)
+
+
+def _about_what_the_agent_tells(result: str | None, name: str, line_text: str) -> bool:
+    """A `consistent` on an outcome line whose subject is what the agent tells the reader.
+
+    A record can show a check ran and passed; nothing in it shows what the agent
+    then said, so the verdict is withdrawn. Measured: the third scored Claude Code
+    qualification run took "... and its counts are reported" as consistent on a
+    passing check after #450's prompt wording had already said it could not.
+    Owner ruling 2026-10-01, DRC-4742, chosen over more prompt wording:
+    [DEC-23](docs/design-reading-a-session.md#amended-2026-10-01-a-line-about-what-the-agent-tells-you-cannot-be-shown).
+    """
+    return (
+        result == RESULT_CONSISTENT
+        and is_outcome_line(name)
+        and _TELLS_THE_PERSON.search(line_text) is not None
+    )
+
+
 def _evidence_rules(
     result: str,
     name: str,
@@ -1963,6 +1997,7 @@ def _evidence_rules(
     *,
     window_start: float,
     unread_failures: Sequence[LedgerEntry],
+    line_text: str = "",
 ) -> tuple[list[LedgerEntry], str]:
     """The entries a verdict rests on, and which rule it fails, as its `why` token.
 
@@ -1996,10 +2031,15 @@ def _evidence_rules(
         and any(check_supports(entry, RESULT_DEPARTURE, window_start) for entry in unread_failures)
     ):
         why = WHY_FAILED_CHECK_UNREAD
+    # Last, and only where nothing above fired, so a line resting only on the
+    # agent's account keeps rule 7's `no-work-shown`.
+    if not why and _about_what_the_agent_tells(result, name, line_text):
+        why = WHY_TELLS_THE_PERSON
     withdrawn = why in {
         WHY_CHECK_DOES_NOT_SHOW_IT,
         WHY_CHANGED_AFTER_CHECK,
         WHY_CHECK_READ_INCOMPLETE,
+        WHY_TELLS_THE_PERSON,
     }
     return ([] if withdrawn else supporting), why
 
@@ -2013,8 +2053,13 @@ def _resolve_one(
     detail_cap_chars: int,
     window_start: float = 0.0,
     unread_failures: Sequence[LedgerEntry] = (),
+    line_text: str | None = None,
 ) -> Criterion:
     """One constraint's criterion, with every server-side rule applied.
+
+    `clause` is the constraint's text as the row publishes it, capped for
+    display. `line_text` is the whole of it, which the rules read so nothing
+    past the cap escapes them; it defaults to `clause`.
 
     Each demotion is one-way: a criterion only ever moves toward
     `not verifiable from available evidence`, never away from it, and never
@@ -2048,7 +2093,12 @@ def _resolve_one(
         why = WHY_UNCITED
     if result and result != RESULT_UNVERIFIABLE:
         cited, rests_on_nothing = _evidence_rules(
-            result, name, cited, window_start=window_start, unread_failures=unread_failures
+            result,
+            name,
+            cited,
+            window_start=window_start,
+            unread_failures=unread_failures,
+            line_text=clause if line_text is None else line_text,
         )
         if rests_on_nothing:
             result, why = RESULT_UNVERIFIABLE, rests_on_nothing
@@ -2173,6 +2223,7 @@ def resolve(
             detail_cap_chars=detail_cap_chars,
             window_start=window_start,
             unread_failures=selection.unread_failures,
+            line_text=clauses[name],
         )
     return out
 

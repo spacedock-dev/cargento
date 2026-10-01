@@ -422,6 +422,40 @@ class FloorTest(unittest.TestCase):
         self.assertEqual(got.cites, ("c1",))
 
 
+class ALineAboutWhatTheAgentTellsYouIsNeverShownTest(unittest.TestCase):
+    """DRC-4742: a stored `consistent` on a line about what the agent tells the
+    reader, stored before the resolver withdrew it, is not counted as shown."""
+
+    LINE = "node --test is run once, unpiped, and its counts are reported"
+
+    def test_a_stored_consistent_on_a_telling_line_is_not_shown(self) -> None:
+        got = levels.analysis_level(SUPPORTED, PASSING, outcome_lines=1, lines=(self.LINE,))
+        self.assertEqual(levels.NOT_ENOUGH, got.level)
+        self.assertNotIn("c1", got.cites)
+
+    def test_the_whole_line_is_read_not_the_capped_clause_stored_beside_it(self) -> None:
+        line = "node --test " + "runs every case " * 20 + "and is reported"
+        stored = a_reading(
+            goal=criterion(reading.RESULT_CONSISTENT, "m1"),
+            line_1={**criterion(reading.RESULT_CONSISTENT, "c1"), "clause": line[:240]},
+        )
+        got = levels.analysis_level(stored, PASSING, outcome_lines=1, lines=(line,))
+        self.assertEqual(levels.NOT_ENOUGH, got.level)
+
+    def test_without_the_lines_the_stored_clause_is_read(self) -> None:
+        stored = a_reading(
+            goal=criterion(reading.RESULT_CONSISTENT, "m1"),
+            line_1={**criterion(reading.RESULT_CONSISTENT, "c1"), "clause": self.LINE},
+        )
+        self.assertEqual(levels.NOT_ENOUGH, analyze(stored, PASSING).level)
+
+    def test_a_line_without_a_telling_verb_still_meets_the_floor(self) -> None:
+        got = levels.analysis_level(
+            SUPPORTED, PASSING, outcome_lines=1, lines=("node --test passes",)
+        )
+        self.assertEqual(levels.NONE_OR_LOW, got.level)
+
+
 class ExtremeTest(unittest.TestCase):
     """Extreme: both of High's conditions hold."""
 

@@ -7620,11 +7620,16 @@ const stored = why => nextCockpitReadingShape(
   annotation, [], "").criteria.find(row => row.key === "output").why;
 console.log(JSON.stringify({shown: stored("check-does-not-show-it"),
   unread: stored("failed-check-unread"), changed: stored("changed-after-check"),
-  crowded: stored("checks-not-read")}));
+  crowded: stored("checks-not-read"), tells: stored("tells-the-person")}));
 """
         )
         assert isinstance(out, dict)
         self.assertIn("does not show this", out["shown"])
+        self.assertEqual(
+            "This line is about what the session told you, and nothing in the record can show "
+            "that, so it reads as not verifiable.",
+            out["tells"],
+        )
         self.assertEqual(
             "A check that failed was not read, because the reading had no room for it, so "
             "nothing here says the output is consistent.",
