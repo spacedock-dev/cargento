@@ -580,9 +580,13 @@ raise SystemExit(status)
         self.assertEqual([], self.received)
 
     def test_completed_late_success_stays_discarded_before_real_process_exit(self) -> None:
+        # The matcher finishes only once main has returned, so its success is late
+        # by construction. A 30 ms sleep raced the 5 ms join instead, and a loaded
+        # macOS runner returned the report after it (DRC-4659).
         proc = self.timed_hook(
-            "event_hook.command_shape = lambda _: (time.sleep(.030), 'git_force_push')[1]",
-            after_main="while 'matcher_end' not in marks: time.sleep(.001)",
+            "import threading; late = threading.Event()\n"
+            "event_hook.command_shape = lambda _: (late.wait(5), 'git_force_push')[1]",
+            after_main="late.set()\nwhile 'matcher_end' not in marks: time.sleep(.001)",
         )
         self.assertEqual((0, b"", b""), (proc.returncode, proc.stdout, proc.stderr))
         self.assertEqual("git_force_push", self.last_phases["lexical_result"])

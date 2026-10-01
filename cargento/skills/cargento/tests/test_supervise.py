@@ -741,13 +741,17 @@ class CancelKillsTheCliAndNothingElseTest(unittest.TestCase):
         self.assertFalse(worker.is_alive())
 
     def test_a_cancel_of_an_unwatchable_exit_ends_the_call_without_a_timeout(self) -> None:
-        """The first kill misses; the call's own reap must still end it, and return."""
+        """Cancel's kill misses; the call's own reap must still end it, and return."""
         real = supervise.Group._kill
-        calls: list[int] = []
+        canceller = threading.current_thread()
 
+        # Only Cancel's own kill misses. "The first call misses" was a race:
+        # `cancel` sets its flag before it tries the lock, so a call thread that
+        # wakes in that gap kills first, takes the miss, and leaves the group
+        # running out the reap (DRC-4743, reproduced every time by holding
+        # `cancel` 0.2 s between the two). The CLI was never killed at all.
         def kill(group: supervise.Group) -> bool:
-            calls.append(1)
-            return False if len(calls) == 1 else real(group)
+            return False if threading.current_thread() is canceller else real(group)
 
         with (
             mock.patch.object(supervise, "_state", return_value=supervise._UNKNOWN),
