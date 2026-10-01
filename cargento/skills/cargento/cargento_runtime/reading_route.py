@@ -82,6 +82,11 @@ class Route(TypedDict):
     reason: str
     note: str
     disclosure: str
+    # The disclosure as the sentences it is built from, in order, each
+    # unreworded: `" ".join(disclosure_parts) == disclosure`, which a test
+    # holds. For a page that shows it as a short list rather than a block;
+    # empty where there is no disclosure.
+    disclosure_parts: list[str]
     fallback: bool
     # Where tool output would reach as configured on this machine, or "" where
     # the build cannot name it, and the sentence saying so. Both are empty
@@ -342,27 +347,49 @@ def _tool_output_sentence(provider: str, harness: str, where: str) -> str:
     )
 
 
-def _base_disclosure(provider: str) -> str:
-    """What a reading sends and where, named for the provider that receives it.
+def _base_parts(provider: str) -> list[str]:
+    """What a reading sends and where, named for the provider that receives it, part by part.
 
     The Codex wording is the one DRC-4640 shipped with its provider spelt
     out. An earlier draft said "Nothing leaves it"; the harness's own sign-in
     reaches its vendor, so this is a path off the machine, and a consent
     string is the worst place for the reassuring half to be the false half.
+
+    Parts rather than one string since DRC-4758: what is sent, where it goes
+    and whose capacity it spends, what the CLI adds, the expected-outcome
+    scope and the never-a-verification caveat. The joined text is the
+    disclosure byte for byte, so splitting it rewords nothing.
     """
     label, vendor = LABELS[provider], VENDORS[provider]
-    return (
-        "A reading sends the goal you chose, and a bounded list of entries from the "
-        f"observed record, to a {label} subprocess. The entries include your own messages "
-        "in that record in full, up to 1,000 characters each, with credential shapes "
-        "redacted; where the record is too long for that, your oldest messages go by their "
-        f"first sentence. {label} uses its own authentication to "
-        f"reach {vendor}, so this is one of the paths that sends session content off this "
-        f"machine and spends your {label} capacity.{_CLI_ADDS.get(provider, '')} "
-        "Your expected outcome lines are sent only when an entry sent is work evidence, and on "
-        "no other reading. The reading is a model's account of the evidence it was given, never "
-        "a verification that the work was done."
-    )
+    cli_adds = _CLI_ADDS.get(provider, "").strip()
+    return [
+        (
+            "A reading sends the goal you chose, and a bounded list of entries from the "
+            f"observed record, to a {label} subprocess. The entries include your own messages "
+            "in that record in full, up to 1,000 characters each, with credential shapes "
+            "redacted; where the record is too long for that, your oldest messages go by their "
+            "first sentence."
+        ),
+        (
+            f"{label} uses its own authentication to "
+            f"reach {vendor}, so this is one of the paths that sends session content off this "
+            f"machine and spends your {label} capacity."
+        ),
+        *([cli_adds] if cli_adds else []),
+        (
+            "Your expected outcome lines are sent only when an entry sent is work evidence, and on "
+            "no other reading."
+        ),
+        (
+            "The reading is a model's account of the evidence it was given, never "
+            "a verification that the work was done."
+        ),
+    ]
+
+
+def _base_disclosure(provider: str) -> str:
+    """`_base_parts` as the one paragraph a route's disclosure carries after its note."""
+    return " ".join(_base_parts(provider))
 
 
 # What the Claude Code CLI adds to every reading on its own, measured on 2.1.283
@@ -408,7 +435,7 @@ def _route(
 ) -> Route:
     reached = where(provider) if provider and harness in TOOL_OUTPUT_HARNESSES else ""
     sentence = _tool_output_sentence(provider, harness, reached)
-    disclosure = f"{note} {_base_disclosure(provider)}" if provider else ""
+    parts = [note, *_base_parts(provider), *([sentence] if sentence else [])] if provider else []
     return {
         "harness": harness,
         "provider": provider,
@@ -417,7 +444,8 @@ def _route(
         "model": MODELS.get(provider, ""),
         "reason": reason,
         "note": note,
-        "disclosure": f"{disclosure} {sentence}" if disclosure and sentence else disclosure,
+        "disclosure": " ".join(parts),
+        "disclosure_parts": parts,
         "fallback": fallback,
         "destination": reached,
         "tool_output": sentence,

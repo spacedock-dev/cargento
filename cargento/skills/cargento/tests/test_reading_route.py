@@ -272,6 +272,35 @@ class EveryMachineGetsExactlyOneTrueAnswer(unittest.TestCase):
                 self.assertTrue(route["disclosure"].startswith(route["note"]))
                 self.assertIn("never a verification", route["disclosure"])
 
+    def test_the_disclosure_parts_join_to_the_disclosure_word_for_word(self) -> None:
+        # DRC-4758: the consent step shows the parts as a short list, so the
+        # list must be the disclosure itself and not a rewording of it.
+        for harness, claude, codex, route in self._all():
+            with self.subTest(harness=harness, claude=claude, codex=codex):
+                parts = route["disclosure_parts"]
+                self.assertEqual(route["disclosure"], " ".join(parts))
+                if not route["provider"]:
+                    self.assertEqual([], parts)
+                    continue
+                self.assertEqual(route["note"], parts[0])
+                self.assertTrue(all(part and part == part.strip() for part in parts))
+                self.assertTrue(parts[-1].endswith("."))
+                if route["tool_output"]:
+                    self.assertEqual(route["tool_output"], parts[-1])
+                # One sentence carries the caveat, so it is never lost in a split.
+                self.assertEqual(1, sum("never a verification" in part for part in parts), parts)
+
+    def test_the_parts_for_a_claude_code_reading_hold_what_its_cli_adds_on_their_own(
+        self,
+    ) -> None:
+        parts = reading_route._base_parts("claude")
+        added = [part for part in parts if "device identifier" in part]
+        self.assertEqual(1, len(added))
+        self.assertTrue(added[0].startswith("Claude Code also sends"))
+        self.assertFalse(
+            any("device identifier" in part for part in reading_route._base_parts("codex"))
+        )
+
     def test_a_claude_code_reading_discloses_what_its_cli_adds(self) -> None:
         # Owner ruling of 2026-09-27 on the review's Sent F1: under OAuth
         # sign-in the CLI adds the account's email address and ID to every
