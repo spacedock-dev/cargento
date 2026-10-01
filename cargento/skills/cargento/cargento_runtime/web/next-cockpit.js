@@ -7615,7 +7615,10 @@ function nextPromptReadingRefusal(session, annotation, model){
   if(nextIntentUnsaved(session, annotation)) return NEXT_INTENT_EDITED;
   if(!String(annotation && annotation.goal || "").trim()){
     const draft = nextIntentDraft(session, annotation);
-    const candidate = draft || nextPromptCandidate(session);
+    /* Over a control-first session the latest prompt is no goal either, so
+       the press falls to the refusal for nothing typed (DRC-4766). */
+    const candidate = draft ||
+      (nextIntentOpenedWithControl(session) ? null : nextPromptCandidate(session));
     if(candidate && candidate.at == null){
       return "The prompt time was not published, so it cannot be adopted. Type a goal to analyze drift.";
     }

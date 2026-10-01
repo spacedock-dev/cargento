@@ -136,6 +136,18 @@ class AControlIsNeverAdoptedAsTheFirstPromptTest(unittest.TestCase):
         row["first_prompt_control"] = False
         self.assertEqual(("/clear", 10.0), annotation_store.prompt_candidate(row, "first-prompt"))
 
+    def test_no_goal_over_a_control_has_no_floor_as_the_page_has_none(self) -> None:
+        row = {
+            "harness": "claude",
+            "first_prompt": "/clear",
+            "first_prompt_at": 10.0,
+            "first_prompt_control": True,
+            "instruction": {"label": "asked", "text": LATER, "at": 20.0},
+        }
+        self.assertIsNone(annotation_store.direction_floor(None, row))
+        row["first_prompt_control"] = False
+        self.assertEqual(10.0, annotation_store.direction_floor(None, row))
+
 
 CONTROL = '__s.first_prompt = "/clear"; __s.first_prompt_control = true;\n'
 
@@ -193,3 +205,18 @@ class ThePageDraftsNoGoalOverAControlTest(_DraftPage):
         self.assertIn("Add a goal", text)
         self.assertNotIn("/clear", text)
         self.assertNotIn(LATEST, text)
+
+    def test_analyze_over_a_control_first_session_sends_nothing_and_says_nothing_is_typed(
+        self,
+    ) -> None:
+        # The latest prompt has a time, so a fallback to it once read as a goal and let the
+        # press through with nothing to adopt (lens review, DRC-4766).
+        out = self.drive(
+            CONTROL
+            + "__semantic.facts = __semantic.facts.filter(f => f.type !== 'user_message');\n",
+            '__press("reading-ask");\nawait __settle();\n'
+            "console.log(JSON.stringify({posts:__posts, html:__els.app.innerHTML}));",
+        )
+        assert isinstance(out, dict)
+        self.assertEqual([], out["posts"])
+        self.assertIn("Nothing has been typed for this session", visible_text(out["html"]))

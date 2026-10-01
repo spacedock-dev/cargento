@@ -1991,6 +1991,9 @@ def direction_floor(
     latest = entry["revisions"][-1] if entry and entry["revisions"] else None
     if latest and str(latest.get("goal") or "").strip():
         return float(latest.get("goal_source_at") or latest.get("goal_saved_at") or latest["at"])
+    # A control-first session drafts nothing, so it has no draft time either (DRC-4766).
+    if row.get("first_prompt_control") is True:
+        return None
     for source in ("first-prompt", "latest-prompt"):
         text, at = prompt_candidate(dict(row), source)
         if text and at is not None:
