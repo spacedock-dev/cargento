@@ -1729,17 +1729,11 @@ class _RequestHandler(BaseHTTPRequestHandler):
         the all-sessions collection, because a reader can save from that view
         and the default one leaves an aged session out.
         """
-        application = self.server.application
         try:
-            _, body = application.collect_json(show_all=True)
-            rows = [
-                row
-                for row in json.loads(body)["sessions"]
-                if row.get("harness") == harness and row.get("sid") == sid
-            ]
-            if len(rows) != 1:
+            row = self._published_row(harness, sid)
+            if row is None:
                 return None
-            facts = self._session_facts(rows[0])
+            facts = self._session_facts(row)
         except Exception:  # noqa: BLE001 (an unreadable record costs the window, never the save)
             return None
         return runtime_reading.typed_window_start(facts, harness, sid, saved_at)
@@ -2152,20 +2146,34 @@ class _RequestHandler(BaseHTTPRequestHandler):
         return next((choice for choice in choices if choice["fact_id"] == fact_id), None)
 
     def _session_row(self, harness: str, sid: str) -> dict[str, Any] | None:
-        """This session's published row from a fresh all-sessions collection, or None.
+        """This session's published row, or None. See `_published_row`."""
+        return self._published_row(harness, sid)
 
-        All sessions, for `_typed_window_start`'s reason: a reader can act from
-        that view, and the default one leaves an aged session out.
+    def _published_row(self, harness: str, sid: str) -> dict[str, Any] | None:
+        """This session's row as the board publishes it, or None.
+
+        The default variant first, which is warm within `collect_memo_sec`, and
+        the all-sessions one only when the default lacks the row: a reader can
+        act from that view, and the default one leaves an aged session out. No
+        clear, so the staleness floor is exactly a GET's (owner, 2026-10-02:
+        the clear made every save a full all-sessions collection, about 900 ms
+        of it). A row that old is what the page drew from, and what a save
+        reads off it does not age: a direction's text and a window start's
+        facts are read from the transcript again whatever the row's age, and
+        the row supplies only identity, paths and the prompt fields
+        `direction_floor` reads. The adoption arm keeps its own clear.
         """
         application = self.server.application
-        application.state.snapshot.clear()
-        _, body = application.collect_json(show_all=True)
-        rows = [
-            row
-            for row in json.loads(body)["sessions"]
-            if row.get("harness") == harness and row.get("sid") == sid
-        ]
-        return rows[0] if len(rows) == 1 else None
+        for show_all in (False, True):
+            _, body = application.collect_json(show_all=show_all)
+            rows = [
+                row
+                for row in json.loads(body)["sessions"]
+                if row.get("harness") == harness and row.get("sid") == sid
+            ]
+            if rows:
+                return rows[0] if len(rows) == 1 else None
+        return None
 
     def _later_direction(
         self, row: dict[str, Any], fact_id: str, adopt_source: str | None = None

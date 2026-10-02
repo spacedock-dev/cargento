@@ -59,8 +59,11 @@ class Snapshot:
         *,
         now: float = 0.0,
         generation: int | None = None,
-    ) -> Revision:
+    ) -> tuple[Revision, bool]:
         """Mint a revision for `body`, and keep it unless a `clear` came after `generation`.
+
+        Returns the revision and whether the body was kept: a body not kept is
+        never served again, so the caller does not announce it.
 
         A body collected across a `clear` is answered to the request that
         collected it and never kept. A collection reads its stores near its
@@ -73,9 +76,10 @@ class Snapshot:
         with self._lock:
             self._counter += 1
             revision = (self.server_started, self._counter)
-            if generation is None or generation == self._generation:
+            kept = generation is None or generation == self._generation
+            if kept:
                 self._entries[key] = (revision, body, now)
-            return revision
+            return revision, kept
 
     def current(self, key: SnapshotKey) -> tuple[Revision, bytes] | None:
         with self._lock:

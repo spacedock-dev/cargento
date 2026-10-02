@@ -1602,11 +1602,17 @@ class Application:
             # write it may have missed, so its body is not kept (DRC-4760).
             generation = self.snapshot.generation()
             body = json.dumps(self.collect(show_all=show_all)).encode()
-            revision = self.snapshot.publish(key, body, now=self.clock(), generation=generation)
-            # Only a freshly minted revision is worth announcing. A warm reuse
-            # returns above without reaching this line, so a connected client is
-            # never woken for a state it already has.
-            self.state.streams.publish(revision)
+            revision, kept = self.snapshot.publish(
+                key, body, now=self.clock(), generation=generation
+            )
+            # Only a freshly minted revision that was kept is worth announcing. A
+            # warm reuse returns above without reaching this line, so a connected
+            # client is never woken for a state it already has; and a body that
+            # crossed a clear is never served again, so a tab woken for it would
+            # fetch the next collection instead (owner, 2026-10-02: two of one
+            # save's four GETs). The next kept collection announces.
+            if kept:
+                self.state.streams.publish(revision)
             return revision, body
 
     def _fresh_snapshot(

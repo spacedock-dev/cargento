@@ -56,6 +56,13 @@ const __flipWrites = () => wrote("next-cockpit-cue-status").filter(text =>
   text.startsWith("Analyze is open") || text.startsWith("Analyze closed"));
 """
 
+
+def ask_tag(html: str) -> str:
+    found = re.search(r"<button[^>]*reading-ask[^>]*>", html)
+    assert found is not None, "no Analyze control drawn"
+    return found.group(0)
+
+
 IDLE_FIRST = "__setNow(1000); __s.reading_eligibility = IDLE;\n"
 
 TIMERS = """
@@ -99,9 +106,7 @@ console.log(JSON.stringify({inert:__ask(inert), opened, again, said:__flipWrites
         )
         self.assertIn('aria-disabled="true"', out["inert"])
         drift = drift_of(out["opened"])
-        self.assertNotIn(
-            'aria-disabled="true"', re.search(r"<button[^>]*reading-ask[^>]*>", drift)[0]
-        )
+        self.assertNotIn('aria-disabled="true"', ask_tag(drift))
         self.assertIn(OPEN_RUNNING, visible_text(drift))
         line = re.search(r'<p class="[^"]*next-cockpit-reading-change[^"]*"[^>]*>', drift)
         assert line is not None
@@ -207,9 +212,7 @@ __s.reading_eligibility = {ok:false, reason:"stop-settling", until:1008, sentenc
         self.assertIn("Ready in a few seconds.", visible_text(drift))
         self.assertIn(5000, out["due"])
         opened = drift_of(out["opened"])
-        self.assertNotIn(
-            'aria-disabled="true"', re.search(r"<button[^>]*reading-ask[^>]*>", opened)[0]
-        )
+        self.assertNotIn('aria-disabled="true"', ask_tag(opened))
         self.assertIn(OPEN_LAST_TURN, visible_text(opened))
         self.assertNotIn("next-wait-dot", opened)
         self.assertEqual([OPEN_LAST_TURN], out["said"])

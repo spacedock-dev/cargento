@@ -3989,6 +3989,49 @@ class ReadingRouteTest(unittest.TestCase):
         self.assertEqual(200, status, body)
         self.assertEqual(1_700_000_040.0, self._saved_revision(config)["window_start"])
 
+    def test_a_readers_typed_save_does_not_collect_every_session_when_the_board_already_holds_the_row(
+        self,
+    ) -> None:
+        """Owner, 2026-10-02: a save took about 900 ms, a full all-sessions collection of it."""
+        config, state = self._runtime()
+        later = {
+            **self.FACT,
+            "fact_id": "f2",
+            "at": 1_700_000_040.0,
+            "source_session": {"harness": "claude", "sid": "s1"},
+        }
+        application = self._app(config, state, "claude", row=self.WAITING)
+        variants: list[bool] = []
+        collections: list[bool] = []
+        original = application.collect_json
+        collect = application.collect
+
+        def counted(*, show_all: bool) -> Any:
+            variants.append(show_all)
+            return original(show_all=show_all)
+
+        def collected(*, show_all: bool) -> Any:
+            collections.append(show_all)
+            return collect(show_all=show_all)
+
+        with (
+            self._counting_model(harness="claude", extra_facts=(later,)),
+            mock.patch.object(application, "collect_json", counted),
+            mock.patch.object(application, "collect", collected),
+            self._serving(application) as port,
+        ):
+            self._published_row(port, "claude")
+            before, collected_before = len(variants), len(collections)
+            status, body = self._save(
+                port, {"harness": "claude", "sid": "s1", "goal": "add retry to the webhook"}
+            )
+        self.assertEqual(200, status, body)
+        self.assertNotIn(True, variants[before:], "the save collected every session")
+        # The board's row is warm, so the save itself collects nothing: no clear forces one.
+        self.assertEqual([], collections[collected_before:])
+        # The row the board already held still opens the window at the latest message.
+        self.assertEqual(1_700_000_040.0, self._saved_revision(config)["window_start"])
+
     def test_a_save_whose_record_cannot_be_read_still_saves_and_reads_from_the_save(
         self,
     ) -> None:
