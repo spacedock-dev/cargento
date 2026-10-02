@@ -8349,13 +8349,17 @@ document.addEventListener("click", event => {
      !(popover.classList && popover.classList.contains("next-disclose--pop"))) return;
   const reduce = typeof window.matchMedia === "function" &&
     window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-  setTimeout(() => {
+  /* Two frames, not a zero timeout: measured in Chrome 156, a scroll asked for
+     before the opened body is laid out moves nothing. */
+  const later = typeof requestAnimationFrame === "function"
+    ? run => requestAnimationFrame(() => requestAnimationFrame(run)) : run => setTimeout(run, 0);
+  later(() => {
     if(!popover.open) return;
     const body = popover.querySelector(".next-disclose-body");
     if(body && typeof body.scrollIntoView === "function"){
       body.scrollIntoView({block:"nearest", behavior: reduce ? "auto" : "smooth"});
     }
-  }, 0);
+  });
 });
 
 /* A click outside an open popover closes it, as a menu does. The restore lane
