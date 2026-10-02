@@ -175,12 +175,15 @@ function nextObservedSession(source, asks, harness, generated, shared){
   const stuck = errors ? `${errors} tool failures in a row` +
     (failures ? ` · ${failures} failures this turn` : "") : "";
   const stopped = source.state === "idle" && nextNumber(source.finished_at) > 0;
-  const outcomeKnown = ended || stopped;
-  const outcomePrefix = ended ? "Session ended" : "Stop observed";
-  /* The outcome line above stays on observed stops; HOW IT LANDED also names
-     a stop Claude Code's transcript records, as the transcript's. */
-  const landing = nextObservedLanding(source, ended,
-    source.state === "idle" ? nextSessionStop(source) : null);
+  /* A stop Claude Code's transcript records is named as the transcript's, here
+     as in HOW IT LANDED beside it, so "Session facts" never says no stop was
+     observed next to a card naming one (verifier F6). */
+  const recordedStop = source.state === "idle" ? nextSessionStop(source) : null;
+  const transcriptStop = !stopped && Boolean(recordedStop && recordedStop.kind === "transcript");
+  const outcomeKnown = ended || stopped || transcriptStop;
+  const outcomePrefix = ended ? "Session ended"
+    : (stopped ? "Stop observed" : "Turn stop in Claude Code's transcript");
+  const landing = nextObservedLanding(source, ended, recordedStop);
   const gitKnown = typeof source.dirty === "boolean";
   const outcome = outcomeKnown ? outcomePrefix + (source.dirty === true ? " with uncommitted work" :
     (source.dirty === false ? "; git state clean" : "; git state not measured")) : "";

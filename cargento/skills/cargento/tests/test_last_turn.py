@@ -738,6 +738,37 @@ console.log(JSON.stringify({text:landed.endText, kind:landed.endKind,
         self.assertEqual("Reads the session up to its last turn against your intent.", out["hint"])
 
 
+class SessionFactsAgreeWithHowItLandedTest(NextPageJsHarness):
+    def test_session_facts_name_a_transcript_stop_rather_than_saying_none_was_observed(
+        self,
+    ) -> None:
+        """Verifier F6 (ui3): "Session facts: No stop or end observed" stood beside a HOW IT
+        LANDED card naming the transcript's stop, on the same idle Claude Code row."""
+        out = self._run_page_js(
+            """
+const row = {harness:"claude", sid:"s1", state:"idle", finished_at:null, turn_end_at:100,
+  ended_at:null};
+const facts = nextObservedSession(row, [], null, 200, 1);
+const hooked = nextObservedSession({...row, finished_at:100}, [], null, 200, 1);
+const none = nextObservedSession({...row, turn_end_at:null}, [], null, 200, 1);
+const codex = nextObservedSession({...row, harness:"codex"}, [], null, 200, 1);
+console.log(JSON.stringify({facts:facts.outcomeText, known:facts.outcomeKnown,
+  end:facts.landing.endText, hooked:hooked.outcomeText, none:none.outcomeText,
+  codex:codex.outcomeText}));
+""",
+            storage_prelude({}) + cockpit_tests.NextCockpitCompositionTest.FIXTURE,
+        )
+        self.assertNotIn("No stop or end observed", out["facts"])
+        self.assertTrue(out["facts"].startswith("Turn stop in Claude Code's transcript"))
+        self.assertTrue(out["known"])
+        self.assertIn("Claude Code's transcript shows the last turn finished", out["end"])
+        # An observed stop still says so; with no stop at all, and on a harness whose
+        # transcript stop is not read, the absence stands.
+        self.assertTrue(out["hooked"].startswith("Stop observed"))
+        self.assertEqual("No stop or end observed", out["none"])
+        self.assertEqual("No stop or end observed", out["codex"])
+
+
 class TheLastTurnLabelReadsATranscriptStopTest(NextPageJsHarness):
     def test_the_work_list_labels_the_turn_a_transcript_stop_closed(self) -> None:
         out = self._run_page_js(

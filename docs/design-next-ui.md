@@ -648,7 +648,10 @@ The outcome vocabulary has six readings, composed from two observed events and t
 
 A positive finite `ended_at` supports an end. Idle state with a positive `finished_at` supports a
 stop. An end takes precedence if both exist. A boolean `dirty` chooses dirty or clean; absent git
-measurement stays unknown. No stop or end yields `No stop or end observed`. These readings
+measurement stays unknown. Amended 2026-10-02 (verifier F6): on an idle Claude Code row with no
+observed stop, a `turn_end_at` its transcript records reads `Turn stop in Claude Code's transcript`,
+with the same git suffixes, so "Session facts" agrees with HOW IT LANDED beside it; it is named as
+the transcript's, never as an observed stop. No stop or end yields `No stop or end observed`. These readings
 establish neither readership, unpushed commits nor termination cause; a clean tree is not proof
 that the work succeeded.
 
