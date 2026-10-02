@@ -2371,7 +2371,11 @@ class ReaderStateInventoryTest(unittest.TestCase):
                 )
             }
         )
-        self.assertEqual(["overflow-wrap:anywhere", "overflow:auto", "overflow:hidden"], forms)
+        # `overflow:clip` joined with the accordion motion (owner, 2026-10-02): an open
+        # accordion's `::details-content` clips while it eases, and clipping scrolls nothing.
+        self.assertEqual(
+            ["overflow-wrap:anywhere", "overflow:auto", "overflow:clip", "overflow:hidden"], forms
+        )
         scroll_rules = re.findall(r"([^{}]+)\{([^{}]*overflow\s*:\s*auto[^{}]*)\}", styles)
         self.assertEqual([".pc-terminal-viewport"], [rule.strip() for rule, _ in scroll_rules])
         for form in forms:

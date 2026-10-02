@@ -317,7 +317,8 @@ function nextOperationsGroup(kind, title, label, sessions, renderer, empty, cave
   const rows = sessions.map(renderer).join("");
   const body = rows || `<p class="next-sessions-empty next-absence">${esc(empty)}</p>`;
   const lead = label ? `<p>${esc(label)}</p>` : "";
-  const why = caveat ? nextCockpitWhy(`sessions-${kind}-why`, caveat.summary, caveat.body) : "";
+  const why = caveat
+    ? nextCockpitWhy(`sessions-${kind}-why`, caveat.summary, caveat.body, {pop: true}) : "";
   return `<section class="next-operation-group next-operation-group--${kind}" ` +
     `data-next-operation-group="${kind}"><header><h2>${title}</h2>` +
     `${lead}${why}</header>${nextOperationsColumns(kind === "history")}` +

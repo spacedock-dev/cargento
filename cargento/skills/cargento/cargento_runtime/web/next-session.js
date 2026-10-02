@@ -688,8 +688,12 @@ function nextSessionView(project, harness, sid, openDisclosures = new Set()){
   const missingReentry = missing.length
     ? '<div class="next-session-reentry-none">' +
       `<span class="next-session-reentry-clause">${esc(missing.join(" · "))}</span>` +
-      `<details class="next-cockpit-why"${nextCockpitDisclosureAttr("reentry-why")}>` +
-      `<summary>Why</summary>${reentryLimit.resume}${noRaise ? reentryLimit.raise : ""}</details></div>`
+      /* A popover: this row is a flex row ending at the controls, and an
+         in-flow body widened the item to its paragraphs and dragged "Why"
+         492px left ([NUI-19](docs/design-next-ui.md#nui-19-a-caveat-has-three-tiers)). */
+      `<details class="next-cockpit-why next-disclose--pop"${nextCockpitDisclosureAttr("reentry-why")}>` +
+      `<summary>Why</summary><div class="next-disclose-body">${reentryLimit.resume}` +
+      `${noRaise ? reentryLimit.raise : ""}</div></details></div>`
     : "";
   const controls = nextSessionCopyControl(session) + nextSessionLinkControl(session) +
     nextSessionResumeControl(session) + raise;

@@ -51,6 +51,12 @@
   --sp-1:0.25rem; --sp-2:0.5rem; --sp-3:0.75rem; --sp-4:1rem; --sp-5:1.5rem; --sp-6:2rem; --sp-7:3rem;
   --sel-bg:color-mix(in oklab,var(--accent) 26%,transparent);
   --sel-bd:color-mix(in oklab,var(--accent) 52%,transparent);
+  /* disclosure motion: the "One disclosure system" block under COCKPIT owns why. A
+     dark scheme so a native select's open list matches the page, and
+     `interpolate-size` so an accordion can ease to `block-size:auto`; a
+     browser without it ignores the line and opens instantly. */
+  color-scheme:dark; interpolate-size:allow-keywords;
+  --disclose-dur:200ms; --disclose-pop-dur:160ms; --disclose-ease:ease-in-out;
 }
 *{box-sizing:border-box}
 /* 100%, deliberately not a pixel value. Naming a px root here would pin the
@@ -219,7 +225,7 @@ input::placeholder,textarea::placeholder{color:var(--ink2)}
 .next-menu{position:relative}
 .next-menu summary{display:flex;align-items:center;justify-content:center;min-block-size:44px;min-inline-size:44px;list-style:none;cursor:pointer;font-size:var(--fs-value)}
 .next-menu summary::-webkit-details-marker{display:none}
-.next-menu-items{position:absolute;z-index:1;right:0;top:26px;min-width:210px;padding:8px;border:1px solid var(--line);background:var(--panel)}
+.next-menu-items{position:absolute;z-index:1;right:0;top:calc(100% + 4px);min-width:210px;padding:8px;border:1px solid var(--line);background:var(--panel)}
 .next-menu button{min-block-size:44px;display:flex;justify-content:space-between;width:100%;padding:8px;text-align:left}
 .next-header nav[aria-label="Primary"] a:focus-visible,.next-menu summary:focus-visible,.next-menu button:focus-visible{outline:2px solid var(--ink);outline-offset:3px}
 .next-menu kbd{font-family:var(--mono);color:var(--ink2)}
@@ -1499,6 +1505,36 @@ details.next-cockpit-held-stamp[open]>span{display:block}
 .next-cockpit-why{margin:0}
 .next-cockpit-why>summary{color:var(--ink2);font:500 var(--fs-body)/1.55 var(--sans);max-width:var(--measure);cursor:pointer}
 .next-cockpit-why[open]>summary{margin-bottom:4px}
+/* One disclosure system (owner, 2026-10-02, asks 1 and 5;
+   [NUI-19](docs/design-next-ui.md#nui-19-a-caveat-has-three-tiers)). A summary in a flex row beside other content is a
+   popover, out of flow and anchored to its summary's end edge, so opening it
+   moves nothing; every other disclosure is an accordion whose height and fade
+   ease. Motion comes only from transitions on `::details-content`, which run
+   when the reader flips `open` on a node already drawn: the restore lane writes
+   `open` into the markup, so a poll's redraw starts open and replays nothing.
+   `@starting-style`, keyframes on `[open]` and a JS `toggle` animation all
+   replay on every poll, measured, and are not used. No transform on
+   `::details-content` either: it would become the popover body's containing
+   block and move the anchor. */
+:is([data-next-view-body="session"],[data-next-view-body="sessions"],[data-next-view-body="attention"]) details:is(.next-cockpit-why,[data-next-cockpit-disclosure],.next-attention-coverage-details):not(.next-menu):not(.next-cockpit-scope-switcher)>summary{list-style:none;inline-size:fit-content;max-inline-size:100%;cursor:pointer}
+:is([data-next-view-body="session"],[data-next-view-body="sessions"],[data-next-view-body="attention"]) details:is(.next-cockpit-why,[data-next-cockpit-disclosure],.next-attention-coverage-details):not(.next-menu):not(.next-cockpit-scope-switcher)>summary::-webkit-details-marker{display:none}
+:is([data-next-view-body="session"],[data-next-view-body="sessions"],[data-next-view-body="attention"]) details:is(.next-cockpit-why,[data-next-cockpit-disclosure],.next-attention-coverage-details):not(.next-menu):not(.next-cockpit-scope-switcher)>summary::after{content:"";display:inline-block;inline-size:.4em;block-size:.4em;margin-inline-start:.45em;border-inline-end:1.5px solid currentColor;border-block-end:1.5px solid currentColor;rotate:45deg;translate:0 -.2em;transition:rotate var(--disclose-dur) var(--disclose-ease),translate var(--disclose-dur) var(--disclose-ease)}
+:is([data-next-view-body="session"],[data-next-view-body="sessions"],[data-next-view-body="attention"]) details:is(.next-cockpit-why,[data-next-cockpit-disclosure],.next-attention-coverage-details):not(.next-menu):not(.next-cockpit-scope-switcher)[open]>summary::after{rotate:225deg;translate:0 .1em}
+:is([data-next-view-body="session"],[data-next-view-body="sessions"],[data-next-view-body="attention"]) details.next-disclose--pop{position:relative;z-index:3;flex:none;inline-size:max-content;max-inline-size:100%}
+:is([data-next-view-body="session"],[data-next-view-body="sessions"],[data-next-view-body="attention"]) details.next-disclose--pop>summary{inline-size:max-content}
+/* Overrides the 4px `.next-cockpit-why[open]>summary` gap, which would shift the summary. */
+:is([data-next-view-body="session"],[data-next-view-body="sessions"],[data-next-view-body="attention"]) details.next-disclose--pop[open]>summary{margin-bottom:0}
+:is([data-next-view-body="session"],[data-next-view-body="sessions"],[data-next-view-body="attention"]) details.next-disclose--pop>.next-disclose-body{position:absolute;inset-block-start:calc(100% + 4px);inset-inline-end:0;inline-size:min(var(--measure),calc(100vw - 32px));padding:10px 12px;border:1px solid var(--line);border-radius:var(--r-control);background:var(--raise);box-shadow:var(--e-raise);text-align:start}
+/* `overflow-clip-margin` keeps the 3px-offset focus rings inside an open accordion. */
+@supports selector(::details-content){
+  :is([data-next-view-body="session"],[data-next-view-body="sessions"],[data-next-view-body="attention"]) details:is(.next-cockpit-why,[data-next-cockpit-disclosure],.next-attention-coverage-details):not(.next-menu):not(.next-cockpit-scope-switcher):not(.next-disclose--pop)::details-content{block-size:0;overflow:clip;overflow-clip-margin:6px;opacity:0;transition:block-size var(--disclose-dur) var(--disclose-ease),opacity var(--disclose-dur) var(--disclose-ease),content-visibility var(--disclose-dur) var(--disclose-ease) allow-discrete}
+  :is([data-next-view-body="session"],[data-next-view-body="sessions"],[data-next-view-body="attention"]) details:is(.next-cockpit-why,[data-next-cockpit-disclosure],.next-attention-coverage-details):not(.next-menu):not(.next-cockpit-scope-switcher):not(.next-disclose--pop)[open]::details-content{block-size:auto;opacity:1}
+  :is([data-next-view-body="session"],[data-next-view-body="sessions"],[data-next-view-body="attention"]) details.next-disclose--pop::details-content{opacity:0;transition:opacity var(--disclose-pop-dur) var(--disclose-ease),content-visibility var(--disclose-pop-dur) var(--disclose-ease) allow-discrete}
+  :is([data-next-view-body="session"],[data-next-view-body="sessions"],[data-next-view-body="attention"]) details.next-disclose--pop[open]::details-content{opacity:1}
+  /* Its own rule: a selector list holding an unsupported pseudo-element invalidates the whole rule. */
+  @media (prefers-reduced-motion:reduce){:is([data-next-view-body="session"],[data-next-view-body="sessions"],[data-next-view-body="attention"]) details:is(.next-cockpit-why,[data-next-cockpit-disclosure],.next-attention-coverage-details):not(.next-menu):not(.next-cockpit-scope-switcher)::details-content{transition:none}}
+}
+@media (prefers-reduced-motion:reduce){:is([data-next-view-body="session"],[data-next-view-body="sessions"],[data-next-view-body="attention"]) details:is(.next-cockpit-why,[data-next-cockpit-disclosure],.next-attention-coverage-details):not(.next-menu):not(.next-cockpit-scope-switcher)>summary::after{transition:none}}
 .next-cockpit-reading-stale,.next-session-departure-stale{margin:0;color:var(--amber);font:var(--fs-body)/1.5 var(--sans)}
 .next-cockpit-reading button{align-self:flex-start}
 /* The analysis result (DRC-4695), in the reading's own registers: the answer

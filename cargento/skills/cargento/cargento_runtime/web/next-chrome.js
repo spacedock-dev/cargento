@@ -772,6 +772,20 @@ function renderNext(focus = nextCaptureFocus()){
   nextRenderObserved = null;
 }
 
+function nextClosePopovers(event){
+  const app = document.getElementById("app");
+  const open = app && typeof app.querySelectorAll === "function"
+    ? [...app.querySelectorAll("details.next-disclose--pop[open]")] : [];
+  if(!open.length) return false;
+  for(const popover of open) popover.open = false;
+  const owner = open.find(popover =>
+    typeof popover.contains === "function" && popover.contains(event.target)) || open[0];
+  const summary = owner && typeof owner.querySelector === "function" ? owner.querySelector("summary") : null;
+  if(summary && typeof summary.focus === "function") summary.focus();
+  event.preventDefault();
+  return true;
+}
+
 function navigateNext(route){
   const fragment = nextFragmentForRoute(route);
   nextRoute = nextRouteFromFragment(fragment);
@@ -887,6 +901,10 @@ document.addEventListener("keydown", event => {
     nextWorkstreamToggle();
     return;
   }
+  /* Escape dismisses an open popover before it means "leave this view", and
+     ahead of the field exemption below, which a focused summary falls through
+     ([NUI-19](docs/design-next-ui.md#nui-19-a-caveat-has-three-tiers)). */
+  if(event.key === "Escape" && nextClosePopovers(event)) return;
   if(["input", "select", "textarea"].includes(tag) || event.target && event.target.isContentEditable) return;
   if(event.key === "Escape"){
     /* Session detail walks up to its project; every other view returns to

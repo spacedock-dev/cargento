@@ -24,7 +24,14 @@ function nextCockpitDisclosureAttr(control){
     ? `${nextRoute.harness || ""}:${nextRoute.session || ""}`
     : nextRoute && nextRoute.focus || "";
   const key = [nextRoute && nextRoute.project || "", focus, control].join("\n");
-  return ` data-next-cockpit-disclosure="${esc(key)}"`;
+  /* `open` is written into the markup rather than set after insertion: a
+     transition runs when `open` flips on a node already in the document, so
+     the old post-insert `.open = true` replayed the opening motion on every
+     poll that slipped a style read in first. Drawn open, the redraw has
+     nothing to animate and only the reader's own toggle moves
+     ([reader state](docs/design-reader-state.md#the-inventory)). */
+  return ` data-next-cockpit-disclosure="${esc(key)}"` +
+    (nextCockpitDisclosureStates.get(key) === true ? " open" : "");
 }
 
 /* Tier 2 of the caveat rule ([NUI-19](docs/design-next-ui.md#nui-19-a-caveat-has-three-tiers)):
@@ -41,13 +48,17 @@ function nextCockpitDisclosureAttr(control){
    an empty body renders nothing at all instead of a summary promising text
    that is not there, and a missing summary renders the body inline instead of
    hiding it behind a control with no label. */
-function nextCockpitWhy(control, summary, body){
+function nextCockpitWhy(control, summary, body, {pop = false} = {}){
   const text = String(body == null ? "" : body).trim();
   if(!text) return "";
   if(!summary) return `<p class="next-cockpit-reading-why">${esc(text)}</p>`;
-  return `<details class="next-cockpit-why"${nextCockpitDisclosureAttr(control)}>` +
-    `<summary>${esc(summary)}</summary>` +
-    `<p class="next-cockpit-reading-why">${esc(text)}</p></details>`;
+  /* `pop` is for a summary that sits in a flex row beside other content, which
+     opens as a popover so the row never moves; everything else is an
+     accordion ([NUI-19](docs/design-next-ui.md#nui-19-a-caveat-has-three-tiers)). */
+  const why = `<p class="next-cockpit-reading-why">${esc(text)}</p>`;
+  return `<details class="next-cockpit-why${pop ? " next-disclose--pop" : ""}"` +
+    `${nextCockpitDisclosureAttr(control)}><summary>${esc(summary)}</summary>` +
+    (pop ? `<div class="next-disclose-body">${why}</div>` : why) + "</details>";
 }
 
 function nextCockpitSourceText(value){
@@ -7784,6 +7795,16 @@ document.addEventListener("input", event => {
   nextCockpitIntentFooterToggle(session);
   const absent = field.querySelector("[data-next-cockpit-held-absent]");
   if(absent) absent.hidden = nextCockpitLinesToSend(draft).length > 0;
+});
+
+/* A click outside an open popover closes it, as a menu does. The restore lane
+   reads `.open` at the next redraw, so nothing else needs telling. */
+document.addEventListener("click", event => {
+  const app = document.getElementById("app");
+  if(!app || typeof app.querySelectorAll !== "function") return;
+  for(const popover of app.querySelectorAll("details.next-disclose--pop[open]")){
+    if(!(typeof popover.contains === "function" && popover.contains(event.target))) popover.open = false;
+  }
 });
 
 document.addEventListener("click", event => {

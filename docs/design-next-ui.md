@@ -1325,6 +1325,20 @@ so it is still not deleted. A sentence saying the store could not be read stays 
 says the words may exist where the box shows none
 ([the intent editor's boxes, buttons and footer](design-reading-a-session.md#amended-2026-10-01-the-intent-editors-boxes-buttons-and-footer)).
 
+Amended 2026-10-02 (owner, asks 1 and 5): a tier-2 disclosure opens in one of two ways, and its
+position decides which. A disclosure whose summary sits in a flex row beside other content is a
+**popover**: its body leaves the flow and hangs under the summary, aligned to the summary's end
+edge, so opening it moves neither the word nor anything below it. Measured before the change, the
+header's "Why" beside "No terminal to raise" widened from 48px to 540px when it opened, jumped
+492px left and pushed the Intent heading down 74px. Every other disclosure is an **accordion**: it
+opens in place, its height and contents easing over 200ms. A popover fades in over 160ms. Both
+use `ease-in-out`, and with reduced motion set both open instantly. That gives exactly two
+popovers, the header's "Why" and the Sessions group caveat, and a popover is never placed inside
+an accordion, because an accordion clips its overflow. Escape or a click outside closes a popover,
+and Escape on one does not leave the page. A summary is clickable across its own words only, and a
+chevron that turns replaces the browser's triangle. The motion runs only when the reader toggles:
+an open disclosure is written open in the redrawn markup, so a poll never replays it.
+
 ### Tier 3 ships no `docs/` href and no `DEC-N` token
 
 The obvious build of tier 3 is a link from the disclosure body to the design record. It cannot
