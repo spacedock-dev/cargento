@@ -4121,6 +4121,64 @@ class ReadingRouteTest(unittest.TestCase):
         self.assertEqual(202, status, body)
         self.assertEqual(["claude"], self.providers)
 
+    def test_an_anthropic_allow_does_not_cover_a_press_once_the_words_go_elsewhere(
+        self,
+    ) -> None:
+        """Owner, 2026-10-02: the Allow for the words is bound to their destination.
+
+        A Pi session read by Claude Code, so no tool-output grant is involved
+        and the words' own binding is the only thing that can refuse.
+        """
+        config, state = self._runtime()
+        with (
+            self._open_claude(),
+            self._counting_model(("claude",), destination="Anthropic") as calls,
+            self._serving(self._app(config, state)) as port,
+        ):
+            status, body = self._post(
+                port, self._press(provider="claude", allow=True, words_destination="Anthropic")
+            )
+        self.assertEqual(202, status, body)
+        self.assertEqual(1, len(calls))
+        for moved in ("gw.corp.example", "Amazon Bedrock"):
+            with (
+                self.subTest(moved=moved),
+                self._open_claude(),
+                self._counting_model(("claude",), destination=moved) as calls,
+                self._serving(self._app(config, state)) as port,
+            ):
+                status, body = self._post(port, self._press(provider="claude"))
+                self.assertEqual(403, status)
+                answer = json.loads(body)["reading"]
+                self.assertEqual("consent-required", answer["reason"])
+                self.assertFalse(answer["providers"]["claude"])
+                self.assertEqual(reading_policy.DESTINATION_CHANGED, answer["rebind"]["claude"])
+                self.assertEqual([], calls, "the words were sent before a fresh Allow")
+
+    def test_an_allow_whose_disclosure_named_where_the_words_no_longer_go_records_nothing(
+        self,
+    ) -> None:
+        config, state = self._runtime()
+        before = reading_policy.status(config, now=1_700_000_100.0, provider="claude")
+        with (
+            self._open_claude(),
+            self._counting_model(("claude",), destination="gw.corp.example") as calls,
+            self._serving(self._app(config, state)) as port,
+        ):
+            for named in ({"words_destination": "Anthropic"}, {}):
+                with self.subTest(named=named):
+                    status, body = self._post(
+                        port, self._press(provider="claude", allow=True, **named)
+                    )
+                    self.assertEqual(409, status)
+                    answer = json.loads(body)
+                    self.assertEqual("destination-changed", answer["reason"])
+                    self.assertEqual("gw.corp.example", answer["route"]["words_destination"])
+        self.assertEqual([], calls)
+        self.assertEqual(
+            before, reading_policy.status(config, now=1_700_000_100.0, provider="claude")
+        )
+
     def test_a_reader_who_allowed_only_claude_code_is_charged_against_that_answer(self) -> None:
         """The reservation reads the route's provider, not Codex's answer."""
         config, state = self._runtime()
@@ -4252,6 +4310,10 @@ class ReadingRouteTest(unittest.TestCase):
         self,
     ) -> None:
         config, state = self._runtime()
+        # The words allowed for where they go, so tool output is all that is missing.
+        reading_policy.set_consent(
+            config, True, now=1_700_000_100.0, provider="codex", destination="OpenAI"
+        )
         status, answer, calls = self._checks_press(config, state, self._claude_press())
         self.assertEqual(403, status)
         self.assertEqual("tool-output-consent-required", answer["reading"]["reason"])
@@ -4261,7 +4323,9 @@ class ReadingRouteTest(unittest.TestCase):
     def test_an_allow_naming_where_the_checks_go_sends_them_to_codex(self) -> None:
         config, state = self._runtime()
         status, answer, calls = self._checks_press(
-            config, state, self._claude_press(allow=True, tool_output="OpenAI")
+            config,
+            state,
+            self._claude_press(allow=True, tool_output="OpenAI", words_destination="OpenAI"),
         )
         self.assertEqual(202, status, answer)
         self.assertEqual(["codex"], self.providers)
@@ -4294,7 +4358,17 @@ class ReadingRouteTest(unittest.TestCase):
     def test_a_grant_for_one_destination_does_not_cover_another(self) -> None:
         config, state = self._runtime()
         reading_policy.set_consent(
-            config, True, now=1_700_000_100.0, provider="codex", tool_output="OpenAI"
+            config,
+            True,
+            now=1_700_000_100.0,
+            provider="codex",
+            tool_output="OpenAI",
+            destination="OpenAI",
+        )
+        # The words allowed again for where they go now, so only the
+        # tool-output grant, still keyed to OpenAI, can refuse.
+        reading_policy.set_consent(
+            config, True, now=1_700_000_100.0, provider="codex", destination="gw.corp.example"
         )
         status, answer, calls = self._checks_press(
             config, state, self._claude_press(), destination="gw.corp.example"
@@ -4325,10 +4399,17 @@ class ReadingRouteTest(unittest.TestCase):
     def test_turning_readings_off_withdraws_the_tool_output_grant(self) -> None:
         config, state = self._runtime()
         reading_policy.set_consent(
-            config, True, now=1_700_000_100.0, provider="codex", tool_output="OpenAI"
+            config,
+            True,
+            now=1_700_000_100.0,
+            provider="codex",
+            tool_output="OpenAI",
+            destination="OpenAI",
         )
         reading_policy.set_consent(config, False, now=1_700_000_100.0)
-        reading_policy.set_consent(config, True, now=1_700_000_100.0, provider="codex")
+        reading_policy.set_consent(
+            config, True, now=1_700_000_100.0, provider="codex", destination="OpenAI"
+        )
         status, answer, calls = self._checks_press(config, state, self._claude_press())
         self.assertEqual(403, status)
         self.assertEqual("tool-output-consent-required", answer["reading"]["reason"])
@@ -4337,13 +4418,20 @@ class ReadingRouteTest(unittest.TestCase):
     def test_a_grant_withdrawn_while_the_press_is_in_flight_sends_no_check(self) -> None:
         config, state = self._runtime()
         reading_policy.set_consent(
-            config, True, now=1_700_000_100.0, provider="codex", tool_output="OpenAI"
+            config,
+            True,
+            now=1_700_000_100.0,
+            provider="codex",
+            tool_output="OpenAI",
+            destination="OpenAI",
         )
 
         def withdraw() -> None:
             # Another tab turns readings off and allows the words alone again.
             reading_policy.set_consent(config, False, now=1_700_000_100.0)
-            reading_policy.set_consent(config, True, now=1_700_000_100.0, provider="codex")
+            reading_policy.set_consent(
+                config, True, now=1_700_000_100.0, provider="codex", destination="OpenAI"
+            )
 
         status, answer, calls = self._checks_press(
             config, state, self._claude_press(), on_collect=withdraw
@@ -4361,7 +4449,12 @@ class ReadingRouteTest(unittest.TestCase):
     ) -> None:
         config, state = self._runtime()
         reading_policy.set_consent(
-            config, True, now=1_700_000_100.0, provider="codex", tool_output="OpenAI"
+            config,
+            True,
+            now=1_700_000_100.0,
+            provider="codex",
+            tool_output="OpenAI",
+            destination="OpenAI",
         )
         changed = frozenset({("call-1", "python3 -m pytest tests/test_parser.py")})
         seen: list[Any] = []
@@ -4392,7 +4485,7 @@ class ReadingRouteTest(unittest.TestCase):
         status, answer, calls = self._checks_press(
             config,
             state,
-            self._claude_press(provider="claude", allow=True),
+            self._claude_press(provider="claude", allow=True, words_destination="Anthropic"),
             both,
             destination="Anthropic",
         )
@@ -4402,7 +4495,12 @@ class ReadingRouteTest(unittest.TestCase):
         status, answer, calls = self._checks_press(
             config,
             state,
-            self._claude_press(provider="claude", allow=True, tool_output="Anthropic"),
+            self._claude_press(
+                provider="claude",
+                allow=True,
+                tool_output="Anthropic",
+                words_destination="Anthropic",
+            ),
             both,
             destination="Anthropic",
         )
@@ -4412,6 +4510,9 @@ class ReadingRouteTest(unittest.TestCase):
 
     def test_a_session_on_another_harness_is_never_asked_about_tool_output(self) -> None:
         config, state = self._runtime()
+        reading_policy.set_consent(
+            config, True, now=1_700_000_100.0, provider="codex", destination="OpenAI"
+        )
         with (
             self._counting_model(destination="OpenAI") as calls,
             self._serving(self._app(config, state)) as port,

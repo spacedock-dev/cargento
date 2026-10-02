@@ -907,3 +907,58 @@ class TheSentencesReadAsSentences(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class EveryRouteNamesWhereTheWordsGo(unittest.TestCase):
+    """The Allow for the reader's words is bound to where they go (owner, 2026-10-02).
+
+    `destination` is "" off a harness with checks, because it is where tool
+    output goes. The words go somewhere on every route, so the route names that
+    too, from the same `reading_route.destination` the policy is handed.
+    """
+
+    def setUp(self) -> None:
+        self.root = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.root, True)
+
+    def _route(self, harness: str, installed: set[str], environ: dict[str, str]) -> Any:
+        with (
+            named_platform(),
+            mock.patch.object(
+                annotation_store,
+                "CLAUDE_ABSTENTION_CHECK",
+                annotation_store.ABSTENTION_CHECK_PASSED,
+            ),
+        ):
+            return reading_route.resolve(
+                harness,
+                binary_resolver=_resolver(installed),
+                environ={"HOME": "/Users/r", "USER": "r", **environ},
+                root=self.root,
+            )
+
+    def test_each_route_names_the_destination_its_words_reach(self) -> None:
+        for harness, installed, environ, expected in (
+            ("claude", {"claude"}, {}, "Anthropic"),
+            (
+                "pi",
+                {"claude"},
+                {"ANTHROPIC_BASE_URL": "https://gw.corp.example"},
+                "gw.corp.example",
+            ),
+            ("codex", {"claude"}, {"CLAUDE_CODE_USE_BEDROCK": "1"}, "Amazon Bedrock"),
+            ("pi", {"codex"}, {}, "OpenAI"),
+            ("pi", {"claude"}, {"ANTHROPIC_UNIX_SOCKET": "/tmp/s"}, ""),
+            ("pi", set(), {}, ""),
+        ):
+            with self.subTest(harness=harness, installed=installed, environ=environ):
+                route = self._route(harness, installed, environ)
+                self.assertEqual(expected, route["words_destination"])
+
+    def test_the_policy_is_handed_the_same_destination_the_route_names(self) -> None:
+        environ = {"HOME": "/Users/r", "USER": "r", "ANTHROPIC_BASE_URL": "https://gw.example"}
+        with named_platform():
+            today = reading_route.destinations(environ=environ, root=self.root)
+        self.assertEqual({"codex": "OpenAI", "claude": "gw.example"}, today)
+        route = self._route("pi", {"claude"}, {"ANTHROPIC_BASE_URL": "https://gw.example"})
+        self.assertEqual(today["claude"], route["words_destination"])

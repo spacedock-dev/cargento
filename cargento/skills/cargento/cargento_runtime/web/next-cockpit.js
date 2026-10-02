@@ -2565,9 +2565,11 @@ const NEXT_READING_ROUTE_UNREAD =
 const NEXT_READING_PROVIDER_CHANGED =
   "The reader for this session changed since this page was drawn, so nothing was sent; " +
   "read who reads it now and press again.";
+/* Said of the words as well as tool output: an Allow is bound to both
+   destinations (owner, 2026-10-02), and either moving refuses it. */
 const NEXT_READING_DESTINATION_CHANGED =
-  "Where tool output would go changed since this page was drawn, so nothing was sent; " +
-  "read where it goes now and press again.";
+  "Where this session would be sent changed since this page was drawn, so nothing was " +
+  "sent; read where it goes now and press again.";
 const NEXT_READING_REFUSAL_ABSENCE = new Map([
   [NEXT_READING_ROUTE_UNREAD, "not-observed"],
   [NEXT_READING_NO_WORDS, "waiting-on-you"],
@@ -4784,12 +4786,19 @@ function nextCockpitReadingControl(session, annotation, model, primary = true, s
        carries again once the card goes. */
     const label = String(route.label || provider);
     const steers = steerButton ? `<div class="next-cockpit-reading-ask">${steerButton}</div>` : "";
+    /* The server's line when an Allow is on record that no longer covers
+       where the words go, so the step says why it is asking again (owner,
+       2026-10-02). Never composed here: only the store knows it was given. */
+    const policy = nextData && nextData.reading;
+    const rebind = policy && policy.rebind && typeof policy.rebind === "object"
+      ? String(policy.rebind[provider] || "") : "";
     return (lead ? steers : "") +
       '<div class="next-cockpit-reading-consent" role="group" ' +
       'aria-labelledby="next-cockpit-reading-consent-title">' +
       '<h3 class="next-cockpit-reading-consent-title" id="next-cockpit-reading-consent-title" ' +
       `tabindex="-1" data-next-focus="reading:${esc(key)}">` +
-      `${esc(`Send this session to ${label} for analysis?`)}</h3>` + disclosureParts +
+      `${esc(`Send this session to ${label} for analysis?`)}</h3>` +
+      (rebind ? `<p class="next-cockpit-reading-why">${esc(rebind)}</p>` : "") + disclosureParts +
       '<div class="next-cockpit-reading-ask">' +
       button.replace(`data-next-focus="reading:${esc(key)}"`, `data-next-focus="reading-allow:${esc(key)}" data-next-focus-fallback="reading:${esc(key)}"`) +
       '<button type="button" class="next-action" data-next-cockpit-action="reading-not-now" ' +
@@ -6191,9 +6200,12 @@ async function nextCockpitAskForReading(session, model, allow = false){
      a route with no provider. */
   const route = nextReadingRoute(session);
   const provider = String(route.provider);
-  /* The destination the disclosure named, sent with an Allow so the server
-     can refuse one given about an endpoint that has since moved. */
+  /* The destinations the disclosure named, sent with an Allow so the server
+     can refuse one given about an endpoint that has since moved: where tool
+     output goes, and where the words go, which the Allow is bound to (owner,
+     2026-10-02). "" is sent as itself, since an unnamed one is its own value. */
   const destination = String(route.destination || "");
+  const wordsTo = String(route.words_destination || "");
   if(nextReadingNeedsAllow(route) && !allow){
     nextCockpitReadingRequests.set(key, {consent:true, adoption:nextImplicitAdoption(session),
       chosen:nextIntentChosenPrompts.get(nextCockpitHeldKey(session, "goal")) || null});
@@ -6227,7 +6239,8 @@ async function nextCockpitAskForReading(session, model, allow = false){
       headers: {"Content-Type": "application/json"},
       body: JSON.stringify({harness: session.harness, sid: session.sid, provider,
         press: true, observer_model: 1, ...adoption, expected_revision: expected,
-        ...(allow ? {allow:true, ...(destination ? {tool_output:destination} : {})} : {})}),
+        ...(allow ? {allow:true, words_destination:wordsTo,
+          ...(destination ? {tool_output:destination} : {})} : {})}),
     }, press.signal);
     const answer = response && typeof response.json === "function"
       ? await response.json().catch(() => null) : null;
@@ -6320,6 +6333,9 @@ async function nextCockpitAskForReading(session, model, allow = false){
     if(allow && nextData.reading){
       nextData.reading.consent = true;
       nextData.reading.providers = {...(nextData.reading.providers || {}), [provider]: true};
+      const rebind = {...(nextData.reading.rebind || {})};
+      delete rebind[provider];
+      nextData.reading.rebind = rebind;
       if(destination){
         const granted = (nextData.reading.tool_output || {})[provider] || [];
         nextData.reading.tool_output = {...(nextData.reading.tool_output || {}),

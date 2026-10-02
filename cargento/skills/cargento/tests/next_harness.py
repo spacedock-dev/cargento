@@ -22,6 +22,9 @@ NEXT_PAGE_TEXT = (
 )
 
 
+_REAL_DESTINATION = reading_route.destination
+
+
 def named_platform() -> Any:
     """Pin the OS the destination resolver reads to one where it can name one.
 
@@ -70,16 +73,21 @@ class _Pins:
         self.stop()
 
 
-def named_machine() -> Any:
+def named_machine(environ: dict[str, str] | None = None) -> Any:
     """Every unpinned `destination` call reads a machine that names the vendor.
 
     A route's `To:` item says what `destination` names (verifier ui4 C1), so a
     test that resolves a route without its own `environ` and `root` would say
     what this runner's environment and OS say: nothing on Windows, a host
     under a developer's `ANTHROPIC_BASE_URL`. This pins Linux, no endpoint
-    variable and an empty root wherever the caller left them unset.
+    variable and an empty root wherever the caller left them unset. `environ`
+    is the daemon's environment in their place, for a test of a machine whose
+    endpoint setting moved.
     """
-    real = reading_route.destination
+    # The resolver as shipped, not whatever a stub entered earlier has put in
+    # its place: a socket test's model stub pins a constant destination.
+    real = _REAL_DESTINATION
+    pinned = {} if environ is None else dict(environ)
 
     def named(
         provider: str,
@@ -90,7 +98,7 @@ def named_machine() -> Any:
     ) -> str:
         return real(
             provider,
-            environ={} if environ is None else environ,
+            environ=pinned if environ is None else environ,
             root=Path("/nonexistent-cargento-root") if root is None else root,
             system="Linux" if system is None else system,
         )

@@ -1043,6 +1043,20 @@ An Allow given for a provider covers every session routed to that provider (owne
 Codex, Pi or other session that falls back to Claude Code on a machine without `codex` runs under a
 Claude Code Allow with no second consent step, and that route's disclosure is in the session's
 "What is sent to Claude Code" popover before the press.
+
+The answer is bound to where the words go (owner, 2026-10-02,
+[the amendment](docs/design-reading-a-session.md#amended-2026-10-02-owner-the-allow-is-bound-to-where-the-words-go)).
+An Allow records the destination `reading_route.destination` named in the disclosure it answered,
+and covers a press only while that provider's destination is exactly that one; an unnamed
+destination is a value of its own. A daemon restarted under a base URL, a cloud switch or any
+other setting that moves the endpoint therefore asks again before anything is sent, with the
+server's line saying where the words go has changed. The board's published `providers`, the press
+check and the job's reservation decide it from the same value. An Allow whose disclosure named a
+destination that is no longer today's is refused `409 destination-changed` and records nothing.
+The binding lives in its own table, `permission_destination`, so a row saved before it records no
+destination and covers no press: each reader is asked once more, and nothing else in the store
+changes. "Turn off readings", `--forget` and an older build's Turn off clear every recorded
+destination, and a refusal holds whatever the destination is.
 An answer saved before the split reads as the Codex answer it was. "Turn off readings" and
 `--forget` revoke every provider at once. So does an older build's Turn off, which knows only the
 legacy Codex row: triggers in the store's own schema clear every other provider's answer and every
@@ -1393,8 +1407,8 @@ fresh Allow whose disclosure names tool output and the receiving vendor. The pag
 tool output was named does not cover it. What is built:
 
 - The grant is its own table, `tool_output_permission` in the reading permission store, keyed by
-  provider and destination. No answer in the words-only tables is read as one, so every answer
-  saved before this build covers the reader's words and never tool output. An Allow writes a grant
+  provider and destination. No answer in the words-only tables is read as one, so an answer
+  saved before tool output was named never covers tool output. An Allow writes a grant
   only when the press carried the destination the server computes; a press that carried another,
   or none, is refused `409 destination-changed` before anything is written or spent. Allowed for
   the words and not for tool output to this destination, a press is refused `403
@@ -1442,7 +1456,8 @@ tool output was named does not cover it. What is built:
   never said to be off this machine, since it may be a local gateway), and where nothing can be
   named, that Cargento cannot name where the CLI's settings send it. It never names the vendor
   then, so an Allow is never given for a receiver the words do not reach (verifier C1,
-  2026-10-02). On Windows this is every route.
+  2026-10-02), and the Allow is bound to what it named, so it never carries over to a receiver
+  named later (owner, 2026-10-02). On Windows this is every route.
 
 It is quoted into the prompt as untrusted data, never into an instruction Cargento writes: each
 check is one numbered row whose result words are Cargento's own, and its output tail is one

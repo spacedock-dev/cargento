@@ -93,6 +93,11 @@ class Route(TypedDict):
     # destinations-wise on a harness whose record lists no checks.
     destination: str
     tool_output: str
+    # Where the reader's words go on this route, on every harness, as
+    # `destination` (the function) names it, or "" where it cannot. The Allow
+    # for the words is bound to it (owner, 2026-10-02): a press carries it, and
+    # the policy covers the press only while it is unchanged.
+    words_destination: str
 
 
 # The harness whose observed record lists checks (`project_context.
@@ -329,6 +334,17 @@ def destination(
     return ""
 
 
+def destinations(
+    *, environ: Mapping[str, str] | None = None, root: Path | None = None
+) -> dict[str, str]:
+    """Every provider's `destination` now, as the reading policy is handed it.
+
+    The same function a route's `words_destination` comes from, so the board's
+    published permission, the press check and the job agree on one value.
+    """
+    return {provider: destination(provider, environ=environ, root=root) for provider in PROVIDERS}
+
+
 def _tool_output_sentence(provider: str, harness: str, where: str) -> str:
     """What a check sends, or that none is sent; where it goes is the `To:` item after it.
 
@@ -490,6 +506,7 @@ def _route(
         "fallback": fallback,
         "destination": reached,
         "tool_output": sentence,
+        "words_destination": to,
     }
 
 

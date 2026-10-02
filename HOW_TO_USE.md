@@ -418,7 +418,9 @@ choose **Allow and analyze**. With no saved goal, the check adopts the latest pe
 or Codex prompt. **Use your prompt** beside the goal lists up to five of your own prompts from the
 session; choosing one fills the goal box without saving it, and **Save intent** saves it. You
 can also type your own goal. Adopted words say "from your prompt", and editing them makes a typed
-goal. An unavailable prompt time means you must type a goal instead. The permission is remembered across tabs and restarts.
+goal. An unavailable prompt time means you must type a goal instead. The permission is remembered across tabs and restarts
+for as long as the words go where it named: start the dashboard with a different endpoint setting,
+such as `ANTHROPIC_BASE_URL` or `CLAUDE_CODE_USE_BEDROCK`, and the next press asks again first.
 Use **Turn off readings** on a session page to revoke it. A Claude Code session is read by Claude
 Code when `claude` is on the dashboard's PATH, and by Codex when it is not; every other session is
 read by Codex, or by Claude Code on a machine without Codex. Checks spend the capacity of whichever

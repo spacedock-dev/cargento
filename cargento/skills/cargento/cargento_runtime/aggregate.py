@@ -958,7 +958,12 @@ class Application:
                         "reading_routes": reading_route.resolve_all(
                             str(row.get("harness") or "") for row in out_sessions
                         ),
-                        "reading": reading_policy.status(config, now=now),
+                        # Covered only where today's destination is the one
+                        # each Allow was given for, from the resolver the
+                        # routes above use (owner, 2026-10-02).
+                        "reading": reading_policy.status(
+                            config, now=now, destinations=reading_route.destinations()
+                        ),
                         # The reader's running analyses, board-wide rather than
                         # per row so a job is never a session field or history
                         # (DRC-4686). A reload reads the job from here.

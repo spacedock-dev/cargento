@@ -353,7 +353,8 @@ console.log(JSON.stringify({posts, html: control(), refreshed: gets > before}));
         self.assertEqual(1, len(out["posts"]))
         self.assertTrue(out["refreshed"], "the page did not read where the output goes now")
         self.assertEqual(
-            1, out["html"].count("Where tool output would go changed since this page was drawn")
+            1,
+            out["html"].count("Where this session would be sent changed since this page was drawn"),
         )
 
     def test_a_server_asking_for_the_tool_output_allow_turns_the_button_into_allow(self) -> None:

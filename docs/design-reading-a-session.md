@@ -1130,6 +1130,37 @@ item 1 of the 2026-09-23 amendment and leaves items 2 and 3 as they apply once t
 back to `not-run` closes the producer with no other change, and the "not qualified on this build"
 sentences remain for that state.
 
+### Amended 2026-10-02 (owner): the Allow is bound to where the words go
+
+The owner, 2026-10-02: "bind the allow to the destination". The tool-output grant was already
+keyed by destination (item 7 of DEC-23). The Allow for the reader's words was not, so a dashboard
+restarted under `ANTHROPIC_BASE_URL`, `CLAUDE_CODE_USE_BEDROCK` or `OPENAI_BASE_URL` sent the
+goal and messages to the new endpoint under the old Allow, and the new destination appeared only
+in a closed popover.
+
+1. An Allow records the destination its disclosure named: `reading_route.destination` for that
+   provider, published on every route as `words_destination`. It covers a press only while that
+   destination is exactly the one recorded. An unnamed destination (`""`) is its own value, so an
+   Allow given while nothing could be named covers presses only while nothing still can. The
+   tool-output grant keeps its own rule, and is never given to `""`.
+2. The press handler, the job's reservation and the page decide it from one value. The board
+   publishes `providers` as covered only where the recorded destination is today's, the press
+   check reads the same, and the job reserves against the destination of the route that admitted
+   the press. An Allow whose disclosure named a destination that is no longer today's is refused
+   `409 destination-changed` and records nothing.
+3. A row written before the binding records no destination, so it covers no press and each reader
+   is asked once more. When an Allow on record does not cover today's destination, for that reason
+   or because the destination moved, the consent step opens with the server's line "Where your
+   words go has changed since you allowed this, so allow it again." A refusal is never asked
+   about that way: "Turn off readings" and `--forget` hold whatever the destination.
+4. The binding is a table of its own in the store, `permission_destination`, created in place
+   inside the store's existing transaction. No column is added to an older table, so an older
+   build's two-value writes still succeed against a migrated store, and an older build's Turn off
+   clears every recorded destination by trigger, as it already clears every other answer.
+
+This stays per provider, as item 3 of the acceptance above says: an Allow given for a provider
+covers every session routed to that provider, at the destination it was given for.
+
 ### Where the unasked default stands
 
 The unasked check is the only model reading that finds drift nobody went looking for. DEC-18 gates its
@@ -2326,7 +2357,10 @@ read it as a press that did nothing.
 - The question takes the press's focus key, as the analyzing box's title does, so focus lands on
   it and a second Enter or the rest of a double-click cannot give consent unread. Allow carries
   `reading-allow:<key>`; Not now carries `reading-not-now:<key>` and falls back to the press's key.
-- The step comes back whenever an Allow is needed again, such as a new tool-output destination.
+- The step comes back whenever an Allow is needed again, such as a new tool-output destination
+  or, since the owner's binding of 2026-10-02, a new destination for the words, when it opens
+  with the server's line saying so
+  ([the binding](#amended-2026-10-02-owner-the-allow-is-bound-to-where-the-words-go)).
 
 #### Amended 2026-10-01: idle, the disclosure is one worded click away
 

@@ -8,7 +8,7 @@ import tempfile
 import threading
 import unittest
 from pathlib import Path
-from typing import Any
+from typing import Any, ClassVar
 from unittest import mock
 
 from cargento_runtime import io as runtime_io
@@ -229,9 +229,13 @@ class PermissionIsPerProviderTest(unittest.TestCase):
         db.execute("INSERT INTO spends VALUES (99.0)")
         db.commit()
         db.close()
-        self.assertTrue(self._consent("codex"))
+        # Codex's answer, as it was. It names no destination, so it covers no
+        # press until it is given again (owner, 2026-10-02), and only Codex
+        # is asked again as an Allow that moved.
+        answer = reading_policy.status(self.config, now=100.0)
+        self.assertEqual({"codex": reading_policy.DESTINATION_CHANGED}, answer["rebind"])
         self.assertFalse(self._consent("claude"))
-        self.assertEqual(1, reading_policy.status(self.config, now=100.0)["used"])
+        self.assertEqual(1, answer["used"])
 
     def test_turning_readings_off_or_forgetting_revokes_every_provider(self) -> None:
         for revoke in ("off", "forget"):
@@ -684,3 +688,263 @@ class TheJobLedgerTest(unittest.TestCase):
         db.execute("COMMIT")
         db.close()
         self.assertEqual(2, reading_policy.status(self.config, now=102.0)["used"])
+
+
+class TheAllowForTheWordsIsBoundToItsDestination(unittest.TestCase):
+    """Owner, 2026-10-02: "bind the allow to the destination".
+
+    The tool-output grant was already keyed by destination; the Allow for the
+    reader's words was not, so a daemon restarted under `ANTHROPIC_BASE_URL` or
+    `CLAUDE_CODE_USE_BEDROCK` sent the goal and messages to the new endpoint
+    under the old Allow. An Allow now covers a press only while the provider's
+    destination is exactly the one its disclosure named.
+    """
+
+    ANTHROPIC: ClassVar[dict[str, str]] = {"codex": "OpenAI", "claude": "Anthropic"}
+
+    def setUp(self) -> None:
+        self.home = tempfile.TemporaryDirectory()
+        self.addCleanup(self.home.cleanup)
+        self.config, _ = make_runtime(state_dir=Path(self.home.name), state_home=self.home.name)
+        patcher = mock.patch.object(supervise, "_SHUTDOWN", threading.Event())
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def _status(self, claude: str, provider: str = "claude") -> reading_policy.Status:
+        return reading_policy.status(
+            self.config,
+            now=100.0,
+            provider=provider,
+            destinations={"codex": "OpenAI", "claude": claude},
+        )
+
+    def _allow(self, where: str, provider: str = "claude") -> reading_policy.Status:
+        return reading_policy.set_consent(
+            self.config, True, now=100.0, provider=provider, destination=where
+        )
+
+    def test_an_allow_covers_the_destination_it_was_given_for(self) -> None:
+        answer = self._allow("Anthropic")
+        self.assertTrue(answer["consent"])
+        self.assertTrue(self._status("Anthropic")["consent"])
+        self.assertEqual({"codex": False, "claude": True}, self._status("Anthropic")["providers"])
+        self.assertEqual({}, self._status("Anthropic")["rebind"])
+
+    def test_an_allow_for_anthropic_does_not_cover_a_base_url_host_or_bedrock(self) -> None:
+        self._allow("Anthropic")
+        for today in ("gw.corp.example", "Amazon Bedrock", ""):
+            with self.subTest(today=today):
+                answer = self._status(today)
+                self.assertFalse(answer["consent"])
+                self.assertEqual("consent-required", answer["reason"])
+                self.assertFalse(answer["providers"]["claude"])
+                self.assertEqual({"claude": reading_policy.DESTINATION_CHANGED}, answer["rebind"])
+                refused = reading_policy.reserve(
+                    self.config, now=100.0, provider="claude", destination=today
+                )
+                self.assertEqual("consent-required", refused["reason"])
+        self.assertEqual(0, self._status("Anthropic")["used"])
+
+    def test_an_unnamed_destination_is_its_own_value(self) -> None:
+        self._allow("")
+        self.assertTrue(self._status("")["consent"])
+        for today in ("Anthropic", "gw.corp.example"):
+            with self.subTest(today=today):
+                self.assertFalse(self._status(today)["consent"])
+                self.assertIn("claude", self._status(today)["rebind"])
+        self.assertEqual(
+            "", reading_policy.reserve(self.config, now=100.0, provider="claude")["reason"]
+        )
+
+    def test_a_new_allow_moves_the_binding_to_the_new_destination(self) -> None:
+        self._allow("Anthropic")
+        self._allow("gw.corp.example")
+        self.assertTrue(self._status("gw.corp.example")["consent"])
+        self.assertFalse(self._status("Anthropic")["consent"])
+
+    def test_the_job_refuses_a_destination_the_allow_was_not_given_for(self) -> None:
+        self._allow("Anthropic")
+        model = mock.Mock(return_value=("{}", "ok"))
+        for where, refused in (("gw.corp.example", True), ("Anthropic", False)):
+            with self.subTest(where=where):
+                guarded = reading_policy.GuardedModel(
+                    self.config, model, lambda: 100.0, provider="claude", destination=where
+                )
+                if refused:
+                    with self.assertRaises(reading_policy.RefusedError) as caught:
+                        guarded("prompt", output_cap_bytes=100)
+                    self.assertEqual("consent-required", caught.exception.answer["reason"])
+                    model.assert_not_called()
+                else:
+                    self.assertEqual(("{}", "ok"), guarded("prompt", output_cap_bytes=100))
+        self.assertEqual(1, self._status("Anthropic")["used"])
+
+    def test_an_allow_covers_the_same_destination_after_a_restart(self) -> None:
+        self._allow("Anthropic")
+        # Another process on the same home, as a respawned daemon is.
+        config, _ = make_runtime(state_dir=Path(self.home.name), state_home=self.home.name)
+        answer = reading_policy.status(
+            config, now=100.0, provider="claude", destinations=self.ANTHROPIC
+        )
+        self.assertTrue(answer["consent"])
+
+    def test_a_decline_still_holds_across_a_destination_change(self) -> None:
+        self._allow("Anthropic")
+        reading_policy.set_consent(self.config, False, now=100.0)
+        for today in ("Anthropic", "gw.corp.example", ""):
+            with self.subTest(today=today):
+                answer = self._status(today)
+                self.assertFalse(answer["consent"])
+                # A refusal is never asked about as though the endpoint moved.
+                self.assertEqual({}, answer["rebind"])
+
+    def test_an_old_builds_allow_after_turn_off_does_not_revive_the_old_destination(
+        self,
+    ) -> None:
+        self._allow("Anthropic")
+        reading_policy.set_consent(self.config, False, now=100.0)
+        assert runtime_io.sqlite_module is not None
+        db = runtime_io.sqlite_module.connect(reading_policy.store_path(self.config))
+        # What a pre-binding build's Allow writes, and nothing else.
+        db.execute("INSERT OR REPLACE INTO provider_permission VALUES (?, ?)", ("claude", 1))
+        db.commit()
+        db.close()
+        answer = self._status("Anthropic")
+        self.assertFalse(answer["consent"])
+        self.assertIn("claude", answer["rebind"])
+
+    def test_an_old_builds_turn_off_forgets_the_bound_destination(self) -> None:
+        """That build knows only the legacy row, so a trigger in the schema does it."""
+        self._allow("Anthropic")
+        assert runtime_io.sqlite_module is not None
+        db = runtime_io.sqlite_module.connect(reading_policy.store_path(self.config))
+        # Its Turn off, then its Allow: neither statement names a destination.
+        db.execute("INSERT OR REPLACE INTO permission VALUES (1, 0)")
+        db.execute("INSERT OR REPLACE INTO provider_permission VALUES (?, ?)", ("claude", 1))
+        db.commit()
+        db.close()
+        self.assertFalse(self._status("Anthropic")["consent"])
+
+    def test_the_tool_output_grants_rule_is_unchanged(self) -> None:
+        answer = reading_policy.set_consent(
+            self.config,
+            True,
+            now=100.0,
+            provider="claude",
+            tool_output="Anthropic",
+            destination="Anthropic",
+        )
+        self.assertTrue(reading_policy.tool_output_allowed(answer, "claude", "Anthropic"))
+        moved = self._status("gw.corp.example")
+        # Still held for the destination it names, and never for an unnamed one.
+        self.assertTrue(reading_policy.tool_output_allowed(moved, "claude", "Anthropic"))
+        self.assertFalse(reading_policy.tool_output_allowed(moved, "claude", "gw.corp.example"))
+        reading_policy.set_consent(
+            self.config, True, now=100.0, provider="claude", tool_output="", destination=""
+        )
+        self.assertFalse(reading_policy.tool_output_allowed(self._status(""), "claude", ""))
+        # Not even a row for "" that some other writer left in the table.
+        assert runtime_io.sqlite_module is not None
+        db = runtime_io.sqlite_module.connect(reading_policy.store_path(self.config))
+        db.execute("INSERT INTO tool_output_permission VALUES ('claude', '')")
+        db.commit()
+        db.close()
+        self.assertFalse(reading_policy.tool_output_allowed(self._status(""), "claude", ""))
+
+
+class AStoreWrittenBeforeTheBindingIsMigratedInPlace(unittest.TestCase):
+    """The schema a build before the destination binding leaves on disk.
+
+    Its rows stay readable, by this build and by that one, and simply do not
+    cover a press: each reader is asked once more, with the sentence saying
+    why, and nothing else in the store changes.
+    """
+
+    SCHEMA = (
+        (
+            "CREATE TABLE permission (id INTEGER PRIMARY KEY CHECK(id=1), "
+            "allowed INTEGER NOT NULL CHECK(allowed IN (0,1)))"
+        ),
+        (
+            "CREATE TABLE provider_permission (provider TEXT PRIMARY KEY, "
+            "allowed INTEGER NOT NULL CHECK(allowed IN (0,1)))"
+        ),
+        (
+            "CREATE TABLE tool_output_permission (provider TEXT NOT NULL, "
+            "destination TEXT NOT NULL, PRIMARY KEY (provider, destination))"
+        ),
+        "CREATE TABLE spends (at REAL NOT NULL)",
+        "CREATE TABLE spend_jobs (job TEXT PRIMARY KEY, at REAL NOT NULL)",
+        "CREATE TABLE spend_jobs_since (id INTEGER PRIMARY KEY CHECK(id=1), at REAL NOT NULL)",
+        "INSERT INTO permission VALUES (1, 1)",
+        "INSERT INTO provider_permission VALUES ('claude', 1)",
+        "INSERT INTO tool_output_permission VALUES ('claude', 'Anthropic')",
+        "INSERT INTO spends VALUES (99.0)",
+        "INSERT INTO spend_jobs VALUES ('job-1', 99.0)",
+        "INSERT INTO spend_jobs_since VALUES (1, 50.0)",
+    )
+    TODAY: ClassVar[dict[str, str]] = {"codex": "OpenAI", "claude": "Anthropic"}
+
+    def setUp(self) -> None:
+        self.home = tempfile.TemporaryDirectory()
+        self.addCleanup(self.home.cleanup)
+        self.config, _ = make_runtime(state_dir=Path(self.home.name), state_home=self.home.name)
+        path = reading_policy.store_path(self.config)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        assert runtime_io.sqlite_module is not None
+        db = runtime_io.sqlite_module.connect(path)
+        for statement in self.SCHEMA:
+            db.execute(statement)
+        db.commit()
+        db.close()
+
+    def _rows(self, table: str) -> list[tuple[Any, ...]]:
+        assert runtime_io.sqlite_module is not None
+        db = runtime_io.sqlite_module.connect(reading_policy.store_path(self.config))
+        try:
+            return list(db.execute(f"SELECT * FROM {table} ORDER BY 1"))  # noqa: S608 - fixed names
+        finally:
+            db.close()
+
+    def test_every_old_allow_asks_once_more_and_says_why(self) -> None:
+        answer = reading_policy.status(self.config, now=100.0, destinations=self.TODAY)
+        self.assertEqual({"codex": False, "claude": False}, answer["providers"])
+        self.assertEqual(
+            dict.fromkeys(("codex", "claude"), reading_policy.DESTINATION_CHANGED),
+            answer["rebind"],
+        )
+        self.assertEqual("consent-required", answer["reason"])
+
+    def test_nothing_else_in_the_store_is_lost(self) -> None:
+        answer = reading_policy.status(self.config, now=100.0, destinations=self.TODAY)
+        self.assertEqual(1, answer["used"])
+        self.assertEqual({"claude": ["Anthropic"]}, answer["tool_output"])
+        self.assertEqual([(1, 1)], self._rows("permission"))
+        self.assertEqual([("claude", 1)], self._rows("provider_permission"))
+        self.assertEqual([("job-1", 99.0)], self._rows("spend_jobs"))
+        self.assertIs(
+            True,
+            reading_policy.charged(self.config, "job-1", started_at=60.0, now=100.0),
+        )
+
+    def test_an_older_build_can_still_write_the_migrated_store(self) -> None:
+        reading_policy.status(self.config, now=100.0, destinations=self.TODAY)
+        assert runtime_io.sqlite_module is not None
+        db = runtime_io.sqlite_module.connect(reading_policy.store_path(self.config))
+        # Its own statements: two values each, which a third column would refuse.
+        db.execute("INSERT OR REPLACE INTO provider_permission VALUES (?, ?)", ("claude", 1))
+        db.execute("INSERT OR REPLACE INTO permission VALUES (1, ?)", (1,))
+        db.execute("INSERT INTO spends VALUES (?)", (99.5,))
+        db.commit()
+        db.close()
+        self.assertEqual(
+            2, reading_policy.status(self.config, now=100.0, destinations=self.TODAY)["used"]
+        )
+
+    def test_one_fresh_allow_covers_that_provider_alone(self) -> None:
+        reading_policy.set_consent(
+            self.config, True, now=100.0, provider="claude", destination="Anthropic"
+        )
+        answer = reading_policy.status(self.config, now=100.0, destinations=self.TODAY)
+        self.assertEqual({"codex": False, "claude": True}, answer["providers"])
+        self.assertEqual({"codex": reading_policy.DESTINATION_CHANGED}, answer["rebind"])

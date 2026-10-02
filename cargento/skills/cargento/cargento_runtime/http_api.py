@@ -1955,16 +1955,35 @@ class _RequestHandler(BaseHTTPRequestHandler):
     def _reading_permission(
         self, payload: dict[str, Any], route: runtime_reading_route.Route
     ) -> reading_policy.Status:
-        """The stored answer this press rests on, after any Allow it carried."""
+        """The stored answer this press rests on, after any Allow it carried.
+
+        Covered only where the Allow was given for the destination the route
+        names now (owner, 2026-10-02). Every provider's is computed by the one
+        `reading_route.destination` the board publishes from, and this route's
+        own is the one its disclosure named, so the reply's `providers` is the
+        board's and the job's reservation checks the same value.
+        """
         application = self.server.application
         config = application.config
         provider, where = route["provider"], route["destination"]
+        today = {
+            **runtime_reading_route.destinations(),
+            provider: route["words_destination"],
+        }
         permission = (
             reading_policy.set_consent(
-                config, True, now=application.clock(), provider=provider, tool_output=where
+                config,
+                True,
+                now=application.clock(),
+                provider=provider,
+                tool_output=where,
+                destination=route["words_destination"],
+                destinations=today,
             )
             if payload.get("allow") is True
-            else reading_policy.status(config, now=application.clock(), provider=provider)
+            else reading_policy.status(
+                config, now=application.clock(), provider=provider, destinations=today
+            )
         )
         if (
             not permission["reason"]
@@ -1989,18 +2008,24 @@ class _RequestHandler(BaseHTTPRequestHandler):
         named, and when that is not the provider that would run, the answer
         was given about a different receiver and records nothing. The same
         holds for where tool output goes: an Allow whose disclosure named
-        another destination, or none, records nothing either.
+        another destination, or none, records nothing either. And for where the
+        words go (owner, 2026-10-02): an Allow binds to `words_destination`, so
+        one whose disclosure named another, or none where one is named now, is
+        refused before it could bind to a destination the reader never saw.
         """
         route = runtime_reading_route.resolve(harness)
+        allow = payload.get("allow") is True
         refusal = (
             (503, route["reason"])
             if not route["provider"]
             else (409, "provider-changed")
             if payload.get("provider") != route["provider"]
             else (409, "destination-changed")
-            if payload.get("allow") is True
-            and route["destination"]
-            and payload.get("tool_output") != route["destination"]
+            if allow
+            and (
+                payload.get("words_destination", "") != route["words_destination"]
+                or (route["destination"] and payload.get("tool_output") != route["destination"])
+            )
             else None
         )
         if refusal is None:
@@ -2714,6 +2739,7 @@ class _RequestHandler(BaseHTTPRequestHandler):
                 )(application.config, on_spawn=hooks.spawned),
                 application.clock,
                 provider=route["provider"],
+                destination=route["words_destination"],
                 on_reserved=hooks.reserved,
                 before_reserve=hooks.before_reserve,
                 cancelled=hooks.cancelled,
