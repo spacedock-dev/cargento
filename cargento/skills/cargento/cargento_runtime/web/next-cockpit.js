@@ -1273,7 +1273,7 @@ function nextCockpitHeldField(session, annotation, spec, cap){
     `<span class="next-cockpit-held-label">${esc(label)}</span>` +
     (untouched ? nextIntentDraftMarks(session, drafted) : "") +
     (kind === "goal" ? (untouched ? "" : nextPromptSourceLine(annotation)) +
-      nextIntentPromptMenu(session) : "") +
+      nextIntentPromptSelect(session) : "") +
     '</div>' +
     `<textarea rows="3" maxlength="${cap}" data-next-cockpit-held-kind="${kind}" ` +
     `data-next-cockpit-held-key="${esc(key)}" data-next-cockpit-held-saved="${esc(saved)}" ` +
@@ -7697,6 +7697,11 @@ document.addEventListener("input", event => {
   if(!field || !field.querySelector) return;
   const count = field.querySelector("[data-next-cockpit-held-count]");
   if(count) count.textContent = `${value.length}/${nextCockpitHeldCap()}`;
+  /* Once the box stops holding the pick, the list's face goes back to "Use
+     your prompt" in place, with no redraw to move the caret. */
+  const pick = field.querySelector("[data-next-cockpit-prompt-select]");
+  const chosen = nextIntentChosenPrompts.get(key);
+  if(pick && pick.value && !(chosen && value === chosen.text)) pick.value = "";
   nextCockpitHeldToggle(field, "held-clear", Boolean(value), false);
   nextCockpitIntentFooterToggle(session);
   // The fourth thing an edit changes. "No goal typed for this session" is an
@@ -7797,6 +7802,25 @@ document.addEventListener("input", event => {
   if(absent) absent.hidden = nextCockpitLinesToSend(draft).length > 0;
 });
 
+/* A pick in "Use your prompt". Registered before `next-render.js`'s own
+   change listener (the part order in `page.py`), so the poll that list
+   deferred while it held focus is taken here and not painted after the pick
+   with the focus it captured before it: one render, focus on the select, and
+   the deferred announcement still said. */
+document.addEventListener("change", event => {
+  const select = event.target && event.target.closest
+    ? event.target.closest("[data-next-cockpit-prompt-select]") : null;
+  if(!select || !select.value) return;
+  const group = nextCockpitRouteGroup();
+  const session = group ? nextCockpitFocusedSession(group) : null;
+  if(!session) return;
+  const pending = nextDeferredRender;
+  nextDeferredRender = null;
+  nextDeferredRenderCount = 0;
+  nextIntentChoosePrompt(session, String(select.value));
+  if(pending) nextAnnounceAttention(pending.announcement);
+});
+
 /* A click outside an open popover closes it, as a menu does. The restore lane
    reads `.open` at the next redraw, so nothing else needs telling. */
 document.addEventListener("click", event => {
@@ -7866,12 +7890,6 @@ document.addEventListener("click", event => {
     event.preventDefault();
     navigateNext({view:"project",project:group.label,focus:nextRoute.focus || null,tab});
     nextRestoreFocus({named:"cockpit-tab:" + tab}, nextAttention);
-    return;
-  }
-  if(action === "prompt-choose"){
-    event.preventDefault();
-    const session = group ? nextCockpitFocusedSession(group) : null;
-    if(session) nextIntentChoosePrompt(session, String(target.dataset.arg || ""), target);
     return;
   }
   if(action === "reading-off"){
@@ -8338,20 +8356,21 @@ function nextPromptSourceLine(annotation){
   return `<small class="next-cockpit-held-cue">from your prompt · ${which}.${clipped}</small>`;
 }
 
-/* "Use your prompt" (owner ruling Q7, 2026-10-01): one disclosure menu in the
-   goal's label row listing the server's `prompt_choices`, each a button that
-   fills the box as a pending adoption. A `<details>` of buttons rather than a
-   listbox popover or a `<select>` (DRC-4758 critic 14): the disclosure lane
-   restores its open state across a poll redraw, and each option's own focus
-   key keeps the reader's place, where a custom popover's open state and
-   active option would be lost on every redraw. It replaces the nested "Use a
-   prompt" and "Your latest prompt" disclosures and the save that skipped the
-   box. The first entry is the earliest prompt the record holds; over a
-   session that opened with a harness control that is not its first prompt,
-   so it is named the earliest. An excerpt says so in the option itself
-   (item 2 of
+/* "Use your prompt" (owner ruling Q7, 2026-10-01): one native select in the
+   goal's label row listing the server's `prompt_choices`; picking one fills
+   the box as a pending adoption. A native select rather than the `<details>`
+   of buttons critic 14 chose ([owner, 2026-10-02](docs/design-reading-a-session.md#amended-2026-10-02-owner-a-native-select)):
+   that menu jumped from the right of the row to the left when it opened,
+   while the browser's own list drops over the page and moves nothing. Its
+   rationale, that a poll redraw would shut a list mid-choice, is answered by
+   `next-render.js`, which defers the poll's paint while a select holds focus;
+   the select keeps its place by its own focus key, and its value is derived
+   from the chosen prompt on every render. The first entry is the earliest
+   prompt the record holds; over a session that opened with a harness control
+   that is not its first prompt, so it is named the earliest. An excerpt says
+   so in the option itself (item 2 of
    [DEC-24](docs/design-reading-a-session.md#dec-24-your-intent-is-a-drafted-goal-and-a-checklist-and-a-correction-is-yours-to-copy)). */
-function nextIntentPromptMenu(session){
+function nextIntentPromptSelect(session){
   if(!(nextData && nextData.annotate === true) || nextCockpitStoreUnreadable()) return "";
   const choices = nextIntentPromptChoices(session);
   if(!choices.length) return "";
@@ -8362,37 +8381,51 @@ function nextIntentPromptMenu(session){
   const firstAt = nextNumber(session && session.first_prompt_at);
   const first = !nextIntentOpenedWithControl(session) && firstAt != null &&
     choices[0].at === firstAt ? "First prompt" : "Earliest prompt";
+  /* The face shows the pick only while the box still holds it untouched; a
+     keystroke puts it back to the placeholder, so the same prompt can be
+     picked again. */
+  const chosen = nextIntentChosenPrompts.get(key);
+  const holds = Boolean(chosen) &&
+    (!nextCockpitHeldDrafts.has(key) || nextCockpitHeldDrafts.get(key) === chosen.text);
   const options = choices.map((choice, index) => {
     const name = index === 0 ? first : index === 1 ? "Latest prompt" : "Earlier prompt";
-    return '<li><button type="button" class="next-action next-action--quiet next-intent-prompt-option" ' +
-      `data-next-cockpit-action="prompt-choose" data-arg="${esc(choice.factId)}" ` +
-      `data-next-focus="${esc(`${key}:prompt:${choice.factId}`)}">` +
-      `<span class="next-intent-prompt-when">${name} · ${esc(nextSessionClock(choice.at))}</span>` +
-      `<span class="next-intent-prompt-text">${esc(choice.text)}</span>` +
-      (choice.cut ? '<span class="next-cockpit-held-cue">Shown excerpt only.</span>' : "") +
-      '</button></li>';
+    const label = `${name} \u00b7 ${nextSessionClock(choice.at)}${choice.cut ? " \u00b7 excerpt" : ""}` +
+      ` \u2014 ${nextIntentPromptClip(choice.text, 60)}`;
+    const selected = holds && chosen.factId === choice.factId ? " selected" : "";
+    return `<option value="${esc(choice.factId)}"${selected}>${esc(label)}</option>`;
   }).join("");
-  return `<details class="next-intent-prompt-menu"${nextCockpitDisclosureAttr("adopt:choices")}>` +
-    `<summary>Use your prompt</summary><ul class="next-intent-prompt-options">${options}</ul></details>`;
+  return '<label class="next-intent-prompt-pick">' +
+    '<span class="next-visually-hidden">Fill the goal from one of your prompts</span>' +
+    '<select class="next-intent-prompt-select" data-next-cockpit-prompt-select ' +
+    `data-next-focus="${esc(`${key}:prompt`)}"><option value="">Use your prompt</option>` +
+    `${options}</select></label>`;
+}
+
+/* An option's words, cut at the last space at or before `limit` characters.
+   The box receives the whole prompt; only the list's line is short. */
+function nextIntentPromptClip(text, limit){
+  const words = String(text || "");
+  if(words.length <= limit) return words;
+  const space = words.lastIndexOf(" ", limit);
+  return `${(space > 0 ? words.slice(0, space) : words.slice(0, limit)).trimEnd()}\u2026`;
 }
 
 const NEXT_INTENT_CHOSEN_SAID = "Goal filled from your prompt. Not saved.";
 
 /* Choosing fills the box and saves nothing: the choice replaces whatever the
-   box held, as a pending adoption the reader then confirms, edits or undoes.
-   Focus goes to the box, and the menu closes behind it. */
-function nextIntentChoosePrompt(session, factId, target){
+   box held, as a pending adoption the reader then saves, edits or undoes.
+   Focus stays on the select, so arrowing through it on Windows or Linux,
+   where each arrow is a change, previews each prompt in the box without
+   throwing the reader into the textarea. */
+function nextIntentChoosePrompt(session, factId){
   const found = nextIntentPromptChoices(session).find(choice => choice.factId === factId);
   if(!found) return;
   const key = nextCockpitHeldKey(session, "goal");
   nextIntentChosenPrompts.set(key, {factId: found.factId, text: found.text, at: found.at});
   nextCockpitHeldDrafts.delete(key);
   nextCockpitHeldDrop(key);
-  const menu = target && typeof target.closest === "function"
-    ? target.closest(".next-intent-prompt-menu") : null;
-  if(menu && "open" in menu) menu.open = false;
   nextCockpitAnnounceCue(`${key}:chosen`, NEXT_INTENT_CHOSEN_SAID, false);
-  renderNext({named: key});
+  renderNext({named: `${key}:prompt`});
 }
 
 const NEXT_COCKPIT_ADOPT_REFUSED = {

@@ -17,29 +17,22 @@ console.log(JSON.stringify(nextCockpitConflictCandidates({at:30,goal_source:'fir
 """)
         self.assertEqual(1, out)
 
-    def test_prompt_disclosures_survive_redraw_without_opening_another_session(self) -> None:
+    def test_the_prompt_select_carries_its_own_focus_key_per_session(self) -> None:
+        """A native select has no open state a redraw could restore, so the lane it needs is
+        focus: the select keeps its place by the session's own goal key (owner, 2026-10-02)."""
         out = self.run_page("""
 nextData.annotate=true;
 const session={harness:'claude',sid:'one',instruction:{label:'asked',text:'Latest prompt',at:20},first_prompt:'First prompt',first_prompt_at:10};
 nextCockpitContexts.set('demo\\nclaude:one',{data:{prompt_choices:[{fact_id:'p1',at:10,text:'First prompt',cut:false}]},revision:0});
 nextRoute={view:'session',project:'demo',harness:'claude',session:'one'};
-let nodes=[];
-const mount=()=>{
- const html=nextIntentPromptMenu(session);
- nodes=[...html.matchAll(/data-next-cockpit-disclosure="([^"]+)"/g)].map(match=>({
-  open:false,getAttribute(){return match[1];},querySelector(){return {setAttribute(){}};}
- }));
-};
-__els.app.querySelectorAll=selector=>selector==='[data-next-cockpit-disclosure]'?nodes:[];
-mount();nextCockpitAfterRender();
-for(const node of nodes)node.open=true;
-nextCockpitBeforeRender();mount();nextCockpitAfterRender();
-const restored=nodes.map(node=>node.open);
-nextCockpitBeforeRender();nextRoute.session='two';mount();nextCockpitAfterRender();
-console.log(JSON.stringify({restored,other:nodes.map(node=>node.open)}));
+const one=nextIntentPromptSelect(session);
+console.log(JSON.stringify({one,other:nextIntentPromptSelect({...session,sid:'two'})}));
 """)
-        # One menu, "Use your prompt", with no disclosure nested inside it (owner Q7).
-        self.assertEqual({"restored": [True], "other": [False]}, out)
+        assert isinstance(out, dict)
+        self.assertIn('data-next-focus="held:claude:one:goal:prompt"', out["one"])
+        self.assertNotIn("data-next-cockpit-disclosure", out["one"])
+        # Another session's select would carry its own key; this one offers no choices.
+        self.assertNotIn("held:claude:one", out["other"])
 
     def test_goalless_check_posts_the_exact_prompt_and_time(self) -> None:
         out = self.run_page("""
@@ -80,7 +73,7 @@ const cases=[
  {harness:'codex',title:'Build parser',prompt_states_work:true,prompt_at:null}
 ];
 console.log(JSON.stringify(cases.map(row=>({candidate:nextPromptCandidate(row),
- menu:nextIntentPromptMenu(row)}))));
+ menu:nextIntentPromptSelect(row)}))));
 """)
         assert isinstance(out, list)
         for row in out[:-1]:

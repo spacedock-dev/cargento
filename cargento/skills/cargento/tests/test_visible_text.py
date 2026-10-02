@@ -44,6 +44,25 @@ class VisibleTextTest(unittest.TestCase):
 
         self.assertEqual("S after", visible_text(html))
 
+    def test_a_closed_select_shows_only_its_selected_option(self) -> None:
+        html = (
+            '<p>Goal</p><select><option value="">Use your prompt</option>'
+            '<option value="a" selected>First prompt</option><option value="b">Latest</option>'
+            "</select><p>after</p>"
+        )
+
+        self.assertEqual("Goal First prompt after", visible_text(html))
+
+    def test_a_select_with_nothing_selected_shows_its_first_option(self) -> None:
+        html = '<select class="x"><option value="">Use your prompt</option><option>Two</option></select>'
+
+        self.assertEqual("Use your prompt", visible_text(html))
+
+    def test_a_hidden_select_shows_nothing(self) -> None:
+        html = '<span class="next-visually-hidden"><select><option>One</option></select></span>ok'
+
+        self.assertEqual("ok", visible_text(html))
+
     def test_entities_are_decoded(self) -> None:
         self.assertEqual("a & b <c>", visible_text("<p>a &amp; b &lt;c&gt;</p>"))
 

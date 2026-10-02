@@ -1,13 +1,13 @@
-""" "Use your prompt": one disclosure menu of your own prompts that fills the goal box (DRC-4758 D2).
+""" "Use your prompt": one native select of your own prompts that fills the goal box (DRC-4758 D2).
 
 The owner's walk found the goal row offering "Use a prompt", which opened a nested "Your latest
 prompt", which held "Use latest prompt without checking": two nested disclosures and a save that
 skipped the box. Owner ruling Q7 (2026-10-01): one "Use your prompt" menu lists up to five of the
 reader's own prompts, published by the server as `prompt_choices`, and choosing one fills the
-Goal box as a pending adoption, never as a typed edit. The critic's correction 14 makes the menu a
-`<details>` of `<button>` options with their own focus keys, so a poll redraw restores it through
-the disclosure lane rather than closing it mid-choice; correction 11 keeps an excerpt marked in
-view.
+Goal box as a pending adoption, never as a typed edit. The owner's 2026-10-02 ruling makes it a
+native `<select>`, because the `<details>` of buttons critic 14 chose jumped from the right of the
+row to the left when it opened: the browser's own list drops over the page, and the poll already
+defers its paint while a select holds focus. Correction 11 keeps an excerpt marked in the option.
 
 Every assertion is on the assembled bundle's rendered markup, what a sighted reader sees of it, or
 what the page sends.
@@ -24,6 +24,7 @@ from typing import Any
 from cargento_runtime import reading as runtime_reading
 
 from . import test_next_cockpit as cockpit_tests
+from .next_harness import NEXT_STYLES
 from .test_next_drift_panel import routes
 from .test_next_intent_draft import (
     ADD_EDITED,
@@ -58,21 +59,30 @@ __fetchImpl = async (url, init) => {
   const data = await answer.json();
   return {ok:true, json:async () => ({...data, prompt_choices:__choices})};
 };
+// A reader's pick in the native list, as the browser reports it: a change on the select.
+const __pick = value => __fire("change", {target:{tagName:"SELECT", value,
+  closest(selector){ return selector === "[data-next-cockpit-prompt-select]" ? this : null; }}});
 """
 )
 
 
 def menu_of(html: str) -> str:
-    found = re.search(r'<details class="next-intent-prompt-menu"[\s\S]*?</details>', html)
-    assert found is not None, "no prompt menu"
+    found = re.search(r'<label class="next-intent-prompt-pick"[\s\S]*?</label>', html)
+    assert found is not None, "no prompt select"
     return found.group(0)
 
 
 def options_of(html: str) -> list[str]:
-    return re.findall(
-        r'<button[^>]*data-next-cockpit-action="prompt-choose"[^>]*>[\s\S]*?</button>',
-        menu_of(html),
-    )
+    """The prompts offered, without the placeholder."""
+    return [
+        option
+        for option in re.findall(r"<option\b[^>]*>[^<]*</option>", menu_of(html))
+        if 'value=""' not in option
+    ]
+
+
+def option_text(option: str) -> str:
+    return visible_text(f"<select>{option}</select>")
 
 
 def goal_box(html: str) -> str:
@@ -83,30 +93,36 @@ def goal_box(html: str) -> str:
     return found.group(1)
 
 
-CHOOSE = '__press("prompt-choose", "p-latest");\nawait __settle();\n'
+CHOOSE = '__pick("p-latest");\nawait __settle();\n'
 HTML = "console.log(JSON.stringify(__els.app.innerHTML));"
 
 
 @unittest.skipUnless(shutil.which("node"), "node not available")
-class TheMenuIsOneDisclosureOfButtonsTest(_DraftPage):
+class TheMenuIsOneNativeSelectTest(_DraftPage):
     def page(self, setup: str = "", after: str = "") -> Any:
         return self.drive(SERVE_CHOICES + setup, after)
 
-    def test_one_menu_named_use_your_prompt_and_no_nested_disclosure(self) -> None:
+    def test_one_select_whose_face_reads_use_your_prompt_and_no_disclosure(self) -> None:
         out = self.page()
         assert isinstance(out, str)
         intent = intent_of(out)
         menu = menu_of(out)
-        self.assertEqual(1, intent.count('class="next-intent-prompt-menu"'))
-        self.assertRegex(menu, r"<summary[^>]*>Use your prompt</summary>")
-        # One level: the old menu nested a second disclosure for the latest prompt.
-        self.assertEqual(1, menu.count("<details"))
+        self.assertEqual(1, intent.count("<select"))
+        self.assertEqual(1, menu.count("<select"))
+        # The closed face is the placeholder, which a pick never sends.
+        self.assertRegex(menu, r'<select[^>]*>\s*<option value="">Use your prompt</option>')
+        self.assertEqual("Use your prompt", visible_text(menu))
+        # Named for a screen reader by what it does, since the face is a value.
+        self.assertIn(
+            '<span class="next-visually-hidden">Fill the goal from one of your prompts</span>', menu
+        )
+        # No disclosure of buttons any more: it jumped left when it opened.
+        self.assertNotIn("<details", menu)
+        self.assertNotIn("<button", menu)
         self.assertNotIn('role="listbox"', menu)
-        self.assertNotIn("<select", intent)
+        self.assertNotIn("adopt:choices", out)
         for gone in ("Use a prompt", "Your latest prompt", "without checking"):
             self.assertNotIn(gone, out)
-        # Reused restore lane: the menu carries the disclosure key the redraw reopens.
-        self.assertIn("adopt:choices", menu)
 
     def test_the_options_are_the_published_prompts_in_order_with_their_own_times(self) -> None:
         out = self.page(
@@ -116,58 +132,65 @@ class TheMenuIsOneDisclosureOfButtonsTest(_DraftPage):
         assert isinstance(out, dict)
         options = options_of(out["html"])
         self.assertEqual(3, len(options))
-        texts = [visible_text(option).strip() for option in options]
+        texts = [option_text(option) for option in options]
         first, latest, earlier = out["clocks"]
-        self.assertTrue(texts[0].startswith(f"First prompt · {first}"), texts[0])
-        self.assertIn(FIRST, texts[0])
-        self.assertTrue(texts[1].startswith(f"Latest prompt · {latest}"), texts[1])
-        self.assertIn(CHOSEN, texts[1])
-        self.assertTrue(texts[2].startswith(f"Earlier prompt · {earlier}"), texts[2])
+        self.assertEqual(f"First prompt · {first} — {FIRST}", texts[0])
+        self.assertEqual(f"Latest prompt · {latest} — {CHOSEN}", texts[1])
         # An excerpt says so in the option itself (critic 11), and a whole prompt does not.
-        self.assertIn("Shown excerpt only.", texts[2])
-        self.assertNotIn("Shown excerpt only.", texts[0] + texts[1])
-        for option in options:
-            self.assertIn('type="button"', option)
-            self.assertIn("next-action", option)
-            self.assertNotIn("next-action--primary", option)
+        self.assertEqual(f"Earlier prompt · {earlier} · excerpt — {LONG}", texts[2])
+        self.assertNotIn("excerpt", texts[0] + texts[1])
+        self.assertEqual(
+            ['value="p-first"', 'value="p-latest"', 'value="p-long"'],
+            [re.search(r'value="[^"]*"', option).group(0) for option in options],  # type: ignore[union-attr]
+        )
+
+    def test_a_long_prompt_is_clipped_at_a_word_in_its_option(self) -> None:
+        words = "Keep every retry attempt in one ledger the board can read " * 4
+        out = self.page(
+            "__choices = [{fact_id:'p-w', at:99, text:"
+            + json.dumps(words.strip())
+            + ", cut:false}];\n",
+            HTML,
+        )
+        assert isinstance(out, str)
+        text = option_text(options_of(out)[0])
+        shown = text.split(" — ", 1)[1]
+        self.assertTrue(shown.endswith("…"), shown)
+        self.assertLessEqual(len(shown), 61)
+        # Cut at a word: what is left before the mark is a prefix ending on a whole word.
+        self.assertTrue(words.startswith(shown[:-1].rstrip()), shown)
+        self.assertEqual(" ", words[len(shown[:-1].rstrip())])
 
     def test_the_earliest_offered_is_first_only_when_it_is_the_first_prompt(self) -> None:
         # The record the choices come from holds the newest 100 events, so in a long session
         # its earliest prompt is a later message than the row's first prompt (F2).
         out = self.page("__s.first_prompt_at = 50;\n", HTML)
         assert isinstance(out, str)
-        label = visible_text(options_of(out)[0]).strip()
+        label = option_text(options_of(out)[0])
         self.assertTrue(label.startswith("Earliest prompt · "), label)
-        self.assertNotIn("First prompt", visible_text(menu_of(out)))
+        self.assertNotIn("First prompt", menu_of(out))
 
-    def test_every_option_keeps_its_own_focus_key_across_a_redraw(self) -> None:
+    def test_the_select_keeps_its_focus_key_across_a_redraw(self) -> None:
         out = self.page(
             after="const before = __els.app.innerHTML; renderNext();\n"
             "console.log(JSON.stringify({before, after:__els.app.innerHTML}));"
         )
         assert isinstance(out, dict)
-        keys = [
-            re.search(r'data-next-focus="([^"]*)"', option).group(1)  # type: ignore[union-attr]
-            for option in options_of(out["before"])
-        ]
-        self.assertEqual(
-            [
-                f"{GOAL_KEY}:prompt:p-first",
-                f"{GOAL_KEY}:prompt:p-latest",
-                f"{GOAL_KEY}:prompt:p-long",
-            ],
-            keys,
-        )
-        for key in keys:
-            self.assertIn(f'data-next-focus="{key}"', out["after"])
+        for html in (out["before"], out["after"]):
+            select = re.search(r"<select\b[^>]*>", menu_of(html))
+            assert select is not None
+            self.assertIn(f'data-next-focus="{GOAL_KEY}:prompt"', select.group(0))
+            self.assertIn("data-next-cockpit-prompt-select", select.group(0))
+        # No option carries a key of its own: the select is the one control.
+        self.assertNotIn(":prompt:p-", out["before"])
 
     def test_no_menu_without_published_prompts_or_with_annotations_off(self) -> None:
         none = self.page("__choices = [];\n")
         off = self.page("__dashboard.annotate = false;\n")
         assert isinstance(none, str)
         assert isinstance(off, str)
-        self.assertNotIn("next-intent-prompt-menu", none)
-        self.assertNotIn("next-intent-prompt-menu", off)
+        self.assertNotIn("next-intent-prompt-select", none)
+        self.assertNotIn("next-intent-prompt-select", off)
         self.assertNotIn("Use your prompt", none + off)
 
     def test_a_malformed_choice_is_not_offered(self) -> None:
@@ -204,7 +227,8 @@ class ChoosingFillsTheGoalAsAPendingAdoptionTest(_DraftPage):
         seen = visible_text(intent)
         self.assertIn(f"from your prompt · {out['clock']}", seen)
         self.assertIn("Looks right", seen)
-        self.assertIn({"named": GOAL_KEY}, out["renders"])
+        # Focus stays on the select, so arrowing through it previews each prompt in turn.
+        self.assertIn({"named": f"{GOAL_KEY}:prompt"}, out["renders"])
 
     def test_choosing_says_so_politely(self) -> None:
         out = self.page(
@@ -214,7 +238,7 @@ class ChoosingFillsTheGoalAsAPendingAdoptionTest(_DraftPage):
         self.assertEqual(["Goal filled from your prompt. Not saved."], out)
 
     def test_an_excerpt_stays_marked_in_view_once_chosen(self) -> None:
-        out = self.page(after='__press("prompt-choose", "p-long");\nawait __settle();\n' + HTML)
+        out = self.page(after='__pick("p-long");\nawait __settle();\n' + HTML)
         assert isinstance(out, str)
         self.assertEqual(LONG, goal_box(out))
         self.assertIn("Shown excerpt only.", visible_text(intent_of(out)))
@@ -319,7 +343,7 @@ class ChoosingFillsTheGoalAsAPendingAdoptionTest(_DraftPage):
         out = self.page(after=CHOOSE + '__press("held-clear", "goal");\nawait __settle();\n' + HTML)
         assert isinstance(out, str)
         self.assertEqual("", goal_box(out))
-        self.assertNotIn(CHOSEN, intent_of(out).split("next-intent-prompt-menu")[0])
+        self.assertNotIn(CHOSEN, intent_of(out).split("next-intent-prompt-pick")[0])
 
     def test_after_clear_the_same_words_typed_back_are_typed(self) -> None:
         out = self.page(
@@ -337,7 +361,7 @@ class ChoosingFillsTheGoalAsAPendingAdoptionTest(_DraftPage):
             '__reply["/api/direction"] = body => ({status:200, body:{ok:true, '
             'fact_id:body.fact_id, text:"Newest direction", clipped:false, fits:true}});\n',
             # The first prompt chosen, so the record's two directions after it are later.
-            '__press("prompt-choose", "p-first");\nawait __settle();\n'
+            '__pick("p-first");\nawait __settle();\n'
             '__press("direction-add", __argOf("direction-add"));\n'
             "await __settle();\nawait __settle();\n"
             '__press("direction-save");\nawait __settle();\n'
@@ -355,7 +379,7 @@ class ChoosingFillsTheGoalAsAPendingAdoptionTest(_DraftPage):
 
     def test_save_intent_over_an_empty_goal_adopts_the_choice(self) -> None:
         out = self.page(
-            after='__press("prompt-choose", "p-first");\nawait __settle();\n'
+            after='__pick("p-first");\nawait __settle();\n'
             '__press("held-save", "intent");\nawait __settle();\n'
             "console.log(JSON.stringify(__posts.map(post => post.body)));"
         )
@@ -507,6 +531,111 @@ class AllowSendsWhatTheBoxHoldsNowTest(_DraftPage):
 
 
 @unittest.skipUnless(shutil.which("node"), "node not available")
+class ANativeListThatStaysWhereItIsTest(_DraftPage):
+    """Owner ask 2 (2026-10-02): a native select that does not jump, and a pick fills the box."""
+
+    def page(self, setup: str = "", after: str = "") -> Any:
+        return self.drive(SERVE_CHOICES + setup, after)
+
+    def test_a_reader_picks_a_prompt_from_a_native_list_and_the_goal_box_fills_unsaved(
+        self,
+    ) -> None:
+        out = self.page(
+            cockpit_tests.CockpitCuesReachTheReaderTest.ANNOUNCER_DOM,
+            '__pick("p-long");\nawait __settle();\n'
+            "console.log(JSON.stringify({html:__els.app.innerHTML, posts:__posts, "
+            'said:wrote("next-cockpit-cue-status")}));',
+        )
+        assert isinstance(out, dict)
+        # The whole prompt, not the option's clipped label.
+        self.assertEqual(LONG, goal_box(out["html"]))
+        self.assertEqual([], out["posts"])
+        self.assertEqual(["Goal filled from your prompt. Not saved."], out["said"])
+
+    def test_after_picking_the_readers_focus_stays_on_the_list(self) -> None:
+        out = self.page(after=CHOOSE + "console.log(JSON.stringify(__renders));")
+        assert isinstance(out, list)
+        self.assertEqual({"named": f"{GOAL_KEY}:prompt"}, out[-1])
+
+    def test_a_poll_that_arrived_while_the_list_was_focused_does_not_take_focus_back(
+        self,
+    ) -> None:
+        out = self.page(
+            after='nextDeferredRender = {focus:{named:"x"}, announcement:""};\n'
+            "const __before = __renders.length;\n" + CHOOSE + "console.log(JSON.stringify("
+            "{pending:nextDeferredRender, renders:__renders.slice(__before)}));"
+        )
+        assert isinstance(out, dict)
+        self.assertIsNone(out["pending"])
+        self.assertEqual([{"named": f"{GOAL_KEY}:prompt"}], out["renders"])
+
+    def test_the_poll_the_list_held_back_is_still_announced_after_the_pick(self) -> None:
+        out = self.page(
+            after="const __said = [];\nconst __announce = nextAnnounceAttention;\n"
+            "nextAnnounceAttention = message => { __said.push(message); return __announce(message); };\n"
+            'nextDeferredRender = {focus:{named:"x"}, announcement:"1 session needs you"};\n'
+            + CHOOSE
+            + "console.log(JSON.stringify(__said));"
+        )
+        self.assertEqual(["1 session needs you"], out)
+
+    def test_picking_the_placeholder_changes_nothing_and_lets_the_held_poll_paint(self) -> None:
+        out = self.page(
+            after='nextDeferredRender = {focus:{named:"x"}, announcement:""};\n'
+            "const __before = __renders.length;\n"
+            '__pick("");\nawait __settle();\n'
+            "console.log(JSON.stringify({renders:__renders.slice(__before), "
+            "chosen:nextIntentChosenPrompts.size}));"
+        )
+        assert isinstance(out, dict)
+        # The list's own deferral runs as it always has: the poll it held back paints, once.
+        self.assertEqual([{"named": "x"}], out["renders"])
+        self.assertEqual(0, out["chosen"])
+
+    def test_the_list_shows_the_pick_while_the_box_holds_it_and_the_placeholder_once_typed(
+        self,
+    ) -> None:
+        field = (
+            "const __select = {value:'p-latest'};\n"
+            "const __field = {querySelector(selector){ return selector === "
+            "'[data-next-cockpit-prompt-select]' ? __select : null; }, setAttribute(){}, "
+            "removeAttribute(){}};\n"
+            "__fire('input', {target:{value:'Typed over it', dataset:{nextCockpitHeldKey:"
+            + json.dumps(GOAL_KEY)
+            + "}, closest(selector){ return selector === '[data-next-cockpit-held-key]' ? this"
+            " : selector === '[data-next-cockpit-held-field]' ? __field : null; }}});\n"
+        )
+        out = self.page(
+            after=CHOOSE + "const picked = __els.app.innerHTML;\n" + field + "renderNext();\n"
+            "console.log(JSON.stringify({picked, inPlace:__select.value, "
+            "typed:__els.app.innerHTML}));"
+        )
+        assert isinstance(out, dict)
+        picked = menu_of(out["picked"])
+        self.assertRegex(picked, r'<option value="p-latest" selected>')
+        self.assertEqual(1, picked.count(" selected"))
+        self.assertTrue(option_text(options_of(out["picked"])[1]).startswith("Latest prompt"))
+        self.assertTrue(visible_text(picked).startswith("Latest prompt"), visible_text(picked))
+        # The first keystroke puts the face back in place, with no redraw, so the same prompt
+        # can be picked again.
+        self.assertEqual("", out["inPlace"])
+        self.assertNotIn(" selected", menu_of(out["typed"]))
+        self.assertEqual("Use your prompt", visible_text(menu_of(out["typed"])))
+
+    def test_a_240_character_prompt_does_not_stretch_the_list(self) -> None:
+        pick = re.search(r"\.next-intent-prompt-pick\{([^}]*)\}", NEXT_STYLES)
+        assert pick is not None
+        self.assertIn("max-inline-size:min(18rem,100%)", pick.group(1))
+        self.assertIn("margin-left:auto", pick.group(1))
+        select = re.search(r"\.next-intent-prompt-select\{([^}]*)\}", NEXT_STYLES)
+        assert select is not None
+        self.assertIn("max-inline-size:100%", select.group(1))
+        self.assertIn("text-overflow:ellipsis", select.group(1))
+        # The old menu's rules are gone with it.
+        self.assertNotIn(".next-intent-prompt-menu", NEXT_STYLES)
+
+
+@unittest.skipUnless(shutil.which("node"), "node not available")
 class ThePageSpellsTheSourcesAsTheServerDoesTest(_DraftPage):
     def test_the_prompt_sources_match_the_servers(self) -> None:
         out = self.drive(after="console.log(JSON.stringify(NEXT_PROMPT_SOURCES));")
@@ -515,9 +644,9 @@ class ThePageSpellsTheSourcesAsTheServerDoesTest(_DraftPage):
     def test_old_controls_are_gone_from_the_bundle(self) -> None:
         out = self.drive(
             after="console.log(JSON.stringify({adopt:typeof nextPromptAdoptControls, "
-            "menu:typeof nextIntentPromptMenu}));"
+            "menu:typeof nextIntentPromptMenu, select:typeof nextIntentPromptSelect}));"
         )
-        self.assertEqual({"adopt": "undefined", "menu": "function"}, out)
+        self.assertEqual({"adopt": "undefined", "menu": "undefined", "select": "function"}, out)
 
 
 if __name__ == "__main__":

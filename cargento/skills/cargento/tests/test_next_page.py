@@ -1169,7 +1169,7 @@ class NextPageAssetContractTest(unittest.TestCase):
         ".next-cockpit-held-absent",
         ".next-cockpit-held-full",
         ".next-cockpit-held-hint",
-        ".next-intent-prompt-menu>summary",
+        ".next-intent-prompt-select",
         ".next-cockpit-held-field textarea",
         ".next-cockpit-steer-box textarea",
         ".next-cockpit-held-lede",
@@ -1401,7 +1401,10 @@ class NextPageAssetContractTest(unittest.TestCase):
         # DRC-4758 D1 adds one: the editor's footer hint under both fields. D2 adds one:
         # the "Use your prompt" menu's summary, a disclosure's worded summary at the body
         # floor. The DRC-4758 fix round retires one: the source coverage block's paragraph,
-        # which restated NEXT STEP's own absence.
+        # which restated NEXT STEP's own absence. The owner's 2026-10-02 ruling swaps one for
+        # one: the menu's summary goes with the menu, and the native select's face, which
+        # reads "Use your prompt" or the picked prompt at the body floor, takes its place, so
+        # the count measured after it is unchanged.
         self.assertEqual(133, len(above))
         self.assertEqual(self.SENTENCE_TIER_RULES, {selector for selector, _size in above})
         self.assertEqual(

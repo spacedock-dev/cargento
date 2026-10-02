@@ -1303,13 +1303,12 @@ details.next-cockpit-held-stamp[open]>span{display:block}
    row. Open, it takes the row's full width so each prompt reads as a line of
    its own; each option is the primitive, quiet, its words clamped to two
    lines and its time above them. */
-.next-intent-prompt-menu{margin-left:auto;min-width:0;max-width:100%}
-.next-intent-prompt-menu[open]{flex:1 1 100%}
-.next-intent-prompt-menu>summary{min-height:44px;align-content:center;cursor:pointer;color:var(--ink);font:500 var(--fs-body)/1.55 var(--sans)}
-.next-intent-prompt-options{display:grid;gap:4px;margin:4px 0 0;padding:0;list-style:none}
-.next-intent-prompt-option{display:grid;justify-content:stretch;justify-items:start;gap:2px;width:100%;text-align:left}
-.next-intent-prompt-when{color:var(--ink-label);font-family:var(--mono);font-size:var(--fs-label);font-weight:600}
-.next-intent-prompt-text{display:-webkit-box;overflow:hidden;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow-wrap:anywhere;color:var(--ink-value)}
+/* "Use your prompt" is a native select at the end of the Goal label row
+   (owner, 2026-10-02): a fixed width, so a 240-character prompt cannot
+   stretch it (it measured 1597px wide in a 600px row), and the browser's own
+   list drops over the page. */
+.next-intent-prompt-pick{margin-left:auto;display:flex;min-width:0;max-inline-size:min(18rem,100%)}
+.next-intent-prompt-select{inline-size:auto;max-inline-size:100%;min-width:0;padding:0 28px 0 12px;color:var(--ink);font:500 var(--fs-body)/1.55 var(--sans);text-overflow:ellipsis}
 .next-cockpit-held-label{grid-column:1/-1;color:var(--ink-label);font-family:var(--mono);font-size:var(--fs-label);font-weight:600;letter-spacing:.07em}
 .next-cockpit-held-field textarea{grid-column:1/-1;width:100%;min-height:56px;box-sizing:border-box;resize:vertical;padding:7px;border:1px solid var(--line);background:var(--panel);color:var(--ink-value);font:var(--fs-body)/1.55 var(--sans)}
 .next-cockpit-held-count{color:var(--ink-caption);font-family:var(--mono);font-size:var(--fs-label)}

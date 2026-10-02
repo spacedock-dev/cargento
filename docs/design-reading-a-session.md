@@ -1219,6 +1219,28 @@ excerpt before adoption" under What prompt adoption preserves. The nested "Use a
 - The choice goes on Undo changes, Escape, Clear, a typed save, once its words are the saved goal,
   and once the server no longer offers the same words at the same time under that fact.
 
+### Amended 2026-10-02 (owner): a native select
+
+Owner, 2026-10-02 (ask 2): "When I said to make it a dropdown, I literally meant for you to make it
+a Select dropdown." The `<details>` of buttons in the first bullet above sat at the right of the
+label row and, opened, took the whole row, so "Use your prompt" flashed to the left and a 227px list
+pushed the box down. It is now a native `<select>`, which supersedes that bullet's rationale (critic
+14): the poll already defers its paint while a select holds focus (`next-render.js`, the row "An
+open `<select>` option list" in [reader state](design-reader-state.md#the-inventory) owns it), so a
+redraw does not shut the list mid-choice.
+
+- The closed face reads "Use your prompt", at the right end of the Goal label row, at most 18rem
+  wide. The browser's own list drops over the page and moves nothing. Its accessible name is "Fill
+  the goal from one of your prompts".
+- Each option reads `First prompt · 08:02 — Make the retry queue survive…`: the name as above, the
+  time, "· excerpt" where the server clipped the prompt, and the words cut at a word near 60
+  characters. The box always receives the whole prompt.
+- A pick fills the box exactly as a choice did, and focus stays on the select, so arrowing through
+  it where each arrow is a change previews each prompt in the box without moving the reader into
+  it. A poll that waited while the list had focus is taken by the pick, so the page draws once.
+- While the box holds the pick untouched the select shows it; the first keystroke puts the face
+  back to "Use your prompt" in place, so the same prompt can be picked again.
+
 ## DEC-23: a Claude Code session's record of its checks may show the work
 
 Decided 2026-09-24 (DRC-4674). DRC-4676 builds the record and keeps it off every model prompt.
