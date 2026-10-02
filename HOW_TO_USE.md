@@ -422,7 +422,7 @@ goal. An unavailable prompt time means you must type a goal instead. The permiss
 Use **Turn off readings** on a session page to revoke it. A Claude Code session is read by Claude
 Code when `claude` is on the dashboard's PATH, and by Codex when it is not; every other session is
 read by Codex, or by Claude Code on a machine without Codex. Checks spend the capacity of whichever
-reads. **What is sent to** under the button names it, and with neither installed that reason takes
+reads. **What is sent**, under the button, opens a short list naming it, and with neither installed that reason takes
 the button's place and says no analysis can run. Permission is kept per provider, and
 Turn off readings revokes all of them. Twelve attempts are allowed in a rolling twenty-four
 hours; a refused check names when capacity under that limit becomes available again. Goal summaries

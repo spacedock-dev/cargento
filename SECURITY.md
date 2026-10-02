@@ -1461,7 +1461,7 @@ with the layer named beside it, and the route counts in Scope move in those laye
 
 The labels. "Check for drift" became "Analyze drift", and "Allow and check" became "Allow and
 analyze", with DRC-4680. When idle the disclosure sits one click away under "Analyze drift", in a
-summary reading "What is sent to <receiver>" until it is allowed (owner, 2026-10-01, Q1), and that
+popover whose summary reads "What is sent to <receiver>" until it is allowed (owner, 2026-10-01, Q1), and that
 press either opens the consent step first or runs under an Allow already given after this same
 disclosure; in the consent step it is shown whole, as the server's parts, before "Allow and
 analyze". The permission and rolling budget above are otherwise unchanged, except
