@@ -290,7 +290,7 @@ function nextIntentRow(row, live, retained = true){
     harness: String(session.harness || ""), session: String(session.sid || "")}) : "";
   const name = reachable
     ? `<a href="${esc(fragment)}" data-next-route="${esc(fragment.slice(3))}" ` +
-      `data-next-focus="intent:${esc(key)}">${esc(key)}</a>`
+      `data-next-focus="intent:${esc(key)}">${esc(nextSessionTitle(session, nextSessionAsks(session)))}</a>`
     : `<span class="next-intent-gone">${esc(key)}</span>`;
   /* The reading cell is dropped on a record and not softened. Every sentence
      it can produce -- "No reading asked for" most of all -- is about a session
@@ -329,11 +329,11 @@ function nextIntentView(){
     "<h1>Intent log</h1>";
   const available = nextData && nextData.annotate === true && nextIntentState === "read";
   const notice = !(nextData && nextData.annotate === true)
-    ? "Annotations are off for this run. Start without --no-annotations to type a goal and an expected output."
+    ? "Annotations are off for this run. Start without --no-annotations to type a goal and an expected outcome."
     : nextIntentState === "error"
       ? "The annotation store could not be read, so its evidence is unread rather than empty."
       : !available ? "Reading the annotation store."
-        : !(nextIntentRows || []).length ? "No goal or expected output has been saved yet." : "";
+        : !(nextIntentRows || []).length ? "No goal or expected outcome has been saved yet." : "";
   const rows = available ? [...new Map((nextIntentRows || []).map(row => [sessKey(row), row])).values()] : [];
   const live = nextIntentLiveProjects();
   /* Newest save first, which is also eviction order read backwards: the store

@@ -95,7 +95,11 @@ function nextSessionFacts(observed, asks){
      both again. */
   const shown = rows.filter(([, key]) => key === "next" || key === "block");
   const behind = rows.filter(([, key]) => key !== "next" && key !== "block");
-  const summary = `Session facts: ${observed.outcomeText} · ${observed.gitText}`;
+  /* A known outcome already carries the git clause ("Session ended; git
+     state not measured"), so the summary says it once (NU-14, 2026-10-02). */
+  const summary = observed.outcomeKnown
+    ? `Session facts: ${observed.outcomeText}`
+    : `Session facts: ${observed.outcomeText} · ${observed.gitText}`;
   return '<dl class="next-session-facts">' + shown.map(row).join("") + "</dl>" +
     `<details class="next-cockpit-why next-session-facts-more"${nextCockpitDisclosureAttr("session-facts")}>` +
     `<summary>${esc(summary)}</summary>` +

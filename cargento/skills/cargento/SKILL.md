@@ -412,7 +412,7 @@ the save after it keeps every earlier revision, so the raises quoting those word
 the whole annotation withdraws them: the quotations go from the departure record too, and what
 stays is the fact that a check ran and a record of the discard itself, holding when it happened
 and no text at all. That record is why a discarded session still has a line in the Intent log,
-and why the board never describes it as a session nobody typed against. That act is `discard everything`, behind `Discard everything` under the two boxes and offered only
+and why the board never describes it as a session nobody typed against. That act is the `Discard everything` control, behind the summary of the same name under the two boxes and offered only
 where a revision is stored; it takes two presses, and between them the board names what it will
 delete and what it will withdraw. That sentence is the control's own description, and it is
 written to the page's live region when the first press arms it, so it reaches a reader who is not

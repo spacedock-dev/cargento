@@ -4551,9 +4551,12 @@ function nextCockpitReadingBaseline(shape, extra = ""){
     return extra ? `<details${nextCockpitDisclosureAttr("reading-baseline")}>` +
       `<summary>What it read</summary>${extra}</details>` : "";
   }
+  /* One sentence either way. With no time it read "Revision 2, when it was
+     typed was not recorded." (NU-13, 2026-10-02); adopted words were saved
+     rather than typed, so their missing time is the save's. */
   const typed = shape.revisionReadAt != null
-    ? `${shape.promptSource ? "saved" : "typed"} ${esc(fmtDur(Math.max(0, (nextData && nextData.generated || 0) - shape.revisionReadAt)))} ago`
-    : (shape.promptSource ? "when it was saved was not recorded" : "when it was typed was not recorded");
+    ? `, ${shape.promptSource ? "saved" : "typed"} ${esc(fmtDur(Math.max(0, (nextData && nextData.generated || 0) - shape.revisionReadAt)))} ago`
+    : ` (${shape.promptSource ? "save time" : "time"} not recorded)`;
   /* Both times, as item 13 of
      [DEC-24](docs/design-reading-a-session.md#dec-24-your-intent-is-a-drafted-goal-and-a-checklist-and-a-correction-is-yours-to-copy)
      asks, where they differ: typed words read work from the reader's latest
@@ -4579,7 +4582,7 @@ function nextCockpitReadingBaseline(shape, extra = ""){
      fix round). */
   return `<details${nextCockpitDisclosureAttr("reading-baseline")}>` +
     "<summary>What it read</summary>" +
-    `<p class="next-cockpit-reading-why">Revision ${shape.revisionRead}, ${typed}${opened}.</p>` +
+    `<p class="next-cockpit-reading-why">Revision ${shape.revisionRead}${typed}${opened}.</p>` +
     extra + rows + "</details>";
 }
 
@@ -5267,7 +5270,7 @@ function nextCockpitHeldDiscardBlock(session, annotation){
         'data-next-cockpit-action="held-discard" ' +
         `data-next-cockpit-discard-key="${esc(key)}" data-next-focus="${esc(key)}"` +
         (warning ? ' aria-describedby="next-cockpit-discard-armed"' : "") + ">" +
-        `${armed ? "confirm discard" : "discard everything"}</button>`
+        `${armed ? "Confirm discard" : "Discard everything"}</button>`
       : "") +
     (offer && warning
       ? '<p class="next-cockpit-held-absent" id="next-cockpit-discard-armed">' +
@@ -5773,8 +5776,10 @@ function nextCockpitDriftBlock(group, session, primary){
   /* The saved introduction took 69.75px above the fields and put Analyze at
      892.5–936.5 with three lines and High on a 1440x900 board (DRC-4748).
      Keep its words below the action; the first-prompt draft's guide stays
-     with the fields the reader is being asked to choose. */
-  const savedIntroduction = drafted ? "" : lede;
+     with the fields the reader is being asked to choose. Under a stored
+     reading it is not drawn at all: it explains a step already done (NU-10,
+     2026-10-02). */
+  const savedIntroduction = drafted || nextDriftReadingStored(annotation) ? "" : lede;
   const panel = open + intent + head + reading.control + savedIntroduction + reading.reading +
     nextCockpitConflict(session, annotation, workSource) + caveats + reading.departures +
     '</section></aside>';

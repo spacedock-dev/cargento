@@ -155,5 +155,60 @@ class AttentionSaysWhatIsOnTheBoardTest(panel.PanelPage):
         self.assertNotIn("NEEDS YOU NOW", waiting)
 
 
+@unittest.skipUnless(shutil.which("node"), "node not available")
+class FiveSmallCopyFixesTest(panel.PanelPage):
+    """NU-10, NU-13, NU-14, NU-16 and NU-20 (2026-10-02): words a first-time reader trips on."""
+
+    def test_a_reader_with_a_stored_reading_is_not_told_how_to_start_one(self) -> None:
+        stored = visible_text(self.page("codex", panel.READING))
+        self.assertNotIn("What analysis does", stored)
+        # Before any reading, the explanation is still one click away.
+        self.assertIn("What analysis does", visible_text(self.page("claude", density.ELIGIBLE)))
+
+    def test_what_it_read_is_one_grammatical_sentence(self) -> None:
+        html = self.page("codex", panel.READING)
+        self.assertIn("Revision 2 (time not recorded).", html)
+        self.assertNotIn("when it was typed was not recorded", html)
+
+    def test_an_ended_session_states_its_git_state_once(self) -> None:
+        html = self.page("claude", density.STORED + ENDED)
+        summary = re.search(r"<summary>(Session facts:[^<]*)</summary>", html)
+        assert summary is not None
+        self.assertEqual(1, summary.group(1).lower().count("git state"), summary.group(1))
+        self.assertTrue(summary.group(1).startswith("Session facts: Session ended"))
+
+    def test_the_intent_log_names_each_session_the_way_the_rest_of_the_board_does(self) -> None:
+        html = self._run_page_js(
+            "await __settle();\nawait __settle();\n"
+            + panel.ANNOTATED
+            + "await refreshNext();\nawait __settle();\n"
+            "navigateNext({view:'intent', project:null, session:null});\nawait __settle();\n"
+            "const on = __els.app.innerHTML;\n"
+            "nextData.annotate = false; renderNext();\n"
+            "console.log(JSON.stringify({on, off:__els.app.innerHTML}));",
+            panel.storage_prelude({}) + panel.FIXTURE,
+        )
+        assert isinstance(html, dict)
+        link = re.search(
+            r'<a [^>]*data-next-route="session:cargento:codex:focus-1"[^>]*>([^<]*)</a>', html["on"]
+        )
+        assert link is not None
+        self.assertEqual("Shape project cockpit", link.group(1))
+        self.assertNotIn(">codex:focus-1<", html["on"])
+        self.assertIn("expected outcome", visible_text(html["off"]))
+        self.assertNotIn("expected output", visible_text(html["off"]))
+
+    def test_the_discard_controls_words_match_its_summary(self) -> None:
+        html = self.page()
+        offer = re.search(
+            r"<details[^>]*next-cockpit-held-discard-offer[^>]*>[\s\S]*?</details>", html
+        )
+        assert offer is not None
+        self.assertIn("<summary>Discard everything</summary>", offer.group(0))
+        button = re.search(r'data-next-cockpit-action="held-discard"[^>]*>([^<]*)<', offer.group(0))
+        assert button is not None
+        self.assertEqual("Discard everything", button.group(1))
+
+
 if __name__ == "__main__":
     unittest.main()

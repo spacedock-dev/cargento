@@ -124,8 +124,8 @@ class ALeveledReadingHoldsToTheStoredBudgetTest(_ResultPage):
             "said at #2; not a check",
             # The unlisted count, behind its number.
             "1 more written file is counted and not listed.",
-            # What it read, behind its worded summary.
-            "Revision 2, ",
+            # What it read, behind its worded summary (one sentence since NU-13).
+            "Revision 2 (time not recorded).",
         ):
             with self.subTest(moved=moved):
                 self.assertIn(moved, aside)
@@ -181,10 +181,12 @@ class MovedTextStaysOnThePageTest(PanelPage):
         self.assertRegex(visible_text(aside), r"Later directions: settled( \d+[smhd] ago)?(?= |$)")
 
     def test_what_analysis_does_is_behind_a_summary_under_a_saved_intent(self) -> None:
-        aside = aside_of(self.page("claude", STORED))
+        aside = aside_of(self.page("claude", ELIGIBLE))
         self.assertIn(LEDE, aside)
         self.assertNotIn(LEDE, visible_text(aside))
         self.assertIn("What analysis does", visible_text(aside))
+        # Under a stored reading the step it explains is done, so it is not drawn (NU-10).
+        self.assertNotIn(LEDE, aside_of(self.page("claude", STORED)))
 
     def test_discard_everything_is_a_summary_with_the_button_inside(self) -> None:
         aside = aside_of(
@@ -197,8 +199,8 @@ class MovedTextStaysOnThePageTest(PanelPage):
             )
         )
         text = visible_text(aside)
-        self.assertIn("Discard everything", text)
-        self.assertNotIn("discard everything", text)
+        # The control inside reads the summary's own words (NU-20), and is behind it.
+        self.assertEqual(1, text.count("Discard everything"))
         self.assertIn('data-next-cockpit-action="held-discard"', aside)
         why = annotation_store.DISCARD_SENTENCES["why"]
         self.assertIn(why, aside)

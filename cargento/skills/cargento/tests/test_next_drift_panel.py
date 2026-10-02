@@ -491,7 +491,6 @@ class ThePanelKeepsAnalyzeOnTheFirstScreenTest(PanelPage):
             (self.page(setup=THREE_LINES), "reading-ask"),
             (self.confirming(), "reading-allow"),
             (self.page(setup=JOB), "reading-cancel"),
-            (self.page("codex", READING), "reading-ask"),
         ):
             with self.subTest(action=action):
                 aside = aside_of(html)
@@ -499,6 +498,9 @@ class ThePanelKeepsAnalyzeOnTheFirstScreenTest(PanelPage):
                 self.assertEqual(1, text.count(introduction))
                 before_action = aside[: aside.index(f'data-next-cockpit-action="{action}"')]
                 self.assertNotIn(introduction, visible_text(before_action))
+        # Under a stored reading the introduction explains a step already taken, so it is not
+        # drawn at all (NU-10, 2026-10-02).
+        self.assertNotIn(introduction, aside_of(self.page("codex", READING)))
 
     def test_each_field_is_label_box_counter_and_one_footer_saves_both(self) -> None:
         """Owner Q6, 2026-10-01, reversing the DRC-4680 heading-row placement: with each field's

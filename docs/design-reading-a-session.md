@@ -2512,13 +2512,15 @@ on stay in view.
   behind "What a reading reads". The READING section is drawn only for a stored reading this build
   could not read, and that sentence stays in view. A malformed reading keeps the section.
 - The saved introduction ("Choose a goal or use your prompt, then analyze drift...") sits behind
-  "What analysis does".
+  "What analysis does". Amended 2026-10-02 (NU-10): under a stored reading it is not drawn, because
+  the step it explains is done.
 - The later-direction block is one summary naming its state: "Later directions: none since your
   save", "Later directions: settled 5m ago", or "Later directions: unknown (record unread)". The
   unread state is in the summary, so it is never a silent all-clear
   ([DEC-20](#dec-20-the-first-screen-shows-goal-beside-direction-and-drift-has-one-home)); the
   state sentences and the steer paragraph sit behind it.
-- "Discard everything" is a summary holding the server's why, the `discard everything` control
+- "Discard everything" is a summary holding the server's why, the `Discard everything` control
+  (its summary's own words since NU-20, 2026-10-02; armed, it reads `Confirm discard`)
   and, once armed, its warning. Armed, it is drawn open and outside the restore lane, so a redraw
   cannot shut the warning that describes the armed control (DRC-4564). The account of a landed or
   failed discard stays in view.

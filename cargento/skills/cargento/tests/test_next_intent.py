@@ -629,7 +629,7 @@ console.log(JSON.stringify({
     def test_nothing_typed_anywhere_is_not_the_same_as_the_store_being_off(self) -> None:
         empty = self.render([])
 
-        self.assertIn("No goal or expected output has been saved yet", empty["visible"])
+        self.assertIn("No goal or expected outcome has been saved yet", empty["visible"])
         self.assertEqual(1, empty["rows"])
 
         # The half this test was named for and did not check. Measured while
@@ -641,7 +641,7 @@ console.log(JSON.stringify({
 
         self.assertIn("Annotations are off for this run", off["visible"])
         self.assertIn("--no-annotations", off["visible"])
-        self.assertNotIn("No goal or expected output has been saved yet", off["visible"])
+        self.assertNotIn("No goal or expected outcome has been saved yet", off["visible"])
         self.assertEqual(1, off["rows"])
 
     DEPARTURE: ClassVar[dict[str, Any]] = {

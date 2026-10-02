@@ -4719,7 +4719,7 @@ console.log(JSON.stringify({
 
         assert isinstance(out, dict)
         self.assertEqual(1, out["present"])
-        self.assertEqual("discard everything", out["label"])
+        self.assertEqual("Discard everything", out["label"])  # NU-20: the summary's words
         self.assertTrue(out["why"])
         # And the per-field control keeps its own name, which is the half of
         # this the design draws and the half that already shipped.
@@ -4758,7 +4758,7 @@ console.log(JSON.stringify({armed: {posts: armed.posts, label: armed.label,
 
         assert isinstance(out, dict)
         self.assertEqual(0, out["armed"]["posts"])
-        self.assertNotEqual("discard everything", out["armed"]["label"])
+        self.assertEqual("Confirm discard", out["armed"]["label"])
         self.assertTrue(out["armed"]["says"])
         # What the confirmation says before the act, and not only that there is
         # one. SKILL.md tells a reader the board names what it will delete and
@@ -4957,7 +4957,7 @@ console.log(JSON.stringify({view: nextRoute.view, tab: nextRoute.tab,
         self.assertEqual("session", out["view"])
         self.assertIsNone(out.get("tab"))
         self.assertFalse(out["armed"])
-        self.assertEqual("discard everything", out["label"])
+        self.assertEqual("Discard everything", out["label"])  # NU-20: the summary's words
         self.assertEqual(0, out["posts"])
 
     def test_pressing_clear_empties_the_draft_and_offers_the_save(self) -> None:
@@ -6481,7 +6481,8 @@ const annotation = {goal:"now", output:"", revision:2, revision_count:2, at:300,
       output:{result:"not verifiable from available evidence", cites:[], detail:"", clause:""}}}};
 const html = nextCockpitReading(session, annotation, entries, model, null, false,
   {state:"read", entries:entries});
-console.log(JSON.stringify({html, saysWhen: html.includes("when it was typed was not recorded")}));
+// One sentence since NU-13 (2026-10-02): "Revision 1 (time not recorded)."
+console.log(JSON.stringify({html, saysWhen: html.includes("Revision 1 (time not recorded).")}));
 """
         )
         assert isinstance(out, dict)
@@ -10536,7 +10537,7 @@ press();
 await __settle();
 console.log(JSON.stringify({
   alert: wrote("next-cockpit-cue-alert"),
-  armedNow: __els.app.innerHTML.includes("confirm discard"),
+  armedNow: __els.app.innerHTML.includes("Confirm discard"),
 }));
 """
         )
@@ -10564,13 +10565,13 @@ press();
 await __settle();
 __fire("keydown", {key:"Escape", target:discardControl(), preventDefault(){}});
 await __settle();
-const disarmed = __els.app.innerHTML.includes("confirm discard");
+const disarmed = __els.app.innerHTML.includes("Confirm discard");
 press();
 await __settle();
 console.log(JSON.stringify({
   disarmed,
   alert: wrote("next-cockpit-cue-alert"),
-  armedNow: __els.app.innerHTML.includes("confirm discard"),
+  armedNow: __els.app.innerHTML.includes("Confirm discard"),
 }));
 """
         )
