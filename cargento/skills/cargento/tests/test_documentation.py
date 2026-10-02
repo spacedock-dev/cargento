@@ -1551,6 +1551,45 @@ class LightHarnessUsageContractDocumentationTest(unittest.TestCase):
         self.assertIn("adds no endpoint to the list in Usage quota reads", self.FLAT)
 
 
+class PerProviderAllowDocumentationTest(unittest.TestCase):
+    """The owner's 2026-10-02 ruling: an Allow is per provider, not per harness.
+
+    The 2026-10-02 amendment's item 3 read as though a Pi or Codex session
+    falling back to Claude Code asked a second time. It does not: an Allow
+    given for a provider covers every session routed to it, which
+    `ReadingRouteTest` binds over a socket. These keep the prose saying so.
+    """
+
+    ROOT = SERVER_PATH.parents[3]
+    DESIGN = (ROOT / "docs/design-reading-a-session.md").read_text(encoding="utf-8")
+    AMENDMENT = re.sub(
+        r"\s+",
+        " ",
+        DESIGN.split("### Amended 2026-10-02: Claude Code is accepted", 1)[1].split("\n### ", 1)[0],
+    )
+    # That subsection alone, so a clause another one carries cannot satisfy it.
+    SECURITY = re.sub(
+        r"\s+",
+        " ",
+        (ROOT / "SECURITY.md")
+        .read_text(encoding="utf-8")
+        .split("### Reader-requested permission and rolling budget", 1)[1]
+        .split("\n### ", 1)[0],
+    )
+
+    def test_the_amendment_says_an_allow_covers_every_session_routed_to_its_provider(
+        self,
+    ) -> None:
+        self.assertIn("covers every session routed to that provider", self.AMENDMENT)
+        self.assertIn('"What is sent to', self.AMENDMENT)
+        self.assertIn("owner, 2026-10-02", self.AMENDMENT)
+        # The words that implied a second consent step for a fallback session.
+        self.assertNotIn('each provider keeps its own "Allow and analyze"', self.AMENDMENT)
+
+    def test_security_says_the_same_of_its_per_provider_answer(self) -> None:
+        self.assertIn("covers every session routed to that provider", self.SECURITY)
+
+
 class OffMachineNudgeContractDocumentationTest(unittest.TestCase):
     """DEC-4's section is a contract for a pathway nothing uses yet.
 

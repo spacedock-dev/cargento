@@ -4099,6 +4099,28 @@ class ReadingRouteTest(unittest.TestCase):
         self.assertEqual({"codex": True, "claude": True}, self._consents(config))
         self.assertIn(runtime_observer.CLAUDE_READING_MODEL, self._stamp(config, "claude"))
 
+    def test_a_claude_code_allow_covers_a_pi_session_that_falls_back_to_it(self) -> None:
+        """Per provider, not per harness (owner, 2026-10-02).
+
+        On a machine with `claude` and no `codex`, a Pi session is read by
+        Claude Code. An Allow given for Claude Code covers that press with no
+        second consent step, and a Codex Allow alone does not.
+        """
+        config, state = self._runtime()
+        with (
+            self._open_claude(),
+            self._counting_model(("claude",)) as calls,
+            self._serving(self._app(config, state)) as port,
+        ):
+            status, body = self._post(port, self._press(provider="claude"))
+            self.assertEqual(403, status)
+            self.assertEqual("consent-required", json.loads(body)["reading"]["reason"])
+            self.assertEqual([], calls)
+            reading_policy.set_consent(config, True, now=1_700_000_100.0, provider="claude")
+            status, body = self._post(port, self._press(provider="claude"))
+        self.assertEqual(202, status, body)
+        self.assertEqual(["claude"], self.providers)
+
     def test_a_reader_who_allowed_only_claude_code_is_charged_against_that_answer(self) -> None:
         """The reservation reads the route's provider, not Codex's answer."""
         config, state = self._runtime()

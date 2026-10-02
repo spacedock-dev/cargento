@@ -1116,9 +1116,13 @@ item 1 of the 2026-09-23 amendment and leaves items 2 and 3 as they apply once t
    whichever runs and its company, and on the Codex route says the Claude Code CLI was not found.
    With neither, the session says no analysis can run.
 3. Item 4 also reaches the other way, as written: a session on any other harness, on a machine
-   with `claude` and no `codex`, is read by Claude Code, and its disclosure names Claude Code and
-   Anthropic before the press. Allowing Codex does not allow Claude Code; each provider keeps its
-   own "Allow and analyze".
+   with `claude` and no `codex`, is read by Claude Code. Reworded (owner, 2026-10-02): the answer
+   is kept per provider, so an Allow given for a provider covers every session routed to that
+   provider. A reader who allowed Claude Code is not asked again for a Codex, Pi or other session
+   that falls back to it; that route's disclosure, naming Claude Code and Anthropic, is in the
+   session's "What is sent to Claude Code" popover beside Analyze drift, before the press.
+   Allowing Codex does not allow Claude Code, so the first press routed to a provider with no
+   Allow opens that provider's consent step.
 4. The unasked lane and goal summaries stay on Codex, as item 3 of the 2026-09-23 amendment
    ruled, and the twelve-attempt rolling cap stays shared between providers.
 

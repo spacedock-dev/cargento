@@ -1039,6 +1039,10 @@ bounds requests through the HTTP route, not a hostile owner editing their own fi
 
 The answer is kept per provider (DRC-4650). Allowing Codex to send a reader's words to OpenAI does
 not allow Claude Code to send them to Anthropic, so each provider needs its own "Allow and analyze".
+An Allow given for a provider covers every session routed to that provider (owner, 2026-10-02): a
+Codex, Pi or other session that falls back to Claude Code on a machine without `codex` runs under a
+Claude Code Allow with no second consent step, and that route's disclosure is in the session's
+"What is sent to Claude Code" popover before the press.
 An answer saved before the split reads as the Codex answer it was. "Turn off readings" and
 `--forget` revoke every provider at once. So does an older build's Turn off, which knows only the
 legacy Codex row: triggers in the store's own schema clear every other provider's answer and every
