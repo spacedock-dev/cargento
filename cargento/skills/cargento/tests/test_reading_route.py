@@ -645,6 +645,107 @@ class WhereToolOutputWouldGoIsNamedOrItIsNotSent(unittest.TestCase):
                 (self.root / path.lstrip("/")).unlink()
 
 
+# A path-embedded key, built at run time so no credential shape sits in source.
+PATH_KEY = "sk-ant-api03-" + "A" * 95
+
+
+def _masked(text: str) -> str:
+    return text.replace(PATH_KEY, "<key>").replace(PATH_KEY.lower(), "<key>")
+
+
+class ABaseUrlTheCliCouldReadDifferentlyNamesNothing(unittest.TestCase):
+    """Consent F1 and F3 (ui5): `urlsplit` and the WHATWG parser the CLI uses
+    must agree on the host, or the disclosure and the Allow's binding name a
+    host the words never reach. Measured on Claude Code 2.1.287: a base URL of
+    `http://127.0.0.1:4597\\@127.0.0.1:4598` sent every request to 4597, where
+    `urlsplit` reads 4598. Any URL the two could read differently names nothing.
+    """
+
+    def _claude(self, url: str) -> str:
+        """The name, with the test's key masked so a failure never prints it."""
+        return _masked(
+            reading_route.destination(
+                "claude",
+                environ={"HOME": "/home/r", "USER": "r", "ANTHROPIC_BASE_URL": url},
+                root=Path("/nonexistent-cargento-root"),
+                system="Linux",
+            )
+        )
+
+    def test_a_backslash_before_the_userinfo_names_nothing(self) -> None:
+        self.assertEqual("", self._claude("http://127.0.0.1:4597\\@127.0.0.1:4598"))
+
+    def test_a_path_key_after_a_backslash_never_reaches_the_name(self) -> None:
+        named = self._claude("https://proxy.example\\" + PATH_KEY)
+        self.assertEqual("", named)
+
+    def test_every_url_the_two_parsers_could_read_differently_names_nothing(self) -> None:
+        for url in (
+            "https://gw.example\\x",
+            "https://gw.example\t",
+            "https://gw\t.example",
+            "https://gw.example\n",
+            "https://gw.ex\rample",
+            "https://gw.example\x01",
+            "https://gw.example\x7f",
+            " https://gw.example",
+            "https://gw.example ",
+            "https://a b.example",
+            "https://%65vil.example",
+            "https://\uff45vil.example",
+            "https://0x7f.1",
+            "https://127.1",
+            "https://010.0.0.1",
+            "https://gw.example.",
+            "https://gw..example",
+            "https://evil.example;.good",
+            "https://gw.example:+80",
+            "https://" + PATH_KEY + ".example",
+        ):
+            # Labelled by a redaction, so a failure never prints the key.
+            with self.subTest(url=url.replace(PATH_KEY, "<key>")):
+                self.assertEqual("", self._claude(url))
+
+    def test_an_ordinary_base_url_is_still_named(self) -> None:
+        for url, named in (
+            ("https://gw.corp.example", "gw.corp.example"),
+            ("https://GW.corp.example:8443/v1", "gw.corp.example:8443"),
+            ("http://127.0.0.1:4000", "127.0.0.1:4000"),
+            ("https://me:pw@gw_1.corp-x.example/p?k=z#f", "gw_1.corp-x.example"),
+            ("http://[::1]:4000", "[::1]:4000"),
+        ):
+            with self.subTest(url=url):
+                self.assertEqual(named, self._claude(url))
+
+    def test_a_codex_base_url_of_any_shape_names_nothing(self) -> None:
+        for url in ("https://proxy.example\\" + PATH_KEY, "http://a\\@b", "https://gw.example"):
+            for key in ("OPENAI_BASE_URL", "OPENAI_API_BASE"):
+                with self.subTest(url=url.replace(PATH_KEY, "<key>"), key=key):
+                    named = reading_route.destination(
+                        "codex",
+                        environ={"HOME": "/home/r", "USER": "r", key: url},
+                        root=Path("/nonexistent-cargento-root"),
+                        system="Linux",
+                    )
+                    self.assertEqual("", _masked(named))
+
+    def test_the_key_reaches_neither_the_route_nor_its_to_item(self) -> None:
+        for provider, harness, environ in (
+            ("claude", "claude", {"ANTHROPIC_BASE_URL": "https://proxy.example\\" + PATH_KEY}),
+            ("codex", "codex", {"OPENAI_BASE_URL": "https://proxy.example\\" + PATH_KEY}),
+        ):
+            with self.subTest(provider=provider), named_machine(environ):
+                route = reading_route.resolve(harness, binary_resolver=_resolver({provider}))
+                self.assertEqual(provider, route["provider"])
+                published = json.dumps(route).lower()
+                self.assertEqual("", _masked(route["words_destination"]))
+                self.assertEqual("", _masked(route["destination"]))
+                self.assertFalse(PATH_KEY.lower() in published, "the key reached the route")
+                self.assertFalse("proxy.example" in published, "the route named the proxy")
+                (to,) = [part for part in route["disclosure_parts"] if part.startswith("To:")]
+                self.assertIn("which Cargento cannot name", _masked(to))
+
+
 class AClaudeCodeReaderIsToldWhatTheChecksSendBeforeThePress(unittest.TestCase):
     """The route carries the destination and the sentence that names it, on
     the harness whose record lists checks and on no other."""

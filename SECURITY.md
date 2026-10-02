@@ -1429,7 +1429,15 @@ tool output was named does not cover it. What is built:
   `CLAUDE_CODE_MANAGED_SETTINGS_PATH` is set; `CLAUDE_CODE_CUSTOM_OAUTH_URL` is set in any source,
   because an approved custom OAuth host replaces the first-party API host; `ANTHROPIC_UNIX_SOCKET`
   is set, because every request then goes to a local socket whose far end forwards under another
-  machine's settings; neither `HOME` and `USER` nor the password-file entry gives a home and a user
+  machine's settings; `ANTHROPIC_BASE_URL` holds anything the CLI's WHATWG URL parser could read
+  as another host than Python's `urlsplit` does (consent F1, ui5). That is a backslash, any
+  whitespace or control character (leading and trailing included), any non-ASCII character, a host
+  with a percent-escape or a character outside letters, digits, `.`, `-` and `_`, an empty label,
+  a host ending in a number that is not a plain dotted quad, or a host with a credential's shape.
+  Measured on Claude Code 2.1.287, `http://127.0.0.1:4597\@127.0.0.1:4598` sent every request to
+  4597, where `urlsplit` reads 4598, so naming 4598 would have bound the Allow to a host the words
+  never reached, and a key after a backslash would have been published and stored as the host;
+  neither `HOME` and `USER` nor the password-file entry gives a home and a user
   to look under; a macOS managed-preferences profile
   (`/Library/Managed Preferences/com.anthropic.claudecode.plist`, or its per-user copy) exists,
   because the build does not read it; or the machine is Windows, whose policy lives in the registry

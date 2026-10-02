@@ -1732,10 +1732,12 @@ class RuntimeImportGraphTest(unittest.TestCase):
         # the kill guard it holds depends on nothing in the runtime.
         "cargento_runtime.supervise": set(),
         # Who reads a session: each provider's gate, then its CLI on PATH. It
-        # reaches the model ids in `observer` and never a producer.
+        # reaches the model ids in `observer` and never a producer, and the
+        # credential shapes in `records`, so no key is ever named as a host.
         "cargento_runtime.reading_route": {
             "cargento_runtime.annotations",
             "cargento_runtime.observer",
+            "cargento_runtime.records",
         },
         "cargento_runtime.observer": {
             "cargento_runtime.config",

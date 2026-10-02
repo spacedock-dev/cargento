@@ -27,6 +27,9 @@ from . import test_http_api, test_next_sessions
 from .next_harness import NextPageJsHarness, named_machine
 
 PRE = object()
+# Built at run time, so no credential shape sits in source, and masked in every
+# assertion so a failure never prints it.
+PATH_KEY = "sk-ant-api03-" + "A" * 95
 # The daemon's environment under which `reading_route.destination` names each.
 ENVIRON: dict[str, dict[str, str]] = {
     "Anthropic": {},
@@ -188,3 +191,43 @@ class ThePressTheJobAndThePageAgree(NextPageJsHarness):
                     self.assertEqual(1, len(page["posts"]))
                     self.assertIs(True, page["posts"][0]["allow"])
                     self.assertEqual(today, page["posts"][0]["words_destination"])
+
+    def test_a_url_the_cli_reads_differently_binds_and_publishes_no_name(self) -> None:
+        """Consent F1 and F3 (ui5), end to end: where the CLI's parser and this
+        build's could read different hosts, the board, the `To:` item and the
+        stored binding name nothing, so no host the words never reach is bound
+        and no key in the URL is published or written to disk."""
+        for label, url in (
+            ("backslash before the userinfo", "http://127.0.0.1:4597\\@127.0.0.1:4598"),
+            ("a key after a backslash", "https://proxy.example\\" + PATH_KEY),
+        ):
+            with self.subTest(case=label):
+                ENVIRON[label] = {"ANTHROPIC_BASE_URL": url}
+                self.addCleanup(ENVIRON.pop, label, None)
+                config, state = self.route._runtime()
+                stack, calls = self._on(label)
+                with stack, self.route._serving(self.route._app(config, state)) as port:
+                    application = self.route._app(config, state)
+                    _revision, body = application.collect_json(show_all=False)
+                    route = json.loads(body)["reading_routes"]["pi"]
+                    status, _ = self.route._post(
+                        port, self.route._press(provider="claude", allow=True, words_destination="")
+                    )
+                self.assertEqual(202, status)
+                self.assertEqual(1, len(calls))
+                self.assertEqual("", route["words_destination"])
+                (to,) = [part for part in route["disclosure_parts"] if part.startswith("To:")]
+                self.assertIn("which Cargento cannot name", to)
+                for text in (body.decode(), json.dumps(route)):
+                    lowered = text.lower()
+                    self.assertFalse(PATH_KEY.lower() in lowered, "the key was published")
+                    self.assertFalse("4598" in lowered, "a host the CLI never reaches was named")
+                assert runtime_io.sqlite_module is not None
+                db = runtime_io.sqlite_module.connect(reading_policy.store_path(config))
+                bound = db.execute("SELECT provider, destination FROM permission_destination")
+                rows = [tuple(row) for row in bound]
+                db.close()
+                self.assertIn(("claude", ""), rows)
+                for _provider, where in rows:
+                    self.assertFalse(PATH_KEY.lower() in where.lower(), "the key was stored")
+                    self.assertFalse("4598" in where, "a host the CLI never reaches was bound")
