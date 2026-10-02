@@ -692,6 +692,69 @@ class ThePageAndTheProducerReadATurnStopOnTheSameHarnessesTest(unittest.TestCase
         self.assertEqual(set(reading.TURN_STOP_HARNESSES), page)
 
 
+class ThePageReadsTheServersOneStopTest(NextPageJsHarness):
+    """`nextSessionStop` is a port of `reading.observed_stop`, held to it over one table."""
+
+    def test_the_page_and_the_server_name_the_same_stop_on_every_row(self) -> None:
+        table = [
+            {"harness": harness, "finished_at": hook, "turn_end_at": recorded}
+            for harness in ("claude", "codex", "antigravity")
+            for hook in (None, 0, STOP)
+            for recorded in (None, 0, STOP + 5)
+        ]
+        out = self._run_page_js(
+            f"const rows = {json.dumps(table)};\n"
+            "console.log(JSON.stringify(rows.map(row => {"
+            "const stop = nextSessionStop(row); return stop ? [stop.at, stop.kind] : null;})));",
+            storage_prelude({}) + cockpit_tests.NextCockpitCompositionTest.FIXTURE,
+        )
+        expected = [
+            list(stop) if (stop := reading.observed_stop(row)) is not None else None
+            for row in table
+        ]
+        self.assertEqual(expected, out)
+
+
+class HowItLandedNamesATranscriptStopTest(NextPageJsHarness):
+    def test_how_it_landed_names_a_transcript_stop_as_the_transcripts_not_as_an_observed_stop(
+        self,
+    ) -> None:
+        out = self._run_page_js(
+            """
+const row = {harness:"claude", sid:"s1", state:"idle", finished_at:null, turn_end_at:100,
+  ended_at:null};
+const landed = nextObservedLanding(row, false, nextSessionStop(row));
+console.log(JSON.stringify({text:landed.endText, kind:landed.endKind,
+  hint:nextObservedReadHint(row)}));
+""",
+            storage_prelude({}) + cockpit_tests.NextCockpitCompositionTest.FIXTURE,
+        )
+        self.assertEqual("turn-stop", out["kind"])
+        self.assertEqual(
+            "Claude Code's transcript shows the last turn finished; no session end was observed",
+            out["text"],
+        )
+        self.assertNotIn("was observed;", out["text"].split(";")[0])
+        self.assertEqual("Reads the session up to its last turn against your intent.", out["hint"])
+
+
+class TheLastTurnLabelReadsATranscriptStopTest(NextPageJsHarness):
+    def test_the_work_list_labels_the_turn_a_transcript_stop_closed(self) -> None:
+        out = self._run_page_js(
+            """
+const entries = [{type:"user_message", at:95}, {type:"tool_report", at:97}];
+const at = (row) => nextCockpitLastTurn(row, entries);
+const base = {harness:"claude", sid:"s1", state:"idle", ended_at:null, annotation_window_start:90};
+console.log(JSON.stringify({transcript:at({...base, turn_end_at:100}),
+  codex:at({...base, harness:"codex", turn_end_at:100}), none:at(base)}));
+""",
+            storage_prelude({}) + cockpit_tests.NextCockpitCompositionTest.FIXTURE,
+        )
+        self.assertEqual({"from": 95, "to": 100}, out["transcript"])
+        self.assertIsNone(out["codex"])
+        self.assertIsNone(out["none"])
+
+
 class TheSessionPageSaysWhatAnAnalysisReadsTest(NextPageJsHarness):
     def run_fixture(self, checks: str) -> Any:
         return self._run_page_js(

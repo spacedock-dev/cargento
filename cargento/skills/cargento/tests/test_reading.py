@@ -1244,10 +1244,54 @@ class WhetherAPressCouldReadIsSaidBeforeThePress(unittest.TestCase):
                 "ok": False,
                 "reason": reading.WITHHELD_IDLE_UNKNOWN,
                 "until": None,
-                "sentence": reading.WITHHELD[reading.WITHHELD_IDLE_UNKNOWN],
+                "sentence": reading.withheld_sentence(reading.WITHHELD_IDLE_UNKNOWN, row),
             },
             self._press(row),
         )
+
+    def test_no_withheld_sentence_promises_analyze_opens_once_a_turn_finishes(self) -> None:
+        # Owner, 2026-10-02: the turn had finished; Cargento could not see it.
+        for harness in ("claude", "codex", "antigravity", "goose", ""):
+            for acquisition in (None, "event", "scan-only"):
+                for reason in reading.PRESS_WITHHELD:
+                    row = {"harness": harness, "state": "idle", "acquisition": acquisition}
+                    with self.subTest(harness=harness, acquisition=acquisition, reason=reason):
+                        sentence = reading.withheld_sentence(reason, row)
+                        self.assertTrue(sentence)
+                        self.assertNotIn("finishes a turn", sentence)
+        for sentence in reading.WITHHELD.values():
+            self.assertNotIn("finishes a turn", sentence)
+
+    def test_a_claude_code_session_with_no_recorded_turn_end_says_why_and_what_opens_it(
+        self,
+    ) -> None:
+        sentence = reading.withheld_sentence(
+            reading.WITHHELD_IDLE_UNKNOWN, {"harness": "claude", "state": "idle"}
+        )
+        self.assertIn("Stop hooks", sentence)
+        self.assertIn("Make the board live rather than polled", sentence)
+        self.assertIn("once a finished turn is recorded", sentence)
+
+    def test_an_idle_session_another_harness_runs_is_told_what_lets_it_be_read(self) -> None:
+        unreached = reading.withheld_sentence(
+            reading.WITHHELD_IDLE_UNKNOWN, {"harness": "antigravity", "acquisition": None}
+        )
+        self.assertIn("No event from this session has reached this board", unreached)
+        self.assertIn("Make the board live rather than polled", unreached)
+        reached = reading.withheld_sentence(
+            reading.WITHHELD_IDLE_UNKNOWN, {"harness": "antigravity", "acquisition": "event"}
+        )
+        self.assertIn("Events from this session reach this board", reached)
+        codex = reading.withheld_sentence(reading.WITHHELD_IDLE_UNKNOWN, {"harness": "codex"})
+        self.assertIn("only while a turn runs", codex)
+
+    def test_a_settling_session_says_analyze_opens_by_itself(self) -> None:
+        for reason in (reading.WITHHELD_SETTLING, reading.WITHHELD_STOP_SETTLING):
+            with self.subTest(reason=reason):
+                self.assertIn(
+                    "Analyze opens by itself in a few seconds.",
+                    reading.withheld_sentence(reason, {"harness": "claude"}),
+                )
 
     def test_a_claude_session_whose_turn_stopped_can_be_read(self) -> None:
         row = {"harness": "claude", "state": "idle", "finished_at": self.END}
@@ -1262,7 +1306,7 @@ class WhetherAPressCouldReadIsSaidBeforeThePress(unittest.TestCase):
                 "ok": False,
                 "reason": reading.WITHHELD_STOP_SETTLING,
                 "until": self.END + 8.0,
-                "sentence": reading.WITHHELD[reading.WITHHELD_STOP_SETTLING],
+                "sentence": reading.withheld_sentence(reading.WITHHELD_STOP_SETTLING, row),
             },
             self._press(row, now=self.END + 3.0),
         )
@@ -1274,7 +1318,7 @@ class WhetherAPressCouldReadIsSaidBeforeThePress(unittest.TestCase):
                 "ok": False,
                 "reason": reading.WITHHELD_SETTLING,
                 "until": self.END + 8.0,
-                "sentence": reading.WITHHELD[reading.WITHHELD_SETTLING],
+                "sentence": reading.withheld_sentence(reading.WITHHELD_SETTLING, row),
             },
             self._press(row, now=self.END + 3.0),
         )
@@ -1310,7 +1354,10 @@ class WhetherAPressCouldReadIsSaidBeforeThePress(unittest.TestCase):
         for row, revisions in self._table():
             answer = self._press(row, revisions=revisions)
             self.assertEqual(answer["ok"], answer["reason"] is None)
-            self.assertEqual(reading.WITHHELD.get(answer["reason"] or ""), answer["sentence"])
+            self.assertEqual(
+                reading.withheld_sentence(answer["reason"], row) if answer["reason"] else None,
+                answer["sentence"],
+            )
             if answer["reason"] is not None:
                 self.assertIn(answer["reason"], reading.PRESS_WITHHELD)
                 seen.add(answer["reason"])

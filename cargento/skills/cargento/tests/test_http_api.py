@@ -3862,7 +3862,10 @@ class ReadingRouteTest(unittest.TestCase):
         answer = json.loads(body)
         self.assertEqual("withheld", answer["reason"])
         self.assertEqual(runtime_reading.WITHHELD_TURN_STOP, answer["withheld"])
-        self.assertEqual(runtime_reading.WITHHELD[answer["withheld"]], answer["sentence"])
+        self.assertEqual(
+            runtime_reading.withheld_sentence(answer["withheld"], {"harness": "codex"}),
+            answer["sentence"],
+        )
         self.assertFalse(answer["produced"])
         self.assertEqual([], self.outcomes, "a job ran for a press the board refused")
         self.assertEqual([], calls)

@@ -261,6 +261,10 @@ from the first section, then paste the resolved path into the snippet.
 Claude Code's hooks go in `~/.claude/settings.json`. Antigravity's status line goes in its own
 settings file. Both are yours to edit; the plugin does not write either.
 
+Analyze drift reads a Claude Code session's last turn once Claude Code records it finishing, which
+it does when Stop hooks are registered (the plugin registers them), whichever board you view. Any
+other harness can be read after its session ends only when its hooks reach this board.
+
 ## Install or migrate Droid hooks
 
 Droid loads plugin hooks from `<root>/hooks/hooks.json` and supports Factory plugins via `.factory-plugin/plugin.json`.

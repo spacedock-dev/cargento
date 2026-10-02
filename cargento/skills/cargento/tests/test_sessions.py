@@ -1505,7 +1505,7 @@ class PublishedSessionFieldSetTest(HarnessContractTestCase):
                 "ok": False,
                 "reason": reading.WITHHELD_IDLE_UNKNOWN,
                 "until": None,
-                "sentence": reading.WITHHELD[reading.WITHHELD_IDLE_UNKNOWN],
+                "sentence": reading.withheld_sentence(reading.WITHHELD_IDLE_UNKNOWN, rows[0]),
             },
             rows[0]["reading_eligibility"],
         )

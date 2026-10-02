@@ -2569,7 +2569,7 @@ class _RequestHandler(BaseHTTPRequestHandler):
                     "produced": False,
                     "reason": "withheld",
                     "withheld": reason,
-                    "sentence": runtime_reading.WITHHELD[reason],
+                    "sentence": answer["sentence"],
                     "until": answer["until"],
                 }
             ),

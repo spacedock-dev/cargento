@@ -2212,6 +2212,15 @@ throughout (arbiter spec, `ui3`).
   the consent; it closes on the answer. Keep reads "Keeping…" until its last request and refresh,
   and Cancel reads "Cancelling…" until the server accepts or answers that the job is not running.
   A lost request comes back with the control's existing sentence, so nothing stays busy forever.
+- An inert Analyze says something true and actionable. No line says Analyze opens "once this
+  session finishes a turn", which was false of a turn that had finished where Cargento could not
+  see it. Beside an idle row with no end: a Claude Code session reads "This session's last turn
+  isn't recorded as finished.", Codex keeps its own line, another harness reads "Analyze opens
+  while this session runs." (or "…or once it ends." where its events reach the board), and a
+  scan-only one reads "This harness sends no events, so Analyze opens only while it runs." The
+  Why under it is `reading.withheld_sentence`, per harness, which names the How to use section
+  that makes a board live; `WITHHELD` stays the job-time and stored sentence. A settling row's
+  Why says Analyze opens by itself.
 
 #### Amended 2026-10-01: the first press is a consent step
 

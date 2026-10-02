@@ -414,9 +414,13 @@ WITHHELD = {
         "A turn stop was observed and no session end was, so there is no end for a "
         "reading to rest on. Nothing partial is offered instead."
     ),
+    # True of every harness, and it says what opens a reading rather than
+    # promising one "once this session finishes a turn", which was false of a
+    # turn that had finished where Cargento could not see it (owner,
+    # 2026-10-02). `withheld_sentence` gives each harness its own at the press.
     WITHHELD_IDLE_UNKNOWN: (
-        "This session is idle with no stop and no end observed, so whether there is "
-        "finished work to read is unknown rather than none."
+        "This session is idle, and no finished turn or session end was observed for it, so "
+        "there is no end for a reading to rest on. A reading can run while the session works."
     ),
     WITHHELD_UNOBSERVABLE: (
         "No event from this harness can reach this row, so no end can be observed and "
@@ -1492,11 +1496,76 @@ PRESS_WITHHELD = (
 )
 
 
+# The press-time "Why it can't read" sentences that differ from the job-time
+# `WITHHELD` default (owner, 2026-10-02): each says what opens a reading, or
+# what the reader can do, and none promises an end Cargento may never see. The
+# page cannot link `HOW_TO_USE.md`, which the installed plugin does not ship,
+# so a sentence names its section in words.
+_HOW_TO_LIVE = 'How to use: "Make the board live rather than polled"'
+_IDLE_CLAUDE = (
+    "Claude Code records a turn as finished when its Stop hooks run, and this session's "
+    "transcript has no such record after its last message. The turn may still be running a "
+    "long tool, waiting on a permission, or interrupted, or Claude Code has no Stop hooks "
+    f"registered ({_HOW_TO_LIVE}). Analyze opens while the session works, and once a finished "
+    "turn is recorded."
+)
+_IDLE_CODEX = (
+    "This Codex session is idle. Cargento reads a Codex session only while a turn runs, "
+    "because no Codex session end is observed for a final reading to rest on. Analyze opens "
+    "when it runs again."
+)
+_IDLE_UNREACHED = (
+    "No event from this session has reached this board since it started, so no session end "
+    "can be seen here, and a reading can run only while the session works. Pointing this "
+    "harness's hooks at this board lets a reading run after the session ends "
+    f"({_HOW_TO_LIVE})."
+)
+_IDLE_REACHED = (
+    "Events from this session reach this board, but no session end has been observed. Analyze "
+    "opens while the session works, or once its end is observed."
+)
+_PRESS_SENTENCES = {
+    WITHHELD_TURN_STOP: (
+        "A turn stop was observed and no session end was. Cargento reads this harness only "
+        "while a turn runs or after its session ends."
+    ),
+    WITHHELD_UNOBSERVABLE: (
+        "No event from this harness can reach this row, so no end can be observed. A reading "
+        "can run only while the session is working."
+    ),
+    WITHHELD_SETTLING: (
+        "This session ended moments ago and its record is still settling. Analyze opens by "
+        "itself in a few seconds."
+    ),
+    WITHHELD_STOP_SETTLING: (
+        "This session finished its turn moments ago and its record is still settling. Analyze "
+        "opens by itself in a few seconds."
+    ),
+}
+
+
+def withheld_sentence(reason: str, row: Mapping[str, Any]) -> str:
+    """The sentence a press withheld for `reason` is answered with, for this row's harness.
+
+    `WITHHELD[reason]` stays the job-time and stored sentence; this is the
+    press-time one the board publishes and the reading route answers with.
+    """
+    if reason == WITHHELD_IDLE_UNKNOWN:
+        harness = str(row.get("harness") or "")
+        if harness == "claude":
+            return _IDLE_CLAUDE
+        if harness == "codex":
+            return _IDLE_CODEX
+        if harness:
+            return _IDLE_REACHED if row.get("acquisition") == "event" else _IDLE_UNREACHED
+    return _PRESS_SENTENCES.get(reason) or WITHHELD[reason]
+
+
 class Eligibility(TypedDict):
     """Whether a press on this row could start a reading now, and why not.
 
     `reason` is one of `PRESS_WITHHELD` or None. `until` is when a settling
-    row stops settling, an epoch, else None. `sentence` is `WITHHELD[reason]`,
+    row stops settling, an epoch, else None. `sentence` is `withheld_sentence`'s,
     published beside the token so the page shows the server's words verbatim
     under its own short line rather than keeping a copy of them.
     """
@@ -1539,7 +1608,12 @@ def press_eligibility(
         WITHHELD_STOP_SETTLING: stop[0] if stop else None,
     }.get(withheld)
     until = moment + settle_sec if moment is not None else None
-    return {"ok": False, "reason": withheld, "until": until, "sentence": WITHHELD[withheld]}
+    return {
+        "ok": False,
+        "reason": withheld,
+        "until": until,
+        "sentence": withheld_sentence(withheld, row),
+    }
 
 
 def _last_turn(row: Mapping[str, Any], *, now: float, settle_sec: float) -> tuple[str, str]:

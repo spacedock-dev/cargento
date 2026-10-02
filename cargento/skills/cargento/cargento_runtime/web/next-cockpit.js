@@ -2062,7 +2062,8 @@ const NEXT_COCKPIT_WORK_ROWS = 20;
 function nextCockpitLastTurn(session, entries){
   if(!NEXT_READING_TURN_STOP_HARNESSES.includes(String(session && session.harness || ""))) return null;
   if(nextSessionEndedAt(session) != null) return null;
-  const stop = nextNumber(session.finished_at);
+  const found = nextSessionStop(session);
+  const stop = found ? found.at : null;
   if(!(session.state === "idle" && stop > 0)) return null;
   const opened = nextNumber(session.annotation_window_start);
   const starts = (entries || []).filter(nextReadingPersonAuthored)
@@ -3752,16 +3753,23 @@ function nextReadingNeedsAllow(route){
    a test). Page copy keyed by the server's token; the server's own sentence
    rides beside it, verbatim, under "Why it can't read". Codex, which reads
    only while a turn runs and has no session end the board can observe, gets
-   its own line for both idle tokens (owner Q8, 2026-10-01). DRC-4758 slice B. */
+   its own line for both idle tokens (owner Q8, 2026-10-01). DRC-4758 slice B.
+   No line promises Analyze opens "once this session finishes a turn": the turn
+   may have finished where Cargento could not see it (owner, 2026-10-02).
+   `nextReadingPressLine` holds the per-harness variants. */
 const NEXT_READING_PRESS_LINES = {
-  "idle-unknown": "Analyze opens once this session finishes a turn.",
-  "unobservable": "No events reach Cargento from this session, so it can't be analyzed.",
+  "idle-unknown": "Analyze opens while this session runs.",
+  "unobservable": "This harness sends no events, so Analyze opens only while it runs.",
   "turn-stop": "Analyze opens while a turn runs or once the session ends.",
   "settling": "Ready in a few seconds.",
   "stop-settling": "Ready in a few seconds.",
   "revision-after-end": "Your intent was saved after this session ended.",
 };
 const NEXT_READING_PRESS_CODEX = "Codex sessions can be analyzed only while a turn is running.";
+/* Claude Code records a finished turn itself, so an idle row without one is a
+   turn not recorded as finished, and the Why says the four reasons it may be. */
+const NEXT_READING_PRESS_CLAUDE = "This session's last turn isn't recorded as finished.";
+const NEXT_READING_PRESS_EVENTS = "Analyze opens while this session runs or once it ends.";
 
 /* Whether a press could read this row now, as the board published it, or as
    this tab's last press was answered when the board has not published it (a
@@ -3783,8 +3791,10 @@ function nextReadingEligibility(session){
 
 function nextReadingPressLine(session, eligibility){
   const reason = String(eligibility.reason);
-  if(String(session && session.harness || "") === "codex" &&
-    ["idle-unknown", "turn-stop"].includes(reason)) return NEXT_READING_PRESS_CODEX;
+  const harness = String(session && session.harness || "");
+  if(harness === "codex" && ["idle-unknown", "turn-stop"].includes(reason)) return NEXT_READING_PRESS_CODEX;
+  if(reason === "idle-unknown" && harness === "claude") return NEXT_READING_PRESS_CLAUDE;
+  if(reason === "idle-unknown" && session && session.acquisition === "event") return NEXT_READING_PRESS_EVENTS;
   return NEXT_READING_PRESS_LINES[reason] || String(eligibility.sentence || "");
 }
 

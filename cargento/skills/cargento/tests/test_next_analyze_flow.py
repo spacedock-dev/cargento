@@ -48,6 +48,10 @@ def eligibility(token: str | None, *, until: float | None = None) -> str:
     return f"__dashboard.sessions[0].reading_eligibility = {json.dumps(value)};\n"
 
 
+CLAUDE_UNRECORDED = "This session's last turn isn't recorded as finished."
+WHILE_IT_RUNS = "Analyze opens while this session runs."
+
+
 def after_button(drift: str) -> str:
     """The visible text after the Analyze control's row and the count line under it, so a test
     reads what follows them (the count left the row on 2026-10-02, NU-9)."""
@@ -74,7 +78,7 @@ class AnInertPressSaysWhyBesideTheButtonTest(PanelPage):
         self.assertIn('aria-disabled="true"', button.group(0))
         self.assertNotIn("next-action--primary", button.group(0))
         text = after_button(drift)
-        self.assertTrue(text.startswith("Analyze opens once this session finishes a turn."), text)
+        self.assertTrue(text.startswith(CLAUDE_UNRECORDED), text)
         self.assertNotIn("Allow and analyze", drift)
         # The server's sentence is one click away, verbatim, and not in view.
         sentence = reading.WITHHELD[reading.WITHHELD_IDLE_UNKNOWN]
@@ -96,7 +100,7 @@ class AnInertPressSaysWhyBesideTheButtonTest(PanelPage):
         drift = drift_of(html)
         self.assertNotIn("data-next-analyzing", drift)
         self.assertNotIn("Allow and analyze", drift)
-        self.assertIn("Analyze opens once this session finishes a turn.", after_button(drift))
+        self.assertIn(CLAUDE_UNRECORDED, after_button(drift))
 
     def test_every_token_the_board_can_publish_has_one_short_line(self) -> None:
         out = self.lines()
@@ -107,6 +111,40 @@ class AnInertPressSaysWhyBesideTheButtonTest(PanelPage):
                 self.assertLessEqual(len(line.split()), 12, line)
                 self.assertNotEqual(reading.WITHHELD[token], line)
 
+    def test_a_reader_whose_claude_code_session_has_no_recorded_finished_turn_is_not_promised_analyze_opens_when_a_turn_finishes(
+        self,
+    ) -> None:
+        html = self.page(setup=eligibility(reading.WITHHELD_IDLE_UNKNOWN))
+        self.assertTrue(after_button(drift_of(html)).startswith(CLAUDE_UNRECORDED))
+        self.assertNotIn("finishes a turn", html)
+
+    def test_a_reader_of_an_idle_antigravity_session_that_no_hook_reaches_is_told_analyze_opens_while_it_runs(
+        self,
+    ) -> None:
+        unreached = drift_of(self.page("antigravity", eligibility(reading.WITHHELD_IDLE_UNKNOWN)))
+        self.assertTrue(after_button(unreached).startswith(WHILE_IT_RUNS))
+        reached = drift_of(
+            self.page(
+                "antigravity",
+                eligibility(reading.WITHHELD_IDLE_UNKNOWN)
+                + '__dashboard.sessions[0].acquisition = "event";\n',
+            )
+        )
+        self.assertTrue(
+            after_button(reached).startswith(
+                "Analyze opens while this session runs or once it ends."
+            )
+        )
+
+    def test_a_reader_of_a_scan_only_session_is_not_told_it_can_never_be_analyzed(self) -> None:
+        drift = drift_of(self.page("antigravity", eligibility(reading.WITHHELD_UNOBSERVABLE)))
+        text = after_button(drift)
+        self.assertTrue(
+            text.startswith("This harness sends no events, so Analyze opens only while it runs."),
+            text,
+        )
+        self.assertNotIn("can't be analyzed", visible_text(drift))
+
     def test_each_token_draws_its_line_under_the_button(self) -> None:
         lines = self.lines()
         assert isinstance(lines, dict)
@@ -114,7 +152,9 @@ class AnInertPressSaysWhyBesideTheButtonTest(PanelPage):
             with self.subTest(token=token):
                 # A settling row's `until` is in the future, so it is still inert.
                 drift = drift_of(self.page(setup=eligibility(token, until=4_000_000_000.0)))
-                self.assertTrue(after_button(drift).startswith(lines[token]))
+                # A Claude Code row with no recorded turn end says why in its own words.
+                line = CLAUDE_UNRECORDED if token == reading.WITHHELD_IDLE_UNKNOWN else lines[token]
+                self.assertTrue(after_button(drift).startswith(line))
 
     def test_a_settled_row_lights_up_without_a_press(self) -> None:
         drift = drift_of(self.page(setup=eligibility(reading.WITHHELD_STOP_SETTLING, until=1.0)))
