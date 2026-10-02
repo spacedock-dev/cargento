@@ -2184,6 +2184,12 @@ throughout (arbiter spec, `ui3`).
   saved", unless the refresh shows a newer revision holding exactly what was sent, which is the
   save. A 5 s backstop after the bound clears the busy state whatever the fetch did. The state is
   held by the control's focus key (`docs/design-reader-state.md`).
+- The Analyze family does the same. Analyze drift and Analyze again read "Starting…" with a
+  spinner, solid and never hatched, until the Analyzing box is drawn. On Allow and analyze the
+  question stays on screen with Allow reading "Starting…" and Not now inert, because the card is
+  the consent; it closes on the answer. Keep reads "Keeping…" until its last request and refresh,
+  and Cancel reads "Cancelling…" until the server accepts or answers that the job is not running.
+  A lost request comes back with the control's existing sentence, so nothing stays busy forever.
 
 #### Amended 2026-10-01: the first press is a consent step
 

@@ -5818,11 +5818,19 @@ console.log(JSON.stringify({calls: posts.length, pending, finishing: control()})
         )
         assert isinstance(out, dict)
         self.assertEqual(1, out["calls"], "a second Cancel sent another request")
-        for html in (out["pending"], out["finishing"]):
-            button = re.search(r"<button[^>]*>Cancel</button>", html)
-            assert button is not None, "Cancel was replaced by some other label"
-            self.assertIn('aria-disabled="true"', button.group(0))
-            self.assertIn("Analyzing drift", html)
+        # In flight it reads Cancelling... (owner, 2026-10-02); once accepted, the published
+        # `cancelling` keeps the label and the inert state.
+        busy = re.search(
+            r"<button[^>]*data-next-pending[^>]*>[\s\S]*?Cancelling\u2026</span></button>",
+            out["pending"],
+        )
+        assert busy is not None, "a Cancel in flight does not say it is cancelling"
+        self.assertIn('aria-disabled="true"', busy.group(0))
+        self.assertIn("Analyzing drift", out["pending"])
+        button = re.search(r"<button[^>]*>Cancel</button>", out["finishing"])
+        assert button is not None, "Cancel was replaced by some other label"
+        self.assertIn('aria-disabled="true"', button.group(0))
+        self.assertIn("Analyzing drift", out["finishing"])
 
     def test_a_reload_while_a_cancel_is_finishing_draws_cancel_disabled(self) -> None:
         out = self._cancel_fixture(

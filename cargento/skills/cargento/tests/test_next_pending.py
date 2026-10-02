@@ -299,3 +299,180 @@ class APendingControlIsDrawnBusyNotRefusedTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+SETTLED = TYPED + "__s.annotation_settled_through = 104; __s.annotation_settled_at = 104;\n"
+CONSENT = '__dashboard.reading = {consent:false, reason:"consent-required", used:0, limit:12};\n'
+RUNNING_JOB = """
+__dashboard.reading_jobs = {"claude:focus-1": {id:"j1", phase:"waiting", started_at:100,
+  phase_at:101, provider:"codex", steps:[{phase:"preparing", text:"Preparing what is sent"},
+  {phase:"waiting", text:"Waiting for Codex"}, {phase:"checking", text:"Checking the reply"}]}};
+"""
+UNCONFIRMED_READING = "Could not confirm the reading."
+
+# Any POST to a held URL waits until the test answers it, honouring its abort signal, as `fetch`
+# does. `__held[url]` lists what was sent and how to answer each.
+HOLD = """
+const __held = {};
+const __holding = new Set();
+const __timeouts = [];
+const __hold = url => __holding.add(url);
+const __upstreamHold = __fetchImpl;
+__fetchImpl = (url, init) => {
+  if(init && init.method === "POST" && __holding.has(String(url))){
+    return new Promise((resolve, reject) => {
+      (__held[String(url)] = __held[String(url)] || []).push({body:JSON.parse(init.body),
+        answer(status, body){ resolve({ok:status < 400, status, json:async () => body}); }});
+      if(init.signal) init.signal.addEventListener("abort", () => reject(new Error("aborted")));
+    });
+  }
+  return __upstreamHold(url, init);
+};
+const __buttonOf = action => (__els.app.innerHTML.match(new RegExp(
+  `<button[^>]*data-next-cockpit-action="${action}"[^>]*>[\\\\s\\\\S]*?<\\\\/button>`)) || [""])[0];
+"""
+
+
+@unittest.skipUnless(shutil.which("node"), "node not available")
+class TheAnalyzeFamilyShowsItIsWorkingTest(_DraftPage):
+    def test_a_reader_who_presses_analyze_drift_sees_starting_until_the_analyzing_box_appears(
+        self,
+    ) -> None:
+        out = self.drive(
+            SETTLED + HOLD,
+            """
+__hold("/api/reading");
+__press("reading-ask"); await __settle();
+const busy = __buttonOf("reading-ask");
+const JOB = {id:"j1", phase:"preparing", started_at:106, phase_at:106, provider:"codex",
+  steps:[{phase:"preparing", text:"Preparing what is sent"}]};
+__dashboard.reading_jobs = {"claude:focus-1": JOB};
+__held["/api/reading"][0].answer(202, {ok:true, job:JOB});
+await __settle(); await __settle(); await __settle();
+console.log(JSON.stringify({busy, html:__els.app.innerHTML}));
+""",
+        )
+        busy = out["busy"]
+        self.assertIn("data-next-pending", busy)
+        self.assertIn('aria-busy="true"', busy)
+        self.assertEqual("Starting…", visible_text(busy).strip())
+        self.assertIn("next-action--primary", busy)
+        drift = drift_of(out["html"])
+        self.assertIn("data-next-analyzing", drift)
+        self.assertNotIn("data-next-pending", drift)
+
+    def test_a_started_analysis_does_not_then_say_it_is_starting(self) -> None:
+        # The box is the answer: once it is drawn the press stops being busy, so the start
+        # sentence never follows the box onto the region.
+        out = self.drive(
+            SETTLED + DOM + HOLD,
+            TIMERS
+            + """
+__hold("/api/reading");
+__press("reading-ask"); await __settle();
+const JOB = {id:"j1", phase:"preparing", started_at:106, phase_at:106, provider:"codex",
+  steps:[{phase:"preparing", text:"Preparing what is sent"}]};
+__dashboard.reading_jobs = {"claude:focus-1": JOB};
+const upstream = __fetchImpl;
+__fetchImpl = (url, init) => String(url).startsWith("/api/data") ? new Promise(() => {})
+  : upstream(url, init);
+__held["/api/reading"][0].answer(202, {ok:true, job:JOB});
+await __settle(); await __settle();
+__fireTimers(400);
+console.log(JSON.stringify({said:[...wrote("next-cockpit-cue-status")],
+  boxed:__els.app.innerHTML.includes("data-next-analyzing")}));
+""",
+        )
+        self.assertTrue(out["boxed"])
+        self.assertNotIn("Starting the analysis.", out["said"])
+
+    def test_a_busy_control_is_not_drawn_as_refused(self) -> None:
+        out = self.drive(
+            SETTLED + HOLD,
+            """
+__hold("/api/reading");
+__press("reading-ask"); await __settle();
+console.log(JSON.stringify({busy:__buttonOf("reading-ask"), html:__els.app.innerHTML}));
+""",
+        )
+        busy = out["busy"]
+        self.assertIn("data-next-pending", busy)
+        self.assertNotIn("next-cockpit-reading-refused", busy)
+        self.assertNotIn("Why it can", visible_text(drift_of(out["html"])))
+
+    def test_a_reader_who_presses_allow_and_analyze_keeps_the_question_in_view_with_allow_reading_starting(
+        self,
+    ) -> None:
+        out = self.drive(
+            SETTLED + CONSENT + HOLD,
+            """
+__hold("/api/reading");
+__press("reading-ask"); await __settle();
+__press("reading-allow"); await __settle();
+const busy = __els.app.innerHTML;
+console.log(JSON.stringify({busy, allow:__buttonOf("reading-allow"),
+  notNow:__buttonOf("reading-not-now"), posts:(__held["/api/reading"] || []).length}));
+""",
+        )
+        self.assertEqual(1, out["posts"])
+        self.assertIn("for analysis?", visible_text(drift_of(out["busy"])))
+        self.assertIn("data-next-pending", out["allow"])
+        self.assertEqual("Starting…", visible_text(out["allow"]).strip())
+        self.assertIn('aria-disabled="true"', out["notNow"])
+
+    def test_a_reader_whose_analysis_request_is_never_answered_can_press_analyze_drift_again_after_the_bound(
+        self,
+    ) -> None:
+        out = self.drive(
+            SETTLED + HOLD,
+            TIMERS
+            + """
+__hold("/api/reading");
+__press("reading-ask"); await __settle();
+__press("reading-ask"); await __settle();
+const once = __held["/api/reading"].length;
+__fireTimers(15000);
+await __settle(); await __settle(); await __settle();
+const after = __buttonOf("reading-ask");
+const html = __els.app.innerHTML;
+__press("reading-ask"); await __settle();
+console.log(JSON.stringify({once, after, html, twice:__held["/api/reading"].length}));
+""",
+        )
+        self.assertEqual(1, out["once"])
+        self.assertNotIn("data-next-pending", out["after"])
+        self.assertNotIn('aria-disabled="true"', out["after"])
+        self.assertIn(UNCONFIRMED_READING, visible_text(drift_of(out["html"])))
+        self.assertEqual(2, out["twice"])
+
+    def test_a_reader_cancelling_an_analysis_sees_cancelling(self) -> None:
+        out = self.drive(
+            SETTLED + RUNNING_JOB + HOLD,
+            """
+__hold("/api/reading/cancel");
+__press("reading-cancel"); await __settle();
+const busy = __buttonOf("reading-cancel");
+__press("reading-cancel"); await __settle();
+console.log(JSON.stringify({busy, posts:__held["/api/reading/cancel"].length}));
+""",
+        )
+        self.assertIn("data-next-pending", out["busy"])
+        self.assertEqual("Cancelling…", visible_text(out["busy"]).strip())
+        self.assertEqual(1, out["posts"])
+
+    def test_a_reader_who_presses_keep_sees_keeping(self) -> None:
+        out = self.drive(
+            TYPED
+            + "__semantic.facts = __semantic.facts.filter(f => f.fact_id !== 'fo-b');\n"
+            + HOLD,
+            """
+__hold("/api/reading");
+__press("direction-keep"); await __settle(); await __settle();
+const busy = __buttonOf("direction-keep");
+__press("direction-keep"); await __settle();
+console.log(JSON.stringify({busy, posts:(__held["/api/reading"] || []).length}));
+""",
+        )
+        self.assertIn("data-next-pending", out["busy"])
+        self.assertEqual("Keeping…", visible_text(out["busy"]).strip())
+        self.assertEqual(1, out["posts"])

@@ -3872,7 +3872,9 @@ function nextReadingJobBox(job, key){
     `tabindex="-1" data-next-focus="reading:${esc(key)}">${esc(NEXT_READING_JOB_TITLE)}</span>` +
     '<button type="button" class="next-action" data-next-cockpit-action="reading-cancel" ' +
     `data-next-focus="reading-cancel:${esc(key)}" data-next-focus-fallback="reading:${esc(key)}"` +
-    `${finishing ? ' aria-disabled="true"' : ""}>Cancel</button></div>` +
+    `${nextPendingHas(`reading-cancel:${key}`) ? nextPendingAttrs(`reading-cancel:${key}`)
+      : finishing ? ' aria-disabled="true"' : ""}>` +
+    `${nextPendingLabel(`reading-cancel:${key}`, "Cancel")}</button></div>` +
     `<ol class="next-cockpit-reading-steps">${items}</ol>` +
     `<p class="next-cockpit-reading-job-note">${esc(NEXT_READING_JOB_NOTE)}</p>` +
     (mine && mine.failed && !finishing
@@ -4351,8 +4353,13 @@ function nextCockpitReadingControl(session, annotation, model, primary = true, s
      reason before it would ask (DRC-4758 slice B). */
   const pressed = nextReadingEligibility(session);
   const inert = Boolean(pressed) && reason === nextReadingPressLine(session, pressed);
-  const confirming = Boolean(provider && !inert && request && request.consent &&
-    nextReadingNeedsAllow(route));
+  /* The question stays drawn while its Allow is being answered: the card is
+     the consent, and taking it away mid-press left a bare hatched button. */
+  const allowKey = `reading-allow:${key}`;
+  const confirming = Boolean(provider && !inert && ((request && request.consent &&
+    nextReadingNeedsAllow(route)) || nextPendingHas(allowKey)));
+  const busyKey = confirming ? allowKey : `reading:${key}`;
+  const busy = nextPendingHas(busyKey);
   /* `authorized` is no longer a second term here: an unauthorized check is
      one of the sentences `nextCockpitReadingRefusal` returns, so `!reason`
      already carries it. */
@@ -4448,9 +4455,10 @@ function nextCockpitReadingControl(session, annotation, model, primary = true, s
       : again && !confirming ? " next-action--secondary" : ""}" ` +
     `data-next-cockpit-action="${confirming ? 'reading-allow' : 'reading-ask'}" ` +
     `data-next-focus="reading:${esc(sessKey(session))}"` +
-    `${enabled ? "" : ' aria-disabled="true"'}` +
+    `${busy ? nextPendingAttrs(busyKey) : enabled ? "" : ' aria-disabled="true"'}` +
     `${described ? ` aria-describedby="${described}"` : ""}>` +
-    `${confirming ? "Allow and analyze" : again ? "Analyze again" : "Analyze drift"}</button>`;
+    `${nextPendingLabel(busyKey,
+      confirming ? "Allow and analyze" : again ? "Analyze again" : "Analyze drift")}</button>`;
   /* The announcement and the description are one node while a refusal
      stands. Printing the stored message and the reason separately rendered
      the same sentence twice, adjacent and identical, where the contract is
@@ -4498,8 +4506,8 @@ function nextCockpitReadingControl(session, annotation, model, primary = true, s
       '<div class="next-cockpit-reading-ask">' +
       button.replace(`data-next-focus="reading:${esc(key)}"`, `data-next-focus="reading-allow:${esc(key)}" data-next-focus-fallback="reading:${esc(key)}"`) +
       '<button type="button" class="next-action" data-next-cockpit-action="reading-not-now" ' +
-      `data-next-focus="reading-not-now:${esc(key)}" data-next-focus-fallback="reading:${esc(key)}">` +
-      "Not now</button></div></div>" +
+      `data-next-focus="reading-not-now:${esc(key)}" data-next-focus-fallback="reading:${esc(key)}"` +
+      `${busy ? ' aria-disabled="true"' : ""}>Not now</button></div></div>` +
       (lead ? "" : steers) + (off ? `<div class="next-cockpit-reading-ask">${off}</div>` : "") +
       accounts + counted + aboutWhy;
   }
@@ -4548,6 +4556,8 @@ function nextCockpitReadingCount(count){
 function nextCockpitReadingNotNow(session){
   const key = sessKey(session);
   const request = nextCockpitReadingRequests.get(key);
+  // Not while Allow is being answered: that press is already the consent.
+  if(nextPendingHas(`reading-allow:${key}`)) return;
   if(request && request.consent && !request.pending) nextCockpitReadingRequests.delete(key);
   renderNext();
 }
@@ -4926,7 +4936,7 @@ function nextCockpitCollapsedText(text){
    in one press: of several, the question quotes the earliest alone, so the
    rest were never on screen (wire review F1). A direction opened or arriving
    after the list was drawn is unread, so the next press draws it. */
-async function nextCockpitKeepReadWhole(session, pending, revision){
+async function nextCockpitKeepReadWhole(session, pending, revision, signal = null){
   const key = sessKey(session);
   const held = nextCockpitDirectionWhole.get(key) ||
     {texts: new Map(), drawn: new Set(), revision: null};
@@ -4937,9 +4947,9 @@ async function nextCockpitKeepReadWhole(session, pending, revision){
     if(held.texts.has(id)) continue;
     let opened = null;
     try{
-      const response = await fetch("/api/direction", {method: "POST",
+      const response = await nextFetchBounded("/api/direction", {method: "POST",
         headers: {"Content-Type": "application/json"},
-        body: JSON.stringify({harness: session.harness, sid: session.sid, fact_id: id})});
+        body: JSON.stringify({harness: session.harness, sid: session.sid, fact_id: id})}, signal);
       const answer = response && typeof response.json === "function"
         ? await response.json().catch(() => null) : null;
       if(response && response.ok && answer && answer.ok === true && typeof answer.text === "string"){
@@ -5053,12 +5063,15 @@ function nextCockpitDirectionQuestion(session, annotation, source, model, primar
   /* The fallback hands focus on once the question goes with a settle: to
      Analyze or Allow and analyze, or to a started job's title, which holds
      the same key (consent F7). */
+  const keeping = nextPendingHas(`direction-keep:${key}`);
   const keep = `<button type="button" class="next-action${primary ? " next-action--primary" : ""}" ` +
     'data-next-cockpit-action="direction-keep" ' +
     `data-next-focus="direction-keep:${esc(key)}" data-next-focus-fallback="reading:${esc(key)}"` +
-    `${edited || (request && request.pending) ? ' aria-disabled="true"' : ""}` +
+    `${keeping ? nextPendingAttrs(`direction-keep:${key}`)
+      : edited || (request && request.pending) ? ' aria-disabled="true"' : ""}` +
     `${described ? ` aria-describedby="${described}"` : ""}>` +
-    `${analyze ? NEXT_COCKPIT_KEEP_ANALYZE : NEXT_COCKPIT_KEEP}</button>`;
+    `${nextPendingLabel(`direction-keep:${key}`,
+      analyze ? NEXT_COCKPIT_KEEP_ANALYZE : NEXT_COCKPIT_KEEP)}</button>`;
   const add = '<button type="button" class="next-action" data-next-cockpit-action="direction-add" ' +
     `data-arg="${esc(String(earliest.id || ""))}" data-next-focus="direction-add:${esc(key)}">` +
     `${NEXT_COCKPIT_ADD_DIRECTION}</button>`;
@@ -5106,7 +5119,8 @@ function nextCockpitKeepUnsay(key){
    before it would settle (the server build's note). */
 async function nextCockpitKeepIntent(session, model){
   const key = sessKey(session);
-  if(nextCockpitReadingRequests.get(key)?.pending) return;
+  const control = `direction-keep:${key}`;
+  if(nextPendingHas(control) || nextCockpitReadingRequests.get(key)?.pending) return;
   const annotation = nextCockpitAnnotation(session);
   const group = nextCockpitRouteGroup();
   const pending = nextCockpitDirectionsOpen(session, annotation,
@@ -5129,11 +5143,13 @@ async function nextCockpitKeepIntent(session, model){
   const through = nextNumber(pending[pending.length - 1].at);
   const adoption = nextIntentAdoption(draft);
   const drawnAt = nextNumber(annotation && annotation.revision) || 0;
+  const press = nextPendingStart(control, "Keeping\u2026", "Keeping your intent.");
+  if(!press) return;
   const request = {pending: true, message: "", adoption, announced: true};
   nextCockpitReadingRequests.set(key, request);
-  renderNext();
+  renderNext({named: control});
   try{
-    const read = await nextCockpitKeepReadWhole(session, pending, drawnAt);
+    const read = await nextCockpitKeepReadWhole(session, pending, drawnAt, press.signal);
     if(read !== "read"){
       request.message = read === "refused" ? NEXT_COCKPIT_KEEP_UNOPENED : NEXT_COCKPIT_KEEP_READ_FIRST;
       return;
@@ -5144,10 +5160,10 @@ async function nextCockpitKeepIntent(session, model){
     const held = nextCockpitDirectionWhole.get(key);
     const expected = held && held.drawn.size && held.revision != null ? held.revision : drawnAt;
     if(!analyze){
-      const response = await fetch("/api/annotate", {method: "POST",
+      const response = await nextFetchBounded("/api/annotate", {method: "POST",
         headers: {"Content-Type": "application/json"},
         body: JSON.stringify({harness: session.harness, sid: session.sid, ...adoption,
-          settle_through: through, expected_revision: expected})});
+          settle_through: through, expected_revision: expected})}, press.signal);
       const answer = response && typeof response.json === "function"
         ? await response.json().catch(() => null) : null;
       if(!response || !response.ok || !answer || answer.ok !== true) throw new Error("not kept");
@@ -5170,11 +5186,11 @@ async function nextCockpitKeepIntent(session, model){
       return;
     }
     const provider = String(route.provider);
-    const response = await fetch("/api/reading", {method: "POST",
+    const response = await nextFetchBounded("/api/reading", {method: "POST",
       headers: {"Content-Type": "application/json"},
       body: JSON.stringify({harness: session.harness, sid: session.sid, provider,
         press: true, observer_model: 1, ...adoption, settle_through: through,
-        expected_revision: expected})});
+        expected_revision: expected})}, press.signal);
     const answer = response && typeof response.json === "function"
       ? await response.json().catch(() => null) : null;
     if(!answer) throw new Error("not confirmed");
@@ -5210,6 +5226,7 @@ async function nextCockpitKeepIntent(session, model){
     request.message = NEXT_COCKPIT_KEEP_UNCONFIRMED;
   }finally{
     request.pending = false;
+    nextPendingEnd(control);
     /* The persistent polite region, as every settle outcome was (layout F4),
        and only there: the paragraph beside the control is drawn without a
        role, so the outcome is announced once (verifier V5). */
@@ -5840,8 +5857,10 @@ function nextCockpitEntryTotal(session, source){
    durable permission and budget again at the model seam. */
 async function nextCockpitAskForReading(session, model, allow = false){
   const key = sessKey(session);
-  /* A running job is the answer to a second press: nothing is sent. */
-  if(nextCockpitReadingRequests.get(key)?.pending || nextReadingJob(session)) return;
+  /* A press in flight, or a running job, is the answer to a second press:
+     nothing is sent. */
+  if(nextPendingHas(`reading:${key}`) || nextPendingHas(`reading-allow:${key}`) ||
+    nextCockpitReadingRequests.get(key)?.pending || nextReadingJob(session)) return;
   /* Keep's "Press Allow and analyze" is answered by this press, so the region
      stops holding it. Emptying a region is silent. */
   nextCockpitKeepUnsay(key);
@@ -5884,17 +5903,20 @@ async function nextCockpitAskForReading(session, model, allow = false){
      since moved on is refused before anything starts (DRC-4732): the model
      would otherwise read words this reader never saw. */
   const expected = nextNumber(nextCockpitAnnotation(session)?.revision) || 0;
+  const control = allow ? `reading-allow:${key}` : `reading:${key}`;
+  const press = nextPendingStart(control, "Starting\u2026", "Starting the analysis.");
+  if(!press) return;
   const request = {pending: true, message: "", adoption, chosen: chosenNow};
   nextCockpitReadingRequests.set(key, request);
-  renderNext();
+  renderNext({named: control});
   try{
-    const response = await fetch("/api/reading", {
+    const response = await nextFetchBounded("/api/reading", {
       method: "POST",
       headers: {"Content-Type": "application/json"},
       body: JSON.stringify({harness: session.harness, sid: session.sid, provider,
         press: true, observer_model: 1, ...adoption, expected_revision: expected,
         ...(allow ? {allow:true, ...(destination ? {tool_output:destination} : {})} : {})}),
-    });
+    }, press.signal);
     const answer = response && typeof response.json === "function"
       ? await response.json().catch(() => null) : null;
     if(answer && answer.route && typeof answer.route === "object"){
@@ -5907,6 +5929,7 @@ async function nextCockpitAskForReading(session, model, allow = false){
       /* Another tab, or an earlier press, already started one: show it, then
          take the board's word for whether it is still running. */
       nextReadingJobShown(session, answer.job);
+      nextPendingEnd(control);
       renderNext();
       await refreshNext();
       return;
@@ -5996,6 +6019,8 @@ async function nextCockpitAskForReading(session, model, allow = false){
          would stand until the next poll and swallow every press. Every later
          phase and the result arrive with the revisions the job publishes. */
       nextReadingJobShown(session, answer.job);
+      // The box is the answer from here on, so the press stops being busy.
+      nextPendingEnd(control);
       renderNext();
       await refreshNext();
       return;
@@ -6007,9 +6032,11 @@ async function nextCockpitAskForReading(session, model, allow = false){
     /* A lost response does not establish that the model never ran. */
     request.message = "Could not confirm the reading. The request has not been retried. " +
       "Refresh to check for a result before asking again.";
+    request.consent = false;
   }finally{
     request.pending = false;
-    renderNext();
+    nextPendingEnd(control);
+    renderNext({named: `reading:${key}`});
   }
 }
 
@@ -6023,19 +6050,23 @@ async function nextCockpitCancelReading(session){
   const job = nextReadingJob(session);
   const held = nextCockpitReadingCancels.get(key);
   if(!job || job.cancelling === true || (held && held.job === job.id && held.pending)) return;
+  const control = `reading-cancel:${key}`;
+  const press = nextPendingStart(control, "Cancelling\u2026", "Cancelling the analysis.");
+  if(!press) return;
   const cancel = {job: job.id, pending: true, failed: false};
   nextCockpitReadingCancels.set(key, cancel);
-  renderNext();
+  renderNext({named: control});
   try{
-    const response = await fetch("/api/reading/cancel", {
+    const response = await nextFetchBounded("/api/reading/cancel", {
       method: "POST",
       headers: {"Content-Type": "application/json"},
       body: JSON.stringify({harness: session.harness, sid: session.sid, job: job.id,
         press: true, observer_model: 1}),
-    });
+    }, press.signal);
     const answer = response && typeof response.json === "function"
       ? await response.json().catch(() => null) : null;
     if(response && response.status === 409 && answer && answer.reason === "not-running"){
+      nextPendingEnd(control);
       nextCockpitReadingCancels.delete(key);
       await refreshNext();
       return;
@@ -6043,6 +6074,8 @@ async function nextCockpitCancelReading(session){
     if(!response || response.status !== 202 || !answer || answer.cancelling !== true){
       throw new Error("cancel not confirmed");
     }
+    // Accepted: the published `cancelling` draws the finishing state from here.
+    nextPendingEnd(control);
     nextReadingJobShown(session, {...job, cancelling: true});
     nextCockpitReadingCancels.delete(key);
     await refreshNext();
@@ -6050,7 +6083,8 @@ async function nextCockpitCancelReading(session){
     cancel.failed = true;
   }finally{
     cancel.pending = false;
-    renderNext();
+    nextPendingEnd(control);
+    renderNext({named: control});
   }
 }
 

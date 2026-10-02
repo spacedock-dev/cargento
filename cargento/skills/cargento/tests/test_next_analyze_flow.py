@@ -267,9 +267,10 @@ class TheFirstPressAsksBeforeItSendsTest(PanelPage):
         # Not now's key falls back to the press, which Analyze drift carries once the card goes.
         self.assertIn('data-next-focus-fallback="reading:codex:focus-1"', not_now.group(0))
 
-    def test_allow_hands_its_focus_to_the_pending_press(self) -> None:
-        # Pressing Allow redraws a pending Analyze drift and no Allow, so a keyboard reader's
-        # focus falls back to the press rather than to the page (INT-3).
+    def test_allow_keeps_its_focus_while_it_is_answered(self) -> None:
+        # Pressing Allow keeps the question drawn with Allow busy while it is answered (owner,
+        # 2026-10-02), so a keyboard reader's focus stays on the press rather than falling to the
+        # page (INT-3).
         stub = cockpit_tests.CockpitHeldToTabTest.FOCUS_DOM
         focus_dom = stub.replace(
             "(button|a|textarea|",
@@ -292,7 +293,10 @@ class TheFirstPressAsksBeforeItSendsTest(PanelPage):
             '__els.app.innerHTML = `<i data-focused="${now && now.dataset ? '
             "now.dataset.nextFocus : ''}\"></i>` + __els.app.innerHTML;\n",
         )
-        self.assertIn('<i data-focused="reading:codex:focus-1"></i>', html)
+        self.assertIn('<i data-focused="reading-allow:codex:focus-1"></i>', html)
+        allow = re.search(r'<button[^>]*data-next-cockpit-action="reading-allow"[^>]*>', html)
+        assert allow is not None
+        self.assertIn("data-next-pending", allow.group(0))
 
     def test_not_now_restores_the_idle_button_and_sends_nothing(self) -> None:
         html = self.page(
