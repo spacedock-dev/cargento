@@ -240,8 +240,10 @@ stop writes an `isMeta` user record before the summary and keeps the turn going,
 `preventedContinuation` true is a hook ending the turn: both read from Claude Code 2.1.287's own
 code, not from a recorded session. That gate rests on the 2026-10-01 measurement recorded in
 [a reader's correction and a transcript stop](../design-reading-a-session.md#amended-2026-10-01-a-readers-correction-and-a-transcript-stop),
-not on a capture: no new shape file was taken. No file in this directory records that record, or
-the final assistant message's `stop_reason`, which is why the second is not read.
+not on a capture: no new shape file was taken. No file in this directory records that record, its
+`hookLabel`, or the final assistant message's `stop_reason`, which is why the last is not read. The
+label is read anyway, in the safe direction: 2.1.287's Stop path writes none and its reader knows
+one labelled `PreToolUse`, so a summary carrying any label but `Stop` is refused (verifier S2).
 
 ## Reading one
 

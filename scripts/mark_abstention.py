@@ -779,7 +779,8 @@ def _transcript_stop(transcript: str, sid: str, stop: float) -> bool:
     assistant reply is a stop: a Stop hook that blocks the stop, or a goal
     check not met, writes an `isMeta` user record first and keeps the turn
     going (verifier S1). `preventedContinuation` true is a hook ending the
-    turn, which is a stop. A subagent's record is not the session's. `sid` is
+    turn, which is a stop. A subagent's record is not the session's, and a
+    summary labelled for any hooks but Stop is not a stop (verifier S2). `sid` is
     matched as a prefix, as `_transcript_is_the_session` does, because a packet
     names a Claude Code session by the eight characters the board publishes.
     """
@@ -807,6 +808,7 @@ def _transcript_stop(transcript: str, sid: str, stop: float) -> bool:
                     and record.get("isSidechain") is False
                     and isinstance(record.get("preventedContinuation"), bool)
                     and isinstance(record.get("sessionId"), str)
+                    and record.get("hookLabel", "Stop") == "Stop"
                     and record["sessionId"].startswith(sid)
                 ):
                     continue

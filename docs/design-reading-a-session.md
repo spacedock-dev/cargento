@@ -2116,9 +2116,19 @@ collector already reads and published as `turn_end_at`, and the row turns Idle a
 would turn it. `finished_at` stays hook-only. A hook stop, when held, is the stop. Either kind
 settles `reading_settle_sec` after its stamp, a reading through it drops every entry timed after
 it, and its scope sentence says which kind it rested on. A last record that is a tool call, a
-tool result, an interruption or a command is not a turn stop. The press withholds it with
-Claude Code's own sentence. The unasked lane still withholds at every turn stop, and no other
-harness changes. The final assistant message's `stop_reason` is not read: no capture records
+tool result, an interruption or a command is not a turn stop. Neither is a summary labelled for
+any hooks but Stop: Claude Code 2.1.287's Stop path writes no `hookLabel`, and its own reader
+knows a summary labelled `PreToolUse`, written mid-turn after a tool call and before the tool
+runs, so only an absent label or `Stop` is admitted (verifier S2, `ui3`, read from the installed
+bundle). No capture under `docs/captures/` records the label, and the test fixtures carry one only
+where a test sets it. The press withholds a non-stop with Claude Code's own sentence. The unasked
+lane still withholds at every turn stop, and no other harness changes. One thing does change for
+it, on a board no hook reaches: a quick turn's row now changes state twice, Working to Idle at its
+stop and back at the next prompt, where before it read Working throughout, and the lane, which
+considers a typed-goal row whenever its state changes, may read it mid-flight at each return to
+Working (verifier S3). That is what a hooked board already does, and the lane's own bounds hold
+it: off by default, at most three readings per session, twelve a day, and 900 seconds apart
+(`unasked_session_cap`, `unasked_daily_cap`, `unasked_session_floor_sec`). The final assistant message's `stop_reason` is not read: no capture records
 it. This does not change the scorer's rule of 2026-10-01, which vouches for a recorded case
 only at a matched stamp, and it infers nothing from the last assistant message.
 

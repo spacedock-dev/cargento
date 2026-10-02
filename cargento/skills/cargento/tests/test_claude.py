@@ -3737,6 +3737,41 @@ class ClaudeTranscriptTurnStopTest(RuntimeTestCase):
         self.assertIsNone(row["turn_end_at"])
         self.assertEqual(reading.WITHHELD_IDLE_UNKNOWN, self.press(row, stop + 120)["reason"])
 
+    def test_a_summary_written_for_pre_tool_use_hooks_is_not_a_turn_stop(self) -> None:
+        """Verifier S2 (ui3): Claude Code 2.1.287's own reader knows a `stop_hook_summary` with
+        `hookLabel: "PreToolUse"`, written mid-turn after a tool call and before the tool runs.
+        Read as a stop, a long Bash showed Idle and opened a last-turn reading. Only the Stop
+        hooks' summary is a stop: the 2.1.287 Stop path writes no `hookLabel`, so an absent
+        label and `"Stop"` are admitted and every other label is refused."""
+        from cargento_runtime import reading  # noqa: PLC0415 - the press reads the row
+
+        stop = self.STOP
+        rows = _turn_records(stop, hookLabel="PreToolUse")
+        rows[1] = {
+            **rows[1],
+            "message": {
+                "role": "assistant",
+                "content": [{"type": "tool_use", "id": "t1", "name": "Bash", "input": {}}],
+            },
+        }
+        for later in (stop + 9, stop + 60):
+            with self.subTest(at=later - stop):
+                row = self.row_at(later, rows)
+                self.assertIsNone(row["turn_end_at"])
+                self.assertNotEqual(
+                    reading.SCOPE_LAST_TURN,
+                    reading.eligibility(
+                        row,
+                        latest_revision_at=0.0,
+                        now=later,
+                        settle_sec=8.0,
+                        admit_turn_stop=True,
+                    )[0],
+                )
+        self.assertEqual("working", self.row_at(stop + 9, rows)["state"])
+        labelled = self.row_at(stop + 9, _turn_records(stop, hookLabel="Stop"))
+        self.assertEqual(stop, labelled["turn_end_at"])
+
     def test_an_interrupted_turn_is_not_a_turn_stop(self) -> None:
         stop = self.STOP
         rows = [
@@ -3903,6 +3938,12 @@ class TheTurnStopRecordIsTheScorersRecordTest(unittest.TestCase):
         ({"isSidechain": None}, ("assistant",), False),
         ({"preventedContinuation": None}, ("assistant",), False),
         ({"sessionId": None}, ("assistant",), False),
+        # Verifier S2: only the Stop hooks' summary is a stop. 2.1.287's Stop path writes no
+        # `hookLabel`; its reader knows a PreToolUse one, written mid-turn.
+        ({"hookLabel": "Stop"}, ("user", "assistant"), True),
+        ({"hookLabel": "PreToolUse"}, ("user", "assistant"), False),
+        ({"hookLabel": "SubagentStop"}, ("user", "assistant"), False),
+        ({"hookLabel": None}, ("user", "assistant"), False),
     )
 
     def test_both_readers_agree_on_every_shape(self) -> None:

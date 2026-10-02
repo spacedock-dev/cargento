@@ -374,7 +374,11 @@ def is_turn_stop_record(record: Any, after: str | None) -> bool:
     before the summary, then write the summary with `preventedContinuation`
     false and keep the turn going (verifier S1, read from Claude Code 2.1.287).
     `preventedContinuation` true is a hook ending the turn, which is a stop.
-    A subagent's record is not the session's. The scorer's
+    A subagent's record is not the session's, and only the Stop hooks'
+    summary is a stop: 2.1.287's Stop path writes no `hookLabel`, and its own
+    reader knows one labelled `PreToolUse`, written mid-turn before a tool runs
+    (verifier S2), so an absent label or `Stop` is admitted and no other.
+    The scorer's
     `mark_abstention._transcript_stop` reads the same keys and the same rule,
     and a test holds the two to one table. No capture under `docs/captures/`
     records this shape: it rests on the 2026-10-01 measurement in
@@ -388,6 +392,7 @@ def is_turn_stop_record(record: Any, after: str | None) -> bool:
         and record.get("isSidechain") is False
         and isinstance(record.get("preventedContinuation"), bool)
         and isinstance(record.get("sessionId"), str)
+        and record.get("hookLabel", "Stop") == "Stop"
     )
 
 
