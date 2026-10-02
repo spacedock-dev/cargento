@@ -790,7 +790,8 @@ class TheSaveReadsTheAnswerTheEndpointSendsTest(unittest.TestCase):
         # handler that stood here read only `ok` when this oracle was written
         # and was left out of it; it went with the conflict block's buttons
         # (DRC-4682), and the added-direction save reads the same reply.
-        for name in ("nextCockpitIntentSave", "nextCockpitSaveDirection"):
+        # The save's reply is read by its worker, under the press's pending entry.
+        for name in ("nextCockpitIntentSaveWork", "nextCockpitSaveDirection"):
             with self.subTest(handler=name):
                 handler = self.PAGE[self.PAGE.index(f"async function {name}(") :]
                 # Up to the next top-level function of either kind.
