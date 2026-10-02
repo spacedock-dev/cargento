@@ -2723,6 +2723,9 @@ question before the press in place of "Conflict to settle", and Add adopting a d
   before the route, any Allow write, the adoption or the job, reading the store from disk under
   its lock and checking the entry handed to the job again, so another dashboard's save is caught, and the page says the approved stale
   sentence; the store already refused a stale goal save, and the typed words stay in the box.
+  A typed save whose words and provenance equal the stored revision's answers "Already stored"
+  whatever revision it names, because nothing is written (owner, 2026-10-02: a double press or a
+  retry after a lost answer was told "Not saved" about words on disk).
   `nextReadingCheckSupports` mirrors `check_supports` on every harness, including `changed_after`,
   `read_incomplete` and the subjectless Pi rows an older build stored, held by a test built from the server's own Pi
   fixture; the record column opens with "Cargento reads work results from Claude Code and Pi

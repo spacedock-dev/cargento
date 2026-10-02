@@ -418,6 +418,82 @@ class AnnotationStoreTest(unittest.TestCase):
         # rather than as one that never existed.
         self.assertEqual(revision_limit + 3, entry["revisions"][-1]["n"])
 
+    # --- a repeated save is already stored (spec ui3 item 1) ----------------
+
+    def _stored_twice(self) -> None:
+        self.assertEqual(
+            annotation_store.OUTCOME_STORED,
+            annotation_store.annotate(
+                self.config, self.state, "pi", "s", goal="G", lines=["A", "B"], now=self.NOW
+            ),
+        )
+        self.assertEqual(
+            annotation_store.OUTCOME_STORED,
+            annotation_store.annotate(
+                self.config,
+                self.state,
+                "pi",
+                "s",
+                goal="G2",
+                lines=["A", "B"],
+                expected_revision=1,
+                now=self.NOW + 1,
+            ),
+        )
+
+    def test_a_reader_whose_second_identical_save_arrives_after_the_first_is_told_the_words_are_already_stored(
+        self,
+    ) -> None:
+        """A double press, a retry after a lost answer, or a second tab, all drafted at 1.
+
+        The first save minted revision 2; the second carries the same words and
+        the revision it was drafted against. Refusing it would tell the reader
+        "Not saved" about words that are on disk.
+        """
+        self._stored_twice()
+        outcome = annotation_store.annotate(
+            self.config,
+            self.state,
+            "pi",
+            "s",
+            goal="G2",
+            lines=["A", "B"],
+            expected_revision=1,
+            now=self.NOW + 2,
+        )
+        self.assertEqual(annotation_store.OUTCOME_UNCHANGED, outcome)
+        entry = annotation_store.find(annotation_store.load(self.config), "pi", "s")
+        assert entry is not None
+        self.assertEqual(2, entry["revisions"][-1]["n"])
+
+    def test_a_reader_on_a_stale_tab_who_sends_different_words_is_still_refused(self) -> None:
+        self._stored_twice()
+        outcome = annotation_store.annotate(
+            self.config,
+            self.state,
+            "pi",
+            "s",
+            goal="G3",
+            lines=["A", "B"],
+            expected_revision=1,
+            now=self.NOW + 2,
+        )
+        self.assertEqual(annotation_store.OUTCOME_REFUSED, outcome)
+        lines_only = annotation_store.annotate(
+            self.config,
+            self.state,
+            "pi",
+            "s",
+            goal="G2",
+            lines=["A"],
+            expected_revision=1,
+            now=self.NOW + 3,
+        )
+        self.assertEqual(annotation_store.OUTCOME_REFUSED, lines_only)
+        entry = annotation_store.find(annotation_store.load(self.config), "pi", "s")
+        assert entry is not None
+        self.assertEqual(2, entry["revisions"][-1]["n"])
+
 
 class SettlingALaterDirectionTest(unittest.TestCase):
     """The reader's answer to an unresolved baseline conflict.

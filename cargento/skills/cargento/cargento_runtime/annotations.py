@@ -1946,6 +1946,42 @@ def _save_refused(
     )
 
 
+def _repeats_latest(
+    existing: Annotation | None,
+    new_goal: str | None,
+    new_texts: list[str] | None,
+    source_fields: Mapping[str, Any],
+    options: Mapping[str, Any],
+) -> bool:
+    """Whether a plain typed save carries exactly the latest live revision's words.
+
+    Only a typed save: an entry line, a settlement, Keep's goal guard and an
+    adoption onto an empty goal each mean more than their words, so each still
+    meets `_save_refused`.
+    """
+    if (
+        existing is None
+        or is_discarded(existing)
+        or not existing["revisions"]
+        or options.get("entry_line") is not None
+        or options.get("settle_through") is not None
+        or options.get("empty_goal_only")
+        or "goal_empty_or" in options
+    ):
+        return False
+    last = existing["revisions"][-1]
+    text_goal = last["goal"] if new_goal is None else new_goal
+    text_lines = (
+        last["lines"]
+        if new_texts is None
+        else _sourced(new_texts, last["lines"], options.get("origins"))
+    )
+    fields = (_provenance(last) or {}) if new_goal is None else source_fields
+    return (last["goal"], last["lines"]) == (text_goal, text_lines) and (
+        _provenance(last) or {}
+    ) == fields
+
+
 def _typed(text: str) -> OutcomeLine:
     return {"text": text, "source": LINE_TYPED}
 
@@ -2122,7 +2158,14 @@ def _annotate(  # noqa: PLR0913
             else ()
         )
         added = _with_entry(base_lines, entry_line, options.get("replace"))
-        if added is None or _save_refused(existing, new_texts, options):
+        # A save repeating the stored words skips the stale guard and meets the
+        # unchanged answer below: a double press, a retry after a lost answer
+        # or a second tab is told they are stored, never "Not saved". Nothing
+        # is written, so the guard (DRC-4732) loses nothing it protects.
+        if added is None or (
+            not _repeats_latest(existing, new_goal, new_texts, source_fields, options)
+            and _save_refused(existing, new_texts, options)
+        ):
             return OUTCOME_REFUSED
         through = options.get("settle_through")
         if existing is not None and not is_discarded(existing):
