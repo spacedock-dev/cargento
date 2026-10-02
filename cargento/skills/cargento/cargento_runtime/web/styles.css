@@ -1332,12 +1332,14 @@ details.next-cockpit-held-stamp[open]>span{display:block}
    tints an unsaved draft, and its source on the dashed hairline this sheet
    keeps for words not yet saved to the server. */
 .next-cockpit-held-field[data-next-cockpit-drafted]>textarea{background:var(--sunk)}
-/* The draft's marks, and the saved source line in their place, follow the
-   label row's select in the markup and take a line of their own, so a pick
-   that draws them never moves the select (2026-10-02). With Looks right gone
-   they hold no control, so they need no control's height. */
-.next-intent-draft-marks{display:inline-flex;flex-wrap:wrap;align-items:center;gap:4px 8px;flex-basis:100%}
-.next-cockpit-held-heading>.next-cockpit-held-cue{flex-basis:100%}
+/* The draft's marks, and the saved source line in their place, sit in the
+   row under the goal's box between the count and Clear. That row keeps one
+   control's height and never wraps, so the marks going on the first
+   keystroke, or Clear going with the last character, moves nothing below it;
+   the marks shrink and wrap inside it instead (2026-10-02, verifier F1). */
+.next-cockpit-held-field[data-next-cockpit-held-field="goal"]>.next-cockpit-held-under{flex-wrap:nowrap;justify-content:flex-start;min-block-size:44px}
+.next-cockpit-held-field[data-next-cockpit-held-field="goal"]>.next-cockpit-held-under>.next-action{flex:none;margin-inline-start:auto}
+.next-intent-draft-marks{display:inline-flex;flex-wrap:wrap;align-items:center;gap:4px 8px;min-width:0}
 .next-intent-draft-marks[hidden]{display:none}
 .next-intent-draft-source{padding:1px 8px;border:1px dashed var(--line);border-radius:var(--r-pill);color:var(--ink2);font-size:var(--fs-label)}
 .next-intent-draft-marks>.next-cockpit-held-cue{grid-column:auto}

@@ -1207,7 +1207,7 @@ function nextCockpitStoreUnreadable(){
   return String(nextData && nextData.annotate_unreadable || "");
 }
 
-/* The draft's marks in the goal's heading row: where the words came from, and
+/* The draft's marks under the goal's box: where the words came from, and
    that an excerpt is one. Drawn while the box holds the draft; the input
    handler hides them on the first edit, because a keystroke does not redraw,
    and a box put back to the draft redraws them. Save intent is the one way
@@ -1270,12 +1270,7 @@ function nextCockpitHeldField(session, annotation, spec, cap){
     `${untouched ? " data-next-cockpit-drafted" : ""}>` +
     '<div class="next-cockpit-held-heading">' +
     `<span class="next-cockpit-held-label">${esc(label)}</span>` +
-    /* The select before the draft's marks, which take a line of their own
-       under it: drawn between the label and the select they wrapped it 48px
-       down the moment a pick drew them (measured at 1440x900, 2026-10-02). */
     (kind === "goal" ? nextIntentPromptSelect(session) : "") +
-    (untouched ? nextIntentDraftMarks(session, drafted) : "") +
-    (kind === "goal" && !untouched ? nextPromptSourceLine(annotation) : "") +
     '</div>' +
     `<textarea rows="3" maxlength="${cap}" data-next-cockpit-held-kind="${kind}" ` +
     `data-next-cockpit-held-key="${esc(key)}" data-next-cockpit-held-saved="${esc(saved)}" ` +
@@ -1284,6 +1279,14 @@ function nextCockpitHeldField(session, annotation, spec, cap){
     '<div class="next-cockpit-held-under">' +
     `<span class="next-cockpit-held-count" data-next-cockpit-held-count="${kind}">` +
     `${draft.length}/${cap}</span>` +
+    /* Where the words came from sits between the count and Clear, as an
+       outcome line's source sits between its count and Remove. In the label
+       row it was a line of its own: drawn between the label and the select it
+       wrapped the select 48px down, and drawn under the select it moved the
+       box the pick fills 25px down, and back up on the first keystroke
+       (measured at 1440x900, 2026-10-02, verifier F1). */
+    (untouched ? nextIntentDraftMarks(session, drafted) : "") +
+    (kind === "goal" && !untouched ? nextPromptSourceLine(annotation) : "") +
     nextCockpitHeldControl("held-clear", "Clear", kind, Boolean(draft), false, "", `${key}:clear`) +
     '</div>' +
     /* The absence sentence answers "why is this empty", so it goes when the

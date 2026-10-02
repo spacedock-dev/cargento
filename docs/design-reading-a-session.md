@@ -1242,10 +1242,14 @@ redraw does not shut the list mid-choice.
   it. A poll that waited while the list had focus is taken by the pick, so the page draws once.
 - While the box holds the pick untouched the select shows it; the first keystroke puts the face
   back to "Use your prompt" in place, so the same prompt can be picked again.
-- The draft's marks ("from your prompt · 08:02") and the saved source line take a line of their
-  own under the label row. Measured in Chrome at 1440x900, drawn between the label and the select
-  they wrapped the select 48px down the moment a pick drew them; the select now holds its place
-  at rest, after a pick and after typing.
+- The draft's marks ("from your prompt · 08:02") and the saved source line sit in the row under
+  the box, between the count and Clear, as an outcome line's source sits between its count and
+  Remove. That row keeps one control's height and does not wrap. Both earlier places moved
+  something, measured in Chrome at 1440x900. Drawn between the label and the select, the marks
+  wrapped the select 48px down the moment a pick drew them. Drawn on a line of their own under
+  the label row, they moved the box the pick fills 25px down, and the first keystroke pulled it
+  back up under the caret. The select, the box and the Expected outcome field below it now hold
+  their places at rest, after a pick, after typing and after a redraw, at 1440, 760 and 375.
 
 ## DEC-23: a Claude Code session's record of its checks may show the work
 

@@ -95,6 +95,31 @@ def goal_box(html: str) -> str:
 
 CHOOSE = '__pick("p-latest");\nawait __settle();\n'
 HTML = "console.log(JSON.stringify(__els.app.innerHTML));"
+SAVED_FROM_PROMPT = (
+    TYPED
+    + "__s.annotation_goal = __s.first_prompt;\n"
+    + '__s.annotation_goal_source = "first-prompt";\n'
+    + "__s.annotation_goal_source_at = 99;\n"
+)
+
+
+def goal_field(html: str) -> str:
+    """The Goal field's markup, from its opening tag to the Expected outcome field."""
+    intent = intent_of(html)
+    start = intent.index('data-next-cockpit-held-field="goal"')
+    end = intent.index('data-next-cockpit-held-field="lines"', start)
+    return intent[start:end]
+
+
+def rule(selector: str) -> str:
+    """The body of the one top-level rule with exactly this selector."""
+    bodies = re.findall(
+        r"(?:^|\})" + re.escape(selector) + r"\{([^}]*)\}", NEXT_STYLES, re.MULTILINE
+    )
+    if len(bodies) != 1:
+        message = f"{len(bodies)} rules for {selector!r}"
+        raise AssertionError(message)
+    return str(bodies[0])
 
 
 @unittest.skipUnless(shutil.which("node"), "node not available")
@@ -622,28 +647,47 @@ class ANativeListThatStaysWhereItIsTest(_DraftPage):
         self.assertNotIn(" selected", menu_of(out["typed"]))
         self.assertEqual("Use your prompt", visible_text(menu_of(out["typed"])))
 
-    def test_picking_a_prompt_never_moves_the_list(self) -> None:
-        """Measured in Chrome at 1440x900: the label row is 450px wide, and a pick drew the
-        draft's marks ("from your prompt · 08:02", 174px) between the label and the 288px
-        select, so the select wrapped 48px down. The marks, and the saved source line that takes
-        their place, now follow the select in the markup on a line of their own, so the select
-        keeps the label's line whatever the box holds. Markup order and not `order:`, which the
-        sheet forbids so that what a screen reader meets matches what is drawn."""
-        marks = re.search(r"\.next-intent-draft-marks\{([^}]*)\}", NEXT_STYLES)
-        assert marks is not None
-        self.assertIn("flex-basis:100%", marks.group(1))
-        self.assertNotIn("min-height:44px", marks.group(1))
-        source = re.search(
-            r"\.next-cockpit-held-heading>\.next-cockpit-held-cue\{([^}]*)\}", NEXT_STYLES
+    def test_picking_a_prompt_or_typing_over_it_never_moves_the_goal_box(self) -> None:
+        """Measured in Chrome at 1440x900 (verifier F1, 2026-10-02): a pick drew the draft's
+        marks ("from your prompt · 08:02") on a line of their own between the select and the box,
+        so the box the pick fills dropped 25px, and the first keystroke hid them and pulled it
+        back up under the caret. Whatever the box holds, the label row is the label and the select
+        alone, and where the words came from sits in the row under the box, between the count and
+        Clear, as an outcome line's source sits between its count and Remove."""
+        states = {
+            "a typed goal at rest": self.page(TYPED, HTML),
+            "a prompt just picked": self.page(TYPED, CHOOSE + HTML),
+            "the first prompt drafted": self.page("", HTML),
+            "a goal saved from a prompt": self.page(SAVED_FROM_PROMPT, HTML),
+        }
+        for name, out in states.items():
+            with self.subTest(state=name):
+                assert isinstance(out, str)
+                field = goal_field(out)
+                heading = field[: field.index("<textarea")]
+                self.assertIn("next-intent-prompt-pick", heading)
+                self.assertNotIn("from your prompt", heading)
+                self.assertNotIn("next-cockpit-held-cue", heading)
+                self.assertNotIn("data-next-cockpit-draft-marks", heading)
+                under = field[field.index('<div class="next-cockpit-held-under">') :]
+                if name != "a typed goal at rest":
+                    self.assertIn("from your prompt", visible_text(under))
+                    count = under.index("data-next-cockpit-held-count")
+                    clear = under.index('data-next-cockpit-action="held-clear"')
+                    source = under.index("from your prompt")
+                    self.assertLess(count, source)
+                    self.assertLess(source, clear)
+        # The row under the box holds one control's height whatever it shows, so neither the
+        # marks going on the first keystroke nor Clear going with the last character moves what
+        # is below it, and it does not wrap the marks onto a line of their own.
+        goal_under = rule(
+            '.next-cockpit-held-field[data-next-cockpit-held-field="goal"]>.next-cockpit-held-under'
         )
-        assert source is not None
-        self.assertIn("flex-basis:100%", source.group(1))
-        out = self.page(after=CHOOSE + HTML)
-        assert isinstance(out, str)
-        intent = intent_of(out)
-        self.assertLess(
-            intent.index("next-intent-prompt-pick"), intent.index("data-next-cockpit-draft-marks")
-        )
+        self.assertIn("min-block-size:44px", goal_under)
+        self.assertIn("flex-wrap:nowrap", goal_under)
+        marks = rule(".next-intent-draft-marks")
+        self.assertNotIn("flex-basis:100%", marks)
+        self.assertIn("min-width:0", marks)
 
     def test_a_240_character_prompt_does_not_stretch_the_list(self) -> None:
         pick = re.search(r"\.next-intent-prompt-pick\{([^}]*)\}", NEXT_STYLES)
