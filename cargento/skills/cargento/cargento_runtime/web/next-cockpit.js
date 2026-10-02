@@ -6461,7 +6461,7 @@ function nextCockpitLoadContext(group, focus){
     if(nextCockpitRequests.get(key) !== request) return;
     nextCockpitRequests.delete(key);
     nextCockpitContexts.set(key, {data, revision});
-    renderNext();
+    nextPaintAfterMotion(() => renderNext());
   }).catch(() => {
     if(nextCockpitRequests.get(key) !== request) return;
     nextCockpitRequests.delete(key);

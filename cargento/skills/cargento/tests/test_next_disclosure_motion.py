@@ -14,7 +14,7 @@ import re
 import shutil
 import unittest
 
-from .next_harness import NEXT_STYLES, storage_prelude
+from .next_harness import NEXT_APP_JS, NEXT_STYLES, NextPageJsHarness, storage_prelude
 from .test_next_drift_panel import FIXTURE, PanelPage
 
 VIEWS = (
@@ -354,3 +354,57 @@ class EveryDisclosureEasesOpenAndShutTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+# A summary inside a view, as `closest` answers for it; anything else is outside the page's views.
+FAKE_SUMMARY = """
+const __summary = {closest: s => s === "summary" ? __summary
+  : s === "[data-next-view-body]" ? {} : null};
+"""
+MOTION_PROBE = """
+const __painted = [];
+const __at = () => new Promise(r => setTimeout(r, 0));
+nextPaintAfterMotion(() => __painted.push("before"));
+__fire("click", {target: __summary});
+nextPaintAfterMotion(() => __painted.push("held-1"));
+nextPaintAfterMotion(() => __painted.push("held-2"));
+const __right_after = __painted.slice();
+await new Promise(r => setTimeout(r, 300));
+console.log(JSON.stringify({right_after: __right_after, later: __painted}));
+"""
+
+
+@unittest.skipUnless(shutil.which("node"), "node not available")
+class ABackgroundPaintWaitsOutTheReadersOwnToggleTest(NextPageJsHarness):
+    """Measured in headless Chrome 156: the project-context paint lands about 100ms after each
+    poll and replaced an easing accordion with one already open, so it snapped halfway, on every
+    open that met a paint. A background paint now waits out the reader's own toggle."""
+
+    def probe(self, setup: str = "") -> dict[str, list[str]]:
+        out = self._run_page_js(
+            "await __settle();\n" + FAKE_SUMMARY + setup + MOTION_PROBE,
+            storage_prelude({}) + FIXTURE,
+        )
+        assert isinstance(out, dict)
+        return out
+
+    def test_a_paint_during_the_readers_toggle_lands_once_after_the_motion(self) -> None:
+        out = self.probe()
+        self.assertEqual(["before"], out["right_after"])
+        # Coalesced: the newest paint draws the newest data, once.
+        self.assertEqual(["before", "held-2"], out["later"])
+
+    def test_a_reader_who_asks_for_less_motion_is_never_kept_waiting(self) -> None:
+        out = self.probe(
+            "window.matchMedia = q => ({matches: q.includes('prefers-reduced-motion')});\n"
+        )
+        self.assertEqual(["before", "held-1", "held-2"], out["right_after"])
+
+    def test_a_click_outside_a_summary_holds_nothing(self) -> None:
+        out = self.probe("__summary.closest = () => null;\n")
+        self.assertEqual(["before", "held-1", "held-2"], out["right_after"])
+
+    def test_the_poll_and_the_context_fetch_both_paint_through_the_hold(self) -> None:
+        self.assertIn("nextPaintAfterMotion(() => {\n      renderNext(focus);", NEXT_APP_JS)
+        context = NEXT_APP_JS[NEXT_APP_JS.index("function nextCockpitLoadContext") :][:1400]
+        self.assertIn("nextPaintAfterMotion(() => renderNext())", context)

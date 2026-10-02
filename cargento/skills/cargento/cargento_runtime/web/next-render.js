@@ -204,6 +204,36 @@ document.addEventListener("blur", event => {
   if(event.target && event.target.tagName === "SELECT") nextRunDeferredRender();
 }, true);
 
+/* A disclosure eases for --disclose-dur (200ms). A background paint landing
+   inside that window replaces the node with one already open, so the motion
+   snaps halfway: measured in headless Chrome 156, where the project-context
+   paint lands about 100ms after each poll. A background paint therefore waits
+   out the reader's own toggle, coalesced to the newest; a paint that follows a
+   reader's action never waits, and reduced motion holds nothing. */
+const NEXT_DISCLOSURE_MOTION_MS = 220;
+let nextDisclosureMotionUntil = 0;
+let nextHeldPaint = null;
+
+document.addEventListener("click", event => {
+  const summary = event.target && event.target.closest ? event.target.closest("summary") : null;
+  if(!summary || !summary.closest("[data-next-view-body]")) return;
+  const reduce = typeof window.matchMedia === "function" &&
+    window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  if(!reduce) nextDisclosureMotionUntil = performance.now() + NEXT_DISCLOSURE_MOTION_MS;
+}, true);
+
+function nextPaintAfterMotion(paint){
+  const wait = nextDisclosureMotionUntil - performance.now();
+  if(wait <= 0 && !nextHeldPaint){ paint(); return; }
+  if(nextHeldPaint){ nextHeldPaint.paint = paint; return; }
+  nextHeldPaint = {paint};
+  setTimeout(() => {
+    const held = nextHeldPaint;
+    nextHeldPaint = null;
+    if(held) held.paint();
+  }, Math.max(0, wait));
+}
+
 async function refreshNext(manual = false){
   if(manual && nextRefreshInFlight) return;
   const request = ++nextRefreshRequest;
@@ -255,7 +285,9 @@ async function refreshNext(manual = false){
       nextDeferredRender = null;
       nextDeferredRenderCount = 0;
     }
-    renderNext(focus);
-    nextAnnounceAttention(announcement);
+    nextPaintAfterMotion(() => {
+      renderNext(focus);
+      nextAnnounceAttention(announcement);
+    });
   }
 }
