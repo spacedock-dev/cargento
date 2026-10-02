@@ -971,7 +971,7 @@ function nextCockpitHeldAbsentId(kind){
    real button, secondary or quiet and never primary (owner Q5,
    [the editor's boxes and buttons](docs/design-reading-a-session.md#amended-2026-10-01-the-intent-editors-boxes-buttons-and-footer)). */
 function nextCockpitHeldControl(action, label, kind, shown, inert, describedBy, focus = "",
-    weight = "quiet"){
+    weight = "secondary"){
   const off = inert ? ' aria-disabled="true"' : " hidden";
   const why = !shown && inert && describedBy ? ` aria-describedby="${describedBy}"` : "";
   return `<button type="button" class="next-action next-action--${weight}"` +
@@ -1407,12 +1407,12 @@ function nextCockpitHeldLines(session, annotation, cap, source = null){
         ? `<span class="next-cockpit-held-source" data-next-cockpit-held-line-source="${index}"` +
           `${line ? "" : " data-next-cockpit-held-line-source-stale"}>` +
           `${esc(nextCockpitLineSource(place, session, source))}</span>` : "") +
-      '<button type="button" class="next-action next-action--quiet next-cockpit-held-remove" ' +
+      '<button type="button" class="next-action next-action--secondary next-cockpit-held-remove" ' +
       `data-next-cockpit-action="held-line-remove" data-arg="${index}" ` +
       `aria-label="Remove line ${index + 1}" ` +
       `data-next-focus="${esc(`${key}:remove:${index}`)}">Remove</button></div></li>`;
   }).join("") + direction;
-  const add = '<button type="button" class="next-action next-action--quiet" ' +
+  const add = '<button type="button" class="next-action next-action--secondary" ' +
     'data-next-cockpit-action="held-line-add" data-arg="lines"' +
     ` data-next-focus="${esc(`${key}:add`)}"` +
     (full ? ' aria-disabled="true" aria-describedby="next-cockpit-held-full"' : "") +

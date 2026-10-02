@@ -243,18 +243,20 @@ class EachOutcomeLineFollowsTheGoalsPatternTest(_DraftPage):
 @unittest.skipUnless(shutil.which("node"), "node not available")
 class TheControlsAreButtonsInOneFooterTest(_DraftPage):
     def test_every_field_control_is_a_real_button_and_none_is_primary(self) -> None:
+        """Outlined, not quiet: the quiet tier is a bottom rule at the foot of a 44px box, which
+        the owner's walk read as a stray line under Clear and Remove rather than as a button."""
         intent = intent_of(self.html(TYPED + TWO_LINES))
         save = button(intent, "held-save")
         self.assertRegex(save, r'class="next-action next-action--secondary[" ]')
         self.assertIn(">Save intent</button>", save)
         undo = button(intent, "held-undo")
-        self.assertRegex(undo, r'class="next-action next-action--quiet[" ]')
+        self.assertRegex(undo, r'class="next-action next-action--secondary[" ]')
         self.assertIn(">Undo changes</button>", undo)
         clear = button(intent, "held-clear", "goal")
-        self.assertRegex(clear, r'class="next-action next-action--quiet[" ]')
+        self.assertRegex(clear, r'class="next-action next-action--secondary[" ]')
         self.assertIn(">Clear</button>", clear)
         add = button(intent, "held-line-add")
-        self.assertRegex(add, r'class="next-action next-action--quiet[" ]')
+        self.assertRegex(add, r'class="next-action next-action--secondary[" ]')
         self.assertIn(">+ Add a line</button>", add)
         removes = re.findall(
             r'<button[^>]*data-next-cockpit-action="held-line-remove"[^>]*>[^<]*</button>', intent
@@ -263,7 +265,7 @@ class TheControlsAreButtonsInOneFooterTest(_DraftPage):
         for n, remove in enumerate(removes, start=1):
             self.assertIn(f'aria-label="Remove line {n}"', remove)
             self.assertIn(">Remove</button>", remove)
-            self.assertIn("next-action--quiet", remove)
+            self.assertIn("next-action--secondary", remove)
         self.assertNotIn("next-action--primary", intent)
         # One save and one undo for both fields, never one per field.
         self.assertEqual(1, intent.count('data-next-cockpit-action="held-save"'))
