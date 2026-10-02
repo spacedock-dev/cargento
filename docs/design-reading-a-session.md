@@ -1433,8 +1433,8 @@ can settle: provenance, result, evidence window and later changes. An always-con
 can test those guards and the agent-account boundary, but cannot establish whether an arbitrary
 check covers a whole requested outcome. A fresh recorded DEC-17 qualification must include
 premarked cases where a passing check does not cover the requested feature or browser behavior to
-measure that semantic failure class; its general coverage floor alone does not require them. Until
-that qualification passes, the Claude Code producer gate stays closed; the owner's acceptance of
+measure that semantic failure class; its general coverage floor alone does not require them. That
+qualification was to keep the Claude Code producer gate closed until it passed; the owner's acceptance of
 2026-10-02 opened it without one ([the amendment](#amended-2026-10-02-claude-code-is-accepted)).
 
 Writing these lists out is part of item 3, which names the kinds (test, build, lint and type-check

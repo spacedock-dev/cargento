@@ -372,6 +372,15 @@ class EveryDisclosureEasesOpenAndShutTest(unittest.TestCase):
                 self.assertIn(selector, reduced, "this eased rule has no reduced-motion twin")
                 self.assertRegex(reduced[selector], r"(^|;)\s*transition\s*:\s*none")
 
+    def test_a_long_popover_scrolls_inside_itself_instead_of_running_off_the_screen(self) -> None:
+        """Measured at 1440x800: the "What is sent" body was 613px tall and ended 239px below the
+        window, with three of its seven items out of sight (verifier V3). A popover is out of flow,
+        so the page cannot grow to hold it; it caps its own height and scrolls."""
+        body = rule(f"{POP}>.next-disclose-body")
+        self.assertRegex(body, r"max-block-size:min\(")
+        self.assertIn("overflow-y:auto", body)
+        self.assertIn("overscroll-behavior:contain", body)
+
     def test_nothing_replays_on_a_redraw(self) -> None:
         """`@starting-style` and keyframes on an open disclosure both run again every time a poll
         re-inserts the node, so neither may be used for a disclosure."""
