@@ -1048,9 +1048,14 @@ The answer is bound to where the words go (owner, 2026-10-02,
 [the amendment](docs/design-reading-a-session.md#amended-2026-10-02-owner-the-allow-is-bound-to-where-the-words-go)).
 An Allow records the destination `reading_route.destination` named in the disclosure it answered,
 and covers a press only while that provider's destination is exactly that one; an unnamed
-destination is a value of its own. A daemon restarted under a base URL, a cloud switch or any
-other setting that moves the endpoint therefore asks again before anything is sent, with the
-server's line saying where the words go has changed. The board's published `providers`, the press
+destination is a value of its own. A change is detected where a named destination moves: a daemon
+restarted under a new base URL host or a cloud switch, where Anthropic or OpenAI was named before,
+asks again before anything is sent, with the server's line saying where the words go has changed.
+A change is not detected while the destination is unnamed, because two endpoints that cannot be
+named are both `""`: an Allow given then keeps covering every endpoint it cannot name. That is
+every destination on Windows, where nothing is named, and every Codex base URL, since a set
+`OPENAI_BASE_URL` or `OPENAI_API_BASE` names nothing, so a move from one Codex base URL to another
+asks nothing. The disclosure said as much when the Allow was given. The board's published `providers`, the press
 check and the job's reservation decide it from the same value. An Allow whose disclosure named a
 destination that is no longer today's is refused `409 destination-changed` and records nothing.
 The binding lives in its own table, `permission_destination`, so a row saved before it records no

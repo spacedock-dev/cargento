@@ -12,7 +12,7 @@ from typing import Any, ClassVar
 from unittest import mock
 
 from cargento_runtime import io as runtime_io
-from cargento_runtime import reading, reading_policy, supervise
+from cargento_runtime import reading, reading_policy, reading_route, supervise
 
 from .support import make_runtime
 
@@ -722,6 +722,43 @@ class TheAllowForTheWordsIsBoundToItsDestination(unittest.TestCase):
         return reading_policy.set_consent(
             self.config, True, now=100.0, provider=provider, destination=where
         )
+
+    def test_an_unnamed_allow_keeps_covering_a_move_it_cannot_see(self) -> None:
+        """Consent F2 (ui5): what SECURITY.md and the amendment's item 5 now
+        say. Unnamed is its own value, so a move between two endpoints the
+        resolver cannot name is not detected: on Windows, and between two
+        Codex base URLs."""
+        root = Path("/nonexistent-cargento-root")
+        for provider, before, after, system in (
+            ("claude", {}, {"ANTHROPIC_BASE_URL": "https://elsewhere.example"}, "Windows"),
+            ("claude", {}, {"CLAUDE_CODE_USE_BEDROCK": "1"}, "Windows"),
+            (
+                "codex",
+                {"OPENAI_BASE_URL": "https://a.example"},
+                {"OPENAI_BASE_URL": "https://b.example"},
+                "Linux",
+            ),
+        ):
+            with self.subTest(provider=provider, after=after, system=system):
+                then, now = (
+                    reading_route.destination(
+                        provider,
+                        environ={"HOME": "/home/r", "USER": "r", **environ},
+                        root=root,
+                        system=system,
+                    )
+                    for environ in (before, after)
+                )
+                self.assertEqual(("", ""), (then, now))
+                reading_policy.set_consent(
+                    self.config, True, now=100.0, provider=provider, destination=then
+                )
+                answer = reading_policy.status(
+                    self.config, now=100.0, provider=provider, destinations={provider: now}
+                )
+                self.assertTrue(answer["providers"][provider])
+                self.assertEqual({}, answer["rebind"])
+                reading_policy.set_consent(self.config, False, now=100.0)
 
     def test_an_allow_covers_the_destination_it_was_given_for(self) -> None:
         answer = self._allow("Anthropic")

@@ -1134,9 +1134,9 @@ sentences remain for that state.
 
 The owner, 2026-10-02: "bind the allow to the destination". The tool-output grant was already
 keyed by destination (item 7 of DEC-23). The Allow for the reader's words was not, so a dashboard
-restarted under `ANTHROPIC_BASE_URL`, `CLAUDE_CODE_USE_BEDROCK` or `OPENAI_BASE_URL` sent the
-goal and messages to the new endpoint under the old Allow, and the new destination appeared only
-in a closed popover.
+restarted under a new `ANTHROPIC_BASE_URL` or `CLAUDE_CODE_USE_BEDROCK` sent the goal and messages
+to the new endpoint under the old Allow, and the new destination appeared only in a closed popover.
+The binding catches that move only where the destination was named, as item 5 says.
 
 1. An Allow records the destination its disclosure named: `reading_route.destination` for that
    provider, published on every route as `words_destination`. It covers a press only while that
@@ -1157,6 +1157,17 @@ in a closed popover.
    inside the store's existing transaction. No column is added to an older table, so an older
    build's two-value writes still succeed against a migrated store, and an older build's Turn off
    clears every recorded destination by trigger, as it already clears every other answer.
+
+5. What the binding detects is a change in what `destination` names. A named destination that
+   moves is caught: to another host, to a cloud, or to unnamed. A move between two endpoints that
+   cannot be named is not, because both are `""`, so an Allow given while the destination was
+   unnamed keeps covering every endpoint it cannot name. That is every destination on Windows,
+   where nothing is named and the Allow is in effect not bound. It is every Codex base URL, since
+   `destination` names nothing wherever `OPENAI_BASE_URL` or `OPENAI_API_BASE` is set, so moving
+   from one Codex base URL to another asks nothing; moving from OpenAI to one does. And it is every
+   Claude Code setting SECURITY.md lists as naming nothing. The disclosure the reader answered says
+   so: "wherever your ... settings send it, which Cargento cannot name". The owner's rule that
+   unnamed is a value of its own (item 1) stands.
 
 This stays per provider, as item 3 of the acceptance above says: an Allow given for a provider
 covers every session routed to that provider, at the destination it was given for.

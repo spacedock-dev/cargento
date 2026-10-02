@@ -1590,6 +1590,40 @@ class PerProviderAllowDocumentationTest(unittest.TestCase):
         self.assertIn("covers every session routed to that provider", self.SECURITY)
 
 
+class BoundAllowDocumentationTest(unittest.TestCase):
+    """Consent F2 (ui5): the binding detects a named destination moving, and
+    nothing else. An Allow given while the destination was unnamed keeps
+    covering every endpoint `destination` cannot name, which is every route on
+    Windows and every Codex base URL. The prose once said any endpoint move
+    asks again; these keep it saying where a change is and is not detected.
+    """
+
+    ROOT = SERVER_PATH.parents[3]
+    AMENDMENT = re.sub(
+        r"\s+",
+        " ",
+        (ROOT / "docs/design-reading-a-session.md")
+        .read_text(encoding="utf-8")
+        .split("### Amended 2026-10-02 (owner): the Allow is bound to where the words go", 1)[1]
+        .split("\n### ", 1)[0],
+    )
+    SECURITY = PerProviderAllowDocumentationTest.SECURITY
+    # The overclaims, as each document once worded them.
+    OVERCLAIMS = (
+        "any other setting that moves the endpoint therefore asks again",
+        "or `OPENAI_BASE_URL` sent the goal",
+    )
+
+    def test_each_says_where_a_change_is_not_detected(self) -> None:
+        for name, text in (("amendment", self.AMENDMENT), ("SECURITY", self.SECURITY)):
+            with self.subTest(document=name):
+                self.assertIn("keeps covering every endpoint it cannot name", text)
+                self.assertIn("every destination on Windows", text)
+                self.assertIn("Codex base URL", text)
+                for overclaim in self.OVERCLAIMS:
+                    self.assertNotIn(overclaim, text)
+
+
 class OffMachineNudgeContractDocumentationTest(unittest.TestCase):
     """DEC-4's section is a contract for a pathway nothing uses yet.
 
