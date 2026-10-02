@@ -392,12 +392,16 @@ const NEXT_PENDING_SAY_MS = 400;
 const nextPending = new Map();
 
 /* null when `key` is already pending, which is every handler's re-press guard;
-   otherwise the entry's abort signal. The caller ends it in a `finally`. */
+   otherwise the entry itself, carrying its abort `signal`. The entry is the
+   caller's token: it ends the entry with `nextPendingEnd(key, token)` in a
+   `finally`, so a handler the backstop outlived cannot end a newer press's
+   entry (verifier R2, ui3). */
 function nextPendingStart(key, busy, say = ""){
   if(!key || nextPending.has(key)) return null;
   const controller = typeof AbortController === "function" ? new AbortController() : null;
   const entry = {busy: String(busy || ""), say: String(say || ""), startedAt: Date.now(),
-    controller, timeout: null, backstop: null, sayTimer: null, said: false};
+    controller, signal: controller ? controller.signal : null,
+    timeout: null, backstop: null, sayTimer: null, said: false};
   nextPending.set(key, entry);
   if(entry.say){
     entry.sayTimer = setTimeout(() => {
@@ -411,16 +415,18 @@ function nextPendingStart(key, busy, say = ""){
   }, NEXT_PENDING_BOUND_MS);
   entry.backstop = setTimeout(() => {
     if(nextPending.get(key) !== entry) return;
-    nextPendingEnd(key);
+    nextPendingEnd(key, entry);
     renderNext();
   }, NEXT_PENDING_BOUND_MS + NEXT_PENDING_BACKSTOP_MS);
-  return {signal: controller ? controller.signal : null};
+  return entry;
 }
 
-// Clears the entry and its three timers. The caller renders.
-function nextPendingEnd(key){
+/* Clears the entry and its three timers, only when `token` is the entry now
+   held for `key`; any other token, or none, is a press that no longer owns
+   it. The caller renders. */
+function nextPendingEnd(key, token){
   const entry = nextPending.get(key);
-  if(!entry) return;
+  if(!entry || entry !== token) return;
   for(const timer of [entry.sayTimer, entry.timeout, entry.backstop]){
     if(timer != null) clearTimeout(timer);
   }

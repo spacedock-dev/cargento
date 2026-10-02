@@ -209,6 +209,65 @@ console.log(JSON.stringify({held, after:__saveButton()}));
         self.assertIn("data-next-pending", out["held"])
         self.assertNotIn("data-next-pending", out["after"])
 
+    def test_a_stale_handler_does_not_end_a_newer_press_so_a_third_press_sends_nothing(
+        self,
+    ) -> None:
+        """Verifier R2 (ui3): the backstop ends press 1's entry while its handler is parked in
+        a refresh; the reader presses again; when press 1's refresh finally lands its `finally`
+        used to end press 2's entry, so the button came back live with POST 2 unanswered and a
+        third press sent POST 3. An entry is ended only by the press that started it."""
+        out = self.run_save(
+            TIMERS
+            + press_save()
+            + """
+__holdData = true;
+const first = __answer;
+first.resolve(); for(let i = 0; i < 6; i++) await __settle();
+const releaseFirst = __dataAnswer;
+__fireTimers(20000);
+await __settle();
+const afterBackstop = __saveButton();
+__typeGoal("Ship the retry queue and the docs"); __press("held-save", "intent"); await __settle();
+// Its refresh, and the GET it now waits behind, both land.
+releaseFirst(); __dataAnswer(); for(let i = 0; i < 8; i++) await __settle();
+const whileSecondInFlight = __saveButton();
+const pending = nextPendingHas("held:claude:focus-1:intent:save");
+__typeGoal("Ship the retry queue and the docs!"); __press("held-save", "intent"); await __settle();
+console.log(JSON.stringify({afterBackstop, whileSecondInFlight, pending, posts:__annotates.length}));
+"""
+        )
+        self.assertNotIn("data-next-pending", out["afterBackstop"])
+        self.assertIn("data-next-pending", out["whileSecondInFlight"])
+        self.assertTrue(out["pending"])
+        self.assertEqual(2, out["posts"])
+
+    def test_ending_a_pending_entry_needs_the_token_of_the_press_that_started_it(self) -> None:
+        out = self.run_save(
+            """
+const one = nextPendingStart("probe", "Working\u2026");
+nextPendingEnd("probe", {});
+const afterForeign = nextPendingHas("probe");
+nextPendingEnd("probe");
+const afterNone = nextPendingHas("probe");
+nextPendingEnd("probe", one);
+const afterOwn = nextPendingHas("probe");
+const two = nextPendingStart("probe", "Working\u2026");
+nextPendingEnd("probe", one);
+console.log(JSON.stringify({afterForeign, afterNone, afterOwn, staleKeptNewer:nextPendingHas("probe"),
+  distinct: one !== two}));
+"""
+        )
+        self.assertEqual(
+            {
+                "afterForeign": True,
+                "afterNone": True,
+                "afterOwn": False,
+                "staleKeptNewer": True,
+                "distinct": True,
+            },
+            out,
+        )
+
     def test_a_refusal_the_server_answers_still_says_not_saved(self) -> None:
         out = self.run_save(
             press_save()

@@ -783,7 +783,7 @@ async function nextAnswerAsk(id, index){
   }catch(_error){
     nextSessionAnswerNotes.set(id, NEXT_ANSWER_FAILURE);
   }finally{
-    nextPendingEnd(control);
+    nextPendingEnd(control, press);
     renderNext({named: control});
   }
 }

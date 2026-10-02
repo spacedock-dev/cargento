@@ -1683,7 +1683,7 @@ async function nextCockpitOpenDirection(session, factId, n, later = false){
   }catch(_error){
     held = {factId, n, later, error: NEXT_COCKPIT_DIRECTION_UNOPENED};
   }finally{
-    nextPendingEnd(control);
+    nextPendingEnd(control, press);
   }
   nextCockpitDirectionLines.set(key, held);
   renderNext(held.error ? {named: control} : {named: `direction:${key}`});
@@ -1765,7 +1765,7 @@ async function nextCockpitSaveDirection(session){
     held.cue = "error";
   }finally{
     held.pending = false;
-    nextPendingEnd(control);
+    nextPendingEnd(control, press);
     renderNext({named: control});
   }
 }
@@ -3409,7 +3409,7 @@ async function nextCockpitMarkNotAccurate(session, readAt){
   try{
     await refreshNext();
   }finally{
-    nextPendingEnd(control);
+    nextPendingEnd(control, press);
     renderNext({named: control});
   }
 }
@@ -5494,7 +5494,7 @@ async function nextCockpitKeepIntent(session, model){
     request.message = NEXT_COCKPIT_KEEP_UNCONFIRMED;
   }finally{
     request.pending = false;
-    nextPendingEnd(control);
+    nextPendingEnd(control, press);
     /* The persistent polite region, as every settle outcome was (layout F4),
        and only there: the paragraph beside the control is drawn without a
        role, so the outcome is announced once (verifier V5). */
@@ -6200,7 +6200,7 @@ async function nextCockpitAskForReading(session, model, allow = false){
       /* Another tab, or an earlier press, already started one: show it, then
          take the board's word for whether it is still running. */
       nextReadingJobShown(session, answer.job);
-      nextPendingEnd(control);
+      nextPendingEnd(control, press);
       renderNext();
       await refreshNext();
       return;
@@ -6292,7 +6292,7 @@ async function nextCockpitAskForReading(session, model, allow = false){
          phase and the result arrive with the revisions the job publishes. */
       nextReadingJobShown(session, answer.job);
       // The box is the answer from here on, so the press stops being busy.
-      nextPendingEnd(control);
+      nextPendingEnd(control, press);
       renderNext();
       await refreshNext();
       return;
@@ -6307,7 +6307,7 @@ async function nextCockpitAskForReading(session, model, allow = false){
     request.consent = false;
   }finally{
     request.pending = false;
-    nextPendingEnd(control);
+    nextPendingEnd(control, press);
     renderNext({named: `reading:${key}`});
   }
 }
@@ -6338,7 +6338,7 @@ async function nextCockpitCancelReading(session){
     const answer = response && typeof response.json === "function"
       ? await response.json().catch(() => null) : null;
     if(response && response.status === 409 && answer && answer.reason === "not-running"){
-      nextPendingEnd(control);
+      nextPendingEnd(control, press);
       nextCockpitReadingCancels.delete(key);
       await refreshNext();
       return;
@@ -6347,7 +6347,7 @@ async function nextCockpitCancelReading(session){
       throw new Error("cancel not confirmed");
     }
     // Accepted: the published `cancelling` draws the finishing state from here.
-    nextPendingEnd(control);
+    nextPendingEnd(control, press);
     nextReadingJobShown(session, {...job, cancelling: true});
     nextCockpitReadingCancels.delete(key);
     await refreshNext();
@@ -6355,7 +6355,7 @@ async function nextCockpitCancelReading(session){
     cancel.failed = true;
   }finally{
     cancel.pending = false;
-    nextPendingEnd(control);
+    nextPendingEnd(control, press);
     renderNext({named: control});
   }
 }
@@ -6381,7 +6381,7 @@ async function nextCockpitReadingOff(){
     const session = nextSessionFind(nextRoute.project,nextRoute.harness,nextRoute.session);
     if(session) nextCockpitReadingRequests.set(sessKey(session), {message:"Could not confirm readings are off. Try turning them off again."});
   }finally{
-    nextPendingEnd(control);
+    nextPendingEnd(control, press);
     renderNext({named: control});
   }
 }
@@ -6455,7 +6455,7 @@ async function nextCockpitDiscardAnnotation(session){
     // sentence says. No retry: a second press is the reader's to make.
     nextCockpitHeldMark(key, "discard-refused");
   }finally{
-    nextPendingEnd(key);
+    nextPendingEnd(key, press);
     renderNext({named: key});
   }
 }
@@ -6480,14 +6480,14 @@ async function nextCockpitIntentSave(session){
      a revision identical to the stored one. An inert press starts nothing. */
   const changes = nextCockpitIntentChanges(session, nextCockpitAnnotation(session));
   if(!changes.any && !changes.chosen && !changes.adoptable) return;
-  const started = nextPendingStart(control, "Saving\u2026", "Saving your intent.");
-  if(!started) return;
+  const press = nextPendingStart(control, "Saving\u2026", "Saving your intent.");
+  if(!press) return;
   renderNext({named: control});
   let said = null;
   try{
-    said = await nextCockpitIntentSaveWork(session, started.signal);
+    said = await nextCockpitIntentSaveWork(session, press.signal);
   }finally{
-    nextPendingEnd(control);
+    nextPendingEnd(control, press);
     renderNext({named: control});
     /* The outcome is said once it is drawn, never before the paint that shows
        it (owner, 2026-10-02). */
