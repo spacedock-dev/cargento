@@ -23,14 +23,14 @@ from typing import Any, cast
 from unittest import mock
 
 from cargento_runtime import annotations as annotation_store
-from cargento_runtime import departures, reading, unasked
+from cargento_runtime import departures, reading, reading_policy, unasked
 from cargento_runtime import sessions as runtime_sessions
 from cargento_runtime.config import RuntimeConfig, build_runtime_config
 from cargento_runtime.state import build_runtime_state
 
 # Read through the module, so the loader does not collect that class a second time here.
 from . import test_next_cockpit as cockpit_tests
-from .next_harness import NextPageJsHarness, storage_prelude
+from .next_harness import NextPageJsHarness, named_machine, storage_prelude
 
 STOP = 1_800_000_000.0  # the turn stopped
 PROMPT = STOP - 600.0  # the reader's latest message, which started that turn
@@ -644,6 +644,12 @@ class TheUnaskedLaneSpendsNothingAtATurnStopTest(unittest.TestCase):
                 return json.dumps({"goal": {"result": "departure", "cites": [1]}}), "ok"
 
         self.enterContext(mock.patch.object(reading, "CodexReadingModel", CountingModel))
+        # The lane sends only under a Codex Allow for today's destination
+        # (consent F5, ui5), so the machine is pinned and the Allow given.
+        self.enterContext(named_machine())
+        reading_policy.set_consent(
+            self.config, True, now=1_000.0, provider="codex", destination="OpenAI"
+        )
         self.entry = cast(
             "annotation_store.Annotation",
             {

@@ -1170,6 +1170,10 @@ The binding catches that move only where the destination was named, as item 5 sa
    Claude Code setting SECURITY.md lists as naming nothing. The disclosure the reader answered says
    so: "wherever your ... settings send it, which Cargento cannot name". The owner's rule that
    unnamed is a value of its own (item 1) stands.
+6. The unasked lane sends under the same binding (consent F5, ui5). It sends the goal and messages
+   to Codex with nobody at the desk, so before each send, at the model seam, it asks whether a
+   Codex Allow covers today's destination, as a press would. Where a press would ask again, the
+   check is skipped and logged, nothing is spent, and the lane's own caps are unchanged.
 
 This stays per provider, as item 3 of the acceptance above says: an Allow given for a provider
 covers every session routed to that provider, at the destination it was given for.

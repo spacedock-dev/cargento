@@ -2079,8 +2079,12 @@ under your own capacity. That record carries your messages in the session whole,
 characters each where the prompt has room, as a pressed reading's does. Your expected outcome lines are never sent by it, and a session with lines
 and no goal is not read by it at all (item 12 of
 [DEC-24](docs/design-reading-a-session.md#dec-24-your-intent-is-a-drafted-goal-and-a-checklist-and-a-correction-is-yours-to-copy)).
-Nothing new leaves the machine that did not already leave it when you pressed the control by hand. What is new is that nobody is there
-at the moment it goes.
+Nothing new leaves the machine that did not already leave it when you pressed the control by hand,
+because the lane consults the same Allow binding a press does before each send (consent F5,
+ui5): with no Codex Allow on record, after "Turn off readings", or once the Codex destination is
+no longer the one the Allow was given for, the check is skipped, nothing is spent, and the skip is
+written to the dashboard's diagnostic log. It does not charge the reading budget; its own caps
+below bound it. What is new is that nobody is there at the moment it goes.
 
 It is bounded three ways, and the bounds are the posture rather than a preference. One reading runs
 at a time for the whole board, so a board where forty annotated sessions cross a state boundary

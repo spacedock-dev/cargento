@@ -24,11 +24,12 @@ from typing import TYPE_CHECKING, Any, cast
 from unittest import mock
 
 from cargento_runtime import annotations as annotation_store
-from cargento_runtime import cli, departures, history, observer, reading, unasked
+from cargento_runtime import cli, departures, history, observer, reading, reading_policy, unasked
 from cargento_runtime import sessions as runtime_sessions
 from cargento_runtime.config import RuntimeConfig, build_runtime_config
 from cargento_runtime.state import build_runtime_state
 
+from .next_harness import named_machine
 from .support import make_config, make_runtime, make_server, serve_until_closed
 from .support import os_name as support_os_name
 
@@ -1609,6 +1610,12 @@ class TheUnaskedLaneSeesNoLinesTest(unittest.TestCase):
             return result
 
         self.enterContext(mock.patch.object(reading, "CodexReadingModel", Model))
+        # The lane sends only under a Codex Allow for today's destination
+        # (consent F5, ui5), so the machine is pinned and the Allow given.
+        self.enterContext(named_machine())
+        reading_policy.set_consent(
+            self.config, True, now=1_000.0, provider="codex", destination="OpenAI"
+        )
         return unasked.Lane(
             self.config,
             popup_notifier=lambda _title, _message: "handed-over",

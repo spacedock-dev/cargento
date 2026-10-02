@@ -512,6 +512,9 @@ class TheWordsAreNeitherStoredNorPublishedTest(_Collected):
 
     def test_no_store_on_disk_holds_the_words_after_an_unasked_reading(self) -> None:
         self.annotate()
+        # The lane sends only under a Codex Allow for today's destination
+        # (consent F5, ui5); `model()` names none, so the Allow is given for "".
+        reading_policy.set_consent(self.config, True, now=1_000.0, provider="codex", destination="")
         lane = unasked.Lane(
             self.config,
             popup_notifier=lambda _t, _m: None,

@@ -185,7 +185,9 @@ Cargento can now check a session against your words while you are away and raise
 without being asked, which is off by default and the only thing here that spends your model capacity
 with nobody watching. Where it stops is the part worth reading: it raises a departure and never a
 reassurance, because an unasked "this looks fine" is the output the evidence-floor ruling called
-most damaging and it is worth nothing to someone who is not at the desk. It stops at a per-session
+most damaging and it is worth nothing to someone who is not at the desk. It sends a check only
+under your Codex "Allow and analyze" for where the words go now, so it never sends where a press
+would ask you first. It stops at a per-session
 and a per-day limit, and a spent limit is stated rather than passed over, because a session nobody
 checked and a session checked and found clean are the two things you cannot tell apart from an empty
 board. The sentence is about your words rather than about the machine's history, so a check whose

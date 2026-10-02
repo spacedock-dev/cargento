@@ -1452,6 +1452,10 @@ class RuntimeImportGraphTest(unittest.TestCase):
             "cargento_runtime.notifications",
             "cargento_runtime.project_context",
             "cargento_runtime.reading",
+            # The Allow binding a press reads, asked before each send, so the
+            # lane never sends where a press would ask again (consent F5, ui5).
+            "cargento_runtime.reading_policy",
+            "cargento_runtime.reading_route",
             "cargento_runtime.state",
         },
         # The CLI is the assembly point, so it may import any runtime module.

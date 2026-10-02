@@ -291,7 +291,9 @@ def build_parser() -> argparse.ArgumentParser:
             "asked, and raise a departure through the notification lane. OFF by "
             "default and the only feature here that spends your model capacity "
             "with nobody watching: each check is a codex subprocess, bounded per "
-            "session and per day, and only a departure is ever raised. "
+            "session and per day, and only a departure is ever raised. A check "
+            "is sent only where your Codex 'Allow and analyze' covers where the "
+            "words go now, so it never sends where a press would ask again. "
             "--no-observer-model refuses it for the run"
         ),
     )
