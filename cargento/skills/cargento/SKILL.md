@@ -133,9 +133,9 @@ the retired `next` query is no longer a dashboard route.
 The header reports event-backed running sessions and all observed subagents. When work needs intervention, a button counting
 the reported blocks opens **Attention**. Keyboard shortcuts `a`, `p`, and `s` open Attention,
 Projects, and Sessions unless focus is in a form control or Meta, Control, or Alt is held.
-`Escape` returns from a session to its project (to Sessions when it has none) and otherwise to
-Sessions, under the same focus and modifier rules. Inside a tripwire draft it cancels the draft. Breadcrumbs return through the same
-project hierarchy.
+A session opens under the tab it was opened from (Sessions for a pasted link), and its breadcrumb
+starts there. `Escape` returns from a session to that breadcrumb's last link and otherwise to
+Sessions, under the same focus and modifier rules. Inside a tripwire draft it cancels the draft.
 
 MCP tools appear under the service being called rather than their wire name, for example
 `Linear · list issues`. The full recorded string remains available in the row tooltip.

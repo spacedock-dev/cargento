@@ -51,8 +51,11 @@ const routes=[];
 for(const token of tokens){
   const target={dataset:{nextRoute:token},closest:s=>s==='[data-next-route]'?target:null};
   __fire('click',{target,preventDefault(){}});
+  // The origin a click stamps on a session route is the view it was clicked on (owner,
+  // 2026-10-02, ask 6); the place it reaches is the token's.
   routes.push({expected:nextFragmentForRoute(nextRouteFromFragment('#n='+token)),
-    actual:nextFragmentForRoute(nextRoute)});
+    actual:nextFragmentForRoute({...nextRoute, from:null}),
+    from:nextRoute.view === 'session' ? nextRoute.from || null : 'none'});
 }
 const keys=[];
 for(const key of ['p','s','a','Escape']){
@@ -65,6 +68,7 @@ console.log(JSON.stringify({routes,keys}));
         self.assertGreaterEqual(len(result["routes"]), 4)
         for route in result["routes"]:
             self.assertEqual(route["expected"], route["actual"])
+            self.assertIn(route["from"], {"none", "sessions", "attention", "projects", "project"})
         self.assertEqual(["projects", "sessions", "attention", "sessions"], result["keys"])
 
     def test_every_rendered_cockpit_disclosure_has_a_redraw_identity(self) -> None:

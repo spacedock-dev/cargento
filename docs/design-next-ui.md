@@ -529,7 +529,24 @@ because `/` now serves this same interface.
 Amended 2026-09-23 by [DEC-20](design-reading-a-session.md#dec-20-the-first-screen-shows-goal-beside-direction-and-drift-has-one-home): `Escape` from any view other than session detail returns to
 Sessions, the landing view, instead of Projects (DRC-4636). DEC-20 does not change `Escape` from
 session detail, which still returns to its project. A session with no project label has no project
-page, so `Escape` and its breadcrumb return to Sessions (DRC-4638).
+page, so `Escape` and its breadcrumb return to Sessions (DRC-4638). Superseded for session detail
+on 2026-10-02 by the owner's amendment below: `Escape` from a session walks its breadcrumb, which
+starts where the reader came from.
+
+Amended 2026-10-02 (owner, ask 6): "when a user goes to the Sessions tab and clicks on a Session, it
+goes to the session but then it switches to the Projects tab." A session route now carries where it
+was opened from, as a trailing `&from=` in the fragment, closed to Sessions, Attention, the Intent
+log, Projects and a project page, so a reload keeps it. `navigateNext` stamps it from the view the
+reader was on, so every row, card and link that routes through it carries it with no change of its
+own; the Intent log's row now routes through it too. The session page's tab is that view (Projects
+for a project page), its breadcrumb starts there (`Sessions ›`, `Attention ›`, `Intent log ›`, or
+`Projects › <project> ›`), and `Escape` goes where the breadcrumb's last link goes. A pasted link, a
+bookmark or Copy link carries no origin and opens under Sessions; Copy link is built from the
+session, so it never carries the sender's path. When the crumb does not name the project, the
+header's identity line links to it, so it stays one click away. A new page opens at its top, while
+a tab or scope change within one keeps the reader's place, one click draws the page once, and a
+fragment canonicalised on load or on `hashchange` replaces its history entry rather than pushing
+one, so Back after a malformed or retired link is no longer stuck.
 
 Projects groups the current payload by display label and splits active evidence from recently
 observed groups. Sessions separates Active now from Recent history. The active group retains gate

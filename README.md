@@ -157,8 +157,9 @@ is, what it is doing now, what it does next, and whether it is blocked.
 Attention collects what needs a human, and the Intent log lists every board session plus retained
 annotations, with typed, cached deterministic and workflow goals labeled by source. Keyboard shortcuts `s`, `p` and `a` reach
 Sessions, Projects and Attention; the Intent log is a nav link with no shortcut.
-`Escape` returns from a session to its project and otherwise to Sessions. The route lives in the
-URL fragment so a reload or a pasted link comes back to the same view.
+A session opens under the tab you opened it from, and `Escape` returns there; a pasted link opens it
+under Sessions. Every other view's `Escape` returns to Sessions. The route lives in the URL fragment
+so a reload or a pasted link comes back to the same view.
 
 See [cargento/skills/cargento/SKILL.md](cargento/skills/cargento/SKILL.md) for data sources, session states, options, and troubleshooting.
 

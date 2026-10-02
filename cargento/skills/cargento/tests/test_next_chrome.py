@@ -6,7 +6,8 @@ import shutil
 import unittest
 from typing import Any, ClassVar
 
-from .next_harness import NEXT_STYLES, NextPageJsHarness
+from . import test_next_drift_panel as panel
+from .next_harness import NEXT_STYLES, NextPageJsHarness, storage_prelude
 
 
 @unittest.skipUnless(shutil.which("node"), "node not available")
@@ -1158,18 +1159,16 @@ console.log(JSON.stringify({sessionHtml, project, projects, stayed: nextRoute}))
             'location.hash = "#n=session:recce:019a";\n__els.app = {innerHTML: ""};\n',
         )
 
-        self.assertIn('<a href="#n=sessions">Sessions</a>', out["sessionHtml"])
-        self.assertIn('<a href="#n=projects" aria-current="page">Projects</a>', out["sessionHtml"])
-        self.assertIn('<a class="next-crumb" href="#n=project:recce">recce</a>', out["sessionHtml"])
-        self.assertIn("recce", out["sessionHtml"])
+        # A pasted link carries no origin, so the page sits under Sessions, its crumb starts
+        # there and Escape returns there (owner, 2026-10-02, ask 6, amending NUI-5).
+        self.assertIn('<a href="#n=sessions" aria-current="page">Sessions</a>', out["sessionHtml"])
+        self.assertIn('<a href="#n=projects">Projects</a>', out["sessionHtml"])
+        self.assertIn('<a class="next-crumb" href="#n=sessions">Sessions</a>', out["sessionHtml"])
+        self.assertNotIn('class="next-crumb" href="#n=project:recce"', out["sessionHtml"])
         self.assertIn('<span aria-current="page">Session</span>', out["sessionHtml"])
         self.assertNotIn("<span>019a</span>", out["sessionHtml"])
-        self.assertEqual(
-            {"view": "project", "project": "recce", "session": None},
-            out["project"],
-        )
-        # Session detail still returns to its project (NUI-5); every other
-        # view returns to Sessions, the landing view DEC-20 set.
+        self.assertEqual({"view": "sessions", "project": None, "session": None}, out["project"])
+        # Every other view returns to Sessions, the landing view DEC-20 set.
         self.assertEqual(
             {"view": "sessions", "project": None, "session": None},
             out["projects"],
@@ -1358,11 +1357,18 @@ console.log(JSON.stringify(cases));
             '__els.app = {innerHTML: ""};\n',
         )
 
-        expected_route = {"view": "session", "project": "recce", "session": "one"}
+        # Opened from the landing view, Sessions, which the route now carries (owner,
+        # 2026-10-02, ask 6); a refused shortcut leaves it as it was.
+        expected_route = {
+            "view": "session",
+            "project": "recce",
+            "session": "one",
+            "from": "sessions",
+        }
         for name, case in out.items():
             with self.subTest(name=name):
                 self.assertEqual(expected_route, case["route"])
-                self.assertEqual("#n=session:recce:one", case["hash"])
+                self.assertEqual("#n=session:recce:one&from=sessions", case["hash"])
                 self.assertFalse(case["prevented"])
 
     def test_attention_focus_restoration_uses_stable_keys_and_bounded_fallbacks(self) -> None:
@@ -2280,3 +2286,202 @@ console.log(JSON.stringify(__els.app.innerHTML));
 
 if __name__ == "__main__":
     unittest.main()
+
+
+ORIGIN_FLOW = r"""
+await __settle();
+await __settle();
+await refreshNext();
+await __settle();
+const __route = token => ({target:{closest(selector){
+  return selector === "[data-next-route]"
+    ? {dataset:{nextRoute:token}, hasAttribute(){ return false; }, getAttribute(){ return null; }}
+    : null; }}, preventDefault(){}});
+const __click = token => __fire("click", __route(token));
+const __esc = () => __fire("keydown", {key:"Escape", target:{tagName:"BODY"}, preventDefault(){}});
+const __nav = () => {
+  const nav = (__els.app.innerHTML.match(/<nav aria-label="Primary">[\s\S]*?<\/nav>/) || [""])[0];
+  return (nav.match(/aria-current="page">([^<]*)</) || [])[1] || null;
+};
+const __crumb = () => ((__els.app.innerHTML.match(
+  /<nav class="next-breadcrumb" aria-label="Breadcrumb">([\s\S]*?)<\/nav>/) || [])[1] || "")
+  .replace(/<[^>]*>/g, "").replace(/\s+/g, " ").trim();
+const __opened = () => ({nav:__nav(), crumb:__crumb(), view:nextRoute.view, from:nextRoute.from || null,
+  hash:location.hash});
+"""
+
+SESSION_ROUTE = "session:cargento:claude:focus-1"
+SEP = "\N{SINGLE RIGHT-POINTING ANGLE QUOTATION MARK}"
+
+
+@unittest.skipUnless(shutil.which("node"), "node not available")
+class TheSessionPageKeepsTheTabTheReaderCameFromTest(NextPageJsHarness):
+    """Owner ask 6 (2026-10-02): "when a user goes to the Sessions tab and clicks on a Session, it
+    goes to the session but then it switches to the Projects tab. This has been confusing users."
+    The route carries where the reader came from, so the tab, the crumb and Escape agree."""
+
+    def run_flow(self, checks: str, prelude: str = "") -> Any:
+        return self._run_page_js(
+            panel.ANNOTATED
+            + "__dashboard.sessions[0].harness = 'claude';\n"
+            + ORIGIN_FLOW
+            + checks,
+            "let __replaced = [];\n" + prelude + storage_prelude({}) + panel.FIXTURE,
+        )
+
+    def test_a_reader_who_opens_a_session_from_sessions_still_sees_sessions(self) -> None:
+        out = self.run_flow(
+            """
+navigateNext({view:"sessions", project:null, session:null});
+const token = (__els.app.innerHTML.match(/data-next-route="(session:[^"]*)"/) || [])[1];
+__click(token);
+const opened = __opened();
+__esc();
+console.log(JSON.stringify({token, opened, escaped:__opened()}));
+"""
+        )
+        self.assertTrue(out["token"].startswith("session:cargento:"), out["token"])
+        opened = out["opened"]
+        self.assertEqual("session", opened["view"])
+        self.assertEqual("Sessions", opened["nav"])
+        self.assertTrue(opened["crumb"].startswith(f"Sessions {SEP} "), opened["crumb"])
+        self.assertNotIn("Projects", opened["crumb"])
+        self.assertTrue(opened["hash"].endswith("&from=sessions"), opened["hash"])
+        self.assertEqual("sessions", out["escaped"]["view"])
+
+    def test_attention_the_intent_log_and_a_project_page_are_kept_too(self) -> None:
+        out = self.run_flow(
+            """
+const results = {};
+for(const [view, project] of [["attention", null], ["project", "cargento"], ["projects", null]]){
+  navigateNext({view, project, session:null});
+  __click("SESSION");
+  const opened = __opened();
+  __esc();
+  results[view] = {opened, escaped:{view:nextRoute.view, project:nextRoute.project}};
+}
+navigateNext({view:"intent", project:null, session:null});
+const row = (__els.app.innerHTML.match(/<a [^>]*data-next-route="(session:[^"]*)"[^>]*>/) || [])[1];
+__click(row);
+const opened = __opened();
+__esc();
+results.intent = {row, opened, escaped:{view:nextRoute.view, project:nextRoute.project}};
+console.log(JSON.stringify(results));
+""".replace("SESSION", SESSION_ROUTE)
+        )
+        attention = out["attention"]
+        self.assertEqual("Attention", attention["opened"]["nav"])
+        self.assertTrue(attention["opened"]["crumb"].startswith(f"Attention {SEP} "))
+        self.assertEqual({"view": "attention", "project": None}, attention["escaped"])
+        for origin in ("project", "projects"):
+            with self.subTest(origin=origin):
+                arm = out[origin]
+                self.assertEqual("Projects", arm["opened"]["nav"])
+                self.assertTrue(
+                    arm["opened"]["crumb"].startswith(f"Projects {SEP} cargento {SEP} "),
+                    arm["opened"],
+                )
+                self.assertEqual({"view": "project", "project": "cargento"}, arm["escaped"])
+        intent = out["intent"]
+        # The Intent log's row routes through the same click handler as every other row.
+        self.assertTrue(str(intent["row"]).startswith("session:cargento:"), intent["row"])
+        self.assertEqual("Intent log", intent["opened"]["nav"])
+        self.assertTrue(intent["opened"]["crumb"].startswith(f"Intent log {SEP} "))
+        self.assertEqual({"view": "intent", "project": None}, intent["escaped"])
+
+    def test_a_session_opened_from_a_pasted_link_marks_sessions_and_has_a_sessions_crumb(
+        self,
+    ) -> None:
+        out = self.run_flow(
+            """
+location.hash = "#n=SESSION";
+__fire("window:hashchange", {});
+const opened = __opened();
+const identity = (__els.app.innerHTML.match(/<p class="next-session-identity">[\\s\\S]*?<\\/p>/) || [""])[0];
+__esc();
+console.log(JSON.stringify({opened, identity, escaped:nextRoute.view}));
+""".replace("SESSION", SESSION_ROUTE)
+        )
+        self.assertEqual("Sessions", out["opened"]["nav"])
+        self.assertTrue(
+            out["opened"]["crumb"].startswith(f"Sessions {SEP} "), out["opened"]["crumb"]
+        )
+        # The crumb no longer names the project, so the header keeps it one click away.
+        self.assertIn('data-next-route="project:cargento"', out["identity"])
+        self.assertIn(">cargento</a>", out["identity"])
+        self.assertEqual("sessions", out["escaped"])
+
+    def test_reloading_a_session_page_keeps_where_the_reader_came_from(self) -> None:
+        out = self.run_flow(
+            """
+const kept = nextRouteFromFragment(nextFragmentForRoute({view:"session", project:"cargento",
+  harness:"claude", session:"focus-1", from:"attention"}));
+const unknown = nextRouteFromFragment("#n=SESSION&from=zzz");
+const elsewhere = nextRouteFromFragment("#n=sessions&from=attention");
+__replaced = [];
+let __hashWrites = 0;
+let __hash = "#n=SESSION&from=zzz";
+Object.defineProperty(location, "hash", {get(){ return __hash; },
+  set(value){ __hashWrites += 1; __hash = value; }, configurable:true});
+__fire("window:hashchange", {});
+console.log(JSON.stringify({kept, unknown, elsewhere, replaced:__replaced, writes:__hashWrites,
+  route:nextRoute}));
+""".replace("SESSION", SESSION_ROUTE),
+            prelude="const history = {state:null, replaceState(state, title, url){"
+            " __replaced.push(url); location.hash = url; }};\n",
+        )
+        self.assertEqual("attention", out["kept"]["from"])
+        self.assertNotIn("from", out["unknown"])
+        self.assertEqual({"view": "sessions", "project": None, "session": None}, out["elsewhere"])
+        # The unknown origin is dropped by replacing the entry, so Back is not stuck on it.
+        self.assertEqual([f"#n={SESSION_ROUTE}"], out["replaced"])
+        self.assertEqual(1, out["writes"])  # the stub's own write through replaceState
+        self.assertNotIn("from", out["route"])
+
+    def test_copy_link_never_carries_the_senders_path(self) -> None:
+        out = self.run_flow(
+            """
+navigateNext({view:"sessions", project:null, session:null});
+__click("SESSION");
+console.log(JSON.stringify({hash:location.hash,
+  link:nextSessionLink(nextSessionFind("cargento", "claude", "focus-1"))}));
+""".replace("SESSION", SESSION_ROUTE)
+        )
+        self.assertIn("&from=sessions", out["hash"])
+        self.assertTrue(out["link"].endswith(f"#n={SESSION_ROUTE}"), out["link"])
+        self.assertNotIn("&from=", out["link"])
+
+    def test_one_click_draws_the_page_once(self) -> None:
+        out = self.run_flow(
+            """
+navigateNext({view:"sessions", project:null, session:null});
+let renders = 0;
+const __render = renderNext;
+renderNext = (...args) => { renders += 1; return __render(...args); };
+__click("SESSION");
+__fire("window:hashchange", {});
+console.log(JSON.stringify(renders));
+""".replace("SESSION", SESSION_ROUTE)
+        )
+        self.assertEqual(1, out)
+
+    def test_a_session_page_opens_at_its_top(self) -> None:
+        out = self.run_flow(
+            """
+const scrolls = [];
+window.scrollTo = (x, y) => scrolls.push([x, y]);
+navigateNext({view:"sessions", project:null, session:null});
+const atSessions = scrolls.length;
+__click("SESSION");
+const atSession = scrolls.length;
+navigateNext({view:"project", project:"cargento", session:null});
+const atProject = scrolls.length;
+navigateNext({view:"project", project:"cargento", session:null, tab:"course"});
+console.log(JSON.stringify({atSessions, atSession, atProject, tab:scrolls.length,
+  last:scrolls[scrolls.length - 1]}));
+""".replace("SESSION", SESSION_ROUTE)
+        )
+        self.assertEqual(out["atSessions"] + 1, out["atSession"])
+        self.assertEqual([0, 0], out["last"])
+        # A tab change within a project is not a new page, so it keeps the reader's place.
+        self.assertEqual(out["atProject"], out["tab"])

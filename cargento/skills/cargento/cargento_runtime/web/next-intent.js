@@ -284,9 +284,12 @@ function nextIntentRow(row, live, retained = true){
   /* Reachable while the session is in the payload, whatever its label: a
      session with no project label has a route of its own. */
   const reachable = Boolean(session);
+  /* Routed through `navigateNext` like every other row, so the session page
+     opens under the Intent log tab (owner, 2026-10-02, ask 6). */
+  const fragment = reachable ? nextFragmentForRoute({view: "session", project,
+    harness: String(session.harness || ""), session: String(session.sid || "")}) : "";
   const name = reachable
-    ? `<a href="${esc(nextFragmentForRoute({view: "session", project,
-        harness: String(session.harness || ""), session: String(session.sid || "")}))}" ` +
+    ? `<a href="${esc(fragment)}" data-next-route="${esc(fragment.slice(3))}" ` +
       `data-next-focus="intent:${esc(key)}">${esc(key)}</a>`
     : `<span class="next-intent-gone">${esc(key)}</span>`;
   /* The reading cell is dropped on a record and not softened. Every sentence

@@ -623,6 +623,14 @@ function nextCommandReports(session = null){
     '</div>' + (reports.length ? `<ol>${rows}</ol>` : `<p>${esc(absent)}</p>`) + caveats + '</section>';
 }
 
+/* The project, one click away, when the crumb does not name it: a session
+   opened from Sessions, Attention or the Intent log, or from a pasted link. */
+function nextSessionProjectLink(label){
+  if(!label || nextSessionHome(nextRoute) === "projects") return "";
+  const token = nextRouteToken({view: "project", project: label});
+  return ` · <a href="#n=${esc(token)}" data-next-route="${esc(token)}">${esc(label)}</a>`;
+}
+
 function nextSessionView(project, harness, sid, openDisclosures = new Set()){
   const session = nextSessionFind(project, harness, sid);
   /* A pasted link lands here before the first payload does, and "not in the
@@ -717,7 +725,8 @@ function nextSessionView(project, harness, sid, openDisclosures = new Set()){
   const identity = '<header class="next-session-detail-header">' +
     `<div class="next-session-detail-title">${stateLabel}` +
     `<h1${titleClass}>${esc(observed.titleText)}</h1>` +
-    `<p class="next-session-identity">${esc(observed.harness)} · ${esc(observed.sid)}${rate}</p>` +
+    `<p class="next-session-identity">${esc(observed.harness)} · ${esc(observed.sid)}${rate}` +
+    `${nextSessionProjectLink(label)}</p>` +
     '</div><div class="next-session-detail-bar">' +
     `${metaLine}${drift.pill || ""}<div class="next-session-controls">${controls}</div>` +
     `${missingReentry}</div></header>`;

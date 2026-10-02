@@ -1396,6 +1396,8 @@ console.log(JSON.stringify({board, route: {...nextRoute}, page: __els.app.innerH
                 "project": "recce/cargento",
                 "harness": "claude",
                 "session": "ended-1",
+                # Opened from the Sessions board, so it keeps that tab (owner, 2026-10-02).
+                "from": "sessions",
             },
             out["route"],
         )
