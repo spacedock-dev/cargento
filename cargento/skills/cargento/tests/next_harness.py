@@ -29,7 +29,45 @@ def named_platform() -> Any:
     that means "a machine where the destination can be named" pins Linux and
     runs the same on every runner.
     """
-    return mock.patch.object(platform, "system", return_value="Linux")
+    return _Pins(
+        mock.patch.object(platform, "system", return_value="Linux"),
+        mock.patch.object(reading_route, "_account", _named_account),
+    )
+
+
+def _named_account(environ: Any) -> tuple[str, str]:
+    """A home and a user wherever the environment leaves them out.
+
+    The resolver falls back to the password file, and Windows has none, so an
+    unpinned account named nothing on windows-latest and every route there
+    said "wherever your settings send it".
+    """
+    return (
+        environ.get("HOME") or "/home/cargento-test",
+        environ.get("USER") or "cargento-test",
+    )
+
+
+class _Pins:
+    """Several patchers that start and stop together, as a context or by hand."""
+
+    def __init__(self, *patchers: Any) -> None:
+        self._patchers = patchers
+
+    def start(self) -> None:
+        for patcher in self._patchers:
+            patcher.start()
+
+    def stop(self) -> None:
+        for patcher in reversed(self._patchers):
+            patcher.stop()
+
+    def __enter__(self) -> _Pins:
+        self.start()
+        return self
+
+    def __exit__(self, *_exc: object) -> None:
+        self.stop()
 
 
 def named_machine() -> Any:
@@ -57,7 +95,10 @@ def named_machine() -> Any:
             system="Linux" if system is None else system,
         )
 
-    return mock.patch.object(reading_route, "destination", named)
+    return _Pins(
+        mock.patch.object(reading_route, "destination", named),
+        mock.patch.object(reading_route, "_account", _named_account),
+    )
 
 
 def published_routes(*harnesses: str, installed: tuple[str, ...] = ("codex",)) -> str:
