@@ -724,6 +724,30 @@ class TheAllowForTheWordsIsBoundToItsDestination(unittest.TestCase):
             self.config, True, now=100.0, provider=provider, destination=where
         )
 
+    def test_a_caller_that_names_no_destinations_is_never_covered(self) -> None:
+        """Regressions minor 3 (ui5): `status`'s docstring says a provider left
+        out of `destinations` reads as unnamed, so a caller that forgets it asks
+        again rather than sends. Held for a future caller, with and without the
+        argument and with the provider alone left out."""
+        self._allow("Anthropic", provider="claude")
+        self._allow("OpenAI", provider="codex")
+        for name, destinations in (
+            ("no argument", None),
+            ("empty", {}),
+            ("claude left out", {"codex": "OpenAI"}),
+        ):
+            with self.subTest(case=name):
+                answer = reading_policy.status(
+                    self.config, now=100.0, provider="claude", destinations=destinations
+                )
+                self.assertFalse(answer["consent"])
+                self.assertFalse(answer["providers"]["claude"])
+                self.assertEqual(reading_policy.DESTINATION_CHANGED, answer["rebind"]["claude"])
+        # And the reservation, which hands status only its own provider.
+        refused = reading_policy.reserve(self.config, now=100.0, provider="claude")
+        self.assertEqual("consent-required", refused["reason"])
+        self.assertEqual(0, refused["used"])
+
     def test_an_unnamed_allow_keeps_covering_a_move_it_cannot_see(self) -> None:
         """Consent F2 (ui5): what SECURITY.md and the amendment's item 5 now
         say. Unnamed is its own value, so a move between two endpoints the
