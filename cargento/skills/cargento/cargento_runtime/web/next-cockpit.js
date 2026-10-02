@@ -1207,10 +1207,12 @@ function nextCockpitStoreUnreadable(){
   return String(nextData && nextData.annotate_unreadable || "");
 }
 
-/* The draft's marks in the goal's heading row: where the words came from,
-   that an excerpt is one, and Looks right. Drawn while the box holds the
-   draft; the input handler hides them on the first edit, because a keystroke
-   does not redraw, and a box put back to the draft redraws them. */
+/* The draft's marks in the goal's heading row: where the words came from, and
+   that an excerpt is one. Drawn while the box holds the draft; the input
+   handler hides them on the first edit, because a keystroke does not redraw,
+   and a box put back to the draft redraws them. Save intent is the one way
+   to save the draft: the "Looks right" button that did the same thing beside
+   it is gone (owner, 2026-10-02). */
 function nextIntentDraftMarks(session, draft){
   /* A chosen prompt is named by its own time, which is what tells it apart
      from the others the menu listed. */
@@ -1219,10 +1221,7 @@ function nextIntentDraftMarks(session, draft){
   const clipped = draft.cut === true || draft.text.endsWith("\u2026") ? " Shown excerpt only." : "";
   return '<span class="next-intent-draft-marks" data-next-cockpit-draft-marks>' +
     `<span class="next-intent-draft-source">from your prompt${which}</span>` +
-    (clipped ? `<span class="next-cockpit-held-cue">${clipped.trim()}</span>` : "") +
-    '<button type="button" data-next-cockpit-action="draft-confirm" ' +
-    `data-next-focus="${esc(nextCockpitHeldKey(session, "goal"))}:confirm" ` +
-    `data-next-focus-fallback="${esc(nextCockpitHeldKey(session, "goal"))}">Looks right</button></span>`;
+    (clipped ? `<span class="next-cockpit-held-cue">${clipped.trim()}</span>` : "") + '</span>';
 }
 
 /* Where the Sessions goal link lands. Over an untouched draft it is the
@@ -1246,7 +1245,7 @@ function nextCockpitGoalLanding(session){
 /* What the goal box is compared against: the drafted prompt over a goal-less
    session, where the draft stands in the stored words' place, and the stored
    goal otherwise. `save` compares the box against it, so the untouched draft
-   offers Looks right rather than a typed save of an excerpt (DRC-4682). */
+   adopts the draft rather than typing an excerpt (DRC-4682). */
 function nextCockpitGoalBaseline(session, annotation){
   const drafted = nextIntentDraft(session, annotation);
   return drafted ? drafted.text : String(annotation && annotation.goal || "");
@@ -1430,7 +1429,7 @@ function nextCockpitHeldLines(session, annotation, cap, source = null){
 
 /* The one save for both fields, and what it would write (owner Q6,
    2026-10-01). The goal counts as changed where its box has left the stored
-   words and is not back at the draft, which Looks right adopts; the lines
+   words and is not back at the draft, which Save intent adopts; the lines
    where the list to send differs from the stored list. `undoable` is wider:
    a box emptied over a draft writes nothing, and is still the reader's edit
    to put back. Keyed per session as every held mark is. */
@@ -1447,13 +1446,15 @@ function nextCockpitIntentChanges(session, annotation){
   const lines = nextCockpitLinesChanged(nextCockpitLinesDraft(session, annotation), annotation);
   /* A prompt chosen from the menu is a change the box shows and the store
      does not hold, so Save intent adopts it, over saved words or an empty
-     goal alike; over an empty goal Looks right adopts it too. A refusal that
-     sends the reader to Save intent therefore never finds it inert (DRC-4758
-     fix round, INT-5). */
+     goal alike. A refusal that sends the reader to Save intent therefore
+     never finds it inert (DRC-4758 fix round, INT-5). */
   const chosen = typed === baseline && nextIntentChosenOverSaved(session, annotation);
   const pending = typed === baseline && nextIntentChosenPrompts.has(goalKey) &&
     Boolean(nextPromptCandidate(session, NEXT_PROMPT_CHOSEN));
-  return {goal, lines, typed, chosen, pending, any: goal || lines || pending,
+  /* An untouched draft is not an edit, so Undo has nothing to undo, but Save
+     intent adopts it: the one way to save it (owner, 2026-10-02). */
+  const adoptable = typed === baseline && Boolean(nextIntentDraft(session, annotation));
+  return {goal, lines, typed, chosen, pending, adoptable, any: goal || lines || pending,
     undoable: typed !== baseline || lines || pending};
 }
 
@@ -1477,7 +1478,7 @@ function nextCockpitIntentFooter(session, annotation){
     '<span class="next-cockpit-held-tools">' +
     nextCockpitHeldControl("held-undo", "Undo changes", "intent", changes.undoable, true, "",
       `${key}:undo`) +
-    nextCockpitHeldControl("held-save", "Save intent", "intent", changes.any, true,
+    nextCockpitHeldControl("held-save", "Save intent", "intent", changes.any || changes.adoptable, true,
       absent.join(" "), `${key}:save`, "secondary") +
     '</span>' +
     (cue ? `<small class="next-cockpit-held-cue">${esc(cue)}</small>` : "") + '</div>';
@@ -1497,7 +1498,7 @@ function nextCockpitIntentFooterToggle(session){
   const describes = section && typeof section.querySelectorAll === "function"
     ? [...section.querySelectorAll("[data-next-cockpit-held-absent]")].map(node => node.id)
       .filter(Boolean).join(" ") : "";
-  for(const [action, live, why] of [["held-save", changes.any, describes],
+  for(const [action, live, why] of [["held-save", changes.any || changes.adoptable, describes],
     ["held-undo", changes.undoable, ""]]){
     const control = footer.querySelector(`[data-next-cockpit-action="${action}"]`);
     if(!control) continue;
@@ -6119,8 +6120,8 @@ async function nextCockpitIntentSave(session){
     return;
   }
   if(!changes.any){
-    /* The goal back at the draft is Looks right, never a typed save of an
-       excerpt (DRC-4682). */
+    /* The goal back at the draft adopts it, never a typed save of an excerpt
+       (DRC-4682). */
     const drafted = nextIntentDraft(session, annotation);
     if(drafted && changes.typed === drafted.text) nextAdoptPrompt(session, drafted.source);
     return;
@@ -7933,16 +7934,13 @@ document.addEventListener("click", event => {
     nextCockpitAskForReading(session, nextCockpitObserverModel(group), action === "reading-allow");
     return;
   }
-  if(["draft-confirm", "direction-keep", "direction-add", "direction-save", "direction-cancel",
+  if(["direction-keep", "direction-add", "direction-save", "direction-cancel",
       "direction-replace"].includes(action)){
     const session = group ? nextCockpitFocusedSession(group) : null;
     if(!session) return;
     event.preventDefault();
     const key = sessKey(session);
-    if(action === "draft-confirm"){
-      const draft = nextIntentDraft(session, nextCockpitAnnotation(session));
-      if(draft) nextAdoptPrompt(session, draft.source);
-    }else if(action === "direction-keep"){
+    if(action === "direction-keep"){
       nextCockpitKeepIntent(session, nextCockpitObserverModel(group));
     }else if(action === "direction-add"){
       const factId = String(target.dataset.arg || "");
@@ -8230,7 +8228,7 @@ function nextPromptCandidate(session, source = "latest-prompt"){
    first prompt with a time is published, and null where neither can be
    adopted. Derived from the payload on every render and never written, so it
    holds no reader state; the box's own edits ride the held draft Map. Nothing
-   is drafted over a store this build cannot read, where Looks right could not
+   is drafted over a store this build cannot read, where Save intent could not
    save. */
 function nextIntentDraft(session, annotation){
   if(!(nextData && nextData.annotate === true) || nextCockpitStoreUnreadable()) return null;

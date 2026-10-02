@@ -220,13 +220,13 @@ class ChoosingFillsTheGoalAsAPendingAdoptionTest(_DraftPage):
         self.assertEqual(CHOSEN, goal_box(html))
         self.assertEqual([], out["posts"])
         # A pending adoption, not a typed edit: nothing is held as the reader's typing, the
-        # field carries the draft's tint, and Looks right is the save.
+        # field carries the draft's tint, and Save intent is the save (owner, 2026-10-02).
         self.assertFalse(out["held"])
         intent = intent_of(html)
         self.assertIn("data-next-cockpit-drafted", intent)
         seen = visible_text(intent)
         self.assertIn(f"from your prompt · {out['clock']}", seen)
-        self.assertIn("Looks right", seen)
+        self.assertNotIn("Looks right", seen)
         # Focus stays on the select, so arrowing through it previews each prompt in turn.
         self.assertIn({"named": f"{GOAL_KEY}:prompt"}, out["renders"])
 
@@ -243,9 +243,9 @@ class ChoosingFillsTheGoalAsAPendingAdoptionTest(_DraftPage):
         self.assertEqual(LONG, goal_box(out))
         self.assertIn("Shown excerpt only.", visible_text(intent_of(out)))
 
-    def test_looks_right_adopts_the_choice_by_its_fact_and_time(self) -> None:
+    def test_save_intent_adopts_the_choice_by_its_fact_and_time(self) -> None:
         out = self.page(
-            after=CHOOSE + '__press("draft-confirm");\nawait __settle();\n'
+            after=CHOOSE + '__press("held-save", "intent");\nawait __settle();\n'
             "console.log(JSON.stringify(__posts));"
         )
         assert isinstance(out, list)

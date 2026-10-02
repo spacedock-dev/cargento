@@ -1209,10 +1209,12 @@ excerpt before adoption" under What prompt adoption preserves. The nested "Use a
   option are lost on every redraw (DRC-4758 critic 14).
 - Choosing one saves nothing. It fills the Goal box as a pending adoption, held in tab memory
   (`nextIntentChosenPrompts`) and returned by `nextIntentDraft`, so the draft's tint, its marks
-  ("from your prompt · HH:MM", "Shown excerpt only." for an excerpt, Looks right), Analyze's
+  ("from your prompt · HH:MM", "Shown excerpt only." for an excerpt, Looks right until
+  2026-10-02), Analyze's
   implicit adoption and Keep all read it. Focus moves to the box and the polite region says "Goal
   filled from your prompt. Not saved."
 - Looks right, or Analyze over an empty goal, adopts it under `chosen-prompt` naming its fact id.
+  Amended 2026-10-02 (owner): Save intent replaces Looks right as that press.
   Over a saved goal, Save intent adopts it with the saved revision, and Analyze is refused with the
   unsaved-edit sentence until then, because `/api/reading` refuses an implicit adoption over saved
   words. One keystroke in the box makes the words typed (item 4).
@@ -1875,7 +1877,10 @@ the later-direction floor (item 9).
 2. The goal draft. On a session with no saved goal, the goal field shows the reader's first prompt
    as Cargento publishes it (one line, a clipped excerpt marked as such), marked "from your
    prompt", unsaved. "Looks right" saves it; an edit saves it as typed; pressing Analyze drift
-   adopts it in the same press (DEC-22). Nothing is inferred for the expected outcome.
+   adopts it in the same press (DEC-22). Nothing is inferred for the expected outcome. Amended
+   2026-10-02 (owner): there is no "Looks right"; Save intent is enabled over the untouched draft
+   and adopts it, so a drafted goal has one way to be saved, and Undo changes stays inert until
+   there is an edit.
 3. The checklist. The expected outcome is up to six lines the reader types, each at most 240
    characters and one line, each read and shown as its own constraint under DEC-17's rules. Each
    line records its source: typed, or added from entry #n. The bounds, fixed by DRC-4685, the layer
@@ -2469,8 +2474,10 @@ criterion.
 - Save intent writes both fields in one `POST /api/annotate`: `goal` where the box left the stored
   words and is not back at the draft, `lines` and `origins` where the list changed, and an absent
   or null field is left alone, with the revision both were drawn against. Over an untouched draft
-  with nothing else changed a press is Looks right, never a typed save of an excerpt. Undo changes
-  is Escape for both fields at once. Its cue is one, in the footer.
+  with nothing else changed a press adopts the draft, never a typed save of an excerpt. Undo changes
+  is Escape for both fields at once. Its cue is one, in the footer. Amended 2026-10-02 (owner):
+  Save intent is enabled over an untouched draft, since it is now the draft's only save; Looks
+  right is gone.
 - Absence (Q11). An empty field's absence is its empty box and placeholder. The sentence ("No goal
   typed for this session.", "No expected outcome typed.") stays in the DOM, visually hidden, as
   the inert save's description. The store-unreadable sentence stays in view, because it says the
@@ -2648,7 +2655,8 @@ question before the press in place of "Conflict to settle", and Add adopting a d
 
 - The draft. The goal box holds the first prompt as Cargento publishes it, or the latest where no
   first prompt with a time is published, marked "from your prompt" (and "latest" for the second),
-  with "Shown excerpt only." on a clipped one, a tinted box and Looks right. It is derived on every
+  with "Shown excerpt only." on a clipped one, a tinted box and (until the owner's 2026-10-02
+  amendment, which leaves Save intent the one save) Looks right. It is derived on every
   render and never written, so it is not reader state; an edit rides the held draft as any other,
   and a box put back to the draft's words is the draft again, so saving it adopts rather than
   storing an excerpt as typed words. Nothing is drafted over a store this build cannot read. The

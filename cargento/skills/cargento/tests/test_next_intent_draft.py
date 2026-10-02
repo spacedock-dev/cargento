@@ -202,7 +202,8 @@ class TheGoalArrivesDraftedTest(_DraftPage):
         text = visible_text(intent)
         self.assertIn("from your prompt", text)
         self.assertNotIn("from your prompt · latest", text)
-        self.assertIn("Looks right", text)
+        # One way to save it: Save intent (owner, 2026-10-02); Looks right is gone.
+        self.assertNotIn("Looks right", text)
         self.assertIn(MEASURED, text)
         # Nothing is saved, so no stamp is drawn (DRC-4758 fix round).
         self.assertNotIn("No revision saved yet", text)
@@ -211,12 +212,17 @@ class TheGoalArrivesDraftedTest(_DraftPage):
         # The draft's tint marks the field, and the design line replaces the lede.
         self.assertIn("data-next-cockpit-drafted", intent)
         self.assertNotIn("Choose a goal or use your prompt", text)
-        # Unsaved: saving is not offered over the untouched draft; Looks right is.
+        # Unsaved, and Save intent is what saves it; there is nothing to undo yet.
         save = re.search(
             r'<button[^>]*data-next-cockpit-action="held-save" data-arg="intent"[^>]*>', intent
         )
         assert save is not None
-        self.assertRegex(save.group(0), r"aria-disabled|hidden")
+        self.assertNotRegex(save.group(0), r"aria-disabled|hidden")
+        undo = re.search(
+            r'<button[^>]*data-next-cockpit-action="held-undo" data-arg="intent"[^>]*>', intent
+        )
+        assert undo is not None
+        self.assertIn('aria-disabled="true"', undo.group(0))
 
     def test_a_clipped_first_prompt_is_marked_as_an_excerpt(self) -> None:
         html = self.html('__s.first_prompt = "Build the retry queue and then…";\n')
@@ -241,9 +247,13 @@ class TheGoalArrivesDraftedTest(_DraftPage):
         html = self.html('__s.harness = "pi"; ' + ROUTE.replace("claude", "pi") + "\n")
         self.assertNotIn("data-next-cockpit-drafted", html)
 
-    def test_looks_right_adopts_the_draft_with_its_revision(self) -> None:
+    def test_a_reader_with_a_drafted_goal_saves_it_with_save_intent_and_no_second_button(
+        self,
+    ) -> None:
+        html = self.html()
+        self.assertNotIn("draft-confirm", html)
         out = self.drive(
-            after='__press("draft-confirm");\nawait __settle();\n'
+            after='__press("held-save", "intent");\nawait __settle();\n'
             "console.log(JSON.stringify(__posts));"
         )
         assert isinstance(out, list)
@@ -261,11 +271,42 @@ class TheGoalArrivesDraftedTest(_DraftPage):
             out[0]["body"],
         )
 
-    def test_looks_right_returns_focus_to_the_saved_goal(self) -> None:
+    def test_typing_back_to_the_draft_leaves_save_intent_live_in_place(self) -> None:
+        """A keystroke updates the footer in place, with no redraw. Back at the draft's words the
+        box is untouched again, which is still a draft Save intent saves."""
+        out = self.drive(
+            after="""
+const attrs = {save:new Set(), undo:new Set()};
+const control = name => ({setAttribute(a){ attrs[name].add(a); },
+  removeAttribute(a){ attrs[name].delete(a); }});
+const controls = {"held-save":control("save"), "held-undo":control("undo")};
+const footer = {querySelector(selector){
+  const m = selector.match(/data-next-cockpit-action="([^"]+)"/); return m ? controls[m[1]] : null; },
+  closest(){ return null; }};
+__els.app.querySelector = selector => selector === ".next-cockpit-held-footer" ? footer : null;
+const field = {querySelector(){ return null; }, setAttribute(){}, removeAttribute(){}};
+const type = value => __fire("input", {target:{value,
+  dataset:{nextCockpitHeldKey:"held:claude:focus-1:goal"},
+  closest(selector){ return selector === "[data-next-cockpit-held-key]" ? this
+    : selector === "[data-next-cockpit-held-field]" ? field : null; }}});
+type(FIRST + "x");
+const edited = {save:[...attrs.save], undo:[...attrs.undo]};
+type(FIRST);
+console.log(JSON.stringify({edited, back:{save:[...attrs.save], undo:[...attrs.undo]}}));
+""".replace("FIRST", json.dumps(FIRST))
+        )
+        assert isinstance(out, dict)
+        # An edit makes both live; back at the draft Undo has nothing to undo and goes inert,
+        # while Save intent stays live, because it is the draft's only save.
+        self.assertEqual({"save": [], "undo": []}, out["edited"])
+        self.assertEqual([], out["back"]["save"])
+        self.assertIn("aria-disabled", out["back"]["undo"])
+
+    def test_save_intent_over_the_draft_keeps_focus_on_save_intent(self) -> None:
         out = self.drive(
             cockpit_tests.NextCockpitCompositionTest.FOCUS_DOM,
             """
-const confirm = controls.find(control => control.dataset.nextCockpitAction === "draft-confirm");
+const confirm = controls.find(control => control.dataset.nextCockpitAction === "held-save");
 confirm.focus();
 __reply["/api/annotate"] = () => {
   Object.assign(__s, {annotation_goal:__s.first_prompt,
@@ -273,19 +314,20 @@ __reply["/api/annotate"] = () => {
     annotation_revision:1, annotation_revision_count:1});
   return {status:200, body:{ok:true,persisted:true}};
 };
-__press("draft-confirm");
+__press("held-save", "intent");
 await __settle(); await __settle(); await __settle();
 console.log(JSON.stringify({
-  confirmed: !controls.some(control => control.dataset.nextCockpitAction === "draft-confirm"),
+  saved: __posts.length,
   focus:document.activeElement?.dataset.nextFocus || null,
   tag:document.activeElement?.tagName || null,
 }));
 """,
         )
         assert isinstance(out, dict)
-        self.assertTrue(out["confirmed"])
-        self.assertEqual(GOAL_KEY, out["focus"])
-        self.assertEqual("TEXTAREA", out["tag"])
+        self.assertEqual(1, out["saved"])
+        # The control the reader pressed is still on the page, now inert, so focus stays there.
+        self.assertEqual("held:claude:focus-1:intent:save", out["focus"])
+        self.assertEqual("BUTTON", out["tag"])
 
     def test_save_with_the_box_back_at_the_draft_adopts_rather_than_typing(self) -> None:
         out = self.drive(
@@ -1564,7 +1606,7 @@ class FocusKeysAndTypingTest(_DraftPage):
                 duplicated = sorted({key for key in keys if keys.count(key) > 1})
                 self.assertEqual([], duplicated)
                 for control in re.findall(
-                    r"<(?:button|textarea)\b[^>]*data-next-cockpit-(?:action=\"(?:draft-confirm|"
+                    r"<(?:button|textarea)\b[^>]*data-next-cockpit-(?:action=\"(?:"
                     r"held-save|held-undo|held-clear|held-line-remove|held-line-add|direction-save|"
                     r"direction-cancel|direction-replace|direction-keep|direction-add|reading-off|"
                     r'reading-ask|reading-allow)"|direction-key=|held-kind=)[^>]*>',
@@ -1572,7 +1614,7 @@ class FocusKeysAndTypingTest(_DraftPage):
                 ):
                     self.assertIn("data-next-focus=", control)
         drafted = self.html()
-        self.assertIn(f'data-next-focus="{GOAL_KEY}:confirm"', drafted)
+        self.assertNotIn(f'data-next-focus="{GOAL_KEY}:confirm"', drafted)
         self.assertIn('data-next-focus="held:claude:focus-1:intent:save"', drafted)
         self.assertIn('data-next-focus="held:claude:focus-1:intent:undo"', drafted)
         idle = self.html(TYPED + "__s.annotation_settled_through = 104;\n")

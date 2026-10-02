@@ -1301,7 +1301,7 @@ details.next-cockpit-held-stamp[open]>span{display:block}
 .next-cockpit-held-label{grid-column:1/-1;color:var(--ink-label);font-family:var(--mono);font-size:var(--fs-label);font-weight:600;letter-spacing:.07em}
 .next-cockpit-held-field textarea{grid-column:1/-1;width:100%;min-height:56px;box-sizing:border-box;resize:vertical;padding:7px;border:1px solid var(--line);background:var(--panel);color:var(--ink-value);font:var(--fs-body)/1.55 var(--sans)}
 .next-cockpit-held-count{color:var(--ink-caption);font-family:var(--mono);font-size:var(--fs-label)}
-/* The field's other buttons (Looks right, a pending line's)
+/* The field's other buttons (a pending line's)
    keep the bare look; the field controls are the primitive (owner Q5), which
    this rule outranks at (0,1,1) unless it steps aside. */
 .next-cockpit-held-field button:not(.next-action){border:0;background:none;color:var(--ink2);font:var(--fs-label) var(--sans);cursor:pointer}
@@ -1338,7 +1338,6 @@ details.next-cockpit-held-stamp[open]>span{display:block}
 .next-intent-draft-marks[hidden]{display:none}
 .next-intent-draft-source{padding:1px 8px;border:1px dashed var(--line);border-radius:var(--r-pill);color:var(--ink2);font-size:var(--fs-label)}
 .next-intent-draft-marks>.next-cockpit-held-cue{grid-column:auto}
-.next-cockpit-held-field .next-intent-draft-marks>button{color:var(--ink);font-weight:600;text-decoration:underline;text-underline-offset:3px}
 .next-cockpit-direction-tools,.next-cockpit-direction-replace{display:inline-flex;flex-wrap:wrap;align-items:center;gap:4px 8px}
 .next-cockpit-direction-replace{grid-column:1/-1;color:var(--ink2);font-size:var(--fs-label)}
 .next-cockpit-direction-replace button[aria-pressed="true"]{color:var(--ink);font-weight:700;text-decoration:underline}
