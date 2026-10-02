@@ -1,7 +1,8 @@
 """Who reads a session, and what a reader is told about it before they press.
 
-DRC-4650. A Claude Code session is read by Claude Code once its own check is
-qualified; until then Codex reads it, and the page says so before the press.
+DRC-4650 built the Claude Code producer behind its own gate; the owner accepted
+it on 2026-10-02. A Claude Code session is read by Claude Code when `claude` is
+on PATH and by Codex when it is not, and the page says which before the press.
 Every test here is about what a person is told or what spends their capacity,
 and the route is the single place both are decided.
 """
@@ -62,21 +63,19 @@ def _world(claude: str, codex: str) -> tuple[Any, Any]:
     return gate, _resolver(installed)
 
 
-class TheClaudeCodeCheckIsBuiltAndNotYetOffered(unittest.TestCase):
-    """Owner ruling 1: its own gate, recorded not-run, and Codex's does not open it."""
+class TheOwnerAcceptedTheClaudeCodeCheck(unittest.TestCase):
+    """Owner, 2026-10-02: the Claude Code producer is accepted, as Codex's was on
+    2026-09-14, knowing every scored run failed. Accepted is not passed."""
 
-    def test_the_claude_code_check_is_recorded_as_not_run(self) -> None:
+    def test_the_claude_code_check_is_recorded_as_accepted_and_never_as_passed(self) -> None:
         self.assertEqual(
-            annotation_store.ABSTENTION_CHECK_NOT_RUN, annotation_store.CLAUDE_ABSTENTION_CHECK
+            annotation_store.ABSTENTION_CHECK_ACCEPTED, annotation_store.CLAUDE_ABSTENTION_CHECK
         )
-        self.assertFalse(annotation_store.provider_enabled("claude"))
-
-    def test_the_accepted_codex_review_does_not_qualify_claude_code(self) -> None:
-        self.assertEqual(
-            annotation_store.ABSTENTION_CHECK_ACCEPTED, annotation_store.ABSTENTION_CHECK
+        self.assertNotEqual(
+            annotation_store.ABSTENTION_CHECK_PASSED, annotation_store.CLAUDE_ABSTENTION_CHECK
         )
+        self.assertTrue(annotation_store.provider_enabled("claude"))
         self.assertTrue(annotation_store.provider_enabled("codex"))
-        self.assertFalse(annotation_store.provider_enabled("claude"))
 
     def test_each_gate_opens_only_its_own_provider(self) -> None:
         for check in (
@@ -102,48 +101,72 @@ class TheClaudeCodeCheckIsBuiltAndNotYetOffered(unittest.TestCase):
                 self.assertFalse(annotation_store.provider_enabled(name))
 
     def test_reading_enabled_still_means_the_codex_check(self) -> None:
-        with mock.patch.object(
-            annotation_store, "ABSTENTION_CHECK", annotation_store.ABSTENTION_CHECK_NOT_RUN
+        with mock.patch.multiple(
+            annotation_store,
+            ABSTENTION_CHECK=annotation_store.ABSTENTION_CHECK_NOT_RUN,
+            CLAUDE_ABSTENTION_CHECK=annotation_store.ABSTENTION_CHECK_NOT_RUN,
         ):
             self.assertFalse(annotation_store.reading_enabled())
             self.assertFalse(annotation_store.any_reading_enabled())
 
 
 class WhoReadsAClaudeCodeSessionOnThisBuild(unittest.TestCase):
-    """Owner ruling 2, on the build as shipped: no gate patched."""
+    """The owner's routing, on the build as shipped with no gate patched: Claude Code
+    reads a Claude Code session when `claude` is on PATH, and Codex reads it when not."""
 
-    def test_with_codex_installed_codex_reads_it_and_says_why_before_the_press(self) -> None:
-        for installed in ({"codex"}, {"codex", "claude"}):
+    def test_with_claude_on_path_claude_code_reads_it_and_the_page_names_anthropic(
+        self,
+    ) -> None:
+        for installed in ({"claude"}, {"codex", "claude"}):
             with self.subTest(installed=sorted(installed)):
                 route = reading_route.resolve("claude", binary_resolver=_resolver(installed))
-                self.assertEqual("codex", route["provider"])
-                self.assertTrue(route["fallback"])
-                self.assertEqual(reading_route.REASON_FALLBACK_UNQUALIFIED, route["reason"])
-                self.assertIn("Claude Code checks are built but not yet qualified", route["note"])
-                self.assertIn("so Codex reads this session", route["note"])
-                self.assertIn("OpenAI", route["disclosure"])
-                self.assertIn("Codex capacity", route["disclosure"])
-                self.assertIn("not yet qualified", route["disclosure"])
-                self.assertNotIn("Anthropic", route["disclosure"])
-                self.assertEqual(observer.OBSERVER_MODEL, route["model"])
+                self.assertEqual(("claude", False), (route["provider"], route["fallback"]))
+                self.assertEqual(reading_route.REASON_OWN_HARNESS, route["reason"])
+                self.assertEqual("Claude Code reads this Claude Code session.", route["note"])
+                self.assertIn("Anthropic", route["disclosure"])
+                self.assertNotIn("OpenAI", route["disclosure"])
+                self.assertNotIn("qualified", route["disclosure"])
+                self.assertEqual(observer.CLAUDE_READING_MODEL, route["model"])
 
-    def test_the_gate_is_read_before_the_machine_is_so_claude_is_never_looked_up(self) -> None:
+    def test_without_claude_on_path_codex_reads_it_and_says_why_before_the_press(self) -> None:
+        route = reading_route.resolve("claude", binary_resolver=_resolver({"codex"}))
+        self.assertEqual(("codex", True), (route["provider"], route["fallback"]))
+        self.assertEqual(reading_route.REASON_FALLBACK_MISSING, route["reason"])
+        self.assertIn("Claude Code CLI was not found", route["note"])
+        self.assertIn("so Codex reads this session", route["note"])
+        self.assertIn("OpenAI", route["disclosure"])
+        self.assertNotIn("Anthropic", route["disclosure"])
+        self.assertNotIn("qualified", route["note"])
+        self.assertEqual(observer.OBSERVER_MODEL, route["model"])
+
+    def test_with_neither_on_path_nothing_reads_it_and_it_says_not_installed(self) -> None:
+        route = reading_route.resolve("claude", binary_resolver=_resolver(set()))
+        self.assertEqual("", route["provider"])
+        self.assertEqual(reading_route.REASON_NOT_INSTALLED, route["reason"])
+        self.assertNotIn("qualified", route["note"])
+
+    def test_a_closed_gate_is_read_before_the_machine_so_claude_is_never_looked_up(self) -> None:
         which = _resolver({"claude", "codex"})
-        reading_route.resolve("claude", binary_resolver=which)
+        with mock.patch.object(
+            annotation_store, "CLAUDE_ABSTENTION_CHECK", annotation_store.ABSTENTION_CHECK_NOT_RUN
+        ):
+            route = reading_route.resolve("claude", binary_resolver=which)
         self.assertNotIn("claude", which.asked)
+        self.assertEqual(reading_route.REASON_FALLBACK_UNQUALIFIED, route["reason"])
+        self.assertIn("Claude Code checks are not qualified on this build", route["note"])
 
-    def test_without_codex_not_yet_qualified_is_its_own_state_and_not_not_installed(self) -> None:
-        gated = reading_route.resolve("claude", binary_resolver=_resolver({"claude"}))
+    def test_without_codex_not_qualified_is_its_own_state_and_not_not_installed(self) -> None:
+        with mock.patch.object(
+            annotation_store, "CLAUDE_ABSTENTION_CHECK", annotation_store.ABSTENTION_CHECK_NOT_RUN
+        ):
+            gated = reading_route.resolve("claude", binary_resolver=_resolver({"claude"}))
         self.assertEqual("", gated["provider"])
         self.assertEqual("", gated["disclosure"])
         self.assertEqual(reading_route.REASON_UNQUALIFIED_OTHER_MISSING, gated["reason"])
-        self.assertIn("Claude Code checks are built but not yet qualified", gated["note"])
+        self.assertIn("Claude Code checks are not qualified on this build", gated["note"])
         self.assertIn("Codex CLI was not found", gated["note"])
         self.assertNotIn("Claude Code CLI was not found", gated["note"])
-        with mock.patch.object(
-            annotation_store, "CLAUDE_ABSTENTION_CHECK", annotation_store.ABSTENTION_CHECK_PASSED
-        ):
-            bare = reading_route.resolve("claude", binary_resolver=_resolver(set()))
+        bare = reading_route.resolve("claude", binary_resolver=_resolver(set()))
         self.assertEqual(reading_route.REASON_NOT_INSTALLED, bare["reason"])
         self.assertNotEqual(gated["note"], bare["note"])
         self.assertNotIn("qualified", bare["note"])
@@ -154,11 +177,14 @@ class WhoReadsAClaudeCodeSessionOnThisBuild(unittest.TestCase):
         self.assertEqual(reading_route.REASON_OWN_HARNESS, route["reason"])
         self.assertEqual("Codex reads this Codex session.", route["note"])
 
-    def test_a_codex_session_without_codex_is_not_handed_to_a_gated_claude(self) -> None:
+    def test_a_codex_session_without_codex_falls_back_to_claude_code_and_says_so(self) -> None:
+        # DEC-21 item 4 as written, which the 2026-09-23 amendment held back until the gate
+        # opened: the other provider, named before the press.
         route = reading_route.resolve("codex", binary_resolver=_resolver({"claude"}))
-        self.assertEqual("", route["provider"])
+        self.assertEqual(("claude", True), (route["provider"], route["fallback"]))
         self.assertIn("Codex CLI was not found", route["note"])
-        self.assertIn("Claude Code checks are built but not yet qualified", route["note"])
+        self.assertIn("so Claude Code reads this session", route["note"])
+        self.assertIn("Anthropic", route["disclosure"])
 
     def test_a_harness_with_no_producer_says_plainly_that_codex_reads_it(self) -> None:
         for harness in ("pi", "gemini", "opencode"):
@@ -364,28 +390,26 @@ class ThePagePublishesARoutePerHarnessNotOneDisclosure(unittest.TestCase):
         return dict(json.loads(body))
 
     def test_a_claude_row_and_a_pi_row_each_name_their_actual_receiver(self) -> None:
-        data = self._collection(("claude", "pi"), {"codex", "claude"})
+        data = self._collection(("claude", "pi", "codex"), {"codex", "claude"})
         self.assertNotIn("reading_disclosure", data)
         routes = data["reading_routes"]
-        self.assertEqual({"claude", "pi"}, set(routes))
-        self.assertEqual("codex", routes["claude"]["provider"])
-        self.assertIn(
-            "Claude Code checks are built but not yet qualified", routes["claude"]["disclosure"]
-        )
-        self.assertIn("OpenAI", routes["claude"]["disclosure"])
-        self.assertIn("no reading producer of its own", routes["pi"]["disclosure"])
-
-    def test_with_claude_code_open_the_claude_row_names_anthropic(self) -> None:
-        with mock.patch.object(
-            annotation_store, "CLAUDE_ABSTENTION_CHECK", annotation_store.ABSTENTION_CHECK_PASSED
-        ):
-            data = self._collection(("claude", "codex"), {"codex", "claude"})
-        routes = data["reading_routes"]
+        self.assertEqual({"claude", "pi", "codex"}, set(routes))
         self.assertEqual("claude", routes["claude"]["provider"])
         self.assertIn("Anthropic", routes["claude"]["disclosure"])
         self.assertNotIn("OpenAI", routes["claude"]["disclosure"])
         self.assertEqual("codex", routes["codex"]["provider"])
         self.assertIn("OpenAI", routes["codex"]["disclosure"])
+        self.assertIn("no reading producer of its own", routes["pi"]["disclosure"])
+
+    def test_with_claude_code_closed_the_claude_row_names_openai(self) -> None:
+        with mock.patch.object(
+            annotation_store, "CLAUDE_ABSTENTION_CHECK", annotation_store.ABSTENTION_CHECK_NOT_RUN
+        ):
+            data = self._collection(("claude",), {"codex", "claude"})
+        route = data["reading_routes"]["claude"]
+        self.assertEqual("codex", route["provider"])
+        self.assertIn("Claude Code checks are not qualified on this build", route["disclosure"])
+        self.assertIn("OpenAI", route["disclosure"])
 
     def test_the_published_permission_says_which_providers_are_allowed(self) -> None:
         data = self._collection(("claude",), {"codex"})
@@ -424,8 +448,10 @@ class TheBuildGateThePageReadsIsEitherProvider(unittest.TestCase):
         self.assertEqual("claude", data["reading_routes"]["claude"]["provider"])
 
     def test_with_both_closed_the_page_is_told_not_run(self) -> None:
-        with mock.patch.object(
-            annotation_store, "ABSTENTION_CHECK", annotation_store.ABSTENTION_CHECK_NOT_RUN
+        with mock.patch.multiple(
+            annotation_store,
+            ABSTENTION_CHECK=annotation_store.ABSTENTION_CHECK_NOT_RUN,
+            CLAUDE_ABSTENTION_CHECK=annotation_store.ABSTENTION_CHECK_NOT_RUN,
         ):
             data = ThePagePublishesARoutePerHarnessNotOneDisclosure._collection(
                 cast("Any", self), ("claude",), {"claude", "codex"}

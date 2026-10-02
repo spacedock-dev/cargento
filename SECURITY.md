@@ -955,7 +955,8 @@ question and consume a little of the operator's own capacity doing it.
 
 The observer model is the first implementation of this pathway, deriving a session's goal line, and
 the reading lane is the second, reading a session against the words the reader saved against it.
-The Claude Code reading producer is the third: built, and gated off until its own check has run.
+The Claude Code reading producer is the third: built behind its own gate, which the owner's
+acceptance opened on 2026-10-02 without a passing check.
 Each has its own entry below naming what it sends, what it asks, and what it caps. Future harness
 callers need their own entry.
 
@@ -1067,9 +1068,9 @@ Goal summaries are off unless `--observer-model` was supplied and their disclosu
 own authentication to reach OpenAI. `reading.CodexReadingModel` is the second caller and goes
 through the same `observer.codex_exec`, so the two share one set of sandbox flags rather than two
 that could drift. These are the paths that can send session content off the
-machine. On this build a reading of a Claude Code session is still made by Codex, because the Claude
-Code producer is gated: it spends the operator's Codex capacity and sends that session's evidence
-to OpenAI, and the disclosure before the press says so. A reader-requested reading requires the remembered answer and rolling budget above; an
+machine. A reading of a Claude Code session is made by Claude Code when `claude` is on the
+server's PATH, and by Codex when it is not: Codex then spends the operator's Codex capacity and
+sends that session's evidence to OpenAI, and the disclosure before the press says which. A reader-requested reading requires the remembered answer and rolling budget above; an
 unasked reading requires `--unasked-readings`. `--no-observer-model` always wins over both.
 
 Two requests can reach the model. A focused `/api/project-context` refresh can summarize the
@@ -1190,14 +1191,17 @@ is still trusted code; replacing it as the owning user is outside this boundary.
 
 `reading.ClaudeReadingModel` calls `observer.claude_exec`, one bounded `claude --print` call
 through the Claude Code CLI the operator has already signed in to. It reaches Anthropic on the
-operator's own authentication and spends their Claude Code capacity. **It is gated.**
-`annotations.CLAUDE_ABSTENTION_CHECK` remains `not-run`: the committed
-[qualification run](docs/abstention/claude-results.json) failed with four false reassurances, so
-the Claude Code producer has not qualified
-([DEC-21](docs/design-reading-a-session.md#amended-2026-09-23-claude-code-is-built-and-gated)).
-While it stays there, `reading_route` never selects the provider or even looks for its CLI, and no
-route, fallback, unasked lane, goal summary or forged request can invoke it. Codex's `accepted`
-review does not open it.
+operator's own authentication and spends their Claude Code capacity. **It is gated, and the
+owner's acceptance opened the gate on 2026-10-02.** `annotations.CLAUDE_ABSTENTION_CHECK` is
+`accepted`, never `passed`: every scored qualification run failed, from the
+[first](docs/abstention/claude-results.json) to the
+[third continuation](docs/abstention/claude-results-continuation-3.json), and the
+[acceptance record](docs/abstention/claude-acceptance.json) lists each with its verdict
+([DEC-21](docs/design-reading-a-session.md#amended-2026-10-02-claude-code-is-accepted)).
+`reading_route` selects it for a Claude Code session when an absolute `claude` is on PATH, and for
+another harness's session only when `codex` is not. The unasked lane and goal summaries never
+invoke it. Set back to `not-run`, the gate is read before the CLI is looked for, so no route,
+fallback or forged request can invoke it.
 
 The argv, every flag checked against `claude --help` on 2.1.280, run without a shell:
 
@@ -1300,8 +1304,8 @@ These flags are CLI restrictions, not an OS sandbox. There is no Claude Code equ
 `--sandbox read-only`. The installed CLI still owns its authentication, caches and logs, and
 `--no-session-persistence` does not govern those. That the flags suppress every tool at run time
 is not verified by this repository's tests; the one measurement, the stub probe above on 2.1.283,
-saw an empty tool list. Whether a given account may use the pinned model id is still unmeasured,
-because the build is gated and no Claude Code reading has been run.
+saw an empty tool list. The pinned model id answered on the owner's account in every scored
+qualification run; whether another account may use it is unmeasured.
 
 ### Tool output in a Claude Code reading
 
@@ -1637,6 +1641,14 @@ The `Analyze drift` control (named `Ask for a reading` until DRC-4639 and `Check
 on 2026-09-14, published as `reading_check: "accepted"`. The amended enablement rule is owned by
 [DEC-17](docs/design-reading-a-session.md#amended-2026-09-14-the-captain-accepts-the-case-review).
 The acceptance record under `docs/abstention/` carries only marks, hashes and decision metadata.
+
+The Claude Code producer has its own gate, opened by the owner's acceptance on 2026-10-02 and
+published as `accepted`, never `passed`: every scored Claude Code run failed, and
+[claude-acceptance.json](docs/abstention/claude-acceptance.json) lists each one with its own
+verdict, digests, counts and spend, which a test reads back from the result files. It carries no
+session text. The results, their grants and the spend ledger are unchanged. The amended rule is
+owned by
+[DEC-21](docs/design-reading-a-session.md#amended-2026-10-02-claude-code-is-accepted).
 
 The evaluator still asks whether the producer says `not verifiable from available evidence` on
 every case a person marked, in advance, as one it should not judge. Two scripts run it, both

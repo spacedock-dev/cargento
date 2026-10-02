@@ -886,8 +886,9 @@ DEFAULT_READ = (
     "d68d3f6a32182ba0",
     "0dd3ae7c558bf2cf",
 )
-# The route the owner named: Codex, which is the board's route for a Claude
-# Code session on this machine (`fallback-not-qualified`), to OpenAI.
+# The route the owner named: Codex, to OpenAI, which was the board's route for
+# a Claude Code session here (`fallback-not-qualified`) until the owner accepted
+# the Claude Code producer on 2026-10-02. Pinned, so that acceptance moves nothing.
 READ_PROVIDER = "codex"
 # When the intent counts as typed: before every record, as DRC-4666's replay
 # stamps its own (`mark_abstention.INTENT_AT`). The owner marked each line

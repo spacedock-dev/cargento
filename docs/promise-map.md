@@ -127,8 +127,10 @@ boundary in part on 2026-09-02 rather than confirming it, and SECURITY.md is whe
 is drawn.
 An ETA is an estimate, and it says so.
 
-Your words are yours. The accepted case review enables you to ask for a model reading against
-them after you allow it on the session page, unless model calls are off for this run. The reading
+Your words are yours. You can ask for a model reading against them after you allow it on the
+session page, unless model calls are off for this run. Claude Code reads a Claude Code session when
+it is installed, and Codex reads it when not; both are enabled by the owner's acceptance, not by a
+passed check. The reading
 states the evidence it read and its limits;
 the evidence remains readable beside your words without asking for one.
 Demonstrated work results are read on Pi, which the work evidence states under itself rather
@@ -279,7 +281,7 @@ Where it stops: nothing reads your words for you at the end. The two axes say wh
 claims it finished, drawn separately because neither implies the other, and the comparison against
 what you asked for is yours to make. You can allow a model reading from the session page unless
 model calls are off for this run;
-the accepted case review enables that control. A reading is an account of the evidence, never
+the owner's acceptance of each provider's checks enables that control. A reading is an account of the evidence, never
 verification that the work was done. The words are kept under a
 session count rather than a date, so an old enough annotation is evicted rather than expired. The
 `clear` beside each box is not the discard: it empties the box, and the save after it keeps every

@@ -419,10 +419,11 @@ or Codex prompt. **Use your prompt** beside the goal lists up to five of your ow
 session; choosing one fills the goal box without saving it, and **Save intent** saves it. You
 can also type your own goal. Adopted words say "from your prompt", and editing them makes a typed
 goal. An unavailable prompt time means you must type a goal instead. The permission is remembered across tabs and restarts.
-Use **Turn off readings** on a session page to revoke it. Checks spend your Codex capacity, including
-when the session belongs to another harness. A Claude Code session is read by Codex too, because
-Claude Code checks are built but not yet qualified; the text under the button names who reads each
-session, and without Codex installed that reason takes the button's place and says no analysis can run. Permission is kept per provider, and
+Use **Turn off readings** on a session page to revoke it. A Claude Code session is read by Claude
+Code when `claude` is on the dashboard's PATH, and by Codex when it is not; every other session is
+read by Codex, or by Claude Code on a machine without Codex. Checks spend the capacity of whichever
+reads. **What is sent to** under the button names it, and with neither installed that reason takes
+the button's place and says no analysis can run. Permission is kept per provider, and
 Turn off readings revokes all of them. Twelve attempts are allowed in a rolling twenty-four
 hours; a refused check names when capacity under that limit becomes available again. Goal summaries
 in Console still require their separate startup flag and consent.

@@ -74,12 +74,12 @@ ABSTENTION_CHECK_ACCEPTED = "accepted"
 ABSTENTION_CHECK = ABSTENTION_CHECK_ACCEPTED
 
 
-# The Claude Code producer's own check, and it has not run: no eligible
-# recorded Claude case exists for it. The 2026-09-14 acceptance above was a
-# review of Codex readings and opens nothing here. While this is `not-run` the
-# producer is never offered, selected or invoked by any route
-# ([DEC-21](docs/design-reading-a-session.md#amended-2026-09-23-claude-code-is-built-and-gated)).
-CLAUDE_ABSTENTION_CHECK = ABSTENTION_CHECK_NOT_RUN
+# The Claude Code producer's own check. Every scored run failed, and the owner
+# accepted the producer anyway on 2026-10-02, so this is `accepted` and never
+# `passed`; docs/abstention/claude-acceptance.json lists each failed run
+# ([DEC-21](docs/design-reading-a-session.md#amended-2026-10-02-claude-code-is-accepted)).
+# Set back to `not-run`, the producer is never offered, selected or invoked.
+CLAUDE_ABSTENTION_CHECK = ABSTENTION_CHECK_ACCEPTED
 _OPEN = (ABSTENTION_CHECK_PASSED, ABSTENTION_CHECK_ACCEPTED)
 
 

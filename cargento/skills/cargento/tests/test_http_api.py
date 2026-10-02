@@ -3761,23 +3761,40 @@ class ReadingRouteTest(unittest.TestCase):
         assert entry is not None
         return str(entry.get("assessment", {}).get("stamp", ""))
 
-    def test_a_claude_code_session_on_this_build_is_read_by_codex(self) -> None:
+    def test_a_claude_code_session_on_this_build_is_read_by_claude_code_when_it_is_installed(
+        self,
+    ) -> None:
+        """The owner's acceptance of 2026-10-02, with no gate patched: `claude` on PATH."""
         config, state = self._runtime()
         with (
             self._counting_model(("codex", "claude"), harness="claude") as calls,
             self._serving(self._app(config, state, "claude")) as port,
         ):
+            status, body = self._post(port, self._claude_press(provider="claude", allow=True))
+        self.assertEqual(202, status, body)
+        self.assertEqual(1, len(calls))
+        self.assertEqual(["claude"], self.providers)
+        self.assertIn(runtime_observer.CLAUDE_READING_MODEL, self._stamp(config, "claude"))
+
+    def test_a_claude_code_session_without_claude_on_path_is_read_by_codex(self) -> None:
+        config, state = self._runtime()
+        with (
+            self._counting_model(("codex",), harness="claude") as calls,
+            self._serving(self._app(config, state, "claude")) as port,
+        ):
             status, body = self._post(port, self._claude_press())
         self.assertEqual(202, status, body)
         self.assertEqual(1, len(calls))
-        self.assertEqual(["codex"], self.providers, "a gated Claude Code producer ran")
+        self.assertEqual(["codex"], self.providers)
         self.assertIn(runtime_observer.OBSERVER_MODEL, self._stamp(config, "claude"))
 
-    def test_a_forged_claude_press_on_this_build_spends_nothing_and_saves_nothing(self) -> None:
+    def test_a_forged_claude_press_on_a_codex_route_spends_nothing_and_saves_nothing(
+        self,
+    ) -> None:
         config, state = self._runtime()
         before = self._consents(config)
         with (
-            self._counting_model(("codex", "claude"), harness="claude") as calls,
+            self._counting_model(("codex",), harness="claude") as calls,
             self._serving(self._app(config, state, "claude")) as port,
         ):
             status, body = self._post(port, self._claude_press(provider="claude", allow=True))
@@ -3808,6 +3825,7 @@ class ReadingRouteTest(unittest.TestCase):
         for provider in ("", "codex", "claude"):
             with (
                 self.subTest(provider=provider),
+                self._closed_claude(),
                 self._counting_model(("claude",), harness="claude") as calls,
                 self._serving(self._app(config, state, "claude")) as port,
             ):
@@ -3836,7 +3854,7 @@ class ReadingRouteTest(unittest.TestCase):
     ) -> None:
         config, state = self._runtime()
         with (
-            self._counting_model(("codex", "claude"), harness="claude") as calls,
+            self._counting_model(("codex",), harness="claude") as calls,
             self._serving(self._app(config, state, "claude", row=self.WAITING)) as port,
         ):
             status, body = self._post(port, self._claude_press())
@@ -4058,6 +4076,11 @@ class ReadingRouteTest(unittest.TestCase):
             annotation_store, "CLAUDE_ABSTENTION_CHECK", annotation_store.ABSTENTION_CHECK_PASSED
         )
 
+    def _closed_claude(self) -> Any:
+        return mock.patch.object(
+            annotation_store, "CLAUDE_ABSTENTION_CHECK", annotation_store.ABSTENTION_CHECK_NOT_RUN
+        )
+
     def test_a_codex_answer_does_not_let_claude_code_read_a_session(self) -> None:
         config, state = self._runtime()
         self.assertEqual({"codex": True, "claude": False}, self._consents(config))
@@ -4173,11 +4196,19 @@ class ReadingRouteTest(unittest.TestCase):
         "call-1": "5 passed in 0.2s",
     }
 
-    def _checks_press(self, config: Any, state: Any, payload: dict[str, Any], **model: Any) -> Any:
+    def _checks_press(
+        self,
+        config: Any,
+        state: Any,
+        payload: dict[str, Any],
+        installed: tuple[str, ...] = ("codex",),
+        **model: Any,
+    ) -> Any:
         model.setdefault("destination", "OpenAI")
+        # By default Codex reads this Claude Code session, because `claude` is not on PATH.
         with (
             self._counting_model(
-                ("codex", "claude"),
+                installed,
                 harness="claude",
                 extra_facts=self.CHECKS,
                 tails=self.TAILS,
@@ -4317,7 +4348,7 @@ class ReadingRouteTest(unittest.TestCase):
 
         with (
             mock.patch.object(runtime_reading, "produce", produce),
-            self._counting_model(("codex", "claude"), harness="claude", destination="OpenAI"),
+            self._counting_model(("codex",), harness="claude", destination="OpenAI"),
             self._serving(self._app(config, state, "claude")) as port,
             # After `_counting_model`, so this press reads a changed pass.
             mock.patch.object(
@@ -4332,22 +4363,24 @@ class ReadingRouteTest(unittest.TestCase):
 
     def test_on_the_claude_code_route_the_checks_go_only_after_the_same_allow(self) -> None:
         config, state = self._runtime()
-        with self._open_claude():
-            status, answer, calls = self._checks_press(
-                config,
-                state,
-                self._claude_press(provider="claude", allow=True),
-                destination="Anthropic",
-            )
-            self.assertEqual(409, status)
-            self.assertEqual("destination-changed", answer["reason"])
-            self.assertEqual([], calls)
-            status, answer, calls = self._checks_press(
-                config,
-                state,
-                self._claude_press(provider="claude", allow=True, tool_output="Anthropic"),
-                destination="Anthropic",
-            )
+        both = ("codex", "claude")
+        status, answer, calls = self._checks_press(
+            config,
+            state,
+            self._claude_press(provider="claude", allow=True),
+            both,
+            destination="Anthropic",
+        )
+        self.assertEqual(409, status)
+        self.assertEqual("destination-changed", answer["reason"])
+        self.assertEqual([], calls)
+        status, answer, calls = self._checks_press(
+            config,
+            state,
+            self._claude_press(provider="claude", allow=True, tool_output="Anthropic"),
+            both,
+            destination="Anthropic",
+        )
         self.assertEqual(202, status, answer)
         self.assertEqual(["claude"], self.providers)
         self.assertEqual(2, self._checks_sent(calls[0]))

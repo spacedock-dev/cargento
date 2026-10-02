@@ -4,7 +4,9 @@
 DEC-17's evaluation needs expected answers written down BEFORE the producer is
 pointed at them. A mark written after seeing an output is agreement, not a
 mark. This collects those answers. The captain accepted the recorded case review
-as sufficient to enable readings on 2026-09-14; scoring remains a separate act.
+as sufficient to enable readings on 2026-09-14, and the owner accepted the
+Claude Code producer on 2026-10-02 after its scored runs failed; scoring remains
+a separate act.
 
     mark_abstention.py --build      assemble cases from the live board
     mark_abstention.py              mark the unmarked ones, one call each

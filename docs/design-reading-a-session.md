@@ -423,7 +423,8 @@ suite stays green, because the fixtures bypass the rebuild.
 ### The condition on enabling, not on building
 
 The original ruling below was amended on 2026-09-14 to allow the captain's acceptance of the
-recorded case review to enable the control.
+recorded case review to enable the control, and on 2026-10-02 to let the owner's acceptance open
+the Claude Code producer's own gate without a pass.
 
 The reading is built now. The `Ask for a reading` control (`Check for drift` from DRC-4639, `Analyze drift` since DRC-4680) is not enabled until an abstention check
 has run and passed: at least one recorded session per case kind DEC-15 names, across both Claude and
@@ -547,9 +548,10 @@ a later report whose marks no longer hash to it says the marks moved and refuses
 now judged per producer; see the amendment of 2026-09-27 below.
 
 The scorer never writes to the annotation store, never posts to the reading route, and never flips
-`annotations.ABSTENTION_CHECK`. The flip is a separate change, made by hand, after a run has passed
-on a corpus that meets the floor or the captain has accepted the case review under the amendment
-above.
+`annotations.ABSTENTION_CHECK` or `annotations.CLAUDE_ABSTENTION_CHECK`. Each flip is a separate
+change, made by hand, after a run has passed on a corpus that meets the floor, or after an
+acceptance: the captain's of the case review under the amendment above, or for Claude Code the
+owner's of 2026-10-02 below.
 
 #### Amended 2026-09-27: the floor is judged per producer
 
@@ -669,6 +671,21 @@ sentence; an answer given before that sentence existed is not asked again,
 and whether it should be is filed separately. The parser digest the abstention
 packets are stamped with moves with this change, so a packet frozen before it is refused as
 `frozen-on-another-parser` and is frozen again.
+
+#### Amended 2026-10-02: the owner accepts the Claude Code producer without a pass
+
+Every scored Claude Code run failed this check: four runs, the last two each with one false
+reassurance among sixteen scored constraints, on different constraints, and the 28 authorized
+calls are spent. The owner accepted the Claude Code producer anyway on 2026-10-02, knowing that,
+as the captain accepted the Codex review on 2026-09-14. `annotations.CLAUDE_ABSTENTION_CHECK` is
+`accepted`, never `passed`, and nothing here turns a failed run into a passing one.
+
+The committable [acceptance record](abstention/claude-acceptance.json) lists every scored run with
+its own verdict, digests, counts and spend, and a test reads each from the result file it names,
+so the record cannot drop a failure or round one up. The results, their grants and the spend
+ledger stay exactly as they were: nothing rewrites, rescores or deletes them. The scorer keeps its
+verdicts for any later run, and a later pass would be recorded as `passed` in its own change.
+Which sessions Claude Code reads is [DEC-21](#amended-2026-10-02-claude-code-is-accepted)'s.
 
 ### Repeated calls
 
@@ -1040,7 +1057,9 @@ a way to refill the budget. A known missing Codex CLI is refused before admissio
 
 ### Amended 2026-09-23: Claude Code is built and gated
 
-DRC-4650 builds item 4 and does not offer it. The owner ruled three things on 2026-09-23.
+DRC-4650 builds item 4 and does not offer it. The owner ruled three things on 2026-09-23. The
+gate in item 1 was opened on 2026-10-02 by the owner's acceptance; see
+[that amendment](#amended-2026-10-02-claude-code-is-accepted).
 
 1. The Claude Code producer has its own gate, `annotations.CLAUDE_ABSTENTION_CHECK`, recorded
    `not-run` because no eligible recorded case exists for it. While it stays there, no route,
@@ -1082,6 +1101,31 @@ condition: the first reading that would send tool output needs a fresh "Allow an
 disclosure names tool output and the receiving vendor as configured, and an answer given before that
 does not cover it.
 
+### Amended 2026-10-02: Claude Code is accepted
+
+The owner, 2026-10-02: "I want you to accept the Claude Code checks so that Claude Code can be used
+to check Claude Code sessions when Claude Code is running (or exists on the system)." This changes
+item 1 of the 2026-09-23 amendment and leaves items 2 and 3 as they apply once the gate is open.
+
+1. `annotations.CLAUDE_ABSTENTION_CHECK` is `accepted`. Every scored run failed, so this is the
+   owner's acceptance and not a pass; DEC-17's
+   [amendment of the same day](#amended-2026-10-02-the-owner-accepts-the-claude-code-producer-without-a-pass)
+   and the [acceptance record](abstention/claude-acceptance.json) say so in full.
+2. A Claude Code session is read by Claude Code when an absolute `claude` is on the server's PATH,
+   and by Codex when it is not, which is item 4 as written. The disclosure before the press names
+   whichever runs and its company, and on the Codex route says the Claude Code CLI was not found.
+   With neither, the session says no analysis can run.
+3. Item 4 also reaches the other way, as written: a session on any other harness, on a machine
+   with `claude` and no `codex`, is read by Claude Code, and its disclosure names Claude Code and
+   Anthropic before the press. Allowing Codex does not allow Claude Code; each provider keeps its
+   own "Allow and analyze".
+4. The unasked lane and goal summaries stay on Codex, as item 3 of the 2026-09-23 amendment
+   ruled, and the twelve-attempt rolling cap stays shared between providers.
+
+`resolve` still reads each gate before it looks for that provider's CLI, so setting the constant
+back to `not-run` closes the producer with no other change, and the "not qualified on this build"
+sentences remain for that state.
+
 ### Where the unasked default stands
 
 The unasked check is the only model reading that finds drift nobody went looking for. DEC-18 gates its
@@ -1093,7 +1137,7 @@ default on four preconditions and on the rubric's acceptance thresholds. Measure
 | The off machine lane | built | #356, DRC-4034 |
 | A delivery outcome recorded per raise | built | #320, DRC-4540 |
 | A producer exists | met | `unasked.Lane` and `reading.CodexReadingModel`, DRC-4511 |
-| DEC-17's abstention check has run and passed | not met | the check is `accepted` (2026-09-14), not `passed`; [docs/abstention](abstention/README.md) holds the acceptance record and no scorer result |
+| DEC-17's abstention check has run and passed | not met | Codex's check is `accepted` (2026-09-14) and Claude Code's `accepted` (2026-10-02), neither `passed`; every scored Claude Code run in [docs/abstention](abstention/README.md) failed |
 | Quiet hours exist | met | #357, DRC-4032 |
 | The rubric's acceptance thresholds | not written | DRC-4542 owns the case set; no threshold exists to meet |
 

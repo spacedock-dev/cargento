@@ -1261,7 +1261,9 @@ class KeepRouteTest(_ReadingRouteHandler):
         payload = {k: v for k, v in payload.items() if not (k == "adopt" and v is None)}
         handler = self._handler(config, state, payload)
         with (
-            mock.patch.object(shutil, "which", lambda name: f"/usr/local/bin/{name}"),
+            mock.patch.object(
+                shutil, "which", lambda name: f"/usr/local/bin/{name}" if name == "codex" else None
+            ),
             mock.patch.object(reading_route, "destination", return_value=""),
             mock.patch.object(
                 handler, "_compose_reading", return_value=(None, "test", False)
@@ -1301,7 +1303,9 @@ class KeepRouteTest(_ReadingRouteHandler):
 
         handler._reading_route = stale_cache
         with (
-            mock.patch.object(shutil, "which", lambda name: f"/usr/local/bin/{name}"),
+            mock.patch.object(
+                shutil, "which", lambda name: f"/usr/local/bin/{name}" if name == "codex" else None
+            ),
             mock.patch.object(reading_route, "destination", return_value=""),
             mock.patch.object(
                 handler, "_compose_reading", return_value=(None, "test", False)
@@ -1404,7 +1408,9 @@ class APlainPressNamesItsRevisionTest(_ReadingRouteHandler):
         payload = {k: v for k, v in payload.items() if v is not None}
         handler = self._handler(config, state, payload)
         with (
-            mock.patch.object(shutil, "which", lambda name: f"/usr/local/bin/{name}"),
+            mock.patch.object(
+                shutil, "which", lambda name: f"/usr/local/bin/{name}" if name == "codex" else None
+            ),
             mock.patch.object(reading_route, "destination", return_value=""),
             mock.patch.object(
                 handler, "_compose_reading", return_value=(None, "test", False)
@@ -1520,7 +1526,9 @@ class APlainPressNamesItsRevisionTest(_ReadingRouteHandler):
         handler = self._handler(config, state, payload)
         self._between(handler, act)
         with (
-            mock.patch.object(shutil, "which", lambda name: f"/usr/local/bin/{name}"),
+            mock.patch.object(
+                shutil, "which", lambda name: f"/usr/local/bin/{name}" if name == "codex" else None
+            ),
             mock.patch.object(reading_route, "destination", return_value=""),
             mock.patch.object(
                 handler, "_compose_reading", return_value=(None, "test", False)

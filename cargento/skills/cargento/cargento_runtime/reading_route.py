@@ -67,7 +67,7 @@ _NONE_REASONS = {
 }
 
 _UNQUALIFIED = {
-    CLAUDE: "Claude Code checks are built but not yet qualified",
+    CLAUDE: "Claude Code checks are not qualified on this build",
     CODEX: "Codex checks are not qualified on this build",
 }
 _NO_PRODUCER = "This harness has no reading producer of its own"

@@ -163,7 +163,7 @@ class AdoptionRouteTest(unittest.TestCase):
             "adopt": "latest-prompt",
             "expected_prompt": "Build the parser",
             "expected_prompt_at": 1700000000.0,
-            # What the page names for a Claude Code session on this build.
+            # What the page names for a Claude Code session with only Codex on PATH.
             "provider": "codex",
         }
         body = json.dumps(payload).encode()
@@ -171,7 +171,9 @@ class AdoptionRouteTest(unittest.TestCase):
         handler.client_address = ("127.0.0.1", 10000)
         handler.server.server_port = 4580
         handler.rfile = io.BytesIO(body)
-        codex_on_path = mock.patch.object(shutil, "which", lambda name: f"/usr/local/bin/{name}")
+        codex_on_path = mock.patch.object(
+            shutil, "which", lambda name: f"/usr/local/bin/{name}" if name == "codex" else None
+        )
         # This machine's endpoint settings must not decide an adoption test:
         # with no nameable destination the press asks nothing about tool output.
         unnamed = mock.patch.object(reading_route, "destination", return_value="")

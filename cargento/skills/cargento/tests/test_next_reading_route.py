@@ -78,12 +78,12 @@ class ReadingRoutePageTest(NextPageJsHarness):
             "await __settle();\nawait __settle();\n" + prelude + checks, self.FIXTURE
         )
 
-    def test_a_claude_code_row_on_this_build_names_codex_and_why_under_the_button(self) -> None:
+    def test_a_gated_claude_code_row_names_codex_and_why_under_the_button(self) -> None:
         """Idle, the disclosure follows Analyze drift and describes it (owner, DRC-4680): that
         press sends nothing. The confirming press keeps it first; see the Allow tests below."""
         out = self.render({"claude": GATED_CLAUDE}, "console.log(JSON.stringify(control()));")
         assert isinstance(out, str)
-        note = "Claude Code checks are built but not yet qualified, so Codex reads this session."
+        note = "Claude Code checks are not qualified on this build, so Codex reads this session."
         self.assertIn(note, out)
         self.assertIn("OpenAI", out)
         self.assertNotIn("Anthropic", out)
