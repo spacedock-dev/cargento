@@ -358,7 +358,7 @@ if __name__ == "__main__":
 
 # A summary inside a view, as `closest` answers for it; anything else is outside the page's views.
 FAKE_SUMMARY = """
-const __summary = {closest: s => s === "summary" ? __summary
+const __summary = {tagName: "SUMMARY", closest: s => s === "summary" ? __summary
   : s === "[data-next-view-body]" ? {} : null};
 """
 MOTION_PROBE = """

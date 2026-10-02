@@ -216,7 +216,7 @@ let nextHeldPaint = null;
 
 document.addEventListener("click", event => {
   const summary = event.target && event.target.closest ? event.target.closest("summary") : null;
-  if(!summary || !summary.closest("[data-next-view-body]")) return;
+  if(!summary || summary.tagName !== "SUMMARY" || !summary.closest("[data-next-view-body]")) return;
   const reduce = typeof window.matchMedia === "function" &&
     window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   if(!reduce) nextDisclosureMotionUntil = performance.now() + NEXT_DISCLOSURE_MOTION_MS;
