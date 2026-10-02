@@ -447,8 +447,9 @@ reader-requested reading or the optional unasked lane. With nothing typed the bl
 model off it gives that reason; otherwise it states what a reading may and may not read and offers
 one control, `Analyze drift`. When it cannot run it stays on the page, refuses the press, and
 names one next step, except where no reader is available on this machine: then the reason stands
-where the control would be. The owner's acceptance of each provider's checks enables that control
-(Codex's case review on 2026-09-14; Claude Code's on 2026-10-02, after its scored runs failed): a
+where the control would be. An acceptance of each provider's checks enables that control (the
+captain's of Codex's case review on 2026-09-14; the owner's of Claude Code on 2026-10-02, after its
+scored runs failed): a
 Claude Code session is read by Claude Code when `claude` is on PATH and by Codex otherwise, and the
 evidence stays readable
 whether or not you ask for a reading. A press that waits on the server shows a spinner and a busy

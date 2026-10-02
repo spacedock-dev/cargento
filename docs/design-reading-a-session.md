@@ -1434,7 +1434,8 @@ can test those guards and the agent-account boundary, but cannot establish wheth
 check covers a whole requested outcome. A fresh recorded DEC-17 qualification must include
 premarked cases where a passing check does not cover the requested feature or browser behavior to
 measure that semantic failure class; its general coverage floor alone does not require them. Until
-that qualification passes, the Claude Code producer gate stays closed.
+that qualification passes, the Claude Code producer gate stays closed; the owner's acceptance of
+2026-10-02 opened it without one ([the amendment](#amended-2026-10-02-claude-code-is-accepted)).
 
 Writing these lists out is part of item 3, which names the kinds (test, build, lint and type-check
 runners) and leaves the list to this section. Each segment, split on `&&`, `||`, `;`, `|`, `&` and newlines, is matched
