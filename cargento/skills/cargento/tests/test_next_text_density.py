@@ -272,7 +272,7 @@ def header_of(html: str) -> str:
     return html[start : html.index("</header>", start)]
 
 
-TOOL_OUTPUT = "For this session a reading can also send tool output"
+TOOL_OUTPUT = "Tool output, only after you allow it"
 
 
 @unittest.skipUnless(shutil.which("node"), "node not available")

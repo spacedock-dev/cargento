@@ -347,12 +347,9 @@ class TheReadersWordsNeverCostAVerdictItsEvidenceTest(unittest.TestCase):
         for provider in (reading_route.CODEX, reading_route.CLAUDE):
             with self.subTest(provider=provider):
                 text = reading_route._base_disclosure(provider)
-                self.assertIn(
-                    f"your own messages in that record in full, up to {cap} each, "
-                    "with credential shapes redacted; where the record is too long for that, "
-                    "your oldest messages go by their first sentence",
-                    text,
-                )
+                # The list drops how a long record shortens the oldest (owner, 2026-10-02):
+                # it sends less, and a reader deciding needs the cap, not the mechanism.
+                self.assertIn(f"your messages up to {cap} each", text)
 
     def test_a_short_session_sends_every_message_whole(self) -> None:
         prompt, _ = self.prompt([_fact(), _check(), _write()])

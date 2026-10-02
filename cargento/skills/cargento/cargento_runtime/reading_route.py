@@ -82,10 +82,10 @@ class Route(TypedDict):
     reason: str
     note: str
     disclosure: str
-    # The disclosure as the sentences it is built from, in order, each
+    # The disclosure as the list items it is built from, in order, each
     # unreworded: `" ".join(disclosure_parts) == disclosure`, which a test
-    # holds. For a page that shows it as a short list rather than a block;
-    # empty where there is no disclosure.
+    # holds. The consent step and the "What is sent" popover both draw this
+    # list, so the two cannot diverge; empty where there is no disclosure.
     disclosure_parts: list[str]
     fallback: bool
     # Where tool output would reach as configured on this machine, or "" where
@@ -334,62 +334,48 @@ def _tool_output_sentence(provider: str, harness: str, where: str) -> str:
         return ""
     label = LABELS[provider]
     if not where:
-        return (
-            f"Tool output is not sent: Cargento cannot name where {label} would send it on this "
-            "machine, so a reading reads your words and the rest of the record without the checks."
-        )
+        return f"Tool output is not sent: Cargento cannot name where {label} would send it."
     return (
-        "For this session a reading can also send tool output: each check's command, the result "
-        f"the tool reported and the last {TOOL_OUTPUT_TAIL_CHARS} characters of what it printed, "
-        "with the paths of the files it wrote relative to its folder, "
-        f"to {label}, which reaches {where}, and only after you allow tool output. That output "
-        "is sent as the runner printed it, with credential shapes redacted."
+        "Tool output, only after you allow it: each check's command, result and last "
+        f"{TOOL_OUTPUT_TAIL_CHARS} characters of output and the paths of the files it wrote, "
+        f"as printed with credential shapes redacted, to {label}, which reaches {where}."
     )
 
 
+# The caveat that closes every list (owner, 2026-10-02), in one item of its own.
+CAVEAT = (
+    "A reading is a model's account of the evidence, never a verification that the work was done."
+)
+
+
 def _base_parts(provider: str) -> list[str]:
-    """What a reading sends and where, named for the provider that receives it, part by part.
+    """What a reading sends, to whom and through what, one short item each.
 
-    The Codex wording is the one DRC-4640 shipped with its provider spelt
-    out. An earlier draft said "Nothing leaves it"; the harness's own sign-in
-    reaches its vendor, so this is a path off the machine, and a consent
-    string is the worst place for the reassuring half to be the false half.
-
-    Parts rather than one string since DRC-4758: what is sent, where it goes
-    and whose capacity it spends, what the CLI adds, the expected-outcome
-    scope and the never-a-verification caveat. The joined text is the
-    disclosure byte for byte, so splitting it rewords nothing.
+    A list since the owner's ruling of 2026-10-02, which found the paragraph
+    "long and arduous to read": each item says one thing, and nothing explains
+    a mechanism a reader deciding whether to send does not need. The Codex
+    wording once said "Nothing leaves it"; the harness's own sign-in reaches its
+    vendor, so the `To:` item names the company, never a reassurance.
     """
     label, vendor = LABELS[provider], VENDORS[provider]
-    cli_adds = _CLI_ADDS.get(provider, "").strip()
+    cli_adds = _CLI_ADDS.get(provider, "")
     return [
         (
-            "A reading sends the goal you chose, and a bounded list of entries from the "
-            f"observed record, to a {label} subprocess. The entries include your own messages "
-            "in that record in full, up to 1,000 characters each, with credential shapes "
-            "redacted; where the record is too long for that, your oldest messages go by their "
-            "first sentence."
+            "Sent: your goal and a bounded set of the session's entries, with your messages "
+            f"up to {_WORDS_CAP:,} characters each and credential shapes redacted."
         ),
+        "Your expected outcome lines are sent only when an entry sent is work evidence.",
         (
-            f"{label} uses its own authentication to "
-            f"reach {vendor}, so this is one of the paths that sends session content off this "
-            f"machine and spends your {label} capacity."
+            f"To: {vendor}, off this machine, through your {label} CLI and its sign-in, "
+            f"using your {label} capacity."
         ),
         *([cli_adds] if cli_adds else []),
-        (
-            "Your expected outcome lines are sent only when an entry sent is work evidence, and on "
-            "no other reading."
-        ),
-        (
-            "The reading is a model's account of the evidence it was given, never "
-            "a verification that the work was done."
-        ),
     ]
 
 
 def _base_disclosure(provider: str) -> str:
-    """`_base_parts` as the one paragraph a route's disclosure carries after its note."""
-    return " ".join(_base_parts(provider))
+    """The list for `provider` with its caveat, as the one string a route joins."""
+    return " ".join([*_base_parts(provider), CAVEAT])
 
 
 # What the Claude Code CLI adds to every reading on its own, measured on 2.1.283
@@ -397,12 +383,15 @@ def _base_disclosure(provider: str) -> str:
 # account details on 2026-09-27 on condition they are said before the press.
 _CLI_ADDS = {
     CLAUDE: (
-        " Claude Code also sends, with every reading, its working directory (an empty "
-        "temporary one), the platform, shell, OS version and date, a device identifier, "
-        "and, when you are signed in with a Claude account, that account's email address "
-        "and account ID."
+        "Claude Code also sends its working directory (an empty temporary one), platform, "
+        "shell, OS version, date and a device identifier, and under a Claude account "
+        "sign-in your email address and account ID."
     ),
 }
+# The ledger's cap on a reader's own message (`reading.LEDGER_WORDS_CAP_CHARS`),
+# which the `Sent:` item states. Copied rather than imported, because this module
+# sits below `reading` in the import graph; a test holds the two equal.
+_WORDS_CAP = 1_000
 
 
 def _state(provider: str, which: Callable[[str], Any]) -> str:
@@ -435,7 +424,11 @@ def _route(
 ) -> Route:
     reached = where(provider) if provider and harness in TOOL_OUTPUT_HARNESSES else ""
     sentence = _tool_output_sentence(provider, harness, reached)
-    parts = [note, *_base_parts(provider), *([sentence] if sentence else [])] if provider else []
+    parts = (
+        [note, *_base_parts(provider), *([sentence] if sentence else []), CAVEAT]
+        if provider
+        else []
+    )
     return {
         "harness": harness,
         "provider": provider,

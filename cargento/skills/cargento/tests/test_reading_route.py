@@ -18,10 +18,10 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
-from typing import Any, cast
+from typing import Any, ClassVar, cast
 from unittest import mock
 
-from cargento_runtime import aggregate, observer, reading_route, sessions
+from cargento_runtime import aggregate, observer, reading, reading_route, sessions
 from cargento_runtime import annotations as annotation_store
 
 from .next_harness import named_platform
@@ -312,9 +312,10 @@ class EveryMachineGetsExactlyOneTrueAnswer(unittest.TestCase):
                 self.assertTrue(all(part and part == part.strip() for part in parts))
                 self.assertTrue(parts[-1].endswith("."))
                 if route["tool_output"]:
-                    self.assertEqual(route["tool_output"], parts[-1])
-                # One sentence carries the caveat, so it is never lost in a split.
+                    self.assertEqual(route["tool_output"], parts[-2])
+                # One item carries the caveat, and it closes the list (owner, 2026-10-02).
                 self.assertEqual(1, sum("never a verification" in part for part in parts), parts)
+                self.assertIn("never a verification", parts[-1])
 
     def test_the_parts_for_a_claude_code_reading_hold_what_its_cli_adds_on_their_own(
         self,
@@ -322,7 +323,7 @@ class EveryMachineGetsExactlyOneTrueAnswer(unittest.TestCase):
         parts = reading_route._base_parts("claude")
         added = [part for part in parts if "device identifier" in part]
         self.assertEqual(1, len(added))
-        self.assertTrue(added[0].startswith("Claude Code also sends"))
+        self.assertTrue(added[0].startswith("Claude Code also sends"), added[0])
         self.assertFalse(
             any("device identifier" in part for part in reading_route._base_parts("codex"))
         )
@@ -641,7 +642,7 @@ class AClaudeCodeReaderIsToldWhatTheChecksSendBeforeThePress(unittest.TestCase):
                 root=Path("/nonexistent"),
             )
         self.assertEqual("OpenAI", route["destination"])
-        self.assertIn("tool output", route["tool_output"])
+        self.assertIn("tool output", route["tool_output"].casefold())
         self.assertIn("to Codex, which reaches OpenAI", route["tool_output"])
         self.assertIn("only after you allow", route["tool_output"])
         # K6: the grant sends the written paths too, so the sentence names them.
@@ -674,6 +675,83 @@ class AClaudeCodeReaderIsToldWhatTheChecksSendBeforeThePress(unittest.TestCase):
         self.assertIn(
             "expected outcome lines are sent only when an entry sent is work", route["disclosure"]
         )
+
+
+def _named(harness: str, installed: set[str]) -> dict[str, Any]:
+    with named_platform():
+        return dict(
+            reading_route.resolve(
+                harness, binary_resolver=_resolver(installed), environ={}, root=Path("/x")
+            )
+        )
+
+
+class TheDisclosureIsAShortListThatKeepsEveryFact(unittest.TestCase):
+    """Owner, 2026-10-02: the disclosure was "long and arduous to read". It is a short list,
+    one item a line, and it still says what is sent, to whom, through what, what the Claude
+    Code CLI adds and that a reading is never a verification ([SECURITY.md], Observer model
+    calls and Claude Code reading calls)."""
+
+    ROUTES: ClassVar[dict[str, tuple[str, set[str]]]] = {
+        "codex": ("codex", {"codex"}),
+        "claude": ("claude", {"claude", "codex"}),
+        "claude-by-codex": ("claude", {"codex"}),
+        "codex-by-claude": ("codex", {"claude"}),
+    }
+
+    def test_each_item_is_short_and_the_whole_list_is_a_fraction_of_the_old_paragraph(
+        self,
+    ) -> None:
+        # Words before this ruling: 128 for a Codex session, 239 for a Claude Code session
+        # read by Claude Code, 202 for one read by Codex.
+        budgets = {"codex": 75, "claude": 148, "claude-by-codex": 121, "codex-by-claude": 119}
+        for name, (harness, installed) in self.ROUTES.items():
+            route = _named(harness, installed)
+            with self.subTest(route=name):
+                parts = route["disclosure_parts"]
+                self.assertLessEqual(len(parts), 7, parts)
+                for part in parts:
+                    self.assertLessEqual(len(part.split()), 37, part)
+                self.assertLessEqual(len(route["disclosure"].split()), budgets[name])
+
+    def test_every_route_still_says_what_is_sent_to_whom_and_through_what(self) -> None:
+        cap = f"{reading.LEDGER_WORDS_CAP_CHARS:,} characters"
+        self.assertEqual(reading.LEDGER_WORDS_CAP_CHARS, reading_route._WORDS_CAP)
+        for name, (harness, installed) in self.ROUTES.items():
+            route = _named(harness, installed)
+            text, label = route["disclosure"], route["label"]
+            with self.subTest(route=name):
+                for fact in (
+                    "your goal",
+                    "bounded set",
+                    f"your messages up to {cap} each",
+                    "credential shapes redacted",
+                    "expected outcome lines are sent only when an entry sent is work evidence",
+                    f"To: {route['vendor']}, off this machine",
+                    f"your {label} CLI and its sign-in",
+                    f"your {label} capacity",
+                    "a model's account of the evidence",
+                    "never a verification that the work was done",
+                ):
+                    self.assertIn(fact, text.replace("\u2019", "'"))
+
+    def test_the_tool_output_item_names_each_thing_it_sends_and_where(self) -> None:
+        for name in ("claude", "claude-by-codex"):
+            harness, installed = self.ROUTES[name]
+            route = _named(harness, installed)
+            sentence = route["tool_output"]
+            with self.subTest(route=name):
+                for fact in (
+                    "only after you allow it",
+                    "command",
+                    "result",
+                    f"last {reading_route.TOOL_OUTPUT_TAIL_CHARS} characters of output",
+                    "the paths of the files it wrote",
+                    "as printed",
+                    "credential shapes redacted",
+                    f"to {route['label']}, which reaches {route['destination']}",
+                ):
+                    self.assertIn(fact, sentence)
 
 
 class TheSentencesReadAsSentences(unittest.TestCase):

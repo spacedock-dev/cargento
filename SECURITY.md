@@ -1260,7 +1260,12 @@ by the OS (`score_abstention.py --probe-argv`, below):
   (`reading_route._base_disclosure`). Amended 2026-10-01 (owner, Q1, DRC-4758): the press it is
   said before is the one that sends. Idle, the disclosure is one click away under "What is sent to
   <receiver>", and a press there sends nothing; the press that would send opens a consent step
-  that shows the whole disclosure, as the server's parts, before "Allow and analyze".
+  that shows the whole disclosure, as the server's parts, before "Allow and analyze". Amended
+  2026-10-02 (owner): the disclosure is a short list, one item a line, and keeps each fact this
+  section and [Observer model calls](#observer-model-calls) require: what is sent, the company it
+  goes to off this machine, the CLI and sign-in it goes through and whose capacity it spends, these
+  account details on a Claude Code route, tool output only after it is allowed, and the caveat
+  ([the amendment](docs/design-reading-a-session.md#amended-2026-10-02-owner-the-disclosure-is-a-short-list)).
 
 `--exclude-dynamic-system-prompt-sections` does not help: the CLI ignores it under
 `--system-prompt`.
