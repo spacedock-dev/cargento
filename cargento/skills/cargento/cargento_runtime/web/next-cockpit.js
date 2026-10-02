@@ -7855,6 +7855,19 @@ document.addEventListener("change", event => {
   if(pending) nextAnnounceAttention(pending.announcement);
 });
 
+/* Focus leaving an open popover for another control closes it, so a keyboard
+   reader who Tabs on from "Why" never lands on the "Saved" summary it covers
+   (verifier, 2026-10-02; WCAG 2.4.11). Focus that goes nowhere leaves it open: that is
+   another window taking focus, or a redraw replacing the focused node, and a
+   poll must not shut a body the reader is reading. */
+document.addEventListener("focusout", event => {
+  const popover = event.target && typeof event.target.closest === "function"
+    ? event.target.closest("details.next-disclose--pop[open]") : null;
+  const next = event.relatedTarget;
+  if(!popover || !next) return;
+  if(!(typeof popover.contains === "function" && popover.contains(next))) popover.open = false;
+});
+
 /* A click outside an open popover closes it, as a menu does. The restore lane
    reads `.open` at the next redraw, so nothing else needs telling. */
 document.addEventListener("click", event => {

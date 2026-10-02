@@ -1353,8 +1353,10 @@ header's "Why" beside "No terminal to raise" widened from 48px to 540px when it 
 opens in place, its height and contents easing over 200ms. A popover fades in over 160ms. Both
 use `ease-in-out`, and with reduced motion set both open instantly. That gives exactly two
 popovers, the header's "Why" and the Sessions group caveat, and a popover is never placed inside
-an accordion, because an accordion clips its overflow. Escape or a click outside closes a popover,
-and Escape on one does not leave the page. A summary is clickable across its own words only, and a
+an accordion, because an accordion clips its overflow. Escape, a click outside, or focus moving to
+another control closes a popover, so a keyboard reader never lands on a control it covers, and
+Escape on one does not leave the page. Focus that goes nowhere, to another window or with a redraw
+that replaced the node, leaves it open. A summary is clickable across its own words only, and a
 chevron that turns replaces the browser's triangle. The motion runs only when the reader toggles:
 an open disclosure is written open in the redrawn markup, so a poll never replays it. The project
 page follows the same rule as the session, Sessions and Attention pages, since a reader reaches it

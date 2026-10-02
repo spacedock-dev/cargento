@@ -180,6 +180,34 @@ __els.app.innerHTML = JSON.stringify({open:popover.open, focused:summary.focused
             {"open": False, "focused": True, "prevented": True, "view": "session"}, result
         )
 
+    def test_focus_leaving_an_open_popover_closes_it(self) -> None:
+        """Verifier R-1, measured at 1440x900: the header's open "Why" covers the Intent panel's
+        "Saved" summary whole, and a keyboard reader who Tabs on from "Why" lands on it, hidden
+        (WCAG 2.4.11). Focus leaving the popover for another control closes it, as a click outside
+        does. Focus that goes nowhere, to another window or with a redraw that replaced the node,
+        leaves it open, so a poll never shuts a body the reader is reading."""
+        out = self.page(
+            after="""
+const summary = {tagName:"SUMMARY"};
+const popover = {open:true, contains(node){ return node === summary; }};
+summary.closest = selector =>
+  selector === "details.next-disclose--pop[open]" && popover.open ? popover : null;
+const saved = {tagName:"SUMMARY", closest(){ return null; }};
+const seen = {};
+__fire("focusout", {target:summary, relatedTarget:summary});
+seen.inside = popover.open;
+__fire("focusout", {target:summary, relatedTarget:null});
+seen.nowhere = popover.open;
+__fire("focusout", {target:summary, relatedTarget:saved});
+seen.away = popover.open;
+seen.view = nextRoute.view;
+__els.app.innerHTML = JSON.stringify(seen);
+""",
+        )
+        self.assertEqual(
+            {"inside": True, "nowhere": True, "away": False, "view": "session"}, json.loads(out)
+        )
+
     def test_a_click_outside_an_open_popover_closes_it(self) -> None:
         out = self.page(
             after="""
