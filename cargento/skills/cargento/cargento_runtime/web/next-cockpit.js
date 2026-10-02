@@ -2497,6 +2497,8 @@ const NEXT_READING_MODEL_UNREAD =
    one per real phase, so this page never words a phase it did not see. */
 const NEXT_READING_JOB_TITLE = "Analyzing drift";
 const NEXT_READING_JOB_NOTE = "You can keep working. The result will appear here.";
+// While the row is running, the box says the job reads only the work so far.
+const NEXT_READING_JOB_NOTE_SO_FAR = "Reads only the work so far. The result will appear here.";
 const NEXT_READING_BACKGROUND = "Runs in the background.";
 /* A lost answer does not establish that the cancel missed, nor that it landed. */
 const NEXT_READING_CANCEL_FAILED =
@@ -3050,6 +3052,7 @@ function nextCockpitReadingShape(raw, annotation, entries, limit, unsettled,
        `endKind` made a mid-flight reading start claiming to cover an ending
        it never saw the moment the session stopped. */
     scopeText: String(source.scope_text || ""),
+    scope: String(source.scope || ""),
     malformed: "",
   };
 }
@@ -3227,8 +3230,11 @@ const NEXT_RESULT_NOTHING_FOUND =
 /* The answer, and under a departure the headline with its count and a short
    account built from each departure's detail and its citation, never a
    model's narrative (item 6). The count renders only here. */
-function nextCockpitResultAnswer(answer, numbers, byId){
+/* `midFlight` leads the answer with "So far:", so a reading of a running
+   session never looks like a reading of how it ended (owner, 2026-10-02). */
+function nextCockpitResultAnswer(answer, numbers, byId, midFlight = false){
   const open = '<div class="next-cockpit-result-answer">';
+  const lead = midFlight ? '<span class="next-cockpit-result-scope">So far:</span> ' : "";
   if(answer.kind === "departs"){
     const count = `${answer.count} departure${answer.count === 1 ? "" : "s"}`;
     const account = answer.departures.map(row => {
@@ -3238,16 +3244,16 @@ function nextCockpitResultAnswer(answer, numbers, byId){
         ? `<p class="next-cockpit-reading-detail">${esc(detail)}${where ? ` (${esc(where)})` : ""}</p>`
         : "";
     }).join("");
-    return open + '<p class="next-cockpit-result-headline">' +
+    return open + `<p class="next-cockpit-result-headline">${lead}` +
       `<span>${NEXT_RESULT_DEPARTS}</span>` +
       `<span class="next-cockpit-result-count">${esc(count)}</span></p>${account}</div>`;
   }
   if(answer.kind === "failed-check"){
     const where = nextCockpitResultWhere(answer.failed, numbers);
-    return open + `<p class="next-cockpit-result-line">${esc(where
+    return open + `<p class="next-cockpit-result-line">${lead}${esc(where
       ? `A check failed at ${where}.` : "A check failed.")}</p></div>`;
   }
-  return open + `<p class="next-cockpit-result-line">${esc(answer.kind === "cant-tell"
+  return open + `<p class="next-cockpit-result-line">${lead}${esc(answer.kind === "cant-tell"
     ? NEXT_RESULT_CANT_TELL : NEXT_RESULT_NOTHING_FOUND)}</p></div>`;
 }
 
@@ -3999,7 +4005,7 @@ function nextReadingJob(session){
    [DEC-24](docs/design-reading-a-session.md#dec-24-your-intent-is-a-drafted-goal-and-a-checklist-and-a-correction-is-yours-to-copy)
    keeps off every result. An unknown phase
    marks every step still to come rather than guessing which one is running. */
-function nextReadingJobBox(job, key){
+function nextReadingJobBox(job, key, running = false){
   const steps = Array.isArray(job.steps) ? job.steps : [];
   const at = steps.findIndex(step => step && step.phase === job.phase);
   const items = steps.map((step, index) => {
@@ -4035,7 +4041,8 @@ function nextReadingJobBox(job, key){
       : finishing ? ' aria-disabled="true"' : ""}>` +
     `${nextPendingLabel(`reading-cancel:${key}`, "Cancel")}</button></div>` +
     `<ol class="next-cockpit-reading-steps">${items}</ol>` +
-    `<p class="next-cockpit-reading-job-note">${esc(NEXT_READING_JOB_NOTE)}</p>` +
+    `<p class="next-cockpit-reading-job-note">` +
+    `${esc(running ? NEXT_READING_JOB_NOTE_SO_FAR : NEXT_READING_JOB_NOTE)}</p>` +
     (mine && mine.failed && !finishing
       ? `<p class="next-cockpit-reading-why">${esc(NEXT_READING_CANCEL_FAILED)}</p>` : "") +
     "</div>";
@@ -4591,7 +4598,8 @@ function nextCockpitReadingControl(session, annotation, model, primary = true, s
      this job, and the reader allowed it, or it ran under an Allow, after the
      same words (DRC-4758 slice B). */
   if(job){
-    return nextReadingJobBox(job, key) +
+    const running = nextSessionEndedAt(session) == null && session.state !== "idle";
+    return nextReadingJobBox(job, key, running) +
       (off ? `<div class="next-cockpit-reading-ask">${off}</div>` : "") +
       said(answered) + counted;
   }
@@ -4921,7 +4929,8 @@ function nextCockpitReadingParts(session, annotation, entries, model, observed, 
   const job = nextReadingJob(session);
   const staleState = Boolean(nextCockpitResultStale(shape, raw, annotation, held, ""));
   const answer = shape.criteria.length || shape.departures.length
-    ? nextCockpitResultAnswer(nextDriftAnswer(shape, held), numbers, byId) : "";
+    ? nextCockpitResultAnswer(nextDriftAnswer(shape, held), numbers, byId,
+      shape.scope === "mid-flight") : "";
   const work = nextCockpitResultWork(held, numbers, source && source.scan, shape.windowStart);
   /* From the reading rather than from the live row. A reading describes the
      moment it was taken, and the producer already agreed with the HOW IT
@@ -5253,7 +5262,8 @@ function nextCockpitDirectionQuestion(session, annotation, source, model, primar
     `${NEXT_COCKPIT_ADD_DIRECTION}</button>`;
   const opened = nextCockpitDirectionLines.get(key);
   const count = nextNumber(annotation && annotation.reading_count) || 0;
-  return (job ? nextReadingJobBox(job, key) : "") +
+  const running = nextSessionEndedAt(session) == null && session.state !== "idle";
+  return (job ? nextReadingJobBox(job, key, running) : "") +
     '<div class="next-cockpit-direction-question" data-next-cockpit-direction-question>' +
     `<p class="next-cockpit-direction-said">${esc(nextCockpitDirectionSentence(
       session, annotation, pending, numbers))}</p>` +

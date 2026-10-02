@@ -670,7 +670,7 @@ function visible_text_source(html){ return html.replace(/<[^>]*>/g, " ").replace
         # stands in for it until the result arrives with a later payload.
         self.assertIn("Analyzing drift", out)
         self.assertIn("Waiting for Codex", out)
-        self.assertIn("You can keep working. The result will appear here.", out)
+        self.assertIn("Reads only the work so far. The result will appear here.", out)
         self.assertNotIn("Checking for drift…", out)
 
 

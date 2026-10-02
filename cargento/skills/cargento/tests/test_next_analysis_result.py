@@ -766,3 +766,36 @@ class TheReducerTest(_ResultPage):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+@unittest.skipUnless(shutil.which("node"), "node not available")
+class AMidFlightAnalysisNeverLooksFinalTest(_ResultPage):
+    """Owner, 2026-10-02 (J6): a reading of a running session reads the work so far."""
+
+    SO_FAR = "Reads the work so far; the session is still running."
+    JOB_NOTE = "Reads only the work so far. The result will appear here."
+
+    def test_a_reader_analyzing_a_running_session_is_told_before_during_and_after_that_it_reads_only_the_work_so_far(
+        self,
+    ) -> None:
+        before = visible_text(drift_of(self.page(None, extra='__s.state = "working";\n')))
+        self.assertIn(self.SO_FAR, before)
+        self.assertNotIn("up to now", before)
+        job = (
+            '__s.state = "working";\n'
+            '__dashboard.reading_jobs = {"claude:focus-1": {id:"j1", phase:"waiting",'
+            ' started_at:106, phase_at:106, provider:"codex", steps:[{phase:"waiting",'
+            ' text:"Waiting for Codex"}]}};\n'
+        )
+        during = visible_text(drift_of(self.page(None, extra=job)))
+        self.assertIn(self.JOB_NOTE, during)
+        midflight = assessment(MIXED["criteria"], scope="mid-flight")
+        after = drift_of(self.page(midflight, levels.HIGH))
+        head = re.search(r'<p class="next-cockpit-result-headline">([\s\S]*?)</p>', after)
+        assert head is not None
+        self.assertTrue(visible_text(head.group(1)).strip().startswith("So far:"))
+        self.assertIn('<span class="next-cockpit-result-scope">So far:</span>', head.group(1))
+
+    def test_a_reading_through_an_end_carries_no_so_far(self) -> None:
+        final = assessment(MIXED["criteria"], scope="final")
+        self.assertNotIn("So far:", drift_of(self.page(final, levels.HIGH)))

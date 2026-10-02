@@ -5655,7 +5655,8 @@ console.log(JSON.stringify({before, during, other, calls}));
         for text in ("Preparing what is sent", "Waiting for Codex", "Checking the reply"):
             self.assertIn(text, during)
         self.assertRegex(during, r'data-state="active"[^>]*>(?:(?!</li>).)*Preparing what is sent')
-        self.assertIn("You can keep working. The result will appear here.", during)
+        # The row is working, so the box says it reads only the work so far (owner, 2026-10-02).
+        self.assertIn("Reads only the work so far. The result will appear here.", during)
         self.assertNotIn('data-next-cockpit-action="reading-ask"', during)
         self.assertIn("0 model requests recorded", during)
         self.assertNotIn("Analyzing drift", out["other"])

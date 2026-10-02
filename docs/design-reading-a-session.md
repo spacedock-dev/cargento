@@ -2233,6 +2233,9 @@ throughout (arbiter spec, `ui3`).
   draws a waiting dot beside "Ready in a few seconds." and opens at `until` with no new data, so
   this supersedes "No timer is added" in the 2026-10-01 press amendment: one page-wide timer
   serves the one drawn card, never a row. Levels and a scope change are not announced.
+- A mid-flight analysis never looks final. On a running session the hint reads "Reads the work so
+  far; the session is still running.", the Analyzing box says "Reads only the work so far.", and a
+  stored reading whose scope is mid-flight leads its answer with "So far:".
 
 #### Amended 2026-10-01: the first press is a consent step
 

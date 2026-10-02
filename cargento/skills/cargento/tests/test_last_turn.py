@@ -812,9 +812,9 @@ const hint = (session, words = annotation) =>
         self.assertIn("Reads the session up to its last turn against your intent.", html)
         self.assertNotIn('id="next-cockpit-reading-refused"', html)
 
-    def test_a_reader_of_a_running_session_is_told_it_reads_up_to_now(self) -> None:
+    def test_a_reader_of_a_running_session_is_told_it_reads_the_work_so_far(self) -> None:
         html = self.control('{harness:"claude", sid:"s1", state:"working", finished_at:100}')
-        self.assertIn("Reads the session up to now against your intent.", html)
+        self.assertIn("Reads the work so far; the session is still running.", html)
 
     def test_a_reader_of_an_ended_session_is_told_it_reads_up_to_its_end(self) -> None:
         html = self.control(

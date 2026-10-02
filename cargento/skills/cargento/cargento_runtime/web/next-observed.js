@@ -109,12 +109,15 @@ function nextSessionStop(source){
 function nextObservedReadHint(source){
   const ended = nextSessionEndedAt(source) != null;
   const stopped = source.state === "idle" ? nextSessionStop(source) : null;
+  const kind = nextObservedLanding(source, ended, stopped).endKind;
+  /* A running session is read mid-flight, and the page says so before the
+     press, so a press on it never reads as a final one (owner, 2026-10-02). */
+  if(kind === "running") return "Reads the work so far; the session is still running.";
   const cutoff = {
-    "running": "now",
     "session-end": "its end",
     "turn-stop": NEXT_READING_TURN_STOP_HARNESSES.includes(String(source.harness || ""))
       ? "its last turn" : "",
-  }[nextObservedLanding(source, ended, stopped).endKind] || "";
+  }[kind] || "";
   return cutoff ? `Reads the session up to ${cutoff} against your intent.` : "";
 }
 

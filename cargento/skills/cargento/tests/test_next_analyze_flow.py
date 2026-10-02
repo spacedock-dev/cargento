@@ -394,7 +394,7 @@ class IdleTheDisclosureIsOneWordedClickAwayTest(PanelPage):
         self.assertIn('<span aria-hidden="true">0 model requests</span>', row)
         # Then only the hint and the summary are in view before the next section.
         tail = after_button(drift)
-        hint = "Reads the session up to now against your intent. Runs in the background."
+        hint = "Reads the work so far; the session is still running. Runs in the background."
         self.assertTrue(tail.startswith(f"{hint} What is sent to Codex"), tail)
         self.assertNotIn(visible_text(disclosure)[:60], visible_text(drift))
         sent = SENT.search(drift)
