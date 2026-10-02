@@ -3918,7 +3918,7 @@ function nextReadingFlipAcknowledge(session, pressable){
 
 /* Whether the drawn card shows Analyze pressable, given whether the board says
    it is. Also says a committed change and schedules the hold's re-render. */
-function nextReadingFlip(session, pressable, eligibility){
+function nextReadingFlip(session, pressable, eligibility, quiet = false){
   const key = sessKey(session);
   let flip = nextReadingFlips.get(key);
   if(!flip || flip.drawn < nextReadingFlipRender - 1){
@@ -3942,7 +3942,7 @@ function nextReadingFlip(session, pressable, eligibility){
     flip.shown = true;
     flip.candidate = null;
     nextReadingFlipSchedule("hold", null);
-    nextReadingFlipSay(session, flip, nextReadingFlipOpened(session));
+    if(!quiet) nextReadingFlipSay(session, flip, nextReadingFlipOpened(session));
     return flip;
   }
   const now = Date.now();
@@ -3959,6 +3959,7 @@ function nextReadingFlip(session, pressable, eligibility){
   flip.candidate = null;
   nextReadingFlipSchedule("hold", null);
   const request = nextCockpitReadingRequests.get(key);
+  if(quiet) return flip;
   if(request && request.consent && !request.pending){
     /* The question was the consent, and it is gone: never raised again
        without a press (J5). */
@@ -4566,7 +4567,11 @@ function nextCockpitReadingControl(session, annotation, model, primary = true, s
   /* Only the board's eligibility flips: a refusal the reader's own edit caused
      is not one. While a close is still held, the card draws Analyze live and
      a press is answered by the handler's refusal. */
-  const flip = nextReadingFlip(session, !refusedByBoard, pressed);
+  /* A change another refusal still hides (the model switch, an unsaved edit)
+     is tracked and never said: "Analyze is open" beside an inert button is
+     false. */
+  const hidden = Boolean(nextPromptReadingRefusal(session, annotation, model, true));
+  const flip = nextReadingFlip(session, !refusedByBoard, pressed, hidden);
   if(refusedByBoard && flip.shown){
     reason = nextPromptReadingRefusal(session, annotation, model, true);
     pressed = null;

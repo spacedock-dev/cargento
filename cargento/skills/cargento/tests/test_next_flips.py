@@ -277,6 +277,25 @@ console.log(JSON.stringify({back:__els.app.innerHTML, said:__flipWrites()}));
         self.assertNotIn(OPEN_RUNNING, out["back"])
         self.assertEqual([], out["said"])
 
+    def test_a_change_another_refusal_still_hides_is_not_said(self) -> None:
+        # Measured on a scratch board run with --no-observer-model: the settle ended and the
+        # line said "Analyze is open" beside a button the model switch still held inert.
+        out = self.run_flip(
+            """
+const opened = await __poll(OPEN, 1005);
+await __poll(IDLE, 1006);
+const closed = await __poll(IDLE, 1017);
+console.log(JSON.stringify({opened, closed, said:__flipWrites()}));
+""",
+            setup=IDLE_FIRST
+            + '__dashboard.reading = {consent:false, reason:"run-disabled", used:0, limit:12,'
+            " providers:{codex:false, claude:false}, tool_output:{}};\n",
+        )
+        self.assertIn('aria-disabled="true"', ask_tag(drift_of(out["opened"])))
+        self.assertNotIn(OPEN_RUNNING, out["opened"])
+        self.assertNotIn(CLOSED, out["closed"])
+        self.assertEqual([], out["said"])
+
     def test_the_line_goes_with_the_next_click_inside_the_card(self) -> None:
         out = self.run_flip(
             """
