@@ -1354,7 +1354,11 @@ popovers, the header's "Why" and the Sessions group caveat, and a popover is nev
 an accordion, because an accordion clips its overflow. Escape or a click outside closes a popover,
 and Escape on one does not leave the page. A summary is clickable across its own words only, and a
 chevron that turns replaces the browser's triangle. The motion runs only when the reader toggles:
-an open disclosure is written open in the redrawn markup, so a poll never replays it.
+an open disclosure is written open in the redrawn markup, so a poll never replays it. The project
+page follows the same rule as the session, Sessions and Attention pages, since a reader reaches it
+from every session's crumb. Its two menus ease too, each keeping its own look: the scope switcher,
+shown only on a narrow screen, opens in place as an accordion does, and the More menu, which drops
+over the page, fades in over 160ms.
 
 ### Tier 3 ships no `docs/` href and no `DEC-N` token
 

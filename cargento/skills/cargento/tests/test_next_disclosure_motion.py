@@ -19,8 +19,9 @@ from .test_next_drift_panel import FIXTURE, PanelPage
 
 VIEWS = (
     ':is([data-next-view-body="session"],[data-next-view-body="sessions"],'
-    '[data-next-view-body="attention"])'
+    '[data-next-view-body="attention"],[data-next-view-body="project"])'
 )
+SWITCHER = f"{VIEWS} details.next-cockpit-scope-switcher"
 DISCLOSURES = (
     "details:is(.next-cockpit-why,[data-next-cockpit-disclosure],"
     ".next-attention-coverage-details):not(.next-menu):not(.next-cockpit-scope-switcher)"
@@ -172,6 +173,47 @@ __els.app.innerHTML = JSON.stringify({afterInside, afterOutside:popover.open});
 """,
         )
         self.assertEqual({"afterInside": True, "afterOutside": False}, json.loads(out))
+
+
+@unittest.skipUnless(shutil.which("node"), "node not available")
+class TheProjectPageEasesItsDisclosuresTooTest(PanelPage):
+    """Verifier F3 (2026-10-02): the owner asked that "each toggle dropdown" ease, and the
+    project page, one click from every session crumb, still snapped its "Evidence" disclosures
+    open behind the browser's triangle, and its menus with them."""
+
+    def test_the_project_pages_evidence_disclosures_are_in_the_eased_scope(self) -> None:
+        html = self._run_page_js(
+            "await __settle();\nawait __settle();\n"
+            "navigateNext({view:'project', project:'cargento', session:null});\n"
+            "await __settle();\nconsole.log(JSON.stringify(__els.app.innerHTML));",
+            storage_prelude({}) + FIXTURE,
+        )
+        assert isinstance(html, str)
+        body = html[html.index('data-next-view-body="project"') :]
+        evidence = re.findall(r"<details\b[^>]*>\s*<summary>Evidence · [^<]*</summary>", body)
+        self.assertGreater(len(evidence), 0)
+        for tag in evidence:
+            with self.subTest(tag=tag[:60]):
+                self.assertIn("data-next-cockpit-disclosure=", tag)
+        self.assertIn('[data-next-view-body="project"]', VIEWS)
+
+    def test_the_scope_switcher_and_the_more_menu_ease_and_reduced_motion_gets_none(self) -> None:
+        switcher = rule(f"{SWITCHER}::details-content", SUPPORTS)
+        self.assertIn("block-size:0", switcher)
+        self.assertIn("block-size var(--disclose-dur) var(--disclose-ease)", switcher)
+        self.assertIn("opacity var(--disclose-dur) var(--disclose-ease)", switcher)
+        self.assertIn("block-size:auto", rule(f"{SWITCHER}[open]::details-content", SUPPORTS))
+        menu = rule("details.next-menu::details-content", SUPPORTS)
+        self.assertIn("opacity:0", menu)
+        self.assertIn("opacity var(--disclose-pop-dur) var(--disclose-ease)", menu)
+        self.assertIn("opacity:1", rule("details.next-menu[open]::details-content", SUPPORTS))
+        self.assertIn(
+            "transition:none",
+            rule(
+                f"details.next-menu::details-content,{SWITCHER}::details-content",
+                f"{SUPPORTS} {REDUCED}",
+            ),
+        )
 
 
 class EveryDisclosureEasesOpenAndShutTest(unittest.TestCase):
