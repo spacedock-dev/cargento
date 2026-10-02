@@ -470,3 +470,13 @@ function nextFetchBounded(url, init, signal){
     });
   });
 }
+
+/* The bound alone, for a request whose control keeps its own flags (Steer
+   back, Recompose, Copy's record): aborted at the same 15 s, so a lost
+   request never leaves those flags standing. `done` clears the timer. */
+function nextBoundedSignal(){
+  const controller = typeof AbortController === "function" ? new AbortController() : null;
+  const timer = controller ? setTimeout(() => controller.abort(), NEXT_PENDING_BOUND_MS) : null;
+  return {signal: controller ? controller.signal : null,
+    done(){ if(timer != null) clearTimeout(timer); }};
+}

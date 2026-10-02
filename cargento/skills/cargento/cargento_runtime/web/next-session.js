@@ -159,7 +159,9 @@ function nextSessionAskBlock(session, asks, observed){
     const options = Array.isArray(ask && ask.options) ? ask.options : [];
     const buttons = options.map((option, index) =>
       `<button type="button" class="next-action" data-next-answer="${esc(id)}" ` +
-      `data-next-answer-index="${index}">${esc(option)}</button>`
+      `data-next-answer-index="${index}" data-next-focus="${esc(`answer:${id}:${index}`)}"` +
+      `${nextPendingAttrs(`answer:${id}:${index}`)}>` +
+      `${nextPendingLabel(`answer:${id}:${index}`, esc(option))}</button>`
     ).join("");
     const choices = buttons
       ? `<div class="next-session-answer-options">${buttons}</div>`
@@ -761,12 +763,18 @@ function nextSessionView(project, harness, sid, openDisclosures = new Set()){
 }
 
 async function nextAnswerAsk(id, index){
+  // One answer to one question at a time: another option waits for this one.
+  if([...nextPending.keys()].some(key => key.startsWith(`answer:${id}:`))) return;
+  const control = `answer:${id}:${index}`;
+  const press = nextPendingStart(control, "Sending\u2026");
+  if(!press) return;
+  renderNext({named: control});
   try{
-    const response = await fetch("/api/answer", {
+    const response = await nextFetchBounded("/api/answer", {
       method: "POST",
       headers: {"Content-Type": "application/json"},
       body: JSON.stringify({id, index}),
-    });
+    }, press.signal);
     if(!response.ok) throw new Error(`HTTP ${response.status}`);
     const answer = await response.json();
     if(answer.answered !== true) throw new Error("answer not confirmed");
@@ -774,7 +782,9 @@ async function nextAnswerAsk(id, index){
     await refreshNext();
   }catch(_error){
     nextSessionAnswerNotes.set(id, NEXT_ANSWER_FAILURE);
-    renderNext();
+  }finally{
+    nextPendingEnd(control);
+    renderNext({named: control});
   }
 }
 

@@ -19,6 +19,9 @@ import shutil
 import unittest
 from typing import Any
 
+from cargento_runtime import levels
+
+from . import test_next_analysis_result as result_tests
 from . import test_next_cockpit as cockpit_tests
 from .test_next_intent_draft import TYPED, _DraftPage, drift_of, intent_of
 from .test_next_intent_editor import css
@@ -476,3 +479,141 @@ console.log(JSON.stringify({busy, posts:(__held["/api/reading"] || []).length}))
         self.assertIn("data-next-pending", out["busy"])
         self.assertEqual("Keeping…", visible_text(out["busy"]).strip())
         self.assertEqual(1, out["posts"])
+
+
+@unittest.skipUnless(shutil.which("node"), "node not available")
+class TheRemainingAwaitingControlsShowTheyAreWorkingTest(_DraftPage):
+    def test_a_reader_who_presses_confirm_discard_again_while_it_is_working_sends_one_discard(
+        self,
+    ) -> None:
+        out = self.drive(
+            TYPED + DOM + HOLD,
+            """
+__hold("/api/annotate");
+__press("held-discard"); await __settle();
+__setNow(1003);
+__press("held-discard"); await __settle();
+const busy = __buttonOf("held-discard");
+const warned = wrote("next-cockpit-cue-alert").length;
+__setNow(1006);
+__press("held-discard"); await __settle();
+// The rest of a double-click lands as a slip, which would re-arm an idle control.
+__fire("click", {preventDefault(){}, detail:2,
+  target:{dataset:{nextCockpitAction:"held-discard"}, closest(){ return this; }}});
+await __settle();
+console.log(JSON.stringify({busy, posts:(__held["/api/annotate"] || []).length,
+  after:__buttonOf("held-discard"), warned, rewarned:wrote("next-cockpit-cue-alert").length}));
+""",
+        )
+        self.assertEqual(1, out["posts"])
+        self.assertIn("data-next-pending", out["busy"])
+        self.assertEqual("Discarding…", visible_text(out["busy"]).strip())
+        self.assertIn("data-next-pending", out["after"])
+        # A press on a discard being answered never re-arms it or re-raises its warning.
+        self.assertEqual(out["warned"], out["rewarned"])
+
+    def test_a_discard_that_is_never_answered_is_said_as_unconfirmed_and_never_rearms(
+        self,
+    ) -> None:
+        out = self.drive(
+            TYPED + HOLD,
+            TIMERS
+            + """
+__hold("/api/annotate");
+__press("held-discard"); await __settle();
+__setNow(1003);
+__press("held-discard"); await __settle();
+__fireTimers(15000);
+await __settle(); await __settle(); await __settle();
+console.log(JSON.stringify({button:__buttonOf("held-discard"), html:__els.app.innerHTML}));
+""",
+        )
+        self.assertNotIn("data-next-pending", out["button"])
+        self.assertNotIn("Confirm discard", out["button"])
+        self.assertIn(
+            "Cargento did not answer, so this page cannot tell whether the words were discarded.",
+            visible_text(out["html"]),
+        )
+
+    def test_a_reader_who_presses_turn_off_readings_twice_sends_one_request(self) -> None:
+        out = self.drive(
+            SETTLED + HOLD,
+            """
+__hold("/api/reading");
+__press("reading-off"); await __settle();
+const busy = __buttonOf("reading-off");
+__press("reading-off"); await __settle();
+console.log(JSON.stringify({busy, posts:(__held["/api/reading"] || []).length}));
+""",
+        )
+        self.assertEqual(1, out["posts"])
+        self.assertIn("data-next-pending", out["busy"])
+        self.assertEqual("Turning off…", visible_text(out["busy"]).strip())
+
+    def test_a_reader_whose_add_it_to_my_intent_is_never_answered_can_press_it_again(
+        self,
+    ) -> None:
+        out = self.drive(
+            TYPED
+            + "__semantic.facts = __semantic.facts.filter(f => f.fact_id !== 'fo-b');\n"
+            + HOLD,
+            TIMERS
+            + """
+__hold("/api/direction");
+__press("direction-add", "fo-a"); await __settle();
+const busy = __buttonOf("direction-add");
+__press("direction-add", "fo-a"); await __settle();
+const once = __held["/api/direction"].length;
+__fireTimers(15000);
+await __settle(); await __settle(); await __settle();
+const after = __els.app.innerHTML;
+__press("direction-add", "fo-a"); await __settle();
+console.log(JSON.stringify({busy, once, after, twice:__held["/api/direction"].length}));
+""",
+        )
+        self.assertIn("data-next-pending", out["busy"])
+        self.assertEqual("Opening…", visible_text(out["busy"]).strip())
+        self.assertEqual(1, out["once"])
+        self.assertIn(
+            "Could not open that direction, so nothing was added. Press again to retry.",
+            visible_text(out["after"]),
+        )
+        self.assertEqual(2, out["twice"])
+
+    def test_a_reader_who_saves_an_added_direction_twice_sends_one_save(self) -> None:
+        out = self.drive(
+            TYPED
+            + "__semantic.facts = __semantic.facts.filter(f => f.fact_id !== 'fo-b');\n"
+            + HOLD,
+            """
+__press("direction-add", "fo-a"); await __settle(); await __settle();
+__hold("/api/annotate");
+__press("direction-save"); await __settle();
+const busy = (__els.app.innerHTML.match(
+  /<button[^>]*data-next-cockpit-action="direction-save"[^>]*>[\\s\\S]*?<\\/button>/) || [""])[0];
+__press("direction-save"); await __settle();
+console.log(JSON.stringify({busy, posts:(__held["/api/annotate"] || []).length}));
+""",
+        )
+        self.assertEqual(1, out["posts"])
+        self.assertIn("data-next-pending", out["busy"])
+
+
+@unittest.skipUnless(shutil.which("node"), "node not available")
+class NotAccurateShowsItIsWorkingTest(result_tests._ResultPage):
+    def test_a_reader_who_presses_not_accurate_twice_sends_one_mark(self) -> None:
+        out = self.page(
+            result_tests.MIXED,
+            levels.HIGH,
+            extra=HOLD,
+            after="""
+__hold("/api/annotate");
+__press("not-accurate", __argOf("not-accurate")); await __settle();
+const busy = __buttonOf("not-accurate");
+__press("not-accurate", __argOf("not-accurate")); await __settle();
+console.log(JSON.stringify({busy, posts:(__held["/api/annotate"] || []).length}));
+""",
+        )
+        self.assertEqual(1, out["posts"])
+        self.assertIn("data-next-pending", out["busy"])
+        self.assertEqual("Saving…", visible_text(out["busy"]).strip())

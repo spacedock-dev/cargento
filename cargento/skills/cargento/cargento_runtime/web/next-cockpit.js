@@ -1048,6 +1048,10 @@ const NEXT_COCKPIT_HELD_CUE_LIMIT = 16;
    rather than being dropped, so a slip cannot silently undo the deliberate
    press before it, and a held key never accumulates its way to a confirm. */
 const NEXT_COCKPIT_DISCARD_DWELL_MS = 1_200;
+/* The page's own, unlike the server's discard sentences: no answer came, so
+   the server has said nothing about these words (owner, 2026-10-02). */
+const NEXT_COCKPIT_DISCARD_UNCONFIRMED =
+  "Cargento did not answer, so this page cannot tell whether the words were discarded.";
 const NEXT_COCKPIT_HELD_CUES = {
   error: "Not saved. The server refused the write, and your words are still in the box.",
   unpersisted: "Not stored. The store could not be written, so the refresh has already " +
@@ -1117,6 +1121,7 @@ function nextCockpitHeldCue(key){
    that knows which table a kind belongs to. */
 function nextCockpitHeldSentence(kind){
   if(!kind) return "";
+  if(kind === "discard-unconfirmed") return NEXT_COCKPIT_DISCARD_UNCONFIRMED;
   if(kind.startsWith("discard-")){
     const said = (nextData && nextData.annotate_discard) || {};
     return String(said[kind.slice("discard-".length)] || "");
@@ -1628,8 +1633,10 @@ function nextCockpitDirectionLine(session, annotation, cap, source = null){
     '<span class="next-cockpit-direction-tools">' +
     '<button type="button" data-next-cockpit-action="direction-save" ' +
     `data-next-focus="direction-save:${esc(key)}"` +
-    `${ready ? "" : ' aria-disabled="true"'}` +
-    `${why ? ' aria-describedby="next-cockpit-direction-why"' : ""}>Save</button>` +
+    `${nextPendingHas(`direction-save:${key}`) ? nextPendingAttrs(`direction-save:${key}`)
+      : ready ? "" : ' aria-disabled="true"'}` +
+    `${why ? ' aria-describedby="next-cockpit-direction-why"' : ""}>` +
+    `${nextPendingLabel(`direction-save:${key}`, "Save")}</button>` +
     '<button type="button" data-next-cockpit-action="direction-cancel" ' +
     `data-next-focus="direction-cancel:${esc(key)}">Remove</button></span></div>` + choose +
     '<p class="next-cockpit-held-full" id="next-cockpit-direction-why" data-next-cockpit-direction-why' +
@@ -1647,13 +1654,17 @@ async function nextCockpitOpenDirection(session, factId, n, later = false){
     if(!open.opening) renderNext({named: `direction:${key}`});
     return;
   }
+  const control = later ? `update-intent:${key}` : `direction-add:${key}`;
+  const press = nextPendingStart(control, "Opening\u2026");
+  if(!press) return;
   nextCockpitDirectionLines.set(key, {factId, n, later, opening: true});
-  renderNext();
+  renderNext({named: control});
   let held;
   try{
-    const response = await fetch("/api/direction", {method: "POST",
+    const response = await nextFetchBounded("/api/direction", {method: "POST",
       headers: {"Content-Type": "application/json"},
-      body: JSON.stringify({harness: session.harness, sid: session.sid, fact_id: factId})});
+      body: JSON.stringify({harness: session.harness, sid: session.sid, fact_id: factId})},
+      press.signal);
     const answer = response && typeof response.json === "function"
       ? await response.json().catch(() => null) : null;
     if(response && response.ok && answer && answer.ok === true && typeof answer.text === "string"){
@@ -1668,9 +1679,11 @@ async function nextCockpitOpenDirection(session, factId, n, later = false){
     }
   }catch(_error){
     held = {factId, n, later, error: NEXT_COCKPIT_DIRECTION_UNOPENED};
+  }finally{
+    nextPendingEnd(control);
   }
   nextCockpitDirectionLines.set(key, held);
-  renderNext(held.error ? {} : {named: `direction:${key}`});
+  renderNext(held.error ? {named: control} : {named: `direction:${key}`});
 }
 
 async function nextCockpitSaveDirection(session){
@@ -1690,19 +1703,31 @@ async function nextCockpitSaveDirection(session){
   // Over a draft the one write adopts it, as the owner ruled.
   const draft = nextIntentDraft(session, annotation);
   const linesKey = nextCockpitHeldKey(session, "lines");
+  const control = `direction-save:${key}`;
+  const press = nextPendingStart(control, "Saving\u2026", "Saving the line.");
+  if(!press) return;
   held.pending = true;
   held.cue = "";
-  renderNext();
+  renderNext({named: control});
   try{
-    const response = await fetch("/api/annotate", {method: "POST",
-      headers: {"Content-Type": "application/json"},
-      body: JSON.stringify({harness: session.harness, sid: session.sid,
-        add_direction: held.factId, text: held.text,
-        expected_revision: nextNumber(annotation && annotation.revision) || 0,
-        ...(held.replace != null ? {replace: held.replace} : {}),
-        ...nextIntentAdoption(draft)})});
+    let response;
+    let saved;
+    try{
+      response = await nextFetchBounded("/api/annotate", {method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({harness: session.harness, sid: session.sid,
+          add_direction: held.factId, text: held.text,
+          expected_revision: nextNumber(annotation && annotation.revision) || 0,
+          ...(held.replace != null ? {replace: held.replace} : {}),
+          ...nextIntentAdoption(draft)})}, press.signal);
+      saved = response && response.ok ? await response.json() : null;
+    }catch(_error){
+      // No answer is not a refusal: the page cannot tell whether it landed.
+      held.cue = "unconfirmed";
+      await refreshNext();
+      return;
+    }
     if(!response || !response.ok) throw new Error(`HTTP ${response && response.status}`);
-    const saved = await response.json();
     if(!saved || saved.ok !== true) throw new Error("save not confirmed");
     const outcome = String(saved.outcome || "");
     const kind = NEXT_COCKPIT_HELD_OUTCOME_CUES[outcome] ||
@@ -1737,7 +1762,8 @@ async function nextCockpitSaveDirection(session){
     held.cue = "error";
   }finally{
     held.pending = false;
-    renderNext();
+    nextPendingEnd(control);
+    renderNext({named: control});
   }
 }
 
@@ -3346,7 +3372,8 @@ function nextCockpitResultFoot(session, annotation, raw){
   return '<div class="next-cockpit-result-foot">' +
     '<button type="button" class="next-action next-action--quiet" data-next-cockpit-action="not-accurate" ' +
     `data-arg="${esc(String(readAt))}" aria-pressed="${marked ? "true" : "false"}" ` +
-    `data-next-focus="not-accurate:${esc(key)}">${NEXT_RESULT_NOT_ACCURATE}</button>` +
+    `data-next-focus="not-accurate:${esc(key)}"${nextPendingAttrs(`not-accurate:${key}`)}>` +
+    `${nextPendingLabel(`not-accurate:${key}`, NEXT_RESULT_NOT_ACCURATE)}</button>` +
     (marked ? `<span class="next-cockpit-result-marked">${NEXT_RESULT_MARKED}</span>` : "") +
     (nextCockpitNotAccurateUnsaved.has(key)
       ? `<p class="next-cockpit-reading-why" role="status">${NEXT_RESULT_MARK_UNSAVED}</p>` : "") +
@@ -3355,15 +3382,19 @@ function nextCockpitResultFoot(session, annotation, raw){
 
 async function nextCockpitMarkNotAccurate(session, readAt){
   const key = sessKey(session);
+  const control = `not-accurate:${key}`;
+  const press = nextPendingStart(control, "Saving\u2026");
+  if(!press) return;
+  renderNext({named: control});
   const annotation = nextCockpitAnnotation(session);
   const on = !(annotation && annotation.not_accurate === true);
   nextCockpitNotAccurateUnsaved.delete(key);
   let saved = false;
   try{
-    const response = await fetch("/api/annotate", {method: "POST",
+    const response = await nextFetchBounded("/api/annotate", {method: "POST",
       headers: {"Content-Type": "application/json"},
       body: JSON.stringify({harness: session.harness, sid: session.sid, not_accurate: on,
-        read_at: readAt})});
+        read_at: readAt})}, press.signal);
     const answer = response && typeof response.json === "function"
       ? await response.json().catch(() => null) : null;
     saved = Boolean(response && response.ok && answer && answer.persisted !== false &&
@@ -3372,8 +3403,12 @@ async function nextCockpitMarkNotAccurate(session, readAt){
     saved = false;
   }
   if(!saved) nextCockpitNotAccurateUnsaved.add(key);
-  await refreshNext();
-  renderNext({named: `not-accurate:${key}`});
+  try{
+    await refreshNext();
+  }finally{
+    nextPendingEnd(control);
+    renderNext({named: control});
+  }
 }
 
 /* One sentence, two places. Note 4 of the design records that the steer box
@@ -4408,10 +4443,11 @@ async function nextCockpitComposeCorrection(session, stamp, {quiet = null} = {})
     nextCockpitCorrections.set(key, next);
     renderNext();
   }
+  const bounded = nextBoundedSignal();
   try{
-    const response = await fetch("/api/correction", {method: "POST",
+    const response = await nextFetchBounded("/api/correction", {method: "POST",
       headers: {"Content-Type": "application/json"},
-      body: JSON.stringify({harness: session.harness, sid: session.sid})});
+      body: JSON.stringify({harness: session.harness, sid: session.sid})}, bounded.signal);
     const answer = response && typeof response.json === "function"
       ? await response.json().catch(() => null) : null;
     const parts = answer && answer.ok === true ? nextCockpitCorrectionParts(answer.parts) : null;
@@ -4425,6 +4461,8 @@ async function nextCockpitComposeCorrection(session, stamp, {quiet = null} = {})
     }
   }catch(_error){
     next.why = NEXT_COCKPIT_CORRECTION_FAILED;
+  }finally{
+    bounded.done();
   }
   next.pending = false;
   if(quiet){
@@ -4471,12 +4509,15 @@ async function nextCockpitCopyCorrection(session, target, source){
   held.cue = copied ? "copied" : "failed";
   renderNext({named: `correction-copy:${key}`});
   if(!copied) return;
+  const bounded = nextBoundedSignal();
   try{
-    await fetch("/api/correction/copied", {method: "POST",
+    await nextFetchBounded("/api/correction/copied", {method: "POST",
       headers: {"Content-Type": "application/json"},
-      body: JSON.stringify({harness: session.harness, sid: session.sid, text})});
+      body: JSON.stringify({harness: session.harness, sid: session.sid, text})}, bounded.signal);
   }catch(_error){
     /* Unrecorded, a paste reads as the reader's own words: the safe side. */
+  }finally{
+    bounded.done();
   }
 }
 
@@ -4580,7 +4621,8 @@ function nextCockpitReadingControl(session, annotation, model, primary = true, s
   const job = nextReadingJob(session);
   const off = nextReadingAnyConsent()
     ? '<button type="button" class="next-action" data-next-cockpit-action="reading-off" ' +
-      `data-next-focus="reading-off:${esc(key)}">Turn off readings</button>` : "";
+      `data-next-focus="reading-off:${esc(key)}"${nextPendingAttrs(`reading-off:${key}`)}>` +
+      `${nextPendingLabel(`reading-off:${key}`, "Turn off readings")}</button>` : "";
   /* Only from a published annotation: with the store off there is no count
      to read, and "0 requests" would be a default standing in for one. */
   const counted = annotation ? nextCockpitReadingCount(count) : "";
@@ -4842,7 +4884,9 @@ function nextCockpitReadingParts(session, annotation, entries, model, observed, 
   const update = departed
     ? '<button type="button" class="next-action next-action--secondary" data-next-cockpit-action="update-intent" ' +
       `data-arg="${esc(nextCockpitOfferedDirection(annotation, entries, session, early))}" ` +
-      `data-next-focus="update-intent:${esc(sessKey(session))}">Update intent instead</button>`
+      `data-next-focus="update-intent:${esc(sessKey(session))}"` +
+      `${nextPendingAttrs(`update-intent:${sessKey(session)}`)}>` +
+      `${nextPendingLabel(`update-intent:${sessKey(session)}`, "Update intent instead")}</button>`
     : "";
   const slotted = offer ? {lead: departed,
     button: nextCockpitSteerButton(session, primary && (departed || Boolean(noReader))) + update,
@@ -5258,8 +5302,9 @@ function nextCockpitDirectionQuestion(session, annotation, source, model, primar
     `${nextPendingLabel(`direction-keep:${key}`,
       analyze ? NEXT_COCKPIT_KEEP_ANALYZE : NEXT_COCKPIT_KEEP)}</button>`;
   const add = '<button type="button" class="next-action" data-next-cockpit-action="direction-add" ' +
-    `data-arg="${esc(String(earliest.id || ""))}" data-next-focus="direction-add:${esc(key)}">` +
-    `${NEXT_COCKPIT_ADD_DIRECTION}</button>`;
+    `data-arg="${esc(String(earliest.id || ""))}" data-next-focus="direction-add:${esc(key)}"` +
+    `${nextPendingAttrs(`direction-add:${key}`)}>` +
+    `${nextPendingLabel(`direction-add:${key}`, NEXT_COCKPIT_ADD_DIRECTION)}</button>`;
   const opened = nextCockpitDirectionLines.get(key);
   const count = nextNumber(annotation && annotation.reading_count) || 0;
   const running = nextSessionEndedAt(session) == null && session.state !== "idle";
@@ -5498,8 +5543,9 @@ function nextCockpitHeldDiscardBlock(session, annotation){
       ? '<button type="button" class="next-action" ' +
         'data-next-cockpit-action="held-discard" ' +
         `data-next-cockpit-discard-key="${esc(key)}" data-next-focus="${esc(key)}"` +
+        nextPendingAttrs(key) +
         (warning ? ' aria-describedby="next-cockpit-discard-armed"' : "") + ">" +
-        `${armed ? "Confirm discard" : "Discard everything"}</button>`
+        `${nextPendingLabel(key, armed ? "Confirm discard" : "Discard everything")}</button>`
       : "") +
     (offer && warning
       ? '<p class="next-cockpit-held-absent" id="next-cockpit-discard-armed">' +
@@ -6278,9 +6324,15 @@ async function nextCockpitCancelReading(session){
 }
 
 async function nextCockpitReadingOff(){
+  const viewing = nextSessionFind(nextRoute.project, nextRoute.harness, nextRoute.session);
+  const control = viewing ? `reading-off:${sessKey(viewing)}` : "reading-off";
+  const press = nextPendingStart(control, "Turning off\u2026", "Turning off readings.");
+  if(!press) return;
+  renderNext({named: control});
   try{
-    const response = await fetch("/api/reading", {method:"POST", headers:{"Content-Type":"application/json"},
-      body:JSON.stringify({consent:"off",press:true,observer_model:1})});
+    const response = await nextFetchBounded("/api/reading", {method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({consent:"off",press:true,observer_model:1})}, press.signal);
     const answer = await response.json();
     if(!response.ok || !answer || answer.ok !== true || !answer.reading) throw new Error("permission not saved");
     nextData.reading = answer.reading;
@@ -6291,7 +6343,10 @@ async function nextCockpitReadingOff(){
   }catch(_error){
     const session = nextSessionFind(nextRoute.project,nextRoute.harness,nextRoute.session);
     if(session) nextCockpitReadingRequests.set(sessKey(session), {message:"Could not confirm readings are off. Try turning them off again."});
-  }finally{ renderNext(); }
+  }finally{
+    nextPendingEnd(control);
+    renderNext({named: control});
+  }
 }
 
 /* The endpoint's whole-annotation arm, reached from the second press.
@@ -6304,14 +6359,28 @@ async function nextCockpitReadingOff(){
    can be tested. */
 async function nextCockpitDiscardAnnotation(session){
   const key = nextCockpitHeldKey(session, "discard");
+  const press = nextPendingStart(key, "Discarding\u2026", "Discarding.");
+  if(!press) return;
+  renderNext({named: key});
   try{
-    const response = await fetch("/api/annotate", {
-      method: "POST",
-      headers: {"Content-Type": "application/json"},
-      body: JSON.stringify({harness: session.harness, sid: session.sid, clear: true}),
-    });
+    let response;
+    let answer;
+    try{
+      response = await nextFetchBounded("/api/annotate", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({harness: session.harness, sid: session.sid, clear: true}),
+      }, press.signal);
+      answer = response && response.ok ? await response.json() : null;
+    }catch(_error){
+      /* No answer: disarmed, said as unknown, and never re-armed on its own,
+         so a second press is the reader's after the refresh shows what
+         stands. */
+      nextCockpitHeldMark(key, "discard-unconfirmed");
+      await refreshNext();
+      return;
+    }
     if(!response || !response.ok) throw new Error(`HTTP ${response && response.status}`);
-    const answer = await response.json();
     if(!answer || answer.ok !== true) throw new Error("discard not confirmed");
     const outcome = String(answer.outcome || "");
     /* The store's own token, with `persisted` as the fallback an older or
@@ -6348,6 +6417,8 @@ async function nextCockpitDiscardAnnotation(session){
     // Nothing was deleted that this page can see, which is what the refusal
     // sentence says. No retry: a second press is the reader's to make.
     nextCockpitHeldMark(key, "discard-refused");
+  }finally{
+    nextPendingEnd(key);
     renderNext({named: key});
   }
 }
