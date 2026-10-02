@@ -144,6 +144,21 @@ body{font-family:var(--sans);font-size:var(--fs-body);-webkit-font-smoothing:ant
    and the justification above replaces it. The rule stays on the page -- never
    `display:none` -- which is the half of that ruling that still holds. */
 .next-action:disabled,.next-action[aria-disabled="true"]{border:1px dashed var(--line);background:var(--hatch);color:var(--ink3);cursor:not-allowed}
+/* A press being answered is busy, not refused, so it overrides the hatch above
+   by order: a solid border and a spinner rather than the dashed refusal. The
+   idle label stays as an invisible ghost in the same grid cell as the busy
+   one, so the control keeps the wider of the two and nothing beside it moves
+   (owner, 2026-10-02). A primary keeps its fill below. */
+.next-action[data-next-pending]{display:inline-grid;align-items:center;justify-items:center;border:1px solid var(--line);background:transparent;color:var(--ink);cursor:progress}
+.next-action.next-action--primary[data-next-pending]{border-color:var(--accent);background:var(--accent);color:#14140f}
+.next-action[data-next-pending]>span{grid-area:1/1}
+.next-action-ghost{visibility:hidden}
+.next-action-busy{display:inline-flex;align-items:center;gap:6px}
+@keyframes next-spin{to{transform:rotate(360deg)}}
+.next-spinner{display:inline-block;inline-size:1em;block-size:1em;box-sizing:border-box;border:2px solid currentColor;border-right-color:transparent;border-radius:50%;animation:next-spin .8s linear infinite}
+@media(prefers-reduced-motion:reduce){
+  .next-spinner{animation:none;border-right-color:currentColor;opacity:.55}
+}
 /* The unmet precondition, said beside the control rather than in a tooltip. */
 .next-action-reason{color:var(--ink2);font-family:var(--sans);font-size:var(--fs-label)}
 /* A bare button otherwise keeps user-agent chrome, rgb(239,239,239) on a

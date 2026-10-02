@@ -37,7 +37,7 @@ _VOID = frozenset(
         "wbr",
     }
 )
-_HIDDEN_CLASS = "next-visually-hidden"
+_HIDDEN_CLASSES = frozenset({"next-visually-hidden", "next-action-ghost"})
 
 
 class _Visible(HTMLParser):
@@ -64,7 +64,7 @@ class _Visible(HTMLParser):
             return
         named = dict(attrs)
         classes = (named.get("class") or "").split()
-        hides = _HIDDEN_CLASS in classes or "hidden" in named
+        hides = bool(_HIDDEN_CLASSES.intersection(classes)) or "hidden" in named
         parent = self._stack[-1] if self._stack else None
         if parent is not None and parent[2] and tag != "summary":
             # A child of a closed details that is not its summary is behind the disclosure.

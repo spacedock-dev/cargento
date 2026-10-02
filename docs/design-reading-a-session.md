@@ -2166,6 +2166,25 @@ section below the fold.
   a stored withhold as "Last analysis, 3m ago: <sentence>", aged from `reading_withheld_at`. The
   READING section no longer repeats the withheld sentence.
 
+#### Amended 2026-10-02 (owner): a press shows it is working, and Analyze says when it opens or closes
+
+The owner typed a goal and two outcome lines and pressed Save intent: "Nothing happened for a
+couple seconds and then the page updated." Measured on the scratch board, the POST took about
+900 ms and the first change to the page came at about 1.3 s, with Save intent a live button
+throughout (arbiter spec, `ui3`).
+
+- Save intent shows it is working. At the press it is `aria-disabled` and `aria-busy` (never
+  `disabled`, which drops focus), with a spinner and "Saving…" drawn over its idle label, which
+  stays as an invisible ghost so the control keeps its width. A second press, and a keystroke that
+  would re-arm it, do nothing until it is answered. While it is pending the Drift line reads
+  "Saving your intent…" rather than telling the reader to save it. The start is said to the polite
+  region only when the request is still open after 400 ms, and the outcome only once the refresh
+  has drawn it. A request with no answer is aborted at 15 s and the control comes back with
+  "Cargento did not answer, so this page cannot tell whether your intent was saved", never "Not
+  saved", unless the refresh shows a newer revision holding exactly what was sent, which is the
+  save. A 5 s backstop after the bound clears the busy state whatever the fetch did. The state is
+  held by the control's focus key (`docs/design-reader-state.md`).
+
 #### Amended 2026-10-01: the first press is a consent step
 
 Owner ruling Q1, 2026-10-01 (DRC-4758 slice B). The first press asked its question by relabelling the

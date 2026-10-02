@@ -2327,6 +2327,8 @@ class ReaderStateInventoryTest(unittest.TestCase):
             ("next-cockpit.js", "nextCockpitCorrectionComposition"),
             ("next-cockpit.js", "nextCockpitCorrectionPendingRender"),
             ("next-cockpit.js", "nextCockpitCorrectionPointer"),
+            # Owner, 2026-10-02: a control's in-flight request, re-emitted by key.
+            ("next-controls.js", "nextPending"),
         ):
             with self.subTest(lane=lane):
                 self.assertIn(f"{lane}", (self.WEB / name).read_text(encoding="utf-8"))

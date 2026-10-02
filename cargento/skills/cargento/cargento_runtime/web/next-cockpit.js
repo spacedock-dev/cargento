@@ -970,19 +970,23 @@ function nextCockpitHeldAbsentId(kind){
 /* `weight` is the next-action primitive's modifier: every field control is a
    real button, secondary or quiet and never primary (owner Q5,
    [the editor's boxes and buttons](docs/design-reading-a-session.md#amended-2026-10-01-the-intent-editors-boxes-buttons-and-footer)). */
+/* A control whose press is in flight is drawn busy whatever `shown` says, so a
+   redraw mid-save neither hides it nor re-arms it (`nextPendingAttrs`). */
 function nextCockpitHeldControl(action, label, kind, shown, inert, describedBy, focus = "",
     weight = "secondary"){
   const off = inert ? ' aria-disabled="true"' : " hidden";
   const why = !shown && inert && describedBy ? ` aria-describedby="${describedBy}"` : "";
+  const state = nextPendingHas(focus) ? nextPendingAttrs(focus) : `${shown ? "" : off}${why}`;
   return `<button type="button" class="next-action next-action--${weight}"` +
     `${focus ? ` data-next-focus="${esc(focus)}"` : ""} ` +
     `data-next-cockpit-action="${action}" data-arg="${kind}"` +
-    `${shown ? "" : off}${why}>${label}</button>`;
+    `${state}>${nextPendingLabel(focus, label)}</button>`;
 }
 
 function nextCockpitHeldToggle(field, action, shown, inert){
   const control = field.querySelector(`[data-next-cockpit-action="${action}"]`);
-  if(!control) return;
+  // A keystroke never re-arms a control whose press is still being answered.
+  if(!control || nextPendingHas(control.dataset && control.dataset.nextFocus)) return;
   /* The attribute, not the property, on the inert path. This runs on a
      keystroke with no redraw, so whichever of the two the renderer chose is
      the one already in the DOM and the one that has to be cleared here. */
@@ -1045,6 +1049,10 @@ const NEXT_COCKPIT_HELD_CUES = {
   unpersisted: "Not stored. The store could not be written, so the refresh has already " +
     "dropped these words, and they are still in the box.",
   saved: "Saved as a new revision.",
+  /* The request was lost, aborted at the bound, or answered with something
+     unreadable: not a refusal, so never "Not saved" (owner, 2026-10-02). */
+  unconfirmed: "Cargento did not answer, so this page cannot tell whether your intent was " +
+    "saved. Your words are still in the box.",
   unchanged: "Already stored. These words match the saved revision, so no new revision " +
     "was minted.",
   /* The store exists and the server could not read it, so it wrote nothing:
@@ -1179,7 +1187,9 @@ function nextCockpitAnnounceCue(key, sentence, assertive){
   }
 }
 
-function nextCockpitHeldMark(key, kind){
+/* `say:false` stamps the mark without announcing it, for a press whose outcome
+   is said once its refresh has drawn it (`nextCockpitHeldSay`). */
+function nextCockpitHeldMark(key, kind, {say = true} = {}){
   // Deleted and re-set to move the key to the end of the insertion order the
   // eviction below reads. Not a drop; see `nextCockpitHeldDrop`.
   nextCockpitHeldStates.delete(key);
@@ -1196,6 +1206,10 @@ function nextCockpitHeldMark(key, kind){
      replaces an arm rather than dropping one, so `nextCockpitHeldDrop` never
      runs on it, and the sentence it leaves standing says nothing has been
      deleted yet. */
+  if(say) nextCockpitHeldSay(key, kind);
+}
+
+function nextCockpitHeldSay(key, kind){
   if(kind !== "discard-armed") nextCockpitRetractArmed(key);
   nextCockpitAnnounceCue(key, nextCockpitHeldSentence(kind), kind === "discard-armed");
 }
@@ -1504,10 +1518,14 @@ function nextCockpitIntentFooterToggle(session){
   const describes = section && typeof section.querySelectorAll === "function"
     ? [...section.querySelectorAll("[data-next-cockpit-held-absent]")].map(node => node.id)
       .filter(Boolean).join(" ") : "";
-  for(const [action, live, why] of [["held-save", changes.any || changes.adoptable, describes],
-    ["held-undo", changes.undoable, ""]]){
+  const key = nextCockpitIntentKey(session);
+  for(const [action, live, why, focus] of [
+    ["held-save", changes.any || changes.adoptable, describes, `${key}:save`],
+    ["held-undo", changes.undoable, "", `${key}:undo`]]){
     const control = footer.querySelector(`[data-next-cockpit-action="${action}"]`);
-    if(!control) continue;
+    /* A keystroke during a save never re-arms Save intent: the press is still
+       being answered, and a second one would race it. */
+    if(!control || nextPendingHas(focus)) continue;
     if(live){
       control.removeAttribute("aria-disabled");
       control.removeAttribute("aria-describedby");
@@ -5015,7 +5033,8 @@ function nextCockpitDirectionQuestion(session, annotation, source, model, primar
   /* An unsaved edit outranks every other refusal: Keep would settle over
      words that are not on screen on any route, the no-reader one included. */
   const edited = nextIntentUnsaved(session, annotation);
-  const reason = edited ? NEXT_INTENT_EDITED : nextPromptReadingRefusal(session, annotation, model);
+  const reason = edited ? nextIntentEditedRefusal(session)
+    : nextPromptReadingRefusal(session, annotation, model);
   const job = nextReadingJob(session);
   const route = nextReadingRoute(session);
   const provider = route && route.provider ? String(route.provider) : "";
@@ -5095,9 +5114,10 @@ async function nextCockpitKeepIntent(session, model){
   if(!pending.length) return;
   nextCockpitKeepUnsay(key);
   if(nextIntentUnsaved(session, annotation)){
+    const edited = nextIntentEditedRefusal(session);
     nextCockpitReadingRequests.set(key,
-      {pending: false, message: NEXT_INTENT_EDITED, refusal: true, announced: true});
-    nextCockpitAnnounceCue(`keep:${key}`, NEXT_INTENT_EDITED, false);
+      {pending: false, message: edited, refusal: true, announced: true});
+    nextCockpitAnnounceCue(`keep:${key}`, edited, false);
     renderNext();
     return;
   }
@@ -6122,35 +6142,60 @@ async function nextCockpitDiscardAnnotation(session){
    gives each line its source; the page never sends one, only the stored
    position each posted line came from. */
 async function nextCockpitIntentSave(session){
-  const annotation = nextCockpitAnnotation(session);
-  const goalKey = nextCockpitHeldKey(session, "goal");
-  const linesKey = nextCockpitHeldKey(session, "lines");
   const key = nextCockpitIntentKey(session);
+  const control = `${key}:save`;
   /* The same reckoning the footer decides `shown` with, so the control and
      the gate cannot disagree. Without it an inert-but-reachable control mints
-     a revision identical to the stored one. */
+     a revision identical to the stored one. An inert press starts nothing. */
+  const changes = nextCockpitIntentChanges(session, nextCockpitAnnotation(session));
+  if(!changes.any && !changes.chosen && !changes.adoptable) return;
+  const started = nextPendingStart(control, "Saving\u2026", "Saving your intent.");
+  if(!started) return;
+  renderNext({named: control});
+  let said = null;
+  try{
+    said = await nextCockpitIntentSaveWork(session, started.signal);
+  }finally{
+    nextPendingEnd(control);
+    renderNext({named: control});
+    /* The outcome is said once it is drawn, never before the paint that shows
+       it (owner, 2026-10-02). */
+    if(said) nextCockpitHeldSay(key, said);
+  }
+}
+
+/* The save itself, under the press's one pending entry: a choice chains its
+   adoption and then the lines, and neither takes a guard of its own. Returns
+   the cue kind it stamped, for the caller to say after the paint, or null. */
+async function nextCockpitIntentSaveWork(session, signal){
+  const annotation = nextCockpitAnnotation(session);
+  const linesKey = nextCockpitHeldKey(session, "lines");
+  const key = nextCockpitIntentKey(session);
   const changes = nextCockpitIntentChanges(session, annotation);
   if(changes.chosen || changes.pending){
     /* The choice first, as its own adoption naming the saved revision, then
        the lines against the revision that adoption minted: `/api/annotate`
        takes an adoption or typed words in one request, not both. */
-    const adopted = await nextAdoptPrompt(session, NEXT_PROMPT_CHOSEN);
-    if(adopted && changes.lines){
+    const adopted = await nextAdoptPrompt(session, NEXT_PROMPT_CHOSEN, signal);
+    if(adopted === true && changes.lines){
       /* The refresh after the adoption replaced the rows, so the revision it
          minted is on the fresh row, not the one this press was handed. The
          held lines are keyed by session, so the fresh row still finds them. */
       const fresh = (nextData && nextData.sessions || [])
         .find(row => sessKey(row) === sessKey(session)) || session;
-      await nextCockpitIntentSave(fresh);
+      return nextCockpitIntentSaveWork(fresh, signal);
     }
-    return;
+    return adopted === "unconfirmed" ? "unconfirmed" : null;
   }
   if(!changes.any){
     /* The goal back at the draft adopts it, never a typed save of an excerpt
        (DRC-4682). */
     const drafted = nextIntentDraft(session, annotation);
-    if(drafted && changes.typed === drafted.text) nextAdoptPrompt(session, drafted.source);
-    return;
+    if(drafted && changes.typed === drafted.text){
+      const adopted = await nextAdoptPrompt(session, drafted.source, signal);
+      return adopted === "unconfirmed" ? "unconfirmed" : null;
+    }
+    return null;
   }
   const body = {harness: session.harness, sid: session.sid};
   if(changes.goal) body.goal = changes.typed;
@@ -6165,52 +6210,89 @@ async function nextCockpitIntentSave(session){
       .filter(([text]) => String(text || "").trim()).map(([_text, origin]) => origin);
   }
   body.expected_revision = nextNumber(annotation && annotation.revision) || 0;
+  let response;
+  let saved;
   try{
-    const response = await fetch("/api/annotate", {
+    response = await nextFetchBounded("/api/annotate", {
       method: "POST",
       headers: {"Content-Type": "application/json"},
       body: JSON.stringify(body),
-    });
-    if(!response || !response.ok) throw new Error(`HTTP ${response && response.status}`);
-    const saved = await response.json();
-    // `ok`, which is what `/api/annotate` answers with. `persisted` beside it
-    // is whether the write reached disk, and a false there is not a failed
-    // save: the words are held for this run and the store says so itself.
-    if(!saved || saved.ok !== true) throw new Error("save not confirmed");
-    /* The cue from the store's own token rather than from `persisted`, which
-       is one bit for four sentences; `NEXT_COCKPIT_HELD_CUES` records what
-       each bit hid. */
-    const outcome = String(saved.outcome || "");
-    const kind = NEXT_COCKPIT_HELD_OUTCOME_CUES[outcome] ||
-      (saved.persisted === true ? "saved" : "unpersisted");
-    /* A draft goes only where the words are on disk, which is a minted
-       revision or a repeat of the one already there, and only while its box
-       still holds what was sent. `annotations.annotate` sets
-       `state.annotations` before it writes, so `persisted:false` leaves the
-       revision in this process alone, and the next collection reloads the
-       file and drops it: dropping the draft then destroyed the only remaining
-       copy of what someone typed. A reader who kept typing while the request
-       was open has a newer instruction in there, and dropping it would revert
-       the box to the older text they just watched leave. */
-    const onDisk = kind === "saved" || kind === "unchanged";
-    if(onDisk && changes.goal && nextCockpitHeldDrafts.get(goalKey) === body.goal){
-      nextCockpitHeldDrafts.delete(goalKey);
-    }
-    // Typed words replaced the choice in the store, so it no longer stands in the box.
-    if(onDisk && changes.goal) nextIntentChosenPrompts.delete(goalKey);
-    const held = nextCockpitHeldDrafts.get(linesKey);
-    if(onDisk && sentLines && held &&
-        JSON.stringify(nextCockpitLinesToSend(held)) === JSON.stringify(sentLines)){
-      nextCockpitLinesForget(linesKey);
-    }
-    nextCockpitHeldMark(key, kind);
-    await refreshNext();
+    }, signal);
+    saved = response && response.ok ? await response.json() : null;
   }catch(_error){
+    /* No answer, an abort at the bound, or a reply that could not be read:
+       the save may or may not have landed, so the page says it cannot tell,
+       and the drafts stay. Then it looks: a refresh whose row carries a newer
+       revision holding exactly what was sent was this save. */
+    nextCockpitHeldMark(key, "unconfirmed", {say:false});
+    await refreshNext();
+    if(nextCockpitIntentLanded(session, body, sentLines)){
+      nextCockpitIntentForgetSent(session, changes, body, sentLines);
+      nextCockpitHeldMark(key, "saved", {say:false});
+      return "saved";
+    }
+    return "unconfirmed";
+  }
+  // `ok`, which is what `/api/annotate` answers with. `persisted` beside it
+  // is whether the write reached disk, and a false there is not a failed
+  // save: the words are held for this run and the store says so itself.
+  if(!saved || saved.ok !== true){
     // The drafts stay. Losing what someone typed to report a failure is the
     // one outcome worse than the failure.
-    nextCockpitHeldMark(key, "error");
-    renderNext({named: `${key}:save`});
+    nextCockpitHeldMark(key, "error", {say:false});
+    return "error";
   }
+  /* The cue from the store's own token rather than from `persisted`, which
+     is one bit for four sentences; `NEXT_COCKPIT_HELD_CUES` records what
+     each bit hid. */
+  const outcome = String(saved.outcome || "");
+  const kind = NEXT_COCKPIT_HELD_OUTCOME_CUES[outcome] ||
+    (saved.persisted === true ? "saved" : "unpersisted");
+  /* A draft goes only where the words are on disk, which is a minted
+     revision or a repeat of the one already there, and only while its box
+     still holds what was sent. `annotations.annotate` sets
+     `state.annotations` before it writes, so `persisted:false` leaves the
+     revision in this process alone, and the next collection reloads the
+     file and drops it: dropping the draft then destroyed the only remaining
+     copy of what someone typed. A reader who kept typing while the request
+     was open has a newer instruction in there, and dropping it would revert
+     the box to the older text they just watched leave. */
+  if(kind === "saved" || kind === "unchanged"){
+    nextCockpitIntentForgetSent(session, changes, body, sentLines);
+  }
+  nextCockpitHeldMark(key, kind, {say:false});
+  await refreshNext();
+  return kind;
+}
+
+/* The drafts a landed save carried, dropped only while each box still holds
+   what was sent, so nothing typed during the request is lost. */
+function nextCockpitIntentForgetSent(session, changes, body, sentLines){
+  const goalKey = nextCockpitHeldKey(session, "goal");
+  const linesKey = nextCockpitHeldKey(session, "lines");
+  if(changes.goal && nextCockpitHeldDrafts.get(goalKey) === body.goal){
+    nextCockpitHeldDrafts.delete(goalKey);
+  }
+  // Typed words replaced the choice in the store, so it no longer stands in the box.
+  if(changes.goal) nextIntentChosenPrompts.delete(goalKey);
+  const held = nextCockpitHeldDrafts.get(linesKey);
+  if(sentLines && held &&
+      JSON.stringify(nextCockpitLinesToSend(held)) === JSON.stringify(sentLines)){
+    nextCockpitLinesForget(linesKey);
+  }
+}
+
+/* Whether the refreshed row shows this save landed: a revision above the one
+   it was drafted against, holding the goal and lines it sent. */
+function nextCockpitIntentLanded(session, body, sentLines){
+  const row = (nextData && nextData.sessions || []).find(item => sessKey(item) === sessKey(session));
+  if(!row) return false;
+  const annotation = nextCockpitAnnotation(row);
+  if(!annotation || !((nextNumber(annotation.revision) || 0) > body.expected_revision)) return false;
+  if(typeof body.goal === "string" && String(annotation.goal || "") !== body.goal) return false;
+  return !sentLines ||
+    JSON.stringify(nextAnnotationLines(annotation).map(line => line.text)) ===
+      JSON.stringify(sentLines);
 }
 
 /* Undo changes: what Escape does in each box, for both at once. The drafts
@@ -8353,6 +8435,7 @@ function nextIntentDrafted(session, annotation){
    save has its own sentence, beside its line. */
 const NEXT_INTENT_EDITED =
   "Save your intent, or undo your edit, to analyze drift.";
+const NEXT_INTENT_SAVING = "Saving your intent\u2026";
 const NEXT_INTENT_EDITED_ADD =
   "Save your intent, or undo your edit, to add this direction.";
 
@@ -8365,6 +8448,13 @@ function nextImplicitAdoption(session){
   return nextIntentAdoption(nextIntentDraft(session, null));
 }
 
+/* While Save intent is being answered, telling the reader to save their
+   intent is false: they just did. The usual line returns with the outcome. */
+function nextIntentEditedRefusal(session){
+  return nextPendingHas(`${nextCockpitIntentKey(session)}:save`) ? NEXT_INTENT_SAVING
+    : NEXT_INTENT_EDITED;
+}
+
 function nextPromptReadingRefusal(session, annotation, model){
   if(!(nextData && nextData.annotate === true)) return NEXT_READING_ANNOTATIONS_OFF;
   /* A route with no reader is a fact about this machine, and it outranks any
@@ -8375,7 +8465,7 @@ function nextPromptReadingRefusal(session, annotation, model){
      choosing words would not let it read (DRC-4758 slice B). */
   const press = nextReadingPressRefusal(session);
   if(press) return press;
-  if(nextIntentUnsaved(session, annotation)) return NEXT_INTENT_EDITED;
+  if(nextIntentUnsaved(session, annotation)) return nextIntentEditedRefusal(session);
   if(!String(annotation && annotation.goal || "").trim()){
     const draft = nextIntentDraft(session, annotation);
     /* Over a control-first session the latest prompt is no goal either, so
@@ -8480,16 +8570,32 @@ const NEXT_COCKPIT_ADOPT_REFUSED = {
     "session's entry from cargento-annotations.json.",
 };
 
-async function nextAdoptPrompt(session, source){
+/* Always under Save intent's pending entry, whose `signal` bounds it: choosing
+   a prompt only fills the box. True when adopted, "unconfirmed" when no
+   answer could be read, false when refused. */
+async function nextAdoptPrompt(session, source, signal = null){
   const candidate = nextPromptCandidate(session, source);
   if(!candidate || candidate.at == null || !(nextData && nextData.annotate === true)) return false;
   const key = nextCockpitHeldKey(session, "goal");
+  let response;
+  let answer;
   try{
-    const response = await fetch("/api/annotate", {method:"POST",headers:{"Content-Type":"application/json"},
+    response = await nextFetchBounded("/api/annotate", {method:"POST",
+      headers:{"Content-Type":"application/json"},
       body:JSON.stringify({harness:session.harness,sid:session.sid,
         ...nextIntentAdoption(candidate),
-        expected_revision:nextNumber(session.annotation_revision) || 0})});
-    const answer = await response.json();
+        expected_revision:nextNumber(session.annotation_revision) || 0})}, signal);
+    // A refusal's body is read leniently: an answered refusal is not a lost answer.
+    answer = response.ok ? await response.json()
+      : await Promise.resolve().then(() => response.json()).catch(() => null);
+  }catch(_error){
+    /* No answer is not a changed prompt: the save's own unconfirmed sentence
+       says it, beside Save intent. */
+    nextCockpitHeldMark(nextCockpitIntentKey(session), "unconfirmed", {say:false});
+    await refreshNext();
+    return "unconfirmed";
+  }
+  try{
     if(response.ok && answer && ["untrusted", "unreadable"].includes(String(answer.outcome || ""))){
       /* Not a changed prompt: the store could not take the save at all, and
          saying the prompt changed would send the reader to the wrong place. */

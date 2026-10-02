@@ -374,3 +374,99 @@ document.addEventListener("click", async event => {
     renderNext(interaction === nextStageInteraction && !current ? focus : current);
   }
 });
+
+/* A control's in-flight request (owner, 2026-10-02): what a press that awaits
+   the server shows until it is answered. Keyed by the control's own
+   `data-next-focus`, so the busy markup and the focus restore name the same
+   node, and held here rather than in the DOM because `renderNext` replaces
+   `#app` on every poll (docs/design-reader-state.md). One entry per control.
+
+   15 s, because the store's lock wait is 10 s (`annotations._STORE_LOCK_WAIT_SECONDS`)
+   and one cold collection follows it; past that the request is aborted. The
+   backstop 5 s later clears the entry whatever the fetch did, so a lost
+   request never leaves a spinner standing. The start sentence waits 400 ms,
+   so a fast answer says nothing but its outcome. */
+const NEXT_PENDING_BOUND_MS = 15_000;
+const NEXT_PENDING_BACKSTOP_MS = 5_000;
+const NEXT_PENDING_SAY_MS = 400;
+const nextPending = new Map();
+
+/* null when `key` is already pending, which is every handler's re-press guard;
+   otherwise the entry's abort signal. The caller ends it in a `finally`. */
+function nextPendingStart(key, busy, say = ""){
+  if(!key || nextPending.has(key)) return null;
+  const controller = typeof AbortController === "function" ? new AbortController() : null;
+  const entry = {busy: String(busy || ""), say: String(say || ""), startedAt: Date.now(),
+    controller, timeout: null, backstop: null, sayTimer: null, said: false};
+  nextPending.set(key, entry);
+  if(entry.say){
+    entry.sayTimer = setTimeout(() => {
+      if(nextPending.get(key) !== entry) return;
+      entry.said = true;
+      nextCockpitAnnounceCue(`pending:${key}`, entry.say, false);
+    }, NEXT_PENDING_SAY_MS);
+  }
+  entry.timeout = setTimeout(() => {
+    if(controller) controller.abort();
+  }, NEXT_PENDING_BOUND_MS);
+  entry.backstop = setTimeout(() => {
+    if(nextPending.get(key) !== entry) return;
+    nextPendingEnd(key);
+    renderNext();
+  }, NEXT_PENDING_BOUND_MS + NEXT_PENDING_BACKSTOP_MS);
+  return {signal: controller ? controller.signal : null};
+}
+
+// Clears the entry and its three timers. The caller renders.
+function nextPendingEnd(key){
+  const entry = nextPending.get(key);
+  if(!entry) return;
+  for(const timer of [entry.sayTimer, entry.timeout, entry.backstop]){
+    if(timer != null) clearTimeout(timer);
+  }
+  nextPending.delete(key);
+  /* So the next press's start sentence is said again rather than suppressed
+     as a repeat of this one. */
+  nextCockpitAnnouncedCues.delete(`pending:${key}`);
+}
+
+function nextPendingHas(key){
+  return Boolean(key) && nextPending.has(key);
+}
+
+/* `aria-disabled` and never `disabled`, which would drop focus from the
+   control the reader just pressed. */
+function nextPendingAttrs(key){
+  return nextPendingHas(key) ? ' aria-disabled="true" aria-busy="true" data-next-pending' : "";
+}
+
+/* The idle label stays as an invisible ghost in the same grid cell as the busy
+   one, so the control keeps max(idle, busy) width and nothing beside it moves.
+   The ghost is `aria-hidden`, so the accessible name is the busy label. */
+function nextPendingLabel(key, label){
+  const entry = key ? nextPending.get(key) : null;
+  if(!entry) return label;
+  return `<span class="next-action-ghost" aria-hidden="true">${label}</span>` +
+    '<span class="next-action-busy"><span class="next-spinner" aria-hidden="true"></span>' +
+    `${esc(entry.busy)}</span>`;
+}
+
+/* `fetch` bounded by the entry's own abort timer. Raced against the signal as
+   well as handed it, so a fetch that ignores the signal still releases the
+   handler at the bound rather than at the backstop. */
+function nextFetchBounded(url, init, signal){
+  if(!signal) return fetch(url, init);
+  if(signal.aborted) return Promise.reject(new Error("bounded"));
+  const request = fetch(url, {...(init || {}), signal});
+  return new Promise((resolve, reject) => {
+    const onAbort = () => reject(new Error("bounded"));
+    signal.addEventListener("abort", onAbort);
+    Promise.resolve(request).then(value => {
+      signal.removeEventListener("abort", onAbort);
+      resolve(value);
+    }, error => {
+      signal.removeEventListener("abort", onAbort);
+      reject(error);
+    });
+  });
+}
