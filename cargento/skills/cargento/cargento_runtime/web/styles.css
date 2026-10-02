@@ -156,8 +156,12 @@ body{font-family:var(--sans);font-size:var(--fs-body);-webkit-font-smoothing:ant
 .next-action-busy{display:inline-flex;align-items:center;gap:6px}
 @keyframes next-spin{to{transform:rotate(360deg)}}
 .next-spinner{display:inline-block;inline-size:1em;block-size:1em;box-sizing:border-box;border:2px solid currentColor;border-right-color:transparent;border-radius:50%;animation:next-spin .8s linear infinite}
+/* Waiting, not busy: the record is settling and Analyze opens by itself, so a
+   small dot pulses with the live pulse rather than the press's spinner. */
+.next-wait-dot{display:inline-block;inline-size:.5em;block-size:.5em;margin-inline-end:.5em;border-radius:50%;background:currentColor;vertical-align:middle;animation:next-live-pulse 1.6s ease-in-out infinite}
 @media(prefers-reduced-motion:reduce){
   .next-spinner{animation:none;border-right-color:currentColor;opacity:.55}
+  .next-wait-dot{animation:none}
 }
 /* The unmet precondition, said beside the control rather than in a tooltip. */
 .next-action-reason{color:var(--ink2);font-family:var(--sans);font-size:var(--fs-label)}

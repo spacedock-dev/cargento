@@ -2221,6 +2221,18 @@ throughout (arbiter spec, `ui3`).
   Why under it is `reading.withheld_sentence`, per harness, which names the How to use section
   that makes a board live; `WITHHELD` stays the job-time and stored sentence. A settling row's
   Why says Analyze opens by itself.
+- No silent flips. When Analyze opens or closes with no press of the reader's, one short line under
+  the button row says so ("Analyze is open again: the session is running.", "Analyze is open: the
+  session's last turn finished.", "Analyze is open: the session ended.", "Analyze closed: the
+  session stopped running.", or "Analyze closed: your intent was saved after the session
+  ended."), drawn without a role and written once to the polite region, at most once a minute per
+  session. Opening is drawn at once. Closing waits until the inert state has held for two
+  payloads and ten seconds, so a session that pauses between turns, whose stop settles for eight,
+  never closes it. A consent question Analyze closes under is withdrawn, "Analyze closed before
+  you answered, so nothing was sent.", and never raised again without a press. A settling row
+  draws a waiting dot beside "Ready in a few seconds." and opens at `until` with no new data, so
+  this supersedes "No timer is added" in the 2026-10-01 press amendment: one page-wide timer
+  serves the one drawn card, never a row. Levels and a scope change are not announced.
 
 #### Amended 2026-10-01: the first press is a consent step
 

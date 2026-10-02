@@ -6,6 +6,10 @@ const nextCockpitReadingRequests = new Map();
 /* A Cancel in flight, or one that could not be confirmed, per session and for
    the one job it named, so neither outlives that job's box (DRC-4693). */
 const nextCockpitReadingCancels = new Map();
+/* Whether Analyze can be pressed, as the drawn Drift card last showed it, so a
+   change no press caused is said rather than silent (owner, 2026-10-02):
+   `nextReadingFlip` owns it, docs/design-reader-state.md holds the row. */
+const nextReadingFlips = new Map();
 const nextCockpitMemoDrafts = new Map();
 const nextCockpitMemoStates = new Map();
 const nextCockpitBriefingCopyStates = new Map();
@@ -3798,6 +3802,151 @@ function nextReadingPressLine(session, eligibility){
   return NEXT_READING_PRESS_LINES[reason] || String(eligibility.sentence || "");
 }
 
+/* No silent flips. Analyze opening at once is honest, so inert to live
+   commits on the render that sees it. Closing waits until the inert state has
+   held for two distinct payloads and `NEXT_READING_FLIP_HOLD_MS`, the
+   activity grace, so a session pausing between turns (running, then a stop
+   settling for 8 s, then its last turn) never closes the button. A candidate
+   that reverts first says nothing. Only the drawn card is tracked: an entry
+   not drawn on the render before is drawn fresh, saying nothing. */
+const NEXT_READING_FLIP_HOLD_MS = 10_000;
+const NEXT_READING_FLIP_SAY_EVERY_MS = 60_000;
+const NEXT_READING_FLIP_OPEN_RUNNING = "Analyze is open again: the session is running.";
+const NEXT_READING_FLIP_OPEN_LAST_TURN = "Analyze is open: the session's last turn finished.";
+const NEXT_READING_FLIP_OPEN_ENDED = "Analyze is open: the session ended.";
+const NEXT_READING_FLIP_CLOSED = "Analyze closed: the session stopped running.";
+const NEXT_READING_FLIP_CLOSED_REVISION = "Analyze closed: your intent was saved after the session ended.";
+const NEXT_READING_FLIP_CLOSED_UNANSWERED = "Analyze closed before you answered, so nothing was sent.";
+let nextReadingFlipRender = 0;
+/* One page-wide timer each, never one per row: the hold, a settle's `until`
+   and the change line's TTL, for the one drawn card. */
+const nextReadingFlipTimers = {hold: null, until: null, line: null};
+
+function nextReadingFlipSchedule(name, at){
+  const current = nextReadingFlipTimers[name];
+  if(current && current.at === at) return;
+  if(current) clearTimeout(current.id);
+  nextReadingFlipTimers[name] = null;
+  if(at == null) return;
+  const delay = at - Date.now();
+  // A moment this far off is a fixture or a clock skew, never a settle.
+  if(!Number.isFinite(delay) || delay > 2 * NEXT_READING_FLIP_SAY_EVERY_MS) return;
+  nextReadingFlipTimers[name] = {at, id: setTimeout(() => {
+    nextReadingFlipTimers[name] = null;
+    nextPaintAfterMotion(() => renderNext());
+  }, Math.max(0, delay))};
+}
+
+// Whether a press on this session is still being answered: flips wait for it.
+function nextReadingFlipFrozen(session){
+  const key = sessKey(session);
+  return [`reading:${key}`, `reading-allow:${key}`, `direction-keep:${key}`,
+    `${nextCockpitIntentKey(session)}:save`].some(nextPendingHas);
+}
+
+function nextReadingFlipOpened(session){
+  if(nextSessionEndedAt(session) != null) return NEXT_READING_FLIP_OPEN_ENDED;
+  if(session.state === "idle" && nextSessionStop(session)) return NEXT_READING_FLIP_OPEN_LAST_TURN;
+  return NEXT_READING_FLIP_OPEN_RUNNING;
+}
+
+function nextReadingFlipSay(session, flip, sentence){
+  const key = sessKey(session);
+  flip.line = sentence;
+  flip.lineAt = Date.now();
+  /* In view every time; to the region at most once a minute per session, so a
+     session that flaps is not read out on every turn. */
+  if(flip.saidAt != null && Date.now() - flip.saidAt < NEXT_READING_FLIP_SAY_EVERY_MS) return;
+  flip.saidAt = Date.now();
+  nextCockpitAnnouncedCues.delete(`flip:${key}`);
+  nextCockpitAnnounceCue(`flip:${key}`, sentence, false);
+}
+
+/* A press the reader made learned the state itself, so the card takes it
+   without a line: the press's own answer says it. */
+function nextReadingFlipAcknowledge(session, pressable){
+  const flip = nextReadingFlips.get(sessKey(session));
+  if(flip){
+    flip.shown = pressable;
+    flip.candidate = null;
+  }
+}
+
+/* Whether the drawn card shows Analyze pressable, given whether the board says
+   it is. Also says a committed change and schedules the hold's re-render. */
+function nextReadingFlip(session, pressable, eligibility){
+  const key = sessKey(session);
+  let flip = nextReadingFlips.get(key);
+  if(!flip || flip.drawn < nextReadingFlipRender - 1){
+    flip = {shown: pressable, candidate: null, candidateSince: 0, candidateData: null,
+      saidAt: flip ? flip.saidAt : null, line: "", lineAt: 0, drawn: nextReadingFlipRender};
+    nextReadingFlips.delete(key);
+    nextReadingFlips.set(key, flip);
+    while(nextReadingFlips.size > NEXT_COCKPIT_HELD_CUE_LIMIT){
+      nextReadingFlips.delete(nextReadingFlips.keys().next().value);
+    }
+    return flip;
+  }
+  flip.drawn = nextReadingFlipRender;
+  if(nextReadingFlipFrozen(session)) return flip;
+  if(pressable === flip.shown){
+    flip.candidate = null;
+    nextReadingFlipSchedule("hold", null);
+    return flip;
+  }
+  if(pressable){
+    flip.shown = true;
+    flip.candidate = null;
+    nextReadingFlipSchedule("hold", null);
+    nextReadingFlipSay(session, flip, nextReadingFlipOpened(session));
+    return flip;
+  }
+  const now = Date.now();
+  if(flip.candidate !== false){
+    flip.candidate = false;
+    flip.candidateSince = now;
+    flip.candidateData = nextData;
+  }
+  if(nextData === flip.candidateData || now - flip.candidateSince < NEXT_READING_FLIP_HOLD_MS){
+    nextReadingFlipSchedule("hold", flip.candidateSince + NEXT_READING_FLIP_HOLD_MS);
+    return flip;
+  }
+  flip.shown = false;
+  flip.candidate = null;
+  nextReadingFlipSchedule("hold", null);
+  const request = nextCockpitReadingRequests.get(key);
+  if(request && request.consent && !request.pending){
+    /* The question was the consent, and it is gone: never raised again
+       without a press (J5). */
+    nextCockpitReadingRequests.delete(key);
+    nextReadingFlipSay(session, flip, NEXT_READING_FLIP_CLOSED_UNANSWERED);
+    return flip;
+  }
+  nextReadingFlipSay(session, flip, eligibility && eligibility.reason === "revision-after-end"
+    ? NEXT_READING_FLIP_CLOSED_REVISION : NEXT_READING_FLIP_CLOSED);
+  return flip;
+}
+
+// The change line, while it stands, with the one timer that takes it down.
+function nextReadingFlipLine(session){
+  const flip = nextReadingFlips.get(sessKey(session));
+  if(!flip || !flip.line) return "";
+  const until = flip.lineAt + NEXT_CONTROL_STATE_TTL_MS;
+  if(Date.now() >= until){
+    flip.line = "";
+    return "";
+  }
+  nextReadingFlipSchedule("line", until);
+  return `<p class="next-cockpit-reading-why next-cockpit-reading-change">${esc(flip.line)}</p>`;
+}
+
+// The next click inside the card takes the change line down.
+document.addEventListener("click", event => {
+  const target = event && event.target;
+  if(!target || typeof target.closest !== "function" || !target.closest("#next-session-drift")) return;
+  for(const flip of nextReadingFlips.values()) flip.line = "";
+}, true);
+
 function nextReadingPressRefusal(session){
   const eligibility = nextReadingEligibility(session);
   return eligibility ? nextReadingPressLine(session, eligibility) : "";
@@ -4342,7 +4491,7 @@ function nextCockpitReadingControl(session, annotation, model, primary = true, s
   const steerButton = steer ? steer.button : "";
   const lead = Boolean(steer && steer.lead);
   const steerBox = steer ? steer.box : "";
-  const reason = nextPromptReadingRefusal(session, annotation, model);
+  let reason = nextPromptReadingRefusal(session, annotation, model);
   const key = sessKey(session);
   let request = nextCockpitReadingRequests.get(key);
   /* A refusal is a state, not an event, and it stops being true the moment the
@@ -4361,8 +4510,21 @@ function nextCockpitReadingControl(session, annotation, model, primary = true, s
   /* A press the board says cannot read is inert and not the stage's primary,
      and no Allow step is offered for it: the handler refuses on this same
      reason before it would ask (DRC-4758 slice B). */
-  const pressed = nextReadingEligibility(session);
-  const inert = Boolean(pressed) && reason === nextReadingPressLine(session, pressed);
+  let pressed = nextReadingEligibility(session);
+  const refusedByBoard = Boolean(pressed) && reason === nextReadingPressLine(session, pressed);
+  /* Only the board's eligibility flips: a refusal the reader's own edit caused
+     is not one. While a close is still held, the card draws Analyze live and
+     a press is answered by the handler's refusal. */
+  const flip = nextReadingFlip(session, !refusedByBoard, pressed);
+  if(refusedByBoard && flip.shown){
+    reason = nextPromptReadingRefusal(session, annotation, model, true);
+    pressed = null;
+  }
+  const inert = refusedByBoard && !flip.shown;
+  const changed = nextReadingFlipLine(session);
+  const settling = inert && ["settling", "stop-settling"].includes(String(pressed.reason || ""));
+  nextReadingFlipSchedule("until", settling && nextNumber(pressed.until) != null
+    ? nextNumber(pressed.until) * 1000 : null);
   /* The question stays drawn while its Allow is being answered: the card is
      the consent, and taking it away mid-press left a bare hatched button. */
   const allowKey = `reading-allow:${key}`;
@@ -4478,7 +4640,10 @@ function nextCockpitReadingControl(session, annotation, model, primary = true, s
     ? `<p class="next-cockpit-reading-why"${request && request.refusal && !request.announced
       ? ' role="status"' : ""}` +
       ` id="${NEXT_READING_REFUSED_ID}"` +
-      `${nextAbsenceAttr(NEXT_READING_REFUSAL_ABSENCE.get(reason))}>${esc(reason)}</p>` +
+      `${nextAbsenceAttr(NEXT_READING_REFUSAL_ABSENCE.get(reason))}>` +
+      /* Waiting, not busy: the record is settling and Analyze opens by itself
+         at `until`, so a dot pulses rather than the press's spinner. */
+      `${settling ? '<span class="next-wait-dot" aria-hidden="true"></span>' : ""}${esc(reason)}</p>` +
       (inert ? nextCockpitWhy(`reading-why:${key}`, "Why it can't read", pressed.sentence) : "")
     : "";
   /* What the last press came to when it was withheld, from the store, so a
@@ -4518,7 +4683,8 @@ function nextCockpitReadingControl(session, annotation, model, primary = true, s
       '<button type="button" class="next-action" data-next-cockpit-action="reading-not-now" ' +
       `data-next-focus="reading-not-now:${esc(key)}" data-next-focus-fallback="reading:${esc(key)}"` +
       `${busy ? ' aria-disabled="true"' : ""}>Not now</button></div></div>` +
-      (lead ? "" : steers) + (off ? `<div class="next-cockpit-reading-ask">${off}</div>` : "") +
+      changed + (lead ? "" : steers) +
+      (off ? `<div class="next-cockpit-reading-ask">${off}</div>` : "") +
       accounts + counted + aboutWhy;
   }
   /* Idle: the button and its count, the accounts and the one hint line, then
@@ -4546,7 +4712,7 @@ function nextCockpitReadingControl(session, annotation, model, primary = true, s
   /* The count under the row rather than in it, so the buttons keep one row;
      not under an inert Analyze, which no press can spend (NU-9, 2026-10-02). */
   return '<div class="next-cockpit-reading-ask">' +
-    (lead ? steerButton + button : button + steerButton) + '</div>' +
+    (lead ? steerButton + button : button + steerButton) + '</div>' + changed +
     (inert ? "" : counted) + accounts + sent;
 }
 
@@ -5880,6 +6046,8 @@ async function nextCockpitAskForReading(session, model, allow = false){
      that goes silent is indistinguishable from a dead one. */
   const refusal = nextPromptReadingRefusal(session, nextCockpitAnnotation(session), model);
   if(refusal){
+    // A press during a held close learns the board's state; the card shows it now.
+    if(refusal === nextReadingPressRefusal(session)) nextReadingFlipAcknowledge(session, false);
     nextCockpitReadingRequests.set(key, {pending: false, message: refusal, refusal: true});
     renderNext();
     return;
@@ -5990,6 +6158,7 @@ async function nextCockpitAskForReading(session, model, allow = false){
       request.eligibility = {ok:false, reason:answer.withheld, until:nextNumber(answer.until),
         sentence:String(answer.sentence || "")};
       request.message = nextReadingPressLine(session, request.eligibility);
+      nextReadingFlipAcknowledge(session, false);
       request.refusal = true;
       request.consent = false;
       await refreshNext();
@@ -7432,6 +7601,7 @@ function nextProjectCockpit(context, observation, commandAttention){
 
 function nextCockpitBeforeRender(focus){
   nextCockpitReadingJobsDrawn.clear();
+  nextReadingFlipRender += 1;
   const app = document.getElementById("app");
   for(const details of nextCockpitHadDisclosures && app && app.querySelectorAll ? app.querySelectorAll("[data-next-cockpit-disclosure]") : []){
     nextCockpitDisclosureStates.set(details.getAttribute("data-next-cockpit-disclosure"), details.open === true);
@@ -8499,7 +8669,9 @@ function nextIntentEditedRefusal(session){
     : NEXT_INTENT_EDITED;
 }
 
-function nextPromptReadingRefusal(session, annotation, model){
+/* `heldLive` skips the board's press refusal, for a card still holding a
+   close (`nextReadingFlip`); every handler reads the real one. */
+function nextPromptReadingRefusal(session, annotation, model, heldLive = false){
   if(!(nextData && nextData.annotate === true)) return NEXT_READING_ANNOTATIONS_OFF;
   /* A route with no reader is a fact about this machine, and it outranks any
      step the page could name: saving a goal here would not let a check run. */
@@ -8507,7 +8679,7 @@ function nextPromptReadingRefusal(session, annotation, model){
   if(route && !route.provider) return nextReadingRouteRefusal(session);
   /* So does a press the board already says it cannot serve: saving or
      choosing words would not let it read (DRC-4758 slice B). */
-  const press = nextReadingPressRefusal(session);
+  const press = heldLive ? "" : nextReadingPressRefusal(session);
   if(press) return press;
   if(nextIntentUnsaved(session, annotation)) return nextIntentEditedRefusal(session);
   if(!String(annotation && annotation.goal || "").trim()){

@@ -448,7 +448,9 @@ model off it gives that reason; otherwise it states what a reading may and may n
 one control, `Analyze drift`. When it cannot run it stays on the page, refuses the press, and
 names one next step, except where no reader is available on this machine: then the reason stands
 where the control would be. The accepted case review enables that control; the evidence stays readable
-whether or not you ask for a reading. A press starts an analysis the server runs in the background,
+whether or not you ask for a reading. A press that waits on the server shows a spinner and a busy
+label ("Saving…", "Starting…") and takes no second press until it is answered, and when Analyze
+opens or closes on its own a line under it says so and why. A press starts an analysis the server runs in the background,
 and while it runs the control is replaced by an "Analyzing drift" box listing its real steps
 (preparing what is sent, waiting for the named provider, checking the reply), the one under way
 marked, with the attempt count and disclosure still beside it. A screen reader hears "Analyzing drift" once
