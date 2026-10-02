@@ -1842,7 +1842,7 @@ class _RequestHandler(BaseHTTPRequestHandler):
             return
         permission = self._reading_permission(payload, route)
         if permission["reason"]:
-            self._reading_permission_reply(permission)
+            self._reading_permission_reply(permission, route=route)
             return
         self._reading_adoption(harness, sid, payload, route)
 
@@ -2463,7 +2463,11 @@ class _RequestHandler(BaseHTTPRequestHandler):
         return outcome
 
     def _reading_permission_reply(
-        self, answer: reading_policy.Status, *, off: bool = False
+        self,
+        answer: reading_policy.Status,
+        *,
+        off: bool = False,
+        route: runtime_reading_route.Route | None = None,
     ) -> None:
         self.server.application.state.snapshot.clear()
         reason = answer["reason"]
@@ -2476,11 +2480,13 @@ class _RequestHandler(BaseHTTPRequestHandler):
             if reason in {"store-unavailable", "run-disabled"}
             else 403
         )
-        self._send(
-            self._reading_json({"ok": code == 200, "produced": False, "reading": answer}),
-            "application/json",
-            code,
-        )
+        reply: dict[str, Any] = {"ok": code == 200, "produced": False, "reading": answer}
+        if route is not None:
+            # The press's own route, resolved now, so a page drawn before the
+            # destination moved shows the changed line over today's `To:`
+            # rather than over the one it drew (regressions minor 2, ui5).
+            reply["route"] = route
+        self._send(self._reading_json(reply), "application/json", code)
 
     def _send_reading(
         self,

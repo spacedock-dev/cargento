@@ -233,3 +233,50 @@ class ThePressTheJobAndThePageAgree(NextPageJsHarness):
                 for _provider, where in rows:
                     self.assertFalse(PATH_KEY.lower() in where.lower(), "the key was stored")
                     self.assertFalse("4598" in where, "a host the CLI never reaches was bound")
+
+    def test_a_press_refused_for_a_moved_destination_shows_the_new_one(self) -> None:
+        """Regressions minor 2 (ui5): the page drawn before the move presses,
+        the server answers 403 with the changed line, and the consent step it
+        opens names where the words go now, not where they went when the page
+        was drawn. The reply carries today's route, which the page adopts."""
+        config, state = self.route._runtime()
+        self._give(config, state, "Anthropic", False)
+        stack, _calls = self._on("Anthropic")
+        with stack:
+            state.snapshot.clear()
+            _revision, body = self.route._app(config, state).collect_json(show_all=False)
+        drawn = json.loads(body)
+        self.assertTrue(drawn["reading"]["providers"]["claude"])
+        stack, calls = self._on("gw.corp.example")
+        with stack, self.route._serving(self.route._app(config, state)) as port:
+            status, raw = self.route._post(port, self.route._press(provider="claude"))
+        reply = json.loads(raw)
+        self.assertEqual(403, status)
+        self.assertEqual([], calls)
+        page = self._run_page_js(
+            "await __settle();\nawait __settle();\n"
+            "nextData.annotate = true;\n"
+            f"nextData.reading_check = {json.dumps(drawn['reading_check'])};\n"
+            f"nextData.reading_routes = {json.dumps({'pi': drawn['reading_routes']['pi']})};\n"
+            f"nextData.reading = {json.dumps(drawn['reading'])};\n"
+            "const session = nextData.sessions[0];\n"
+            'session.harness = "pi";\n'
+            'session.annotation_goal = "Ship the parser";\n'
+            "session.annotation_revision = 1;\n"
+            "__fetchImpl = async (url, init) => {\n"
+            "  if(init && init.method === 'POST') return "
+            f"{{ok:false,status:{status},json:async()=>({json.dumps(reply)})}};\n"
+            "  return {ok:true,json:async()=>nextData};\n"
+            "};\n"
+            "await nextCockpitAskForReading(session, null);\n"
+            "const html = nextCockpitReadingControl(session, nextCockpitAnnotation(session), null);\n"
+            "console.log(JSON.stringify({html}));\n",
+            self.FIXTURE,
+        )
+        assert isinstance(page, dict)
+        html = page["html"]
+        self.assertIn("Allow and analyze", html)
+        self.assertEqual(1, html.count(reading_policy.DESTINATION_CHANGED))
+        self.assertIn("To: gw.corp.example", html)
+        self.assertNotIn("To: Anthropic", html)
+        self.assertEqual("gw.corp.example", reply["route"]["words_destination"])
