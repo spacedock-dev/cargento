@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import platform
 from pathlib import Path
-from typing import Any
+from typing import Any, Self
 from unittest import mock
 
 from cargento_runtime import reading_route
@@ -62,7 +62,7 @@ class _Pins:
         for patcher in reversed(self._patchers):
             patcher.stop()
 
-    def __enter__(self) -> _Pins:
+    def __enter__(self) -> Self:
         self.start()
         return self
 
