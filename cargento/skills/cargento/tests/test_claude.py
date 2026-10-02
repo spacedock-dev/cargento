@@ -3752,10 +3752,48 @@ class ClaudeTranscriptTurnStopTest(RuntimeTestCase):
         ]
         self.assertIsNone(self.row_at(stop + 120, rows)["turn_end_at"])
 
+    def kept_going(self, stop: float, **summary: Any) -> list[dict[str, Any]]:
+        """A Stop hook that blocked the stop, as Claude Code 2.1.287 writes it.
+
+        Its reason lands as an `isMeta` user record before the summary, the summary says
+        `preventedContinuation: false`, and the turn goes on: the model is still generating, so
+        no assistant record follows yet (verifier S1, read from the installed bundle).
+        """
+        rows = _turn_records(stop, **summary)
+        meta = {
+            "type": "user",
+            "isMeta": True,
+            "sessionId": TURN_SID,
+            "timestamp": datetime.fromtimestamp(stop - 0.05, UTC).isoformat(),
+            "message": {"role": "user", "content": "Stop hook feedback: tests still fail"},
+        }
+        return [*rows[:2], meta, rows[2]]
+
     def test_a_stop_hook_that_kept_the_turn_going_does_not_open_analyze(self) -> None:
+        from cargento_runtime import reading  # noqa: PLC0415 - the press reads the row
+
+        stop = self.STOP
+        cases: dict[str, dict[str, Any]] = {
+            "a blocking hook": {"hookErrors": ["tests still fail"]},
+            "a goal not met": {"hookErrors": []},
+        }
+        for name, summary in cases.items():
+            for later in (stop + 9, stop + 40):
+                with self.subTest(case=name, at=later - stop):
+                    row = self.row_at(later, self.kept_going(stop, **summary))
+                    self.assertIsNone(row["turn_end_at"])
+                    scope, _ = reading.eligibility(
+                        row, latest_revision_at=0.0, now=later, settle_sec=8.0,
+                        admit_turn_stop=True,
+                    )  # fmt: skip
+                    self.assertNotEqual(reading.SCOPE_LAST_TURN, scope)
+
+    def test_a_stop_hook_that_stopped_the_turn_is_a_turn_stop(self) -> None:
+        # `preventedContinuation: true` is a hook ending the turn ("Stop hook prevented
+        # continuation"), which is a stop, not a turn kept going.
         stop = self.STOP
         row = self.row_at(stop + 120, _turn_records(stop, preventedContinuation=True))
-        self.assertIsNone(row["turn_end_at"])
+        self.assertEqual(stop, row["turn_end_at"])
 
     def test_a_new_prompt_after_the_stop_closes_the_last_turn_reading(self) -> None:
         stop = self.STOP
@@ -3822,15 +3860,22 @@ class ClaudeTranscriptTurnStopTest(RuntimeTestCase):
 class TheTurnStopRecordIsTheScorersRecordTest(unittest.TestCase):
     """`claude_data.is_turn_stop_record` and the scorer's `_transcript_stop`, over one table."""
 
-    TABLE: tuple[tuple[dict[str, Any], bool], ...] = (
-        ({}, True),
-        ({"isSidechain": True}, False),
-        ({"preventedContinuation": True}, False),
-        ({"subtype": "away_summary"}, False),
-        ({"type": "user"}, False),
-        ({"isSidechain": None}, False),
-        ({"preventedContinuation": None}, False),
-        ({"sessionId": None}, False),
+    # Each row: a change to the summary, the conversation records before it, and the verdict.
+    # A `user` record between the last reply and the summary is a hook's or a goal's feedback,
+    # which keeps the turn going (verifier S1); a summary with no reply before it vouches for
+    # nothing.
+    TABLE: tuple[tuple[dict[str, Any], tuple[str, ...], bool], ...] = (
+        ({}, ("user", "assistant"), True),
+        ({"preventedContinuation": True}, ("user", "assistant"), True),
+        ({}, ("user", "assistant", "user"), False),
+        ({}, ("assistant", "user"), False),
+        ({}, (), False),
+        ({"isSidechain": True}, ("assistant",), False),
+        ({"subtype": "away_summary"}, ("assistant",), False),
+        ({"type": "user"}, ("assistant",), False),
+        ({"isSidechain": None}, ("assistant",), False),
+        ({"preventedContinuation": None}, ("assistant",), False),
+        ({"sessionId": None}, ("assistant",), False),
     )
 
     def test_both_readers_agree_on_every_shape(self) -> None:
@@ -3842,7 +3887,12 @@ class TheTurnStopRecordIsTheScorersRecordTest(unittest.TestCase):
         import mark_abstention  # noqa: PLC0415 - the scorer is only measured here
 
         stamp = "2026-01-01T00:00:05Z"
-        for change, expected in self.TABLE:
+        for change, before, expected in self.TABLE:
+            replies = [
+                {"type": kind, "sessionId": TURN_SID, "timestamp": "2026-01-01T00:00:04Z",
+                 "message": {"role": kind, "content": "x"}}
+                for kind in before
+            ]  # fmt: skip
             record = {
                 "type": "system",
                 "subtype": "stop_hook_summary",
@@ -3852,10 +3902,11 @@ class TheTurnStopRecordIsTheScorersRecordTest(unittest.TestCase):
                 "timestamp": stamp,
                 **change,
             }
-            with self.subTest(change=change), tempfile.TemporaryDirectory() as tmp:
-                self.assertIs(expected, claude_data.is_turn_stop_record(record))
+            with self.subTest(change=change, before=before), tempfile.TemporaryDirectory() as tmp:
+                after = before[-1] if before else None
+                self.assertIs(expected, claude_data.is_turn_stop_record(record, after))
                 path = Path(tmp) / "t.jsonl"
-                path.write_text(json.dumps(record) + "\n")
+                path.write_text("".join(json.dumps(row) + "\n" for row in [*replies, record]))
                 scored = mark_abstention._transcript_stop(
                     str(path), TURN_SID[:8], records.parse_ts(stamp) or 0.0
                 )

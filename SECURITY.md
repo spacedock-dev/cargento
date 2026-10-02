@@ -2106,7 +2106,8 @@ A Claude Code turn stop may also be read from the session's own transcript (owne
 reads. Nothing more is read, stored or sent, and it is never written as an observed stop
 (`finished_at`). Whoever can write the transcript can forge one, which is the local-process
 exposure accepted throughout. The worst it buys is a reading the reader pressed for, saying it
-covers a turn that had not finished. The scorer's transcript vouching above is unchanged.
+covers a turn that had not finished. A summary written after a hook's feedback, which keeps the
+turn going, is refused by the collector and by the scorer's transcript vouching above alike.
 
 The coordinator is the only writer, so two flags govern the file by construction rather than by a
 switch of their own. `--no-events` leaves it unread and unwritten, exactly as it leaves the focus

@@ -2058,8 +2058,15 @@ the coordinator holds stops in memory, and an `away_summary` that turned an idle
 The owner's walk on 2026-10-02 saw Analyze go inert, live and inert again with no word why
 (arbiter spec, `ui3`). Item 13 now admits a second kind of turn stop, for Claude Code alone:
 the transcript's own top-level `stop_hook_summary` for this session, written when Claude Code
-runs its Stop hooks, with `preventedContinuation` false, and with no `user` or `assistant`
-record and no other activity newer than it by more than the activity grace. It is the record
+runs its Stop hooks, directly after the turn's last assistant reply, and with no `user` or
+`assistant` record and no other activity newer than it by more than the activity grace. A
+`user` record between that reply and the summary refuses it: a Stop hook that blocks the stop,
+and a goal check that is not met, write their feedback as an `isMeta` user record there, then
+the summary with `preventedContinuation` false, and the turn goes on. `preventedContinuation`
+true is a hook ending the turn, and is a stop. The first build read that flag the other way
+round and published a turn a hook kept going as finished (verifier S1, `ui3`, read from Claude
+Code 2.1.287's own Stop-hook loop); the scorer's `_transcript_stop` shared the error and takes
+the same correction, which is what its 2026-10-01 words "did not keep the turn going" meant. It is the record
 the 2026-10-01 amendment measured about 115 ms ahead of the hook. It is read from the tail the
 collector already reads and published as `turn_end_at`, and the row turns Idle as a hook Stop
 would turn it. `finished_at` stays hook-only. A hook stop, when held, is the stop. Either kind

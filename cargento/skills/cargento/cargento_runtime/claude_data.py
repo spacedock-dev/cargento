@@ -363,23 +363,30 @@ def last_user_event(config: RuntimeConfig, state: RuntimeState, path: str) -> st
     return marker
 
 
-def is_turn_stop_record(record: Any) -> bool:
+def is_turn_stop_record(record: Any, after: str | None) -> bool:
     """Whether a transcript record is Claude Code's own turn stop for its session.
 
     The top-level `stop_hook_summary` Claude Code writes when its Stop hooks
-    run, which is the event a hook stop is stamped from. A hook that kept the
-    turn going (`preventedContinuation`) is not a stop, and a subagent's record
-    is not the session's. The scorer's `mark_abstention._transcript_stop` reads
-    the same keys, and a test holds the two to one table. No capture under
-    `docs/captures/` records this shape: it rests on the 2026-10-01
-    measurement in `docs/design-reading-a-session.md`.
+    run, which is the event a hook stop is stamped from. `after` is the type of
+    the newest `user` or `assistant` record before it in the file, and only an
+    `assistant` reply admits it. A Stop hook that blocks the stop, and a goal
+    check that is not met, write their feedback as an `isMeta` user record
+    before the summary, then write the summary with `preventedContinuation`
+    false and keep the turn going (verifier S1, read from Claude Code 2.1.287).
+    `preventedContinuation` true is a hook ending the turn, which is a stop.
+    A subagent's record is not the session's. The scorer's
+    `mark_abstention._transcript_stop` reads the same keys and the same rule,
+    and a test holds the two to one table. No capture under `docs/captures/`
+    records this shape: it rests on the 2026-10-01 measurement in
+    `docs/design-reading-a-session.md`.
     """
     return bool(
-        isinstance(record, dict)
+        after == "assistant"
+        and isinstance(record, dict)
         and record.get("type") == "system"
         and record.get("subtype") == "stop_hook_summary"
         and record.get("isSidechain") is False
-        and record.get("preventedContinuation") is False
+        and isinstance(record.get("preventedContinuation"), bool)
         and isinstance(record.get("sessionId"), str)
     )
 
@@ -431,6 +438,9 @@ def analyze_transcript(config: RuntimeConfig, state: RuntimeState, path: str) ->
         "last_user_event": last_user_event(config, state, path),
     }
     pending: dict[Any, Any] = {}  # tool_use id -> {"name", "ts", "asks"} for INPUT_TOOLS only
+    # The type of the newest conversation record so far, in file order: the
+    # context `is_turn_stop_record` reads a summary in.
+    conversation: str | None = None
     for line in runtime_io.read_tail(config, path):
         if not line or line[0] != "{":
             continue
@@ -444,9 +454,11 @@ def analyze_transcript(config: RuntimeConfig, state: RuntimeState, path: str) ->
             info["last_event_ts"] = max(info["last_event_ts"], ep)
             if t in {"user", "assistant"}:
                 info["last_conversation_ts"] = max(info["last_conversation_ts"], ep)
-        if ep and ep >= info["turn_stop_ts"] and is_turn_stop_record(d):
+        if ep and ep >= info["turn_stop_ts"] and is_turn_stop_record(d, conversation):
             info["turn_stop_ts"] = ep
             info["turn_stop_sid"] = d["sessionId"]
+        if t in ("user", "assistant"):  # a tuple: `t` may be any JSON value
+            conversation = t
         if t == "last-prompt":
             info["last_prompt"] = d.get("lastPrompt")
         elif t == "assistant":
