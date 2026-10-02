@@ -18,7 +18,7 @@ from . import test_next_analysis_result as result_tests
 from . import test_next_drift_panel as panel
 from . import test_next_intent_draft as draft_tests
 from . import test_next_text_density as density
-from .next_harness import NEXT_STYLES
+from .next_harness import NEXT_STYLES, storage_prelude
 from .visible_text import visible_text
 
 SNAKE = re.compile(r"\b[a-z]+_[a-z_]+\b")
@@ -125,7 +125,7 @@ class AttentionSaysWhatIsOnTheBoardTest(panel.PanelPage):
             + "await refreshNext();\nawait __settle();\n"
             "navigateNext({view:'attention', project:null, session:null});\nawait __settle();\n"
             "console.log(JSON.stringify(__els.app.innerHTML));",
-            panel.storage_prelude({}) + panel.FIXTURE,
+            storage_prelude({}) + panel.FIXTURE,
         )
         assert isinstance(html, str)
         return html
@@ -186,7 +186,7 @@ class FiveSmallCopyFixesTest(panel.PanelPage):
             "const on = __els.app.innerHTML;\n"
             "nextData.annotate = false; renderNext();\n"
             "console.log(JSON.stringify({on, off:__els.app.innerHTML}));",
-            panel.storage_prelude({}) + panel.FIXTURE,
+            storage_prelude({}) + panel.FIXTURE,
         )
         assert isinstance(html, dict)
         link = re.search(
