@@ -3952,7 +3952,11 @@ function nextReadingFlip(session, pressable, eligibility, quiet = false){
     flip.candidateData = nextData;
   }
   if(nextData === flip.candidateData || now - flip.candidateSince < NEXT_READING_FLIP_HOLD_MS){
-    nextReadingFlipSchedule("hold", flip.candidateSince + NEXT_READING_FLIP_HOLD_MS);
+    /* Armed only while the moment is ahead. Past it, the hold waits for the
+       next payload: re-arming a past moment redrew #app back to back while
+       the stream was down (verifier R1). */
+    const at = flip.candidateSince + NEXT_READING_FLIP_HOLD_MS;
+    nextReadingFlipSchedule("hold", at > now ? at : null);
     return flip;
   }
   flip.shown = false;

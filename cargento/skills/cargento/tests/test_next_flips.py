@@ -217,6 +217,32 @@ __s.reading_eligibility = {ok:false, reason:"stop-settling", until:1008, sentenc
         self.assertNotIn("next-wait-dot", opened)
         self.assertEqual([OPEN_LAST_TURN], out["said"])
 
+    def test_a_close_held_past_its_moment_with_no_new_payload_waits_quietly_for_one(
+        self,
+    ) -> None:
+        # Measured by the regressions verifier: a hold whose moment had passed re-armed itself at
+        # that past moment on every render, so a page whose stream had stopped redrew #app several
+        # hundred times a second. Every timer the page arms is fired, round after round.
+        out = self.run_flip(
+            """
+await __poll(OPEN, 1000);
+await __poll(IDLE, 1001);
+__setNow(1012);
+const before = nextReadingFlipRender;
+for(let round = 0; round < 40; round += 1){ __fireAll(); await __settle(); }
+const renders = nextReadingFlipRender - before;
+const armed = __timeouts.length;
+const held = __els.app.innerHTML;
+const closed = await __poll(IDLE, 1013);
+console.log(JSON.stringify({renders, armed, held:__ask(held), closed:__ask(closed)}));
+""",
+            setup=TIMERS,
+        )
+        self.assertLessEqual(out["renders"], 2)
+        self.assertNotIn('aria-disabled="true"', out["held"])
+        # The next payload is the one the hold was waiting for.
+        self.assertIn('aria-disabled="true"', out["closed"])
+
     def test_a_flip_on_a_session_that_flaps_is_announced_at_most_once_a_minute(self) -> None:
         out = self.run_flip(
             """
