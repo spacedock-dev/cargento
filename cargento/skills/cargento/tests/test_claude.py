@@ -3618,3 +3618,245 @@ class DispatchedTeammateTest(RuntimeTestCase):
         # The newest finished agents must be retained over the oldest
         self.assertIn("finished-0-lens", published_names)
         self.assertNotIn("finished-64-lens", published_names)
+
+
+# The recorded shape of Claude Code's own turn stop: a top-level `system` record with subtype
+# `stop_hook_summary`, written when its Stop hooks run, the event a hook stop is stamped from
+# (docs/design-reading-a-session.md, "Amended 2026-10-01: a reader's correction and a transcript
+# stop", item 2; the scorer's `_transcript_stop` reads the same keys). Fixtures only: every record
+# here is written by the test.
+TURN_SID = "abcdef12-0000-4000-8000-000000000000"
+
+
+def _turn_records(stop: float, *after: dict[str, Any], **summary: Any) -> list[dict[str, Any]]:
+    def stamp(at: float) -> str:
+        return datetime.fromtimestamp(at, UTC).isoformat()
+
+    rows: list[dict[str, Any]] = [
+        {
+            "type": "user",
+            "sessionId": TURN_SID,
+            "timestamp": stamp(stop - 40),
+            "message": {"role": "user", "content": "add retry to the webhook"},
+        },
+        {
+            "type": "assistant",
+            "sessionId": TURN_SID,
+            "timestamp": stamp(stop - 0.2),
+            "message": {"role": "assistant", "content": [{"type": "text", "text": "Done."}]},
+        },
+        {
+            "type": "system",
+            "subtype": "stop_hook_summary",
+            "isSidechain": False,
+            "preventedContinuation": False,
+            "sessionId": TURN_SID,
+            "timestamp": stamp(stop),
+            **summary,
+        },
+    ]
+    rows.extend(
+        {"sessionId": TURN_SID, **row, "timestamp": stamp(row["timestamp"])} for row in after
+    )
+    return rows
+
+
+class ClaudeTranscriptTurnStopTest(RuntimeTestCase):
+    """A Claude Code turn stop read from the transcript on a board no hook reaches (ui3)."""
+
+    STOP = 0.0
+
+    def setUp(self) -> None:
+        super().setUp()
+        self.STOP = float(int(time.time()) - 600)
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.project = Path(self.tmp.name) / "projects" / "sample"
+        self.project.mkdir(parents=True)
+
+    def row_at(self, now: float, rows: list[dict[str, Any]]) -> dict[str, Any]:
+        transcript = self.project / f"{TURN_SID}.jsonl"
+        transcript.write_text("\n".join(json.dumps(row) for row in rows) + "\n")
+        newest = max(records.parse_ts(row["timestamp"]) or 0.0 for row in rows)
+        os.utime(transcript, (newest, newest))
+        with (
+            store_patch(PROJECTS_DIR=str(Path(self.tmp.name) / "projects")),
+            store_patch(TASKS_DIR=str(Path(self.tmp.name) / "no-tasks")),
+        ):
+            return collect_claude(now, 24, False)[0]
+
+    def press(self, row: dict[str, Any], now: float) -> Any:
+        from cargento_runtime import reading  # noqa: PLC0415 - the press reads the row
+
+        return reading.press_eligibility(row, [], now=now, settle_sec=8.0)
+
+    def test_a_reader_whose_claude_code_session_finished_its_turn_on_a_board_no_hook_reaches_sees_it_idle_and_can_analyze_its_last_turn_once_it_settles(
+        self,
+    ) -> None:
+        from cargento_runtime import reading  # noqa: PLC0415 - the press reads the row
+
+        stop = self.STOP
+        early = self.row_at(stop + 2, _turn_records(stop))
+        self.assertEqual("idle", early["state"])
+        self.assertEqual(stop, early["turn_end_at"])
+        self.assertIsNone(early["finished_at"])
+        settling = self.press(self.row_at(stop + 3, _turn_records(stop)), stop + 3)
+        self.assertEqual(reading.WITHHELD_STOP_SETTLING, settling["reason"])
+        self.assertEqual(stop + 8.0, settling["until"])
+        for later in (stop + 9, stop + 300):
+            with self.subTest(at=later - stop):
+                row = self.row_at(later, _turn_records(stop))
+                self.assertTrue(self.press(row, later)["ok"])
+                self.assertEqual(
+                    (reading.SCOPE_LAST_TURN, ""),
+                    reading.eligibility(
+                        row,
+                        latest_revision_at=0.0,
+                        now=later,
+                        settle_sec=8.0,
+                        admit_turn_stop=True,
+                    ),
+                )
+
+    def test_a_reader_whose_session_is_waiting_on_a_permission_is_not_told_its_turn_finished(
+        self,
+    ) -> None:
+        from cargento_runtime import reading  # noqa: PLC0415 - the press reads the row
+
+        stop = self.STOP
+        rows = _turn_records(stop)[:2]
+        rows[1] = {
+            **rows[1],
+            "message": {
+                "role": "assistant",
+                "content": [{"type": "tool_use", "id": "t1", "name": "Bash", "input": {}}],
+            },
+        }
+        row = self.row_at(stop + 120, rows)
+        self.assertIsNone(row["turn_end_at"])
+        self.assertEqual(reading.WITHHELD_IDLE_UNKNOWN, self.press(row, stop + 120)["reason"])
+
+    def test_an_interrupted_turn_is_not_a_turn_stop(self) -> None:
+        stop = self.STOP
+        rows = [
+            *_turn_records(stop)[:2],
+            {
+                "type": "user",
+                "sessionId": TURN_SID,
+                "timestamp": datetime.fromtimestamp(stop, UTC).isoformat(),
+                "message": {
+                    "role": "user",
+                    "content": [{"type": "text", "text": "[Request interrupted by user]"}],
+                },
+            },
+        ]
+        self.assertIsNone(self.row_at(stop + 120, rows)["turn_end_at"])
+
+    def test_a_stop_hook_that_kept_the_turn_going_does_not_open_analyze(self) -> None:
+        stop = self.STOP
+        row = self.row_at(stop + 120, _turn_records(stop, preventedContinuation=True))
+        self.assertIsNone(row["turn_end_at"])
+
+    def test_a_new_prompt_after_the_stop_closes_the_last_turn_reading(self) -> None:
+        stop = self.STOP
+        prompt = {"type": "user", "timestamp": stop + 30, "message": {"content": "and logging"}}
+        row = self.row_at(stop + 120, _turn_records(stop, prompt))
+        self.assertIsNone(row["turn_end_at"])
+
+    def test_a_subagents_stop_summary_is_not_the_sessions(self) -> None:
+        stop = self.STOP
+        row = self.row_at(stop + 120, _turn_records(stop, isSidechain=True))
+        self.assertIsNone(row["turn_end_at"])
+
+    def test_a_summary_for_another_session_id_is_not_this_sessions_stop(self) -> None:
+        stop = self.STOP
+        other = "abcdef12-0000-4000-8000-ffffffffffff"
+        row = self.row_at(stop + 120, _turn_records(stop, sessionId=other))
+        self.assertIsNone(row["turn_end_at"])
+
+    def test_an_away_summary_after_the_stop_leaves_it_standing(self) -> None:
+        stop = self.STOP
+        away = {"type": "system", "subtype": "away_summary", "timestamp": stop + 200}
+        row = self.row_at(stop + 230, _turn_records(stop, away))
+        self.assertEqual(stop, row["turn_end_at"])
+        # The away_summary wrote the file 30 s ago, which used to turn the row Working.
+        self.assertEqual("idle", row["state"])
+
+    def test_a_prompt_inside_the_activity_grace_still_withdraws_it(self) -> None:
+        stop = self.STOP
+        prompt = {"type": "user", "timestamp": stop + 3, "message": {"content": "and logging"}}
+        self.assertIsNone(self.row_at(stop + 120, _turn_records(stop, prompt))["turn_end_at"])
+
+    def test_a_session_a_hook_says_is_waiting_on_you_keeps_its_question(self) -> None:
+        # A permission prompt raised after the stop summary: the turn is held, not finished.
+        stop = self.STOP
+        state_of().hook_notifications[TURN_SID[:8]] = {
+            "ts": stop + 50,
+            "message": "Claude needs your permission to use Bash",
+        }
+        row = self.row_at(stop + 120, _turn_records(stop))
+        self.assertEqual("needs_input", row["state"])
+        self.assertIsNone(row["turn_end_at"])
+
+    def test_work_written_after_the_stop_withdraws_it(self) -> None:
+        # A task file the session updated a minute after the summary: the turn
+        # did not end there, so the summary does not stand for it.
+        stop = self.STOP
+        tasks = Path(self.tmp.name) / "no-tasks" / TURN_SID
+        tasks.mkdir(parents=True)
+        task = tasks / "1.json"
+        task.write_text(json.dumps({"id": "1", "subject": "Do it", "status": "pending"}))
+        os.utime(task, (stop + 60, stop + 60))
+        self.assertIsNone(self.row_at(stop + 120, _turn_records(stop))["turn_end_at"])
+        os.utime(task, (stop + 5, stop + 5))
+        self.assertEqual(stop, self.row_at(stop + 120, _turn_records(stop))["turn_end_at"])
+
+    def test_a_record_with_no_stamp_or_the_wrong_shape_is_not_a_turn_stop(self) -> None:
+        stop = self.STOP
+        for change in ({"subtype": "away_summary"}, {"type": "assistant"}, {"sessionId": 7}):
+            with self.subTest(change=change):
+                row = self.row_at(stop + 120, _turn_records(stop, **change))
+                self.assertIsNone(row["turn_end_at"])
+
+
+class TheTurnStopRecordIsTheScorersRecordTest(unittest.TestCase):
+    """`claude_data.is_turn_stop_record` and the scorer's `_transcript_stop`, over one table."""
+
+    TABLE: tuple[tuple[dict[str, Any], bool], ...] = (
+        ({}, True),
+        ({"isSidechain": True}, False),
+        ({"preventedContinuation": True}, False),
+        ({"subtype": "away_summary"}, False),
+        ({"type": "user"}, False),
+        ({"isSidechain": None}, False),
+        ({"preventedContinuation": None}, False),
+        ({"sessionId": None}, False),
+    )
+
+    def test_both_readers_agree_on_every_shape(self) -> None:
+        import sys  # noqa: PLC0415 - the scorer is only imported here
+
+        scripts = str(Path(__file__).parents[4] / "scripts")
+        if scripts not in sys.path:
+            sys.path.insert(0, scripts)
+        import mark_abstention  # noqa: PLC0415 - the scorer is only measured here
+
+        stamp = "2026-01-01T00:00:05Z"
+        for change, expected in self.TABLE:
+            record = {
+                "type": "system",
+                "subtype": "stop_hook_summary",
+                "isSidechain": False,
+                "preventedContinuation": False,
+                "sessionId": TURN_SID,
+                "timestamp": stamp,
+                **change,
+            }
+            with self.subTest(change=change), tempfile.TemporaryDirectory() as tmp:
+                self.assertIs(expected, claude_data.is_turn_stop_record(record))
+                path = Path(tmp) / "t.jsonl"
+                path.write_text(json.dumps(record) + "\n")
+                scored = mark_abstention._transcript_stop(
+                    str(path), TURN_SID[:8], records.parse_ts(stamp) or 0.0
+                )
+                self.assertIs(expected, scored)

@@ -357,6 +357,23 @@ SCOPE_TEXT = {
     ),
 }
 
+# The last-turn sentence when the stop it rested on was the transcript's own
+# record rather than a hook's (owner, 2026-10-02). Chosen when the reading is
+# produced, because `scope_text` is stored, and admitted on read-back only
+# beside `SCOPE_LAST_TURN` (`scope_texts`).
+SCOPE_TEXT_LAST_TURN_TRANSCRIPT = (
+    "Claude Code's transcript recorded the last turn ending and no session end was observed, "
+    "so this covers the work through that turn. It is not a reading of how the session ended."
+)
+
+
+def scope_texts(scope: str) -> tuple[str, ...]:
+    """Every sentence a stored reading of `scope` may carry, the default first."""
+    if scope == SCOPE_LAST_TURN:
+        return (SCOPE_TEXT[scope], SCOPE_TEXT_LAST_TURN_TRANSCRIPT)
+    return (SCOPE_TEXT[scope],)
+
+
 # The harnesses a reader may have read at a turn stop: Claude Code only, by the
 # owner's ruling for this milestone and item 13 of the checklist ruling in
 # `docs/design-reading-a-session.md`. The page's
@@ -1357,6 +1374,33 @@ def _add_check_fields(row: LedgerEntry, fact: Mapping[str, Any]) -> None:
         row["result_at"] = result_at
 
 
+STOP_HOOK = "hook"
+STOP_TRANSCRIPT = "transcript"
+
+
+def observed_stop(row: Mapping[str, Any]) -> tuple[float, str] | None:
+    """The turn stop this row rests on, and which kind it is, or None.
+
+    A hook stop (`finished_at`) when one is held: it is the stop. Otherwise,
+    on a harness in `TURN_STOP_HARNESSES`, the stop the session's own
+    transcript records (`turn_end_at`, owner 2026-10-02). Every reader of a
+    turn stop in this module reads it here, so the board, the press and the
+    job cannot disagree about which stop a row has. The page's
+    `nextSessionStop` is its port.
+    """
+    hook = _number(row.get("finished_at"))
+    if hook is not None and hook > 0:
+        return hook, STOP_HOOK
+    recorded = _number(row.get("turn_end_at"))
+    if (
+        str(row.get("harness") or "") in TURN_STOP_HARNESSES
+        and recorded is not None
+        and recorded > 0
+    ):
+        return recorded, STOP_TRANSCRIPT
+    return None
+
+
 def end_kind(row: Mapping[str, Any]) -> str:
     """Which of the five endings this row shows.
 
@@ -1370,10 +1414,9 @@ def end_kind(row: Mapping[str, Any]) -> str:
     """
     idle = row.get("state") == "idle"
     ended = _number(row.get("ended_at"))
-    stopped = _number(row.get("finished_at"))
     if ended is not None and ended > 0:
         return "session-end"
-    if idle and stopped is not None and stopped > 0:
+    if idle and observed_stop(row) is not None:
         return "turn-stop"
     if not idle:
         return "running"
@@ -1490,9 +1533,10 @@ def press_eligibility(
     )
     if not withheld:
         return {"ok": True, "reason": None, "until": None, "sentence": None}
+    stop = observed_stop(row)
     moment = {
         WITHHELD_SETTLING: _number(row.get("ended_at")),
-        WITHHELD_STOP_SETTLING: _number(row.get("finished_at")),
+        WITHHELD_STOP_SETTLING: stop[0] if stop else None,
     }.get(withheld)
     until = moment + settle_sec if moment is not None else None
     return {"ok": False, "reason": withheld, "until": until, "sentence": WITHHELD[withheld]}
@@ -1504,9 +1548,9 @@ def _last_turn(row: Mapping[str, Any], *, now: float, settle_sec: float) -> tupl
     The same settle as an end, for the same in-flight `turn_started`, and the
     same NaN guard, since a comparison against one is always False.
     """
-    stopped = _number(row.get("finished_at"))
+    stop = observed_stop(row)
     moment = _number(now)
-    if stopped is None or moment is None or moment - stopped < settle_sec:
+    if stop is None or moment is None or moment - stop[0] < settle_sec:
         return "", WITHHELD_STOP_SETTLING
     return SCOPE_LAST_TURN, ""
 
@@ -2493,7 +2537,7 @@ def produce(  # noqa: PLR0913
         "stamp": stamp_text,
         "cutoff": cutoff,
         "scope": scope,
-        "scope_text": SCOPE_TEXT[scope],
+        "scope_text": _scope_text(scope, row),
         "ended_at_read": records.norm_epoch(row.get("ended_at")) or None,
         "revision_read_at": records.norm_epoch(latest.get("at")) or None,
         "window_start": window_start(latest) or None,
@@ -2513,6 +2557,14 @@ _STATUS_FAILURES = {
     "closed": (WITHHELD_STOPPING, False),
     "cancelled": (WITHHELD_CANCELLED_UNSENT, False),
 }
+
+
+def _scope_text(scope: str, row: Mapping[str, Any]) -> str:
+    """The scope sentence for a reading produced now, naming which stop it rested on."""
+    stop = observed_stop(row) if scope == SCOPE_LAST_TURN else None
+    if stop is not None and stop[1] == STOP_TRANSCRIPT:
+        return SCOPE_TEXT_LAST_TURN_TRANSCRIPT
+    return SCOPE_TEXT[scope]
 
 
 def _ledger_to_read(
@@ -2535,7 +2587,8 @@ def _ledger_to_read(
     # whose state update lags leaves the row idle at the old stop while the
     # record moves on, and a later fact would then be read, and cited, as part
     # of a turn it was not in.
-    stopped = (_number(row.get("finished_at")) or 0.0) if scope == SCOPE_LAST_TURN else None
+    stop = observed_stop(row) if scope == SCOPE_LAST_TURN else None
+    stopped = (stop[0] if stop else 0.0) if scope == SCOPE_LAST_TURN else None
     kept: list[LedgerEntry] = []
     for entry in ledger:
         if _before_window(entry, opened):

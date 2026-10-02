@@ -232,6 +232,14 @@ column holds. The top-level `id` does not: `completed` carries a different one f
 reader keyed on `id` never matches and falls through to a drop-oldest fallback, which is right for
 one child and wrong for two.
 
+Claude Code's transcript turn stop has no file here either. The collector reads the top-level
+`system` record with subtype `stop_hook_summary` and its keys `isSidechain`,
+`preventedContinuation`, `sessionId` and `timestamp` (`claude_data.is_turn_stop_record`, owner
+2026-10-02). That gate rests on the 2026-10-01 measurement recorded in
+[a reader's correction and a transcript stop](../design-reading-a-session.md#amended-2026-10-01-a-readers-correction-and-a-transcript-stop),
+not on a capture: no new shape file was taken. No file in this directory records that record, or
+the final assistant message's `stop_reason`, which is why the second is not read.
+
 ## Reading one
 
 One directory per harness, because the reporter summarises a whole directory and two harnesses with

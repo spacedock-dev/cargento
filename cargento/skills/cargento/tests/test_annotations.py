@@ -2021,6 +2021,49 @@ class AFinalReadingRetractsItselfWhenTheEndStopsBeingPublishedTest(unittest.Test
         aggregate._attach_annotations(rows, annotation_store.load(config))
         return rows[0]["annotation_assessment"]
 
+    def test_a_reading_of_a_transcript_stop_keeps_its_own_sentence_when_read_back(self) -> None:
+        temp = tempfile.TemporaryDirectory()
+        self.addCleanup(temp.cleanup)
+        root = Path(temp.name)
+        config = build_runtime_config(
+            environ={"HOME": str(root), "CARGENTO_HOME": str(root / "state")},
+            platform_name="linux",
+            os_name="posix",
+            launcher_path=root / "server.py",
+        )
+        state = build_runtime_state(config, started=1.0)
+        annotation_store.annotate(config, state, "claude", "s1", goal="rename", now=10.0)
+        for stored, expected in (
+            (
+                runtime_reading.SCOPE_TEXT_LAST_TURN_TRANSCRIPT,
+                runtime_reading.SCOPE_TEXT_LAST_TURN_TRANSCRIPT,
+            ),
+            # Words of the sidecar's own are never read back.
+            ("Anything at all.", runtime_reading.SCOPE_TEXT[runtime_reading.SCOPE_LAST_TURN]),
+        ):
+            with self.subTest(stored=stored):
+                assessment = self._assessment()
+                assessment["scope"] = runtime_reading.SCOPE_LAST_TURN
+                assessment["scope_text"] = stored
+                annotation_store.record_reading(
+                    config, state, "claude", "s1", assessment=assessment
+                )
+                entry = annotation_store.find(annotation_store.load(config), "claude", "s1")
+                assert entry is not None
+                self.assertEqual(
+                    expected, annotation_store.published(entry)["assessment"]["scope_text"]
+                )
+        # A transcript sentence on another scope is not admitted either.
+        assessment = self._assessment()
+        assessment["scope_text"] = runtime_reading.SCOPE_TEXT_LAST_TURN_TRANSCRIPT
+        annotation_store.record_reading(config, state, "claude", "s1", assessment=assessment)
+        entry = annotation_store.find(annotation_store.load(config), "claude", "s1")
+        assert entry is not None
+        self.assertNotEqual(
+            runtime_reading.SCOPE_TEXT_LAST_TURN_TRANSCRIPT,
+            annotation_store.published(entry)["assessment"]["scope_text"],
+        )
+
     def test_a_reader_whose_session_really_ended_is_still_told_the_reading_is_final(self) -> None:
         published = self._through_the_pipeline(99.0)
         assert isinstance(published, dict)

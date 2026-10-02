@@ -368,6 +368,41 @@ class YourPressOnAWaitingSessionReadsItsLastTurnTest(_PressCase):
         self.assertEqual(PROMPT + 60, assessment["evidence_through"])
         self.assertEqual(reading.SCOPE_LAST_TURN, assessment["scope"])
 
+    def test_a_last_turn_reading_of_a_transcript_stop_reads_the_turns_entries_and_leaves_out_only_what_came_after_it(
+        self,
+    ) -> None:
+        """The twin of the resumed-turn test, on a board no hook reaches (owner, 2026-10-02).
+
+        The stop is the transcript's own record, `turn_end_at`, with no `finished_at`.
+        """
+        recorded = {**_waiting(), "finished_at": None, "turn_end_at": STOP, "acquisition": None}
+        resumed = _message("m2", STOP + 30, summary="now also add structured logging")
+        assessment, why, _spent = self.produce(
+            [_message("m1", PROMPT), _check(PROMPT + 60), resumed, _check(STOP + 60)],
+            row=recorded,
+        )
+        self.assertEqual("", why)
+        self.assertIn("please add retry", self.prompts[0])
+        self.assertIn("pytest", self.prompts[0])
+        self.assertNotIn("structured logging", self.prompts[0])
+        self.assertEqual(PROMPT + 60, assessment["evidence_through"])
+        self.assertEqual(reading.SCOPE_LAST_TURN, assessment["scope"])
+        self.assertEqual(reading.SCOPE_TEXT_LAST_TURN_TRANSCRIPT, assessment["scope_text"])
+        self.assertIn("2 entries after the last observed stop", assessment["cutoff"])
+
+    def test_a_hook_stop_wins_over_a_transcript_stop_and_says_so(self) -> None:
+        both = {**_waiting(), "turn_end_at": STOP + 200}
+        assessment, _why, _spent = self.produce(
+            [_message("m1", PROMPT), _check(PROMPT + 60), _check(STOP + 60)], row=both
+        )
+        self.assertEqual(PROMPT + 60, assessment["evidence_through"])
+        self.assertEqual(reading.SCOPE_TEXT[reading.SCOPE_LAST_TURN], assessment["scope_text"])
+
+    def test_a_codex_row_carrying_a_transcript_stop_is_not_read_through_it(self) -> None:
+        codex = {**_waiting("codex"), "finished_at": None, "turn_end_at": STOP}
+        self.assertIsNone(reading.observed_stop(codex))
+        self.assertEqual(reading.WITHHELD_IDLE_UNKNOWN, reading.end_kind(codex))
+
     def test_the_reading_keeps_where_its_window_opened(self) -> None:
         assessment, _why, _spent = self.produce([_message("m1", PROMPT), _check(PROMPT + 60)])
         self.assertEqual(PROMPT, assessment["window_start"])

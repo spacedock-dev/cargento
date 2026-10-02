@@ -816,7 +816,13 @@ def _assessment(value: Any, cap: int) -> reading.Assessment | None:
         "stamp": records.safe_text(value.get("stamp"), cap),
         "cutoff": records.safe_text(value.get("cutoff"), max(cap, reading.CUTOFF_CAP_CHARS)),
         "scope": scope,
-        "scope_text": reading.SCOPE_TEXT[scope],
+        # The stored sentence only when it is one this scope may carry, so a
+        # tampered sidecar cannot put words of its own here.
+        "scope_text": (
+            value["scope_text"]
+            if value.get("scope_text") in reading.scope_texts(scope)
+            else reading.SCOPE_TEXT[scope]
+        ),
         "ended_at_read": records.norm_epoch(ended) or None,
         # `.get`, so a reading stored before this field reads back as None and
         # the disclosure states the absence rather than blanking.

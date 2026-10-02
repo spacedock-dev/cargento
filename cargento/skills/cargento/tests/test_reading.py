@@ -1327,19 +1327,62 @@ class WhetherAPressCouldReadIsSaidBeforeThePress(unittest.TestCase):
             for state in ("idle", "working", "needs_input"):
                 for ended in (None, self.END, self.END + 57.0):
                     for finished in (None, self.END, self.END + 57.0):
-                        for acquisition in ("event", "scan-only"):
-                            for at in (self.END - 100.0, self.END + 30.0):
-                                row = {
-                                    "harness": harness,
-                                    "sid": "s1",
-                                    "state": state,
-                                    "ended_at": ended,
-                                    "finished_at": finished,
-                                    "acquisition": acquisition,
-                                }
-                                revisions = [{"n": 1, "at": at, "goal": "ship it", "output": ""}]
-                                table.append((row, revisions))
+                        # The transcript's recorded stop (owner, 2026-10-02): alone at +60 s
+                        # and +3 s before the press, beside a hook stop, on a working row,
+                        # and on Codex, where it is ignored.
+                        for recorded in (None, self.END, self.END + 57.0):
+                            for acquisition in ("event", "scan-only"):
+                                for at in (self.END - 100.0, self.END + 30.0):
+                                    row = {
+                                        "harness": harness,
+                                        "sid": "s1",
+                                        "state": state,
+                                        "ended_at": ended,
+                                        "finished_at": finished,
+                                        "turn_end_at": recorded,
+                                        "acquisition": acquisition,
+                                    }
+                                    revisions = [
+                                        {"n": 1, "at": at, "goal": "ship it", "output": ""}
+                                    ]
+                                    table.append((row, revisions))
         return table
+
+    def test_a_transcript_stop_is_read_as_a_turn_stop_on_claude_code_alone(self) -> None:
+        now = self.END + 60.0
+        idle = {"harness": "claude", "sid": "s1", "state": "idle", "acquisition": None}
+        cases = (
+            ({**idle, "turn_end_at": self.END}, True, None),
+            (
+                {**idle, "turn_end_at": self.END + 57.0},
+                False,
+                (reading.WITHHELD_STOP_SETTLING, self.END + 57.0 + 8.0),
+            ),
+            # The hook's stop wins: it settled long ago, so the press is open.
+            ({**idle, "turn_end_at": self.END + 57.0, "finished_at": self.END}, True, None),
+            ({**idle, "state": "working", "turn_end_at": self.END}, True, None),
+            (
+                {**idle, "harness": "codex", "turn_end_at": self.END},
+                False,
+                (reading.WITHHELD_IDLE_UNKNOWN, None),
+            ),
+        )
+        for row, ok, refused in cases:
+            with self.subTest(row=row):
+                answer = reading.press_eligibility(
+                    row, [{"n": 1, "at": self.END - 100.0, "goal": "g"}], now=now, settle_sec=8.0
+                )
+                self.assertEqual(ok, answer["ok"])
+                if refused:
+                    self.assertEqual(refused, (answer["reason"], answer["until"]))
+        self.assertEqual(
+            (self.END, reading.STOP_HOOK),
+            reading.observed_stop({**idle, "finished_at": self.END, "turn_end_at": self.END + 5}),
+        )
+        self.assertEqual(
+            (self.END, reading.STOP_TRANSCRIPT),
+            reading.observed_stop({**idle, "turn_end_at": self.END}),
+        )
 
     def test_the_board_the_press_and_the_job_agree_over_one_table(self) -> None:
         """The job's own pre-model withhold equals the published one, row by row."""

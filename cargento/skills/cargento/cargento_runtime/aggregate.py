@@ -630,6 +630,8 @@ def _attach_annotations(
     reading route would answer with (`reading.press_eligibility`). Here and not
     earlier because it reads `state`, `finished_at` and `ended_at`, which only
     `_apply_overlays` writes, and the entry's revisions, which this pass finds.
+    The stop it rests on is `reading.observed_stop`'s, which also reads the
+    collector's `turn_end_at`, so the board, the press and the job read one.
     None leaves the declared None: annotations are off and nothing can be read.
     """
     for row in rows:

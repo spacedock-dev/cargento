@@ -2101,6 +2101,13 @@ have its restored end dropped, and the row reads as it does today, no end observ
 honest rather than wrong. A live end, observed by the running coordinator, takes no such guard,
 because the coordinator retires it itself the moment the id is seen in use.
 
+A Claude Code turn stop may also be read from the session's own transcript (owner,
+2026-10-02): its top-level `stop_hook_summary`, from the bounded tail the collector already
+reads. Nothing more is read, stored or sent, and it is never written as an observed stop
+(`finished_at`). Whoever can write the transcript can forge one, which is the local-process
+exposure accepted throughout. The worst it buys is a reading the reader pressed for, saying it
+covers a turn that had not finished. The scorer's transcript vouching above is unchanged.
+
 The coordinator is the only writer, so two flags govern the file by construction rather than by a
 switch of their own. `--no-events` leaves it unread and unwritten, exactly as it leaves the focus
 command with no capability: with no coordinator there is nothing to write an end and the

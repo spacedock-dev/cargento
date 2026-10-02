@@ -363,6 +363,27 @@ def last_user_event(config: RuntimeConfig, state: RuntimeState, path: str) -> st
     return marker
 
 
+def is_turn_stop_record(record: Any) -> bool:
+    """Whether a transcript record is Claude Code's own turn stop for its session.
+
+    The top-level `stop_hook_summary` Claude Code writes when its Stop hooks
+    run, which is the event a hook stop is stamped from. A hook that kept the
+    turn going (`preventedContinuation`) is not a stop, and a subagent's record
+    is not the session's. The scorer's `mark_abstention._transcript_stop` reads
+    the same keys, and a test holds the two to one table. No capture under
+    `docs/captures/` records this shape: it rests on the 2026-10-01
+    measurement in `docs/design-reading-a-session.md`.
+    """
+    return bool(
+        isinstance(record, dict)
+        and record.get("type") == "system"
+        and record.get("subtype") == "stop_hook_summary"
+        and record.get("isSidechain") is False
+        and record.get("preventedContinuation") is False
+        and isinstance(record.get("sessionId"), str)
+    )
+
+
 def analyze_transcript(config: RuntimeConfig, state: RuntimeState, path: str) -> dict[str, Any]:
     """Claude Code transcript tail.
 
@@ -402,6 +423,11 @@ def analyze_transcript(config: RuntimeConfig, state: RuntimeState, path: str) ->
         # definition as `project_context.claude_activity_between`, which a
         # test holds it to.
         "last_conversation_ts": 0,
+        # The newest turn stop Claude Code recorded itself (`is_turn_stop_record`)
+        # and the session id it names, read in this same loop: no further read.
+        # The collector decides whether it still stands (owner, 2026-10-02).
+        "turn_stop_ts": 0,
+        "turn_stop_sid": None,
         "last_user_event": last_user_event(config, state, path),
     }
     pending: dict[Any, Any] = {}  # tool_use id -> {"name", "ts", "asks"} for INPUT_TOOLS only
@@ -418,6 +444,9 @@ def analyze_transcript(config: RuntimeConfig, state: RuntimeState, path: str) ->
             info["last_event_ts"] = max(info["last_event_ts"], ep)
             if t in {"user", "assistant"}:
                 info["last_conversation_ts"] = max(info["last_conversation_ts"], ep)
+        if ep and ep >= info["turn_stop_ts"] and is_turn_stop_record(d):
+            info["turn_stop_ts"] = ep
+            info["turn_stop_sid"] = d["sessionId"]
         if t == "last-prompt":
             info["last_prompt"] = d.get("lastPrompt")
         elif t == "assistant":

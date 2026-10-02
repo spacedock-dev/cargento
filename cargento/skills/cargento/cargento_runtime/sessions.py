@@ -590,6 +590,14 @@ def base_session(harness: str, sid: Any, project: str) -> Session:
         # prints that on the row rather than leaving the reader to infer it
         # (docs/design-scan-only-rows.md).
         "finished_at": None,
+        # The turn stop Claude Code's own transcript records (its top-level
+        # `stop_hook_summary`), set by the Claude collector only from that
+        # record and only while nothing has come after it (owner, 2026-10-02).
+        # It is the transcript's recorded stop and never an observation:
+        # `finished_at` above stays hook-only, and `reading.observed_stop` is
+        # the one place the two are read together. None means no such record
+        # stands, never "did not finish".
+        "turn_end_at": None,
         # How this row was reached, which is the qualifier on `finished_at`
         # above. None means the harness has an event adapter and no event has
         # landed on this row; `events.ACQUISITION_EVENT` means one has;

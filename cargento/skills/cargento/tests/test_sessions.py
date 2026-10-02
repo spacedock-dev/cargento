@@ -69,6 +69,7 @@ DECLARED_SESSION_FIELDS = frozenset(
         "work_activity",
         "started_at",
         "finished_at",
+        "turn_end_at",
         "ended_at",
         "dirty",
         "changed",

@@ -2016,7 +2016,7 @@ within the milestone's scope and recorded on the issue.
 - A turn stop gets the same eight-second settle as a session end, with its own sentence, since the
   end's sentence says the session ended.
 - Through the last turn means through the observed stop: the reading drops every entry timed after
-  `finished_at`. A resumed turn whose state update lags leaves the row idle at the old stop while the
+  the stop (`reading.observed_stop`). A resumed turn whose state update lags leaves the row idle at the old stop while the
   record moves on, and without the cap a check from the new turn was cited in a reading that said it
   covered the last one.
 - Words typed after a session end are still withheld. Only the turn stop is relaxed, and the
@@ -2048,6 +2048,28 @@ within the milestone's scope and recorded on the issue.
 - The later-direction floor stays at the save time. By construction no message of the reader's lies
   between the window start and the save, so moving it would change nothing on consistent data and
   would, on a fetch the server missed, turn a message into a later direction.
+
+#### Amended 2026-10-02 (owner): Claude Code's transcript may show the turn stop
+
+On a board no Claude Code hook reaches, no turn stop was ever observed, so Analyze drift opened
+only while a write kept the row Working and closed 90 seconds after the last one. That covers a
+dashboard on any port but the hooks' (4553 by default), every stop from before a restart, since
+the coordinator holds stops in memory, and an `away_summary` that turned an idle row Working.
+The owner's walk on 2026-10-02 saw Analyze go inert, live and inert again with no word why
+(arbiter spec, `ui3`). Item 13 now admits a second kind of turn stop, for Claude Code alone:
+the transcript's own top-level `stop_hook_summary` for this session, written when Claude Code
+runs its Stop hooks, with `preventedContinuation` false, and with no `user` or `assistant`
+record and no other activity newer than it by more than the activity grace. It is the record
+the 2026-10-01 amendment measured about 115 ms ahead of the hook. It is read from the tail the
+collector already reads and published as `turn_end_at`, and the row turns Idle as a hook Stop
+would turn it. `finished_at` stays hook-only. A hook stop, when held, is the stop. Either kind
+settles `reading_settle_sec` after its stamp, a reading through it drops every entry timed after
+it, and its scope sentence says which kind it rested on. A last record that is a tool call, a
+tool result, an interruption or a command is not a turn stop. The press withholds it with
+Claude Code's own sentence. The unasked lane still withholds at every turn stop, and no other
+harness changes. The final assistant message's `stop_reason` is not read: no capture records
+it. This does not change the scorer's rule of 2026-10-01, which vouches for a recorded case
+only at a matched stamp, and it infers nothing from the last assistant message.
 
 ### What the background build decided, 2026-09-24
 
