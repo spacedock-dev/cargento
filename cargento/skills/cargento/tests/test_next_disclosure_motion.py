@@ -405,6 +405,8 @@ class ABackgroundPaintWaitsOutTheReadersOwnToggleTest(NextPageJsHarness):
         self.assertEqual(["before", "held-1", "held-2"], out["right_after"])
 
     def test_the_poll_and_the_context_fetch_both_paint_through_the_hold(self) -> None:
-        self.assertIn("nextPaintAfterMotion(() => {\n      renderNext(focus);", NEXT_APP_JS)
+        self.assertIn(
+            "nextPaintAfterMotion(() => {\n    try{\n      renderNext(focus);", NEXT_APP_JS
+        )
         context = NEXT_APP_JS[NEXT_APP_JS.index("function nextCockpitLoadContext") :][:1400]
         self.assertIn("nextPaintAfterMotion(() => renderNext())", context)
