@@ -376,6 +376,28 @@ class APendingControlIsDrawnBusyNotRefusedTest(unittest.TestCase):
         hatch = sheet.index('.next-action:disabled,.next-action[aria-disabled="true"]{')
         self.assertGreater(sheet.index(".next-action[data-next-pending]{"), hatch)
 
+    def test_every_busy_control_shares_one_cell_so_none_doubles_its_width(self) -> None:
+        """Verifier R3 (ui3), measured in Chrome: the direction Save carries no `next-action`
+        class, so its ghost "Save" kept its own inline space and the button went from 46px to
+        120px while busy. The cell layout is the busy state's, whatever the control's class."""
+        rules = {sel.strip(): body for sel, body in re.findall(r"([^{}@]+)\{([^{}]*)\}", css())}
+        cell = rules.get("[data-next-pending]", "")
+        self.assertIn("display:inline-grid", cell)
+        self.assertIn("grid-area:1/1", rules.get("[data-next-pending]>span", ""))
+
+    def test_a_quiet_control_keeps_its_one_rule_border_while_busy(self) -> None:
+        """Verifier R3 (ui3): "Not accurate?" is drawn with a bottom rule only, and the busy
+        state drew a border all round, so the control grew 2px."""
+        rules = {sel.strip(): body for sel, body in re.findall(r"([^{}@]+)\{([^{}]*)\}", css())}
+        quiet = rules.get(".next-action.next-action--quiet[data-next-pending]", "")
+        self.assertIn("border:0", quiet)
+        self.assertIn("border-bottom:1px solid", quiet)
+        sheet = css()
+        self.assertGreater(
+            sheet.index(".next-action.next-action--quiet[data-next-pending]{"),
+            sheet.index(".next-action[data-next-pending]{"),
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
@@ -674,6 +696,41 @@ console.log(JSON.stringify({busy, posts:(__held["/api/annotate"] || []).length})
         )
         self.assertEqual(1, out["posts"])
         self.assertIn("data-next-pending", out["busy"])
+
+    def test_the_direction_save_holds_its_busy_width_before_it_is_pressed(self) -> None:
+        """Verifier R3 (ui3): "Save" is far narrower than its spinner and "Saving…", so even at
+        max(idle, busy) Remove beside it moved 43px on a press. At rest it reserves the busy
+        label as a hidden ghost in the same cell, so the press moves nothing."""
+        out = self.drive(
+            TYPED
+            + "__semantic.facts = __semantic.facts.filter(f => f.fact_id !== 'fo-b');\n"
+            + HOLD,
+            """
+__press("direction-add", "fo-a"); await __settle(); await __settle();
+const idle = (__els.app.innerHTML.match(
+  /<button[^>]*data-next-cockpit-action="direction-save"[^>]*>[\\s\\S]*?<\\/button>/) || [""])[0];
+console.log(JSON.stringify({idle}));
+""",
+        )
+        idle = out["idle"]
+        self.assertNotIn("data-next-pending", idle)
+        self.assertEqual(
+            "Save",
+            visible_text(
+                re.sub(r'<span class="next-action-ghost"[\s\S]*?</span></span>', "", idle)
+            ).strip(),
+        )
+        self.assertRegex(
+            idle,
+            r'<span class="next-action-reserve"><span>Save</span>'
+            r'<span class="next-action-ghost" aria-hidden="true">'
+            r'<span class="next-action-busy"><span class="next-spinner" aria-hidden="true"></span>'
+            r"Saving…</span></span></span>",
+        )
+        rules = {sel.strip(): body for sel, body in re.findall(r"([^{}@]+)\{([^{}]*)\}", css())}
+        self.assertIn("display:inline-grid", rules.get(":has(>.next-action-reserve)", ""))
+        self.assertIn("display:contents", rules.get(".next-action-reserve", ""))
+        self.assertIn("grid-area:1/1", rules.get(".next-action-reserve>span", ""))
 
 
 @unittest.skipUnless(shutil.which("node"), "node not available")

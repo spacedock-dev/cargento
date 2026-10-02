@@ -1639,7 +1639,7 @@ function nextCockpitDirectionLine(session, annotation, cap, source = null){
     `${nextPendingHas(`direction-save:${key}`) ? nextPendingAttrs(`direction-save:${key}`)
       : ready ? "" : ' aria-disabled="true"'}` +
     `${why ? ' aria-describedby="next-cockpit-direction-why"' : ""}>` +
-    `${nextPendingLabel(`direction-save:${key}`, "Save")}</button>` +
+    `${nextPendingLabel(`direction-save:${key}`, "Save", "Saving\u2026")}</button>` +
     '<button type="button" data-next-cockpit-action="direction-cancel" ' +
     `data-next-focus="direction-cancel:${esc(key)}">Remove</button></span></div>` + choose +
     '<p class="next-cockpit-held-full" id="next-cockpit-direction-why" data-next-cockpit-direction-why' +

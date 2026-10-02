@@ -149,10 +149,23 @@ body{font-family:var(--sans);font-size:var(--fs-body);-webkit-font-smoothing:ant
    idle label stays as an invisible ghost in the same grid cell as the busy
    one, so the control keeps the wider of the two and nothing beside it moves
    (owner, 2026-10-02). A primary keeps its fill below. */
+/* The one cell holds any busy control, so a button without `next-action` (the direction Save)
+   keeps max(idle, busy) too rather than laying its ghost beside the busy label (verifier R3). */
+[data-next-pending]{display:inline-grid;align-items:center;justify-items:center;cursor:progress}
+[data-next-pending]>span{grid-area:1/1}
 .next-action[data-next-pending]{display:inline-grid;align-items:center;justify-items:center;border:1px solid var(--line);background:transparent;color:var(--ink);cursor:progress}
 .next-action.next-action--primary[data-next-pending]{border-color:var(--accent);background:var(--accent);color:#14140f}
+/* A quiet control is drawn with its bottom rule alone, busy as at rest, so it does not grow 2px. */
+.next-action.next-action--quiet[data-next-pending]{border:0;border-bottom:1px solid var(--line)}
 .next-action[data-next-pending]>span{grid-area:1/1}
 .next-action-ghost{visibility:hidden}
+/* At rest the reserving control takes the busy state's own cell, so it is the same box idle and
+   busy: 89.4 by 21px both ways for the direction Save in Chrome 156. */
+:has(>.next-action-reserve){display:inline-grid;align-items:center;justify-items:center}
+.next-action-reserve{display:contents}
+.next-action-reserve>span{grid-area:1/1}
+.next-action-reserve>.next-action-ghost{display:flex}
+.next-action-reserve .next-spinner{animation:none}
 .next-action-busy{display:inline-flex;align-items:center;gap:6px}
 @keyframes next-spin{to{transform:rotate(360deg)}}
 .next-spinner{display:inline-block;inline-size:1em;block-size:1em;box-sizing:border-box;border:2px solid currentColor;border-right-color:transparent;border-radius:50%;animation:next-spin .8s linear infinite}

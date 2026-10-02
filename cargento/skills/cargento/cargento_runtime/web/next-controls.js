@@ -449,8 +449,16 @@ function nextPendingAttrs(key){
 /* The idle label stays as an invisible ghost in the same grid cell as the busy
    one, so the control keeps max(idle, busy) width and nothing beside it moves.
    The ghost is `aria-hidden`, so the accessible name is the busy label. */
-function nextPendingLabel(key, label){
+function nextPendingLabel(key, label, reserve = ""){
   const entry = key ? nextPending.get(key) : null;
+  /* `reserve` is the busy label of a control far narrower than it, held at rest
+     as a hidden ghost in the same cell, so the press itself moves nothing
+     beside it (verifier R3: the direction Save's Remove moved 43px). */
+  if(!entry && reserve){
+    return `<span class="next-action-reserve"><span>${label}</span>` +
+      '<span class="next-action-ghost" aria-hidden="true"><span class="next-action-busy">' +
+      `<span class="next-spinner" aria-hidden="true"></span>${esc(reserve)}</span></span></span>`;
+  }
   if(!entry) return label;
   return `<span class="next-action-ghost" aria-hidden="true">${label}</span>` +
     '<span class="next-action-busy"><span class="next-spinner" aria-hidden="true"></span>' +
