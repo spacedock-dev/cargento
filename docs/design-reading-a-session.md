@@ -2270,6 +2270,7 @@ throughout (arbiter spec, `ui3`).
   an entry ends it, so a handler the backstop outlived cannot end a newer press's (verifier R2).
   Undo changes is inert while its save is in flight, on a redraw and on a keystroke alike, and a
   press on it does nothing, so the words being sent stay in the box (measured in Chrome, ui4).
+  Escape in the goal or lines box is the same undo and does nothing then either (verifier V1).
 - The Analyze family does the same. Analyze drift and Analyze again read "Starting…" with a
   spinner, solid and never hatched, until the Analyzing box is drawn. On Allow and analyze the
   question stays on screen with Allow reading "Starting…" and Not now inert, because the card is

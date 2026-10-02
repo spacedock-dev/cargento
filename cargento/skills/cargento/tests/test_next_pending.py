@@ -82,6 +82,16 @@ const __fireTimers = ms => __timeouts.filter(t => t.ms === ms).forEach(t => {
 """
 
 
+LINE_WORDS = "The retry queue drains in order"
+LINES_ATTR = 'nextCockpitHeldLinesKey:"held:claude:focus-1:lines"'
+# A first outcome line typed into the lines box, as its input handler reads it.
+LINE_EDIT = (
+    '__fire("input", {target:{value:"The retry queue drains in order", '
+    'dataset:{nextCockpitHeldLinesKey:"held:claude:focus-1:lines", nextCockpitHeldLineIndex:"0"}, '
+    'closest(selector){ return selector === "[data-next-cockpit-held-lines-key]" ? this : null; }}});'
+)
+
+
 def press_save(edit: str = '__typeGoal("Ship the retry queue today");') -> str:
     return edit + '\n__press("held-save", "intent");\nawait __settle();\n'
 
@@ -178,6 +188,69 @@ console.log(JSON.stringify({during, kept, stillBusy, posts:__annotates.length, a
         self.assertEqual(1, out["posts"])
         # Once the save is answered, Undo follows the words again: saved, nothing to undo.
         self.assertIn('aria-disabled="true"', out["after"])
+
+    def test_escape_in_either_box_does_not_undo_while_its_save_is_in_flight(self) -> None:
+        """Verifier ui4 V1: Undo changes was inert during the save, but Escape in the goal box
+        and in the lines box ran the same undo with no such guard, so the box went back to the
+        saved words while Save intent still read "Saving…"."""
+        for box, edit, attr, selector, words in (
+            (
+                "goal",
+                '__typeGoal("Ship the retry queue today");',
+                'nextCockpitHeldKey:"held:claude:focus-1:goal"',
+                "[data-next-cockpit-held-key]",
+                "Ship the retry queue today",
+            ),
+            ("lines", LINE_EDIT, LINES_ATTR, "[data-next-cockpit-held-lines-key]", LINE_WORDS),
+        ):
+            with self.subTest(box=box):
+                out = self.run_save(
+                    press_save(edit)
+                    + f"""
+let prevented = 0;
+__fire("keydown", {{key:"Escape", preventDefault(){{ prevented += 1; }},
+  target:{{dataset:{{{attr}}},
+    closest(selector){{ return selector === "{selector}" ? this : null; }}}}}});
+await __settle();
+const kept = __els.app.innerHTML.includes({words!r});
+const stillBusy = __saveButton();
+__answer.resolve(); await __settle(); await __settle(); await __settle();
+console.log(JSON.stringify({{kept, stillBusy, prevented, posts:__annotates.length}}));
+"""
+                )
+                # The words the save is sending are still in the box while it is answered.
+                self.assertTrue(out["kept"])
+                self.assertIn("data-next-pending", out["stillBusy"])
+                # Escape is still taken, so it does not fall through and leave the view.
+                self.assertEqual(1, out["prevented"])
+                self.assertEqual(1, out["posts"])
+
+    def test_escape_in_either_box_still_undoes_when_no_save_is_in_flight(self) -> None:
+        for box, edit, attr, selector, words in (
+            (
+                "goal",
+                '__typeGoal("Ship the retry queue today");',
+                'nextCockpitHeldKey:"held:claude:focus-1:goal"',
+                "[data-next-cockpit-held-key]",
+                "Ship the retry queue today",
+            ),
+            ("lines", LINE_EDIT, LINES_ATTR, "[data-next-cockpit-held-lines-key]", LINE_WORDS),
+        ):
+            with self.subTest(box=box):
+                out = self.run_save(
+                    edit
+                    + f"""
+renderNext(); await __settle();
+const before = __els.app.innerHTML.includes({words!r});
+__fire("keydown", {{key:"Escape", preventDefault(){{}},
+  target:{{dataset:{{{attr}}},
+    closest(selector){{ return selector === "{selector}" ? this : null; }}}}}});
+await __settle();
+console.log(JSON.stringify({{before, after:__els.app.innerHTML.includes({words!r})}}));
+"""
+                )
+                self.assertTrue(out["before"])
+                self.assertFalse(out["after"])
 
     def test_a_keystroke_during_a_save_does_not_re_arm_undo_changes(self) -> None:
         out = self.run_save(

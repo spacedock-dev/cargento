@@ -6668,6 +6668,12 @@ function nextCockpitIntentLanded(session, body, sentLines){
    are dropped rather than overwritten with the saved words, because the
    render reads the store whenever the Map has no entry, so this is the one
    place the two cannot disagree. */
+/* Whether the intent a box's key belongs to has a save still being answered.
+   Escape in a box is the same undo, so it takes the same guard. */
+function nextCockpitIntentSaving(boxKey){
+  return nextPendingHas(`${String(boxKey).replace(/:[^:]*$/, ":intent")}:save`);
+}
+
 function nextCockpitIntentUndo(session){
   // Never under a save still being answered: its words stay in the box.
   if(nextPendingHas(`${nextCockpitIntentKey(session)}:save`)) return;
@@ -8586,6 +8592,8 @@ function nextCockpitHandleKeydown(event){
     // render and the store cannot disagree.
     event.preventDefault();
     const key = String(lines.dataset.nextCockpitHeldLinesKey || "");
+    // Not under a save still being answered, as Undo changes is not (ui4 V1).
+    if(nextCockpitIntentSaving(key)) return true;
     nextCockpitLinesForget(key);
     nextCockpitHeldDrop(key);
     renderNext({named: `${key}:0`});
@@ -8596,6 +8604,7 @@ function nextCockpitHandleKeydown(event){
   if(event.key === "Escape" && held){
     event.preventDefault();
     const key = String(held.dataset.nextCockpitHeldKey || "");
+    if(nextCockpitIntentSaving(key)) return true;
     // Drop the draft rather than write the saved value back into it: the
     // render reads the store whenever the Map has no entry, so this is the
     // one place the two cannot disagree. A chosen prompt goes with it.
