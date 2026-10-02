@@ -1381,9 +1381,12 @@ function nextCockpitHeldLines(session, annotation, cap, source = null){
   const direction = nextCockpitDirectionLine(session, annotation, cap, source);
   const said = Boolean(direction) && nextCockpitDirectionSaysFull(session, annotation, cap);
   const rows = boxes.map((text, index) => {
-    // The source is a fact about saved words, so it shows only while the box
-    // still holds the line saved in that place. Its space is kept while it is
-    // hidden, so the box does not widen under the caret (DRC-4714).
+    /* The box, then one row under it as the Goal has: the count on the left
+       and Remove on the right (owner, 2026-10-02, ask 3). The source is a fact
+       about saved words, so it shows only while the box still holds the line
+       saved in that place, and only for a line added from an entry: "typed"
+       told a reader what they already knew. Its space is kept while it is
+       hidden, so Remove does not jump under the caret (DRC-4714). */
     const place = saved[index] || null;
     const line = place && place.text === text ? place : null;
     return `<li class="next-cockpit-held-line" data-next-cockpit-held-line="${index}">` +
@@ -1392,16 +1395,17 @@ function nextCockpitHeldLines(session, annotation, cap, source = null){
       `data-next-cockpit-held-saved="${esc(place ? place.text : "")}" ` +
       `data-next-focus="${esc(`${key}:${index}`)}" ` +
       'placeholder="one thing that should exist when it is done">' +
-      `${esc(text)}</textarea>` +
+      `${esc(text)}</textarea><div class="next-cockpit-held-under">` +
       `<span class="next-cockpit-held-count" data-next-cockpit-held-line-count="${index}">` +
       `${String(text).length}/${cap}</span>` +
-      (place ? `<span class="next-cockpit-held-source" data-next-cockpit-held-line-source="${index}"` +
-        `${line ? "" : " data-next-cockpit-held-line-source-stale"}>` +
-        `${esc(nextCockpitLineSource(place, session, source))}</span>` : "") +
+      (place && place.source === "entry"
+        ? `<span class="next-cockpit-held-source" data-next-cockpit-held-line-source="${index}"` +
+          `${line ? "" : " data-next-cockpit-held-line-source-stale"}>` +
+          `${esc(nextCockpitLineSource(place, session, source))}</span>` : "") +
       '<button type="button" class="next-action next-action--quiet next-cockpit-held-remove" ' +
       `data-next-cockpit-action="held-line-remove" data-arg="${index}" ` +
       `aria-label="Remove line ${index + 1}" ` +
-      `data-next-focus="${esc(`${key}:remove:${index}`)}">\u00d7</button></li>`;
+      `data-next-focus="${esc(`${key}:remove:${index}`)}">Remove</button></div></li>`;
   }).join("") + direction;
   const add = '<button type="button" class="next-action next-action--quiet" ' +
     'data-next-cockpit-action="held-line-add" data-arg="lines"' +
@@ -1587,15 +1591,18 @@ function nextCockpitDirectionLine(session, annotation, cap, source = null){
   return '<li class="next-cockpit-held-line next-cockpit-direction-line" data-next-cockpit-direction-line>' +
     `<textarea rows="1" data-next-cockpit-direction-key="${esc(key)}" ` +
     `data-next-focus="direction:${esc(key)}" aria-label="${esc(from)}">${esc(text)}</textarea>` +
+    /* The saved lines' pattern: the box, then the count and where it came
+       from on the left, and Save and Remove on the right (owner, 2026-10-02). */
+    '<div class="next-cockpit-held-under">' +
     `<span class="next-cockpit-held-count" data-next-cockpit-direction-count>${text.length}/${cap}</span>` +
     `<span class="next-cockpit-held-source">${esc(from)}</span>` +
     '<span class="next-cockpit-direction-tools">' +
     '<button type="button" data-next-cockpit-action="direction-save" ' +
     `data-next-focus="direction-save:${esc(key)}"` +
     `${ready ? "" : ' aria-disabled="true"'}` +
-    `${why ? ' aria-describedby="next-cockpit-direction-why"' : ""}>save</button>` +
+    `${why ? ' aria-describedby="next-cockpit-direction-why"' : ""}>Save</button>` +
     '<button type="button" data-next-cockpit-action="direction-cancel" ' +
-    `data-next-focus="direction-cancel:${esc(key)}">remove</button></span>` + choose +
+    `data-next-focus="direction-cancel:${esc(key)}">Remove</button></span></div>` + choose +
     '<p class="next-cockpit-held-full" id="next-cockpit-direction-why" data-next-cockpit-direction-why' +
     `${why ? "" : " hidden"}>${esc(why)}</p>` +
     (held.clipped ? `<p class="next-cockpit-held-full">${esc(NEXT_COCKPIT_DIRECTION_CLIPPED)}</p>` : "") +

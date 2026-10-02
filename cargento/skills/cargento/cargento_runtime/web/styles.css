@@ -1013,20 +1013,9 @@ details.next-cockpit-held-stamp[open]>span{display:block}
 }
 @media(max-width:760px){
   .next-session-detail{padding:0}
-  /* A line's box takes the whole first row, and its count, source and remove
-     follow on a second in the same order: sharing one row, the box showed
-     about 12 characters at 320 (DRC-4680). */
-  .next-session-panel .next-cockpit-held-line{grid-template-columns:auto minmax(0,1fr) auto}
-  /* The source takes the shrinkable track and wraps, so remove keeps its own:
-     "added from your direction at 14:00" sized an auto track to its whole
-     width and pushed remove past the page at 375 and 320 (page F2). */
+  /* The source wraps, so Remove keeps its place: "added from your direction
+     at 14:00" pushed remove past the page at 375 and 320 (page F2). */
   .next-session-panel .next-cockpit-held-line .next-cockpit-held-source{min-width:0;overflow-wrap:anywhere}
-  .next-session-panel .next-cockpit-held-field .next-cockpit-held-line textarea{grid-column:1/-1}
-  .next-session-panel .next-cockpit-held-line>button{justify-self:start}
-  /* The pending line's save and remove take their own row: in the third,
-     shrinkable track they collapsed to nothing and spilled past the page
-     beside the unnumbered source (layout F3). */
-  .next-session-panel .next-cockpit-direction-tools{grid-column:1/-1;justify-self:start}
   .next-session-facts>div{grid-template-columns:90px minmax(0,1fr);gap:12px}
   .next-session-command-facts{grid-template-columns:1fr}
   .next-session-command-facts>section+section{border-top:1px solid var(--rule);border-left:0}
@@ -1327,13 +1316,15 @@ details.next-cockpit-held-stamp[open]>span{display:block}
 /* The expected outcome's checklist: one row per line, each its own box,
    counter, source and remove, inside the field's own grid. */
 .next-cockpit-held-list{grid-column:1/-1;display:grid;gap:6px;margin:0;padding:0;list-style:none}
-/* Four tracks for a saved line's four items (box, count, source, remove):
-   with three, the source pushed remove onto a second row and each line cost
-   85px instead of one control height (owner, DRC-4680). */
-.next-cockpit-held-line{display:grid;grid-template-columns:minmax(0,1fr) auto auto auto;align-items:baseline;gap:2px 8px}
-/* A line's box, count and remove share one row, so each line costs one
-   control height rather than two in the panel's narrow column. */
-.next-cockpit-held-field .next-cockpit-held-line textarea{min-height:34px;grid-column:auto}
+/* Each line is its box on a full-width row, then one row under it: the count
+   (and an entry's source) on the left and Remove on the right, the Goal's own
+   pattern (owner, 2026-10-02, ask 3). It supersedes the DRC-4680 one-row line,
+   whose four tracks put the count and a bare "x" to the right of the box. */
+.next-cockpit-held-line{display:grid;gap:4px}
+.next-cockpit-held-line>.next-cockpit-held-under{justify-content:flex-start}
+.next-cockpit-held-line>.next-cockpit-held-under>:last-child{margin-inline-start:auto}
+.next-cockpit-held-lines>.next-cockpit-held-under{justify-content:flex-end}
+.next-cockpit-held-field .next-cockpit-held-line textarea{min-height:34px}
 .next-cockpit-held-source{color:var(--ink-caption);font-family:var(--mono);font-size:var(--fs-label)}
 .next-cockpit-held-source[hidden]{display:none}
 /* Hidden while the box no longer holds the saved line, and still taking its
@@ -1348,8 +1339,6 @@ details.next-cockpit-held-stamp[open]>span{display:block}
 .next-intent-draft-source{padding:1px 8px;border:1px dashed var(--line);border-radius:var(--r-pill);color:var(--ink2);font-size:var(--fs-label)}
 .next-intent-draft-marks>.next-cockpit-held-cue{grid-column:auto}
 .next-cockpit-held-field .next-intent-draft-marks>button{color:var(--ink);font-weight:600;text-decoration:underline;text-underline-offset:3px}
-.next-cockpit-direction-line{grid-template-columns:minmax(0,1fr) auto auto}
-.next-cockpit-direction-line>textarea{grid-column:1/-1}
 .next-cockpit-direction-tools,.next-cockpit-direction-replace{display:inline-flex;flex-wrap:wrap;align-items:center;gap:4px 8px}
 .next-cockpit-direction-replace{grid-column:1/-1;color:var(--ink2);font-size:var(--fs-label)}
 .next-cockpit-direction-replace button[aria-pressed="true"]{color:var(--ink);font-weight:700;text-decoration:underline}

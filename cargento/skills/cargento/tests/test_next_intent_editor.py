@@ -25,9 +25,14 @@ from .test_next_intent_draft import (
     GOAL_KEY,
     LINES_KEY,
     MEASURED,
+    ONE_LINE,
+    OPEN_ADD,
+    OPENED,
+    REPORT,
     TYPED,
     _DraftPage,
     intent_of,
+    pending_line,
 )
 from .visible_text import visible_text
 
@@ -157,6 +162,84 @@ console.log(JSON.stringify({replaced: box(__GOAL__) !== before,
         self.assertEqual("96px", out["line"])
 
 
+ENTRY_LINE = """
+__s.annotation_line_2_source = "entry";
+__s.annotation_line_2_source_id = "";
+"""
+
+
+def lines_of(html: str) -> list[str]:
+    return re.findall(
+        r'<li class="next-cockpit-held-line" data-next-cockpit-held-line="\d+">[\s\S]*?</li>',
+        intent_of(html),
+    )
+
+
+@unittest.skipUnless(shutil.which("node"), "node not available")
+class EachOutcomeLineFollowsTheGoalsPatternTest(_DraftPage):
+    """Owner ask 3 (2026-10-02): "the character length and buttons should all be on the bottom
+    and follow the same pattern as the buttons above for the Goal form control (character length
+    on left, buttons aligned right)". Each line had its count, source and a bare multiplication sign to the right
+    of its box."""
+
+    def test_under_each_outcome_box_the_reader_finds_its_count_on_the_left_and_remove_on_the_right(
+        self,
+    ) -> None:
+        rows = lines_of(self.html(TYPED + TWO_LINES))
+        self.assertEqual(2, len(rows))
+        for n, row in enumerate(rows, start=1):
+            with self.subTest(line=n):
+                inside = row[row.index(">") + 1 : -len("</li>")]
+                # The box first, then one row under it and nothing else.
+                self.assertTrue(inside.startswith("<textarea"), inside[:40])
+                after = inside[inside.index("</textarea>") + len("</textarea>") :]
+                self.assertTrue(after.startswith('<div class="next-cockpit-held-under">'), after)
+                self.assertTrue(after.endswith("</div>"), after[-40:])
+                self.assertEqual(1, after.count("<div"))
+                under = after
+                count = under.index("data-next-cockpit-held-line-count")
+                remove = under.index('data-next-cockpit-action="held-line-remove"')
+                self.assertLess(count, remove)
+                button = re.search(r"<button[^>]*>([^<]*)</button>", under)
+                assert button is not None
+                self.assertEqual("Remove", button.group(1))
+                self.assertIn(f'aria-label="Remove line {n}"', button.group(0))
+        # The Goal's own row, which the lines now copy: count, then Clear.
+        sheet = css()
+        self.assertIn(".next-cockpit-held-line{display:grid;gap:4px}", sheet)
+        self.assertIn(
+            ".next-cockpit-held-line>.next-cockpit-held-under>:last-child{margin-inline-start:auto}",
+            sheet,
+        )
+        self.assertIn(
+            ".next-cockpit-held-lines>.next-cockpit-held-under{justify-content:flex-end}", sheet
+        )
+
+    def test_a_line_the_reader_typed_says_nothing_about_being_typed(self) -> None:
+        rows = lines_of(self.html(TYPED + TWO_LINES + ENTRY_LINE))
+        # What sits around the box, which is where a source would be; the box holds the words.
+        typed, entry = (visible_text(row[row.index("</textarea>") :]) for row in rows)
+        self.assertEqual("21/240 Remove", typed)
+        self.assertNotIn("typed", typed)
+        self.assertIn("added from", entry)
+        self.assertTrue(entry.startswith("32/240 added from"), entry)
+        self.assertTrue(entry.endswith("Remove"), entry)
+
+    def test_the_direction_lines_buttons_read_save_and_remove(self) -> None:
+        out = self.drive(TYPED + ONE_LINE + OPENED, OPEN_ADD + REPORT)
+        assert isinstance(out, dict)
+        line = pending_line(out["html"])
+        self.assertTrue(line.split(">", 1)[1].startswith("<textarea"), line[:120])
+        after = line[line.index("</textarea>") :]
+        self.assertTrue(after.startswith('</textarea><div class="next-cockpit-held-under">'))
+        under = after[: after.index("</div>") + len("</div>")]
+        labels = re.findall(r"<button[^>]*>([^<]*)</button>", under)
+        self.assertEqual(["Save", "Remove"], labels)
+        text = visible_text(under)
+        self.assertTrue(text.startswith("16/240 from #"), text)
+        self.assertIn("not saved", text)
+
+
 @unittest.skipUnless(shutil.which("node"), "node not available")
 class TheControlsAreButtonsInOneFooterTest(_DraftPage):
     def test_every_field_control_is_a_real_button_and_none_is_primary(self) -> None:
@@ -179,7 +262,7 @@ class TheControlsAreButtonsInOneFooterTest(_DraftPage):
         self.assertEqual(2, len(removes))
         for n, remove in enumerate(removes, start=1):
             self.assertIn(f'aria-label="Remove line {n}"', remove)
-            self.assertIn(">\N{MULTIPLICATION SIGN}</button>", remove)
+            self.assertIn(">Remove</button>", remove)
             self.assertIn("next-action--quiet", remove)
         self.assertNotIn("next-action--primary", intent)
         # One save and one undo for both fields, never one per field.

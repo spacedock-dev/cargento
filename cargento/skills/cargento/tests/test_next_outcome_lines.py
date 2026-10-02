@@ -110,7 +110,9 @@ class _ChecklistPage(NextPageJsHarness):
 
 @unittest.skipUnless(shutil.which("node"), "node not available")
 class TheExpectedOutcomeIsAChecklistTest(_ChecklistPage):
-    def test_six_saved_lines_render_as_six_boxes_each_saying_where_it_came_from(self) -> None:
+    def test_six_saved_lines_render_as_six_boxes_and_an_added_line_says_where_it_came_from(
+        self,
+    ) -> None:
         html = self.page(lines_setup(SIX, ["typed", "typed", "entry", "typed", "typed", "typed"]))
 
         # The field's label is the design's "Expected outcome" (DEC-24 item 1, DRC-4680).
@@ -119,10 +121,10 @@ class TheExpectedOutcomeIsAChecklistTest(_ChecklistPage):
             r'data-next-cockpit-held-line-index="(\d)"[^>]*>([^<]*)</textarea>', html
         )
         self.assertEqual([(str(i), text) for i, text in enumerate(SIX)], boxes)
-        captions = re.findall(r'data-next-cockpit-held-line-source="\d">([^<]*)<', html)
-        self.assertEqual(
-            ["typed", "typed", "added from an entry", "typed", "typed", "typed"], captions
-        )
+        # Only the line added from an entry names a source; a typed line draws none on the
+        # session page (owner, 2026-10-02, ask 3).
+        captions = re.findall(r'data-next-cockpit-held-line-source="(\d)">([^<]*)<', html)
+        self.assertEqual([("2", "added from an entry")], captions)
         self.assertEqual(
             6, len(re.findall(r'data-next-cockpit-held-line-count="\d">\d+/240<', html))
         )

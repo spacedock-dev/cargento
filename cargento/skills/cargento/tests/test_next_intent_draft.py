@@ -898,8 +898,9 @@ class RideAlongTest(_DraftPage):
                 self.assertIn("data-next-focus=", button.group(0))
 
     def test_a_saved_line_keeps_its_source_space_while_you_type(self) -> None:
+        # An entry's line, since a typed line draws no source (owner, 2026-10-02, ask 3).
         out = self.drive(
-            TYPED + '__s.annotation_line_1 = "Line one"; __s.annotation_line_1_source = "typed";\n',
+            TYPED + '__s.annotation_line_1 = "Line one"; __s.annotation_line_1_source = "entry";\n',
             """
 nextCockpitHeldDrafts.set("held:claude:focus-1:lines", ["Line one and more"]);
 renderNext();
@@ -1722,11 +1723,15 @@ console.log(JSON.stringify({saved, stale:attrs.has("data-next-cockpit-held-line-
 class PhoneWidthAndThePressTest(unittest.TestCase):
     """Layout F3 and consent F4, as the sheet states them; the fold and the press were measured."""
 
-    def test_the_pending_lines_tools_take_their_own_row_on_a_phone(self) -> None:
-        narrow = NEXT_STYLES[NEXT_STYLES.index("@media(max-width:760px){") :]
-        self.assertRegex(
-            narrow, r"\.next-session-panel \.next-cockpit-direction-tools\{grid-column:1/-1"
+    def test_the_pending_lines_tools_sit_at_the_end_of_a_row_that_wraps(self) -> None:
+        # Save and Remove are the last item of the row under the box, pushed right as the Goal's
+        # Clear is, and the row wraps, so on a phone they take a row of their own rather than
+        # spilling past the page beside the source (layout F3; owner, 2026-10-02, ask 3).
+        self.assertIn(
+            ".next-cockpit-held-line>.next-cockpit-held-under>:last-child{margin-inline-start:auto}",
+            NEXT_STYLES,
         )
+        self.assertRegex(NEXT_STYLES, r"\.next-cockpit-held-under\{[^}]*flex-wrap:wrap")
 
     def test_an_untouched_draft_is_as_tall_as_its_text_focused_or_not(self) -> None:
         """Verifier V1: focus changes nothing, so Keep holds still under the press

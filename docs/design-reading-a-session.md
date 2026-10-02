@@ -2397,6 +2397,15 @@ the analysis's recommendation.
   Amended 2026-10-01 (owner, Q4, DRC-4758): the criterion is now that the Drift level and the
   Analyze control are visible at 1440x900 with a goal and up to three lines, under the roomier
   boxes of [the intent editor's boxes, buttons and footer](#amended-2026-10-01-the-intent-editors-boxes-buttons-and-footer).
+  Amended 2026-10-02 (owner, ask 3): each outcome line is its box, then one row under it with the
+  count on the left and Remove on the right, the Goal's own pattern, and a typed line names no
+  source. That supersedes the one-row line above and Q4's fold arithmetic, and the owner ruled
+  that the ask wins wherever the figure lands. Measured in Chrome with the page laid out at
+  1440x900 CSS pixels, on a scratch board serving the assembled page against the panel tests'
+  fixture (a 39-character goal, three lines, one added from an entry, Live monitor drawn): Analyze
+  drift's bottom moved from 1135 at `5d95ac09` to 1273, about 46px per line. Both are under the
+  fold on that fixture, so the 2026-10-01 criterion does not hold for it before or after the
+  change; this is reported rather than worked around.
 - The saved-intent introduction follows the complete action block (DRC-4748). With a saved
   55-character goal, three 240-character outcome lines and a High live estimate, its three
   lines above the fields put Analyze drift at 892.5 to 936.5 on a 1440x900 board. Moving the
@@ -2424,7 +2433,9 @@ the analysis's recommendation.
 - At 760px and below, the sheet's existing narrow step, a line's box takes the whole first row and
   its count, source and remove follow on a second in the same order. Sharing one row, the box
   showed about 12 characters at 320; it is now 292px wide there and 327px at 375. At 1440 and 1100
-  a line is still one row, so the fold numbers above do not move.
+  a line is still one row, so the fold numbers above do not move. Superseded 2026-10-02 (owner, ask
+  3): the box has a row of its own at every width, so the narrow step keeps only the source's
+  wrap.
 - The goal's heading row is top-aligned, with the label and the count each one control tall, so an
   open prompt menu no longer leaves the count, clear and save floating beside its entries
   as though they were its controls. Since 2026-10-01 (owner, Q6) the count and Clear sit under the

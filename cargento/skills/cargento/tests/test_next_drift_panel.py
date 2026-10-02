@@ -470,9 +470,16 @@ class ThePanelKeepsAnalyzeOnTheFirstScreenTest(PanelPage):
         self.assertIn('class="next-cockpit-held-revision"', stamp.group(1))
         self.assertIn("Each save is a revision.", stamp.group(1))
         self.assertIn("flex-wrap:wrap", rule(".next-cockpit-held-stamp"))
-        # A line's box shares its row with the count and remove.
-        self.assertIn(
+        # A line's box takes its own row, with its count and Remove on the row under it as the
+        # Goal's are (owner, 2026-10-02, ask 3); the DRC-4680 one-row line is superseded.
+        self.assertEqual("display:grid;gap:4px", rule(".next-cockpit-held-line"))
+        self.assertNotIn(
             "grid-column:auto", rule(".next-cockpit-held-field .next-cockpit-held-line textarea")
+        )
+        self.assertIn(
+            '<div class="next-cockpit-held-under"><span class="next-cockpit-held-count"'
+            ' data-next-cockpit-held-line-count="0">',
+            intent,
         )
 
     def test_saved_intent_introduction_does_not_push_the_action_below_the_fold(self) -> None:
@@ -598,19 +605,23 @@ OFF_SENTENCE = "Could not confirm readings are off. Try turning them off again."
 class ThePanelReviewRoundTest(PanelPage):
     """The two review lenses' findings on DRC-4680, each held by the test that failed first."""
 
-    def test_every_saved_line_is_one_row_the_grid_has_a_track_per_item(self) -> None:
-        """Owner, 2026-09-24: a saved line is one row of about one control height. The source
-        tag was a fourth item in a three-track grid, which pushed remove onto a second row."""
+    def test_every_saved_line_is_its_box_then_one_row_under_it(self) -> None:
+        """Owner, 2026-10-02 (ask 3), superseding the 2026-09-24 one-row line: a saved line is
+        its box, then one row holding its count, an entry's source and Remove, as the Goal's
+        count and Clear sit under its box. A typed line draws no source."""
         html = self.page(setup=THREE_LINES)
         lines = re.findall(r'<li class="next-cockpit-held-line"[^>]*>([\s\S]*?)</li>', html)
         self.assertEqual(3, len(lines))
-        template = re.search(r"grid-template-columns:([^;}]+)", rule(".next-cockpit-held-line"))
-        assert template is not None
-        for line in lines:
-            with self.subTest(line=visible_text(line)[:30]):
+        for index, line in enumerate(lines):
+            with self.subTest(line=index):
                 items = children(line)
-                self.assertIn('class="next-cockpit-held-source"', "".join(items))
-                self.assertEqual(len(items), tracks(template.group(1)), items)
+                self.assertEqual(2, len(items), items)
+                self.assertTrue(items[0].startswith("<textarea"), items[0][:30])
+                self.assertTrue(items[1].startswith('<div class="next-cockpit-held-under">'))
+                self.assertEqual(
+                    index == 2, 'class="next-cockpit-held-source"' in items[1], items[1]
+                )
+        self.assertNotIn("grid-template-columns", rule(".next-cockpit-held-line"))
 
     def test_a_failed_turn_off_is_said_with_no_reader_and_while_analyzing(self) -> None:
         for name, kwargs in (
@@ -811,29 +822,20 @@ console.log(JSON.stringify({{found: Boolean(press), tag: active ? active.tagName
         self.assertIn("min-height:44px", label)
         self.assertIn("align-items:center", label)
 
-    def test_on_a_narrow_screen_a_lines_box_takes_the_full_row(self) -> None:
-        """At 320 the box shared its row with the count, source and remove and showed about 12
-        characters at rest. At the sheet's narrow step the box takes the whole first row and the
-        three follow on a second, in the same order; the wide rule is untouched, so the fold at
-        1440 and 1100 does not move."""
-        grid = media_rule("max-width:760px", ".next-session-panel .next-cockpit-held-line")
-        template = re.search(r"grid-template-columns:([^;}]+)", grid)
-        assert template is not None
-        self.assertEqual(3, tracks(template.group(1)))
-        box = media_rule(
+    def test_on_a_narrow_screen_a_line_keeps_its_two_rows_and_its_source_wraps(self) -> None:
+        """At 320 the old one-row line showed about 12 characters of its box. Its box now has a
+        row of its own at every width, so the narrow step needs no grid of its own; the source
+        still wraps, so "added from your direction at 14:00" cannot push Remove past the page
+        (page F2)."""
+        with self.assertRaises(AssertionError):
+            media_rule("max-width:760px", ".next-session-panel .next-cockpit-held-line")
+        source = media_rule(
             "max-width:760px",
-            ".next-session-panel .next-cockpit-held-field .next-cockpit-held-line textarea",
+            ".next-session-panel .next-cockpit-held-line .next-cockpit-held-source",
         )
-        self.assertIn("grid-column:1/-1", box)
-        # Remove sits beside the source in the second row's last track, not centred in it.
-        self.assertIn(
-            "justify-self:start",
-            media_rule("max-width:760px", ".next-session-panel .next-cockpit-held-line>button"),
-        )
-        # Wide: still one row, a track per item.
-        wide = re.search(r"grid-template-columns:([^;}]+)", rule(".next-cockpit-held-line"))
-        assert wide is not None
-        self.assertEqual(4, tracks(wide.group(1)))
+        self.assertIn("min-width:0", source)
+        self.assertIn("overflow-wrap:anywhere", source)
+        self.assertIn("flex-wrap:wrap", rule(".next-cockpit-held-under"))
 
     def test_the_sentences_in_the_controls_slot_say_analyze_not_check(self) -> None:
         """Review C-6: "check" also names a tool check on this page, so the sentences that stand

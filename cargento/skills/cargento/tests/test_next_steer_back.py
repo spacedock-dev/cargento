@@ -477,8 +477,12 @@ class AddedFromLabelTest(_DraftPage):
             self.label("__s.annotation_window_start = 103;\n"),
         )
 
-    def test_a_typed_line_is_still_typed(self) -> None:
-        self.assertEqual("typed", self.label('__s.annotation_line_1_source = "typed";\n'))
+    def test_a_typed_line_draws_no_source(self) -> None:
+        # "typed" told the reader what they already knew, so the session page draws no source
+        # for a typed line (owner, 2026-10-02, ask 3); the project page still names it.
+        html = self.html(TYPED + self.ENTRY + '__s.annotation_line_1_source = "typed";\n')
+        self.assertNotIn('data-next-cockpit-held-line-source="0"', html)
+        self.assertIn('data-next-cockpit-held-line-count="0"', html)
 
     def test_at_phone_widths_the_label_wraps_and_remove_keeps_its_own_column(self) -> None:
         # "added from your direction at 14:00" sized an `auto` column to its whole width and
@@ -487,11 +491,9 @@ class AddedFromLabelTest(_DraftPage):
             block[: block.index("\n}\n")]
             for block in NEXT_STYLES.split("@media(max-width:760px){")[1:]
         )
-        self.assertIn(
-            ".next-session-panel .next-cockpit-held-line"
-            "{grid-template-columns:auto minmax(0,1fr) auto}",
-            phone,
-        )
+        # The line's own grid is gone at every width (owner, 2026-10-02, ask 3): the source
+        # sits in the wrapping row under the box, so only its own wrap is left to hold.
+        self.assertNotIn(".next-session-panel .next-cockpit-held-line{", phone)
         self.assertRegex(
             phone,
             r"\.next-session-panel \.next-cockpit-held-line \.next-cockpit-held-source"
