@@ -660,8 +660,8 @@ stale route, including the right ID under the wrong project label, gets an expli
 outside-payload state instead of a guessed row. That state names the harness and session the link
 asked for and states the board's observation window as a fact about the board, never as the cause,
 since a session from another machine is absent for a different reason. Before the first payload
-arrives the page says so rather than claiming the session is absent. The header's `COPY LINK`,
-beside `COPY ID`, copies the page's absolute address in the same copy lane (DRC-4638). The flat session table now emits the same route as
+arrives the page says so rather than claiming the session is absent. The header's `Copy link`,
+beside `Copy ID`, copies the page's absolute address in the same copy lane (DRC-4638). The flat session table now emits the same route as
 the project activity cards, so it no longer stops at project detail.
 
 Since DRC-4639 the page leads, after its identity header, with what was the cockpit's Held to tab.

@@ -313,7 +313,7 @@ function nextSessionCopyControl(session){
     `data-next-copy-harness="${esc(harness)}"` +
     `${nextControlStateAttr("data-next-copy-state", "copy", harness, sid)} ` +
     `aria-label="Copy session ID ${esc(sid)}" title="${esc(sid)}">` +
-    '<span aria-hidden="true">COPY ID</span></button>';
+    '<span aria-hidden="true">Copy ID</span></button>';
 }
 
 /* The absolute link to one session's page, for a reader to paste: this
@@ -332,7 +332,7 @@ function nextSessionLink(session){
   return `${at < 0 ? href : href.slice(0, at)}${fragment}`;
 }
 
-/* Beside COPY ID on the session page, in the same copy lane. The link rides
+/* Beside Copy ID on the session page, in the same copy lane. The link rides
    `title` for the reason the command does: a context with no clipboard still
    shows the reader what to paste. */
 function nextSessionLinkControl(session){
@@ -345,7 +345,7 @@ function nextSessionLinkControl(session){
     `data-next-copy-harness="${esc(harness)}"` +
     `${nextControlStateAttr("data-next-copy-state", "link", harness, sid)} ` +
     `aria-label="Copy a link to this session" title="${esc(link)}">` +
-    '<span aria-hidden="true">COPY LINK</span></button>';
+    '<span aria-hidden="true">Copy link</span></button>';
 }
 
 // The verb each harness's own CLI takes to re-enter a session, keyed by harness.
@@ -403,7 +403,7 @@ function nextSessionResumeControl(session){
     `data-next-copy-harness="${esc(harness)}"` +
     `${nextControlStateAttr("data-next-copy-state", "command", harness, sid)} ` +
     `aria-label="Copy re-entry command ${esc(command)}" title="${esc(command)}">` +
-    '<span aria-hidden="true">COPY COMMAND</span></button>';
+    '<span aria-hidden="true">Copy command</span></button>';
 }
 
 // The capability this run minted for the focus route, injected into the served

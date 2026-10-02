@@ -1416,8 +1416,8 @@ console.log(JSON.stringify(__els.app.innerHTML));
         controls = re.search(r'<div class="next-session-controls">([\s\S]*?)</div>', out)
         assert controls is not None
         buttons = re.findall(r"<button[\s\S]*?</button>", controls.group(1))
-        self.assertIn("COPY ID", buttons[0])
-        self.assertIn("COPY LINK", buttons[1])
+        self.assertIn("Copy ID", buttons[0])
+        self.assertIn("Copy link", buttons[1])
         self.assertIn(f'data-next-copy-link="{self.LINK}"', buttons[1])
         # The link is readable without a clipboard, as every copy control's is.
         self.assertIn(f'title="{self.LINK}"', buttons[1])

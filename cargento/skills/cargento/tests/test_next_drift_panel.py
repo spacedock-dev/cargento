@@ -894,7 +894,7 @@ class AStoredReadingIsNeverNotCheckedTest(PanelPage):
     def test_the_unchecked_state_still_draws_before_any_request(self) -> None:
         text = visible_text(drift_of(self.page()))
         self.assertIn("Not checked yet", text)
-        self.assertIn("Turn on for a quick", text)
+        self.assertIn("Shows a level after every turn", text)  # the live hint, reworded by NU-5
 
     def test_a_refused_reading_with_no_count_published_is_still_stored(self) -> None:
         text = visible_text(

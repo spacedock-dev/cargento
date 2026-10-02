@@ -3121,7 +3121,9 @@ Six sub-questions were ruled the same day, each as recommended.
    check after every turn" says. It is remembered per session in the browser only, and never sent
    to the server: there is no server-side store and no new route. DRC-4696 adds its row to
    [the reader-state inventory](design-reader-state.md). Off hides the live level and the pill;
-   the analysis level is unaffected.
+   the analysis level is unaffected. Amended 2026-10-02 (NU-5): the hint reads "Shows a level
+   after every turn, from checks and file paths, with no model call", because "low-cost"
+   suggested a spend the estimate never makes.
 5. No notification, desktop or page, comes from the live estimate (DEC-18, DEC-19). The live
    estimate and the analysis level never make a session eligible for the unasked lane, never
    trigger, order or gate it, and never feed it. The live estimate is not DEC-18's unasked reading:

@@ -119,7 +119,7 @@ reader is named. With no reader on this machine, the reason stands where the con
 page has at most one primary control, `Analyze drift`. No answer option is ever emphasised: a session blocked on
 you gives the primary to the terminal raise when one is offered, and otherwise nothing is primary
 while its question is open.
-Beside `COPY ID`, `COPY LINK` copies the page's own address, which reopens the same session after
+Beside `Copy ID`, `Copy link` copies the page's own address, which reopens the same session after
 a reload. A link to a session the board no longer holds names that session and says it is not in
 the current payload.
 

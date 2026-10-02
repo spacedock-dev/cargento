@@ -148,7 +148,7 @@ harness publishes, and each project opens a cockpit with a Scope rail, a persist
 and Now, Course, Decisions and Console tabs. Each session's own page leads with drift: there you
 type the goal and the expected outcome, a checklist of up to six lines, you are holding that session to, check it for drift with one
 press, and read back what has been raised about that session and what became of the raise. Its
-`COPY LINK` control copies a link that reopens that page.
+`Copy link` control copies a link that reopens that page.
 Console collects delegation, waiting requests,
 capacity and browser-local tripwires. The terminal bridge and semantic history remain prototypes;
 the [cockpit design contract](docs/design-next-ui.md#cockpit-reconciliation) records their limits.

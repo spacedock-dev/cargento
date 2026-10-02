@@ -2087,6 +2087,15 @@ function nextCockpitEntryNumbers(session, source){
   return new Map([...numbers].map(([entry, n]) => [String(entry.id || ""), n]));
 }
 
+/* A fact's type as a word on the activity list. Closed, and a Map so a type
+   named like an Object property cannot resolve to one: a type with no word
+   here reads "Entry" rather than its raw token. */
+const NEXT_COCKPIT_ENTRY_KIND = new Map([
+  ["prepared_dispatch", "Dispatch"], ["work_birth", "Task started"], ["work_result", "Task result"],
+  ["result", "Result"], ["gate_decision", "Gate"], ["decision", "Decision"],
+  ["assignment", "Assignment"], ["stage_transition", "Stage"],
+]);
+
 function nextCockpitEntryActor(entry){
   const author = nextReadingAuthor(entry);
   /* You pasted it, and Cargento wrote it: the meta says which. */
@@ -2160,12 +2169,15 @@ function nextCockpitWorkEvidence(session, source, cited = new Set()){
       : `<span class="next-cockpit-work-summary">${esc(entry.summary)}</span>`;
     /* A check's or a written file's line already reads actor · meta. Every
        other row takes the design's actor and meta: "Prompt" for your message,
-       the fact's own type string otherwise, never a count nothing measured. */
+       and a word for the fact's type from a closed map otherwise, never the
+       raw `prepared_dispatch` a reader cannot read (NU-3, 2026-10-02), and
+       never a count nothing measured. */
     const head = entry.type === "tool_report"
       ? `<span class="next-cockpit-work-result">${esc(nextCockpitToolReportLine(entry))}</span>`
       : `<span class="next-cockpit-work-actor">${esc(nextCockpitEntryActor(entry))}</span>` +
         `<span class="next-cockpit-work-type">${esc(nextReadingCopied(entry)
-          ? "Copied from Cargento" : entry.type === "user_message" ? "Prompt" : entry.type)}</span>`;
+          ? "Copied from Cargento" : entry.type === "user_message" ? "Prompt"
+          : NEXT_COCKPIT_ENTRY_KIND.get(String(entry.type || "")) || "Entry")}</span>`;
     /* Neutral tags: neither is a finding. "Cited" says a departure rests on
        the entry, and a later direction is never called drift
        ([DEC-16](docs/design-reading-a-session.md#dec-16-cargento-does-not-write-into-a-session)). */
@@ -5314,8 +5326,8 @@ const NEXT_DRIFT_LEVEL_NAMES = {none_or_low:"None or low", medium:"Medium", high
   extreme:"Extreme", not_enough:"Not enough recorded yet"};
 const NEXT_DRIFT_SCALE = ["none_or_low", "medium", "high", "extreme"];
 const NEXT_DRIFT_LIVE_LINE = "Reads checks and file paths, not what your intent says.";
-const NEXT_DRIFT_LIVE_HINT = "Turn on for a quick, low-cost drift check after every turn. " +
-  "The level shows here and in the header.";
+const NEXT_DRIFT_LIVE_HINT = "Shows a level after every turn, from checks and file paths, " +
+  "with no model call. The level shows here and in the header.";
 const NEXT_DRIFT_LIVE_SAVE = "Save your intent to see a live estimate.";
 const NEXT_DRIFT_UNCHECKED = "Not checked yet";
 const NEXT_DRIFT_NUDGE =

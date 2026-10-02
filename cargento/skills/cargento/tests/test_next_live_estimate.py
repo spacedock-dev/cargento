@@ -33,8 +33,10 @@ from .test_next_intent_draft import (
 )
 
 NUDGE = "This is a quick estimate. Analyze to see what drifted and how to steer back."
+# Reworded 2026-10-02 (NU-5): the live estimate makes no model call, so "low-cost" suggested a
+# spend the code beside the constant says never happens.
 HINT = (
-    "Turn on for a quick, low-cost drift check after every turn. "
+    "Shows a level after every turn, from checks and file paths, with no model call. "
     "The level shows here and in the header."
 )
 SAVE_FIRST = "Save your intent to see a live estimate"

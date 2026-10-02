@@ -2073,7 +2073,7 @@ console.log(JSON.stringify({closed, opened, survived, reclosed, closedSurvived})
             'data-next-copy-command="claude --resume 27d10654-1cb5-481e-8194-6ce868b91bb5"',
             claude,
         )
-        self.assertIn("COPY COMMAND", claude)
+        self.assertIn("Copy command", claude)
 
         codex = self.render(
             self.gate_queue_payload("codex", "01a06fac-629f-7c40-9c86-f84c55680151")
@@ -2103,7 +2103,7 @@ console.log(JSON.stringify({closed, opened, survived, reclosed, closedSurvived})
             with self.subTest(harness=harness, resume_id=resume_id):
                 html = self.render(self.gate_queue_payload(harness, resume_id))
                 self.assertNotIn("data-next-copy-command", html)
-                self.assertNotIn("COPY COMMAND", html)
+                self.assertNotIn("Copy command", html)
 
     def test_the_re_entry_command_rides_the_gate_queue_and_no_other_section(self) -> None:
         # A row in AT RISK is not a row waiting on an answer, so it gets no control:
@@ -2160,8 +2160,8 @@ document.querySelector = selector => selector === 'meta[name="cargento-focus"]'
         self.assertIn('data-next-raise-session="sid-published"', html)
         self.assertIn('data-next-raise-harness="claude"', html)
         self.assertIn(">RAISE<", html)
-        self.assertIn("COPY COMMAND", html)
-        self.assertLess(html.index("COPY COMMAND"), html.index(">RAISE<"))
+        self.assertIn("Copy command", html)
+        self.assertLess(html.index("Copy command"), html.index(">RAISE<"))
         # Its own class and its own resting look, so the reversible control and the
         # irreversible one do not differ by label alone.
         self.assertIn('class="next-session-raise', html)
