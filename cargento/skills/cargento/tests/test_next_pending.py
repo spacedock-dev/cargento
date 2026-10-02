@@ -256,6 +256,24 @@ console.log(JSON.stringify({before, drawnBefore, after:[...wrote("next-cockpit-c
         self.assertTrue(out["drawn"])
         self.assertEqual(SAVED, out["after"][-1])
 
+    def test_a_redraw_while_the_save_is_still_busy_draws_no_outcome_beside_it(self) -> None:
+        # Measured on a 2,530-session fixture board: a project-context paint landed while the
+        # save's refresh was out and drew "Saved as a new revision." beside "Saving...".
+        out = self.run_save(
+            press_save()
+            + """
+__holdData = true;
+__answer.resolve(); await __settle(); await __settle();
+renderNext();
+const busy = __els.app.innerHTML;
+__dataAnswer(); await __settle(); await __settle(); await __settle();
+console.log(JSON.stringify({busy, after:__els.app.innerHTML}));
+"""
+        )
+        self.assertIn("data-next-pending", out["busy"])
+        self.assertNotIn(SAVED, visible_text(intent_of(out["busy"])))
+        self.assertIn(SAVED, visible_text(intent_of(out["after"])))
+
     def test_the_start_is_said_only_when_the_save_takes_longer_than_400_ms(self) -> None:
         out = self.drive(
             TYPED + DOM + HELD,

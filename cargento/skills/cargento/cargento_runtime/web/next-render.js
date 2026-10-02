@@ -257,12 +257,17 @@ function nextRefreshPoll(){
   return new Promise(resolve => nextRefreshStart(false, [resolve], "poll"));
 }
 
-function nextRefreshWake(){
+/* `revision` is the one the wake announced, so a fetch already out whose
+   answer carries it covers the wake and is painted rather than dropped. */
+function nextRefreshWake(revision = ""){
   if(!nextRefreshActive || nextRefreshActive.kind === "poll"){
     nextRefreshStart(false, [], "wake");
     return;
   }
-  if(!nextRefreshWanted) nextRefreshWanted = {manual: false, waiters: []};
+  if(!nextRefreshWanted) nextRefreshWanted = {manual: false, waiters: [], revision: ""};
+  if(revision && nextRevisionNewer(revision, nextRefreshWanted.revision)){
+    nextRefreshWanted.revision = revision;
+  }
 }
 
 function nextRefreshStart(manual, waiters, kind = "call"){
@@ -314,13 +319,21 @@ async function nextRefreshOnce(run){
     const response = await fetch(nextDataUrl());
     if(!response.ok) throw new Error(`HTTP ${response.status}`);
     const fresh = await response.json();
-    // Superseded, or dropped for the queued run, which fetches again: painting
-    // it is a paint the reader sees replaced at once.
-    if(stale()) return false;
     /* The revision this body was published at, so a stream announcement of
        one this tab already holds fetches nothing. A GET never broadcasts it:
        only the stream's own announcement is written to the key. */
     const revision = nextResponseRevision(response);
+    /* A wake queued for a revision this answer already carries is answered by
+       it: the wake's announcement and this body are one collection. */
+    const wanted = nextRefreshWanted;
+    if(nextRefreshActive === run && wanted && wanted.revision && revision &&
+        !nextRevisionNewer(wanted.revision, revision)){
+      run.waiters.push(...wanted.waiters);
+      nextRefreshWanted = null;
+    }
+    // Superseded, or dropped for the queued run, which fetches again: painting
+    // it is a paint the reader sees replaced at once.
+    if(stale()) return false;
     if(revision && nextRevisionNewer(revision, nextLastRevision)) nextLastRevision = revision;
     const freshAttention = nextAttentionModel(fresh);
     nextSyncNotifications(fresh);

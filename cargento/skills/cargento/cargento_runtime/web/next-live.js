@@ -80,7 +80,7 @@ function nextOpenStream(){
     if(!revision || !nextRevisionNewer(revision, nextLastRevision)) return;
     nextLastRevision = revision;
     try{ localStorage.setItem(NEXT_REVISION_KEY, revision); }catch(_error){ /* no storage */ }
-    nextRefreshWake();
+    nextRefreshWake(revision);
   });
 }
 
@@ -105,7 +105,7 @@ function nextStartLive(){
     const revision = String(event.newValue || "");
     if(!revision || !nextRevisionNewer(revision, nextLastRevision)) return;
     nextLastRevision = revision;
-    nextRefreshWake();
+    nextRefreshWake(revision);
   });
 
   renderNext();

@@ -542,6 +542,26 @@ console.log(JSON.stringify({queuedGets, gets: releases.length, paintsAfterFirst,
         self.assertEqual(1, out["paints"])
         self.assertEqual(6, out["generated"])
 
+    def test_a_wake_for_the_revision_the_fetch_already_out_carries_fetches_nothing_more(
+        self,
+    ) -> None:
+        out = self._boot(
+            self.HELD_GETS
+            + """
+const saved = refreshNext();
+await __settle();
+__sources[0].emit("revision", "1700.7");
+await __settle();
+releases[0](payload(7));
+await saved; await __settle();
+console.log(JSON.stringify({gets: releases.length, paints, generated: nextData.generated}));
+"""
+        )
+        # The save's refresh was published at 1700.7, the revision the wake announced.
+        self.assertEqual(1, out["gets"])
+        self.assertEqual(1, out["paints"])
+        self.assertEqual(7, out["generated"])
+
     def test_a_refresh_awaited_after_a_write_is_answered_by_a_fetch_that_started_after_it(
         self,
     ) -> None:

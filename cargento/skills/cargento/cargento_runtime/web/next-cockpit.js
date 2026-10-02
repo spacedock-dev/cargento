@@ -1501,7 +1501,10 @@ function nextCockpitIntentFooter(session, annotation){
   const absent = nextCockpitStoreUnreadable() ? [] : [["goal", "goal_why"], ["lines", "lines_why"]]
     .filter(([_kind, why]) => annotation && annotation[why])
     .map(([kind]) => nextCockpitHeldAbsentId(kind));
-  const cue = nextCockpitHeldCue(key);
+  /* Not while the save is still busy: the outcome is drawn and said together,
+     when the button settles, and a redraw in between (a context paint) drew
+     "Saved" beside "Saving…" (owner, 2026-10-02). */
+  const cue = nextPendingHas(`${key}:save`) ? "" : nextCockpitHeldCue(key);
   return '<div class="next-cockpit-held-footer">' +
     `<p class="next-cockpit-held-hint" data-next-intent-measured>${NEXT_INTENT_MEASURED}</p>` +
     '<span class="next-cockpit-held-tools">' +
@@ -6551,10 +6554,15 @@ async function nextCockpitIntentSaveWork(session, signal){
      copy of what someone typed. A reader who kept typing while the request
      was open has a newer instruction in there, and dropping it would revert
      the box to the older text they just watched leave. */
-  if(kind === "saved" || kind === "unchanged"){
-    nextCockpitIntentForgetSent(session, changes, body, sentLines);
-  }
   nextCockpitHeldMark(key, kind, {say:false});
+  if(kind !== "saved" && kind !== "unchanged"){
+    /* Nothing landed, so the store's answer is the whole outcome and no
+       refresh has words to draw: the button settles on it at once rather
+       than waiting out a refresh. */
+    void refreshNext();
+    return kind;
+  }
+  nextCockpitIntentForgetSent(session, changes, body, sentLines);
   await refreshNext();
   return kind;
 }
