@@ -59,7 +59,8 @@ __dashboard.sessions[0].departures = [{
 IDLE_BUDGET = 80
 STORED_BUDGET = 160
 
-OFFER = "A reading is a model\u2019s account of the evidence on this page"
+# What the popover says under the server's list, which already says what a reading is (ui4 V2).
+SCOPE = "What it reads is the evidence on this page"
 LATER_NONE = (
     "Nothing you have said since you saved these words is in the observed record read for "
     "this session."
@@ -144,11 +145,22 @@ class MovedTextStaysOnThePageTest(PanelPage):
         self,
     ) -> None:
         aside = aside_of(self.page("claude", IDLE_DRAFTED))
-        self.assertIn(OFFER, aside)
-        self.assertNotIn(OFFER, visible_text(aside))
+        self.assertIn(SCOPE, aside)
+        self.assertNotIn(SCOPE, visible_text(aside))
         self.assertNotIn("READING", visible_text(aside))
         sent = aside[aside.index("next-cockpit-reading-sent") :]
-        self.assertIn(OFFER, sent[: sent.index("</details>")])
+        self.assertIn(SCOPE, sent[: sent.index("</details>")])
+
+    def test_the_popover_says_what_a_reading_is_once_and_not_twice_in_a_row(self) -> None:
+        """Verifier ui4 V2: the list ends "A reading is a model's account of the evidence, never
+        a verification ...", and the paragraph under it opened "A reading is a model's account
+        of the evidence on this page ...". The paragraph now says only what a reading reads."""
+        aside = aside_of(self.page("claude", IDLE_DRAFTED))
+        sent = aside[aside.index("next-cockpit-reading-sent") :]
+        body = sent[: sent.index("</details>")]
+        self.assertEqual(1, body.count("account of the evidence"), body)
+        self.assertIn("never a verification", body)
+        self.assertIn("It does not read a diff, a file, a test or a deliverable.", body)
 
     def test_a_refused_reading_is_still_said_in_view(self) -> None:
         aside = aside_of(

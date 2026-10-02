@@ -30,7 +30,8 @@ FOCUS_DOM = cockpit_tests.CockpitHeldToTabTest.FOCUS_DOM
 ANNOTATED = cockpit_tests.CockpitHeldToTabTest.ANNOTATED
 
 # The first words of the server's own disclosure for this Codex row.
-CODEX_ROUTE_NOTE = "Codex reads this Codex session."
+# The route's own-harness note, past its apostrophe, which the page escapes.
+CODEX_ROUTE_NOTE = "own harness reads it."
 
 SESSION_ROUTE = (
     'navigateNext({view:"session", project:"cargento", harness:"codex", session:"focus-1"});'

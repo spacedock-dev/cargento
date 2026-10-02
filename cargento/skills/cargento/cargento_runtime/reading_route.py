@@ -330,15 +330,23 @@ def destination(
 
 
 def _tool_output_sentence(provider: str, harness: str, where: str) -> str:
+    """What a check sends, or that none is sent; where it goes is the `To:` item after it.
+
+    The expected outcome lines ride here on Claude Code, because they are put to
+    the model only beside work evidence and a check is the only work evidence
+    there, admitted only under a tool-output grant for a named destination.
+    """
     if not provider or harness not in TOOL_OUTPUT_HARNESSES:
         return ""
-    label = LABELS[provider]
     if not where:
-        return f"Tool output is not sent: Cargento cannot name where {label} would send it."
+        return (
+            "Tool output and your expected outcome lines are not sent, because Cargento cannot "
+            "name where they would go."
+        )
     return (
-        "Tool output, only after you allow it: each check's command, result and last "
-        f"{TOOL_OUTPUT_TAIL_CHARS} characters of output and the paths of the files it wrote, "
-        f"as printed with credential shapes redacted, to {label}, which reaches {where}."
+        "Tool output, only after you allow it: a check's command, result and last "
+        f"{TOOL_OUTPUT_TAIL_CHARS} characters of output as printed, the paths of the files it "
+        "wrote, and your expected outcome lines."
     )
 
 
@@ -346,6 +354,11 @@ def _tool_output_sentence(provider: str, harness: str, where: str) -> str:
 CAVEAT = (
     "A reading is a model's account of the evidence, never a verification that the work was done."
 )
+
+# The harnesses whose record can carry work evidence, beside which alone the
+# expected outcome lines are put to the model (`reading.WORK_EVIDENCE_BY_HARNESS`).
+# Copied rather than imported, as `_WORDS_CAP` is; a test holds the two equal.
+OUTCOME_HARNESSES = ("claude", "pi")
 
 
 def _to_head(provider: str, where: str) -> str:
@@ -364,27 +377,42 @@ def _to_head(provider: str, where: str) -> str:
     return f"To: {where}, as your {label} settings name it"
 
 
-def _base_parts(provider: str, where: str | None = None) -> list[str]:
+def _base_parts(
+    provider: str, where: str | None = None, *, harness: str = "", tool_output: str = ""
+) -> list[str]:
     """What a reading sends, to whom and through what, one short item each.
 
     A list since the owner's ruling of 2026-10-02, which found the paragraph
-    "long and arduous to read": each item says one thing, and nothing explains
-    a mechanism a reader deciding whether to send does not need. The Codex
-    wording once said "Nothing leaves it"; the harness's own sign-in reaches its
-    vendor, so the `To:` item names where it goes, never a reassurance.
-    `where` is the route's `destination`; None means the vendor, for callers
-    that only want the wording.
+    "long and arduous to read": each item says one thing once, and nothing
+    explains a mechanism a reader deciding whether to send does not need
+    (verifier ui4 V2 found the first list repeating its destination, its
+    redaction and its receiver's name). The `To:` item comes after everything
+    it covers, tool output included, so it alone says where all of it goes and
+    that it goes redacted. The Codex wording once said "Nothing leaves it"; the
+    harness's own sign-in reaches its vendor, so the item names where it goes,
+    never a reassurance. `where` is the route's `destination`; None means the
+    vendor, for callers that only want the wording.
     """
     label = LABELS[provider]
     head = _to_head(provider, VENDORS[provider] if where is None else where)
+    # On Pi a work result is sent with no grant, so the lines may go with it.
+    # On Claude Code they ride with tool output; elsewhere they are never sent.
+    outcome = (
+        ", and your expected outcome lines when a work result is among them"
+        if harness in OUTCOME_HARNESSES and harness not in TOOL_OUTPUT_HARNESSES
+        else ""
+    )
     cli_adds = _CLI_ADDS.get(provider, "")
     return [
         (
             "Sent: your goal and a bounded set of the session's entries, with your messages "
-            f"up to {_WORDS_CAP:,} characters each and credential shapes redacted."
+            f"up to {_WORDS_CAP:,} characters each{outcome}."
         ),
-        "Your expected outcome lines are sent only when an entry sent is work evidence.",
-        (f"{head}, through your {label} CLI and its sign-in, using your {label} capacity."),
+        *([tool_output] if tool_output else []),
+        (
+            f"{head}, with credential shapes redacted, through your {label} CLI and its "
+            "sign-in, spending your capacity."
+        ),
         *([cli_adds] if cli_adds else []),
     ]
 
@@ -397,11 +425,13 @@ def _base_disclosure(provider: str) -> str:
 # What the Claude Code CLI adds to every reading on its own, measured on 2.1.283
 # against a local stub (DRC-4666 review, Sent F1 and F5). The owner accepted the
 # account details on 2026-09-27 on condition they are said before the press.
+# Its working directory is an empty temporary one; saying more than is sent is
+# the safe side, so the list does not explain it (verifier ui4 V2).
 _CLI_ADDS = {
     CLAUDE: (
-        "Claude Code also sends its working directory (an empty temporary one), platform, "
-        "shell, OS version, date and a device identifier, and under a Claude account "
-        "sign-in your email address and account ID."
+        "That CLI also sends its working directory, platform, shell, OS version, date and "
+        "device identifier, and under a Claude account sign-in your email address and "
+        "account ID."
     ),
 }
 # The ledger's cap on a reader's own message (`reading.LEDGER_WORDS_CAP_CHARS`),
@@ -443,7 +473,7 @@ def _route(
     reached = to if harness in TOOL_OUTPUT_HARNESSES else ""
     sentence = _tool_output_sentence(provider, harness, reached)
     parts = (
-        [note, *_base_parts(provider, to), *([sentence] if sentence else []), CAVEAT]
+        [note, *_base_parts(provider, to, harness=harness, tool_output=sentence), CAVEAT]
         if provider
         else []
     )
@@ -493,7 +523,9 @@ def resolve(
                 harness,
                 preferred,
                 REASON_OWN_HARNESS,
-                f"{label} reads this {label} session.",
+                # Not "Claude Code reads this Claude Code session.": the
+                # summary and the `To:` item name the CLI (verifier ui4 V2).
+                "This session's own harness reads it.",
                 fallback=False,
                 where=where,
             )

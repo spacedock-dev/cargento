@@ -1657,7 +1657,8 @@ class TheWarningIsOnThePageAndNotOnlyInAConstant(unittest.TestCase):
                 disclosure = _disclosures()[harness]
                 self.assertIn(vendor, disclosure)
                 self.assertIn("off this", disclosure)
-                self.assertIn(f"your {label} capacity", disclosure)
+                self.assertIn(f"your {label} CLI and its sign-in", disclosure)
+                self.assertIn("spending your capacity", disclosure)
 
 
 class OneReadingAtATimePerSession(unittest.TestCase):

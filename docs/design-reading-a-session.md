@@ -2356,33 +2356,42 @@ comes first and the DEC-21 disclosure follows it with the hint" for the idle sta
 The owner, 2026-10-02: the disclosure "is long and arduous to read. The text should be clear and to
 the point, stop overusing prose." It was 128 words for a Codex session, 239 for a Claude Code
 session read by Claude Code and 202 for one read by Codex. It is now a list of one-line items, the
-route's own `disclosure_parts`, still joined to `disclosure` by a single space, and 75, 148 and 121
-words for those three routes:
+route's own `disclosure_parts`, still joined to `disclosure` by a single space. The first list was
+75, 148 and 121 words for those three routes, in 5, 7 and 6 items, and verifier V2 found the Claude
+Code one still repeating itself: the destination twice, the redaction twice, and "Claude Code reads
+this Claude Code session." under a summary that names Claude Code. It is now 61, 120 and 101 words
+in 4, 6 and 5 items, each said once:
 
-1. The route's note: who reads this session, and why when it is a fallback.
+1. The route's note: whose harness reads this session, and why when it is a fallback. On the
+   session's own harness it reads "This session's own harness reads it."
 2. `Sent:` the goal and a bounded set of the session's entries, with the reader's messages up to
-   1,000 characters each and credential shapes redacted.
-3. The expected outcome lines, sent only when an entry sent is work evidence.
-4. `To:` where the words go as `reading_route.destination` names it, through the provider's own
-   CLI and sign-in, using the reader's capacity with it: the company off this machine, or the cloud
-   or base-URL host configured in its place, or, where nothing can be named, that Cargento cannot
-   name it. Until verifier C1 (2026-10-02) this item named the company whatever the environment
-   said, so under Bedrock, a base URL or a unix socket the reader allowed one receiver and the
-   words went to another.
+   1,000 characters each. On Pi it adds the expected outcome lines when a work result is among
+   them; on a harness with no work evidence the lines are never sent, so it says nothing of them.
+3. On a route whose record lists checks, tool output only after it is allowed: the command,
+   result and last 180 characters of output as printed, the paths written, and the expected
+   outcome lines, which go only beside a check; or that none of it is sent where the destination
+   cannot be named.
+4. `To:` where the words go as `reading_route.destination` names it, with credential shapes
+   redacted, through the provider's own CLI and sign-in, spending the reader's capacity: the
+   company off this machine, or the cloud or base-URL host configured in its place, or, where
+   nothing can be named, that Cargento cannot name it. It follows everything it covers, tool
+   output included, so it alone says where all of it goes. Until verifier C1 (2026-10-02) this
+   item named the company whatever the environment said, so under Bedrock, a base URL or a unix
+   socket the reader allowed one receiver and the words went to another.
 5. On a Claude Code route, what its CLI adds: the working directory, platform, shell, OS version,
    date and device identifier, and under a Claude account sign-in the email address and account
    ID, which is the 2026-09-27 condition.
-6. On a route whose record lists checks, tool output only after it is allowed, naming the command,
-   result, last 180 characters of output and the paths written, as printed with credential shapes
-   redacted, and where it goes; or that it is not sent where the destination cannot be named.
-7. The caveat, last: a reading is a model's account of the evidence, never a verification.
+6. The caveat, last: a reading is a model's account of the evidence, never a verification.
 
 What was cut repeats another item or explains a mechanism: "a subprocess", "uses its own
 authentication", "one of the paths that sends session content off this machine" (now `off this
 machine`), and how a long record shortens the oldest messages, which sends less rather than more.
 The [whole-message amendment](#amended-2026-10-01-a-reading-sees-the-readers-whole-message) said
 the disclosure states that last point; it no longer does. The consent step still shows every item
-before "Allow and analyze", and a test holds each fact listed above and a word budget per route.
+before "Allow and analyze", and a test holds each fact listed above, a word budget per route, and
+that no item repeats another. In the popover the paragraph under the list says only what a reading
+reads ("What it reads is the evidence on this page …"), because the list has just said what a
+reading is.
 
 Idle, "What is sent to <receiver>" (or "What is sent") opens the same list as a popover, the
 system the header's "Why" uses ([NUI-19](design-next-ui.md#nui-19-a-caveat-has-three-tiers)), in

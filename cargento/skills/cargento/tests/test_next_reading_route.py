@@ -308,9 +308,8 @@ console.log(JSON.stringify({asked, posts, policy: nextData.reading}));
         self.assertEqual(0, out["asked"]["posts"], "tool output left before a fresh Allow")
         html = out["asked"]["html"]
         self.assertIn("Allow and analyze", html)
-        self.assertLess(
-            html.index("to Codex, which reaches OpenAI"), html.index("Allow and analyze")
-        )
+        for said in ("Tool output, only after you allow it", "To: OpenAI, off this machine"):
+            self.assertLess(html.index(said), html.index("Allow and analyze"), said)
         self.assertEqual(1, len(out["posts"]))
         self.assertIs(True, out["posts"][0]["allow"])
         self.assertEqual("OpenAI", out["posts"][0]["tool_output"])
@@ -331,7 +330,7 @@ console.log(JSON.stringify({posts, html: control()}));
         assert isinstance(out, dict)
         self.assertEqual(1, len(out["posts"]))
         self.assertNotIn("tool_output", out["posts"][0])
-        self.assertIn("Tool output is not sent", out["html"])
+        self.assertIn("are not sent, because Cargento cannot name", out["html"])
 
     def test_a_destination_that_moved_is_said_once_and_asks_again(self) -> None:
         moved = _route("claude", {"codex"}, environ={"OPENAI_BASE_URL": "https://gw.example"})

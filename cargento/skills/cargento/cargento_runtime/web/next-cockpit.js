@@ -4862,6 +4862,14 @@ const NEXT_READING_OFFER =
   "A reading is a model\u2019s account of the evidence on this page: the observed record in " +
   "this session\u2019s activity and the goal and output you saved, and nothing else. It does not " +
   "read a diff, a file, a test or a deliverable.";
+/* The same scope without its opening clause, where the server's list is drawn
+   just above it: that list already ends on "A reading is a model's account of
+   the evidence", and saying it again in the next paragraph was the repetition
+   verifier ui4 V2 found in the popover. */
+const NEXT_READING_SCOPE =
+  "What it reads is the evidence on this page: the observed record in this session\u2019s " +
+  "activity and the goal and output you saved, and nothing else. It does not read a diff, a " +
+  "file, a test or a deliverable.";
 
 function nextCockpitReadingBaseline(shape, extra = ""){
   /* What the reading actually read, verbatim, rather than only which revision
@@ -4960,8 +4968,8 @@ function nextCockpitReadingParts(session, annotation, entries, model, observed, 
      verification that the work was done", so the page's own wording rides
      with what a reading is only where no disclosure was published. */
   const routed = nextReadingRoute(session);
-  const about = raw ? "" : NEXT_READING_OFFER +
-    (routed && routed.provider && routed.disclosure ? "" : ` ${NEXT_READING_NOT_A_VERIFICATION}`);
+  const about = raw ? "" : routed && routed.provider && routed.disclosure
+    ? NEXT_READING_SCOPE : `${NEXT_READING_OFFER} ${NEXT_READING_NOT_A_VERIFICATION}`;
   const control = '<div class="next-session-drift-check">' +
     (question || nextCockpitReadingControl(session, annotation, model, primary && !departed, slotted,
       false, about)) +

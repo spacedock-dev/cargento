@@ -127,7 +127,7 @@ class WhoReadsAClaudeCodeSessionOnThisBuild(unittest.TestCase):
                 route = reading_route.resolve("claude", binary_resolver=_resolver(installed))
                 self.assertEqual(("claude", False), (route["provider"], route["fallback"]))
                 self.assertEqual(reading_route.REASON_OWN_HARNESS, route["reason"])
-                self.assertEqual("Claude Code reads this Claude Code session.", route["note"])
+                self.assertEqual("This session's own harness reads it.", route["note"])
                 self.assertIn("Anthropic", route["disclosure"])
                 self.assertNotIn("OpenAI", route["disclosure"])
                 self.assertNotIn("qualified", route["disclosure"])
@@ -180,7 +180,7 @@ class WhoReadsAClaudeCodeSessionOnThisBuild(unittest.TestCase):
         route = reading_route.resolve("codex", binary_resolver=_resolver({"codex", "claude"}))
         self.assertEqual(("codex", False), (route["provider"], route["fallback"]))
         self.assertEqual(reading_route.REASON_OWN_HARNESS, route["reason"])
-        self.assertEqual("Codex reads this Codex session.", route["note"])
+        self.assertEqual("This session's own harness reads it.", route["note"])
 
     def test_a_codex_session_without_codex_falls_back_to_claude_code_and_says_so(self) -> None:
         # DEC-21 item 4 as written, which the 2026-09-23 amendment held back until the gate
@@ -235,7 +235,7 @@ class WhoReadsASessionOnceClaudeCodeIsQualified(unittest.TestCase):
         self.assertEqual("Claude Code", route["label"])
         self.assertEqual(observer.CLAUDE_READING_MODEL, route["model"])
         self.assertIn("Anthropic", route["disclosure"])
-        self.assertIn("Claude Code capacity", route["disclosure"])
+        self.assertIn("your Claude Code CLI and its sign-in", route["disclosure"])
         self.assertNotIn("OpenAI", route["disclosure"])
         self.assertNotIn("Codex", route["disclosure"])
 
@@ -302,7 +302,8 @@ class EveryMachineGetsExactlyOneTrueAnswer(unittest.TestCase):
                 elsewhere = ({"OpenAI", "Anthropic"} - {vendor}).pop()
                 self.assertIn(vendor, route["disclosure"])
                 self.assertNotIn(elsewhere, route["disclosure"])
-                self.assertIn(f"your {route['label']} capacity", route["disclosure"])
+                self.assertIn(f"your {route['label']} CLI and its sign-in", route["disclosure"])
+                self.assertIn("spending your capacity", route["disclosure"])
                 self.assertTrue(route["disclosure"].startswith(route["note"]))
                 self.assertIn("never a verification", route["disclosure"])
 
@@ -320,7 +321,9 @@ class EveryMachineGetsExactlyOneTrueAnswer(unittest.TestCase):
                 self.assertTrue(all(part and part == part.strip() for part in parts))
                 self.assertTrue(parts[-1].endswith("."))
                 if route["tool_output"]:
-                    self.assertEqual(route["tool_output"], parts[-2])
+                    # Tool output comes before the `To:` item, which says where all of it goes.
+                    at = parts.index(route["tool_output"])
+                    self.assertTrue(parts[at + 1].startswith("To: "), parts)
                 # One item carries the caveat, and it closes the list (owner, 2026-10-02).
                 self.assertEqual(1, sum("never a verification" in part for part in parts), parts)
                 self.assertIn("never a verification", parts[-1])
@@ -331,7 +334,7 @@ class EveryMachineGetsExactlyOneTrueAnswer(unittest.TestCase):
         parts = reading_route._base_parts("claude")
         added = [part for part in parts if "device identifier" in part]
         self.assertEqual(1, len(added))
-        self.assertTrue(added[0].startswith("Claude Code also sends"), added[0])
+        self.assertTrue(added[0].startswith("That CLI also sends"), added[0])
         self.assertFalse(
             any("device identifier" in part for part in reading_route._base_parts("codex"))
         )
@@ -621,7 +624,7 @@ class WhereToolOutputWouldGoIsNamedOrItIsNotSent(unittest.TestCase):
                 "claude", binary_resolver=_resolver({"codex"}), environ={}, root=self.root
             )
         self.assertEqual("", route["destination"])
-        self.assertIn("Tool output is not sent", route["tool_output"])
+        self.assertIn("are not sent", route["tool_output"])
 
     def test_a_codex_reader_with_no_override_is_told_openai(self) -> None:
         self.assertEqual("OpenAI", self._codex({}))
@@ -656,7 +659,11 @@ class AClaudeCodeReaderIsToldWhatTheChecksSendBeforeThePress(unittest.TestCase):
             )
         self.assertEqual("OpenAI", route["destination"])
         self.assertIn("tool output", route["tool_output"].casefold())
-        self.assertIn("to Codex, which reaches OpenAI", route["tool_output"])
+        # Where it goes is the `To:` item right after it (verifier ui4 V2).
+        parts = route["disclosure_parts"]
+        self.assertTrue(
+            parts[parts.index(route["tool_output"]) + 1].startswith("To: OpenAI, off this machine")
+        )
         self.assertIn("only after you allow", route["tool_output"])
         # K6: the grant sends the written paths too, so the sentence names them.
         self.assertIn("the paths of the files it wrote", route["tool_output"])
@@ -671,7 +678,9 @@ class AClaudeCodeReaderIsToldWhatTheChecksSendBeforeThePress(unittest.TestCase):
         )
         self.assertEqual("", route["destination"])
         self.assertIn("not sent", route["tool_output"])
-        self.assertIn("cannot name where Codex would send it", route["tool_output"])
+        self.assertIn("cannot name where they would go", route["tool_output"])
+        # Nor is any vendor claimed for the words (verifier ui4 C1).
+        self.assertIn("which Cargento cannot name", route["disclosure"])
 
     def test_a_harness_without_checks_carries_no_tool_output_sentence(self) -> None:
         for harness in ("codex", "pi"):
@@ -686,7 +695,7 @@ class AClaudeCodeReaderIsToldWhatTheChecksSendBeforeThePress(unittest.TestCase):
         route = reading_route.resolve("pi", binary_resolver=_resolver({"codex"}), environ={})
         self.assertNotIn("harness that publishes work evidence", route["disclosure"])
         self.assertIn(
-            "expected outcome lines are sent only when an entry sent is work", route["disclosure"]
+            "your expected outcome lines when a work result is among them", route["disclosure"]
         )
 
 
@@ -715,17 +724,41 @@ class TheDisclosureIsAShortListThatKeepsEveryFact(unittest.TestCase):
     def test_each_item_is_short_and_the_whole_list_is_a_fraction_of_the_old_paragraph(
         self,
     ) -> None:
-        # Words before this ruling: 128 for a Codex session, 239 for a Claude Code session
-        # read by Claude Code, 202 for one read by Codex.
-        budgets = {"codex": 75, "claude": 148, "claude-by-codex": 121, "codex-by-claude": 119}
+        # Words before the 2026-10-02 ruling: 128 for a Codex session, 239 for a Claude Code
+        # session read by Claude Code, 202 for one read by Codex. The first short list was 75,
+        # 148 and 121 in 5, 7 and 6 items, and verifier ui4 V2 found the Claude Code route still
+        # repeating itself; "about five items", the owner said.
+        budgets = {
+            "codex": (4, 61),
+            "claude": (6, 120),
+            "claude-by-codex": (5, 101),
+            "codex-by-claude": (5, 98),
+        }
         for name, (harness, installed) in self.ROUTES.items():
             route = _named(harness, installed)
+            items, words = budgets[name]
             with self.subTest(route=name):
                 parts = route["disclosure_parts"]
-                self.assertLessEqual(len(parts), 7, parts)
+                self.assertLessEqual(len(parts), items, parts)
                 for part in parts:
-                    self.assertLessEqual(len(part.split()), 37, part)
-                self.assertLessEqual(len(route["disclosure"].split()), budgets[name])
+                    self.assertLessEqual(len(part.split()), 31, part)
+                self.assertLessEqual(len(route["disclosure"].split()), words)
+
+    def test_no_item_repeats_another(self) -> None:
+        """Verifier ui4 V2: "credential shapes redacted" twice, the destination twice ("To:
+        Anthropic" and "which reaches Anthropic"), and "Claude Code reads this Claude Code
+        session." under a summary that already names Claude Code."""
+        for name, (harness, installed) in self.ROUTES.items():
+            route = _named(harness, installed)
+            text, label = route["disclosure"], route["label"]
+            with self.subTest(route=name):
+                self.assertEqual(1, text.count("redacted"), text)
+                self.assertEqual(1, text.count(route["vendor"]), text)
+                self.assertLessEqual(text.count(label), 2, text)
+                if route["reason"] == reading_route.REASON_OWN_HARNESS:
+                    self.assertNotIn(label, route["note"])
+                for mechanism in ("work evidence", "an empty temporary", "which reaches"):
+                    self.assertNotIn(mechanism, text)
 
     def test_every_route_still_says_what_is_sent_to_whom_and_through_what(self) -> None:
         cap = f"{reading.LEDGER_WORDS_CAP_CHARS:,} characters"
@@ -739,20 +772,34 @@ class TheDisclosureIsAShortListThatKeepsEveryFact(unittest.TestCase):
                     "bounded set",
                     f"your messages up to {cap} each",
                     "credential shapes redacted",
-                    "expected outcome lines are sent only when an entry sent is work evidence",
                     f"To: {route['vendor']}, off this machine",
                     f"your {label} CLI and its sign-in",
-                    f"your {label} capacity",
+                    "spending your capacity",
                     "a model's account of the evidence",
                     "never a verification that the work was done",
                 ):
                     self.assertIn(fact, text.replace("\u2019", "'"))
 
-    def test_the_tool_output_item_names_each_thing_it_sends_and_where(self) -> None:
+    def test_outcome_lines_are_named_only_where_they_can_be_sent(self) -> None:
+        # They go only beside work evidence: a check on Claude Code, which goes only with tool
+        # output, and a work result on Pi. A Codex session has neither, so its list is silent.
+        self.assertEqual(
+            set(reading.WORK_EVIDENCE_BY_HARNESS), set(reading_route.OUTCOME_HARNESSES)
+        )
+        claude = _named("claude", {"claude"})
+        self.assertIn("expected outcome lines", claude["tool_output"])
+        pi = _named("pi", {"codex"})
+        self.assertIn("expected outcome lines", pi["disclosure"])
+        self.assertIn("work result", pi["disclosure"])
+        codex = _named("codex", {"codex"})
+        self.assertNotIn("outcome", codex["disclosure"])
+
+    def test_the_tool_output_item_names_each_thing_it_sends(self) -> None:
         for name in ("claude", "claude-by-codex"):
             harness, installed = self.ROUTES[name]
             route = _named(harness, installed)
             sentence = route["tool_output"]
+            parts = route["disclosure_parts"]
             with self.subTest(route=name):
                 for fact in (
                     "only after you allow it",
@@ -761,10 +808,10 @@ class TheDisclosureIsAShortListThatKeepsEveryFact(unittest.TestCase):
                     f"last {reading_route.TOOL_OUTPUT_TAIL_CHARS} characters of output",
                     "the paths of the files it wrote",
                     "as printed",
-                    "credential shapes redacted",
-                    f"to {route['label']}, which reaches {route['destination']}",
                 ):
                     self.assertIn(fact, sentence)
+                # Where it goes is the `To:` item right after it, said once for everything.
+                self.assertTrue(parts[parts.index(sentence) + 1].startswith("To: "), parts)
 
 
 class TheToItemNamesWhereTheWordsGoAsConfigured(unittest.TestCase):

@@ -6191,7 +6191,10 @@ const read = () => {
   const block = html.slice(html.indexOf('class="next-session-drift-check"'));
   // What a reading is sits inside "What is sent" beside the control since DRC-4758 slice E.
   return {
-    text: (html.match(/class="next-cockpit-reading-why"[^>]*>(A reading is a model[^<]*)</) || [])[1],
+    // Under a published disclosure it opens on what a reading reads (verifier ui4 V2).
+    text: (html.match(
+      /class="next-cockpit-reading-why"[^>]*>((?:A reading is a model|What it reads is)[^<]*)</
+    ) || [])[1],
     // The refusal by its id rather than by being first. The offer paragraph
     // now precedes it in every state, because the control renders in all of
     // them, and "the first reason paragraph" stopped naming the reason.
@@ -6280,7 +6283,7 @@ console.log(JSON.stringify({empty, unread, offered, enabled, accepted, unknown})
         # The offer states what a reading may and may not read. That it is
         # never a verification is said once, by the route's disclosure beside
         # the control (DRC-4650), rather than again in the offer.
-        self.assertIn("account of the evidence on this page", out["offered"]["text"])
+        self.assertIn("the evidence on this page", out["offered"]["text"])
         self.assertTrue(out["offered"]["said"])
         self.assertTrue(out["offered"]["control"])
         self.assertTrue(out["offered"]["disabled"])
@@ -6680,8 +6683,8 @@ const block = __html.includes('<div class="next-session-drift-check">')
             + r"""
 console.log(JSON.stringify({
   ask: (block.match(/data-next-cockpit-action="reading-ask"/g) || []).length,
-  offer: block.includes("account of the evidence on this page"),
-  disclosure: block.includes("Codex reads this Codex session.") && block.includes("OpenAI"),
+  offer: block.includes("the evidence on this page"),
+  disclosure: block.includes("own harness reads it.") && block.includes("OpenAI"),
   counter: /\d+ model requests? recorded for this session\./.test(block),
 }));
 """
@@ -11244,7 +11247,8 @@ console.log(JSON.stringify({
   departure:count("A departure is a place the record does not match the words you chose"),
   revision:count("Each save is a revision"),
   readingShort:count("A reading is one model pass over the record"),
-  readingOffer:count("A reading is a model\\u2019s account of the evidence on this page"),
+  readingOffer:count("A reading is a model\\u2019s account of the evidence on this page") +
+    count("What it reads is the evidence on this page"),
   departureAfterHeader:html.indexOf("A departure is a place the record") >
     html.indexOf('<section class="next-cockpit-departures">'),
   revisionNearStamp:Math.abs(html.indexOf("Each save is a revision") -
