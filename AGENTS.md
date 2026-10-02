@@ -57,6 +57,9 @@ cargento-droid/                     # plugin root: Droid (hooks only)
     ├── hooks.json                  # Droid lifecycle hooks
     ├── event_hook.py               # posts Droid command-hook lifecycle events
     └── notify_hook.py              # loopback POST forwarder
+tests/                              # pushback session fixtures (not shipped, not a test suite)
+├── raw_sessions/<session_id>/      # steering-excerpts.txt; the full sanitized .jsonl is gitignored
+└── annotated_sessions/<session_id>/ # annotation.md: goal -> drift -> steering per part
 ```
 
 The Codex/AGY marketplace lives at `.agents/plugins/marketplace.json`. There is no Claude
@@ -93,6 +96,7 @@ shipped skill body, lives in the `sync-docs` skill at `.claude/skills/sync-docs/
 | `.agents/skills/*` | Codex discovery aliases for repository development skills. Each entry is a relative symlink to the matching canonical directory under `.claude/skills/`; `scripts/validate_plugins.py` rejects missing, copied, orphaned or misdirected aliases. |
 | `docs/abstention/` | The committed half of DEC-17's abstention check: a README saying what the file may hold and how to argue with a result, and — once a scoring run has been committed — the scorer's summary (case ids, marks, outcomes, counts, coverage, the marks digest). The cases, the local results and the rubric expectations stay under `~/.cargento`; `SECURITY.md` owns that ruling. |
 | `docs/evidence/intent-and-drift/` | The exploratory teammate prompt, separate cold-study protocol and participant notice, and public redacted run template for live Intent and drift verification. Raw sessions and screenshots stay outside Git; issue attachments require participant review. |
+| `tests/README.md` | The pushback session fixtures under `tests/raw_sessions/` and `tests/annotated_sessions/`: what is committed (steering excerpts and annotations), why the full sanitized session logs stay local and gitignored, the redaction tags, and how the sessions were chosen. |
 | `docs/visibility-2x2/` | The Visibility 2x2 prioritisation board and the blind-panel evidence behind its scores. A local working tool, opened by the `visibility-2x2` skill. |
 | `docs/screenshots/` | Screenshots taken in this repository. Every capture — browser or screen — lands here unless the request names another location. Its contents are gitignored, so a capture never reaches a commit, and a committed `.gitkeep` holds the directory itself for a fresh clone. Write a descriptive filename, because the directory has no index and nothing prunes it. |
 

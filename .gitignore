@@ -43,3 +43,9 @@ docs/screenshots/*
 # prompts, so they stay on the machine that made them. The .gitkeep keeps the directory.
 docs/feedback/*
 !docs/feedback/.gitkeep
+
+# Session fixtures: the full sanitized JSONL of each session stays on the machine that made
+# it, because teammates are not comfortable with transcripts in a public repository even
+# sanitized. Only the steering excerpts (.txt) and the annotations (.md) are committed.
+tests/raw_sessions/**/*.jsonl
+tests/annotated_sessions/**/*.jsonl
