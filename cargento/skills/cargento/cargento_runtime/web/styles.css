@@ -1535,8 +1535,10 @@ details.next-cockpit-held-stamp[open]>span{display:block}
   details.next-menu::details-content{opacity:0;transition:opacity var(--disclose-pop-dur) var(--disclose-ease),content-visibility var(--disclose-pop-dur) var(--disclose-ease) allow-discrete}
   details.next-menu[open]::details-content{opacity:1}
   @media (prefers-reduced-motion:reduce){details.next-menu::details-content,:is([data-next-view-body="session"],[data-next-view-body="sessions"],[data-next-view-body="attention"],[data-next-view-body="project"]) details.next-cockpit-scope-switcher::details-content{transition:none}}
-  /* Its own rule: a selector list holding an unsupported pseudo-element invalidates the whole rule. */
-  @media (prefers-reduced-motion:reduce){:is([data-next-view-body="session"],[data-next-view-body="sessions"],[data-next-view-body="attention"],[data-next-view-body="project"]) details:is(.next-cockpit-why,[data-next-cockpit-disclosure],.next-attention-coverage-details):not(.next-menu):not(.next-cockpit-scope-switcher)::details-content{transition:none}}
+  /* Its own rule: a selector list holding an unsupported pseudo-element invalidates the whole rule.
+     Each selector repeats its eased twin exactly, so it can never lose on specificity: with
+     one shorter selector, the accordion kept easing under reduced motion (Chrome 156, measured). */
+  @media (prefers-reduced-motion:reduce){:is([data-next-view-body="session"],[data-next-view-body="sessions"],[data-next-view-body="attention"],[data-next-view-body="project"]) details:is(.next-cockpit-why,[data-next-cockpit-disclosure],.next-attention-coverage-details):not(.next-menu):not(.next-cockpit-scope-switcher):not(.next-disclose--pop)::details-content,:is([data-next-view-body="session"],[data-next-view-body="sessions"],[data-next-view-body="attention"],[data-next-view-body="project"]) details.next-disclose--pop::details-content{transition:none}}
 }
 @media (prefers-reduced-motion:reduce){:is([data-next-view-body="session"],[data-next-view-body="sessions"],[data-next-view-body="attention"],[data-next-view-body="project"]) details:is(.next-cockpit-why,[data-next-cockpit-disclosure],.next-attention-coverage-details):not(.next-menu):not(.next-cockpit-scope-switcher)>summary::after{transition:none}}
 .next-cockpit-reading-stale,.next-session-departure-stale{margin:0;color:var(--amber);font:var(--fs-body)/1.5 var(--sans)}

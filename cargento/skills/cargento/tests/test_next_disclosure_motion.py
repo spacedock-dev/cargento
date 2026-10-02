@@ -266,6 +266,18 @@ class TheProjectPageEasesItsDisclosuresTooTest(PanelPage):
         )
 
 
+def top_level_selectors(selector_list: str) -> list[str]:
+    """A selector list split at its own commas, never at the commas inside `:is(...)`."""
+    parts, depth, start = [], 0, 0
+    for index, char in enumerate(selector_list):
+        depth += {"(": 1, ")": -1}.get(char, 0)
+        if char == "," and depth == 0:
+            parts.append(selector_list[start:index].strip())
+            start = index + 1
+    parts.append(selector_list[start:].strip())
+    return parts
+
+
 class EveryDisclosureEasesOpenAndShutTest(unittest.TestCase):
     def test_every_disclosure_eases_open_and_shut_and_reduced_motion_gets_none(self) -> None:
         accordion = rule(
@@ -287,7 +299,11 @@ class EveryDisclosureEasesOpenAndShutTest(unittest.TestCase):
         # unsupported pseudo-element would invalidate the marker's rule with it.
         self.assertIn(
             "transition:none",
-            rule(f"{VIEWS} {DISCLOSURES}::details-content", f"{SUPPORTS} {REDUCED}"),
+            rule(
+                f"{VIEWS} {DISCLOSURES}:not(.next-disclose--pop)::details-content,"
+                f"{POP}::details-content",
+                f"{SUPPORTS} {REDUCED}",
+            ),
         )
         self.assertIn(
             "transition:none",
@@ -296,6 +312,31 @@ class EveryDisclosureEasesOpenAndShutTest(unittest.TestCase):
         # The marker turns rather than swapping glyphs.
         self.assertIn("rotate var(--disclose-dur)", rule(f"{VIEWS} {DISCLOSURES}>summary::after"))
         self.assertIn("list-style:none", rule(f"{VIEWS} {DISCLOSURES}>summary"))
+
+    def test_a_reader_who_asks_for_less_motion_gets_none_on_every_eased_disclosure(self) -> None:
+        """Measured in Chrome 156 with reduced motion emulated: the accordion still eased, because
+        its base selector carries `:not(.next-disclose--pop)` and the reduced rule did not, so the
+        base rule out-ranked `transition:none`. A presence check passed over that. So every rule
+        that eases a disclosure needs a reduced-motion rule with the SAME selector, which can never
+        lose on specificity, and nothing it sets may move."""
+        reduced = {
+            one: body
+            for context, selector, body in rules()
+            if REDUCED in context
+            for one in top_level_selectors(selector)
+        }
+        eased = [
+            (selector, body)
+            for context, selector, body in rules()
+            if REDUCED not in context
+            and re.search(r"details|summary", selector)
+            and re.search(r"(^|;)\s*transition\s*:(?!\s*none)", body)
+        ]
+        self.assertTrue(eased, "no eased disclosure rule was found")
+        for selector, _body in eased:
+            with self.subTest(selector=selector[:100]):
+                self.assertIn(selector, reduced, "this eased rule has no reduced-motion twin")
+                self.assertRegex(reduced[selector], r"(^|;)\s*transition\s*:\s*none")
 
     def test_nothing_replays_on_a_redraw(self) -> None:
         """`@starting-style` and keyframes on an open disclosure both run again every time a poll
