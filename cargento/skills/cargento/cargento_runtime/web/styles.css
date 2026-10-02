@@ -161,7 +161,7 @@ body{font-family:var(--sans);font-size:var(--fs-body);-webkit-font-smoothing:ant
 .next-action-ghost{visibility:hidden}
 /* At rest the reserving control takes the busy state's own cell, so it is the same box idle and
    busy: 89.4 by 21px both ways for the direction Save in Chrome 156. */
-:has(>.next-action-reserve){display:inline-grid;align-items:center;justify-items:center}
+[data-next-reserve]{display:inline-grid;align-items:center;justify-items:center}
 .next-action-reserve{display:contents}
 .next-action-reserve>span{grid-area:1/1}
 .next-action-reserve>.next-action-ghost{display:flex}

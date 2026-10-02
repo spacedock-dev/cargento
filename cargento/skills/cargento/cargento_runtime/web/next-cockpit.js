@@ -1634,7 +1634,7 @@ function nextCockpitDirectionLine(session, annotation, cap, source = null){
     `<span class="next-cockpit-held-count" data-next-cockpit-direction-count>${text.length}/${cap}</span>` +
     `<span class="next-cockpit-held-source">${esc(from)}</span>` +
     '<span class="next-cockpit-direction-tools">' +
-    '<button type="button" data-next-cockpit-action="direction-save" ' +
+    '<button type="button" data-next-cockpit-action="direction-save" data-next-reserve ' +
     `data-next-focus="direction-save:${esc(key)}"` +
     `${nextPendingHas(`direction-save:${key}`) ? nextPendingAttrs(`direction-save:${key}`)
       : ready ? "" : ' aria-disabled="true"'}` +

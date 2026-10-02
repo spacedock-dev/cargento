@@ -752,7 +752,8 @@ console.log(JSON.stringify({idle}));
             r"Saving…</span></span></span>",
         )
         rules = {sel.strip(): body for sel, body in re.findall(r"([^{}@]+)\{([^{}]*)\}", css())}
-        self.assertIn("display:inline-grid", rules.get(":has(>.next-action-reserve)", ""))
+        self.assertIn("data-next-reserve", idle)
+        self.assertIn("display:inline-grid", rules.get("[data-next-reserve]", ""))
         self.assertIn("display:contents", rules.get(".next-action-reserve", ""))
         self.assertIn("grid-area:1/1", rules.get(".next-action-reserve>span", ""))
 

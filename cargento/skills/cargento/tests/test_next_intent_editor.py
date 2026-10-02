@@ -233,7 +233,13 @@ class EachOutcomeLineFollowsTheGoalsPatternTest(_DraftPage):
         after = line[line.index("</textarea>") :]
         self.assertTrue(after.startswith('</textarea><div class="next-cockpit-held-under">'))
         under = after[: after.index("</div>") + len("</div>")]
-        labels = re.findall(r"<button[^>]*>([^<]*)</button>", under)
+        # The direction Save holds its busy label as a hidden ghost (verifier R3), which is
+        # not a label a reader sees or hears.
+        bare = re.sub(r'<span class="next-action-ghost"[^>]*>[\s\S]*?</span></span>', "", under)
+        labels = [
+            visible_text(label).strip()
+            for label in re.findall(r"<button[^>]*>([\s\S]*?)</button>", bare)
+        ]
         self.assertEqual(["Save", "Remove"], labels)
         text = visible_text(under)
         self.assertTrue(text.startswith("16/240 from #"), text)
