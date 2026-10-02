@@ -8336,6 +8336,28 @@ document.addEventListener("focusout", event => {
   if(!(typeof popover.contains === "function" && popover.contains(next))) popover.open = false;
 });
 
+/* Opening a popover scrolls the page just far enough to show all of it, once:
+   the "What is sent" body is 487px tall at 1440x800 and ended below the
+   window. Not a scroll box inside it, whose position every poll would lose
+   (docs/design-reader-state.md), and not on a redraw, which re-inserts it open
+   without a press. */
+document.addEventListener("click", event => {
+  const summary = event.target && typeof event.target.closest === "function"
+    ? event.target.closest("summary") : null;
+  const popover = summary && summary.parentElement;
+  if(!popover || popover.tagName !== "DETAILS" || popover.open ||
+     !(popover.classList && popover.classList.contains("next-disclose--pop"))) return;
+  const reduce = typeof window.matchMedia === "function" &&
+    window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  setTimeout(() => {
+    if(!popover.open) return;
+    const body = popover.querySelector(".next-disclose-body");
+    if(body && typeof body.scrollIntoView === "function"){
+      body.scrollIntoView({block:"nearest", behavior: reduce ? "auto" : "smooth"});
+    }
+  }, 0);
+});
+
 /* A click outside an open popover closes it, as a menu does. The restore lane
    reads `.open` at the next redraw, so nothing else needs telling. */
 document.addEventListener("click", event => {

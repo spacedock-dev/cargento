@@ -372,15 +372,6 @@ class EveryDisclosureEasesOpenAndShutTest(unittest.TestCase):
                 self.assertIn(selector, reduced, "this eased rule has no reduced-motion twin")
                 self.assertRegex(reduced[selector], r"(^|;)\s*transition\s*:\s*none")
 
-    def test_a_long_popover_scrolls_inside_itself_instead_of_running_off_the_screen(self) -> None:
-        """Measured at 1440x800: the "What is sent" body was 613px tall and ended 239px below the
-        window, with three of its seven items out of sight (verifier V3). A popover is out of flow,
-        so the page cannot grow to hold it; it caps its own height and scrolls."""
-        body = rule(f"{POP}>.next-disclose-body")
-        self.assertRegex(body, r"max-block-size:min\(")
-        self.assertIn("overflow-y:auto", body)
-        self.assertIn("overscroll-behavior:contain", body)
-
     def test_nothing_replays_on_a_redraw(self) -> None:
         """`@starting-style` and keyframes on an open disclosure both run again every time a poll
         re-inserts the node, so neither may be used for a disclosure."""
@@ -453,3 +444,38 @@ class ABackgroundPaintWaitsOutTheReadersOwnToggleTest(NextPageJsHarness):
         )
         context = NEXT_APP_JS[NEXT_APP_JS.index("function nextCockpitLoadContext") :][:1400]
         self.assertIn("nextPaintAfterMotion(() => renderNext())", context)
+
+
+POPOVER_PROBE = """
+const __scrolled = [];
+const __body = {scrollIntoView: options => __scrolled.push(options)};
+const __pop = {tagName: "DETAILS", open: false,
+  classList: {contains: name => name === "next-disclose--pop"},
+  contains: () => true, querySelector: s => s === ".next-disclose-body" ? __body : null};
+const __sum = {tagName: "SUMMARY", parentElement: __pop, closest: s => s === "summary" ? __sum : null};
+__fire("click", {target: __sum});
+__pop.open = true;  // the browser's own toggle, which runs after the handlers
+await new Promise(r => setTimeout(r, 20));
+const __opened = __scrolled.slice();
+__fire("click", {target: __sum});  // now open: this press shuts it
+__pop.open = false;
+await new Promise(r => setTimeout(r, 20));
+console.log(JSON.stringify({opened: __opened, after_close: __scrolled.length}));
+"""
+
+
+@unittest.skipUnless(shutil.which("node"), "node not available")
+class APopoverOpensWhollyOnTheScreenTest(NextPageJsHarness):
+    """Measured at 1440x800: the "What is sent" body is 487px tall and ended 74px below the
+    window. A scroll box inside it would lose its place on every poll, which the reader-state
+    inventory forbids, so the page scrolls just far enough to show it, once, when the reader
+    opens it."""
+
+    def test_opening_a_popover_brings_its_whole_body_into_view_once(self) -> None:
+        out = self._run_page_js(
+            "await __settle();\n" + POPOVER_PROBE, storage_prelude({}) + FIXTURE
+        )
+        assert isinstance(out, dict)
+        self.assertEqual(1, len(out["opened"]))
+        self.assertEqual("nearest", out["opened"][0]["block"])
+        self.assertEqual(1, out["after_close"], "closing must not scroll")
