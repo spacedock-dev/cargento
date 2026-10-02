@@ -2285,9 +2285,12 @@ throughout (arbiter spec, `ui3`).
 - No silent flips. When Analyze opens or closes with no press of the reader's, one short line under
   the button row says so ("Analyze is open again: the session is running.", "Analyze is open: the
   session's last turn finished.", "Analyze is open: the session ended.", "Analyze closed: the
-  session stopped running.", or "Analyze closed: your intent was saved after the session
+  session went quiet.", or "Analyze closed: your intent was saved after the session
   ended."), drawn without a role and written once to the polite region, at most once a minute per
-  session. Opening is drawn at once. Closing waits until the inert state has held for two
+  session. A flip inside that minute is held, not dropped, and the newest is said when the minute
+  is up, unless the region's last word is already the state the card shows (verifier F4). The
+  close says "went quiet" rather than "stopped running", because a turn left on an open tool call
+  or an interruption did not stop (verifier F5). Opening is drawn at once. Closing waits until the inert state has held for two
   payloads and ten seconds, so a session that pauses between turns, whose stop settles for eight,
   never closes it. A consent question Analyze closes under is withdrawn, "Analyze closed before
   you answered, so nothing was sent.", and never raised again without a press. A settling row

@@ -31,7 +31,7 @@ from .visible_text import visible_text
 DOM = cockpit_tests.CockpitCuesReachTheReaderTest.ANNOUNCER_DOM
 OPEN_RUNNING = "Analyze is open again: the session is running."
 OPEN_LAST_TURN = "Analyze is open: the session's last turn finished."
-CLOSED = "Analyze closed: the session stopped running."
+CLOSED = "Analyze closed: the session went quiet."
 CLOSED_UNANSWERED = "Analyze closed before you answered, so nothing was sent."
 IDLE_LINE = "This session's last turn isn't recorded as finished."
 
@@ -265,6 +265,68 @@ console.log(JSON.stringify({opened, closed, reopened, said:__flipWrites()}));
         self.assertIn(OPEN_RUNNING, visible_text(drift_of(out["reopened"])))
         # The region heard the first flip, then nothing until a minute had passed.
         self.assertEqual([OPEN_RUNNING, CLOSED], out["said"])
+
+    def test_a_screen_reader_hears_the_newest_state_once_the_minute_is_up(self) -> None:
+        """Verifier F4 (ui3): a close was announced, the session ended 19 s later and Analyze
+        opened, and the once-a-minute limit dropped that open, so the last thing a screen reader
+        heard was false. The limit now holds the newest flip and says it when the minute is up,
+        unless the region's last word is already the current state."""
+        out = self.run_flip(
+            """
+await __poll(OPEN, 1000);
+await __poll(IDLE, 1001); await __poll(IDLE, 1006);
+await __poll(IDLE, 1012);
+const closedSaid = __flipWrites();
+const reopened = await __poll(OPEN, 1031);
+const within = __flipWrites();
+// Only the timer armed for the minute's end (1012 + 60 - 1031 = 41 s): no payload, no other.
+__setNow(1072);
+__timeouts.filter(t => t.ms === 41000).forEach(t => { const fn = t.fn; t.fn = () => {}; fn(); });
+await __settle(); await __settle();
+const due = __flipWrites();
+await __poll(OPEN, 1080);
+console.log(JSON.stringify({closedSaid, within, due, after:__flipWrites(),
+  shown:reopened.includes("next-cockpit-reading-change")}));
+""",
+            setup=TIMERS,
+        )
+        self.assertEqual([CLOSED], out["closedSaid"])
+        # In view at once, and held from the region inside the minute.
+        self.assertTrue(out["shown"])
+        self.assertEqual([CLOSED], out["within"])
+        # Said when the minute is up, once, with no payload needed to say it.
+        self.assertEqual([CLOSED, OPEN_RUNNING], out["due"])
+        self.assertEqual([CLOSED, OPEN_RUNNING], out["after"])
+
+    def test_a_held_flip_that_reverted_is_not_said_when_the_minute_is_up(self) -> None:
+        out = self.run_flip(
+            """
+await __poll(OPEN, 1001);
+await __poll(IDLE, 1002); await __poll(IDLE, 1007); await __poll(IDLE, 1013);
+await __poll(OPEN, 1020);
+__setNow(1062); __fireAll(); await __settle(); await __settle();
+console.log(JSON.stringify({said:__flipWrites()}));
+""",
+            setup=IDLE_FIRST + TIMERS,
+        )
+        # The region last said "open", and open is what the card shows: nothing is owed.
+        self.assertEqual([OPEN_RUNNING], out["said"])
+
+    def test_a_close_on_a_turn_that_did_not_stop_does_not_say_it_stopped(self) -> None:
+        """Verifier F5 (ui3): "the session stopped running" was said of a turn left on an open
+        tool call or an interruption, beside a line saying the turn isn't recorded as finished."""
+        out = self.run_flip(
+            """
+await __poll(OPEN, 1000);
+await __poll(IDLE, 1001); await __poll(IDLE, 1006);
+const closed = await __poll(IDLE, 1012);
+console.log(JSON.stringify({closed}));
+"""
+        )
+        text = visible_text(drift_of(out["closed"]))
+        self.assertIn(CLOSED, text)
+        self.assertIn(IDLE_LINE, text)
+        self.assertNotIn("stopped", text)
 
     def test_a_press_being_answered_holds_the_card_still(self) -> None:
         out = self.run_flip(

@@ -3858,13 +3858,15 @@ const NEXT_READING_FLIP_SAY_EVERY_MS = 60_000;
 const NEXT_READING_FLIP_OPEN_RUNNING = "Analyze is open again: the session is running.";
 const NEXT_READING_FLIP_OPEN_LAST_TURN = "Analyze is open: the session's last turn finished.";
 const NEXT_READING_FLIP_OPEN_ENDED = "Analyze is open: the session ended.";
-const NEXT_READING_FLIP_CLOSED = "Analyze closed: the session stopped running.";
+/* "Went quiet", not "stopped": a close also follows a turn left on an open tool
+   call or an interruption, which did not stop (verifier F5). */
+const NEXT_READING_FLIP_CLOSED = "Analyze closed: the session went quiet.";
 const NEXT_READING_FLIP_CLOSED_REVISION = "Analyze closed: your intent was saved after the session ended.";
 const NEXT_READING_FLIP_CLOSED_UNANSWERED = "Analyze closed before you answered, so nothing was sent.";
 let nextReadingFlipRender = 0;
 /* One page-wide timer each, never one per row: the hold, a settle's `until`
    and the change line's TTL, for the one drawn card. */
-const nextReadingFlipTimers = {hold: null, until: null, line: null};
+const nextReadingFlipTimers = {hold: null, until: null, line: null, say: null};
 
 function nextReadingFlipSchedule(name, at){
   const current = nextReadingFlipTimers[name];
@@ -3895,15 +3897,37 @@ function nextReadingFlipOpened(session){
 }
 
 function nextReadingFlipSay(session, flip, sentence){
-  const key = sessKey(session);
   flip.line = sentence;
   flip.lineAt = Date.now();
   /* In view every time; to the region at most once a minute per session, so a
-     session that flaps is not read out on every turn. */
-  if(flip.saidAt != null && Date.now() - flip.saidAt < NEXT_READING_FLIP_SAY_EVERY_MS) return;
+     session that flaps is not read out on every turn. A flip inside the minute
+     is held, never dropped: the newest is said when the minute is up, so the
+     region's last word is never a state that has gone (verifier F4). */
+  if(flip.saidAt != null && Date.now() - flip.saidAt < NEXT_READING_FLIP_SAY_EVERY_MS){
+    flip.owed = sentence;
+    nextReadingFlipSchedule("say", flip.saidAt + NEXT_READING_FLIP_SAY_EVERY_MS);
+    return;
+  }
+  nextReadingFlipAnnounce(session, flip, sentence);
+}
+
+function nextReadingFlipAnnounce(session, flip, sentence){
+  const key = sessKey(session);
   flip.saidAt = Date.now();
+  flip.said = sentence;
+  flip.owed = "";
   nextCockpitAnnouncedCues.delete(`flip:${key}`);
   nextCockpitAnnounceCue(`flip:${key}`, sentence, false);
+}
+
+/* The held flip, once the minute is up, unless the region already said the
+   state the card now shows: a flip that reverted inside the minute owes nothing. */
+function nextReadingFlipOwed(session, flip){
+  if(!flip.owed || flip.saidAt == null) return;
+  if(Date.now() - flip.saidAt < NEXT_READING_FLIP_SAY_EVERY_MS) return;
+  const owed = flip.owed;
+  flip.owed = "";
+  if(owed !== flip.said) nextReadingFlipAnnounce(session, flip, owed);
 }
 
 /* A press the reader made learned the state itself, so the card takes it
@@ -3913,6 +3937,7 @@ function nextReadingFlipAcknowledge(session, pressable){
   if(flip){
     flip.shown = pressable;
     flip.candidate = null;
+    flip.owed = "";
   }
 }
 
@@ -3923,7 +3948,8 @@ function nextReadingFlip(session, pressable, eligibility, quiet = false){
   let flip = nextReadingFlips.get(key);
   if(!flip || flip.drawn < nextReadingFlipRender - 1){
     flip = {shown: pressable, candidate: null, candidateSince: 0, candidateData: null,
-      saidAt: flip ? flip.saidAt : null, line: "", lineAt: 0, drawn: nextReadingFlipRender};
+      saidAt: flip ? flip.saidAt : null, said: flip ? flip.said : "", owed: "",
+      line: "", lineAt: 0, drawn: nextReadingFlipRender};
     nextReadingFlips.delete(key);
     nextReadingFlips.set(key, flip);
     while(nextReadingFlips.size > NEXT_COCKPIT_HELD_CUE_LIMIT){
@@ -3932,6 +3958,7 @@ function nextReadingFlip(session, pressable, eligibility, quiet = false){
     return flip;
   }
   flip.drawn = nextReadingFlipRender;
+  nextReadingFlipOwed(session, flip);
   if(nextReadingFlipFrozen(session)) return flip;
   if(pressable === flip.shown){
     flip.candidate = null;
