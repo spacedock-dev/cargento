@@ -1258,8 +1258,8 @@ by the OS (`score_abstention.py --probe-argv`, below):
   email from its cached account and no flag removes it. The owner accepted this on 2026-09-27 on
   condition that it is said before the press, and the Claude Code disclosure names it
   (`reading_route._base_disclosure`). Amended 2026-10-01 (owner, Q1, DRC-4758): the press it is
-  said before is the one that sends. Idle, the disclosure is one click away under "What is sent to
-  <receiver>", and a press there sends nothing; the press that would send opens a consent step
+  said before is the one that sends. Idle, the disclosure is one click away in a popover under
+  "What is sent to <receiver>", and a press there sends nothing; the press that would send opens a consent step
   that shows the whole disclosure, as the server's parts, before "Allow and analyze". Amended
   2026-10-02 (owner): the disclosure is a short list, one item a line, and keeps each fact this
   section and [Observer model calls](#observer-model-calls) require: what is sent, the company it

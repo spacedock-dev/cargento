@@ -405,14 +405,21 @@ class IdleTheDisclosureIsOneWordedClickAwayTest(PanelPage):
         self.assertIn(
             'data-next-cockpit-disclosure="cargento\ncodex:focus-1\nreading-sent"', sent.group(0)
         )
-        # The disclosure paragraph the button is described by is inside it, whole and tag-free.
+        # The list the button is described by is inside it: the server's parts, in order and
+        # unreworded, the same list the consent step shows (owner, 2026-10-02).
         button = ASK.search(drift)
         assert button is not None
         described = re.search(r'aria-describedby="([^"]+)"', button.group(0))
         assert described is not None
-        bound = re.search(rf'<p\b[^>]*id="{described.group(1)}"[^>]*>([^<]*)</p>', sent.group(0))
+        bound = re.search(
+            rf'<ul\b[^>]*id="{described.group(1)}"[^>]*>([\s\S]*?)</ul>', sent.group(0)
+        )
         assert bound is not None
-        self.assertEqual(visible_text(disclosure), visible_text(bound.group(1)))
+        items = [visible_text(item) for item in re.findall(r"<li>([\s\S]*?)</li>", bound.group(1))]
+        self.assertEqual(
+            [visible_text(part) for part in routes()["codex"]["disclosure_parts"]], items
+        )
+        self.assertEqual(visible_text(disclosure), " ".join(items))
 
     def test_once_allowed_the_summary_is_what_is_sent_and_holds_turn_off(self) -> None:
         drift = drift_of(self.page("codex", ALLOWED))

@@ -2363,6 +2363,11 @@ The [whole-message amendment](#amended-2026-10-01-a-reading-sees-the-readers-who
 the disclosure states that last point; it no longer does. The consent step still shows every item
 before "Allow and analyze", and a test holds each fact listed above and a word budget per route.
 
+Idle, "What is sent to <receiver>" (or "What is sent") opens the same list as a popover, the
+system the header's "Why" uses ([NUI-19](design-next-ui.md#nui-19-a-caveat-has-three-tiers)), in
+place of the accordion the [idle amendment](#amended-2026-10-01-idle-the-disclosure-is-one-worded-click-away)
+drew. Analyze drift stays described by the list, and Turn off readings stays inside it.
+
 ### What the Cancel build decided, 2026-09-24
 
 DRC-4693 built Cancel, the rest of item 5. The owner ruled the spend, the unconfirmed kill and the

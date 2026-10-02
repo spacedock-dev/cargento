@@ -4637,10 +4637,11 @@ function nextCockpitReadingControl(session, annotation, model, primary = true, s
   const disclosure = provider && route.disclosure
     ? `<p class="next-cockpit-reading-why" id="${NEXT_READING_DISCLOSURE_ID}">` +
       `${esc(route.disclosure)}</p>` : "";
-  /* Confirming, the same disclosure as the server's own parts, a short list
-     in its order and unreworded, so "Allow and analyze" no longer drops below
-     one long block (owner Q1, 2026-10-01). A route from before the parts
-     were published shows its whole disclosure as one item. */
+  /* The server's own parts, a short list in its order and unreworded: in the
+     consent step, so "Allow and analyze" no longer drops below one long block
+     (owner Q1, 2026-10-01), and idle in the "What is sent" popover, so the two
+     cannot differ (owner, 2026-10-02). A route from before the parts were
+     published shows its whole disclosure as one item. */
   const parts = provider && Array.isArray(route.disclosure_parts) && route.disclosure_parts.length
     ? route.disclosure_parts : provider && route.disclosure ? [route.disclosure] : [];
   const disclosureParts = parts.length
@@ -4779,15 +4780,18 @@ function nextCockpitReadingControl(session, annotation, model, primary = true, s
      reader read. Turn off readings sits inside it, still on the page, as item 1 of
      [DEC-21](docs/design-reading-a-session.md#dec-21-a-reading-works-the-first-time-you-ask)
      requires. */
+  /* A popover, as the header's "Why" is (owner, 2026-10-02): the body is taken
+     out of flow under its summary, which sits after Analyze, so opening it
+     moves nothing and covers no control above it. */
   const label = provider ? String(route.label || provider) : "";
   const sent = disclosure
-    ? `<details class="next-cockpit-why next-cockpit-reading-sent"` +
+    ? `<details class="next-cockpit-why next-disclose--pop next-cockpit-reading-sent"` +
       `${nextCockpitDisclosureAttr("reading-sent")}>` +
       `<summary>${esc(route.fallback === true || nextReadingNeedsAllow(route)
         ? `What is sent to ${label}` : "What is sent")}` +
-      `</summary>${disclosure}` +
+      `</summary><div class="next-disclose-body">${disclosureParts}` +
       (about ? `<p class="next-cockpit-reading-why">${esc(about)}</p>` : "") +
-      (off ? `<div class="next-cockpit-reading-ask">${off}</div>` : "") + "</details>"
+      (off ? `<div class="next-cockpit-reading-ask">${off}</div>` : "") + "</div></details>"
     : (off ? `<div class="next-cockpit-reading-ask">${off}</div>` : "") + aboutWhy;
   /* The count under the row rather than in it, so the buttons keep one row;
      not under an inert Analyze, which no press can spend (NU-9, 2026-10-02). */

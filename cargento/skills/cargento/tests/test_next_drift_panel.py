@@ -256,7 +256,7 @@ class IntentAndDriftPanelTest(PanelPage):
         self,
     ) -> None:
         route = routes()["claude"]
-        disclosure = route["disclosure"][:60]
+        disclosure = route["disclosure_parts"][0]
 
         idle = drift_of(self.page())
         button = re.search(r'<button\b[^>]*data-next-cockpit-action="reading-ask"[^>]*>', idle)
@@ -264,7 +264,7 @@ class IntentAndDriftPanelTest(PanelPage):
         self.assertLess(button.start(), idle.index(disclosure))
         described = re.search(r'aria-describedby="([^"]+)"', button.group(0))
         assert described is not None
-        bound = re.search(rf'<p\b[^>]*id="{described.group(1)}"[^>]*>([^<]*)</p>', idle)
+        bound = re.search(rf'<ul\b[^>]*id="{described.group(1)}"[^>]*>([\s\S]*?)</ul>', idle)
         assert bound is not None
         self.assertIn(disclosure, bound.group(1))
 

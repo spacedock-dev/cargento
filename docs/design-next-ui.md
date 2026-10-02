@@ -1351,8 +1351,14 @@ edge: hung from the end, it ran from x=-169 to x=174 on a 375px screen. Measured
 header's "Why" beside "No terminal to raise" widened from 48px to 540px when it opened, jumped
 492px left and pushed the Intent heading down 74px. Every other disclosure is an **accordion**: it
 opens in place, its height and contents easing over 200ms. A popover fades in over 160ms. Both
-use `ease-in-out`, and with reduced motion set both open instantly. That gives exactly two
-popovers, the header's "Why" and the Sessions group caveat, and a popover is never placed inside
+use `ease-in-out`, and with reduced motion set both open instantly. That gave exactly two
+popovers, the header's "Why" and the Sessions group caveat; a third, "What is sent to <provider>"
+on the Drift card, is the owner's own ask (2026-10-02), though its summary starts a line of its
+own. It spans the card and hangs from the card's start edge, at most the measure wide, so it stays
+inside the viewport wherever the card does, and it opens downward from a summary drawn after
+Analyze drift, so it never covers that control. Measured in headless Chrome at 320, 375, 768, 1024
+and 1440px: the body inside the viewport, neither the summary nor Analyze moved, Analyze still the
+element under its own centre, and Escape and an outside click closed it. A popover is never placed inside
 an accordion, because an accordion clips its overflow. Escape, a click outside, or focus moving to
 another control closes a popover, so a keyboard reader never lands on a control it covers, and
 Escape on one does not leave the page. Focus that goes nowhere, to another window or with a redraw

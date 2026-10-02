@@ -89,7 +89,7 @@ class ReadingRoutePageTest(NextPageJsHarness):
         self.assertNotIn("Anthropic", out)
         self.assertLess(out.index('data-next-cockpit-action="reading-ask"'), out.index(note))
         self.assertIn('aria-describedby="next-cockpit-reading-disclosure"', out)
-        self.assertIn('id="next-cockpit-reading-disclosure">' + note, out)
+        self.assertIn('id="next-cockpit-reading-disclosure"><li>' + note + "</li>", out)
         self.assertIn("next-action--primary", out)
         self.assertNotIn('aria-disabled="true"', out)
 

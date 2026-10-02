@@ -15,7 +15,8 @@ import shutil
 import unittest
 
 from .next_harness import NEXT_APP_JS, NEXT_STYLES, NextPageJsHarness, storage_prelude
-from .test_next_drift_panel import FIXTURE, PanelPage
+from .test_next_analyze_flow import CONSENT_NEEDED
+from .test_next_drift_panel import FIXTURE, PanelPage, routes
 
 VIEWS = (
     ':is([data-next-view-body="session"],[data-next-view-body="sessions"],'
@@ -159,6 +160,39 @@ class TheTwoPopoversNeverMoveTheirSummaryTest(PanelPage):
             "align-items:flex-start",
             rule(".next-operation-group>header", "@media(max-width:620px)"),
         )
+
+    def test_what_is_sent_opens_as_a_popover_under_analyze_and_never_over_it(self) -> None:
+        """Owner, 2026-10-02: "What is sent to <provider>" opens "in a popup just like the
+        'Why' popup" at the top of the page. Same system: `next-disclose--pop`, one body
+        wrapper taken out of flow, so opening it moves neither its summary nor Analyze. It
+        hangs from its summary's start edge across the card's width, so it stays inside the
+        viewport at every width the card does, and it opens downward from a summary drawn
+        after Analyze, so it never covers that control."""
+        html = self.page("codex", CONSENT_NEEDED)
+        tag = details_tag(html, "reading-sent")
+        self.assertIn("next-disclose--pop", tag)
+        self.assertIn("next-cockpit-reading-sent", tag)
+        start = html.index(tag)
+        body = html[start : html.index("</details>", start)]
+        self.assertRegex(body, r"</summary><div class=\"next-disclose-body\">[\s\S]*</div>$")
+        items = re.findall(r"<li>([\s\S]*?)</li>", body)
+        self.assertEqual(len(routes()["codex"]["disclosure_parts"]), len(items))
+        ask = html.index('data-next-cockpit-action="reading-ask"')
+        self.assertLess(ask, start)
+        sent = f"{POP}.next-cockpit-reading-sent"
+        self.assertIn("inline-size:100%", rule(sent))
+        anchored = rule(f"{sent}>.next-disclose-body")
+        for declaration in (
+            "inset-inline-start:0",
+            "inset-inline-end:0",
+            "inline-size:auto",
+            "max-inline-size:var(--measure)",
+        ):
+            with self.subTest(declaration=declaration):
+                self.assertIn(declaration, anchored)
+        # Downward from the summary, as every popover body opens.
+        self.assertIn("inset-block-start:calc(100% + 4px)", rule(f"{POP}>.next-disclose-body"))
+        self.assertNotIn("inset-block-end", anchored)
 
     def test_escape_closes_an_open_why_and_keeps_the_reader_on_the_session(self) -> None:
         out = self.page(
