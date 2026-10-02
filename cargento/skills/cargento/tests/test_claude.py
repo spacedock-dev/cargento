@@ -3592,7 +3592,8 @@ class DispatchedTeammateTest(RuntimeTestCase):
         self.assertIs(False, published["ensign-review"]["active"])
         self.assertIs(False, published["lens-worker"]["active"])
         self.assertEqual("idle", session["state"])
-        self.assertEqual("awaiting your message", session["state_detail"])
+        # The lead's fixture transcript records no turn stop, so it does not claim to await you.
+        self.assertEqual("last turn not recorded as finished", session["state_detail"])
 
     def test_published_subagent_roster_is_capped_at_configured_bound(self) -> None:
         # DRC-4348. When a lead runs many workers (294 seen in practice), the
@@ -3751,6 +3752,32 @@ class ClaudeTranscriptTurnStopTest(RuntimeTestCase):
             },
         ]
         self.assertIsNone(self.row_at(stop + 120, rows)["turn_end_at"])
+
+    def test_an_idle_session_whose_turn_is_not_recorded_as_finished_does_not_say_it_awaits_you(
+        self,
+    ) -> None:
+        # Verifier F3: the header said "awaiting your message" while Drift said the last turn
+        # isn't recorded as finished, on the owner's own session. One surface must not claim the
+        # session waits on the reader while the other says its turn may still be running.
+        stop = self.STOP
+        interrupted = [
+            *_turn_records(stop)[:2],
+            {
+                "type": "user",
+                "sessionId": TURN_SID,
+                "timestamp": datetime.fromtimestamp(stop, UTC).isoformat(),
+                "message": {
+                    "role": "user",
+                    "content": [{"type": "text", "text": "[Request interrupted by user]"}],
+                },
+            },
+        ]
+        row = self.row_at(stop + 120, interrupted)
+        self.assertEqual("idle", row["state"])
+        self.assertIsNone(row["turn_end_at"])
+        self.assertEqual("last turn not recorded as finished", row["state_detail"])
+        finished = self.row_at(stop + 120, _turn_records(stop))
+        self.assertEqual("awaiting your message", finished["state_detail"])
 
     def kept_going(self, stop: float, **summary: Any) -> list[dict[str, Any]]:
         """A Stop hook that blocked the stop, as Claude Code 2.1.287 writes it.

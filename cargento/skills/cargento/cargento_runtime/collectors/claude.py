@@ -949,6 +949,14 @@ def collect(
             # Working for `working_threshold_sec`. A hook `turn_started` still
             # wins, because overlays apply after this.
             session_state, state_detail = "idle", "awaiting your message"
+        elif session_state == "idle":
+            # Claude Code records a finished turn itself, so an idle row
+            # without one may still be mid-turn: an interruption, an open tool
+            # call, a subagent. "Awaiting your message" beside Drift's "last
+            # turn isn't recorded as finished" told the reader both (verifier
+            # F3). A hook Stop's idle overlay clears this, as it clears any
+            # detail, and the row then carries its observed stop.
+            state_detail = "last turn not recorded as finished"
 
         total = len(tasks)
         done = sum(1 for t in tasks if t["status"] == "completed")
