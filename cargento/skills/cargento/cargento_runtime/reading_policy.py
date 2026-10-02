@@ -51,6 +51,9 @@ READ_WAIT_SEC = 2.0
 # while the words went somewhere else (owner, 2026-10-02). The server's words,
 # so the page never composes a claim about what the store holds.
 DESTINATION_CHANGED = "Where your words go has changed since you allowed this, so allow it again."
+# The reason a job's reservation is refused when the destination moved after
+# the press was admitted: the token the press answers `409` with.
+DESTINATION_MOVED = "destination-changed"
 
 
 class Status(TypedDict):
@@ -439,7 +442,7 @@ class RefusedError(Exception):
 class GuardedModel:
     """Reserve at the actual model seam, after eligibility and evidence checks."""
 
-    def __init__(
+    def __init__(  # noqa: PLR0913 (each hook is one keyword its caller names)
         self,
         config: RuntimeConfig,
         model: Callable[..., tuple[str, str]],
@@ -447,6 +450,7 @@ class GuardedModel:
         *,
         provider: str = LEGACY_PROVIDER,
         destination: str = "",
+        resolve_destination: Callable[[], str] | None = None,
         on_reserved: Callable[[], None] | None = None,
         before_reserve: Callable[[], str | None] | None = None,
         cancelled: Callable[[], bool] | None = None,
@@ -459,6 +463,11 @@ class GuardedModel:
         # reservation is refused unless the Allow covers it, so the job checks
         # what the press checked, from the same route.
         self.destination = destination
+        # Where the words go now, asked again at the reservation (consent F4,
+        # ui5): a managed drop-in or remote settings file can move the endpoint
+        # while the job collects the record, which takes seconds for a large
+        # one, and a reservation against the press-time value would pass.
+        self.resolve_destination = resolve_destination
         # A reading job is told the spend is committed (DRC-4686).
         self.on_reserved = on_reserved
         # And its marker before the reservation: a hook that raises here
@@ -483,6 +492,10 @@ class GuardedModel:
             return "", "closed"
         if self.cancelled is not None and self.cancelled():
             return "", "cancelled"
+        if self.resolve_destination is not None and self.resolve_destination() != self.destination:
+            # Refused as the press refuses an Allow for a moved destination,
+            # before the marker and the charge, so nothing is spent.
+            raise RefusedError(_answer(reason=DESTINATION_MOVED))
         job_id = self.before_reserve() if self.before_reserve is not None else None
         answer = reserve(
             self.config,

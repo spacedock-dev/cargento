@@ -2740,6 +2740,9 @@ class _RequestHandler(BaseHTTPRequestHandler):
                 application.clock,
                 provider=route["provider"],
                 destination=route["words_destination"],
+                # The resolver the route came from, asked again at the
+                # reservation, so the job checks today's value as the board does.
+                resolve_destination=lambda: runtime_reading_route.destination(route["provider"]),
                 on_reserved=hooks.reserved,
                 before_reserve=hooks.before_reserve,
                 cancelled=hooks.cancelled,

@@ -1145,9 +1145,11 @@ The binding catches that move only where the destination was named, as item 5 sa
    tool-output grant keeps its own rule, and is never given to `""`.
 2. The press handler, the job's reservation and the page decide it from one value. The board
    publishes `providers` as covered only where the recorded destination is today's, the press
-   check reads the same, and the job reserves against the destination of the route that admitted
-   the press. An Allow whose disclosure named a destination that is no longer today's is refused
-   `409 destination-changed` and records nothing.
+   check reads the same, and the job resolves the destination again at its reservation and is
+   refused `destination-changed`, with nothing spent or sent, when it is no longer the one the
+   press was admitted under (consent F4, ui5): a managed drop-in or remote settings file can move
+   it while the job collects the record. An Allow whose disclosure named a destination that is no
+   longer today's is refused `409 destination-changed` and records nothing.
 3. A row written before the binding records no destination, so it covers no press and each reader
    is asked once more. When an Allow on record does not cover today's destination, for that reason
    or because the destination moved, the consent step opens with the server's line "Where your

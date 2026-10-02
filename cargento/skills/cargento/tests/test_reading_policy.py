@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import collections
 import concurrent.futures
+import functools
 import tempfile
 import threading
 import unittest
@@ -812,6 +813,34 @@ class TheAllowForTheWordsIsBoundToItsDestination(unittest.TestCase):
                         guarded("prompt", output_cap_bytes=100)
                     self.assertEqual("consent-required", caught.exception.answer["reason"])
                     model.assert_not_called()
+                else:
+                    self.assertEqual(("{}", "ok"), guarded("prompt", output_cap_bytes=100))
+        self.assertEqual(1, self._status("Anthropic")["used"])
+
+    def test_the_job_asks_where_the_words_go_again_at_its_reservation(self) -> None:
+        """Consent F4 (ui5): a destination that moved after the press was
+        admitted refuses the reservation, before the marker and the charge."""
+        self._allow("Anthropic")
+        model = mock.Mock(return_value=("{}", "ok"))
+        marked = mock.Mock(return_value="job-1")
+        for now, refused in (("gw.corp.example", True), ("", True), ("Anthropic", False)):
+            with self.subTest(now=now):
+                guarded = reading_policy.GuardedModel(
+                    self.config,
+                    model,
+                    lambda: 100.0,
+                    provider="claude",
+                    destination="Anthropic",
+                    resolve_destination=functools.partial(str, now),
+                    before_reserve=marked,
+                )
+                if refused:
+                    with self.assertRaises(reading_policy.RefusedError) as caught:
+                        guarded("prompt", output_cap_bytes=100)
+                    self.assertEqual("destination-changed", caught.exception.answer["reason"])
+                    model.assert_not_called()
+                    marked.assert_not_called()
+                    self.assertEqual(0, self._status("Anthropic")["used"])
                 else:
                     self.assertEqual(("{}", "ok"), guarded("prompt", output_cap_bytes=100))
         self.assertEqual(1, self._status("Anthropic")["used"])

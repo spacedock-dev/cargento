@@ -4155,6 +4155,47 @@ class ReadingRouteTest(unittest.TestCase):
                 self.assertEqual(reading_policy.DESTINATION_CHANGED, answer["rebind"]["claude"])
                 self.assertEqual([], calls, "the words were sent before a fresh Allow")
 
+    def test_a_destination_that_moves_after_the_press_refuses_the_job_unspent(self) -> None:
+        """Consent F4 (ui5): the job re-resolves the destination at its
+        reservation. A managed drop-in or `remote-settings.json` can change
+        while the job collects the record, which takes seconds for a large
+        one; the reservation is refused `destination-changed` and nothing is
+        spent or sent, and the board then says the Allow no longer covers."""
+        config, state = self._runtime()
+        with (
+            self._open_claude(),
+            self._counting_model(("claude",), destination="Anthropic") as calls,
+            self._serving(self._app(config, state)) as port,
+        ):
+            status, body = self._post(
+                port, self._press(provider="claude", allow=True, words_destination="Anthropic")
+            )
+        self.assertEqual(202, status, body)
+        self.assertEqual(1, len(calls))
+        used = reading_policy.status(config, now=1_700_000_100.0, provider="claude")["used"]
+        where = ["Anthropic"]
+
+        def moves() -> None:
+            where[0] = "gw.corp.example"
+
+        with (
+            self._open_claude(),
+            self._counting_model(("claude",), on_collect=moves) as calls,
+            mock.patch.object(runtime_reading_route, "destination", lambda *_a, **_k: where[0]),
+            self._serving(self._app(config, state)) as port,
+        ):
+            status, body = self._post(port, self._press(provider="claude"))
+            payload = self._data(port)
+        self.assertEqual(202, status, body)
+        self.assertEqual([], calls, "the words went to a destination the Allow never named")
+        after = reading_policy.status(
+            config, now=1_700_000_100.0, provider="claude", destinations={"claude": where[0]}
+        )
+        self.assertEqual(used, after["used"], "a refused reservation was charged")
+        self.assertEqual({}, payload["reading_jobs"])
+        self.assertFalse(payload["reading"]["providers"]["claude"])
+        self.assertEqual(reading_policy.DESTINATION_CHANGED, payload["reading"]["rebind"]["claude"])
+
     def test_an_allow_whose_disclosure_named_where_the_words_no_longer_go_records_nothing(
         self,
     ) -> None:

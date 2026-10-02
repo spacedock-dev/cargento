@@ -21,7 +21,7 @@ from typing import Any
 from unittest import mock
 
 from cargento_runtime import io as runtime_io
-from cargento_runtime import reading_policy
+from cargento_runtime import reading_policy, reading_route
 
 from . import test_http_api, test_next_sessions
 from .next_harness import NextPageJsHarness, named_machine
@@ -118,6 +118,8 @@ class ThePressTheJobAndThePageAgree(NextPageJsHarness):
                 lambda: 1_700_000_100.0,
                 provider="claude",
                 destination=route["words_destination"],
+                # As the HTTP job asks it again at the reservation (consent F4).
+                resolve_destination=lambda: reading_route.destination("claude"),
             )
             # Refused or run: the count on the model says which.
             with contextlib.suppress(reading_policy.RefusedError):

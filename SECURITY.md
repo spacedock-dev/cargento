@@ -1055,9 +1055,14 @@ A change is not detected while the destination is unnamed, because two endpoints
 named are both `""`: an Allow given then keeps covering every endpoint it cannot name. That is
 every destination on Windows, where nothing is named, and every Codex base URL, since a set
 `OPENAI_BASE_URL` or `OPENAI_API_BASE` names nothing, so a move from one Codex base URL to another
-asks nothing. The disclosure said as much when the Allow was given. The board's published `providers`, the press
-check and the job's reservation decide it from the same value. An Allow whose disclosure named a
-destination that is no longer today's is refused `409 destination-changed` and records nothing.
+asks nothing. The disclosure said as much when the Allow was given. The board's published
+`providers`, the press check and the job's reservation decide it from the same resolver, and the
+job asks it again at the reservation: a destination that moved after the press was admitted
+refuses the job `destination-changed` before anything is spent or sent. The CLI reads its own
+settings again when it starts, so a change landing between the reservation and that start is not
+caught. An Allow whose disclosure
+named a destination that is no longer today's is refused `409 destination-changed` and records
+nothing.
 The binding lives in its own table, `permission_destination`, so a row saved before it records no
 destination and covers no press: each reader is asked once more, and nothing else in the store
 changes. "Turn off readings", `--forget` and an older build's Turn off clear every recorded
