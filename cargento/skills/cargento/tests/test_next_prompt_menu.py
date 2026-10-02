@@ -622,6 +622,29 @@ class ANativeListThatStaysWhereItIsTest(_DraftPage):
         self.assertNotIn(" selected", menu_of(out["typed"]))
         self.assertEqual("Use your prompt", visible_text(menu_of(out["typed"])))
 
+    def test_picking_a_prompt_never_moves_the_list(self) -> None:
+        """Measured in Chrome at 1440x900: the label row is 450px wide, and a pick drew the
+        draft's marks ("from your prompt · 08:02", 174px) between the label and the 288px
+        select, so the select wrapped 48px down. The marks, and the saved source line that takes
+        their place, now follow the select in the markup on a line of their own, so the select
+        keeps the label's line whatever the box holds. Markup order and not `order:`, which the
+        sheet forbids so that what a screen reader meets matches what is drawn."""
+        marks = re.search(r"\.next-intent-draft-marks\{([^}]*)\}", NEXT_STYLES)
+        assert marks is not None
+        self.assertIn("flex-basis:100%", marks.group(1))
+        self.assertNotIn("min-height:44px", marks.group(1))
+        source = re.search(
+            r"\.next-cockpit-held-heading>\.next-cockpit-held-cue\{([^}]*)\}", NEXT_STYLES
+        )
+        assert source is not None
+        self.assertIn("flex-basis:100%", source.group(1))
+        out = self.page(after=CHOOSE + HTML)
+        assert isinstance(out, str)
+        intent = intent_of(out)
+        self.assertLess(
+            intent.index("next-intent-prompt-pick"), intent.index("data-next-cockpit-draft-marks")
+        )
+
     def test_a_240_character_prompt_does_not_stretch_the_list(self) -> None:
         pick = re.search(r"\.next-intent-prompt-pick\{([^}]*)\}", NEXT_STYLES)
         assert pick is not None

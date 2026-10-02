@@ -1242,6 +1242,10 @@ redraw does not shut the list mid-choice.
   it. A poll that waited while the list had focus is taken by the pick, so the page draws once.
 - While the box holds the pick untouched the select shows it; the first keystroke puts the face
   back to "Use your prompt" in place, so the same prompt can be picked again.
+- The draft's marks ("from your prompt · 08:02") and the saved source line take a line of their
+  own under the label row. Measured in Chrome at 1440x900, drawn between the label and the select
+  they wrapped the select 48px down the moment a pick drew them; the select now holds its place
+  at rest, after a pick and after typing.
 
 ## DEC-23: a Claude Code session's record of its checks may show the work
 

@@ -1332,7 +1332,12 @@ details.next-cockpit-held-stamp[open]>span{display:block}
    tints an unsaved draft, and its source on the dashed hairline this sheet
    keeps for words not yet saved to the server. */
 .next-cockpit-held-field[data-next-cockpit-drafted]>textarea{background:var(--sunk)}
-.next-intent-draft-marks{display:inline-flex;flex-wrap:wrap;align-items:center;gap:4px 8px;min-height:44px}
+/* The draft's marks, and the saved source line in their place, follow the
+   label row's select in the markup and take a line of their own, so a pick
+   that draws them never moves the select (2026-10-02). With Looks right gone
+   they hold no control, so they need no control's height. */
+.next-intent-draft-marks{display:inline-flex;flex-wrap:wrap;align-items:center;gap:4px 8px;flex-basis:100%}
+.next-cockpit-held-heading>.next-cockpit-held-cue{flex-basis:100%}
 .next-intent-draft-marks[hidden]{display:none}
 .next-intent-draft-source{padding:1px 8px;border:1px dashed var(--line);border-radius:var(--r-pill);color:var(--ink2);font-size:var(--fs-label)}
 .next-intent-draft-marks>.next-cockpit-held-cue{grid-column:auto}

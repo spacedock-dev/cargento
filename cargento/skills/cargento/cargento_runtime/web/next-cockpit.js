@@ -1270,9 +1270,12 @@ function nextCockpitHeldField(session, annotation, spec, cap){
     `${untouched ? " data-next-cockpit-drafted" : ""}>` +
     '<div class="next-cockpit-held-heading">' +
     `<span class="next-cockpit-held-label">${esc(label)}</span>` +
+    /* The select before the draft's marks, which take a line of their own
+       under it: drawn between the label and the select they wrapped it 48px
+       down the moment a pick drew them (measured at 1440x900, 2026-10-02). */
+    (kind === "goal" ? nextIntentPromptSelect(session) : "") +
     (untouched ? nextIntentDraftMarks(session, drafted) : "") +
-    (kind === "goal" ? (untouched ? "" : nextPromptSourceLine(annotation)) +
-      nextIntentPromptSelect(session) : "") +
+    (kind === "goal" && !untouched ? nextPromptSourceLine(annotation) : "") +
     '</div>' +
     `<textarea rows="3" maxlength="${cap}" data-next-cockpit-held-kind="${kind}" ` +
     `data-next-cockpit-held-key="${esc(key)}" data-next-cockpit-held-saved="${esc(saved)}" ` +
