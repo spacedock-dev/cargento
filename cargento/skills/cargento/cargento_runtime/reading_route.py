@@ -13,16 +13,18 @@ See [DEC-21](docs/design-reading-a-session.md#amended-2026-09-23-claude-code-is-
 
 from __future__ import annotations
 
+import ipaddress
 import json
 import os
 import platform
+import re
 import shutil
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, TypedDict
 from urllib.parse import urlsplit
 
 from . import annotations as annotation_store
-from . import observer
+from . import observer, records
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterable, Mapping
@@ -67,7 +69,7 @@ _NONE_REASONS = {
 }
 
 _UNQUALIFIED = {
-    CLAUDE: "Claude Code checks are built but not yet qualified",
+    CLAUDE: "Claude Code checks are not qualified on this build",
     CODEX: "Codex checks are not qualified on this build",
 }
 _NO_PRODUCER = "This harness has no reading producer of its own"
@@ -82,12 +84,22 @@ class Route(TypedDict):
     reason: str
     note: str
     disclosure: str
+    # The disclosure as the list items it is built from, in order, each
+    # unreworded: `" ".join(disclosure_parts) == disclosure`, which a test
+    # holds. The consent step and the "What is sent" popover both draw this
+    # list, so the two cannot diverge; empty where there is no disclosure.
+    disclosure_parts: list[str]
     fallback: bool
     # Where tool output would reach as configured on this machine, or "" where
     # the build cannot name it, and the sentence saying so. Both are empty
     # destinations-wise on a harness whose record lists no checks.
     destination: str
     tool_output: str
+    # Where the reader's words go on this route, on every harness, as
+    # `destination` (the function) names it, or "" where it cannot. The Allow
+    # for the words is bound to it (owner, 2026-10-02): a press carries it, and
+    # the policy covers the press only while it is unchanged.
+    words_destination: str
 
 
 # The harness whose observed record lists checks (`project_context.
@@ -262,16 +274,62 @@ def _claude_destination(sources: list[Mapping[str, str]]) -> str:
     return _host(merged["ANTHROPIC_BASE_URL"])
 
 
+# A host label as both parsers read it alike. The CLI parses a base URL with
+# the WHATWG parser and this build with `urlsplit`, and the two differ on a
+# backslash (WHATWG reads it as `/`), on tabs and newlines (stripped
+# anywhere), on percent-escapes and non-ASCII (decoded and mapped to another
+# host), and on a numeric last label (read as an IPv4 address). Measured on
+# Claude Code 2.1.287 (consent F1, ui5): `http://127.0.0.1:4597\@127.0.0.1:4598`
+# sent every request to 4597 where `urlsplit` reads 4598. So a URL is named only
+# when nothing in it is read differently, and anything else is unnamed.
+_LABEL = re.compile(r"[a-z0-9_-]+")
+_NUMERIC_LABEL = re.compile(r"[0-9]+|0[xX][0-9a-fA-F]*")
+
+
+def _plain_host(hostname: str, *, bracketed: bool) -> str:
+    """The host as both parsers name it, or refused where they could differ."""
+    if bracketed:
+        try:
+            return f"[{ipaddress.IPv6Address(hostname).compressed}]"
+        except ValueError as exc:
+            raise _UnnamedError from exc
+    labels = hostname.split(".")
+    if not all(_LABEL.fullmatch(label) for label in labels):
+        raise _UnnamedError
+    if _NUMERIC_LABEL.fullmatch(labels[-1]):
+        # WHATWG reads any host ending in a number as an IPv4 address, in
+        # forms `ipaddress` refuses (`127.1`, `0x7f.1`, `010.0.0.1`), so only
+        # the one canonical dotted quad, which alone `ipaddress` takes, is a
+        # name both give.
+        try:
+            ipaddress.IPv4Address(hostname)
+        except ValueError as exc:
+            raise _UnnamedError from exc
+    return hostname
+
+
 def _host(url: str) -> str:
-    """Scheme-checked host and port only: never the path, query or userinfo."""
+    """Scheme-checked host and port only: never the path, query or userinfo.
+
+    Unnamed wherever the CLI's parser could read another host from the same
+    text, and wherever what would be named has a credential's shape, so a key
+    can never reach the disclosure, the board or the binding as a "host".
+    """
+    if not url or "\\" in url or any(not "!" <= char <= "~" for char in url):
+        raise _UnnamedError
     try:
-        parts = urlsplit(url.strip())
+        parts = urlsplit(url)
         port = parts.port
     except ValueError as exc:
         raise _UnnamedError from exc
     if parts.scheme not in {"http", "https"} or not parts.hostname:
         raise _UnnamedError
-    return f"{parts.hostname}:{port}" if port else parts.hostname
+    # `port` above already refused a port that is not plain digits.
+    authority = parts.netloc.rpartition("@")[2]
+    if records.redact_secrets(authority) != authority:
+        raise _UnnamedError
+    host = _plain_host(parts.hostname, bracketed=authority.startswith("["))
+    return f"{host}:{port}" if port else host
 
 
 def _codex_destination(environ: Mapping[str, str], root: Path, system: str) -> str:
@@ -324,58 +382,126 @@ def destination(
     return ""
 
 
+def destinations(
+    *, environ: Mapping[str, str] | None = None, root: Path | None = None
+) -> dict[str, str]:
+    """Every provider's `destination` now, as the reading policy is handed it.
+
+    The same function a route's `words_destination` comes from, so the board's
+    published permission, the press check and the job agree on one value.
+    """
+    return {provider: destination(provider, environ=environ, root=root) for provider in PROVIDERS}
+
+
 def _tool_output_sentence(provider: str, harness: str, where: str) -> str:
+    """What a check sends, or that none is sent; where it goes is the `To:` item after it.
+
+    The expected outcome lines ride here on Claude Code, because they are put to
+    the model only beside work evidence and a check is the only work evidence
+    there, admitted only under a tool-output grant for a named destination.
+    """
     if not provider or harness not in TOOL_OUTPUT_HARNESSES:
         return ""
-    label = LABELS[provider]
     if not where:
         return (
-            f"Tool output is not sent: Cargento cannot name where {label} would send it on this "
-            "machine, so a reading reads your words and the rest of the record without the checks."
+            "Tool output and your expected outcome lines are not sent, because Cargento cannot "
+            "name where they would go."
         )
     return (
-        "For this session a reading can also send tool output: each check's command, the result "
-        f"the tool reported and the last {TOOL_OUTPUT_TAIL_CHARS} characters of what it printed, "
-        "with the paths of the files it wrote relative to its folder, "
-        f"to {label}, which reaches {where}, and only after you allow tool output. That output "
-        "is sent as the runner printed it, with credential shapes redacted."
+        "Tool output, only after you allow it: a check's command, result and last "
+        f"{TOOL_OUTPUT_TAIL_CHARS} characters of output as printed, the paths of the files it "
+        "wrote, and your expected outcome lines."
     )
+
+
+# The caveat that closes every list (owner, 2026-10-02), in one item of its own.
+CAVEAT = (
+    "A reading is a model's account of the evidence, never a verification that the work was done."
+)
+
+# The harnesses whose record can carry work evidence, beside which alone the
+# expected outcome lines are put to the model (`reading.WORK_EVIDENCE_BY_HARNESS`).
+# Copied rather than imported, as `_WORDS_CAP` is; a test holds the two equal.
+OUTCOME_HARNESSES = ("claude", "pi")
+
+
+def _to_head(provider: str, where: str) -> str:
+    """Where the words go, as `destination` names it (verifier ui4 C1).
+
+    The daemon's environment decides the endpoint, so the vendor is named only
+    where `destination` names it. A cloud is named as itself; a base URL by its
+    host, never said to be off this machine because it may be a local gateway;
+    and where nothing can be named the item says so rather than claim a vendor.
+    """
+    label = LABELS[provider]
+    if not where:
+        return f"To: wherever your {label} settings send it, which Cargento cannot name"
+    if where == VENDORS[provider] or where in _CLAUDE_CLOUDS.values():
+        return f"To: {where}, off this machine"
+    return f"To: {where}, as your {label} settings name it"
+
+
+def _base_parts(
+    provider: str, where: str | None = None, *, harness: str = "", tool_output: str = ""
+) -> list[str]:
+    """What a reading sends, to whom and through what, one short item each.
+
+    A list since the owner's ruling of 2026-10-02, which found the paragraph
+    "long and arduous to read": each item says one thing once, and nothing
+    explains a mechanism a reader deciding whether to send does not need
+    (verifier ui4 V2 found the first list repeating its destination, its
+    redaction and its receiver's name). The `To:` item comes after everything
+    it covers, tool output included, so it alone says where all of it goes and
+    that it goes redacted. The Codex wording once said "Nothing leaves it"; the
+    harness's own sign-in reaches its vendor, so the item names where it goes,
+    never a reassurance. `where` is the route's `destination`; None means the
+    vendor, for callers that only want the wording.
+    """
+    label = LABELS[provider]
+    head = _to_head(provider, VENDORS[provider] if where is None else where)
+    # On Pi a work result is sent with no grant, so the lines may go with it.
+    # On Claude Code they ride with tool output; elsewhere they are never sent.
+    outcome = (
+        ", and your expected outcome lines when a work result is among them"
+        if harness in OUTCOME_HARNESSES and harness not in TOOL_OUTPUT_HARNESSES
+        else ""
+    )
+    cli_adds = _CLI_ADDS.get(provider, "")
+    return [
+        (
+            "Sent: your goal and a bounded set of the session's entries, with your messages "
+            f"up to {_WORDS_CAP:,} characters each{outcome}."
+        ),
+        *([tool_output] if tool_output else []),
+        (
+            f"{head}, with credential shapes redacted, through your {label} CLI and its "
+            "sign-in, spending your capacity."
+        ),
+        *([cli_adds] if cli_adds else []),
+    ]
 
 
 def _base_disclosure(provider: str) -> str:
-    """What a reading sends and where, named for the provider that receives it.
-
-    The Codex wording is the one DRC-4640 shipped with its provider spelt
-    out. An earlier draft said "Nothing leaves it"; the harness's own sign-in
-    reaches its vendor, so this is a path off the machine, and a consent
-    string is the worst place for the reassuring half to be the false half.
-    """
-    label, vendor = LABELS[provider], VENDORS[provider]
-    return (
-        "A reading sends the goal you chose, and a bounded list of entries from the "
-        f"observed record, to a {label} subprocess. The entries include your own messages "
-        "in that record in full, up to 1,000 characters each, with credential shapes "
-        "redacted; where the record is too long for that, your oldest messages go by their "
-        f"first sentence. {label} uses its own authentication to "
-        f"reach {vendor}, so this is one of the paths that sends session content off this "
-        f"machine and spends your {label} capacity.{_CLI_ADDS.get(provider, '')} "
-        "Your expected outcome lines are sent only when an entry sent is work evidence, and on "
-        "no other reading. The reading is a model's account of the evidence it was given, never "
-        "a verification that the work was done."
-    )
+    """The list for `provider` with its caveat, as the one string a route joins."""
+    return " ".join([*_base_parts(provider), CAVEAT])
 
 
 # What the Claude Code CLI adds to every reading on its own, measured on 2.1.283
 # against a local stub (DRC-4666 review, Sent F1 and F5). The owner accepted the
 # account details on 2026-09-27 on condition they are said before the press.
+# Its working directory is an empty temporary one; saying more than is sent is
+# the safe side, so the list does not explain it (verifier ui4 V2).
 _CLI_ADDS = {
     CLAUDE: (
-        " Claude Code also sends, with every reading, its working directory (an empty "
-        "temporary one), the platform, shell, OS version and date, a device identifier, "
-        "and, when you are signed in with a Claude account, that account's email address "
-        "and account ID."
+        "That CLI also sends its working directory, platform, shell, OS version, date and "
+        "device identifier, and under a Claude account sign-in your email address and "
+        "account ID."
     ),
 }
+# The ledger's cap on a reader's own message (`reading.LEDGER_WORDS_CAP_CHARS`),
+# which the `Sent:` item states. Copied rather than imported, because this module
+# sits below `reading` in the import graph; a test holds the two equal.
+_WORDS_CAP = 1_000
 
 
 def _state(provider: str, which: Callable[[str], Any]) -> str:
@@ -406,9 +532,15 @@ def _route(
     fallback: bool,
     where: Callable[[str], str],
 ) -> Route:
-    reached = where(provider) if provider and harness in TOOL_OUTPUT_HARNESSES else ""
+    # Where the words go, on every harness; tool output, only where checks exist.
+    to = where(provider) if provider else ""
+    reached = to if harness in TOOL_OUTPUT_HARNESSES else ""
     sentence = _tool_output_sentence(provider, harness, reached)
-    disclosure = f"{note} {_base_disclosure(provider)}" if provider else ""
+    parts = (
+        [note, *_base_parts(provider, to, harness=harness, tool_output=sentence), CAVEAT]
+        if provider
+        else []
+    )
     return {
         "harness": harness,
         "provider": provider,
@@ -417,10 +549,12 @@ def _route(
         "model": MODELS.get(provider, ""),
         "reason": reason,
         "note": note,
-        "disclosure": f"{disclosure} {sentence}" if disclosure and sentence else disclosure,
+        "disclosure": " ".join(parts),
+        "disclosure_parts": parts,
         "fallback": fallback,
         "destination": reached,
         "tool_output": sentence,
+        "words_destination": to,
     }
 
 
@@ -454,7 +588,9 @@ def resolve(
                 harness,
                 preferred,
                 REASON_OWN_HARNESS,
-                f"{label} reads this {label} session.",
+                # Not "Claude Code reads this Claude Code session.": the
+                # summary and the `To:` item name the CLI (verifier ui4 V2).
+                "This session's own harness reads it.",
                 fallback=False,
                 where=where,
             )

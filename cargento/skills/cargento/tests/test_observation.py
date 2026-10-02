@@ -27,6 +27,8 @@ from cargento_runtime import (
     http_api,
     lifecycle,
     observation,
+    project_context,
+    reading,
 )
 from cargento_runtime import asks as runtime_asks
 from cargento_runtime import io as runtime_io
@@ -2053,6 +2055,175 @@ class ApplicationOverlayTest(support.RuntimeTestCase):
         self.assertNotIn("ffffffff", [s["sid"] for s in collection["sessions"]])
         # The row list is walked, not the ledger, which is what makes that true.
         self.assertNotIn(("claude", "ffffffff"), source.asked)
+
+
+def _iso(at: float) -> str:
+    return datetime.datetime.fromtimestamp(at, tz=datetime.UTC).isoformat()
+
+
+class _StopSource(_NoCommandReports):
+    """One remembered Claude stop and the idle overlay that recorded it (DRC-4770)."""
+
+    def __init__(self, stopped: float) -> None:
+        self.stopped = stopped
+
+    def overlays_for(self, harness: str, sid: str) -> list[events.Overlay]:
+        if (harness, sid) != ("claude", PREFIX):
+            return []
+        return [
+            events.Overlay(
+                harness="claude",
+                sid=PREFIX,
+                arrival_seq=1,
+                kind=events.OVERLAY_IDLE,
+                at=self.stopped,
+                effective_at=self.stopped,
+            )
+        ]
+
+    def finished_at(self, harness: str, sid: str) -> float:
+        return self.stopped if (harness, sid) == ("claude", PREFIX) else 0.0
+
+    def ended_at(self, harness: str, sid: str) -> float:
+        """No end observed: a turn stop alone."""
+        del harness, sid
+        return 0.0
+
+    def git_for(self, harness: str, sid: str) -> None:
+        """Never probed."""
+        del harness, sid
+
+    def focusable(self, harness: str, sid: str) -> bool:
+        """No terminal identity."""
+        del harness, sid
+        return False
+
+    def note_rows(self, keys: set[tuple[str, str]]) -> None:
+        pass
+
+    def drop_counters(self) -> dict[str, int]:
+        return {}
+
+
+class ClaudeStopSurvivesBookkeepingTest(support.RuntimeTestCase):
+    """DRC-4770: a non-conversation append does not retire an observed Claude stop.
+
+    Claude Code appends a `system`/`away_summary` record minutes after a turn
+    stops. Read as transcript mtime, that append retired the stop through the
+    overlay reducer's activity guard, so a reading was withheld `idle-unknown`
+    on nearly every hooked session. The guard now reads the newest conversation
+    record, the definition `project_context.claude_activity_between` already
+    uses, while a subagent writing still retires the stop (DRC-4101).
+    """
+
+    def _collect(
+        self,
+        records: list[dict[str, Any]],
+        *,
+        mtime: float,
+        stopped: float,
+        subagent_mtime: float | None = None,
+    ) -> tuple[dict[str, Any], str]:
+        with tempfile.TemporaryDirectory() as tmp:
+            projects = Path(tmp) / "projects"
+            project = projects / "-w-proj"
+            project.mkdir(parents=True)
+            transcript = project / f"{PREFIX}-0000-0000-0000-000000000000.jsonl"
+            transcript.write_text("".join(json.dumps(r) + "\n" for r in records))
+            os.utime(transcript, (mtime, mtime))
+            if subagent_mtime is not None:
+                agents = project / transcript.stem / "subagents"
+                agents.mkdir(parents=True)
+                agent = agents / "agent-a1b2c3.jsonl"
+                agent.write_text(json.dumps({"type": "user", "uuid": "c"}) + "\n")
+                os.utime(agent, (subagent_mtime, subagent_mtime))
+            with (
+                support.store_patch(PROJECTS_DIR=str(projects)),
+                support.store_patch(TASKS_DIR=str(projects / "tasks")),
+            ):
+                config, _state = support.runtime()
+                self.assertEqual((str(projects),), config.store_roots["claude.projects"])
+                app = support.build_app()
+                app.overlays = _StopSource(stopped)
+                app.clock = lambda: support.SERVER_STARTED
+                collection = app.collect(show_all=False)
+                rows = [s for s in collection["sessions"] if s["sid"] == PREFIX]
+                self.assertEqual(1, len(rows), "the seeded session was not collected")
+                # The other definition, read over the same file at the same moment.
+                resumed = project_context.claude_activity_between(
+                    str(transcript),
+                    stopped + config.overlay_wait_activity_grace_sec,
+                    support.SERVER_STARTED,
+                )
+                return rows[0], "resumed" if resumed else "parked"
+
+    @staticmethod
+    def _turn(at: float) -> list[dict[str, Any]]:
+        return [
+            {
+                "type": "user",
+                "uuid": "u",
+                "timestamp": _iso(at - 30),
+                "message": {"role": "user", "content": "do the work"},
+            },
+            {
+                "type": "assistant",
+                "uuid": "a",
+                "timestamp": _iso(at),
+                "message": {"role": "assistant", "content": [{"type": "text", "text": "done"}]},
+            },
+        ]
+
+    @staticmethod
+    def _away(at: float) -> dict[str, Any]:
+        return {"type": "system", "subtype": "away_summary", "timestamp": _iso(at)}
+
+    def test_an_away_summary_after_the_stop_keeps_it_long_after_the_append(self) -> None:
+        t = support.SERVER_STARTED - 400
+        row, resumed = self._collect(
+            [*self._turn(t), self._away(t + 180)], mtime=t + 180, stopped=t + 1
+        )
+        self.assertEqual("idle", row["state"])
+        self.assertEqual(t + 1, row["finished_at"])
+        self.assertEqual("turn-stop", reading.end_kind(row))
+        self.assertEqual("parked", resumed, "the two definitions of resumed disagree")
+
+    def test_an_away_summary_inside_the_working_window_keeps_the_stop(self) -> None:
+        # The append is newer than `working_threshold_sec`, so the collector
+        # alone calls the row working; the idle overlay must still apply.
+        t = support.SERVER_STARTED - 185
+        row, resumed = self._collect(
+            [*self._turn(t), self._away(t + 180)], mtime=t + 180, stopped=t + 1
+        )
+        self.assertEqual("idle", row["state"])
+        self.assertEqual(t + 1, row["finished_at"])
+        self.assertEqual("turn-stop", reading.end_kind(row))
+        self.assertEqual("parked", resumed)
+
+    def test_an_assistant_record_after_the_stop_still_retires_it(self) -> None:
+        t = support.SERVER_STARTED - 400
+        later = {
+            "type": "assistant",
+            "uuid": "b",
+            "timestamp": _iso(t + 180),
+            "message": {"role": "assistant", "content": [{"type": "text", "text": "more"}]},
+        }
+        row, resumed = self._collect([*self._turn(t), later], mtime=t + 180, stopped=t + 1)
+        self.assertIsNone(row["finished_at"], "DRC-4101: a resumed session is not stopped")
+        self.assertNotEqual("turn-stop", reading.end_kind(row))
+        self.assertEqual("resumed", resumed, "the two definitions of resumed disagree")
+
+    def test_a_subagent_writing_after_the_stop_still_retires_it(self) -> None:
+        t = support.SERVER_STARTED - 400
+        row, _resumed = self._collect(self._turn(t), mtime=t, stopped=t + 1, subagent_mtime=t + 180)
+        self.assertIsNone(row["finished_at"])
+        self.assertNotEqual("turn-stop", reading.end_kind(row))
+
+    def test_the_row_publishes_the_activity_the_guard_read(self) -> None:
+        t = support.SERVER_STARTED - 400
+        row, _ = self._collect([*self._turn(t), self._away(t + 180)], mtime=t + 180, stopped=t + 1)
+        self.assertEqual(t, row["work_activity"])
+        self.assertEqual(t + 180, row["last_activity"], "freshness still reads the mtime")
 
 
 class WiringTest(unittest.TestCase):

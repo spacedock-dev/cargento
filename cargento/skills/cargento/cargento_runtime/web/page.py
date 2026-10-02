@@ -1,5 +1,7 @@
 import base64
 import binascii
+import functools
+import hashlib
 from pathlib import Path
 
 WEB_DIR = Path(__file__).resolve().parent
@@ -140,3 +142,18 @@ def load_page() -> bytes:
         .replace("{{CARGENTO_APP}}", script)
         .encode("utf-8")
     )
+
+
+@functools.cache
+def build_id() -> str:
+    """A short digest of the page this process serves, or "" if it cannot load.
+
+    Published on the board (regressions major 1, ui5) so a tab left open across
+    an upgrade can tell that the server now serves another page, and say so,
+    rather than send what the new server refuses. Once per process: the page
+    is assembled once at start and served unchanged.
+    """
+    try:
+        return hashlib.sha256(load_page()).hexdigest()[:16]
+    except (OSError, UnicodeError, RuntimeError):
+        return ""

@@ -229,14 +229,15 @@ class DocumentationMatchesCodeTest(unittest.TestCase):
         attention = (
             SERVER_PATH.parent / "cargento_runtime" / "web" / "next-attention.js"
         ).read_text(encoding="utf-8")
-        rendered = set(re.findall(r'nextAttentionSectionHtml\("[a-z]+", "([A-Z ]+)"', attention))
+        rendered = set(re.findall(r'nextAttentionSectionHtml\("[a-z]+", "([A-Za-z ]+)"', attention))
         rendered |= set(re.findall(r'<h2 tabindex="-1">([A-Za-z ,]+)</h2>', attention))
         self.assertEqual(
             {
-                "NEEDS YOU NOW",
+                # Sentence case since 2026-10-02 (N9), as "At risk" beside them already was.
+                "Needs you now",
                 "At risk",
-                "CLOSE THE LOOP",
-                "COMING NEXT",
+                "Close the loop",
+                "Coming next",
                 "Also at risk, off the session count",
                 "Not on this board yet",
             },
@@ -1550,6 +1551,79 @@ class LightHarnessUsageContractDocumentationTest(unittest.TestCase):
         self.assertIn("adds no endpoint to the list in Usage quota reads", self.FLAT)
 
 
+class PerProviderAllowDocumentationTest(unittest.TestCase):
+    """The owner's 2026-10-02 ruling: an Allow is per provider, not per harness.
+
+    The 2026-10-02 amendment's item 3 read as though a Pi or Codex session
+    falling back to Claude Code asked a second time. It does not: an Allow
+    given for a provider covers every session routed to it, which
+    `ReadingRouteTest` binds over a socket. These keep the prose saying so.
+    """
+
+    ROOT = SERVER_PATH.parents[3]
+    DESIGN = (ROOT / "docs/design-reading-a-session.md").read_text(encoding="utf-8")
+    AMENDMENT = re.sub(
+        r"\s+",
+        " ",
+        DESIGN.split("### Amended 2026-10-02: Claude Code is accepted", 1)[1].split("\n### ", 1)[0],
+    )
+    # That subsection alone, so a clause another one carries cannot satisfy it.
+    SECURITY = re.sub(
+        r"\s+",
+        " ",
+        (ROOT / "SECURITY.md")
+        .read_text(encoding="utf-8")
+        .split("### Reader-requested permission and rolling budget", 1)[1]
+        .split("\n### ", 1)[0],
+    )
+
+    def test_the_amendment_says_an_allow_covers_every_session_routed_to_its_provider(
+        self,
+    ) -> None:
+        self.assertIn("covers every session routed to that provider", self.AMENDMENT)
+        self.assertIn('"What is sent to', self.AMENDMENT)
+        self.assertIn("owner, 2026-10-02", self.AMENDMENT)
+        # The words that implied a second consent step for a fallback session.
+        self.assertNotIn('each provider keeps its own "Allow and analyze"', self.AMENDMENT)
+
+    def test_security_says_the_same_of_its_per_provider_answer(self) -> None:
+        self.assertIn("covers every session routed to that provider", self.SECURITY)
+
+
+class BoundAllowDocumentationTest(unittest.TestCase):
+    """Consent F2 (ui5): the binding detects a named destination moving, and
+    nothing else. An Allow given while the destination was unnamed keeps
+    covering every endpoint `destination` cannot name, which is every route on
+    Windows and every Codex base URL. The prose once said any endpoint move
+    asks again; these keep it saying where a change is and is not detected.
+    """
+
+    ROOT = SERVER_PATH.parents[3]
+    AMENDMENT = re.sub(
+        r"\s+",
+        " ",
+        (ROOT / "docs/design-reading-a-session.md")
+        .read_text(encoding="utf-8")
+        .split("### Amended 2026-10-02 (owner): the Allow is bound to where the words go", 1)[1]
+        .split("\n### ", 1)[0],
+    )
+    SECURITY = PerProviderAllowDocumentationTest.SECURITY
+    # The overclaims, as each document once worded them.
+    OVERCLAIMS = (
+        "any other setting that moves the endpoint therefore asks again",
+        "or `OPENAI_BASE_URL` sent the goal",
+    )
+
+    def test_each_says_where_a_change_is_not_detected(self) -> None:
+        for name, text in (("amendment", self.AMENDMENT), ("SECURITY", self.SECURITY)):
+            with self.subTest(document=name):
+                self.assertIn("keeps covering every endpoint it cannot name", text)
+                self.assertIn("every destination on Windows", text)
+                self.assertIn("Codex base URL", text)
+                for overclaim in self.OVERCLAIMS:
+                    self.assertNotIn(overclaim, text)
+
+
 class OffMachineNudgeContractDocumentationTest(unittest.TestCase):
     """DEC-4's section is a contract for a pathway nothing uses yet.
 
@@ -2326,6 +2400,10 @@ class ReaderStateInventoryTest(unittest.TestCase):
             ("next-cockpit.js", "nextCockpitCorrectionComposition"),
             ("next-cockpit.js", "nextCockpitCorrectionPendingRender"),
             ("next-cockpit.js", "nextCockpitCorrectionPointer"),
+            # Owner, 2026-10-02: a control's in-flight request, re-emitted by key.
+            ("next-controls.js", "nextPending"),
+            # Owner, 2026-10-02: whether Analyze could be pressed, as last drawn.
+            ("next-cockpit.js", "nextReadingFlips"),
         ):
             with self.subTest(lane=lane):
                 self.assertIn(f"{lane}", (self.WEB / name).read_text(encoding="utf-8"))
@@ -2371,7 +2449,11 @@ class ReaderStateInventoryTest(unittest.TestCase):
                 )
             }
         )
-        self.assertEqual(["overflow-wrap:anywhere", "overflow:auto", "overflow:hidden"], forms)
+        # `overflow:clip` joined with the accordion motion (owner, 2026-10-02): an open
+        # accordion's `::details-content` clips while it eases, and clipping scrolls nothing.
+        self.assertEqual(
+            ["overflow-wrap:anywhere", "overflow:auto", "overflow:clip", "overflow:hidden"], forms
+        )
         scroll_rules = re.findall(r"([^{}]+)\{([^{}]*overflow\s*:\s*auto[^{}]*)\}", styles)
         self.assertEqual([".pc-terminal-viewport"], [rule.strip() for rule, _ in scroll_rules])
         for form in forms:

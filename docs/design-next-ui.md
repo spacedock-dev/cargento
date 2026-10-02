@@ -529,7 +529,24 @@ because `/` now serves this same interface.
 Amended 2026-09-23 by [DEC-20](design-reading-a-session.md#dec-20-the-first-screen-shows-goal-beside-direction-and-drift-has-one-home): `Escape` from any view other than session detail returns to
 Sessions, the landing view, instead of Projects (DRC-4636). DEC-20 does not change `Escape` from
 session detail, which still returns to its project. A session with no project label has no project
-page, so `Escape` and its breadcrumb return to Sessions (DRC-4638).
+page, so `Escape` and its breadcrumb return to Sessions (DRC-4638). Superseded for session detail
+on 2026-10-02 by the owner's amendment below: `Escape` from a session walks its breadcrumb, which
+starts where the reader came from.
+
+Amended 2026-10-02 (owner, ask 6): "when a user goes to the Sessions tab and clicks on a Session, it
+goes to the session but then it switches to the Projects tab." A session route now carries where it
+was opened from, as a trailing `&from=` in the fragment, closed to Sessions, Attention, the Intent
+log, Projects and a project page, so a reload keeps it. `navigateNext` stamps it from the view the
+reader was on, so every row, card and link that routes through it carries it with no change of its
+own; the Intent log's row now routes through it too. The session page's tab is that view (Projects
+for a project page), its breadcrumb starts there (`Sessions ›`, `Attention ›`, `Intent log ›`, or
+`Projects › <project> ›`), and `Escape` goes where the breadcrumb's last link goes. A pasted link, a
+bookmark or Copy link carries no origin and opens under Sessions; Copy link is built from the
+session, so it never carries the sender's path. When the crumb does not name the project, the
+header's identity line links to it, so it stays one click away. A new page opens at its top, while
+a tab or scope change within one keeps the reader's place, one click draws the page once, and a
+fragment canonicalised on load or on `hashchange` replaces its history entry rather than pushing
+one, so Back after a malformed or retired link is no longer stuck.
 
 Projects groups the current payload by display label and splits active evidence from recently
 observed groups. Sessions separates Active now from Recent history. The active group retains gate
@@ -631,7 +648,10 @@ The outcome vocabulary has six readings, composed from two observed events and t
 
 A positive finite `ended_at` supports an end. Idle state with a positive `finished_at` supports a
 stop. An end takes precedence if both exist. A boolean `dirty` chooses dirty or clean; absent git
-measurement stays unknown. No stop or end yields `No stop or end observed`. These readings
+measurement stays unknown. Amended 2026-10-02 (verifier F6): on an idle Claude Code row with no
+observed stop, a `turn_end_at` its transcript records reads `Turn stop in Claude Code's transcript`,
+with the same git suffixes, so "Session facts" agrees with HOW IT LANDED beside it; it is named as
+the transcript's, never as an observed stop. No stop or end yields `No stop or end observed`. These readings
 establish neither readership, unpushed commits nor termination cause; a clean tree is not proof
 that the work succeeded.
 
@@ -643,8 +663,8 @@ stale route, including the right ID under the wrong project label, gets an expli
 outside-payload state instead of a guessed row. That state names the harness and session the link
 asked for and states the board's observation window as a fact about the board, never as the cause,
 since a session from another machine is absent for a different reason. Before the first payload
-arrives the page says so rather than claiming the session is absent. The header's `COPY LINK`,
-beside `COPY ID`, copies the page's absolute address in the same copy lane (DRC-4638). The flat session table now emits the same route as
+arrives the page says so rather than claiming the session is absent. The header's `Copy link`,
+beside `Copy ID`, copies the page's absolute address in the same copy lane (DRC-4638). The flat session table now emits the same route as
 the project activity cards, so it no longer stops at project detail.
 
 Since DRC-4639 the page leads, after its identity header, with what was the cockpit's Held to tab.
@@ -1317,6 +1337,41 @@ Tiering deletes nothing. Every sentence that existed before the rule still exist
 or one click away. The rule sanctions one exception, for a claim stated twice: the
 `two axes, read separately` aside said what the footer under the same cards already said, and a
 duplicate is not a tier.
+
+Amended 2026-10-01 (owner, Q11, DRC-4758): in the intent editor an empty field's absence value is
+the empty box and its placeholder, which are always visible. The sentence naming the absence ("No
+goal typed for this session.") stays in the DOM, visually hidden, as the inert save's description,
+so it is still not deleted. A sentence saying the store could not be read stays tier 1, because it
+says the words may exist where the box shows none
+([the intent editor's boxes, buttons and footer](design-reading-a-session.md#amended-2026-10-01-the-intent-editors-boxes-buttons-and-footer)).
+
+Amended 2026-10-02 (owner, asks 1 and 5): a tier-2 disclosure opens in one of two ways, and its
+position decides which. A disclosure whose summary sits in a flex row beside other content is a
+**popover**: its body leaves the flow and hangs under the summary, aligned to the summary's end
+edge, so opening it moves neither the word nor anything below it. Under 620px the Sessions group
+header stacks into a column with the caveat at its start, so there the body hangs from the start
+edge: hung from the end, it ran from x=-169 to x=174 on a 375px screen. Measured before the change, the
+header's "Why" beside "No terminal to raise" widened from 48px to 540px when it opened, jumped
+492px left and pushed the Intent heading down 74px. Every other disclosure is an **accordion**: it
+opens in place, its height and contents easing over 200ms. A popover fades in over 160ms. Both
+use `ease-in-out`, and with reduced motion set both open instantly. That gave exactly two
+popovers, the header's "Why" and the Sessions group caveat; a third, "What is sent to <provider>"
+on the Drift card, is the owner's own ask (2026-10-02), though its summary starts a line of its
+own. It spans the card and hangs from the card's start edge, at most the measure wide, so it stays
+inside the viewport wherever the card does, and it opens downward from a summary drawn after
+Analyze drift, so it never covers that control. Measured in headless Chrome at 320, 375, 768, 1024
+and 1440px: the body inside the viewport, neither the summary nor Analyze moved, Analyze still the
+element under its own centre, and Escape and an outside click closed it. A popover is never placed inside
+an accordion, because an accordion clips its overflow. Escape, a click outside, or focus moving to
+another control closes a popover, so a keyboard reader never lands on a control it covers, and
+Escape on one does not leave the page. Focus that goes nowhere, to another window or with a redraw
+that replaced the node, leaves it open. A summary is clickable across its own words only, and a
+chevron that turns replaces the browser's triangle. The motion runs only when the reader toggles:
+an open disclosure is written open in the redrawn markup, so a poll never replays it. The project
+page follows the same rule as the session, Sessions and Attention pages, since a reader reaches it
+from every session's crumb. Its two menus ease too, each keeping its own look: the scope switcher,
+shown only on a narrow screen, opens in place as an accordion does, and the More menu, which drops
+over the page, fades in over 160ms.
 
 ### Tier 3 ships no `docs/` href and no `DEC-N` token
 

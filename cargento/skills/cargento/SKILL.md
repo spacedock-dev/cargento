@@ -34,7 +34,7 @@ Pi relocation: `PI_CODING_AGENT_SESSION_DIR` is an authoritative direct session-
 |---|---|---|
 | **Needs input** (red, popup) | An agent is blocked on the human | Best effort, never guaranteed, and six harnesses can report it at all. **Claude** has four sources that cover different things rather than ranking cleanly: the bundled `PermissionRequest` hook is the main one for tool gates, seen directly for `ExitPlanMode` and in the wild for `AskUserQuestion`; an actionable Notification-hook POST is the *only* source for an MCP elicitation or a worker's permission or network request; and a pending input tool seen in the transcript is an opportunistic extra, because Claude Code flushes that record on its own schedule and sometimes not until the gate has been answered; the fourth is about a subagent rather than the session, and is a member on the teams roster that was dispatched and never wrote a transcript, described on the teams-registry bullet above. **Codex** has one, its own bundled `PermissionRequest` hook, measured firing interactively with the prompt still on screen. A Codex row says a gate is open and cannot say which, because the event envelope drops the tool name at the hook; it raises a popup on the same terms a Claude one does. **Copilot** has one too, and it is the only one that needs nothing installed: the CLI writes `permission.requested` to its own `events.jsonl` when the dialog opens and `permission.completed` only once the human answers, so the collector reads a request with no answer behind it as a standing gate. A Copilot row says whether a command or a URL is being asked about, and never which command or which URL. **Cursor** takes the same route on a different store: a standing tool-call gate leaves `pendingToolExecutionContracts` non-empty on the newest blob of the chat's SQLite store, and answering it — either way — appends a blob with the map emptied. Its store closes nothing on its own, so the wait is published only while the row is fresh enough to be trusted; the reason is on the Cursor store bullet above. A Cursor row says a permission request is open and how long it has stood, and nothing about what was asked. **OpenCode** reports parent permission waits through its per-project passive plugin. **Pi** reports extension UI prompts in persisted sessions through its adapter on 0.85.1; startup trust is excluded. Both require events enabled and lose standing observations on restart. The other four harnesses have no gate detection; Attention reports that coverage gap so a quiet row cannot be read as an all-clear |
 | **Working** (blue) | Actively generating | transcript/subagent/DB activity within the last 90s; detail = in-progress task's activeForm, else running subagents, else `thinking` where the harness can see the model holding the turn with no tool call open, else last tool, else `generating…`. Pi is the one exemption from recency, in both directions — see its store bullet above |
-| **Idle** (gray) | Turn ended | anything else — "awaiting your message" from the harness, which the board replaces with how long ago the session was last active. Two situations wear the one word: a turn that ended and nobody read the result, and a session still waiting on a reply that never came. Only a turn-end event tells them apart, so only the four harnesses with turn-end hooks can — Claude Code, Codex, Gemini CLI and Antigravity, and only with their hooks installed. On the other six the row says the answer cannot be known there, rather than guessing at it: it carries `Read by scanning: no turn end can be observed here`, in the session cell and again on the session page, so a quiet row is read as nothing observed recently and not as a turn that finished |
+| **Idle** (gray) | Turn ended | anything else — "awaiting your message" from the harness, which the board replaces with how long ago the session was last active. A Claude Code session whose transcript records no finished turn says "last turn not recorded as finished" instead, since it may still be mid-turn. Two situations wear the one word: a turn that ended and nobody read the result, and a session still waiting on a reply that never came. Only a turn-end event tells them apart, so only the four harnesses with turn-end hooks can — Claude Code, Codex, Gemini CLI and Antigravity, and only with their hooks installed. On the other six the row says the answer cannot be known there, rather than guessing at it: it carries `Read by scanning: no turn end can be observed here`, in the session cell and again on the session page, so a quiet row is read as nothing observed recently and not as a turn that finished |
 
 ## Dashboard views
 
@@ -119,7 +119,7 @@ reader is named. With no reader on this machine, the reason stands where the con
 page has at most one primary control, `Analyze drift`. No answer option is ever emphasised: a session blocked on
 you gives the primary to the terminal raise when one is offered, and otherwise nothing is primary
 while its question is open.
-Beside `COPY ID`, `COPY LINK` copies the page's own address, which reopens the same session after
+Beside `Copy ID`, `Copy link` copies the page's own address, which reopens the same session after
 a reload. A link to a session the board no longer holds names that session and says it is not in
 the current payload.
 
@@ -133,24 +133,24 @@ the retired `next` query is no longer a dashboard route.
 The header reports event-backed running sessions and all observed subagents. When work needs intervention, a button counting
 the reported blocks opens **Attention**. Keyboard shortcuts `a`, `p`, and `s` open Attention,
 Projects, and Sessions unless focus is in a form control or Meta, Control, or Alt is held.
-`Escape` returns from a session to its project (to Sessions when it has none) and otherwise to
-Sessions, under the same focus and modifier rules. Inside a tripwire draft it cancels the draft. Breadcrumbs return through the same
-project hierarchy.
+A session opens under the tab it was opened from (Sessions for a pasted link), and its breadcrumb
+starts there. `Escape` returns from a session to that breadcrumb's last link and otherwise to
+Sessions, under the same focus and modifier rules. Inside a tripwire draft it cancels the draft.
 
 MCP tools appear under the service being called rather than their wire name, for example
 `Linear · list issues`. The full recorded string remains available in the row tooltip.
 
 ## Attention
 
-Attention is a triage view. **At risk** names session evidence alongside **NEEDS YOU NOW**,
-**CLOSE THE LOOP**, and **COMING NEXT**. The opening brief counts the sessions these categories
+Attention is a triage view. **At risk** names session evidence alongside **Needs you now**,
+**Close the loop**, and **Coming next**. The opening brief counts the sessions these categories
 claim and describes the remainder as moving, quiet, ended, or without a counted state.
 **Also at risk, off the session count** holds quota pressure, shared display labels and requests
 whose session ownership is not established. Those subjects never inflate the session denominator.
 **Not on this board yet** names the capabilities no source supports. Coverage details explain
 missing observations instead of treating an unmeasured harness as an all-clear.
 
-**NEEDS YOU NOW** combines native harness gates with questions registered through `ask_operator`.
+**Needs you now** combines native harness gates with questions registered through `ask_operator`.
 Native permission prompts, plan approvals, and harness questions must still be answered in that
 session's terminal; Cargento does not mark them answered on the session's behalf. A Claude Code or
 Codex row therefore carries a control that copies the command that harness's own CLI takes to
@@ -175,11 +175,11 @@ group. A quiet row is never promoted into proof that nothing is waiting. Claude,
 conditions. OpenCode covers parent permissions with its project adapter; Pi covers persisted-session
 extension UI prompts on 0.85.1. Neither proves installation or reconstructs a wait after restart.
 
-**CLOSE THE LOOP** identifies observed stops and session ends after waiting and risk take
+**Close the loop** identifies observed stops and session ends after waiting and risk take
 precedence. The outcome vocabulary has six readings: stop or end, each with uncommitted work,
 clean git state, or unmeasured git state. A stop is not a session end, and neither tells Cargento
 whether you read the result, whether commits reached a remote, or why the process ended.
-**COMING NEXT** groups the strongest available next action by project. Both are advisory views of
+**Coming next** groups the strongest available next action by project. Both are advisory views of
 observed records, not commands sent to a harness.
 
 ## Usage and rate limits
@@ -368,12 +368,12 @@ Cargento publishes it, or from your latest prompt, marked "latest", where no fir
 time is published. A session that opened with a harness control such as `/clear` drafts nothing,
 not even the latest prompt, and says there is no first prompt to draft from, so you type a goal.
 The draft is marked "from your prompt", an excerpt says "Shown excerpt only.",
-the box is tinted, and the stamp still reads "No revision saved yet": nothing is saved until you
-press Looks right, edit the box and save, or press `Analyze drift`, which adopts the draft. "Use a
-prompt" still offers your latest prompt. Analyze drift, Keep and an added line's save are refused
+and the box is tinted: nothing is saved until you press Save intent, edit the box and save, or
+press `Analyze drift`, which adopts the draft. `Use your prompt` lists up to five of your own
+prompts, and choosing one fills the goal box for you to save. Analyze drift, Keep and an added line's save are refused
 while the goal box or the outcome lines hold an edit you have not saved, because each would stand
 on words that are not on screen; your edit stays in the box. No drift level or pill is drawn over
-an unsaved draft. Once a goal is saved the Intent heading reads "Confirmed".
+an unsaved draft. Once a goal is saved, a "Saved" disclosure under the Intent heading holds the revision line.
 
 A direction you gave after your intent (after the saved goal's words, or after the drafted prompt)
 is asked about before the press, in the control's place: "You gave a later direction at #n" names
@@ -392,12 +392,13 @@ back for any later one: a line over 240 characters is refused rather than clippe
 lines you choose the line it replaces. While
 a later direction is unsettled a reading states no departure at all.
 
-`DEPARTURES RAISED TO YOU` is where a raise is reviewed, and the one place on the session page it
-appears; it keeps two collections apart. One
-holds what a reading you asked for raised; the other holds what the checks run while you were away
-raised, with the annotation revision each read against and where its evidence stopped. Where the
+A reading you asked for states its departures once, in its result. What the checks run while you
+were away raised is reviewed under `Raised while you were away: N`, drawn only where they raised
+something (with those checks on and nothing raised, their one sentence saying whether the session
+was checked stands in its place), and that is the one place on the session page a raise appears.
+Each row carries the annotation revision it read against and where its evidence stopped. Where the
 words have since moved to a later revision the row says so, in the same wording the reading block
-uses, and a raise whose revision was never recorded is not given today's number. Under both sits
+uses, and a raise whose revision was never recorded is not given today's number. Under them sits
 what became of that lane's raise, and a raise with no delivery record on file says that rather
 than showing nothing. Each raised constraint carries what a later check found, derived from later
 checks rather than from a second reading: the usual answer is that no later check has read the
@@ -411,11 +412,11 @@ the save after it keeps every earlier revision, so the raises quoting those word
 the whole annotation withdraws them: the quotations go from the departure record too, and what
 stays is the fact that a check ran and a record of the discard itself, holding when it happened
 and no text at all. That record is why a discarded session still has a line in the Intent log,
-and why the board never describes it as a session nobody typed against. That act is `discard everything`, under the two boxes and offered only
+and why the board never describes it as a session nobody typed against. That act is the `Discard everything` control, behind the summary of the same name under the two boxes and offered only
 where a revision is stored; it takes two presses, and between them the board names what it will
 delete and what it will withdraw. That sentence is the control's own description, and it is
 written to the page's live region when the first press arms it, so it reaches a reader who is not
-looking at the screen. Beside each departure sit the command that resumes the session, on Claude
+looking at the screen. Beside each raised departure sit the command that resumes the session, on Claude
 Code and Codex, and the raise that selects its tmux pane, whatever state the session is in; the
 raise does not bring the window forward. Where either is missing the section says why once. Neither
 sends anything to the session. The Intent log carries the same raises a line at a time, and keeps
@@ -446,8 +447,14 @@ reader-requested reading or the optional unasked lane. With nothing typed the bl
 model off it gives that reason; otherwise it states what a reading may and may not read and offers
 one control, `Analyze drift`. When it cannot run it stays on the page, refuses the press, and
 names one next step, except where no reader is available on this machine: then the reason stands
-where the control would be. The accepted case review enables that control; the evidence stays readable
-whether or not you ask for a reading. A press starts an analysis the server runs in the background,
+where the control would be. An acceptance of each provider's checks enables that control (the
+captain's of Codex's case review on 2026-09-14; the owner's of Claude Code on 2026-10-02, after its
+scored runs failed): a
+Claude Code session is read by Claude Code when `claude` is on PATH and by Codex otherwise, and the
+evidence stays readable
+whether or not you ask for a reading. A press that waits on the server shows a spinner and a busy
+label ("Saving…", "Starting…") and takes no second press until it is answered, and when Analyze
+opens or closes on its own a line under it says so and why. A press starts an analysis the server runs in the background,
 and while it runs the control is replaced by an "Analyzing drift" box listing its real steps
 (preparing what is sent, waiting for the named provider, checking the reply), the one under way
 marked, with the attempt count and disclosure still beside it. A screen reader hears "Analyzing drift" once
@@ -491,7 +498,8 @@ Notification delivery is best effort; the dashboard's observed state remains the
 Cargento can also check an annotated session against what you asked for without being asked, and
 raise a departure while you are away. Off by default, behind `--unasked-readings`, refused by
 `--no-observer-model` whatever else is set, and it is the only thing here that spends your model
-capacity with nobody watching. It checks on an observed state
+capacity with nobody watching. It sends a check only where your Codex "Allow and analyze" covers
+where the words go now, so it never sends where a press would ask you again. It checks on an observed state
 change rather than every turn, it raises a departure and never a reassurance, and it stops at a
 per-session and a per-day limit. It reads your typed goal alone, never your expected outcome
 lines, and a session with lines and no goal is not checked this way. A spent limit is said out loud: a session nobody checked and a
@@ -653,7 +661,7 @@ Paths 2 and 3 are complementary and can both be installed. Keep `Notification` o
 
 | Flag / URL | Effect |
 |---|---|
-| `--observer-model` / `--no-observer-model` | Offer optional Codex goal summaries, or refuse every model call for this run (refusal wins, including unasked checks). Goal summaries are off by default and retain their separate browser consent. On a goal-less Claude Code or Codex session the goal is drafted from the published first prompt (the latest where no first one with a time is published), and Analyze drift or Looks right adopts it. A session whose first prompt is a harness control such as `/clear` drafts nothing, says so, and never drafts a later prompt in its place. The goal field also offers the latest prompt without checking. Adopted goals say "from your prompt" and never enable unasked readings; editing the goal makes typed words. Reader-requested readings need no startup flag: the first Analyze drift presents its disclosure and Allow and analyze. The answer is remembered across tabs and restarts; Turn off readings revokes it. They spend Codex capacity and are capped at twelve reserved or actual attempts per rolling twenty-four hours. Failed attempts are not refunded; off/on and `--forget` do not reset that budget. Each prompt is bounded to 16,384 redacted bytes, with one call in flight per session; a reading has a 180-second timeout and a goal summary a 60-second one. Quota consent authorizes neither path. |
+| `--observer-model` / `--no-observer-model` | Offer optional Codex goal summaries, or refuse every model call for this run (refusal wins, including unasked checks). Goal summaries are off by default and retain their separate browser consent. On a goal-less Claude Code or Codex session the goal is drafted from the published first prompt (the latest where no first one with a time is published), and Analyze drift or Save intent adopts it. A session whose first prompt is a harness control such as `/clear` drafts nothing, says so, and never drafts a later prompt in its place. The goal field also offers the latest prompt without checking. Adopted goals say "from your prompt" and never enable unasked readings; editing the goal makes typed words. Reader-requested readings need no startup flag: the first Analyze drift presents its disclosure and Allow and analyze. The answer is remembered across tabs and restarts while the destination its disclosure named is unchanged, and asked for again once it moves; Turn off readings revokes it. They spend the capacity of the provider the disclosure names (Claude Code for a Claude Code session when `claude` is on PATH, Codex otherwise) and are capped at twelve reserved or actual attempts per rolling twenty-four hours. Failed attempts are not refunded; off/on and `--forget` do not reset that budget. Each prompt is bounded to 16,384 redacted bytes, with one call in flight per session; a reading has a 180-second timeout and a goal summary a 60-second one. Quota consent authorizes neither path. |
 | `--interaction-origin-session <harness:sid>` / `--interaction-origin-registration-file <private-file>` | Enable the prototype terminal for one exact session only when both flags are supplied. The generated private file supplies the registration capability; registration must happen inside that session's tmux pane. Output is read-only and bounded; no terminal input is accepted. |
 | `--port N` | Change port (default 4553; valid range 1–65535). If the port is busy, check `--status` first — a running dashboard may already be there; don't kill it blindly. |
 | `--host A` | Bind address: `127.0.0.1` (default) or `0.0.0.0`, IPv4 only. Nothing narrower — a single-interface bind is refused rather than half-supported, because `--status`, `--stop` and the hook forwarders all reach the dashboard over loopback and such a bind does not answer there. **Nothing authenticates a remote reader**: anything that reaches the port reads every session's titles, prompts and paths, and can answer a question a session is waiting on. Prefer `ssh -L 4553:127.0.0.1:4553`; use `--host` only on a network the user would hand the transcripts to. |
@@ -681,7 +689,7 @@ Paths 2 and 3 are complementary and can both be installed. Keep `Notification` o
 | `--history-days N` | How long the local history keeps an observation, in days (default 14). Eviction is age first, so narrowing this drops what falls outside the window and widening it again brings nothing back. Zero or negative is refused. |
 | `--history-max-bytes N` | The size cap on the local history store, in bytes (default 1048576). It is the read cap too: a file larger than it is discarded unread rather than parsed. Zero or negative is refused. |
 | `http://127.0.0.1:4553/?all=1` | Show all sessions ever, including idle ones |
-| `/api/data` | Raw JSON, same data as the UI |
+| `/api/data` | Raw JSON, same data as the UI. Its `build` names the page this process serves, and a tab that sees it change asks to be reloaded. |
 | `/api/health` | Liveness and identity (pid, port, start time). Scans nothing, unlike `/api/data`. |
 | `/api/overlays` | Diagnostic: the live event overlays behind each session's state, with their arrival order and timings, plus a record of every time an event overruled a session the dashboard had read as waiting. Use this when a row's state disagrees with what the agent is actually doing and you need to know whether an event said so or never arrived. Empty is a real answer. Absent under `--no-events`. |
 | `/api/stream` | Server-sent events, one per new revision. This is what keeps an open page current, so it refetches when something changed rather than on a timer; one tab per browser holds the connection. A browser without `EventSource` falls back to polling. |
@@ -694,7 +702,7 @@ Paths 2 and 3 are complementary and can both be installed. Keep `Notification` o
 | `POST /api/correction` | Compose Steer back's correction for a Claude Code session. Body is `{"harness", "sid"}`. Answers `{"ok": true, "parts": [...]}`, each part text or `{"entry": fact_id}` for the page to number, built only from your saved goal and lines, each line's state and entry times; `{"ok": false, "reason": "too-long", "why": ...}` over 2,000 characters; and one `{"ok": false, "reason": "nothing"}` body otherwise. Stores nothing of its own (its collection may rewrite the semantic history store, as `/api/direction`'s does) and never sends anything to the session. Loopback-only and refused on a document navigation; 503 under `--no-annotations`. |
 | `/api/cleared` | The sessions marked handled: a harness key, a session id and when each was marked, and nothing else. 503 under `--no-dismiss`. |
 | `/api/annotations` | Every session you have typed a goal or an expected outcome line against, including sessions no longer on the board, with what an unasked check raised against each. Serves the words themselves, so it is read when the Intent log is opened rather than on the refresh loop. 503 under `--no-annotations`. |
-| `POST /api/reading` | Ask for one reading against the words typed against a session. Body is `{"harness", "sid", "provider", "press": true, "observer_model": 1}`, where `provider` is the one the page's route for that harness named (`codex` or `claude`); the first authorized press adds `"allow": true`, which allows that provider only. `{"consent":"off","press":true,"observer_model":1}` revokes permission. `settle_through` with `expected_revision` settles later directions before anything else in the press, adopting a draft with it when `adopt` is sent, and every reply then carries the store's token as `settled`; a refused one answers 422. Without `settle_through`, an `expected_revision` that is not the stored revision answers 409 with `"reason": "revision-changed"` before anything else in the press, so nothing is allowed, adopted or started; the page sends the revision it drew. Bodies are capped at 12,288 bytes, loopback-only and refused on a document navigation. 503 under `--no-annotations`, the explicit model off switch, a closed reading gate, or unavailable permission storage; 403 without consent; 429 at the rolling cap, with its retry time. 409 while that session has a reading in flight. 409 with `"reason": "provider-changed"` and the current `route` when `provider` is missing or no longer the one that would run: nothing was saved or spent, so read the route's disclosure and press again. 503 with the `route` and its `reason` when no provider can read that harness on this machine. 200 with `produced: false` when no annotated session by that name exists. |
+| `POST /api/reading` | Ask for one reading against the words typed against a session. Body is `{"harness", "sid", "provider", "press": true, "observer_model": 1}`, where `provider` is the one the page's route for that harness named (`codex` or `claude`); the first authorized press adds `"allow": true` and the route's `words_destination`, which allows that provider only and only for that destination; an Allow naming a destination that is no longer the route's answers 409 with `"reason": "destination-changed"` and records nothing, and an Allow with no `words_destination` at all, which a page older than the binding sends, answers 400 with `"reason": "page-outdated"` and a `route` whose note says to reload, and records nothing. `{"consent":"off","press":true,"observer_model":1}` revokes permission. `settle_through` with `expected_revision` settles later directions before anything else in the press, adopting a draft with it when `adopt` is sent, and every reply then carries the store's token as `settled`; a refused one answers 422. Without `settle_through`, an `expected_revision` that is not the stored revision answers 409 with `"reason": "revision-changed"` before anything else in the press, so nothing is allowed, adopted or started; the page sends the revision it drew. Bodies are capped at 12,288 bytes, loopback-only and refused on a document navigation. 503 under `--no-annotations`, the explicit model off switch, a closed reading gate, or unavailable permission storage; 403 without consent; 429 at the rolling cap, with its retry time; each of these permission refusals carries the press's current `route`, so a page drawn before the destination moved shows where the words go now. 409 while that session has a reading in flight. 409 with `"reason": "provider-changed"` and the current `route` when `provider` is missing or no longer the one that would run: nothing was saved or spent, so read the route's disclosure and press again. 503 with the `route` and its `reason` when no provider can read that harness on this machine. 200 with `produced: false` when no annotated session by that name exists. |
 
 ## Interpretation notes (share with the user if asked)
 

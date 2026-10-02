@@ -24,7 +24,7 @@ const nextAttentionExpandedSections = new Set();
 
    The list is closed, so an attribute the page never wrote cannot grow the
    set -- the same guard the section keys beside it get. */
-const NEXT_DISCLOSURE_KEYS = ["attention-coverage", "session-source-coverage", "more"];
+const NEXT_DISCLOSURE_KEYS = ["attention-coverage", "more"];
 const nextOpenDisclosures = new Set();
 
 function nextDisclosureAttr(key, open){
@@ -611,15 +611,19 @@ function nextBreadcrumb(){
     : "Session";
   const current = '<span class="next-breadcrumb-current-separator" aria-hidden="true"> › </span>' +
     `<span aria-current="page">${esc(sessionLabel)}</span>`;
-  /* No project label, no project page: the crumb names the view Escape goes to. */
-  if(!nextRoute.project){
-    return `<a class="next-crumb" href="#n=sessions">Sessions</a>${current}`;
+  /* The crumb starts at the view the reader came from, and Escape walks back
+     to its last link (owner, 2026-10-02, ask 6). A pasted link carries no
+     origin and starts at Sessions. */
+  const home = nextSessionHome(nextRoute);
+  if(home !== "projects"){
+    const label = {sessions: "Sessions", attention: "Attention", intent: "Intent log"}[home];
+    return `<a class="next-crumb" href="#n=${home}">${label}</a>${current}`;
   }
+  if(!nextRoute.project) return `${projects}${current}`;
   const projectRoute = nextRouteToken({view: "project", project: nextRoute.project});
   return `${projects}` +
     `<span aria-hidden="true"> › </span><a class="next-crumb" href="#n=${projectRoute}">${project}</a>` +
-    `<span class="next-breadcrumb-current-separator" aria-hidden="true"> › </span>` +
-    `<span aria-current="page">${esc(sessionLabel)}</span>`;
+    current;
 }
 
 function nextPrimaryNavigation(){
@@ -636,7 +640,9 @@ function nextPrimaryNavigation(){
     ["attention", "Attention"],
     ["intent", "Intent log"],
   ].map(([view, label]) => {
-    const current = (nextRoute.view === view || view === "projects" && ["project", "session"].includes(nextRoute.view)) ? ' aria-current="page"' : "";
+    const here = nextRoute.view === "session" ? nextSessionHome(nextRoute)
+      : nextRoute.view === "project" ? "projects" : nextRoute.view;
+    const current = here === view ? ' aria-current="page"' : "";
     return `<a href="#n=${view}"${current}>${label}</a>`;
   });
   return `<nav aria-label="Primary">${links.join("")}</nav>`;
@@ -717,6 +723,36 @@ function nextHistoryResetNotice(){
     `<span>${esc(detail)} The rail and the delegation figure start from this tab.</span></div>`;
 }
 
+/* The build the board published when this tab first heard from it. A daemon
+   restarted under an upgrade serves another page, and this tab goes on running
+   the old one against it: one left open across the destination binding sent
+   an Allow the new server refuses, forever, with a line that never said to
+   reload (regressions major 1, ui5). A board that publishes no build is an
+   older one, and says nothing either way. */
+let nextBuildFirst = "";
+const NEXT_BUILD_RELOAD = "Reload to use the new version.";
+const NEXT_BUILD_WHY = "Cargento was restarted with a different version after this page loaded, " +
+  "and this page may send what that version refuses.";
+
+function nextNoteBuild(payload){
+  const build = payload && typeof payload.build === "string" ? payload.build : "";
+  if(build && !nextBuildFirst) nextBuildFirst = build;
+}
+
+/* Tier 1 is the instruction, and why sits behind its disclosure
+   ([NUI-19](docs/design-next-ui.md#nui-19-a-caveat-has-three-tiers)), after
+   the two notices above it, which say the data itself may be wrong. */
+function nextBuildNotice(){
+  const build = nextData && typeof nextData.build === "string" ? nextData.build : "";
+  if(!nextBuildFirst || !build || build === nextBuildFirst) return "";
+  const why = typeof nextCockpitWhy === "function"
+    ? nextCockpitWhy("build-changed", "Why reload", NEXT_BUILD_WHY) : "";
+  return '<div class="next-stalled" data-next-state="build-changed" role="status">' +
+    `<strong>${NEXT_BUILD_RELOAD}</strong>` +
+    '<button type="button" class="next-action" data-next-action="reload-page">Reload</button>' +
+    `${why}</div>`;
+}
+
 function renderNext(focus = nextCaptureFocus()){
   if(nextCockpitCorrectionDefersRender(focus)) return;
   const app = document.getElementById("app");
@@ -736,7 +772,7 @@ function renderNext(focus = nextCaptureFocus()){
     ? `<button type="button" class="next-gate" data-next-action="needs-input">${counts.gates} ${gateLabel}</button>`
     : "";
   const notification = nextNotifyControl(nextData);
-  const stalled = nextRefreshNotice() + nextHistoryResetNotice();
+  const stalled = nextRefreshNotice() + nextHistoryResetNotice() + nextBuildNotice();
   const breadcrumb = nextBreadcrumb();
   const running = `${nextStatusDot("live")} ${counts.running} running` +
     ` · ${counts.subagents} ${subagentLabel}`;
@@ -772,11 +808,55 @@ function renderNext(focus = nextCaptureFocus()){
   nextRenderObserved = null;
 }
 
+function nextClosePopovers(event){
+  const app = document.getElementById("app");
+  const open = app && typeof app.querySelectorAll === "function"
+    ? [...app.querySelectorAll("details.next-disclose--pop[open]")] : [];
+  if(!open.length) return false;
+  for(const popover of open) popover.open = false;
+  const owner = open.find(popover =>
+    typeof popover.contains === "function" && popover.contains(event.target)) || open[0];
+  const summary = owner && typeof owner.querySelector === "function" ? owner.querySelector("summary") : null;
+  if(summary && typeof summary.focus === "function") summary.focus();
+  event.preventDefault();
+  return true;
+}
+
+/* Where a session opened from here came from: a session passes its own on, a
+   top-level or project view names itself, and anything else names nothing,
+   which reads as Sessions (owner, 2026-10-02, ask 6). */
+function nextRouteOrigin(route){
+  if(!route) return null;
+  if(route.view === "session") return route.from || null;
+  return NEXT_SESSION_ORIGINS.has(route.view) ? route.view : null;
+}
+
+function nextRouteIdentity(route){
+  return [route.view, route.project, route.harness, route.session].join("\n");
+}
+
+/* Every route producer lands here, so the origin is stamped once rather than
+   at each of a dozen `data-next-route` sites. A new page opens at its top; a
+   tab or scope change within one does not move the reader. */
 function navigateNext(route){
+  if(route && route.view === "session" && !route.from){
+    const from = nextRouteOrigin(nextRoute);
+    if(from) route = {...route, from};
+  }
   const fragment = nextFragmentForRoute(route);
+  const moved = nextRouteIdentity(nextRouteFromFragment(fragment)) !== nextRouteIdentity(nextRoute);
   nextRoute = nextRouteFromFragment(fragment);
   if(location.hash !== fragment) location.hash = fragment;
   renderNext();
+  if(moved && typeof window.scrollTo === "function") window.scrollTo(0, 0);
+}
+
+/* The view a session page sits under, by where the reader came from: its tab,
+   the root of its crumb and the place Escape returns to are all this one. */
+function nextSessionHome(route){
+  const from = route && route.from;
+  if(from === "project" || from === "projects") return "projects";
+  return from === "attention" || from === "intent" ? from : "sessions";
 }
 
 document.addEventListener("click", event => {
@@ -861,6 +941,11 @@ document.addEventListener("click", event => {
     void refreshNext(true);
     return;
   }
+  if(actionTarget.dataset.nextAction === "reload-page"){
+    event.preventDefault();
+    location.reload();
+    return;
+  }
   if(actionTarget.dataset.nextAction === "needs-input"){
     navigateNext({view: "attention", project: null, session: null});
   }
@@ -887,6 +972,10 @@ document.addEventListener("keydown", event => {
     nextWorkstreamToggle();
     return;
   }
+  /* Escape dismisses an open popover before it means "leave this view", and
+     ahead of the field exemption below, which a focused summary falls through
+     ([NUI-19](docs/design-next-ui.md#nui-19-a-caveat-has-three-tiers)). */
+  if(event.key === "Escape" && nextClosePopovers(event)) return;
   if(["input", "select", "textarea"].includes(tag) || event.target && event.target.isContentEditable) return;
   if(event.key === "Escape"){
     /* Session detail walks up to its project; every other view returns to
@@ -894,10 +983,12 @@ document.addEventListener("keydown", event => {
        ([NUI-5](docs/design-next-ui.md#nui-5-chrome-and-navigation-reflect-the-current-payload)).
        A session with no project label has no project page to walk up to. */
     event.preventDefault();
-    if(nextRoute.view === "session" && nextRoute.project){
+    /* Escape goes where the crumb's last link goes (owner, 2026-10-02, ask 6). */
+    const home = nextRoute.view === "session" ? nextSessionHome(nextRoute) : "sessions";
+    if(home === "projects" && nextRoute.project){
       navigateNext({view: "project", project: nextRoute.project, session: null});
     }else{
-      navigateNext({view: "sessions", project: null, session: null});
+      navigateNext({view: home, project: null, session: null});
     }
     return;
   }
@@ -914,8 +1005,11 @@ document.addEventListener("keydown", event => {
 });
 
 window.addEventListener("hashchange", () => {
-  nextRoute = nextRouteFromFragment(location.hash);
-  const fragment = nextFragmentForRoute(nextRoute);
-  if(location.hash !== fragment) location.hash = fragment;
+  const parsed = nextRouteFromFragment(location.hash);
+  const fragment = nextFragmentForRoute(parsed);
+  if(location.hash !== fragment) nextReplaceFragment(fragment);
+  // `navigateNext` already drew the route its own hash write announces.
+  if(fragment === nextFragmentForRoute(nextRoute)) return;
+  nextRoute = parsed;
   renderNext();
 });

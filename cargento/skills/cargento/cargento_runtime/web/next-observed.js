@@ -42,13 +42,19 @@ function nextObservedLabel(session){
    a deliverable in either direction. So `independent` is a limit line rather
    than a branch: it states why nothing corroborates the claim, which is what
    the design asks for where a harness and an evidence type do not combine. */
+/* `stopped` is `nextSessionStop`'s answer, or any truthy value for a hook stop.
+   A transcript stop is named as the transcript's: Cargento read it from Claude
+   Code's own record rather than observing it (owner, 2026-10-02). */
 function nextObservedLanding(source, ended, stopped){
   const idle = source.state === "idle";
-  const endKind = ended ? "session-end" : (stopped ? "turn-stop" :
+  const endKind = ended ? "session-end" : (stopped && idle ? "turn-stop" :
     (!idle ? "running" : (nextSessionIsScanOnly(source) ? "unobservable" : "idle-unknown")));
+  const recorded = stopped && typeof stopped === "object" && stopped.kind === "transcript";
   const endText = {
     "session-end": "A session end was observed",
-    "turn-stop": "A turn stop was observed; no session end was",
+    "turn-stop": recorded
+      ? "Claude Code's transcript shows the last turn finished; no session end was observed"
+      : "A turn stop was observed; no session end was",
   }[endKind] || "";
   const endWhy = {
     "idle-unknown": "Idle with completion unknown: no stop and no end was observed",
@@ -82,19 +88,36 @@ function nextObservedLanding(source, ended, stopped){
    compares the two. */
 const NEXT_READING_TURN_STOP_HARNESSES = ["claude"];
 
+/* The turn stop a row rests on, a port of `reading.observed_stop` held to it
+   by a test: the hook's when held, else the stop Claude Code's transcript
+   records (`turn_end_at`) on a harness read at a turn stop. {at, kind} or
+   null. The Close section and the observed-stops count read `finished_at`
+   alone, because they count what was observed. */
+function nextSessionStop(source){
+  const hook = nextNumber(source && source.finished_at);
+  if(hook != null && hook > 0) return {at: hook, kind: "hook"};
+  const recorded = nextNumber(source && source.turn_end_at);
+  if(NEXT_READING_TURN_STOP_HARNESSES.includes(String(source && source.harness || "")) &&
+    recorded != null && recorded > 0) return {at: recorded, kind: "transcript"};
+  return null;
+}
+
 /* What an analysis will read, said before the press, from the same end kind
    HOW IT LANDED shows so the two cannot disagree. Empty where the server
    would withhold whatever was pressed: no end observed, or a turn stop on a
    harness it does not read there. */
 function nextObservedReadHint(source){
   const ended = nextSessionEndedAt(source) != null;
-  const stopped = source.state === "idle" && nextNumber(source.finished_at) > 0;
+  const stopped = source.state === "idle" ? nextSessionStop(source) : null;
+  const kind = nextObservedLanding(source, ended, stopped).endKind;
+  /* A running session is read mid-flight, and the page says so before the
+     press, so a press on it never reads as a final one (owner, 2026-10-02). */
+  if(kind === "running") return "Reads the work so far; the session is still running.";
   const cutoff = {
-    "running": "now",
     "session-end": "its end",
     "turn-stop": NEXT_READING_TURN_STOP_HARNESSES.includes(String(source.harness || ""))
       ? "its last turn" : "",
-  }[nextObservedLanding(source, ended, stopped).endKind] || "";
+  }[kind] || "";
   return cutoff ? `Reads the session up to ${cutoff} against your intent.` : "";
 }
 
@@ -152,9 +175,15 @@ function nextObservedSession(source, asks, harness, generated, shared){
   const stuck = errors ? `${errors} tool failures in a row` +
     (failures ? ` · ${failures} failures this turn` : "") : "";
   const stopped = source.state === "idle" && nextNumber(source.finished_at) > 0;
-  const outcomeKnown = ended || stopped;
-  const outcomePrefix = ended ? "Session ended" : "Stop observed";
-  const landing = nextObservedLanding(source, ended, stopped);
+  /* A stop Claude Code's transcript records is named as the transcript's, here
+     as in HOW IT LANDED beside it, so "Session facts" never says no stop was
+     observed next to a card naming one (verifier F6). */
+  const recordedStop = source.state === "idle" ? nextSessionStop(source) : null;
+  const transcriptStop = !stopped && Boolean(recordedStop && recordedStop.kind === "transcript");
+  const outcomeKnown = ended || stopped || transcriptStop;
+  const outcomePrefix = ended ? "Session ended"
+    : (stopped ? "Stop observed" : "Turn stop in Claude Code's transcript");
+  const landing = nextObservedLanding(source, ended, recordedStop);
   const gitKnown = typeof source.dirty === "boolean";
   const outcome = outcomeKnown ? outcomePrefix + (source.dirty === true ? " with uncommitted work" :
     (source.dirty === false ? "; git state clean" : "; git state not measured")) : "";
@@ -209,7 +238,10 @@ function nextObservedSession(source, asks, harness, generated, shared){
       (gaps.includes("block state") ? "Block state could not be read" : "Harness does not report blocks")),
     blockKnown,
     blockNote: question || (needs ? (source.wait_unconfirmed ? "Unconfirmed: no positive observation in 5m; prompt may still be standing" : nextObservedString(source.state_detail) || "Block reported") :
-      (reporter ? "Reporter available" : "No block-state reading available")),
+      /* Nothing beside a value it would only restate: "Reporter available"
+         under "No reported block", and "No block-state reading available"
+         under "Harness does not report blocks" (DRC-4758 slice E). */
+      ""),
     // Stops and ends are published; readership and termination cause are not.
     // Their absence belongs in open/coverage, never in an inferred outcome.
     ...nextObservedPair("outcome", outcome, "No stop or end observed"),
@@ -545,10 +577,12 @@ function nextObserved(payload, evidence){
     windows: capacity.windows, sublimits: capacity.sublimits,
     ...nextObservedPair("capacityEmpty", "", "No quota windows published."),
     ...nextObservedPair("capacityEmptyNote", "", "No vendor window has been read for this harness."),
+    /* What the board cannot see yet, by name and sentence. The roadmap ids
+       these once carried meant nothing to a reader (NU-4, 2026-10-02). */
     open: [
-      ["F3", "Attention accounting", "Delegation share is measured per project, not yet aggregated across the week."],
-      ["E5", "Ended with unpushed commits", "The board reports uncommitted work, not commits that never reached a remote."],
-      ["E6", "Finished and never read", "Nothing on the board publishes whether you have read a finished session. " +
+      ["attention-accounting", "Attention accounting", "Delegation share is measured per project, not yet aggregated across the week."],
+      ["unpushed-commits", "Ended with unpushed commits", "The board reports uncommitted work, not commits that never reached a remote."],
+      ["never-read", "Finished and never read", "Nothing on the board publishes whether you have read a finished session. " +
         "The dismissal store is server-side and does not reach the page."],
     ],
   };

@@ -4,7 +4,9 @@
 DEC-17's evaluation needs expected answers written down BEFORE the producer is
 pointed at them. A mark written after seeing an output is agreement, not a
 mark. This collects those answers. The captain accepted the recorded case review
-as sufficient to enable readings on 2026-09-14; scoring remains a separate act.
+as sufficient to enable readings on 2026-09-14, and the owner accepted the
+Claude Code producer on 2026-10-02 after its scored runs failed; scoring remains
+a separate act.
 
     mark_abstention.py --build      assemble cases from the live board
     mark_abstention.py              mark the unmarked ones, one call each
@@ -772,11 +774,15 @@ def _transcript_stop(transcript: str, sid: str, stop: float) -> bool:
     not the record: measured 2026-10-01 over the store's 700 observed stops,
     none sat within a millisecond of its record and 217 within a second, the
     record about 115 ms earlier. So `finished_at` must be the record's own
-    stamp, copied from the transcript, and a stop with no record is refused. A hook that
-    kept the turn going (`preventedContinuation`) is not a stop, and a
-    subagent's record is not the session's. `sid` is matched as a prefix, as
-    `_transcript_is_the_session` does, because a packet names a Claude Code
-    session by the eight characters the board publishes.
+    stamp, copied from the transcript, and a stop with no record is refused.
+    Only a summary whose newest `user` or `assistant` record before it is an
+    assistant reply is a stop: a Stop hook that blocks the stop, or a goal
+    check not met, writes an `isMeta` user record first and keeps the turn
+    going (verifier S1). `preventedContinuation` true is a hook ending the
+    turn, which is a stop. A subagent's record is not the session's, and a
+    summary labelled for any hooks but Stop is not a stop (verifier S2). `sid` is
+    matched as a prefix, as `_transcript_is_the_session` does, because a packet
+    names a Claude Code session by the eight characters the board publishes.
     """
     if len(sid) < 8:
         return False
@@ -784,18 +790,25 @@ def _transcript_stop(transcript: str, sid: str, stop: float) -> bool:
 
     try:
         with open(transcript, encoding="utf-8", errors="replace") as handle:
+            conversation: str | None = None
             for line in handle:
                 try:
                     record = json.loads(line)
                 except ValueError:
                     continue
+                if not isinstance(record, dict):
+                    continue
+                after = conversation
+                if record.get("type") in ("user", "assistant"):  # any JSON value
+                    conversation = record["type"]
                 if not (
-                    isinstance(record, dict)
+                    after == "assistant"
                     and record.get("type") == "system"
                     and record.get("subtype") == "stop_hook_summary"
                     and record.get("isSidechain") is False
-                    and record.get("preventedContinuation") is False
+                    and isinstance(record.get("preventedContinuation"), bool)
                     and isinstance(record.get("sessionId"), str)
+                    and record.get("hookLabel", "Stop") == "Stop"
                     and record["sessionId"].startswith(sid)
                 ):
                     continue

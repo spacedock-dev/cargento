@@ -739,7 +739,12 @@ class ReadTest(CaseToolTestCase):
         self.config = levels_cases.reading_config(str(self.reading_home))
         self.policy = _runtime_module("reading_policy")
         self.policy.set_consent(
-            self.config, True, now=time.time(), provider="codex", tool_output="OpenAI"
+            self.config,
+            True,
+            now=time.time(),
+            provider="codex",
+            tool_output="OpenAI",
+            destination="OpenAI",
         )
         self.model = FakeModel()
 
@@ -871,10 +876,23 @@ class ReadTest(CaseToolTestCase):
     def test_a_budget_too_small_for_the_calls_refuses_before_any_call(self) -> None:
         case_id = self.marked("h", "h")
         for _ in range(self.policy.DAILY_CAP):
-            self.policy.reserve(self.config, now=time.time(), provider="codex")
+            self.policy.reserve(
+                self.config, now=time.time(), provider="codex", destination="OpenAI"
+            )
         self.assertEqual(self.read(case_id), 1)
         self.assertEqual(self.model.prompts, [])
         self.assertEqual(self.used(), self.policy.DAILY_CAP)
+
+    def test_an_allow_given_for_another_destination_refuses_before_any_call(self) -> None:
+        """The Allow is bound to where the words go (owner, 2026-10-02): one given
+        while Codex reached a gateway does not cover a replay that reaches OpenAI."""
+        case_id = self.marked("h", "h")
+        self.policy.set_consent(
+            self.config, True, now=time.time(), provider="codex", destination="gw.example"
+        )
+        self.assertEqual(self.read(case_id), 1)
+        self.assertEqual(self.model.prompts, [])
+        self.assertEqual(self.used(), 0)
 
     def test_codex_not_allowed_in_the_reading_home_refuses_before_any_call(self) -> None:
         case_id = self.marked("h", "h")
@@ -1044,7 +1062,9 @@ class ReadTest(CaseToolTestCase):
     def test_no_tool_output_grant_refuses_before_any_call(self) -> None:
         case_id = self.marked("h", "h")
         self.policy.set_consent(self.config, False, now=time.time())
-        self.policy.set_consent(self.config, True, now=time.time(), provider="codex")
+        self.policy.set_consent(
+            self.config, True, now=time.time(), provider="codex", destination="OpenAI"
+        )
         self.assertEqual(self.read(case_id), 1)
         self.assertEqual(self.model.prompts, [])
         self.assertEqual(self.used(), 0)

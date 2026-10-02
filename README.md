@@ -148,7 +148,7 @@ harness publishes, and each project opens a cockpit with a Scope rail, a persist
 and Now, Course, Decisions and Console tabs. Each session's own page leads with drift: there you
 type the goal and the expected outcome, a checklist of up to six lines, you are holding that session to, check it for drift with one
 press, and read back what has been raised about that session and what became of the raise. Its
-`COPY LINK` control copies a link that reopens that page.
+`Copy link` control copies a link that reopens that page.
 Console collects delegation, waiting requests,
 capacity and browser-local tripwires. The terminal bridge and semantic history remain prototypes;
 the [cockpit design contract](docs/design-next-ui.md#cockpit-reconciliation) records their limits.
@@ -157,8 +157,9 @@ is, what it is doing now, what it does next, and whether it is blocked.
 Attention collects what needs a human, and the Intent log lists every board session plus retained
 annotations, with typed, cached deterministic and workflow goals labeled by source. Keyboard shortcuts `s`, `p` and `a` reach
 Sessions, Projects and Attention; the Intent log is a nav link with no shortcut.
-`Escape` returns from a session to its project and otherwise to Sessions. The route lives in the
-URL fragment so a reload or a pasted link comes back to the same view.
+A session opens under the tab you opened it from, and `Escape` returns there; a pasted link opens it
+under Sessions. Every other view's `Escape` returns to Sessions. The route lives in the URL fragment
+so a reload or a pasted link comes back to the same view.
 
 See [cargento/skills/cargento/SKILL.md](cargento/skills/cargento/SKILL.md) for data sources, session states, options, and troubleshooting.
 

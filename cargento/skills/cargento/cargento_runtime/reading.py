@@ -143,7 +143,12 @@ def outcome_lines(revision: Mapping[str, Any]) -> tuple[str, ...]:
 # `ReadingVocabularyIsSpeltOnceTest` compares them, because the measured
 # failure here is a producer and a renderer disagreeing about a key name and
 # neither one noticing.
-PROMPT_SOURCES = ("latest-prompt", "first-prompt")
+# `chosen-prompt` is one of the reader's own prompts picked from the observed
+# record (`annotations.prompt_choices`, owner ruling Q7, 2026-10-01): adopted
+# words like the other two, keyed on their own time. The page spells the same
+# three as `NEXT_PROMPT_SOURCES`, which a page test compares with this tuple.
+PROMPT_CHOSEN = "chosen-prompt"
+PROMPT_SOURCES = ("latest-prompt", "first-prompt", PROMPT_CHOSEN)
 
 ASSESSMENT_KEYS = (
     "goal_source",
@@ -352,6 +357,23 @@ SCOPE_TEXT = {
     ),
 }
 
+# The last-turn sentence when the stop it rested on was the transcript's own
+# record rather than a hook's (owner, 2026-10-02). Chosen when the reading is
+# produced, because `scope_text` is stored, and admitted on read-back only
+# beside `SCOPE_LAST_TURN` (`scope_texts`).
+SCOPE_TEXT_LAST_TURN_TRANSCRIPT = (
+    "Claude Code's transcript recorded the last turn ending and no session end was observed, "
+    "so this covers the work through that turn. It is not a reading of how the session ended."
+)
+
+
+def scope_texts(scope: str) -> tuple[str, ...]:
+    """Every sentence a stored reading of `scope` may carry, the default first."""
+    if scope == SCOPE_LAST_TURN:
+        return (SCOPE_TEXT[scope], SCOPE_TEXT_LAST_TURN_TRANSCRIPT)
+    return (SCOPE_TEXT[scope],)
+
+
 # The harnesses a reader may have read at a turn stop: Claude Code only, by the
 # owner's ruling for this milestone and item 13 of the checklist ruling in
 # `docs/design-reading-a-session.md`. The page's
@@ -392,9 +414,13 @@ WITHHELD = {
         "A turn stop was observed and no session end was, so there is no end for a "
         "reading to rest on. Nothing partial is offered instead."
     ),
+    # True of every harness, and it says what opens a reading rather than
+    # promising one "once this session finishes a turn", which was false of a
+    # turn that had finished where Cargento could not see it (owner,
+    # 2026-10-02). `withheld_sentence` gives each harness its own at the press.
     WITHHELD_IDLE_UNKNOWN: (
-        "This session is idle with no stop and no end observed, so whether there is "
-        "finished work to read is unknown rather than none."
+        "This session is idle, and no finished turn or session end was observed for it, so "
+        "there is no end for a reading to rest on. A reading can run while the session works."
     ),
     WITHHELD_UNOBSERVABLE: (
         "No event from this harness can reach this row, so no end can be observed and "
@@ -1352,6 +1378,33 @@ def _add_check_fields(row: LedgerEntry, fact: Mapping[str, Any]) -> None:
         row["result_at"] = result_at
 
 
+STOP_HOOK = "hook"
+STOP_TRANSCRIPT = "transcript"
+
+
+def observed_stop(row: Mapping[str, Any]) -> tuple[float, str] | None:
+    """The turn stop this row rests on, and which kind it is, or None.
+
+    A hook stop (`finished_at`) when one is held: it is the stop. Otherwise,
+    on a harness in `TURN_STOP_HARNESSES`, the stop the session's own
+    transcript records (`turn_end_at`, owner 2026-10-02). Every reader of a
+    turn stop in this module reads it here, so the board, the press and the
+    job cannot disagree about which stop a row has. The page's
+    `nextSessionStop` is its port.
+    """
+    hook = _number(row.get("finished_at"))
+    if hook is not None and hook > 0:
+        return hook, STOP_HOOK
+    recorded = _number(row.get("turn_end_at"))
+    if (
+        str(row.get("harness") or "") in TURN_STOP_HARNESSES
+        and recorded is not None
+        and recorded > 0
+    ):
+        return recorded, STOP_TRANSCRIPT
+    return None
+
+
 def end_kind(row: Mapping[str, Any]) -> str:
     """Which of the five endings this row shows.
 
@@ -1365,10 +1418,9 @@ def end_kind(row: Mapping[str, Any]) -> str:
     """
     idle = row.get("state") == "idle"
     ended = _number(row.get("ended_at"))
-    stopped = _number(row.get("finished_at"))
     if ended is not None and ended > 0:
         return "session-end"
-    if idle and stopped is not None and stopped > 0:
+    if idle and observed_stop(row) is not None:
         return "turn-stop"
     if not idle:
         return "running"
@@ -1424,15 +1476,155 @@ def eligibility(
     return SCOPE_FINAL, ""
 
 
+# The withheld tokens a press can be refused with before any job starts, and
+# the only ones `press_eligibility` publishes (DRC-4758 slice A2). Each is a
+# fact about the row's ending that the collection already holds, so computing
+# it costs no model call and no record read. Every other `WITHHELD` token is
+# job-time: the observed record (`record_withheld` reads it, which is a
+# transcript read the collect path must not make per row per poll), the
+# ledger, the model, the budget and consent. Those still reach the reader as a
+# job's outcome. `nothing-typed` and `discarded` are left out on purpose: a
+# press over a drafted prompt adopts it first, so a session with no saved
+# words is not one a press cannot serve.
+PRESS_WITHHELD = (
+    WITHHELD_IDLE_UNKNOWN,
+    WITHHELD_UNOBSERVABLE,
+    WITHHELD_TURN_STOP,
+    WITHHELD_SETTLING,
+    WITHHELD_STOP_SETTLING,
+    WITHHELD_REVISION_AFTER_END,
+)
+
+
+# The press-time "Why it can't read" sentences that differ from the job-time
+# `WITHHELD` default (owner, 2026-10-02): each says what opens a reading, or
+# what the reader can do, and none promises an end Cargento may never see. The
+# page cannot link `HOW_TO_USE.md`, which the installed plugin does not ship,
+# so a sentence names its section in words.
+_HOW_TO_LIVE = 'How to use: "Make the board live rather than polled"'
+_IDLE_CLAUDE = (
+    "Claude Code records a turn as finished when its Stop hooks run, and this session's "
+    "transcript has no such record after its last message. The turn may still be running a "
+    "long tool, waiting on a permission, or interrupted, or Claude Code has no Stop hooks "
+    f"registered ({_HOW_TO_LIVE}). Analyze opens while the session works, and once a finished "
+    "turn is recorded."
+)
+_IDLE_CODEX = (
+    "This Codex session is idle. Cargento reads a Codex session only while a turn runs, "
+    "because no Codex session end is observed for a final reading to rest on. Analyze opens "
+    "when it runs again."
+)
+_IDLE_UNREACHED = (
+    "No event from this session has reached this board since it started, so no session end "
+    "can be seen here, and a reading can run only while the session works. Pointing this "
+    "harness's hooks at this board lets a reading run after the session ends "
+    f"({_HOW_TO_LIVE})."
+)
+_IDLE_REACHED = (
+    "Events from this session reach this board, but no session end has been observed. Analyze "
+    "opens while the session works, or once its end is observed."
+)
+_PRESS_SENTENCES = {
+    WITHHELD_TURN_STOP: (
+        "A turn stop was observed and no session end was. Cargento reads this harness only "
+        "while a turn runs or after its session ends."
+    ),
+    WITHHELD_UNOBSERVABLE: (
+        "No event from this harness can reach this row, so no end can be observed. A reading "
+        "can run only while the session is working."
+    ),
+    WITHHELD_SETTLING: (
+        "This session ended moments ago and its record is still settling. Analyze opens by "
+        "itself in a few seconds."
+    ),
+    WITHHELD_STOP_SETTLING: (
+        "This session finished its turn moments ago and its record is still settling. Analyze "
+        "opens by itself in a few seconds."
+    ),
+}
+
+
+def withheld_sentence(reason: str, row: Mapping[str, Any]) -> str:
+    """The sentence a press withheld for `reason` is answered with, for this row's harness.
+
+    `WITHHELD[reason]` stays the job-time and stored sentence; this is the
+    press-time one the board publishes and the reading route answers with.
+    """
+    if reason == WITHHELD_IDLE_UNKNOWN:
+        harness = str(row.get("harness") or "")
+        if harness == "claude":
+            return _IDLE_CLAUDE
+        if harness == "codex":
+            return _IDLE_CODEX
+        if harness:
+            return _IDLE_REACHED if row.get("acquisition") == "event" else _IDLE_UNREACHED
+    return _PRESS_SENTENCES.get(reason) or WITHHELD[reason]
+
+
+class Eligibility(TypedDict):
+    """Whether a press on this row could start a reading now, and why not.
+
+    `reason` is one of `PRESS_WITHHELD` or None. `until` is when a settling
+    row stops settling, an epoch, else None. `sentence` is `withheld_sentence`'s,
+    published beside the token so the page shows the server's words verbatim
+    under its own short line rather than keeping a copy of them.
+    """
+
+    ok: bool
+    reason: str | None
+    until: float | None
+    sentence: str | None
+
+
+def press_eligibility(
+    row: Mapping[str, Any],
+    revisions: Sequence[Mapping[str, Any]],
+    *,
+    now: float,
+    settle_sec: float,
+) -> Eligibility:
+    """The press-time half of `_readable`, on the arguments the reading route passes it.
+
+    The same `eligibility` call the job makes, with `admit_turn_stop` from the
+    row's harness exactly as `http_api._compose_reading` sets it, so the board,
+    the press check and the job agree by construction; a test holds them to it
+    over a shared table. No revision is a draft a press would adopt, and then
+    there is no saved moment to hold against an end, so `revision-after-end`
+    waits for the job.
+    """
+    latest = revisions[-1] if revisions else None
+    _scope, withheld = eligibility(
+        row,
+        latest_revision_at=baseline_at(latest) if latest is not None else 0.0,
+        now=now,
+        settle_sec=settle_sec,
+        admit_turn_stop=str(row.get("harness") or "") in TURN_STOP_HARNESSES,
+    )
+    if not withheld:
+        return {"ok": True, "reason": None, "until": None, "sentence": None}
+    stop = observed_stop(row)
+    moment = {
+        WITHHELD_SETTLING: _number(row.get("ended_at")),
+        WITHHELD_STOP_SETTLING: stop[0] if stop else None,
+    }.get(withheld)
+    until = moment + settle_sec if moment is not None else None
+    return {
+        "ok": False,
+        "reason": withheld,
+        "until": until,
+        "sentence": withheld_sentence(withheld, row),
+    }
+
+
 def _last_turn(row: Mapping[str, Any], *, now: float, settle_sec: float) -> tuple[str, str]:
     """A turn stop the reader pressed on: read through it once it has settled.
 
     The same settle as an end, for the same in-flight `turn_started`, and the
     same NaN guard, since a comparison against one is always False.
     """
-    stopped = _number(row.get("finished_at"))
+    stop = observed_stop(row)
     moment = _number(now)
-    if stopped is None or moment is None or moment - stopped < settle_sec:
+    if stop is None or moment is None or moment - stop[0] < settle_sec:
         return "", WITHHELD_STOP_SETTLING
     return SCOPE_LAST_TURN, ""
 
@@ -2419,7 +2611,7 @@ def produce(  # noqa: PLR0913
         "stamp": stamp_text,
         "cutoff": cutoff,
         "scope": scope,
-        "scope_text": SCOPE_TEXT[scope],
+        "scope_text": _scope_text(scope, row),
         "ended_at_read": records.norm_epoch(row.get("ended_at")) or None,
         "revision_read_at": records.norm_epoch(latest.get("at")) or None,
         "window_start": window_start(latest) or None,
@@ -2439,6 +2631,14 @@ _STATUS_FAILURES = {
     "closed": (WITHHELD_STOPPING, False),
     "cancelled": (WITHHELD_CANCELLED_UNSENT, False),
 }
+
+
+def _scope_text(scope: str, row: Mapping[str, Any]) -> str:
+    """The scope sentence for a reading produced now, naming which stop it rested on."""
+    stop = observed_stop(row) if scope == SCOPE_LAST_TURN else None
+    if stop is not None and stop[1] == STOP_TRANSCRIPT:
+        return SCOPE_TEXT_LAST_TURN_TRANSCRIPT
+    return SCOPE_TEXT[scope]
 
 
 def _ledger_to_read(
@@ -2461,7 +2661,8 @@ def _ledger_to_read(
     # whose state update lags leaves the row idle at the old stop while the
     # record moves on, and a later fact would then be read, and cited, as part
     # of a turn it was not in.
-    stopped = (_number(row.get("finished_at")) or 0.0) if scope == SCOPE_LAST_TURN else None
+    stop = observed_stop(row) if scope == SCOPE_LAST_TURN else None
+    stopped = (stop[0] if stop else 0.0) if scope == SCOPE_LAST_TURN else None
     kept: list[LedgerEntry] = []
     for entry in ledger:
         if _before_window(entry, opened):

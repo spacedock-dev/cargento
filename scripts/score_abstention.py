@@ -7,6 +7,9 @@ evidence`. `mark_abstention.py` collects the marks. This runs the producer over
 the same cases and says, per case and per constraint, what it did.
 The captain's accepted case review enables readings separately; this script
 continues to report measured outcomes and never substitutes acceptance for PASS.
+The owner's acceptance of the Claude Code producer on 2026-10-02 is the same
+kind of decision: it opened that producer's gate, and every committed Claude
+Code result this script wrote still says `failed`.
 
     score_abstention.py --report                       where the corpus stands; spends nothing
     score_abstention.py --score --producer claude      run the Claude Code producer once per case

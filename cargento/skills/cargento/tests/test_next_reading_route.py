@@ -78,18 +78,18 @@ class ReadingRoutePageTest(NextPageJsHarness):
             "await __settle();\nawait __settle();\n" + prelude + checks, self.FIXTURE
         )
 
-    def test_a_claude_code_row_on_this_build_names_codex_and_why_under_the_button(self) -> None:
+    def test_a_gated_claude_code_row_names_codex_and_why_under_the_button(self) -> None:
         """Idle, the disclosure follows Analyze drift and describes it (owner, DRC-4680): that
         press sends nothing. The confirming press keeps it first; see the Allow tests below."""
         out = self.render({"claude": GATED_CLAUDE}, "console.log(JSON.stringify(control()));")
         assert isinstance(out, str)
-        note = "Claude Code checks are built but not yet qualified, so Codex reads this session."
+        note = "Claude Code checks are not qualified on this build, so Codex reads this session."
         self.assertIn(note, out)
         self.assertIn("OpenAI", out)
         self.assertNotIn("Anthropic", out)
         self.assertLess(out.index('data-next-cockpit-action="reading-ask"'), out.index(note))
         self.assertIn('aria-describedby="next-cockpit-reading-disclosure"', out)
-        self.assertIn('id="next-cockpit-reading-disclosure">' + note, out)
+        self.assertIn('id="next-cockpit-reading-disclosure"><li>' + note + "</li>", out)
         self.assertIn("next-action--primary", out)
         self.assertNotIn('aria-disabled="true"', out)
 
@@ -308,9 +308,8 @@ console.log(JSON.stringify({asked, posts, policy: nextData.reading}));
         self.assertEqual(0, out["asked"]["posts"], "tool output left before a fresh Allow")
         html = out["asked"]["html"]
         self.assertIn("Allow and analyze", html)
-        self.assertLess(
-            html.index("to Codex, which reaches OpenAI"), html.index("Allow and analyze")
-        )
+        for said in ("Tool output, only after you allow it", "To: OpenAI, off this machine"):
+            self.assertLess(html.index(said), html.index("Allow and analyze"), said)
         self.assertEqual(1, len(out["posts"]))
         self.assertIs(True, out["posts"][0]["allow"])
         self.assertEqual("OpenAI", out["posts"][0]["tool_output"])
@@ -331,7 +330,7 @@ console.log(JSON.stringify({posts, html: control()}));
         assert isinstance(out, dict)
         self.assertEqual(1, len(out["posts"]))
         self.assertNotIn("tool_output", out["posts"][0])
-        self.assertIn("Tool output is not sent", out["html"])
+        self.assertIn("are not sent, because Cargento cannot name", out["html"])
 
     def test_a_destination_that_moved_is_said_once_and_asks_again(self) -> None:
         moved = _route("claude", {"codex"}, environ={"OPENAI_BASE_URL": "https://gw.example"})
@@ -354,7 +353,8 @@ console.log(JSON.stringify({posts, html: control(), refreshed: gets > before}));
         self.assertEqual(1, len(out["posts"]))
         self.assertTrue(out["refreshed"], "the page did not read where the output goes now")
         self.assertEqual(
-            1, out["html"].count("Where tool output would go changed since this page was drawn")
+            1,
+            out["html"].count("Where this session would be sent changed since this page was drawn"),
         )
 
     def test_a_server_asking_for_the_tool_output_allow_turns_the_button_into_allow(self) -> None:

@@ -46,7 +46,9 @@ console.log(JSON.stringify({original, pressure, collision, html: __els.app.inner
         self.assertEqual(1, len(out["pressure"]["boardRisks"]))
         self.assertEqual(2, len(out["collision"]["boardRisks"]))
         self.assertIn("1 of 2 sessions carry a subject", out["html"])
-        self.assertIn("not sessions, so not in that denominator", out["html"])
+        # The heading stands alone since NU-4 (2026-10-02); its fragment sub-line is gone.
+        self.assertIn("Also at risk, off the session count", out["html"])
+        self.assertNotIn("not in that denominator", out["html"])
 
     def test_the_risk_note_tracks_the_sessions_and_cards_link_to_their_owner(self) -> None:
         out = self._run_page_js(
@@ -102,8 +104,9 @@ console.log(JSON.stringify(__els.app.innerHTML));
             r'\.next-attention-item\[data-tone="unknown"\]\{[^}]*border-left-color:var\(--line\)',
         )
         self.assertIn("Not on this board yet", html)
-        for code in ("F3", "E5", "E6"):
-            self.assertIn(f'data-next-open="{code}"', html)
+        # Keyed by name since NU-4 (2026-10-02): the roadmap ids meant nothing to a reader.
+        for key in ("attention-accounting", "unpushed-commits", "never-read"):
+            self.assertIn(f'data-next-open="{key}"', html)
         for delivered in ("C1", "C4", "C6"):
             self.assertNotIn(f'data-next-open="{delivered}"', html)
 
@@ -2073,7 +2076,7 @@ console.log(JSON.stringify({closed, opened, survived, reclosed, closedSurvived})
             'data-next-copy-command="claude --resume 27d10654-1cb5-481e-8194-6ce868b91bb5"',
             claude,
         )
-        self.assertIn("COPY COMMAND", claude)
+        self.assertIn("Copy command", claude)
 
         codex = self.render(
             self.gate_queue_payload("codex", "01a06fac-629f-7c40-9c86-f84c55680151")
@@ -2103,7 +2106,7 @@ console.log(JSON.stringify({closed, opened, survived, reclosed, closedSurvived})
             with self.subTest(harness=harness, resume_id=resume_id):
                 html = self.render(self.gate_queue_payload(harness, resume_id))
                 self.assertNotIn("data-next-copy-command", html)
-                self.assertNotIn("COPY COMMAND", html)
+                self.assertNotIn("Copy command", html)
 
     def test_the_re_entry_command_rides_the_gate_queue_and_no_other_section(self) -> None:
         # A row in AT RISK is not a row waiting on an answer, so it gets no control:
@@ -2160,8 +2163,8 @@ document.querySelector = selector => selector === 'meta[name="cargento-focus"]'
         self.assertIn('data-next-raise-session="sid-published"', html)
         self.assertIn('data-next-raise-harness="claude"', html)
         self.assertIn(">RAISE<", html)
-        self.assertIn("COPY COMMAND", html)
-        self.assertLess(html.index("COPY COMMAND"), html.index(">RAISE<"))
+        self.assertIn("Copy command", html)
+        self.assertLess(html.index("Copy command"), html.index(">RAISE<"))
         # Its own class and its own resting look, so the reversible control and the
         # irreversible one do not differ by label alone.
         self.assertIn('class="next-session-raise', html)
@@ -2482,7 +2485,8 @@ console.log(JSON.stringify(__els.app.innerHTML));
 
         self.assertIn("0 waiting on you · 0 at risk · 0 to close the loop", html)
         self.assertIn("The other 1: 1 quiet", html)
-        for heading in ("NEEDS YOU NOW", "AT RISK", "CLOSE THE LOOP", "COMING NEXT"):
+        # Sentence case since 2026-10-02 (N9), so the absent headings are spelled as drawn.
+        for heading in ("Needs you now", "At risk", "Close the loop", "Coming next"):
             self.assertNotIn(f"{heading} (", html)
 
     def test_the_healthy_line_names_each_state_over_its_own_sessions(self) -> None:
@@ -2593,12 +2597,12 @@ console.log(JSON.stringify({confirmedHtml, unconfirmedHtml, resolvedHtml}));
         resolved = out["resolvedHtml"]
 
         # Confirmed repeating wait: rendered in NEEDS YOU NOW without uncertainty note
-        self.assertIn("NEEDS YOU NOW", confirmed)
+        self.assertIn("Needs you now (", confirmed)
         self.assertIn("Input signal observed", confirmed)
         self.assertNotIn("Unconfirmed: no positive observation in 5m", confirmed)
 
         # Unconfirmed repeating wait: STILL in NEEDS YOU NOW with uncertainty note
-        self.assertIn("NEEDS YOU NOW", unconfirmed)
+        self.assertIn("Needs you now (", unconfirmed)
         self.assertIn("Input signal observed", unconfirmed)
         self.assertIn(
             "Unconfirmed: no positive observation in 5m; prompt may still be standing",
@@ -2606,5 +2610,5 @@ console.log(JSON.stringify({confirmedHtml, unconfirmedHtml, resolvedHtml}));
         )
 
         # Resolved: removed from NEEDS YOU NOW
-        self.assertNotIn("NEEDS YOU NOW", resolved)
+        self.assertNotIn("Needs you now (", resolved)
         self.assertNotIn("Unconfirmed: no positive observation in 5m", resolved)

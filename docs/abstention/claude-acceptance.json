@@ -1,0 +1,72 @@
+{
+  "accepted_by": "owner",
+  "accepted_on": "2026-10-02",
+  "decision": "accepted",
+  "producer": "claude",
+  "qualification": "failed",
+  "runs": [
+    {
+      "cases": 13,
+      "correct": 33,
+      "dec17_failed_cases": 3,
+      "inputs_digest": "bcedfc535d54cb068a6ed222bb2281fa81a60aa51af1793e408e8b347e542b2c",
+      "marks_digest": "8decc64870f2f026f3f37b5d0456e47fc694d6d8628c0b4090e6b74f702e8cb5",
+      "result": "claude-results.json",
+      "scored_constraints": 42,
+      "spend": {
+        "cap": 19,
+        "charged": 13
+      },
+      "verdict": "failed"
+    },
+    {
+      "cases": 5,
+      "correct": 11,
+      "dec17_failed_cases": 3,
+      "inputs_digest": "98adf9b8d1af3f4506245c82f9d04e30e96b02c604be7aa2a873f3e0b07411d3",
+      "marks_digest": "c7fddf080a50649869f0698cd6fbc65bae9bdb73e362a806813a56013ae91748",
+      "result": "claude-results-continuation.json",
+      "scored_constraints": 17,
+      "spend": {
+        "cap": 18,
+        "charged": 18
+      },
+      "verdict": "failed"
+    },
+    {
+      "cases": 5,
+      "correct": 15,
+      "dec17_failed_cases": 1,
+      "inputs_digest": "4d8ab2742c24c9c57e17678e51a7fb309a263fcb94729663f879bac21e8d51a8",
+      "marks_digest": "2de19510784efc0e8ae37be75ab7da3a2c45efd38d02485f4684124135c44326",
+      "result": "claude-results-continuation-2.json",
+      "scored_constraints": 16,
+      "spend": {
+        "cap": 23,
+        "charged": 23
+      },
+      "verdict": "failed"
+    },
+    {
+      "cases": 5,
+      "correct": 15,
+      "dec17_failed_cases": 1,
+      "inputs_digest": "4719084703e80d79dc42393cc8b75f187f1067b0798a8397f6a49ff95ff7a480",
+      "marks_digest": "ca026ceaff5f7ec47a3f5e6c7d9446cc11227db56ee44734184a27d378d1806a",
+      "result": "claude-results-continuation-3.json",
+      "scored_constraints": 16,
+      "spend": {
+        "cap": 28,
+        "charged": 28
+      },
+      "verdict": "failed"
+    }
+  ],
+  "scored_runs": 4,
+  "spend": {
+    "cap": 28,
+    "charged": 28
+  },
+  "statement": "Every scored Claude Code run below failed DEC-17's abstention check. The owner accepted the Claude Code producer anyway on 2026-10-02, knowing that, so Claude Code reads a Claude Code session when the claude CLI is on PATH. This is an acceptance, not a pass. The results, their grants and the spend ledger are unchanged.",
+  "v": 1
+}

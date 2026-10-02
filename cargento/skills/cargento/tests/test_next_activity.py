@@ -336,10 +336,13 @@ console.log(JSON.stringify({html, route: nextRoute, hash: location.hash}));
                 "project": "alpha/repo",
                 "harness": "claude",
                 "session": "gate-z",
+                # The card sits on a project page, so the session opens under it (owner,
+                # 2026-10-02, ask 6).
+                "from": "project",
             },
             out["route"],
         )
-        self.assertEqual("#n=session:alpha%2Frepo:claude:gate-z", out["hash"])
+        self.assertEqual("#n=session:alpha%2Frepo:claude:gate-z&from=project", out["hash"])
 
     def test_done_lists_only_completed_tasks_in_payload_order_without_deduplication(self) -> None:
         html = self.render(

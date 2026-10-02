@@ -202,19 +202,27 @@ class TheGoalArrivesDraftedTest(_DraftPage):
         text = visible_text(intent)
         self.assertIn("from your prompt", text)
         self.assertNotIn("from your prompt · latest", text)
-        self.assertIn("Looks right", text)
+        # One way to save it: Save intent (owner, 2026-10-02); Looks right is gone.
+        self.assertNotIn("Looks right", text)
         self.assertIn(MEASURED, text)
-        self.assertIn("No revision saved yet", text)
+        # Nothing is saved, so no stamp is drawn (DRC-4758 fix round).
+        self.assertNotIn("No revision saved yet", text)
+        self.assertNotIn("Saved", text)
         self.assertNotIn("Confirmed", text)
         # The draft's tint marks the field, and the design line replaces the lede.
         self.assertIn("data-next-cockpit-drafted", intent)
         self.assertNotIn("Choose a goal or use your prompt", text)
-        # Unsaved: saving is not offered over the untouched draft; Looks right is.
+        # Unsaved, and Save intent is what saves it; there is nothing to undo yet.
         save = re.search(
-            r'<button[^>]*data-next-cockpit-action="held-save" data-arg="goal"[^>]*>', intent
+            r'<button[^>]*data-next-cockpit-action="held-save" data-arg="intent"[^>]*>', intent
         )
         assert save is not None
-        self.assertRegex(save.group(0), r"aria-disabled|hidden")
+        self.assertNotRegex(save.group(0), r"aria-disabled|hidden")
+        undo = re.search(
+            r'<button[^>]*data-next-cockpit-action="held-undo" data-arg="intent"[^>]*>', intent
+        )
+        assert undo is not None
+        self.assertIn('aria-disabled="true"', undo.group(0))
 
     def test_a_clipped_first_prompt_is_marked_as_an_excerpt(self) -> None:
         html = self.html('__s.first_prompt = "Build the retry queue and then…";\n')
@@ -228,19 +236,24 @@ class TheGoalArrivesDraftedTest(_DraftPage):
         self.assertEqual(LATEST, box.group(1))
         self.assertIn("from your prompt · latest", visible_text(intent))
 
-    def test_use_a_prompt_still_offers_the_latest_and_no_longer_the_first(self) -> None:
+    def test_the_nested_prompt_disclosures_are_gone(self) -> None:
+        # "Use your prompt" replaced them (owner Q7, DRC-4758 D2); test_next_prompt_menu
+        # holds the menu itself.
         text = visible_text(intent_of(self.html()))
-        self.assertIn("Use a prompt", text)
-        self.assertIn("Your latest prompt", text)
-        self.assertNotIn("Your first prompt", text)
+        for gone in ("Use a prompt", "Your latest prompt", "Your first prompt", "without checking"):
+            self.assertNotIn(gone, text)
 
     def test_no_draft_on_a_harness_that_publishes_no_prompt(self) -> None:
         html = self.html('__s.harness = "pi"; ' + ROUTE.replace("claude", "pi") + "\n")
         self.assertNotIn("data-next-cockpit-drafted", html)
 
-    def test_looks_right_adopts_the_draft_with_its_revision(self) -> None:
+    def test_a_reader_with_a_drafted_goal_saves_it_with_save_intent_and_no_second_button(
+        self,
+    ) -> None:
+        html = self.html()
+        self.assertNotIn("draft-confirm", html)
         out = self.drive(
-            after='__press("draft-confirm");\nawait __settle();\n'
+            after='__press("held-save", "intent");\nawait __settle();\n'
             "console.log(JSON.stringify(__posts));"
         )
         assert isinstance(out, list)
@@ -258,11 +271,42 @@ class TheGoalArrivesDraftedTest(_DraftPage):
             out[0]["body"],
         )
 
-    def test_looks_right_returns_focus_to_the_saved_goal(self) -> None:
+    def test_typing_back_to_the_draft_leaves_save_intent_live_in_place(self) -> None:
+        """A keystroke updates the footer in place, with no redraw. Back at the draft's words the
+        box is untouched again, which is still a draft Save intent saves."""
+        out = self.drive(
+            after="""
+const attrs = {save:new Set(), undo:new Set()};
+const control = name => ({setAttribute(a){ attrs[name].add(a); },
+  removeAttribute(a){ attrs[name].delete(a); }});
+const controls = {"held-save":control("save"), "held-undo":control("undo")};
+const footer = {querySelector(selector){
+  const m = selector.match(/data-next-cockpit-action="([^"]+)"/); return m ? controls[m[1]] : null; },
+  closest(){ return null; }};
+__els.app.querySelector = selector => selector === ".next-cockpit-held-footer" ? footer : null;
+const field = {querySelector(){ return null; }, setAttribute(){}, removeAttribute(){}};
+const type = value => __fire("input", {target:{value,
+  dataset:{nextCockpitHeldKey:"held:claude:focus-1:goal"},
+  closest(selector){ return selector === "[data-next-cockpit-held-key]" ? this
+    : selector === "[data-next-cockpit-held-field]" ? field : null; }}});
+type(FIRST + "x");
+const edited = {save:[...attrs.save], undo:[...attrs.undo]};
+type(FIRST);
+console.log(JSON.stringify({edited, back:{save:[...attrs.save], undo:[...attrs.undo]}}));
+""".replace("FIRST", json.dumps(FIRST))
+        )
+        assert isinstance(out, dict)
+        # An edit makes both live; back at the draft Undo has nothing to undo and goes inert,
+        # while Save intent stays live, because it is the draft's only save.
+        self.assertEqual({"save": [], "undo": []}, out["edited"])
+        self.assertEqual([], out["back"]["save"])
+        self.assertIn("aria-disabled", out["back"]["undo"])
+
+    def test_save_intent_over_the_draft_keeps_focus_on_save_intent(self) -> None:
         out = self.drive(
             cockpit_tests.NextCockpitCompositionTest.FOCUS_DOM,
             """
-const confirm = controls.find(control => control.dataset.nextCockpitAction === "draft-confirm");
+const confirm = controls.find(control => control.dataset.nextCockpitAction === "held-save");
 confirm.focus();
 __reply["/api/annotate"] = () => {
   Object.assign(__s, {annotation_goal:__s.first_prompt,
@@ -270,19 +314,20 @@ __reply["/api/annotate"] = () => {
     annotation_revision:1, annotation_revision_count:1});
   return {status:200, body:{ok:true,persisted:true}};
 };
-__press("draft-confirm");
+__press("held-save", "intent");
 await __settle(); await __settle(); await __settle();
 console.log(JSON.stringify({
-  confirmed: !controls.some(control => control.dataset.nextCockpitAction === "draft-confirm"),
+  saved: __posts.length,
   focus:document.activeElement?.dataset.nextFocus || null,
   tag:document.activeElement?.tagName || null,
 }));
 """,
         )
         assert isinstance(out, dict)
-        self.assertTrue(out["confirmed"])
-        self.assertEqual(GOAL_KEY, out["focus"])
-        self.assertEqual("TEXTAREA", out["tag"])
+        self.assertEqual(1, out["saved"])
+        # The control the reader pressed is still on the page, now inert, so focus stays there.
+        self.assertEqual("held:claude:focus-1:intent:save", out["focus"])
+        self.assertEqual("BUTTON", out["tag"])
 
     def test_save_with_the_box_back_at_the_draft_adopts_rather_than_typing(self) -> None:
         out = self.drive(
@@ -322,14 +367,18 @@ console.log(JSON.stringify({
         self.assertNotIn("data-next-cockpit-drafted", intent_of(out["before"]))
         self.assertIn(EDITED, visible_text(drift_of(out["after"])))
 
-    def test_a_saved_goal_reads_confirmed_with_no_check_mark(self) -> None:
+    def test_a_saved_goal_reads_saved_with_no_check_mark(self) -> None:
         html = self.html(TYPED)
         intent = intent_of(html)
-        self.assertIn("Confirmed", visible_text(intent))
+        # "Saved", not the design's "Confirmed": nothing confirmed the reader's words
+        # (owner, 2026-10-01).
+        self.assertIn("Saved", visible_text(intent))
+        self.assertNotIn("Confirmed", intent)
         self.assertNotIn("<svg", intent)
         self.assertNotIn("✓", intent)
         self.assertNotIn("Looks right", visible_text(intent))
-        self.assertNotIn(MEASURED, visible_text(intent))
+        # The design's hint is the footer's under both fields (owner Q6), said once.
+        self.assertEqual(1, visible_text(intent).count(MEASURED))
 
 
 @unittest.skipUnless(shutil.which("node"), "node not available")
@@ -816,7 +865,7 @@ console.log(JSON.stringify({presses, landed, posts:__posts.map(p => p.url),
         assert isinstance(out, dict)
         self.assertTrue(out["landed"])
         self.assertEqual(["/api/reading"], out["posts"])
-        self.assertIn("<h2>READING</h2>", out["html"])
+        self.assertIn("data-next-result", out["html"])
         self.assertLessEqual(out["presses"], 3)
         self.assertEqual(2, out["presses"])
 
@@ -891,8 +940,9 @@ class RideAlongTest(_DraftPage):
                 self.assertIn("data-next-focus=", button.group(0))
 
     def test_a_saved_line_keeps_its_source_space_while_you_type(self) -> None:
+        # An entry's line, since a typed line draws no source (owner, 2026-10-02, ask 3).
         out = self.drive(
-            TYPED + '__s.annotation_line_1 = "Line one"; __s.annotation_line_1_source = "typed";\n',
+            TYPED + '__s.annotation_line_1 = "Line one"; __s.annotation_line_1_source = "entry";\n',
             """
 nextCockpitHeldDrafts.set("held:claude:focus-1:lines", ["Line one and more"]);
 renderNext();
@@ -1556,16 +1606,17 @@ class FocusKeysAndTypingTest(_DraftPage):
                 duplicated = sorted({key for key in keys if keys.count(key) > 1})
                 self.assertEqual([], duplicated)
                 for control in re.findall(
-                    r"<(?:button|textarea)\b[^>]*data-next-cockpit-(?:action=\"(?:draft-confirm|"
-                    r"held-save|held-clear|held-line-remove|held-line-add|direction-save|"
+                    r"<(?:button|textarea)\b[^>]*data-next-cockpit-(?:action=\"(?:"
+                    r"held-save|held-undo|held-clear|held-line-remove|held-line-add|direction-save|"
                     r"direction-cancel|direction-replace|direction-keep|direction-add|reading-off|"
                     r'reading-ask|reading-allow)"|direction-key=|held-kind=)[^>]*>',
                     aside_of(out),
                 ):
                     self.assertIn("data-next-focus=", control)
         drafted = self.html()
-        self.assertIn(f'data-next-focus="{GOAL_KEY}:confirm"', drafted)
-        self.assertIn(f'data-next-focus="{GOAL_KEY}:save"', drafted)
+        self.assertNotIn(f'data-next-focus="{GOAL_KEY}:confirm"', drafted)
+        self.assertIn('data-next-focus="held:claude:focus-1:intent:save"', drafted)
+        self.assertIn('data-next-focus="held:claude:focus-1:intent:undo"', drafted)
         idle = self.html(TYPED + "__s.annotation_settled_through = 104;\n")
         self.assertIn('data-next-focus="reading-off:claude:focus-1"', idle)
 
@@ -1581,8 +1632,13 @@ const field = {setAttribute(n){ attrs.add(n); }, removeAttribute(n){ attrs.delet
   querySelector(selector){
     if(selector === "[data-next-cockpit-draft-marks]") return marks;
     if(selector === "[data-next-cockpit-held-count]") return count;
-    if(selector === '[data-next-cockpit-action="held-save"]') return save;
     return null; }};
+// The one save is the footer's, under both fields (owner Q6), and the handler
+// reaches it from the page.
+__els.app.querySelector = selector => selector === ".next-cockpit-held-footer" ? {
+  querySelector(inner){
+    return inner === '[data-next-cockpit-action="held-save"]' ? save : null; },
+  closest(){ return null; }} : null;
 const html = __els.app.innerHTML;
 const saved = html.match(/data-next-cockpit-held-kind="goal"[^>]*data-next-cockpit-held-saved="([^"]*)"/)[1];
 const draft = html.match(/data-next-cockpit-held-kind="goal"[^>]*data-next-cockpit-draft="([^"]*)"/)[1];
@@ -1709,11 +1765,15 @@ console.log(JSON.stringify({saved, stale:attrs.has("data-next-cockpit-held-line-
 class PhoneWidthAndThePressTest(unittest.TestCase):
     """Layout F3 and consent F4, as the sheet states them; the fold and the press were measured."""
 
-    def test_the_pending_lines_tools_take_their_own_row_on_a_phone(self) -> None:
-        narrow = NEXT_STYLES[NEXT_STYLES.index("@media(max-width:760px){") :]
-        self.assertRegex(
-            narrow, r"\.next-session-panel \.next-cockpit-direction-tools\{grid-column:1/-1"
+    def test_the_pending_lines_tools_sit_at_the_end_of_a_row_that_wraps(self) -> None:
+        # Save and Remove are the last item of the row under the box, pushed right as the Goal's
+        # Clear is, and the row wraps, so on a phone they take a row of their own rather than
+        # spilling past the page beside the source (layout F3; owner, 2026-10-02, ask 3).
+        self.assertIn(
+            ".next-cockpit-held-line>.next-cockpit-held-under>:last-child{margin-inline-start:auto}",
+            NEXT_STYLES,
         )
+        self.assertRegex(NEXT_STYLES, r"\.next-cockpit-held-under\{[^}]*flex-wrap:wrap")
 
     def test_an_untouched_draft_is_as_tall_as_its_text_focused_or_not(self) -> None:
         """Verifier V1: focus changes nothing, so Keep holds still under the press

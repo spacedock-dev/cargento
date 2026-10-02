@@ -418,6 +418,82 @@ class AnnotationStoreTest(unittest.TestCase):
         # rather than as one that never existed.
         self.assertEqual(revision_limit + 3, entry["revisions"][-1]["n"])
 
+    # --- a repeated save is already stored (spec ui3 item 1) ----------------
+
+    def _stored_twice(self) -> None:
+        self.assertEqual(
+            annotation_store.OUTCOME_STORED,
+            annotation_store.annotate(
+                self.config, self.state, "pi", "s", goal="G", lines=["A", "B"], now=self.NOW
+            ),
+        )
+        self.assertEqual(
+            annotation_store.OUTCOME_STORED,
+            annotation_store.annotate(
+                self.config,
+                self.state,
+                "pi",
+                "s",
+                goal="G2",
+                lines=["A", "B"],
+                expected_revision=1,
+                now=self.NOW + 1,
+            ),
+        )
+
+    def test_a_reader_whose_second_identical_save_arrives_after_the_first_is_told_the_words_are_already_stored(
+        self,
+    ) -> None:
+        """A double press, a retry after a lost answer, or a second tab, all drafted at 1.
+
+        The first save minted revision 2; the second carries the same words and
+        the revision it was drafted against. Refusing it would tell the reader
+        "Not saved" about words that are on disk.
+        """
+        self._stored_twice()
+        outcome = annotation_store.annotate(
+            self.config,
+            self.state,
+            "pi",
+            "s",
+            goal="G2",
+            lines=["A", "B"],
+            expected_revision=1,
+            now=self.NOW + 2,
+        )
+        self.assertEqual(annotation_store.OUTCOME_UNCHANGED, outcome)
+        entry = annotation_store.find(annotation_store.load(self.config), "pi", "s")
+        assert entry is not None
+        self.assertEqual(2, entry["revisions"][-1]["n"])
+
+    def test_a_reader_on_a_stale_tab_who_sends_different_words_is_still_refused(self) -> None:
+        self._stored_twice()
+        outcome = annotation_store.annotate(
+            self.config,
+            self.state,
+            "pi",
+            "s",
+            goal="G3",
+            lines=["A", "B"],
+            expected_revision=1,
+            now=self.NOW + 2,
+        )
+        self.assertEqual(annotation_store.OUTCOME_REFUSED, outcome)
+        lines_only = annotation_store.annotate(
+            self.config,
+            self.state,
+            "pi",
+            "s",
+            goal="G2",
+            lines=["A"],
+            expected_revision=1,
+            now=self.NOW + 3,
+        )
+        self.assertEqual(annotation_store.OUTCOME_REFUSED, lines_only)
+        entry = annotation_store.find(annotation_store.load(self.config), "pi", "s")
+        assert entry is not None
+        self.assertEqual(2, entry["revisions"][-1]["n"])
+
 
 class SettlingALaterDirectionTest(unittest.TestCase):
     """The reader's answer to an unresolved baseline conflict.
@@ -714,7 +790,8 @@ class TheSaveReadsTheAnswerTheEndpointSendsTest(unittest.TestCase):
         # handler that stood here read only `ok` when this oracle was written
         # and was left out of it; it went with the conflict block's buttons
         # (DRC-4682), and the added-direction save reads the same reply.
-        for name in ("nextCockpitHeldSave", "nextCockpitSaveDirection"):
+        # The save's reply is read by its worker, under the press's pending entry.
+        for name in ("nextCockpitIntentSaveWork", "nextCockpitSaveDirection"):
             with self.subTest(handler=name):
                 handler = self.PAGE[self.PAGE.index(f"async function {name}(") :]
                 # Up to the next top-level function of either kind.
@@ -1645,6 +1722,65 @@ class AReadingIsKeptBesideTheWordsItReadTest(unittest.TestCase):
                 assert entry is not None
                 self.assertEqual(expected, entry["assessment"]["read_at"])
 
+    def _published(self) -> dict[str, Any]:
+        entry = annotation_store.find(annotation_store.load(self.config), "claude", "s1")
+        return annotation_store.published(entry)
+
+    def test_a_withheld_press_publishes_when_it_was_withheld(self) -> None:
+        # DRC-4758 slice A3: a reload says how long ago, from the time the
+        # store already writes beside the reason, read back from disk.
+        with mock.patch("time.time", return_value=500.0):
+            annotation_store.record_withheld(
+                self.config,
+                self.state,
+                "claude",
+                "s1",
+                reason=runtime_reading.WITHHELD_LEDGER_EMPTY,
+                spent=False,
+            )
+        published = self._published()
+        self.assertTrue(published["reading_withheld"])
+        self.assertEqual(500.0, published["reading_withheld_at"])
+        # A later save moves the entry's write time, not the withheld time.
+        with mock.patch("time.time", return_value=900.0):
+            annotation_store.annotate(
+                self.config, self.state, "claude", "s1", goal="rename it", now=900.0
+            )
+        self.assertEqual(500.0, self._published()["reading_withheld_at"])
+
+    def test_a_reading_that_arrives_retires_the_withheld_time_with_its_reason(self) -> None:
+        annotation_store.record_withheld(
+            self.config,
+            self.state,
+            "claude",
+            "s1",
+            reason=runtime_reading.WITHHELD_LEDGER_EMPTY,
+            spent=False,
+        )
+        annotation_store.record_reading(
+            self.config, self.state, "claude", "s1", assessment=self._assessment()
+        )
+        published = self._published()
+        self.assertEqual("", published["reading_withheld"])
+        self.assertIsNone(published["reading_withheld_at"])
+        # The file still carries the old stamp beside the cleared reason, and
+        # a copy held in memory is published by the same rule.
+        entry = annotation_store.find(annotation_store.load(self.config), "claude", "s1")
+        assert entry is not None
+        held: Any = {**entry, "withheld": "", "withheld_at": 5.0}
+        self.assertIsNone(annotation_store.published(held)["reading_withheld_at"])
+
+    def test_a_reason_stored_before_its_time_was_kept_publishes_no_time(self) -> None:
+        path = annotation_store.store_path(self.config)
+        raw = json.loads(Path(path).read_text(encoding="utf-8"))
+        entries = raw["entries"] if isinstance(raw, dict) else raw
+        entries[0]["withheld"] = runtime_reading.WITHHELD[runtime_reading.WITHHELD_LEDGER_EMPTY]
+        Path(path).write_text(json.dumps(raw), encoding="utf-8")
+        published = self._published()
+        self.assertTrue(published["reading_withheld"])
+        self.assertIsNone(published["reading_withheld_at"], "an unknown time was guessed")
+        self.assertIsNone(annotation_store.published(None)["reading_withheld_at"])
+
     def test_a_reader_who_restarts_still_has_the_reading_they_asked_for(self) -> None:
         self.assertTrue(
             annotation_store.record_reading(
@@ -1884,6 +2020,49 @@ class AFinalReadingRetractsItselfWhenTheEndStopsBeingPublishedTest(unittest.Test
         rows[0]["ended_at"] = ended_at
         aggregate._attach_annotations(rows, annotation_store.load(config))
         return rows[0]["annotation_assessment"]
+
+    def test_a_reading_of_a_transcript_stop_keeps_its_own_sentence_when_read_back(self) -> None:
+        temp = tempfile.TemporaryDirectory()
+        self.addCleanup(temp.cleanup)
+        root = Path(temp.name)
+        config = build_runtime_config(
+            environ={"HOME": str(root), "CARGENTO_HOME": str(root / "state")},
+            platform_name="linux",
+            os_name="posix",
+            launcher_path=root / "server.py",
+        )
+        state = build_runtime_state(config, started=1.0)
+        annotation_store.annotate(config, state, "claude", "s1", goal="rename", now=10.0)
+        for stored, expected in (
+            (
+                runtime_reading.SCOPE_TEXT_LAST_TURN_TRANSCRIPT,
+                runtime_reading.SCOPE_TEXT_LAST_TURN_TRANSCRIPT,
+            ),
+            # Words of the sidecar's own are never read back.
+            ("Anything at all.", runtime_reading.SCOPE_TEXT[runtime_reading.SCOPE_LAST_TURN]),
+        ):
+            with self.subTest(stored=stored):
+                assessment = self._assessment()
+                assessment["scope"] = runtime_reading.SCOPE_LAST_TURN
+                assessment["scope_text"] = stored
+                annotation_store.record_reading(
+                    config, state, "claude", "s1", assessment=assessment
+                )
+                entry = annotation_store.find(annotation_store.load(config), "claude", "s1")
+                assert entry is not None
+                self.assertEqual(
+                    expected, annotation_store.published(entry)["assessment"]["scope_text"]
+                )
+        # A transcript sentence on another scope is not admitted either.
+        assessment = self._assessment()
+        assessment["scope_text"] = runtime_reading.SCOPE_TEXT_LAST_TURN_TRANSCRIPT
+        annotation_store.record_reading(config, state, "claude", "s1", assessment=assessment)
+        entry = annotation_store.find(annotation_store.load(config), "claude", "s1")
+        assert entry is not None
+        self.assertNotEqual(
+            runtime_reading.SCOPE_TEXT_LAST_TURN_TRANSCRIPT,
+            annotation_store.published(entry)["assessment"]["scope_text"],
+        )
 
     def test_a_reader_whose_session_really_ended_is_still_told_the_reading_is_final(self) -> None:
         published = self._through_the_pipeline(99.0)

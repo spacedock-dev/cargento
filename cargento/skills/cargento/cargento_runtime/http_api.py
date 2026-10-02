@@ -326,6 +326,33 @@ def _session_context(application: Any, row: dict[str, Any]) -> dict[str, Any]:
     return copied_corrections.mark(context, [row]) if isinstance(context, dict) else {}
 
 
+# An Allow with no `words_destination` at all comes from a page older than the
+# binding (regressions major 1, ui5): a tab left open across the upgrade. It
+# names no destination, so it binds nothing and is refused. The 79bcedae page
+# answers any 409 by drawing the consent card again with a line about tool
+# output, so a reader pressed Allow forever. Rendered against this server, the
+# one reply that page shows verbatim is a route with no provider, whose `note`
+# it draws in the button's place and keeps until its next poll, so the refusal
+# is a 400 carrying such a route, and its note says to reload.
+PAGE_OUTDATED_REASON = "page-outdated"
+PAGE_OUTDATED = (
+    "This page is from an older version of Cargento, so nothing was sent. Reload the page "
+    "to analyze."
+)
+
+
+def _outdated_route(route: runtime_reading_route.Route) -> runtime_reading_route.Route:
+    """The route an older page draws as "reload", in place of the one that runs."""
+    return {
+        **route,
+        "provider": "",
+        "reason": PAGE_OUTDATED_REASON,
+        "note": PAGE_OUTDATED,
+        "disclosure": "",
+        "disclosure_parts": [],
+    }
+
+
 def _latest_revision(entry: annotation_store.Annotation | None) -> int:
     """The number of an entry's latest revision, or 0 where it holds none."""
     return entry["revisions"][-1]["n"] if entry and entry["revisions"] else 0
@@ -444,6 +471,39 @@ def _analysis_levels(
             "cites": list(level.cites),
         }
     ]
+
+
+def _with_prompt_choices(
+    application: Any,
+    context: dict[str, Any],
+    rows: list[dict[str, Any]],
+    focus: tuple[str, str],
+    project: str,
+) -> dict[str, Any]:
+    """The focused session's own prompts a reader may adopt, as `prompt_choices` (Q7).
+
+    Before `for_page`, which drops each message's whole words: the choices
+    are built from them here, clipped to the goal's cap, and the words
+    themselves still never reach the page. `[]` when annotations are off, on a
+    harness no prompt is adopted from, or when the row is not in this project.
+    """
+    harness, sid = focus
+    matching = [
+        r
+        for r in rows
+        if r.get("harness") == harness
+        and r.get("sid") == sid
+        and project
+        in {str(r.get("project_key") or r.get("project") or ""), str(r.get("project") or "")}
+    ]
+    choices = (
+        annotation_store.prompt_choices(
+            matching[0], _facts_of(context), application.config.annotation_text_cap_chars
+        )
+        if application.config.annotations_enabled and len(matching) == 1
+        else []
+    )
+    return {**context, "prompt_choices": choices}
 
 
 def _facts_of(context: dict[str, Any]) -> list[Any]:
@@ -984,6 +1044,9 @@ class _RequestHandler(BaseHTTPRequestHandler):
         result = copied_corrections.mark(result, collected["sessions"])
         if focus is not None:
             result = _with_levels(application, result, collected["sessions"], focus, project)
+            result = _with_prompt_choices(
+                application, result, collected["sessions"], focus, project
+            )
         # The page shows titles; a reader message whole is for a reading only.
         result = runtime_project_context.for_page(result)
         self._send(
@@ -1693,17 +1756,11 @@ class _RequestHandler(BaseHTTPRequestHandler):
         the all-sessions collection, because a reader can save from that view
         and the default one leaves an aged session out.
         """
-        application = self.server.application
         try:
-            _, body = application.collect_json(show_all=True)
-            rows = [
-                row
-                for row in json.loads(body)["sessions"]
-                if row.get("harness") == harness and row.get("sid") == sid
-            ]
-            if len(rows) != 1:
+            row = self._published_row(harness, sid)
+            if row is None:
                 return None
-            facts = self._session_facts(rows[0])
+            facts = self._session_facts(row)
         except Exception:  # noqa: BLE001 (an unreadable record costs the window, never the save)
             return None
         return runtime_reading.typed_window_start(facts, harness, sid, saved_at)
@@ -1812,7 +1869,7 @@ class _RequestHandler(BaseHTTPRequestHandler):
             return
         permission = self._reading_permission(payload, route)
         if permission["reason"]:
-            self._reading_permission_reply(permission)
+            self._reading_permission_reply(permission, route=route)
             return
         self._reading_adoption(harness, sid, payload, route)
 
@@ -1925,16 +1982,35 @@ class _RequestHandler(BaseHTTPRequestHandler):
     def _reading_permission(
         self, payload: dict[str, Any], route: runtime_reading_route.Route
     ) -> reading_policy.Status:
-        """The stored answer this press rests on, after any Allow it carried."""
+        """The stored answer this press rests on, after any Allow it carried.
+
+        Covered only where the Allow was given for the destination the route
+        names now (owner, 2026-10-02). Every provider's is computed by the one
+        `reading_route.destination` the board publishes from, and this route's
+        own is the one its disclosure named, so the reply's `providers` is the
+        board's and the job's reservation checks the same value.
+        """
         application = self.server.application
         config = application.config
         provider, where = route["provider"], route["destination"]
+        today = {
+            **runtime_reading_route.destinations(),
+            provider: route["words_destination"],
+        }
         permission = (
             reading_policy.set_consent(
-                config, True, now=application.clock(), provider=provider, tool_output=where
+                config,
+                True,
+                now=application.clock(),
+                provider=provider,
+                tool_output=where,
+                destination=route["words_destination"],
+                destinations=today,
             )
             if payload.get("allow") is True
-            else reading_policy.status(config, now=application.clock(), provider=provider)
+            else reading_policy.status(
+                config, now=application.clock(), provider=provider, destinations=today
+            )
         )
         if (
             not permission["reason"]
@@ -1959,23 +2035,33 @@ class _RequestHandler(BaseHTTPRequestHandler):
         named, and when that is not the provider that would run, the answer
         was given about a different receiver and records nothing. The same
         holds for where tool output goes: an Allow whose disclosure named
-        another destination, or none, records nothing either.
+        another destination, or none, records nothing either. And for where the
+        words go (owner, 2026-10-02): an Allow binds to `words_destination`, so
+        one whose disclosure named another, or none where one is named now, is
+        refused before it could bind to a destination the reader never saw.
         """
         route = runtime_reading_route.resolve(harness)
+        allow = payload.get("allow") is True
         refusal = (
             (503, route["reason"])
             if not route["provider"]
             else (409, "provider-changed")
             if payload.get("provider") != route["provider"]
+            else (400, PAGE_OUTDATED_REASON)
+            if allow and "words_destination" not in payload
             else (409, "destination-changed")
-            if payload.get("allow") is True
-            and route["destination"]
-            and payload.get("tool_output") != route["destination"]
+            if allow
+            and (
+                payload.get("words_destination", "") != route["words_destination"]
+                or (route["destination"] and payload.get("tool_output") != route["destination"])
+            )
             else None
         )
         if refusal is None:
             return route
         code, reason = refusal
+        if reason == PAGE_OUTDATED_REASON:
+            route = _outdated_route(route)
         self._send(
             self._reading_json({"ok": False, "produced": False, "reason": reason, "route": route}),
             "application/json",
@@ -2079,33 +2165,71 @@ class _RequestHandler(BaseHTTPRequestHandler):
         ]
         if len(rows) != 1:
             return annotation_store.OUTCOME_REFUSED
+        source = str(payload.get("adopt") or "")
         return annotation_store.adopt(
             application.config,
             application.state,
             rows[0],
-            source=str(payload.get("adopt") or ""),
+            source=source,
             expected_text=payload.get("expected_prompt"),
             expected_at=payload.get("expected_prompt_at"),
             now=application.clock() if now is None else now,
             expected_revision=expected if guarded else None,
             settle_through=settle_through,
+            chosen=(
+                self._chosen_prompt(rows[0], payload.get("prompt_fact"))
+                if source == runtime_reading.PROMPT_CHOSEN
+                else None
+            ),
         )
 
-    def _session_row(self, harness: str, sid: str) -> dict[str, Any] | None:
-        """This session's published row from a fresh all-sessions collection, or None.
+    def _chosen_prompt(
+        self, row: dict[str, Any], fact_id: Any
+    ) -> annotation_store.PromptChoice | None:
+        """The server's own choice for the fact id the page sent, or None (Q7).
 
-        All sessions, for `_typed_window_start`'s reason: a reader can act from
-        that view, and the default one leaves an aged session out.
+        Resolved from this session's record as the page's list was, so a fact
+        that is not one of the reader's offered prompts, or whose words have
+        changed since they were offered, adopts nothing.
+        """
+        if not isinstance(fact_id, str) or not fact_id:
+            return None
+        choices = annotation_store.prompt_choices(
+            row,
+            self._session_facts(row),
+            self.server.application.config.annotation_text_cap_chars,
+        )
+        return next((choice for choice in choices if choice["fact_id"] == fact_id), None)
+
+    def _session_row(self, harness: str, sid: str) -> dict[str, Any] | None:
+        """This session's published row, or None. See `_published_row`."""
+        return self._published_row(harness, sid)
+
+    def _published_row(self, harness: str, sid: str) -> dict[str, Any] | None:
+        """This session's row as the board publishes it, or None.
+
+        The default variant first, which is warm within `collect_memo_sec`, and
+        the all-sessions one only when the default lacks the row: a reader can
+        act from that view, and the default one leaves an aged session out. No
+        clear, so the staleness floor is exactly a GET's (owner, 2026-10-02:
+        the clear made every save a full all-sessions collection, about 900 ms
+        of it). A row that old is what the page drew from, and what a save
+        reads off it does not age: a direction's text and a window start's
+        facts are read from the transcript again whatever the row's age, and
+        the row supplies only identity, paths and the prompt fields
+        `direction_floor` reads. The adoption arm keeps its own clear.
         """
         application = self.server.application
-        application.state.snapshot.clear()
-        _, body = application.collect_json(show_all=True)
-        rows = [
-            row
-            for row in json.loads(body)["sessions"]
-            if row.get("harness") == harness and row.get("sid") == sid
-        ]
-        return rows[0] if len(rows) == 1 else None
+        for show_all in (False, True):
+            _, body = application.collect_json(show_all=show_all)
+            rows = [
+                row
+                for row in json.loads(body)["sessions"]
+                if row.get("harness") == harness and row.get("sid") == sid
+            ]
+            if rows:
+                return rows[0] if len(rows) == 1 else None
+        return None
 
     def _later_direction(
         self, row: dict[str, Any], fact_id: str, adopt_source: str | None = None
@@ -2370,7 +2494,11 @@ class _RequestHandler(BaseHTTPRequestHandler):
         return outcome
 
     def _reading_permission_reply(
-        self, answer: reading_policy.Status, *, off: bool = False
+        self,
+        answer: reading_policy.Status,
+        *,
+        off: bool = False,
+        route: runtime_reading_route.Route | None = None,
     ) -> None:
         self.server.application.state.snapshot.clear()
         reason = answer["reason"]
@@ -2383,11 +2511,13 @@ class _RequestHandler(BaseHTTPRequestHandler):
             if reason in {"store-unavailable", "run-disabled"}
             else 403
         )
-        self._send(
-            self._reading_json({"ok": code == 200, "produced": False, "reading": answer}),
-            "application/json",
-            code,
-        )
+        reply: dict[str, Any] = {"ok": code == 200, "produced": False, "reading": answer}
+        if route is not None:
+            # The press's own route, resolved now, so a page drawn before the
+            # destination moved shows the changed line over today's `To:`
+            # rather than over the one it drew (regressions minor 2, ui5).
+            reply["route"] = route
+        self._send(self._reading_json(reply), "application/json", code)
 
     def _send_reading(
         self,
@@ -2430,6 +2560,8 @@ class _RequestHandler(BaseHTTPRequestHandler):
                 "application/json",
                 422,
             )
+            return
+        if self._press_withheld(rows[0], entry):
             return
         key = f"{harness}:{sid}"
         job = runtime_reading.start_job(
@@ -2478,6 +2610,42 @@ class _RequestHandler(BaseHTTPRequestHandler):
             "application/json",
             202,
         )
+
+    def _press_withheld(self, row: dict[str, Any], entry: annotation_store.Annotation) -> bool:
+        """Answer a press the board already says cannot read, before any job, and say so.
+
+        The same `reading.press_eligibility` the collection publishes as
+        `reading_eligibility` and the job's own `eligibility` call reads, so the
+        page, this check and the job cannot disagree (DRC-4758 slice A2). 200
+        and not 202: nothing started, nothing was spent, and no attempt is
+        counted. Recorded nowhere, because the published eligibility already
+        says it on every collection. A recorded Allow stands, as it did when
+        the job withheld this later.
+        """
+        application = self.server.application
+        answer = runtime_reading.press_eligibility(
+            row,
+            entry["revisions"],
+            now=application.clock(),
+            settle_sec=application.config.reading_settle_sec,
+        )
+        reason = answer["reason"]
+        if reason is None:
+            return False
+        self._send(
+            self._reading_json(
+                {
+                    "ok": False,
+                    "produced": False,
+                    "reason": "withheld",
+                    "withheld": reason,
+                    "sentence": answer["sentence"],
+                    "until": answer["until"],
+                }
+            ),
+            "application/json",
+        )
+        return True
 
     def _adoption_matches(
         self, entry: annotation_store.Annotation, payload: dict[str, Any]
@@ -2608,6 +2776,10 @@ class _RequestHandler(BaseHTTPRequestHandler):
                 )(application.config, on_spawn=hooks.spawned),
                 application.clock,
                 provider=route["provider"],
+                destination=route["words_destination"],
+                # The resolver the route came from, asked again at the
+                # reservation, so the job checks today's value as the board does.
+                resolve_destination=lambda: runtime_reading_route.destination(route["provider"]),
                 on_reserved=hooks.reserved,
                 before_reserve=hooks.before_reserve,
                 cancelled=hooks.cancelled,

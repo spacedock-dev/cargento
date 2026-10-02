@@ -567,6 +567,13 @@ def base_session(harness: str, sid: Any, project: str) -> Session:
         # the collector does not report it, and the overlay reducer then leaves a
         # wait standing rather than guessing.
         "own_activity": 0,
+        # What retires an observed stop or end, when it is narrower than
+        # `last_activity`: Claude's subtree with the parent transcript read by
+        # its newest conversation record rather than its mtime (DRC-4770).
+        # None means the collector does not report it, and the reducer then
+        # reads `last_activity` as before; never 0, which would read as a
+        # measured "nothing wrote" and keep every stop forever.
+        "work_activity": None,
         # The first timestamp in the session transcript, but only when this
         # process scanned from byte zero. None means the source is unmeasured;
         # a bounded tail or rebuilt oversized cache entry may not substitute
@@ -583,6 +590,14 @@ def base_session(harness: str, sid: Any, project: str) -> Session:
         # prints that on the row rather than leaving the reader to infer it
         # (docs/design-scan-only-rows.md).
         "finished_at": None,
+        # The turn stop Claude Code's own transcript records (its top-level
+        # `stop_hook_summary`), set by the Claude collector only from that
+        # record and only while nothing has come after it (owner, 2026-10-02).
+        # It is the transcript's recorded stop and never an observation:
+        # `finished_at` above stays hook-only, and `reading.observed_stop` is
+        # the one place the two are read together. None means no such record
+        # stands, never "did not finish".
+        "turn_end_at": None,
         # How this row was reached, which is the qualifier on `finished_at`
         # above. None means the harness has an event adapter and no event has
         # landed on this row; `events.ACQUISITION_EVENT` means one has;
@@ -667,7 +682,14 @@ def base_session(harness: str, sid: Any, project: str) -> Session:
         "annotation_assessment": None,
         "annotation_reading_count": 0,
         "annotation_reading_withheld": "",
+        "annotation_reading_withheld_at": None,
         "annotation_reading_refused": False,
+        # Whether a press could start a reading now, `{ok, reason, until}`
+        # from `reading.press_eligibility`, filled by
+        # `aggregate._attach_annotations`. None is not computed (annotations
+        # off), which is a different reading from `{"ok": False}`. Nested, and
+        # never in session history, for the reason `delivery_departure` gives.
+        "reading_eligibility": None,
         # The reader's Not accurate mark on that reading (DRC-4695): a bool,
         # never sent, never counted and never in session history.
         "annotation_not_accurate": False,

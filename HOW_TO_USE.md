@@ -261,6 +261,10 @@ from the first section, then paste the resolved path into the snippet.
 Claude Code's hooks go in `~/.claude/settings.json`. Antigravity's status line goes in its own
 settings file. Both are yours to edit; the plugin does not write either.
 
+Analyze drift reads a Claude Code session's last turn once Claude Code records it finishing, which
+it does when Stop hooks are registered (the plugin registers them), whichever board you view. Any
+other harness can be read after its session ends only when its hooks reach this board.
+
 ## Install or migrate Droid hooks
 
 Droid loads plugin hooks from `<root>/hooks/hooks.json` and supports Factory plugins via `.factory-plugin/plugin.json`.
@@ -411,13 +415,20 @@ the process removes its own on the way out.
 
 To analyze drift, press **Analyze drift** on the session page, then read the disclosure and
 choose **Allow and analyze**. With no saved goal, the check adopts the latest permitted Claude Code
-or Codex prompt. The goal field lets you choose the first prompt or adopt without checking; you
+or Codex prompt. **Use your prompt** beside the goal lists up to five of your own prompts from the
+session; choosing one fills the goal box without saving it, and **Save intent** saves it. You
 can also type your own goal. Adopted words say "from your prompt", and editing them makes a typed
-goal. An unavailable prompt time means you must type a goal instead. The permission is remembered across tabs and restarts.
-Use **Turn off readings** on a session page to revoke it. Checks spend your Codex capacity, including
-when the session belongs to another harness. A Claude Code session is read by Codex too, because
-Claude Code checks are built but not yet qualified; the text under the button names who reads each
-session, and without Codex installed that reason takes the button's place and says no analysis can run. Permission is kept per provider, and
+goal. An unavailable prompt time means you must type a goal instead. The permission is remembered across tabs and restarts
+for as long as the words go where it named: where the disclosure named a destination, start the
+dashboard with a setting that moves it, such as `ANTHROPIC_BASE_URL` or `CLAUDE_CODE_USE_BEDROCK`,
+and the next press asks again first. Where the disclosure said Cargento cannot name the
+destination, which is always on Windows and for a Codex base URL, a later move is not detected,
+and the Allow keeps covering it.
+Use **Turn off readings** on a session page to revoke it. A Claude Code session is read by Claude
+Code when `claude` is on the dashboard's PATH, and by Codex when it is not; every other session is
+read by Codex, or by Claude Code on a machine without Codex. Checks spend the capacity of whichever
+reads. **What is sent**, under the button, opens a short list naming it, and with neither installed that reason takes
+the button's place and says no analysis can run. Permission is kept per provider, and
 Turn off readings revokes all of them. Twelve attempts are allowed in a rolling twenty-four
 hours; a refused check names when capacity under that limit becomes available again. Goal summaries
 in Console still require their separate startup flag and consent.

@@ -44,6 +44,11 @@ function nextRevisionSuperseded(subject, read, current){
 }
 
 const NEXT_TOP_LEVEL_VIEWS = new Set(["attention", "projects", "sessions", "intent"]);
+/* Where a reader opened a session from, carried on a session route as a
+   trailing `&from=` so the tab, the crumb and Escape agree after a reload
+   (owner, 2026-10-02, ask 6). Closed, so a fragment cannot name anything else;
+   `encodeURIComponent` escapes `&` inside every route part, so it cannot clash. */
+const NEXT_SESSION_ORIGINS = new Set(["sessions", "attention", "intent", "projects", "project"]);
 const NEXT_PROJECT_TABS = ["now", "course", "decisions", "console"];
 /* Tabs that exist only while one session is in focus. Empty since the one
    member merged into the session view: Held to was the reader's words, the
@@ -101,9 +106,44 @@ function nextDecodeRoutePart(value){
 }
 
 function nextRouteFromFragment(fragment){
-  const token = String(fragment || "").startsWith("#n=")
+  const whole = String(fragment || "").startsWith("#n=")
     ? String(fragment).slice(3)
     : "";
+  const amp = whole.indexOf("&");
+  const token = amp < 0 ? whole : whole.slice(0, amp);
+  const query = amp < 0 ? "" : whole.slice(amp + 1);
+  const session = nextSessionRouteFromToken(token);
+  if(session){
+    let from = null;
+    try{ from = new URLSearchParams(query).get("from"); }catch(_error){ from = null; }
+    // Added only when valid, so a route with no origin keeps its old shape.
+    return NEXT_SESSION_ORIGINS.has(from) ? {...session, from} : session;
+  }
+  return nextPathRouteFromToken(token);
+}
+
+function nextSessionRouteFromToken(token){
+  const parts = token.split(":");
+  /* A session route may carry an empty project: a harness that publishes no
+     project label groups the session under "", and requiring a label here
+     left that session with no page and no link that could open it. The part
+     count, not the label, tells the two session forms apart, because
+     `encodeURIComponent` escapes every colon inside a part. */
+  if(parts.length === 4 && parts[0] === "session"){
+    const project = nextDecodeRoutePart(parts[1]);
+    const harness = nextDecodeRoutePart(parts[2]);
+    const session = nextDecodeRoutePart(parts[3]);
+    if(project !== null && harness && session) return {view: "session", project, harness, session};
+  }
+  if(parts.length === 3 && parts[0] === "session"){
+    const project = nextDecodeRoutePart(parts[1]);
+    const session = nextDecodeRoutePart(parts[2]);
+    if(project !== null && session) return {view: "session", project, session};
+  }
+  return null;
+}
+
+function nextPathRouteFromToken(token){
   if(NEXT_TOP_LEVEL_VIEWS.has(token)){
     return {view: token, project: null, session: null};
   }
@@ -131,22 +171,6 @@ function nextRouteFromFragment(fragment){
       return {view:"project",project,session:null,focus,tab};
     }
   }
-  /* A session route may carry an empty project: a harness that publishes no
-     project label groups the session under "", and requiring a label here
-     left that session with no page and no link that could open it. The part
-     count, not the label, tells the two session forms apart, because
-     `encodeURIComponent` escapes every colon inside a part. */
-  if(parts.length === 4 && parts[0] === "session"){
-    const project = nextDecodeRoutePart(parts[1]);
-    const harness = nextDecodeRoutePart(parts[2]);
-    const session = nextDecodeRoutePart(parts[3]);
-    if(project !== null && harness && session) return {view: "session", project, harness, session};
-  }
-  if(parts.length === 3 && parts[0] === "session"){
-    const project = nextDecodeRoutePart(parts[1]);
-    const session = nextDecodeRoutePart(parts[2]);
-    if(project !== null && session) return {view: "session", project, session};
-  }
   /* Sessions is the landing view
      ([DEC-20](docs/design-reading-a-session.md#dec-20-the-first-screen-shows-goal-beside-direction-and-drift-has-one-home)),
      so the bare URL and every fragment that parses as nothing land there. */
@@ -157,9 +181,10 @@ function nextFragmentForRoute(route){
   if(route && route.view === "session" && route.project != null && route.session){
     const harness = String(route.harness || "");
     const prefix = `#n=session:${encodeURIComponent(route.project)}:`;
-    return harness
+    const from = NEXT_SESSION_ORIGINS.has(route.from) ? `&from=${route.from}` : "";
+    return (harness
       ? `${prefix}${encodeURIComponent(harness)}:${encodeURIComponent(route.session)}`
-      : `${prefix}${encodeURIComponent(route.session)}`;
+      : `${prefix}${encodeURIComponent(route.session)}`) + from;
   }
   const held = route && route.view === "project" && route.project && route.focus &&
     route.tab === NEXT_RETIRED_SESSION_TAB
@@ -288,7 +313,7 @@ function nextSessionCopyControl(session){
     `data-next-copy-harness="${esc(harness)}"` +
     `${nextControlStateAttr("data-next-copy-state", "copy", harness, sid)} ` +
     `aria-label="Copy session ID ${esc(sid)}" title="${esc(sid)}">` +
-    '<span aria-hidden="true">COPY ID</span></button>';
+    '<span aria-hidden="true">Copy ID</span></button>';
 }
 
 /* The absolute link to one session's page, for a reader to paste: this
@@ -307,7 +332,7 @@ function nextSessionLink(session){
   return `${at < 0 ? href : href.slice(0, at)}${fragment}`;
 }
 
-/* Beside COPY ID on the session page, in the same copy lane. The link rides
+/* Beside Copy ID on the session page, in the same copy lane. The link rides
    `title` for the reason the command does: a context with no clipboard still
    shows the reader what to paste. */
 function nextSessionLinkControl(session){
@@ -320,7 +345,7 @@ function nextSessionLinkControl(session){
     `data-next-copy-harness="${esc(harness)}"` +
     `${nextControlStateAttr("data-next-copy-state", "link", harness, sid)} ` +
     `aria-label="Copy a link to this session" title="${esc(link)}">` +
-    '<span aria-hidden="true">COPY LINK</span></button>';
+    '<span aria-hidden="true">Copy link</span></button>';
 }
 
 // The verb each harness's own CLI takes to re-enter a session, keyed by harness.
@@ -378,7 +403,7 @@ function nextSessionResumeControl(session){
     `data-next-copy-harness="${esc(harness)}"` +
     `${nextControlStateAttr("data-next-copy-state", "command", harness, sid)} ` +
     `aria-label="Copy re-entry command ${esc(command)}" title="${esc(command)}">` +
-    '<span aria-hidden="true">COPY COMMAND</span></button>';
+    '<span aria-hidden="true">Copy command</span></button>';
 }
 
 // The capability this run minted for the focus route, injected into the served
@@ -637,6 +662,17 @@ function nextWithheldLine(primary, secondary){
   return `${esc(primary)} · ${esc(secondary)}`;
 }
 
+/* A canonical spelling replaces the history entry rather than pushing one:
+   pushing left Back stuck on a malformed or retired link, which canonicalised
+   itself forward again on every press. The harness has no `history`. */
+function nextReplaceFragment(fragment){
+  if(typeof history !== "undefined" && history && typeof history.replaceState === "function"){
+    history.replaceState(history.state, "", fragment);
+  }else{
+    location.hash = fragment;
+  }
+}
+
 let nextRoute = nextRouteFromFragment(location.hash);
 const nextInitialFragment = nextFragmentForRoute(nextRoute);
-if(location.hash !== nextInitialFragment) location.hash = nextInitialFragment;
+if(location.hash !== nextInitialFragment) nextReplaceFragment(nextInitialFragment);

@@ -232,6 +232,19 @@ column holds. The top-level `id` does not: `completed` carries a different one f
 reader keyed on `id` never matches and falls through to a drop-oldest fallback, which is right for
 one child and wrong for two.
 
+Claude Code's transcript turn stop has no file here either. The collector reads the top-level
+`system` record with subtype `stop_hook_summary` and its keys `isSidechain`,
+`preventedContinuation`, `sessionId` and `timestamp` (`claude_data.is_turn_stop_record`, owner
+2026-10-02), and admits it only directly after an assistant reply. A Stop hook that blocks the
+stop writes an `isMeta` user record before the summary and keeps the turn going, and
+`preventedContinuation` true is a hook ending the turn: both read from Claude Code 2.1.287's own
+code, not from a recorded session. That gate rests on the 2026-10-01 measurement recorded in
+[a reader's correction and a transcript stop](../design-reading-a-session.md#amended-2026-10-01-a-readers-correction-and-a-transcript-stop),
+not on a capture: no new shape file was taken. No file in this directory records that record, its
+`hookLabel`, or the final assistant message's `stop_reason`, which is why the last is not read. The
+label is read anyway, in the safe direction: 2.1.287's Stop path writes none and its reader knows
+one labelled `PreToolUse`, so a summary carrying any label but `Stop` is refused (verifier S2).
+
 ## Reading one
 
 One directory per harness, because the reporter summarises a whole directory and two harnesses with

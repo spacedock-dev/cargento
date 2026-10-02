@@ -1,7 +1,8 @@
 """Who reads a session, and what a reader is told about it before they press.
 
-DRC-4650. A Claude Code session is read by Claude Code once its own check is
-qualified; until then Codex reads it, and the page says so before the press.
+DRC-4650 built the Claude Code producer behind its own gate; the owner accepted
+it on 2026-10-02. A Claude Code session is read by Claude Code when `claude` is
+on PATH and by Codex when it is not, and the page says which before the press.
 Every test here is about what a person is told or what spends their capacity,
 and the route is the single place both are decided.
 """
@@ -17,13 +18,13 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
-from typing import Any, cast
+from typing import Any, ClassVar, cast
 from unittest import mock
 
-from cargento_runtime import aggregate, observer, reading_route, sessions
+from cargento_runtime import aggregate, observer, reading, reading_route, sessions
 from cargento_runtime import annotations as annotation_store
 
-from .next_harness import named_platform
+from .next_harness import named_machine, named_platform
 from .support import make_runtime
 
 HARNESSES = ("claude", "codex", "pi", "gemini")
@@ -62,21 +63,19 @@ def _world(claude: str, codex: str) -> tuple[Any, Any]:
     return gate, _resolver(installed)
 
 
-class TheClaudeCodeCheckIsBuiltAndNotYetOffered(unittest.TestCase):
-    """Owner ruling 1: its own gate, recorded not-run, and Codex's does not open it."""
+class TheOwnerAcceptedTheClaudeCodeCheck(unittest.TestCase):
+    """Owner, 2026-10-02: the Claude Code producer is accepted, as Codex's was on
+    2026-09-14, knowing every scored run failed. Accepted is not passed."""
 
-    def test_the_claude_code_check_is_recorded_as_not_run(self) -> None:
+    def test_the_claude_code_check_is_recorded_as_accepted_and_never_as_passed(self) -> None:
         self.assertEqual(
-            annotation_store.ABSTENTION_CHECK_NOT_RUN, annotation_store.CLAUDE_ABSTENTION_CHECK
+            annotation_store.ABSTENTION_CHECK_ACCEPTED, annotation_store.CLAUDE_ABSTENTION_CHECK
         )
-        self.assertFalse(annotation_store.provider_enabled("claude"))
-
-    def test_the_accepted_codex_review_does_not_qualify_claude_code(self) -> None:
-        self.assertEqual(
-            annotation_store.ABSTENTION_CHECK_ACCEPTED, annotation_store.ABSTENTION_CHECK
+        self.assertNotEqual(
+            annotation_store.ABSTENTION_CHECK_PASSED, annotation_store.CLAUDE_ABSTENTION_CHECK
         )
+        self.assertTrue(annotation_store.provider_enabled("claude"))
         self.assertTrue(annotation_store.provider_enabled("codex"))
-        self.assertFalse(annotation_store.provider_enabled("claude"))
 
     def test_each_gate_opens_only_its_own_provider(self) -> None:
         for check in (
@@ -102,48 +101,77 @@ class TheClaudeCodeCheckIsBuiltAndNotYetOffered(unittest.TestCase):
                 self.assertFalse(annotation_store.provider_enabled(name))
 
     def test_reading_enabled_still_means_the_codex_check(self) -> None:
-        with mock.patch.object(
-            annotation_store, "ABSTENTION_CHECK", annotation_store.ABSTENTION_CHECK_NOT_RUN
+        with mock.patch.multiple(
+            annotation_store,
+            ABSTENTION_CHECK=annotation_store.ABSTENTION_CHECK_NOT_RUN,
+            CLAUDE_ABSTENTION_CHECK=annotation_store.ABSTENTION_CHECK_NOT_RUN,
         ):
             self.assertFalse(annotation_store.reading_enabled())
             self.assertFalse(annotation_store.any_reading_enabled())
 
 
 class WhoReadsAClaudeCodeSessionOnThisBuild(unittest.TestCase):
-    """Owner ruling 2, on the build as shipped: no gate patched."""
+    """The owner's routing, on the build as shipped with no gate patched: Claude Code
+    reads a Claude Code session when `claude` is on PATH, and Codex reads it when not."""
 
-    def test_with_codex_installed_codex_reads_it_and_says_why_before_the_press(self) -> None:
-        for installed in ({"codex"}, {"codex", "claude"}):
+    def setUp(self) -> None:
+        patcher = named_machine()
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def test_with_claude_on_path_claude_code_reads_it_and_the_page_names_anthropic(
+        self,
+    ) -> None:
+        for installed in ({"claude"}, {"codex", "claude"}):
             with self.subTest(installed=sorted(installed)):
                 route = reading_route.resolve("claude", binary_resolver=_resolver(installed))
-                self.assertEqual("codex", route["provider"])
-                self.assertTrue(route["fallback"])
-                self.assertEqual(reading_route.REASON_FALLBACK_UNQUALIFIED, route["reason"])
-                self.assertIn("Claude Code checks are built but not yet qualified", route["note"])
-                self.assertIn("so Codex reads this session", route["note"])
-                self.assertIn("OpenAI", route["disclosure"])
-                self.assertIn("Codex capacity", route["disclosure"])
-                self.assertIn("not yet qualified", route["disclosure"])
-                self.assertNotIn("Anthropic", route["disclosure"])
-                self.assertEqual(observer.OBSERVER_MODEL, route["model"])
+                self.assertEqual(("claude", False), (route["provider"], route["fallback"]))
+                self.assertEqual(reading_route.REASON_OWN_HARNESS, route["reason"])
+                self.assertEqual("This session's own harness reads it.", route["note"])
+                self.assertIn("Anthropic", route["disclosure"])
+                self.assertNotIn("OpenAI", route["disclosure"])
+                self.assertNotIn("qualified", route["disclosure"])
+                self.assertEqual(observer.CLAUDE_READING_MODEL, route["model"])
 
-    def test_the_gate_is_read_before_the_machine_is_so_claude_is_never_looked_up(self) -> None:
+    def test_without_claude_on_path_codex_reads_it_and_says_why_before_the_press(self) -> None:
+        route = reading_route.resolve("claude", binary_resolver=_resolver({"codex"}))
+        self.assertEqual(("codex", True), (route["provider"], route["fallback"]))
+        self.assertEqual(reading_route.REASON_FALLBACK_MISSING, route["reason"])
+        self.assertIn("Claude Code CLI was not found", route["note"])
+        self.assertIn("so Codex reads this session", route["note"])
+        self.assertIn("OpenAI", route["disclosure"])
+        self.assertNotIn("Anthropic", route["disclosure"])
+        self.assertNotIn("qualified", route["note"])
+        self.assertEqual(observer.OBSERVER_MODEL, route["model"])
+
+    def test_with_neither_on_path_nothing_reads_it_and_it_says_not_installed(self) -> None:
+        route = reading_route.resolve("claude", binary_resolver=_resolver(set()))
+        self.assertEqual("", route["provider"])
+        self.assertEqual(reading_route.REASON_NOT_INSTALLED, route["reason"])
+        self.assertNotIn("qualified", route["note"])
+
+    def test_a_closed_gate_is_read_before_the_machine_so_claude_is_never_looked_up(self) -> None:
         which = _resolver({"claude", "codex"})
-        reading_route.resolve("claude", binary_resolver=which)
+        with mock.patch.object(
+            annotation_store, "CLAUDE_ABSTENTION_CHECK", annotation_store.ABSTENTION_CHECK_NOT_RUN
+        ):
+            route = reading_route.resolve("claude", binary_resolver=which)
         self.assertNotIn("claude", which.asked)
+        self.assertEqual(reading_route.REASON_FALLBACK_UNQUALIFIED, route["reason"])
+        self.assertIn("Claude Code checks are not qualified on this build", route["note"])
 
-    def test_without_codex_not_yet_qualified_is_its_own_state_and_not_not_installed(self) -> None:
-        gated = reading_route.resolve("claude", binary_resolver=_resolver({"claude"}))
+    def test_without_codex_not_qualified_is_its_own_state_and_not_not_installed(self) -> None:
+        with mock.patch.object(
+            annotation_store, "CLAUDE_ABSTENTION_CHECK", annotation_store.ABSTENTION_CHECK_NOT_RUN
+        ):
+            gated = reading_route.resolve("claude", binary_resolver=_resolver({"claude"}))
         self.assertEqual("", gated["provider"])
         self.assertEqual("", gated["disclosure"])
         self.assertEqual(reading_route.REASON_UNQUALIFIED_OTHER_MISSING, gated["reason"])
-        self.assertIn("Claude Code checks are built but not yet qualified", gated["note"])
+        self.assertIn("Claude Code checks are not qualified on this build", gated["note"])
         self.assertIn("Codex CLI was not found", gated["note"])
         self.assertNotIn("Claude Code CLI was not found", gated["note"])
-        with mock.patch.object(
-            annotation_store, "CLAUDE_ABSTENTION_CHECK", annotation_store.ABSTENTION_CHECK_PASSED
-        ):
-            bare = reading_route.resolve("claude", binary_resolver=_resolver(set()))
+        bare = reading_route.resolve("claude", binary_resolver=_resolver(set()))
         self.assertEqual(reading_route.REASON_NOT_INSTALLED, bare["reason"])
         self.assertNotEqual(gated["note"], bare["note"])
         self.assertNotIn("qualified", bare["note"])
@@ -152,13 +180,16 @@ class WhoReadsAClaudeCodeSessionOnThisBuild(unittest.TestCase):
         route = reading_route.resolve("codex", binary_resolver=_resolver({"codex", "claude"}))
         self.assertEqual(("codex", False), (route["provider"], route["fallback"]))
         self.assertEqual(reading_route.REASON_OWN_HARNESS, route["reason"])
-        self.assertEqual("Codex reads this Codex session.", route["note"])
+        self.assertEqual("This session's own harness reads it.", route["note"])
 
-    def test_a_codex_session_without_codex_is_not_handed_to_a_gated_claude(self) -> None:
+    def test_a_codex_session_without_codex_falls_back_to_claude_code_and_says_so(self) -> None:
+        # DEC-21 item 4 as written, which the 2026-09-23 amendment held back until the gate
+        # opened: the other provider, named before the press.
         route = reading_route.resolve("codex", binary_resolver=_resolver({"claude"}))
-        self.assertEqual("", route["provider"])
+        self.assertEqual(("claude", True), (route["provider"], route["fallback"]))
         self.assertIn("Codex CLI was not found", route["note"])
-        self.assertIn("Claude Code checks are built but not yet qualified", route["note"])
+        self.assertIn("so Claude Code reads this session", route["note"])
+        self.assertIn("Anthropic", route["disclosure"])
 
     def test_a_harness_with_no_producer_says_plainly_that_codex_reads_it(self) -> None:
         for harness in ("pi", "gemini", "opencode"):
@@ -189,6 +220,11 @@ class WhoReadsAClaudeCodeSessionOnThisBuild(unittest.TestCase):
 class WhoReadsASessionOnceClaudeCodeIsQualified(unittest.TestCase):
     """DEC-21 item 4, reached by patching the gate open: own harness first."""
 
+    def setUp(self) -> None:
+        patcher = named_machine()
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
     def test_a_claude_code_session_is_read_by_claude_code_and_the_page_names_anthropic(
         self,
     ) -> None:
@@ -199,7 +235,7 @@ class WhoReadsASessionOnceClaudeCodeIsQualified(unittest.TestCase):
         self.assertEqual("Claude Code", route["label"])
         self.assertEqual(observer.CLAUDE_READING_MODEL, route["model"])
         self.assertIn("Anthropic", route["disclosure"])
-        self.assertIn("Claude Code capacity", route["disclosure"])
+        self.assertIn("your Claude Code CLI and its sign-in", route["disclosure"])
         self.assertNotIn("OpenAI", route["disclosure"])
         self.assertNotIn("Codex", route["disclosure"])
 
@@ -228,15 +264,13 @@ class EveryMachineGetsExactlyOneTrueAnswer(unittest.TestCase):
         rows = []
         for harness, claude, codex in itertools.product(HARNESSES, STATES, STATES):
             gate, which = _world(claude, codex)
-            with gate:
-                rows.append(
-                    (
-                        harness,
-                        claude,
-                        codex,
-                        dict(reading_route.resolve(harness, binary_resolver=which)),
-                    )
+            # A machine whose endpoint the resolver can name, so neither this
+            # runner's environment nor its OS decides the `To:` item.
+            with gate, named_platform():
+                route = reading_route.resolve(
+                    harness, binary_resolver=which, environ={}, root=Path("/nonexistent")
                 )
+                rows.append((harness, claude, codex, dict(route)))
         return rows
 
     def test_own_harness_first_then_the_other_then_nothing(self) -> None:
@@ -268,9 +302,42 @@ class EveryMachineGetsExactlyOneTrueAnswer(unittest.TestCase):
                 elsewhere = ({"OpenAI", "Anthropic"} - {vendor}).pop()
                 self.assertIn(vendor, route["disclosure"])
                 self.assertNotIn(elsewhere, route["disclosure"])
-                self.assertIn(f"your {route['label']} capacity", route["disclosure"])
+                self.assertIn(f"your {route['label']} CLI and its sign-in", route["disclosure"])
+                self.assertIn("spending your capacity", route["disclosure"])
                 self.assertTrue(route["disclosure"].startswith(route["note"]))
                 self.assertIn("never a verification", route["disclosure"])
+
+    def test_the_disclosure_parts_join_to_the_disclosure_word_for_word(self) -> None:
+        # DRC-4758: the consent step shows the parts as a short list, so the
+        # list must be the disclosure itself and not a rewording of it.
+        for harness, claude, codex, route in self._all():
+            with self.subTest(harness=harness, claude=claude, codex=codex):
+                parts = route["disclosure_parts"]
+                self.assertEqual(route["disclosure"], " ".join(parts))
+                if not route["provider"]:
+                    self.assertEqual([], parts)
+                    continue
+                self.assertEqual(route["note"], parts[0])
+                self.assertTrue(all(part and part == part.strip() for part in parts))
+                self.assertTrue(parts[-1].endswith("."))
+                if route["tool_output"]:
+                    # Tool output comes before the `To:` item, which says where all of it goes.
+                    at = parts.index(route["tool_output"])
+                    self.assertTrue(parts[at + 1].startswith("To: "), parts)
+                # One item carries the caveat, and it closes the list (owner, 2026-10-02).
+                self.assertEqual(1, sum("never a verification" in part for part in parts), parts)
+                self.assertIn("never a verification", parts[-1])
+
+    def test_the_parts_for_a_claude_code_reading_hold_what_its_cli_adds_on_their_own(
+        self,
+    ) -> None:
+        parts = reading_route._base_parts("claude")
+        added = [part for part in parts if "device identifier" in part]
+        self.assertEqual(1, len(added))
+        self.assertTrue(added[0].startswith("That CLI also sends"), added[0])
+        self.assertFalse(
+            any("device identifier" in part for part in reading_route._base_parts("codex"))
+        )
 
     def test_a_claude_code_reading_discloses_what_its_cli_adds(self) -> None:
         # Owner ruling of 2026-09-27 on the review's Sent F1: under OAuth
@@ -304,6 +371,11 @@ class ThePagePublishesARoutePerHarnessNotOneDisclosure(unittest.TestCase):
     """The page renders the route for THAT session's harness, so the payload
     carries one per harness on the board and no board-wide sentence."""
 
+    def setUp(self) -> None:
+        patcher = named_machine()
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
     def _collection(self, harnesses: tuple[str, ...], installed: set[str]) -> dict[str, Any]:
         home = tempfile.mkdtemp()
         self.addCleanup(shutil.rmtree, home, True)
@@ -335,28 +407,26 @@ class ThePagePublishesARoutePerHarnessNotOneDisclosure(unittest.TestCase):
         return dict(json.loads(body))
 
     def test_a_claude_row_and_a_pi_row_each_name_their_actual_receiver(self) -> None:
-        data = self._collection(("claude", "pi"), {"codex", "claude"})
+        data = self._collection(("claude", "pi", "codex"), {"codex", "claude"})
         self.assertNotIn("reading_disclosure", data)
         routes = data["reading_routes"]
-        self.assertEqual({"claude", "pi"}, set(routes))
-        self.assertEqual("codex", routes["claude"]["provider"])
-        self.assertIn(
-            "Claude Code checks are built but not yet qualified", routes["claude"]["disclosure"]
-        )
-        self.assertIn("OpenAI", routes["claude"]["disclosure"])
-        self.assertIn("no reading producer of its own", routes["pi"]["disclosure"])
-
-    def test_with_claude_code_open_the_claude_row_names_anthropic(self) -> None:
-        with mock.patch.object(
-            annotation_store, "CLAUDE_ABSTENTION_CHECK", annotation_store.ABSTENTION_CHECK_PASSED
-        ):
-            data = self._collection(("claude", "codex"), {"codex", "claude"})
-        routes = data["reading_routes"]
+        self.assertEqual({"claude", "pi", "codex"}, set(routes))
         self.assertEqual("claude", routes["claude"]["provider"])
         self.assertIn("Anthropic", routes["claude"]["disclosure"])
         self.assertNotIn("OpenAI", routes["claude"]["disclosure"])
         self.assertEqual("codex", routes["codex"]["provider"])
         self.assertIn("OpenAI", routes["codex"]["disclosure"])
+        self.assertIn("no reading producer of its own", routes["pi"]["disclosure"])
+
+    def test_with_claude_code_closed_the_claude_row_names_openai(self) -> None:
+        with mock.patch.object(
+            annotation_store, "CLAUDE_ABSTENTION_CHECK", annotation_store.ABSTENTION_CHECK_NOT_RUN
+        ):
+            data = self._collection(("claude",), {"codex", "claude"})
+        route = data["reading_routes"]["claude"]
+        self.assertEqual("codex", route["provider"])
+        self.assertIn("Claude Code checks are not qualified on this build", route["disclosure"])
+        self.assertIn("OpenAI", route["disclosure"])
 
     def test_the_published_permission_says_which_providers_are_allowed(self) -> None:
         data = self._collection(("claude",), {"codex"})
@@ -395,8 +465,10 @@ class TheBuildGateThePageReadsIsEitherProvider(unittest.TestCase):
         self.assertEqual("claude", data["reading_routes"]["claude"]["provider"])
 
     def test_with_both_closed_the_page_is_told_not_run(self) -> None:
-        with mock.patch.object(
-            annotation_store, "ABSTENTION_CHECK", annotation_store.ABSTENTION_CHECK_NOT_RUN
+        with mock.patch.multiple(
+            annotation_store,
+            ABSTENTION_CHECK=annotation_store.ABSTENTION_CHECK_NOT_RUN,
+            CLAUDE_ABSTENTION_CHECK=annotation_store.ABSTENTION_CHECK_NOT_RUN,
         ):
             data = ThePagePublishesARoutePerHarnessNotOneDisclosure._collection(
                 cast("Any", self), ("claude",), {"claude", "codex"}
@@ -552,7 +624,7 @@ class WhereToolOutputWouldGoIsNamedOrItIsNotSent(unittest.TestCase):
                 "claude", binary_resolver=_resolver({"codex"}), environ={}, root=self.root
             )
         self.assertEqual("", route["destination"])
-        self.assertIn("Tool output is not sent", route["tool_output"])
+        self.assertIn("are not sent", route["tool_output"])
 
     def test_a_codex_reader_with_no_override_is_told_openai(self) -> None:
         self.assertEqual("OpenAI", self._codex({}))
@@ -573,6 +645,107 @@ class WhereToolOutputWouldGoIsNamedOrItIsNotSent(unittest.TestCase):
                 (self.root / path.lstrip("/")).unlink()
 
 
+# A path-embedded key, built at run time so no credential shape sits in source.
+PATH_KEY = "sk-ant-api03-" + "A" * 95
+
+
+def _masked(text: str) -> str:
+    return text.replace(PATH_KEY, "<key>").replace(PATH_KEY.lower(), "<key>")
+
+
+class ABaseUrlTheCliCouldReadDifferentlyNamesNothing(unittest.TestCase):
+    """Consent F1 and F3 (ui5): `urlsplit` and the WHATWG parser the CLI uses
+    must agree on the host, or the disclosure and the Allow's binding name a
+    host the words never reach. Measured on Claude Code 2.1.287: a base URL of
+    `http://127.0.0.1:4597\\@127.0.0.1:4598` sent every request to 4597, where
+    `urlsplit` reads 4598. Any URL the two could read differently names nothing.
+    """
+
+    def _claude(self, url: str) -> str:
+        """The name, with the test's key masked so a failure never prints it."""
+        return _masked(
+            reading_route.destination(
+                "claude",
+                environ={"HOME": "/home/r", "USER": "r", "ANTHROPIC_BASE_URL": url},
+                root=Path("/nonexistent-cargento-root"),
+                system="Linux",
+            )
+        )
+
+    def test_a_backslash_before_the_userinfo_names_nothing(self) -> None:
+        self.assertEqual("", self._claude("http://127.0.0.1:4597\\@127.0.0.1:4598"))
+
+    def test_a_path_key_after_a_backslash_never_reaches_the_name(self) -> None:
+        named = self._claude("https://proxy.example\\" + PATH_KEY)
+        self.assertEqual("", named)
+
+    def test_every_url_the_two_parsers_could_read_differently_names_nothing(self) -> None:
+        for url in (
+            "https://gw.example\\x",
+            "https://gw.example\t",
+            "https://gw\t.example",
+            "https://gw.example\n",
+            "https://gw.ex\rample",
+            "https://gw.example\x01",
+            "https://gw.example\x7f",
+            " https://gw.example",
+            "https://gw.example ",
+            "https://a b.example",
+            "https://%65vil.example",
+            "https://\uff45vil.example",
+            "https://0x7f.1",
+            "https://127.1",
+            "https://010.0.0.1",
+            "https://gw.example.",
+            "https://gw..example",
+            "https://evil.example;.good",
+            "https://gw.example:+80",
+            "https://" + PATH_KEY + ".example",
+        ):
+            # Labelled by a redaction, so a failure never prints the key.
+            with self.subTest(url=url.replace(PATH_KEY, "<key>")):
+                self.assertEqual("", self._claude(url))
+
+    def test_an_ordinary_base_url_is_still_named(self) -> None:
+        for url, named in (
+            ("https://gw.corp.example", "gw.corp.example"),
+            ("https://GW.corp.example:8443/v1", "gw.corp.example:8443"),
+            ("http://127.0.0.1:4000", "127.0.0.1:4000"),
+            ("https://me:pw@gw_1.corp-x.example/p?k=z#f", "gw_1.corp-x.example"),
+            ("http://[::1]:4000", "[::1]:4000"),
+        ):
+            with self.subTest(url=url):
+                self.assertEqual(named, self._claude(url))
+
+    def test_a_codex_base_url_of_any_shape_names_nothing(self) -> None:
+        for url in ("https://proxy.example\\" + PATH_KEY, "http://a\\@b", "https://gw.example"):
+            for key in ("OPENAI_BASE_URL", "OPENAI_API_BASE"):
+                with self.subTest(url=url.replace(PATH_KEY, "<key>"), key=key):
+                    named = reading_route.destination(
+                        "codex",
+                        environ={"HOME": "/home/r", "USER": "r", key: url},
+                        root=Path("/nonexistent-cargento-root"),
+                        system="Linux",
+                    )
+                    self.assertEqual("", _masked(named))
+
+    def test_the_key_reaches_neither_the_route_nor_its_to_item(self) -> None:
+        for provider, harness, environ in (
+            ("claude", "claude", {"ANTHROPIC_BASE_URL": "https://proxy.example\\" + PATH_KEY}),
+            ("codex", "codex", {"OPENAI_BASE_URL": "https://proxy.example\\" + PATH_KEY}),
+        ):
+            with self.subTest(provider=provider), named_machine(environ):
+                route = reading_route.resolve(harness, binary_resolver=_resolver({provider}))
+                self.assertEqual(provider, route["provider"])
+                published = json.dumps(route).lower()
+                self.assertEqual("", _masked(route["words_destination"]))
+                self.assertEqual("", _masked(route["destination"]))
+                self.assertFalse(PATH_KEY.lower() in published, "the key reached the route")
+                self.assertFalse("proxy.example" in published, "the route named the proxy")
+                (to,) = [part for part in route["disclosure_parts"] if part.startswith("To:")]
+                self.assertIn("which Cargento cannot name", _masked(to))
+
+
 class AClaudeCodeReaderIsToldWhatTheChecksSendBeforeThePress(unittest.TestCase):
     """The route carries the destination and the sentence that names it, on
     the harness whose record lists checks and on no other."""
@@ -586,8 +759,12 @@ class AClaudeCodeReaderIsToldWhatTheChecksSendBeforeThePress(unittest.TestCase):
                 root=Path("/nonexistent"),
             )
         self.assertEqual("OpenAI", route["destination"])
-        self.assertIn("tool output", route["tool_output"])
-        self.assertIn("to Codex, which reaches OpenAI", route["tool_output"])
+        self.assertIn("tool output", route["tool_output"].casefold())
+        # Where it goes is the `To:` item right after it (verifier ui4 V2).
+        parts = route["disclosure_parts"]
+        self.assertTrue(
+            parts[parts.index(route["tool_output"]) + 1].startswith("To: OpenAI, off this machine")
+        )
         self.assertIn("only after you allow", route["tool_output"])
         # K6: the grant sends the written paths too, so the sentence names them.
         self.assertIn("the paths of the files it wrote", route["tool_output"])
@@ -602,7 +779,9 @@ class AClaudeCodeReaderIsToldWhatTheChecksSendBeforeThePress(unittest.TestCase):
         )
         self.assertEqual("", route["destination"])
         self.assertIn("not sent", route["tool_output"])
-        self.assertIn("cannot name where Codex would send it", route["tool_output"])
+        self.assertIn("cannot name where they would go", route["tool_output"])
+        # Nor is any vendor claimed for the words (verifier ui4 C1).
+        self.assertIn("which Cargento cannot name", route["disclosure"])
 
     def test_a_harness_without_checks_carries_no_tool_output_sentence(self) -> None:
         for harness in ("codex", "pi"):
@@ -617,8 +796,204 @@ class AClaudeCodeReaderIsToldWhatTheChecksSendBeforeThePress(unittest.TestCase):
         route = reading_route.resolve("pi", binary_resolver=_resolver({"codex"}), environ={})
         self.assertNotIn("harness that publishes work evidence", route["disclosure"])
         self.assertIn(
-            "expected outcome lines are sent only when an entry sent is work", route["disclosure"]
+            "your expected outcome lines when a work result is among them", route["disclosure"]
         )
+
+
+def _named(harness: str, installed: set[str]) -> dict[str, Any]:
+    with named_platform():
+        return dict(
+            reading_route.resolve(
+                harness, binary_resolver=_resolver(installed), environ={}, root=Path("/x")
+            )
+        )
+
+
+class TheDisclosureIsAShortListThatKeepsEveryFact(unittest.TestCase):
+    """Owner, 2026-10-02: the disclosure was "long and arduous to read". It is a short list,
+    one item a line, and it still says what is sent, to whom, through what, what the Claude
+    Code CLI adds and that a reading is never a verification ([SECURITY.md], Observer model
+    calls and Claude Code reading calls)."""
+
+    ROUTES: ClassVar[dict[str, tuple[str, set[str]]]] = {
+        "codex": ("codex", {"codex"}),
+        "claude": ("claude", {"claude", "codex"}),
+        "claude-by-codex": ("claude", {"codex"}),
+        "codex-by-claude": ("codex", {"claude"}),
+    }
+
+    def test_each_item_is_short_and_the_whole_list_is_a_fraction_of_the_old_paragraph(
+        self,
+    ) -> None:
+        # Words before the 2026-10-02 ruling: 128 for a Codex session, 239 for a Claude Code
+        # session read by Claude Code, 202 for one read by Codex. The first short list was 75,
+        # 148 and 121 in 5, 7 and 6 items, and verifier ui4 V2 found the Claude Code route still
+        # repeating itself; "about five items", the owner said.
+        budgets = {
+            "codex": (4, 61),
+            "claude": (6, 120),
+            "claude-by-codex": (5, 101),
+            "codex-by-claude": (5, 98),
+        }
+        for name, (harness, installed) in self.ROUTES.items():
+            route = _named(harness, installed)
+            items, words = budgets[name]
+            with self.subTest(route=name):
+                parts = route["disclosure_parts"]
+                self.assertLessEqual(len(parts), items, parts)
+                for part in parts:
+                    self.assertLessEqual(len(part.split()), 31, part)
+                self.assertLessEqual(len(route["disclosure"].split()), words)
+
+    def test_no_item_repeats_another(self) -> None:
+        """Verifier ui4 V2: "credential shapes redacted" twice, the destination twice ("To:
+        Anthropic" and "which reaches Anthropic"), and "Claude Code reads this Claude Code
+        session." under a summary that already names Claude Code."""
+        for name, (harness, installed) in self.ROUTES.items():
+            route = _named(harness, installed)
+            text, label = route["disclosure"], route["label"]
+            with self.subTest(route=name):
+                self.assertEqual(1, text.count("redacted"), text)
+                self.assertEqual(1, text.count(route["vendor"]), text)
+                self.assertLessEqual(text.count(label), 2, text)
+                if route["reason"] == reading_route.REASON_OWN_HARNESS:
+                    self.assertNotIn(label, route["note"])
+                for mechanism in ("work evidence", "an empty temporary", "which reaches"):
+                    self.assertNotIn(mechanism, text)
+
+    def test_every_route_still_says_what_is_sent_to_whom_and_through_what(self) -> None:
+        cap = f"{reading.LEDGER_WORDS_CAP_CHARS:,} characters"
+        self.assertEqual(reading.LEDGER_WORDS_CAP_CHARS, reading_route._WORDS_CAP)
+        for name, (harness, installed) in self.ROUTES.items():
+            route = _named(harness, installed)
+            text, label = route["disclosure"], route["label"]
+            with self.subTest(route=name):
+                for fact in (
+                    "your goal",
+                    "bounded set",
+                    f"your messages up to {cap} each",
+                    "credential shapes redacted",
+                    f"To: {route['vendor']}, off this machine",
+                    f"your {label} CLI and its sign-in",
+                    "spending your capacity",
+                    "a model's account of the evidence",
+                    "never a verification that the work was done",
+                ):
+                    self.assertIn(fact, text.replace("\u2019", "'"))
+
+    def test_outcome_lines_are_named_only_where_they_can_be_sent(self) -> None:
+        # They go only beside work evidence: a check on Claude Code, which goes only with tool
+        # output, and a work result on Pi. A Codex session has neither, so its list is silent.
+        self.assertEqual(
+            set(reading.WORK_EVIDENCE_BY_HARNESS), set(reading_route.OUTCOME_HARNESSES)
+        )
+        claude = _named("claude", {"claude"})
+        self.assertIn("expected outcome lines", claude["tool_output"])
+        pi = _named("pi", {"codex"})
+        self.assertIn("expected outcome lines", pi["disclosure"])
+        self.assertIn("work result", pi["disclosure"])
+        codex = _named("codex", {"codex"})
+        self.assertNotIn("outcome", codex["disclosure"])
+
+    def test_the_tool_output_item_names_each_thing_it_sends(self) -> None:
+        for name in ("claude", "claude-by-codex"):
+            harness, installed = self.ROUTES[name]
+            route = _named(harness, installed)
+            sentence = route["tool_output"]
+            parts = route["disclosure_parts"]
+            with self.subTest(route=name):
+                for fact in (
+                    "only after you allow it",
+                    "command",
+                    "result",
+                    f"last {reading_route.TOOL_OUTPUT_TAIL_CHARS} characters of output",
+                    "the paths of the files it wrote",
+                    "as printed",
+                ):
+                    self.assertIn(fact, sentence)
+                # Where it goes is the `To:` item right after it, said once for everything.
+                self.assertTrue(parts[parts.index(sentence) + 1].startswith("To: "), parts)
+
+
+class TheToItemNamesWhereTheWordsGoAsConfigured(unittest.TestCase):
+    """Verifier ui4 C1: the `To:` item named the vendor whatever the daemon's environment said,
+    so under Bedrock, a base URL or a unix socket the reader allowed Anthropic and the goal and
+    their messages went elsewhere. The environment decides the endpoint (SECURITY.md, Claude
+    Code reading calls), so the item says what `destination` says: the endpoint where it is
+    named, and plainly that Cargento cannot name it where it is not."""
+
+    def setUp(self) -> None:
+        self.root = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.root, True)
+
+    def _to(self, harness: str, installed: set[str], environ: dict[str, str]) -> tuple[str, str]:
+        with named_platform():
+            route = reading_route.resolve(
+                harness,
+                binary_resolver=_resolver(installed),
+                environ={"HOME": "/Users/r", "USER": "r", **environ},
+                root=self.root,
+            )
+        items = [part for part in route["disclosure_parts"] if part.startswith("To: ")]
+        self.assertEqual(1, len(items), route["disclosure_parts"])
+        return items[0], route["disclosure"]
+
+    def test_with_no_endpoint_setting_the_item_names_the_vendor_off_this_machine(self) -> None:
+        for harness, installed in (("claude", {"claude"}), ("codex", {"codex"})):
+            vendor = reading_route.VENDORS[harness]
+            with self.subTest(harness=harness):
+                item, _text = self._to(harness, installed, {})
+                self.assertTrue(item.startswith(f"To: {vendor}, off this machine"), item)
+
+    def test_a_cloud_or_a_base_url_is_named_in_place_of_anthropic(self) -> None:
+        # Pi as well as Claude Code: the words go there on a harness with no checks too.
+        for harness in ("claude", "pi"):
+            for environ, named in (
+                ({"CLAUDE_CODE_USE_BEDROCK": "1"}, "To: Amazon Bedrock, off this machine"),
+                ({"CLAUDE_CODE_USE_VERTEX": "1"}, "To: Google Vertex AI, off this machine"),
+                ({"ANTHROPIC_BASE_URL": "https://proxy.example:8443"}, "To: proxy.example:8443,"),
+            ):
+                with self.subTest(harness=harness, environ=environ):
+                    item, text = self._to(harness, {"claude"}, environ)
+                    self.assertTrue(item.startswith(named), item)
+                    self.assertNotIn("Anthropic", text)
+
+    def test_a_base_url_is_not_said_to_be_off_this_machine(self) -> None:
+        # It may be a local gateway; the build names the host and no more.
+        item, _text = self._to(
+            "claude", {"claude"}, {"ANTHROPIC_BASE_URL": "http://127.0.0.1:4000"}
+        )
+        self.assertTrue(item.startswith("To: 127.0.0.1:4000,"), item)
+        self.assertNotIn("off this machine", item)
+
+    def test_an_endpoint_that_cannot_be_named_is_said_plainly_and_no_vendor_is_claimed(
+        self,
+    ) -> None:
+        for harness, installed, environ, label in (
+            ("claude", {"claude"}, {"ANTHROPIC_UNIX_SOCKET": "/tmp/s"}, "Claude Code"),
+            ("pi", {"claude"}, {"ANTHROPIC_UNIX_SOCKET": "/tmp/s"}, "Claude Code"),
+            ("codex", {"codex"}, {"OPENAI_BASE_URL": "https://gw.example"}, "Codex"),
+            ("pi", {"codex"}, {"OPENAI_BASE_URL": "https://gw.example"}, "Codex"),
+        ):
+            with self.subTest(harness=harness, environ=environ):
+                item, text = self._to(harness, installed, environ)
+                self.assertTrue(
+                    item.startswith(
+                        f"To: wherever your {label} settings send it, which Cargento cannot name"
+                    ),
+                    item,
+                )
+                self.assertNotIn("off this machine", item)
+                self.assertNotIn("Anthropic", text)
+                self.assertNotIn("OpenAI", text)
+
+    def test_on_windows_no_endpoint_is_named_so_none_is_claimed(self) -> None:
+        with mock.patch.object(platform, "system", return_value="Windows"):
+            route = reading_route.resolve(
+                "codex", binary_resolver=_resolver({"codex"}), environ={}, root=self.root
+            )
+        self.assertIn("which Cargento cannot name", route["disclosure"])
+        self.assertNotIn("OpenAI", route["disclosure"])
 
 
 class TheSentencesReadAsSentences(unittest.TestCase):
@@ -633,3 +1008,58 @@ class TheSentencesReadAsSentences(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class EveryRouteNamesWhereTheWordsGo(unittest.TestCase):
+    """The Allow for the reader's words is bound to where they go (owner, 2026-10-02).
+
+    `destination` is "" off a harness with checks, because it is where tool
+    output goes. The words go somewhere on every route, so the route names that
+    too, from the same `reading_route.destination` the policy is handed.
+    """
+
+    def setUp(self) -> None:
+        self.root = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.root, True)
+
+    def _route(self, harness: str, installed: set[str], environ: dict[str, str]) -> Any:
+        with (
+            named_platform(),
+            mock.patch.object(
+                annotation_store,
+                "CLAUDE_ABSTENTION_CHECK",
+                annotation_store.ABSTENTION_CHECK_PASSED,
+            ),
+        ):
+            return reading_route.resolve(
+                harness,
+                binary_resolver=_resolver(installed),
+                environ={"HOME": "/Users/r", "USER": "r", **environ},
+                root=self.root,
+            )
+
+    def test_each_route_names_the_destination_its_words_reach(self) -> None:
+        for harness, installed, environ, expected in (
+            ("claude", {"claude"}, {}, "Anthropic"),
+            (
+                "pi",
+                {"claude"},
+                {"ANTHROPIC_BASE_URL": "https://gw.corp.example"},
+                "gw.corp.example",
+            ),
+            ("codex", {"claude"}, {"CLAUDE_CODE_USE_BEDROCK": "1"}, "Amazon Bedrock"),
+            ("pi", {"codex"}, {}, "OpenAI"),
+            ("pi", {"claude"}, {"ANTHROPIC_UNIX_SOCKET": "/tmp/s"}, ""),
+            ("pi", set(), {}, ""),
+        ):
+            with self.subTest(harness=harness, installed=installed, environ=environ):
+                route = self._route(harness, installed, environ)
+                self.assertEqual(expected, route["words_destination"])
+
+    def test_the_policy_is_handed_the_same_destination_the_route_names(self) -> None:
+        environ = {"HOME": "/Users/r", "USER": "r", "ANTHROPIC_BASE_URL": "https://gw.example"}
+        with named_platform():
+            today = reading_route.destinations(environ=environ, root=self.root)
+        self.assertEqual({"codex": "OpenAI", "claude": "gw.example"}, today)
+        route = self._route("pi", {"claude"}, {"ANTHROPIC_BASE_URL": "https://gw.example"})
+        self.assertEqual(today["claude"], route["words_destination"])

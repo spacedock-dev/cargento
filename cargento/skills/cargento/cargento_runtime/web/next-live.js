@@ -14,6 +14,23 @@ let nextStreamSource = null;
 let nextIsLeader = false;
 let nextLastRevision = null;
 
+/* Whether wire revision `a` ("<started>.<counter>") is newer than `b`. A
+   different start stamp is a restart and always newer (`snapshot.py`), so a
+   tab that outlived its server does not ignore the new one. */
+function nextRevisionNewer(a, b){
+  if(!a) return false;
+  if(!b) return true;
+  const split = value => {
+    const at = String(value).lastIndexOf(".");
+    return at < 0 ? [String(value), NaN] : [String(value).slice(0, at), Number(String(value).slice(at + 1))];
+  };
+  const [startedA, counterA] = split(a);
+  const [startedB, counterB] = split(b);
+  if(startedA !== startedB) return true;
+  if(!Number.isFinite(counterA) || !Number.isFinite(counterB)) return a !== b;
+  return counterA > counterB;
+}
+
 function nextReadLease(){
   try{ return JSON.parse(localStorage.getItem(NEXT_LEADER_KEY)) || null; }
   catch(_error){ return null; }
@@ -60,10 +77,10 @@ function nextOpenStream(){
   });
   nextStreamSource.addEventListener("revision", event => {
     const revision = String(event && event.data || "");
-    if(!revision || revision === nextLastRevision) return;
+    if(!revision || !nextRevisionNewer(revision, nextLastRevision)) return;
     nextLastRevision = revision;
     try{ localStorage.setItem(NEXT_REVISION_KEY, revision); }catch(_error){ /* no storage */ }
-    refreshNext();
+    nextRefreshWake(revision);
   });
 }
 
@@ -86,17 +103,17 @@ function nextStartLive(){
   window.addEventListener("storage", event => {
     if(!event || event.key !== NEXT_REVISION_KEY) return;
     const revision = String(event.newValue || "");
-    if(!revision || revision === nextLastRevision) return;
+    if(!revision || !nextRevisionNewer(revision, nextLastRevision)) return;
     nextLastRevision = revision;
-    refreshNext();
+    nextRefreshWake(revision);
   });
 
   renderNext();
-  refreshNext();
+  nextRefreshPoll();
   nextElectLeader();
   setInterval(nextElectLeader, NEXT_LEASE_RENEW_MS);
   setInterval(
-    refreshNext,
+    nextRefreshPoll,
     NEXT_LIVE_SUPPORTED ? NEXT_FALLBACK_POLL_MS : NEXT_UNCOORDINATED_POLL_MS,
   );
 }

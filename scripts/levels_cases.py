@@ -886,8 +886,9 @@ DEFAULT_READ = (
     "d68d3f6a32182ba0",
     "0dd3ae7c558bf2cf",
 )
-# The route the owner named: Codex, which is the board's route for a Claude
-# Code session on this machine (`fallback-not-qualified`), to OpenAI.
+# The route the owner named: Codex, to OpenAI, which was the board's route for
+# a Claude Code session here (`fallback-not-qualified`) until the owner accepted
+# the Claude Code producer on 2026-10-02. Pinned, so that acceptance moves nothing.
 READ_PROVIDER = "codex"
 # When the intent counts as typed: before every record, as DRC-4666's replay
 # stamps its own (`mark_abstention.INTENT_AT`). The owner marked each line
@@ -1169,7 +1170,10 @@ def read_cases(  # noqa: PLR0913 - one keyword per thing a replay is bound to
     held = dict(_load(paths["replayed"]).get("readings") or {})
     record = dict(_load(paths["replay"]).get("cases") or {})
     plan = _plan(chosen, every, held, record, reading_config, clock, say)
-    answer = reading_policy.status(reading_config, now=clock(), provider=READ_PROVIDER)
+    # Covered only by an Allow given for where these calls go (owner, 2026-10-02).
+    answer = reading_policy.status(
+        reading_config, now=clock(), provider=READ_PROVIDER, destinations={READ_PROVIDER: where}
+    )
     press = _Press(
         where, reading_policy.tool_output_allowed(answer, READ_PROVIDER, where), reading_config
     )
@@ -1346,6 +1350,7 @@ def _read_group(
         model if model is not None else reading.CodexReadingModel(press.config),
         clock,
         provider=READ_PROVIDER,
+        destination=press.where,
         on_reserved=on_reserved,
         before_reserve=before_reserve,
     )

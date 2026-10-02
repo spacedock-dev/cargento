@@ -204,58 +204,184 @@ document.addEventListener("blur", event => {
   if(event.target && event.target.tagName === "SELECT") nextRunDeferredRender();
 }, true);
 
+/* A disclosure eases for --disclose-dur (200ms). A background paint landing
+   inside that window replaces the node with one already open, so the motion
+   snaps halfway: measured in headless Chrome 156, where the project-context
+   paint lands about 100ms after each poll. A background paint therefore waits
+   out the reader's own toggle, coalesced to the newest; a paint that follows a
+   reader's action never waits, and reduced motion holds nothing. */
+const NEXT_DISCLOSURE_MOTION_MS = 220;
+let nextDisclosureMotionUntil = 0;
+let nextHeldPaint = null;
+
+document.addEventListener("click", event => {
+  const summary = event.target && event.target.closest ? event.target.closest("summary") : null;
+  if(!summary || summary.tagName !== "SUMMARY" || !summary.closest("[data-next-view-body]")) return;
+  const reduce = typeof window.matchMedia === "function" &&
+    window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  if(!reduce) nextDisclosureMotionUntil = performance.now() + NEXT_DISCLOSURE_MOTION_MS;
+}, true);
+
+function nextPaintAfterMotion(paint){
+  const wait = nextDisclosureMotionUntil - performance.now();
+  if(wait <= 0 && !nextHeldPaint){ paint(); return; }
+  if(nextHeldPaint){ nextHeldPaint.paint = paint; return; }
+  nextHeldPaint = {paint};
+  setTimeout(() => {
+    const held = nextHeldPaint;
+    nextHeldPaint = null;
+    if(held) held.paint();
+  }, Math.max(0, wait));
+}
+
+/* A save drew four GETs and painted on each (owner, 2026-10-02). Three kinds
+   of call now. `refreshNext` is a reader's or a write's, and `nextRefreshPoll`
+   the boot's and the fallback poll's: each fetches at once and supersedes a
+   fetch already out, whose answer is dropped, so a hung GET can never hold the
+   board past the next poll. `nextRefreshWake` is the stream's and another
+   tab's: it joins a fetch a write or a wake has out by queueing one more, and
+   an answer that arrives with a run queued is dropped for it, never painted.
+   A wake supersedes a poll's fetch, so a slow poll never delays the news. Either way an awaited `refreshNext()` resolves only
+   after a fetch that STARTED AFTER THE CALL has painted: a superseded or
+   dropped run hands its waiters on. A manual refresh still paints over an
+   open list, and the `nextChoiceIsOpen` deferral is unchanged. */
+let nextRefreshActive = null;
+let nextRefreshWanted = null;
+
 async function refreshNext(manual = false){
   if(manual && nextRefreshInFlight) return;
-  const request = ++nextRefreshRequest;
+  await new Promise(resolve => nextRefreshStart(manual, [resolve]));
+}
+
+function nextRefreshPoll(){
+  return new Promise(resolve => nextRefreshStart(false, [resolve], "poll"));
+}
+
+/* `revision` is the one the wake announced, so a fetch already out whose
+   answer carries it covers the wake and is painted rather than dropped. */
+function nextRefreshWake(revision = ""){
+  if(!nextRefreshActive || nextRefreshActive.kind === "poll"){
+    nextRefreshStart(false, [], "wake");
+    return;
+  }
+  if(!nextRefreshWanted) nextRefreshWanted = {manual: false, waiters: [], revision: ""};
+  if(revision && nextRevisionNewer(revision, nextRefreshWanted.revision)){
+    nextRefreshWanted.revision = revision;
+  }
+}
+
+function nextRefreshStart(manual, waiters, kind = "call"){
+  const run = {request: ++nextRefreshRequest, manual, waiters, kind};
+  if(nextRefreshActive){
+    run.waiters.push(...nextRefreshActive.waiters);
+    nextRefreshActive.waiters = [];
+  }
+  if(nextRefreshWanted){
+    // This run starts after every wake that queued one, so it answers them.
+    run.waiters.push(...nextRefreshWanted.waiters);
+    nextRefreshWanted = null;
+  }
+  nextRefreshActive = run;
+  nextRefreshOnce(run).then(painted => {
+    if(painted) for(const done of run.waiters.splice(0)) done();
+    if(nextRefreshActive !== run) return;
+    nextRefreshActive = null;
+    const wanted = nextRefreshWanted;
+    if(wanted || run.waiters.length){
+      nextRefreshWanted = null;
+      nextRefreshStart(wanted ? wanted.manual : false,
+        [...run.waiters.splice(0), ...(wanted ? wanted.waiters : [])], "wake");
+    }
+  });
+}
+
+// The revision a response carries, for a stub with no headers too.
+function nextResponseRevision(response){
+  const headers = response && response.headers;
+  if(!headers || typeof headers.get !== "function") return "";
+  return String(headers.get("X-Cargento-Revision") || "");
+}
+
+/* One fetch for `run`. Resolves true once its answer is painted (or deferred
+   behind an open list), false when it was superseded or dropped for a queued
+   run, whose caller hands the waiters on. */
+async function nextRefreshOnce(run){
+  const manual = run.manual;
+  const request = run.request;
   let focus;
   let announcement = "";
   if(manual){
     nextRefreshInFlight = true;
     renderNext();
   }
+  const stale = () => nextRefreshActive !== run || Boolean(nextRefreshWanted);
   try{
     const response = await fetch(nextDataUrl());
     if(!response.ok) throw new Error(`HTTP ${response.status}`);
     const fresh = await response.json();
-    if(request !== nextRefreshRequest) return;
+    /* The revision this body was published at, so a stream announcement of
+       one this tab already holds fetches nothing. A GET never broadcasts it:
+       only the stream's own announcement is written to the key. */
+    const revision = nextResponseRevision(response);
+    /* A wake queued for a revision this answer already carries is answered by
+       it: the wake's announcement and this body are one collection. */
+    const wanted = nextRefreshWanted;
+    if(nextRefreshActive === run && wanted && wanted.revision && revision &&
+        !nextRevisionNewer(wanted.revision, revision)){
+      run.waiters.push(...wanted.waiters);
+      nextRefreshWanted = null;
+    }
+    // Superseded, or dropped for the queued run, which fetches again: painting
+    // it is a paint the reader sees replaced at once.
+    if(stale()) return false;
+    if(revision && nextRevisionNewer(revision, nextLastRevision)) nextLastRevision = revision;
     const freshAttention = nextAttentionModel(fresh);
     nextSyncNotifications(fresh);
     nextObserveWorkstream(fresh);
     focus = nextCaptureFocus();
     const previousAttention = nextData == null ? null : nextAttention;
     nextIntentSync(fresh);
+    nextNoteBuild(fresh);
     nextData = fresh;
     nextAttention = freshAttention;
     announcement = nextAttentionAnnouncement(previousAttention, freshAttention);
     nextRefreshFailures = 0;
     nextLastRefreshSuccessAt = Date.now();
   }catch(_error){
+    if(stale()) return false;
     if(request === nextRefreshRequest) nextRefreshFailures += 1;
   }finally{
     if(manual) nextRefreshInFlight = false;
-    if(request !== nextRefreshRequest) return;
-    // A manual refresh is the reader asking, so it paints even over an open
-    // list: they pressed the thing that redraws.
-    if(!manual && nextChoiceIsOpen()){
-      if(nextDeferredRenderCount < NEXT_MAX_DEFERRED_RENDERS){
-        nextDeferredRenderCount += 1;
-        // Keep the newest payload's focus and announcement, not the first
-        // deferral's: the render that eventually runs is drawing this data.
-        nextDeferredRender = {focus, announcement};
-        return;
-      }
-      /* Past the cap the board paints again, and the count is NOT reset while
-         the list still holds focus. Resetting here re-arms the cap, so the
-         board would repaint once every thirteen polls instead of resuming:
-         caught by test_a_list_left_focused_cannot_freeze_the_board, which saw
-         one paint where it expected two. The count is cleared only when the
-         interaction genuinely ends, in nextRunDeferredRender or below. */
-      nextDeferredRender = null;
-    }else{
-      nextDeferredRender = null;
-      nextDeferredRenderCount = 0;
-    }
-    renderNext(focus);
-    nextAnnounceAttention(announcement);
   }
+  // A manual refresh is the reader asking, so it paints even over an open
+  // list: they pressed the thing that redraws.
+  if(!manual && nextChoiceIsOpen()){
+    if(nextDeferredRenderCount < NEXT_MAX_DEFERRED_RENDERS){
+      nextDeferredRenderCount += 1;
+      // Keep the newest payload's focus and announcement, not the first
+      // deferral's: the render that eventually runs is drawing this data.
+      nextDeferredRender = {focus, announcement};
+      return true;
+    }
+    /* Past the cap the board paints again, and the count is NOT reset while
+       the list still holds focus. Resetting here re-arms the cap, so the
+       board would repaint once every thirteen polls instead of resuming:
+       caught by test_a_list_left_focused_cannot_freeze_the_board, which saw
+       one paint where it expected two. The count is cleared only when the
+       interaction genuinely ends, in nextRunDeferredRender or below. */
+    nextDeferredRender = null;
+  }else{
+    nextDeferredRender = null;
+    nextDeferredRenderCount = 0;
+  }
+  // Resolved when the paint has run, which a reader's own toggle can hold.
+  await new Promise(done => nextPaintAfterMotion(() => {
+    try{
+      renderNext(focus);
+      nextAnnounceAttention(announcement);
+    }finally{
+      done();
+    }
+  }));
+  return true;
 }

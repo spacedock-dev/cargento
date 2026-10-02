@@ -127,8 +127,10 @@ boundary in part on 2026-09-02 rather than confirming it, and SECURITY.md is whe
 is drawn.
 An ETA is an estimate, and it says so.
 
-Your words are yours. The accepted case review enables you to ask for a model reading against
-them after you allow it on the session page, unless model calls are off for this run. The reading
+Your words are yours. You can ask for a model reading against them after you allow it on the
+session page, unless model calls are off for this run. Claude Code reads a Claude Code session when
+it is installed, and Codex reads it when not; both are enabled by an acceptance, not by a passed
+check: the captain's of Codex on 2026-09-14 and the owner's of Claude Code on 2026-10-02. The reading
 states the evidence it read and its limits;
 the evidence remains readable beside your words without asking for one.
 Demonstrated work results are read on Pi, which the work evidence states under itself rather
@@ -183,7 +185,9 @@ Cargento can now check a session against your words while you are away and raise
 without being asked, which is off by default and the only thing here that spends your model capacity
 with nobody watching. Where it stops is the part worth reading: it raises a departure and never a
 reassurance, because an unasked "this looks fine" is the output the evidence-floor ruling called
-most damaging and it is worth nothing to someone who is not at the desk. It stops at a per-session
+most damaging and it is worth nothing to someone who is not at the desk. It sends a check only
+under your Codex "Allow and analyze" for where the words go now, so it never sends where a press
+would ask you first. It stops at a per-session
 and a per-day limit, and a spent limit is stated rather than passed over, because a session nobody
 checked and a session checked and found clean are the two things you cannot tell apart from an empty
 board. The sentence is about your words rather than about the machine's history, so a check whose
@@ -279,7 +283,8 @@ Where it stops: nothing reads your words for you at the end. The two axes say wh
 claims it finished, drawn separately because neither implies the other, and the comparison against
 what you asked for is yours to make. You can allow a model reading from the session page unless
 model calls are off for this run;
-the accepted case review enables that control. A reading is an account of the evidence, never
+an acceptance of each provider's checks enables that control (the captain's of Codex, the owner's of
+Claude Code). A reading is an account of the evidence, never
 verification that the work was done. The words are kept under a
 session count rather than a date, so an old enough annotation is evicted rather than expired. The
 `clear` beside each box is not the discard: it empties the box, and the save after it keeps every

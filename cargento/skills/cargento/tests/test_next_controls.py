@@ -135,7 +135,7 @@ console.log(JSON.stringify({html, route: nextRoute}));
         self.assertIn("Approve &lt;release&gt;", out["html"])
         self.assertIn("Ship now?", out["html"])
         self.assertIn("1 of 2", out["html"])
-        self.assertIn("COPY ID", out["html"])
+        self.assertIn("Copy ID", out["html"])
         self.assertNotIn("data-next-raise-session", out["html"])
         self.assertEqual("session", out["route"]["view"])
         self.assertEqual("one", out["route"]["session"])

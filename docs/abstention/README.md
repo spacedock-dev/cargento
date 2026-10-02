@@ -38,6 +38,16 @@ reading Claude Code sessions and the page says so before the press. The
 [amendment](../design-reading-a-session.md#amended-2026-09-23-claude-code-is-built-and-gated) owns
 that ruling.
 
+On 2026-10-02 the owner accepted the Claude Code producer anyway, knowing every scored run above
+failed, and `annotations.CLAUDE_ABSTENTION_CHECK` is now `accepted`, never `passed`; the paragraph
+above describes the gate as it stood before that day. [claude-acceptance.json](claude-acceptance.json)
+records the decision and lists each scored run with its own verdict (`failed` for all four), its
+digests, counts and spend, which a test reads back from the result files. Nothing in this directory
+was rewritten, rescored or deleted to make room for it. Claude Code now reads a Claude Code session
+when `claude` is on PATH, and Codex reads it when not; the
+[amendment](../design-reading-a-session.md#amended-2026-10-02-claude-code-is-accepted)
+owns that ruling.
+
 ## What lives here
 
 `results.json` for the Codex producer and `claude-results.json` for Claude Code, once a scoring

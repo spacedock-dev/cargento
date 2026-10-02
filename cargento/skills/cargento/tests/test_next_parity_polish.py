@@ -38,7 +38,7 @@ from .test_next_intent_draft import (
 
 SETTLED = TYPED + "__s.annotation_settled_through = 104; __s.annotation_settled_at = 104;\n"
 DOM = cockpit_tests.CockpitCuesReachTheReaderTest.ANNOUNCER_DOM
-FINISHED = "The analysis finished. Its reading is in the Reading section."
+FINISHED = "The analysis finished. Its result is in the Drift section."
 READ_FIRST = (
     "Nothing was settled yet. Each direction Keep settles is now shown whole. Read it, then "
     "press again."

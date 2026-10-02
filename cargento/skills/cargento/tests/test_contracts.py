@@ -1373,6 +1373,9 @@ class RuntimeImportGraphTest(unittest.TestCase):
         # this stays inward.
         "cargento_runtime.aggregate": {
             "cargento_runtime.reading_policy",
+            # The served page's build, so an open tab can tell it is stale
+            # (regressions major 1, ui5).
+            "cargento_runtime.web",
             # Attaches each row's recognised copied corrections (DRC-4678).
             "cargento_runtime.copied_corrections",
             # Publishes who reads each harness's sessions (DRC-4650).
@@ -1452,6 +1455,10 @@ class RuntimeImportGraphTest(unittest.TestCase):
             "cargento_runtime.notifications",
             "cargento_runtime.project_context",
             "cargento_runtime.reading",
+            # The Allow binding a press reads, asked before each send, so the
+            # lane never sends where a press would ask again (consent F5, ui5).
+            "cargento_runtime.reading_policy",
+            "cargento_runtime.reading_route",
             "cargento_runtime.state",
         },
         # The CLI is the assembly point, so it may import any runtime module.
@@ -1732,10 +1739,12 @@ class RuntimeImportGraphTest(unittest.TestCase):
         # the kill guard it holds depends on nothing in the runtime.
         "cargento_runtime.supervise": set(),
         # Who reads a session: each provider's gate, then its CLI on PATH. It
-        # reaches the model ids in `observer` and never a producer.
+        # reaches the model ids in `observer` and never a producer, and the
+        # credential shapes in `records`, so no key is ever named as a host.
         "cargento_runtime.reading_route": {
             "cargento_runtime.annotations",
             "cargento_runtime.observer",
+            "cargento_runtime.records",
         },
         "cargento_runtime.observer": {
             "cargento_runtime.config",

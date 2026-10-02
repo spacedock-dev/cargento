@@ -42,7 +42,7 @@ import time
 from typing import TYPE_CHECKING, Any
 
 from . import annotations as annotation_store
-from . import departures, notifications
+from . import departures, notifications, reading_policy, reading_route
 from . import io as runtime_io
 from . import project_context as runtime_project_context
 from . import reading as runtime_reading
@@ -63,6 +63,54 @@ LANE = "departure"
 # sentence that reports a spent day cap is chosen there and read by three
 # surfaces. Re-exported under the old name, which the lane and its tests use.
 DAY_SEC = departures.DAY_SEC
+
+
+# What the lane records when it skips a send the reader's Allow does not
+# cover (consent F5, ui5). A diagnostic line rather than a check row: nothing
+# was spent, so nothing counts against the caps, and the board already says
+# the session was not checked.
+UNCOVERED = (
+    "was not sent, because no Allow for Codex covers where its words would go now; "
+    "a press on that session asks first"
+)
+
+
+class UncoveredError(Exception):
+    """A send the reader's Allow does not cover, refused before the call."""
+
+
+class _Bound:
+    """The lane's Codex model, sending only where a press would not ask again.
+
+    The lane spends the reader's words with nobody at the desk, so it may send
+    only what a press would send without a new Allow: the same binding, from
+    the same `reading_route.destination` the board and the press read, asked
+    at the seam before each call. No charge is made against the reading
+    budget; the lane's own caps bound it, as before.
+    """
+
+    def __init__(
+        self,
+        config: RuntimeConfig,
+        model: Callable[..., tuple[str, str]],
+        clock: Callable[[], float],
+    ) -> None:
+        self.config = config
+        self.model = model
+        self.clock = clock
+        self.unavailable_reason: str | None = getattr(model, "unavailable_reason", None)
+
+    def __call__(self, prompt: str, *, output_cap_bytes: int) -> tuple[str, str]:
+        where = reading_route.destination(reading_route.CODEX)
+        answer = reading_policy.status(
+            self.config,
+            now=self.clock(),
+            provider=reading_route.CODEX,
+            destinations={reading_route.CODEX: where},
+        )
+        if not answer["providers"].get(reading_route.CODEX, False):
+            raise UncoveredError
+        return self.model(prompt, output_cap_bytes=output_cap_bytes)
 
 
 def _spawn(work: Callable[[], None]) -> None:
@@ -281,6 +329,10 @@ class Lane:
         """One reading, off the collection thread, and the raise it may earn."""
         try:
             self._read_and_raise(state, row, entry, now)
+        except UncoveredError:
+            runtime_io.diag(
+                f"Cargento: an unasked check of {key} {UNCOVERED}.", self.diagnostic_sink
+            )
         except Exception as exc:  # noqa: BLE001 (a bad reading must not kill the lane)
             runtime_io.diag(
                 f"Cargento: unasked reading failed for {key}: {exc}", self.diagnostic_sink
@@ -302,7 +354,7 @@ class Lane:
             self.facts_for(state, row, now),
             now=now,
             stamp_text=f"unasked check at {time.strftime('%H:%M', time.localtime(now))}",
-            model=runtime_reading.CodexReadingModel(self.config),
+            model=_Bound(self.config, runtime_reading.CodexReadingModel(self.config), self.clock),
         )
         if assessment is None:
             # A withheld reading spent nothing: `produce` refuses before the

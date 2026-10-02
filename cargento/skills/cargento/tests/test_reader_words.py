@@ -347,12 +347,9 @@ class TheReadersWordsNeverCostAVerdictItsEvidenceTest(unittest.TestCase):
         for provider in (reading_route.CODEX, reading_route.CLAUDE):
             with self.subTest(provider=provider):
                 text = reading_route._base_disclosure(provider)
-                self.assertIn(
-                    f"your own messages in that record in full, up to {cap} each, "
-                    "with credential shapes redacted; where the record is too long for that, "
-                    "your oldest messages go by their first sentence",
-                    text,
-                )
+                # The list drops how a long record shortens the oldest (owner, 2026-10-02):
+                # it sends less, and a reader deciding needs the cap, not the mechanism.
+                self.assertIn(f"your messages up to {cap} each", text)
 
     def test_a_short_session_sends_every_message_whole(self) -> None:
         prompt, _ = self.prompt([_fact(), _check(), _write()])
@@ -515,6 +512,9 @@ class TheWordsAreNeitherStoredNorPublishedTest(_Collected):
 
     def test_no_store_on_disk_holds_the_words_after_an_unasked_reading(self) -> None:
         self.annotate()
+        # The lane sends only under a Codex Allow for today's destination
+        # (consent F5, ui5); `model()` names none, so the Allow is given for "".
+        reading_policy.set_consent(self.config, True, now=1_000.0, provider="codex", destination="")
         lane = unasked.Lane(
             self.config,
             popup_notifier=lambda _t, _m: None,
@@ -578,7 +578,12 @@ CONTEXT_READERS = {
     "_typed_window_start": "a window start, a number",
     "_later_direction": "a time and one message's text from `direction_text`, bounded on its own",
     "_correction": "Steer back's parts, from the reader's saved lines and fact ids",
+    "_chosen_prompt": "one `prompt_choices` entry, bounded at the goal's cap, adopted, not answered",
 }
+# The one published carrier of a reader message's words, by the owner's ruling Q7 of
+# 2026-10-01: up to five prompts, each clipped to the goal's 240-character cap, on the
+# focused project context only. Everything else on every route stays word-free.
+PROMPT_CHOICE_CAP = 240
 
 
 class EveryPageRouteDropsTheWordsTest(_Collected):
@@ -609,8 +614,35 @@ class EveryPageRouteDropsTheWordsTest(_Collected):
             for route, path in GET_ROUTES.items():
                 with self.subTest(route=route):
                     _status, body = self.request(port, "GET", path)
-                    self.assertNotIn(SENTINEL.encode(), body)
                     self.assertNotIn(FIELD.encode(), body)
+                    if route == "/api/project-context":
+                        body = self._without_prompt_choices(body)
+                    self.assertNotIn(SENTINEL.encode(), body)
+
+    def _without_prompt_choices(self, body: bytes) -> bytes:
+        """The focused context with its one reviewed carrier taken out, after checking it."""
+        context = json.loads(body)
+        choices = context.pop("prompt_choices")
+        self.assertEqual([SENTINEL], [choice["text"] for choice in choices])
+        for choice in choices:
+            self.assertLessEqual(len(choice["text"]), PROMPT_CHOICE_CAP)
+            self.assertSetEqual({"fact_id", "at", "text", "cut"}, set(choice))
+        return json.dumps(context).encode()
+
+    def test_a_long_message_reaches_the_page_only_as_a_bounded_choice(self) -> None:
+        long = SENTINEL + " " + "x" * 900 + " TAIL-PAST-THE-CAP"
+
+        def context(*_a: Any, **_k: Any) -> dict[str, Any]:
+            built = self.context()
+            built["semantic"]["facts"][0][FIELD] = long
+            return built
+
+        with mock.patch.object(project_context, "collect", context), self.serving() as port:
+            _status, body = self.request(port, "GET", GET_ROUTES["/api/project-context"])
+        self.assertNotIn(b"TAIL-PAST-THE-CAP", body)
+        (choice,) = json.loads(body)["prompt_choices"]
+        self.assertTrue(choice["cut"])
+        self.assertLessEqual(len(choice["text"]), PROMPT_CHOICE_CAP)
 
     def test_every_handler_reading_a_context_is_one_reviewed(self) -> None:
         readers = set()

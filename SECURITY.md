@@ -955,7 +955,8 @@ question and consume a little of the operator's own capacity doing it.
 
 The observer model is the first implementation of this pathway, deriving a session's goal line, and
 the reading lane is the second, reading a session against the words the reader saved against it.
-The Claude Code reading producer is the third: built, and gated off until its own check has run.
+The Claude Code reading producer is the third: built behind its own gate, which the owner's
+acceptance opened on 2026-10-02 without a passing check.
 Each has its own entry below naming what it sends, what it asks, and what it caps. Future harness
 callers need their own entry.
 
@@ -1038,6 +1039,36 @@ bounds requests through the HTTP route, not a hostile owner editing their own fi
 
 The answer is kept per provider (DRC-4650). Allowing Codex to send a reader's words to OpenAI does
 not allow Claude Code to send them to Anthropic, so each provider needs its own "Allow and analyze".
+An Allow given for a provider covers every session routed to that provider (owner, 2026-10-02): a
+Codex, Pi or other session that falls back to Claude Code on a machine without `codex` runs under a
+Claude Code Allow with no second consent step, and that route's disclosure is in the session's
+"What is sent to Claude Code" popover before the press.
+
+The answer is bound to where the words go (owner, 2026-10-02,
+[the amendment](docs/design-reading-a-session.md#amended-2026-10-02-owner-the-allow-is-bound-to-where-the-words-go)).
+An Allow records the destination `reading_route.destination` named in the disclosure it answered,
+and covers a press only while that provider's destination is exactly that one; an unnamed
+destination is a value of its own. A change is detected where a named destination moves: a daemon
+restarted under a new base URL host or a cloud switch, where Anthropic or OpenAI was named before,
+asks again before anything is sent, with the server's line saying where the words go has changed.
+A change is not detected while the destination is unnamed, because two endpoints that cannot be
+named are both `""`: an Allow given then keeps covering every endpoint it cannot name. That is
+every destination on Windows, where nothing is named, and every Codex base URL, since a set
+`OPENAI_BASE_URL` or `OPENAI_API_BASE` names nothing, so a move from one Codex base URL to another
+asks nothing. The disclosure said as much when the Allow was given. The board's published
+`providers`, the press check and the job's reservation decide it from the same resolver, and the
+job asks it again at the reservation: a destination that moved after the press was admitted
+refuses the job `destination-changed` before anything is spent or sent. The CLI reads its own
+settings again when it starts, so a change landing between the reservation and that start is not
+caught. An Allow whose disclosure
+named a destination that is no longer today's is refused `409 destination-changed` and records
+nothing. An Allow that names no destination at all, which a tab left open across the upgrade sends,
+is refused `400 page-outdated` with a route that tells that page to reload, and records nothing: it
+never binds.
+The binding lives in its own table, `permission_destination`, so a row saved before it records no
+destination and covers no press: each reader is asked once more, and nothing else in the store
+changes. "Turn off readings", `--forget` and an older build's Turn off clear every recorded
+destination, and a refusal holds whatever the destination is.
 An answer saved before the split reads as the Codex answer it was. "Turn off readings" and
 `--forget` revoke every provider at once. So does an older build's Turn off, which knows only the
 legacy Codex row: triggers in the store's own schema clear every other provider's answer and every
@@ -1067,9 +1098,9 @@ Goal summaries are off unless `--observer-model` was supplied and their disclosu
 own authentication to reach OpenAI. `reading.CodexReadingModel` is the second caller and goes
 through the same `observer.codex_exec`, so the two share one set of sandbox flags rather than two
 that could drift. These are the paths that can send session content off the
-machine. On this build a reading of a Claude Code session is still made by Codex, because the Claude
-Code producer is gated: it spends the operator's Codex capacity and sends that session's evidence
-to OpenAI, and the disclosure before the press says so. A reader-requested reading requires the remembered answer and rolling budget above; an
+machine. A reading of a Claude Code session is made by Claude Code when `claude` is on the
+server's PATH, and by Codex when it is not: Codex then spends the operator's Codex capacity and
+sends that session's evidence to OpenAI, and the disclosure before the press says which. A reader-requested reading requires the remembered answer and rolling budget above; an
 unasked reading requires `--unasked-readings`. `--no-observer-model` always wins over both.
 
 Two requests can reach the model. A focused `/api/project-context` refresh can summarize the
@@ -1089,7 +1120,10 @@ dropped the point of a measured correction
 The field holding the whole message (`reader_words`) is held in memory for the reading and is
 neither stored nor published: the history stores' field allowlists do not name it, and
 `/api/project-context` drops it (`project_context.for_page`), so the page still shows the first
-sentence and `/api/data` never carried it. What the model writes back is a different matter. A
+sentence and `/api/data` never carried it. One bounded copy is the exception, by the owner's ruling
+of 2026-10-01: the focused project context's `prompt_choices` offers up to five of the reader's own
+messages for adoption as the goal, each the field clipped to the goal's 240 characters, and the
+rest of the field past that cap is not published (Prompt-derived text, below). What the model writes back is a different matter. A
 departure's `detail` is the model's own sentence, and it is stored with the reading and published
 on the page, as it was before; the model can now paraphrase or quote a later sentence of a message
 there, which it could not when it saw only the first. The one copy of the field on disk is an
@@ -1187,14 +1221,17 @@ is still trusted code; replacing it as the owning user is outside this boundary.
 
 `reading.ClaudeReadingModel` calls `observer.claude_exec`, one bounded `claude --print` call
 through the Claude Code CLI the operator has already signed in to. It reaches Anthropic on the
-operator's own authentication and spends their Claude Code capacity. **It is gated.**
-`annotations.CLAUDE_ABSTENTION_CHECK` remains `not-run`: the committed
-[qualification run](docs/abstention/claude-results.json) failed with four false reassurances, so
-the Claude Code producer has not qualified
-([DEC-21](docs/design-reading-a-session.md#amended-2026-09-23-claude-code-is-built-and-gated)).
-While it stays there, `reading_route` never selects the provider or even looks for its CLI, and no
-route, fallback, unasked lane, goal summary or forged request can invoke it. Codex's `accepted`
-review does not open it.
+operator's own authentication and spends their Claude Code capacity. **It is gated, and the
+owner's acceptance opened the gate on 2026-10-02.** `annotations.CLAUDE_ABSTENTION_CHECK` is
+`accepted`, never `passed`: every scored qualification run failed, from the
+[first](docs/abstention/claude-results.json) to the
+[third continuation](docs/abstention/claude-results-continuation-3.json), and the
+[acceptance record](docs/abstention/claude-acceptance.json) lists each with its verdict
+([DEC-21](docs/design-reading-a-session.md#amended-2026-10-02-claude-code-is-accepted)).
+`reading_route` selects it for a Claude Code session when an absolute `claude` is on PATH, and for
+another harness's session only when `codex` is not. The unasked lane and goal summaries never
+invoke it. Set back to `not-run`, the gate is read before the CLI is looked for, so no route,
+fallback or forged request can invoke it.
 
 The argv, every flag checked against `claude --help` on 2.1.280, run without a shell:
 
@@ -1250,7 +1287,16 @@ by the OS (`score_abstention.py --probe-argv`, below):
   and the account UUID in `metadata.user_id`, which is empty under an API key. The CLI reads the
   email from its cached account and no flag removes it. The owner accepted this on 2026-09-27 on
   condition that it is said before the press, and the Claude Code disclosure names it
-  (`reading_route._base_disclosure`).
+  (`reading_route._base_disclosure`). Amended 2026-10-01 (owner, Q1, DRC-4758): the press it is
+  said before is the one that sends. Idle, the disclosure is one click away in a popover under
+  "What is sent to <receiver>", and a press there sends nothing; the press that would send opens a consent step
+  that shows the whole disclosure, as the server's parts, before "Allow and analyze". Amended
+  2026-10-02 (owner): the disclosure is a short list, one item a line, and keeps each fact this
+  section and [Observer model calls](#observer-model-calls) require: what is sent, where it goes as
+  configured (the company off this machine, the endpoint named in its place, or that Cargento
+  cannot name it), the CLI and sign-in it goes through and whose capacity it spends, these
+  account details on a Claude Code route, tool output only after it is allowed, and the caveat
+  ([the amendment](docs/design-reading-a-session.md#amended-2026-10-02-owner-the-disclosure-is-a-short-list)).
 
 `--exclude-dynamic-system-prompt-sections` does not help: the CLI ignores it under
 `--system-prompt`.
@@ -1294,8 +1340,8 @@ These flags are CLI restrictions, not an OS sandbox. There is no Claude Code equ
 `--sandbox read-only`. The installed CLI still owns its authentication, caches and logs, and
 `--no-session-persistence` does not govern those. That the flags suppress every tool at run time
 is not verified by this repository's tests; the one measurement, the stub probe above on 2.1.283,
-saw an empty tool list. Whether a given account may use the pinned model id is still unmeasured,
-because the build is gated and no Claude Code reading has been run.
+saw an empty tool list. The pinned model id answered on the owner's account in every scored
+qualification run; whether another account may use it is unmeasured.
 
 ### Tool output in a Claude Code reading
 
@@ -1373,8 +1419,8 @@ fresh Allow whose disclosure names tool output and the receiving vendor. The pag
 tool output was named does not cover it. What is built:
 
 - The grant is its own table, `tool_output_permission` in the reading permission store, keyed by
-  provider and destination. No answer in the words-only tables is read as one, so every answer
-  saved before this build covers the reader's words and never tool output. An Allow writes a grant
+  provider and destination. No answer in the words-only tables is read as one, so an answer
+  saved before tool output was named never covers tool output. An Allow writes a grant
   only when the press carried the destination the server computes; a press that carried another,
   or none, is refused `409 destination-changed` before anything is written or spent. Allowed for
   the words and not for tool output to this destination, a press is refused `403
@@ -1395,7 +1441,15 @@ tool output was named does not cover it. What is built:
   `CLAUDE_CODE_MANAGED_SETTINGS_PATH` is set; `CLAUDE_CODE_CUSTOM_OAUTH_URL` is set in any source,
   because an approved custom OAuth host replaces the first-party API host; `ANTHROPIC_UNIX_SOCKET`
   is set, because every request then goes to a local socket whose far end forwards under another
-  machine's settings; neither `HOME` and `USER` nor the password-file entry gives a home and a user
+  machine's settings; `ANTHROPIC_BASE_URL` holds anything the CLI's WHATWG URL parser could read
+  as another host than Python's `urlsplit` does (consent F1, ui5). That is a backslash, any
+  whitespace or control character (leading and trailing included), any non-ASCII character, a host
+  with a percent-escape or a character outside letters, digits, `.`, `-` and `_`, an empty label,
+  a host ending in a number that is not a plain dotted quad, or a host with a credential's shape.
+  Measured on Claude Code 2.1.287, `http://127.0.0.1:4597\@127.0.0.1:4598` sent every request to
+  4597, where `urlsplit` reads 4598, so naming 4598 would have bound the Allow to a host the words
+  never reached, and a key after a backslash would have been published and stored as the host;
+  neither `HOME` and `USER` nor the password-file entry gives a home and a user
   to look under; a macOS managed-preferences profile
   (`/Library/Managed Preferences/com.anthropic.claudecode.plist`, or its per-user copy) exists,
   because the build does not read it; or the machine is Windows, whose policy lives in the registry
@@ -1417,6 +1471,13 @@ tool output was named does not cover it. What is built:
   ([the amendment](docs/design-reading-a-session.md#amended-2026-10-01-a-line-about-what-the-agent-tells-you-cannot-be-shown)).
 - Where the destination cannot be named, the reading still runs on the reader's words, and its
   cutoff sentence says the checks were not sent and why.
+- The disclosure's `To:` item says what `destination` says, on every harness and not only for tool
+  output: the vendor off this machine, the cloud, or the base URL's host in its place (a host is
+  never said to be off this machine, since it may be a local gateway), and where nothing can be
+  named, that Cargento cannot name where the CLI's settings send it. It never names the vendor
+  then, so an Allow is never given for a receiver the words do not reach (verifier C1,
+  2026-10-02), and the Allow is bound to what it named, so it never carries over to a receiver
+  named later (owner, 2026-10-02). On Windows this is every route.
 
 It is quoted into the prompt as untrusted data, never into an instruction Cargento writes: each
 check is one numbered row whose result words are Cargento's own, and its output tail is one
@@ -1445,9 +1506,11 @@ Ruled 2026-09-24 by [DEC-24](docs/design-reading-a-session.md#dec-24-your-intent
 with the layer named beside it, and the route counts in Scope move in those layers, not here.
 
 The labels. "Check for drift" became "Analyze drift", and "Allow and check" became "Allow and
-analyze", with DRC-4680. When idle the disclosure sits under "Analyze drift", whose press either
-asks for the Allow first or runs under one already given after this same disclosure; at the
-confirming press it sits before "Allow and analyze". The permission and rolling budget above are otherwise unchanged, except
+analyze", with DRC-4680. When idle the disclosure sits one click away under "Analyze drift", in a
+popover whose summary reads "What is sent to <receiver>" until it is allowed (owner, 2026-10-01, Q1), and that
+press either opens the consent step first or runs under an Allow already given after this same
+disclosure; in the consent step it is shown whole, as the server's parts, before "Allow and
+analyze". The permission and rolling budget above are otherwise unchanged, except
 that an allow given before the disclosure named tool output does not cover it
 ([Tool output in a Claude Code reading](#tool-output-in-a-claude-code-reading)). Keep never counts
 as the allow (owner, 2026-09-27): where the disclosure has not been allowed, it reads "Keep my
@@ -1629,6 +1692,14 @@ The `Analyze drift` control (named `Ask for a reading` until DRC-4639 and `Check
 on 2026-09-14, published as `reading_check: "accepted"`. The amended enablement rule is owned by
 [DEC-17](docs/design-reading-a-session.md#amended-2026-09-14-the-captain-accepts-the-case-review).
 The acceptance record under `docs/abstention/` carries only marks, hashes and decision metadata.
+
+The Claude Code producer has its own gate, opened by the owner's acceptance on 2026-10-02 and
+published as `accepted`, never `passed`: every scored Claude Code run failed, and
+[claude-acceptance.json](docs/abstention/claude-acceptance.json) lists each one with its own
+verdict, digests, counts and spend, which a test reads back from the result files. It carries no
+session text. The results, their grants and the spend ledger are unchanged. The amended rule is
+owned by
+[DEC-21](docs/design-reading-a-session.md#amended-2026-10-02-claude-code-is-accepted).
 
 The evaluator still asks whether the producer says `not verifiable from available evidence` on
 every case a person marked, in advance, as one it should not judge. Two scripts run it, both
@@ -2010,8 +2081,12 @@ under your own capacity. That record carries your messages in the session whole,
 characters each where the prompt has room, as a pressed reading's does. Your expected outcome lines are never sent by it, and a session with lines
 and no goal is not read by it at all (item 12 of
 [DEC-24](docs/design-reading-a-session.md#dec-24-your-intent-is-a-drafted-goal-and-a-checklist-and-a-correction-is-yours-to-copy)).
-Nothing new leaves the machine that did not already leave it when you pressed the control by hand. What is new is that nobody is there
-at the moment it goes.
+Nothing new leaves the machine that did not already leave it when you pressed the control by hand,
+because the lane consults the same Allow binding a press does before each send (consent F5,
+ui5): with no Codex Allow on record, after "Turn off readings", or once the Codex destination is
+no longer the one the Allow was given for, the check is skipped, nothing is spent, and the skip is
+written to the dashboard's diagnostic log. It does not charge the reading budget; its own caps
+below bound it. What is new is that nobody is there at the moment it goes.
 
 It is bounded three ways, and the bounds are the posture rather than a preference. One reading runs
 at a time for the whole board, so a board where forty annotated sessions cross a state boundary
@@ -2083,12 +2158,23 @@ memory gives. A stored end also loses to later activity: a session resumed while
 down produced no `session_started` this process could see, so a file written more than the
 activity grace after its end is the only tell that the id is in use again, and the stored end is
 then not applied. Activity here is whatever the row counts as activity, which is wider than the
-session's own transcript: on Claude it is the newest of the task file, the parent transcript, the
-subagent transcripts, the agent files and the child sessions. The exposure accepted with that
+session's own transcript: on Claude it is the newest of the task file, the parent transcript's
+newest conversation record, the subagent transcripts, the agent files and the child sessions. The
+parent is read by its newest `user` or `assistant` record rather than its mtime since DRC-4770,
+because Claude Code appends bookkeeping records such as `away_summary` after a turn stops, and
+read as mtime one retired the stop it followed. The exposure accepted with that
 guard is stated rather than solved. A harness that writes any of those after `SessionEnd` would
 have its restored end dropped, and the row reads as it does today, no end observed, which is
 honest rather than wrong. A live end, observed by the running coordinator, takes no such guard,
 because the coordinator retires it itself the moment the id is seen in use.
+
+A Claude Code turn stop may also be read from the session's own transcript (owner,
+2026-10-02): its top-level `stop_hook_summary`, from the bounded tail the collector already
+reads. Nothing more is read, stored or sent, and it is never written as an observed stop
+(`finished_at`). Whoever can write the transcript can forge one, which is the local-process
+exposure accepted throughout. The worst it buys is a reading the reader pressed for, saying it
+covers a turn that had not finished. A summary written after a hook's feedback, which keeps the
+turn going, is refused by the collector and by the scorer's transcript vouching above alike.
 
 The coordinator is the only writer, so two flags govern the file by construction rather than by a
 switch of their own. `--no-events` leaves it unread and unwritten, exactly as it leaves the focus
@@ -2239,7 +2325,15 @@ The allowlist, one line per field:
   Its existing history retention, size cap, `--no-history` and `--forget` apply unchanged.
 
 [DEC-22](docs/design-reading-a-session.md#dec-22-your-own-prompt-may-become-your-goal) also admits
-an explicitly adopted latest or first prompt as `annotation_goal`. Authorship is inferred from the
+an explicitly adopted latest or first prompt as `annotation_goal`, and, since the owner's ruling of
+2026-10-01 ([amended](docs/design-reading-a-session.md#amended-2026-10-01-up-to-five-of-your-prompts-may-be-chosen)),
+one of up to five of the reader's own prompts chosen from the observed record, under the closed
+source token `chosen-prompt`. The five are published as `prompt_choices` on the focused project
+context only, each redacted by `records.safe_text` before it is bounded to the same 240 characters,
+and they are neither stored nor admitted here: no history field holds the list, and only the one
+the reader adopts is kept, as `annotation_goal`. A choice is resolved again on the server by its
+fact id, and refused unless it is still one of the five with the same text and time; a copied
+correction, a harness control and a local command are never offered. Authorship is inferred from the
 harness user-message shape and injected-prompt filter, which fails open; it is not proof a person
 wrote the message. The server resolves the published source again, requires its displayed text and
 source time to match, and refuses implicit adoption over an existing goal. Adoption uses the same
@@ -2726,8 +2820,9 @@ fields rather than glossed, because a prose alias is a name no test can check, t
 `aggregate`, and the instruction line's own `text` passes the same sweep beside them. It is a list
 of carriers rather than a list of every published string that could hold what the operator typed:
 more prompt text reaches the page through `records.safe_text` on the way, including the observer's
-derived goal, the ask question and its options, and a Codex `title`, which is a prompt because Codex
-writes no generated title. Some of what those carriers hold came from a tool call's input rather
+derived goal, the ask question and its options, a Codex `title`, which is a prompt because Codex
+writes no generated title, and the focused project context's `prompt_choices[].text`, up to five of
+the reader's prompts at 240 characters each. Some of what those carriers hold came from a tool call's input rather
 than from a prompt directly: a Claude plan's first line, an `AskUserQuestion` question, and a Codex
 plan's steps, each under the bounds Irreversible actions states. A sweep of the local Claude store
 on the machine this was built on found seven distinct live Anthropic credentials in ordinary prompt

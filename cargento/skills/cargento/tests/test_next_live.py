@@ -501,6 +501,111 @@ console.log(JSON.stringify({
         self.assertNotIn('data-next-session="older"', out["final"]["html"])
         self.assertEqual(0, out["final"]["failures"])
 
+    HELD_GETS = """
+await __settle(); await __settle();
+const releases = [];
+let paints = 0;
+const paint = renderNext;
+renderNext = (...args) => { paints += 1; return paint(...args); };
+const payload = generated => ({ok: true, headers: {get: name =>
+    name === "X-Cargento-Revision" ? `1700.${generated}` : null},
+  json: async () => ({generated, window_hours: 24, summary: {working: 0, needs_input: 0},
+    harnesses: [], sessions: []})});
+__fetchImpl = async () => new Promise(resolve => { releases.push(resolve); });
+"""
+
+    def test_a_reader_whose_save_is_followed_by_stream_wakes_sees_one_paint_after_at_most_two_data_fetches(
+        self,
+    ) -> None:
+        out = self._boot(
+            self.HELD_GETS
+            + """
+// The save's own awaited refresh, then the stream's wakes for the collections it caused.
+const saved = refreshNext();
+await __settle();
+__sources[0].emit("revision", "1700.5");
+__sources[0].emit("revision", "1700.6");
+await __settle();
+const queuedGets = releases.length;
+releases[0](payload(5)); await __settle(); await __settle();
+const paintsAfterFirst = paints;
+releases[1](payload(6));
+await saved;
+await __settle();
+console.log(JSON.stringify({queuedGets, gets: releases.length, paintsAfterFirst, paints,
+  generated: nextData.generated}));
+"""
+        )
+        self.assertEqual(1, out["queuedGets"])
+        self.assertEqual(2, out["gets"])
+        self.assertEqual(0, out["paintsAfterFirst"], "the dropped answer was painted")
+        self.assertEqual(1, out["paints"])
+        self.assertEqual(6, out["generated"])
+
+    def test_a_wake_for_the_revision_the_fetch_already_out_carries_fetches_nothing_more(
+        self,
+    ) -> None:
+        out = self._boot(
+            self.HELD_GETS
+            + """
+const saved = refreshNext();
+await __settle();
+__sources[0].emit("revision", "1700.7");
+await __settle();
+releases[0](payload(7));
+await saved; await __settle();
+console.log(JSON.stringify({gets: releases.length, paints, generated: nextData.generated}));
+"""
+        )
+        # The save's refresh was published at 1700.7, the revision the wake announced.
+        self.assertEqual(1, out["gets"])
+        self.assertEqual(1, out["paints"])
+        self.assertEqual(7, out["generated"])
+
+    def test_a_refresh_awaited_after_a_write_is_answered_by_a_fetch_that_started_after_it(
+        self,
+    ) -> None:
+        out = self._boot(
+            self.HELD_GETS
+            + """
+const before = refreshNext();
+await __settle();
+// The write lands here; the awaited refresh must not resolve on the fetch already out.
+let resolved = false;
+const after = refreshNext().then(() => { resolved = true; });
+releases[0](payload(1)); await __settle(); await __settle(); await __settle();
+const early = resolved;
+releases[1](payload(2)); await after; await before;
+console.log(JSON.stringify({early, resolved, generated: nextData.generated}));
+"""
+        )
+        self.assertFalse(out["early"])
+        self.assertTrue(out["resolved"])
+        self.assertEqual(2, out["generated"])
+
+    def test_a_stream_revision_this_tab_already_fetched_fetches_nothing(self) -> None:
+        out = self._boot(
+            self.HELD_GETS
+            + """
+const first = refreshNext(); await __settle();
+releases[0](payload(9)); await first; await __settle();
+const counts = [];
+for(const revision of ["1700.9", "1700.8", "1700.10", "1800.1"]){
+  const before = releases.length;
+  __sources[0].emit("revision", revision);
+  await __settle();
+  counts.push(releases.length - before);
+  if(releases.length > before){ releases[releases.length - 1](payload(10)); await __settle(); }
+}
+console.log(JSON.stringify({counts, wrote: __storageWrites.filter(k =>
+  k === "cargento.next.revision").length}));
+"""
+        )
+        # Already fetched, older, newer, and a restart (a new start stamp is always newer).
+        self.assertEqual([0, 0, 1, 1], out["counts"])
+        # Only the stream's own announcements are broadcast; a GET never writes the key.
+        self.assertEqual(2, out["wrote"])
+
     def test_private_browsing_still_streams(self) -> None:
         out = self._boot(
             """

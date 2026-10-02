@@ -1260,7 +1260,9 @@ class TheUnaskedLaneNeverReachesClaudeCodeTest(unittest.TestCase):
             harness.consider([_row(state="working")])
             harness.consider([_row(state="idle")])
         self.assertEqual(1, len(models), "the lane did not read, so this proves nothing")
-        self.assertIsInstance(models[0], reading.CodexReadingModel)
+        # Wrapped in the Allow binding the lane sends under (consent F5).
+        self.assertIsInstance(models[0], unasked._Bound)
+        self.assertIsInstance(models[0].model, reading.CodexReadingModel)
 
 
 class TheUnaskedLaneNeverSendsACheckTest(unittest.TestCase):
@@ -1298,9 +1300,12 @@ class TheUnaskedLaneNeverSendsACheckTest(unittest.TestCase):
     def test_a_reader_who_allowed_tool_output_still_gets_no_check_sent_unasked(self) -> None:
         from cargento_runtime import reading_policy  # noqa: PLC0415
 
+        from .next_harness import named_machine  # noqa: PLC0415
+
         config = _config(self.root)
+        # The words' own Allow at OpenAI as well, which the lane sends under.
         reading_policy.set_consent(
-            config, True, now=1_000.0, provider="codex", tool_output="OpenAI"
+            config, True, now=1_000.0, provider="codex", tool_output="OpenAI", destination="OpenAI"
         )
         prompts: list[str] = []
 
@@ -1311,7 +1316,7 @@ class TheUnaskedLaneNeverSendsACheckTest(unittest.TestCase):
         harness = _Harness(config, None)
         harness.lane.produce = reading.produce
         harness.lane.facts_for = lambda _state, _row, _now: [self.WORDS, self.CHECK]
-        with mock.patch.object(reading.CodexReadingModel, "__call__", call):
+        with named_machine(), mock.patch.object(reading.CodexReadingModel, "__call__", call):
             # A change to a running row, which a mid-flight reading may read.
             harness.consider([_row(state="idle")])
             harness.consider([_row(state="working")])
@@ -1381,3 +1386,85 @@ class OnlyTheReaderRequestedRouteKnowsTheClaudeCodeProducerTest(unittest.TestCas
             },
             self._users("claude_exec"),
         )
+
+
+class TheLaneSendsOnlyWhereAPressWouldNotAskAgainTest(unittest.TestCase):
+    """Consent F5 (ui5): the lane sends the goal and messages to Codex with
+    nobody at the desk, so it consults the same Allow binding a press does,
+    before each send. Where a press would ask again, because no Allow is on
+    record, it was turned off, or the destination moved since it was given,
+    the send is skipped and recorded, and the lane's own caps are unchanged.
+    """
+
+    def setUp(self) -> None:
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.root = Path(self.temp.name)
+
+    def _run(self, environ: dict[str, str], allow: str | None, *, off: bool = False) -> Any:
+        from cargento_runtime import reading_policy  # noqa: PLC0415
+
+        from .next_harness import named_machine  # noqa: PLC0415
+
+        config = _config(self.root / str(len(list(self.root.iterdir()))))
+        if allow is not None:
+            reading_policy.set_consent(
+                config, True, now=1_000.0, provider="codex", destination=allow
+            )
+        if off:
+            reading_policy.set_consent(config, False, now=1_000.0)
+        sent: list[str] = []
+        lines: list[str] = []
+        harness = _Harness(config, _assessment(reading.RESULT_CONSISTENT))
+
+        def produce(_config: Any, _row: Any, *_args: Any, **kwargs: Any) -> Any:
+            # As the real producer does: the model is the send.
+            kwargs["model"]("the prompt", output_cap_bytes=100)
+            return (harness.assessment, "", True)
+
+        def call(_self: Any, prompt: str, **_kw: Any) -> tuple[str, str]:
+            sent.append(prompt)
+            return "{}", "ok"
+
+        harness.lane.produce = produce
+        harness.lane.diagnostic_sink = lines.append
+        with named_machine(environ), mock.patch.object(reading.CodexReadingModel, "__call__", call):
+            harness.consider([_row(state="working")])
+            harness.consider([_row(state="idle")])
+        return sent, lines, departures.load(config), harness
+
+    def test_an_allow_for_todays_destination_lets_the_lane_send(self) -> None:
+        sent, lines, checks, _harness = self._run({}, "OpenAI")
+        self.assertEqual(["the prompt"], sent)
+        self.assertEqual([], lines)
+        self.assertEqual(1, len(checks))
+
+    def test_where_a_press_would_ask_again_nothing_is_sent_and_the_skip_is_recorded(
+        self,
+    ) -> None:
+        for name, environ, allow, off in (
+            ("no Allow at all", {}, None, False),
+            ("turned off", {}, "OpenAI", True),
+            (
+                "moved to a base URL",
+                {"OPENAI_BASE_URL": "https://gw.corp.example"},
+                "OpenAI",
+                False,
+            ),
+            ("moved from unnamed to named", {}, "", False),
+        ):
+            with self.subTest(case=name):
+                sent, lines, checks, harness = self._run(environ, allow, off=off)
+                self.assertEqual([], sent, "the lane sent where a press would ask again")
+                self.assertEqual(1, len(lines))
+                self.assertIn(unasked.UNCOVERED, lines[0])
+                # Nothing was spent, so nothing counts against the caps.
+                self.assertEqual((), checks)
+                # The slots are given back, so the lane is not wedged.
+                self.assertEqual(set(), harness.state.unasked_inflight)
+
+    def test_an_unnamed_allow_covers_an_unnamed_destination_as_a_press_does(self) -> None:
+        sent, _lines, _checks, _harness = self._run(
+            {"OPENAI_BASE_URL": "https://gw.corp.example"}, ""
+        )
+        self.assertEqual(["the prompt"], sent)

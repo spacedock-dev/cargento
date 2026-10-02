@@ -363,6 +363,39 @@ def last_user_event(config: RuntimeConfig, state: RuntimeState, path: str) -> st
     return marker
 
 
+def is_turn_stop_record(record: Any, after: str | None) -> bool:
+    """Whether a transcript record is Claude Code's own turn stop for its session.
+
+    The top-level `stop_hook_summary` Claude Code writes when its Stop hooks
+    run, which is the event a hook stop is stamped from. `after` is the type of
+    the newest `user` or `assistant` record before it in the file, and only an
+    `assistant` reply admits it. A Stop hook that blocks the stop, and a goal
+    check that is not met, write their feedback as an `isMeta` user record
+    before the summary, then write the summary with `preventedContinuation`
+    false and keep the turn going (verifier S1, read from Claude Code 2.1.287).
+    `preventedContinuation` true is a hook ending the turn, which is a stop.
+    A subagent's record is not the session's, and only the Stop hooks'
+    summary is a stop: 2.1.287's Stop path writes no `hookLabel`, and its own
+    reader knows one labelled `PreToolUse`, written mid-turn before a tool runs
+    (verifier S2), so an absent label or `Stop` is admitted and no other.
+    The scorer's
+    `mark_abstention._transcript_stop` reads the same keys and the same rule,
+    and a test holds the two to one table. No capture under `docs/captures/`
+    records this shape: it rests on the 2026-10-01 measurement in
+    `docs/design-reading-a-session.md`.
+    """
+    return bool(
+        after == "assistant"
+        and isinstance(record, dict)
+        and record.get("type") == "system"
+        and record.get("subtype") == "stop_hook_summary"
+        and record.get("isSidechain") is False
+        and isinstance(record.get("preventedContinuation"), bool)
+        and isinstance(record.get("sessionId"), str)
+        and record.get("hookLabel", "Stop") == "Stop"
+    )
+
+
 def analyze_transcript(config: RuntimeConfig, state: RuntimeState, path: str) -> dict[str, Any]:
     """Claude Code transcript tail.
 
@@ -394,9 +427,25 @@ def analyze_transcript(config: RuntimeConfig, state: RuntimeState, path: str) ->
         # from causes that are not the agent resuming, so a wait guard that
         # reads "has this session moved on" has to read this and not the mtime.
         "last_assistant_ts": 0,
+        # Newest conversation record (`user` or `assistant`, tool results
+        # included because Claude writes them as user records). The stop guard
+        # reads this rather than the mtime: Claude Code appends `system`
+        # records such as `away_summary` minutes after a turn stops, and read
+        # as mtime one retired every observed stop (DRC-4770). The same
+        # definition as `project_context.claude_activity_between`, which a
+        # test holds it to.
+        "last_conversation_ts": 0,
+        # The newest turn stop Claude Code recorded itself (`is_turn_stop_record`)
+        # and the session id it names, read in this same loop: no further read.
+        # The collector decides whether it still stands (owner, 2026-10-02).
+        "turn_stop_ts": 0,
+        "turn_stop_sid": None,
         "last_user_event": last_user_event(config, state, path),
     }
     pending: dict[Any, Any] = {}  # tool_use id -> {"name", "ts", "asks"} for INPUT_TOOLS only
+    # The type of the newest conversation record so far, in file order: the
+    # context `is_turn_stop_record` reads a summary in.
+    conversation: str | None = None
     for line in runtime_io.read_tail(config, path):
         if not line or line[0] != "{":
             continue
@@ -408,6 +457,13 @@ def analyze_transcript(config: RuntimeConfig, state: RuntimeState, path: str) ->
         ep = records.parse_ts(d.get("timestamp") or "")
         if ep:
             info["last_event_ts"] = max(info["last_event_ts"], ep)
+            if t in {"user", "assistant"}:
+                info["last_conversation_ts"] = max(info["last_conversation_ts"], ep)
+        if ep and ep >= info["turn_stop_ts"] and is_turn_stop_record(d, conversation):
+            info["turn_stop_ts"] = ep
+            info["turn_stop_sid"] = d["sessionId"]
+        if t in ("user", "assistant"):  # a tuple: `t` may be any JSON value
+            conversation = t
         if t == "last-prompt":
             info["last_prompt"] = d.get("lastPrompt")
         elif t == "assistant":

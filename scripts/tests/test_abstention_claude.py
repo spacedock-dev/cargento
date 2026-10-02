@@ -1954,8 +1954,24 @@ class Q4ATurnStopTheHistoryRolledPastIsVouchedByTheTranscriptTest(_RecordedCaseF
         prevented: bool = False,
         session_id: str = CLAUDE_SID,
         subtype: str = "stop_hook_summary",
+        feedback: bool = False,
     ) -> str:
         path = self.transcript()
+        # The reply the turn ended on, then, for a Stop hook that blocked the stop or a goal
+        # not met, the `isMeta` feedback that keeps the turn going (verifier S1).
+        before = [
+            {"type": "assistant", "isSidechain": False, "sessionId": session_id,
+             "timestamp": _stamp(self.start, at - 2),
+             "message": {"role": "assistant", "content": [{"type": "text", "text": "Done."}]}},
+        ]  # fmt: skip
+        if feedback:
+            before.append(
+                {"type": "user", "isMeta": True, "isSidechain": False, "sessionId": session_id,
+                 "timestamp": _stamp(self.start, at - 1),
+                 "message": {"role": "user", "content": "Stop hook feedback: not yet"}}
+            )  # fmt: skip
+        with open(path, "a", encoding="utf-8") as handle:
+            handle.writelines("\n" + json.dumps(row) for row in before)
         marker = {
             "type": "system",
             "subtype": subtype,
@@ -1983,6 +1999,11 @@ class Q4ATurnStopTheHistoryRolledPastIsVouchedByTheTranscriptTest(_RecordedCaseF
         case = self.freeze(self.marked(), self.rolled())
         self.assertEqual("recorded", case["origin"])
         self.assertEqual([], case["unconfirmed"])
+        self.assertEqual("transcript", case["lifecycle_from"])
+
+    def test_a_stop_hook_that_ended_the_turn_is_vouched_for(self) -> None:
+        # `preventedContinuation: true` is "Stop hook prevented continuation": the turn ended.
+        case = self.freeze(self.marked(prevented=True), self.rolled())
         self.assertEqual("transcript", case["lifecycle_from"])
 
     def test_a_packet_naming_the_boards_short_id_is_vouched_too(self) -> None:
@@ -2013,7 +2034,7 @@ class Q4ATurnStopTheHistoryRolledPastIsVouchedByTheTranscriptTest(_RecordedCaseF
             ("no marker", self.transcript),
             ("other moment", lambda: self.marked(at=19)),
             ("sidechain", lambda: self.marked(sidechain=True)),
-            ("hook kept it going", lambda: self.marked(prevented=True)),
+            ("hook kept it going", lambda: self.marked(feedback=True)),
             ("other session", lambda: self.marked(session_id="zz-other")),
             ("another system record", lambda: self.marked(subtype="turn_duration")),
         )

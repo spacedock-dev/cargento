@@ -23,8 +23,8 @@ class SnapshotTest(unittest.TestCase):
 
     def test_publishing_returns_a_monotonic_counter(self) -> None:
         snap = self._snap()
-        first = snap.publish((24.0, False), b'{"a":1}')
-        second = snap.publish((24.0, False), b'{"a":2}')
+        first = snap.publish((24.0, False), b'{"a":1}')[0]
+        second = snap.publish((24.0, False), b'{"a":2}')[0]
         self.assertEqual(first[1] + 1, second[1])
 
     def test_the_counter_is_shared_across_keys_so_it_orders_the_whole_process(self) -> None:
@@ -32,19 +32,19 @@ class SnapshotTest(unittest.TestCase):
         # would let ?all=1 and the default view report the same number for
         # different states.
         snap = self._snap()
-        a = snap.publish((24.0, False), b"{}")
-        b = snap.publish((24.0, True), b"{}")
+        a = snap.publish((24.0, False), b"{}")[0]
+        b = snap.publish((24.0, True), b"{}")[0]
         self.assertNotEqual(a[1], b[1])
 
     def test_the_revision_carries_the_server_start_stamp(self) -> None:
         snap = self._snap(started=1234.5)
         self.assertIsNone(snap.current((24.0, False)))
-        published = snap.publish((24.0, False), b"{}")
+        published = snap.publish((24.0, False), b"{}")[0]
         self.assertEqual(published[0], 1234.5)
 
     def test_current_returns_the_published_bytes_and_its_revision(self) -> None:
         snap = self._snap()
-        rev = snap.publish((24.0, False), b'{"x":1}')
+        rev = snap.publish((24.0, False), b'{"x":1}')[0]
         got = snap.current((24.0, False))
         self.assertIsNotNone(got)
         assert got is not None
@@ -78,18 +78,22 @@ class SnapshotTest(unittest.TestCase):
         # A cleared snapshot must still mint a strictly higher revision, or a
         # client holding a cursor would ignore the state that follows a reset.
         snap = self._snap()
-        before = snap.publish((24.0, False), b"{}")
+        before = snap.publish((24.0, False), b"{}")[0]
         snap.clear()
-        after = snap.publish((24.0, False), b"{}")
+        after = snap.publish((24.0, False), b"{}")[0]
         self.assertGreater(after[1], before[1])
 
     def test_a_body_collected_across_a_clear_is_answered_but_not_kept(self) -> None:
         snap = self._snap()
         before = snap.generation()
         snap.clear()
-        late = snap.publish((24.0, False), b'{"old":1}', now=1.0, generation=before)
+        late, dropped = snap.publish((24.0, False), b'{"old":1}', now=1.0, generation=before)
+        self.assertFalse(dropped)
         self.assertIsNone(snap.current((24.0, False)))
-        kept = snap.publish((24.0, False), b'{"new":1}', now=1.0, generation=snap.generation())
+        kept, stored = snap.publish(
+            (24.0, False), b'{"new":1}', now=1.0, generation=snap.generation()
+        )
+        self.assertTrue(stored)
         self.assertGreater(kept[1], late[1])
         self.assertEqual(snap.current((24.0, False)), (kept, b'{"new":1}'))
 
@@ -99,8 +103,8 @@ class SnapshotTest(unittest.TestCase):
     def test_two_snapshots_with_different_starts_never_collide(self) -> None:
         # The whole point of the pair: a tab holding revision 512 from a previous
         # process must not treat the new process's revision 3 as older.
-        a = self._snap(started=1000.0).publish((24.0, False), b"{}")
-        b = self._snap(started=2000.0).publish((24.0, False), b"{}")
+        a = self._snap(started=1000.0).publish((24.0, False), b"{}")[0]
+        b = self._snap(started=2000.0).publish((24.0, False), b"{}")[0]
         self.assertEqual(a[1], b[1])
         self.assertNotEqual(a, b)
 
@@ -226,6 +230,28 @@ class ApplicationSnapshotTest(support.RuntimeTestCase):
 
         self.assertEqual(after["annotation_goal"], "Second words")
         self.assertEqual(after["annotation_revision"], 2)
+
+    def test_a_saves_collection_does_not_wake_other_tabs_for_a_body_it_never_kept(self) -> None:
+        """A body collected across a clear is never served again, so it is not announced.
+
+        Announced, every connected tab fetched once for it and was served the
+        next collection instead, which is the second and third GET of the
+        owner's one save (2026-10-02). The next kept collection announces.
+        """
+        app = support.build_app()
+        woken: list[Any] = []
+        real = app._collect_harnesses
+
+        def cleared_mid_collection(*args: Any) -> Any:
+            app.snapshot.clear()
+            return real(*args)
+
+        with mock.patch.object(app.state.streams, "publish", side_effect=woken.append):
+            with mock.patch.object(app, "_collect_harnesses", side_effect=cleared_mid_collection):
+                app.collect_json(show_all=False)
+            self.assertEqual([], woken)
+            kept, _body = app.collect_json(show_all=False)
+        self.assertEqual([kept], woken)
 
     def test_a_stale_snapshot_recollects_and_mints_a_new_revision(self) -> None:
         app = support.build_app()

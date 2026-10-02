@@ -1134,7 +1134,6 @@ class NextPageAssetContractTest(unittest.TestCase):
         ".next-cockpit-result-stale-head",
         ".next-cockpit-result-work h3",
         ".next-cockpit-result-folder",
-        ".next-cockpit-result-mark",
         ".next-cockpit-result-marked",
         # Every rule this census resolves at or above the floor. A set rather
         # than a count, so one rule leaving the tier while another joins cannot
@@ -1168,6 +1167,8 @@ class NextPageAssetContractTest(unittest.TestCase):
         ".next-cockpit-empty,.next-cockpit-evidence-missing",
         ".next-cockpit-held-absent",
         ".next-cockpit-held-full",
+        ".next-cockpit-held-hint",
+        ".next-intent-prompt-select",
         ".next-cockpit-held-field textarea",
         ".next-cockpit-steer-box textarea",
         ".next-cockpit-held-lede",
@@ -1187,6 +1188,12 @@ class NextPageAssetContractTest(unittest.TestCase):
         ".next-cockpit-reading-job-title",
         ".next-cockpit-reading-step",
         ".next-cockpit-reading-job-note",
+        ".next-cockpit-reading-consent-title",
+        ".next-cockpit-reading-parts",
+        ".next-cockpit-reading-count",
+        ".next-session-drift-range,.next-session-drift-reason",
+        ".next-cockpit-result-checklist h3",
+        ".next-cockpit-result .next-cockpit-reading-clause",
         ".next-cockpit-recovery .next-project-goal-text",
         ".next-cockpit-recovery .next-project-goal-text.next-project-value--absent,\n.next-cockpit-recovery .next-project-goal-gap",
         ".next-cockpit-recovery details>summary,.next-course-evidence>summary,\n.next-cockpit-plan-details>summary,.next-cockpit-console-status>summary,\n.next-cockpit-console-setup>summary",
@@ -1243,7 +1250,6 @@ class NextPageAssetContractTest(unittest.TestCase):
         ".next-session-facts dd",
         ".next-session-health",
         ".next-session-held-link",
-        ".next-session-source-coverage p",
         ".next-stalled",
         ".next-steer input,.next-guardrail-add-input input",
         ".next-steer-caveat",
@@ -1386,8 +1392,21 @@ class NextPageAssetContractTest(unittest.TestCase):
         # the nudge to analyze.
         # DRC-4695 adds eight: the analysis result's headline, count, answer line, stale
         # banner head, Where the work went's heading and folders, and Not accurate with
-        # its mark.
-        self.assertEqual(126, len(above))
+        # its mark. DRC-4758 adds three: the consent step's question, the list of the
+        # disclosure's parts, and the attempt count on the button's row; and three for
+        # the result in the button's place: the range and level reason under the meter,
+        # the checklist's heading, and each line's own words as its title. The meter's
+        # four labels are labels, set at a label line-height, so off this tier.
+        # DRC-4758 D1 adds one: the editor's footer hint under both fields. D2 adds one:
+        # the "Use your prompt" menu's summary, a disclosure's worded summary at the body
+        # floor. The DRC-4758 fix round retires one: the source coverage block's paragraph,
+        # which restated NEXT STEP's own absence. The owner's 2026-10-02 ruling swaps one for
+        # one: the menu's summary goes with the menu, and the native select's face, which
+        # reads "Use your prompt" or the picked prompt at the body floor, takes its place, so
+        # the count measured after it is unchanged. NU-9 (2026-10-02) retires one: "Not
+        # accurate?" takes the quiet button primitive, so its own sentence-tier rule goes; the
+        # attempt count's row rule becomes the count line's rule, one for one. Measured: 132.
+        self.assertEqual(132, len(above))
         self.assertEqual(self.SENTENCE_TIER_RULES, {selector for selector, _size in above})
         self.assertEqual(
             self.SUB_SENTENCE_FLOOR_INVENTORY, {(size, selector) for selector, size in below}
@@ -1917,16 +1936,16 @@ class NextPageAssetContractTest(unittest.TestCase):
         # is the more useful failure of the two.
         expected_parts = {
             "next-boot.js": (
-                31_983,
-                "8236b3f65942b9211209c6ec5aac79b8aa420a86e7132f5102c8889fda2f3d0d",
+                33_605,
+                "6f715008874b7808b7603bebf64c645e911974ce3127797958cd608a5d344fef",
             ),
             "next-observed.js": (
-                34_032,
-                "65f1638728a7e56ad94d8d4c197d18d60b3989dc16de6f632f152f5d4e8752af",
+                36_290,
+                "017afcb0836427fbfbddf60e206822a35da08e43bbd115e2aa5a1949c714640b",
             ),
             "next-attention.js": (
-                56_606,
-                "a4e4173e90dc234e6da751337c80e0ef6fe923b6b7f0c22b796a7a6af9b76084",
+                56_457,
+                "bd631f1a7640822d583dc9ca5910eaf2a6a8e4c7bb84eef099d8872b889e7550",
             ),
             "next-notify.js": (
                 11_104,
@@ -1941,36 +1960,36 @@ class NextPageAssetContractTest(unittest.TestCase):
                 "81e7f6490f9d6c2e128549aff8bb54c2f6bebaec15b03bfebe3e057b4ef8f587",
             ),
             "next-chrome.js": (
-                42_868,
-                "b5bcdd70bf989c7000d1c68995b05105d93ced9ba2e4b8c8c30ee3ead84a3c6f",
+                47_523,
+                "7db3fd27ce6476497e6dfbc7787de2d3f37d5d4f47b5950c8059aa1907a72da7",
             ),
             "next-capacity.js": (
                 32_261,
                 "986a0b0d74771bbb9f1d9df520dbb6c91d5916685fe365a64eff61c29acab7cc",
             ),
             "next-sessions.js": (
-                27_914,
-                "6567b96b69827b14b35da5498225a17f593ec98c30a964e412cd05cc5ac65f79",
+                27_981,
+                "c9dfd59fd681e2f9ead928ce007a4d0adc94a90d6fceb306c95c4adfda968e3f",
             ),
             "next-projects.js": (
                 5_829,
                 "0324f6aebe951a37bde0f710c73c77f1007d26159a5b33e453b54711b4263348",
             ),
             "next-project.js": (
-                22_250,
-                "7c41a09328fd723ba4f27c84c053b70c96092576e8b338416156c9566a5968c9",
+                22_222,
+                "b53f885f953cdd9e36df772084e79dab54387bbcd6e3e3b8a754b2923f526152",
             ),
             "next-intent.js": (
-                21_894,
-                "57a257a363201a89a721f0ef9c626d7c50ad460f8416d5fe282455f665fdb3be",
+                22_160,
+                "f70dc642cbadb1895c5679eaa177aeca9f65fe5be3f95a566f41bd7c4fb19000",
             ),
             "next-activity.js": (
                 6_467,
                 "f44d5da254b7a6be30b05a4c03bfd83050608b0d9da35910c3e640a742c0e2cc",
             ),
             "next-session.js": (
-                41_739,
-                "be61ff0a861b48d5f397ea7b09b36400bfc065e6c11987d1a127324b323e6023",
+                45_325,
+                "be261ca408a7cc46e2ce23982628783e0f5516a10f19cfe75300e6c48233d0c7",
             ),
             "next-workstream.js": (
                 18_659,
@@ -1981,20 +2000,20 @@ class NextPageAssetContractTest(unittest.TestCase):
                 "aa8e8ab3a5531e28ee08f555f901fd29d873aecd4bdd0e498199036efe16dfc2",
             ),
             "next-controls.js": (
-                18_846,
-                "7d3250df229af732ebb668171e4cb284f0c1e00e4b0241710d1e5f0ac2a76777",
+                24_435,
+                "9f571fa45f6a44c7365e247e23e7c59dc0931238e0c2f6d1f7e18791e3ede2b0",
             ),
             "next-cockpit.js": (
-                422_780,
-                "a93d953875d0fc147b203050e96ba4d5b7ae134236fdb185c64cfd5de1e01f7c",
+                498_990,
+                "29d50de5ffb431da587278438263a3da6ad3ae5c43c506c50569eff9ef38ae4f",
             ),
             "next-render.js": (
-                12_231,
-                "aaa3804c38530dcde476e2306801e3849ff9cea3d6b16a3891abe215c6f98abb",
+                17_875,
+                "4321205e01ee774a3575df6f8c1ea3b5b4d7381b1cb19c469a3fb03d81e89c88",
             ),
             "next-live.js": (
-                3_340,
-                "755ae1c40ffeef20f6c5bfddeafbc798e62ac7e9d2ba9365b92d7ba032905e96",
+                4_124,
+                "33b82c3744091b3975a59ec77eae57c272993bd7fdf78a8a9bada64905f18ab9",
             ),
         }
         self.assertEqual(tuple(expected_parts), frontend_page.APP_PARTS)
@@ -2005,16 +2024,16 @@ class NextPageAssetContractTest(unittest.TestCase):
                 self.assertEqual(digest, hashlib.sha256(data).hexdigest())
 
         styles = frontend_page.asset_path("styles.css").read_bytes()
-        self.assertEqual(161_116, len(styles))
+        self.assertEqual(176_389, len(styles))
         self.assertEqual(
-            "2df770567221c37c0b8fb2a017050d19105f72395fdf3e253f4321244adca49b",
+            "462ecba1066f5c18735dfbe1acdb217ee711533dc7e791816732b754b3cea032",
             hashlib.sha256(styles).hexdigest(),
         )
 
         assembled = frontend_page.load_page()
-        self.assertEqual(1_288_229, len(assembled))
+        self.assertEqual(1_404_006, len(assembled))
         self.assertEqual(
-            "d0a050c5154be523588ff63b3374dc6d8e59b645614a3b71ae2e15ad9770f88b",
+            "ed7e736e3c8863ad21c87e27cf20363cb1b6af96f65f4a0b5419cc38463151f8",
             hashlib.sha256(assembled).hexdigest(),
         )
 
@@ -2296,10 +2315,20 @@ class TheBoardHasOneControlPrimitiveTest(unittest.TestCase):
         for hue in ("--clay", "--amber", "--accent"):
             with self.subTest(hue=hue):
                 self.assertNotIn(hue, block)
-        # And the per-field `clear` stays bare text, which is what makes the
-        # weight difference read at all. Boxing both removes the contrast this
-        # criterion exists for.
-        self.assertRegex(self.rule(".next-cockpit-held-field button"), r"(?:^|;)border:0")
+        # And `Clear` stays the lightest weight on the primitive, quiet's single
+        # underline against the discard's box and the armed control's 2px, which
+        # is what makes the weight difference read at all. Boxing both the same
+        # removes the contrast this criterion exists for. A real button now
+        # (owner Q5, 2026-10-01) rather than bare text, so this compares weights.
+        quiet = self.rule(".next-action.next-action--quiet")
+        self.assertRegex(quiet, r"(?:^|;)border:0")
+        self.assertRegex(quiet, r"border-bottom:1px")
+        self.assertRegex(armed, r"border-width:[2-9]")
+        page = (
+            Path(__file__).resolve().parents[1] / "cargento_runtime" / "web" / "next-cockpit.js"
+        ).read_text(encoding="utf-8")
+        self.assertIn('class="next-action next-action--${weight}"', page)
+        self.assertIn('nextCockpitHeldControl("held-clear", "Clear", kind,', page)
         # The discard control takes its box from the primitive, so its own
         # rule no longer contradicts it with a borderless recipe.
         self.assertNotRegex(discard, r"(?:^|;)border:0")

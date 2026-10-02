@@ -42,30 +42,12 @@ function nextSessionAskingTitle(session){
   return `${nextSessionRegistryLabel(session) || "An agent"} is asking you`;
 }
 
-function nextSessionSourceOwner(session){
-  const harness = String(session && session.harness || "");
-  if(harness === "codex") return "Codex transcript";
-  if(harness === "claude") return "Claude transcript";
-  if(harness === "antigravity") return "AGY CLI log";
-  const label = nextSessionRegistryLabel(session);
-  return label ? `${label} session source` : "Session source";
-}
-
 function nextSessionInstruction(session, label){
   const instruction = session && session.instruction;
   if(!instruction || typeof instruction !== "object" || Array.isArray(instruction) ||
     nextPromptCopied(session, "instruction")) return null;
   if(String(instruction.label || "") !== label) return null;
   return String(instruction.text == null ? "" : instruction.text).trim() ? instruction : null;
-}
-
-function nextSessionSourceCoverage(owner, next, asks, openDisclosures){
-  if(asks.length || next) return "";
-  return '<details class="next-session-source-coverage"' +
-    `${nextDisclosureAttr("session-source-coverage", openDisclosures)}>` +
-    '<summary data-next-disclosure="session-source-coverage" ' +
-    'data-next-focus="session-source-coverage">SOURCE COVERAGE</summary>' +
-    `<p>${esc(owner)} did not publish a next action.</p></details>`;
 }
 
 function nextSessionCommandFact(kind, label, body){
@@ -96,15 +78,32 @@ function nextSessionFacts(observed, asks){
     ["GIT STATE", "git", observed.gitText, observed.gitKnown],
     ["PROJECT", "project", observed.project, true],
   ];
-  return '<dl class="next-session-facts">' + rows.map(([label, key, text, known]) => {
+  const row = ([label, key, text, known]) => {
     let value = `<span${known ? "" : ' class="next-session-absent"'}>${esc(text)}</span>`;
     if(key === "next" && known && !asks.length){
       value = `<section data-next-session-command-fact="next">${value}</section>`;
     }
-    const note = key === "block"
+    const note = key === "block" && observed.blockNote
       ? `<span class="next-session-fact-note">${esc(observed.blockNote)}</span>` : "";
     return `<div data-next-session-fact="${key}"><dt>${label}</dt><dd>${value}${note}</dd></div>`;
-  }).join("") + "</dl>";
+  };
+  /* What the reader acts on stays in view: the next step and whether it is
+     blocked. Turn, outcome, git state and project sit behind "Session facts"
+     (DRC-4758 slice E, tier 2 of
+     [NUI-19](docs/design-next-ui.md#nui-19-a-caveat-has-three-tiers)), with the
+     outcome and git state in the summary, because HOW IT LANDED below says
+     both again. */
+  const shown = rows.filter(([, key]) => key === "next" || key === "block");
+  const behind = rows.filter(([, key]) => key !== "next" && key !== "block");
+  /* A known outcome already carries the git clause ("Session ended; git
+     state not measured"), so the summary says it once (NU-14, 2026-10-02). */
+  const summary = observed.outcomeKnown
+    ? `Session facts: ${observed.outcomeText}`
+    : `Session facts: ${observed.outcomeText} · ${observed.gitText}`;
+  return '<dl class="next-session-facts">' + shown.map(row).join("") + "</dl>" +
+    `<details class="next-cockpit-why next-session-facts-more"${nextCockpitDisclosureAttr("session-facts")}>` +
+    `<summary>${esc(summary)}</summary>` +
+    '<dl class="next-session-facts">' + behind.map(row).join("") + "</dl></details>";
 }
 
 function nextSessionTitle(session){
@@ -160,7 +159,9 @@ function nextSessionAskBlock(session, asks, observed){
     const options = Array.isArray(ask && ask.options) ? ask.options : [];
     const buttons = options.map((option, index) =>
       `<button type="button" class="next-action" data-next-answer="${esc(id)}" ` +
-      `data-next-answer-index="${index}">${esc(option)}</button>`
+      `data-next-answer-index="${index}" data-next-focus="${esc(`answer:${id}:${index}`)}"` +
+      `${nextPendingAttrs(`answer:${id}:${index}`)}>` +
+      `${nextPendingLabel(`answer:${id}:${index}`, esc(option))}</button>`
     ).join("");
     const choices = buttons
       ? `<div class="next-session-answer-options">${buttons}</div>`
@@ -598,13 +599,42 @@ function nextCommandReports(session = null){
     return `<li class="next-attention-risk-identity"><h3>${route ? `<a href="#n=${esc(route)}" data-next-route="${esc(route)}">${esc(text)}</a>` : esc(text)}</h3>` +
       `<p class="next-attention-risk-source">${esc(identity)}${esc(report.tool_name)} · ${esc(new Date(report.timestamp * 1000).toISOString())}</p></li>`;
   }).join("");
+  const caveats = '<p>A shape match does not prove the action succeeded.</p>' +
+    '<p>Claude Code and Codex after-tool hooks only. Reports may repeat or arrive out of order. ' +
+    'This run keeps up to 1,000 reports, 20 per session, for at most 24 hours; restarting clears them.</p>';
+  /* On the session page the section is tiered (DRC-4758 slice E, tier 2 of
+     [NUI-19](docs/design-next-ui.md#nui-19-a-caveat-has-three-tiers)): off or
+     unsupported it is one summary naming that state, with its sentence and the
+     caveats behind it; on, the list or "No command-shape reports" stays in
+     view and the caveats sit behind "About these reports". Attention keeps
+     its whole section, which is that page's subject. */
+  if(session){
+    const why = (summary, body) => `<details class="next-cockpit-why"` +
+      `${nextCockpitDisclosureAttr("command-reports")}><summary>${esc(summary)}</summary>` +
+      `${body}</details>`;
+    const off = disabled || unsupported;
+    return '<section class="next-attention-section" data-next-command-reports>' +
+      (off
+        ? why(disabled ? "Command-shape reports: off" : "Command-shape reports: unsupported here",
+          `<p>${esc(absent)}</p>${caveats}`)
+        : '<div class="next-attention-section-heading"><h2>Command-shape reports</h2>' +
+          (reports.length ? `<p>${reports.length} report${reports.length === 1 ? "" : "s"} shown · newest first</p>` : "") +
+          '</div>' + (reports.length ? `<ol>${rows}</ol>` : "<p>No command-shape reports.</p>") +
+          why("About these reports", (reports.length ? "" : `<p>${esc(absent)}</p>`) + caveats)) +
+      "</section>";
+  }
   return '<section class="next-attention-section" data-next-command-reports>' +
     '<div class="next-attention-section-heading"><h2>Command-shape reports</h2>' +
     (reports.length ? `<p>${reports.length} report${reports.length === 1 ? "" : "s"} shown · newest first</p>` : "") +
-    '</div>' + (reports.length ? `<ol>${rows}</ol>` : `<p>${esc(absent)}</p>`) +
-    '<p>A shape match does not prove the action succeeded.</p>' +
-    '<p>Claude Code and Codex after-tool hooks only. Reports may repeat or arrive out of order. ' +
-    'This run keeps up to 1,000 reports, 20 per session, for at most 24 hours; restarting clears them.</p></section>';
+    '</div>' + (reports.length ? `<ol>${rows}</ol>` : `<p>${esc(absent)}</p>`) + caveats + '</section>';
+}
+
+/* The project, one click away, when the crumb does not name it: a session
+   opened from Sessions, Attention or the Intent log, or from a pasted link. */
+function nextSessionProjectLink(label){
+  if(!label || nextSessionHome(nextRoute) === "projects") return "";
+  const token = nextRouteToken({view: "project", project: label});
+  return ` · <a href="#n=${esc(token)}" data-next-route="${esc(token)}">${esc(label)}</a>`;
 }
 
 function nextSessionView(project, harness, sid, openDisclosures = new Set()){
@@ -662,14 +692,28 @@ function nextSessionView(project, harness, sid, openDisclosures = new Set()){
   const waiting = observed.isNeeds || observed.askKnown;
   const raise = observed.isNeeds ? nextSessionRaiseControl(session, true) : "";
   const reentryLimit = nextDepartureReentryLimit(session);
-  const missingReentry = reentryLimit.resume + (nextSessionRaiseControl(session) ? "" : reentryLimit.raise);
+  /* Said once per page, beside the controls it is about, before any departure
+     (DRC-4658): one clause naming what is missing, and the cause sentences
+     behind "Why" (DRC-4758 slice E). */
+  const noRaise = !nextSessionRaiseControl(session);
+  const missing = [reentryLimit.resume ? "No resume command" : "",
+    noRaise ? (nextFocusCapability() ? "No terminal to raise" : "Terminal raise off") : ""]
+    .filter(Boolean);
+  const missingReentry = missing.length
+    ? '<div class="next-session-reentry-none">' +
+      `<span class="next-session-reentry-clause">${esc(missing.join(" · "))}</span>` +
+      /* A popover: this row is a flex row ending at the controls, and an
+         in-flow body widened the item to its paragraphs and dragged "Why"
+         492px left ([NUI-19](docs/design-next-ui.md#nui-19-a-caveat-has-three-tiers)). */
+      `<details class="next-cockpit-why next-disclose--pop"${nextCockpitDisclosureAttr("reentry-why")}>` +
+      `<summary>Why</summary><div class="next-disclose-body">${reentryLimit.resume}` +
+      `${noRaise ? reentryLimit.raise : ""}</div></details></div>`
+    : "";
   const controls = nextSessionCopyControl(session) + nextSessionLinkControl(session) +
     nextSessionResumeControl(session) + raise;
   const assignment = nextSessionInstruction(session, "asked")
     ? nextSessionCommandFact("assignment", "ASSIGNMENT",
       nextInstructionLine(session, "", "next-session-command-context")) : "";
-  const coverage = nextSessionSourceCoverage(nextSessionSourceOwner(session),
-    observed.nextKnown, asks, openDisclosures);
   /* The group the session belongs to, under its own label. A session with no
      project groups under "", so once this page is routed it renders the same
      block as any other. Whether such a session can reach this page at all is
@@ -687,9 +731,11 @@ function nextSessionView(project, harness, sid, openDisclosures = new Set()){
   const identity = '<header class="next-session-detail-header">' +
     `<div class="next-session-detail-title">${stateLabel}` +
     `<h1${titleClass}>${esc(observed.titleText)}</h1>` +
-    `<p class="next-session-identity">${esc(observed.harness)} · ${esc(observed.sid)}${rate}</p>` +
+    `<p class="next-session-identity">${esc(observed.harness)} · ${esc(observed.sid)}${rate}` +
+    `${nextSessionProjectLink(label)}</p>` +
     '</div><div class="next-session-detail-bar">' +
-    `${metaLine}${drift.pill || ""}<div class="next-session-controls">${controls}</div></div></header>`;
+    `${metaLine}${drift.pill || ""}<div class="next-session-controls">${controls}</div>` +
+    `${missingReentry}</div></header>`;
   /* Identity, then what is waiting on the reader, both full width; then the
      Intent and drift panel and the session's activity as two columns
      (DRC-4680). The answer sits above both because it outranks the check.
@@ -705,9 +751,9 @@ function nextSessionView(project, harness, sid, openDisclosures = new Set()){
        2019px on a 900px screen when they shared CURRENT ACTIVITY's card. */
     nextSessionSubagents(observed) +
     nextSessionFacts(observed, asks) +
-    `<div class="next-session-evidence">${assignment}${coverage}</div>` +
+    `<div class="next-session-evidence">${assignment}</div>` +
     nextSessionHealth(session) + nextSessionTasks(observed) +
-    nextCommandReports(session) + nextSessionDelivery(session) + missingReentry + drift.record +
+    nextCommandReports(session) + nextSessionDelivery(session) + drift.record +
     "</div>";
   return `<article class="next-session-detail${blocked}" data-next-session-detail="${esc(session.sid)}"` +
     `${stateAttr} data-tone="${esc(observed.tone)}">` + identity +
@@ -717,12 +763,18 @@ function nextSessionView(project, harness, sid, openDisclosures = new Set()){
 }
 
 async function nextAnswerAsk(id, index){
+  // One answer to one question at a time: another option waits for this one.
+  if([...nextPending.keys()].some(key => key.startsWith(`answer:${id}:`))) return;
+  const control = `answer:${id}:${index}`;
+  const press = nextPendingStart(control, "Sending\u2026");
+  if(!press) return;
+  renderNext({named: control});
   try{
-    const response = await fetch("/api/answer", {
+    const response = await nextFetchBounded("/api/answer", {
       method: "POST",
       headers: {"Content-Type": "application/json"},
       body: JSON.stringify({id, index}),
-    });
+    }, press.signal);
     if(!response.ok) throw new Error(`HTTP ${response.status}`);
     const answer = await response.json();
     if(answer.answered !== true) throw new Error("answer not confirmed");
@@ -730,7 +782,9 @@ async function nextAnswerAsk(id, index){
     await refreshNext();
   }catch(_error){
     nextSessionAnswerNotes.set(id, NEXT_ANSWER_FAILURE);
-    renderNext();
+  }finally{
+    nextPendingEnd(control, press);
+    renderNext({named: control});
   }
 }
 

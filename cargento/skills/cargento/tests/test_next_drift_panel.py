@@ -50,15 +50,14 @@ __dashboard.reading_jobs = {[`${__dashboard.sessions[0].harness}:focus-1`]: {id:
     {phase:"waiting", text:"Waiting for Codex"}, {phase:"checking", text:"Checking the reply"}]}};
 """
 
-# Strings the design draws that no layer may show yet, or ever: the level and meter belong to
-# DRC-4695 and DRC-4696, "Stop session" is not offered (DEC-16), and the old labels are renamed.
+# Strings the design draws that no layer may show yet, or ever: a level belongs to DRC-4695 and
+# DRC-4696, "Stop session" is not offered (DEC-16), and the old labels are renamed. "Not checked
+# yet" and the meter's four labels are drawn over a saved intent with no level since owner Q2
+# (DRC-4758 slice C), and `test_no_stage_draws_a_level...` holds that meter unlit.
 NEVER = (
     "Stop session",
-    "Not checked yet",
     "Not enough recorded yet",
-    "None or low",
     "None/Low",
-    "Extreme",
     "Drift:",
     # "Live monitor" is drawn since DRC-4696, off by default, so no level or pill still.
     "Check for drift",
@@ -205,7 +204,9 @@ class IntentAndDriftPanelTest(PanelPage):
             "idle": "Analyze drift",
             "confirming": "Allow and analyze",
             "analyzing": None,
-            "result": "Analyze drift",
+            # The result takes the button's place; "Analyze again" is secondary, and this
+            # Codex reading offers no Steer back, so nothing is primary (owner Q3).
+            "result": None,
             "no reader": None,
         }
         for name, html in stages.items():
@@ -225,10 +226,17 @@ class IntentAndDriftPanelTest(PanelPage):
         )
         assert cancel is not None
         self.assertIn('class="next-action"', cancel.group(0))
-        # The stored reading renders in the Drift section.
+        # The stored reading renders in the Drift section, in the button's place.
         result = drift_of(stages["result"])
-        self.assertIn("<h2>READING</h2>", result)
+        self.assertIn("data-next-result", result)
+        self.assertNotIn("<h2>READING</h2>", result)
         self.assertIn("It changed the board.", result)
+        self.assertNotIn(">Analyze drift</button>", result)
+        self.assertEqual(1, result.count(">Analyze again</button>"))
+        # Drawn as the secondary tier, not a bare control (owner Q3).
+        again = re.search(r'<button[^>]*class="([^"]*)"[^>]*>Analyze again</button>', result)
+        assert again is not None
+        self.assertIn("next-action--secondary", again.group(1))
 
     def test_no_stage_draws_a_level_a_pill_a_stop_control_or_an_old_label(self) -> None:
         for name, html in self.stages().items():
@@ -238,12 +246,17 @@ class IntentAndDriftPanelTest(PanelPage):
                     self.assertNotIn(never, text)
                 self.assertNotIn("data-next-drift-level", html)
                 self.assertNotIn("data-next-drift-pill", html)
+                # Where a saved intent has no level, "Not checked yet" stands over the meter,
+                # and nothing on it is lit or marked current.
+                self.assertNotIn("data-on", drift_of(html))
+                self.assertNotIn("data-current", drift_of(html))
+                self.assertEqual(name != "result", "Not checked yet" in text)
 
     def test_the_disclosure_follows_analyze_when_idle_and_precedes_allow_when_confirming(
         self,
     ) -> None:
         route = routes()["claude"]
-        disclosure = route["disclosure"][:60]
+        disclosure = route["disclosure_parts"][0]
 
         idle = drift_of(self.page())
         button = re.search(r'<button\b[^>]*data-next-cockpit-action="reading-ask"[^>]*>', idle)
@@ -251,7 +264,7 @@ class IntentAndDriftPanelTest(PanelPage):
         self.assertLess(button.start(), idle.index(disclosure))
         described = re.search(r'aria-describedby="([^"]+)"', button.group(0))
         assert described is not None
-        bound = re.search(rf'<p\b[^>]*id="{described.group(1)}"[^>]*>([^<]*)</p>', idle)
+        bound = re.search(rf'<ul\b[^>]*id="{described.group(1)}"[^>]*>([\s\S]*?)</ul>', idle)
         assert bound is not None
         self.assertIn(disclosure, bound.group(1))
 
@@ -441,19 +454,32 @@ class ThePanelKeepsAnalyzeOnTheFirstScreenTest(PanelPage):
         order = [
             intent.index(mark)
             for mark in (
-                'class="next-cockpit-held-stamp"',
+                "next-cockpit-held-stamp",
                 'class="next-cockpit-held-fields"',
             )
         ]
         self.assertEqual(sorted(order), order)
-        stamp = re.search(r'<div class="next-cockpit-held-stamp">([\s\S]*?)</div>', intent)
+        # The stamp is a "Saved" summary over the revision line and its definition, so
+        # neither costs the panel a visible line (DRC-4758 fix round).
+        stamp = re.search(
+            r'<details class="next-cockpit-why next-cockpit-held-stamp"[^>]*>([\s\S]*?)</details>',
+            intent,
+        )
         assert stamp is not None
+        self.assertIn("<summary>Saved</summary>", stamp.group(1))
         self.assertIn('class="next-cockpit-held-revision"', stamp.group(1))
         self.assertIn("Each save is a revision.", stamp.group(1))
         self.assertIn("flex-wrap:wrap", rule(".next-cockpit-held-stamp"))
-        # A line's box shares its row with the count and remove.
-        self.assertIn(
+        # A line's box takes its own row, with its count and Remove on the row under it as the
+        # Goal's are (owner, 2026-10-02, ask 3); the DRC-4680 one-row line is superseded.
+        self.assertEqual("display:grid;gap:4px", rule(".next-cockpit-held-line"))
+        self.assertNotIn(
             "grid-column:auto", rule(".next-cockpit-held-field .next-cockpit-held-line textarea")
+        )
+        self.assertIn(
+            '<div class="next-cockpit-held-under"><span class="next-cockpit-held-count"'
+            ' data-next-cockpit-held-line-count="0">',
+            intent,
         )
 
     def test_saved_intent_introduction_does_not_push_the_action_below_the_fold(self) -> None:
@@ -465,7 +491,6 @@ class ThePanelKeepsAnalyzeOnTheFirstScreenTest(PanelPage):
             (self.page(setup=THREE_LINES), "reading-ask"),
             (self.confirming(), "reading-allow"),
             (self.page(setup=JOB), "reading-cancel"),
-            (self.page("codex", READING), "reading-ask"),
         ):
             with self.subTest(action=action):
                 aside = aside_of(html)
@@ -473,28 +498,38 @@ class ThePanelKeepsAnalyzeOnTheFirstScreenTest(PanelPage):
                 self.assertEqual(1, text.count(introduction))
                 before_action = aside[: aside.index(f'data-next-cockpit-action="{action}"')]
                 self.assertNotIn(introduction, visible_text(before_action))
+        # Under a stored reading the introduction explains a step already taken, so it is not
+        # drawn at all (NU-10, 2026-10-02).
+        self.assertNotIn(introduction, aside_of(self.page("codex", READING)))
 
-    def test_each_fields_count_and_controls_share_its_heading_row(self) -> None:
-        """Owner-reworded fold (DRC-4680 review): under the box the goal's count, clear and save,
-        and the outcome's add and save, each cost a second 44px row in the panel's column. In the
-        heading row they also come before the box in reading order, as they are on screen."""
+    def test_each_field_is_label_box_counter_and_one_footer_saves_both(self) -> None:
+        """Owner Q6, 2026-10-01, reversing the DRC-4680 heading-row placement: with each field's
+        count and controls beside its name, the reader could not tell which box a save belonged
+        to. Each field is now its label, its box and its counter, Clear sits under the goal box,
+        + Add a line under the list, and one footer under both holds Undo changes and Save
+        intent."""
         html = self.page(setup=THREE_LINES)
-        for kind, inside in (
-            ("goal", ("data-next-cockpit-held-count", "held-clear", "held-save")),
-            ("lines", ("held-line-add", "held-save")),
+        for kind, under in (
+            ("goal", ("data-next-cockpit-held-count", "held-clear")),
+            ("lines", ("held-line-add",)),
         ):
             with self.subTest(field=kind):
                 start = html.index(f'data-next-cockpit-held-field="{kind}"')
                 field = html[start:]
                 heading = re.search(
-                    r'<div class="next-cockpit-held-heading">((?:(?!<textarea|<ol)[\s\S])*?)</div>',
-                    field,
+                    r'<div class="next-cockpit-held-heading">([\s\S]*?)</div>', field
                 )
                 assert heading is not None
-                for part in inside:
-                    self.assertIn(part, heading.group(1))
                 box = field.index("<textarea")
-                self.assertLess(field.index(heading.group(1)), box)
+                for part in under:
+                    self.assertNotIn(part, heading.group(1))
+                    self.assertGreater(field.index(part), box)
+                self.assertNotIn("held-save", heading.group(1))
+        aside = aside_of(html)
+        footer = aside.index('class="next-cockpit-held-footer"')
+        self.assertGreater(footer, aside.index('data-next-cockpit-held-field="lines"'))
+        self.assertEqual(1, aside.count('data-next-cockpit-action="held-save"'))
+        self.assertGreater(aside.index('data-next-cockpit-action="held-save"'), footer)
 
     def test_the_columns_put_the_panel_in_a_460px_track_that_is_neither_scrolled_nor_sticky(
         self,
@@ -572,19 +607,23 @@ OFF_SENTENCE = "Could not confirm readings are off. Try turning them off again."
 class ThePanelReviewRoundTest(PanelPage):
     """The two review lenses' findings on DRC-4680, each held by the test that failed first."""
 
-    def test_every_saved_line_is_one_row_the_grid_has_a_track_per_item(self) -> None:
-        """Owner, 2026-09-24: a saved line is one row of about one control height. The source
-        tag was a fourth item in a three-track grid, which pushed remove onto a second row."""
+    def test_every_saved_line_is_its_box_then_one_row_under_it(self) -> None:
+        """Owner, 2026-10-02 (ask 3), superseding the 2026-09-24 one-row line: a saved line is
+        its box, then one row holding its count, an entry's source and Remove, as the Goal's
+        count and Clear sit under its box. A typed line draws no source."""
         html = self.page(setup=THREE_LINES)
         lines = re.findall(r'<li class="next-cockpit-held-line"[^>]*>([\s\S]*?)</li>', html)
         self.assertEqual(3, len(lines))
-        template = re.search(r"grid-template-columns:([^;}]+)", rule(".next-cockpit-held-line"))
-        assert template is not None
-        for line in lines:
-            with self.subTest(line=visible_text(line)[:30]):
+        for index, line in enumerate(lines):
+            with self.subTest(line=index):
                 items = children(line)
-                self.assertIn('class="next-cockpit-held-source"', "".join(items))
-                self.assertEqual(len(items), tracks(template.group(1)), items)
+                self.assertEqual(2, len(items), items)
+                self.assertTrue(items[0].startswith("<textarea"), items[0][:30])
+                self.assertTrue(items[1].startswith('<div class="next-cockpit-held-under">'))
+                self.assertEqual(
+                    index == 2, 'class="next-cockpit-held-source"' in items[1], items[1]
+                )
+        self.assertNotIn("grid-template-columns", rule(".next-cockpit-held-line"))
 
     def test_a_failed_turn_off_is_said_with_no_reader_and_while_analyzing(self) -> None:
         for name, kwargs in (
@@ -638,11 +677,13 @@ __dashboard.asks = [{{id:"ask-1", harness:"claude", session_id:"focus-1", projec
                 self.assertIn('data-next-session-section="ask"', html)
                 self.assertIn("State: </span>needs input</span>", html)
 
-    def test_while_analyzing_the_box_comes_first_and_the_disclosure_once_after_it(self) -> None:
+    def test_while_analyzing_the_box_stands_alone_without_the_disclosure(self) -> None:
+        # Owner Q1, 2026-10-01 (DRC-4758 slice B): the job sends nothing more, and the reader
+        # allowed it, or it ran under an Allow, after the same words; the box stands alone.
         disclosure = routes()["claude"]["disclosure"][:60]
         drift = drift_of(self.page(setup=JOB))
-        self.assertEqual(1, drift.count(disclosure))
-        self.assertLess(drift.index("data-next-analyzing"), drift.index(disclosure))
+        self.assertIn("data-next-analyzing", drift)
+        self.assertEqual(0, drift.count(disclosure))
 
     def test_the_disclosure_renders_once_idle_and_confirming(self) -> None:
         disclosure = routes()["claude"]["disclosure"][:60]
@@ -718,67 +759,31 @@ console.log(JSON.stringify({{found: Boolean(press), tag: active ? active.tagName
         self.assertIn("gap:var(--sp-1)", rule(".next-session-panel"))
         self.assertIn("padding:8px 16px 2px", rule(".next-session-drift-head"))
         self.assertIn("margin-left:auto", rule(".next-cockpit-held-tools"))
-        self.assertIn(
-            "margin-left:auto", rule(".next-cockpit-held-heading>.next-cockpit-held-count")
-        )
-        self.assertIn(
-            "margin-left:0",
-            rule(".next-cockpit-held-heading>.next-cockpit-held-count+.next-cockpit-held-tools"),
-        )
 
-    def test_a_box_at_rest_shows_whole_rows_and_grows_to_the_full_text_on_focus(self) -> None:
-        """Owner, 2026-09-24: "one clean row, expand on focus". A saved line longer than its box
-        showed a half-cut second row, and the goal box a half-cut third. At rest a line is one
-        unwrapped row with its overflow faded, and the goal exactly two whole rows; on focus
-        both grow to the full text. Pure CSS, so focus carries it through a redraw and no
-        reader-state row is owed."""
-        line_rest = rule(".next-session-panel .next-cockpit-held-line textarea:not(:focus)")
-        for part in (
-            "height:calc(var(--fs-body)*1.55 + 16px)",
-            "white-space:nowrap",
-            "overflow:hidden",
-        ):
-            with self.subTest(line_rest=part):
-                self.assertIn(part, line_rest)
-        self.assertRegex(line_rest, r"(?:text-overflow:ellipsis|mask-image:)")
-        goal_rest = rule(".next-session-panel .next-cockpit-held-field>textarea:not(:focus)")
-        for part in (
-            "height:calc(var(--fs-body)*1.55*2 + 9px)",
-            "padding-bottom:0",
-            "overflow:hidden",
-        ):
-            with self.subTest(goal_rest=part):
-                self.assertIn(part, goal_rest)
-        for selector in (
-            ".next-session-panel .next-cockpit-held-line textarea:focus",
-            ".next-session-panel .next-cockpit-held-field>textarea:focus",
-        ):
-            with self.subTest(focus=selector):
-                # Focus takes the at-rest height, wrap and clip away (they are `:not(:focus)`)
-                # and sizes the box to its text; it declares no overflow of its own, so it adds
-                # no scroll container.
-                lifted = rule(selector)
-                self.assertIn("field-sizing:content", lifted)
-                self.assertNotIn("overflow", lifted)
-                self.assertNotIn("height:calc", lifted)
-        self.assertIn(
-            "white-space:pre-wrap",
-            rule(".next-session-panel .next-cockpit-held-line textarea:focus"),
-        )
-        self.assertIn("resize:none", rule(".next-session-panel .next-cockpit-held-field textarea"))
-        # The selectors reach the markup: the goal box is a direct child of its field, each line
-        # box is inside its line, and the whole text stays the box's value.
+    def test_both_boxes_are_roomy_resizable_and_no_focus_rule_fights_a_drag(self) -> None:
+        """Owner Q4, 2026-10-01, superseding "one clean row, expand on focus" (2026-09-24): the
+        goal rests at three rows and each line at two, both wrap and resize vertically, and a
+        dragged height survives a redraw through `nextCaptureInputState`. The at-rest and focus
+        height pair is gone, because it put the box back over the reader's drag on every blur.
+        tests/test_next_intent_editor.py holds the redraw round-trip."""
+        self.assertIn("resize:vertical", rule(".next-cockpit-held-field textarea"))
+        css = re.sub(r"/\*[\s\S]*?\*/", "", STYLES.read_text(encoding="utf-8"))
+        self.assertNotIn("held-line textarea:not(:focus)", css)
+        self.assertNotIn("held-field>textarea:not(:focus)", css)
+        self.assertNotIn("held-field>textarea:focus", css)
+        self.assertNotIn("held-line textarea:focus", css)
         html = self.page(setup=THREE_LINES)
-        self.assertRegex(
-            html, r'data-next-cockpit-held-field="goal">(?:(?!</div>)[\s\S])*</div><textarea '
-        )
+        self.assertRegex(html, r'<textarea rows="3" [^>]*data-next-cockpit-held-kind="goal"')
+        self.assertEqual(3, len(re.findall(r'<textarea rows="2" [^>]*held-line-index', html)))
+        # The whole text stays the box's value and its count.
         self.assertIn(">The toggle writes the choice to the settings store</textarea>", html)
         self.assertIn('data-next-cockpit-held-line-count="0">50/240<', html)
 
-    def test_a_box_without_field_sizing_still_opens_several_rows_on_focus(self) -> None:
-        """Verifier V-3: the focus expansion rests on `field-sizing:content`, which not every
-        engine ships. Where it is missing, a focused box takes a fixed height of several rows
-        and scrolls inside it; the at-rest rules are the same either way."""
+    def test_a_box_without_field_sizing_still_shows_a_draft_whole(self) -> None:
+        """Verifier V-3: the drafted goal and the pending line size to their text with
+        `field-sizing:content`, which not every engine ships. Where it is missing they take a
+        fixed height and scroll inside it, the goal at its three resting rows. No focus rule
+        stands there now (owner Q4)."""
         css = re.sub(r"/\*[\s\S]*?\*/", "", STYLES.read_text(encoding="utf-8"))
         block = re.search(
             r"@supports not \(field-sizing: ?content\)\{((?:[^{}]*\{[^{}]*\})*)\s*\}", css
@@ -788,54 +793,51 @@ console.log(JSON.stringify({{found: Boolean(press), tag: active ? active.tagName
             sel.strip(): body for sel, body in re.findall(r"([^{}]+)\{([^{}]*)\}", block.group(1))
         }
         self.assertIn(
-            "height:calc(var(--fs-body)*1.55*4 + 16px)",
-            rules[".next-session-panel .next-cockpit-held-line textarea:focus"],
+            "height:calc(var(--fs-body)*1.55*3 + 16px)",
+            rules[
+                ".next-session-panel .next-cockpit-held-field[data-next-cockpit-drafted]>textarea"
+            ],
         )
         self.assertIn(
-            "height:calc(var(--fs-body)*1.55*6 + 16px)",
-            rules[".next-session-panel .next-cockpit-held-field>textarea:focus"],
+            "height:calc(var(--fs-body)*1.55*4 + 16px)",
+            rules[
+                ".next-session-panel .next-cockpit-held-line.next-cockpit-direction-line>textarea"
+            ],
         )
-        for body in rules.values():
+        for selector, body in rules.items():
+            self.assertNotIn(":focus", selector)
             self.assertNotIn("overflow", body)
 
-    def test_the_goals_heading_row_keeps_its_controls_on_the_top_line(self) -> None:
-        """Verifier V-4: centred, the count, clear and save floated beside an open "Use a
-        prompt" menu and read as its controls. Every item is one control tall and the row is
-        top-aligned, so they stay on the heading's first line whether the menu is open or not."""
-        self.assertIn(
-            "align-items:flex-start", rule(".next-session-panel .next-cockpit-held-heading")
+    def test_the_goals_heading_row_holds_its_name_and_where_its_words_came_from(self) -> None:
+        """Verifier V-4 asked that the count, clear and save never float beside an open "Use a
+        prompt" menu as though they were its controls. They now sit under the box (owner Q6), so
+        the heading holds the label one control tall and the prompt marks alone."""
+        html = self.page(setup=THREE_LINES)
+        start = html.index('data-next-cockpit-held-field="goal"')
+        heading = re.search(
+            r'<div class="next-cockpit-held-heading">([\s\S]*?)</textarea>', html[start:]
         )
-        for selector in (
-            ".next-session-panel .next-cockpit-held-heading>.next-cockpit-held-label",
-            ".next-session-panel .next-cockpit-held-heading>.next-cockpit-held-count",
-        ):
-            with self.subTest(item=selector):
-                self.assertIn("min-height:44px", rule(selector))
-                self.assertIn("align-items:center", rule(selector))
+        assert heading is not None
+        for control in ("held-count", "held-clear", "held-save"):
+            self.assertNotIn(control, heading.group(1)[: heading.group(1).index("<textarea")])
+        label = rule(".next-session-panel .next-cockpit-held-heading>.next-cockpit-held-label")
+        self.assertIn("min-height:44px", label)
+        self.assertIn("align-items:center", label)
 
-    def test_on_a_narrow_screen_a_lines_box_takes_the_full_row(self) -> None:
-        """At 320 the box shared its row with the count, source and remove and showed about 12
-        characters at rest. At the sheet's narrow step the box takes the whole first row and the
-        three follow on a second, in the same order; the wide rule is untouched, so the fold at
-        1440 and 1100 does not move."""
-        grid = media_rule("max-width:760px", ".next-session-panel .next-cockpit-held-line")
-        template = re.search(r"grid-template-columns:([^;}]+)", grid)
-        assert template is not None
-        self.assertEqual(3, tracks(template.group(1)))
-        box = media_rule(
+    def test_on_a_narrow_screen_a_line_keeps_its_two_rows_and_its_source_wraps(self) -> None:
+        """At 320 the old one-row line showed about 12 characters of its box. Its box now has a
+        row of its own at every width, so the narrow step needs no grid of its own; the source
+        still wraps, so "added from your direction at 14:00" cannot push Remove past the page
+        (page F2)."""
+        with self.assertRaises(AssertionError):
+            media_rule("max-width:760px", ".next-session-panel .next-cockpit-held-line")
+        source = media_rule(
             "max-width:760px",
-            ".next-session-panel .next-cockpit-held-field .next-cockpit-held-line textarea",
+            ".next-session-panel .next-cockpit-held-line .next-cockpit-held-source",
         )
-        self.assertIn("grid-column:1/-1", box)
-        # Remove sits beside the source in the second row's last track, not centred in it.
-        self.assertIn(
-            "justify-self:start",
-            media_rule("max-width:760px", ".next-session-panel .next-cockpit-held-line>button"),
-        )
-        # Wide: still one row, a track per item.
-        wide = re.search(r"grid-template-columns:([^;}]+)", rule(".next-cockpit-held-line"))
-        assert wide is not None
-        self.assertEqual(4, tracks(wide.group(1)))
+        self.assertIn("min-width:0", source)
+        self.assertIn("overflow-wrap:anywhere", source)
+        self.assertIn("flex-wrap:wrap", rule(".next-cockpit-held-under"))
 
     def test_the_sentences_in_the_controls_slot_say_analyze_not_check(self) -> None:
         """Review C-6: "check" also names a tool check on this page, so the sentences that stand
@@ -865,3 +867,41 @@ __dashboard.sessions[0].subagents = [{name:"worker-a", state:"ended", model:"m",
 
 if __name__ == "__main__":
     unittest.main()
+
+
+REFUSED_READING = (
+    "__dashboard.sessions[0].annotation_reading_count = 1;\n"
+    "__dashboard.sessions[0].annotation_assessment = null;\n"
+    "__dashboard.sessions[0].annotation_reading_refused = true;\n"
+)
+
+
+@unittest.skipUnless(shutil.which("node"), "node not available")
+class AStoredReadingIsNeverNotCheckedTest(PanelPage):
+    """Owner Q2, 2026-10-01: "Not checked yet" is never drawn once a reading is stored, and a
+    reading this build refused to read is still stored (INT-4)."""
+
+    def test_a_refused_reading_draws_no_not_checked_yet_and_no_live_hint(self) -> None:
+        text = visible_text(drift_of(self.page(setup=REFUSED_READING)))
+        self.assertIn("this build could not read it", text)
+        self.assertNotIn("Not checked yet", text)
+        self.assertNotIn("Turn on for a quick", text)
+
+    def test_a_spent_request_alone_draws_no_not_checked_yet(self) -> None:
+        text = visible_text(
+            drift_of(self.page(setup="__dashboard.sessions[0].annotation_reading_count = 1;\n"))
+        )
+        self.assertNotIn("Not checked yet", text)
+
+    def test_the_unchecked_state_still_draws_before_any_request(self) -> None:
+        text = visible_text(drift_of(self.page()))
+        self.assertIn("Not checked yet", text)
+        self.assertIn("Shows a level after every turn", text)  # the live hint, reworded by NU-5
+
+    def test_a_refused_reading_with_no_count_published_is_still_stored(self) -> None:
+        text = visible_text(
+            drift_of(
+                self.page(setup=REFUSED_READING.replace("reading_count = 1", "reading_count = 0"))
+            )
+        )
+        self.assertNotIn("Not checked yet", text)

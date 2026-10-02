@@ -31,6 +31,7 @@ from . import ends as runtime_ends
 from . import events as runtime_events
 from . import io as runtime_io
 from . import snapshot as runtime_snapshot
+from .web import page as frontend_page
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Mapping
@@ -610,7 +611,11 @@ def _attach_cached_goals(config: RuntimeConfig, rows: list[Session]) -> None:
 
 
 def _attach_annotations(
-    rows: list[Session], entries: tuple[annotation_store.Annotation, ...]
+    rows: list[Session],
+    entries: tuple[annotation_store.Annotation, ...],
+    *,
+    now: float | None = None,
+    settle_sec: float = 0.0,
 ) -> None:
     """Put what the reader typed onto every row, including the rows with none.
 
@@ -621,6 +626,14 @@ def _attach_annotations(
 
     Bound on the full `sid` rather than the eight-character `session` prefix
     beside it. Both are on the row, and the prefix can collide.
+
+    `now` also publishes `reading_eligibility`, the press-time withhold the
+    reading route would answer with (`reading.press_eligibility`). Here and not
+    earlier because it reads `state`, `finished_at` and `ended_at`, which only
+    `_apply_overlays` writes, and the entry's revisions, which this pass finds.
+    The stop it rests on is `reading.observed_stop`'s, which also reads the
+    collector's `turn_end_at`, so the board, the press and the job read one.
+    None leaves the declared None: annotations are off and nothing can be read.
     """
     for row in rows:
         # Reported rather than claimed away: every Claude row binds by prefix,
@@ -628,8 +641,13 @@ def _attach_annotations(
         # rule and the reason, and the delivery attach reads the same one.
         sid = row.get("sid")
         by_prefix = _identity_is_a_prefix(row)
+        entry = annotation_store.find(entries, row.get("harness"), sid)
+        if now is not None:
+            row["reading_eligibility"] = reading.press_eligibility(
+                row, entry["revisions"] if entry else (), now=now, settle_sec=settle_sec
+            )
         published = annotation_store.published(
-            annotation_store.find(entries, row.get("harness"), sid),
+            entry,
             binding_why=(
                 annotation_store.BINDING_BY_PREFIX if by_prefix else annotation_store.BINDING_EXACT
             ),
@@ -640,6 +658,20 @@ def _attach_annotations(
         # a name cannot reach inside a mapping.
         for name, value in published.items():
             row[f"annotation_{name}"] = value
+
+
+def _work_activity(session: Session) -> float:
+    """The activity that retires an observed stop or end: `work_activity`, else `last_activity`.
+
+    Claude's collector publishes `work_activity`, which reads the parent
+    transcript by its newest conversation record so a bookkeeping append does
+    not retire a stop (DRC-4770). A collector that does not publish it leaves
+    None, and the whole-tree `last_activity` stands, as it always did.
+    """
+    work = session.get("work_activity")
+    if isinstance(work, (int, float)) and not isinstance(work, bool):
+        return float(work)
+    return float(session.get("last_activity") or 0.0)
 
 
 def _hide_unmeasured_rates(rows: list[Session], harnesses: tuple[HarnessSpec, ...]) -> None:
@@ -818,7 +850,12 @@ class Application:
         # first meant every row read None and every `final` reading was
         # retracted, on every collection, with a sentence saying the end was no
         # longer published about an end published seconds later.
-        _attach_annotations(out_sessions, annotation_entries)
+        _attach_annotations(
+            out_sessions,
+            annotation_entries,
+            now=now if config.annotations_enabled else None,
+            settle_sec=config.reading_settle_sec,
+        )
         # After the overlays, which is load-bearing: a wait only an event knows
         # about is a wait, and reading the collector's state is what left the
         # overlay lane silent on every harness.
@@ -922,7 +959,12 @@ class Application:
                         "reading_routes": reading_route.resolve_all(
                             str(row.get("harness") or "") for row in out_sessions
                         ),
-                        "reading": reading_policy.status(config, now=now),
+                        # Covered only where today's destination is the one
+                        # each Allow was given for, from the resolver the
+                        # routes above use (owner, 2026-10-02).
+                        "reading": reading_policy.status(
+                            config, now=now, destinations=reading_route.destinations()
+                        ),
                         # The reader's running analyses, board-wide rather than
                         # per row so a job is never a session field or history
                         # (DRC-4686). A reload reads the job from here.
@@ -952,6 +994,9 @@ class Application:
                 **self._copied_fields(out_sessions),
                 **self._unasked_fields(out_sessions, annotation_entries, now=now),
                 **history_fields,
+                # Which page this process serves, so a tab left open across an
+                # upgrade says to reload (regressions major 1, ui5).
+                "build": frontend_page.build_id(),
             }
         )
         if usage_supported:
@@ -1353,7 +1398,7 @@ class Application:
                     # what retires a stop no `turn_started` ever follows. A
                     # parked parent with a running child is working, so idle
                     # cannot key on `own_activity` the way a wait does.
-                    session_activity=float(session.get("last_activity") or 0.0),
+                    session_activity=_work_activity(session),
                     activity_grace_sec=self.config.overlay_wait_activity_grace_sec,
                     # Reduced rather than written straight onto the row, so the
                     # mark passes the same activity guard the idle overlay does
@@ -1416,10 +1461,11 @@ class Application:
         few seconds after the last write (5.581 s in the a1 arm of
         docs/captures/claude/session-end-2.1.261-macos.jsonl).
 
-        The tell is the row's `last_activity`, which is wider than the parent
-        transcript: on Claude it is the newest of five mtimes — the task file,
-        the parent transcript, the subagent transcripts, the agent files and the
-        child sessions (`collectors/claude.py`). So the exposure stated in
+        The tell is the row's activity as `_work_activity` reads it, which is
+        wider than the parent transcript: on Claude it is the newest of the task
+        file, the parent transcript's newest conversation record (DRC-4770), the
+        subagent transcripts, the agent files and the child sessions
+        (`collectors/claude.py`). So the exposure stated in
         SECURITY.md rather than solved covers all of them: a harness that writes
         any of those more than the grace after `SessionEnd` loses the restored
         end, and the row then reads as it does today, which is honest rather
@@ -1427,7 +1473,7 @@ class Application:
         """
         if not stored:
             return 0.0
-        activity = float(session.get("last_activity") or 0.0)
+        activity = _work_activity(session)
         if activity > stored + self.config.overlay_wait_activity_grace_sec:
             return 0.0
         return stored
@@ -1565,11 +1611,17 @@ class Application:
             # write it may have missed, so its body is not kept (DRC-4760).
             generation = self.snapshot.generation()
             body = json.dumps(self.collect(show_all=show_all)).encode()
-            revision = self.snapshot.publish(key, body, now=self.clock(), generation=generation)
-            # Only a freshly minted revision is worth announcing. A warm reuse
-            # returns above without reaching this line, so a connected client is
-            # never woken for a state it already has.
-            self.state.streams.publish(revision)
+            revision, kept = self.snapshot.publish(
+                key, body, now=self.clock(), generation=generation
+            )
+            # Only a freshly minted revision that was kept is worth announcing. A
+            # warm reuse returns above without reaching this line, so a connected
+            # client is never woken for a state it already has; and a body that
+            # crossed a clear is never served again, so a tab woken for it would
+            # fetch the next collection instead (owner, 2026-10-02: two of one
+            # save's four GETs). The next kept collection announces.
+            if kept:
+                self.state.streams.publish(revision)
             return revision, body
 
     def _fresh_snapshot(

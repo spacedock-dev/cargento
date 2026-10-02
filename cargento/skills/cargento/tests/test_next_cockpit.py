@@ -4244,9 +4244,10 @@ __els.app = {
     this.html = html;
     __els.renders += 1;
     document.activeElement = null;
-    // A span is a control here only when it is focusable, as the analysis
-    // box's title is (tabindex="-1").
-    controls = [...html.matchAll(/<(button|a|textarea|span(?=[^>]*\btabindex=))\b([^>]*)>/g)].map(match => {
+    // A span or a heading is a control here only when it is focusable, as
+    // the analysis box's title and the consent step's question are
+    // (tabindex="-1").
+    controls = [...html.matchAll(/<(button|a|textarea|(?:span|h3)(?=[^>]*\btabindex=))\b([^>]*)>/g)].map(match => {
       const attrs = Object.fromEntries([...match[2].matchAll(/([\w-]+)="([^"]*)"/g)]
         .map(attr => [attr[1], decode(attr[2])]));
       const dataset = Object.fromEntries(Object.entries(attrs)
@@ -4299,6 +4300,26 @@ __els.app = {
         Object.entries(attrs).filter(([key]) => key.startsWith("data-"))
           .map(([key, value]) => [camel(key), value]))};
     });
+  },
+  // The footer under both fields, which holds the one save and the undo
+  // (owner Q6). The input handler reaches it from the page rather than from
+  // a field, and finds the save's description in the section around it.
+  querySelector(selector){
+    if(selector !== ".next-cockpit-held-footer" ||
+      !String(this.html || "").includes('class="next-cockpit-held-footer"')) return null;
+    return {
+      querySelector(inner){
+        const action = /action="([a-z-]+)"/.exec(inner);
+        return action ? controls.find(control => control.dataset.nextCockpitAction === action[1] &&
+          control.dataset.arg === "intent") || null : null;
+      },
+      closest(outer){
+        return outer === ".next-cockpit-held" ? {querySelectorAll(inner){
+          return inner === "[data-next-cockpit-held-absent]"
+            ? paras.filter(para => para.dataset.nextCockpitHeldAbsent !== undefined) : [];
+        }} : null;
+      },
+    };
   },
   querySelectorAll(selector){
     return selector === "[data-next-focus]" ? controls.filter(control => control.dataset.nextFocus) : [];
@@ -4422,7 +4443,8 @@ console.log(JSON.stringify({
         self.assertTrue(out["goalWhy"])
         self.assertTrue(out["outputWhy"])
         self.assertEqual(0, out["clears"])
-        self.assertTrue(out["revision"])
+        # Nobody typed against it, so no stamp is drawn rather than an absence sentence.
+        self.assertFalse(out["revision"])
         self.assertEqual(["0/240", "0/240"], out["counts"])
 
     def test_a_pasted_line_break_collapses_in_the_box_not_silently_at_the_store(self) -> None:
@@ -4492,7 +4514,9 @@ console.log(JSON.stringify({
   draft: nextCockpitHeldDrafts.get("held:codex:focus-1:goal"),
   // Updated in place, which is the whole of what replaces the redraw.
   liveCount: field.querySelector("[data-next-cockpit-held-count]").textContent,
-  liveSave: field.querySelector('[data-next-cockpit-action="held-save"]').hidden,
+  // The one save is the footer's, under both fields (owner Q6).
+  liveSave: "aria-disabled" in controls.find(control =>
+    control.dataset.nextCockpitAction === "held-save").attrs,
   liveClear: field.querySelector('[data-next-cockpit-action="held-clear"]').hidden,
   // What the field renders from that draft, on the next redraw the reader
   // does cause. Both controls exist either way; only their hidden state moves.
@@ -4500,7 +4524,7 @@ console.log(JSON.stringify({
     const html = __els.app.innerHTML;
     return {
       count: (html.match(/data-next-cockpit-held-count="goal">([^<]*)</) || [])[1],
-      save: /data-next-cockpit-action="held-save" data-arg="goal">/.test(html),
+      save: /data-next-cockpit-action="held-save" data-arg="intent">/.test(html),
       clear: /data-next-cockpit-action="held-clear" data-arg="goal">/.test(html),
       // The saved value rides on each field, because the handler compares
       // against it without a payload to hand. Both are read: the untouched
@@ -4586,7 +4610,7 @@ __fetchImpl = async (url, init) => String(url) === "/api/annotate"
 navigateNext({view:"project", project:"cargento", focus:"codex:focus-1", tab:"held-to"});
 await __settle();
 const save = kind => __fire("click", {target:controls.find(control =>
-  control.dataset.nextCockpitAction === "held-save" && control.dataset.arg === kind),
+  control.dataset.nextCockpitAction === "held-save"),
   preventDefault(){}});
 const type = (kind, value) => {
   const input = controls.find(control => control.dataset.nextCockpitHeldKind === kind);
@@ -4695,11 +4719,11 @@ console.log(JSON.stringify({
 
         assert isinstance(out, dict)
         self.assertEqual(1, out["present"])
-        self.assertEqual("discard everything", out["label"])
+        self.assertEqual("Discard everything", out["label"])  # NU-20: the summary's words
         self.assertTrue(out["why"])
         # And the per-field control keeps its own name, which is the half of
         # this the design draws and the half that already shipped.
-        self.assertEqual("clear", out["clearLabel"])
+        self.assertEqual("Clear", out["clearLabel"])
         self.assertEqual(0, out["absent"])
 
     def test_the_first_press_writes_nothing_and_the_second_one_discards(self) -> None:
@@ -4734,7 +4758,7 @@ console.log(JSON.stringify({armed: {posts: armed.posts, label: armed.label,
 
         assert isinstance(out, dict)
         self.assertEqual(0, out["armed"]["posts"])
-        self.assertNotEqual("discard everything", out["armed"]["label"])
+        self.assertEqual("Confirm discard", out["armed"]["label"])
         self.assertTrue(out["armed"]["says"])
         # What the confirmation says before the act, and not only that there is
         # one. SKILL.md tells a reader the board names what it will delete and
@@ -4933,7 +4957,7 @@ console.log(JSON.stringify({view: nextRoute.view, tab: nextRoute.tab,
         self.assertEqual("session", out["view"])
         self.assertIsNone(out.get("tab"))
         self.assertFalse(out["armed"])
-        self.assertEqual("discard everything", out["label"])
+        self.assertEqual("Discard everything", out["label"])  # NU-20: the summary's words
         self.assertEqual(0, out["posts"])
 
     def test_pressing_clear_empties_the_draft_and_offers_the_save(self) -> None:
@@ -4956,7 +4980,7 @@ await __settle();
 console.log(JSON.stringify({
   draft: nextCockpitHeldDrafts.get("held:codex:focus-1:goal"),
   saves: (__els.app.innerHTML.match(
-    /data-next-cockpit-action="held-save" data-arg="goal">/g) || []).length,
+    /data-next-cockpit-action="held-save" data-arg="intent">/g) || []).length,
 }));
 """
         )
@@ -4974,7 +4998,7 @@ __fetchImpl = async (url, init) => String(url) === "/api/annotate"
 navigateNext({view:"project", project:"cargento", focus:"codex:focus-1", tab:"held-to"});
 await __settle();
 const save = kind => __fire("click", {target:controls.find(control =>
-  control.dataset.nextCockpitAction === "held-save" && control.dataset.arg === kind),
+  control.dataset.nextCockpitAction === "held-save"),
   preventDefault(){}});
 const type = (kind, value) => {
   const input = controls.find(control => control.dataset.nextCockpitHeldKind === kind);
@@ -5155,7 +5179,7 @@ const type = value => { const box = input(); box.value = value; __fire("input", 
 type("Six screenshots");
 await __settle();
 __fire("click", {target:controls.find(control =>
-  control.dataset.nextCockpitAction === "held-save" && control.dataset.arg === "goal"),
+  control.dataset.nextCockpitAction === "held-save"),
   preventDefault(){}});
 type("Six screenshots, one per screen");
 
@@ -5243,7 +5267,7 @@ console.log(JSON.stringify({
   emptyShowsBinding: empty.includes("eight-character prefix"),
   // Rendered and hidden, not omitted: a keystroke does not redraw, so the
   // paragraph has to be an element the input handler can reach.
-  typedHidesReason: /<p class="next-cockpit-held-absent" [^>]*data-next-cockpit-held-absent="goal" hidden>/
+  typedHidesReason: /<p class="next-cockpit-held-absent[^"]*" [^>]*data-next-cockpit-held-absent="goal" hidden>/
     .test(__els.app.innerHTML),
   typedShowsOtherReason: /data-next-cockpit-held-absent="lines">No expected outcome typed\\./
     .test(__els.app.innerHTML),
@@ -5274,7 +5298,7 @@ const html = __els.app.innerHTML;
 const block = html.slice(html.indexOf('data-next-cockpit-work'));
 console.log(JSON.stringify({
   rows: [...block.matchAll(/data-next-cockpit-work-type="([^"]+)"/g)].map(m => m[1]),
-  sources: [...block.matchAll(/class="next-cockpit-work-source">([^<]*)</g)].map(m => m[1]),
+  sources: [...block.matchAll(/class="next-cockpit-work-source next-visually-hidden">([^<]*)</g)].map(m => m[1]),
   limit: (block.match(/class="next-cockpit-work-limit">([^<]*)</) || [])[1],
   heading: html.includes("OBSERVED RECORD"),
   numbers: [...block.matchAll(/class="next-cockpit-work-n">#(\\d+)</g)].map(m => Number(m[1])),
@@ -5415,7 +5439,7 @@ console.log(JSON.stringify({
   derived: (html.match(/class="next-cockpit-work-derived">([^<]*)</) || [])[1],
   claimShown: html.includes("model-derived observer snapshot"),
   // A claim the source line already carries is not repeated beside it.
-  sources: [...html.matchAll(/class="next-cockpit-work-source">([^<]*)</g)].map(m => m[1]),
+  sources: [...html.matchAll(/class="next-cockpit-work-source next-visually-hidden">([^<]*)</g)].map(m => m[1]),
   // A published line keeps the mono register beside it.
   published: (html.match(/class="next-cockpit-work-summary">([^<]*)</) || [])[1],
   mix: (html.match(/class="next-cockpit-work-mix">([^<]*)</) || [])[1],
@@ -5528,7 +5552,7 @@ const type = (kind, value) => {
   __fire("input", {target:input});
 };
 const save = kind => __fire("click", {target:controls.find(control =>
-  control.dataset.nextCockpitAction === "held-save" && control.dataset.arg === kind),
+  control.dataset.nextCockpitAction === "held-save"),
   preventDefault(){}});
 
 // When: type the expected outcome's first line alone and save the list.
@@ -5631,7 +5655,8 @@ console.log(JSON.stringify({before, during, other, calls}));
         for text in ("Preparing what is sent", "Waiting for Codex", "Checking the reply"):
             self.assertIn(text, during)
         self.assertRegex(during, r'data-state="active"[^>]*>(?:(?!</li>).)*Preparing what is sent')
-        self.assertIn("You can keep working. The result will appear here.", during)
+        # The row is working, so the box says it reads only the work so far (owner, 2026-10-02).
+        self.assertIn("Reads only the work so far. The result will appear here.", during)
         self.assertNotIn('data-next-cockpit-action="reading-ask"', during)
         self.assertIn("0 model requests recorded", during)
         self.assertNotIn("Analyzing drift", out["other"])
@@ -5794,11 +5819,19 @@ console.log(JSON.stringify({calls: posts.length, pending, finishing: control()})
         )
         assert isinstance(out, dict)
         self.assertEqual(1, out["calls"], "a second Cancel sent another request")
-        for html in (out["pending"], out["finishing"]):
-            button = re.search(r"<button[^>]*>Cancel</button>", html)
-            assert button is not None, "Cancel was replaced by some other label"
-            self.assertIn('aria-disabled="true"', button.group(0))
-            self.assertIn("Analyzing drift", html)
+        # In flight it reads Cancelling... (owner, 2026-10-02); once accepted, the published
+        # `cancelling` keeps the label and the inert state.
+        busy = re.search(
+            r"<button[^>]*data-next-pending[^>]*>[\s\S]*?Cancelling\u2026</span></button>",
+            out["pending"],
+        )
+        assert busy is not None, "a Cancel in flight does not say it is cancelling"
+        self.assertIn('aria-disabled="true"', busy.group(0))
+        self.assertIn("Analyzing drift", out["pending"])
+        button = re.search(r"<button[^>]*>Cancel</button>", out["finishing"])
+        assert button is not None, "Cancel was replaced by some other label"
+        self.assertIn('aria-disabled="true"', button.group(0))
+        self.assertIn("Analyzing drift", out["finishing"])
 
     def test_a_reload_while_a_cancel_is_finishing_draws_cancel_disabled(self) -> None:
         out = self._cancel_fixture(
@@ -6156,9 +6189,12 @@ __dashboard.reading_check = "not-run";
 const read = () => {
   const html = __els.app.innerHTML;
   const block = html.slice(html.indexOf('class="next-session-drift-check"'));
-  const reading = html.slice(html.indexOf('class="next-cockpit-reading"'));
+  // What a reading is sits inside "What is sent" beside the control since DRC-4758 slice E.
   return {
-    text: (reading.match(/class="next-cockpit-reading-why"[^>]*>([^<]*)</) || [])[1],
+    // Under a published disclosure it opens on what a reading reads (verifier ui4 V2).
+    text: (html.match(
+      /class="next-cockpit-reading-why"[^>]*>((?:A reading is a model|What it reads is)[^<]*)</
+    ) || [])[1],
     // The refusal by its id rather than by being first. The offer paragraph
     // now precedes it in every state, because the control renders in all of
     // them, and "the first reason paragraph" stopped naming the reason.
@@ -6171,7 +6207,7 @@ const read = () => {
     // a single check for "disabled" matches both spellings and so cannot
     // witness which of the two shipped.
     bare: /data-next-cockpit-action="reading-ask"[^>]*\\sdisabled[=>\\s]/.test(block),
-    departures: html.includes("DEPARTURES RAISED TO YOU"),
+    departures: html.includes('<section class="next-cockpit-departures">'),
     said: block.includes("never a verification that the work was done"),
   };
 };
@@ -6247,7 +6283,7 @@ console.log(JSON.stringify({empty, unread, offered, enabled, accepted, unknown})
         # The offer states what a reading may and may not read. That it is
         # never a verification is said once, by the route's disclosure beside
         # the control (DRC-4650), rather than again in the offer.
-        self.assertIn("account of the evidence on this page", out["offered"]["text"])
+        self.assertIn("the evidence on this page", out["offered"]["text"])
         self.assertTrue(out["offered"]["said"])
         self.assertTrue(out["offered"]["control"])
         self.assertTrue(out["offered"]["disabled"])
@@ -6457,7 +6493,8 @@ const annotation = {goal:"now", output:"", revision:2, revision_count:2, at:300,
       output:{result:"not verifiable from available evidence", cites:[], detail:"", clause:""}}}};
 const html = nextCockpitReading(session, annotation, entries, model, null, false,
   {state:"read", entries:entries});
-console.log(JSON.stringify({html, saysWhen: html.includes("when it was typed was not recorded")}));
+// One sentence since NU-13 (2026-10-02): "Revision 1 (time not recorded)."
+console.log(JSON.stringify({html, saysWhen: html.includes("Revision 1 (time not recorded).")}));
 """
         )
         assert isinstance(out, dict)
@@ -6499,7 +6536,7 @@ console.log(JSON.stringify({
   stamp: (html.match(/class="next-cockpit-reading-stamp">([^<]*)</) || [])[1],
   stamps: (html.match(/class="next-cockpit-reading-stamp"/g) || []).length,
   result: (html.match(/class="next-cockpit-reading-result">([^<]*)</) || [])[1],
-  departures: html.includes("DEPARTURES RAISED TO YOU"),
+  departures: html.includes('<section class="next-cockpit-departures">'),
   cutoff: html.includes("Evidence stops at 13:22."),
 }));
 """
@@ -6517,7 +6554,9 @@ console.log(JSON.stringify({
         self.assertEqual("observer model · consented at 13:36", out["stamp"])
         # Item 6's words, with the list's number (DRC-4695).
         self.assertEqual("Departs at #3", out["result"])
-        self.assertTrue(out["departures"])
+        # Said once, in the result: no departures section repeats the reading (owner Q9), and
+        # the cutoff moved with it into "What it read".
+        self.assertFalse(out["departures"])
         self.assertTrue(out["cutoff"])
 
     def test_no_field_is_offered_when_the_store_is_off(self) -> None:
@@ -6621,8 +6660,12 @@ __dashboard.sessions[0].annotation_binding_why = "";
     READ_BLOCK = r"""
 navigateNext({view:"project", project:"cargento", focus:"codex:focus-1", tab:"held-to"});
 await __settle();
-const block = (__els.app.innerHTML.match(
-  /<div class="next-session-drift-check">[\s\S]*?<section class="next-cockpit-reading">[\s\S]*?<\/section>/) || [""])[0];
+// The control's slot to the panel's end: the READING section that closed this block is
+// drawn only for a refused reading since DRC-4758 slice E.
+const __html = __els.app.innerHTML;
+const block = __html.includes('<div class="next-session-drift-check">')
+  ? __html.slice(__html.indexOf('<div class="next-session-drift-check">'), __html.indexOf("</aside>"))
+  : "";
 """
 
     NOTHING_TYPED = (
@@ -6640,8 +6683,8 @@ const block = (__els.app.innerHTML.match(
             + r"""
 console.log(JSON.stringify({
   ask: (block.match(/data-next-cockpit-action="reading-ask"/g) || []).length,
-  offer: block.includes("account of the evidence on this page"),
-  disclosure: block.includes("Codex reads this Codex session.") && block.includes("OpenAI"),
+  offer: block.includes("the evidence on this page"),
+  disclosure: block.includes("own harness reads it.") && block.includes("OpenAI"),
   counter: /\d+ model requests? recorded for this session\./.test(block),
 }));
 """
@@ -6696,8 +6739,9 @@ console.log(JSON.stringify({
             + self.UNTOUCHED
             + r"""
 const read = () => {
-  const block = (__els.app.innerHTML.match(
-    /<div class="next-session-drift-check">[\s\S]*?<section class="next-cockpit-reading">[\s\S]*?<\/section>/) || [""])[0];
+  const html = __els.app.innerHTML;
+  const block = html.slice(html.indexOf('<div class="next-session-drift-check">'),
+    html.indexOf("</aside>"));
   const found = (block.match(/(\d+) model requests? recorded for this session\./) || [])[1];
   return found === undefined ? null : found;
 };
@@ -6780,15 +6824,15 @@ console.log(JSON.stringify({refused, after, calls}));
 navigateNext({view:"project", project:"cargento", focus:"codex:focus-1", tab:"held-to"});
 await __settle();
 const saveTag = () => (__els.app.innerHTML.match(
-  /<button[^>]*data-next-cockpit-action="held-save" data-arg="goal"[^>]*>/) || [""])[0];
+  /<button[^>]*data-next-cockpit-action="held-save" data-arg="intent"[^>]*>/) || [""])[0];
 const clearTag = () => (__els.app.innerHTML.match(
   /<button[^>]*data-next-cockpit-action="held-clear" data-arg="goal"[^>]*>/) || [""])[0];
 const saveControl = () => controls.find(control =>
-  control.dataset.nextCockpitAction === "held-save" && control.dataset.arg === "goal");
+  control.dataset.nextCockpitAction === "held-save");
 const resting = saveTag();
 const restingClear = clearTag();
 const absentTag = (__els.app.innerHTML.match(
-  /<p class="next-cockpit-held-absent" id="[^"]*" data-next-cockpit-held-absent="goal"[^>]*>/) || [""])[0];
+  /<p class="next-cockpit-held-absent[^"]*" id="[^"]*" data-next-cockpit-held-absent="goal"[^>]*>/) || [""])[0];
 // A press while inert, before anything is typed.
 let posts = 0;
 const upstream = __fetchImpl;
@@ -6829,7 +6873,9 @@ console.log(JSON.stringify({
         assert described is not None
         absent_tag = out["absentTag"]
         assert isinstance(absent_tag, str)
-        self.assertIn(f'id="{described.group(1)}"', absent_tag)
+        # The one save under both fields is described by each empty field's sentence
+        # (owner Q6), the goal's among them.
+        self.assertIn(f'id="{described.group(1).split()[0]}"', absent_tag)
         # `clear` keeps `hidden`: there is nothing to clear and nothing to
         # explain, so an inert control there would be noise rather than an
         # affordance.
@@ -6873,8 +6919,10 @@ const ctx = nextCockpitContexts.get(
   nextCockpitContextKey(group, nextCockpitFocusedSession(group)));
 ctx.data = Object.assign({}, ctx.data, {observer_model:{enabled:true, disclosure:"x"}});
 renderNext();
-const block = () => (__els.app.innerHTML.match(
-  /<div class="next-session-drift-check">[\s\S]*?<section class="next-cockpit-reading">[\s\S]*?<\/section>/) || [""])[0];
+const block = () => {
+  const html = __els.app.innerHTML;
+  return html.slice(html.indexOf('<div class="next-session-drift-check">'), html.indexOf("</aside>"));
+};
 const sentence = "Nothing has been typed for this session, so there is nothing to read it against.";
 const count = () => block().split(sentence).length - 1;
 const before = count();
@@ -7484,27 +7532,20 @@ class AnAbsenceNeverOutranksTheValueItReplacesTest(unittest.TestCase):
                 self.assertNotIn("two axes, read separately", body)
                 self.assertNotIn("next-cockpit-landed-axes", body)
 
-    def test_the_revision_slot_cannot_invert_because_one_class_carries_both(self) -> None:
+    def test_the_revision_slot_cannot_invert_because_the_stamp_excludes_the_line(self) -> None:
         """The other raised absence has no value to be read beside.
 
-        `nextCockpitHeldTo` fills one span from a chain: a discard stamp, then a
-        revision line, then "No revision saved yet". Value and absence are the
-        same element with the same class, so they resolve identically whatever
-        the tier is. That is a stronger guarantee than a comparison, and it
-        holds only while the chain stays in one assignment, which is what this
-        asserts.
+        `nextCockpitHeldTo` draws a discard stamp in view or a revision line under "Saved",
+        never both, and no absence sentence for a session nobody typed against: the reference
+        draws none, and "No revision saved yet" was always-visible text the owner's walk cut
+        (DRC-4758 fix round). The exclusion holds only while the line is derived from the
+        stamp in one assignment, which is what this asserts.
         """
-        chain = (
-            "nextAnnotationDiscardStamp(annotation) ||\n"
-            '    nextProjectRevisionLine(annotation) || "No revision saved yet"'
-        )
+        chain = 'const revisionLine = discardStamp ? "" : nextProjectRevisionLine(annotation);'
         self.assertIn(chain, self.cockpit_js)
+        self.assertNotIn("No revision saved yet", self.cockpit_js)
         emitted = re.findall(r'class="next-cockpit-held-revision"', self.cockpit_js)
-        self.assertEqual(
-            1,
-            len(emitted),
-            "the revision slot is emitted more than once, so the chain may have split",
-        )
+        self.assertEqual(2, len(emitted), "a third revision slot may not share the exclusion")
 
 
 @unittest.skipUnless(shutil.which("node"), "node not available")
@@ -8593,8 +8634,10 @@ const held = (html.match(
   /<section class="next-cockpit-held">[\s\S]*?<\/section>/) || [""])[0] +
   (caveatsAt === -1 ? "" :
     html.slice(caveatsAt, html.indexOf('<section class="next-cockpit-departures"', caveatsAt)));
-const reading = (html.match(
-  /<div class="next-session-drift-check">[\s\S]*?<section class="next-cockpit-reading">[\s\S]*?<\/section>/) || [""])[0];
+// The control's slot to the panel's end: the READING section is drawn only for a refused
+// reading since DRC-4758 slice E.
+const reading = html.slice(html.indexOf('<div class="next-session-drift-check">'),
+  html.indexOf("</aside>"));
 console.log(JSON.stringify({
   held, reading,
   heldText: held.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim(),
@@ -8642,8 +8685,9 @@ console.log(JSON.stringify({
         self.assertIn(annotation_store.NO_GOAL_TYPED, never)
         self.assertNotIn(annotation_store.NO_GOAL_TYPED, discarded)
         self.assertNotIn(annotation_store.NO_LINES_TYPED, discarded)
-        self.assertIn("No revision saved yet", never)
-        self.assertNotIn("No revision saved yet", discarded)
+        # A never-typed session draws no stamp at all; the discarded one keeps its record.
+        self.assertNotIn("No revision saved yet", never + discarded)
+        self.assertNotIn("Saved", never)
         # And nothing on the never-typed block invents a discard.
         self.assertNotIn(annotation_store.DISCARD_RECORD, never)
         self.assertNotIn("discarded", never)
@@ -9006,8 +9050,9 @@ navigateNext({view:"project", project:"cargento", focus:"codex:focus-1", tab:"he
 await __settle();
 await __settle();
 const html = __els.app.innerHTML;
+// The reading's departure is said once, in the result in the control's slot (owner Q9).
 const departures = (html.match(
-  /<section class="next-cockpit-departures">[\\s\\S]*?<\\/section>/) || [""])[0];
+  /<div class="next-session-drift-check next-cockpit-result"[\\s\\S]*?(?=<\\/aside>)/) || [""])[0];
 console.log(JSON.stringify({
   departures,
   // The cited fact really is outside the recency bound, or this proves nothing.
@@ -9049,7 +9094,7 @@ const entries = [{id:"u1", type:"user_message", by:"", source:"root transcript �
 const withheld = {goal:"do not change the board", revision:1, reading_count:1,
   reading_withheld:"A turn stop was observed and no session end was, so there is no end " +
     "for a reading to rest on. Nothing partial is offered instead."};
-// The lane on, so the departures section draws and says no reading was made.
+// The lane on: even so no departures section speaks for a reading (owner Q9).
 nextData.unasked = true;
 const html = nextCockpitReading(session, withheld, entries, model, null, false,
   {state:"read", entries:entries});
@@ -9080,7 +9125,9 @@ console.log(JSON.stringify({
         self.assertEqual(0, out["results"], "a withheld reading drew a verdict")
         self.assertTrue(out["control"], "the reader cannot ask again")
         self.assertTrue(out["count"], "the press that produced nothing was not counted")
-        self.assertTrue(out["noReading"])
+        # The departures section no longer has a part about the reading (owner Q9, DRC-4758
+        # slice E): the withheld sentence beside the control is the whole account.
+        self.assertFalse(out["noReading"])
         self.assertFalse(out["noDeparture"], "a withheld reading claimed nothing departed")
         self.assertTrue(out["landing"]["stop"]["endKnown"])
         self.assertTrue(out["landing"]["end"]["endKnown"])
@@ -9160,24 +9207,37 @@ console.log(JSON.stringify({
         needs, because "nothing was raised" is only worth as much as the
         evidence it was raised against.
         """
-        out = self.run_fixture(
-            """
-const shape = departures => ({departures, cutoff:"read to 2026-09-10T04:00Z",
-  criteria:[], revisionRead:1, stamp:""});
+        out = self._run_page_js(
+            "await __settle();\nawait __settle();\n"
+            + CockpitHeldToTabTest.FOCUS_DOM
+            + CockpitHeldToTabTest.ANNOTATED
+            + """
+const tab = result => {
+  __dashboard.sessions[0].annotation_at = 106;
+  __dashboard.sessions[0].annotation_assessment = {revision_read:2,
+    cutoff:"read to 2026-09-10T04:00Z",
+    criteria:{goal:{result, detail:"It drifted.", cites:["fo-a"]}}};
+  navigateNext({view:"project", project:"cargento", focus:"codex:focus-1", tab:"held-to"});
+  renderNext();
+  return __els.app.innerHTML;
+};
 console.log(JSON.stringify({
-  none: nextCockpitDepartures(shape([])),
-  one: nextCockpitDepartures(shape([{label:"TYPED GOAL", clause:"c", clauseKnown:true,
-    detail:"It drifted.", result:"departure", evidence:["user_message · root transcript"]}])),
+  none: tab("consistent with the evidence read"),
+  one: tab("departure"),
 }));
-"""
+""",
+            storage_prelude({}) + self.FIXTURE,
         )
         assert isinstance(out, dict)
-        self.assertIn("read to 2026-09-10T04:00Z", out["none"])
-        self.assertIn("raised no departure", out["none"])
-        self.assertIn("read to 2026-09-10T04:00Z", out["one"])
-        # Once per block, not once per row: the cutoff is a property of the
-        # reading, and repeating it beside every departure said one fact twice.
-        self.assertEqual(1, out["one"].count("read to 2026-09-10T04:00Z"))
+        # In the result's "What it read" since owner Q9 (DRC-4758 slice E): the departures
+        # section that carried it no longer repeats the reading.
+        for case in ("none", "one"):
+            with self.subTest(case=case):
+                html = out[case]
+                assert isinstance(html, str)
+                self.assertEqual(1, html.count("read to 2026-09-10T04:00Z"))
+                what = html[html.index("<summary>What it read") :]
+                self.assertIn("read to 2026-09-10T04:00Z", what[: what.index("</details>")])
 
     def test_two_sessions_a_reader_cannot_tell_apart_are_labelled_apart(self) -> None:
         """Finding Q's remainder: the scope rail is how a reader reaches one.
@@ -9374,6 +9434,7 @@ class CockpitHeldDraftSurvivesAnUnwritableStoreTest(NextPageJsHarness):
         out = self.run_fixture(
             """
 const key = nextCockpitHeldKey({harness:"codex", sid:"focus-1"}, "goal");
+const session = __dashboard.sessions.find(row => row.sid === "focus-1");
 const attempt = async persisted => {
   nextCockpitHeldDrafts.set(key, "hold it to what I asked");
   // Only the annotate call answers; the refresh the handler starts next is
@@ -9382,11 +9443,11 @@ const attempt = async persisted => {
   __fetchImpl = url => String(url).includes("/api/annotate")
     ? Promise.resolve({ok:true, json: async () => ({ok:true, persisted})})
     : Promise.resolve({ok:false, status:503, json: async () => ({})});
-  await nextCockpitHeldSave({harness:"codex", sid:"focus-1"}, "goal");
+  await nextCockpitIntentSave(session);
   return {
     kept: nextCockpitHeldDrafts.has(key),
     draft: nextCockpitHeldDrafts.get(key) || "",
-    cue: nextCockpitHeldCue(key),
+    cue: nextCockpitHeldCue(nextCockpitIntentKey(session)),
   };
 };
 const unpersisted = await attempt(false);
@@ -9876,11 +9937,10 @@ console.log(JSON.stringify({
             '__dashboard.sessions[0].departure_why = "";\n'
         )
 
-        self.assertIn("It changed the board mid-capture.", reading_only["visible"])
-        self.assertEqual(
-            ["1", "0", "1", "1", "0"],
-            re.findall(r'class="next-cockpit-count-value"[^>]*>([^<]*)<', reading_only["block"]),
-        )
+        # A reading's departure alone draws no section: it is said once, in the result (owner
+        # Q9, DRC-4758 slice E), so there is no part of this section for a figure to count.
+        self.assertEqual("", reading_only["block"])
+        self.assertIn("It changed the board mid-capture.", reading_only["html"])
         self.assertEqual(
             ["1", "1", "1", "1", "0"],
             re.findall(r'class="next-cockpit-count-value"[^>]*>([^<]*)<', both["block"]),
@@ -9951,12 +10011,9 @@ console.log(JSON.stringify({
         )
 
         self.assertIn("data-next-cockpit-direction-question", out["html"])
-        self.assertNotIn("It changed the board.", out["block"])
-        self.assertIn(
-            "This reading verified none of the constraints it read, so it raised nothing and "
-            "confirmed nothing.",
-            out["visible"],
-        )
+        # No section repeats the reading since owner Q9 (DRC-4758 slice E); the demotion is
+        # the result's, pinned at the criterion row.
+        self.assertEqual("", out["block"])
 
     def test_the_section_points_at_where_a_raise_is_kept(self) -> None:
         # The design's order ends at "where it is kept", and the Intent log is
@@ -9973,7 +10030,9 @@ console.log(JSON.stringify({
 
         self.assertIn('href="#n=intent"', html)
         self.assertNotIn('href="#n=intent"', out["block"])
-        self.assertLess(html.find("<h2>DEPARTURES RAISED TO YOU</h2>"), html.find("HOW IT LANDED"))
+        self.assertLess(
+            html.find('<section class="next-cockpit-departures">'), html.find("HOW IT LANDED")
+        )
         self.assertLess(html.find("HOW IT LANDED"), html.find("next-cockpit-departures-kept"))
 
     def test_no_departure_standing_draws_no_sentence_about_how_one_was_raised(self) -> None:
@@ -9990,10 +10049,15 @@ console.log(JSON.stringify({
             ' delivery_outcome: "handed-over", delivery_why: "Handed to this machine\'s '
             'notification service, which accepted it."};\n'
         )
-        # The lane on, so the section draws and the gate inside it is what is measured.
-        out = self.review("__dashboard.unasked = true;\n" + delivery)
+        # The lane on, so the section draws and the gate inside it is what is measured. With
+        # no raise it draws for the lane's own absence sentence (owner Q9).
+        out = self.review(
+            "__dashboard.unasked = true;\n"
+            '__dashboard.sessions[0].departure_why = "Cargento has not checked this session.";\n'
+            + delivery
+        )
 
-        self.assertIn("DEPARTURES RAISED TO YOU", out["block"])
+        self.assertIn('<section class="next-cockpit-departures">', out["block"])
         self.assertNotIn("HOW IT WAS RAISED", out["block"])
         self.assertNotIn("which accepted it.", out["block"])
         # And with it off there is no section to carry the sentence at all.
@@ -10162,7 +10226,7 @@ __fetchImpl = async (url, init) => String(url) === "/api/annotate"
 navigateNext({view:"project", project:"cargento", focus:"codex:focus-1", tab:"held-to"});
 await __settle();
 const save = kind => __fire("click", {target:controls.find(control =>
-  control.dataset.nextCockpitAction === "held-save" && control.dataset.arg === kind),
+  control.dataset.nextCockpitAction === "held-save"),
   preventDefault(){}});
 const type = (kind, value) => {
   const input = controls.find(control => control.dataset.nextCockpitHeldKind === kind);
@@ -10228,7 +10292,7 @@ __fetchImpl = async (url, init) => String(url) === "/api/annotate"
 navigateNext({view:"project", project:"cargento", focus:"codex:focus-1", tab:"held-to"});
 await __settle();
 const save = kind => __fire("click", {target:controls.find(control =>
-  control.dataset.nextCockpitAction === "held-save" && control.dataset.arg === kind),
+  control.dataset.nextCockpitAction === "held-save"),
   preventDefault(){}});
 const type = (kind, value) => {
   const input = controls.find(control => control.dataset.nextCockpitHeldKind === kind);
@@ -10241,7 +10305,7 @@ save("goal");
 await __settle();
 type("goal", "Six screenshots and a log");
 await __settle();
-const marked = nextCockpitHeldStates.has("held:codex:focus-1:goal");
+const marked = nextCockpitHeldStates.has("held:codex:focus-1:intent");
 save("goal");
 await __settle();
 console.log(JSON.stringify({marked, polite: wrote("next-cockpit-cue-status")}));
@@ -10280,7 +10344,7 @@ __fetchImpl = async (url, init) => String(url) === "/api/annotate"
 navigateNext({view:"project", project:"cargento", focus:"codex:focus-1", tab:"held-to"});
 await __settle();
 const save = kind => __fire("click", {target:controls.find(control =>
-  control.dataset.nextCockpitAction === "held-save" && control.dataset.arg === kind),
+  control.dataset.nextCockpitAction === "held-save"),
   preventDefault(){}});
 const type = (kind, value) => {
   const input = controls.find(control => control.dataset.nextCockpitHeldKind === kind);
@@ -10306,7 +10370,9 @@ console.log(JSON.stringify({
 """
         )
 
-        self.assertEqual(2, out["onScreen"])
+        # One cue on screen, the footer's, since one save serves both fields (owner Q6), and
+        # still one write per save: the line's keystroke dropped the first save's mark.
+        self.assertEqual(1, out["onScreen"])
         self.assertEqual(["Saved as a new revision."] * 2, out["polite"])
 
     def test_the_armed_control_carries_the_warning_as_its_description(self) -> None:
@@ -10483,7 +10549,7 @@ press();
 await __settle();
 console.log(JSON.stringify({
   alert: wrote("next-cockpit-cue-alert"),
-  armedNow: __els.app.innerHTML.includes("confirm discard"),
+  armedNow: __els.app.innerHTML.includes("Confirm discard"),
 }));
 """
         )
@@ -10511,13 +10577,13 @@ press();
 await __settle();
 __fire("keydown", {key:"Escape", target:discardControl(), preventDefault(){}});
 await __settle();
-const disarmed = __els.app.innerHTML.includes("confirm discard");
+const disarmed = __els.app.innerHTML.includes("Confirm discard");
 press();
 await __settle();
 console.log(JSON.stringify({
   disarmed,
   alert: wrote("next-cockpit-cue-alert"),
-  armedNow: __els.app.innerHTML.includes("confirm discard"),
+  armedNow: __els.app.innerHTML.includes("Confirm discard"),
 }));
 """
         )
@@ -10653,9 +10719,10 @@ console.log(JSON.stringify({rows}));
             "delete __dashboard.sessions[0].assessment;\n"
         )
 
-        self.assertEqual(
-            "not-observed", self.kind_of(rows, "No reading has been made at your request")
-        )
+        # No longer drawn: the reading's departures are said once, in the result that stands in
+        # the control's slot, so the departures section has no part about the reading (owner
+        # Q9, DRC-4758 slice E), and an unpressed session says so beside the button instead.
+        self.assertEqual([], [row for row in rows if row[0].startswith("No reading has been made")])
 
     def test_a_reader_who_has_typed_nothing_is_waiting_on_themselves(self) -> None:
         """The one kind the reader can act on, and the only one the stylesheet
@@ -11167,8 +11234,10 @@ console.log(JSON.stringify(seen));
         out = self._run_page_js(
             "await __settle();\nawait __settle();\n"
             + CockpitHeldToTabTest.ANNOTATED
-            # The lane on, so the departures section that defines its noun renders.
+            # The lane on, so the departures section that defines its noun renders. With no
+            # raise it draws only for the lane's own absence sentence (owner Q9).
             + "__dashboard.unasked = true;\n"
+            + '__dashboard.sessions[0].departure_why = "Cargento has not checked this session.";\n'
             + """
 navigateNext({view:"project", project:"cargento", focus:"codex:focus-1", tab:"held-to"});
 await __settle();
@@ -11178,9 +11247,10 @@ console.log(JSON.stringify({
   departure:count("A departure is a place the record does not match the words you chose"),
   revision:count("Each save is a revision"),
   readingShort:count("A reading is one model pass over the record"),
-  readingOffer:count("A reading is a model\\u2019s account of the evidence on this page"),
+  readingOffer:count("A reading is a model\\u2019s account of the evidence on this page") +
+    count("What it reads is the evidence on this page"),
   departureAfterHeader:html.indexOf("A departure is a place the record") >
-    html.indexOf("DEPARTURES RAISED TO YOU"),
+    html.indexOf('<section class="next-cockpit-departures">'),
   revisionNearStamp:Math.abs(html.indexOf("Each save is a revision") -
     html.indexOf('class="next-cockpit-held-revision"')) < 400
 }));
@@ -12059,7 +12129,9 @@ class CaveatTieringTest(NextPageJsHarness):
             "__dashboard.delivery_counts = {raises: 3, attempted: 3, handed_over: 2};\n"
             # The lane on, so the departures section these caveats live in renders: with it off
             # and nothing on record the section is absent (DRC-4543). A setup may delete it.
+            # With no raise it draws only for the lane's own absence sentence (owner Q9).
             "__dashboard.unasked = true;\n"
+            '__dashboard.sessions[0].departure_why = "Cargento has not checked this session.";\n'
             + setup
             + """
 navigateNext({view:"project", project:"cargento", focus:"codex:focus-1", tab:"held-to"});
@@ -12073,8 +12145,9 @@ console.log(JSON.stringify({
     /<section class="next-cockpit-landed">[\\s\\S]*?<\\/section>/) || [""])[0],
   departures: (html.match(
     /<section class="next-cockpit-departures">[\\s\\S]*?<\\/section>/) || [""])[0],
+  // The result stands in the control's slot since DRC-4758 slice C, up to the departures.
   reading: (html.match(
-    /<div class="next-session-drift-check">[\\s\\S]*?<section class="next-cockpit-reading">[\\s\\S]*?<\\/section>/) || [""])[0],
+    /<div class="next-session-drift-check next-cockpit-result"[\\s\\S]*?(?=<section class="next-cockpit-departures"|<\\/aside>)/) || [""])[0],
 }));
 """,
             storage_prelude({}) + self.FIXTURE,
@@ -12132,6 +12205,9 @@ console.log(JSON.stringify({
             ),
             "The reading raised no departure from the revision it read.",
             "This session was not in the observed payload, so nothing here says how it ended.",
+            # The reading's departures are said once, in the result (owner Q9, DRC-4758 slice
+            # E), so the departures section no longer draws the part this sentence lived in.
+            "No reading has been made at your request, so nothing has been raised from one.",
         }
     )
 
@@ -12225,6 +12301,7 @@ console.log(JSON.stringify({
             "__dashboard.annotate = true;\n__dashboard.annotate_cap = 240;\n"
             "__dashboard.delivery_counts = {raises: 3, attempted: 3, handed_over: 2};\n"
             "__dashboard.unasked = true;\n"
+            '__dashboard.sessions[0].departure_why = "Cargento has not checked this session.";\n'
             """
 navigateNext({view:"project", project:"cargento", focus:"codex:focus-1", tab:"held-to"});
 await __settle();
@@ -12396,12 +12473,13 @@ console.log(JSON.stringify({keys, kept, closed: disclosures.map(row => row.open)
         html, reading = out["html"], out["reading"]
         assert isinstance(html, str) and isinstance(reading, str)
         self.assertIn("This covers only the work so far", reading)
-        # No tier-2 control anywhere inside the reading section -- the four
-        # sites this change touches all sit after it.
-        self.assertNotIn("next-cockpit-why", reading)
+        # No tier-2 control from the four sites this change touches inside the
+        # result -- they all sit after it. Its own per-line Evidence and the
+        # disclosure under its press are the result's, not those (DRC-4758 C).
+        self.assertNotIn("--unasked-readings", reading)
         # And the first `reading-why` in a slice to end of document is still
-        # the reading section's own, not one tiered from below it.
-        block = html[html.index('class="next-cockpit-reading"') :]
+        # the result's own, not one tiered from below it.
+        block = html[html.index("data-next-result") :]
         first = re.search(r'class="next-cockpit-reading-why">([^<]*)<', block)
         assert first is not None
         self.assertLess(
@@ -12437,8 +12515,10 @@ class HeldToOrderingTest(NextPageJsHarness):
             "await __settle();\nawait __settle();\n"
             "__dashboard.annotate = true;\n__dashboard.annotate_cap = 240;\n"
             "__dashboard.delivery_counts = {raises: 3, attempted: 3, handed_over: 2};\n"
-            # The lane on, so the departures section renders; a setup may delete it.
+            # The lane on, so the departures section renders; a setup may delete it. With no
+            # raise it draws only for the lane's own absence sentence (owner Q9).
             "__dashboard.unasked = true;\n"
+            '__dashboard.sessions[0].departure_why = "Cargento has not checked this session.";\n'
             + self.ANNOTATED
             + setup
             + """
@@ -12466,7 +12546,8 @@ console.log(JSON.stringify({
         at = panel.index('class="next-cockpit-held-lede"')
         self.assertLess(panel.index('class="next-cockpit-held-fields"'), at)
         self.assertLess(panel.index('data-next-cockpit-action="direction-keep"'), at)
-        self.assertLess(at, panel.index("<h2>READING</h2>"))
+        # The READING section is drawn only for a refused reading (DRC-4758 slice E).
+        self.assertLess(at, panel.index('<section class="next-cockpit-departures">'))
         self.assertEqual(1, panel.count('class="next-cockpit-held-lede"'))
 
     def test_the_lede_claims_no_automatic_reading(self) -> None:
@@ -12496,8 +12577,7 @@ console.log(JSON.stringify({
         order = [
             ">Intent</h2>",
             'data-next-cockpit-action="direction-keep"',
-            "<h2>READING</h2>",
-            "DEPARTURES RAISED TO YOU",
+            '<section class="next-cockpit-departures">',
             # The activity column: the numbered list right after CURRENT ACTIVITY (DRC-4694),
             # then how it landed after the session's facts.
             "CURRENT ACTIVITY",
@@ -13604,9 +13684,10 @@ console.log(JSON.stringify({limit: texts("next-cockpit-work-limit"),
         )
         # Where the route names where the checks go, a reading can carry them
         # after the reader allows tool output, so nothing demotes Expected
-        # Output, and the line under the checks says what is sent and to whom.
+        # Output. What is sent and to whom is said once, in "What is sent" beside the
+        # control; the line under the checks no longer repeats it (DRC-4758 slice E).
         self.assertEqual("", out["readingClaude"])
-        self.assertIn("to Codex, which reaches OpenAI", out["limit"][0])
+        self.assertNotIn("to Codex, which reaches OpenAI", out["limit"][0])
         # The reading row has its own sentence since the DRC-4680 review (C-5): it sits in the
         # panel, beside the record rather than under it, so it names the record instead of
         # pointing "above" at it.
@@ -13678,7 +13759,7 @@ __dashboard.annotate_cap = 240;
 navigateNext({view:"project", project:"cargento", focus:"claude:claude-idle", tab:"held-to"});
 await __settle();
 const html = __els.app.innerHTML;
-const reading = html.slice(html.indexOf("<h2>READING</h2>"), html.indexOf("</aside>"));
+const reading = html.slice(html.indexOf("data-next-result"), html.indexOf("</aside>"));
 console.log(JSON.stringify({reading}));
 """
         )

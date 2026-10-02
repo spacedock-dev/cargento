@@ -17,7 +17,7 @@ from . import io as runtime_io
 from . import supervise
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Callable, Mapping
     from pathlib import Path
 
     from .config import RuntimeConfig
@@ -46,6 +46,14 @@ _SQL_ERROR = getattr(runtime_io.sqlite_module, "Error", RuntimeError)
 # not stall behind a queue of presses.
 WRITE_WAIT_SEC = 10.0
 READ_WAIT_SEC = 2.0
+# The line the consent step opens with when an Allow is on record that does
+# not cover today's destination: one written before the binding, or one given
+# while the words went somewhere else (owner, 2026-10-02). The server's words,
+# so the page never composes a claim about what the store holds.
+DESTINATION_CHANGED = "Where your words go has changed since you allowed this, so allow it again."
+# The reason a job's reservation is refused when the destination moved after
+# the press was admitted: the token the press answers `409` with.
+DESTINATION_MOVED = "destination-changed"
 
 
 class Status(TypedDict):
@@ -54,10 +62,14 @@ class Status(TypedDict):
     limit: int
     retry_at: float | None
     reason: str
-    # Which receivers the reader has allowed, so the page can tell whether the
-    # provider its route names still needs an Allow. `consent` answers for the
-    # one provider the call asked about.
+    # Which receivers an Allow covers today, so the page can tell whether the
+    # provider its route names still needs one. An Allow covers a provider only
+    # while its destination is the one the Allow was given for (owner,
+    # 2026-10-02). `consent` answers for the one provider the call asked about.
     providers: dict[str, bool]
+    # Provider to `DESTINATION_CHANGED`, for each Allow on record that does not
+    # cover today's destination. Never for a refusal, which holds anywhere.
+    rebind: dict[str, str]
     # The tool-output grants, provider to the destinations the reader allowed
     # it to reach, item 7 of the ruling `reading.build_ledger` cites.
     # Its own table: no answer in the two above is
@@ -76,6 +88,7 @@ def _answer(
     reason: str = "",
     providers: dict[str, bool] | None = None,
     tool_output: dict[str, list[str]] | None = None,
+    rebind: dict[str, str] | None = None,
 ) -> Status:
     full = len(dates) >= DAILY_CAP
     return {
@@ -90,6 +103,7 @@ def _answer(
         "reason": reason or ("daily-cap" if full else "consent-required" if not consent else ""),
         "providers": dict(providers) if providers else dict.fromkeys(PROVIDERS, False),
         "tool_output": {name: list(where) for name, where in (tool_output or {}).items()},
+        "rebind": dict(rebind or {}),
     }
 
 
@@ -121,6 +135,32 @@ def _allowed(db: Any) -> dict[str, bool]:
     return allowed
 
 
+def _bound(db: Any) -> dict[str, str]:
+    """The destination each provider's Allow was given for; absent where none was recorded."""
+    return {
+        name: where
+        for name, where in db.execute("SELECT provider, destination FROM permission_destination")
+        if name in PROVIDERS and isinstance(where, str)
+    }
+
+
+def _covered(
+    allowed: dict[str, bool], bound: dict[str, str], today: Mapping[str, str]
+) -> tuple[dict[str, bool], dict[str, str]]:
+    """Which Allows cover a press today, and the line for each that does not.
+
+    Exact equality, with "" a value of its own: an Allow given while the
+    destination could not be named covers presses only while it still cannot.
+    A row with no recorded destination covers nothing.
+    """
+    covered = {
+        name: allowed[name] and name in bound and bound[name] == today.get(name, "")
+        for name in allowed
+    }
+    rebind = {name: DESTINATION_CHANGED for name in allowed if allowed[name] and not covered[name]}
+    return covered, rebind
+
+
 def _tool_output(db: Any) -> dict[str, list[str]]:
     granted: dict[str, list[str]] = {}
     for name, where in db.execute(
@@ -147,6 +187,7 @@ def _transaction(
     provider: str,
     tool_output: str = "",
     job_id: str = "",
+    today: Mapping[str, str] | None = None,
 ) -> Status:
     if not math.isfinite(now) or now <= 0:
         return _answer(reason="store-unavailable")
@@ -164,6 +205,16 @@ def _transaction(
         db.execute(
             "CREATE TABLE IF NOT EXISTS tool_output_permission (provider TEXT NOT NULL, "
             "destination TEXT NOT NULL, PRIMARY KEY (provider, destination))"
+        )
+        # Where each provider's Allow was given for (owner, 2026-10-02). A
+        # table of its own, for `spend_jobs`' reason below: an older build's
+        # two-value `INSERT OR REPLACE INTO provider_permission` fails against
+        # a third column, and it would then refuse every Allow. A row written
+        # before this table existed has no destination here, so it stays
+        # readable and covers no press.
+        db.execute(
+            "CREATE TABLE IF NOT EXISTS permission_destination "
+            "(provider TEXT PRIMARY KEY, destination TEXT NOT NULL)"
         )
         db.execute("CREATE TABLE IF NOT EXISTS spends (at REAL NOT NULL)")
         # A table of its own rather than a column on `spends`: an older build's
@@ -189,6 +240,14 @@ def _transaction(
                 "UPDATE provider_permission SET allowed = 0; "
                 "DELETE FROM tool_output_permission; END"
             )
+            # Its own trigger, since `IF NOT EXISTS` never rewrites the one
+            # above: an older build's Turn off forgets every bound destination
+            # too, so its later Allow cannot cover a destination named before.
+            db.execute(
+                f"CREATE TRIGGER IF NOT EXISTS permission_destination_off_{event.lower()} "  # noqa: S608 - two fixed words
+                f"AFTER {event} ON permission WHEN NEW.allowed = 0 BEGIN "
+                "DELETE FROM permission_destination; END"
+            )
         allowed = _allowed(db)
         db.execute("DELETE FROM spends WHERE at <= ?", (now - DAY_SEC,))
         db.execute("DELETE FROM spend_jobs WHERE at <= ?", (now - JOB_LEDGER_SEC,))
@@ -198,9 +257,16 @@ def _transaction(
         dates = tuple(float(row[0]) for row in db.execute("SELECT at FROM spends ORDER BY at"))
         if any(not math.isfinite(at) or at <= 0 for at in dates):
             raise ValueError("Invalid spend timestamp")
+        current = dict(today or {})
         if operation == "allow" and provider in allowed:
             _write(db, provider, True)
             allowed[provider] = True
+            # Bound to the destination the Allow's disclosure named, which
+            # the press has checked is today's (`http_api._reading_route`).
+            where = current.get(provider, "")
+            db.execute(
+                "INSERT OR REPLACE INTO permission_destination VALUES (?, ?)", (provider, where)
+            )
             if tool_output:
                 db.execute(
                     "INSERT OR IGNORE INTO tool_output_permission VALUES (?, ?)",
@@ -214,8 +280,15 @@ def _transaction(
                 _write(db, name, False)
             allowed = dict.fromkeys(PROVIDERS, False)
             db.execute("DELETE FROM tool_output_permission")
+            # Every bound destination goes too, by the trigger the legacy
+            # row's write above fires, as it does for an older build's off.
+        covered, rebind = _covered(allowed, _bound(db), current)
         answer = _answer(
-            allowed.get(provider, False), dates, providers=allowed, tool_output=_tool_output(db)
+            covered.get(provider, False),
+            dates,
+            providers=covered,
+            tool_output=_tool_output(db),
+            rebind=rebind,
         )
         if operation == "reserve" and not answer["reason"]:
             return _commit_charge(db, answer, now, job_id)
@@ -248,19 +321,32 @@ def _run(
     provider: str,
     tool_output: str = "",
     job_id: str = "",
+    today: Mapping[str, str] | None = None,
 ) -> Status:
     try:
-        return _transaction(config, now, operation, provider, tool_output, job_id)
+        return _transaction(config, now, operation, provider, tool_output, job_id, today)
     except (OSError, ValueError, RuntimeError, _SQL_ERROR):
         return _answer(reason="store-unavailable")
 
 
-def status(config: RuntimeConfig, *, now: float, provider: str = LEGACY_PROVIDER) -> Status:
+def status(
+    config: RuntimeConfig,
+    *,
+    now: float,
+    provider: str = LEGACY_PROVIDER,
+    destinations: Mapping[str, str] | None = None,
+) -> Status:
+    """The stored answer, as it covers a press to `destinations` today.
+
+    `destinations` is each provider's `reading_route.destination` now. One left
+    out is read as unnamed (""), which an Allow given for a named one never
+    covers, so a caller that forgets it asks again rather than sends.
+    """
     if config.model_calls_disabled:
         return _answer(reason="run-disabled")
     if not store_path(config).exists():
         return _answer()
-    return _run(config, now, "read", provider)
+    return _run(config, now, "read", provider, today=destinations)
 
 
 def set_consent(
@@ -270,17 +356,28 @@ def set_consent(
     now: float,
     provider: str = LEGACY_PROVIDER,
     tool_output: str = "",
+    destination: str = "",
+    destinations: Mapping[str, str] | None = None,
 ) -> Status:
     """Allow one provider, or revoke every provider: off never names one.
 
-    `tool_output` is the destination the press's disclosure named. Only an
-    Allow that carried one grants tool output, and only to that destination.
+    `destination` is where the press's disclosure said the words go, and the
+    Allow covers presses only while they still go there. `tool_output` is the
+    destination it named for tool output. Only an Allow that carried one
+    grants tool output, and only to that destination. `destinations` is as
+    `status` takes it, for the other providers in the answer returned.
     """
-    return _run(config, now, "allow" if allowed else "off", provider, tool_output)
+    today = {**(destinations or {}), provider: destination}
+    return _run(config, now, "allow" if allowed else "off", provider, tool_output, today=today)
 
 
 def reserve(
-    config: RuntimeConfig, *, now: float, provider: str = LEGACY_PROVIDER, job_id: str = ""
+    config: RuntimeConfig,
+    *,
+    now: float,
+    provider: str = LEGACY_PROVIDER,
+    job_id: str = "",
+    destination: str = "",
 ) -> Status:
     """Commit a charge before launch; uncertainty about spend never refunds it.
 
@@ -288,10 +385,12 @@ def reserve(
     be a way to double a reader's daily readings. `job_id` commits with the
     charge, so a restart can ask `charged` whether that job's attempt was made.
     A shutdown before the commit answers `stopping` and charges nothing.
+    `destination` is where this call's words go, which the Allow must cover.
     """
+    today = {provider: destination}
     if config.model_calls_disabled:
-        return status(config, now=now, provider=provider)
-    return _run(config, now, "reserve", provider, job_id=job_id)
+        return status(config, now=now, provider=provider, destinations=today)
+    return _run(config, now, "reserve", provider, job_id=job_id, today=today)
 
 
 def charged(config: RuntimeConfig, job_id: str, *, started_at: Any, now: float) -> bool | None:
@@ -343,13 +442,15 @@ class RefusedError(Exception):
 class GuardedModel:
     """Reserve at the actual model seam, after eligibility and evidence checks."""
 
-    def __init__(
+    def __init__(  # noqa: PLR0913 (each hook is one keyword its caller names)
         self,
         config: RuntimeConfig,
         model: Callable[..., tuple[str, str]],
         clock: Callable[[], float],
         *,
         provider: str = LEGACY_PROVIDER,
+        destination: str = "",
+        resolve_destination: Callable[[], str] | None = None,
         on_reserved: Callable[[], None] | None = None,
         before_reserve: Callable[[], str | None] | None = None,
         cancelled: Callable[[], bool] | None = None,
@@ -358,6 +459,15 @@ class GuardedModel:
         self.model = model
         self.clock = clock
         self.provider = provider
+        # Where the route that admitted the press sends the words: the
+        # reservation is refused unless the Allow covers it, so the job checks
+        # what the press checked, from the same route.
+        self.destination = destination
+        # Where the words go now, asked again at the reservation (consent F4,
+        # ui5): a managed drop-in or remote settings file can move the endpoint
+        # while the job collects the record, which takes seconds for a large
+        # one, and a reservation against the press-time value would pass.
+        self.resolve_destination = resolve_destination
         # A reading job is told the spend is committed (DRC-4686).
         self.on_reserved = on_reserved
         # And its marker before the reservation: a hook that raises here
@@ -382,8 +492,18 @@ class GuardedModel:
             return "", "closed"
         if self.cancelled is not None and self.cancelled():
             return "", "cancelled"
+        if self.resolve_destination is not None and self.resolve_destination() != self.destination:
+            # Refused as the press refuses an Allow for a moved destination,
+            # before the marker and the charge, so nothing is spent.
+            raise RefusedError(_answer(reason=DESTINATION_MOVED))
         job_id = self.before_reserve() if self.before_reserve is not None else None
-        answer = reserve(self.config, now=self.clock(), provider=self.provider, job_id=job_id or "")
+        answer = reserve(
+            self.config,
+            now=self.clock(),
+            provider=self.provider,
+            job_id=job_id or "",
+            destination=self.destination,
+        )
         if answer["reason"] == "stopping":
             # The shutdown reached the reservation before its commit, so the
             # call is the stop the early look above would have refused.

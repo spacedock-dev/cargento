@@ -23,13 +23,15 @@ from cargento_runtime import annotations as annotation_store
 
 from . import test_next_cockpit as cockpit_tests
 from .next_harness import NextPageJsHarness, storage_prelude
+from .visible_text import visible_text as seen_text
 
 FIXTURE = cockpit_tests.NextCockpitCompositionTest.FIXTURE
 FOCUS_DOM = cockpit_tests.CockpitHeldToTabTest.FOCUS_DOM
 ANNOTATED = cockpit_tests.CockpitHeldToTabTest.ANNOTATED
 
 # The first words of the server's own disclosure for this Codex row.
-CODEX_ROUTE_NOTE = "Codex reads this Codex session."
+# The route's own-harness note, past its apostrophe, which the page escapes.
+CODEX_ROUTE_NOTE = "own harness reads it."
 
 SESSION_ROUTE = (
     'navigateNext({view:"session", project:"cargento", harness:"codex", session:"focus-1"});'
@@ -123,8 +125,8 @@ class TheSessionPageLeadsWithDriftTest(NextPageJsHarness):
         ):
             with self.subTest(later=later):
                 self.assertLess(drift, html.index(later))
-        # Inside it, in the reader's order: their words, the control, the reading, then every
-        # departure on record. The agent's direction leads the activity column beside the panel
+        # Inside it, in the reader's order: their words, the reading in the control's place with
+        # its one press (DRC-4758 slice C), then every departure on record. The agent's direction leads the activity column beside the panel
         # (DRC-4680), after the panel in the markup.
         block = html[drift : html.index("</aside>")]
         order = [
@@ -132,9 +134,9 @@ class TheSessionPageLeadsWithDriftTest(NextPageJsHarness):
             for mark in (
                 ">Intent</h2>",
                 ">Drift</h2>",
+                "data-next-result",
                 'data-next-cockpit-action="reading-ask"',
-                "<h2>READING</h2>",
-                "DEPARTURES RAISED TO YOU",
+                '<section class="next-cockpit-departures">',
             )
         ]
         self.assertEqual(sorted(order), order)
@@ -154,8 +156,10 @@ class TheSessionPageLeadsWithDriftTest(NextPageJsHarness):
             f"__dashboard.annotate_discard = {json.dumps(annotation_store.DISCARD_SENTENCES)};\n"
             f"__dashboard.reading_check = {json.dumps(annotation_store.ABSTENTION_CHECK)};\n"
             '__dashboard.sessions[0].annotation_binding_why = "Bound to codex:focus-1 by its id.";\n'
-            # The lane on, so the departures section draws and its place can be measured.
+            # The lane on, so the departures section draws and its place can be measured. With
+            # no raise it draws for the lane's own absence sentence (owner Q9).
             "__dashboard.unasked = true;\n"
+            '__dashboard.sessions[0].departure_why = "Cargento has not checked this session.";\n'
         )
         drift = html[
             html.index("data-next-session-drift") : html.index('class="next-session-facts"')
@@ -163,7 +167,9 @@ class TheSessionPageLeadsWithDriftTest(NextPageJsHarness):
         fields = drift.index('class="next-cockpit-held-fields"')
         check = drift.index('data-next-cockpit-action="reading-ask"')
         disclosure = drift.index(CODEX_ROUTE_NOTE)
-        the_reading = drift.index("<h2>READING</h2>")
+        # The control's slot ends where the saved introduction's summary begins: the READING
+        # section that followed it is drawn only for a refused reading (DRC-4758 slice E).
+        the_reading = drift.index('class="next-cockpit-why next-session-drift-about"')
         self.assertLess(fields, check)
         # Idle, the disclosure follows the button (owner, DRC-4680); the direction is no longer
         # between the fields and the check, because it leads the activity column instead.
@@ -183,7 +189,8 @@ class TheSessionPageLeadsWithDriftTest(NextPageJsHarness):
             with self.subTest(below=below[:40]):
                 self.assertLess(the_reading, drift.index(below))
         self.assertLess(
-            drift.index('class="next-cockpit-conflict"'), drift.index("DEPARTURES RAISED TO YOU")
+            drift.index('class="next-cockpit-conflict"'),
+            drift.index('<section class="next-cockpit-departures">'),
         )
         # Said once on the page, by the disclosure beside the control.
         self.assertEqual(1, visible_text(html).count("never a verification that the work was done"))
@@ -343,13 +350,15 @@ await refreshNext();
         drift = html[
             html.index("data-next-session-drift") : html.index('class="next-session-facts"')
         ]
-        section = drift[drift.index("DEPARTURES RAISED TO YOU") :]
-        # The unasked raise and the reading's departure: listed in the block's departures, and
-        # never outside the block. The reading's own row above it states the same result, which
-        # is the reading rather than a second list.
+        section = drift[drift.index('<section class="next-cockpit-departures">') :]
+        # The unasked raise is listed in the block's departures; the reading's departure is said
+        # once, in the result in the control's slot, and the section does not repeat it (owner
+        # Q9, DRC-4758 slice E). Neither is drawn outside the block.
+        self.assertIn("Two turns edited the running board.", section)
+        self.assertNotIn("It changed the board.", section)
+        self.assertIn("It changed the board.", drift[: drift.index(section[:60])])
         for text in ("Two turns edited the running board.", "It changed the board."):
             with self.subTest(text=text):
-                self.assertIn(text, section)
                 self.assertEqual(html.count(text), drift.count(text))
         self.assertEqual(1, html.count("Two turns edited the running board."))
 
@@ -358,29 +367,39 @@ await refreshNext();
     ) -> None:
         """DRC-4543, restored: a panel on every session of a board whose switch is off is noise.
 
-        A raise on record keeps the section whichever way the switch is set (DRC-4559).
+        A raise on record keeps the section whichever way the switch is set (DRC-4559). Since
+        owner Q9 (DRC-4758 slice E) it is drawn only for the lane's rows, or for the lane's own
+        absence sentence while it is on, and a reading's departure is the result's alone.
         """
         states = {
             "lane off, nothing on record": ("delete __dashboard.unasked;\n", False),
             "lane on, nothing on record": (
                 "__dashboard.unasked = true;\n__dashboard.sessions[0].departure_checked = true;\n",
+                False,
+            ),
+            "lane on, its absence sentence": (
+                (
+                    "__dashboard.unasked = true;\n"
+                    "__dashboard.sessions[0].departure_checked = true;\n"
+                    '__dashboard.sessions[0].departure_why = "Cargento has checked this session.";\n'
+                ),
                 True,
             ),
             "lane off, a raise standing": (UNASKED + "delete __dashboard.unasked;\n", True),
-            "lane off, a reading's departure": ("delete __dashboard.unasked;\n" + READING, True),
+            "lane off, a reading's departure": ("delete __dashboard.unasked;\n" + READING, False),
         }
         for name, (setup, drawn) in states.items():
             with self.subTest(state=name):
                 html = self.page(setup)
-                self.assertEqual(drawn, "DEPARTURES RAISED TO YOU" in html, name)
+                self.assertEqual(drawn, '<section class="next-cockpit-departures">' in html, name)
                 self.assertEqual(drawn, 'class="next-cockpit-departures"' in html, name)
 
     def test_a_consistent_result_is_shown_only_with_its_evidence_line(self) -> None:
         html = self.page(CONSISTENT)
 
         row = re.search(
-            r'<div class="next-cockpit-reading-row" data-next-result-state="consistent">'
-            r"[\s\S]*?</div>",
+            r'<(li|div) class="next-cockpit-reading-row" data-next-result-state="consistent"'
+            r"[\s\S]*?</\1>",
             html,
         )
         self.assertIsNotNone(row)
@@ -408,9 +427,10 @@ __dashboard.sessions[0].annotation_revision_count = 0;
             with self.subTest(state=name):
                 text = visible_text(self.page(setup))
                 self.assertIsNone(DRIFT_ABSENCE.search(text), DRIFT_ABSENCE.findall(text))
-                # And the word is present where it names the block and the control.
+                # And the word is present where it names the block and the control, which
+                # reads "Analyze again" under a stored result (owner Q3, DRC-4758 slice C).
                 self.assertIn(" Drift ", text)
-                self.assertIn("Analyze drift", text)
+                self.assertRegex(text, r"Analyze (drift|again)")
 
     def test_goal_summary_model_state_does_not_disable_a_consented_reading(self) -> None:
         for model in (None, {"enabled": False}):
@@ -537,7 +557,7 @@ __fetchImpl = async url => ({ok: true, json: async () =>
                 )
                 self.assertIsNotNone(block, html)
                 assert block is not None
-                self.assertIn("<h2>A LATER DIRECTION</h2>", block.group(0))
+                self.assertIn("<summary>Later directions: ", block.group(0))
                 self.assertNotIn("data-next-cockpit-direction-question", html)
         # And a record this page could not read: whether a later direction exists is unknown.
         out = self.run_fixture(
@@ -549,7 +569,7 @@ console.log(JSON.stringify(nextCockpitConflict(session, nextCockpitAnnotation(se
 """
         )
         assert isinstance(out, str)
-        self.assertIn("<h2>A LATER DIRECTION</h2>", out)
+        self.assertIn("<summary>Later directions: unknown (record unread)</summary>", out)
         self.assertNotIn("CONFLICT TO SETTLE", out)
 
     def test_with_annotations_off_the_check_stays_inert_with_one_refusal(self) -> None:
@@ -651,7 +671,7 @@ function visible_text_source(html){ return html.replace(/<[^>]*>/g, " ").replace
         # stands in for it until the result arrives with a later payload.
         self.assertIn("Analyzing drift", out)
         self.assertIn("Waiting for Codex", out)
-        self.assertIn("You can keep working. The result will appear here.", out)
+        self.assertIn("Reads only the work so far. The result will appear here.", out)
         self.assertNotIn("Checking for drift…", out)
 
 
@@ -698,8 +718,9 @@ const __h = "codex", __s = "focus-1";
             html.index("data-next-session-drift") : html.index('class="next-session-facts"')
         ]
         rows = re.findall(r"data-next-departure-reentry[^>]*>[\s\S]*?</div>", drift)
-        # One per departure: the reading's and the unasked lane's.
-        self.assertEqual(2, len(rows), drift)
+        # One per raised departure: the unasked lane's. The reading's departure is said in the
+        # result, beside Steer back, and no longer repeated with a way back of its own (owner Q9).
+        self.assertEqual(1, len(rows), drift)
         for row in rows:
             self.assertIn('data-next-copy-command="codex resume focus-1"', row)
             self.assertIn("data-next-raise-session=", row)
@@ -718,10 +739,8 @@ const __h = "codex", __s = "focus-1";
         )
         section = html[html.index('class="next-cockpit-departures"') :]
         self.assertEqual(1, section.count(caveat))
-        # After both departures: the reading's and the unasked lane's.
-        for row in ("It changed the board.", "Two turns edited the running board."):
-            with self.subTest(row=row):
-                self.assertLess(section.index(row), section.index(caveat))
+        # After the lane's departure; the reading's is the result's (owner Q9).
+        self.assertLess(section.index("Two turns edited the running board."), section.index(caveat))
         self.assertLess(section.rindex("data-next-departure-reentry"), section.index(caveat))
 
     def test_a_harness_with_no_resume_command_says_why_once(self) -> None:
@@ -817,7 +836,6 @@ class AnEndedSessionKeepsItsCheckOnTheFirstScreenTest(NextPageJsHarness):
         note = drift.index(ENDED_NOTE)
         check = drift.index('data-next-cockpit-action="reading-ask"')
         self.assertLess(check, note)
-        self.assertLess(drift.index("<h2>READING</h2>"), note)
         # Nothing that sits above the control on a live session moved below it.
         live_drift = self.drift(self.page(ended=False))
         # CURRENT ACTIVITY left this list with the panel (DRC-4680): it leads the activity
@@ -838,12 +856,14 @@ class AnEndedSessionKeepsItsCheckOnTheFirstScreenTest(NextPageJsHarness):
         drift = self.drift(self.page(ended=True, setup=READING + UNASKED))
         self.assertEqual(1, drift.count(ENDED_NOTE))
         inner = caveats_block(drift)
-        self.assertTrue(
-            inner.startswith(f'<p class="next-cockpit-held-absent">{ENDED_NOTE}</p>'), inner
-        )
+        # First in the caveats, under its worded summary (DRC-4758 polish).
+        self.assertTrue(inner.startswith('<details class="next-cockpit-why'), inner)
+        self.assertLess(inner.index(ENDED_NOTE), inner.index("</details>"))
         departures = drift.index('class="next-cockpit-departures"')
         self.assertLess(drift.index(ENDED_NOTE), departures)
-        self.assertLess(drift.index(ENDED_NOTE), drift.index("DEPARTURES RAISED TO YOU"))
+        self.assertLess(
+            drift.index(ENDED_NOTE), drift.index('<section class="next-cockpit-departures">')
+        )
 
     def test_an_ended_session_nobody_typed_against_still_says_it_ended(self) -> None:
         """The commonest ended session: nothing typed, nothing to discard, no binding.
@@ -853,6 +873,24 @@ class AnEndedSessionKeepsItsCheckOnTheFirstScreenTest(NextPageJsHarness):
         self.assertEqual(1, drift.count(ENDED_NOTE), drift)
         self.assertIn(ENDED_NOTE, caveats_block(drift))
         self.assertNotIn(ENDED_NOTE, self.drift(self.page(ended=False, setup=UNTYPED)))
+
+    def test_the_ended_note_and_the_binding_wait_behind_one_worded_summary(self) -> None:
+        """The owner's walk: these two sentences were the last always-visible paragraphs at
+        the foot of the Drift card. Neither is the next thing to do, so both sit behind one
+        summary the reader can open, and stay in the markup for a screen reader."""
+        binding = "Bound by an eight-character identity prefix."
+        drift = self.drift(
+            self.page(
+                ended=True,
+                setup=f'__dashboard.sessions[0].annotation_binding_why = "{binding}";\n',
+            )
+        )
+        shown = seen_text(drift)
+        for sentence in (ENDED_NOTE, binding):
+            with self.subTest(sentence=sentence):
+                self.assertIn(sentence, drift)
+                self.assertNotIn(sentence, shown)
+        self.assertIn("About these saved words", shown)
 
     def test_between_the_fields_and_the_check_an_ended_page_adds_nothing(self) -> None:
         """From the fields to the control, the markup is the same live or ended. What may

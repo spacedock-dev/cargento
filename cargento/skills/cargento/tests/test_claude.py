@@ -2218,6 +2218,61 @@ class OwnActivityTest(RuntimeTestCase):
         self.assertAlmostEqual(now - 600, parent["own_activity"], delta=1.0)
 
 
+class LastConversationTest(unittest.TestCase):
+    """`last_conversation_ts` reads conversation records alone (DRC-4770).
+
+    The stop guard reads it, so every record type Claude Code appends while a
+    session sits parked has to be invisible to it, while a tool result (a
+    `user` record) is not.
+    """
+
+    def _info(self, rows: list[dict[str, Any]]) -> dict[str, Any]:
+        with tempfile.TemporaryDirectory() as tmp:
+            transcript = Path(tmp) / "session.jsonl"
+            transcript.write_text("\n".join(json.dumps(row) for row in rows) + "\n")
+            config, state = runtime()
+            return claude_data.analyze_transcript(config, state, str(transcript))
+
+    def test_bookkeeping_records_after_the_turn_do_not_move_it(self) -> None:
+        info = self._info(
+            [
+                {"type": "user", "timestamp": "2026-01-01T00:00:00Z", "message": {"content": "go"}},
+                {
+                    "type": "assistant",
+                    "timestamp": "2026-01-01T00:00:05Z",
+                    "message": {"content": []},
+                },
+                {"type": "system", "subtype": "away_summary", "timestamp": "2026-01-01T00:03:00Z"},
+                {"type": "attachment", "timestamp": "2026-01-01T00:03:01Z"},
+                {"type": "queue-operation", "timestamp": "2026-01-01T00:03:02Z"},
+                {"type": "last-prompt", "lastPrompt": "go", "timestamp": "2026-01-01T00:03:03Z"},
+            ]
+        )
+        self.assertEqual(records.parse_ts("2026-01-01T00:00:05Z"), info["last_conversation_ts"])
+        self.assertEqual(records.parse_ts("2026-01-01T00:03:03Z"), info["last_event_ts"])
+
+    def test_a_tool_result_is_conversation(self) -> None:
+        info = self._info(
+            [
+                {
+                    "type": "assistant",
+                    "timestamp": "2026-01-01T00:00:05Z",
+                    "message": {"content": []},
+                },
+                {
+                    "type": "user",
+                    "timestamp": "2026-01-01T00:00:09Z",
+                    "message": {"content": [{"type": "tool_result", "tool_use_id": "t"}]},
+                },
+            ]
+        )
+        self.assertEqual(records.parse_ts("2026-01-01T00:00:09Z"), info["last_conversation_ts"])
+
+    def test_a_tail_with_no_conversation_reports_zero(self) -> None:
+        info = self._info([{"type": "system", "timestamp": "2026-01-01T00:03:00Z"}])
+        self.assertEqual(0, info["last_conversation_ts"])
+
+
 class InputSummaryTest(unittest.TestCase):
     """What an open gate is asking, reduced to one bounded line. DRC-4015."""
 
@@ -3537,7 +3592,8 @@ class DispatchedTeammateTest(RuntimeTestCase):
         self.assertIs(False, published["ensign-review"]["active"])
         self.assertIs(False, published["lens-worker"]["active"])
         self.assertEqual("idle", session["state"])
-        self.assertEqual("awaiting your message", session["state_detail"])
+        # The lead's fixture transcript records no turn stop, so it does not claim to await you.
+        self.assertEqual("last turn not recorded as finished", session["state_detail"])
 
     def test_published_subagent_roster_is_capped_at_configured_bound(self) -> None:
         # DRC-4348. When a lead runs many workers (294 seen in practice), the
@@ -3563,3 +3619,363 @@ class DispatchedTeammateTest(RuntimeTestCase):
         # The newest finished agents must be retained over the oldest
         self.assertIn("finished-0-lens", published_names)
         self.assertNotIn("finished-64-lens", published_names)
+
+
+# The recorded shape of Claude Code's own turn stop: a top-level `system` record with subtype
+# `stop_hook_summary`, written when its Stop hooks run, the event a hook stop is stamped from
+# (docs/design-reading-a-session.md, "Amended 2026-10-01: a reader's correction and a transcript
+# stop", item 2; the scorer's `_transcript_stop` reads the same keys). Fixtures only: every record
+# here is written by the test.
+TURN_SID = "abcdef12-0000-4000-8000-000000000000"
+
+
+def _turn_records(stop: float, *after: dict[str, Any], **summary: Any) -> list[dict[str, Any]]:
+    def stamp(at: float) -> str:
+        return datetime.fromtimestamp(at, UTC).isoformat()
+
+    rows: list[dict[str, Any]] = [
+        {
+            "type": "user",
+            "sessionId": TURN_SID,
+            "timestamp": stamp(stop - 40),
+            "message": {"role": "user", "content": "add retry to the webhook"},
+        },
+        {
+            "type": "assistant",
+            "sessionId": TURN_SID,
+            "timestamp": stamp(stop - 0.2),
+            "message": {"role": "assistant", "content": [{"type": "text", "text": "Done."}]},
+        },
+        {
+            "type": "system",
+            "subtype": "stop_hook_summary",
+            "isSidechain": False,
+            "preventedContinuation": False,
+            "sessionId": TURN_SID,
+            "timestamp": stamp(stop),
+            **summary,
+        },
+    ]
+    rows.extend(
+        {"sessionId": TURN_SID, **row, "timestamp": stamp(row["timestamp"])} for row in after
+    )
+    return rows
+
+
+class ClaudeTranscriptTurnStopTest(RuntimeTestCase):
+    """A Claude Code turn stop read from the transcript on a board no hook reaches (ui3)."""
+
+    STOP = 0.0
+
+    def setUp(self) -> None:
+        super().setUp()
+        self.STOP = float(int(time.time()) - 600)
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.project = Path(self.tmp.name) / "projects" / "sample"
+        self.project.mkdir(parents=True)
+
+    def row_at(self, now: float, rows: list[dict[str, Any]]) -> dict[str, Any]:
+        transcript = self.project / f"{TURN_SID}.jsonl"
+        transcript.write_text("\n".join(json.dumps(row) for row in rows) + "\n")
+        newest = max(records.parse_ts(row["timestamp"]) or 0.0 for row in rows)
+        os.utime(transcript, (newest, newest))
+        with (
+            store_patch(PROJECTS_DIR=str(Path(self.tmp.name) / "projects")),
+            store_patch(TASKS_DIR=str(Path(self.tmp.name) / "no-tasks")),
+        ):
+            return collect_claude(now, 24, False)[0]
+
+    def press(self, row: dict[str, Any], now: float) -> Any:
+        from cargento_runtime import reading  # noqa: PLC0415 - the press reads the row
+
+        return reading.press_eligibility(row, [], now=now, settle_sec=8.0)
+
+    def test_a_reader_whose_claude_code_session_finished_its_turn_on_a_board_no_hook_reaches_sees_it_idle_and_can_analyze_its_last_turn_once_it_settles(
+        self,
+    ) -> None:
+        from cargento_runtime import reading  # noqa: PLC0415 - the press reads the row
+
+        stop = self.STOP
+        early = self.row_at(stop + 2, _turn_records(stop))
+        self.assertEqual("idle", early["state"])
+        self.assertEqual(stop, early["turn_end_at"])
+        self.assertIsNone(early["finished_at"])
+        settling = self.press(self.row_at(stop + 3, _turn_records(stop)), stop + 3)
+        self.assertEqual(reading.WITHHELD_STOP_SETTLING, settling["reason"])
+        self.assertEqual(stop + 8.0, settling["until"])
+        for later in (stop + 9, stop + 300):
+            with self.subTest(at=later - stop):
+                row = self.row_at(later, _turn_records(stop))
+                self.assertTrue(self.press(row, later)["ok"])
+                self.assertEqual(
+                    (reading.SCOPE_LAST_TURN, ""),
+                    reading.eligibility(
+                        row,
+                        latest_revision_at=0.0,
+                        now=later,
+                        settle_sec=8.0,
+                        admit_turn_stop=True,
+                    ),
+                )
+
+    def test_a_reader_whose_session_is_waiting_on_a_permission_is_not_told_its_turn_finished(
+        self,
+    ) -> None:
+        from cargento_runtime import reading  # noqa: PLC0415 - the press reads the row
+
+        stop = self.STOP
+        rows = _turn_records(stop)[:2]
+        rows[1] = {
+            **rows[1],
+            "message": {
+                "role": "assistant",
+                "content": [{"type": "tool_use", "id": "t1", "name": "Bash", "input": {}}],
+            },
+        }
+        row = self.row_at(stop + 120, rows)
+        self.assertIsNone(row["turn_end_at"])
+        self.assertEqual(reading.WITHHELD_IDLE_UNKNOWN, self.press(row, stop + 120)["reason"])
+
+    def test_a_summary_written_for_pre_tool_use_hooks_is_not_a_turn_stop(self) -> None:
+        """Verifier S2 (ui3): Claude Code 2.1.287's own reader knows a `stop_hook_summary` with
+        `hookLabel: "PreToolUse"`, written mid-turn after a tool call and before the tool runs.
+        Read as a stop, a long Bash showed Idle and opened a last-turn reading. Only the Stop
+        hooks' summary is a stop: the 2.1.287 Stop path writes no `hookLabel`, so an absent
+        label and `"Stop"` are admitted and every other label is refused."""
+        from cargento_runtime import reading  # noqa: PLC0415 - the press reads the row
+
+        stop = self.STOP
+        rows = _turn_records(stop, hookLabel="PreToolUse")
+        rows[1] = {
+            **rows[1],
+            "message": {
+                "role": "assistant",
+                "content": [{"type": "tool_use", "id": "t1", "name": "Bash", "input": {}}],
+            },
+        }
+        for later in (stop + 9, stop + 60):
+            with self.subTest(at=later - stop):
+                row = self.row_at(later, rows)
+                self.assertIsNone(row["turn_end_at"])
+                self.assertNotEqual(
+                    reading.SCOPE_LAST_TURN,
+                    reading.eligibility(
+                        row,
+                        latest_revision_at=0.0,
+                        now=later,
+                        settle_sec=8.0,
+                        admit_turn_stop=True,
+                    )[0],
+                )
+        self.assertEqual("working", self.row_at(stop + 9, rows)["state"])
+        labelled = self.row_at(stop + 9, _turn_records(stop, hookLabel="Stop"))
+        self.assertEqual(stop, labelled["turn_end_at"])
+
+    def test_an_interrupted_turn_is_not_a_turn_stop(self) -> None:
+        stop = self.STOP
+        rows = [
+            *_turn_records(stop)[:2],
+            {
+                "type": "user",
+                "sessionId": TURN_SID,
+                "timestamp": datetime.fromtimestamp(stop, UTC).isoformat(),
+                "message": {
+                    "role": "user",
+                    "content": [{"type": "text", "text": "[Request interrupted by user]"}],
+                },
+            },
+        ]
+        self.assertIsNone(self.row_at(stop + 120, rows)["turn_end_at"])
+
+    def test_an_idle_session_whose_turn_is_not_recorded_as_finished_does_not_say_it_awaits_you(
+        self,
+    ) -> None:
+        # Verifier F3: the header said "awaiting your message" while Drift said the last turn
+        # isn't recorded as finished, on the owner's own session. One surface must not claim the
+        # session waits on the reader while the other says its turn may still be running.
+        stop = self.STOP
+        interrupted = [
+            *_turn_records(stop)[:2],
+            {
+                "type": "user",
+                "sessionId": TURN_SID,
+                "timestamp": datetime.fromtimestamp(stop, UTC).isoformat(),
+                "message": {
+                    "role": "user",
+                    "content": [{"type": "text", "text": "[Request interrupted by user]"}],
+                },
+            },
+        ]
+        row = self.row_at(stop + 120, interrupted)
+        self.assertEqual("idle", row["state"])
+        self.assertIsNone(row["turn_end_at"])
+        self.assertEqual("last turn not recorded as finished", row["state_detail"])
+        finished = self.row_at(stop + 120, _turn_records(stop))
+        self.assertEqual("awaiting your message", finished["state_detail"])
+
+    def kept_going(self, stop: float, **summary: Any) -> list[dict[str, Any]]:
+        """A Stop hook that blocked the stop, as Claude Code 2.1.287 writes it.
+
+        Its reason lands as an `isMeta` user record before the summary, the summary says
+        `preventedContinuation: false`, and the turn goes on: the model is still generating, so
+        no assistant record follows yet (verifier S1, read from the installed bundle).
+        """
+        rows = _turn_records(stop, **summary)
+        meta = {
+            "type": "user",
+            "isMeta": True,
+            "sessionId": TURN_SID,
+            "timestamp": datetime.fromtimestamp(stop - 0.05, UTC).isoformat(),
+            "message": {"role": "user", "content": "Stop hook feedback: tests still fail"},
+        }
+        return [*rows[:2], meta, rows[2]]
+
+    def test_a_stop_hook_that_kept_the_turn_going_does_not_open_analyze(self) -> None:
+        from cargento_runtime import reading  # noqa: PLC0415 - the press reads the row
+
+        stop = self.STOP
+        cases: dict[str, dict[str, Any]] = {
+            "a blocking hook": {"hookErrors": ["tests still fail"]},
+            "a goal not met": {"hookErrors": []},
+        }
+        for name, summary in cases.items():
+            for later in (stop + 9, stop + 40):
+                with self.subTest(case=name, at=later - stop):
+                    row = self.row_at(later, self.kept_going(stop, **summary))
+                    self.assertIsNone(row["turn_end_at"])
+                    scope, _ = reading.eligibility(
+                        row, latest_revision_at=0.0, now=later, settle_sec=8.0,
+                        admit_turn_stop=True,
+                    )  # fmt: skip
+                    self.assertNotEqual(reading.SCOPE_LAST_TURN, scope)
+
+    def test_a_stop_hook_that_stopped_the_turn_is_a_turn_stop(self) -> None:
+        # `preventedContinuation: true` is a hook ending the turn ("Stop hook prevented
+        # continuation"), which is a stop, not a turn kept going.
+        stop = self.STOP
+        row = self.row_at(stop + 120, _turn_records(stop, preventedContinuation=True))
+        self.assertEqual(stop, row["turn_end_at"])
+
+    def test_a_new_prompt_after_the_stop_closes_the_last_turn_reading(self) -> None:
+        stop = self.STOP
+        prompt = {"type": "user", "timestamp": stop + 30, "message": {"content": "and logging"}}
+        row = self.row_at(stop + 120, _turn_records(stop, prompt))
+        self.assertIsNone(row["turn_end_at"])
+
+    def test_a_subagents_stop_summary_is_not_the_sessions(self) -> None:
+        stop = self.STOP
+        row = self.row_at(stop + 120, _turn_records(stop, isSidechain=True))
+        self.assertIsNone(row["turn_end_at"])
+
+    def test_a_summary_for_another_session_id_is_not_this_sessions_stop(self) -> None:
+        stop = self.STOP
+        other = "abcdef12-0000-4000-8000-ffffffffffff"
+        row = self.row_at(stop + 120, _turn_records(stop, sessionId=other))
+        self.assertIsNone(row["turn_end_at"])
+
+    def test_an_away_summary_after_the_stop_leaves_it_standing(self) -> None:
+        stop = self.STOP
+        away = {"type": "system", "subtype": "away_summary", "timestamp": stop + 200}
+        row = self.row_at(stop + 230, _turn_records(stop, away))
+        self.assertEqual(stop, row["turn_end_at"])
+        # The away_summary wrote the file 30 s ago, which used to turn the row Working.
+        self.assertEqual("idle", row["state"])
+
+    def test_a_prompt_inside_the_activity_grace_still_withdraws_it(self) -> None:
+        stop = self.STOP
+        prompt = {"type": "user", "timestamp": stop + 3, "message": {"content": "and logging"}}
+        self.assertIsNone(self.row_at(stop + 120, _turn_records(stop, prompt))["turn_end_at"])
+
+    def test_a_session_a_hook_says_is_waiting_on_you_keeps_its_question(self) -> None:
+        # A permission prompt raised after the stop summary: the turn is held, not finished.
+        stop = self.STOP
+        state_of().hook_notifications[TURN_SID[:8]] = {
+            "ts": stop + 50,
+            "message": "Claude needs your permission to use Bash",
+        }
+        row = self.row_at(stop + 120, _turn_records(stop))
+        self.assertEqual("needs_input", row["state"])
+        self.assertIsNone(row["turn_end_at"])
+
+    def test_work_written_after_the_stop_withdraws_it(self) -> None:
+        # A task file the session updated a minute after the summary: the turn
+        # did not end there, so the summary does not stand for it.
+        stop = self.STOP
+        tasks = Path(self.tmp.name) / "no-tasks" / TURN_SID
+        tasks.mkdir(parents=True)
+        task = tasks / "1.json"
+        task.write_text(json.dumps({"id": "1", "subject": "Do it", "status": "pending"}))
+        os.utime(task, (stop + 60, stop + 60))
+        self.assertIsNone(self.row_at(stop + 120, _turn_records(stop))["turn_end_at"])
+        os.utime(task, (stop + 5, stop + 5))
+        self.assertEqual(stop, self.row_at(stop + 120, _turn_records(stop))["turn_end_at"])
+
+    def test_a_record_with_no_stamp_or_the_wrong_shape_is_not_a_turn_stop(self) -> None:
+        stop = self.STOP
+        for change in ({"subtype": "away_summary"}, {"type": "assistant"}, {"sessionId": 7}):
+            with self.subTest(change=change):
+                row = self.row_at(stop + 120, _turn_records(stop, **change))
+                self.assertIsNone(row["turn_end_at"])
+
+
+class TheTurnStopRecordIsTheScorersRecordTest(unittest.TestCase):
+    """`claude_data.is_turn_stop_record` and the scorer's `_transcript_stop`, over one table."""
+
+    # Each row: a change to the summary, the conversation records before it, and the verdict.
+    # A `user` record between the last reply and the summary is a hook's or a goal's feedback,
+    # which keeps the turn going (verifier S1); a summary with no reply before it vouches for
+    # nothing.
+    TABLE: tuple[tuple[dict[str, Any], tuple[str, ...], bool], ...] = (
+        ({}, ("user", "assistant"), True),
+        ({"preventedContinuation": True}, ("user", "assistant"), True),
+        ({}, ("user", "assistant", "user"), False),
+        ({}, ("assistant", "user"), False),
+        ({}, (), False),
+        ({"isSidechain": True}, ("assistant",), False),
+        ({"subtype": "away_summary"}, ("assistant",), False),
+        ({"type": "user"}, ("assistant",), False),
+        ({"isSidechain": None}, ("assistant",), False),
+        ({"preventedContinuation": None}, ("assistant",), False),
+        ({"sessionId": None}, ("assistant",), False),
+        # Verifier S2: only the Stop hooks' summary is a stop. 2.1.287's Stop path writes no
+        # `hookLabel`; its reader knows a PreToolUse one, written mid-turn.
+        ({"hookLabel": "Stop"}, ("user", "assistant"), True),
+        ({"hookLabel": "PreToolUse"}, ("user", "assistant"), False),
+        ({"hookLabel": "SubagentStop"}, ("user", "assistant"), False),
+        ({"hookLabel": None}, ("user", "assistant"), False),
+    )
+
+    def test_both_readers_agree_on_every_shape(self) -> None:
+        import sys  # noqa: PLC0415 - the scorer is only imported here
+
+        scripts = str(Path(__file__).parents[4] / "scripts")
+        if scripts not in sys.path:
+            sys.path.insert(0, scripts)
+        import mark_abstention  # noqa: PLC0415 - the scorer is only measured here
+
+        stamp = "2026-01-01T00:00:05Z"
+        for change, before, expected in self.TABLE:
+            replies = [
+                {"type": kind, "sessionId": TURN_SID, "timestamp": "2026-01-01T00:00:04Z",
+                 "message": {"role": kind, "content": "x"}}
+                for kind in before
+            ]  # fmt: skip
+            record = {
+                "type": "system",
+                "subtype": "stop_hook_summary",
+                "isSidechain": False,
+                "preventedContinuation": False,
+                "sessionId": TURN_SID,
+                "timestamp": stamp,
+                **change,
+            }
+            with self.subTest(change=change, before=before), tempfile.TemporaryDirectory() as tmp:
+                after = before[-1] if before else None
+                self.assertIs(expected, claude_data.is_turn_stop_record(record, after))
+                path = Path(tmp) / "t.jsonl"
+                path.write_text("".join(json.dumps(row) + "\n" for row in [*replies, record]))
+                scored = mark_abstention._transcript_stop(
+                    str(path), TURN_SID[:8], records.parse_ts(stamp) or 0.0
+                )
+                self.assertIs(expected, scored)

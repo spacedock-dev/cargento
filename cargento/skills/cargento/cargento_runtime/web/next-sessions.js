@@ -227,7 +227,7 @@ function nextOperationsBlocked(session, asks, harnesses){
   }
   if(nextOperationsReportsBlocks(session, harnesses)){
     return nextOperationsFact(
-      "blocked", "BLOCKED", "No reported block", "Reporter available", "clear",
+      "blocked", "BLOCKED", "No reported block", "", "clear",
     );
   }
   return nextOperationsFact(
@@ -317,7 +317,8 @@ function nextOperationsGroup(kind, title, label, sessions, renderer, empty, cave
   const rows = sessions.map(renderer).join("");
   const body = rows || `<p class="next-sessions-empty next-absence">${esc(empty)}</p>`;
   const lead = label ? `<p>${esc(label)}</p>` : "";
-  const why = caveat ? nextCockpitWhy(`sessions-${kind}-why`, caveat.summary, caveat.body) : "";
+  const why = caveat
+    ? nextCockpitWhy(`sessions-${kind}-why`, caveat.summary, caveat.body, {pop: true}) : "";
   return `<section class="next-operation-group next-operation-group--${kind}" ` +
     `data-next-operation-group="${kind}"><header><h2>${title}</h2>` +
     `${lead}${why}</header>${nextOperationsColumns(kind === "history")}` +
@@ -367,9 +368,10 @@ function nextSessionsGoal(source, route){
   /* Over a session that opened with a harness control the page drafts
      nothing, so the cell names nothing either (DRC-4766). */
   const text = typed || (draft ? draft.text : nextIntentOpenedWithControl(source) ? "" : prompt);
-  const label = typed ? (["latest-prompt", "first-prompt"].includes(source.annotation_goal_source)
+  const label = typed ? (NEXT_PROMPT_SOURCES.includes(source.annotation_goal_source)
     ? "GOAL · FROM YOUR PROMPT" : "GOAL · YOUR WORDS")
     : draft && draft.source === "first-prompt" ? "GOAL · YOUR FIRST PROMPT"
+    : draft && draft.source === NEXT_PROMPT_CHOSEN ? "GOAL · YOUR CHOSEN PROMPT"
     : text ? "GOAL · YOUR LATEST PROMPT" : "GOAL";
   const content = typed ? `<strong>${esc(text)}</strong>`
     : `<a class="next-operation-goal-link${text ? "" : " next-absence"}" ` +

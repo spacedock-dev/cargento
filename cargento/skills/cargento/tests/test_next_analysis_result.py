@@ -198,21 +198,37 @@ __fetchImpl = async (url, init) => {
     )
 
 
+SOURCE = '<span class="next-session-drift-source">Analysis</span>'
+
+
+def level_of(html: str) -> str:
+    """The level word alone: the meter's four labels name every level on every drawn level."""
+    found = re.search(r'<span class="next-session-drift-level">([^<]*)</span>', html)
+    return found.group(1) if found else ""
+
+
 def clock(at: float) -> str:
     return time.strftime("%H:%M", time.localtime(at))
 
 
 def rows_of(html: str) -> list[str]:
+    """Each line of the result's checklist, the goal row first, with its Evidence body too."""
     return [
-        visible_text(match)
-        for match in re.findall(r'<div class="next-cockpit-reading-row"[\s\S]*?</div>', html)
+        visible_text(match.group(0).replace("<details", "<details open"))
+        for match in re.finditer(r'<(li|div) class="next-cockpit-reading-row"[\s\S]*?</\1>', html)
     ]
 
 
 def result_of(html: str) -> str:
+    """The result, which stands in the Drift card's control slot (DRC-4758 slice C)."""
     drift = drift_of(html)
-    start = drift.index("<h2>READING</h2>")
-    return drift[start : drift.index("</section>", start)]
+    start = drift.index('<div class="next-session-drift-check next-cockpit-result"')
+    depth = 0
+    for tag in re.finditer(r"<(/?)div\b", drift[start:]):
+        depth += -1 if tag.group(1) else 1
+        if depth == 0:
+            return drift[start : drift.index(">", start + tag.start()) + 1]
+    return drift[start:]
 
 
 class _ResultPage(_DraftPage):
@@ -264,9 +280,11 @@ class TheLevelTest(_ResultPage):
     def test_the_analysis_level_shows_in_the_level_slot_with_its_source_and_time(self) -> None:
         html = self.page(MIXED, levels.HIGH)
         drift = visible_text(drift_of(html))
-        self.assertIn("High", drift)
-        self.assertIn(f"Analysis · {clock(READ_AT)}", drift)
+        self.assertEqual("High", level_of(html))
+        # The source names itself alone; its time is said once, in the ruled line (DRC-4758 C).
+        self.assertIn(SOURCE, html)
         self.assertIn(SOURCE_LINE.format(time=clock(READ_AT)), drift)
+        self.assertEqual(1, drift.count(clock(READ_AT)))
         self.assertIn("data-next-drift-level", html)
         # The header pill too, with the live monitor off: the switch hides the live level only.
         self.assertIn("Drift: High", visible_text(html[: html.index("<aside")]))
@@ -288,7 +306,7 @@ class TheLevelTest(_ResultPage):
         self.assertIn("Live estimate", alone)
         html = self.page(MIXED, levels.HIGH, extra=switch, live=live)
         drift = visible_text(drift_of(html))
-        self.assertIn(f"Analysis · {clock(READ_AT)}", drift)
+        self.assertIn(SOURCE, html)
         self.assertNotIn("Live estimate", drift)
         self.assertIn("Drift: High", visible_text(html[: html.index("<aside")]))
 
@@ -313,14 +331,14 @@ class TheLevelTest(_ResultPage):
         html = self.page(stale, level, facts=NO_FAILURE, extra=switch, live=live)
         drift = visible_text(drift_of(html))
         self.assertIn("Live estimate", drift)
-        self.assertNotIn("None or low", drift)
-        self.assertNotIn("Analysis ·", drift)
+        self.assertEqual("High", level_of(html))
+        self.assertNotIn(SOURCE, html)
         self.assertIn("Drift: High", visible_text(html[: html.index("<aside")]))
         # The reading itself still says why it is stale and offers another press.
         self.assertIn("Your intent changed after this analysis.", visible_text(result_of(html)))
         # With the switch off there is no live estimate, and still no stale level.
         off = self.page(stale, level, facts=NO_FAILURE)
-        self.assertNotIn("None or low", visible_text(drift_of(off)))
+        self.assertNotIn("data-next-drift-level", off)
         self.assertNotIn("data-next-drift-pill", off)
 
     def test_a_level_computed_for_another_reading_is_not_drawn(self) -> None:
@@ -337,23 +355,22 @@ class TheLevelTest(_ResultPage):
         )
         self.assertNotIn("data-next-drift-pill", out)
         self.assertNotIn("Drift: High", visible_text(out))
-        self.assertNotIn("Analysis ·", visible_text(out))
+        self.assertNotIn("From the analysis at", visible_text(out))
 
     def test_every_line_cant_tell_never_reads_none_or_low(self) -> None:
         # The server's own function over this reading.
         level = server_level(ALL_CANT_TELL, NO_FAILURE)
         self.assertEqual(levels.NOT_ENOUGH, level)
         html = self.page(ALL_CANT_TELL, level, facts=NO_FAILURE)
-        self.assertIn("Not enough recorded yet", visible_text(drift_of(html)))
+        self.assertEqual("Not enough recorded yet", level_of(html))
         # And the page holds the line against a level that says otherwise.
         forged = self.page(ALL_CANT_TELL, levels.NONE_OR_LOW, facts=NO_FAILURE)
-        self.assertNotIn("None or low", visible_text(drift_of(forged)))
-        self.assertIn("Not enough recorded yet", visible_text(drift_of(forged)))
+        self.assertEqual("Not enough recorded yet", level_of(forged))
         self.assertNotIn("data-next-drift-pill", forged)
 
     def test_none_or_low_shows_where_every_line_the_page_draws_is_consistent(self) -> None:
         html = self.page(ALL_CONSISTENT, levels.NONE_OR_LOW, facts=NO_FAILURE)
-        self.assertIn("None or low", visible_text(drift_of(html)))
+        self.assertEqual("None or low", level_of(html))
         # One line the page demotes is enough to withhold it.
         demoted = assessment(
             {
@@ -363,7 +380,7 @@ class TheLevelTest(_ResultPage):
             }
         )
         held = self.page(demoted, levels.NONE_OR_LOW, facts=NO_FAILURE)
-        self.assertNotIn("None or low", visible_text(drift_of(held)))
+        self.assertEqual("Not enough recorded yet", level_of(held))
 
 
 @unittest.skipUnless(shutil.which("node"), "node not available")
@@ -619,12 +636,12 @@ class AStaleResultSaysWhyTest(_ResultPage):
         assert isinstance(out, dict)
         self.assertEqual(1, len(out["posts"]), "the save was not sent")
         before = out["before"]
-        self.assertIn(f"Analysis · {clock(READ_AT)}", visible_text(drift_of(before)))
+        self.assertIn(SOURCE, drift_of(before))
         self.assertEqual("", self.stale_of(before))
         html = out["after"]
         self.assertIn("Saved as a new revision.", visible_text(html))
         drift = visible_text(drift_of(html))
-        self.assertNotIn("Analysis ·", drift)
+        self.assertNotIn(SOURCE, html)
         self.assertNotIn("High", drift)
         self.assertNotIn("data-next-drift-pill", html)
         stale = self.stale_of(html)
@@ -749,3 +766,36 @@ class TheReducerTest(_ResultPage):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+@unittest.skipUnless(shutil.which("node"), "node not available")
+class AMidFlightAnalysisNeverLooksFinalTest(_ResultPage):
+    """Owner, 2026-10-02 (J6): a reading of a running session reads the work so far."""
+
+    SO_FAR = "Reads the work so far; the session is still running."
+    JOB_NOTE = "Reads only the work so far. The result will appear here."
+
+    def test_a_reader_analyzing_a_running_session_is_told_before_during_and_after_that_it_reads_only_the_work_so_far(
+        self,
+    ) -> None:
+        before = visible_text(drift_of(self.page(None, extra='__s.state = "working";\n')))
+        self.assertIn(self.SO_FAR, before)
+        self.assertNotIn("up to now", before)
+        job = (
+            '__s.state = "working";\n'
+            '__dashboard.reading_jobs = {"claude:focus-1": {id:"j1", phase:"waiting",'
+            ' started_at:106, phase_at:106, provider:"codex", steps:[{phase:"waiting",'
+            ' text:"Waiting for Codex"}]}};\n'
+        )
+        during = visible_text(drift_of(self.page(None, extra=job)))
+        self.assertIn(self.JOB_NOTE, during)
+        midflight = assessment(MIXED["criteria"], scope="mid-flight")
+        after = drift_of(self.page(midflight, levels.HIGH))
+        head = re.search(r'<p class="next-cockpit-result-headline">([\s\S]*?)</p>', after)
+        assert head is not None
+        self.assertTrue(visible_text(head.group(1)).strip().startswith("So far:"))
+        self.assertIn('<span class="next-cockpit-result-scope">So far:</span>', head.group(1))
+
+    def test_a_reading_through_an_end_carries_no_so_far(self) -> None:
+        final = assessment(MIXED["criteria"], scope="final")
+        self.assertNotIn("So far:", drift_of(self.page(final, levels.HIGH)))

@@ -1106,9 +1106,8 @@ function nextAttentionView(model, expandedSections = new Set(), openDisclosures 
     return subject && subject.key;
   }));
   const remaining = subjects => subjects.filter(subject => !rendered.has(subject.key));
-  const open = observed.open.map(([code, name, note]) =>
-    `<li data-next-open="${esc(code)}"><span>${esc(code)}</span>` +
-    `<strong>${esc(name)}</strong><p>${esc(note)}</p></li>`).join("");
+  const open = observed.open.map(([key, name, note]) =>
+    `<li data-next-open="${esc(key)}"><strong>${esc(name)}</strong><p>${esc(note)}</p></li>`).join("");
   return '<section class="next-attention" data-next-view-body="attention">' +
     '<header class="next-attention-heading"><h1 tabindex="-1">Attention</h1>' +
     '<p>what is observed, and what the board could not see</p></header>' +
@@ -1121,16 +1120,14 @@ function nextAttentionView(model, expandedSections = new Set(), openDisclosures 
     '<section class="next-attention-section" data-next-attention-section="risk">' +
     `<div class="next-attention-section-heading"><h2 tabindex="-1">At risk</h2><p>${esc(riskNote)}</p></div>` +
     `<ol>${risks}</ol>` +
-    nextAttentionSectionHtml("needs", "NEEDS YOU NOW", remaining(model.needs), model, expandedSections) +
-    nextAttentionSectionHtml("close", "CLOSE THE LOOP", remaining(model.close), model, expandedSections) +
-    nextAttentionSectionHtml("next", "COMING NEXT", remaining(model.next), model, expandedSections) + '</section>' +
+    nextAttentionSectionHtml("needs", "Needs you now", remaining(model.needs), model, expandedSections) +
+    nextAttentionSectionHtml("close", "Close the loop", remaining(model.close), model, expandedSections) +
+    nextAttentionSectionHtml("next", "Coming next", remaining(model.next), model, expandedSections) + '</section>' +
     '<section class="next-attention-section" data-next-attention-section="board-risk">' +
-    '<div class="next-attention-section-heading"><h2 tabindex="-1">Also at risk, off the session count</h2>' +
-    '<p>not sessions, so not in that denominator</p></div>' +
+    '<div class="next-attention-section-heading"><h2 tabindex="-1">Also at risk, off the session count</h2></div>' +
     `<ol>${boardRisks}${modelQuotaRows}</ol></section>` +
     nextCommandReports() +
     '<section class="next-attention-section" data-next-attention-section="open">' +
-    '<div class="next-attention-section-heading"><h2 tabindex="-1">Not on this board yet</h2>' +
-    '<p>so a gap reads as a gap, not as good news</p></div>' +
+    '<div class="next-attention-section-heading"><h2 tabindex="-1">Not on this board yet</h2></div>' +
     `<ul class="next-attention-open">${open}</ul></section></section>`;
 }

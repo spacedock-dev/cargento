@@ -436,6 +436,40 @@ def session_spacedock(
     }
 
 
+def transcript_turn_end(
+    config: RuntimeConfig,
+    info: dict[str, Any] | None,
+    transcript: str,
+    *,
+    work_activity: float,
+    blocked: bool,
+) -> float | None:
+    """The turn stop this session's transcript records, while it still stands, else None.
+
+    Claude Code's own `stop_hook_summary` for this session (owner, 2026-10-02):
+    the stop a hook would have reported, read from the tail the analysis already
+    read, for a board no hook reaches and for a stop from before a restart. It
+    stands only while nothing came after it: no conversation record newer than
+    it, no open question, no unstarted or running subagent, and no other work
+    newer than it by more than the activity grace. Every collection recomputes
+    it, so a new prompt withdraws it. Never written as `finished_at`, which
+    stays an observation (`sessions.base_session`).
+    """
+    if not info or not transcript:
+        return None
+    stop = info.get("turn_stop_ts") or 0
+    if not (
+        stop > 0
+        and info.get("turn_stop_sid") == os.path.basename(transcript).removesuffix(".jsonl")
+        and (info.get("last_conversation_ts") or 0) <= stop
+        and not info.get("pending_input_tool")
+        and not blocked
+        and work_activity <= stop + config.overlay_wait_activity_grace_sec
+    ):
+        return None
+    return float(stop)
+
+
 def discover(config: RuntimeConfig, _state: RuntimeState) -> bool:
     """Whether a Claude projects store is present."""
     return runtime_io.any_store_dir(config, "claude.projects")
@@ -777,6 +811,26 @@ def collect(
             else None
         )
 
+        # What retires an observed stop: `activity_sources` with the parent
+        # transcript read by its newest conversation record instead of its
+        # mtime (DRC-4770). Every other source stays an mtime, so a child
+        # writing still retires the stop (DRC-4101). An unanalyzed row, or a
+        # tail with no conversation record, falls back to the mtime, which
+        # retires rather than keeps: the direction DRC-4101 requires.
+        # `last_activity` itself is unchanged, because it also gates the
+        # display window and the notifications.
+        work_activity = runtime_sessions.newest_plausible(
+            config,
+            now,
+            (
+                latest_task_mtime,
+                (info or {}).get("last_conversation_ts") or transcript_mtime,
+                latest_agent_mtime,
+                latest_agent_file_mtime,
+                latest_child_mtime,
+                latest_grandchild_file_mtime,
+            ),
+        )
         session_state, state_detail = "idle", "awaiting your message"
         blocked_since = None
         # mtime floor: match the other collectors when the newest write has
@@ -882,6 +936,27 @@ def collect(
             # a session the user has quit is moot, not blocking.
             session_state, blocked_since = "idle", None
             state_detail = "awaiting your message"
+        turn_end_at = transcript_turn_end(
+            config,
+            info,
+            transcript or "",
+            work_activity=work_activity,
+            blocked=session_state == "needs_input" or bool(pending_members or subagents),
+        )
+        if turn_end_at is not None:
+            # Settled as a hook Stop settles through the idle overlay: the turn
+            # finished, so the stop record's own write does not keep the row
+            # Working for `working_threshold_sec`. A hook `turn_started` still
+            # wins, because overlays apply after this.
+            session_state, state_detail = "idle", "awaiting your message"
+        elif session_state == "idle":
+            # Claude Code records a finished turn itself, so an idle row
+            # without one may still be mid-turn: an interruption, an open tool
+            # call, a subagent. "Awaiting your message" beside Drift's "last
+            # turn isn't recorded as finished" told the reader both (verifier
+            # F3). A hook Stop's idle overlay clears this, as it clears any
+            # detail, and the row then carries its observed stop.
+            state_detail = "last turn not recorded as finished"
 
         total = len(tasks)
         done = sum(1 for t in tasks if t["status"] == "completed")
@@ -959,8 +1034,10 @@ def collect(
                 "state": session_state,
                 "state_detail": state_detail,
                 "blocked_since": blocked_since,
+                "turn_end_at": turn_end_at,
                 "active": active,
                 "last_activity": last_activity,
+                "work_activity": work_activity,
                 # The parent transcript alone, deliberately excluded from the
                 # subagent and task mtimes folded into `last_activity` above:
                 # this is what tells a resumed turn from a background agent
