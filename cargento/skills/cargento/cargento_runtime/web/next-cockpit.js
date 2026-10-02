@@ -3297,7 +3297,7 @@ function nextCockpitResultFoot(session, annotation, raw){
   const marked = annotation && annotation.not_accurate === true;
   const key = sessKey(session);
   return '<div class="next-cockpit-result-foot">' +
-    '<button type="button" class="next-cockpit-result-mark" data-next-cockpit-action="not-accurate" ' +
+    '<button type="button" class="next-action next-action--quiet" data-next-cockpit-action="not-accurate" ' +
     `data-arg="${esc(String(readAt))}" aria-pressed="${marked ? "true" : "false"}" ` +
     `data-next-focus="not-accurate:${esc(key)}">${NEXT_RESULT_NOT_ACCURATE}</button>` +
     (marked ? `<span class="next-cockpit-result-marked">${NEXT_RESULT_MARKED}</span>` : "") +
@@ -4322,7 +4322,6 @@ function nextCockpitReadingControl(session, annotation, model, primary = true, s
      already carries it. */
   const enabled = !reason && !pending;
   const count = nextNumber(annotation && annotation.reading_count) || 0;
-  const spent = `${count} model request${count === 1 ? "" : "s"} recorded for this session.`;
   /* The route's disclosure, naming this session's own receiver, whose
      capacity is spent and where the words go. The offer paragraph in the
      reading scopes WHAT is sent and says nothing about where it goes or who
@@ -4362,15 +4361,7 @@ function nextCockpitReadingControl(session, annotation, model, primary = true, s
       `data-next-focus="reading-off:${esc(key)}">Turn off readings</button>` : "";
   /* Only from a published annotation: with the store off there is no count
      to read, and "0 requests" would be a default standing in for one. */
-  const counted = annotation ? `<span class="next-cockpit-reading-count">${esc(spent)}</span>` : "";
-  /* Idle, the count rides on the button's row, beside the control as item 1 of
-     [DEC-24](docs/design-reading-a-session.md#dec-24-your-intent-is-a-drafted-goal-and-a-checklist-and-a-correction-is-yours-to-copy)
-     keeps it: short to the eye, and the whole sentence to a screen reader,
-     which the short form is hidden from (DRC-4758 slice B). */
-  const rowCount = annotation
-    ? `<span class="next-cockpit-reading-count next-cockpit-reading-count--row">` +
-      `<span aria-hidden="true">${esc(`${count} request${count === 1 ? "" : "s"}`)}</span>` +
-      `<span class="next-visually-hidden">${esc(spent)}</span></span>` : "";
+  const counted = annotation ? nextCockpitReadingCount(count) : "";
   /* What the last press or withdrawal came to, announced. Every arm prints
      it: a failed "Turn off readings" that says nothing leaves the reader
      believing a permission is gone that is still on record (review C-1). */
@@ -4498,9 +4489,22 @@ function nextCockpitReadingControl(session, annotation, model, primary = true, s
       (about ? `<p class="next-cockpit-reading-why">${esc(about)}</p>` : "") +
       (off ? `<div class="next-cockpit-reading-ask">${off}</div>` : "") + "</details>"
     : (off ? `<div class="next-cockpit-reading-ask">${off}</div>` : "") + aboutWhy;
+  /* The count under the row rather than in it, so the buttons keep one row;
+     not under an inert Analyze, which no press can spend (NU-9, 2026-10-02). */
   return '<div class="next-cockpit-reading-ask">' +
-    (lead ? steerButton + button : button + steerButton) + rowCount + '</div>' +
-    accounts + sent;
+    (lead ? steerButton + button : button + steerButton) + '</div>' +
+    (inert ? "" : counted) + accounts + sent;
+}
+
+/* The attempt count beside the control, as item 1 of
+   [DEC-24](docs/design-reading-a-session.md#dec-24-your-intent-is-a-drafted-goal-and-a-checklist-and-a-correction-is-yours-to-copy)
+   keeps it, worded the same in every state: short to the eye, and the whole
+   sentence to a screen reader, which the short form is hidden from. */
+function nextCockpitReadingCount(count){
+  const short = `${count} model request${count === 1 ? "" : "s"}`;
+  return '<p class="next-cockpit-reading-count">' +
+    `<span aria-hidden="true">${esc(short)}</span>` +
+    `<span class="next-visually-hidden">${esc(`${short} recorded for this session.`)}</span></p>`;
 }
 
 /* "Not now" on the consent step: nothing is sent, allowed or recorded, and
@@ -4603,7 +4607,7 @@ function nextCockpitReadingParts(session, annotation, entries, model, observed, 
   const departed = Boolean(offer && offer.departed);
   const noReader = nextData && nextData.annotate === true ? nextReadingRouteRefusal(session) : "";
   const update = departed
-    ? '<button type="button" class="next-action" data-next-cockpit-action="update-intent" ' +
+    ? '<button type="button" class="next-action next-action--secondary" data-next-cockpit-action="update-intent" ' +
       `data-arg="${esc(nextCockpitOfferedDirection(annotation, entries, session, early))}" ` +
       `data-next-focus="update-intent:${esc(sessKey(session))}">Update intent instead</button>`
     : "";
@@ -5033,8 +5037,7 @@ function nextCockpitDirectionQuestion(session, annotation, source, model, primar
       ? `<p class="next-cockpit-reading-why" role="status">${esc(opened.error)}</p>` : "") +
     (answered ? `<p class="next-cockpit-reading-why"${request && request.announced ? ""
       : ' role="status"'}>${esc(answered)}</p>` : "") +
-    (annotation ? `<span class="next-cockpit-reading-count">${esc(
-      `${count} model request${count === 1 ? "" : "s"} recorded for this session.`)}</span>` : "") +
+    (annotation ? nextCockpitReadingCount(count) : "") +
     (reason
       ? `<p class="next-cockpit-reading-why"${request && request.refusal && !request.announced
         ? ' role="status"' : ""}` +

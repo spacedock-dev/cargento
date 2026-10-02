@@ -2186,7 +2186,12 @@ comes first and the DEC-21 disclosure follows it with the hint" for the idle sta
   the one hint line, then the DEC-21 disclosure under a closed summary: "What is sent to
   <receiver>" until that receiver is allowed, and always while the route is a fallback, then "What
   is sent". The button stays described by the disclosure's paragraph. Turn off readings sits inside
-  the summary, still on the page.
+  the summary, still on the page. Amended 2026-10-02 (NU-9): the count is a line of its own directly
+  under the button row, ahead of any account of a press, because on the row it pushed "Analyze
+  again" onto a second one beside Steer back and Update intent instead, which are now one row of
+  the same secondary style after the primary. It reads "N model requests" in every state (idle,
+  confirming, analyzing and stored), keeps the whole sentence for a screen reader, and is not drawn
+  under an inert Analyze, which no press can spend. "Not accurate?" is the quiet button primitive.
 - Idle sends nothing, so nothing is sent before the receiver is named. A press owed an Allow opens
   [the consent step](#amended-2026-10-01-the-first-press-is-a-consent-step), which shows the whole
   disclosure before "Allow and analyze". A press under an Allow already given sends at once, and

@@ -15,10 +15,12 @@ import re
 import shutil
 import unittest
 
-from cargento_runtime import reading
+from cargento_runtime import levels, reading
 
+from . import test_next_analysis_result as result_tests
 from . import test_next_cockpit as cockpit_tests
-from .next_harness import storage_prelude
+from . import test_next_drift_panel as panel
+from .next_harness import NEXT_STYLES, storage_prelude
 from .test_next_drift_panel import FIXTURE, JOB, PanelPage, drift_of, routes
 from .visible_text import visible_text
 
@@ -47,10 +49,13 @@ def eligibility(token: str | None, *, until: float | None = None) -> str:
 
 
 def after_button(drift: str) -> str:
-    """The visible text after the Analyze control's row, so a test reads what follows it."""
+    """The visible text after the Analyze control's row and the count line under it, so a test
+    reads what follows them (the count left the row on 2026-10-02, NU-9)."""
     match = ASK.search(drift)
     assert match is not None, "no Analyze control drawn"
-    return visible_text(drift[drift.index("</div>", match.end()) :])
+    tail = drift[drift.index("</div>", match.end()) + len("</div>") :]
+    count = re.match(r'<p class="next-cockpit-reading-count">[\s\S]*?</p>', tail)
+    return visible_text(tail[count.end() :] if count else tail)
 
 
 @unittest.skipUnless(shutil.which("node"), "node not available")
@@ -332,14 +337,17 @@ class IdleTheDisclosureIsOneWordedClickAwayTest(PanelPage):
     def test_idle_and_never_allowed_shows_the_count_the_hint_and_a_closed_summary(self) -> None:
         drift = drift_of(self.page("codex", CONSENT_NEEDED))
         disclosure = routes()["codex"]["disclosure"]
-        # The count on the button's row, short to the eye and whole to a screen reader.
+        # The count on its own line under the button's row (NU-9), short to the eye and whole
+        # to a screen reader.
         row = drift[drift.index('<div class="next-cockpit-reading-ask">') :]
-        row = row[: row.index("</div>")]
-        self.assertIn("0 requests", visible_text(row))
+        row = row[row.index("</div>") + len("</div>") :]
+        row = row[: row.index("</p>")]
+        self.assertTrue(row.startswith('<p class="next-cockpit-reading-count">'), row[:60])
+        self.assertIn("0 model requests", visible_text(row))
         self.assertRegex(row, r"\d+ model requests? recorded for this session\.")
         self.assertNotIn("recorded for this session", visible_text(row))
         # A screen reader hears the sentence once, not the short form before it.
-        self.assertIn('<span aria-hidden="true">0 requests</span>', row)
+        self.assertIn('<span aria-hidden="true">0 model requests</span>', row)
         # Then only the hint and the summary are in view before the next section.
         tail = after_button(drift)
         hint = "Reads the session up to now against your intent. Runs in the background."
@@ -372,8 +380,9 @@ class IdleTheDisclosureIsOneWordedClickAwayTest(PanelPage):
         self.assertIn('data-next-cockpit-action="reading-off"', sent.group(0))
         self.assertEqual(1, drift.count('data-next-cockpit-action="reading-off"'))
         self.assertNotIn("Turn off readings", visible_text(drift))
-        row = drift[drift.index('<div class="next-cockpit-reading-ask">') :]
-        self.assertIn("2 requests", visible_text(row[: row.index("</div>")]))
+        line = re.search(r'<p class="next-cockpit-reading-count">[\s\S]*?</p>', drift)
+        assert line is not None
+        self.assertEqual("2 model requests", visible_text(line.group(0)))
 
     def test_a_fallback_route_names_its_receiver_even_once_allowed(self) -> None:
         # A Codex session read by Claude Code sends straight away once Claude Code is allowed,
@@ -398,3 +407,75 @@ class IdleTheDisclosureIsOneWordedClickAwayTest(PanelPage):
         self.assertIn("data-next-analyzing", drift)
         self.assertNotIn(routes()["codex"]["disclosure"][:60], drift)
         self.assertRegex(drift, r"2 model requests recorded for this session\.")
+
+
+COUNT_LINE = re.compile(r'<p class="next-cockpit-reading-count">[\s\S]*?</p>')
+ASK_ROW = re.compile(r'<div class="next-cockpit-reading-ask">([\s\S]*?)</div>')
+
+
+@unittest.skipUnless(shutil.which("node"), "node not available")
+class TheReadingRowIsButtonsThenTheCountTest(PanelPage):
+    """NU-9 (2026-10-02): the count sat inside the button row, pushed far right, and wrapped
+    "Analyze again" onto a row of its own; its wording changed from state to state."""
+
+    def test_the_count_is_worded_the_same_before_during_and_after_an_analysis(self) -> None:
+        stages = {
+            "idle": self.page(),
+            "confirming": self.confirming(),
+            "analyzing": self.page(setup=panel.JOB),
+            "stored": self.page("codex", panel.READING),
+        }
+        for name, html in stages.items():
+            with self.subTest(stage=name):
+                lines = COUNT_LINE.findall(drift_of(html))
+                self.assertEqual(1, len(lines), lines)
+                self.assertRegex(visible_text(lines[0]), r"^\d+ model requests?$")
+                # The whole sentence stays for a screen reader.
+                self.assertRegex(lines[0], r"\d+ model requests? recorded for this session\.")
+                self.assertNotRegex(visible_text(drift_of(html)), r"\b\d+ requests?\b")
+
+    def test_an_inert_analyze_on_codex_between_turns_shows_no_request_count(self) -> None:
+        drift = drift_of(self.page("codex", eligibility(reading.WITHHELD_IDLE_UNKNOWN)))
+        button = ASK.search(drift)
+        assert button is not None
+        self.assertIn('aria-disabled="true"', button.group(0))
+        self.assertNotIn("reading-count", drift)
+        self.assertNotRegex(visible_text(drift), r"\b\d+ (model )?requests?\b")
+
+
+@unittest.skipUnless(shutil.which("node"), "node not available")
+class UnderADepartureTheRowIsThreeButtonsTest(result_tests._ResultPage):
+    def test_under_a_departure_the_buttons_share_a_style_and_the_count_has_its_own_line(
+        self,
+    ) -> None:
+        html = self.page(result_tests.MIXED, levels.HIGH)
+        assert isinstance(html, str)
+        drift = drift_of(html)
+        rows = [row for row in ASK_ROW.finditer(drift) if "reading-ask" in row.group(1)]
+        self.assertEqual(1, len(rows))
+        row = rows[0]
+        buttons = re.findall(r"<button\b([^>]*)>([^<]*)</button>", row.group(1))
+        self.assertEqual(
+            ["Steer back", "Update intent instead", "Analyze again"], [text for _a, text in buttons]
+        )
+        self.assertNotIn("reading-count", row.group(1))
+        self.assertIn("next-action--primary", buttons[0][0])
+        for attrs, text in buttons[1:]:
+            with self.subTest(button=text):
+                self.assertRegex(attrs, r'class="next-action next-action--secondary"')
+        # The count is the row's next sibling, on a line of its own.
+        after = drift[row.end() :]
+        self.assertTrue(after.startswith('<p class="next-cockpit-reading-count">'), after[:80])
+        line = re.search(r"\.next-cockpit-reading-count\{([^}]*)\}", NEXT_STYLES)
+        assert line is not None
+        self.assertNotIn("margin-left:auto", line.group(1))
+
+    def test_not_accurate_is_a_quiet_button_like_clear(self) -> None:
+        html = self.page(result_tests.MIXED, levels.HIGH)
+        assert isinstance(html, str)
+        drift = drift_of(html)
+        mark = re.search(r'<button\b[^>]*data-next-cockpit-action="not-accurate"[^>]*>', drift)
+        assert mark is not None
+        self.assertIn('class="next-action next-action--quiet"', mark.group(0))
+        self.assertIn('aria-pressed="false"', mark.group(0))
+        self.assertNotIn(".next-cockpit-result-mark{", NEXT_STYLES)
