@@ -706,6 +706,10 @@ input::placeholder,textarea::placeholder{color:var(--ink2)}
   .next-operation-group{margin-top:16px}
   .next-operation-group>header{align-items:flex-start;flex-direction:column;gap:6px;padding-bottom:6px}
   .next-operation-group>header p{text-align:left}
+  /* The stacked header puts the caveat at the start, so its popover hangs from
+     that edge: from the end edge it ran off the left of a 375px screen
+     (verifier, 2026-10-02). */
+  .next-operation-group>header>details.next-disclose--pop>.next-disclose-body{inset-inline-start:0;inset-inline-end:auto}
   .next-operation-rows{display:grid;gap:12px;padding-top:6px}
   #app .next-operation-row{grid-template-columns:minmax(0,1fr);border:1px solid var(--line);border-radius:var(--r-control);background:var(--panel)}
   .next-operation-identity{grid-column:auto}

@@ -1345,7 +1345,9 @@ says the words may exist where the box shows none
 Amended 2026-10-02 (owner, asks 1 and 5): a tier-2 disclosure opens in one of two ways, and its
 position decides which. A disclosure whose summary sits in a flex row beside other content is a
 **popover**: its body leaves the flow and hangs under the summary, aligned to the summary's end
-edge, so opening it moves neither the word nor anything below it. Measured before the change, the
+edge, so opening it moves neither the word nor anything below it. Under 620px the Sessions group
+header stacks into a column with the caveat at its start, so there the body hangs from the start
+edge: hung from the end, it ran from x=-169 to x=174 on a 375px screen. Measured before the change, the
 header's "Why" beside "No terminal to raise" widened from 48px to 540px when it opened, jumped
 492px left and pushed the Intent heading down 74px. Every other disclosure is an **accordion**: it
 opens in place, its height and contents easing over 200ms. A popover fades in over 160ms. Both

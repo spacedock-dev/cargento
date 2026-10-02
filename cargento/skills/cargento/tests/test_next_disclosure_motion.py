@@ -138,6 +138,28 @@ class TheTwoPopoversNeverMoveTheirSummaryTest(PanelPage):
         self.assertNotIn("next-disclose--pop", details_tag(html, "sessions-board-why"))
         self.assertIn('[data-next-view-body="sessions"]', POP)
 
+    def test_on_a_narrow_screen_the_sessions_caveat_opens_from_its_start_edge(self) -> None:
+        """Verifier R-2, measured at 375px: under 620px the group header stacks into a column,
+        so "What recent means" sits at the left (x=19), and a 343px body hung from its end edge
+        ran from x=-169 to x=174, half of every line off the screen and out of scroll's reach.
+        In the column the summary is always at the start, so the body hangs from that edge. The
+        header's "Why" stays end-anchored: it ends a `flex-end` row at every width."""
+        narrow = rule(
+            ".next-operation-group>header>details.next-disclose--pop>.next-disclose-body",
+            "@media(max-width:620px)",
+        )
+        self.assertIn("inset-inline-start:0", narrow)
+        self.assertIn("inset-inline-end:auto", narrow)
+        # The column rule this relies on, in the same step.
+        self.assertIn(
+            "flex-direction:column",
+            rule(".next-operation-group>header", "@media(max-width:620px)"),
+        )
+        self.assertIn(
+            "align-items:flex-start",
+            rule(".next-operation-group>header", "@media(max-width:620px)"),
+        )
+
     def test_escape_closes_an_open_why_and_keeps_the_reader_on_the_session(self) -> None:
         out = self.page(
             after="""
