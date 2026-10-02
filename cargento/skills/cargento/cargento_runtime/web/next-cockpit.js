@@ -4542,6 +4542,49 @@ async function nextCockpitCopyCorrection(session, target, source){
    is stored: the READING section that carried it is drawn only to say a stored
    reading could not be read (DRC-4758 slice E, tier 2 of
    [NUI-19](docs/design-next-ui.md#nui-19-a-caveat-has-three-tiers)). */
+/* The board's half of whether Analyze can be pressed, as the drawn card shows
+   it, for the Analyze control and the direction question alike: a card that
+   draws Keep and Add in Analyze's place flipped silently, with no hold and no
+   Why (verifier F1). `reason` is the press's refusal with the board's ranked
+   first; the answer's `reason` is what to draw. */
+function nextReadingBoard(session, annotation, model, reason){
+  let pressed = nextReadingEligibility(session);
+  const refusedByBoard = Boolean(pressed) && reason === nextReadingPressLine(session, pressed);
+  /* Only the board's eligibility flips: a refusal the reader's own edit caused
+     is not one. While a close is still held, the card draws Analyze live and
+     a press is answered by the handler's refusal. */
+  /* A change another refusal still hides (the model switch, an unsaved edit)
+     is tracked and never said: "Analyze is open" beside an inert button is
+     false. */
+  const hidden = Boolean(nextPromptReadingRefusal(session, annotation, model, true));
+  const flip = nextReadingFlip(session, !refusedByBoard, pressed, hidden);
+  if(refusedByBoard && flip.shown){
+    reason = nextPromptReadingRefusal(session, annotation, model, true);
+    pressed = null;
+  }
+  const inert = refusedByBoard && !flip.shown;
+  const changed = nextReadingFlipLine(session);
+  const settling = inert && ["settling", "stop-settling"].includes(String(pressed.reason || ""));
+  nextReadingFlipSchedule("until", settling && nextNumber(pressed.until) != null
+    ? nextNumber(pressed.until) * 1000 : null);
+  return {reason, pressed, inert, changed, settling};
+}
+
+/* Why a press cannot run, under the row it refuses, with the board's Why
+   beside an inert one. */
+function nextReadingRefusedLine(session, reason, request, board){
+  if(!reason) return "";
+  return `<p class="next-cockpit-reading-why"${request && request.refusal && !request.announced
+    ? ' role="status"' : ""}` +
+    ` id="${NEXT_READING_REFUSED_ID}"` +
+    `${nextAbsenceAttr(NEXT_READING_REFUSAL_ABSENCE.get(reason))}>` +
+    /* Waiting, not busy: the record is settling and Analyze opens by itself
+       at `until`, so a dot pulses rather than the press's spinner. */
+    `${board.settling ? '<span class="next-wait-dot" aria-hidden="true"></span>' : ""}${esc(reason)}</p>` +
+    (board.inert ? nextCockpitWhy(`reading-why:${sessKey(session)}`, "Why it can't read",
+      board.pressed.sentence) : "");
+}
+
 function nextCockpitReadingControl(session, annotation, model, primary = true, steer = null,
     again = false, about = ""){
   const steerButton = steer ? steer.button : "";
@@ -4566,25 +4609,9 @@ function nextCockpitReadingControl(session, annotation, model, primary = true, s
   /* A press the board says cannot read is inert and not the stage's primary,
      and no Allow step is offered for it: the handler refuses on this same
      reason before it would ask (DRC-4758 slice B). */
-  let pressed = nextReadingEligibility(session);
-  const refusedByBoard = Boolean(pressed) && reason === nextReadingPressLine(session, pressed);
-  /* Only the board's eligibility flips: a refusal the reader's own edit caused
-     is not one. While a close is still held, the card draws Analyze live and
-     a press is answered by the handler's refusal. */
-  /* A change another refusal still hides (the model switch, an unsaved edit)
-     is tracked and never said: "Analyze is open" beside an inert button is
-     false. */
-  const hidden = Boolean(nextPromptReadingRefusal(session, annotation, model, true));
-  const flip = nextReadingFlip(session, !refusedByBoard, pressed, hidden);
-  if(refusedByBoard && flip.shown){
-    reason = nextPromptReadingRefusal(session, annotation, model, true);
-    pressed = null;
-  }
-  const inert = refusedByBoard && !flip.shown;
-  const changed = nextReadingFlipLine(session);
-  const settling = inert && ["settling", "stop-settling"].includes(String(pressed.reason || ""));
-  nextReadingFlipSchedule("until", settling && nextNumber(pressed.until) != null
-    ? nextNumber(pressed.until) * 1000 : null);
+  const board = nextReadingBoard(session, annotation, model, reason);
+  reason = board.reason;
+  const {pressed, inert, changed, settling} = board;
   /* The question stays drawn while its Allow is being answered: the card is
      the consent, and taking it away mid-press left a bare hatched button. */
   const allowKey = `reading-allow:${key}`;
@@ -4698,16 +4725,7 @@ function nextCockpitReadingControl(session, annotation, model, primary = true, s
      the same sentence twice, adjacent and identical, where the contract is
      that it renders exactly once. The press is still announced, because this
      node carries `role="status"` when it is the refusal. */
-  const refused = reason
-    ? `<p class="next-cockpit-reading-why"${request && request.refusal && !request.announced
-      ? ' role="status"' : ""}` +
-      ` id="${NEXT_READING_REFUSED_ID}"` +
-      `${nextAbsenceAttr(NEXT_READING_REFUSAL_ABSENCE.get(reason))}>` +
-      /* Waiting, not busy: the record is settling and Analyze opens by itself
-         at `until`, so a dot pulses rather than the press's spinner. */
-      `${settling ? '<span class="next-wait-dot" aria-hidden="true"></span>' : ""}${esc(reason)}</p>` +
-      (inert ? nextCockpitWhy(`reading-why:${key}`, "Why it can't read", pressed.sentence) : "")
-    : "";
+  const refused = nextReadingRefusedLine(session, reason, request, board);
   /* What the last press came to when it was withheld, from the store, so a
      reload and another tab say the same. It was the READING section's, far
      below the button the reader pressed, which is where the owner's walk lost
@@ -5284,8 +5302,11 @@ function nextCockpitDirectionQuestion(session, annotation, source, model, primar
   /* An unsaved edit outranks every other refusal: Keep would settle over
      words that are not on screen on any route, the no-reader one included. */
   const edited = nextIntentUnsaved(session, annotation);
-  const reason = edited ? nextIntentEditedRefusal(session)
-    : nextPromptReadingRefusal(session, annotation, model);
+  /* The board's flip is tracked here too, ranked as the Analyze control
+     ranks it, so an unsaved edit hides a change rather than faking one. */
+  const board = nextReadingBoard(session, annotation, model,
+    nextPromptReadingRefusal(session, annotation, model));
+  const reason = edited ? nextIntentEditedRefusal(session) : board.reason;
   const job = nextReadingJob(session);
   const route = nextReadingRoute(session);
   const provider = route && route.provider ? String(route.provider) : "";
@@ -5328,17 +5349,15 @@ function nextCockpitDirectionQuestion(session, annotation, source, model, primar
     `<div class="next-cockpit-reading-ask">${keep}${add}${nextReadingAnyConsent()
       ? '<button type="button" class="next-action" data-next-cockpit-action="reading-off" ' +
         `data-next-focus="reading-off:${esc(key)}">Turn off readings</button>` : ""}</div>` +
+    board.changed +
     (analyze ? disclosure : "") +
     (opened && opened.error
       ? `<p class="next-cockpit-reading-why" role="status">${esc(opened.error)}</p>` : "") +
     (answered ? `<p class="next-cockpit-reading-why"${request && request.announced ? ""
       : ' role="status"'}>${esc(answered)}</p>` : "") +
     (annotation ? nextCockpitReadingCount(count) : "") +
-    (reason
-      ? `<p class="next-cockpit-reading-why"${request && request.refusal && !request.announced
-        ? ' role="status"' : ""}` +
-        ` id="${NEXT_READING_REFUSED_ID}"` +
-        `${nextAbsenceAttr(NEXT_READING_REFUSAL_ABSENCE.get(reason))}>${esc(reason)}</p>` : "") +
+    nextReadingRefusedLine(session, reason, request,
+      edited ? {settling: false, inert: false, pressed: null} : board) +
     "</div>";
 }
 
@@ -5380,6 +5399,8 @@ async function nextCockpitKeepIntent(session, model){
   }
   const draft = nextIntentDraft(session, annotation);
   const reason = nextPromptReadingRefusal(session, annotation, model);
+  // A press during a held close learns the board's state, as Analyze's does.
+  if(reason && reason === nextReadingPressRefusal(session)) nextReadingFlipAcknowledge(session, false);
   const route = nextReadingRoute(session);
   const owed = !reason && !nextReadingJob(session) && nextReadingNeedsAllow(route);
   const analyze = !reason && !nextReadingJob(session) && !owed;

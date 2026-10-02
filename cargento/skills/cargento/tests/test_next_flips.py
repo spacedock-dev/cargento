@@ -25,6 +25,7 @@ from cargento_runtime import annotations as annotation_store
 from . import test_next_cockpit as cockpit_tests
 from .next_harness import NextPageJsHarness, storage_prelude
 from .test_next_drift_panel import ANNOTATED, FIXTURE, drift_of, routes
+from .test_next_intent_draft import TYPED, _DraftPage
 from .visible_text import visible_text
 
 DOM = cockpit_tests.CockpitCuesReachTheReaderTest.ANNOUNCER_DOM
@@ -334,6 +335,115 @@ console.log(JSON.stringify({opened, after:__els.app.innerHTML}));
         )
         self.assertIn(OPEN_RUNNING, out["opened"])
         self.assertNotIn(OPEN_RUNNING, out["after"])
+
+
+@unittest.skipUnless(shutil.which("node"), "node not available")
+class TheDirectionQuestionDoesNotFlipSilentlyTest(_DraftPage):
+    """Verifier F1: a later direction replaces Analyze with Keep and Add, and the board's press
+    refusal under them came and went with no hold, no Why and nothing said. A later direction is
+    the normal state of any session the reader keeps prompting."""
+
+    SETUP = (
+        TYPED
+        + DOM
+        + f"__dashboard.reading_check = {json.dumps(annotation_store.ABSTENTION_CHECK)};\n"
+        + f"__dashboard.reading_routes = {json.dumps(routes())};\n"
+        + "__dashboard.reading = {consent:true, providers:{codex:true, claude:true}, used:0,"
+        " limit:12};\n"
+        + "__s.harness = 'claude'; __s.state = 'working';\n"
+        + "__s.reading_eligibility = {ok:true, reason:null, until:null, sentence:null};\n"
+        + FRESH.replace("const __s = __dashboard.sessions[0];\n", "")
+    )
+
+    def walk(self, script: str, setup: str = "") -> Any:
+        return self.drive(
+            self.SETUP + setup,
+            """
+const __question = () => { const h = __els.app.innerHTML;
+  const i = h.indexOf("data-next-cockpit-direction-question");
+  return i < 0 ? "" : h.slice(i, h.indexOf("</div></div>", i) + 12); };
+"""
+            + script,
+        )
+
+    def test_a_reader_with_a_later_direction_open_is_told_when_analyze_closes_and_why(
+        self,
+    ) -> None:
+        out = self.walk(
+            """
+await __poll(OPEN, 1100);
+const working = __question();
+await __poll(IDLE, 1101);
+const quiet = __question();
+await __poll(IDLE, 1112);
+const closed = __question();
+const reopened = (await __poll(OPEN, 1130), __question());
+console.log(JSON.stringify({working, quiet, closed, reopened, said:__flipWrites()}));
+"""
+        )
+        self.assertIn("later direction", visible_text(out["working"]))
+        # The first quiet payload is a pause between turns until it has held.
+        quiet = visible_text(out["quiet"])
+        self.assertNotIn(IDLE_LINE, quiet)
+        self.assertNotIn(CLOSED, quiet)
+        closed = visible_text(out["closed"])
+        self.assertIn(CLOSED, closed)
+        self.assertIn(IDLE_LINE, closed)
+        self.assertLess(closed.index(CLOSED), closed.index(IDLE_LINE))
+        self.assertIn("Why it can't read", closed)
+        # The board's own sentence, one click away under that summary.
+        self.assertIn("Idle, with no end.", out["closed"])
+        reopened = visible_text(out["reopened"])
+        self.assertIn(OPEN_RUNNING, reopened)
+        self.assertNotIn(IDLE_LINE, reopened)
+        # Once to the region; the reopening 18 s later is in view only (once a minute).
+        self.assertEqual([CLOSED], out["said"])
+
+    def test_a_keep_pressed_while_a_close_is_held_says_why_nothing_was_analyzed(self) -> None:
+        # The press learns the board's state, as Analyze's own press does: "No analysis was
+        # started" with the reason beside it, never a close announced ten seconds later.
+        out = self.walk(
+            """
+__reply["/api/annotate"] = () => ({status:200, body:{ok:true, outcome:"stored"}});
+await __poll(OPEN, 1100);
+await __poll(IDLE, 1101);
+const held = __question();
+__press("direction-keep"); await __settle(); await __settle();
+const kept = __els.app.innerHTML;
+const later = await __poll(IDLE, 1112);
+console.log(JSON.stringify({held, kept, later, said:__flipWrites(),
+  posts:__posts.map(p => p.url)}));
+"""
+        )
+        self.assertNotIn(IDLE_LINE, visible_text(out["held"]))
+        self.assertEqual(["/api/annotate"], out["posts"])
+        kept = visible_text(drift_of(out["kept"]))
+        self.assertIn("No analysis was started.", kept)
+        self.assertIn(IDLE_LINE, kept)
+        self.assertNotIn(CLOSED, visible_text(drift_of(out["later"])))
+        self.assertEqual([], out["said"])
+
+    def test_a_reader_with_a_later_direction_open_sees_the_settle_wait_and_its_end(self) -> None:
+        out = self.walk(
+            """
+const settling = __question();
+__setNow(1008);
+__fireAll(); await __settle();
+console.log(JSON.stringify({settling, opened:__question(), said:__flipWrites()}));
+""",
+            setup=TIMERS
+            + """
+__setNow(1003);
+__s.state = "idle"; __s.finished_at = 1000;
+__s.reading_eligibility = {ok:false, reason:"stop-settling", until:1008, sentence:"Settling."};
+""",
+        )
+        self.assertIn('<span class="next-wait-dot" aria-hidden="true"></span>', out["settling"])
+        self.assertIn("Ready in a few seconds.", visible_text(out["settling"]))
+        opened = visible_text(out["opened"])
+        self.assertIn(OPEN_LAST_TURN, opened)
+        self.assertNotIn("Ready in a few seconds.", opened)
+        self.assertEqual([OPEN_LAST_TURN], out["said"])
 
 
 if __name__ == "__main__":
