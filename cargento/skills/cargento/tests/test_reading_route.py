@@ -24,7 +24,7 @@ from unittest import mock
 from cargento_runtime import aggregate, observer, reading, reading_route, sessions
 from cargento_runtime import annotations as annotation_store
 
-from .next_harness import named_platform
+from .next_harness import named_machine, named_platform
 from .support import make_runtime
 
 HARNESSES = ("claude", "codex", "pi", "gemini")
@@ -113,6 +113,11 @@ class TheOwnerAcceptedTheClaudeCodeCheck(unittest.TestCase):
 class WhoReadsAClaudeCodeSessionOnThisBuild(unittest.TestCase):
     """The owner's routing, on the build as shipped with no gate patched: Claude Code
     reads a Claude Code session when `claude` is on PATH, and Codex reads it when not."""
+
+    def setUp(self) -> None:
+        patcher = named_machine()
+        patcher.start()
+        self.addCleanup(patcher.stop)
 
     def test_with_claude_on_path_claude_code_reads_it_and_the_page_names_anthropic(
         self,
@@ -215,6 +220,11 @@ class WhoReadsAClaudeCodeSessionOnThisBuild(unittest.TestCase):
 class WhoReadsASessionOnceClaudeCodeIsQualified(unittest.TestCase):
     """DEC-21 item 4, reached by patching the gate open: own harness first."""
 
+    def setUp(self) -> None:
+        patcher = named_machine()
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
     def test_a_claude_code_session_is_read_by_claude_code_and_the_page_names_anthropic(
         self,
     ) -> None:
@@ -254,15 +264,13 @@ class EveryMachineGetsExactlyOneTrueAnswer(unittest.TestCase):
         rows = []
         for harness, claude, codex in itertools.product(HARNESSES, STATES, STATES):
             gate, which = _world(claude, codex)
-            with gate:
-                rows.append(
-                    (
-                        harness,
-                        claude,
-                        codex,
-                        dict(reading_route.resolve(harness, binary_resolver=which)),
-                    )
+            # A machine whose endpoint the resolver can name, so neither this
+            # runner's environment nor its OS decides the `To:` item.
+            with gate, named_platform():
+                route = reading_route.resolve(
+                    harness, binary_resolver=which, environ={}, root=Path("/nonexistent")
                 )
+                rows.append((harness, claude, codex, dict(route)))
         return rows
 
     def test_own_harness_first_then_the_other_then_nothing(self) -> None:
@@ -359,6 +367,11 @@ class EveryMachineGetsExactlyOneTrueAnswer(unittest.TestCase):
 class ThePagePublishesARoutePerHarnessNotOneDisclosure(unittest.TestCase):
     """The page renders the route for THAT session's harness, so the payload
     carries one per harness on the board and no board-wide sentence."""
+
+    def setUp(self) -> None:
+        patcher = named_machine()
+        patcher.start()
+        self.addCleanup(patcher.stop)
 
     def _collection(self, harnesses: tuple[str, ...], installed: set[str]) -> dict[str, Any]:
         home = tempfile.mkdtemp()
@@ -752,6 +765,87 @@ class TheDisclosureIsAShortListThatKeepsEveryFact(unittest.TestCase):
                     f"to {route['label']}, which reaches {route['destination']}",
                 ):
                     self.assertIn(fact, sentence)
+
+
+class TheToItemNamesWhereTheWordsGoAsConfigured(unittest.TestCase):
+    """Verifier ui4 C1: the `To:` item named the vendor whatever the daemon's environment said,
+    so under Bedrock, a base URL or a unix socket the reader allowed Anthropic and the goal and
+    their messages went elsewhere. The environment decides the endpoint (SECURITY.md, Claude
+    Code reading calls), so the item says what `destination` says: the endpoint where it is
+    named, and plainly that Cargento cannot name it where it is not."""
+
+    def setUp(self) -> None:
+        self.root = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.root, True)
+
+    def _to(self, harness: str, installed: set[str], environ: dict[str, str]) -> tuple[str, str]:
+        with named_platform():
+            route = reading_route.resolve(
+                harness,
+                binary_resolver=_resolver(installed),
+                environ={"HOME": "/Users/r", "USER": "r", **environ},
+                root=self.root,
+            )
+        items = [part for part in route["disclosure_parts"] if part.startswith("To: ")]
+        self.assertEqual(1, len(items), route["disclosure_parts"])
+        return items[0], route["disclosure"]
+
+    def test_with_no_endpoint_setting_the_item_names_the_vendor_off_this_machine(self) -> None:
+        for harness, installed in (("claude", {"claude"}), ("codex", {"codex"})):
+            vendor = reading_route.VENDORS[harness]
+            with self.subTest(harness=harness):
+                item, _text = self._to(harness, installed, {})
+                self.assertTrue(item.startswith(f"To: {vendor}, off this machine"), item)
+
+    def test_a_cloud_or_a_base_url_is_named_in_place_of_anthropic(self) -> None:
+        # Pi as well as Claude Code: the words go there on a harness with no checks too.
+        for harness in ("claude", "pi"):
+            for environ, named in (
+                ({"CLAUDE_CODE_USE_BEDROCK": "1"}, "To: Amazon Bedrock, off this machine"),
+                ({"CLAUDE_CODE_USE_VERTEX": "1"}, "To: Google Vertex AI, off this machine"),
+                ({"ANTHROPIC_BASE_URL": "https://proxy.example:8443"}, "To: proxy.example:8443,"),
+            ):
+                with self.subTest(harness=harness, environ=environ):
+                    item, text = self._to(harness, {"claude"}, environ)
+                    self.assertTrue(item.startswith(named), item)
+                    self.assertNotIn("Anthropic", text)
+
+    def test_a_base_url_is_not_said_to_be_off_this_machine(self) -> None:
+        # It may be a local gateway; the build names the host and no more.
+        item, _text = self._to(
+            "claude", {"claude"}, {"ANTHROPIC_BASE_URL": "http://127.0.0.1:4000"}
+        )
+        self.assertTrue(item.startswith("To: 127.0.0.1:4000,"), item)
+        self.assertNotIn("off this machine", item)
+
+    def test_an_endpoint_that_cannot_be_named_is_said_plainly_and_no_vendor_is_claimed(
+        self,
+    ) -> None:
+        for harness, installed, environ, label in (
+            ("claude", {"claude"}, {"ANTHROPIC_UNIX_SOCKET": "/tmp/s"}, "Claude Code"),
+            ("pi", {"claude"}, {"ANTHROPIC_UNIX_SOCKET": "/tmp/s"}, "Claude Code"),
+            ("codex", {"codex"}, {"OPENAI_BASE_URL": "https://gw.example"}, "Codex"),
+            ("pi", {"codex"}, {"OPENAI_BASE_URL": "https://gw.example"}, "Codex"),
+        ):
+            with self.subTest(harness=harness, environ=environ):
+                item, text = self._to(harness, installed, environ)
+                self.assertTrue(
+                    item.startswith(
+                        f"To: wherever your {label} settings send it, which Cargento cannot name"
+                    ),
+                    item,
+                )
+                self.assertNotIn("off this machine", item)
+                self.assertNotIn("Anthropic", text)
+                self.assertNotIn("OpenAI", text)
+
+    def test_on_windows_no_endpoint_is_named_so_none_is_claimed(self) -> None:
+        with mock.patch.object(platform, "system", return_value="Windows"):
+            route = reading_route.resolve(
+                "codex", binary_resolver=_resolver({"codex"}), environ={}, root=self.root
+            )
+        self.assertIn("which Cargento cannot name", route["disclosure"])
+        self.assertNotIn("OpenAI", route["disclosure"])
 
 
 class TheSentencesReadAsSentences(unittest.TestCase):

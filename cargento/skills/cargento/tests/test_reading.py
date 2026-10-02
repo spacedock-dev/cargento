@@ -31,6 +31,8 @@ if TYPE_CHECKING:
 from cargento_runtime import annotations as annotation_store
 from cargento_runtime import events, observer, reading, reading_route, records
 
+from .next_harness import named_machine
+
 SESSION = {"harness": "claude", "sid": "S1"}
 NOW = 1_700_100_000.0
 SOFT_HYPHEN = "\u00ad"
@@ -1554,8 +1556,11 @@ class WhatTheReaderIsToldTheReadingCovered(unittest.TestCase):
 
 def _disclosures() -> dict[str, str]:
     """The pre-press text for each provider, as a route composes it."""
-    with mock.patch.object(
-        annotation_store, "CLAUDE_ABSTENTION_CHECK", annotation_store.ABSTENTION_CHECK_PASSED
+    with (
+        mock.patch.object(
+            annotation_store, "CLAUDE_ABSTENTION_CHECK", annotation_store.ABSTENTION_CHECK_PASSED
+        ),
+        named_machine(),
     ):
         return {
             harness: reading_route.resolve(

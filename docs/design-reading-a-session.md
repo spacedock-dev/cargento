@@ -2363,8 +2363,12 @@ words for those three routes:
 2. `Sent:` the goal and a bounded set of the session's entries, with the reader's messages up to
    1,000 characters each and credential shapes redacted.
 3. The expected outcome lines, sent only when an entry sent is work evidence.
-4. `To:` the company, off this machine, through the provider's own CLI and sign-in, using the
-   reader's capacity with it.
+4. `To:` where the words go as `reading_route.destination` names it, through the provider's own
+   CLI and sign-in, using the reader's capacity with it: the company off this machine, or the cloud
+   or base-URL host configured in its place, or, where nothing can be named, that Cargento cannot
+   name it. Until verifier C1 (2026-10-02) this item named the company whatever the environment
+   said, so under Bedrock, a base URL or a unix socket the reader allowed one receiver and the
+   words went to another.
 5. On a Claude Code route, what its CLI adds: the working directory, platform, shell, OS version,
    date and device identifier, and under a Claude account sign-in the email address and account
    ID, which is the 2026-09-27 condition.

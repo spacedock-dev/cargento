@@ -4119,7 +4119,10 @@ class ReadingRouteTest(unittest.TestCase):
         config, state = self._runtime()
         with (
             self._open_claude(),
-            self._counting_model(("codex", "claude"), harness="claude") as calls,
+            # Named, so the route's `To:` item names the vendor (verifier ui4 C1).
+            self._counting_model(
+                ("codex", "claude"), harness="claude", destination="Anthropic"
+            ) as calls,
             self._serving(self._app(config, state, "claude")) as port,
         ):
             status, body = self._post(port, self._claude_press(provider="codex", allow=True))

@@ -348,16 +348,35 @@ CAVEAT = (
 )
 
 
-def _base_parts(provider: str) -> list[str]:
+def _to_head(provider: str, where: str) -> str:
+    """Where the words go, as `destination` names it (verifier ui4 C1).
+
+    The daemon's environment decides the endpoint, so the vendor is named only
+    where `destination` names it. A cloud is named as itself; a base URL by its
+    host, never said to be off this machine because it may be a local gateway;
+    and where nothing can be named the item says so rather than claim a vendor.
+    """
+    label = LABELS[provider]
+    if not where:
+        return f"To: wherever your {label} settings send it, which Cargento cannot name"
+    if where == VENDORS[provider] or where in _CLAUDE_CLOUDS.values():
+        return f"To: {where}, off this machine"
+    return f"To: {where}, as your {label} settings name it"
+
+
+def _base_parts(provider: str, where: str | None = None) -> list[str]:
     """What a reading sends, to whom and through what, one short item each.
 
     A list since the owner's ruling of 2026-10-02, which found the paragraph
     "long and arduous to read": each item says one thing, and nothing explains
     a mechanism a reader deciding whether to send does not need. The Codex
     wording once said "Nothing leaves it"; the harness's own sign-in reaches its
-    vendor, so the `To:` item names the company, never a reassurance.
+    vendor, so the `To:` item names where it goes, never a reassurance.
+    `where` is the route's `destination`; None means the vendor, for callers
+    that only want the wording.
     """
-    label, vendor = LABELS[provider], VENDORS[provider]
+    label = LABELS[provider]
+    head = _to_head(provider, VENDORS[provider] if where is None else where)
     cli_adds = _CLI_ADDS.get(provider, "")
     return [
         (
@@ -365,10 +384,7 @@ def _base_parts(provider: str) -> list[str]:
             f"up to {_WORDS_CAP:,} characters each and credential shapes redacted."
         ),
         "Your expected outcome lines are sent only when an entry sent is work evidence.",
-        (
-            f"To: {vendor}, off this machine, through your {label} CLI and its sign-in, "
-            f"using your {label} capacity."
-        ),
+        (f"{head}, through your {label} CLI and its sign-in, using your {label} capacity."),
         *([cli_adds] if cli_adds else []),
     ]
 
@@ -422,10 +438,12 @@ def _route(
     fallback: bool,
     where: Callable[[str], str],
 ) -> Route:
-    reached = where(provider) if provider and harness in TOOL_OUTPUT_HARNESSES else ""
+    # Where the words go, on every harness; tool output, only where checks exist.
+    to = where(provider) if provider else ""
+    reached = to if harness in TOOL_OUTPUT_HARNESSES else ""
     sentence = _tool_output_sentence(provider, harness, reached)
     parts = (
-        [note, *_base_parts(provider), *([sentence] if sentence else []), CAVEAT]
+        [note, *_base_parts(provider, to), *([sentence] if sentence else []), CAVEAT]
         if provider
         else []
     )

@@ -1262,8 +1262,9 @@ by the OS (`score_abstention.py --probe-argv`, below):
   "What is sent to <receiver>", and a press there sends nothing; the press that would send opens a consent step
   that shows the whole disclosure, as the server's parts, before "Allow and analyze". Amended
   2026-10-02 (owner): the disclosure is a short list, one item a line, and keeps each fact this
-  section and [Observer model calls](#observer-model-calls) require: what is sent, the company it
-  goes to off this machine, the CLI and sign-in it goes through and whose capacity it spends, these
+  section and [Observer model calls](#observer-model-calls) require: what is sent, where it goes as
+  configured (the company off this machine, the endpoint named in its place, or that Cargento
+  cannot name it), the CLI and sign-in it goes through and whose capacity it spends, these
   account details on a Claude Code route, tool output only after it is allowed, and the caveat
   ([the amendment](docs/design-reading-a-session.md#amended-2026-10-02-owner-the-disclosure-is-a-short-list)).
 
@@ -1432,6 +1433,12 @@ tool output was named does not cover it. What is built:
   ([the amendment](docs/design-reading-a-session.md#amended-2026-10-01-a-line-about-what-the-agent-tells-you-cannot-be-shown)).
 - Where the destination cannot be named, the reading still runs on the reader's words, and its
   cutoff sentence says the checks were not sent and why.
+- The disclosure's `To:` item says what `destination` says, on every harness and not only for tool
+  output: the vendor off this machine, the cloud, or the base URL's host in its place (a host is
+  never said to be off this machine, since it may be a local gateway), and where nothing can be
+  named, that Cargento cannot name where the CLI's settings send it. It never names the vendor
+  then, so an Allow is never given for a receiver the words do not reach (verifier C1,
+  2026-10-02). On Windows this is every route.
 
 It is quoted into the prompt as untrusted data, never into an instruction Cargento writes: each
 check is one numbered row whose result words are Cargento's own, and its output tail is one

@@ -32,6 +32,34 @@ def named_platform() -> Any:
     return mock.patch.object(platform, "system", return_value="Linux")
 
 
+def named_machine() -> Any:
+    """Every unpinned `destination` call reads a machine that names the vendor.
+
+    A route's `To:` item says what `destination` names (verifier ui4 C1), so a
+    test that resolves a route without its own `environ` and `root` would say
+    what this runner's environment and OS say: nothing on Windows, a host
+    under a developer's `ANTHROPIC_BASE_URL`. This pins Linux, no endpoint
+    variable and an empty root wherever the caller left them unset.
+    """
+    real = reading_route.destination
+
+    def named(
+        provider: str,
+        *,
+        environ: Any = None,
+        root: Path | None = None,
+        system: str | None = None,
+    ) -> str:
+        return real(
+            provider,
+            environ={} if environ is None else environ,
+            root=Path("/nonexistent-cargento-root") if root is None else root,
+            system="Linux" if system is None else system,
+        )
+
+    return mock.patch.object(reading_route, "destination", named)
+
+
 def published_routes(*harnesses: str, installed: tuple[str, ...] = ("codex",)) -> str:
     """The server's own `reading_routes` for these harnesses, as a JS literal.
 
