@@ -142,15 +142,15 @@ MCP tools appear under the service being called rather than their wire name, for
 
 ## Attention
 
-Attention is a triage view. **At risk** names session evidence alongside **NEEDS YOU NOW**,
-**CLOSE THE LOOP**, and **COMING NEXT**. The opening brief counts the sessions these categories
+Attention is a triage view. **At risk** names session evidence alongside **Needs you now**,
+**Close the loop**, and **Coming next**. The opening brief counts the sessions these categories
 claim and describes the remainder as moving, quiet, ended, or without a counted state.
 **Also at risk, off the session count** holds quota pressure, shared display labels and requests
 whose session ownership is not established. Those subjects never inflate the session denominator.
 **Not on this board yet** names the capabilities no source supports. Coverage details explain
 missing observations instead of treating an unmeasured harness as an all-clear.
 
-**NEEDS YOU NOW** combines native harness gates with questions registered through `ask_operator`.
+**Needs you now** combines native harness gates with questions registered through `ask_operator`.
 Native permission prompts, plan approvals, and harness questions must still be answered in that
 session's terminal; Cargento does not mark them answered on the session's behalf. A Claude Code or
 Codex row therefore carries a control that copies the command that harness's own CLI takes to
@@ -175,11 +175,11 @@ group. A quiet row is never promoted into proof that nothing is waiting. Claude,
 conditions. OpenCode covers parent permissions with its project adapter; Pi covers persisted-session
 extension UI prompts on 0.85.1. Neither proves installation or reconstructs a wait after restart.
 
-**CLOSE THE LOOP** identifies observed stops and session ends after waiting and risk take
+**Close the loop** identifies observed stops and session ends after waiting and risk take
 precedence. The outcome vocabulary has six readings: stop or end, each with uncommitted work,
 clean git state, or unmeasured git state. A stop is not a session end, and neither tells Cargento
 whether you read the result, whether commits reached a remote, or why the process ended.
-**COMING NEXT** groups the strongest available next action by project. Both are advisory views of
+**Coming next** groups the strongest available next action by project. Both are advisory views of
 observed records, not commands sent to a harness.
 
 ## Usage and rate limits

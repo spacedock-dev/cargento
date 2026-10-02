@@ -548,10 +548,12 @@ function nextObserved(payload, evidence){
     windows: capacity.windows, sublimits: capacity.sublimits,
     ...nextObservedPair("capacityEmpty", "", "No quota windows published."),
     ...nextObservedPair("capacityEmptyNote", "", "No vendor window has been read for this harness."),
+    /* What the board cannot see yet, by name and sentence. The roadmap ids
+       these once carried meant nothing to a reader (NU-4, 2026-10-02). */
     open: [
-      ["F3", "Attention accounting", "Delegation share is measured per project, not yet aggregated across the week."],
-      ["E5", "Ended with unpushed commits", "The board reports uncommitted work, not commits that never reached a remote."],
-      ["E6", "Finished and never read", "Nothing on the board publishes whether you have read a finished session. " +
+      ["attention-accounting", "Attention accounting", "Delegation share is measured per project, not yet aggregated across the week."],
+      ["unpushed-commits", "Ended with unpushed commits", "The board reports uncommitted work, not commits that never reached a remote."],
+      ["never-read", "Finished and never read", "Nothing on the board publishes whether you have read a finished session. " +
         "The dismissal store is server-side and does not reach the page."],
     ],
   };

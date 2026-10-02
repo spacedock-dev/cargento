@@ -46,7 +46,9 @@ console.log(JSON.stringify({original, pressure, collision, html: __els.app.inner
         self.assertEqual(1, len(out["pressure"]["boardRisks"]))
         self.assertEqual(2, len(out["collision"]["boardRisks"]))
         self.assertIn("1 of 2 sessions carry a subject", out["html"])
-        self.assertIn("not sessions, so not in that denominator", out["html"])
+        # The heading stands alone since NU-4 (2026-10-02); its fragment sub-line is gone.
+        self.assertIn("Also at risk, off the session count", out["html"])
+        self.assertNotIn("not in that denominator", out["html"])
 
     def test_the_risk_note_tracks_the_sessions_and_cards_link_to_their_owner(self) -> None:
         out = self._run_page_js(
@@ -102,8 +104,9 @@ console.log(JSON.stringify(__els.app.innerHTML));
             r'\.next-attention-item\[data-tone="unknown"\]\{[^}]*border-left-color:var\(--line\)',
         )
         self.assertIn("Not on this board yet", html)
-        for code in ("F3", "E5", "E6"):
-            self.assertIn(f'data-next-open="{code}"', html)
+        # Keyed by name since NU-4 (2026-10-02): the roadmap ids meant nothing to a reader.
+        for key in ("attention-accounting", "unpushed-commits", "never-read"):
+            self.assertIn(f'data-next-open="{key}"', html)
         for delivered in ("C1", "C4", "C6"):
             self.assertNotIn(f'data-next-open="{delivered}"', html)
 
@@ -2482,7 +2485,8 @@ console.log(JSON.stringify(__els.app.innerHTML));
 
         self.assertIn("0 waiting on you · 0 at risk · 0 to close the loop", html)
         self.assertIn("The other 1: 1 quiet", html)
-        for heading in ("NEEDS YOU NOW", "AT RISK", "CLOSE THE LOOP", "COMING NEXT"):
+        # Sentence case since 2026-10-02 (N9), so the absent headings are spelled as drawn.
+        for heading in ("Needs you now", "At risk", "Close the loop", "Coming next"):
             self.assertNotIn(f"{heading} (", html)
 
     def test_the_healthy_line_names_each_state_over_its_own_sessions(self) -> None:
@@ -2593,12 +2597,12 @@ console.log(JSON.stringify({confirmedHtml, unconfirmedHtml, resolvedHtml}));
         resolved = out["resolvedHtml"]
 
         # Confirmed repeating wait: rendered in NEEDS YOU NOW without uncertainty note
-        self.assertIn("NEEDS YOU NOW", confirmed)
+        self.assertIn("Needs you now (", confirmed)
         self.assertIn("Input signal observed", confirmed)
         self.assertNotIn("Unconfirmed: no positive observation in 5m", confirmed)
 
         # Unconfirmed repeating wait: STILL in NEEDS YOU NOW with uncertainty note
-        self.assertIn("NEEDS YOU NOW", unconfirmed)
+        self.assertIn("Needs you now (", unconfirmed)
         self.assertIn("Input signal observed", unconfirmed)
         self.assertIn(
             "Unconfirmed: no positive observation in 5m; prompt may still be standing",
@@ -2606,5 +2610,5 @@ console.log(JSON.stringify({confirmedHtml, unconfirmedHtml, resolvedHtml}));
         )
 
         # Resolved: removed from NEEDS YOU NOW
-        self.assertNotIn("NEEDS YOU NOW", resolved)
+        self.assertNotIn("Needs you now (", resolved)
         self.assertNotIn("Unconfirmed: no positive observation in 5m", resolved)

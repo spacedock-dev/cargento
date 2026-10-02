@@ -792,8 +792,7 @@ input::placeholder,textarea::placeholder{color:var(--ink2)}
 .next-attention a,.next-attention summary{min-block-size:44px;min-inline-size:44px}
 .next-attention a:focus-visible,.next-attention summary:focus-visible,.next-attention-disclosure:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
 .next-attention-open{margin:0;padding:0;list-style:none}
-.next-attention-open li{display:grid;grid-template-columns:34px 210px minmax(0,1fr);gap:16px;align-items:baseline;padding:9px 18px;border-bottom:1px solid var(--rule)}
-.next-attention-open li>span{color:var(--ink2);font-family:var(--mono);font-size:var(--fs-label);font-weight:700}
+.next-attention-open li{display:grid;grid-template-columns:210px minmax(0,1fr);gap:16px;align-items:baseline;padding:9px 18px;border-bottom:1px solid var(--rule)}
 .next-attention-open strong{color:var(--ink2);font-size:var(--fs-body);font-weight:400}
 .next-attention-open p{margin:0;color:var(--ink2);font-size:var(--fs-body);font-weight:500;line-height:1.55;max-width:var(--measure)}
 @media(min-width:900px){
@@ -816,8 +815,7 @@ input::placeholder,textarea::placeholder{color:var(--ink2)}
   .next-attention-item{grid-template-columns:20px minmax(0,1fr);gap:10px}
   .next-attention-risk-observation,.next-attention-risk-source{grid-column:2}
   .next-attention-item--legacy{grid-template-columns:minmax(0,1fr)}
-  .next-attention-open li{grid-template-columns:34px minmax(0,1fr);gap:8px}
-  .next-attention-open p{grid-column:2}
+  .next-attention-open li{grid-template-columns:minmax(0,1fr);gap:4px}
 }
 /* ===== SESSION ===== */
 /* Two columns under a full-width header (DRC-4680): the activity, and the

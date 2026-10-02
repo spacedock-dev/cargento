@@ -229,14 +229,15 @@ class DocumentationMatchesCodeTest(unittest.TestCase):
         attention = (
             SERVER_PATH.parent / "cargento_runtime" / "web" / "next-attention.js"
         ).read_text(encoding="utf-8")
-        rendered = set(re.findall(r'nextAttentionSectionHtml\("[a-z]+", "([A-Z ]+)"', attention))
+        rendered = set(re.findall(r'nextAttentionSectionHtml\("[a-z]+", "([A-Za-z ]+)"', attention))
         rendered |= set(re.findall(r'<h2 tabindex="-1">([A-Za-z ,]+)</h2>', attention))
         self.assertEqual(
             {
-                "NEEDS YOU NOW",
+                # Sentence case since 2026-10-02 (N9), as "At risk" beside them already was.
+                "Needs you now",
                 "At risk",
-                "CLOSE THE LOOP",
-                "COMING NEXT",
+                "Close the loop",
+                "Coming next",
                 "Also at risk, off the session count",
                 "Not on this board yet",
             },

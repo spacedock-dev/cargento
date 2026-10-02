@@ -461,7 +461,7 @@ console.log(JSON.stringify({
         self.assertEqual([True] * 4, out["counters"])
         self.assertIn(
             [
-                "E6",
+                "never-read",
                 "Finished and never read",
                 (
                     "Nothing on the board publishes whether you have read a finished session. "

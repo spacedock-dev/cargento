@@ -111,5 +111,49 @@ class AStoredReadingNamesNoRawTypeTest(result_tests._ResultPage):
                 self.assertEqual([], SNAKE.findall(visible_text(without_fields(html))))
 
 
+@unittest.skipUnless(shutil.which("node"), "node not available")
+class AttentionSaysWhatIsOnTheBoardTest(panel.PanelPage):
+    """NU-4 and N9 (2026-10-02): the "Not on this board yet" list printed roadmap ids (F3, E5,
+    E6), two headings carried a sentence fragment under them, and three section titles were in
+    capitals beside sentence-case ones."""
+
+    def attention(self, setup: str = "") -> str:
+        html = self._run_page_js(
+            "await __settle();\nawait __settle();\n"
+            + panel.ANNOTATED
+            + setup
+            + "await refreshNext();\nawait __settle();\n"
+            "navigateNext({view:'attention', project:null, session:null});\nawait __settle();\n"
+            "console.log(JSON.stringify(__els.app.innerHTML));",
+            panel.storage_prelude({}) + panel.FIXTURE,
+        )
+        assert isinstance(html, str)
+        return html
+
+    def test_a_first_time_reader_sees_no_tracker_ids_and_no_fragments_under_headings(self) -> None:
+        html = self.attention()
+        text = visible_text(html)
+        self.assertEqual([], re.findall(r"\b[EF]\d\b", text))
+        for fragment in ("not in that denominator", "gap reads as a gap"):
+            self.assertNotIn(fragment, text)
+        # Each gap is still named, with its sentence.
+        self.assertIn("Ended with unpushed commits", text)
+        self.assertIn("Finished and never read", text)
+        headings = re.findall(r'<h2 tabindex="-1">([^<]*)</h2>', html)
+        self.assertTrue(headings)
+        for heading in headings:
+            with self.subTest(heading=heading):
+                words = re.sub(r"\(\d+\)", "", heading).strip()
+                self.assertNotEqual(words.upper(), words)
+        waiting = visible_text(
+            self.attention(
+                "__dashboard.sessions[0].state = 'needs_input';\n"
+                "__dashboard.summary = {working:0, needs_input:1};\n"
+            )
+        )
+        self.assertRegex(waiting, r"Needs you now \(\d+\)")
+        self.assertNotIn("NEEDS YOU NOW", waiting)
+
+
 if __name__ == "__main__":
     unittest.main()
