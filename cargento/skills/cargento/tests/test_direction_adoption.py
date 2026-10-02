@@ -1255,6 +1255,7 @@ class KeepRouteTest(_ReadingRouteHandler):
             "observer_model": 1,
             "provider": "codex",
             "allow": True,
+            "words_destination": "",
             **over,
         }
         # `adopt=None` names a Keep over saved words, which sends no adoption.
@@ -1292,6 +1293,7 @@ class KeepRouteTest(_ReadingRouteHandler):
             "observer_model": 1,
             "provider": "codex",
             "allow": True,
+            "words_destination": "",
         }
         handler = self._handler(config, state, payload)
         route = handler._reading_route
@@ -1403,6 +1405,8 @@ class APlainPressNamesItsRevisionTest(_ReadingRouteHandler):
             "press": True,
             "observer_model": 1,
             "provider": "codex",
+            # Where the stubbed route says the words go, as the page sends it.
+            **({"words_destination": ""} if over.get("allow") else {}),
             **over,
         }
         payload = {k: v for k, v in payload.items() if v is not None}
@@ -1521,6 +1525,7 @@ class APlainPressNamesItsRevisionTest(_ReadingRouteHandler):
             "observer_model": 1,
             "provider": "codex",
             "allow": True,
+            "words_destination": "",
             **over,
         }
         handler = self._handler(config, state, payload)

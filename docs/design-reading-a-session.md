@@ -1174,6 +1174,12 @@ The binding catches that move only where the destination was named, as item 5 sa
    to Codex with nobody at the desk, so before each send, at the model seam, it asks whether a
    Codex Allow covers today's destination, as a press would. Where a press would ask again, the
    check is skipped and logged, nothing is spent, and the lane's own caps are unchanged.
+7. An Allow that names no destination is never bound (regressions major 1, ui5). A tab left open
+   across the upgrade sends one, and is refused `400 page-outdated`. The page from before the
+   binding answers a `409` by drawing the consent card again under a line about tool output, so
+   the reply carries the one thing that page shows verbatim: a route with no provider, whose note
+   says to reload. The board also publishes its page's `build`, and a page from this build on
+   shows one line, "Reload to use the new version.", when it changes under an open tab.
 
 This stays per provider, as item 3 of the acceptance above says: an Allow given for a provider
 covers every session routed to that provider, at the destination it was given for.

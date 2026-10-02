@@ -2485,3 +2485,80 @@ console.log(JSON.stringify({atSessions, atSession, atProject, tab:scrolls.length
         self.assertEqual([0, 0], out["last"])
         # A tab change within a project is not a new page, so it keeps the reader's place.
         self.assertEqual(out["atProject"], out["tab"])
+
+
+class ATabOpenAcrossAnUpgradeIsToldToReloadTest(NextPageJsHarness):
+    """Regressions major 1 (ui5): a tab left open across an upgrade ran the
+    old page against the new server, and nothing on it said so. The board
+    publishes a build identifier, and the page shows one line asking for a
+    reload once it changes under an open tab: tier 1 is the instruction
+    alone, and why sits behind a disclosure, as NUI-19's tiers say."""
+
+    LINE = "Reload to use the new version."
+
+    def test_the_board_publishes_the_build_of_the_page_it_serves(self) -> None:
+        import hashlib  # noqa: PLC0415
+
+        from cargento_runtime.web import page as frontend_page  # noqa: PLC0415
+
+        from .support import collect  # noqa: PLC0415
+
+        payload = collect()
+        self.assertEqual(frontend_page.build_id(), payload["build"])
+        self.assertEqual(
+            hashlib.sha256(frontend_page.load_page()).hexdigest()[:16], payload["build"]
+        )
+
+    def _pages(self, builds: list[Any]) -> Any:
+        return self._run_page_js(
+            f"""
+const builds = {json.dumps(builds)};
+const rendered = [];
+let reloads = 0;
+location.reload = () => {{ reloads += 1; }};
+for(const build of builds){{
+  __payload = {{generated: 1000, window_hours: 24, summary: {{working: 0, needs_input: 0}},
+    sessions: [], asks: [], ...(build === null ? {{}} : {{build}})}};
+  await refreshNext(true);
+  await __settle();
+  rendered.push(__els.app.innerHTML);
+}}
+const button = {{dataset: {{nextAction: "reload-page"}}, closest(selector){{
+  return selector === "[data-next-action]" ? this : null;
+}}}};
+__fire("click", {{target: button, preventDefault(){{}}}});
+console.log(JSON.stringify({{rendered, reloads}}));
+""",
+            """
+__els.app = {innerHTML: ""};
+let __payload = null;
+__fetchImpl = async () => ({ok: true, json: async () => __payload});
+""",
+        )
+
+    def test_a_changed_build_shows_one_reload_line_and_the_button_reloads(self) -> None:
+        out = self._pages(["aaaa", "aaaa", "bbbb", "bbbb"])
+        assert isinstance(out, dict)
+        first, same, changed, still = out["rendered"]
+        for html in (first, same):
+            self.assertNotIn(self.LINE, html)
+            self.assertNotIn('data-next-state="build-changed"', html)
+        for html in (changed, still):
+            self.assertEqual(1, html.count(self.LINE))
+            self.assertIn('data-next-action="reload-page"', html)
+            # Tier 1 is the instruction, twelve words or fewer; why is behind
+            # a disclosure under a summary, never inline beside it.
+            notice = html.split('data-next-state="build-changed"', 1)[1].split("</div>", 1)[0]
+            self.assertLessEqual(len(self.LINE.split()), 12)
+            details = notice.split("<details", 1)
+            self.assertEqual(2, len(details), "the why is not behind a disclosure")
+            self.assertNotIn("restarted", details[0])
+            self.assertIn("<summary>Why reload</summary>", details[1])
+            self.assertIn("restarted with a different version", details[1])
+        self.assertEqual(1, out["reloads"])
+
+    def test_a_board_that_publishes_no_build_shows_nothing(self) -> None:
+        out = self._pages([None, "aaaa", None])
+        assert isinstance(out, dict)
+        for html in out["rendered"]:
+            self.assertNotIn(self.LINE, html)

@@ -1373,6 +1373,9 @@ class RuntimeImportGraphTest(unittest.TestCase):
         # this stays inward.
         "cargento_runtime.aggregate": {
             "cargento_runtime.reading_policy",
+            # The served page's build, so an open tab can tell it is stale
+            # (regressions major 1, ui5).
+            "cargento_runtime.web",
             # Attaches each row's recognised copied corrections (DRC-4678).
             "cargento_runtime.copied_corrections",
             # Publishes who reads each harness's sessions (DRC-4650).

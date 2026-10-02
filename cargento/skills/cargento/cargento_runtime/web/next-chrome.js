@@ -723,6 +723,36 @@ function nextHistoryResetNotice(){
     `<span>${esc(detail)} The rail and the delegation figure start from this tab.</span></div>`;
 }
 
+/* The build the board published when this tab first heard from it. A daemon
+   restarted under an upgrade serves another page, and this tab goes on running
+   the old one against it: one left open across the destination binding sent
+   an Allow the new server refuses, forever, with a line that never said to
+   reload (regressions major 1, ui5). A board that publishes no build is an
+   older one, and says nothing either way. */
+let nextBuildFirst = "";
+const NEXT_BUILD_RELOAD = "Reload to use the new version.";
+const NEXT_BUILD_WHY = "Cargento was restarted with a different version after this page loaded, " +
+  "and this page may send what that version refuses.";
+
+function nextNoteBuild(payload){
+  const build = payload && typeof payload.build === "string" ? payload.build : "";
+  if(build && !nextBuildFirst) nextBuildFirst = build;
+}
+
+/* Tier 1 is the instruction, and why sits behind its disclosure
+   ([NUI-19](docs/design-next-ui.md#nui-19-a-caveat-has-three-tiers)), after
+   the two notices above it, which say the data itself may be wrong. */
+function nextBuildNotice(){
+  const build = nextData && typeof nextData.build === "string" ? nextData.build : "";
+  if(!nextBuildFirst || !build || build === nextBuildFirst) return "";
+  const why = typeof nextCockpitWhy === "function"
+    ? nextCockpitWhy("build-changed", "Why reload", NEXT_BUILD_WHY) : "";
+  return '<div class="next-stalled" data-next-state="build-changed" role="status">' +
+    `<strong>${NEXT_BUILD_RELOAD}</strong>` +
+    '<button type="button" class="next-action" data-next-action="reload-page">Reload</button>' +
+    `${why}</div>`;
+}
+
 function renderNext(focus = nextCaptureFocus()){
   if(nextCockpitCorrectionDefersRender(focus)) return;
   const app = document.getElementById("app");
@@ -742,7 +772,7 @@ function renderNext(focus = nextCaptureFocus()){
     ? `<button type="button" class="next-gate" data-next-action="needs-input">${counts.gates} ${gateLabel}</button>`
     : "";
   const notification = nextNotifyControl(nextData);
-  const stalled = nextRefreshNotice() + nextHistoryResetNotice();
+  const stalled = nextRefreshNotice() + nextHistoryResetNotice() + nextBuildNotice();
   const breadcrumb = nextBreadcrumb();
   const running = `${nextStatusDot("live")} ${counts.running} running` +
     ` · ${counts.subagents} ${subagentLabel}`;
@@ -909,6 +939,11 @@ document.addEventListener("click", event => {
   if(actionTarget.dataset.nextAction === "retry-refresh"){
     event.preventDefault();
     void refreshNext(true);
+    return;
+  }
+  if(actionTarget.dataset.nextAction === "reload-page"){
+    event.preventDefault();
+    location.reload();
     return;
   }
   if(actionTarget.dataset.nextAction === "needs-input"){

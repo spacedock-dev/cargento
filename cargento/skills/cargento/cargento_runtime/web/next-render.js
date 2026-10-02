@@ -341,6 +341,7 @@ async function nextRefreshOnce(run){
     focus = nextCaptureFocus();
     const previousAttention = nextData == null ? null : nextAttention;
     nextIntentSync(fresh);
+    nextNoteBuild(fresh);
     nextData = fresh;
     nextAttention = freshAttention;
     announcement = nextAttentionAnnouncement(previousAttention, freshAttention);

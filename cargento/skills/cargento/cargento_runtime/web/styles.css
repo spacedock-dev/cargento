@@ -263,7 +263,7 @@ input::placeholder,textarea::placeholder{color:var(--ink2)}
 .next-menu kbd{font-family:var(--mono);color:var(--ink2)}
 .next-stalled{display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin-top:18px;padding:10px 12px;border-left:3px solid var(--clay);background:var(--panel);color:var(--ink2);font-size:var(--fs-body);font-weight:500;line-height:1.55}
 .next-stalled strong{color:var(--ink);font-weight:500}
-.next-stalled[data-next-state="history-reset"]{border-left-color:var(--ink2)}
+.next-stalled[data-next-state="history-reset"],.next-stalled[data-next-state="build-changed"]{border-left-color:var(--ink2)}
 .next-stalled button{margin-left:auto}
 /* Solid, against the primitive's dashed. Dashed is the register for a control
    refusing a press; this one is waiting for a retry it will make itself, and

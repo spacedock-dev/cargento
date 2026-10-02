@@ -99,7 +99,7 @@ quoting before anything is matched or masked, and the bounded `spacedock status 
 | `http_api.py` | The loopback server, request dispatch, project-context model-consent gate, optional vendored-asset routes, and network helpers. It reads the departure store directly on one route, `/api/annotations`, because the Intent log serves sessions that have left the board and the polled payload holds only the ones still on it. |
 | `lifecycle.py` | State file, port probes, status, stop, and daemon detach. The Windows respawn argv forwards every `--no-*` switch the parser put in the namespace, derived rather than listed ([D-2](design-daemon.md#d-2-windows-re-spawns-instead-of-forking-and-waits-to-be-sure)). `serve` also records what a stopped dashboard left spent (`reading_jobs.recover`) before serving, and kills every supervised group (`supervise.kill_all`) first on the way out. |
 | `cli.py` | Argument parsing, runtime assembly, and the three serve branches. |
-| `web/page.py` | Package-relative asset loading, ordered `APP_PARTS`, embedded-font validation, and byte-preserving assembly of the canonical page. |
+| `web/page.py` | Package-relative asset loading, ordered `APP_PARTS`, embedded-font validation, byte-preserving assembly of the canonical page, and `build_id`, the digest of that page `aggregate` publishes as the board's `build`. |
 
 `aggregate` also imports `observer` for its bounded, read-only cached-goal projection. One
 `read_sidecar` call per published board row admits scrubbed `deterministic_goal`, or `goal` with
@@ -123,14 +123,14 @@ mass rename; they do not indicate a second bundle.
 
 | Frontend file | Owns |
 |---|---|
-| `web/page.py` | Package-relative asset loading, ordered `APP_PARTS`, validation and data-URL embedding of packaged fonts, and byte-preserving assembly of the one canonical page. |
+| `web/page.py` | Package-relative asset loading, ordered `APP_PARTS`, validation and data-URL embedding of packaged fonts, byte-preserving assembly of the one canonical page, and `build_id`, its digest, which the board publishes so an open tab can tell it is running another page (regressions major 1, ui5). |
 | `web/index.html` | The two-slot shell for canonical styles and script. |
 | `web/styles.css` | The single dark palette, responsive layout, live-dot pulse, and reduced-motion override, in nine owned regions; [the stylesheet contract](design-next-ui.md#nui-2-one-stylesheet-owns-the-interface) names all nine boundaries, including `COCKPIT` and `SUBSTRATE` after `SESSION`. |
 | `web/next-boot.js` | Query reads, escaping, shared payload and time helpers, session metrics, project groups, the fragment route grammar, the three row controls (copy the session id, copy the re-entry command, raise the terminal), and the expiring map that lets a control's state outlive the render that replaces it. It is first in `APP_PARTS`. |
 | `web/next-observed.js` | The v2 session collection, lanes, counts, project groups, coverage and presentation reasons; wraps the shipped workstream and delegation measurements. |
 | `web/next-attention.js` | Attention evidence, stable ordering, coverage gaps, risk groups, and answerable questions. |
 | `web/next-notify.js` | Browser notification permission, the one-layer check that stands the page down where the server has a native backend (`native_notify` in the payload), the per-session and per-ask dedupe that stops a standing gate re-notifying on every revision, and the permission control. |
-| `web/next-chrome.js` | Primary navigation, breadcrumbs, header counts, the stalled-refresh and history-reset notices, delegated controls and the sweep that writes each answer onto the controls now in the document rather than only the node the click found, the per-tab sets that let an expanded section and an opened disclosure survive the render that replaces them, document title, and keyboard shortcuts. |
+| `web/next-chrome.js` | Primary navigation, breadcrumbs, header counts, the stalled-refresh, history-reset and reload notices (the last when the board's `build` is no longer the one this tab first saw), delegated controls and the sweep that writes each answer onto the controls now in the document rather than only the node the click found, the per-tab sets that let an expanded section and an opened disclosure survive the render that replaces them, document title, and keyboard shortcuts. |
 | `web/next-capacity.js` | The quota-fetch disclosure and its stored answer, and the capacity strip: each window's budget against its own clock, the pace that implies, what the remaining budget buys, and a project's observed session spread. |
 | `web/next-sessions.js` | Active and recent session-operation tables with exact detail routes. |
 | `web/next-projects.js` | Project overview, measured task progress, current state, and explicit withholding. |

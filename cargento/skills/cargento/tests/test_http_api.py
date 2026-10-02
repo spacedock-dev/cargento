@@ -2981,7 +2981,7 @@ class ReadingRouteTest(unittest.TestCase):
             status, _ = self._post(port, self._press())
             self.assertEqual(403, status)
             self.assertEqual([], calls)
-            status, _ = self._post(port, self._press(allow=True))
+            status, _ = self._post(port, self._press(allow=True, words_destination=""))
             self.assertEqual(202, status)
             self.assertEqual(1, len(calls))
             status, _ = self._post(port, self._press())
@@ -3000,7 +3000,7 @@ class ReadingRouteTest(unittest.TestCase):
             body = (
                 {"consent": "off", "press": True, "observer_model": 1}
                 if granted
-                else self._press(allow=True)
+                else self._press(allow=True, words_destination="")
             )
             with self._counting_model() as calls, self._serving(self._app(config, state)) as port:
                 for headers in (
@@ -3018,9 +3018,9 @@ class ReadingRouteTest(unittest.TestCase):
         config, state = self._runtime()
         with self._counting_model() as calls, self._serving(self._app(config, state)) as port:
             for _ in range(12):
-                status, _ = self._post(port, self._press(allow=True))
+                status, _ = self._post(port, self._press(allow=True, words_destination=""))
                 self.assertEqual(202, status)
-            status, body = self._post(port, self._press(allow=True))
+            status, body = self._post(port, self._press(allow=True, words_destination=""))
         self.assertEqual(429, status)
         self.assertEqual(12, len(calls))
         self.assertEqual(1_700_086_500.0, json.loads(body)["reading"]["retry_at"])
@@ -3770,7 +3770,9 @@ class ReadingRouteTest(unittest.TestCase):
             self._counting_model(("codex", "claude"), harness="claude") as calls,
             self._serving(self._app(config, state, "claude")) as port,
         ):
-            status, body = self._post(port, self._claude_press(provider="claude", allow=True))
+            status, body = self._post(
+                port, self._claude_press(provider="claude", allow=True, words_destination="")
+            )
         self.assertEqual(202, status, body)
         self.assertEqual(1, len(calls))
         self.assertEqual(["claude"], self.providers)
@@ -3797,7 +3799,9 @@ class ReadingRouteTest(unittest.TestCase):
             self._counting_model(("codex",), harness="claude") as calls,
             self._serving(self._app(config, state, "claude")) as port,
         ):
-            status, body = self._post(port, self._claude_press(provider="claude", allow=True))
+            status, body = self._post(
+                port, self._claude_press(provider="claude", allow=True, words_destination="")
+            )
         self.assertEqual(409, status)
         answer = json.loads(body)
         self.assertEqual("provider-changed", answer["reason"])
@@ -3911,7 +3915,9 @@ class ReadingRouteTest(unittest.TestCase):
             self._counting_model(harness="codex") as calls,
             self._serving(self._app(config, state, "codex", row=self.IDLE_UNKNOWN)) as port,
         ):
-            status, body = self._post(port, self._press(harness="codex", allow=True))
+            status, body = self._post(
+                port, self._press(harness="codex", allow=True, words_destination="")
+            )
             published = self._published_row(port, "codex")
         self.assertEqual(200, status, body)
         answer = json.loads(body)
@@ -4093,7 +4099,9 @@ class ReadingRouteTest(unittest.TestCase):
             self.assertEqual(403, status)
             self.assertEqual("consent-required", json.loads(body)["reading"]["reason"])
             self.assertEqual([], calls)
-            status, _ = self._post(port, self._claude_press(provider="claude", allow=True))
+            status, _ = self._post(
+                port, self._claude_press(provider="claude", allow=True, words_destination="")
+            )
         self.assertEqual(202, status)
         self.assertEqual(["claude"], self.providers)
         self.assertEqual({"codex": True, "claude": True}, self._consents(config))
@@ -4206,7 +4214,9 @@ class ReadingRouteTest(unittest.TestCase):
             self._counting_model(("claude",), destination="gw.corp.example") as calls,
             self._serving(self._app(config, state)) as port,
         ):
-            for named in ({"words_destination": "Anthropic"}, {}):
+            # A body with no `words_destination` at all is an older page's,
+            # answered by the test below rather than as this refusal.
+            for named in ({"words_destination": "Anthropic"}, {"words_destination": ""}):
                 with self.subTest(named=named):
                     status, body = self._post(
                         port, self._press(provider="claude", allow=True, **named)
@@ -4219,6 +4229,45 @@ class ReadingRouteTest(unittest.TestCase):
         self.assertEqual(
             before, reading_policy.status(config, now=1_700_000_100.0, provider="claude")
         )
+
+    def test_an_allow_from_a_page_older_than_the_binding_is_told_to_reload(self) -> None:
+        """Regressions major 1 (ui5). A tab left open across the upgrade sends
+        an Allow with no `words_destination`, which binds nothing and is
+        refused. The 79bcedae page answers a 409 by drawing the consent card
+        again with a line about tool output, forever; rendered against the new
+        server, the one reply field it shows verbatim is a route with no
+        provider, whose `note` it draws in the button's place. So the refusal
+        is a 400 whose route says to reload, and nothing is recorded or sent."""
+        for where in ("Anthropic", ""):
+            for harness in ("pi", "claude"):
+                with self.subTest(where=where, harness=harness):
+                    config, state = self._runtime()
+                    before = reading_policy.status(config, now=1_700_000_100.0, provider="claude")
+                    with (
+                        self._open_claude(),
+                        self._counting_model(("claude",), destination=where) as calls,
+                        self._serving(self._app(config, state)) as port,
+                    ):
+                        status, body = self._post(
+                            port,
+                            self._press(
+                                harness=harness,
+                                provider="claude",
+                                allow=True,
+                                **({"tool_output": where} if harness == "claude" and where else {}),
+                            ),
+                        )
+                    self.assertEqual(400, status)
+                    answer = json.loads(body)
+                    self.assertEqual("page-outdated", answer["reason"])
+                    self.assertEqual("", answer["route"]["provider"])
+                    self.assertEqual(http_api.PAGE_OUTDATED, answer["route"]["note"])
+                    self.assertEqual([], answer["route"]["disclosure_parts"])
+                    self.assertEqual([], calls)
+                    self.assertEqual(
+                        before,
+                        reading_policy.status(config, now=1_700_000_100.0, provider="claude"),
+                    )
 
     def test_a_reader_who_allowed_only_claude_code_is_charged_against_that_answer(self) -> None:
         """The reservation reads the route's provider, not Codex's answer."""
@@ -4385,7 +4434,9 @@ class ReadingRouteTest(unittest.TestCase):
         status, answer, calls = self._checks_press(
             config,
             state,
-            self._claude_press(allow=True, tool_output="OpenAI"),
+            self._claude_press(
+                allow=True, tool_output="OpenAI", words_destination="gw.corp.example"
+            ),
             destination="gw.corp.example",
         )
         self.assertEqual(409, status)

@@ -31,6 +31,7 @@ from . import ends as runtime_ends
 from . import events as runtime_events
 from . import io as runtime_io
 from . import snapshot as runtime_snapshot
+from .web import page as frontend_page
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Mapping
@@ -993,6 +994,9 @@ class Application:
                 **self._copied_fields(out_sessions),
                 **self._unasked_fields(out_sessions, annotation_entries, now=now),
                 **history_fields,
+                # Which page this process serves, so a tab left open across an
+                # upgrade says to reload (regressions major 1, ui5).
+                "build": frontend_page.build_id(),
             }
         )
         if usage_supported:

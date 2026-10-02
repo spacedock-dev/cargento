@@ -1062,7 +1062,9 @@ refuses the job `destination-changed` before anything is spent or sent. The CLI 
 settings again when it starts, so a change landing between the reservation and that start is not
 caught. An Allow whose disclosure
 named a destination that is no longer today's is refused `409 destination-changed` and records
-nothing.
+nothing. An Allow that names no destination at all, which a tab left open across the upgrade sends,
+is refused `400 page-outdated` with a route that tells that page to reload, and records nothing: it
+never binds.
 The binding lives in its own table, `permission_destination`, so a row saved before it records no
 destination and covers no press: each reader is asked once more, and nothing else in the store
 changes. "Turn off readings", `--forget` and an older build's Turn off clear every recorded

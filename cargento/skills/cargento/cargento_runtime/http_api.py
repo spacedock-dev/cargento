@@ -326,6 +326,33 @@ def _session_context(application: Any, row: dict[str, Any]) -> dict[str, Any]:
     return copied_corrections.mark(context, [row]) if isinstance(context, dict) else {}
 
 
+# An Allow with no `words_destination` at all comes from a page older than the
+# binding (regressions major 1, ui5): a tab left open across the upgrade. It
+# names no destination, so it binds nothing and is refused. The 79bcedae page
+# answers any 409 by drawing the consent card again with a line about tool
+# output, so a reader pressed Allow forever. Rendered against this server, the
+# one reply that page shows verbatim is a route with no provider, whose `note`
+# it draws in the button's place and keeps until its next poll, so the refusal
+# is a 400 carrying such a route, and its note says to reload.
+PAGE_OUTDATED_REASON = "page-outdated"
+PAGE_OUTDATED = (
+    "This page is from an older version of Cargento, so nothing was sent. Reload the page "
+    "to analyze."
+)
+
+
+def _outdated_route(route: runtime_reading_route.Route) -> runtime_reading_route.Route:
+    """The route an older page draws as "reload", in place of the one that runs."""
+    return {
+        **route,
+        "provider": "",
+        "reason": PAGE_OUTDATED_REASON,
+        "note": PAGE_OUTDATED,
+        "disclosure": "",
+        "disclosure_parts": [],
+    }
+
+
 def _latest_revision(entry: annotation_store.Annotation | None) -> int:
     """The number of an entry's latest revision, or 0 where it holds none."""
     return entry["revisions"][-1]["n"] if entry and entry["revisions"] else 0
@@ -2020,6 +2047,8 @@ class _RequestHandler(BaseHTTPRequestHandler):
             if not route["provider"]
             else (409, "provider-changed")
             if payload.get("provider") != route["provider"]
+            else (400, PAGE_OUTDATED_REASON)
+            if allow and "words_destination" not in payload
             else (409, "destination-changed")
             if allow
             and (
@@ -2031,6 +2060,8 @@ class _RequestHandler(BaseHTTPRequestHandler):
         if refusal is None:
             return route
         code, reason = refusal
+        if reason == PAGE_OUTDATED_REASON:
+            route = _outdated_route(route)
         self._send(
             self._reading_json({"ok": False, "produced": False, "reason": reason, "route": route}),
             "application/json",
