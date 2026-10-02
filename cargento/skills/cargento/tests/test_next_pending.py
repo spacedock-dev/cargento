@@ -562,6 +562,30 @@ console.log(JSON.stringify({busy, posts:__held["/api/reading/cancel"].length}));
         self.assertEqual("Cancelling…", visible_text(out["busy"]).strip())
         self.assertEqual(1, out["posts"])
 
+    def test_turn_off_readings_inside_the_direction_question_shows_it_is_working(self) -> None:
+        """Verifier F2 (ui3): the question draws its own Turn off readings, without the busy
+        state the Drift card's copy has, so a second press was swallowed silently while the
+        first was out."""
+        out = self.drive(
+            TYPED
+            + "__dashboard.reading = {consent:true, providers:{codex:true, claude:true},"
+            + " used:0, limit:12};\n"
+            + HOLD,
+            """
+const question = /data-next-cockpit-direction-question/.test(__els.app.innerHTML);
+__hold("/api/reading");
+__press("reading-off"); await __settle();
+const busy = __buttonOf("reading-off");
+__press("reading-off"); await __settle();
+console.log(JSON.stringify({question, busy, posts:(__held["/api/reading"] || []).length}));
+""",
+        )
+        self.assertTrue(out["question"], "no direction question was open, so this proves nothing")
+        self.assertIn("data-next-pending", out["busy"])
+        self.assertIn('aria-busy="true"', out["busy"])
+        self.assertEqual("Turning off…", visible_text(out["busy"]).strip())
+        self.assertEqual(1, out["posts"])
+
     def test_a_reader_who_presses_keep_sees_keeping(self) -> None:
         out = self.drive(
             TYPED

@@ -5350,9 +5350,11 @@ function nextCockpitDirectionQuestion(session, annotation, source, model, primar
     `<p class="next-cockpit-direction-said">${esc(nextCockpitDirectionSentence(
       session, annotation, pending, numbers))}</p>` +
     nextCockpitDirectionWholeList(key, pending, numbers) +
+    /* The Drift card's own Turn off readings, busy state and all (verifier F2). */
     `<div class="next-cockpit-reading-ask">${keep}${add}${nextReadingAnyConsent()
       ? '<button type="button" class="next-action" data-next-cockpit-action="reading-off" ' +
-        `data-next-focus="reading-off:${esc(key)}">Turn off readings</button>` : ""}</div>` +
+        `data-next-focus="reading-off:${esc(key)}"${nextPendingAttrs(`reading-off:${key}`)}>` +
+        `${nextPendingLabel(`reading-off:${key}`, "Turn off readings")}</button>` : ""}</div>` +
     board.changed +
     (analyze ? disclosure : "") +
     (opened && opened.error
