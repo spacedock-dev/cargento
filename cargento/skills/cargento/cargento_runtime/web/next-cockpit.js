@@ -1504,12 +1504,15 @@ function nextCockpitIntentFooter(session, annotation){
   /* Not while the save is still busy: the outcome is drawn and said together,
      when the button settles, and a redraw in between (a context paint) drew
      "Saved" beside "Saving…" (owner, 2026-10-02). */
-  const cue = nextPendingHas(`${key}:save`) ? "" : nextCockpitHeldCue(key);
+  const saving = nextPendingHas(`${key}:save`);
+  const cue = saving ? "" : nextCockpitHeldCue(key);
+  /* Undo is inert while its save is in flight: reverting the box would leave
+     the words being sent unseen (orchestrator, measured in Chrome, ui4). */
   return '<div class="next-cockpit-held-footer">' +
     `<p class="next-cockpit-held-hint" data-next-intent-measured>${NEXT_INTENT_MEASURED}</p>` +
     '<span class="next-cockpit-held-tools">' +
-    nextCockpitHeldControl("held-undo", "Undo changes", "intent", changes.undoable, true, "",
-      `${key}:undo`) +
+    nextCockpitHeldControl("held-undo", "Undo changes", "intent", changes.undoable && !saving, true,
+      "", `${key}:undo`) +
     nextCockpitHeldControl("held-save", "Save intent", "intent", changes.any || changes.adoptable, true,
       absent.join(" "), `${key}:save`, "secondary") +
     '</span>' +
@@ -1531,9 +1534,10 @@ function nextCockpitIntentFooterToggle(session){
     ? [...section.querySelectorAll("[data-next-cockpit-held-absent]")].map(node => node.id)
       .filter(Boolean).join(" ") : "";
   const key = nextCockpitIntentKey(session);
+  const saving = nextPendingHas(`${key}:save`);
   for(const [action, live, why, focus] of [
     ["held-save", changes.any || changes.adoptable, describes, `${key}:save`],
-    ["held-undo", changes.undoable, "", `${key}:undo`]]){
+    ["held-undo", changes.undoable && !saving, "", `${key}:undo`]]){
     const control = footer.querySelector(`[data-next-cockpit-action="${action}"]`);
     /* A keystroke during a save never re-arms Save intent: the press is still
        being answered, and a second one would race it. */
@@ -6665,6 +6669,8 @@ function nextCockpitIntentLanded(session, body, sentLines){
    render reads the store whenever the Map has no entry, so this is the one
    place the two cannot disagree. */
 function nextCockpitIntentUndo(session){
+  // Never under a save still being answered: its words stay in the box.
+  if(nextPendingHas(`${nextCockpitIntentKey(session)}:save`)) return;
   nextIntentChosenPrompts.delete(nextCockpitHeldKey(session, "goal"));
   for(const kind of ["goal", "lines"]){
     const key = nextCockpitHeldKey(session, kind);

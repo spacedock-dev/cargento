@@ -155,6 +155,52 @@ console.log(JSON.stringify({typed, posts:__annotates.length}));
         self.assertIn("aria-disabled", out["typed"])
         self.assertEqual(1, out["posts"])
 
+    def test_undo_changes_is_inert_while_its_save_is_in_flight(self) -> None:
+        """Orchestrator, measured in Chrome (ui4 brief): while Save intent read "Saving…", Undo
+        changes stayed live, so a press could revert the words a save was still sending."""
+        out = self.run_save(
+            press_save()
+            + """
+const undo = () => (__els.app.innerHTML.match(
+  /<button[^>]*data-next-cockpit-action="held-undo"[^>]*>[\\s\\S]*?<\\/button>/) || [""])[0];
+const during = undo();
+__press("held-undo", "intent"); await __settle();
+const kept = __els.app.innerHTML.includes("Ship the retry queue today");
+const stillBusy = __saveButton();
+__answer.resolve(); await __settle(); await __settle(); await __settle();
+console.log(JSON.stringify({during, kept, stillBusy, posts:__annotates.length, after:undo()}));
+"""
+        )
+        self.assertIn('aria-disabled="true"', out["during"])
+        # The press did nothing: the words the save is sending are still in the box.
+        self.assertTrue(out["kept"])
+        self.assertIn("data-next-pending", out["stillBusy"])
+        self.assertEqual(1, out["posts"])
+        # Once the save is answered, Undo follows the words again: saved, nothing to undo.
+        self.assertIn('aria-disabled="true"', out["after"])
+
+    def test_a_keystroke_during_a_save_does_not_re_arm_undo_changes(self) -> None:
+        out = self.run_save(
+            press_save()
+            + """
+const attrs = {save:new Set(["aria-disabled"]), undo:new Set(["aria-disabled"])};
+const control = name => ({dataset:{nextFocus:`held:claude:focus-1:intent:${name}`},
+  setAttribute(a){ attrs[name].add(a); }, removeAttribute(a){ attrs[name].delete(a); }});
+const controls = {"held-save":control("save"), "held-undo":control("undo")};
+const footer = {querySelector(selector){
+  const m = selector.match(/data-next-cockpit-action="([^"]+)"/); return m ? controls[m[1]] : null; },
+  closest(){ return null; }};
+__els.app.querySelector = selector => selector === ".next-cockpit-held-footer" ? footer : null;
+const field = {querySelector(){ return null; }, setAttribute(){}, removeAttribute(){}};
+__fire("input", {target:{value:"Ship the retry queue today, and the docs",
+  dataset:{nextCockpitHeldKey:"held:claude:focus-1:goal"},
+  closest(selector){ return selector === "[data-next-cockpit-held-key]" ? this
+    : selector === "[data-next-cockpit-held-field]" ? field : null; }}});
+console.log(JSON.stringify({undo:[...attrs.undo]}));
+"""
+        )
+        self.assertIn("aria-disabled", out["undo"])
+
     def test_a_reader_whose_save_is_never_answered_gets_the_button_back_and_is_told_cargento_did_not_answer_not_that_it_refused(
         self,
     ) -> None:
