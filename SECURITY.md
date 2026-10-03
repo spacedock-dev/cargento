@@ -1161,15 +1161,23 @@ including any private prose or path it repeated that redaction does not recogniz
 the same line-break residual as the reader's words above. An agent message can repeat tool output,
 so a command's output can reach the provider in the agent's words even where tool output was not
 allowed. Redaction catches credential shapes and, since 2026-10-03, the value after a cue such as
-`Bearer `, `password=`, `token=` or a `DB_PASSWORD=`-style assignment (Published text, below); a
-password or token with neither a shape nor a cue can go verbatim. The field holding the whole
-message (`agent_words`) is treated as `reader_words` is: held in memory for the reading and the live
-project context, never in either history store, and dropped from every page route by
-`project_context.for_page`, so the page shows only the first sentence. The agent's messages are not
-written into the session history store at all, live or whole. The route's "What is sent" list names
-them before the press, and an Allow given before that list named them does not cover them: the
-Allow is bound to a content version beside its destination (`reading_policy.CONTENT_VERSION`), so
-the next press asks once more.
+`Authorization: Bearer`, `--password`, `password=`, `token:` or a name such as `DB_PASSWORD`,
+`PGPASSWORD` or `OPENAI_API_KEY` (Published text, below); a password or token with neither a shape
+nor a cue can go verbatim. The field holding the whole message (`agent_words`) is treated as
+`reader_words` is: held in memory for the reading and the live project context, never in either
+history store, and dropped from every page route by `project_context.for_page`, so the page shows
+only the message's title. The title is its first line cut at sentence punctuation followed by a
+space (`project_context._semantic_line`) and at 112 characters, so text with no such break, CJK
+prose among it, publishes up to 112 characters that can span several sentences. The agent's
+messages are not written into the session history store at all, live or whole. The route's "What
+is sent" list names them before the press, and an Allow given before that list named them does not
+cover a press that carries them: the Allow is bound to a content version and the destination it was
+given for (`reading_policy.CONTENT_VERSION`, stored in `permission_disclosure`), so the next press
+on a Claude Code session, read by Claude Code or by Codex, asks once more. A press on another
+harness, and the unasked lane, send no agent message and read at `WORDS_CONTENT_VERSION`, so an
+earlier Allow still covers them. An older build's Turn off clears the version by a trigger of its
+own, and an older build's Allow writes none, so a rollback never carries this build's answer onto
+that build's disclosure.
 
 Merely opening a panel does not call the model, and neither
 does rendering, polling, reconnecting, resuming, changing focus or saving a revision. The
@@ -2905,14 +2913,22 @@ subjects and a subagent name. An ask answer needs no cover, being an index into 
 agent wrote rather than text. The measurement, the false-positive rate and the rejected alternatives
 are in [`docs/design-credential-redaction.md`](docs/design-credential-redaction.md).
 
-Since 2026-10-03 one shape is cued rather than shaped, beside the AWS secret: the value after
-`Bearer `, after `password=`, `passwd=`, `pwd=`, `secret=`, `token=`, `api_key=` or `apikey=` (any
-case, no space before the `=`), and after an upper-case `*_PASSWORD=`, `*_TOKEN=`, `*_SECRET=` or
-`*_KEY=` assignment, up to whitespace or a quote. The cue stays and the value becomes the marker.
-It was added when the agent's own messages began reaching a reading model, because an agent repeats
-what it read. It is the withholding direction and was not measured against the corpus the shapes
-were: a `secret=` naming something harmless is masked too, and `token = next_token()` in code, with
-spaces around the `=`, is left alone.
+Since 2026-10-03 one shape is cued rather than shaped, beside the AWS secret. The cue is
+`Authorization: Bearer`, a `--password`, `--token`, `--secret` or `--api-key` flag, or a name ending
+in `password`, `passwd`, `pwd`, `token`, `secret`, `api_key` or `apikey` in any case (`DB_PASSWORD`,
+`PGPASSWORD`, `GITHUB_API_TOKEN`, `db_password`) or an upper-case `*_KEY` (`OPENAI_API_KEY`,
+`STRIPE_KEY`), before `=` or `:` with any spacing and an optional closing quote (`"password":`).
+The value after it is masked up to whitespace or punctuation, and a quoted value whole, spaces and
+all. The cue stays and the value becomes the marker. It was added when the agent's own messages
+began reaching a reading model, because an agent repeats what it read. Left alone, because each
+names a value rather than holding one or is ordinary prose: `None`, `null`, `true`, a `$VAR` or
+`${VAR}`, `self.…`, `os.environ…`, a call such as `next_token()`, `PWD=/a/path`, `sort_key=name`;
+after a bare `Bearer`, anything shorter than 16 characters or with no digit or symbol ("bearer
+auth"); and after `secret`, `token` or a `:`, a value with neither a digit, a symbol nor 16
+characters (`secret=staging`, "the token: next"). It is the withholding direction and was not
+measured against the corpus the shapes were, so a harmless value that looks like a credential is
+masked too. A title a cue newly masks hashes to a new fact id once (`project_context` records the
+precedent).
 
 The order matters as much as the coverage. Redaction runs before the bound, never after, because a
 key cut at a 140-character cap is still a hundred usable characters of key and a shape whose tail has

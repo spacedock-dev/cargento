@@ -403,11 +403,14 @@ What it reverses and what it narrows:
   those, on the reader's own request or on Cargento's paraphrase.
 - [The 2026-10-01 rule on a line about what the agent tells you](#amended-2026-10-01-a-line-about-what-the-agent-tells-you-cannot-be-shown)
   is narrowed, not reversed. A `consistent` on such a line is still withdrawn as
-  `tells-the-person` unless one of the agent's messages is among what it rests on, because a
-  passing check alone still cannot show what the agent said. Measured on review: the line "the
-  tests are run once more, unpiped, and the counts are reported", read `consistent` on a passing
-  check alone, stood under the first build and is withdrawn now, and the analysis level no longer
-  reaches "None or low" on it.
+  `tells-the-person` unless one of the agent's messages is among what it rests on, sent at or after
+  the latest check it cites (or, citing none, the latest check in the window the prompt carried),
+  because a passing check alone still cannot show what the agent said, and nor can "I'll run it
+  now" said before the run. Measured on review: the line "the tests are run once more, unpiped,
+  and the counts are reported", read `consistent` on a passing check alone, stood under the first
+  build and is withdrawn now, and so is the same line citing the check and that earlier message;
+  the analysis level no longer reaches "None or low" on it. The page reads this rule's token from
+  the store and does not re-derive it, as before.
 - [DEC-24](#dec-24-your-intent-is-a-drafted-goal-and-a-checklist-and-a-correction-is-yours-to-copy)
   item 6 said "Consistent with what the session said at #<n>; not a check" on the Goal only. A
   `consistent`, on the Goal or a line, that rests on the agent's messages alone now says
@@ -465,15 +468,28 @@ What stays:
 What is sent. This is new content to the model provider: each agent message, redacted and cut at
 1,000 characters, inside a quarter of the 16 KiB prompt, on a reading of a Claude Code session the
 reader pressed for. Redaction recognises credential shapes, and since this review also the value
-after a cue such as `Bearer `, `password=` or `DB_PASSWORD=`; a password or token with neither a
-shape nor a cue can still go verbatim, and an agent message can repeat tool output whether or not
-tool output was allowed. The words are held in memory for the reading and the live project context
-only: not stored, not in the session history store, and not published on any page route, where only
-each message's first sentence appears. [SECURITY.md](../SECURITY.md#claude-code-reading-calls) says
-the same. The route's "What is sent" list names the agent's messages and the outcome lines, and the
-tool-output item says the agent's messages may quote tool output. An Allow is bound to a content
-version beside its destination (`reading_policy.CONTENT_VERSION`), so an Allow given before the
-disclosure named the agent's messages does not cover them, and the next press asks once more.
+after a cue such as `Authorization: Bearer`, `--password`, `password:` or a name like
+`DB_PASSWORD`, `PGPASSWORD` or `OPENAI_API_KEY`, leaving code that names a value (`None`, `$VAR`,
+`next_token()`) and prose (`bearer auth`, `secret=staging`) alone; a password or token with neither
+a shape nor a cue can still go verbatim, and an agent message can repeat tool output whether or not
+tool output was allowed. The cue is applied to every published string, so a title holding one
+moves to a new fact id once, the 2026-09-12 precedent `project_context` records, accepted the same
+way; the hash input is unchanged. The words are held in memory for the reading and the live project
+context only: not stored, not in the session history store, and not published on any page route,
+where only each message's title appears (its first line cut at sentence punctuation and 112
+characters, which for text with no such break can span more than one sentence).
+[SECURITY.md](../SECURITY.md#claude-code-reading-calls) says the same. The route's "What is sent"
+list names the agent's messages and the outcome lines, and the tool-output item says the agent's
+messages may quote tool output.
+
+Re-consent. An Allow is bound to a content version and the destination it was given for
+(`reading_policy.CONTENT_VERSION`, in `permission_disclosure`), so an Allow given before the
+disclosure named the agent's messages does not cover a press that carries them: a Claude Code
+session's press, read by Claude Code or by Codex, asks once more. A press on any other harness,
+Codex's included, carries none of them and reads at `WORDS_CONTENT_VERSION`, so it is asked again
+only where its destination moved; the unasked lane reads the same way, so the bump never stops it.
+An older build's Turn off clears the version through a trigger of its own, and an older build's
+Allow writes none, so a rollback cannot carry this build's answer onto that build's disclosure.
 
 An accepted decay. A stored departure resting on an agent message stops counting once that message
 leaves the transcript tail the live record reads: the message is not admitted to the session
@@ -489,7 +505,11 @@ changes. The abstention packets do not yet carry the agent's messages:
 `project_context.frozen_claude_agent_messages` exists for an offline replay, and wiring it into
 `scripts/mark_abstention.py`'s frozen ledger would change the packet format, so it is a follow-up.
 Codex sessions are unchanged for now: reading a Codex session's assistant messages as
-`agent_message` is a follow-up too.
+`agent_message` is a follow-up too. Two more follow-ups, recorded rather than built: a Claude Code
+rewind leaves the abandoned branch in the transcript and nothing filters it by `parentUuid`, so an
+agent message from a branch the reader rewound past can be evidence; and the page's expected-output
+limit (`nextReadingOutputLimit`) keys on whether the route has a provider alone, not on whether the
+record holds an agent message or a sent check.
 
 ### The two typed fields are one line each, and that is a security decision
 
@@ -2982,7 +3002,12 @@ calls below on the issue; the rest follow the analysis.
   the one that moved: a check re-runs, because the check tracker publishes one entry per check keyed
   by its latest run; a file is written again, because the latest write is kept; the listing of at
   most twelve checks and files reshuffles, because failures are kept first and a new one can evict a
-  pass from the middle; and the observer snapshot moves with each snapshot. The list and every
+  pass from the middle; and the observer snapshot moves with each snapshot. A fifth since
+  [2026-10-03](#amended-2026-10-03-owner-the-agents-own-words-are-evidence): an agent message
+  leaves the transcript tail the board reads, and since it is never stored in the session history
+  it drops out of the list and the entries after it renumber. A departure that cited it then reads
+  as citing nothing resolvable, with the generic sentence: a citation is a hashed fact id, so the
+  page cannot tell that the entry it named was one of the agent's messages. The list and every
   citation are recomputed together on each render, so the screen never disagrees with itself, and
   item 7's correction carries times as well as numbers. A server-published ordinal per fact would
   fix this and is a Python layer of its own.
