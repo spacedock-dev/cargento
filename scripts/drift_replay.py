@@ -1232,6 +1232,9 @@ def _read_cases(  # noqa: PLR0913 - every input of one pass, named
                 model=model,
                 tool_output=tool_output,
                 read_lines=True,
+                # The press sends the agent's words (owner ruling, 2026-10-03); a replay that left
+                # them out would measure a producer the board no longer ships.
+                read_agent_words=True,
                 admit_turn_stop=True,
             )
             calls += 1 if model.sent else 0
