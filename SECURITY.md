@@ -1902,7 +1902,8 @@ each check's line, result, times and redacted output tail, and the intent. The o
 send and its spend on 2026-10-03, bounded at 240 calls on the ledger
 `~/.cargento/drift-replay/spend.json`. That path is under the operator's home whatever
 `CARGENTO_HOME` says, so moving the home does not reset the count. Each call is charged before it is
-made, under an exclusive lock, and never by a case the producer withholds or by a dry run; a ledger
+made, under an exclusive lock on macOS and Linux (Windows has none, so the cap there holds for one
+run at a time), and never by a case the producer withholds or by a dry run; a ledger
 that will not parse refuses every call, and the charged calls the run's own record holds are a floor
 a deleted ledger cannot go under. With `--source original` the words sent are the session's own,
 through only the redaction a press applies, not the fixtures' redaction. It never writes the

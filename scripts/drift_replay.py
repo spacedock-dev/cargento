@@ -27,7 +27,6 @@ from __future__ import annotations
 import argparse
 import contextlib
 import datetime
-import fcntl
 import glob
 import hashlib
 import json
@@ -45,6 +44,13 @@ if os.path.join(_ROOT, "scripts") not in sys.path:
     sys.path.insert(0, os.path.join(_ROOT, "scripts"))
 
 import levels_cases as lc  # noqa: E402 - scripts/ is put on the path just above
+
+try:
+    import fcntl
+except ImportError:  # Windows: no advisory lock, so the cap holds for one run at a time there
+    fcntl = None  # type: ignore[assignment]
+
+HAS_LOCK = fcntl is not None
 
 HOME = os.environ.get("CARGENTO_HOME") or os.path.expanduser("~/.cargento")
 SUBDIR = "drift-replay"
@@ -1019,7 +1025,8 @@ class Ledger:
         """Record a call before it is made; False when the cap is reached."""
         os.makedirs(os.path.dirname(self.path), mode=0o700, exist_ok=True)
         with open(self.path + ".lock", "a", encoding="utf-8") as lock:
-            fcntl.flock(lock, fcntl.LOCK_EX)
+            if fcntl is not None:
+                fcntl.flock(lock, fcntl.LOCK_EX)
             calls = self.calls()
             if max(len(calls), self.floor) >= self.cap:
                 return False

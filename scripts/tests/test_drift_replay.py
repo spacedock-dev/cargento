@@ -331,6 +331,7 @@ class TheSpendIsBoundedAndADryRunCostsNothing(unittest.TestCase):
             ledger = dr.Ledger(os.path.join(tmp, "spend.json"), cap=3, floor=3)
             self.assertFalse(ledger.charge("k"))
 
+    @unittest.skipUnless(dr.HAS_LOCK, "no advisory lock on this platform")
     def test_concurrent_charges_never_pass_the_cap(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             path = os.path.join(tmp, "spend.json")
