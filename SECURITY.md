@@ -1230,7 +1230,9 @@ owner's acceptance opened the gate on 2026-10-02.** `annotations.CLAUDE_ABSTENTI
 ([DEC-21](docs/design-reading-a-session.md#amended-2026-10-02-claude-code-is-accepted)).
 `reading_route` selects it for a Claude Code session when an absolute `claude` is on PATH, and for
 another harness's session only when `codex` is not. The unasked lane and goal summaries never
-invoke it. Set back to `not-run`, the gate is read before the CLI is looked for, so no route,
+invoke it. Outside the runtime, only the qualification scorer and the drift replay check's
+owner-authorized Analyze tier build one, both through the scorer's verified, pinned copy of the CLI,
+and a test holds that list. Set back to `not-run`, the gate is read before the CLI is looked for, so no route,
 fallback or forged request can invoke it.
 
 The argv, every flag checked against `claude --help` on 2.1.280, run without a shell:
