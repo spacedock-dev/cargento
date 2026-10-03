@@ -618,7 +618,24 @@ class RedactSecretsTest(unittest.TestCase):
         ("GH_TOKEN=placeholder1", "GH_TOKEN=…REDACTED"),
         ("APP_SECRET=placeholder1", "APP_SECRET=…REDACTED"),
         ("STRIPE_KEY=placeholder1", "STRIPE_KEY=…REDACTED"),
-        ("bearer placeholder1", "bearer …REDACTED"),
+        # The names the final review found the first spelling missed (2026-10-03).
+        ("MY_DB_PASSWORD=placeholder1", "MY_DB_PASSWORD=…REDACTED"),
+        ("GITHUB_API_TOKEN=placeholder1", "GITHUB_API_TOKEN=…REDACTED"),
+        ("OPENAI_API_KEY=placeholder1", "OPENAI_API_KEY=…REDACTED"),
+        ("AWS_SESSION_TOKEN=placeholder1", "AWS_SESSION_TOKEN=…REDACTED"),
+        ("PGPASSWORD=placeholder1", "PGPASSWORD=…REDACTED"),
+        ("db_password=placeholder1", "db_password=…REDACTED"),
+        ("my_api_key=placeholder1", "my_api_key=…REDACTED"),
+        ('{"password": "place holder1"}', '{"password": "…REDACTED"}'),
+        ("password: placeholder1", "password: …REDACTED"),
+        ("--password placeholder1", "--password …REDACTED"),
+        ("--token=placeholder1", "--token=…REDACTED"),
+        ("DB_PASSWORD = placeholder1", "DB_PASSWORD = …REDACTED"),
+        ("DB_PASSWORD='place holder 1'", "DB_PASSWORD='…REDACTED'"),
+        ("password=placeholder", "password=…REDACTED"),
+        # Bearer: after `Authorization:` anything, otherwise a credential-like value.
+        ("Authorization: Bearer abc", "Authorization: Bearer …REDACTED"),
+        ("bearer placeholder1placeholder2", "bearer …REDACTED"),
     )
     CUED_LEFT_ALONE = (
         "token = next_token()",
@@ -626,6 +643,19 @@ class RedactSecretsTest(unittest.TestCase):
         "sort_key=name",
         "the bearer of it",
         "http://127.0.0.1:4553",
+        # Prose and code that names a value rather than holding one.
+        "Add bearer auth to the API client",
+        "bearer placeholder1",
+        "secret=staging",
+        "token=$NEXT",
+        "TOKEN=${GH_TOKEN}",
+        "password = None",
+        "api_key = os.environ",
+        "secret = self.secret",
+        "Monkey: banana",
+        "primary key: id",
+        "secret: the plan",
+        "PWD=/home/someone/repo",
     )
 
     def test_a_cued_value_with_no_shape_is_masked_and_its_cue_kept(self) -> None:
