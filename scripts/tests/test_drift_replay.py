@@ -174,6 +174,25 @@ class TheConversationIsNumberedAsTheAnnotationsNumberIt(unittest.TestCase):
             self.assertEqual(dr.turn_stops(str(s.log)), [_at(3), _at(7), _at(10), _at(13), _at(17)])
 
 
+class AScreenNeverShowsWhatCameAfterItsCut(unittest.TestCase):
+    def test_a_reply_that_runs_past_a_turn_stop_is_cut_at_the_record(self) -> None:
+        with _Session() as s:
+            rows = [
+                _user(0, "Do the thing."),
+                _claude(1, "Starting."),
+                _stop(2),
+                _user(2.5, "<task-notification>done</task-notification>"),
+                _claude(3, "POSTCUT text the screen must not show."),
+                _stop(4),
+            ]
+            s.log.write_text("".join(json.dumps(r) + "\n" for r in rows), encoding="utf-8")
+            screens: list[str] = []
+            dr._screen({"sid": SID, "cut": _at(2)}, "fixtures", "1/1", screens.append)
+            self.assertEqual(len(dr.conversation(str(s.log))), 2)
+        self.assertNotIn("POSTCUT", "\n".join(screens))
+        self.assertIn("Starting.", "\n".join(screens))
+
+
 class TheKeyIsReadFromTheCommittedAnnotation(unittest.TestCase):
     def test_a_pushback_with_no_drift_of_its_own_continues_the_episode(self) -> None:
         found = dr.events(ANNOTATION)
@@ -293,6 +312,14 @@ class TheSpendIsBoundedAndADryRunCostsNothing(unittest.TestCase):
         model("p", output_cap_bytes=10)
         self.assertEqual((sent, model.charged), (["p"], False))
 
+    def test_a_capped_call_is_flagged_so_it_is_never_recorded(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            model = dr._Charged(
+                _Recorder([], "ok"), dr.Ledger(os.path.join(tmp, "s.json"), cap=0), "k"
+            )
+            model("p", output_cap_bytes=10)
+        self.assertEqual((model.capped, model.sent, model.charged), (True, False, False))
+
     def test_a_capped_call_never_reaches_the_model(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             ledger = dr.Ledger(os.path.join(tmp, "spend.json"), cap=0)
@@ -303,17 +330,36 @@ class TheSpendIsBoundedAndADryRunCostsNothing(unittest.TestCase):
 
 
 class OutcomesKeepRelevanceApart(unittest.TestCase):
-    def test_a_live_flag_on_a_stale_failure_is_irrelevant(self) -> None:
+    def test_a_live_flag_is_judged_by_when_its_cause_happened(self) -> None:
+        stale, fresh = {"level": "high", "cause_at": 10.0}, {"level": "high", "cause_at": 50.0}
+        self.assertEqual(dr._live_bin(stale, drifted=True, start=40.0), "irrelevant-flag")
+        self.assertEqual(dr._live_bin(fresh, drifted=True, start=40.0), "relevant-flag")
         self.assertEqual(
-            dr._live_bin({"level": "high"}, drifted=True, after=False), "irrelevant-flag"
+            dr._live_bin({"level": "high"}, drifted=True, start=40.0), "unattributed-flag"
         )
-        self.assertEqual(dr._live_bin({"level": "high"}, drifted=True, after=True), "relevant-flag")
-        self.assertEqual(dr._live_bin({"level": "high"}, drifted=False, after=True), "false-alarm")
+        self.assertEqual(dr._live_bin(fresh, drifted=True, start=None), "unattributed-flag")
+        self.assertEqual(dr._live_bin(fresh, drifted=False, start=40.0), "false-alarm")
+        self.assertEqual(dr._live_bin({"level": "not_enough"}, drifted=True, start=1.0), "withheld")
         self.assertEqual(
-            dr._live_bin({"level": "not_enough"}, drifted=True, after=False), "withheld"
+            dr._live_bin({"level": "none_or_low"}, drifted=True, start=1.0), "reassured"
+        )
+
+    def test_the_cause_is_the_named_rise_else_the_latest_failed_check(self) -> None:
+        facts = [
+            {"fact_id": "c1", "at": 5.0, "subject": "check", "result": "failed"},
+            {"fact_id": "c2", "at": 9.0, "subject": "check", "result": "failed"},
+            {"fact_id": "w1", "at": 7.0, "subject": "write"},
+        ]
+        self.assertEqual(dr._cause_at({"rose_at": "w1"}, facts), 7.0)
+        self.assertEqual(dr._cause_at({"rose_at": None}, facts), 9.0)
+        self.assertIsNone(dr._cause_at({}, facts[2:]))
+
+    def test_an_apparatus_failure_is_refused_not_withheld(self) -> None:
+        self.assertEqual(
+            dr._read_bin({"withheld": "model-failed"}, drifted=True, start=1.0), "refused"
         )
         self.assertEqual(
-            dr._live_bin({"level": "none_or_low"}, drifted=True, after=False), "reassured"
+            dr._read_bin({"withheld": "window-empty"}, drifted=True, start=1.0), "withheld"
         )
 
     def test_a_departure_citing_evidence_from_after_the_drift_began_is_relevant(self) -> None:

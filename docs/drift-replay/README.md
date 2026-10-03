@@ -16,8 +16,8 @@ redacted copy under `tests/raw_sessions/<sid>/`, which is gitignored and made by
   `~/.cargento/drift-replay/marks.json`, the digest of the case set the marks belong to, and counts.
   It is committed before any run, and every run reads it from `HEAD`, never from the working copy.
 - `results.json`, once a score has been committed. Per case it holds a case id salted with a local
-  secret, the owner's final mark (drift, no drift, unclear) and its class, the case's roles, and one
-  outcome per detector and intent arm. It also holds the digests and the counts. It names no session,
+  secret, the owner's final mark (drift or no drift) and its class, the case's roles, and one outcome
+  per detector and intent arm. A cut marked unclear is left out. It also holds the digests and the counts. It names no session,
   path, command, word or model sentence.
 
 ## What does not live here
@@ -40,7 +40,9 @@ A mark written after seeing an output is agreement, not a mark, so the tool hold
    decide. Both answers are kept. A mark you have not agreed to is not written (the 2026-09-28 rule).
 4. Commit `marks-digest.json`. Marking closes once any output exists.
 5. `--live` runs the live estimate and Steer back at every cut. No model, no spend.
-6. `--read --dry-run` counts the calls; `--read` makes them, charged on this tool's own ledger.
+6. `--read --dry-run` counts the calls that would reach the model and records that plan. `--read`
+   refuses without a plan for the same cases and arms, or when the plan needs more calls than the
+   ledger has left, and charges each call before it is made.
 7. `--score` writes `results.json`.
 
 ```bash
@@ -57,11 +59,11 @@ python3 scripts/drift_replay.py --score
 
 ## The intent arms
 
-Each cut is read three times, once per intent, and each intent is built only from words dated
-before the cut.
+Each cut is read three times, once per intent. The first two are your own words, dated before the
+cut; the third is written afterwards on purpose.
 
 - realistic: your opening prompt, saved when you typed it, which is what "Use your prompt" adopts.
-- part: the message that opened the annotated part holding the cut.
+- part: the first message you typed in the annotated part the cut belongs to.
 - hindsight: the goal the annotation wrote afterwards. An upper bound, never a headline.
 
 ## How to argue with a result
@@ -70,11 +72,15 @@ Each detector lands in one outcome per cut and arm.
 
 On a cut you marked as drift:
 
-- relevant flag: it flagged, and what it cited is dated at or after the drift began
+- relevant flag: it flagged, and what raised it happened at or after the drift began. For the live
+  estimate that is the rise it names, or else the latest failed check; for Analyze, what a
+  departure cites
 - irrelevant flag: it flagged on something older, such as a check that failed hours before
+- unattributed flag: it flagged, and nothing says what raised it, or the cut has no drift start
+- echo: an Analyze departure that cites only your own messages
 - withheld: "Not enough recorded yet" or not verifiable
 - reassured: None or low, or consistent; the worst outcome
-- refused: the apparatus could not read the cut
+- refused: the apparatus could not read the cut, or the model call failed
 
 On a cut you marked as no drift: false alarm, quiet, withheld or refused.
 

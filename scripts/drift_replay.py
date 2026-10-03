@@ -99,6 +99,7 @@ def _paths(home: str) -> dict[str, str]:
         "live": os.path.join(base, "live.json"),
         "read": os.path.join(base, "read.json"),
         "ledger": os.path.join(base, "spend.json"),
+        "plan": os.path.join(base, "plan.json"),
     }
 
 
@@ -164,14 +165,21 @@ def _typed(record: Mapping[str, Any]) -> str | None:  # noqa: PLR0911 - one retu
     return re.sub(r"</?pasted_content[^>]*>", "", text)
 
 
-def conversation(path: str) -> list[Message]:
-    """The session's top-level conversation, numbered: the `#N` the annotations use."""
+def conversation(path: str, until: float | None = None) -> list[Message]:  # noqa: C901
+    """The session's top-level conversation, numbered: the `#N` the annotations use.
+
+    With `until`, only records stamped at or before it are read. A reply that runs on past a turn
+    stop (a background task can wake the agent with no typed message) is one numbered message, so
+    filtering whole messages by their first record would show a screen text written after its cut.
+    """
     found: list[Message] = []
     pending: Message | None = None
     for record in _records(path):
         if record.get("isSidechain"):
             continue
         at = _ts(record.get("timestamp"))
+        if until is not None and at is not None and at > until:
+            continue
         typed = _typed(record)
         if typed is not None and at is not None:
             if pending is not None:
@@ -261,6 +269,7 @@ class Part:
 
     opening: int | None
     goal: str
+    refs: list[int] = field(default_factory=list)
 
 
 _GOAL_RE = re.compile(r"^\*\*Goal:\*\* (.+)$")
@@ -285,11 +294,26 @@ def parts(annotation: str) -> dict[int, Part]:
         if goal and not found[part].goal:
             found[part].goal = goal.group(1).strip()
         row = _ROW_RE.match(line)
-        if row and _KIND_ROWS[row.group(1)] in {"ask", "propose"} and found[part].opening is None:
-            refs = _REF_RE.findall(line.rsplit("|", 2)[-2])
-            if refs:
-                found[part].opening = int(refs[0])
+        if row:
+            refs = [int(n) for n in _REF_RE.findall(line.rsplit("|", 2)[-2])]
+            found[part].refs.extend(refs)
+            if (
+                _KIND_ROWS[row.group(1)] in {"ask", "propose"}
+                and found[part].opening is None
+                and refs
+            ):
+                found[part].opening = refs[0]
     return found
+
+
+def _opening(part: Part, messages: list[Message]) -> int | None:
+    """A part's first typed, non-command message: a part can open on a drift row."""
+    typed = [
+        n
+        for n in part.refs
+        if n < len(messages) and messages[n].role == "you" and not messages[n].text.startswith("/")
+    ]
+    return min(typed) if typed else None
 
 
 # --- Cases ---------------------------------------------------------------------------------------
@@ -363,6 +387,8 @@ def session_cases(sid: str, source: str, salt: str) -> list[dict[str, Any]]:  # 
             case["events"].append(extra)
 
     pushes: set[float] = set()
+    spans: list[tuple[float, float]] = []
+    episode_drift: dict[int, list[int]] = {}
     for event in key:
         if event.push >= len(messages) or messages[event.push].role != "you":
             continue
@@ -370,12 +396,18 @@ def session_cases(sid: str, source: str, salt: str) -> list[dict[str, Any]]:  # 
         pushes.add(push_at)
         # A drift row may also cite a later message as evidence; only what came before counts here.
         event.drift = [n for n in event.drift if n < len(messages) and messages[n].at < push_at]
+        if event.drift:
+            episode_drift.setdefault(event.episode, event.drift)
+        drift = episode_drift.get(event.episode, [])
+        if drift:
+            spans.append((min(messages[n].at for n in drift), push_at))
         add(
             _before(stops, push_at),
             "pushback",
             part=event.part,
             push=event.push,
             drift=event.drift,
+            episode_drift=drift,
             episode=event.episode,
             first=event.first,
         )
@@ -391,6 +423,8 @@ def session_cases(sid: str, source: str, salt: str) -> list[dict[str, Any]]:  # 
         for s in stops
         if s not in by_cut
         and not any(t > s and t in pushes and not _between(stops, s, t) for t in typed)
+        # A stop between the drift and its pushback is neither a pushback nor ordinary.
+        and not any(start <= s < end for start, end in spans)
     ]
     rng = random.Random(f"{SAMPLE_SEED}|{sid}")  # noqa: S311 - a reproducible sample, not a secret
     for cut in sorted(rng.sample(ordinary, min(NEGATIVES_PER_SESSION, len(ordinary)))):
@@ -443,7 +477,7 @@ def _clip(text: str, limit: int) -> str:
 def _screen(case: Mapping[str, Any], source: str, position: str, say: Callable[[str], Any]) -> None:
     """The session up to the cut and nothing after it: no annotation, role or detector output."""
     path = _transcript(str(case["sid"]), source)
-    messages = [m for m in conversation(path) if m.at <= float(case["cut"])]
+    messages = conversation(path, until=float(case["cut"]))
     say("\n" + "=" * 76)
     say(
         f"  {position}   session {str(case['sid'])[:8]}   "
@@ -597,7 +631,7 @@ def reconcile(
         said = (
             "you pushed back right after this cut"
             if proposed["drift"] == "drift"
-            else "no pushback followed this cut"
+            else "no pushback came right after this cut"
         )
         say(f"\n  Your blind answer: {blind['drift']}.  The annotations: {said}.")
         drift = _ask(ask, _DRIFT_PROMPT, DRIFT)
@@ -727,9 +761,14 @@ def intents(case: Mapping[str, Any], messages: list[Message], annotation: str) -
     found: list[Intent] = []
     if typed:
         found.append(Intent("realistic", typed[0].text[:240], typed[0].at))
-    owner = _part_of(cut, messages, parts(annotation))
+    found_parts = parts(annotation)
+    pushed = [
+        int(e["part"]) for e in case.get("events") or () if isinstance(e, dict) and "part" in e
+    ]
+    # A pushback cut belongs to its own annotated part; any other cut to the part open at its time.
+    owner = found_parts.get(pushed[0]) if pushed else _part_of(cut, messages, found_parts)
     if owner is not None:
-        opening = owner.opening
+        opening = _opening(owner, messages)
         if opening is not None and opening < len(messages) and messages[opening].at <= cut:
             found.append(Intent("part", messages[opening].text[:240], messages[opening].at))
         if owner.goal and typed:
@@ -746,9 +785,10 @@ def _part_of(cut: float, messages: list[Message], found: Mapping[int, Part]) -> 
     """The annotated part whose opening is the latest one at or before the cut."""
     best: tuple[float, Part] | None = None
     for part in found.values():
-        if part.opening is None or part.opening >= len(messages):
+        opening = _opening(part, messages)
+        if opening is None:
             continue
-        at = messages[part.opening].at
+        at = messages[opening].at
         if at <= cut and (best is None or at > best[0]):
             best = (at, part)
     return best[1] if best else None
@@ -763,13 +803,16 @@ def facts_at(
         project_context._semantic_fact_from_event(row, row["kind"], "tool_report", "")  # noqa: SLF001
         for row in rows
     ]
-    whole, _tail = project_context.frozen_claude_user_messages(config, path, sid, until=cut)
+    # The board publishes the bounded tail it reads, not the whole file (mark_abstention does the
+    # same); `path` is already cut, so its tail is what the board held at that moment.
+    _whole, tail = project_context.frozen_claude_user_messages(config, path, sid, until=cut)
     said: list[dict[str, Any]] = []
     agent = getattr(project_context, "frozen_claude_agent_messages", None)
     if callable(agent):
-        said = list(agent(config, path, sid, until=cut))
+        found = agent(config, path, sid, until=cut)
+        said = list(found[1] if isinstance(found, tuple) else found)
     press = project_context.claude_check_press(config, path)
-    return [*checks, *whole, *said], press
+    return [*checks, *tail, *said], press
 
 
 def _row(sid: str, intent: Intent, cut: float) -> dict[str, Any]:
@@ -799,12 +842,33 @@ def _cites_after(
     return any(c in when and when[c] >= start for c in cites)
 
 
+def _cause_at(level: Mapping[str, Any], facts: Iterable[Mapping[str, Any]]) -> float | None:
+    """When what raised the live level happened: the rise it names, else the latest failed check.
+
+    `rose_at` names the fact a rise came from, but only inside the last 64 calls; a failure latched
+    from earlier names none, and the failed check is then what holds the level up.
+    """
+    dated = {str(f.get("fact_id")): f for f in facts if isinstance(f, Mapping)}
+    rose = dated.get(str(level.get("rose_at") or ""))
+    if rose is not None and isinstance(rose.get("at"), int | float):
+        return float(rose["at"])
+    failed = [
+        float(f["at"])
+        for f in facts
+        if isinstance(f, Mapping)
+        and f.get("subject") == "check"
+        and f.get("result") == "failed"
+        and isinstance(f.get("at"), int | float)
+    ]
+    return max(failed) if failed else None
+
+
 def _drift_start(case: Mapping[str, Any], messages: list[Message]) -> float | None:
     """When the drift behind this cut's first-of-episode pushback began, if it is a pushback."""
     starts = [
         messages[n].at
         for event in case.get("events") or ()
-        for n in event.get("drift") or ()
+        for n in (event.get("drift") or event.get("episode_drift") or ())
         if n < len(messages)
     ]
     return min(starts) if starts else None
@@ -835,6 +899,8 @@ def live(*, home: str, source: str | None = None, say: Callable[[str], Any] = pr
     for case in body["cases"]:
         sid, cut = str(case["sid"]), float(case["cut"])
         transcript = _transcript(sid, src)
+        if not transcript:
+            continue
         messages = conversation(transcript)
         with open(os.path.join(ANNOTATIONS, sid, "annotation.md"), encoding="utf-8") as handle:
             annotation = handle.read()
@@ -858,6 +924,7 @@ def live(*, home: str, source: str | None = None, say: Callable[[str], Any] = pr
                 "reasons": list(level.get("reasons") or ()),
                 "steer": steer["offered"],
                 "steer_after_drift": _cites_after(steer["cites"], facts, start),
+                "cause_at": _cause_at(level, facts),
             }
         out[case["id"]] = {"arms": arms}
         _remove_tree(here)
@@ -921,13 +988,14 @@ class Ledger:
 class _Charged:
     """The model `produce` calls, charging the ledger first; a withheld case never reaches it."""
 
-    unavailable_reason = "model-unavailable"
-
     def __init__(self, inner: Any, ledger: Ledger | None, key: str) -> None:
+        self.unavailable_reason = str(getattr(inner, "unavailable_reason", "model-unavailable"))
         self.inner = inner
         self.ledger = ledger
         self.key = key
         self.charged = False
+        self.capped = False
+        self.sent = False
 
     def available(self) -> bool:
         return bool(getattr(self.inner, "available", lambda: True)())
@@ -937,11 +1005,13 @@ class _Charged:
             # A dry run: measured by the stub, never charged.
             return self._send(prompt, output_cap_bytes)
         if not self.ledger.charge(self.key):
+            self.capped = True
             return "", "cancelled"
         self.charged = True
         return self._send(prompt, output_cap_bytes)
 
     def _send(self, prompt: str, output_cap_bytes: int) -> tuple[str, str]:
+        self.sent = True
         raw, status = self.inner(prompt, output_cap_bytes=output_cap_bytes)
         return str(raw), str(status)
 
@@ -979,6 +1049,19 @@ def read(
     ledger = Ledger(paths["ledger"])
     done = lc._load(paths["read"]).get("cases") or {}  # noqa: SLF001
     src = source or str(body.get("source") or "fixtures")
+    bound = lc.digest(body)
+    if not dry_run:
+        plan = lc._load(paths["plan"])  # noqa: SLF001
+        room = ledger.cap - len(ledger.calls())
+        if plan.get("cases_digest") != bound or sorted(plan.get("arms") or ()) != sorted(arms):
+            say("Run --read --dry-run first, with the same --arm choices: it records the plan.")
+            return 1
+        if int(plan.get("calls") or 0) > room:
+            say(
+                f"Refused: the plan needs {plan.get('calls')} calls and the ledger has {room} "
+                "left. Narrow it with --arm."
+            )
+            return 1
     with contextlib.ExitStack() as stack:
         verified = None if dry_run else stack.enter_context(score_abstention.verify_claude_binary())
         inner: Any = (
@@ -989,9 +1072,17 @@ def read(
                 binary_resolver=score_abstention.PinnedClaude(verified.path, verified.identity),
             )
         )
-        calls = _read_cases(body, paths, inner, ledger, done, src, arms, dry_run=dry_run, say=say)
+        try:
+            calls = _read_cases(
+                body, paths, inner, ledger, done, src, arms, dry_run=dry_run, say=say
+            )
+        finally:
+            _remove_tree(os.path.join(paths["dir"], "scratch-read"))
         if calls < 0:
             return 0
+    if dry_run:
+        plan = {"v": 1, "cases_digest": bound, "arms": list(arms), "calls": calls}
+        lc._write(paths["plan"], plan)  # noqa: SLF001
     say(
         f"{'Would make' if dry_run else 'Made'} {abs(calls)} calls; "
         f"ledger {len(ledger.calls())} of {ledger.cap}."
@@ -1020,6 +1111,8 @@ def _read_cases(  # noqa: PLR0913 - every input of one pass, named
     for case in body["cases"]:
         sid, cut = str(case["sid"]), float(case["cut"])
         transcript = _transcript(sid, src)
+        if not transcript:
+            continue
         messages = conversation(transcript)
         with open(os.path.join(ANNOTATIONS, sid, "annotation.md"), encoding="utf-8") as handle:
             annotation = handle.read()
@@ -1061,7 +1154,10 @@ def _read_cases(  # noqa: PLR0913 - every input of one pass, named
                 read_lines=True,
                 admit_turn_stop=True,
             )
-            calls += 1 if model.charged or dry_run else 0
+            calls += 1 if model.sent else 0
+            if model.capped:
+                say("The ledger cap is reached; this call was not made and is not recorded.")
+                return -calls
             if dry_run:
                 continue
             entry = done.setdefault(case["id"], {})
@@ -1085,27 +1181,62 @@ def _read_cases(  # noqa: PLR0913 - every input of one pass, named
 
 # --- Score --------------------------------------------------------------------------------
 
-BINS_DRIFT = ("relevant-flag", "irrelevant-flag", "echo", "withheld", "reassured", "refused")
+BINS_DRIFT = (
+    "relevant-flag",
+    "irrelevant-flag",
+    "unattributed-flag",
+    "echo",
+    "withheld",
+    "reassured",
+    "refused",
+)
 BINS_QUIET = ("false-alarm", "quiet", "withheld", "refused")
 
 
-def _live_bin(arm: Mapping[str, Any] | None, *, drifted: bool, after: bool) -> str:
+def _live_bin(arm: Mapping[str, Any] | None, *, drifted: bool, start: float | None) -> str:
+    """One live outcome. A flag is relevant when what raised it happened after the drift began."""
     if not arm:
         return "refused"
     level = arm.get("level")
     if level in {"medium", "high", "extreme"}:
         if not drifted:
             return "false-alarm"
-        return "relevant-flag" if after else "irrelevant-flag"
+        cause = arm.get("cause_at")
+        if start is None or not isinstance(cause, int | float):
+            return "unattributed-flag"
+        return "relevant-flag" if cause >= start else "irrelevant-flag"
     if level == "none_or_low":
         return "reassured" if drifted else "quiet"
     return "withheld"
 
 
-def _read_bin(entry: Mapping[str, Any] | None, *, drifted: bool, start: float | None) -> str:
+# Reasons the apparatus failed, as opposed to the producer choosing to abstain.
+APPARATUS = frozenset(
+    {
+        "cancelled-unsent",
+        "model-unavailable",
+        "claude-unavailable",
+        "model-failed",
+        "unstopped",
+        "interrupted",
+        "job-unrecorded",
+        "record-error",
+        "no-record-reader",
+    }
+)
+
+
+def _read_bin(  # noqa: PLR0911 - one return per outcome
+    entry: Mapping[str, Any] | None, *, drifted: bool, start: float | None
+) -> str:
     """One reading's outcome. A departure resting only on the person's own messages is an echo."""
-    if not entry or entry.get("withheld"):
-        return "withheld" if entry and entry.get("withheld") else "refused"
+    if not entry:
+        return "refused"
+    withheld = str(entry.get("withheld") or "")
+    if withheld:
+        return (
+            "refused" if withheld in APPARATUS or withheld.startswith("oversized") else "withheld"
+        )
     criteria = (entry.get("assessment") or {}).get("criteria") or {}
     departed = [
         c for c in criteria.values() if isinstance(c, dict) and c.get("result") == "departure"
@@ -1119,6 +1250,8 @@ def _read_bin(entry: Mapping[str, Any] | None, *, drifted: bool, start: float | 
         cites = [str(c) for d in departed for c in d.get("cites") or ()]
         if cites and all((facts.get(c) or {}).get("type") == "user_message" for c in cites):
             return "echo"
+        if start is None:
+            return "unattributed-flag"
         dated = [{"fact_id": k, "at": v.get("at")} for k, v in facts.items()]
         return "relevant-flag" if _cites_after(cites, dated, start) else "irrelevant-flag"
     consistent = any(
@@ -1160,9 +1293,8 @@ def score(*, home: str, say: Callable[[str], Any] = print) -> int:
             continue
         drifted = drift == "drift"
         first = any(e.get("first") for e in case.get("events") or ())
-        messages = conversation(
-            _transcript(str(case["sid"]), str(body.get("source") or "fixtures"))
-        )
+        log = _transcript(str(case["sid"]), str(body.get("source") or "fixtures"))
+        messages = conversation(log) if log else []
         start = _drift_start(case, messages)
         row: dict[str, Any] = {
             "mark": drift,
@@ -1173,9 +1305,8 @@ def score(*, home: str, say: Callable[[str], Any] = print) -> int:
         live_case = lived.get(case["id"]) or {}
         for arm in ARMS:
             live_arm = (live_case.get("arms") or {}).get(arm)
-            after = bool(start is not None and live_arm and live_arm.get("steer_after_drift"))
             outcomes = {
-                "live": _live_bin(live_arm, drifted=drifted, after=after),
+                "live": _live_bin(live_arm, drifted=drifted, start=start),
                 "steer": "offered" if live_arm and live_arm.get("steer") else "not-offered",
                 "analyze": _read_bin(
                     (readings.get(case["id"]) or {}).get(arm), drifted=drifted, start=start
