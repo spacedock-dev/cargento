@@ -21,7 +21,14 @@ from pathlib import Path
 from typing import Any, ClassVar, cast
 from unittest import mock
 
-from cargento_runtime import aggregate, observer, reading, reading_route, sessions
+from cargento_runtime import (
+    aggregate,
+    observer,
+    project_context,
+    reading,
+    reading_route,
+    sessions,
+)
 from cargento_runtime import annotations as annotation_store
 
 from .next_harness import named_machine, named_platform
@@ -624,7 +631,7 @@ class WhereToolOutputWouldGoIsNamedOrItIsNotSent(unittest.TestCase):
                 "claude", binary_resolver=_resolver({"codex"}), environ={}, root=self.root
             )
         self.assertEqual("", route["destination"])
-        self.assertIn("are not sent", route["tool_output"])
+        self.assertIn("is not sent", route["tool_output"])
 
     def test_a_codex_reader_with_no_override_is_told_openai(self) -> None:
         self.assertEqual("OpenAI", self._codex({}))
@@ -779,7 +786,11 @@ class AClaudeCodeReaderIsToldWhatTheChecksSendBeforeThePress(unittest.TestCase):
         )
         self.assertEqual("", route["destination"])
         self.assertIn("not sent", route["tool_output"])
-        self.assertIn("cannot name where they would go", route["tool_output"])
+        self.assertIn("cannot name where it would go", route["tool_output"])
+        # The lines go with the words since the agent's messages carry them (owner,
+        # 2026-10-03), so this sentence no longer says they are kept back.
+        self.assertNotIn("outcome lines", route["tool_output"])
+        self.assertIn("your expected outcome lines", route["disclosure"])
         # Nor is any vendor claimed for the words (verifier ui4 C1).
         self.assertIn("which Cargento cannot name", route["disclosure"])
 
@@ -828,11 +839,13 @@ class TheDisclosureIsAShortListThatKeepsEveryFact(unittest.TestCase):
         # Words before the 2026-10-02 ruling: 128 for a Codex session, 239 for a Claude Code
         # session read by Claude Code, 202 for one read by Codex. The first short list was 75,
         # 148 and 121 in 5, 7 and 6 items, and verifier ui4 V2 found the Claude Code route still
-        # repeating itself; "about five items", the owner said.
+        # repeating itself; "about five items", the owner said. The owner's ruling of
+        # 2026-10-03 added five words to a Claude Code session's list: the agent's messages
+        # are sent, and the outcome lines moved from the tool output item to the `Sent:` one.
         budgets = {
             "codex": (4, 61),
-            "claude": (6, 120),
-            "claude-by-codex": (5, 101),
+            "claude": (6, 125),
+            "claude-by-codex": (5, 106),
             "codex-by-claude": (5, 98),
         }
         for name, (harness, installed) in self.ROUTES.items():
@@ -867,11 +880,16 @@ class TheDisclosureIsAShortListThatKeepsEveryFact(unittest.TestCase):
         for name, (harness, installed) in self.ROUTES.items():
             route = _named(harness, installed)
             text, label = route["disclosure"], route["label"]
+            messages = (
+                "your messages and the agent's messages"
+                if harness in reading_route.AGENT_MESSAGE_HARNESSES
+                else "your messages"
+            )
             with self.subTest(route=name):
                 for fact in (
                     "your goal",
                     "bounded set",
-                    f"your messages up to {cap} each",
+                    f"{messages} up to {cap} each",
                     "credential shapes redacted",
                     f"To: {route['vendor']}, off this machine",
                     f"your {label} CLI and its sign-in",
@@ -882,13 +900,20 @@ class TheDisclosureIsAShortListThatKeepsEveryFact(unittest.TestCase):
                     self.assertIn(fact, text.replace("\u2019", "'"))
 
     def test_outcome_lines_are_named_only_where_they_can_be_sent(self) -> None:
-        # They go only beside work evidence: a check on Claude Code, which goes only with tool
-        # output, and a work result on Pi. A Codex session has neither, so its list is silent.
+        # They go beside work evidence or the agent's messages: on Claude Code with the
+        # agent's messages, whether or not tool output may go (owner, 2026-10-03), and
+        # beside a work result on Pi. A Codex session has neither, so its list is silent.
         self.assertEqual(
             set(reading.WORK_EVIDENCE_BY_HARNESS), set(reading_route.OUTCOME_HARNESSES)
         )
+        self.assertEqual(
+            project_context.AGENT_MESSAGE_HARNESSES, reading_route.AGENT_MESSAGE_HARNESSES
+        )
         claude = _named("claude", {"claude"})
-        self.assertIn("expected outcome lines", claude["tool_output"])
+        self.assertNotIn("outcome lines", claude["tool_output"])
+        sent = next(part for part in claude["disclosure_parts"] if part.startswith("Sent:"))
+        self.assertIn("the agent's messages", sent)
+        self.assertIn("your expected outcome lines", sent)
         pi = _named("pi", {"codex"})
         self.assertIn("expected outcome lines", pi["disclosure"])
         self.assertIn("work result", pi["disclosure"])

@@ -330,7 +330,7 @@ console.log(JSON.stringify({posts, html: control()}));
         assert isinstance(out, dict)
         self.assertEqual(1, len(out["posts"]))
         self.assertNotIn("tool_output", out["posts"][0])
-        self.assertIn("are not sent, because Cargento cannot name", out["html"])
+        self.assertIn("is not sent, because Cargento cannot name", out["html"])
 
     def test_a_destination_that_moved_is_said_once_and_asks_again(self) -> None:
         moved = _route("claude", {"codex"}, environ={"OPENAI_BASE_URL": "https://gw.example"})
@@ -386,7 +386,6 @@ console.log(JSON.stringify({posts: posts.length, html: control()}));
                 )
                 assert isinstance(out, dict)
                 self.assertIn(route["tool_output"], out["work"])
-                if name == "named":
-                    self.assertEqual("", out["reading"], "a sent check still demotes the output")
-                else:
-                    self.assertIn("cannot name where Codex would send them", out["reading"])
+                # Lifted on both since the owner's ruling of 2026-10-03: where no check can be
+                # sent, the agent's own messages still carry a line's verdict.
+                self.assertEqual("", out["reading"], "a reading that can be made still demotes")

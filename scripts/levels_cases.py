@@ -780,7 +780,7 @@ def _score_case(
     if refusal:
         analysis = {"level": None, "reasons": [], "outcome": f"refused:{refusal}"}
     elif value is not None and marked.get("analysis"):
-        level = levels.analysis_level(value, evidence, outcome_lines=len(lines), lines=lines)
+        level = levels.analysis_level(value, evidence, outcome_lines=len(lines))
         analysis = _level_row(level, str(marked["analysis"]))
     return {
         "kind": case["kind"] if case.get("kind") in KINDS else "other",

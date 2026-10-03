@@ -457,7 +457,6 @@ def _analysis_levels(
         assessment,
         evidence,
         outcome_lines=len(read["lines"]),
-        lines=runtime_reading.outcome_lines(read),
     )
     return [
         {
@@ -2410,7 +2409,15 @@ class _RequestHandler(BaseHTTPRequestHandler):
                 row,
                 self._session_facts(row),
                 floor=annotation_store.direction_floor(entry, row),
-                lines_judged=bool(route["provider"] and route["destination"]),
+                # The agent's messages carry a line verdict where no check can be sent
+                # (owner ruling, 2026-10-03), as the page's `nextReadingOutputLimit` says.
+                lines_judged=bool(
+                    route["provider"]
+                    and (
+                        route["destination"]
+                        or harness in runtime_project_context.AGENT_MESSAGE_HARNESSES
+                    )
+                ),
             )
         self._send(json.dumps(answer, separators=(",", ":")).encode(), "application/json")
 

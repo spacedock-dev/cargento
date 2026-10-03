@@ -270,9 +270,17 @@ class OwnAccountOnlyTest(unittest.TestCase):
     """845fe493: the final message claims a layout no check covers.
 
     The live estimate reads checks and file paths, not what the intent says, so a
-    session whose checks pass reads "None or low" there and says so. An analysis
-    may not rest an outcome line on the agent's own account (DEC-17 rule 7).
+    session whose checks pass reads "None or low" there and says so. Since the
+    owner's ruling of 2026-10-03 a reading may rest an outcome line on the agent's
+    own account, but the analysis floor still needs a passing check (DEC-26): the
+    agent's word alone never reassures, and a departure on it reads Medium.
     """
+
+    def test_a_departure_on_the_agents_account_reads_medium(self) -> None:
+        got = analyze(a_reading(line_1=criterion(reading.RESULT_DEPARTURE, "m1")), PASSING)
+        self.assertEqual(got.level, levels.MEDIUM)
+        self.assertIn(levels.REASON_DEPARTURE, got.reasons)
+        self.assertEqual(got.cites, ("m1",))
 
     def test_the_live_estimate_meets_its_floor_and_says_what_it_read(self) -> None:
         got = levels.live_level(PASSING, intent("Works on a phone"))
@@ -422,38 +430,40 @@ class FloorTest(unittest.TestCase):
         self.assertEqual(got.cites, ("c1",))
 
 
-class ALineAboutWhatTheAgentTellsYouIsNeverShownTest(unittest.TestCase):
-    """DRC-4742: a stored `consistent` on a line about what the agent tells the
-    reader, stored before the resolver withdrew it, is not counted as shown."""
+class ALineAboutWhatTheAgentTellsYouIsReadLikeAnyOtherTest(unittest.TestCase):
+    """DRC-4742 withdrew a `consistent` on a line about what the agent tells the
+    reader. Since the owner's ruling of 2026-10-03 the agent's messages are in
+    evidence, so such a line is checkable and the level reads it like any other."""
 
     LINE = "node --test is run once, unpiped, and its counts are reported"
 
-    def test_a_stored_consistent_on_a_telling_line_is_not_shown(self) -> None:
-        got = levels.analysis_level(SUPPORTED, PASSING, outcome_lines=1, lines=(self.LINE,))
-        self.assertEqual(levels.NOT_ENOUGH, got.level)
-        self.assertNotIn("c1", got.cites)
-
-    def test_the_whole_line_is_read_not_the_capped_clause_stored_beside_it(self) -> None:
-        line = "node --test " + "runs every case " * 20 + "and is reported"
+    def test_a_stored_consistent_on_a_telling_line_with_a_passing_check_meets_the_floor(
+        self,
+    ) -> None:
         stored = a_reading(
             goal=criterion(reading.RESULT_CONSISTENT, "m1"),
-            line_1={**criterion(reading.RESULT_CONSISTENT, "c1"), "clause": line[:240]},
+            line_1={**criterion(reading.RESULT_CONSISTENT, "c1", "m1"), "clause": self.LINE},
         )
-        got = levels.analysis_level(stored, PASSING, outcome_lines=1, lines=(line,))
-        self.assertEqual(levels.NOT_ENOUGH, got.level)
-
-    def test_without_the_lines_the_stored_clause_is_read(self) -> None:
-        stored = a_reading(
-            goal=criterion(reading.RESULT_CONSISTENT, "m1"),
-            line_1={**criterion(reading.RESULT_CONSISTENT, "c1"), "clause": self.LINE},
-        )
-        self.assertEqual(levels.NOT_ENOUGH, analyze(stored, PASSING).level)
-
-    def test_a_line_without_a_telling_verb_still_meets_the_floor(self) -> None:
-        got = levels.analysis_level(
-            SUPPORTED, PASSING, outcome_lines=1, lines=("node --test passes",)
-        )
+        got = analyze(stored, PASSING)
         self.assertEqual(levels.NONE_OR_LOW, got.level)
+        self.assertIn("c1", got.cites)
+
+    def test_on_the_agents_account_alone_it_never_reaches_the_floor(self) -> None:
+        stored = a_reading(
+            line_1={**criterion(reading.RESULT_CONSISTENT, "m1"), "clause": self.LINE},
+        )
+        got = analyze(stored, PASSING)
+        self.assertEqual(levels.NOT_ENOUGH, got.level)
+        self.assertIn(levels.REASON_LINE_NOT_SHOWN, got.reasons)
+
+    def test_a_stored_tells_the_person_row_still_reads_back(self) -> None:
+        stored = a_reading(
+            goal=criterion(reading.RESULT_CONSISTENT, "m1"),
+            line_1=criterion(reading.RESULT_UNVERIFIABLE, why=reading.WHY_TELLS_THE_PERSON),
+        )
+        got = analyze(stored, PASSING)
+        self.assertEqual(levels.NOT_ENOUGH, got.level)
+        self.assertNotIn(levels.REASON_READING_MALFORMED, got.reasons)
 
 
 class ExtremeTest(unittest.TestCase):

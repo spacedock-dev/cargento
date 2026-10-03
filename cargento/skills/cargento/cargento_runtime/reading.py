@@ -17,9 +17,9 @@ renders only under a departure that already carries a resolved citation.
 That is why rules 3 and 7 cannot be violated rather than rarely violated. A
 departure citing nothing is unrenderable because a citation is an index into a
 list the code holds, so an invented one resolves to nothing and demotes. A
-deliverable claim resting on nothing that demonstrates work is unrenderable
-because the constraint is either never put to the model, or demoted before it
-is published.
+deliverable claim resting on nothing that demonstrates work and no account of
+the agent's is unrenderable because the constraint is either never put to the
+model, or demoted before it is published.
 
 The numbering is bound the same way. `build_prompt` returns a `Selection`,
 the handle for exactly the rows the model was shown, and `resolve` accepts
@@ -207,8 +207,11 @@ WHY_CHECK_READ_INCOMPLETE = "check-read-incomplete"
 # room in the prompt, so Expected Output was not posed for want of room rather
 # than for want of work.
 WHY_CHECKS_NOT_READ = "checks-not-read"
-# An outcome line about what the agent tells the reader, which no record can
-# show, whatever check passed (owner ruling 2026-10-01, DRC-4742).
+# An outcome line about what the agent tells the reader, which a record holding
+# no message of the agent's could not show (owner ruling 2026-10-01, DRC-4742).
+# No longer emitted: the agent's messages are evidence now (owner, 2026-10-03),
+# and a stored reading carrying it still reads back. `WHY_NO_WORK_SHOWN` still
+# is, for an outcome-line verdict resting only on the reader's words or Cargento's.
 WHY_TELLS_THE_PERSON = "tells-the-person"
 WHY_TOKENS = (
     WHY_STANDS,
@@ -268,6 +271,12 @@ QUOTED_AS = "quoted_as"
 # Keyed on the type alone, removing the harness gate let that final answer pose
 # Expected Output and carry a `consistent` (review, 2026-09-24). Held equal to
 # the page's `NEXT_READING_WORK_BY_HARNESS`.
+#
+# Since the owner's ruling of 2026-10-03 the agent's own account is evidence
+# too, so an agent-authored entry may carry an outcome-line verdict
+# (`_rests_on_nothing`) without being work; `bears_on_output` cites the ruling.
+# This table still says what is work, which the drift floor and a check-backed
+# verdict read.
 WORK_EVIDENCE_BY_HARNESS = {
     "pi": frozenset({"work_result", "result"}),
     "claude": frozenset({"tool_report"}),
@@ -716,6 +725,14 @@ WORDS_FIELD = "reader_words"
 # first: fourteen long messages pushed a failed check out with budget unused, and five CJK ones
 # every check, because the cap counts characters and the budget bytes.
 WORDS_SHARE_DIVISOR = 2
+# The agent's messages whole (owner ruling, 2026-10-03), under the same cap as the reader's and
+# a share of their own, a quarter, spent only after the reader's words: never in place of an
+# entry, and never in place of a reader's message read whole. The fact field
+# `project_context` writes them in, on an agent message only.
+AGENT_WORDS_FIELD = "agent_words"
+AGENT_WORDS_SHARE_DIVISOR = 4
+# An agent message's type: what the agent said, as `project_context` publishes it on Claude Code.
+AGENT_MESSAGE_TYPE = "agent_message"
 # How much of the cutoff sentence the store keeps. It was the annotation text
 # cap, 240, and the counted sentence alone runs to about 180, so the clauses
 # saying the checks were not sent, or had no room, were cut off in the store
@@ -752,6 +769,9 @@ class LedgerEntry(TypedDict):
     # A person's message whole, which the prompt sends in place of the summary
     # only inside `WORDS_SHARE_DIVISOR`'s share. Absent on every other row.
     words: NotRequired[str]
+    # An agent message whole, sent in place of its summary only inside
+    # `AGENT_WORDS_SHARE_DIVISOR`'s share. Absent on every other row.
+    agent_words: NotRequired[str]
     # Whether this entry demonstrates work on its session's harness, stamped by
     # `build_ledger` from `WORK_EVIDENCE_BY_HARNESS`.
     work: NotRequired[bool]
@@ -786,7 +806,7 @@ class Selection:
     def __post_init__(self) -> None:
         if self.asked_output is None:
             object.__setattr__(
-                self, "asked_output", any(demonstrates_work(entry) for entry in self.entries)
+                self, "asked_output", any(bears_on_output(entry) for entry in self.entries)
             )
 
     def by_index(self) -> dict[int, LedgerEntry]:
@@ -1084,10 +1104,11 @@ def author_of(fact: Mapping[str, Any]) -> str:
     claims are Cargento's paraphrase, and matching the prefix alone counts the
     deterministic and unrecorded ones as the agent's own account.
 
-    Since the rule 7 amendment this no longer decides what may be said about a
-    deliverable -- `demonstrates_work` does. It still decides whether a verdict
-    rests on nothing but this board quoting itself, and it is what the cutoff
-    sentence counts.
+    Since the rule 7 amendment of 2026-09-10 it does not decide alone what may
+    be said about a deliverable: `demonstrates_work` does, and since the owner's
+    ruling of 2026-10-03 an agent-authored entry may carry that verdict too. It
+    still decides whether a verdict rests on nothing but this board quoting
+    itself, and it is what the cutoff sentence counts.
     """
     fact_type = str(fact.get("type") or "")
     if fact_type == "user_message":
@@ -1125,10 +1146,21 @@ def asks_output(output: str, entries: Iterable[Mapping[str, Any]]) -> bool:
     `consistent with the evidence read` against an empty clause.
 
     Keyed on the entries the prompt carried, not on the harness name: a prompt
-    with nothing that demonstrates work cannot support a deliverable verdict,
-    whichever harness it came from.
+    with nothing that demonstrates work and no message of the agent's cannot
+    support a deliverable verdict, whichever harness it came from.
     """
-    return bool(output.strip()) and any(demonstrates_work(entry) for entry in entries)
+    return bool(output.strip()) and any(bears_on_output(entry) for entry in entries)
+
+
+def bears_on_output(entry: Mapping[str, Any]) -> bool:
+    """Whether this entry can carry a verdict on an outcome line: work, or the agent's message.
+
+    The agent's messages are evidence of what it said, claimed and reported
+    (owner ruling, 2026-10-03), so the lines are asked whenever the agent spoke.
+    Only `project_context` writes `AGENT_MESSAGE_TYPE`, on Claude Code. See
+    [DEC-17](docs/design-reading-a-session.md#amended-2026-10-03-owner-the-agents-own-words-are-evidence).
+    """
+    return demonstrates_work(entry) or str(entry.get("type") or "") == AGENT_MESSAGE_TYPE
 
 
 def evidence_at(entry: Mapping[str, Any]) -> float | None:
@@ -1261,8 +1293,9 @@ def build_ledger(
     [DEC-23](docs/design-reading-a-session.md#dec-23-a-claude-code-sessions-record-of-its-checks-may-show-the-work)
 
     A second difference: a person's message carries its `WORDS_FIELD` as
-    `words` beside the summary the page shows, and the page is never sent
-    them. Both name the same fact id, so a citation still resolves.
+    `words` beside the summary the page shows, an agent message its
+    `AGENT_WORDS_FIELD` as `agent_words`, and the page is never sent either.
+    Both name the same fact id, so a citation still resolves.
     """
     if not harness.strip() or not sid.strip():
         return ()
@@ -1311,6 +1344,7 @@ def build_ledger(
             "work": fact.get("type") in WORK_EVIDENCE_BY_HARNESS.get(harness, frozenset()),
         }
         _add_person_words(row, fact)
+        _add_agent_words(row, fact)
         if is_report and tool_output is not None:
             _add_report_fields(row, fact, cap_chars, tool_output, changed_after, read_incomplete)
         elif fact.get("subject") == CHECK_SUBJECT:
@@ -1332,6 +1366,21 @@ def _add_person_words(row: LedgerEntry, fact: Mapping[str, Any]) -> None:
     words = _menu_field(records.safe_text(fact.get(WORDS_FIELD), LEDGER_WORDS_CAP_CHARS)).strip()
     if words:
         row["words"] = words
+
+
+def _add_agent_words(row: LedgerEntry, fact: Mapping[str, Any]) -> None:
+    """An agent message whole, beside its summary, on that message's row only.
+
+    A field apart from a person's `words`, so the prompt spends each from its
+    own share and no other entry type ever carries either.
+    """
+    if fact.get("type") != AGENT_MESSAGE_TYPE or row["author"] != AUTHOR_AGENT:
+        return
+    words = _menu_field(
+        records.safe_text(fact.get(AGENT_WORDS_FIELD), LEDGER_WORDS_CAP_CHARS)
+    ).strip()
+    if words:
+        row["agent_words"] = words
 
 
 def _add_report_fields(
@@ -1711,18 +1760,17 @@ TOOL_OUTPUT_NOTE = (
 # [DEC-23](docs/design-reading-a-session.md#the-closed-lists)
 # requires relevance, which a recorded status alone cannot establish. The shared
 # trusted header keeps that rule outside every route's untrusted fields.
-# [DEC-17](docs/design-reading-a-session.md#dec-17-the-shape-contract)
-# still permits labelled Goal narration.
+# The agent's messages are evidence of what it said, claimed and reported, by
+# the ruling `bears_on_output` cites.
 EVIDENCE_RULES = (
     "A check-backed verdict needs the latest relevant run inside the evidence window: "
     "failed for departure; passed with no later change or incomplete read for consistent. "
     "A check must cover the whole constraint. A suite pass cannot prove a toggle, "
     "scorekeeping, reload persistence, run count or piping it did not exercise. "
-    "Test counts are not the agent's report to the person. A write path proves no UI "
-    "behavior. Partial or unknown coverage is unverifiable. The agent's own account "
-    "cannot support an outcome verdict. "
-    "For Goal consistency on the agent's account, judge only what the session said, "
-    "not whether the work exists.\n"
+    "A write path proves no UI behavior. Partial or unknown coverage is unverifiable. "
+    "Agent messages, not test counts, are its report; compare them with checks, writes and "
+    "the person's words. A contradicted claim, promised work not done, or work done instead "
+    "of the ask is a departure; a consistent may rest on one cited.\n"
 )
 
 
@@ -1805,14 +1853,15 @@ def build_prompt(
     forging a second menu: the scrub collapses the newlines that would start
     one.
 
-    The outcome lines are posed only when the selected rows carry work
-    (`asks_output`), which is known only after selection: the header is sized
-    with them, and dropped to the header without them when nothing selected
-    demonstrates work. They go together or not at all, never some of them,
-    and they go when the header holding them would pass `INTENT_SHARE_BYTES`.
-    No line is clipped here: the store already bounds each to one line of 240
-    characters. If even the smaller header cannot fit, no prompt or entries
-    are returned: the producer withholds without calling a model.
+    The outcome lines are posed only when the selected rows carry work or a
+    message of the agent's (`asks_output`), which is known only after
+    selection: the header is sized with them, and dropped to the header
+    without them when nothing selected bears on them. They go together or not
+    at all, never some of them, and they go when the header holding them
+    would pass `INTENT_SHARE_BYTES`. No line is clipped here: the store
+    already bounds each to one line of 240 characters. If even the smaller
+    header cannot fit, no prompt or entries are returned: the producer
+    withholds without calling a model.
     """
     budget = max(0, max_bytes)
     # The goal's own bound, a quarter of the budget, so it cannot crowd out
@@ -1847,7 +1896,11 @@ def build_prompt(
 
     def row_text(index: int, row: LedgerEntry, *, whole: bool = False) -> str:
         tail = row.get("tail", "")
-        text = row.get("words", row["summary"]) if whole else row["summary"]
+        text = (
+            (row.get("words") or row.get("agent_words") or row["summary"])
+            if whole
+            else row["summary"]
+        )
         return records.redact_secrets(
             f"[{index}] {row['type']}{MENU_SEPARATOR}{row['source']}"
             f"{MENU_SEPARATOR}{text}"
@@ -1875,16 +1928,22 @@ def build_prompt(
         chosen.append(i)
     # Then the words, newest message first, each in place of its summary only where the
     # whole row fits the words' share and the room left; one that does not keeps its summary.
+    # The reader's first under their half, then the agent's under their own quarter, so the
+    # agent's never take room a reader's message read whole would have had.
     whole: set[int] = set()
-    share = budget // WORDS_SHARE_DIVISOR
-    for i in sorted(
-        (i for i in chosen if citable[i].get("words")), key=lambda i: -citable[i]["at"]
+    for field_name, divisor in (
+        ("words", WORDS_SHARE_DIVISOR),
+        ("agent_words", AGENT_WORDS_SHARE_DIVISOR),
     ):
-        size = len(row_text(10**width - 1, citable[i], whole=True).encode("utf-8", "replace"))
-        if share >= size and budget - used >= size - sizes[i]:
-            share -= size
-            used += size - sizes[i]
-            whole.add(id(citable[i]))
+        share = budget // divisor
+        for i in sorted(
+            (i for i in chosen if citable[i].get(field_name)), key=lambda i: -citable[i]["at"]
+        ):
+            size = len(row_text(10**width - 1, citable[i], whole=True).encode("utf-8", "replace"))
+            if share >= size and budget - used >= size - sizes[i]:
+                share -= size
+                used += size - sizes[i]
+                whole.add(id(citable[i]))
     selected = tuple(citable[i] for i in sorted(chosen))
     if posed and not asks_output(" ".join(line_texts), selected):
         header, posed = without, False
@@ -2115,6 +2174,13 @@ def _changed_after_pass(entry: Mapping[str, Any], window_start: float) -> bool:
     )
 
 
+def _failed_in_window(entry: Mapping[str, Any], window_start: float) -> bool:
+    """A check whose latest run failed inside the window: what a departure may rest on."""
+    return entry.get("subject") == CHECK_SUBJECT and check_supports(
+        entry, RESULT_DEPARTURE, window_start
+    )
+
+
 def _incomplete_pass(entry: Mapping[str, Any], window_start: float) -> bool:
     """A pass withheld solely because later work was not fully read."""
     return entry.get("read_incomplete") is True and check_supports(
@@ -2130,10 +2196,13 @@ def _rests_on_nothing(result: str, name: str, cited: Sequence[LedgerEntry]) -> s
     than one fires: a derived-only citation is also uncorroborated, and the
     page says "quoting itself" for it.
     """
-    # Rule 7, as amended: a verdict about the deliverable needs an entry that
-    # demonstrates work. The reader's own request does not, and nor does the
-    # agent saying it finished.
-    if is_outcome_line(name) and not any(demonstrates_work(entry) for entry in cited):
+    # Rule 7, as amended twice: a verdict about the deliverable needs an entry
+    # that demonstrates work or the agent's own account, which is evidence of
+    # what it said and did (owner, 2026-10-03). The reader's own request is
+    # neither, and nor is Cargento's paraphrase.
+    if is_outcome_line(name) and not any(
+        demonstrates_work(entry) or entry["author"] == AUTHOR_AGENT for entry in cited
+    ):
         return WHY_NO_WORK_SHOWN
     # On either constraint, a verdict resting only on Cargento's own paraphrase
     # is this board quoting itself.
@@ -2152,36 +2221,6 @@ def _rests_on_nothing(result: str, name: str, cited: Sequence[LedgerEntry]) -> s
     return WHY_STANDS
 
 
-# Whole words, so "reporter" and "sayings" name things and stay out; "report"
-# matches as a noun too, which abstains more often and never less. The one
-# exclusion is a word followed by `.` or `/` and a word character, such as
-# "report.csv exists" (an existing fixture here). Nothing else about a path or a
-# tool name is read: "src/report" and "npm run report" still abstain.
-_TELLS_THE_PERSON = re.compile(
-    r"\b(?:report(?:s|ed|ing)?|tell(?:s|ing)?|told|explain(?:s|ed|ing)?"
-    r"|summari[sz](?:e|es|ed|ing)|say(?:s|ing)?|said|describ(?:e|es|ed|ing)"
-    r"|mention(?:s|ed|ing)?|let(?:s|ting)?\s+(?:me|us|you)\s+know)\b(?![./]\w)",
-    re.IGNORECASE,
-)
-
-
-def _about_what_the_agent_tells(result: str | None, name: str, line_text: str) -> bool:
-    """A `consistent` on an outcome line whose subject is what the agent tells the reader.
-
-    A record can show a check ran and passed; nothing in it shows what the agent
-    then said, so the verdict is withdrawn. Measured: the third scored Claude Code
-    qualification run took "... and its counts are reported" as consistent on a
-    passing check after #450's prompt wording had already said it could not.
-    Owner ruling 2026-10-01, DRC-4742, chosen over more prompt wording:
-    [DEC-23](docs/design-reading-a-session.md#amended-2026-10-01-a-line-about-what-the-agent-tells-you-cannot-be-shown).
-    """
-    return (
-        result == RESULT_CONSISTENT
-        and is_outcome_line(name)
-        and _TELLS_THE_PERSON.search(line_text) is not None
-    )
-
-
 def _evidence_rules(
     result: str,
     name: str,
@@ -2189,7 +2228,6 @@ def _evidence_rules(
     *,
     window_start: float,
     unread_failures: Sequence[LedgerEntry],
-    line_text: str = "",
 ) -> tuple[list[LedgerEntry], str]:
     """The entries a verdict rests on, and which rule it fails, as its `why` token.
 
@@ -2198,11 +2236,24 @@ def _evidence_rules(
     published citations are only the entries that carry it. The evidence rules
     then run on what is left, and a failed check the prompt had no room for
     keeps a `consistent` on Expected Output from standing on its silence.
+
+    A `consistent` that cited a check failing inside the window does not stand
+    on what is left unless that is work too: the agent's account beside a
+    failure it cited is the record contradicting the claim, which the
+    2026-10-03 ruling reads as a departure, never as reassurance. A cited write
+    or an aged pass dropped beside it does not withdraw it on its own.
     """
     supporting = [entry for entry in cited if check_supports(entry, result, window_start)]
     dropped = len(supporting) < len(cited)
     why = _rests_on_nothing(result, name, supporting) if supporting else WHY_CHECK_DOES_NOT_SHOW_IT
     if dropped and why in {WHY_NO_WORK_SHOWN, WHY_UNCORROBORATED}:
+        why = WHY_CHECK_DOES_NOT_SHOW_IT
+    if (
+        not why
+        and result == RESULT_CONSISTENT
+        and not any(demonstrates_work(entry) for entry in supporting)
+        and any(_failed_in_window(entry, window_start) for entry in cited)
+    ):
         why = WHY_CHECK_DOES_NOT_SHOW_IT
     if (
         why == WHY_CHECK_DOES_NOT_SHOW_IT
@@ -2223,15 +2274,10 @@ def _evidence_rules(
         and any(check_supports(entry, RESULT_DEPARTURE, window_start) for entry in unread_failures)
     ):
         why = WHY_FAILED_CHECK_UNREAD
-    # Last, and only where nothing above fired, so a line resting only on the
-    # agent's account keeps rule 7's `no-work-shown`.
-    if not why and _about_what_the_agent_tells(result, name, line_text):
-        why = WHY_TELLS_THE_PERSON
     withdrawn = why in {
         WHY_CHECK_DOES_NOT_SHOW_IT,
         WHY_CHANGED_AFTER_CHECK,
         WHY_CHECK_READ_INCOMPLETE,
-        WHY_TELLS_THE_PERSON,
     }
     return ([] if withdrawn else supporting), why
 
@@ -2245,13 +2291,12 @@ def _resolve_one(
     detail_cap_chars: int,
     window_start: float = 0.0,
     unread_failures: Sequence[LedgerEntry] = (),
-    line_text: str | None = None,
 ) -> Criterion:
     """One constraint's criterion, with every server-side rule applied.
 
     `clause` is the constraint's text as the row publishes it, capped for
-    display. `line_text` is the whole of it, which the rules read so nothing
-    past the cap escapes them; it defaults to `clause`.
+    display. No rule reads it since the line about what the agent tells you
+    stopped being withdrawn (owner, 2026-10-03).
 
     Each demotion is one-way: a criterion only ever moves toward
     `not verifiable from available evidence`, never away from it, and never
@@ -2290,7 +2335,6 @@ def _resolve_one(
             cited,
             window_start=window_start,
             unread_failures=unread_failures,
-            line_text=clause if line_text is None else line_text,
         )
         if rests_on_nothing:
             result, why = RESULT_UNVERIFIABLE, rests_on_nothing
@@ -2415,7 +2459,6 @@ def resolve(
             detail_cap_chars=detail_cap_chars,
             window_start=window_start,
             unread_failures=selection.unread_failures,
-            line_text=clauses[name],
         )
     return out
 

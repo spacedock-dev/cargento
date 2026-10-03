@@ -1345,7 +1345,25 @@ class EachLineIsAskedOnItsOwnTest(_ProducerCase):
         self.assertEqual({"goal", "line_1"}, set(assessment["criteria"]))
         self.assertEqual("a CSV export", assessment["criteria"]["line_1"]["clause"])
 
-    def test_a_line_resting_only_on_the_agents_narration_is_not_verifiable_while_another_stands(
+    def test_a_line_resting_only_on_the_readers_words_is_not_verifiable_while_another_stands(
+        self,
+    ) -> None:
+        request = {**_pi_fact("n1", 90.0, "please finish it"), "type": "user_message"}
+        facts = [request, _pi_fact("f1", 100.0)]
+        raw = _reply(
+            ["goal", "line_1", "line_2"],
+            line_1={"result": "consistent", "cites": [1], "detail": ""},
+            line_2={"result": "consistent", "cites": [2], "detail": ""},
+        )
+
+        assessment, _why, _spent = self.produce(raw, lines=SIX[:2], facts=facts)
+
+        assert assessment is not None
+        self.assertEqual(reading.WHY_NO_WORK_SHOWN, assessment["criteria"]["line_1"]["why"])
+        self.assertEqual(reading.RESULT_UNVERIFIABLE, assessment["criteria"]["line_1"]["result"])
+        self.assertEqual(reading.RESULT_CONSISTENT, assessment["criteria"]["line_2"]["result"])
+
+    def test_a_line_resting_on_the_agents_narration_stands_since_the_2026_10_03_ruling(
         self,
     ) -> None:
         narration = {**_pi_fact("n1", 90.0, "said it was finished"), "type": "tool_use"}
@@ -1359,9 +1377,8 @@ class EachLineIsAskedOnItsOwnTest(_ProducerCase):
         assessment, _why, _spent = self.produce(raw, lines=SIX[:2], facts=facts)
 
         assert assessment is not None
-        self.assertEqual(reading.WHY_NO_WORK_SHOWN, assessment["criteria"]["line_1"]["why"])
-        self.assertEqual(reading.RESULT_UNVERIFIABLE, assessment["criteria"]["line_1"]["result"])
-        self.assertEqual(reading.RESULT_CONSISTENT, assessment["criteria"]["line_2"]["result"])
+        self.assertEqual(reading.RESULT_CONSISTENT, assessment["criteria"]["line_1"]["result"])
+        self.assertEqual(reading.WHY_STANDS, assessment["criteria"]["line_1"]["why"])
 
     def test_a_check_that_does_not_show_a_lines_verdict_withdraws_only_that_line(self) -> None:
         passed = {

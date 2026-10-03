@@ -199,11 +199,18 @@ class _Rows:
             return _NOT_SHOWN, None
         timed = [f for f in cites if reading.valid_prompt_time(f.get("at")) is not None]
         if result == reading.RESULT_DEPARTURE:
+            # On a line a departure stands on work or on the agent's own account, which is
+            # evidence of what it said and did (owner ruling, 2026-10-03), as the page's
+            # rule 7 lets it. A consistent below keeps the tool's report alone.
             standing = [
                 f
                 for f in timed
                 if reading.check_supports(f, result, self.window)
-                and (not line or reading.demonstrates_work(f))
+                and (
+                    not line
+                    or reading.demonstrates_work(f)
+                    or reading.author_of(f) == reading.AUTHOR_AGENT
+                )
             ]
             return (_DEPARTED, standing[0]) if standing else (_NOT_SHOWN, None)
         # "As the tool reported" is the only consistent form the template has, and on an

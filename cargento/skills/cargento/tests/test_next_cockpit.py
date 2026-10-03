@@ -7687,7 +7687,9 @@ console.log(JSON.stringify({shown: stored("check-does-not-show-it"),
             out["crowded"],
         )
 
-    def test_an_agents_final_answer_is_work_on_pi_and_not_on_codex(self) -> None:
+    def test_an_agents_final_answer_is_work_on_pi_and_its_account_on_codex(self) -> None:
+        # Since the owner's ruling of 2026-10-03 the agent's own account may carry a
+        # line where it is cited, so both stand; only Pi's is work.
         out = self.run_fixture(
             self.ENTRIES
             + """
@@ -7698,14 +7700,15 @@ const entries = harness => nextCockpitWorkEntries({harness, sid:"s1"}, {facts:[f
 const on = harness => output("consistent with the evidence read", ["r1"], entries(harness));
 console.log(JSON.stringify({
   codex: entries("codex").map(e => e.work), pi: entries("pi").map(e => e.work),
-  codexResult: on("codex").result, piResult: on("pi").result,
+  codexResult: on("codex").result, piResult: on("pi").result, codexRests: on("codex").restsOn,
 }));
 """
         )
         assert isinstance(out, dict)
         self.assertEqual([False], out["codex"])
         self.assertEqual([True], out["pi"])
-        self.assertEqual("not verifiable from available evidence", out["codexResult"])
+        self.assertEqual("consistent with the evidence read", out["codexResult"])
+        self.assertEqual("agent", out["codexRests"])
         self.assertEqual("consistent with the evidence read", out["piResult"])
 
 

@@ -374,14 +374,13 @@ class TheCorrectionRoundOnThePageTest(_ChecklistPage):
 
         self.assertNotIn("LINE 1", self.reading_block(html))
 
-    def test_a_line_resting_only_on_narration_is_not_verifiable_on_the_page(self) -> None:
+    def _line_2_resting_on(self, cite: str) -> Any:
         consistent = 'result:"consistent with the evidence read", detail:""'
         criteria = (
             f'goal:{{{self.UNV}, clause:"G"}}, line_1:{{{self.UNV}, clause:"A"}}, '
-            f'line_2:{{{consistent}, cites:["task-a"], clause:"B"}}'
+            f'line_2:{{{consistent}, cites:["{cite}"], clause:"B"}}'
         )
-
-        out = self.page(
+        return self.page(
             lines_setup(["A", "B"]) + self.reading(criteria),
             """
 const session = nextCockpitFocusedSession(nextCockpitRouteGroup());
@@ -389,11 +388,21 @@ const annotation = nextCockpitAnnotation(session);
 const source = nextCockpitWorkSource(nextCockpitRouteGroup(), session);
 const shape = nextCockpitReadingShape(annotation.assessment, annotation,
   source.all || source.entries, "", false);
-console.log(JSON.stringify(shape.criteria.map(row => [row.key, row.result])));
+console.log(JSON.stringify(shape.criteria.map(row => [row.key, row.result, row.restsOn])));
 """,
         )
 
-        self.assertEqual(["line_2", reading.RESULT_UNVERIFIABLE], out[-1])
+    def test_a_line_resting_only_on_the_readers_words_is_not_verifiable_on_the_page(
+        self,
+    ) -> None:
+        out = self._line_2_resting_on("fo-b")
+        self.assertEqual(["line_2", reading.RESULT_UNVERIFIABLE, ""], out[-1])
+
+    def test_a_line_resting_on_the_agents_narration_stands_on_the_page(self) -> None:
+        # The owner's ruling of 2026-10-03: what the agent said or did is evidence, and the
+        # row says it rests on the session's account, not a check.
+        out = self._line_2_resting_on("task-a")
+        self.assertEqual(["line_2", reading.RESULT_CONSISTENT, "agent"], out[-1])
 
     def test_pressing_add_at_six_says_why_aloud(self) -> None:
         out = self.page(
