@@ -403,12 +403,18 @@ def _tool_output_sentence(provider: str, harness: str, where: str) -> str:
     """
     if not provider or harness not in TOOL_OUTPUT_HARNESSES:
         return ""
+    # The agent's messages go whether or not tool output may, and an agent
+    # repeats what its commands printed, so each form says so (review,
+    # 2026-10-03): "not sent" must not read as "never leaves".
     if not where:
-        return "Tool output is not sent, because Cargento cannot name where it would go."
+        return (
+            "Tool output is not sent, because Cargento cannot name where it would go, though "
+            "the agent's messages may quote it."
+        )
     return (
         "Tool output, only after you allow it: a check's command, result and last "
-        f"{TOOL_OUTPUT_TAIL_CHARS} characters of output as printed, and the paths of the files "
-        "it wrote."
+        f"{TOOL_OUTPUT_TAIL_CHARS} characters of output as printed, the paths of the files it "
+        "wrote; agent messages may quote it."
     )
 
 

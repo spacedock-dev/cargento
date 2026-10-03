@@ -54,6 +54,13 @@ DESTINATION_CHANGED = "Where your words go has changed since you allowed this, s
 # The reason a job's reservation is refused when the destination moved after
 # the press was admitted: the token the press answers `409` with.
 DESTINATION_MOVED = "destination-changed"
+# What a reading sends, as a number the Allow is bound to beside its
+# destination. 2 is the agent's own messages (owner ruling, 2026-10-03): an
+# Allow given before the disclosure named them never covers sending them, so
+# the first press after asks once more (review, 2026-10-03). Raise it whenever
+# the disclosure names a new class of content.
+CONTENT_VERSION = 2
+CONTENT_CHANGED = "What a reading sends has changed since you allowed this, so allow it again."
 
 
 class Status(TypedDict):
@@ -144,20 +151,40 @@ def _bound(db: Any) -> dict[str, str]:
     }
 
 
+def _content(db: Any) -> dict[str, int]:
+    """The content version each provider's Allow was given under; absent before the table."""
+    return {
+        name: version
+        for name, version in db.execute("SELECT provider, version FROM permission_content")
+        if name in PROVIDERS and isinstance(version, int) and not isinstance(version, bool)
+    }
+
+
 def _covered(
-    allowed: dict[str, bool], bound: dict[str, str], today: Mapping[str, str]
+    allowed: dict[str, bool],
+    bound: dict[str, str],
+    today: Mapping[str, str],
+    content: Mapping[str, int] | None = None,
 ) -> tuple[dict[str, bool], dict[str, str]]:
     """Which Allows cover a press today, and the line for each that does not.
 
     Exact equality, with "" a value of its own: an Allow given while the
     destination could not be named covers presses only while it still cannot.
-    A row with no recorded destination covers nothing.
+    A row with no recorded destination covers nothing, and neither does one
+    given under a content version older than `CONTENT_VERSION`.
     """
-    covered = {
+    versions = content or {}
+    placed = {
         name: allowed[name] and name in bound and bound[name] == today.get(name, "")
         for name in allowed
     }
-    rebind = {name: DESTINATION_CHANGED for name in allowed if allowed[name] and not covered[name]}
+    current = {name: versions.get(name, 0) >= CONTENT_VERSION for name in allowed}
+    covered = {name: placed[name] and current[name] for name in allowed}
+    rebind = {
+        name: DESTINATION_CHANGED if not placed[name] else CONTENT_CHANGED
+        for name in allowed
+        if allowed[name] and not covered[name]
+    }
     return covered, rebind
 
 
@@ -216,6 +243,13 @@ def _transaction(
             "CREATE TABLE IF NOT EXISTS permission_destination "
             "(provider TEXT PRIMARY KEY, destination TEXT NOT NULL)"
         )
+        # The content version each Allow was given under, a table of its own
+        # for the same reason as the destination's. A row written before it
+        # existed has no version here, so it covers no press until allowed again.
+        db.execute(
+            "CREATE TABLE IF NOT EXISTS permission_content "
+            "(provider TEXT PRIMARY KEY, version INTEGER NOT NULL)"
+        )
         db.execute("CREATE TABLE IF NOT EXISTS spends (at REAL NOT NULL)")
         # A table of its own rather than a column on `spends`: an older build's
         # `INSERT INTO spends VALUES (?)` fails against a second column, and a
@@ -267,6 +301,10 @@ def _transaction(
             db.execute(
                 "INSERT OR REPLACE INTO permission_destination VALUES (?, ?)", (provider, where)
             )
+            db.execute(
+                "INSERT OR REPLACE INTO permission_content VALUES (?, ?)",
+                (provider, CONTENT_VERSION),
+            )
             if tool_output:
                 db.execute(
                     "INSERT OR IGNORE INTO tool_output_permission VALUES (?, ?)",
@@ -280,9 +318,10 @@ def _transaction(
                 _write(db, name, False)
             allowed = dict.fromkeys(PROVIDERS, False)
             db.execute("DELETE FROM tool_output_permission")
+            db.execute("DELETE FROM permission_content")
             # Every bound destination goes too, by the trigger the legacy
             # row's write above fires, as it does for an older build's off.
-        covered, rebind = _covered(allowed, _bound(db), current)
+        covered, rebind = _covered(allowed, _bound(db), current, _content(db))
         answer = _answer(
             covered.get(provider, False),
             dates,

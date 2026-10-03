@@ -7661,15 +7661,22 @@ const stored = why => nextCockpitReadingShape(
   annotation, [], "").criteria.find(row => row.key === "output").why;
 console.log(JSON.stringify({shown: stored("check-does-not-show-it"),
   unread: stored("failed-check-unread"), changed: stored("changed-after-check"),
-  crowded: stored("checks-not-read"), tells: stored("tells-the-person")}));
+  crowded: stored("checks-not-read"), tells: stored("tells-the-person"),
+  record: stored("failed-check-on-record")}));
 """
         )
         assert isinstance(out, dict)
         self.assertIn("does not show this", out["shown"])
+        # Narrowed on 2026-10-03, and true of a row stored before that too.
         self.assertEqual(
-            "This line is about what the session told you, and nothing in the record can show "
-            "that, so it reads as not verifiable.",
+            "This line is about what the agent told you, and the analysis rested it on no "
+            "message the agent wrote, so it reads as not verifiable.",
             out["tells"],
+        )
+        self.assertEqual(
+            "A check this session ran failed after the words you saved, and this rests on no "
+            "check that passed, so it reads as not verifiable.",
+            out["record"],
         )
         self.assertEqual(
             "A check that failed was not read, because the reading had no room for it, so "
@@ -7687,9 +7694,9 @@ console.log(JSON.stringify({shown: stored("check-does-not-show-it"),
             out["crowded"],
         )
 
-    def test_an_agents_final_answer_is_work_on_pi_and_its_account_on_codex(self) -> None:
-        # Since the owner's ruling of 2026-10-03 the agent's own account may carry a
-        # line where it is cited, so both stand; only Pi's is work.
+    def test_an_agents_final_answer_is_work_on_pi_and_not_on_codex(self) -> None:
+        # Not one of the agent's messages either, so on Codex it carries no line
+        # (review, 2026-10-03).
         out = self.run_fixture(
             self.ENTRIES
             + """
@@ -7707,8 +7714,8 @@ console.log(JSON.stringify({
         assert isinstance(out, dict)
         self.assertEqual([False], out["codex"])
         self.assertEqual([True], out["pi"])
-        self.assertEqual("consistent with the evidence read", out["codexResult"])
-        self.assertEqual("agent", out["codexRests"])
+        self.assertEqual("not verifiable from available evidence", out["codexResult"])
+        self.assertEqual("", out["codexRests"])
         self.assertEqual("consistent with the evidence read", out["piResult"])
 
 

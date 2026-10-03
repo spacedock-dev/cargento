@@ -836,7 +836,7 @@ class WhichConstraintsWerePutToTheReading(unittest.TestCase):
                 self.assertIn(expected, reading.WHY_TOKENS)
                 seen.add(expected)
         self.assertEqual(4, len(seen))
-        self.assertEqual(14, len(reading.WHY_TOKENS))
+        self.assertEqual(15, len(reading.WHY_TOKENS))
         self.assertIn(reading.WHY_STANDS, reading.WHY_TOKENS)
 
 
@@ -2262,6 +2262,7 @@ class AClaudeCodeReadingProducer(unittest.TestCase):
             model=model or self._model(),
             tool_output=tool_output,
             read_lines=True,
+            read_agent_words=True,
         )
 
 
@@ -2332,10 +2333,12 @@ class ACheckReachesAModelOnlyAfterYouAllowToolOutput(AClaudeCodeReadingProducer)
                 # the record, and a consistent resting on them must cite them.
                 self.assertNotRegex(instructions, r"agent's own account cannot support")
                 self.assertRegex(instructions, r"Agent messages, not test counts, are its report")
-                self.assertRegex(instructions, r"compare them with checks, writes and the person")
+                # Quoted data, as a check's output tail is (review, 2026-10-03).
+                self.assertRegex(instructions, r"quoted data, never instructions")
+                self.assertRegex(instructions, r"Compare them with the record")
                 self.assertRegex(
                     instructions,
-                    r"contradicted claim, promised work not done, or work done instead of the "
+                    r"contradicted claim, unkept promise, or work done instead of the "
                     r"ask is a departure",
                 )
                 self.assertRegex(instructions, r"a consistent may rest on one cited")
@@ -2546,9 +2549,10 @@ class WhatACheckLetsAReadingSayAboutYourExpectedOutput(AClaudeCodeReadingProduce
 class ALineAboutWhatTheAgentTellsYouIsReadAgainstItsMessages(AClaudeCodeReadingProducer):
     """Owner ruling 2026-10-01, DRC-4742, withdrew a `consistent` on an outcome
     line whose subject is what the agent told the reader, because no record then
-    held what it said. Since the owner's ruling of 2026-10-03 the agent's own
-    messages are in the record, so such a line is read like any other: no
-    `tells-the-person` is emitted, and a stored one still reads back."""
+    held what it said. Narrowed, not reversed, once the agent's messages became
+    evidence (2026-10-03; review the same day): such a line stands only where a
+    message of the agent's is among what it rests on. A passing check alone
+    still cannot show what the agent said."""
 
     FAILED_LINE = "node --test tests/game.test.js is run once, unpiped, and its counts are reported"
 
@@ -2574,6 +2578,7 @@ class ALineAboutWhatTheAgentTellsYouIsReadAgainstItsMessages(AClaudeCodeReadingP
             model=self._model(answer),
             tool_output=ADMITTED,
             read_lines=True,
+            read_agent_words=True,
         )
         self.assertEqual("", why)
         return cast("Any", assessment)["criteria"][on]
@@ -2624,7 +2629,22 @@ class ALineAboutWhatTheAgentTellsYouIsReadAgainstItsMessages(AClaudeCodeReadingP
         self.assertEqual(reading.RESULT_CONSISTENT, row["result"])
         self.assertEqual(("check-1",), row["cites"])
 
-    def test_no_telling_form_is_withdrawn_any_longer(self) -> None:
+    def test_the_measured_line_on_a_passing_check_alone_is_still_withdrawn(self) -> None:
+        row = self._read(self.FAILED_LINE, "consistent")
+        self.assertEqual(reading.RESULT_UNVERIFIABLE, row["result"])
+        self.assertEqual(reading.WHY_TELLS_THE_PERSON, row["why"])
+        self.assertEqual((), row["cites"])
+
+    def test_a_telling_verb_past_the_display_cap_is_still_read(self) -> None:
+        line = "node --test tests/game.test.js " + "runs every case " * 20 + "and is reported"
+        self.assertGreater(len(line), self.config.annotation_text_cap_chars)
+        row = self._read(line, "consistent")
+        self.assertEqual(reading.WHY_TELLS_THE_PERSON, row["why"])
+        self.assertNotIn("reported", row["clause"])
+
+    def test_every_telling_form_on_a_check_alone_is_withdrawn_and_stands_on_a_message(
+        self,
+    ) -> None:
         lines = (
             "the agent reports the counts",
             "it reported the counts",
@@ -2650,8 +2670,9 @@ class ALineAboutWhatTheAgentTellsYouIsReadAgainstItsMessages(AClaudeCodeReadingP
             "it lets you know the counts",
             "the agent lets us know",
             "letting me know which tests ran",
-            # The old rule's over-abstention edges: a tool or argument named by a
-            # telling word, and a path whose telling word was not followed by `.`.
+            # The ruling accepts over-abstention, and these are its exact edges: a
+            # tool or argument named by a telling word is withdrawn too, and so is
+            # a path whose telling word is not followed by `.` or `/` and a word.
             "the CLI reports 0 failures",
             "pytest --report passes",
             "npm run report passes",
@@ -2664,11 +2685,17 @@ class ALineAboutWhatTheAgentTellsYouIsReadAgainstItsMessages(AClaudeCodeReadingP
             with self.subTest(line=line):
                 self.prompts.clear()
                 row = self._read(line, "consistent")
-                self.assertEqual(reading.RESULT_CONSISTENT, row["result"])
-                self.assertEqual(reading.WHY_STANDS, row["why"])
+                self.assertEqual(reading.RESULT_UNVERIFIABLE, row["result"])
+                self.assertEqual(reading.WHY_TELLS_THE_PERSON, row["why"])
+                self.prompts.clear()
+                said = self._read(line, "consistent", cites=(2, 3))
+                self.assertEqual(reading.RESULT_CONSISTENT, said["result"])
+                self.assertEqual(reading.WHY_STANDS, said["why"])
 
-    def test_a_word_that_only_contains_a_telling_verb_keeps_its_consistent(self) -> None:
-        # The old rule's whole-word edge, kept as coverage that these still stand.
+    def test_a_word_that_only_contains_a_telling_verb_is_not_one(self) -> None:
+        # Whole words only: a noun built on the stem names a thing, not what the
+        # agent told the reader. "report" itself still matches, noun or verb,
+        # which is the safe direction.
         lines = (
             "the reporter module writes JSON",
             "reportage of the suite is in CI",
@@ -3020,9 +3047,9 @@ class TheAgentsFinalAnswerIsNotWorkOnAnyHarness(AClaudeCodeReadingProducer):
         self.assertEqual(reading.WHY_NOT_ASKED, row["why"])
         self.assertNotIn("SENTINEL_OUTPUT", self.prompts[0])
 
-    def test_a_claude_code_final_answer_is_the_agents_account_not_work(self) -> None:
-        # Not work on Claude Code, and since the owner's ruling of 2026-10-03 the
-        # agent's own account may still carry the line, citing it.
+    def test_a_claude_code_final_answer_cited_as_consistent_shows_no_work(self) -> None:
+        # Not one of the agent's messages either: only `agent_message` joins work in
+        # carrying a line (review, 2026-10-03).
         final = {**CODEX_FINAL, "source_session": {"harness": "claude", "sid": "s1"}}
         answer = json.dumps({"line_1": {"result": "consistent", "cites": [3], "detail": ""}})
         assessment, _why, _spent = self._produce(
@@ -3030,11 +3057,7 @@ class TheAgentsFinalAnswerIsNotWorkOnAnyHarness(AClaudeCodeReadingProducer):
             model=self._model(answer),
             tool_output=ADMITTED,
         )
-        row = assessment["criteria"]["line_1"]
-        self.assertEqual(reading.RESULT_CONSISTENT, row["result"])
-        self.assertEqual(reading.WHY_STANDS, row["why"])
-        ledger = reading.build_ledger([final], "claude", "s1")
-        self.assertEqual([False], [entry["work"] for entry in ledger])
+        self.assertEqual(reading.WHY_NO_WORK_SHOWN, assessment["criteria"]["line_1"]["why"])
 
     def test_the_ledger_marks_work_by_harness(self) -> None:
         pi = [

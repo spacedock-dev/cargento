@@ -1363,9 +1363,11 @@ class EachLineIsAskedOnItsOwnTest(_ProducerCase):
         self.assertEqual(reading.RESULT_UNVERIFIABLE, assessment["criteria"]["line_1"]["result"])
         self.assertEqual(reading.RESULT_CONSISTENT, assessment["criteria"]["line_2"]["result"])
 
-    def test_a_line_resting_on_the_agents_narration_stands_since_the_2026_10_03_ruling(
+    def test_a_line_resting_only_on_the_agents_narration_is_not_verifiable_while_another_stands(
         self,
     ) -> None:
+        # Narration is not one of the agent's messages: only `agent_message` joins
+        # work in carrying a line (review, 2026-10-03).
         narration = {**_pi_fact("n1", 90.0, "said it was finished"), "type": "tool_use"}
         facts = [narration, _pi_fact("f1", 100.0)]
         raw = _reply(
@@ -1377,8 +1379,9 @@ class EachLineIsAskedOnItsOwnTest(_ProducerCase):
         assessment, _why, _spent = self.produce(raw, lines=SIX[:2], facts=facts)
 
         assert assessment is not None
-        self.assertEqual(reading.RESULT_CONSISTENT, assessment["criteria"]["line_1"]["result"])
-        self.assertEqual(reading.WHY_STANDS, assessment["criteria"]["line_1"]["why"])
+        self.assertEqual(reading.WHY_NO_WORK_SHOWN, assessment["criteria"]["line_1"]["why"])
+        self.assertEqual(reading.RESULT_UNVERIFIABLE, assessment["criteria"]["line_1"]["result"])
+        self.assertEqual(reading.RESULT_CONSISTENT, assessment["criteria"]["line_2"]["result"])
 
     def test_a_check_that_does_not_show_a_lines_verdict_withdraws_only_that_line(self) -> None:
         passed = {

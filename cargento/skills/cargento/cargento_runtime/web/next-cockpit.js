@@ -2635,11 +2635,17 @@ const NEXT_READING_CHECKS_NOT_READ =
   "No check this session recorded had room in the reading, so your expected output was not " +
   "put to it.";
 /* A line about what the agent tells the reader (`tells-the-person`), read
-   from the store. No reading made since the agent's messages became evidence
-   (owner, 2026-10-03) carries it; one stored before still reads back. */
+   from the store: the rule keys on the line's whole text, which the page does
+   not re-read. Narrowed on 2026-10-03 to a line resting on no message of the
+   agent's, and worded so a row stored before that is still told the truth. */
 const NEXT_READING_TELLS_THE_PERSON =
-  "This line is about what the session told you, and nothing in the record can show that, " +
-  "so it reads as not verifiable.";
+  "This line is about what the agent told you, and the analysis rested it on no message " +
+  "the agent wrote, so it reads as not verifiable.";
+/* An outcome line's consistent resting on no work beside a failed check the
+   record holds (`failed-check-on-record`), read or not. */
+const NEXT_READING_FAILED_CHECK_ON_RECORD =
+  "A check this session ran failed after the words you saved, and this rests on no check " +
+  "that passed, so it reads as not verifiable.";
 const NEXT_READING_FAILED_CHECK_UNREAD =
   "A check that failed was not read, because the reading had no room for it, so nothing here " +
   "says the output is consistent.";
@@ -2664,6 +2670,7 @@ const NEXT_READING_STORED_WHY = {
   "check-read-incomplete": NEXT_READING_CHECK_READ_INCOMPLETE,
   "checks-not-read": NEXT_READING_CHECKS_NOT_READ,
   "tells-the-person": NEXT_READING_TELLS_THE_PERSON,
+  "failed-check-on-record": NEXT_READING_FAILED_CHECK_ON_RECORD,
 };
 
 /* Who wrote an evidence entry. A closed set on the person side, because the
@@ -2698,6 +2705,12 @@ const NEXT_READING_WORK_BY_HARNESS = {pi: ["work_result", "result"], claude: ["t
 function nextReadingWorkOn(harness, type){
   const types = NEXT_READING_WORK_BY_HARNESS[String(harness || "")];
   return Array.isArray(types) && types.includes(String(type || ""));
+}
+
+/* One of the agent's own messages (`reading.AGENT_MESSAGE_TYPE`): the only
+   agent-authored entry, besides work, that may carry an outcome line. */
+function nextReadingAgentMessage(entry){
+  return String(entry && entry.type || "") === "agent_message";
 }
 
 function nextReadingDemonstratesWork(entry){
@@ -2920,13 +2933,14 @@ function nextCockpitReadingCriterion(key, label, clause, raw, entries, limit, un
   const shows = citations.filter(nextReadingDemonstratesWork);
   const authors = citations.map(nextReadingAuthor);
   const derivedOnly = authors.length > 0 && authors.every(name => name === "derived");
-  const agentSaid = authors.includes("agent");
+  const agentSaid = citations.some(nextReadingAgentMessage);
   if(nextReadingIsOutcomeLine(key) && result !== NEXT_READING_UNVERIFIABLE && !shows.length &&
       !agentSaid){
     /* Rule 7, the Expected Output half, as amended twice. A verdict about the
-       deliverable needs an entry that DEMONSTRATES work, or the agent's own
-       account, which is evidence of what it said and did (owner, 2026-10-03,
-       `reading._rests_on_nothing`). The reader's own request is neither. */
+       deliverable needs an entry that DEMONSTRATES work, or one of the agent's
+       own messages, which are evidence of what it said (owner, 2026-10-03,
+       `reading._rests_on_nothing`). Only the message type: a dispatch or a
+       decision is not what it said. The reader's own request is neither. */
     result = NEXT_READING_UNVERIFIABLE;
     why = droppedCheck ? NEXT_READING_CHECK_DOES_NOT_SHOW_IT : NEXT_READING_ASSISTANT_ONLY;
   }
@@ -2956,6 +2970,17 @@ function nextCockpitReadingCriterion(key, label, clause, raw, entries, limit, un
     result = NEXT_READING_UNVERIFIABLE;
     why = NEXT_READING_CHECK_DOES_NOT_SHOW_IT;
   }
+  if(result === NEXT_READING_CONSISTENT && nextReadingIsOutcomeLine(key) && !shows.length &&
+      (entries || []).some(entry => entry && entry.subject === "check" &&
+        nextReadingCheckSupports(entry, NEXT_READING_DEPARTURE, windowStart))){
+    /* A line's consistent resting on no work beside a failed check this page
+       holds, cited or not and sent or not (`failed-check-on-record`). The
+       producer said `failed-check-unread` where the prompt had no room for it,
+       and the stored reason keeps that sentence. */
+    result = NEXT_READING_UNVERIFIABLE;
+    why = stored === "failed-check-unread" ? NEXT_READING_FAILED_CHECK_UNREAD
+      : NEXT_READING_FAILED_CHECK_ON_RECORD;
+  }
   if(result === NEXT_READING_UNVERIFIABLE && !why && !limitText &&
       Object.prototype.hasOwnProperty.call(NEXT_READING_STORED_WHY, stored)){
     /* Only the gap the page's own derivation leaves: a row the producer
@@ -2973,13 +2998,18 @@ function nextCockpitReadingCriterion(key, label, clause, raw, entries, limit, un
      [DEC-24](docs/design-reading-a-session.md#dec-24-your-intent-is-a-drafted-goal-and-a-checklist-and-a-correction-is-yours-to-copy)):
      a tool outcome (a Claude Code tool report, or any harness's check) is what
      the tool reported, never an inspection; otherwise it is what the session
-     said. The number is the list's, filled in where the row is drawn. */
+     said, and where every agent-authored entry it rests on is one of the
+     agent's messages, what the agent said (review, 2026-10-03). The number is
+     the list's, filled in where the row is drawn. */
   const tool = result === NEXT_READING_CONSISTENT
     ? citations.find(entry => String(entry.type || "") === "tool_report" ||
       entry.subject === "check") : null;
-  const said = result === NEXT_READING_CONSISTENT && !tool
-    ? citations.find(entry => nextReadingAuthor(entry) === "agent") : null;
-  const restsOn = tool ? "tool" : said ? "agent" : "";
+  const accounts = result === NEXT_READING_CONSISTENT && !tool
+    ? citations.filter(entry => nextReadingAuthor(entry) === "agent") : [];
+  const said = accounts.find(nextReadingAgentMessage) || accounts[0] || null;
+  const restsOn = tool ? "tool"
+    : said && accounts.every(nextReadingAgentMessage) ? "message"
+    : said ? "agent" : "";
   const restsOnEntry = tool || said || null;
   return {
     key, label,
@@ -3193,13 +3223,14 @@ function nextCockpitResultStatus(row, numbers, byId, short = false){
          the qualifier is said in full in the line's Evidence and once in view
          for every tool result, in the activity record's footer (DRC-4758 fix
          round, the stored-reading word budget). */
+      const who = row.restsOn === "message" ? "the agent" : "the session";
       if(short){
         return row.restsOn === "tool" ? `Consistent with ${where}`
-          : `Consistent with what the session said at ${where}`;
+          : `Consistent with what ${who} said at ${where}`;
       }
       return row.restsOn === "tool"
         ? `Consistent with ${where}, as the tool reported; not inspected`
-        : `Consistent with what the session said at ${where}; not a check`;
+        : `Consistent with what ${who} said at ${where}; not a check`;
     }
   }
   /* A consistent the page cannot place is no claim it can word, so it is

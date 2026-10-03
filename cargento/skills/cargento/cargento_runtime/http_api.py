@@ -457,6 +457,7 @@ def _analysis_levels(
         assessment,
         evidence,
         outcome_lines=len(read["lines"]),
+        lines=runtime_reading.outcome_lines(read),
     )
     return [
         {
@@ -2699,6 +2700,9 @@ class _RequestHandler(BaseHTTPRequestHandler):
             # `reading.MAX_OUTCOME_LINES` cites keeps them from
             # every other).
             read_lines=True,
+            # And the one that sends what the agent said: the unasked lane
+            # keeps the default and sends none of it (review, 2026-10-03).
+            read_agent_words=True,
             # And the one that may read a turn stop, on the harnesses the
             # ruling `reading.TURN_STOP_HARNESSES` cites names; the unasked
             # lane keeps the closed default.

@@ -842,10 +842,11 @@ class TheDisclosureIsAShortListThatKeepsEveryFact(unittest.TestCase):
         # repeating itself; "about five items", the owner said. The owner's ruling of
         # 2026-10-03 added five words to a Claude Code session's list: the agent's messages
         # are sent, and the outcome lines moved from the tool output item to the `Sent:` one.
+        # Its review added four more: the agent's messages may quote the tool output.
         budgets = {
             "codex": (4, 61),
-            "claude": (6, 125),
-            "claude-by-codex": (5, 106),
+            "claude": (6, 129),
+            "claude-by-codex": (5, 110),
             "codex-by-claude": (5, 98),
         }
         for name, (harness, installed) in self.ROUTES.items():

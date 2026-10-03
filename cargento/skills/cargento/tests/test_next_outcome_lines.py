@@ -398,11 +398,11 @@ console.log(JSON.stringify(shape.criteria.map(row => [row.key, row.result, row.r
         out = self._line_2_resting_on("fo-b")
         self.assertEqual(["line_2", reading.RESULT_UNVERIFIABLE, ""], out[-1])
 
-    def test_a_line_resting_on_the_agents_narration_stands_on_the_page(self) -> None:
-        # The owner's ruling of 2026-10-03: what the agent said or did is evidence, and the
-        # row says it rests on the session's account, not a check.
+    def test_a_line_resting_only_on_narration_is_not_verifiable_on_the_page(self) -> None:
+        # A dispatch is not one of the agent's messages, so it carries no line
+        # (review, 2026-10-03).
         out = self._line_2_resting_on("task-a")
-        self.assertEqual(["line_2", reading.RESULT_CONSISTENT, "agent"], out[-1])
+        self.assertEqual(["line_2", reading.RESULT_UNVERIFIABLE, ""], out[-1])
 
     def test_pressing_add_at_six_says_why_aloud(self) -> None:
         out = self.page(

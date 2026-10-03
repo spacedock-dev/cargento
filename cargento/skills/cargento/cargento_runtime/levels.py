@@ -415,7 +415,7 @@ class _LineTally:
     cites: list[str] = field(default_factory=list)
     shown: list[str] = field(default_factory=list)
 
-    def read(self, row: Mapping[str, Any], *, name: str) -> None:
+    def read(self, row: Mapping[str, Any], *, name: str, line_text: str = "") -> None:
         result, why = row.get("result"), row.get("why") or ""
         window = self.window or 0.0
         cited = [
@@ -427,8 +427,9 @@ class _LineTally:
         ]
         # Stored verdicts are read against today's entries by the same
         # resolver that first accepted them. Explanatory prose is not read
-        # again: only the verdict token and its current citation handles. A
-        # departure resting on the agent's own account stands there, so it
+        # again: only the verdict token, its current citation handles, and the
+        # line's own text, which a resolver rule keys on (DRC-4742). A
+        # departure resting on one of the agent's messages stands there, so it
         # reads Medium here (owner ruling, 2026-10-03).
         resolved = reading._resolve_one(  # noqa: SLF001 - reuse the seven-rule evidence contract
             {
@@ -441,6 +442,7 @@ class _LineTally:
             clause="",
             detail_cap_chars=0,
             window_start=window,
+            line_text=line_text or str(row.get("clause") or ""),
         )
         if resolved.get("result") == reading.RESULT_DEPARTURE:
             self.departed = True
@@ -486,6 +488,9 @@ def _analysis_entries(facts: Sequence[Mapping[str, Any]]) -> dict[str, reading.L
             str(session.get("harness") or ""),
             str(session.get("sid") or ""),
             tool_output={},
+            # Read on this machine, never sent: a stored citation of what the
+            # agent said must still resolve.
+            read_agent_words=True,
         ):
             # No press and no output read: the published flag is today's
             # observation, not a pair recovered from an output grant.
@@ -515,6 +520,7 @@ def analysis_level(
     evidence: Evidence,
     *,
     outcome_lines: int,
+    lines: Sequence[str] = (),
 ) -> Level:
     """The analysis level, derived from a stored reading's per-line results.
 
@@ -534,6 +540,10 @@ def analysis_level(
     estimate's to read. An analysis reads each line against its citations and
     no folder, so a starting definition that reached Extreme here would be one
     nobody ruled.
+
+    `lines` is the text of those outcome lines, read whole by the resolver's
+    rule on a line about what the agent tells the reader; without it, each
+    row's stored clause, which is capped, is read instead.
     """
     if not reading_row:
         return Level(NOT_ENOUGH, SOURCE_ANALYSIS, (REASON_NO_READING,))
@@ -550,8 +560,12 @@ def analysis_level(
     rows: Mapping[str, Mapping[str, Any]] = criteria if isinstance(criteria, dict) else {}
     window = _number(reading_row.get("window_start"))
     tally = _LineTally(_analysis_entries(evidence.facts), window)
+    texts = [line for line in lines if line.strip()]
+    by_name = dict(zip(reading.constraints_for(texts)[1:], texts, strict=True))
+    if texts:
+        by_name[reading.CONSTRAINT_OUTPUT] = texts[0]
     for name, row in rows.items():
-        tally.read(row, name=name)
+        tally.read(row, name=name, line_text=by_name.get(name, ""))
 
     failed = [f for f in _checks(evidence) if f.get("result") == reading.RESULT_FAILED]
     in_window = [
