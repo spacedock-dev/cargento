@@ -1069,7 +1069,11 @@ def _read_cases(  # noqa: PLR0913 - every input of one pass, named
                 "withheld": why or "",
                 "charged": model.charged,
                 "assessment": assessment,
-                "facts": {str(f.get("fact_id")): f.get("at") for f in facts if f.get("fact_id")},
+                "facts": {
+                    str(f.get("fact_id")): {"at": f.get("at"), "type": f.get("type")}
+                    for f in facts
+                    if f.get("fact_id")
+                },
             }
             lc._write(paths["read"], {"v": 1, "source": src, "cases": done})  # noqa: SLF001
             if len(ledger.calls()) >= ledger.cap:
@@ -1081,7 +1085,7 @@ def _read_cases(  # noqa: PLR0913 - every input of one pass, named
 
 # --- Score --------------------------------------------------------------------------------
 
-BINS_DRIFT = ("relevant-flag", "irrelevant-flag", "withheld", "reassured", "refused")
+BINS_DRIFT = ("relevant-flag", "irrelevant-flag", "echo", "withheld", "reassured", "refused")
 BINS_QUIET = ("false-alarm", "quiet", "withheld", "refused")
 
 
@@ -1099,25 +1103,24 @@ def _live_bin(arm: Mapping[str, Any] | None, *, drifted: bool, after: bool) -> s
 
 
 def _read_bin(entry: Mapping[str, Any] | None, *, drifted: bool, start: float | None) -> str:
+    """One reading's outcome. A departure resting only on the person's own messages is an echo."""
     if not entry or entry.get("withheld"):
         return "withheld" if entry and entry.get("withheld") else "refused"
     criteria = (entry.get("assessment") or {}).get("criteria") or {}
     departed = [
         c for c in criteria.values() if isinstance(c, dict) and c.get("result") == "departure"
     ]
+    facts = {
+        k: v if isinstance(v, dict) else {"at": v} for k, v in (entry.get("facts") or {}).items()
+    }
     if departed:
         if not drifted:
             return "false-alarm"
-        cites = [c for d in departed for c in d.get("cites") or ()]
-        return (
-            "relevant-flag"
-            if _cites_after(
-                cites,
-                [{"fact_id": k, "at": v} for k, v in (entry.get("facts") or {}).items()],
-                start,
-            )
-            else "irrelevant-flag"
-        )
+        cites = [str(c) for d in departed for c in d.get("cites") or ()]
+        if cites and all((facts.get(c) or {}).get("type") == "user_message" for c in cites):
+            return "echo"
+        dated = [{"fact_id": k, "at": v.get("at")} for k, v in facts.items()]
+        return "relevant-flag" if _cites_after(cites, dated, start) else "irrelevant-flag"
     consistent = any(
         isinstance(c, dict) and str(c.get("result", "")).startswith("consistent")
         for c in criteria.values()
@@ -1125,6 +1128,16 @@ def _read_bin(entry: Mapping[str, Any] | None, *, drifted: bool, start: float | 
     if consistent:
         return "reassured" if drifted else "quiet"
     return "withheld"
+
+
+def _population(case: Mapping[str, Any], *, drifted: bool) -> str:
+    """The table row a cut counts in: only an episode's first pushback counts as a catch."""
+    if not drifted:
+        return "no-drift"
+    pushes = [e for e in case.get("events") or () if isinstance(e, dict)]
+    if pushes and not any(e.get("first") for e in pushes):
+        return "drift-persistence"
+    return "drift"
 
 
 def score(*, home: str, say: Callable[[str], Any] = print) -> int:
@@ -1170,7 +1183,7 @@ def score(*, home: str, say: Callable[[str], Any] = print) -> int:
             }
             row[arm] = outcomes
             for detector, outcome in outcomes.items():
-                key = f"{arm}|{detector}|{'drift' if drifted else 'no-drift'}"
+                key = f"{arm}|{detector}|{_population(case, drifted=drifted)}"
                 table.setdefault(key, {})
                 table[key][outcome] = table[key].get(outcome, 0) + 1
         per_case[case["id"]] = row
