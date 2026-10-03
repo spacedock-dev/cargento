@@ -107,6 +107,9 @@ class _Bound:
             now=self.clock(),
             provider=reading_route.CODEX,
             destinations={reading_route.CODEX: where},
+            # The lane never sends what the agent said, so an Allow given
+            # before the disclosure named it still covers the lane.
+            content=reading_policy.WORDS_CONTENT_VERSION,
         )
         if not answer["providers"].get(reading_route.CODEX, False):
             raise UncoveredError

@@ -3831,10 +3831,18 @@ function nextReadingRoute(session){
 /* Permission is per receiver: a Codex answer never stands in for Claude
    Code's. A payload without the per-provider map predates the second
    provider, and its one answer was Codex's. */
-function nextReadingConsent(provider){
+/* The harnesses a press carries the agent's own messages from
+   (`reading_route.AGENT_MESSAGE_HARNESSES`). Elsewhere a press sends none of
+   them, so an Allow given before the disclosure named them still covers it:
+   the server publishes that answer as `words` (`reading_policy.WORDS_CONTENT_VERSION`). */
+const NEXT_READING_AGENT_WORDS_HARNESSES = ["claude"];
+
+function nextReadingConsent(provider, harness = ""){
   const policy = nextData && nextData.reading;
   if(!policy || !provider) return false;
-  const map = policy.providers;
+  const words = policy.words;
+  const map = !NEXT_READING_AGENT_WORDS_HARNESSES.includes(String(harness || "")) &&
+    words && typeof words === "object" ? words : policy.providers;
   return map && typeof map === "object"
     ? map[provider] === true : provider === "codex" && policy.consent === true;
 }
@@ -3851,7 +3859,7 @@ function nextReadingToolOutputGranted(route){
 
 function nextReadingNeedsAllow(route){
   if(!route || !route.provider) return false;
-  return !nextReadingConsent(String(route.provider)) ||
+  return !nextReadingConsent(String(route.provider), String(route.harness || "")) ||
     Boolean(route.destination && !nextReadingToolOutputGranted(route));
 }
 
@@ -6386,6 +6394,7 @@ async function nextCockpitAskForReading(session, model, allow = false){
     if(allow && nextData.reading){
       nextData.reading.consent = true;
       nextData.reading.providers = {...(nextData.reading.providers || {}), [provider]: true};
+      nextData.reading.words = {...(nextData.reading.words || {}), [provider]: true};
       const rebind = {...(nextData.reading.rebind || {})};
       delete rebind[provider];
       nextData.reading.rebind = rebind;

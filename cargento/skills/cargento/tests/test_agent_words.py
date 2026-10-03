@@ -30,6 +30,7 @@ from unittest import mock
 from cargento_runtime import (
     aggregate,
     correction,
+    http_api,
     levels,
     observer,
     project_context,
@@ -845,6 +846,59 @@ class AConsistentLineNeverOutrunsAFailedCheckTest(reading_tests.AClaudeCodeReadi
         self.assertEqual(levels.NONE_OR_LOW, plain.level)
 
 
+class ATellingLineNeedsAMessageAfterTheRunTest(unittest.TestCase):
+    """Final review repro e3b: "I'll run it now", said before the run, reports nothing
+    about it, so it does not let a line about what the agent told you stand."""
+
+    LINE = "the tests are run once more, unpiped, and the counts are reported"
+
+    def read(self, said_at: float, cites: tuple[int, ...]) -> Any:
+        facts = [_check(result="passed"), _agent("a1", said_at, "I'll run it now.")]
+        ledger = reading.build_ledger(facts, "claude", "s1", tool_output={}, read_agent_words=True)
+        _prompt, selected = reading.build_prompt(
+            ledger, goal="g", lines=(self.LINE,), max_bytes=BUDGET
+        )
+        return reading.resolve(
+            {"line_1": {"token": "consistent", "cites": cites, "detail": ""}},
+            selected,
+            goal="g",
+            lines=(self.LINE,),
+            detail_cap_chars=200,
+        )["line_1"]
+
+    def test_a_message_before_the_cited_check_is_withdrawn(self) -> None:
+        row = self.read(1_700_000_100.0, (1, 2))
+        self.assertEqual(reading.RESULT_UNVERIFIABLE, row["result"])
+        self.assertEqual(reading.WHY_TELLS_THE_PERSON, row["why"])
+
+    def test_a_message_before_the_uncited_check_is_withdrawn(self) -> None:
+        # Citing only the message: the floor is the latest check the prompt carried.
+        row = self.read(1_700_000_100.0, (1,))
+        self.assertEqual(reading.WHY_TELLS_THE_PERSON, row["why"])
+
+    def test_a_message_after_the_check_stands(self) -> None:
+        for cites in ((1, 2), (2,)):
+            with self.subTest(cites=cites):
+                row = self.read(1_700_000_900.0, cites)
+                self.assertEqual(reading.RESULT_CONSISTENT, row["result"])
+
+
+class ThePageAsksAgainOnlyWhereAPressCarriesAgentWordsTest(NextPageJsHarness):
+    def test_a_words_only_allow_covers_another_harness_and_not_claude_code(self) -> None:
+        out = self._run_page_js(
+            "await __settle();\n"
+            "nextData.reading = {providers:{codex:false}, words:{codex:true}, rebind:{}};\n"
+            "console.log(JSON.stringify({claude: nextReadingConsent('codex', 'claude'),\n"
+            "  codex: nextReadingConsent('codex', 'codex'), pi: nextReadingConsent('codex', 'pi'),\n"
+            "  harnesses: NEXT_READING_AGENT_WORDS_HARNESSES}));",
+            storage_prelude({}) + cockpit_tests.NextCockpitCompositionTest.FIXTURE,
+        )
+        self.assertEqual(False, out["claude"])
+        self.assertEqual(True, out["codex"])
+        self.assertEqual(True, out["pi"])
+        self.assertEqual(list(reading_route.AGENT_MESSAGE_HARNESSES), out["harnesses"])
+
+
 class TheAgentsMessagesRankBelowAWriteTest(unittest.TestCase):
     def test_a_hundred_agent_messages_never_drop_the_older_write(self) -> None:
         many = [
@@ -962,28 +1016,94 @@ class AnAllowGivenBeforeTheAgentsMessagesDoesNotCoverThemTest(unittest.TestCase)
         )
         self.assertTrue(given["providers"]["codex"])
         # The Allow as a build before this one stored it: a destination and no version.
-        with contextlib.closing(sqlite3.connect(reading_policy.store_path(self.config))) as db:
-            db.execute("DELETE FROM permission_content")
-            db.commit()
-        old = reading_policy.status(
-            self.config, now=NOW, provider="codex", destinations={"codex": "OpenAI"}
-        )
+        self.sql("DELETE FROM permission_disclosure")
+        old = self.status()
         self.assertFalse(old["consent"])
         self.assertEqual(reading_policy.CONTENT_CHANGED, old["rebind"]["codex"])
+        # A press that carries no agent words, and the board's answer for one, still covered.
+        self.assertTrue(self.status(content=reading_policy.WORDS_CONTENT_VERSION)["consent"])
+        self.assertTrue(old["words"]["codex"])
         again = reading_policy.set_consent(
             self.config, True, now=NOW, provider="codex", destination="OpenAI"
         )
         self.assertTrue(again["consent"])
         self.assertEqual({}, again["rebind"])
 
+    def sql(self, *statements: str) -> None:
+        with contextlib.closing(sqlite3.connect(reading_policy.store_path(self.config))) as db:
+            for statement in statements:
+                db.execute(statement)
+            db.commit()
+
+    def status(self, where: str = "OpenAI", **kw: Any) -> reading_policy.Status:
+        return reading_policy.status(
+            self.config, now=NOW, provider="codex", destinations={"codex": where}, **kw
+        )
+
     def test_a_moved_destination_still_says_so_first(self) -> None:
         reading_policy.set_consent(
             self.config, True, now=NOW, provider="codex", destination="OpenAI"
         )
-        moved = reading_policy.status(
-            self.config, now=NOW, provider="codex", destinations={"codex": "gw.example"}
-        )
+        moved = self.status("gw.example")
         self.assertEqual(reading_policy.DESTINATION_CHANGED, moved["rebind"]["codex"])
+
+    def test_an_older_builds_off_then_allow_never_inherits_this_builds_answer(self) -> None:
+        """Final review, 2026-10-03 (rollback.py): a downgrade's Turn off and Allow."""
+        reading_policy.set_consent(
+            self.config, True, now=NOW, provider="codex", destination="OpenAI"
+        )
+        for off in (
+            "INSERT OR REPLACE INTO permission VALUES (1, 0)",
+            "UPDATE permission SET allowed = 0",
+        ):
+            with self.subTest(off=off):
+                reading_policy.set_consent(
+                    self.config, True, now=NOW, provider="codex", destination="OpenAI"
+                )
+                self.sql(
+                    off,
+                    "INSERT OR REPLACE INTO permission VALUES (1, 1)",
+                    "INSERT OR REPLACE INTO permission_destination VALUES ('codex', 'OpenAI')",
+                )
+                self.assertFalse(self.status()["consent"])
+
+    def test_an_older_builds_allow_for_another_destination_is_not_covered(self) -> None:
+        reading_policy.set_consent(
+            self.config, True, now=NOW, provider="codex", destination="OpenAI"
+        )
+        # An older build's Allow with no Turn off between: it rebinds the destination
+        # and writes no disclosure, so the one on record names the old destination.
+        self.sql("INSERT OR REPLACE INTO permission_destination VALUES ('codex', 'gw.example')")
+        self.assertFalse(self.status("gw.example")["consent"])
+
+    def test_the_unasked_lane_reads_at_the_words_version(self) -> None:
+        reading_policy.set_consent(
+            self.config, True, now=NOW, provider="codex", destination="OpenAI"
+        )
+        self.sql("DELETE FROM permission_disclosure")
+        seen: list[int] = []
+        real = reading_policy.status
+
+        def status(*a: Any, **kw: Any) -> reading_policy.Status:
+            seen.append(kw.get("content", reading_policy.CONTENT_VERSION))
+            return real(*a, **kw)
+
+        with (
+            mock.patch.object(reading_policy, "status", status),
+            mock.patch.object(reading_route, "destination", lambda *_a, **_k: "OpenAI"),
+        ):
+            model = unasked._Bound(self.config, lambda *_a, **_k: ("{}", "ok"), lambda: NOW)
+            # An Allow from before the bump still covers the lane, which sends no agent words.
+            self.assertEqual(("{}", "ok"), model("prompt", output_cap_bytes=10))
+        self.assertEqual([reading_policy.WORDS_CONTENT_VERSION], seen)
+
+    def test_a_press_needs_the_agent_words_version_only_on_claude_code(self) -> None:
+        self.assertEqual(reading_policy.CONTENT_VERSION, http_api._press_content("claude"))
+        for harness in ("codex", "pi", "antigravity"):
+            with self.subTest(harness=harness):
+                self.assertEqual(
+                    reading_policy.WORDS_CONTENT_VERSION, http_api._press_content(harness)
+                )
 
 
 class TheCorrectionRouteJudgesLinesWhereNoCheckCanBeSentTest(copied_tests._App):

@@ -2286,6 +2286,21 @@ def _about_what_the_agent_tells(result: str | None, name: str, line_text: str) -
     )
 
 
+def _reported_after(
+    supporting: Sequence[LedgerEntry], cited: Sequence[LedgerEntry], latest_check_at: float
+) -> bool:
+    """Whether a message of the agent's it rests on was sent at or after the check.
+
+    The check is the latest one cited, by when its result arrived; where none
+    is cited, the latest one in the window the prompt carried (`latest_check_at`).
+    """
+    cited_checks = [
+        evidence_at(entry) or 0.0 for entry in cited if entry.get("subject") == CHECK_SUBJECT
+    ]
+    floor = max(cited_checks) if cited_checks else latest_check_at
+    return any(entry["type"] == AGENT_MESSAGE_TYPE and entry["at"] >= floor for entry in supporting)
+
+
 def _evidence_rules(
     result: str,
     name: str,
@@ -2295,6 +2310,7 @@ def _evidence_rules(
     unread_failures: Sequence[LedgerEntry],
     failed_on_record: bool = False,
     line_text: str = "",
+    latest_check_at: float = 0.0,
 ) -> tuple[list[LedgerEntry], str]:
     """The entries a verdict rests on, and which rule it fails, as its `why` token.
 
@@ -2356,11 +2372,13 @@ def _evidence_rules(
         why = WHY_FAILED_CHECK_ON_RECORD
     # Last, so a line resting only on the reader's words keeps rule 7's token.
     # Narrowed on 2026-10-03 rather than retired: a line about what the agent
-    # tells you still needs a message of the agent's among what it rests on.
+    # tells you still needs a message of the agent's among what it rests on,
+    # sent at or after the check it reports on. "I'll run it now", said before
+    # the run, reports nothing about it (final review, 2026-10-03).
     if (
         not why
         and _about_what_the_agent_tells(result, name, line_text)
-        and not any(entry["type"] == AGENT_MESSAGE_TYPE for entry in supporting)
+        and not _reported_after(supporting, cited, latest_check_at)
     ):
         why = WHY_TELLS_THE_PERSON
     withdrawn = why in {
@@ -2384,6 +2402,7 @@ def _resolve_one(  # noqa: PLR0913 - each is one fact the evidence rules read
     unread_failures: Sequence[LedgerEntry] = (),
     failed_on_record: bool = False,
     line_text: str | None = None,
+    latest_check_at: float = 0.0,
 ) -> Criterion:
     """One constraint's criterion, with every server-side rule applied.
 
@@ -2430,6 +2449,7 @@ def _resolve_one(  # noqa: PLR0913 - each is one fact the evidence rules read
             unread_failures=unread_failures,
             failed_on_record=failed_on_record,
             line_text=clause if line_text is None else line_text,
+            latest_check_at=latest_check_at,
         )
         if rests_on_nothing:
             result, why = RESULT_UNVERIFIABLE, rests_on_nothing
@@ -2520,6 +2540,14 @@ def resolve(
         _failed_in_window(entry, window_start)
         for entry in (*selection.entries, *selection.unread_failures)
     )
+    latest_check_at = max(
+        (
+            evidence_at(entry) or 0.0
+            for entry in (*selection.entries, *selection.unread_checks)
+            if entry.get("subject") == CHECK_SUBJECT and not _before_window(entry, window_start)
+        ),
+        default=0.0,
+    )
     texts = [line for line in lines if line.strip()]
     names = constraints_for(texts)
     clauses = dict(zip(names, (goal, *texts), strict=True))
@@ -2560,6 +2588,7 @@ def resolve(
             unread_failures=selection.unread_failures,
             failed_on_record=failed_on_record,
             line_text=clauses[name],
+            latest_check_at=latest_check_at,
         )
     return out
 

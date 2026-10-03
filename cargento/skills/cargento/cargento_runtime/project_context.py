@@ -5024,6 +5024,11 @@ def _semantic_fact_from_event(
     # UNCITED, and `semantic_history` dedupes on the id so those events are
     # recorded a second time. Accepted rather than migrated, per decisions.md;
     # no schema bump.
+    #
+    # The same one-time move, accepted the same way, on 2026-10-03: the title is
+    # hashed as `safe_text` left it, and the `cued` redaction shape added that
+    # day masks values it did not before, so a fact whose title held one (a
+    # `DB_PASSWORD=…` in a prompt) gets a new id. The hash input is unchanged.
     record_id = source_event.get("record_id")
     fact_id = _semantic_id(
         "fact",

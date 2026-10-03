@@ -59,7 +59,15 @@ DESTINATION_MOVED = "destination-changed"
 # Allow given before the disclosure named them never covers sending them, so
 # the first press after asks once more (review, 2026-10-03). Raise it whenever
 # the disclosure names a new class of content.
+#
+# Required only of a press on a route that can carry the agent's words: a
+# Claude Code session, read by Claude Code or by Codex. A press on another
+# harness, and the unasked lane, which never sends them, read at
+# `WORDS_CONTENT_VERSION`, so an Allow from before the bump still covers them
+# (final review, 2026-10-03). The version is stored with the destination it
+# was given for, and covers only while that is still the bound destination.
 CONTENT_VERSION = 2
+WORDS_CONTENT_VERSION = 1
 CONTENT_CHANGED = "What a reading sends has changed since you allowed this, so allow it again."
 
 
@@ -83,6 +91,10 @@ class Status(TypedDict):
     # ever read as one, so an Allow given before tool output was named cannot
     # cover it, and a destination that moves is asked about again.
     tool_output: dict[str, list[str]]
+    # The same answer as `providers` for a press that carries no agent words,
+    # read at `WORDS_CONTENT_VERSION`: what the page reads for a session on a
+    # harness the agent's messages are never read from.
+    words: dict[str, bool]
 
 
 def store_path(config: RuntimeConfig) -> Path:
@@ -96,6 +108,7 @@ def _answer(
     providers: dict[str, bool] | None = None,
     tool_output: dict[str, list[str]] | None = None,
     rebind: dict[str, str] | None = None,
+    words: dict[str, bool] | None = None,
 ) -> Status:
     full = len(dates) >= DAILY_CAP
     return {
@@ -111,6 +124,7 @@ def _answer(
         "providers": dict(providers) if providers else dict.fromkeys(PROVIDERS, False),
         "tool_output": {name: list(where) for name, where in (tool_output or {}).items()},
         "rebind": dict(rebind or {}),
+        "words": dict(words) if words else dict.fromkeys(PROVIDERS, False),
     }
 
 
@@ -151,12 +165,18 @@ def _bound(db: Any) -> dict[str, str]:
     }
 
 
-def _content(db: Any) -> dict[str, int]:
-    """The content version each provider's Allow was given under; absent before the table."""
+def _disclosed(db: Any) -> dict[str, tuple[int, str]]:
+    """The content version each provider's Allow was given under, and for where; absent
+    before the table, and after any Turn off, this build's or an older one's."""
     return {
-        name: version
-        for name, version in db.execute("SELECT provider, version FROM permission_content")
-        if name in PROVIDERS and isinstance(version, int) and not isinstance(version, bool)
+        name: (version, where)
+        for name, version, where in db.execute(
+            "SELECT provider, version, destination FROM permission_disclosure"
+        )
+        if name in PROVIDERS
+        and isinstance(version, int)
+        and not isinstance(version, bool)
+        and isinstance(where, str)
     }
 
 
@@ -164,21 +184,29 @@ def _covered(
     allowed: dict[str, bool],
     bound: dict[str, str],
     today: Mapping[str, str],
-    content: Mapping[str, int] | None = None,
+    disclosed: Mapping[str, tuple[int, str]] | None = None,
+    *,
+    content: int = CONTENT_VERSION,
 ) -> tuple[dict[str, bool], dict[str, str]]:
     """Which Allows cover a press today, and the line for each that does not.
 
     Exact equality, with "" a value of its own: an Allow given while the
     destination could not be named covers presses only while it still cannot.
-    A row with no recorded destination covers nothing, and neither does one
-    given under a content version older than `CONTENT_VERSION`.
+    A row with no recorded destination covers nothing. A press that needs
+    `content` above `WORDS_CONTENT_VERSION` is covered only by an Allow given
+    under that version for the destination bound now: an older build's Allow
+    rebinds the destination and never writes the version, so it never passes.
     """
-    versions = content or {}
+    known = disclosed or {}
     placed = {
         name: allowed[name] and name in bound and bound[name] == today.get(name, "")
         for name in allowed
     }
-    current = {name: versions.get(name, 0) >= CONTENT_VERSION for name in allowed}
+    current = {
+        name: content <= WORDS_CONTENT_VERSION
+        or (name in known and known[name][0] >= content and known[name][1] == bound.get(name))
+        for name in allowed
+    }
     covered = {name: placed[name] and current[name] for name in allowed}
     rebind = {
         name: DESTINATION_CHANGED if not placed[name] else CONTENT_CHANGED
@@ -215,6 +243,7 @@ def _transaction(
     tool_output: str = "",
     job_id: str = "",
     today: Mapping[str, str] | None = None,
+    content: int = CONTENT_VERSION,
 ) -> Status:
     if not math.isfinite(now) or now <= 0:
         return _answer(reason="store-unavailable")
@@ -243,12 +272,14 @@ def _transaction(
             "CREATE TABLE IF NOT EXISTS permission_destination "
             "(provider TEXT PRIMARY KEY, destination TEXT NOT NULL)"
         )
-        # The content version each Allow was given under, a table of its own
-        # for the same reason as the destination's. A row written before it
-        # existed has no version here, so it covers no press until allowed again.
+        # The content version each Allow was given under and the destination
+        # it was given for, a table of its own for the same reason as the
+        # destination's. An Allow written before it existed, or by an older
+        # build after it, has no row here that matches, so it covers no press
+        # that carries the agent's words until allowed again.
         db.execute(
-            "CREATE TABLE IF NOT EXISTS permission_content "
-            "(provider TEXT PRIMARY KEY, version INTEGER NOT NULL)"
+            "CREATE TABLE IF NOT EXISTS permission_disclosure "
+            "(provider TEXT PRIMARY KEY, version INTEGER NOT NULL, destination TEXT NOT NULL)"
         )
         db.execute("CREATE TABLE IF NOT EXISTS spends (at REAL NOT NULL)")
         # A table of its own rather than a column on `spends`: an older build's
@@ -282,6 +313,15 @@ def _transaction(
                 f"AFTER {event} ON permission WHEN NEW.allowed = 0 BEGIN "
                 "DELETE FROM permission_destination; END"
             )
+            # And its own again, for the disclosure version: an older build's
+            # Turn off then Allow, under a disclosure that never named the
+            # agent's messages, must not find this build's version still on
+            # record (final review, 2026-10-03).
+            db.execute(
+                f"CREATE TRIGGER IF NOT EXISTS permission_disclosure_off_{event.lower()} "  # noqa: S608 - two fixed words
+                f"AFTER {event} ON permission WHEN NEW.allowed = 0 BEGIN "
+                "DELETE FROM permission_disclosure; END"
+            )
         allowed = _allowed(db)
         db.execute("DELETE FROM spends WHERE at <= ?", (now - DAY_SEC,))
         db.execute("DELETE FROM spend_jobs WHERE at <= ?", (now - JOB_LEDGER_SEC,))
@@ -302,8 +342,8 @@ def _transaction(
                 "INSERT OR REPLACE INTO permission_destination VALUES (?, ?)", (provider, where)
             )
             db.execute(
-                "INSERT OR REPLACE INTO permission_content VALUES (?, ?)",
-                (provider, CONTENT_VERSION),
+                "INSERT OR REPLACE INTO permission_disclosure VALUES (?, ?, ?)",
+                (provider, CONTENT_VERSION, where),
             )
             if tool_output:
                 db.execute(
@@ -318,16 +358,18 @@ def _transaction(
                 _write(db, name, False)
             allowed = dict.fromkeys(PROVIDERS, False)
             db.execute("DELETE FROM tool_output_permission")
-            db.execute("DELETE FROM permission_content")
-            # Every bound destination goes too, by the trigger the legacy
-            # row's write above fires, as it does for an older build's off.
-        covered, rebind = _covered(allowed, _bound(db), current, _content(db))
+            # Every bound destination and disclosure goes too, by the triggers
+            # the legacy row's write above fires, as for an older build's off.
+        bound, disclosed = _bound(db), _disclosed(db)
+        covered, rebind = _covered(allowed, bound, current, disclosed, content=content)
+        words, _ = _covered(allowed, bound, current, disclosed, content=WORDS_CONTENT_VERSION)
         answer = _answer(
             covered.get(provider, False),
             dates,
             providers=covered,
             tool_output=_tool_output(db),
             rebind=rebind,
+            words=words,
         )
         if operation == "reserve" and not answer["reason"]:
             return _commit_charge(db, answer, now, job_id)
@@ -361,9 +403,12 @@ def _run(
     tool_output: str = "",
     job_id: str = "",
     today: Mapping[str, str] | None = None,
+    content: int = CONTENT_VERSION,
 ) -> Status:
     try:
-        return _transaction(config, now, operation, provider, tool_output, job_id, today)
+        return _transaction(
+            config, now, operation, provider, tool_output, job_id, today, content=content
+        )
     except (OSError, ValueError, RuntimeError, _SQL_ERROR):
         return _answer(reason="store-unavailable")
 
@@ -374,18 +419,21 @@ def status(
     now: float,
     provider: str = LEGACY_PROVIDER,
     destinations: Mapping[str, str] | None = None,
+    content: int = CONTENT_VERSION,
 ) -> Status:
     """The stored answer, as it covers a press to `destinations` today.
 
     `destinations` is each provider's `reading_route.destination` now. One left
     out is read as unnamed (""), which an Allow given for a named one never
     covers, so a caller that forgets it asks again rather than sends.
+    `content` is what the press would send: `WORDS_CONTENT_VERSION` for one
+    that never carries the agent's words.
     """
     if config.model_calls_disabled:
         return _answer(reason="run-disabled")
     if not store_path(config).exists():
         return _answer()
-    return _run(config, now, "read", provider, today=destinations)
+    return _run(config, now, "read", provider, today=destinations, content=content)
 
 
 def set_consent(
@@ -397,6 +445,7 @@ def set_consent(
     tool_output: str = "",
     destination: str = "",
     destinations: Mapping[str, str] | None = None,
+    content: int = CONTENT_VERSION,
 ) -> Status:
     """Allow one provider, or revoke every provider: off never names one.
 
@@ -404,10 +453,13 @@ def set_consent(
     Allow covers presses only while they still go there. `tool_output` is the
     destination it named for tool output. Only an Allow that carried one
     grants tool output, and only to that destination. `destinations` is as
-    `status` takes it, for the other providers in the answer returned.
+    `status` takes it, for the other providers in the answer returned. An
+    Allow is always written under `CONTENT_VERSION`, the disclosure this build
+    shows; `content` is only what the answer returned is read for.
     """
     today = {**(destinations or {}), provider: destination}
-    return _run(config, now, "allow" if allowed else "off", provider, tool_output, today=today)
+    operation = "allow" if allowed else "off"
+    return _run(config, now, operation, provider, tool_output, today=today, content=content)
 
 
 def reserve(
@@ -417,6 +469,7 @@ def reserve(
     provider: str = LEGACY_PROVIDER,
     job_id: str = "",
     destination: str = "",
+    content: int = CONTENT_VERSION,
 ) -> Status:
     """Commit a charge before launch; uncertainty about spend never refunds it.
 
@@ -428,8 +481,8 @@ def reserve(
     """
     today = {provider: destination}
     if config.model_calls_disabled:
-        return status(config, now=now, provider=provider, destinations=today)
-    return _run(config, now, "reserve", provider, job_id=job_id, today=today)
+        return status(config, now=now, provider=provider, destinations=today, content=content)
+    return _run(config, now, "reserve", provider, job_id=job_id, today=today, content=content)
 
 
 def charged(config: RuntimeConfig, job_id: str, *, started_at: Any, now: float) -> bool | None:
@@ -493,8 +546,11 @@ class GuardedModel:
         on_reserved: Callable[[], None] | None = None,
         before_reserve: Callable[[], str | None] | None = None,
         cancelled: Callable[[], bool] | None = None,
+        content: int = CONTENT_VERSION,
     ) -> None:
         self.config = config
+        # What the press sends, which the reservation's Allow must cover.
+        self.content = content
         self.model = model
         self.clock = clock
         self.provider = provider
@@ -542,6 +598,7 @@ class GuardedModel:
             provider=self.provider,
             job_id=job_id or "",
             destination=self.destination,
+            content=self.content,
         )
         if answer["reason"] == "stopping":
             # The shutdown reached the reservation before its commit, so the
