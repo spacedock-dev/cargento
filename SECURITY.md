@@ -1143,6 +1143,25 @@ newest messages replace their first sentence with their words only inside half t
 (`reading.WORDS_SHARE_DIVISOR`), counted in UTF-8 bytes. A message whose words do not fit is sent
 as its first sentence.
 
+Since 2026-10-03 the agent's own messages are a further class of content a reading sends, by the
+owner's ruling that what the agent says is evidence
+([the amendment](docs/design-reading-a-session.md#amended-2026-10-03-owner-the-agents-own-words-are-evidence)).
+On a Claude Code session each top-level assistant text message in the bounded transcript tail is
+an entry of its own; sidechain and meta records, thinking and tool call blocks, and the CLI's own
+`<synthetic>` records are not. Its first sentence is the entry's title, and the whole message,
+collapsed to one line, redacted by `records.safe_text` and cut at 1,000 characters
+(`project_context.AGENT_WORDS_CAP_CHARS`), replaces the title only inside a quarter of the 16 KiB
+prompt (`reading.AGENT_WORDS_SHARE_DIVISOR`), newest first, after the reader's own messages have had
+their half. That goes on every reading of a Claude Code session, pressed or unasked, whether or not
+tool output is allowed, and to whichever provider the route names. It sends what the agent wrote to
+the reader, including any private prose or path it repeated that redaction does not recognize, and
+it carries the same line-break residual as the reader's words above. The field holding the whole
+message (`agent_words`) is treated as `reader_words` is: held in memory for the reading and the live
+project context, never in either history store, and dropped from every page route by
+`project_context.for_page`, so the page shows only the first sentence. The agent's messages are not
+written into the session history store at all, live or whole. The route's "What is sent" list names
+them before the press.
+
 Merely opening a panel does not call the model, and neither
 does rendering, polling, reconnecting, resuming, changing focus or saving a revision. The
 server also requires `observer_model=1` on either request, following the quota consent pattern;
@@ -1304,8 +1323,9 @@ by the OS (`score_abstention.py --probe-argv`, below):
 `--system-prompt`.
 
 The prompt itself can still name paths. Under the tool-output ruling a check's command line and its
-redacted output tail are sent as the session recorded them, and a reader's own messages are sent
-whole up to 1,000 characters each where the prompt has room (Observer model calls), redacted, so a home path or user name the session typed or
+redacted output tail are sent as the session recorded them, and a reader's own messages and, since
+2026-10-03, the agent's own messages are sent whole up to 1,000 characters each where the prompt
+has room (Observer model calls), redacted, so a home path or user name the session typed or
 printed reaches Anthropic that way.
 
 Because the working directory is sent, the process runs in a fresh owner-only (0700) empty
@@ -2102,7 +2122,8 @@ because the operator passed a flag, so the flag's own help text is where that di
 What it sends is less than `POST /api/reading` sends, on the same path: the goal you typed, and the
 observed record the reading is allowed to read, to a `codex` subprocess running on your own machine
 under your own capacity. That record carries your messages in the session whole, up to 1,000
-characters each where the prompt has room, as a pressed reading's does. Your expected outcome lines are never sent by it, and a session with lines
+characters each where the prompt has room, as a pressed reading's does, and since 2026-10-03, on a
+Claude Code session, the agent's own messages under the same bound (Observer model calls). Your expected outcome lines are never sent by it, and a session with lines
 and no goal is not read by it at all (item 12 of
 [DEC-24](docs/design-reading-a-session.md#dec-24-your-intent-is-a-drafted-goal-and-a-checklist-and-a-correction-is-yours-to-copy)).
 Nothing new leaves the machine that did not already leave it when you pressed the control by hand,

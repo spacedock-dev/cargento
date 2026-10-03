@@ -343,15 +343,18 @@ departure is on record. How it landed follows the session's own facts further do
 words the list starts at #1, the entry where their evidence window opens; earlier entries are
 counted and not listed, and with nothing saved the whole record is numbered. The header's second
 row gives the count, and leaves it out when the record was not read. It lists the twenty most
-recent entries in the window, every check and file in the window and every later direction still
-to settle, each at its own number, and says how many it counted and
-did not list. An entry a departure cites is flagged "Cited" and always listed, and a direction you
+recent entries in the window, the ten most recent messages the agent wrote, every check and file in
+the window and every later direction still to settle, each at its own number, and says how many it
+counted and did not list. An entry a departure cites is flagged "Cited" and always listed, and a direction you
 gave after saving is flagged "A later direction you gave", which records no finding. Numbers are
 worked out again on every render, so a check that re-runs or a file written again moves the entries
 after it. Each entry shows who wrote it, its own type and the source that published it, and the
 list states the limit under it: demonstrated work results are read on Pi, and on
 Claude Code the record also lists the checks a session ran and the files it wrote, each result as
-the tool reported it and counted from the whole transcript read. A reading sends those checks, with
+the tool reported it and counted from the whole transcript read, and what the agent said, each of
+its messages an entry marked "Agent said". A reading sends the agent's messages as evidence of what
+it said and claimed, each redacted and up to 1,000 characters, and never stores or shows more than
+the first sentence. It sends those checks, with
 the last 180 characters each printed and the paths of the files written, only after you allow tool output for the destination named
 beside the button, and sends none where Cargento cannot name that destination. On every other harness those
 entries are instructions, dispatches and gate decisions and never an inspected file, test or
@@ -467,7 +470,8 @@ stored, never on a row) with its time, then the answer: "Departs from your inten
 each departure's own account under a departure, otherwise a failed check in the window, "Can't
 tell", or "Nothing found against what it read". Each line reads "Departs at #n", "Consistent with
 #n, as the tool reported; not inspected", "Consistent with what the session said at #n; not a
-check" or "Can't tell", never "Done". "Where the work went" groups the written files by folder. A
+check" or "Can't tell", never "Done". A line may depart, or read consistent, on what the agent
+said, and the level never reads "None or low" on the agent's word alone. "Where the work went" groups the written files by folder. A
 result says when your intent changed after it or new work arrived since, with "Analyze again", and
 "Not accurate?" marks the reading with a token that is stored beside it and never sent or counted.
 The box offers Cancel, which stops the call and records a cancelled attempt that still counts, or one that spent nothing when it landed before anything was sent. A failed request says its result could
