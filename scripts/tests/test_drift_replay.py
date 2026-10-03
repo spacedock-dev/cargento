@@ -289,7 +289,9 @@ class MarkingIsBlindAndComesFirst(unittest.TestCase):
             self.assertIn("final mark", dr._run_refusal(paths, body))
             dr.mark(home=str(s.home), ask=lambda _p: "n", say=lambda _m: None)
             dr.reconcile(home=str(s.home), ask=lambda _p: "n", say=lambda _m: None)
-            self.assertIn("not committed", dr._run_refusal(paths, body))
+            self.assertRegex(
+                dr._run_refusal(paths, body), "not committed|not inside the repository"
+            )
 
 
 class _Recorder:

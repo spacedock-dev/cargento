@@ -673,7 +673,7 @@ def reconcile(
     final = sum(1 for m in marks.values() if m.get("final"))
     say(f"\n{final} of {len(cases)} final. sha256 {sha}")
     if final == len(cases):
-        say(f"Commit {os.path.relpath(DIGEST_PATH, _ROOT)} before --live, --read or --score.")
+        say(f"Commit {_shown(DIGEST_PATH)} before --live, --read or --score.")
     return 0
 
 
@@ -682,6 +682,8 @@ def _closed(paths: Mapping[str, str], bound: str) -> str:
     for key in ("live", "read"):
         if os.path.exists(paths[key]):
             return f"{paths[key]} exists, so an output has been produced"
+    if not _in_repository(DIGEST_PATH):
+        return ""  # a file outside the repository has no git history to close it
     return lc._marking_closed(  # noqa: SLF001
         {**lc._paths(os.path.dirname(paths["dir"])), "dir": paths["dir"]},  # noqa: SLF001
         _ROOT,
@@ -689,6 +691,19 @@ def _closed(paths: Mapping[str, str], bound: str) -> str:
         RESULTS_PATH,
         bound,
     )
+
+
+def _shown(path: str) -> str:
+    """A path as the operator types it: relative to the repository where git can name it."""
+    return os.path.relpath(path, _ROOT) if _in_repository(path) else path
+
+
+def _in_repository(path: str) -> bool:
+    """Whether git can name this path; on Windows a path on another drive has no relative form."""
+    try:
+        return lc._inside(path, _ROOT)  # noqa: SLF001
+    except ValueError:
+        return False
 
 
 def report(*, home: str, say: Callable[[str], Any] = print) -> int:
@@ -973,9 +988,11 @@ def _run_refusal(paths: Mapping[str, str], body: Mapping[str, Any]) -> str:
     final = sum(1 for m in marks.values() if m.get("final"))
     if final < len(cases):
         return f"{final} of {len(cases)} cuts have a final mark. Mark blind and --reconcile first."
+    if not _in_repository(DIGEST_PATH):
+        return "Refused: the marks digest is not inside the repository, so it cannot be committed."
     committed = lc.committed_digest(_ROOT, DIGEST_PATH)
     if isinstance(committed, str):
-        return f"Refused: {committed}. Commit {os.path.relpath(DIGEST_PATH, _ROOT)} first."
+        return f"Refused: {committed}. Commit {_shown(DIGEST_PATH)} first."
     with open(paths["marks"], "rb") as handle:
         if hashlib.sha256(handle.read()).hexdigest() != committed.marks_digest:
             return "Refused: the local marks no longer hash to the committed digest."
@@ -1394,7 +1411,7 @@ def score(*, home: str, say: Callable[[str], Any] = print) -> int:
         handle.write("\n")
     for key in sorted(table):
         say(f"  {key:40} " + ", ".join(f"{k} {v}" for k, v in sorted(table[key].items())))
-    say(f"Written to {os.path.relpath(RESULTS_PATH, _ROOT)}: counts and salted case ids only.")
+    say(f"Written to {_shown(RESULTS_PATH)}: counts and salted case ids only.")
     return 0
 
 
