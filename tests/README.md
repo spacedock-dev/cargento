@@ -9,6 +9,7 @@ and what the person typed when they noticed it.
 tests/raw_sessions/<session_id>/
     steering-excerpts.txt     committed: every message the annotation cites
     <session_id>.jsonl        gitignored: the full sanitized session log, local only
+    <session_id>/subagents/   gitignored: its subagents' logs, sanitized the same way
 tests/annotated_sessions/<session_id>/
     annotation.md             committed: the goal -> drift -> steering map
 ```
@@ -40,12 +41,40 @@ A line in a Claude reply that quotes another session's prompts is replaced with
 
 ## Redaction
 
-Every excerpt, every annotation and every local JSONL was passed through the same redactor. This
-README was written by hand and names no one. The JSONL was parsed line by line and redacted value
-by value, so line counts, key counts, types and tool-use ids match the source. Two kinds of value
-change shape. A string value that itself holds JSON was redacted inside and re-serialised, which
-flattens a pretty-printed blob onto one line. An object key that is a path outside this repository
-became a numbered `[EXTERNAL_PATH_N]`, so two keys never collapse into one.
+Every excerpt, every annotation and every local JSONL was passed through the same redactor, now
+`scripts/redact_session.py`. This README was written by hand and names no one. The script holds the
+generic rules. The names, handles, organisations and places that identify real people come from a
+local file, `~/.cargento/redaction.json`, which is never committed:
+
+```json
+{
+  "v": 1,
+  "home_user_prefix": "<the start of your macOS user name>",
+  "repository_under_home": "repos/<org>/cargento",
+  "self_tag": "NAME_1",
+  "names": [{"pattern": "Full Name|\\bFirst\\b|handle", "tag": "NAME_1"}],
+  "orgs": [{"pattern": "Company|company", "tag": "ORG_NAME_1"}],
+  "places": ["City", "Country"]
+}
+```
+
+A name pattern matches case-insensitively unless it sets `"case_sensitive": true`, which short
+initials need. `self_tag` is the tag of the person whose chat messages are kept; everyone else's
+message body is removed.
+
+The JSONL is parsed line by line and redacted value by value, so line counts, key counts, types and
+tool-use ids match the source. A string value that itself holds JSON is redacted inside and written
+back in its own layout, and left untouched when nothing in it changed. A path outside this
+repository becomes `/[EXTERNAL_PATH_N]`: absolute, and numbered per distinct path, so a write
+outside the working directory still reads as outside and two directories never merge into one. A
+runner's own name survives the hidden directory (`/[EXTERNAL_PATH_1]/python3`), so a check run
+through it is still a check.
+
+Those three rules are what make the redacted copies replayable. Measured on these four sessions on
+2026-10-03, against the originals with their subagent logs cut at the same moment: the live level
+and the listed checks are the same at all 31 pushback cuts. Six cuts still differ in shell-call
+counts, because the board's 8 MiB backward scan reaches a little further or less far when a line's
+length changes. [The drift replay check](../docs/drift-replay/README.md) replays these copies.
 
 | Tag | Replaces |
 |---|---|
@@ -57,7 +86,7 @@ became a numbered `[EXTERNAL_PATH_N]`, so two keys never collapse into one.
 | `[INTERNAL_HOST_N]` | Private-network addresses |
 | `[TZ_REDACTED]` | Time zone names and abbreviations, which give away where someone lives |
 | `[LOCATION_REDACTED]` | Country and city names that say where someone lives |
-| `[EXTERNAL_PATH]`, `[EXTERNAL_PATH_N]` | Paths under the home directory outside this repository (local JSONL) |
+| `/[EXTERNAL_PATH_N]` | A path under the home directory outside this repository (local JSONL) |
 | `[CROSS_SESSION_LISTING_REMOVED]` | Tool output listing other sessions' prompts (local JSONL) |
 | `[THIRD_PARTY_MESSAGE_REMOVED]` | The body of a chat message someone else wrote (local JSONL) |
 
