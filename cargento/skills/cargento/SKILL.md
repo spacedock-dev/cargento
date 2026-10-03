@@ -352,9 +352,10 @@ after it. Each entry shows who wrote it, its own type and the source that publis
 list states the limit under it: demonstrated work results are read on Pi, and on
 Claude Code the record also lists the checks a session ran and the files it wrote, each result as
 the tool reported it and counted from the whole transcript read, and what the agent said, each of
-its messages an entry marked "Agent said". A reading sends the agent's messages as evidence of what
-it said and claimed, each redacted and up to 1,000 characters, and never stores or shows more than
-the first sentence. It sends those checks, with
+its messages an entry marked "Agent said". A reading you press for sends the agent's messages as
+evidence of what it said and claimed, each redacted and up to 1,000 characters, and never stores or
+shows more than the first sentence; an unasked reading sends none of them, and an Allow given
+before they were named asks once more. It sends those checks, with
 the last 180 characters each printed and the paths of the files written, only after you allow tool output for the destination named
 beside the button, and sends none where Cargento cannot name that destination. On every other harness those
 entries are instructions, dispatches and gate decisions and never an inspected file, test or
@@ -469,9 +470,12 @@ result shows the analysis level (worked out again from the stored reading on eve
 stored, never on a row) with its time, then the answer: "Departs from your intent" with a count and
 each departure's own account under a departure, otherwise a failed check in the window, "Can't
 tell", or "Nothing found against what it read". Each line reads "Departs at #n", "Consistent with
-#n, as the tool reported; not inspected", "Consistent with what the session said at #n; not a
-check" or "Can't tell", never "Done". A line may depart, or read consistent, on what the agent
-said, and the level never reads "None or low" on the agent's word alone. "Where the work went" groups the written files by folder. A
+#n, as the tool reported; not inspected", "Consistent with what the agent said at #n; not a
+check" where it rests on the agent's messages alone, "Consistent with what the session said at #n;
+not a check" or "Can't tell", never "Done". A line may depart, or read consistent, on one of the
+agent's messages, never beside a check that failed after your words, and the level never reads
+"None or low" on the agent's word alone. A departure resting on an agent message stops counting
+once that message leaves the transcript tail the board reads. "Where the work went" groups the written files by folder. A
 result says when your intent changed after it or new work arrived since, with "Analyze again", and
 "Not accurate?" marks the reading with a token that is stored beside it and never sent or counted.
 The box offers Cancel, which stops the call and records a cancelled attempt that still counts, or one that spent nothing when it landed before anything was sent. A failed request says its result could

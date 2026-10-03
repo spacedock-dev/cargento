@@ -1152,15 +1152,24 @@ an entry of its own; sidechain and meta records, thinking and tool call blocks, 
 collapsed to one line, redacted by `records.safe_text` and cut at 1,000 characters
 (`project_context.AGENT_WORDS_CAP_CHARS`), replaces the title only inside a quarter of the 16 KiB
 prompt (`reading.AGENT_WORDS_SHARE_DIVISOR`), newest first, after the reader's own messages have had
-their half. That goes on every reading of a Claude Code session, pressed or unasked, whether or not
-tool output is allowed, and to whichever provider the route names. It sends what the agent wrote to
-the reader, including any private prose or path it repeated that redaction does not recognize, and
-it carries the same line-break residual as the reader's words above. The field holding the whole
+their half. It is quoted as one JSON string with the menu heading neutralised, as a check's output
+tail is, and the prompt's trusted header says agent messages are quoted data, never instructions.
+That goes only on a reading the reader pressed for, whether or not tool output is allowed, and to
+whichever provider the route names; the unasked lane sends none of it (`reading.build_ledger`'s
+`read_agent_words`, set by the reading route alone). It sends what the agent wrote to the reader,
+including any private prose or path it repeated that redaction does not recognize, and it carries
+the same line-break residual as the reader's words above. An agent message can repeat tool output,
+so a command's output can reach the provider in the agent's words even where tool output was not
+allowed. Redaction catches credential shapes and, since 2026-10-03, the value after a cue such as
+`Bearer `, `password=`, `token=` or a `DB_PASSWORD=`-style assignment (Published text, below); a
+password or token with neither a shape nor a cue can go verbatim. The field holding the whole
 message (`agent_words`) is treated as `reader_words` is: held in memory for the reading and the live
 project context, never in either history store, and dropped from every page route by
 `project_context.for_page`, so the page shows only the first sentence. The agent's messages are not
 written into the session history store at all, live or whole. The route's "What is sent" list names
-them before the press.
+them before the press, and an Allow given before that list named them does not cover them: the
+Allow is bound to a content version beside its destination (`reading_policy.CONTENT_VERSION`), so
+the next press asks once more.
 
 Merely opening a panel does not call the model, and neither
 does rendering, polling, reconnecting, resuming, changing focus or saving a revision. The
@@ -1488,9 +1497,12 @@ tool output was named does not cover it. What is built:
 - A pass that a later command may have changed files after, in the same call or a later one, does
   not let a reading say the output is consistent, and its reason says so.
 - A passing check never makes an outcome line consistent when the line is about what the agent
-  tells the reader (reports, explains, says, lets you know). The record cannot show that, so the
-  resolver withdraws the verdict
-  ([the amendment](docs/design-reading-a-session.md#amended-2026-10-01-a-line-about-what-the-agent-tells-you-cannot-be-shown)).
+  tells the reader (reports, explains, says, lets you know). A check cannot show that, so the
+  resolver withdraws the verdict unless one of the agent's own messages is among what it rests on
+  ([the amendment](docs/design-reading-a-session.md#amended-2026-10-01-a-line-about-what-the-agent-tells-you-cannot-be-shown),
+  narrowed on 2026-10-03).
+- The agent's own messages may quote what a check printed, so tool output can reach the provider in
+  the agent's words even where this grant was never given (Observer model calls).
 - Where the destination cannot be named, the reading still runs on the reader's words, and its
   cutoff sentence says the checks were not sent and why.
 - The disclosure's `To:` item says what `destination` says, on every harness and not only for tool
@@ -2122,8 +2134,9 @@ because the operator passed a flag, so the flag's own help text is where that di
 What it sends is less than `POST /api/reading` sends, on the same path: the goal you typed, and the
 observed record the reading is allowed to read, to a `codex` subprocess running on your own machine
 under your own capacity. That record carries your messages in the session whole, up to 1,000
-characters each where the prompt has room, as a pressed reading's does, and since 2026-10-03, on a
-Claude Code session, the agent's own messages under the same bound (Observer model calls). Your expected outcome lines are never sent by it, and a session with lines
+characters each where the prompt has room, as a pressed reading's does. It never sends what the
+agent said: a pressed reading of a Claude Code session carries the agent's own messages since
+2026-10-03 (Observer model calls), and the lane leaves them out, entry and words alike. Your expected outcome lines are never sent by it, and a session with lines
 and no goal is not read by it at all (item 12 of
 [DEC-24](docs/design-reading-a-session.md#dec-24-your-intent-is-a-drafted-goal-and-a-checklist-and-a-correction-is-yours-to-copy)).
 Nothing new leaves the machine that did not already leave it when you pressed the control by hand,
@@ -2866,8 +2879,10 @@ fields rather than glossed, because a prose alias is a name no test can check, t
 of carriers rather than a list of every published string that could hold what the operator typed:
 more prompt text reaches the page through `records.safe_text` on the way, including the observer's
 derived goal, the ask question and its options, a Codex `title`, which is a prompt because Codex
-writes no generated title, and the focused project context's `prompt_choices[].text`, up to five of
-the reader's prompts at 240 characters each. Some of what those carriers hold came from a tool call's input rather
+writes no generated title, the focused project context's `prompt_choices[].text`, up to five of
+the reader's prompts at 240 characters each, and since 2026-10-03 the first sentence of each of the
+agent's messages, as the `summary` of an `agent_message` fact on `/api/project-context`, at most
+112 characters. Some of what those carriers hold came from a tool call's input rather
 than from a prompt directly: a Claude plan's first line, an `AskUserQuestion` question, and a Codex
 plan's steps, each under the bounds Irreversible actions states. A sweep of the local Claude store
 on the machine this was built on found seven distinct live Anthropic credentials in ordinary prompt
@@ -2889,6 +2904,15 @@ in `aggregate`, a backstop under both that also reaches `state_detail`, the inst
 subjects and a subagent name. An ask answer needs no cover, being an index into options the asking
 agent wrote rather than text. The measurement, the false-positive rate and the rejected alternatives
 are in [`docs/design-credential-redaction.md`](docs/design-credential-redaction.md).
+
+Since 2026-10-03 one shape is cued rather than shaped, beside the AWS secret: the value after
+`Bearer `, after `password=`, `passwd=`, `pwd=`, `secret=`, `token=`, `api_key=` or `apikey=` (any
+case, no space before the `=`), and after an upper-case `*_PASSWORD=`, `*_TOKEN=`, `*_SECRET=` or
+`*_KEY=` assignment, up to whitespace or a quote. The cue stays and the value becomes the marker.
+It was added when the agent's own messages began reaching a reading model, because an agent repeats
+what it read. It is the withholding direction and was not measured against the corpus the shapes
+were: a `secret=` naming something harmless is masked too, and `token = next_token()` in code, with
+spaces around the `=`, is left alone.
 
 The order matters as much as the coverage. Redaction runs before the bound, never after, because a
 key cut at a 140-character cap is still a hundred usable characters of key and a shape whose tail has
