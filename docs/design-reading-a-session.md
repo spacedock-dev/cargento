@@ -276,6 +276,9 @@ amendment below says so.
 
 ### Amended 2026-09-10: rule 7 asks whether an entry shows work, not who typed it
 
+Reversed for the agent's own account by
+[the amendment of 2026-10-03](#amended-2026-10-03-owner-the-agents-own-words-are-evidence).
+
 As written, rule 7 keys the Expected Output test on who wrote a cited entry, and that inverts its
 own reason. The reason is that self report is not evidence of a deliverable, and a request is not
 evidence of one either. Keyed on authorship, citing the reader's own words licensed a verdict about
@@ -373,6 +376,79 @@ names a level, never `met`. Its floor for an analysis needs every outcome line `
 tool-reported check. The live estimate says it reads checks and file paths, not what the intent
 says, and the analysis says it read each line of the intent against the checks and messages it
 cited. A result is never "Done" and never a check mark (DEC-24 item 6).
+
+Rule 7's outcome-line half here is replaced by
+[the amendment of 2026-10-03](#amended-2026-10-03-owner-the-agents-own-words-are-evidence).
+
+### Amended 2026-10-03 (owner): the agent's own words are evidence
+
+The owner, 2026-10-03: "allow whatever the agent says or does to be used as evidence for claims
+and drift." The reason given: "it is obviously evidence, and you cant have a drift tool that does
+not check or understand what an agent is doing or has done."
+
+What it reverses:
+
+- [Rule 7's amendment of 2026-09-10](#amended-2026-09-10-rule-7-asks-whether-an-entry-shows-work-not-who-typed-it),
+  whose reason was that self report is not evidence of a deliverable. An outcome line may now rest
+  on the agent's own account, and a departure or a `consistent` on one stands. The reader's own
+  request and Cargento's paraphrase still carry no verdict on a line, so `no-work-shown` is still
+  emitted for a line resting only on those.
+- [The 2026-10-01 rule on a line about what the agent tells you](#amended-2026-10-01-a-line-about-what-the-agent-tells-you-cannot-be-shown).
+  The agent's messages are now in the record, so such a line can be checked against them, and the
+  resolver no longer withdraws it. `tells-the-person` is no longer emitted.
+- [DEC-24](#dec-24-your-intent-is-a-drafted-goal-and-a-checklist-and-a-correction-is-yours-to-copy)
+  item 6's "on the Goal only": "Consistent with what the session said at #<n>; not a check" now
+  names an outcome line resting on the agent's account too.
+
+What a reading reads. On Claude Code each top-level assistant text message in the transcript is a
+fact of its own, `agent_message`, labelled "Agent said" in the session's activity. Sidechain and
+meta records stay out, a thinking or tool call block has no text to read, and a record Claude Code
+wrote itself rather than the model (its `<synthetic>` sentinel) is not the agent speaking. Its
+title is the message's first sentence, read like a reader's message. The ledger also carries the
+whole message, redacted the same way and cut at 1,000 characters, in a field the page never
+receives. The prompt chooses entries by title first, as it always has, so the agent's words never
+cost a verdict its evidence. Then it swaps titles for whole messages: the reader's first, newest
+first, inside half the 16 KiB budget, and then the agent's, newest first, inside a quarter of it.
+An agent message keeps the lowest priority in the byte bound, so checks and the reader's messages
+are always chosen first. The project event cap reserves the agent's messages after the session's
+own checks and the reader's messages, so a talkative session cannot evict either.
+
+What the model is told. The agent's messages, not test counts, are its report. It compares them
+with the checks, the writes and the reader's words. A claim the record contradicts, work it said it
+would do and did not, or work done instead of what was asked is a departure on the constraint it
+bears on. A `consistent` may rest on the agent's own account, and must cite it. The outcome lines
+are now put to the model whenever the agent spoke, whether or not tool output may be sent.
+
+One rule was added in the withholding direction. A `consistent` that cited a check whose latest
+run failed inside the window never stands on the agent's account left beside it. The record
+contradicting the claim is what this ruling calls a departure, so it is withdrawn as
+`check-does-not-show-it` rather than read as reassurance. A cited write or an aged pass beside the
+agent's account does not withdraw it on its own: neither is the record saying the claim is false.
+
+What stays:
+
+- [DEC-15](#dec-15-the-floor-and-the-overlay)'s rule that a reading never states the work was met,
+  and the prompt sentence saying so.
+- Rule 4's success-word backstop.
+- `board-quoting-itself`: a verdict resting only on Cargento's own paraphrase.
+- `uncorroborated`: a `consistent` resting only on the reader's own request.
+- [DEC-26](#dec-26-four-drift-levels-and-a-live-estimate-after-every-turn)'s floor. "None or low"
+  from an analysis still needs every outcome line `consistent` on a passing tool-reported check, so
+  the agent's word alone never reassures. A departure resting on the agent's account reads Medium.
+- Steer back's owner-approved text. A line that departed on the agent's account shows as departed,
+  with its time and number, in the same words as any other departure. A `consistent` is still
+  only ever "as the tool reported".
+
+What is sent. This is new content to the model provider: each agent message, redacted and cut at
+1,000 characters, inside a quarter of the 16 KiB prompt, on every reading of a Claude Code
+session, including the unasked lane. It is held in memory for the reading and the live project
+context only. It is not stored, not in the session history store, and not published on any page
+route. [SECURITY.md](../SECURITY.md#claude-code-reading-calls) says the same. The route's "What is
+sent" list now names the agent's messages and the outcome lines.
+
+The abstention acceptances, Codex's of 2026-09-14 and Claude Code's of 2026-10-02, describe the
+producer before this ruling. They were not re-scored against it. Codex sessions are unchanged
+for now: reading a Codex session's assistant messages as `agent_message` is a follow-up.
 
 ### The two typed fields are one line each, and that is a security decision
 
@@ -1364,7 +1440,9 @@ rules in the resolver and on the page, with the window read from the revision's 
 the same call or a later one, carries no `consistent` either (item 3's blocker, applied to a
 reading). What counts as work is per harness: a work result on Pi and a check on Claude Code, and
 never the agent's own final answer on Claude Code or Codex; on Pi the harness publishes its result as
-work. Per-line outcome lines are DRC-4685's. SECURITY.md's
+work. The agent's account is not work, and since
+[DEC-17's amendment of 2026-10-03](#amended-2026-10-03-owner-the-agents-own-words-are-evidence) it
+may still carry a line's verdict as what the session said. Per-line outcome lines are DRC-4685's. SECURITY.md's
 [Tool output in a Claude Code reading](../SECURITY.md#tool-output-in-a-claude-code-reading) says
 what is sent and where.
 
@@ -1627,6 +1705,10 @@ attribution above, failure evidence outranking a passing flag, node's `ℹ cance
 `[no test files]`. The owner added `rtk` as a wrapper whose checks read the flag alone.
 
 #### Amended 2026-10-01: a line about what the agent tells you cannot be shown
+
+Reversed by
+[DEC-17's amendment of 2026-10-03](#amended-2026-10-03-owner-the-agents-own-words-are-evidence):
+the agent's messages are now in the record, so the resolver no longer withdraws such a line.
 
 Owner ruling, DRC-4742. Three scored Claude Code qualification runs have failed DEC-17's check, and
 the third had one false reassurance. The reader had asked the agent to run `node --test
@@ -2038,8 +2120,9 @@ the later-direction floor (item 9).
 6. The result. Per line: "Departs at #<n>" with its cited evidence, only for a valid departure. A
    consistent line names its source by the cited entry's type: "Consistent with #<n>, as the tool
    reported; not inspected" for a tool outcome, "Consistent with what the session said at #<n>; not
-   a check" for the agent's own account, on the Goal only: on an outcome line the agent's own
-   account yields `not verifiable` (DEC-17 rule 7). Never "Done" and never a check mark. Otherwise
+   a check" for the agent's own account, on the Goal and, since
+   [DEC-17's amendment of 2026-10-03](#amended-2026-10-03-owner-the-agents-own-words-are-evidence),
+   on an outcome line too. Never "Done" and never a check mark. Otherwise
    "Can't tell: nothing recorded shows this yet". A headline and short account render only under a departure,
    built from departure detail with its citations. "Where the work went" groups written paths by
    folder without a model. The session's activity flags each entry a departure cites ("Cited") and
