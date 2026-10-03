@@ -598,7 +598,73 @@ class RedactSecretsTest(unittest.TestCase):
             "postgres://someone:NOTAREALPASSWORD@db.example:5432/app",
             "postgres://…REDACTED@db.example:5432/app",
         ),
+        # The `cued` shape: no shape of its own, so the cue in front names it and
+        # stays, and only the value goes (review, 2026-10-03).
+        ("bearer value", "Authorization: Bearer placeholder123", "Authorization: Bearer …REDACTED"),
     )
+
+    # Every cue the `cued` shape reads, each with a synthetic value, and the forms it
+    # leaves alone: code that assigns, prose that merely names a cue, and a short word.
+    CUED = (
+        ("password=placeholder1", "password=…REDACTED"),
+        ('Password="placeholder1"', 'Password="…REDACTED"'),
+        ("passwd=placeholder1", "passwd=…REDACTED"),
+        ("pwd=placeholder1", "pwd=…REDACTED"),
+        ("secret=placeholder1", "secret=…REDACTED"),
+        ("token=placeholder1", "token=…REDACTED"),
+        ("api_key=placeholder1", "api_key=…REDACTED"),
+        ("APIKEY=placeholder1", "APIKEY=…REDACTED"),
+        ("DB_PASSWORD=placeholder1 make run", "DB_PASSWORD=…REDACTED make run"),
+        ("GH_TOKEN=placeholder1", "GH_TOKEN=…REDACTED"),
+        ("APP_SECRET=placeholder1", "APP_SECRET=…REDACTED"),
+        ("STRIPE_KEY=placeholder1", "STRIPE_KEY=…REDACTED"),
+        # The names the final review found the first spelling missed (2026-10-03).
+        ("MY_DB_PASSWORD=placeholder1", "MY_DB_PASSWORD=…REDACTED"),
+        ("GITHUB_API_TOKEN=placeholder1", "GITHUB_API_TOKEN=…REDACTED"),
+        ("OPENAI_API_KEY=placeholder1", "OPENAI_API_KEY=…REDACTED"),
+        ("AWS_SESSION_TOKEN=placeholder1", "AWS_SESSION_TOKEN=…REDACTED"),
+        ("PGPASSWORD=placeholder1", "PGPASSWORD=…REDACTED"),
+        ("db_password=placeholder1", "db_password=…REDACTED"),
+        ("my_api_key=placeholder1", "my_api_key=…REDACTED"),
+        ('{"password": "place holder1"}', '{"password": "…REDACTED"}'),
+        ("password: placeholder1", "password: …REDACTED"),
+        ("--password placeholder1", "--password …REDACTED"),
+        ("--token=placeholder1", "--token=…REDACTED"),
+        ("DB_PASSWORD = placeholder1", "DB_PASSWORD = …REDACTED"),
+        ("DB_PASSWORD='place holder 1'", "DB_PASSWORD='…REDACTED'"),
+        ("password=placeholder", "password=…REDACTED"),
+        # Bearer: after `Authorization:` anything, otherwise a credential-like value.
+        ("Authorization: Bearer abc", "Authorization: Bearer …REDACTED"),
+        ("bearer placeholder1placeholder2", "bearer …REDACTED"),
+    )
+    CUED_LEFT_ALONE = (
+        "token = next_token()",
+        "the tokens are fine",
+        "sort_key=name",
+        "the bearer of it",
+        "http://127.0.0.1:4553",
+        # Prose and code that names a value rather than holding one.
+        "Add bearer auth to the API client",
+        "bearer placeholder1",
+        "secret=staging",
+        "token=$NEXT",
+        "TOKEN=${GH_TOKEN}",
+        "password = None",
+        "api_key = os.environ",
+        "secret = self.secret",
+        "Monkey: banana",
+        "primary key: id",
+        "secret: the plan",
+        "PWD=/home/someone/repo",
+    )
+
+    def test_a_cued_value_with_no_shape_is_masked_and_its_cue_kept(self) -> None:
+        for fake, expected in self.CUED:
+            with self.subTest(fake=fake):
+                self.assertEqual(expected, records.redact_secrets(fake))
+        for text in self.CUED_LEFT_ALONE:
+            with self.subTest(text=text):
+                self.assertEqual(text, records.redact_secrets(text))
 
     def test_every_measured_shape_is_replaced_by_a_visible_marker(self) -> None:
         for name, fake, expected in self.FAKES:

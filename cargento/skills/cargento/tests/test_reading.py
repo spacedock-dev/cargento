@@ -782,14 +782,16 @@ class WhichConstraintsWerePutToTheReading(unittest.TestCase):
 
     def test_every_demotion_names_itself_with_a_token_the_store_accepts(self) -> None:
         """The other four demotions, each its own token, all inside the closed set."""
-        claim = entry(id="a1", type="assistant_message", summary="I've written ./out.csv")
+        # The reader's own request: since the agent's account is evidence (owner,
+        # 2026-10-03), only a person's or Cargento's words leave a line resting on nothing.
+        request = person_entry()
         cases: tuple[tuple[str, Any, tuple[reading.LedgerEntry, ...], str, str, str], ...] = (
             (
                 reading.WHY_NO_WORK_SHOWN,
                 reply(output_token="consistent", output_cites=(1,)),  # noqa: S106 - a verdict token, not a credential
-                # A work row beside the claim, so the constraint is asked and
-                # the claim alone is what the verdict cites.
-                (claim, entry(id="w1", type="work_result", summary="wrote out.csv")),
+                # A work row beside the request, so the constraint is asked and
+                # the request alone is what the verdict cites.
+                (request, entry(id="w1", type="work_result", summary="wrote out.csv")),
                 "line_1",
                 "a CSV at ./out.csv",
                 "pi",
@@ -834,17 +836,24 @@ class WhichConstraintsWerePutToTheReading(unittest.TestCase):
                 self.assertIn(expected, reading.WHY_TOKENS)
                 seen.add(expected)
         self.assertEqual(4, len(seen))
-        self.assertEqual(14, len(reading.WHY_TOKENS))
+        self.assertEqual(15, len(reading.WHY_TOKENS))
         self.assertIn(reading.WHY_STANDS, reading.WHY_TOKENS)
 
 
 class WhoseWordAReadingIsWillingToTake(unittest.TestCase):
-    """DEC-17 rule 7 and the derived column beside it."""
+    """DEC-17 rule 7 and the derived column beside it.
+
+    Amended by the owner on 2026-10-03: the agent's own messages are evidence of
+    what it said, claimed and reported, so a line may rest on them. The reader's
+    request and Cargento's paraphrase still may not.
+    """
 
     def setUp(self) -> None:
         self.request = person_entry()
         self.work = entry(id="w1", type="work_result", summary="wrote report.csv, 412 rows")
-        self.claim = entry(id="a1", type="assistant_message", summary="I've written ./out.csv")
+        self.claim = entry(
+            id="a1", type=reading.AGENT_MESSAGE_TYPE, summary="I've written ./out.csv"
+        )
         self.snapshot = derived_entry()
 
     def test_the_board_knows_who_wrote_each_thing_it_reads(self) -> None:
@@ -864,32 +873,65 @@ class WhoseWordAReadingIsWillingToTake(unittest.TestCase):
             with self.subTest(source=source):
                 self.assertEqual(reading.author_of(cast("dict[str, Any]", source)), expected)
 
-    def test_a_reader_is_not_told_the_deliverable_arrived_because_the_session_said_so(self) -> None:
+    def test_a_line_may_rest_on_what_the_session_said_and_cites_it(self) -> None:
         criterion = reading.resolve(
-            reply(output_token="consistent", output_cites=(1,), output_detail="the csv is there"),  # noqa: S106 - a verdict token, not a credential
+            reply(output_token="consistent", output_cites=(1,)),  # noqa: S106 - a verdict token, not a credential
             reading.Selection((self.claim,)),
             goal="write a CSV",
             lines=["a CSV at ./out.csv"],
             detail_cap_chars=200,
         )["line_1"]
-        self.assertEqual(criterion.get("result"), reading.RESULT_UNVERIFIABLE)
+        self.assertEqual(criterion.get("result"), reading.RESULT_CONSISTENT)
+        self.assertEqual(criterion["cites"], ("a1",))
+        self.assertEqual(criterion["why"], reading.WHY_STANDS)
+
+    def test_a_departure_on_what_the_session_said_stands_on_a_line(self) -> None:
+        criterion = reading.resolve(
+            reply(
+                output_token="departure",  # noqa: S106 - a verdict token, not a credential
+                output_cites=(1,),
+                output_detail="it said it wrote a JSON file instead",
+            ),
+            reading.Selection((self.claim,)),
+            goal="write a CSV",
+            lines=["a CSV at ./out.csv"],
+            detail_cap_chars=200,
+        )["line_1"]
+        self.assertEqual(criterion.get("result"), reading.RESULT_DEPARTURE)
+        self.assertEqual(criterion["cites"], ("a1",))
 
     def test_a_reader_is_not_told_the_deliverable_arrived_because_she_asked_for_it(self) -> None:
-        """The request is the constraint. Citing it beside a self-report changes nothing."""
-        for cites in ((1,), (1, 2)):
-            with self.subTest(cites=cites):
-                criterion = reading.resolve(
-                    reply(
-                        output_token="consistent",  # noqa: S106 - a verdict token, not a credential
-                        output_cites=cites,
-                        output_detail="the csv is there",
-                    ),
-                    reading.Selection((self.request, self.claim)),
-                    goal="write a CSV",
-                    lines=["a CSV at ./out.csv"],
-                    detail_cap_chars=200,
-                )["line_1"]
-                self.assertEqual(criterion.get("result"), reading.RESULT_UNVERIFIABLE)
+        """The request is the constraint. Citing it alone rests the line on nothing."""
+        criterion = reading.resolve(
+            reply(output_token="consistent", output_cites=(1,)),  # noqa: S106 - a verdict token, not a credential
+            reading.Selection((self.request, self.claim)),
+            goal="write a CSV",
+            lines=["a CSV at ./out.csv"],
+            detail_cap_chars=200,
+        )["line_1"]
+        self.assertEqual(criterion.get("result"), reading.RESULT_UNVERIFIABLE)
+        self.assertEqual(criterion["why"], reading.WHY_NO_WORK_SHOWN)
+        # Beside the agent's account it stands on that account, and names both.
+        both = reading.resolve(
+            reply(output_token="consistent", output_cites=(1, 2)),  # noqa: S106 - a verdict token, not a credential
+            reading.Selection((self.request, self.claim)),
+            goal="write a CSV",
+            lines=["a CSV at ./out.csv"],
+            detail_cap_chars=200,
+        )["line_1"]
+        self.assertEqual(both.get("result"), reading.RESULT_CONSISTENT)
+        self.assertEqual(both["cites"], ("p1", "a1"))
+
+    def test_another_agent_entry_that_is_not_its_message_does_not_pose_the_lines(self) -> None:
+        tool_use = entry(id="t1", type="tool_use", summary="edited the parser")
+        _prompt, selected = reading.build_prompt(
+            (tool_use,), goal="write a CSV", lines=["a CSV at ./out.csv"], max_bytes=8000
+        )
+        self.assertFalse(selected.asked_output)
+        _prompt, said = reading.build_prompt(
+            (self.claim,), goal="write a CSV", lines=["a CSV at ./out.csv"], max_bytes=8000
+        )
+        self.assertTrue(said.asked_output)
 
     def test_demonstrated_work_is_the_evidence_the_deliverable_row_exists_to_read(self) -> None:
         criterion = reading.resolve(
@@ -2170,6 +2212,17 @@ AGENT_FACT: dict[str, Any] = {
     "summary": "All tests pass now, the retry works.",
     "at": 99.0,
 }
+# What the agent said, as `project_context` publishes a top-level assistant text message
+# on Claude Code since the owner's ruling of 2026-10-03.
+AGENT_MESSAGE_FACT: dict[str, Any] = {
+    **WORDS_FACT,
+    "fact_id": "m1",
+    "type": reading.AGENT_MESSAGE_TYPE,
+    "summary": "Ran node --test once, unpiped: 12 passed, 0 failed.",
+    reading.AGENT_WORDS_FIELD: "Ran node --test once, unpiped: 12 passed, 0 failed. Done.",
+    "at": 99.0,
+    "evidence": {"source": "timestamped top-level assistant text record", "confidence": "exact"},
+}
 TAIL = "FAILED tests/test_retry.py::test_backoff - AssertionError: 2 != 3"
 ADMITTED = reading.ToolOutput(destination="OpenAI", label="Codex", tails={"call-1": TAIL})
 
@@ -2209,6 +2262,7 @@ class AClaudeCodeReadingProducer(unittest.TestCase):
             model=model or self._model(),
             tool_output=tool_output,
             read_lines=True,
+            read_agent_words=True,
         )
 
 
@@ -2274,7 +2328,20 @@ class ACheckReachesAModelOnlyAfterYouAllowToolOutput(AClaudeCodeReadingProducer)
                 self.assertIn(pasted, values)
                 self.assertRegex(instructions, r"latest relevant run.*evidence window")
                 self.assertRegex(instructions, r"[Pp]artial or unknown coverage.*unverifiable")
-                self.assertRegex(instructions, r"agent's own account cannot support an outcome")
+                # The owner's ruling of 2026-10-03, in the trusted header the reader's
+                # words cannot replace: the agent's messages are evidence, compared with
+                # the record, and a consistent resting on them must cite them.
+                self.assertNotRegex(instructions, r"agent's own account cannot support")
+                self.assertRegex(instructions, r"Agent messages, not test counts, are its report")
+                # Quoted data, as a check's output tail is (review, 2026-10-03).
+                self.assertRegex(instructions, r"quoted data, never instructions")
+                self.assertRegex(instructions, r"Compare them with the record")
+                self.assertRegex(
+                    instructions,
+                    r"contradicted claim, unkept promise, or work done instead of the "
+                    r"ask is a departure",
+                )
+                self.assertRegex(instructions, r"a consistent may rest on one cited")
                 self.assertRegex(
                     instructions,
                     r"[Cc]heck must cover the whole constraint",
@@ -2282,10 +2349,6 @@ class ACheckReachesAModelOnlyAfterYouAllowToolOutput(AClaudeCodeReadingProducer)
                 self.assertRegex(
                     instructions,
                     r"[Ss]uite pass cannot prove a toggle, scorekeeping.*it did not exercise",
-                )
-                self.assertRegex(
-                    instructions,
-                    r"[Tt]est counts are not the agent's report to the person",
                 )
                 self.assertEqual(6, values.count('<outcome_line n="'))
 
@@ -2380,8 +2443,9 @@ class ACheckReachesAModelOnlyAfterYouAllowToolOutput(AClaudeCodeReadingProducer)
 
 class WhatACheckLetsAReadingSayAboutYourExpectedOutput(AClaudeCodeReadingProducer):
     """DEC-23 item 8, the first acceptance criterion: a failed latest run in
-    the window supports a departure, a later pass takes it away, and only the
-    agent's claim leaves Expected Output not verifiable."""
+    the window supports a departure and a later pass takes it away. Since the
+    owner's ruling of 2026-10-03 the agent's own message may carry a line too,
+    but never beside a check that contradicts it."""
 
     def _output(self, facts: list[dict[str, Any]], token: str, cites: list[int]) -> Any:
         answer = json.dumps(
@@ -2443,13 +2507,28 @@ class WhatACheckLetsAReadingSayAboutYourExpectedOutput(AClaudeCodeReadingProduce
                 self.assertEqual(reading.RESULT_UNVERIFIABLE, row["result"])
                 self.assertEqual(reading.WHY_CHECK_DOES_NOT_SHOW_IT, row["why"])
 
-    def test_only_the_agents_claim_of_success_leaves_expected_output_not_verifiable(
-        self,
-    ) -> None:
+    def test_a_task_result_alone_does_not_pose_expected_output(self) -> None:
+        # Not the agent's message: a task result poses no line on Claude Code.
         row = self._output([WORDS_FACT, AGENT_FACT], "consistent", [2])
         self.assertEqual(reading.RESULT_UNVERIFIABLE, row["result"])
         self.assertEqual(reading.WHY_NOT_ASKED, row["why"])
         self.assertNotIn("<outcome_line", self.prompts[0])
+
+    def test_the_agents_message_poses_expected_output_and_a_consistent_may_rest_on_it(
+        self,
+    ) -> None:
+        row = self._output([WORDS_FACT, AGENT_MESSAGE_FACT], "consistent", [2])
+        self.assertIn("<outcome_line", self.prompts[0])
+        self.assertEqual(reading.RESULT_CONSISTENT, row["result"])
+        self.assertEqual(("m1",), row["cites"])
+
+    def test_the_agents_message_beside_a_failed_check_cannot_carry_a_consistent(self) -> None:
+        # The record contradicts the claim: a consistent that cited the failure
+        # never stands on the message left beside it.
+        row = self._output([WORDS_FACT, check_fact(), AGENT_MESSAGE_FACT], "consistent", [2, 3])
+        self.assertEqual(reading.RESULT_UNVERIFIABLE, row["result"])
+        self.assertEqual(reading.WHY_CHECK_DOES_NOT_SHOW_IT, row["why"])
+        self.assertEqual((), row["cites"])
 
     def test_a_reply_citing_a_failed_check_as_consistent_is_withdrawn(self) -> None:
         row = self._output([WORDS_FACT, check_fact()], "consistent", [2])
@@ -2467,11 +2546,13 @@ class WhatACheckLetsAReadingSayAboutYourExpectedOutput(AClaudeCodeReadingProduce
         self.assertEqual(("check-1",), row["cites"])
 
 
-class ALineAboutWhatTheAgentTellsYouCannotBeShown(AClaudeCodeReadingProducer):
-    """Owner ruling 2026-10-01, DRC-4742. A record can show that a check ran and
-    passed; it cannot show what the agent then told the reader, so a passing
-    check never makes `consistent` an outcome line whose subject is the agent's
-    account. The demotion only ever moves toward abstaining."""
+class ALineAboutWhatTheAgentTellsYouIsReadAgainstItsMessages(AClaudeCodeReadingProducer):
+    """Owner ruling 2026-10-01, DRC-4742, withdrew a `consistent` on an outcome
+    line whose subject is what the agent told the reader, because no record then
+    held what it said. Narrowed, not reversed, once the agent's messages became
+    evidence (2026-10-03; review the same day): such a line stands only where a
+    message of the agent's is among what it rests on. A passing check alone
+    still cannot show what the agent said."""
 
     FAILED_LINE = "node --test tests/game.test.js is run once, unpiped, and its counts are reported"
 
@@ -2491,43 +2572,47 @@ class ALineAboutWhatTheAgentTellsYouCannotBeShown(AClaudeCodeReadingProducer):
             cast("Any", self.config),
             {"harness": "claude", "sid": "s1", "state": "working", "ended_at": None},
             [{"n": 1, "at": 50.0, "goal": goal or "add retry to the webhook", "output": line}],
-            [*facts, AGENT_FACT],
+            [*facts, AGENT_MESSAGE_FACT],
             now=200.0,
             stamp_text="read at 10:00",
             model=self._model(answer),
             tool_output=ADMITTED,
             read_lines=True,
+            read_agent_words=True,
         )
         self.assertEqual("", why)
         return cast("Any", assessment)["criteria"][on]
 
-    def test_the_measured_line_with_a_passing_check_is_not_verifiable(self) -> None:
-        row = self._read(self.FAILED_LINE, "consistent")
-        self.assertEqual(reading.RESULT_UNVERIFIABLE, row["result"])
-        self.assertEqual(reading.WHY_TELLS_THE_PERSON, row["why"])
-        self.assertEqual((), row["cites"])
+    def test_the_measured_line_on_the_check_and_the_agents_message_stands(self) -> None:
+        row = self._read(self.FAILED_LINE, "consistent", cites=(2, 3))
+        self.assertEqual(reading.RESULT_CONSISTENT, row["result"])
+        self.assertEqual(reading.WHY_STANDS, row["why"])
+        self.assertEqual(("check-1", "m1"), row["cites"])
         self.assertEqual(self.FAILED_LINE, row["clause"])
 
-    def test_a_telling_verb_past_the_display_cap_is_still_read(self) -> None:
-        # The clause published on the row is capped at 240 characters; the rule
-        # reads the whole line, so a verb past the cap cannot escape it.
-        line = "node --test tests/game.test.js " + "runs every case " * 20 + "and is reported"
-        self.assertGreater(len(line), self.config.annotation_text_cap_chars)
-        row = self._read(line, "consistent")
-        self.assertEqual(reading.RESULT_UNVERIFIABLE, row["result"])
-        self.assertEqual(reading.WHY_TELLS_THE_PERSON, row["why"])
-        self.assertNotIn("reported", row["clause"])
+    def test_the_agents_message_reaches_the_prompt_whole(self) -> None:
+        self._read(self.FAILED_LINE, "consistent")
+        self.assertIn("12 passed, 0 failed. Done.", self.prompts[0])
 
     def test_a_departure_on_the_same_line_stands(self) -> None:
         row = self._read(self.FAILED_LINE, "departure", check="failed")
         self.assertEqual(reading.RESULT_DEPARTURE, row["result"])
         self.assertEqual(("check-1",), row["cites"])
 
-    def test_a_line_resting_only_on_the_agents_account_keeps_its_own_reason(self) -> None:
+    def test_a_departure_resting_only_on_the_agents_message_stands(self) -> None:
+        row = self._read(self.FAILED_LINE, "departure", cites=(3,))
+        self.assertEqual(reading.RESULT_DEPARTURE, row["result"])
+        self.assertEqual(("m1",), row["cites"])
+
+    def test_a_line_resting_only_on_the_agents_account_stands_and_cites_it(self) -> None:
         row = self._read(self.FAILED_LINE, "consistent", cites=(3,))
-        self.assertIn("All tests pass now", self.prompts[0])
-        self.assertEqual(reading.RESULT_UNVERIFIABLE, row["result"])
-        self.assertEqual(reading.WHY_NO_WORK_SHOWN, row["why"])
+        self.assertEqual(reading.RESULT_CONSISTENT, row["result"])
+        self.assertEqual(("m1",), row["cites"])
+
+    def test_the_withdrawal_tokens_stay_in_the_closed_set_a_stored_reading_uses(self) -> None:
+        # Stored readings carry them, and the store refuses a token outside the set.
+        self.assertIn(reading.WHY_TELLS_THE_PERSON, reading.WHY_TOKENS)
+        self.assertIn(reading.WHY_NO_WORK_SHOWN, reading.WHY_TOKENS)
 
     def test_a_line_without_a_telling_verb_keeps_its_consistent(self) -> None:
         row = self._read("node --test tests/game.test.js passes", "consistent")
@@ -2544,7 +2629,22 @@ class ALineAboutWhatTheAgentTellsYouCannotBeShown(AClaudeCodeReadingProducer):
         self.assertEqual(reading.RESULT_CONSISTENT, row["result"])
         self.assertEqual(("check-1",), row["cites"])
 
-    def test_every_telling_form_is_withdrawn_whatever_its_case(self) -> None:
+    def test_the_measured_line_on_a_passing_check_alone_is_still_withdrawn(self) -> None:
+        row = self._read(self.FAILED_LINE, "consistent")
+        self.assertEqual(reading.RESULT_UNVERIFIABLE, row["result"])
+        self.assertEqual(reading.WHY_TELLS_THE_PERSON, row["why"])
+        self.assertEqual((), row["cites"])
+
+    def test_a_telling_verb_past_the_display_cap_is_still_read(self) -> None:
+        line = "node --test tests/game.test.js " + "runs every case " * 20 + "and is reported"
+        self.assertGreater(len(line), self.config.annotation_text_cap_chars)
+        row = self._read(line, "consistent")
+        self.assertEqual(reading.WHY_TELLS_THE_PERSON, row["why"])
+        self.assertNotIn("reported", row["clause"])
+
+    def test_every_telling_form_on_a_check_alone_is_withdrawn_and_stands_on_a_message(
+        self,
+    ) -> None:
         lines = (
             "the agent reports the counts",
             "it reported the counts",
@@ -2587,6 +2687,10 @@ class ALineAboutWhatTheAgentTellsYouCannotBeShown(AClaudeCodeReadingProducer):
                 row = self._read(line, "consistent")
                 self.assertEqual(reading.RESULT_UNVERIFIABLE, row["result"])
                 self.assertEqual(reading.WHY_TELLS_THE_PERSON, row["why"])
+                self.prompts.clear()
+                said = self._read(line, "consistent", cites=(2, 3))
+                self.assertEqual(reading.RESULT_CONSISTENT, said["result"])
+                self.assertEqual(reading.WHY_STANDS, said["why"])
 
     def test_a_word_that_only_contains_a_telling_verb_is_not_one(self) -> None:
         # Whole words only: a noun built on the stem names a thing, not what the
@@ -2944,6 +3048,8 @@ class TheAgentsFinalAnswerIsNotWorkOnAnyHarness(AClaudeCodeReadingProducer):
         self.assertNotIn("SENTINEL_OUTPUT", self.prompts[0])
 
     def test_a_claude_code_final_answer_cited_as_consistent_shows_no_work(self) -> None:
+        # Not one of the agent's messages either: only `agent_message` joins work in
+        # carrying a line (review, 2026-10-03).
         final = {**CODEX_FINAL, "source_session": {"harness": "claude", "sid": "s1"}}
         answer = json.dumps({"line_1": {"result": "consistent", "cites": [3], "detail": ""}})
         assessment, _why, _spent = self._produce(

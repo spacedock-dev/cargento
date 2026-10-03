@@ -1861,10 +1861,11 @@ function nextCockpitWorkEvidenceOwn(harness, sent = true){
 }
 
 /* The reading's Expected Output limit, apart from the record's own line. On
-   Claude Code it is lifted only where the route names where the checks go, so
-   a reading can carry them after the reader allows tool output, under item 7 of
-   [DEC-23](docs/design-reading-a-session.md#dec-23-a-claude-code-sessions-record-of-its-checks-may-show-the-work).
-   Where it cannot name that, no check is sent and the demotion stays. */
+   Claude Code it is lifted wherever a reading can be made: the agent's own
+   messages go with the words and carry a line's verdict whether or not a check
+   can be sent
+   ([DEC-17](docs/design-reading-a-session.md#amended-2026-10-03-owner-the-agents-own-words-are-evidence)).
+   With no reading model at all, the demotion stays. */
 function nextReadingOutputLimit(harness){
   if(harness === "pi") return "";
   const label = nextHarnessLabels().get(harness) || nextCockpitHumanLabel(harness);
@@ -1876,12 +1877,7 @@ function nextReadingOutputLimit(harness){
       "observed record is an inspected file, test or deliverable.";
   }
   const route = nextReadingRoute({harness});
-  if(route && route.provider && route.destination) return "";
-  if(route && route.provider){
-    return `${label} records the checks a session ran, but Cargento cannot name where ` +
-      `${route.label} would send them, so no check is sent and a reading cannot judge an ` +
-      "expected output here.";
-  }
+  if(route && route.provider) return "";
   return `${label} records the checks a session ran, but no reading can carry them here, so ` +
     "a reading cannot judge an expected output here.";
 }
@@ -2087,6 +2083,9 @@ function nextCockpitWorkEntries(session, semantic){
    exactly why the count it hid is stated under the rows: a silent cap reads
    as the whole record. */
 const NEXT_COCKPIT_WORK_ROWS = 20;
+/* The agent's messages, bounded apart: half the other rows' bound, a
+   readability choice like that one, and stated under the rows the same way. */
+const NEXT_COCKPIT_AGENT_ROWS = 10;
 
 /* The observed last turn of a session waiting at its prompt, inside the
    evidence window (item 13 of
@@ -2155,7 +2154,7 @@ function nextCockpitEntryNumbers(session, source){
 const NEXT_COCKPIT_ENTRY_KIND = new Map([
   ["prepared_dispatch", "Dispatch"], ["work_birth", "Task started"], ["work_result", "Task result"],
   ["result", "Result"], ["gate_decision", "Gate"], ["decision", "Decision"],
-  ["assignment", "Assignment"], ["stage_transition", "Stage"],
+  ["assignment", "Assignment"], ["stage_transition", "Stage"], ["agent_message", "Agent said"],
 ]);
 
 function nextCockpitEntryActor(entry){
@@ -2209,11 +2208,16 @@ function nextCockpitWorkEvidence(session, source, cited = new Set()){
      number so the gaps show. A cited entry is always drawn, so it is
      reachable without an expand control. */
   const numbered = all.filter(entry => numbers.has(entry));
-  const recent = new Set(numbered.filter(entry => entry.type !== "tool_report")
+  /* The agent's messages take a bound of their own beside the other rows', so
+     a talkative session never pushes the reader's messages off the list. */
+  const agentSaid = entry => entry.type === "agent_message";
+  const recent = new Set(numbered.filter(entry => entry.type !== "tool_report" && !agentSaid(entry))
     .slice(-NEXT_COCKPIT_WORK_ROWS));
+  const recentSaid = new Set(numbered.filter(agentSaid).slice(-NEXT_COCKPIT_AGENT_ROWS));
   const isCited = entry => cited.has(String(entry && entry.id || ""));
+  const isRecent = entry => recent.has(entry) || recentSaid.has(entry);
   const entries = all.filter(entry => isCited(entry) || open.has(entry) ||
-    (numbers.has(entry) && (entry.type === "tool_report" || recent.has(entry))));
+    (numbers.has(entry) && (entry.type === "tool_report" || isRecent(entry))));
   const lastTurn = nextCockpitLastTurn(session, all);
   const rows = entries.map(entry => {
     const at = nextDurationSince(entry.at);
@@ -2299,13 +2303,14 @@ function nextCockpitWorkEvidence(session, source, cited = new Set()){
     ? `<p class="next-cockpit-work-dropped">Listing ${listed.length} of ` +
       `${nextCockpitEntryCount(numbers.size)}: ${nextCockpitJoinClauses([
         `the ${recent.size} most recent`,
+        ...(recentSaid.size ? [`the ${recentSaid.size} most recent messages the agent wrote`] : []),
         /* In the window: a check or file from before it is counted with the
            earlier entries, so "every" is true only of this set (review F3). */
         ...(listed.some(entry => entry.type === "tool_report")
           ? ["every check and file in the window"] : []),
         ...(listed.some(entry => isCited(entry) && entry.type !== "tool_report" &&
-          !recent.has(entry)) ? ["every entry the analysis cites"] : []),
-        ...(listed.some(entry => open.has(entry) && !isCited(entry) && !recent.has(entry))
+          !isRecent(entry)) ? ["every entry the analysis cites"] : []),
+        ...(listed.some(entry => open.has(entry) && !isCited(entry) && !isRecent(entry))
           ? ["every later direction still to settle"] : []),
       ])}. ${numbers.size - listed.length} ${numbers.size - listed.length === 1 ? "is" : "are"} ` +
       "counted and not listed.</p>" : "";
@@ -2379,16 +2384,20 @@ function nextCockpitWorkMix(entries){
   let copied = 0;
   let derived = 0;
   let summaries = 0;
+  let said = 0;
   let work = 0;
   for(const entry of entries){
     if(nextReadingPersonAuthored(entry)) directions += 1;
     else if(nextReadingCopied(entry)) copied += 1;
     else if(entry.modelDerived) derived += 1;
     else if(String(entry.type || "") === "observer_snapshot") summaries += 1;
+    /* What the agent said is its account, not an observation of what it did. */
+    else if(String(entry.type || "") === "agent_message") said += 1;
     else work += 1;
   }
   const parts = [`${entries.length} ${entries.length === 1 ? "entry" : "entries"}`];
   if(directions) parts.push(`${directions} ${directions === 1 ? "direction" : "directions"} you gave`);
+  if(said) parts.push(`${said} ${said === 1 ? "message" : "messages"} the agent wrote`);
   if(copied) parts.push(`${copied} copied from Cargento`);
   if(derived) parts.push(`${derived} model-derived`);
   if(summaries){
@@ -2627,10 +2636,16 @@ const NEXT_READING_CHECKS_NOT_READ =
   "put to it.";
 /* A line about what the agent tells the reader (`tells-the-person`), read
    from the store: the rule keys on the line's whole text, which the page does
-   not re-read. */
+   not re-read. Narrowed on 2026-10-03 to a line resting on no message of the
+   agent's, and worded so a row stored before that is still told the truth. */
 const NEXT_READING_TELLS_THE_PERSON =
-  "This line is about what the session told you, and nothing in the record can show that, " +
-  "so it reads as not verifiable.";
+  "This line is about what the agent told you, and the analysis rested it on no message " +
+  "the agent wrote, so it reads as not verifiable.";
+/* An outcome line's consistent resting on no work beside a failed check the
+   record holds (`failed-check-on-record`), read or not. */
+const NEXT_READING_FAILED_CHECK_ON_RECORD =
+  "A check this session ran failed after the words you saved, and this rests on no check " +
+  "that passed, so it reads as not verifiable.";
 const NEXT_READING_FAILED_CHECK_UNREAD =
   "A check that failed was not read, because the reading had no room for it, so nothing here " +
   "says the output is consistent.";
@@ -2655,6 +2670,7 @@ const NEXT_READING_STORED_WHY = {
   "check-read-incomplete": NEXT_READING_CHECK_READ_INCOMPLETE,
   "checks-not-read": NEXT_READING_CHECKS_NOT_READ,
   "tells-the-person": NEXT_READING_TELLS_THE_PERSON,
+  "failed-check-on-record": NEXT_READING_FAILED_CHECK_ON_RECORD,
 };
 
 /* Who wrote an evidence entry. A closed set on the person side, because the
@@ -2689,6 +2705,12 @@ const NEXT_READING_WORK_BY_HARNESS = {pi: ["work_result", "result"], claude: ["t
 function nextReadingWorkOn(harness, type){
   const types = NEXT_READING_WORK_BY_HARNESS[String(harness || "")];
   return Array.isArray(types) && types.includes(String(type || ""));
+}
+
+/* One of the agent's own messages (`reading.AGENT_MESSAGE_TYPE`): the only
+   agent-authored entry, besides work, that may carry an outcome line. */
+function nextReadingAgentMessage(entry){
+  return String(entry && entry.type || "") === "agent_message";
 }
 
 function nextReadingDemonstratesWork(entry){
@@ -2892,7 +2914,10 @@ function nextCockpitReadingCriterion(key, label, clause, raw, entries, limit, un
     why = NEXT_READING_MALFORMED;
   }
   let droppedCheck = false;
+  let failedCited = false;
   if(result !== NEXT_READING_UNVERIFIABLE){
+    failedCited = citations.some(entry => entry.subject === "check" &&
+      nextReadingCheckSupports(entry, NEXT_READING_DEPARTURE, windowStart));
     const incompletePass = result === NEXT_READING_CONSISTENT && citations.some(entry =>
       entry.readIncomplete && nextReadingCheckSupports({...entry, readIncomplete:false},
         result, windowStart));
@@ -2908,10 +2933,14 @@ function nextCockpitReadingCriterion(key, label, clause, raw, entries, limit, un
   const shows = citations.filter(nextReadingDemonstratesWork);
   const authors = citations.map(nextReadingAuthor);
   const derivedOnly = authors.length > 0 && authors.every(name => name === "derived");
-  if(nextReadingIsOutcomeLine(key) && result !== NEXT_READING_UNVERIFIABLE && !shows.length){
-    /* Rule 7, the Expected Output half, as amended. A verdict about the
-       deliverable needs an entry that DEMONSTRATES work. The agent saying it
-       finished does not, and neither does the reader's own request. */
+  const agentSaid = citations.some(nextReadingAgentMessage);
+  if(nextReadingIsOutcomeLine(key) && result !== NEXT_READING_UNVERIFIABLE && !shows.length &&
+      !agentSaid){
+    /* Rule 7, the Expected Output half, as amended twice. A verdict about the
+       deliverable needs an entry that DEMONSTRATES work, or one of the agent's
+       own messages, which are evidence of what it said (owner, 2026-10-03,
+       `reading._rests_on_nothing`). Only the message type: a dispatch or a
+       decision is not what it said. The reader's own request is neither. */
     result = NEXT_READING_UNVERIFIABLE;
     why = droppedCheck ? NEXT_READING_CHECK_DOES_NOT_SHOW_IT : NEXT_READING_ASSISTANT_ONLY;
   }
@@ -2934,6 +2963,24 @@ function nextCockpitReadingCriterion(key, label, clause, raw, entries, limit, un
     result = NEXT_READING_UNVERIFIABLE;
     why = droppedCheck ? NEXT_READING_CHECK_DOES_NOT_SHOW_IT : NEXT_READING_OWN_WORDS_ONLY;
   }
+  if(result === NEXT_READING_CONSISTENT && failedCited && !shows.length){
+    /* A consistent that cited a check failing in the window never stands on
+       the agent's account left beside it: that is the record contradicting the
+       claim (`reading._evidence_rules`). */
+    result = NEXT_READING_UNVERIFIABLE;
+    why = NEXT_READING_CHECK_DOES_NOT_SHOW_IT;
+  }
+  if(result === NEXT_READING_CONSISTENT && nextReadingIsOutcomeLine(key) && !shows.length &&
+      (entries || []).some(entry => entry && entry.subject === "check" &&
+        nextReadingCheckSupports(entry, NEXT_READING_DEPARTURE, windowStart))){
+    /* A line's consistent resting on no work beside a failed check this page
+       holds, cited or not and sent or not (`failed-check-on-record`). The
+       producer said `failed-check-unread` where the prompt had no room for it,
+       and the stored reason keeps that sentence. */
+    result = NEXT_READING_UNVERIFIABLE;
+    why = stored === "failed-check-unread" ? NEXT_READING_FAILED_CHECK_UNREAD
+      : NEXT_READING_FAILED_CHECK_ON_RECORD;
+  }
   if(result === NEXT_READING_UNVERIFIABLE && !why && !limitText &&
       Object.prototype.hasOwnProperty.call(NEXT_READING_STORED_WHY, stored)){
     /* Only the gap the page's own derivation leaves: a row the producer
@@ -2951,13 +2998,18 @@ function nextCockpitReadingCriterion(key, label, clause, raw, entries, limit, un
      [DEC-24](docs/design-reading-a-session.md#dec-24-your-intent-is-a-drafted-goal-and-a-checklist-and-a-correction-is-yours-to-copy)):
      a tool outcome (a Claude Code tool report, or any harness's check) is what
      the tool reported, never an inspection; otherwise it is what the session
-     said. The number is the list's, filled in where the row is drawn. */
+     said, and where every agent-authored entry it rests on is one of the
+     agent's messages, what the agent said (review, 2026-10-03). The number is
+     the list's, filled in where the row is drawn. */
   const tool = result === NEXT_READING_CONSISTENT
     ? citations.find(entry => String(entry.type || "") === "tool_report" ||
       entry.subject === "check") : null;
-  const said = result === NEXT_READING_CONSISTENT && !tool
-    ? citations.find(entry => nextReadingAuthor(entry) === "agent") : null;
-  const restsOn = tool ? "tool" : said ? "agent" : "";
+  const accounts = result === NEXT_READING_CONSISTENT && !tool
+    ? citations.filter(entry => nextReadingAuthor(entry) === "agent") : [];
+  const said = accounts.find(nextReadingAgentMessage) || accounts[0] || null;
+  const restsOn = tool ? "tool"
+    : said && accounts.every(nextReadingAgentMessage) ? "message"
+    : said ? "agent" : "";
   const restsOnEntry = tool || said || null;
   return {
     key, label,
@@ -3171,13 +3223,14 @@ function nextCockpitResultStatus(row, numbers, byId, short = false){
          the qualifier is said in full in the line's Evidence and once in view
          for every tool result, in the activity record's footer (DRC-4758 fix
          round, the stored-reading word budget). */
+      const who = row.restsOn === "message" ? "the agent" : "the session";
       if(short){
         return row.restsOn === "tool" ? `Consistent with ${where}`
-          : `Consistent with what the session said at ${where}`;
+          : `Consistent with what ${who} said at ${where}`;
       }
       return row.restsOn === "tool"
         ? `Consistent with ${where}, as the tool reported; not inspected`
-        : `Consistent with what the session said at ${where}; not a check`;
+        : `Consistent with what ${who} said at ${where}; not a check`;
     }
   }
   /* A consistent the page cannot place is no claim it can word, so it is
@@ -3778,10 +3831,18 @@ function nextReadingRoute(session){
 /* Permission is per receiver: a Codex answer never stands in for Claude
    Code's. A payload without the per-provider map predates the second
    provider, and its one answer was Codex's. */
-function nextReadingConsent(provider){
+/* The harnesses a press carries the agent's own messages from
+   (`reading_route.AGENT_MESSAGE_HARNESSES`). Elsewhere a press sends none of
+   them, so an Allow given before the disclosure named them still covers it:
+   the server publishes that answer as `words` (`reading_policy.WORDS_CONTENT_VERSION`). */
+const NEXT_READING_AGENT_WORDS_HARNESSES = ["claude"];
+
+function nextReadingConsent(provider, harness = ""){
   const policy = nextData && nextData.reading;
   if(!policy || !provider) return false;
-  const map = policy.providers;
+  const words = policy.words;
+  const map = !NEXT_READING_AGENT_WORDS_HARNESSES.includes(String(harness || "")) &&
+    words && typeof words === "object" ? words : policy.providers;
   return map && typeof map === "object"
     ? map[provider] === true : provider === "codex" && policy.consent === true;
 }
@@ -3798,7 +3859,7 @@ function nextReadingToolOutputGranted(route){
 
 function nextReadingNeedsAllow(route){
   if(!route || !route.provider) return false;
-  return !nextReadingConsent(String(route.provider)) ||
+  return !nextReadingConsent(String(route.provider), String(route.harness || "")) ||
     Boolean(route.destination && !nextReadingToolOutputGranted(route));
 }
 
@@ -6333,6 +6394,7 @@ async function nextCockpitAskForReading(session, model, allow = false){
     if(allow && nextData.reading){
       nextData.reading.consent = true;
       nextData.reading.providers = {...(nextData.reading.providers || {}), [provider]: true};
+      nextData.reading.words = {...(nextData.reading.words || {}), [provider]: true};
       const rebind = {...(nextData.reading.rebind || {})};
       delete rebind[provider];
       nextData.reading.rebind = rebind;

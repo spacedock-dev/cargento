@@ -270,11 +270,18 @@ Seven rules:
    evidence, because a stated change of direction is what that evidence is good for, and a
    `consistent` resting only on it must say so in its evidence line.
 
+Rule 7 is amended below, last by
+[the amendment of 2026-10-03](#amended-2026-10-03-owner-the-agents-own-words-are-evidence), which
+lets an outcome line rest on one of the agent's own messages.
+
 Rules 3 and 7 are load bearing: they make an uncited departure and a deliverable claim resting on
 nothing that shows work unrenderable rather than rare. Rule 4 is weaker than it reads, and the
 amendment below says so.
 
 ### Amended 2026-09-10: rule 7 asks whether an entry shows work, not who typed it
+
+Reversed for the agent's own messages by
+[the amendment of 2026-10-03](#amended-2026-10-03-owner-the-agents-own-words-are-evidence).
 
 As written, rule 7 keys the Expected Output test on who wrote a cited entry, and that inverts its
 own reason. The reason is that self report is not evidence of a deliverable, and a request is not
@@ -374,6 +381,136 @@ tool-reported check. The live estimate says it reads checks and file paths, not 
 says, and the analysis says it read each line of the intent against the checks and messages it
 cited. A result is never "Done" and never a check mark (DEC-24 item 6).
 
+Rule 7's outcome-line half here is replaced by
+[the amendment of 2026-10-03](#amended-2026-10-03-owner-the-agents-own-words-are-evidence).
+
+### Amended 2026-10-03 (owner): the agent's own words are evidence
+
+The owner, 2026-10-03: "allow whatever the agent says or does to be used as evidence for claims
+and drift." The reason given: "it is obviously evidence, and you cant have a drift tool that does
+not check or understand what an agent is doing or has done." Three adversarial reviews of the first
+build the same day narrowed how far it reaches, each in the withholding direction, and this section
+records the ruling as built after that review.
+
+What it reverses and what it narrows:
+
+- [Rule 7's amendment of 2026-09-10](#amended-2026-09-10-rule-7-asks-whether-an-entry-shows-work-not-who-typed-it),
+  whose reason was that self report is not evidence of a deliverable, is reversed for one entry
+  type: `agent_message`, a message the agent wrote. An outcome line may rest on one, and a
+  departure or a `consistent` on one stands. Nothing else the agent's tooling publishes joins it:
+  a decision, a task's birth, a stage, a dispatch, Pi narration or a Codex final answer still
+  carries no verdict on a line, and `no-work-shown` is still emitted for a line resting only on
+  those, on the reader's own request or on Cargento's paraphrase.
+- [The 2026-10-01 rule on a line about what the agent tells you](#amended-2026-10-01-a-line-about-what-the-agent-tells-you-cannot-be-shown)
+  is narrowed, not reversed. A `consistent` on such a line is still withdrawn as
+  `tells-the-person` unless one of the agent's messages is among what it rests on, sent at or after
+  the latest check it cites (or, citing none, the latest check in the window the prompt carried),
+  because a passing check alone still cannot show what the agent said, and nor can "I'll run it
+  now" said before the run. Measured on review: the line "the tests are run once more, unpiped,
+  and the counts are reported", read `consistent` on a passing check alone, stood under the first
+  build and is withdrawn now, and so is the same line citing the check and that earlier message;
+  the analysis level no longer reaches "None or low" on it. The page reads this rule's token from
+  the store and does not re-derive it, as before.
+- [DEC-24](#dec-24-your-intent-is-a-drafted-goal-and-a-checklist-and-a-correction-is-yours-to-copy)
+  item 6 said "Consistent with what the session said at #<n>; not a check" on the Goal only. A
+  `consistent`, on the Goal or a line, that rests on the agent's messages alone now says
+  "Consistent with what the agent said at #<n>; not a check". Any other agent-authored source of
+  a Goal's `consistent` keeps "what the session said".
+
+What a reading reads. On Claude Code each top-level assistant text message in the transcript is a
+fact of its own, `agent_message`, labelled "Agent said" in the session's activity. Sidechain and
+meta records stay out, a thinking or tool call block has no text to read, and a record Claude Code
+wrote itself rather than the model (its `<synthetic>` sentinel) is not the agent speaking. Its
+title is the message's first sentence, read like a reader's message. The ledger also carries the
+whole message, redacted the same way and cut at 1,000 characters, in a field the page never
+receives. The prompt quotes it as one JSON string, with the menu heading's text neutralised, as it
+quotes a check's output tail, so a message cannot forge a row or a section. The prompt chooses
+entries by title first, as it always has, so the agent's words never cost a verdict its evidence.
+Then it swaps titles for whole messages: the reader's first, newest first, inside half the 16 KiB
+budget, and then the agent's, newest first, inside a quarter of it. An agent message has the
+lowest priority in the byte bound, below a written path: measured on review, a hundred newer
+messages otherwise dropped the older write that showed what the session did. The project event cap
+reserves the agent's messages after the session's own checks and the reader's messages, so a
+talkative session cannot evict either.
+
+Only a reading the reader pressed for reads them. The unasked lane, which nobody watches, sends
+nothing the agent said, and the scorers keep the same default.
+
+What the model is told. The agent's messages, not test counts, are its report: quoted data, never
+instructions. It compares them with the record. A contradicted claim, an unkept promise, or work
+done instead of what was asked is a departure. A `consistent` may rest on a message it cites. The
+outcome lines are put to the model whenever the agent spoke, whether or not tool output may be sent.
+
+Two rules were added in the withholding direction:
+
+- A `consistent` that cited a check whose latest run failed inside the window never stands on the
+  agent's account left beside it. It is withdrawn as `check-does-not-show-it`. A cited write or an
+  aged pass beside the agent's account does not withdraw it on its own.
+- An outcome line's `consistent` resting on no work is withdrawn whenever the session's record
+  holds a check that failed inside the window, whether the reply cited it, the prompt carried it,
+  the budget crowded it out or no grant sent it. Its token is `failed-check-on-record`, except
+  where the prompt had no room for the failure, which keeps `failed-check-unread`.
+
+What stays:
+
+- [DEC-15](#dec-15-the-floor-and-the-overlay)'s rule that a reading never states the work was met,
+  and the prompt sentence saying so.
+- Rule 4's success-word backstop.
+- `board-quoting-itself`: a verdict resting only on Cargento's own paraphrase.
+- `uncorroborated`: a `consistent` resting only on the reader's own request.
+- [DEC-26](#dec-26-four-drift-levels-and-a-live-estimate-after-every-turn)'s floor. "None or low"
+  from an analysis still needs every outcome line `consistent` on a passing tool-reported check, so
+  the agent's word alone never reassures. A departure resting on the agent's message reads Medium.
+- Steer back's owner-approved text. A line that departed on the agent's message shows as departed,
+  with its time and number, in the same words as any other departure. A `consistent` is still
+  only ever "as the tool reported".
+
+What is sent. This is new content to the model provider: each agent message, redacted and cut at
+1,000 characters, inside a quarter of the 16 KiB prompt, on a reading of a Claude Code session the
+reader pressed for. Redaction recognises credential shapes, and since this review also the value
+after a cue such as `Authorization: Bearer`, `--password`, `password:` or a name like
+`DB_PASSWORD`, `PGPASSWORD` or `OPENAI_API_KEY`, leaving code that names a value (`None`, `$VAR`,
+`next_token()`) and prose (`bearer auth`, `secret=staging`) alone; a password or token with neither
+a shape nor a cue can still go verbatim, and an agent message can repeat tool output whether or not
+tool output was allowed. The cue is applied to every published string, so a title holding one
+moves to a new fact id once, the 2026-09-12 precedent `project_context` records, accepted the same
+way; the hash input is unchanged. The words are held in memory for the reading and the live project
+context only: not stored, not in the session history store, and not published on any page route,
+where only each message's title appears (its first line cut at sentence punctuation and 112
+characters, which for text with no such break can span more than one sentence).
+[SECURITY.md](../SECURITY.md#claude-code-reading-calls) says the same. The route's "What is sent"
+list names the agent's messages and the outcome lines, and the tool-output item says the agent's
+messages may quote tool output.
+
+Re-consent. An Allow is bound to a content version and the destination it was given for
+(`reading_policy.CONTENT_VERSION`, in `permission_disclosure`), so an Allow given before the
+disclosure named the agent's messages does not cover a press that carries them: a Claude Code
+session's press, read by Claude Code or by Codex, asks once more. A press on any other harness,
+Codex's included, carries none of them and reads at `WORDS_CONTENT_VERSION`, so it is asked again
+only where its destination moved; the unasked lane reads the same way, so the bump never stops it.
+An older build's Turn off clears the version through a trigger of its own, and an older build's
+Allow writes none, so a rollback cannot carry this build's answer onto that build's disclosure.
+
+An accepted decay. A stored departure resting on an agent message stops counting once that message
+leaves the transcript tail the live record reads: the message is not admitted to the session
+history store, so the citation no longer resolves and the page and the analysis level drop it. That
+is accepted rather than fixed by a history admission, because storing what the agent said is a
+larger exposure than this ruling asked for.
+
+The abstention acceptances, Codex's of 2026-09-14 and Claude Code's of 2026-10-02, describe the
+producer before this ruling. They were not re-scored against it, and
+[DEC-18](#dec-18-an-unasked-reading-is-permitted-and-gated-on-delivery-first)'s precondition 3
+rests on them, so that precondition is owed a re-score of this producer before the unasked default
+changes. The abstention packets do not yet carry the agent's messages:
+`project_context.frozen_claude_agent_messages` exists for an offline replay, and wiring it into
+`scripts/mark_abstention.py`'s frozen ledger would change the packet format, so it is a follow-up.
+Codex sessions are unchanged for now: reading a Codex session's assistant messages as
+`agent_message` is a follow-up too. Two more follow-ups, recorded rather than built: a Claude Code
+rewind leaves the abandoned branch in the transcript and nothing filters it by `parentUuid`, so an
+agent message from a branch the reader rewound past can be evidence; and the page's expected-output
+limit (`nextReadingOutputLimit`) keys on whether the route has a provider alone, not on whether the
+record holds an agent message or a sent check.
+
 ### The two typed fields are one line each, and that is a security decision
 
 Recorded here because it had no durable home. The goal and the expected output are collapsed to a
@@ -391,6 +528,12 @@ unmeasured. What bounds it is that the claim is narrow, produced once per press,
 into a count and never pushed, so exposure does not compound. That bound holds only while there is
 no cadence, no aggregation and no notification, and the full rubric becomes owed the moment any of
 the three changes.
+
+Since [2026-10-03](#amended-2026-10-03-owner-the-agents-own-words-are-evidence), a second: a false
+`consistent` on an outcome line resting on the agent saying it finished. Its rate is unmeasured
+too. It is bounded the same way, only on a press, and further: it never stands beside a check that
+failed in the window, it reads "what the agent said; not a check" rather than as the tool reported,
+and it never lifts the drift level to "None or low".
 
 #### Amended 2026-09-24: a cadence makes the full rubric owed
 
@@ -729,6 +872,10 @@ report stays honest, which is what the three distinct delivery states are for.
 3. DEC-17's abstention check has run and passed.
 4. Quiet hours exist. DRC-4032.
 
+Precondition 3 rests on acceptances of the producer as it stood before
+[the agent's own words became evidence](#amended-2026-10-03-owner-the-agents-own-words-are-evidence),
+so it is owed a re-score of this producer before the unasked default changes.
+
 Delivery leads rather than the rubric, and that ordering is the substance of the ruling. Measured in
 this tree on the day it was decided: `notify_mac` runs one `osascript` call and records nothing
 about whether the notification was shown or seen, and `native_notifier` returns a backend on darwin
@@ -771,7 +918,10 @@ first slice if the delivery preconditions prove more expensive than they look.
 DEC-17 records one class its rules do not remove: a false `consistent` on Goal resting on the
 agent's own narration. What bounded it was that a reading was produced once per press, never
 aggregated and never pushed. This decision breaks all three, which is why the rubric's acceptance
-thresholds gate the switch defaulting to anything other than off. The case set is written in
+thresholds gate the switch defaulting to anything other than off. Since 2026-10-03 DEC-17 records a
+second: a false `consistent` on an outcome line resting on the agent saying it finished. The
+unasked lane reads no agent message, so it cannot produce that one, but the default still waits on
+the re-score above. The case set is written in
 parallel rather than after the build, because cases need no producer and only a threshold does.
 DRC-4542 owns it.
 
@@ -1364,7 +1514,10 @@ rules in the resolver and on the page, with the window read from the revision's 
 the same call or a later one, carries no `consistent` either (item 3's blocker, applied to a
 reading). What counts as work is per harness: a work result on Pi and a check on Claude Code, and
 never the agent's own final answer on Claude Code or Codex; on Pi the harness publishes its result as
-work. Per-line outcome lines are DRC-4685's. SECURITY.md's
+work. The agent's account is not work. Since
+[DEC-17's amendment of 2026-10-03](#amended-2026-10-03-owner-the-agents-own-words-are-evidence) one
+of its messages may still carry a line's verdict, as what the agent said; a final answer may not.
+Per-line outcome lines are DRC-4685's. SECURITY.md's
 [Tool output in a Claude Code reading](../SECURITY.md#tool-output-in-a-claude-code-reading) says
 what is sent and where.
 
@@ -1627,6 +1780,11 @@ attribution above, failure evidence outranking a passing flag, node's `ℹ cance
 `[no test files]`. The owner added `rtk` as a wrapper whose checks read the flag alone.
 
 #### Amended 2026-10-01: a line about what the agent tells you cannot be shown
+
+Narrowed by
+[DEC-17's amendment of 2026-10-03](#amended-2026-10-03-owner-the-agents-own-words-are-evidence):
+the agent's messages are now in the record, so such a line stands where one of them is among what
+it rests on, and is withdrawn as below where none is.
 
 Owner ruling, DRC-4742. Three scored Claude Code qualification runs have failed DEC-17's check, and
 the third had one false reassurance. The reader had asked the agent to run `node --test
@@ -2039,7 +2197,10 @@ the later-direction floor (item 9).
    consistent line names its source by the cited entry's type: "Consistent with #<n>, as the tool
    reported; not inspected" for a tool outcome, "Consistent with what the session said at #<n>; not
    a check" for the agent's own account, on the Goal only: on an outcome line the agent's own
-   account yields `not verifiable` (DEC-17 rule 7). Never "Done" and never a check mark. Otherwise
+   account yields `not verifiable` (DEC-17 rule 7). Changed by
+   [DEC-17's amendment of 2026-10-03](#amended-2026-10-03-owner-the-agents-own-words-are-evidence),
+   which says what a `consistent` resting on the agent's messages reads now. Never "Done" and
+   never a check mark. Otherwise
    "Can't tell: nothing recorded shows this yet". A headline and short account render only under a departure,
    built from departure detail with its citations. "Where the work went" groups written paths by
    folder without a model. The session's activity flags each entry a departure cites ("Cited") and
@@ -2445,6 +2606,14 @@ in 4, 6 and 5 items, each said once:
    ID, which is the 2026-09-27 condition.
 6. The caveat, last: a reading is a model's account of the evidence, never a verification.
 
+Changed on 2026-10-03 by
+[the agent's own words amendment](#amended-2026-10-03-owner-the-agents-own-words-are-evidence) and
+its review. On a Claude Code session item 2 reads "with your messages and the agent's messages up
+to 1,000 characters each, and your expected outcome lines": the lines go with the agent's messages,
+not only beside a check. Item 3 no longer names the outcome lines, and both its forms say the
+agent's messages may quote tool output. The Claude Code routes are now 129 and 110 words, and the
+Codex route is unchanged at 61.
+
 What was cut repeats another item or explains a mechanism: "a subprocess", "uses its own
 authentication", "one of the paths that sends session content off this machine" (now `off this
 machine`), and how a long record shortens the oldest messages, which sends less rather than more.
@@ -2833,7 +3002,12 @@ calls below on the issue; the rest follow the analysis.
   the one that moved: a check re-runs, because the check tracker publishes one entry per check keyed
   by its latest run; a file is written again, because the latest write is kept; the listing of at
   most twelve checks and files reshuffles, because failures are kept first and a new one can evict a
-  pass from the middle; and the observer snapshot moves with each snapshot. The list and every
+  pass from the middle; and the observer snapshot moves with each snapshot. A fifth since
+  [2026-10-03](#amended-2026-10-03-owner-the-agents-own-words-are-evidence): an agent message
+  leaves the transcript tail the board reads, and since it is never stored in the session history
+  it drops out of the list and the entries after it renumber. A departure that cited it then reads
+  as citing nothing resolvable, with the generic sentence: a citation is a hashed fact id, so the
+  page cannot tell that the entry it named was one of the agent's messages. The list and every
   citation are recomputed together on each render, so the screen never disagrees with itself, and
   item 7's correction carries times as well as numbers. A server-published ordinal per fact would
   fix this and is a Python layer of its own.

@@ -199,6 +199,31 @@ _SECRET_SHAPES: Final = (
         False,
         r"://[^\s/:@]*:(?:[^\s/@]+(?=@)|(?![0-9]+$)[^\s/@]+$)",
     ),
+    # A credential with no shape of its own, known only by the cue in front of
+    # it: an `Authorization: Bearer` value, a `--password` flag, or a name such
+    # as `password`, `DB_PASSWORD`, `PGPASSWORD`, `GITHUB_API_TOKEN` or
+    # `OPENAI_API_KEY` before `=` or `:`. Added when the agent's own messages
+    # began reaching a reading model (review, 2026-10-03), because an agent
+    # repeats what it read. Cued like `aws_secret`, so the cue and its separator
+    # stay and only the value goes, a quoted value whole. The pattern finds a
+    # candidate and `_cued_value_is_secret` decides: code that names a value
+    # rather than holding one (`None`, `$VAR`, `os.environ[...]`, `next_token()`)
+    # is left alone, and so is prose (`bearer auth`, `secret=staging`).
+    (
+        "cued",
+        0,
+        False,
+        (
+            r"(?:(?P<cueauth>(?i:\bauthorization)[\"']?\s*[:=]\s*[\"']?(?i:bearer)\s+)"
+            r"|(?P<cuebearer>(?i:\bbearer)\s+)"
+            r"|(?P<cueflag>(?<![\w-])--(?i:password|passwd|token|secret|api-key|apikey)(?:=|\s+))"
+            r"|(?P<cuename>(?<![A-Za-z0-9_])[A-Za-z0-9_]*"
+            r"(?i:password|passwd|pwd|token|secret|api_key|apikey|key))"
+            r"[\"']?\s*(?P<cuesep>[=:])\s*)"
+            r"(?:(?P<cueq>[\"'])(?P<cuedquoted>[^\"'\n]{1,512})(?P=cueq)"
+            r"|(?P<cuedvalue>[^\s\"'`,;&)]{1,512}))"
+        ),
+    ),
 )
 
 _SECRET_RE: Final = re.compile(
@@ -248,7 +273,8 @@ _SECRET_UNAMBIGUOUS: Final = {
 # runs. `str.__contains__` is a C substring search and the alternation is not,
 # and nearly all published text carries none of these: on a 140-character line
 # the gated path adds 1.8 us to `safe_text` where the bare substitution adds
-# 21.5 us, and on a 2,000-character observer blob 28 us against 302 us.
+# 21.5 us, and on a 2,000-character observer blob 28 us against 302 us
+# (measured before the `cued` shape widened the hints; `safe_text` has today's).
 #
 # An optimization in front of a security filter is a way to ship a shape
 # switched off, so `RedactSecretsTest` asserts every alternative is still
@@ -290,12 +316,74 @@ _SECRET_HINTS: Final = (
     "secret_access_key",
     "SECRET_ACCESS_KEY",
     "secretAccessKey",
+    # The `cued` shape's cues, each in both cases and cut to a tail every
+    # capitalisation shares (`Password` holds `assw`). `key` is the broad one:
+    # it sends any line naming a key through the alternation, which is the
+    # price of catching `OPENAI_API_KEY=`.
+    "earer",
+    "EARER",
+    "assw",
+    "ASSW",
+    "wd",
+    "WD",
+    "ecret",
+    "ECRET",
+    "oken",
+    "OKEN",
+    "key",
+    "Key",
+    "KEY",
 )
 
-# The shortest thing any hinted shape can match: `AKIA` plus its 16. Below it the
-# alternation cannot succeed, so the hint scan is skipped as well. `urlcred` is
-# shorter than this and is why the scheme test comes first.
-_SECRET_MIN_CHARS: Final = 20
+# The shortest thing any hinted shape can match: `pwd=` and a three-character
+# value, the `cued` shape's floor. Below it the alternation cannot succeed, so
+# the hint scan is skipped as well. `urlcred` is shorter than this and is why
+# the scheme test comes first.
+_SECRET_MIN_CHARS: Final = 7
+
+
+# What a `cued` value is when it names a value rather than holding one: code
+# that reads a credential from somewhere else, or a literal that is not one.
+_CODE_VALUE_RE: Final = re.compile(
+    r"^(?:none|null|nil|true|false|undefined|\$.*|self\..*|os\..*|process\.env.*"
+    r"|[A-Za-z_][\w.]*\(.*)$",
+    re.IGNORECASE,
+)
+# A value that looks like a credential rather than a word: long, or holding a
+# digit or a symbol a word does not. What `bearer`, a `:` and the `secret` and
+# `token` cues need, because each also opens ordinary prose and config.
+_CREDENTIAL_LIKE_RE: Final = re.compile(r"^(?:\S{16,}|\S*[0-9._~+/!@#%^*&=-]\S*)$")
+# The name suffixes that mask any value after `=`; `secret` and `token` need a
+# credential-like value, and a bare `key` needs a name before it (`STRIPE_KEY`),
+# because "the key: value" and "sort_key=name" are prose and config.
+_CUE_STRICT: Final = ("secret", "token")
+
+
+def _cued_value_is_secret(match: re.Match[str]) -> bool:
+    """Whether a `cued` candidate holds a credential, per the rules beside the shape."""
+    quoted = match.group("cuedquoted")
+    value = quoted if quoted is not None else match.group("cuedvalue") or ""
+    if _CODE_VALUE_RE.match(value.strip()):
+        return False
+    credential_like = bool(_CREDENTIAL_LIKE_RE.match(value)) and len(value) >= 3
+    if match.group("cueauth") is not None or match.group("cueflag") is not None:
+        return True
+    if match.group("cuebearer") is not None:
+        return len(value) >= 16 and credential_like
+    raw_name = match.group("cuename") or ""
+    name = raw_name.lower()
+    # A bare `key` only as an environment-style assignment: `STRIPE_KEY=`, never `sort_key=`.
+    bare_key = name.endswith("key") and not name.endswith(("api_key", "apikey"))
+    if bare_key and not (raw_name.isupper() and name.endswith("_key")):
+        return False
+    if name.endswith("pwd") and value.startswith(("/", "~", ".")):
+        # The shell's working directory, `PWD=/home/…`, not a password.
+        return False
+    if quoted is not None:
+        return True
+    if match.group("cuesep") == ":" or name.endswith(_CUE_STRICT):
+        return credential_like
+    return len(value) >= 3
 
 
 def _mark_secret(match: re.Match[str]) -> str | None:
@@ -311,6 +399,12 @@ def _mark_secret(match: re.Match[str]) -> str | None:
     anchored = name in _SECRET_ANCHORED and (unambiguous is None or len(body) < unambiguous)
     if anchored and match.start() and match.string[match.start() - 1] in _TOKEN_CHARS:
         return None
+    if name == "cued":
+        if not _cued_value_is_secret(match):
+            return None
+        quoted = match.group("cuedquoted") is not None
+        start = match.start("cuedquoted" if quoted else "cuedvalue") - match.start()
+        return body[:start] + _SECRET_MARKER + (match.group("cueq") if quoted else "")
     from_body = _SECRET_KEEP_TO_BODY.get(name)
     if from_body is not None:
         return body[:-from_body] + _SECRET_MARKER
@@ -584,13 +678,16 @@ def safe_text(value: Any, limit: int) -> str:
     carries it with the rest of the residual.
 
     This is a hot path — a tool name, a model id and a title each pass through it
-    on every collect — so the redaction is gated. Measured on the shipped
-    alternation: 0.49 us on a four-character tool name, 3.71 us on a
-    140-character prompt line, 51.5 us on a 2,000-character observer blob.
-    `_SECRET_HINTS` carries what the gate buys and why, and
-    `docs/design-credential-redaction.md` has the same five inputs before the
-    filter existed. End to end a whole collect moves 32.2 ms to 33.6 ms on
-    `bench_collect --simulate balanced-five`, which is what the 4.3% buys.
+    on every collect — so the redaction is gated. Re-measured 2026-10-03, after
+    the `cued` shape added its hints and dropped `_SECRET_MIN_CHARS` to 7, on
+    one laptop with `timeit`: 0.49 us on a four-character tool name, 4.7 us on
+    a 140-character prompt line, 48 us on a 140-character line naming a key or
+    a token (the broad hints send it through the alternation), 68 us on a
+    2,000-character observer blob. `_SECRET_HINTS` carries what the gate buys
+    and why, and `docs/design-credential-redaction.md` has the inputs before
+    the filter existed. End to end a whole collect measured 30.5 ms on
+    `bench_collect --simulate balanced-five` the same day; the figures before
+    the cued shape were taken on another day and are not compared with it.
     """
     text = str(value or "").encode("utf-8", "replace").decode("utf-8")
     text = _UNSAFE_CHARS.sub(" ", text)

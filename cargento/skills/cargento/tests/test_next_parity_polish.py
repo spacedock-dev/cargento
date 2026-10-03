@@ -743,7 +743,10 @@ class ThePageJudgesAPiCheckAsTheServerDoesTest(NextPageJsHarness):
         self,
     ) -> None:
         facts = self.pi_facts()
-        ledger = {entry["id"]: entry for entry in reading.build_ledger(facts, "pi", self.SID)}
+        ledger = {
+            entry["id"]: entry
+            for entry in reading.build_ledger(facts, "pi", self.SID, read_agent_words=True)
+        }
         self.assertTrue(any(fact.get("changed_after") for fact in facts), "no changed_after case")
         self.assertTrue(any(fact.get("before_last_change") for fact in facts), "no aged case")
         verdicts = (

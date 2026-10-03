@@ -428,7 +428,9 @@ class _LineTally:
         # Stored verdicts are read against today's entries by the same
         # resolver that first accepted them. Explanatory prose is not read
         # again: only the verdict token, its current citation handles, and the
-        # line's own text, which a resolver rule keys on (DRC-4742).
+        # line's own text, which a resolver rule keys on (DRC-4742). A
+        # departure resting on one of the agent's messages stands there, so it
+        # reads Medium here (owner ruling, 2026-10-03).
         resolved = reading._resolve_one(  # noqa: SLF001 - reuse the seven-rule evidence contract
             {
                 "token": next((t for t, r in reading.RESULT_BY_TOKEN.items() if r == result), ""),
@@ -466,7 +468,9 @@ class _LineTally:
             return
         # A pass shows a line only inside the reading's window, as
         # `reading.check_supports` requires (V5), read by when its result
-        # arrived (DRC-4702); one with no time cannot.
+        # arrived (DRC-4702); one with no time cannot. A consistent resting on
+        # the agent's account alone has no pass, so the agent's word alone
+        # never reaches the floor.
         if resolved.get("result") == reading.RESULT_CONSISTENT and not why and passes:
             self.shown.extend(resolved["cites"])
         else:
@@ -484,6 +488,9 @@ def _analysis_entries(facts: Sequence[Mapping[str, Any]]) -> dict[str, reading.L
             str(session.get("harness") or ""),
             str(session.get("sid") or ""),
             tool_output={},
+            # Read on this machine, never sent: a stored citation of what the
+            # agent said must still resolve.
+            read_agent_words=True,
         ):
             # No press and no output read: the published flag is today's
             # observation, not a pair recovered from an output grant.
@@ -522,7 +529,7 @@ def analysis_level(
     new model output: each line's stored result, and what its citations point
     at in `evidence.facts`. A citation that is not a tool-reported check there
     (a message, the agent's own account) never shows an outcome line, so it
-    never reaches the floor.
+    never reaches the floor, though a departure resting on one reads Medium.
 
     Zero outcome lines is too little whatever the Goal says (L7). Medium: a
     departure, or a line whose cited pass was followed by a change. High: a

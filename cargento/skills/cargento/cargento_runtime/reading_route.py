@@ -396,21 +396,25 @@ def destinations(
 def _tool_output_sentence(provider: str, harness: str, where: str) -> str:
     """What a check sends, or that none is sent; where it goes is the `To:` item after it.
 
-    The expected outcome lines ride here on Claude Code, because they are put to
-    the model only beside work evidence and a check is the only work evidence
-    there, admitted only under a tool-output grant for a named destination.
+    The expected outcome lines rode here on Claude Code while a check was the
+    only evidence they were put to the model beside. Since the agent's messages
+    are evidence too (owner ruling, 2026-10-03), they go with the words, and the
+    `Sent:` item says so.
     """
     if not provider or harness not in TOOL_OUTPUT_HARNESSES:
         return ""
+    # The agent's messages go whether or not tool output may, and an agent
+    # repeats what its commands printed, so each form says so (review,
+    # 2026-10-03): "not sent" must not read as "never leaves".
     if not where:
         return (
-            "Tool output and your expected outcome lines are not sent, because Cargento cannot "
-            "name where they would go."
+            "Tool output is not sent, because Cargento cannot name where it would go, though "
+            "the agent's messages may quote it."
         )
     return (
         "Tool output, only after you allow it: a check's command, result and last "
         f"{TOOL_OUTPUT_TAIL_CHARS} characters of output as printed, the paths of the files it "
-        "wrote, and your expected outcome lines."
+        "wrote; agent messages may quote it."
     )
 
 
@@ -419,10 +423,14 @@ CAVEAT = (
     "A reading is a model's account of the evidence, never a verification that the work was done."
 )
 
-# The harnesses whose record can carry work evidence, beside which alone the
-# expected outcome lines are put to the model (`reading.WORK_EVIDENCE_BY_HARNESS`).
+# The harnesses whose record can carry work evidence, beside which the expected
+# outcome lines are put to the model (`reading.WORK_EVIDENCE_BY_HARNESS`).
 # Copied rather than imported, as `_WORDS_CAP` is; a test holds the two equal.
 OUTCOME_HARNESSES = ("claude", "pi")
+# The harnesses whose agent's own messages a reading sends, beside which the
+# lines are put to the model too (`project_context.AGENT_MESSAGE_HARNESSES`,
+# copied for the same reason and held equal by a test).
+AGENT_MESSAGE_HARNESSES = ("claude",)
 
 
 def _to_head(provider: str, where: str) -> str:
@@ -459,17 +467,20 @@ def _base_parts(
     """
     label = LABELS[provider]
     head = _to_head(provider, VENDORS[provider] if where is None else where)
-    # On Pi a work result is sent with no grant, so the lines may go with it.
-    # On Claude Code they ride with tool output; elsewhere they are never sent.
-    outcome = (
-        ", and your expected outcome lines when a work result is among them"
-        if harness in OUTCOME_HARNESSES and harness not in TOOL_OUTPUT_HARNESSES
-        else ""
-    )
+    # On Claude Code the agent's own messages go, and the lines with them, whether or not
+    # tool output may (owner ruling, 2026-10-03). On Pi a work result is sent with no
+    # grant, so the lines may go with it. Elsewhere they are never sent.
+    messages = "your messages"
+    outcome = ""
+    if harness in AGENT_MESSAGE_HARNESSES:
+        messages = "your messages and the agent's messages"
+        outcome = ", and your expected outcome lines"
+    elif harness in OUTCOME_HARNESSES and harness not in TOOL_OUTPUT_HARNESSES:
+        outcome = ", and your expected outcome lines when a work result is among them"
     cli_adds = _CLI_ADDS.get(provider, "")
     return [
         (
-            "Sent: your goal and a bounded set of the session's entries, with your messages "
+            f"Sent: your goal and a bounded set of the session's entries, with {messages} "
             f"up to {_WORDS_CAP:,} characters each{outcome}."
         ),
         *([tool_output] if tool_output else []),

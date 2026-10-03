@@ -40,6 +40,18 @@ MAX_SEMANTIC_LINE = 112
 READER_WORDS_CAP_CHARS = 1_000
 # The fact field holding them, named so `for_page` can strip it at any depth without colliding.
 READER_WORDS_FIELD = "reader_words"
+# The agent's own messages, read whole by a reading as evidence of what it said, claimed and
+# reported (owner ruling, 2026-10-03). The reader's bound, in a field of its own so the ledger
+# keeps the two apart and `for_page` strips both:
+# docs/design-reading-a-session.md#amended-2026-10-03-owner-the-agents-own-words-are-evidence
+AGENT_WORDS_CAP_CHARS = 1_000
+AGENT_WORDS_FIELD = "agent_words"
+# Every server-side-only words field, which no page route may publish.
+_SERVER_ONLY_FIELDS = frozenset({READER_WORDS_FIELD, AGENT_WORDS_FIELD})
+# The harnesses whose top-level assistant text this module reads as the agent's messages.
+# Claude Code only for now; Codex's final answers are a follow-up.
+AGENT_MESSAGE_HARNESSES = ("claude",)
+_AGENT_SAY = "agent_say"
 SEMANTIC_CURRENT_HORIZON_SEC = 15 * 60
 SEMANTIC_BURST_EPSILON_SEC = 2
 MAX_PRIMARY_ACTIVITY_NODES = 5
@@ -77,6 +89,7 @@ _AUTHORIZATION_RESULT_RE = re.compile(
 )
 _SEMANTIC_FACT_TYPES = {
     "steer": "user_message",
+    _AGENT_SAY: "agent_message",
     "prepared_dispatch": "prepared_dispatch",
     "task_started": "work_birth",
     "task_result": "work_result",
@@ -502,14 +515,103 @@ def _message_words(config: RuntimeConfig, text: str, harness: str) -> str:
     return records.safe_text(" ".join((command or text).split()), READER_WORDS_CAP_CHARS)
 
 
-def for_page(value: Any) -> Any:
-    """A project context with every reader message's `words` removed, for a page route.
+def _agent_message_event(
+    config: RuntimeConfig,
+    record: Any,
+    harness: str,
+    sid: str,
+) -> dict[str, Any] | None:
+    """One timestamped top-level assistant text message, as what the agent said.
 
-    Walks the whole context rather than naming `events` and `semantic.facts`, so a projection
-    that later copies a fact cannot publish them by being missed.
+    `observer.parse_message_record` already refuses sidechain and meta records and yields
+    no text for a thinking or a tool_use block. A record Claude Code wrote itself rather
+    than the model (`claude_data.SYNTHETIC_MODEL`: a cancellation notice, an error banner)
+    is not the agent speaking, so it stays out, by value as `model_reported` tests it.
+    """
+    if (
+        harness not in AGENT_MESSAGE_HARNESSES
+        or not isinstance(record, dict)
+        or record.get("type") != "assistant"
+        or records.message_dict(record).get("model") == claude_data.SYNTHETIC_MODEL
+    ):
+        return None
+    message = observer.parse_message_record(record)
+    if message is None or message.get("role") != "assistant":
+        return None
+    at = records.parse_ts(record.get("timestamp") or "")
+    text = message["text"].strip()
+    if at is None or not text:
+        return None
+    title = _semantic_line(text, min(MAX_SEMANTIC_LINE, config.observer_goal_cap_chars))
+    if not title:
+        return None
+    event: dict[str, Any] = {
+        "at": at,
+        "kind": _AGENT_SAY,
+        "phase": "assistant message",
+        "title": title,
+        AGENT_WORDS_FIELD: records.safe_text(" ".join(text.split()), AGENT_WORDS_CAP_CHARS),
+        "source": "timestamped top-level assistant text record",
+        "harness": harness,
+        "sid": sid,
+    }
+    # Claude spells a record's identity `uuid`. A new fact type has no stored citation to
+    # keep, so it joins the id here: two text blocks in one second opening with the same
+    # sentence stay two entries.
+    record_id = record.get("uuid")
+    if isinstance(record_id, str) and record_id:
+        event["record_id"] = record_id
+    return event
+
+
+def _agent_message_lines(
+    config: RuntimeConfig, lines: Iterable[str], harness: str, sid: str
+) -> list[dict[str, Any]]:
+    events: list[dict[str, Any]] = []
+    seen: set[tuple[float, str, str]] = set()
+    for raw in lines:
+        if not raw or not raw.lstrip().startswith("{"):
+            continue
+        try:
+            record = json.loads(raw)
+        except (ValueError, RecursionError):
+            continue
+        event = _agent_message_event(config, record, harness, sid)
+        if event is None:
+            continue
+        key = (event["at"], event["title"], str(event.get("record_id") or ""))
+        if key in seen:
+            continue
+        seen.add(key)
+        events.append(event)
+    return events
+
+
+def agent_message_events(
+    config: RuntimeConfig, transcript_path: str, harness: str, sid: str
+) -> list[dict[str, Any]]:
+    """The agent's top-level text messages from the bounded transcript tail.
+
+    Live only: `collect` appends them, and `_semantic_history_source_events` never calls
+    this, so the history store never sees one (its `_FACT_EVENT_TYPES` naming no
+    `agent_message` is the second wall).
+    """
+    if harness not in AGENT_MESSAGE_HARNESSES:
+        return []
+    return _agent_message_lines(config, runtime_io.read_tail(config, transcript_path), harness, sid)
+
+
+def for_page(value: Any) -> Any:
+    """A project context with every message's whole words removed, for a page route.
+
+    The reader's `reader_words` and the agent's `agent_words` alike. Walks the whole context
+    rather than naming `events` and `semantic.facts`, so a projection that later copies a fact
+    cannot publish them by being missed.
     """
     if isinstance(value, dict):
-        return {key: for_page(item) for key, item in value.items() if key != READER_WORDS_FIELD}
+        return {
+            key: for_page(item) for key, item in value.items() if key not in _SERVER_ONLY_FIELDS
+        }
     if isinstance(value, list):
         return [for_page(item) for item in value]
     return value
@@ -3908,6 +4010,28 @@ def frozen_claude_user_messages(
     return whole, tail
 
 
+def frozen_claude_agent_messages(
+    config: RuntimeConfig, transcript_path: str, sid: str, *, until: float, size: int | None = None
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """The agent-message facts a Claude Code transcript held at `until`: all, and the board's tail.
+
+    `frozen_claude_user_messages`' twin, so an offline replay builds the ledger the board
+    builds now that the agent's messages are evidence (owner ruling, 2026-10-03). The same
+    two reads, each cut at `until`; the tail ends at `size` for the same reason.
+    """
+
+    def facts(lines: Iterable[str]) -> list[dict[str, Any]]:
+        return [
+            _semantic_fact_from_event(event, _AGENT_SAY, _SEMANTIC_FACT_TYPES[_AGENT_SAY], "")
+            for event in _agent_message_lines(config, lines, "claude", sid)
+            if float(event["at"]) <= until
+        ]
+
+    with open(transcript_path, encoding="utf-8", errors="replace") as handle:
+        whole = facts(handle)
+    return whole, facts(runtime_io.read_tail(config, transcript_path, end=size))
+
+
 def claude_activity_between(transcript_path: str, after: float, until: float) -> bool:
     """Whether a user/assistant message was recorded after `after` and through `until`.
 
@@ -4292,22 +4416,31 @@ def _dedupe_project_events(
 def _project_timeline(
     events: list[dict[str, Any]], focus: tuple[str, str] | None
 ) -> list[dict[str, Any]]:
+    # The agent's messages are reserved last in each scope. A long session says far more than
+    # its reader types or its checks record, and a cap filled newest first would let that
+    # evict the checks and the reader's messages a reading rests on.
+    said = [event for event in events if event.get("kind") == _AGENT_SAY]
+    rest = [event for event in events if event.get("kind") != _AGENT_SAY]
     if focus is None:
-        return _dedupe_project_events(events, limit=MAX_PROJECT_EVENTS)
-    own_checks: list[dict[str, Any]] = []
-    own_other: list[dict[str, Any]] = []
-    surrounding: list[dict[str, Any]] = []
-    for event in events:
-        if (event.get("harness"), event.get("sid")) != focus:
-            surrounding.append(event)
-        elif event.get("subject") == "check":
-            own_checks.append(event)
-        else:
-            own_other.append(event)
-    # A later semantic focus filter cannot restore a check removed by the
-    # project cap. Reserve its own evidence before the busy neighbours' rows.
+        groups: tuple[list[dict[str, Any]], ...] = (rest, said)
+    else:
+        own_checks: list[dict[str, Any]] = []
+        own_other: list[dict[str, Any]] = []
+        surrounding: list[dict[str, Any]] = []
+        for event in rest:
+            if (event.get("harness"), event.get("sid")) != focus:
+                surrounding.append(event)
+            elif event.get("subject") == "check":
+                own_checks.append(event)
+            else:
+                own_other.append(event)
+        own_said = [event for event in said if (event.get("harness"), event.get("sid")) == focus]
+        their_said = [event for event in said if (event.get("harness"), event.get("sid")) != focus]
+        # A later semantic focus filter cannot restore a check removed by the
+        # project cap. Reserve its own evidence before the busy neighbours' rows.
+        groups = (own_checks, own_other, own_said, surrounding, their_said)
     selected: list[dict[str, Any]] = []
-    for group in (own_checks, own_other, surrounding):
+    for group in groups:
         selected.extend(_dedupe_project_events(group, limit=MAX_PROJECT_EVENTS - len(selected)))
         if len(selected) == MAX_PROJECT_EVENTS:
             break
@@ -4868,6 +5001,8 @@ def _semantic_work_identity(
 def _semantic_actor_claim(source_event: dict[str, Any], raw_kind: str) -> str:
     if raw_kind == "steer":
         return "timestamped non-meta user-role record"
+    if raw_kind == _AGENT_SAY:
+        return "timestamped top-level assistant text record"
     if raw_kind in {"prepared_dispatch", "task_started", "task_result", "outcome"}:
         return "session assistant/tool exchange"
     if raw_kind == "gate":
@@ -4889,6 +5024,11 @@ def _semantic_fact_from_event(
     # UNCITED, and `semantic_history` dedupes on the id so those events are
     # recorded a second time. Accepted rather than migrated, per decisions.md;
     # no schema bump.
+    #
+    # The same one-time move, accepted the same way, on 2026-10-03: the title is
+    # hashed as `safe_text` left it, and the `cued` redaction shape added that
+    # day masks values it did not before, so a fact whose title held one (a
+    # `DB_PASSWORD=…` in a prompt) gets a new id. The hash input is unchanged.
     record_id = source_event.get("record_id")
     fact_id = _semantic_id(
         "fact",
@@ -4930,6 +5070,7 @@ def _semantic_fact_from_event(
         "read_incomplete",
         "result_at",
         READER_WORDS_FIELD,
+        AGENT_WORDS_FIELD,
     ):
         if source_event.get(key) not in (None, ""):
             fact[key] = source_event[key]
@@ -6283,6 +6424,7 @@ def collect(
                 }
             )
         events.extend(instruction_events(config, transcript_path, harness, sid))
+        events.extend(agent_message_events(config, transcript_path, harness, sid))
         work_support = _session_work_evidence(
             config, transcript_path, session, events, tool_report_scans
         )

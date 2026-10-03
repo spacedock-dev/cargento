@@ -506,6 +506,21 @@ def _with_prompt_choices(
     return {**context, "prompt_choices": choices}
 
 
+def _press_content(harness: str) -> int:
+    """The disclosure version a press on this harness needs an Allow to cover.
+
+    A Claude Code session's press carries the agent's messages, read by Claude
+    Code or by Codex, so it needs an Allow given under the disclosure that names
+    them. A press on any other harness carries none of them, and an Allow from
+    before that disclosure still covers it (final review, 2026-10-03).
+    """
+    return (
+        reading_policy.CONTENT_VERSION
+        if harness in runtime_project_context.AGENT_MESSAGE_HARNESSES
+        else reading_policy.WORDS_CONTENT_VERSION
+    )
+
+
 def _facts_of(context: dict[str, Any]) -> list[Any]:
     semantic = context.get("semantic")
     facts = semantic.get("facts", []) if isinstance(semantic, dict) else []
@@ -1997,6 +2012,7 @@ class _RequestHandler(BaseHTTPRequestHandler):
             **runtime_reading_route.destinations(),
             provider: route["words_destination"],
         }
+        content = _press_content(route["harness"])
         permission = (
             reading_policy.set_consent(
                 config,
@@ -2006,10 +2022,15 @@ class _RequestHandler(BaseHTTPRequestHandler):
                 tool_output=where,
                 destination=route["words_destination"],
                 destinations=today,
+                content=content,
             )
             if payload.get("allow") is True
             else reading_policy.status(
-                config, now=application.clock(), provider=provider, destinations=today
+                config,
+                now=application.clock(),
+                provider=provider,
+                destinations=today,
+                content=content,
             )
         )
         if (
@@ -2410,7 +2431,15 @@ class _RequestHandler(BaseHTTPRequestHandler):
                 row,
                 self._session_facts(row),
                 floor=annotation_store.direction_floor(entry, row),
-                lines_judged=bool(route["provider"] and route["destination"]),
+                # The agent's messages carry a line verdict where no check can be sent
+                # (owner ruling, 2026-10-03), as the page's `nextReadingOutputLimit` says.
+                lines_judged=bool(
+                    route["provider"]
+                    and (
+                        route["destination"]
+                        or harness in runtime_project_context.AGENT_MESSAGE_HARNESSES
+                    )
+                ),
             )
         self._send(json.dumps(answer, separators=(",", ":")).encode(), "application/json")
 
@@ -2692,6 +2721,9 @@ class _RequestHandler(BaseHTTPRequestHandler):
             # `reading.MAX_OUTCOME_LINES` cites keeps them from
             # every other).
             read_lines=True,
+            # And the one that sends what the agent said: the unasked lane
+            # keeps the default and sends none of it (review, 2026-10-03).
+            read_agent_words=True,
             # And the one that may read a turn stop, on the harnesses the
             # ruling `reading.TURN_STOP_HARNESSES` cites names; the unasked
             # lane keeps the closed default.
@@ -2783,6 +2815,7 @@ class _RequestHandler(BaseHTTPRequestHandler):
                 on_reserved=hooks.reserved,
                 before_reserve=hooks.before_reserve,
                 cancelled=hooks.cancelled,
+                content=_press_content(route["harness"]),
             ),
         }
 
