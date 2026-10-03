@@ -1897,9 +1897,14 @@ committed id cannot be recomputed from a session id and a time. `--live` calls n
 sends what a press on that session would send, through the same verified, pinned Claude Code CLI
 the qualification uses: the person's messages, the agent's messages once the producer reads them,
 each check's line, result, times and redacted output tail, and the intent. The owner authorized that
-send and its spend on 2026-10-03, bounded at 240 calls on the fixed-path ledger
-`~/.cargento/drift-replay/spend.json`, which is charged before each call and never by a case the
-producer withholds. It never writes the annotation store and never posts to the reading route. The
+send and its spend on 2026-10-03, bounded at 240 calls on the ledger
+`~/.cargento/drift-replay/spend.json`. That path is under the operator's home whatever
+`CARGENTO_HOME` says, so moving the home does not reset the count. Each call is charged before it is
+made, under an exclusive lock, and never by a case the producer withholds or by a dry run; a ledger
+that will not parse refuses every call, and the charged calls the run's own record holds are a floor
+a deleted ledger cannot go under. With `--source original` the words sent are the session's own,
+through only the redaction a press applies, not the fixtures' redaction. It never writes the
+annotation store and never posts to the reading route. The
 [drift replay documentation](docs/drift-replay/README.md) owns its format.
 
 A violation here is a committed file under `docs/abstention/`, `docs/drift-levels/` or

@@ -42,6 +42,27 @@ class WhatIsHidden(unittest.TestCase):
             "[NAME_1] ([PII_ANONYMIZED_1]) at [ORG_NAME_1] in [LOCATION_REDACTED], 9am [TZ_REDACTED]. ok kq",
         )
 
+    def test_utc_offsets_and_iso_offsets_say_where_someone_is(self) -> None:
+        got = _redactor().text(
+            "UTC+8 then 2026-10-01T09:00:00+08:00 and 2026-10-01T09:00:00Z, asia/taipei"
+        )
+        self.assertNotIn("+08:00", got)
+        self.assertNotIn("UTC+8", got)
+        self.assertNotIn("taipei", got)
+        self.assertIn("09:00:00Z", got)
+
+    def test_long_unpunctuated_prose_is_still_redacted(self) -> None:
+        prose = " ".join(["Pat Example met Robin"] * 40)
+        self.assertNotIn("Pat Example", _redactor().value(prose))
+
+    def test_every_id_in_a_page_url_and_a_bare_page_id_field(self) -> None:
+        page, view = "a" * 32, "b" * 32
+        got = _redactor().text(
+            f'https://www.notion.so/Title-{page}?v={view}#{"c" * 32} {{"page_id": "{"d" * 32}"}}'
+        )
+        for hexid in ("a" * 32, "b" * 32, "c" * 32, "d" * 32):
+            self.assertNotIn(hexid, got)
+
     def test_a_case_sensitive_initial_leaves_the_lowercase_word_alone(self) -> None:
         self.assertEqual(_redactor().text("ask KQ, not kq"), "ask [NAME_2], not kq")
 
@@ -73,11 +94,11 @@ class WhatIsHidden(unittest.TestCase):
         self.assertIn("[THIRD_PARTY_MESSAGE_REMOVED]", got)
 
     def test_an_identifier_seen_in_a_url_is_hidden_where_it_appears_bare(self) -> None:
-        uid = "241b0179-ac55-471c-a6cc-0123456789ab"
+        uid = "9c0ffee1-ab12-4cd3-8ef4-0123456789ab"
         found = rs.literals([])
         self.assertEqual(found, set())
-        got = _redactor((uid,)).text(f"project 241b0179-… and {uid}")
-        self.assertNotIn("241b0179", got)
+        got = _redactor((uid,)).text(f"project 9c0ffee1-… and {uid}")
+        self.assertNotIn("9c0ffee1", got)
 
 
 class WhatAReplayNeedsKept(unittest.TestCase):

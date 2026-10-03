@@ -27,6 +27,7 @@ from __future__ import annotations
 import argparse
 import contextlib
 import datetime
+import fcntl
 import glob
 import hashlib
 import json
@@ -52,6 +53,8 @@ ANNOTATIONS = os.path.join(_ROOT, "tests", "annotated_sessions")
 DIGEST_PATH = os.path.join(_ROOT, "docs", "drift-replay", "marks-digest.json")
 RESULTS_PATH = os.path.join(_ROOT, "docs", "drift-replay", "results.json")
 ORIGINALS = os.path.expanduser("~/.claude/projects")
+# Pinned under the operator's own home, not CARGENTO_HOME: moving the home must not reset the spend.
+LEDGER_PATH = os.path.expanduser("~/.cargento/drift-replay/spend.json")
 
 # Ordinary turn stops sampled per session as negatives, and the seed that picks them, so a rebuild
 # picks the same stops. Eight per session gives about thirty, the size the review asked for.
@@ -98,7 +101,6 @@ def _paths(home: str) -> dict[str, str]:
         "salt": os.path.join(base, "salt"),
         "live": os.path.join(base, "live.json"),
         "read": os.path.join(base, "read.json"),
-        "ledger": os.path.join(base, "spend.json"),
         "plan": os.path.join(base, "plan.json"),
     }
 
@@ -334,9 +336,9 @@ def _salt(paths: Mapping[str, str]) -> str:
     if not value:
         value = secrets.token_hex(16)
         os.makedirs(paths["dir"], mode=0o700, exist_ok=True)
-        with open(paths["salt"], "w", encoding="utf-8") as handle:
+        descriptor = os.open(paths["salt"], os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
             handle.write(value + "\n")
-        os.chmod(paths["salt"], 0o600)
     return value
 
 
@@ -437,10 +439,23 @@ def _between(stops: list[float], start: float, end: float) -> bool:
     return any(start < s < end for s in stops)
 
 
+def _home_refusal(home: str) -> str:
+    """Why this home may not hold the check's files: they name sessions and must stay out of git."""
+    where = os.path.realpath(os.path.join(home, SUBDIR))
+    root = os.path.realpath(_ROOT)
+    if sys.platform == "darwin":  # a default macOS volume ignores case, so the guard must too
+        where, root = where.lower(), root.lower()
+    if lc._inside(where, root):  # noqa: SLF001 - the sibling's guard
+        return (
+            "CARGENTO_HOME is inside the repository; these files name sessions. Nothing was done."
+        )
+    return ""
+
+
 def build(*, home: str, source: str, say: Callable[[str], Any] = print) -> int:
     paths = _paths(home)
-    if os.path.realpath(home).startswith(os.path.realpath(_ROOT) + os.sep):
-        say("CARGENTO_HOME is inside the repository; these files name sessions. Nothing was built.")
+    if _home_refusal(home):
+        say(_home_refusal(home))
         return 1
     salt = _salt(paths)
     sids = sorted(
@@ -964,24 +979,53 @@ def _run_refusal(paths: Mapping[str, str], body: Mapping[str, Any]) -> str:
 # --- Tier 3: Analyze, charged ---------------------------------------------------------------
 
 
-class Ledger:
-    """A fixed-path, append-only count of Analyze calls for this check, capped at MAX_CALLS."""
+class LedgerError(Exception):
+    """The ledger exists and cannot be read: refuse rather than start counting again."""
 
-    def __init__(self, path: str, cap: int = MAX_CALLS) -> None:
+
+class Ledger:
+    """A fixed-path count of Analyze calls for this check, capped at MAX_CALLS.
+
+    Every charge holds an exclusive lock across its read and write, so concurrent runs cannot both
+    take the last call. A ledger that exists and will not parse refuses every charge rather than
+    reading as empty, and `floor` (the charged calls `read.json` records) keeps a deleted ledger
+    from resetting the count.
+    """
+
+    def __init__(self, path: str, cap: int = MAX_CALLS, floor: int = 0) -> None:
         self.path = path
         self.cap = cap
+        self.floor = floor
 
     def calls(self) -> list[dict[str, Any]]:
-        body = lc._load(self.path)  # noqa: SLF001
-        return [c for c in body.get("calls") or () if isinstance(c, dict)]
+        try:
+            with open(self.path, encoding="utf-8") as handle:
+                body = json.load(handle)
+        except FileNotFoundError:
+            return []
+        except (OSError, ValueError) as error:
+            message = f"the spend ledger at {self.path} cannot be read"
+            raise LedgerError(message) from error
+        found = body.get("calls") if isinstance(body, dict) else None
+        if not isinstance(found, list):
+            message = f"the spend ledger at {self.path} is not a ledger"
+            raise LedgerError(message)
+        return [c for c in found if isinstance(c, dict)]
+
+    def used(self) -> int:
+        return max(len(self.calls()), self.floor)
 
     def charge(self, key: str) -> bool:
         """Record a call before it is made; False when the cap is reached."""
-        calls = self.calls()
-        if len(calls) >= self.cap:
-            return False
-        calls.append({"key": key, "at": datetime.datetime.now(datetime.UTC).isoformat()})
-        lc._write(self.path, {"v": 1, "cap": self.cap, "calls": calls})  # noqa: SLF001
+        os.makedirs(os.path.dirname(self.path), mode=0o700, exist_ok=True)
+        with open(self.path + ".lock", "a", encoding="utf-8") as lock:
+            fcntl.flock(lock, fcntl.LOCK_EX)
+            calls = self.calls()
+            if max(len(calls), self.floor) >= self.cap:
+                return False
+            calls.append({"key": key, "at": datetime.datetime.now(datetime.UTC).isoformat()})
+            lc._write(self.path, {"v": 1, "cap": self.cap, "calls": calls})  # noqa: SLF001
+            self.floor = max(self.floor, len(calls))
         return True
 
 
@@ -1016,7 +1060,7 @@ class _Charged:
         return str(raw), str(status)
 
 
-def read(
+def read(  # noqa: PLR0911 - one return per refusal, each before anything is sent
     *,
     home: str,
     source: str | None = None,
@@ -1046,13 +1090,25 @@ def read(
             f"{destination or 'an unnamed host'}, not Anthropic."
         )
         return 2
-    ledger = Ledger(paths["ledger"])
     done = lc._load(paths["read"]).get("cases") or {}  # noqa: SLF001
+    charged = sum(
+        1
+        for entry in done.values()
+        if isinstance(entry, dict)
+        for arm in entry.values()
+        if isinstance(arm, dict) and arm.get("charged")
+    )
+    ledger = Ledger(LEDGER_PATH, floor=charged)
+    try:
+        ledger.used()
+    except LedgerError as error:
+        say(f"Refused: {error}. Nothing was sent.")
+        return 2
     src = source or str(body.get("source") or "fixtures")
     bound = lc.digest(body)
     if not dry_run:
         plan = lc._load(paths["plan"])  # noqa: SLF001
-        room = ledger.cap - len(ledger.calls())
+        room = ledger.cap - ledger.used()
         if plan.get("cases_digest") != bound or sorted(plan.get("arms") or ()) != sorted(arms):
             say("Run --read --dry-run first, with the same --arm choices: it records the plan.")
             return 1
@@ -1085,7 +1141,7 @@ def read(
         lc._write(paths["plan"], plan)  # noqa: SLF001
     say(
         f"{'Would make' if dry_run else 'Made'} {abs(calls)} calls; "
-        f"ledger {len(ledger.calls())} of {ledger.cap}."
+        f"ledger {ledger.used()} of {ledger.cap}."
     )
     return 0
 
@@ -1172,7 +1228,7 @@ def _read_cases(  # noqa: PLR0913 - every input of one pass, named
                 },
             }
             lc._write(paths["read"], {"v": 1, "source": src, "cases": done})  # noqa: SLF001
-            if len(ledger.calls()) >= ledger.cap:
+            if ledger.used() >= ledger.cap:
                 say("The ledger cap is reached; stopping.")
                 return -calls
         _remove_tree(here)
@@ -1348,6 +1404,10 @@ def main(argv: list[str] | None = None) -> int:  # noqa: PLR0911 - one return pe
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--arm", action="append", choices=ARMS)
     args = parser.parse_args(argv)
+    refusal = _home_refusal(HOME)
+    if refusal:
+        print(refusal)
+        return 1
     if args.live:
         return live(home=HOME, source=args.source)
     if args.read:

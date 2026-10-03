@@ -47,7 +47,10 @@ docs/feedback/*
 # Session fixtures: the full sanitized JSONL of each session stays on the machine that made
 # it, because teammates are not comfortable with transcripts in a public repository even
 # sanitized. Only the steering excerpts (.txt) and the annotations (.md) are committed.
-tests/raw_sessions/**/*.jsonl
+# Everything under a session's raw directory except its committed excerpts: the logs, their
+# subagents (which also hold .json metadata with absolute paths), and any tool-results directory.
+tests/raw_sessions/*/*
+!tests/raw_sessions/*/steering-excerpts.txt
 tests/annotated_sessions/**/*.jsonl
-# A real subagents directory also holds .json metadata with absolute paths; ignore it whole.
-tests/raw_sessions/**/subagents/
+# The drift replay check's local files, should CARGENTO_HOME ever point at the repository root.
+/drift-replay/

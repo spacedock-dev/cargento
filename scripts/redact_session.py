@@ -55,12 +55,17 @@ KEEP_EMAIL = re.compile(
     r"|functools|typing|pytest|mock|patch)\.|\.md$|\.py$|\.js$|\.json$|^git@github\.com"
 )
 _UUID = r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
+_UUID_FORM = _UUID
 ID_CONTEXT = re.compile(
     r"((?:createdById|assigneeId|userId|creatorId|organizationId|ownerId|actorId|leadId|memberId)"
     r"\\?\"\s*:\s*\\?\")(" + _UUID + ")"
 )
 CHAT_ID = re.compile(r"\b(?:U[A-Z0-9]{8,10}|[CDG]0[A-Z0-9]{8,10}|T0[A-Z0-9]{7,10})\b")
-PAGE_ID = re.compile(r"(notion\.(?:so|com)/[^\s\"\\)]*?)([0-9a-f]{32})")
+NOTION_URL = re.compile(r"notion\.(?:so|com)/[^\s\"\\)]*")
+HEX_ID = re.compile(r"(?<![0-9a-f])(?:[0-9a-f]{32}|" + _UUID_FORM + r")(?![0-9a-f])")
+PAGE_FIELD = re.compile(
+    r"(\\?\"(?:page_id|block_id|database_id|parent_id)\\?\"\s*:\s*\\?\")([0-9a-f-]{32,36})"
+)
 MORE_IDS = (
     re.compile(r"(uploads\.linear\.app/)([0-9a-f-]{36})"),
     re.compile(r"(claude\.ai/design/p/)([0-9a-f-]{36})"),
@@ -83,9 +88,13 @@ LITERAL_SOURCES = (
     re.compile(r"projectId\\?\"?\s*[:=]\s*\\?\"?(" + _UUID + ")"),
 )
 TIME_ZONE = re.compile(
-    r"\b(?:Asia|America|Europe|Australia|Pacific|Africa)/[A-Z][A-Za-z_]+\b"
+    r"\b(?i:asia|america|europe|australia|pacific|africa)/[A-Za-z_]+\b"
     r"|\b(?:CST|CDT|EST|EDT|PST|PDT|MST|MDT|JST|KST|HKT|SGT|AEST|AEDT|CET|CEST|BST)\b"
+    r"|\b(?:UTC|GMT)\s?[+-]\s?\d{1,2}(?::?\d{2})?\b"
 )
+# A non-zero offset on a timestamp inside a value says where its writer was. Record timestamps are
+# written in UTC with a Z, so a replay never reads one of these.
+ISO_OFFSET = re.compile(r"(?<=\d{2}:\d{2}:\d{2})(\.\d+)?[+-](?!00:?00)\d{2}:?\d{2}\b")
 PRIVATE_HOST = re.compile(
     r"\b(?:10\.\d{1,3}|192\.168|172\.(?:1[6-9]|2\d|3[01]))\.\d{1,3}\.\d{1,3}\b"
 )
@@ -95,7 +104,8 @@ RUNNER = re.compile(
     r"|ruff|mypy|pyright|tox|nox|uv|uvx|pip\d?|go|cargo|rustc|java|mvn|gradle|make|bash|sh|zsh"
     r"|jest|vitest|tsc|eslint|ctest|swift|xcodebuild|ruby|rspec|php|phpunit|dotnet"
 )
-BASE64 = re.compile(r"[A-Za-z0-9+/=\s]+")
+# Image data has no whitespace; long unpunctuated prose does, and must still be redacted.
+BASE64 = re.compile(r"[A-Za-z0-9+/=]+")
 # Tool output that lists other sessions' prompts, which may be anyone's and about anything.
 LISTINGS = (
     re.compile(r"(?m)^\s*#\d+ [0-9a-f]{8} \S+ \d+K"),
@@ -104,7 +114,7 @@ LISTINGS = (
     re.compile(r"FIRST: '"),
     re.compile(r"\bacts=\d+ #\d+: '"),
 )
-LISTING_FLOOR = 3
+LISTING_FLOOR = 2
 
 
 class Config:
@@ -189,11 +199,16 @@ class Redactor:
             ),
             value,
         )
-        value = PAGE_ID.sub(lambda m: m.group(1) + self.tag("ID_REDACTED", m.group(2)), value)
+        # Every id in a page URL (page, view, block anchor), and a bare page id in a tool's input.
+        value = NOTION_URL.sub(
+            lambda m: HEX_ID.sub(lambda h: self.tag("ID_REDACTED", h.group(0)), m.group(0)), value
+        )
+        value = PAGE_FIELD.sub(lambda m: m.group(1) + self.tag("ID_REDACTED", m.group(2)), value)
         value = PRIVATE_HOST.sub(lambda m: self.tag("INTERNAL_HOST", m.group(0)), value)
         for rule in MORE_IDS:
             value = rule.sub(lambda m: m.group(1) + self.tag("ID_REDACTED", m.group(2)), value)
         value = TIME_ZONE.sub("[TZ_REDACTED]", value)
+        value = ISO_OFFSET.sub(lambda m: (m.group(1) or "") + "[TZ_REDACTED]", value)
         if self.config.places is not None:
             value = self.config.places.sub("[LOCATION_REDACTED]", value)
         for rule, replacement in self.config.rules:

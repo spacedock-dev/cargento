@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import datetime as dt
 import json
+import multiprocessing as mp
 import os
 import sys
 import tempfile
@@ -223,6 +224,13 @@ class EveryCutHasItsRoles(unittest.TestCase):
     def test_a_case_id_is_salted(self) -> None:
         self.assertNotEqual(dr.case_id("a", SID, 1.0), dr.case_id("b", SID, 1.0))
 
+    def test_the_repository_root_itself_is_refused_as_a_home(self) -> None:
+        self.assertTrue(dr._home_refusal(dr._ROOT))
+        self.assertTrue(
+            dr._home_refusal(dr._ROOT.upper() if sys.platform == "darwin" else dr._ROOT)
+        )
+        self.assertFalse(dr._home_refusal(tempfile.gettempdir()))
+
     def test_the_build_refuses_a_home_inside_the_repository(self) -> None:
         said: list[str] = []
         self.assertEqual(
@@ -297,6 +305,11 @@ class _Recorder:
         return "", self.status
 
 
+def _charge_many(path: str, times: int) -> int:
+    ledger = dr.Ledger(path, cap=10)
+    return sum(1 for _ in range(times) if ledger.charge("k"))
+
+
 class TheSpendIsBoundedAndADryRunCostsNothing(unittest.TestCase):
     def test_the_ledger_stops_at_its_cap(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -305,6 +318,26 @@ class TheSpendIsBoundedAndADryRunCostsNothing(unittest.TestCase):
                 [ledger.charge("a"), ledger.charge("b"), ledger.charge("c")], [True, True, False]
             )
             self.assertEqual(len(ledger.calls()), 2)
+
+    def test_an_unreadable_ledger_refuses_instead_of_starting_again(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "spend.json")
+            Path(path).write_text("{not json")
+            with self.assertRaises(dr.LedgerError):
+                dr.Ledger(path).charge("k")
+
+    def test_a_deleted_ledger_does_not_reset_the_count(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            ledger = dr.Ledger(os.path.join(tmp, "spend.json"), cap=3, floor=3)
+            self.assertFalse(ledger.charge("k"))
+
+    def test_concurrent_charges_never_pass_the_cap(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "spend.json")
+            with mp.get_context("spawn").Pool(4) as pool:
+                granted = sum(pool.starmap(_charge_many, [(path, 25)] * 4))
+            self.assertEqual(granted, 10)
+            self.assertEqual(len(dr.Ledger(path, cap=10).calls()), 10)
 
     def test_a_dry_run_never_charges(self) -> None:
         sent: list[str] = []
