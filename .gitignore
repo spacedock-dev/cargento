@@ -49,3 +49,5 @@ docs/feedback/*
 # sanitized. Only the steering excerpts (.txt) and the annotations (.md) are committed.
 tests/raw_sessions/**/*.jsonl
 tests/annotated_sessions/**/*.jsonl
+# A real subagents directory also holds .json metadata with absolute paths; ignore it whole.
+tests/raw_sessions/**/subagents/

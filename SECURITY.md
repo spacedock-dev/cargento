@@ -1886,9 +1886,25 @@ and never writes the annotation store. What comes back stays in
 `~/.cargento/drift-levels/replayed-readings.json`. Its record, `replay.json`, holds case ids, closed
 tokens, times, and the ledger job id built from a case id and a time. The [drift levels documentation](docs/drift-levels/README.md) owns its format.
 
-A violation here is a committed file under `docs/abstention/` or `docs/drift-levels/` carrying a
-session id, prompt text, a recorded command or path, or model prose, or a scoring run that reaches
-the annotation store or the reading route.
+The drift replay check is a third check under the same rules, and `docs/drift-replay/` is its
+committed half. `scripts/drift_replay.py` reads the pushback fixtures under `tests/raw_sessions/`
+(redacted by `scripts/redact_session.py`, gitignored) or, with `--source original`, the logs under
+`~/.claude/projects`. Its cases, its owner's blind marks, its outputs, its spend ledger and the salt
+behind its case ids stay under `~/.cargento/drift-replay/`, and the build refuses a `CARGENTO_HOME`
+inside the repository. Only `marks-digest.json` and `results.json` are committed: the first holds
+digests and counts, the second closed tokens, counts and case ids salted with a local secret, so a
+committed id cannot be recomputed from a session id and a time. `--live` calls no model. `--read`
+sends what a press on that session would send, through the same verified, pinned Claude Code CLI
+the qualification uses: the person's messages, the agent's messages once the producer reads them,
+each check's line, result, times and redacted output tail, and the intent. The owner authorized that
+send and its spend on 2026-10-03, bounded at 240 calls on the fixed-path ledger
+`~/.cargento/drift-replay/spend.json`, which is charged before each call and never by a case the
+producer withholds. It never writes the annotation store and never posts to the reading route. The
+[drift replay documentation](docs/drift-replay/README.md) owns its format.
+
+A violation here is a committed file under `docs/abstention/`, `docs/drift-levels/` or
+`docs/drift-replay/` carrying a session id, prompt text, a recorded command or path, or model prose,
+or a scoring run that reaches the annotation store or the reading route.
 
 ### Cockpit dispatch and terminal reads
 
