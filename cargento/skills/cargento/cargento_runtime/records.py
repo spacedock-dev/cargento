@@ -199,6 +199,25 @@ _SECRET_SHAPES: Final = (
         False,
         r"://[^\s/:@]*:(?:[^\s/@]+(?=@)|(?![0-9]+$)[^\s/@]+$)",
     ),
+    # A credential with no shape of its own, known only by the cue in front of
+    # it: an `Authorization: Bearer` value, a `password=` or `token=` pair, or an
+    # environment assignment such as `DB_PASSWORD=`. Added when the agent's own
+    # messages began reaching a reading model (review, 2026-10-03), because an
+    # agent repeats what it read. Cued like `aws_secret`, so the cue and its
+    # separator stay and only the value goes. No spaces around `=` on the word
+    # cues: `token = next_token()` is code, not a credential. The withholding
+    # direction: a `secret=` that names something harmless is masked too.
+    (
+        "cued",
+        0,
+        False,
+        (
+            r"(?:(?i:\bbearer)\s+"
+            r"|(?i:\b(?:password|passwd|pwd|secret|token|api_key|apikey))=[\"']?"
+            r"|\b[A-Z0-9]+_(?:PASSWORD|TOKEN|SECRET|KEY)=[\"']?)"
+            r"(?P<cuedvalue>[^\s\"'`,;&)]{3,512})"
+        ),
+    ),
 )
 
 _SECRET_RE: Final = re.compile(
@@ -290,12 +309,32 @@ _SECRET_HINTS: Final = (
     "secret_access_key",
     "SECRET_ACCESS_KEY",
     "secretAccessKey",
+    # The `cued` shape's cues, each in both cases and cut to a tail every
+    # capitalisation shares (`Password=` holds `assword=`).
+    "earer",
+    "EARER",
+    "assword=",
+    "ASSWORD=",
+    "asswd=",
+    "ASSWD=",
+    "wd=",
+    "WD=",
+    "ecret=",
+    "ECRET=",
+    "oken=",
+    "OKEN=",
+    "pi_key=",
+    "PI_KEY=",
+    "pikey=",
+    "PIKEY=",
+    "_KEY=",
 )
 
-# The shortest thing any hinted shape can match: `AKIA` plus its 16. Below it the
-# alternation cannot succeed, so the hint scan is skipped as well. `urlcred` is
-# shorter than this and is why the scheme test comes first.
-_SECRET_MIN_CHARS: Final = 20
+# The shortest thing any hinted shape can match: `pwd=` and a three-character
+# value, the `cued` shape's floor. Below it the alternation cannot succeed, so
+# the hint scan is skipped as well. `urlcred` is shorter than this and is why
+# the scheme test comes first.
+_SECRET_MIN_CHARS: Final = 7
 
 
 def _mark_secret(match: re.Match[str]) -> str | None:
@@ -311,6 +350,8 @@ def _mark_secret(match: re.Match[str]) -> str | None:
     anchored = name in _SECRET_ANCHORED and (unambiguous is None or len(body) < unambiguous)
     if anchored and match.start() and match.string[match.start() - 1] in _TOKEN_CHARS:
         return None
+    if name == "cued":
+        return body[: match.start("cuedvalue") - match.start()] + _SECRET_MARKER
     from_body = _SECRET_KEEP_TO_BODY.get(name)
     if from_body is not None:
         return body[:-from_body] + _SECRET_MARKER

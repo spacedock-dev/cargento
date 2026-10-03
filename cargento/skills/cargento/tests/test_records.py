@@ -598,7 +598,43 @@ class RedactSecretsTest(unittest.TestCase):
             "postgres://someone:NOTAREALPASSWORD@db.example:5432/app",
             "postgres://…REDACTED@db.example:5432/app",
         ),
+        # The `cued` shape: no shape of its own, so the cue in front names it and
+        # stays, and only the value goes (review, 2026-10-03).
+        ("bearer value", "Authorization: Bearer placeholder123", "Authorization: Bearer …REDACTED"),
     )
+
+    # Every cue the `cued` shape reads, each with a synthetic value, and the forms it
+    # leaves alone: code that assigns, prose that merely names a cue, and a short word.
+    CUED = (
+        ("password=placeholder1", "password=…REDACTED"),
+        ('Password="placeholder1"', 'Password="…REDACTED"'),
+        ("passwd=placeholder1", "passwd=…REDACTED"),
+        ("pwd=placeholder1", "pwd=…REDACTED"),
+        ("secret=placeholder1", "secret=…REDACTED"),
+        ("token=placeholder1", "token=…REDACTED"),
+        ("api_key=placeholder1", "api_key=…REDACTED"),
+        ("APIKEY=placeholder1", "APIKEY=…REDACTED"),
+        ("DB_PASSWORD=placeholder1 make run", "DB_PASSWORD=…REDACTED make run"),
+        ("GH_TOKEN=placeholder1", "GH_TOKEN=…REDACTED"),
+        ("APP_SECRET=placeholder1", "APP_SECRET=…REDACTED"),
+        ("STRIPE_KEY=placeholder1", "STRIPE_KEY=…REDACTED"),
+        ("bearer placeholder1", "bearer …REDACTED"),
+    )
+    CUED_LEFT_ALONE = (
+        "token = next_token()",
+        "the tokens are fine",
+        "sort_key=name",
+        "the bearer of it",
+        "http://127.0.0.1:4553",
+    )
+
+    def test_a_cued_value_with_no_shape_is_masked_and_its_cue_kept(self) -> None:
+        for fake, expected in self.CUED:
+            with self.subTest(fake=fake):
+                self.assertEqual(expected, records.redact_secrets(fake))
+        for text in self.CUED_LEFT_ALONE:
+            with self.subTest(text=text):
+                self.assertEqual(text, records.redact_secrets(text))
 
     def test_every_measured_shape_is_replaced_by_a_visible_marker(self) -> None:
         for name, fake, expected in self.FAKES:

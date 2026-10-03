@@ -1097,12 +1097,11 @@ class ReadTest(CaseToolTestCase):
         self.assertEqual((entry["status"], entry["charged"], entry["call"]), ("read", False, first))
 
 
-class AScoredCasePassesTheLineCountTest(unittest.TestCase):
-    """The drift-level rule for a line about what the agent tells you read the whole line,
-    until the owner's ruling of 2026-10-03 put the agent's messages in evidence and retired
-    it. The cases tool passes the line count, as the page's route does, and no line text."""
+class AScoredCaseReadsEveryLineWholeTest(unittest.TestCase):
+    """The drift-level rule for a line about what the agent tells you reads the whole
+    line, so the cases tool must pass the line text as the page's route does."""
 
-    def test_the_cases_tool_passes_the_line_count_and_no_line_text(self) -> None:
+    def test_the_cases_tool_passes_each_outcome_line_to_the_level(self) -> None:
         seen: dict[str, Any] = {}
 
         class _Levels:
@@ -1125,7 +1124,7 @@ class AScoredCasePassesTheLineCountTest(unittest.TestCase):
         levels_cases._score_case(
             _Levels, case, {"live": "x", "analysis": "x"}, ({"criteria": {}}, "")
         )
-        self.assertNotIn("lines", seen)
+        self.assertEqual(("first line", "it is reported"), tuple(seen["lines"]))
         self.assertEqual(2, seen["outcome_lines"])
 
 
