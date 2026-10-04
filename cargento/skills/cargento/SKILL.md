@@ -399,6 +399,11 @@ standing outcome lines, and waits for Save intent. Add on an activity entry open
 direction too. The prompt menu resolves choices when opened. An unsettled direction at or before
 a stored reading demotes its intent rows; a later message labels the reading as preceding it.
 
+Delegated work names recorded launches and their clocks when present. Missing or partial
+attribution says Cargento cannot see all the work; a missing count is not zero. An unpaired
+launch followed by thirty quiet minutes in the last turn adds an At-risk item and a question
+to copy into the session. It records no finding about whether a process is running or finished.
+
 A reading you asked for states its departures once, in its result. What the checks run while you
 were away raised is reviewed under `Raised while you were away: N`, drawn only where they raised
 something (with those checks on and nothing raised, their one sentence saying whether the session

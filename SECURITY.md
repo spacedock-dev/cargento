@@ -2462,6 +2462,8 @@ words, source time and saved revision again before adoption. Claude and Codex us
 bounded 32 MiB prefix so a listed history message can be reached after it leaves the live tail;
 missing, changing and ambiguous sources are refused. The draft asks whether to keep or clear
 standing outcome lines and saves only on Save intent. No list or whole source text is stored.
+Every offered goal choice masks named credential forms before raw line breaks are folded and
+before the goal cap is applied. This goal-only scan is uncached; Analyze keeps its own words.
 Adopted goals never authorize unasked checks, even when the same revision has a typed output.
 
 The history record also keeps `first_prompt_at`, `annotation_goal_source`,
