@@ -2703,7 +2703,9 @@ def prompt_choices(
         fact_id = fact.get("fact_id")
         if at is None or not isinstance(words, str) or not isinstance(fact_id, str) or not fact_id:
             continue
-        choice = prompt_choice(fact_id, at, words, cap)
+        choice = prompt_choice(
+            fact_id, at, words, cap, cut=fact.get(records.GOAL_SOURCE_CUT_FIELD) is True
+        )
         if choice is not None:
             found.append(choice)
     found.sort(key=lambda choice: choice["at"])

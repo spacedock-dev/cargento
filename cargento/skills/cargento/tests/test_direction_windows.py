@@ -14,7 +14,7 @@ from types import SimpleNamespace
 from typing import Any
 from unittest import mock
 
-from cargento_runtime import aggregate, http_api, project_context
+from cargento_runtime import aggregate, http_api, project_context, records
 from cargento_runtime import annotations as annotation_store
 from cargento_runtime import io as runtime_io
 
@@ -233,6 +233,8 @@ class AListedDirectionReachesItsSource(_ClaudeSession):
         )
         self.assertEqual(before, after)
         self.assertNotEqual(before[-1]["reader_words"], menu[-1]["reader_words"])
+        self.assertNotIn(records.GOAL_SOURCE_CUT_FIELD, before[-1])
+        self.assertNotIn(records.GOAL_SOURCE_CUT_FIELD, project_context.for_page(menu[-1]))
 
     def test_missing_raw_source_never_offers_folded_words_as_a_goal(self) -> None:
         self.session.prompt("Keep retry. AKIAIOSFODNN7\nEXAMPLE")
@@ -245,6 +247,56 @@ class AListedDirectionReachesItsSource(_ClaudeSession):
         with mock.patch.object(runtime_io, "read_prefix_bytes", side_effect=PermissionError):
             restored = http_api._prompt_facts(app, _row(), [fact])
             self.assertEqual([], annotation_store.prompt_choices(_row(), restored, 240))
+
+    def test_a_command_cut_before_folding_stays_an_excerpt_in_every_choice(self) -> None:
+        self.session.prompt(
+            "<command-message>review</command-message>\n<command-name>/review</command-name>\n"
+            "<command-args>Keep retry." + " " * 2100 + "later omitted</command-args>"
+        )
+        self.session.save(self.path)
+        fact = max(
+            (item for item in self.facts() if item["type"] == "user_message"),
+            key=lambda item: item["at"],
+        )
+        app = SimpleNamespace(config=self.config, state=self.state)
+        choices = annotation_store.prompt_choices(
+            _row(), http_api._prompt_facts(app, _row(), [fact]), 240
+        )
+        raw = project_context.direction_text(
+            self.config, self.state, "claude", SHORT, str(fact["fact_id"])
+        )
+        self.assertTrue(raw.cut)
+        explicit = annotation_store.prompt_choice(
+            str(fact["fact_id"]), float(fact["at"]), raw.text, 240, cut=raw.cut
+        )
+        self.assertEqual([explicit], choices)
+
+    def test_an_ambiguity_after_the_fact_cap_still_refuses_an_earlier_choice(self) -> None:
+        words = "Keep   retries bounded.\nUse the original boundary."
+        self.session.prompt(words)
+        self.session.save(self.path)
+        fact = max(
+            (item for item in self.facts() if item["type"] == "user_message"),
+            key=lambda item: item["at"],
+        )
+        duplicate = copy.deepcopy(self.session.rows[-1])
+        duplicate["message"]["content"][0]["text"] = words.replace("   ", " ").replace(
+            "original boundary", "changed boundary"
+        )
+        for k in range(project_context.TRANSCRIPT_USER_FACTS_MAX):
+            self.session.prompt(f"Use fixture {k} to check the boundary.")
+        self.session.rows.append(duplicate)
+        self.session.save(self.path)
+        self.assertLess(self.path.stat().st_size, project_context.SEMANTIC_BACKFILL_MAX_BYTES)
+        source = project_context.transcript_user_facts(
+            self.config, self.state, str(self.path), "claude", SHORT, goal_choices=True
+        )
+        self.assertEqual(project_context.TRANSCRIPT_USER_FACTS_MAX, len(source))
+        app = SimpleNamespace(config=self.config, state=self.state)
+        choices = annotation_store.prompt_choices(
+            _row(), http_api._prompt_facts(app, _row(), [fact]), 240
+        )
+        self.assertEqual([], choices)
 
 
 class AReadingKeepsTheBaselineItRead(unittest.TestCase):

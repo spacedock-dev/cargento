@@ -494,7 +494,10 @@ def _prompt_facts(
         ):
             continue
         matches = {
-            str(item.get(runtime_reading.WORDS_FIELD) or "")
+            (
+                str(item.get(runtime_reading.WORDS_FIELD) or ""),
+                item.get(records.GOAL_SOURCE_CUT_FIELD) is True,
+            )
             for item in source
             if item.get("fact_id") == fact.get("fact_id")
             and item.get("at") == fact.get("at")
@@ -502,8 +505,14 @@ def _prompt_facts(
         }
         if len(matches) != 1:
             continue
-        words = next(iter(matches))
-        restored.append({**fact, runtime_reading.WORDS_FIELD: words})
+        words, cut = next(iter(matches))
+        restored.append(
+            {
+                **fact,
+                runtime_reading.WORDS_FIELD: words,
+                records.GOAL_SOURCE_CUT_FIELD: cut,
+            }
+        )
     return restored
 
 

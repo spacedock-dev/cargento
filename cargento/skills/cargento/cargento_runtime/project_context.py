@@ -47,7 +47,9 @@ READER_WORDS_FIELD = "reader_words"
 AGENT_WORDS_CAP_CHARS = 1_000
 AGENT_WORDS_FIELD = "agent_words"
 # Every server-side-only words field, which no page route may publish.
-_SERVER_ONLY_FIELDS = frozenset({READER_WORDS_FIELD, AGENT_WORDS_FIELD})
+_SERVER_ONLY_FIELDS = frozenset(
+    {READER_WORDS_FIELD, AGENT_WORDS_FIELD, records.GOAL_SOURCE_CUT_FIELD}
+)
 # The harnesses whose top-level assistant text this module reads as the agent's messages.
 # Claude Code only for now; Codex's final answers are a follow-up.
 AGENT_MESSAGE_HARNESSES = ("claude",)
@@ -4606,6 +4608,10 @@ def _transcript_user_scan(
         fact = _semantic_fact_from_event(event, "steer", "user_message", "")
         if goal_choices:
             fact_id = str(fact["fact_id"])
+            # The returned list stays bounded, but a later conflicting source
+            # inside the byte budget must still invalidate an offered identity.
+            if len(facts) >= TRANSCRIPT_USER_FACTS_MAX and fact_id not in goal_sources:
+                continue
             source_words = _direction_words(config, record, harness)
             previous = goal_sources.get(fact_id)
             if previous is not None and previous != source_words:
@@ -4616,12 +4622,14 @@ def _transcript_user_scan(
             fact[READER_WORDS_FIELD] = records.safe_text(
                 " ".join(records.mask_prose(source_words.text).split()), READER_WORDS_CAP_CHARS
             )
+            fact[records.GOAL_SOURCE_CUT_FIELD] = source_words.cut
         key = (str(fact["fact_id"]), str(fact.get(READER_WORDS_FIELD) or ""))
         if key in seen:
             continue
         seen.add(key)
-        facts.append(fact)
-        if len(facts) >= TRANSCRIPT_USER_FACTS_MAX:
+        if len(facts) < TRANSCRIPT_USER_FACTS_MAX:
+            facts.append(fact)
+        if not goal_choices and len(facts) >= TRANSCRIPT_USER_FACTS_MAX:
             break
     # Keep an empty, verified source match for an ambiguous identity, so a
     # menu caller cannot fall back to its already-folded published words.
