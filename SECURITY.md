@@ -1939,7 +1939,7 @@ committed id cannot be recomputed from a session id and a time. `--live` calls n
 sends what a press on that session would send, through the same verified, pinned Claude Code CLI
 the qualification uses: the person's messages, the agent's messages once the producer reads them,
 each check's line, result, times and redacted output tail, and the intent. The owner authorized that
-send and its spend on 2026-10-03, bounded at 240 calls on the ledger
+send and its spend on 2026-10-03, bounded at 240 calls and raised to 440 on 2026-10-04, on the ledger
 `~/.cargento/drift-replay/spend.json`. That path is under the operator's home whatever
 `CARGENTO_HOME` says, so moving the home does not reset the count. Each call is charged before it is
 made, under an exclusive lock on macOS and Linux (Windows has none, so the cap there holds for one
