@@ -3182,8 +3182,10 @@ function nextCockpitReadingCoverage(shape){
   }else if(measured.tail_truncated && measured.tail_start == null){
     clauses.push("The message tail was truncated; its start time was not recorded.");
   }
-  if(measured && measured.unlisted) clauses.push(`${measured.unlisted} passes or writes in the window were not listed.`);
-  if(measured && measured.unread_checks) clauses.push(`${measured.unread_checks} checks had no room in the reading.`);
+  if(measured && measured.unlisted) clauses.push(`${measured.unlisted} ` +
+    `${measured.unlisted === 1 ? "pass or write in the window was" : "passes or writes in the window were"} not listed.`);
+  if(measured && measured.unread_checks) clauses.push(`${measured.unread_checks} ` +
+    `${measured.unread_checks === 1 ? "check" : "checks"} had no room in the reading.`);
   if(measured && ["excerpt","unroomed"].includes(measured.goal_source)){
     clauses.push("The adopted source could not be read whole; this reading used the saved excerpt. " +
       "Put the instruction you meant in the goal box, then analyze again.");

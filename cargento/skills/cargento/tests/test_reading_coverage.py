@@ -355,7 +355,7 @@ class TheReadingCarriesMeasuredCoverage(producer.AClaudeCodeReadingProducer):
             tool_output=output,
         )
         self.assertEqual(1, got["coverage"]["unlisted"])
-        self.assertIn("1 passes or writes in the window", got["cutoff"])
+        self.assertIn("1 pass or write in the window", got["cutoff"])
 
     def test_coverage_is_measured_before_the_model_and_kept_without_words(self) -> None:
         order: list[str] = []
@@ -537,6 +537,14 @@ console.log(JSON.stringify(["whole","excerpt","unroomed","unknown"].map(goal_sou
 """)
         self.assertIn("read up to 1,000", out[0])
         self.assertTrue(all("read up to 1,000" not in row for row in out[1:]))
+
+    def test_one_omitted_entry_uses_the_singular_count(self) -> None:
+        out = self.fixture("""
+console.log(JSON.stringify(nextCockpitReadingCoverage({windowStart:50,
+ coverage:{tail_truncated:false,tail_start:10,unlisted:1,unread_checks:1,goal_source:"typed"}})));
+""")
+        self.assertIn("1 pass or write", out)
+        self.assertIn("1 check had", out)
 
     def test_unknown_legacy_coverage_is_disclosed_and_never_guessed(self) -> None:
         out = self.fixture("""

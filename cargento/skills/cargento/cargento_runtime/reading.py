@@ -1865,7 +1865,10 @@ def cutoff_text(
         opening = empty + (" " + tail_note if partial else "")
     omissions = []
     if unlisted:
-        omissions.append(f"{unlisted} passes or writes in the window were left unlisted")
+        kind = "pass or write" if unlisted == 1 else "passes or writes"
+        omissions.append(
+            f"{unlisted} {kind} in the window {'was' if unlisted == 1 else 'were'} left unlisted"
+        )
     if unread_checks:
         omissions.append(
             f"{unread_checks} check{'s' if unread_checks != 1 else ''} had no room in the prompt"
