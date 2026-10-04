@@ -791,7 +791,8 @@ def _assessment(value: Any, cap: int) -> reading.Assessment | None:
     ):
         return None
     criteria = _criteria(value.get("criteria"), cap)
-    if criteria is None:
+    coverage = reading.validate_coverage(value["coverage"]) if "coverage" in value else None
+    if criteria is None or (value.get("coverage") is not None and coverage is None):
         return None
     ended = value.get("ended_at_read")
     provenance = _provenance({**value, "at": value.get("revision_read_at")})
@@ -809,7 +810,7 @@ def _assessment(value: Any, cap: int) -> reading.Assessment | None:
         if not window_fields:
             return None
         window = window_fields["window_start"]
-    return {
+    assessment: reading.Assessment = {
         **provenance,
         "revision_read": revision,
         "read_at": records.norm_epoch(value.get("read_at")) or None,
@@ -832,8 +833,10 @@ def _assessment(value: Any, cap: int) -> reading.Assessment | None:
         # ruling `reading.MAX_OUTCOME_LINES` cites reads back as None, which
         # says how far it read is unknown rather than claiming a time.
         "evidence_through": records.norm_epoch(value.get("evidence_through")) or None,
+        "coverage": coverage,
         "criteria": criteria,
     }
+    return assessment
 
 
 def _criteria(value: Any, cap: int) -> dict[str, reading.Criterion] | None:

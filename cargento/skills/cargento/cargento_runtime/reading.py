@@ -48,6 +48,7 @@ import re
 import secrets
 import shutil
 import threading
+import time
 import unicodedata
 from dataclasses import dataclass, field, replace
 from typing import TYPE_CHECKING, Any, NotRequired, TypedDict
@@ -203,6 +204,7 @@ ASSESSMENT_KEYS = (
     "scope_text",
     "ended_at_read",
     "evidence_through",
+    "coverage",
     "criteria",
 )
 CRITERION_KEYS = ("result", "cites", "detail", "clause", "why")
@@ -951,6 +953,7 @@ class Assessment(TypedDict):
     # on a reading stored before the field, and where no entry carried a
     # usable time (item 6 of the ruling `MAX_OUTCOME_LINES` cites).
     evidence_through: float | None
+    coverage: NotRequired[dict[str, Any] | None]
     criteria: dict[str, Criterion]
 
 
@@ -1806,8 +1809,10 @@ def cutoff_text(
     earlier: int = 0,
     untimed: int = 0,
     after_stop: int = 0,
+    coverage: Mapping[str, Any] | None = None,
+    window_start: float = 0.0,
 ) -> str:
-    """What this reading actually read, by count and by author.
+    """What this reading actually read, by kind, with measured omissions.
 
     Composed from measurements rather than written by the model, and it names
     the author mix because a reading resting entirely on the session's own
@@ -1822,17 +1827,18 @@ def cutoff_text(
     words or with no time, and `after_stop` those after the words that came
     after the last observed stop (owner, 2026-09-27).
     """
+    measured = coverage or {}
+    tail_truncated = measured.get("tail_truncated")
+    tail_start = _number(measured.get("tail_start")) or 0.0
+    unlisted = int(measured.get("unlisted") or 0)
+    unread_checks = int(measured.get("unread_checks") or 0)
     left_out = _not_read(earlier, untimed, after_stop)
-    if not selected:
-        return (
-            f"No entry in the observed record was read{left_out}."
-            if not total
-            else f"None of the {_entries(total)} after your words could be read{left_out}."
-        )
-    mix = {
-        name: sum(1 for row in selected if row["author"] == name)
-        for name in (AUTHOR_PERSON, AUTHOR_AGENT, AUTHOR_DERIVED)
-    }
+    empty = (
+        f"No entry in the observed record was read{left_out}."
+        if not total
+        else f"None of the {_entries(total)} after your words could be read{left_out}."
+    )
+    mix = _cutoff_mix(selected)
     stamped = [row["at"] for row in selected if row["at"] > 0]
     if not stamped:
         window = "none of them carrying a usable time"
@@ -1841,12 +1847,96 @@ def cutoff_text(
         window = f"the oldest about {hours}h ago" if hours else "all within the last hour"
         if len(stamped) != len(selected):
             window += f", {len(selected) - len(stamped)} carrying no usable time"
-    return (
-        f"Read {len(selected)} of the {_entries(total)} after your words{left_out}. "
-        f"Of those read, {window}: "
-        f"{mix[AUTHOR_PERSON]} you wrote, {mix[AUTHOR_AGENT]} the agent wrote, "
-        f"{mix[AUTHOR_DERIVED]} Cargento derived. Nothing outside that was read."
+    partial = tail_truncated is True and tail_start is not None and tail_start > window_start > 0
+    tail_note = (
+        "The message tail starts "
+        f"{time.strftime('%Y-%m-%d %H:%M UTC', time.gmtime(tail_start))}; "
+        f"about {max(1, math.ceil((tail_start - window_start) / 60))} min at the start "
+        "of the window were outside it."
+        if partial
+        else ""
     )
+    opening = (
+        f"Read {len(selected)} entries. " + tail_note
+        if partial
+        else f"Read {len(selected)} of the {_entries(total)} available after your words."
+    )
+    if not selected:
+        opening = empty + (" " + tail_note if partial else "")
+    omissions = []
+    if unlisted:
+        omissions.append(f"{unlisted} passes or writes in the window were left unlisted")
+    if unread_checks:
+        omissions.append(
+            f"{unread_checks} check{'s' if unread_checks != 1 else ''} had no room in the prompt"
+        )
+    return (
+        opening.rstrip(".") + left_out + f". Of those read, {window}: {mix}."
+        if selected
+        else opening
+    ) + (" " + "; ".join(omissions) + "." if omissions else "")
+
+
+def _cutoff_mix(selected: Sequence[LedgerEntry]) -> str:
+    counts: dict[str, int] = {}
+    for row in selected:
+        if row["type"] == TOOL_REPORT_TYPE:
+            subject, result = row.get("subject"), row.get("result")
+            name = (
+                (
+                    "passed"
+                    if result == "passed"
+                    else "failed"
+                    if result == "failed"
+                    else "run with no recorded result"
+                )
+                if subject == CHECK_SUBJECT
+                else ("file written" if subject == WRITE_SUBJECT else "launch")
+            )
+        elif row["author"] == AUTHOR_PERSON:
+            name = "you wrote"
+        elif row["author"] == AUTHOR_DERIVED:
+            name = "Cargento derived"
+        else:
+            name = "message the agent wrote" if row["type"] == AGENT_MESSAGE_TYPE else "agent event"
+        counts[name] = counts.get(name, 0) + 1
+    plurals = {
+        "message the agent wrote": "messages the agent wrote",
+        "agent event": "agent events",
+        "run with no recorded result": "runs with no recorded result",
+        "file written": "files written",
+        "launch": "launches",
+    }
+    return ", ".join(
+        f"{n} {plurals.get(name, name) if n != 1 else name}" for name, n in counts.items()
+    )
+
+
+COVERAGE_KEYS = ("tail_truncated", "tail_start", "unlisted", "unread_checks", "goal_source")
+COVERAGE_GOAL_SOURCES = ("typed", "whole", "excerpt", "unroomed", "unknown")
+
+
+def validate_coverage(value: Any) -> dict[str, Any] | None:
+    """Count/time metadata only; malformed measurement is never a reassuring default."""
+    if not isinstance(value, dict) or set(value) != set(COVERAGE_KEYS):
+        return None
+    if value["tail_truncated"] is not None and type(value["tail_truncated"]) is not bool:
+        return None
+    at = value["tail_start"]
+    # The same representable range as the page: dates through year 9999 and
+    # exact integer counts. Check the range before converting an arbitrary int.
+    if at is not None and (
+        isinstance(at, bool) or not isinstance(at, (int, float)) or not 0 < at <= 253402300799
+    ):
+        return None
+    if any(
+        type(value[k]) is not int or not 0 <= value[k] < 2**53
+        for k in ("unlisted", "unread_checks")
+    ):
+        return None
+    if value["goal_source"] not in COVERAGE_GOAL_SOURCES:
+        return None
+    return dict(value)
 
 
 # Said only when the prompt carries a check, beside the untrusted-data line it
@@ -3172,6 +3262,7 @@ def produce(  # noqa: PLR0913
     record_withheld: str = "",
     read_agent_words: bool = False,
     goal_source_lookup: Callable[[], Sequence[Mapping[str, Any]]] | None = None,
+    record_coverage_lookup: Callable[[], Mapping[str, Any]] | None = None,
 ) -> tuple[Assessment | None, str, bool]:
     """One reading, or the reason there is none. Returns (assessment, why, spent).
 
@@ -3264,6 +3355,22 @@ def produce(  # noqa: PLR0913
         if admitted and tool_output is not None
         else (),
     )
+    measured = record_coverage_lookup() if record_coverage_lookup is not None else {}
+    coverage = {
+        "tail_truncated": measured.get("tail_truncated"),
+        "tail_start": measured.get("tail_start"),
+        "unlisted": len(selected.unlisted),
+        "unread_checks": len(selected.unread_checks),
+        "goal_source": (
+            "typed"
+            if not adopted
+            else "excerpt"
+            if source is None
+            else "whole"
+            if selected.goal_whole
+            else "unroomed"
+        ),
+    }
     raw, status = model(prompt, output_cap_bytes=REPLY_CAP_BYTES)
     # A reply that reached the cap is the one a cut can explain. The exec layer
     # decodes with "replace" and strips, so a cut reply can come back a little
@@ -3284,7 +3391,14 @@ def produce(  # noqa: PLR0913
         detail_cap_chars=config.annotation_text_cap_chars,
         window_start=window_start(latest),
     )
-    cutoff = cutoff_text(selected.entries, len(ledger), now, **left_out)
+    cutoff = cutoff_text(
+        selected.entries,
+        len(ledger),
+        now,
+        **left_out,
+        coverage=coverage,
+        window_start=window_start(latest),
+    )
     cutoff += _goal_note(adopted=adopted, source=source, goal=goal, whole=selected.goal_whole)
     if tool_output is not None and not admitted and _has_reports(facts, harness, sid):
         cutoff += (
@@ -3293,13 +3407,6 @@ def produce(  # noqa: PLR0913
             if not tool_output.allowed
             else " The checks this session recorded were not sent, because Cargento cannot "
             f"name where {tool_output.label or 'the reading model'} would send them."
-        )
-    unread = len(selected.unread_checks)
-    if unread:
-        cutoff += (
-            f" {unread} check{'s' if unread != 1 else ''} this session recorded "
-            f"{'were' if unread != 1 else 'was'} not read, because the prompt had no room "
-            f"for {'them' if unread != 1 else 'it'}."
         )
     revision = latest.get("n")
     assessment: Assessment = {
@@ -3314,6 +3421,7 @@ def produce(  # noqa: PLR0913
         "window_start": window_start(latest) or None,
         "evidence_through": _newest(facts, harness, sid, until=stopped),
         "criteria": criteria,
+        "coverage": coverage,
     }
     if latest.get("goal_source") in PROMPT_SOURCES:
         assessment["goal_source"] = str(latest["goal_source"])

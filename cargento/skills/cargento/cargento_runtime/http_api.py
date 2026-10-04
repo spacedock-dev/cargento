@@ -2718,6 +2718,16 @@ class _RequestHandler(BaseHTTPRequestHandler):
             row,
             entry["revisions"],
             _facts_of(context),
+            record_coverage_lookup=lambda: runtime_project_context.transcript_tail_coverage(
+                application.config,
+                runtime_observer.resolve_transcript(
+                    application.config,
+                    application.state,
+                    str(row.get("harness")),
+                    str(row.get("sid")),
+                )
+                or "",
+            ),
             goal_source_lookup=lambda: runtime_project_context.transcript_user_facts(
                 application.config,
                 application.state,

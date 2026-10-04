@@ -1535,60 +1535,75 @@ class WhatTheReaderIsToldTheReadingCovered(unittest.TestCase):
     def test_a_reader_is_told_how_many_entries_before_their_words_were_not_read(self) -> None:
         # Owner rulings F2 and N4, 2026-09-27: each set counted apart, each clause only when it
         # holds something, in the singular for one.
-        rows = (entry(id="a", at=NOW - 60.0), entry(id="b", at=NOW - 60.0))
+        rows = (
+            entry(id="a", at=NOW - 60.0, type="agent_message"),
+            entry(id="b", at=NOW - 60.0, type="agent_message"),
+        )
         for counts, opening in (
             (
                 {"earlier": 2},
-                "Read 2 of the 3 entries after your words; 2 earlier entries were not read. ",
+                "Read 2 of the 3 entries available after your words; 2 earlier entries were not read. ",
             ),
             (
                 {"earlier": 1},
-                "Read 2 of the 3 entries after your words; 1 earlier entry was not read. ",
+                "Read 2 of the 3 entries available after your words; 1 earlier entry was not read. ",
             ),
             (
                 {"untimed": 1},
-                "Read 2 of the 3 entries after your words; 1 untimed entry was not read. ",
+                "Read 2 of the 3 entries available after your words; 1 untimed entry was not read. ",
             ),
             (
                 {"earlier": 2, "untimed": 1},
                 (
-                    "Read 2 of the 3 entries after your words; 2 earlier "
+                    "Read 2 of the 3 entries available after your words; 2 earlier "
                     "and 1 untimed entries were not read. "
                 ),
             ),
             (
                 {"after_stop": 2},
                 (
-                    "Read 2 of the 3 entries after your words; 2 entries after the "
+                    "Read 2 of the 3 entries available after your words; 2 entries after the "
                     "last observed stop were not read. "
                 ),
             ),
             (
                 {"earlier": 1, "after_stop": 1},
                 (
-                    "Read 2 of the 3 entries after your words; 1 earlier entry was not read; "
+                    "Read 2 of the 3 entries available after your words; 1 earlier entry was not read; "
                     "1 entry after the last observed stop was not read. "
                 ),
             ),
         ):
             with self.subTest(counts=counts):
-                sentence = reading.cutoff_text(rows, 3, NOW, **counts)
+                sentence = reading.cutoff_text(
+                    rows,
+                    3,
+                    NOW,
+                    earlier=counts.get("earlier", 0),
+                    untimed=counts.get("untimed", 0),
+                    after_stop=counts.get("after_stop", 0),
+                )
                 self.assertTrue(sentence.startswith(opening + "Of those read, "), sentence)
         self.assertTrue(
             reading.cutoff_text(rows[:1], 1, NOW, earlier=1).startswith(
-                "Read 1 of the 1 entry after your words; 1 earlier entry was not read. "
+                "Read 1 of the 1 entry available after your words; 1 earlier entry was not read. "
             )
         )
         plain = reading.cutoff_text(rows, 2, NOW)
-        self.assertTrue(plain.startswith("Read 2 of the 2 entries after your words. "), plain)
+        self.assertTrue(
+            plain.startswith("Read 2 of the 2 entries available after your words. "), plain
+        )
         self.assertNotIn("not read", plain)
 
     def test_a_reader_is_told_when_the_reading_rests_on_nobody_but_the_agent(self) -> None:
-        rows = (entry(id="a", at=NOW - 60.0), entry(id="b", at=NOW - 60.0))
-        self.assertIn("2 the agent wrote", reading.cutoff_text(rows, 2, NOW))
+        rows = (
+            entry(id="a", at=NOW - 60.0, type="agent_message"),
+            entry(id="b", at=NOW - 60.0, type="agent_message"),
+        )
+        self.assertIn("2 messages the agent wrote", reading.cutoff_text(rows, 2, NOW))
         mixed = (
             person_entry(at=NOW - 60.0),
-            entry(id="b", at=NOW - 60.0),
+            entry(id="b", at=NOW - 60.0, type="agent_message"),
             derived_entry(at=NOW - 60.0),
         )
         sentence = reading.cutoff_text(mixed, 3, NOW)
@@ -1991,7 +2006,7 @@ class WhatOnePressActuallyCostsAndProduces(unittest.TestCase):
         self.assertEqual(3, assessment["revision_read"])
         self.assertEqual(reading.SCOPE_MID_FLIGHT, assessment["scope"])
         self.assertEqual(reading.SCOPE_TEXT[reading.SCOPE_MID_FLIGHT], assessment["scope_text"])
-        self.assertIn("Read 1 of the 1 entry after your words", assessment["cutoff"])
+        self.assertIn("Read 1 of the 1 entry available after your words", assessment["cutoff"])
         self.assertEqual({reading.CONSTRAINT_GOAL}, set(assessment["criteria"]))
 
     def test_a_reading_of_an_ended_session_records_the_end_it_rested_on(self) -> None:
@@ -3230,7 +3245,7 @@ class WhatTheReaderIsToldWhenChecksWereNotSent(AClaudeCodeReadingProducer):
         ]
         assessment, _why, _spent = self._produce([*big, check_fact()], tool_output=ADMITTED)
         self.assertIn(
-            "1 check this session recorded was not read, because the prompt had no room for it.",
+            "1 check had no room in the prompt",
             assessment["cutoff"],
         )
         self.assertEqual(reading.WHY_CHECKS_NOT_READ, assessment["criteria"]["line_1"]["why"])

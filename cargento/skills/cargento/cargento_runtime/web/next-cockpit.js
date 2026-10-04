@@ -1237,10 +1237,10 @@ function nextCockpitStoreUnreadable(){
    to save the draft: the "Looks right" button that did the same thing beside
    it is gone (owner, 2026-10-02). */
 /* An adopted prompt longer than the goal box (owner, 2026-10-04): the box
-   keeps the excerpt, and Analyze reads the prompt whole, up to the 1,000
-   characters `reading.adopted_prompt` reads. Short, because it sits in the row
+   keeps the excerpt, and Analyze attempts a source lookup at the press. Only
+   a reading that found it may promise whole source words. Short, because it sits in the row
    under the box that holds one control's height. */
-const NEXT_INTENT_EXCERPT_READ_WHOLE = "Excerpt. Analyze reads up to 1,000 characters.";
+const NEXT_INTENT_EXCERPT_READ_WHOLE = "Excerpt. Analyze looks up the source when pressed.";
 
 function nextIntentDraftMarks(session, draft){
   /* A chosen prompt is named by its own time, which is what tells it apart
@@ -2517,7 +2517,7 @@ const NEXT_READING_BASELINE_OPEN =
    failure here is a producer and a renderer disagreeing about a key name
    and neither one noticing. */
 const NEXT_READING_ASSESSMENT_KEYS = ["goal_source", "goal_source_at", "revision_read", "revision_read_at", "window_start", "read_at", "stamp", "cutoff",
-  "scope", "scope_text", "ended_at_read", "evidence_through", "criteria"];
+  "scope", "scope_text", "ended_at_read", "evidence_through", "coverage", "criteria"];
 const NEXT_READING_CRITERION_KEYS = ["result", "cites", "detail", "clause", "why"];
 /* Said in two places now, the criterion row and the disclosure, so it is a
    constant. It is deliberately narrower than "nothing typed": `_criterion`
@@ -3150,6 +3150,49 @@ function nextCockpitReadingClause(key, row, annotation, historical){
 /* `lineSource` names a saved line's source; the panel passes the one that
    numbers an added line by the list ("added from #12"), as the saved line
    above it reads (DRC-4697), so the result renders it anew (DRC-4695). */
+const NEXT_READING_COVERAGE_KEYS = ["tail_truncated", "tail_start", "unlisted", "unread_checks", "goal_source"];
+const NEXT_READING_COVERAGE_GOALS = ["typed", "whole", "excerpt", "unroomed", "unknown"];
+
+function nextReadingCoverage(raw){
+  if(!raw || typeof raw !== "object" || Array.isArray(raw) ||
+      Object.keys(raw).length !== NEXT_READING_COVERAGE_KEYS.length ||
+      NEXT_READING_COVERAGE_KEYS.some(key => !Object.prototype.hasOwnProperty.call(raw,key))) return null;
+  if(raw.tail_truncated !== null && typeof raw.tail_truncated !== "boolean") return null;
+  if(raw.tail_start !== null && (typeof raw.tail_start !== "number" ||
+      !Number.isFinite(raw.tail_start) || raw.tail_start <= 0 || raw.tail_start > 253402300799)) return null;
+  if([raw.unlisted,raw.unread_checks].some(n => !Number.isSafeInteger(n) || n < 0)) return null;
+  return NEXT_READING_COVERAGE_GOALS.includes(raw.goal_source) ? raw : null;
+}
+
+function nextReadingWindowPartial(shape){
+  return Boolean(shape.coverage && shape.coverage.tail_truncated === true &&
+    shape.coverage.tail_start != null && shape.windowStart != null &&
+    shape.windowStart > 0 && shape.coverage.tail_start > shape.windowStart);
+}
+
+function nextCockpitReadingCoverage(shape){
+  const measured = shape.coverage;
+  const clauses = [];
+  if(!measured || measured.tail_truncated == null){
+    clauses.push("Coverage was not recorded for this reading.");
+  }else if(nextReadingWindowPartial(shape)){
+    clauses.push(`Message tail starts ${nextSessionClock(measured.tail_start)}; about ` +
+      `${Math.max(1,Math.ceil((measured.tail_start-shape.windowStart)/60))} min at the start of the window were outside it. ` +
+      "The check listing can include older work.");
+  }else if(measured.tail_truncated && measured.tail_start == null){
+    clauses.push("The message tail was truncated; its start time was not recorded.");
+  }
+  if(measured && measured.unlisted) clauses.push(`${measured.unlisted} passes or writes in the window were not listed.`);
+  if(measured && measured.unread_checks) clauses.push(`${measured.unread_checks} checks had no room in the reading.`);
+  if(measured && ["excerpt","unroomed"].includes(measured.goal_source)){
+    clauses.push("The adopted source could not be read whole; this reading used the saved excerpt. " +
+      "Put the instruction you meant in the goal box, then analyze again.");
+  }else if(measured && measured.goal_source === "whole"){
+    clauses.push("The adopted source was found; Analyze read up to 1,000 characters.");
+  }
+  return clauses.length ? `<p class="next-cockpit-reading-why" data-next-reading-coverage>${esc(clauses.join(" "))}</p>` : "";
+}
+
 function nextCockpitReadingShape(raw, annotation, entries, limit, unsettled,
     lineSource = nextOutcomeLineSource){
   const source = raw && typeof raw === "object" ? raw : {};
@@ -3163,6 +3206,8 @@ function nextCockpitReadingShape(raw, annotation, entries, limit, unsettled,
      better to have. */
   const unknown = Object.keys(source).filter(name =>
     NEXT_READING_ASSESSMENT_KEYS.indexOf(name) < 0);
+  const coverage = nextReadingCoverage(source.coverage);
+  if(source.coverage != null && !coverage) unknown.push("coverage");
   if(unknown.length){
     return {criteria: [], departures: [], malformed: unknown.slice(0, 4).join(", "),
       revisionRead: null, revisionReadAt: null, stamp: "", cutoff: "", scopeText: ""};
@@ -3185,6 +3230,7 @@ function nextCockpitReadingShape(raw, annotation, entries, limit, unsettled,
       ? source.goal_source_at : source.revision_read_at);
   const constraints = nextReadingConstraints(rows, annotation,
     revisionRead != null && current != null && !historical);
+  const partial = nextReadingWindowPartial({coverage,windowStart});
   const criteria = constraints
     .map(([key, label]) => nextCockpitReadingCriterion(
       key, key === "goal" && NEXT_PROMPT_SOURCES.includes(source.goal_source)
@@ -3193,7 +3239,9 @@ function nextCockpitReadingShape(raw, annotation, entries, limit, unsettled,
       nextCockpitReadingClause(key, rows[key], annotation, historical),
       rows[key], entries,
       nextReadingIsOutcomeLine(key) || key === NEXT_READING_CLAIMS ? limit : "", unsettled,
-      windowStart));
+      windowStart))
+    .map(row => ({...row,coverage: partial && row.key !== NEXT_READING_CLAIMS
+      ? "may be in the part not read" : ""}));
   return {
     criteria,
     /* The intent's departures: a contradicted claim is not one, so it is in no
@@ -3203,6 +3251,7 @@ function nextCockpitReadingShape(raw, annotation, entries, limit, unsettled,
     revisionRead,
     revisionReadAt: nextNumber(source.revision_read_at),
     windowStart,
+    coverage,
     promptSource: NEXT_PROMPT_SOURCES.includes(source.goal_source),
     /* Through the same helper the criterion row uses, and filtered the same
        way. Read raw, the disclosure said "nothing typed in that revision" for
@@ -3346,7 +3395,9 @@ function nextCockpitResultStatus(row, numbers, byId, short = false){
   }
   /* A consistent the page cannot place is no claim it can word, so it is
      said as what it is to the reader: nothing shown. */
-  return row.why || row.limit ? NEXT_RESULT_CANT_TELL : NEXT_RESULT_NOTHING_SHOWS;
+  return row.why || row.limit ? NEXT_RESULT_CANT_TELL
+    : (row.citedIds || []).length ? "Can't tell: what was read does not settle this"
+    : NEXT_RESULT_NOTHING_SHOWS;
 }
 
 function nextCockpitResultState(row){
@@ -3373,6 +3424,7 @@ function nextCockpitReadingCriterionRow(row, numbers = null, byId = null){
     `<span class="next-cockpit-reading-name">${esc(row.label)}</span>` +
     nextCockpitReadingClauseCell(row) +
     `<em class="next-cockpit-reading-result">${esc(nextCockpitResultStatus(row, numbered, entries))}</em>` +
+    (row.coverage ? `<span class="next-cockpit-reading-why">${esc(row.coverage)}</span>` : "") +
     (row.why ? `<span class="next-cockpit-reading-why">${esc(row.why)}</span>` : "") +
     tail + '</div>';
 }
@@ -3400,6 +3452,7 @@ function nextCockpitResultItem(row, numbers, byId, tag = "li"){
     '<span class="next-cockpit-result-glyph" aria-hidden="true"></span>' +
     '<span class="next-cockpit-result-body">' + nextCockpitReadingClauseCell(row) +
     `<em class="next-cockpit-reading-result">${esc(status)}</em>` +
+    (row.coverage ? `<span class="next-cockpit-reading-why">${esc(row.coverage)}</span>` : "") +
     `<details class="next-cockpit-why"${nextCockpitDisclosureAttr(`result-evidence:${row.key}`)}>` +
     `<summary>Evidence</summary>${evidence}</details></span></${tag}>`;
 }
@@ -5121,7 +5174,8 @@ function nextCockpitReadingNotNow(session){
 const NEXT_READING_OFFER =
   "A reading is a model\u2019s account of the evidence on this page: the observed record in " +
   "this session\u2019s activity and the goal and output you saved, and nothing else. It does not " +
-  "read a diff, a file, a test or a deliverable.";
+  "read a diff, a file, a test or a deliverable, replies from git, gh or connected tools, " +
+  "or what you saw on your screen.";
 /* The same scope without its opening clause, where the server's list is drawn
    just above it: that list already ends on "A reading is a model's account of
    the evidence", and saying it again in the next paragraph was the repetition
@@ -5129,7 +5183,7 @@ const NEXT_READING_OFFER =
 const NEXT_READING_SCOPE =
   "What it reads is the evidence on this page: the observed record in this session\u2019s " +
   "activity and the goal and output you saved, and nothing else. It does not read a diff, a " +
-  "file, a test or a deliverable.";
+  "file, a test or a deliverable, replies from git, gh or connected tools, or your screen.";
 
 function nextCockpitReadingBaseline(shape, extra = ""){
   /* What the reading actually read, verbatim, rather than only which revision
@@ -5310,6 +5364,7 @@ function nextCockpitReadingParts(session, annotation, entries, model, observed, 
   const answer = shape.criteria.length || shape.departures.length
     ? nextCockpitResultAnswer(nextDriftAnswer(shape, held, source && source.scan), numbers, byId,
       shape.scope === "mid-flight") : "";
+  const coverageLine = nextCockpitReadingCoverage(shape);
   const work = nextCockpitResultWork(held, numbers, source && source.scan, shape.windowStart);
   /* From the reading rather than from the live row. A reading describes the
      moment it was taken, and the producer already agreed with the HOW IT
@@ -5336,6 +5391,7 @@ function nextCockpitReadingParts(session, annotation, entries, model, observed, 
   /* What it read, one click away: the definition, the model stamp, the
      baseline's source, the cutoff and the revision it read. */
   const read = `<p class="next-cockpit-define">${NEXT_COCKPIT_READING_DEFINITION}</p>` +
+    `<p class="next-cockpit-reading-why">${esc(NEXT_READING_SCOPE)}</p>` +
     (shape.stamp ? `<p class="next-cockpit-reading-stamp">${esc(shape.stamp)}</p>` : "") +
     (shape.promptSource ? '<p class="next-cockpit-reading-why">Baseline from your prompt.</p>' : "") +
     scope + arrived +
@@ -5353,7 +5409,7 @@ function nextCockpitReadingParts(session, annotation, entries, model, observed, 
   const foot = staleState ? steers : press;
   const result = job ? control
     : '<div class="next-session-drift-check next-cockpit-result" data-next-result>' +
-      question + stale + answer + checklist + work +
+      question + stale + answer + coverageLine + checklist + work +
       (foot ? `<div class="next-cockpit-result-press">${foot}</div>` : "") +
       nextCockpitResultFoot(session, annotation, raw) +
       nextCockpitReadingBaseline(shape, read) + '</div>';
@@ -5909,7 +5965,7 @@ const NEXT_DRIFT_SUBTITLE = "How far the session has moved from the goal";
 /* Item 14 of
    [DEC-24](docs/design-reading-a-session.md#dec-24-your-intent-is-a-drafted-goal-and-a-checklist-and-a-correction-is-yours-to-copy),
    as its own sentence. */
-const NEXT_DRIFT_HARNESS_LIMIT = "Cargento can't read work from this harness.";
+const NEXT_DRIFT_HARNESS_LIMIT = "Cargento can't read work or the agent's replies from this harness.";
 
 /* The slot the level and meter take once a level is published: the live
    estimate (DRC-4696) now, the analysis level (DRC-4695) later. Elsewhere the
