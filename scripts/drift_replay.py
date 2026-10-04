@@ -1343,8 +1343,17 @@ APPARATUS = frozenset(
 )
 
 
-def _read_bin(  # noqa: PLR0911 - one return per outcome
-    entry: Mapping[str, Any] | None, *, drifted: bool, start: float | None
+# The claims constraint's own result for a claim nothing recorded shows; a flag like a departure.
+UNSUPPORTED = "not shown by the record"
+CLAIMS = "claims"
+
+
+def _read_bin(  # noqa: C901, PLR0911 - one return per outcome
+    entry: Mapping[str, Any] | None,
+    *,
+    drifted: bool,
+    start: float | None,
+    only: str = "",
 ) -> str:
     """One reading's outcome. A departure resting only on the person's own messages is an echo."""
     if not entry:
@@ -1355,8 +1364,16 @@ def _read_bin(  # noqa: PLR0911 - one return per outcome
             "refused" if withheld in APPARATUS or withheld.startswith("oversized") else "withheld"
         )
     criteria = (entry.get("assessment") or {}).get("criteria") or {}
+    if only == "intent":
+        criteria = {k: v for k, v in criteria.items() if k != CLAIMS}
+    elif only == CLAIMS:
+        criteria = {k: v for k, v in criteria.items() if k == CLAIMS}
+        if not criteria:
+            return "not-asked"
     departed = [
-        c for c in criteria.values() if isinstance(c, dict) and c.get("result") == "departure"
+        c
+        for c in criteria.values()
+        if isinstance(c, dict) and c.get("result") in {"departure", UNSUPPORTED}
     ]
     facts = {
         k: v if isinstance(v, dict) else {"at": v} for k, v in (entry.get("facts") or {}).items()
@@ -1432,6 +1449,12 @@ def score(*, home: str, say: Callable[[str], Any] = print) -> int:
                 "analyze": "not-run"
                 if reading is None and arm not in read_arms
                 else _read_bin(reading, drifted=drifted, start=start),
+                "intent": "not-run"
+                if reading is None and arm not in read_arms
+                else _read_bin(reading, drifted=drifted, start=start, only="intent"),
+                "claims": "not-run"
+                if reading is None and arm not in read_arms
+                else _read_bin(reading, drifted=drifted, start=start, only=CLAIMS),
             }
             row[arm] = outcomes
             for detector, outcome in outcomes.items():

@@ -430,6 +430,29 @@ class OutcomesKeepRelevanceApart(unittest.TestCase):
         self.assertEqual(dr._cause_at({"rose_at": None}, facts), 9.0)
         self.assertIsNone(dr._cause_at({}, facts[2:]))
 
+    def test_an_unshown_claim_is_a_flag_and_scored_apart_from_the_intent(self) -> None:
+        entry = {
+            "withheld": "",
+            "assessment": {
+                "criteria": {
+                    "goal": {"result": "consistent with the evidence read", "cites": ["c1"]},
+                    "claims": {"result": dr.UNSUPPORTED, "cites": ["a1"]},
+                }
+            },
+            "facts": {"a1": {"at": 50.0, "type": "agent_message"}, "c1": {"at": 5.0}},
+        }
+        self.assertEqual(dr._read_bin(entry, drifted=True, start=40.0), "relevant-flag")
+        self.assertEqual(
+            dr._read_bin(entry, drifted=True, start=40.0, only="claims"), "relevant-flag"
+        )
+        self.assertEqual(dr._read_bin(entry, drifted=True, start=40.0, only="intent"), "reassured")
+        bare = {
+            "withheld": "",
+            "assessment": {"criteria": {"goal": {"result": "departure"}}},
+            "facts": {},
+        }
+        self.assertEqual(dr._read_bin(bare, drifted=True, start=1.0, only="claims"), "not-asked")
+
     def test_an_apparatus_failure_is_refused_not_withheld(self) -> None:
         self.assertEqual(
             dr._read_bin({"withheld": "model-failed"}, drifted=True, start=1.0), "refused"
