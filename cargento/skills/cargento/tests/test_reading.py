@@ -2762,6 +2762,42 @@ class YourOwnWordsAreAlwaysInThePrompt(unittest.TestCase):
         self.assertIn("check-0", chosen)
         self.assertNotIn("a299", chosen)
 
+    def test_a_run_with_no_recorded_result_never_takes_a_passes_or_a_writes_place(self) -> None:
+        # DEC-23 item 4 as amended on 2026-10-04: failed, passed, written, then
+        # no recorded result, newest first within each.
+        facts: list[dict[str, Any]] = [
+            {**WORDS_FACT, "at": 1.0},
+            check_fact(fact_id="pass", result="passed", at=10.0, branch={"record_id": "p"}),
+            check_fact(
+                fact_id="write",
+                subject="write",
+                result=None,
+                summary="src/retry.py",
+                at=11.0,
+                branch={"record_id": "w"},
+            ),
+        ]
+        facts.extend(
+            check_fact(
+                fact_id=f"unrecorded-{index}",
+                result="not-recorded",
+                result_source="",
+                summary=f"python3 -m pytest tests/test_{index}.py",
+                at=float(100 + index),
+                branch={"record_id": f"u{index}"},
+            )
+            for index in range(40)
+        )
+        ledger = reading.build_ledger(facts, "claude", "s1", tool_output={})
+        _prompt, selection = reading.build_prompt(
+            ledger, goal="add retry", lines=["tests pass"], max_bytes=2500
+        )
+        chosen = [row["id"] for row in selection.entries]
+        self.assertIn("pass", chosen)
+        self.assertIn("write", chosen)
+        self.assertTrue(selection.unread_checks)
+        self.assertTrue(all(row["result"] == "not-recorded" for row in selection.unread_checks))
+
     def test_rows_are_numbered_oldest_first_whatever_order_they_were_chosen_in(self) -> None:
         _prompt, selection = reading.build_prompt(
             self._ledger(), goal="add retry", lines=["tests pass"], max_bytes=8000

@@ -1720,7 +1720,12 @@ _RAN_NOTHING = re.compile(
 )
 _NO_TEST_FILES = re.compile(r"\[no test files\]")
 _GO_OK = re.compile(r"^ok\s", re.MULTILINE)
-_RESULT_ORDER = {"failed": 0, "not-recorded": 1, "passed": 2}
+# Item 4 as amended on 2026-10-04: failed, passed, written, then no recorded
+# result, which carries no verdict and had crowded out every pass (85 in the
+# scan, none listed, across the drift replay's 99 cuts). The ruling:
+# [DEC-23](docs/design-reading-a-session.md#amended-2026-10-04-no-recorded-result-is-listed-last)
+_RESULT_ORDER = {"failed": 0, "passed": 1, "not-recorded": 3}
+_WRITE_RANK = 2
 # A true error flag is a run that exited nonzero only when Claude Code says so;
 # any other flagged result is a call that never ran: a rejection, a cancelled
 # parallel call, a sibling error, a hook block or an input error (measured:
@@ -3445,40 +3450,21 @@ class _ToolReportTally:
             entry["worker_kind"] = latest["worker"]
         return entry
 
-    def entries(self, sid: str) -> list[dict[str, Any]]:
+    def _histories(self) -> list[tuple[str, list[dict[str, Any]]]]:
         # A check that only ever ran in the background has no run to list
         # (item 1); a background re-run still supersedes an earlier result.
-        histories = [
+        return [
             (identity, history)
             for identity, history in self.runs.items()
             if not all(run["background"] for run in history)
         ]
-        candidates: list[dict[str, Any]] = []
-        for identity, history in histories:
-            entry = self._entry_cache.get(identity)
-            if entry is None:
-                entry = self._check_entry(history)
-                self._entry_cache[identity] = entry
-            candidates.append(entry)
+
+    def entries(self, sid: str) -> list[dict[str, Any]]:
+        histories = self._histories()
+        candidates = self._ranked(histories)
         for entry in candidates:
-            self.scan[str(entry["result"]).replace("-", "_")] += 1
-        candidates.extend(
-            {
-                "kind": "path_written",
-                "subject": "write",
-                "at": write["at"],
-                "record_id": write["record_id"],
-                "title": records.safe_text(path, TOOL_REPORT_PATH_CHARS),
-                "source": f"Claude {'subagent ' if write['worker'] else ''}{write['tool']} call",
-                "rank": len(_RESULT_ORDER),
-                **({"worker_kind": write["worker"]} if write["worker"] else {}),
-            }
-            for path, write in self.writes.items()
-        )
-        # Item 4: failed, then no recorded result, then passed, then written
-        # paths, newest first within each. The page shows the kept ones in time
-        # order (orchestrator, 2026-09-24).
-        candidates.sort(key=lambda row: (row["rank"], -float(row["at"])))
+            if entry["subject"] == "check":
+                self.scan[str(entry["result"]).replace("-", "_")] += 1
         listed = candidates[:TOOL_REPORT_MAX_ENTRIES]
         self.scan.update(
             distinct_checks=len(histories),
@@ -3490,6 +3476,51 @@ class _ToolReportTally:
             {**{k: v for k, v in row.items() if k != "rank"}, "harness": "claude", "sid": sid}
             for row in listed
         ]
+
+    def _ranked(self, histories: list[tuple[str, list[dict[str, Any]]]]) -> list[dict[str, Any]]:
+        """Every check's entry and every written path, in the order item 4 keeps them."""
+        candidates: list[dict[str, Any]] = []
+        for identity, history in histories:
+            entry = self._entry_cache.get(identity)
+            if entry is None:
+                entry = self._check_entry(history)
+                self._entry_cache[identity] = entry
+            candidates.append(entry)
+        candidates.extend(
+            {
+                "kind": "path_written",
+                "subject": "write",
+                "at": write["at"],
+                "record_id": write["record_id"],
+                "title": records.safe_text(path, TOOL_REPORT_PATH_CHARS),
+                "source": f"Claude {'subagent ' if write['worker'] else ''}{write['tool']} call",
+                "rank": _WRITE_RANK,
+                **({"worker_kind": write["worker"]} if write["worker"] else {}),
+            }
+            for path, write in self.writes.items()
+        )
+        # Item 4, amended 2026-10-04: failed, then passed, then written paths,
+        # then no recorded result, newest first within each. The page shows the
+        # kept ones in time order (orchestrator, 2026-09-24).
+        candidates.sort(key=lambda row: (row["rank"], -float(row["at"])))
+        return candidates
+
+    def unlisted(self) -> tuple[float, ...]:
+        """When each passing check or written path past the listing's cap arrived.
+
+        For the press alone, like the tails: a claim the listing could not show
+        because the cap left its evidence out is not "not shown by the record".
+        A check's time is its result's where one arrived. The ruling:
+        [DEC-17](docs/design-reading-a-session.md#amended-2026-10-04-owner-what-the-agent-claims-is-its-own-constraint)
+        """
+        left_out = self._ranked(self._histories())[TOOL_REPORT_MAX_ENTRIES:]
+        return tuple(
+            sorted(
+                float(row.get("result_at") or row["at"])
+                for row in left_out
+                if row["subject"] == "write" or row.get("result") == "passed"
+            )
+        )
 
     def tails(self) -> dict[str, str]:
         """Each check's latest foreground run's redacted output tail, by call id."""
@@ -3537,13 +3568,17 @@ class PressChecks(NamedTuple):
     tails: dict[str, str]
     changed_after: frozenset[tuple[str, str]]
     read_incomplete: frozenset[tuple[str, str]] = frozenset()
+    # When each pass or write the listing's cap left out arrived
+    # (`_ToolReportTally.unlisted`): times only, never a line or a path.
+    unlisted: tuple[float, ...] = ()
 
 
 def claude_check_press(
     config: RuntimeConfig, transcript_path: str, *, max_bytes: int | None = None
 ) -> PressChecks:
     """The output tails, later-command flags and incomplete-read flags a press
-    may carry, keyed by the call's record id and check line.
+    may carry, keyed by the call's record id and check line, and when each
+    pass or write the listing left out arrived.
 
     Read again at the press rather than published: the owner ruled that the
     model sees each check's redacted tail (DRC-4677, Q1), and it stays off the
@@ -3552,7 +3587,13 @@ def claude_check_press(
     `claude_tool_reports`, so both belong to the run that fact lists.
     """
     tally = _claude_tally(config, transcript_path, max_bytes=max_bytes)
-    return PressChecks(tally.tails(), tally.changed_after(), tally.read_incomplete())
+    return _press(tally)
+
+
+def _press(tally: _ToolReportTally) -> PressChecks:
+    return PressChecks(
+        tally.tails(), tally.changed_after(), tally.read_incomplete(), tally.unlisted()
+    )
 
 
 def claude_check_tails(
@@ -3961,7 +4002,7 @@ def frozen_claude_checks(
         _semantic_fact_from_event(row, str(row["kind"]), _SEMANTIC_FACT_TYPES[row["kind"]], "")
         for row in tally.entries(sid)
     ]
-    return facts, PressChecks(tally.tails(), tally.changed_after(), tally.read_incomplete())
+    return facts, _press(tally)
 
 
 def _user_message_facts(

@@ -513,6 +513,162 @@ class EachClaimsResultCitesWhatItNeedsTest(unittest.TestCase):
         self.assertEqual(reading.WHY_CLAIM_RECORD_UNREAD, row["why"])
 
 
+class UnshownIsWithdrawnWhereTheListingLeftOutAPassOrWriteTest(_Producer):
+    """DEC-17, 2026-10-04: the collector's 12-entry cap is a part of the record unread."""
+
+    FACTS = (_person("p1", 60.0, "add retry"), _agent("a1", 90.0, "All tests pass."))
+    ANSWER = json.dumps({"claims": {"result": "unsupported", "cites": [2]}})
+
+    def claims(self, unlisted: tuple[float, ...]) -> dict[str, Any]:
+        tool_output = reading.ToolOutput(
+            destination="api.example.test", label="the reading model", unlisted=unlisted
+        )
+        assessment, _, _ = self.produce(
+            list(self.FACTS), answer=self.ANSWER, tool_output=tool_output
+        )
+        return cast("dict[str, Any]", assessment["criteria"]["claims"])
+
+    def test_withdrawn_when_a_left_out_pass_or_write_falls_in_the_window(self) -> None:
+        row = self.claims((70.0,))
+        self.assertEqual(reading.RESULT_UNVERIFIABLE, row["result"])
+        self.assertEqual(reading.WHY_CLAIM_RECORD_UNREAD, row["why"])
+
+    def test_stands_when_the_left_out_one_is_before_the_window(self) -> None:
+        row = self.claims((40.0,))
+        self.assertEqual(reading.RESULT_UNSUPPORTED, row["result"])
+        self.assertEqual(reading.WHY_STANDS, row["why"])
+
+    def test_stands_when_nothing_was_left_out(self) -> None:
+        row = self.claims(())
+        self.assertEqual(reading.RESULT_UNSUPPORTED, row["result"])
+        self.assertEqual(reading.WHY_STANDS, row["why"])
+
+    def test_never_read_without_a_grant(self) -> None:
+        # Unadmitted, the press sends no checks at all and the times are not read.
+        tool_output = reading.ToolOutput(destination="", label="x", unlisted=(70.0,))
+        assessment, _, _ = self.produce(
+            list(self.FACTS), answer=self.ANSWER, tool_output=tool_output
+        )
+        self.assertEqual(reading.RESULT_UNSUPPORTED, assessment["criteria"]["claims"]["result"])
+
+
+def _run(fact_id: str, at: float, result: str, line: str) -> dict[str, Any]:
+    return _check(
+        fact_id,
+        at,
+        result,
+        summary=line,
+        result_source="flag" if result != "not-recorded" else "",
+    )
+
+
+class AFailureTheAgentRanAgainSinceDoesNotContradictTest(unittest.TestCase):
+    """DEC-17, 2026-10-04: a cited failure from before the claim, with a later run
+    of the same tool after it and at or before the claim, does not contradict it."""
+
+    FAILED = _run("c1", 70.0, "failed", "python3 -m pytest tests/test_retry.py")
+    CLAIM = _agent("a1", 90.0, "All tests pass.")
+
+    def departure(self, facts: list[dict[str, Any]]) -> Any:
+        ids = [fact["fact_id"] for fact in facts]
+        return _resolve("departure", facts, [ids.index("a1") + 1, ids.index("c1") + 1])
+
+    def test_withdrawn_with_a_later_run_of_the_same_tool_before_the_claim(self) -> None:
+        for later_line, result in (
+            ("pytest tests/test_other.py | tail -3", "not-recorded"),
+            ("uv run pytest -q", "passed"),
+            ("python -m pytest", "failed"),
+        ):
+            with self.subTest(later=later_line):
+                later = _run("c2", 80.0, result, later_line)
+                row = self.departure([self.FAILED, later, self.CLAIM])
+                self.assertEqual(reading.RESULT_UNVERIFIABLE, row["result"])
+                self.assertEqual(reading.WHY_CHECK_DOES_NOT_SHOW_IT, row["why"])
+                self.assertEqual((), row["cites"])
+
+    def test_withdrawn_with_the_later_run_at_the_claims_own_moment(self) -> None:
+        later = _run("c2", 90.0, "not-recorded", "pytest tests/test_other.py")
+        row = self.departure([self.FAILED, later, self.CLAIM])
+        self.assertEqual(reading.WHY_CHECK_DOES_NOT_SHOW_IT, row["why"])
+
+    def test_stands_with_a_later_run_of_a_different_tool(self) -> None:
+        for later_line in ("mypy src", "ruff check .", "python3 scripts/run_tests.py"):
+            with self.subTest(later=later_line):
+                later = _run("c2", 80.0, "passed", later_line)
+                row = self.departure([self.FAILED, later, self.CLAIM])
+                self.assertEqual(reading.RESULT_DEPARTURE, row["result"])
+
+    def test_stands_with_a_failure_at_or_after_the_claim(self) -> None:
+        for failed_at in (90.0, 95.0):
+            with self.subTest(failed_at=failed_at):
+                failed = _run("c1", failed_at, "failed", "python3 -m pytest tests/test_retry.py")
+                earlier = _run("c2", 85.0, "not-recorded", "pytest tests/test_other.py")
+                later = _run("c3", 99.0, "not-recorded", "pytest tests/test_more.py")
+                facts = sorted([earlier, self.CLAIM, failed, later], key=lambda f: f["at"])
+                row = self.departure(facts)
+                self.assertEqual(reading.RESULT_DEPARTURE, row["result"])
+
+    def test_stands_with_no_later_run(self) -> None:
+        self.assertEqual(
+            reading.RESULT_DEPARTURE, self.departure([self.FAILED, self.CLAIM])["result"]
+        )
+
+    def test_stands_when_the_later_run_came_after_the_claim(self) -> None:
+        later = _run("c2", 95.0, "passed", "pytest tests/test_other.py")
+        row = self.departure([self.FAILED, self.CLAIM, later])
+        self.assertEqual(reading.RESULT_DEPARTURE, row["result"])
+
+    def test_stands_when_a_message_after_the_claim_also_contradicts_it(self) -> None:
+        later = _run("c2", 80.0, "not-recorded", "pytest tests/test_other.py")
+        said = _person("p2", 95.0, "the tests are still failing")
+        facts = [self.FAILED, later, self.CLAIM, said]
+        row = _resolve("departure", facts, [3, 1, 4])
+        self.assertEqual(reading.RESULT_DEPARTURE, row["result"])
+
+
+class EachCheckHasOneToolFamilyTest(unittest.TestCase):
+    def test_wrappers_and_module_runs_read_as_the_tool(self) -> None:
+        cases = {
+            "pytest tests/a.py": "pytest",
+            "python3 -m pytest -q": "pytest",
+            "python -m unittest discover": "unittest",
+            "uv run pytest tests": "pytest",
+            "rtk pytest": "pytest",
+            "npx tsc --noEmit": "tsc",
+            "CI=1 FOO=bar pytest": "pytest",
+            "/usr/bin/python3.12 -m mypy src": "mypy",
+            "python3 scripts/run_tests.py -j 4": "run_tests.py",
+            "./scripts/run_tests.py": "run_tests.py",
+            "npm test": "npm test",
+            "npm run lint -- --fix": "npm run lint",
+            "ruff check .": "ruff check",
+            "ruff format --check .": "ruff format",
+            "go test ./...": "go test",
+            "make": "make",
+        }
+        for line, family in cases.items():
+            with self.subTest(line=line):
+                self.assertEqual(family, reading.check_family(line))
+
+    def test_two_different_tools_are_never_one_family(self) -> None:
+        pairs = (
+            ("npm test", "npm run lint"),
+            ("ruff check .", "ruff format --check ."),
+            ("python3 scripts/a_test.py", "python3 scripts/b_test.py"),
+            ("python3 -m unittest x", "python3 scripts/run_tests.py"),
+            ("pytest", "mypy"),
+            ("cargo test", "cargo clippy"),
+        )
+        for first, second in pairs:
+            with self.subTest(first=first, second=second):
+                self.assertNotEqual(reading.check_family(first), reading.check_family(second))
+
+    def test_what_cannot_be_told_matches_nothing(self) -> None:
+        for line in ("", "python3 -c 'print(1)'", "node --test", "uv run", "--version"):
+            with self.subTest(line=line):
+                self.assertEqual("", reading.check_family(line))
+
+
 class TheStoreKnowsTheQuestionAndItsResultTest(unittest.TestCase):
     def assessment(self, criteria: dict[str, Any]) -> dict[str, Any]:
         return {

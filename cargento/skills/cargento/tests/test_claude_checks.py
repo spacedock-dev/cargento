@@ -998,22 +998,54 @@ class WhichFormsAreStripped(ClaudeChecksTestCase):
 
 
 class WhichOrderTheEntriesAreKeptIn(ClaudeChecksTestCase):
-    def test_item_four_keeps_failures_then_unrecorded_then_the_newest_passes(self) -> None:  # T5
+    def press_unlisted(self) -> tuple[float, ...]:
+        self.session.save(self.path)
+        return project_context.claude_check_press(self.config, str(self.path)).unlisted
+
+    def test_item_four_keeps_failures_then_passes_then_unrecorded(self) -> None:  # T5
+        # DEC-23 item 4 as amended on 2026-10-04.
         for n in range(3):
             self.session.bash(f"pytest tests/f{n}.py", "1 failed", is_error=True)
-        for n in range(4):
-            self.session.bash(f"pytest tests/u{n}.py | tail -1", "....", is_error=False)
         for n in range(8):
             self.session.bash(f"pytest tests/p{n}.py", "1 passed", is_error=False)
+        for n in range(4):
+            self.session.bash(f"pytest tests/u{n}.py | tail -1", "....", is_error=False)
         events, scan = self.read()
         titles = [e["title"] for e in events]
         self.assertEqual(12, len(events))
         self.assertEqual(
             ["pytest tests/f2.py", "pytest tests/f1.py", "pytest tests/f0.py"], titles[:3]
         )
-        self.assertEqual([f"pytest tests/u{n}.py" for n in (3, 2, 1, 0)], titles[3:7])
-        self.assertEqual([f"pytest tests/p{n}.py" for n in (7, 6, 5, 4, 3)], titles[7:])
+        self.assertEqual([f"pytest tests/p{n}.py" for n in range(7, -1, -1)], titles[3:11])
+        self.assertEqual(["pytest tests/u3.py"], titles[11:])
         self.assertEqual(3, scan["more"])
+
+    def test_runs_with_no_recorded_result_never_hide_a_pass_or_a_write(self) -> None:
+        self.session.bash("pytest tests/p.py", "1 passed", is_error=False)
+        self.session.write(self.file("app.py"))
+        for n in range(14):
+            self.session.bash(f"pytest tests/u{n}.py | tail -1", "....", is_error=False)
+        events, scan = self.read()
+        kept = [(e["subject"], e.get("result")) for e in events]
+        self.assertEqual(("check", "passed"), kept[0])
+        self.assertEqual(("write", None), kept[1])
+        self.assertEqual(10, sum(1 for e in events if e.get("result") == "not-recorded"))
+        self.assertEqual(4, scan["more"])
+        # Nothing the press counts as left out: the cap only dropped runs with no result.
+        self.assertEqual((), self.press_unlisted())
+
+    def test_the_press_knows_when_each_left_out_pass_or_write_arrived(self) -> None:
+        for n in range(13):
+            self.session.bash(f"pytest tests/p{n}.py", "1 passed", is_error=False)
+        self.session.write(self.file("app.py"))
+        self.session.bash("pytest tests/u.py | tail -1", "....", is_error=False)
+        events, scan = self.read()
+        self.assertEqual(3, scan["more"])
+        unlisted = self.press_unlisted()
+        # The oldest pass and the write are past the cap; the unrecorded run is not counted.
+        self.assertEqual(2, len(unlisted))
+        listed = sorted(float(e.get("result_at") or e["at"]) for e in events)
+        self.assertTrue(all(at not in listed for at in unlisted))
 
 
 class WhatAReaderIsNeverShownOfACommandLineEither(ClaudeChecksTestCase):

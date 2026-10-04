@@ -362,8 +362,12 @@ CHECK_REPORT_WORDS = frozenset({"passed", "passes", "passing"})
 CHECK_BEFORE_LAST_CHANGE = "before the last change"
 PATH_WRITTEN = "file written"
 # Priority inside the byte bound, after the reader's own messages: the tool
-# report ruling's item 4 order, so a pass is never chosen over a failure.
-_CHECK_PRIORITY = {RESULT_FAILED: 1, "not-recorded": 2, RESULT_PASSED: 3}
+# report ruling's item 4 order as amended on 2026-10-04, so a pass is never
+# chosen over a failure, and a run with no recorded result, which carries no
+# verdict, never over a pass or a write.
+WRITE_SUBJECT = "write"
+_WRITE_PRIORITY = 3
+_CHECK_PRIORITY = {RESULT_FAILED: 1, RESULT_PASSED: 2, "not-recorded": 4}
 
 
 @dataclass(frozen=True)
@@ -389,6 +393,9 @@ class ToolOutput:
     # False when a destination was named and the grant was gone by the time
     # the reading ran, so the cutoff says which of the two kept checks back.
     allowed: bool = True
+    # When each passing check or written path the collector's listing cap left
+    # out arrived: times only, read at the press and never sent or stored.
+    unlisted: tuple[float, ...] = ()
 
 
 SCOPE_MID_FLIGHT = "mid-flight"
@@ -868,6 +875,10 @@ class Selection:
     # `record_failed`. With `unread_checks`, what keeps a claim from reading as
     # not shown by a record that was never read whole.
     checks_unsent: bool = False
+    # When each pass or write the collector's 12-entry listing left out
+    # arrived (`ToolOutput.unlisted`): one inside the window is a part of the
+    # record the prompt never carried, as an entry with no room is.
+    unlisted: tuple[float, ...] = ()
 
     def __post_init__(self) -> None:
         if self.asked_output is None:
@@ -1879,13 +1890,15 @@ def _priority(entry: LedgerEntry) -> int:
     if entry["author"] == AUTHOR_PERSON:
         return 0
     if entry.get("subject") == CHECK_SUBJECT:
-        return _CHECK_PRIORITY.get(entry.get("result", ""), 2)
+        return _CHECK_PRIORITY.get(entry.get("result", ""), _CHECK_PRIORITY["not-recorded"])
+    if entry.get("subject") == WRITE_SUBJECT:
+        return _WRITE_PRIORITY
     # The agent's messages last, below a write: a long session says far more
     # than it does, and a hundred newer messages dropped the older write that
     # showed what it did (review, 2026-10-03).
     if entry["type"] == AGENT_MESSAGE_TYPE:
-        return 5
-    return 4
+        return 6
+    return 5
 
 
 def _row_body(row: LedgerEntry) -> str:
@@ -2022,8 +2035,9 @@ def build_prompt(
     """The prompt, and exactly the entries it carried.
 
     Entries are selected against the byte cap in priority order -- the
-    reader's own messages, then checks (failed, then no recorded result, then
-    passed), then everything else, newest first within each -- and then
+    reader's own messages, then failed checks, passed checks, written paths
+    and checks with no recorded result, then everything else, the agent's
+    messages last, newest first within each -- and then
     printed oldest-first, so the numbering the model sees and the list the
     resolver indexes are the same list. Selection stops at the first row that
     does not fit rather than skipping it, so a smaller passing check can never
@@ -2419,7 +2433,12 @@ def _rests_on_nothing(result: str, name: str, cited: Sequence[LedgerEntry]) -> s
 
 
 def _claims_rule(
-    result: str, supporting: Sequence[LedgerEntry], *, dropped: bool, checks_unread: bool = False
+    result: str,
+    supporting: Sequence[LedgerEntry],
+    *,
+    dropped: bool,
+    checks_unread: bool = False,
+    carried: Sequence[LedgerEntry] = (),
 ) -> str:
     """Which rule a claims verdict fails, as its `why` token, or `WHY_STANDS`.
 
@@ -2443,36 +2462,131 @@ def _claims_rule(
         why = WHY_STANDS if said else WHY_CLAIM_UNCITED
         # "Not shown" is about the session's record, and a record whose checks
         # went unread for want of a grant, a destination or room cannot say it:
-        # that would be configuration read as absence (review, PR C).
+        # that would be configuration read as absence (review, PR C). Room
+        # includes the listing's cap leaving out a pass or a write inside the
+        # window (2026-10-04).
         return WHY_CLAIM_RECORD_UNREAD if not why and checks_unread else why
     if not said:
         return WHY_CLAIM_UNCITED
     if not record:
         return WHY_CHECK_DOES_NOT_SHOW_IT if dropped else WHY_CLAIM_UNCITED
-    return _claims_compared(result, said, record)
+    return _claims_compared(result, said, record, carried)
 
 
 def _claims_compared(
-    result: str, said: Sequence[LedgerEntry], record: Sequence[LedgerEntry]
+    result: str,
+    said: Sequence[LedgerEntry],
+    record: Sequence[LedgerEntry],
+    carried: Sequence[LedgerEntry] = (),
 ) -> str:
     """A claims departure's or consistent's rule over what it was compared with.
 
     Not only Cargento's paraphrase. A consistent rests on the work, a tool
     report or a work result, never a person agreeing with the agent. A
     contradiction comes at or after the claim; a check is its latest run, so
-    it contradicts whenever it ran (review, PR C).
+    it contradicts whenever it ran (review, PR C), unless it failed before the
+    claim and the agent ran the same tool again before claiming
+    (`_superseded`). `carried` is every entry the prompt carried.
     """
     if {entry["author"] for entry in record} == {AUTHOR_DERIVED}:
         return WHY_BOARD_QUOTING_ITSELF
     claimed = min(entry["at"] for entry in said)
-    stands = (
-        any(_shows_work(entry) for entry in record)
-        if result == RESULT_CONSISTENT
-        else any(
-            entry.get("subject") == CHECK_SUBJECT or entry["at"] >= claimed for entry in record
-        )
+    if result == RESULT_CONSISTENT:
+        return WHY_STANDS if any(_shows_work(entry) for entry in record) else WHY_CLAIM_UNCITED
+    contradicting = [
+        entry for entry in record if entry.get("subject") == CHECK_SUBJECT or entry["at"] >= claimed
+    ]
+    if not contradicting:
+        return WHY_CLAIM_UNCITED
+    if all(_superseded(entry, claimed, carried) for entry in contradicting):
+        return WHY_CHECK_DOES_NOT_SHOW_IT
+    return WHY_STANDS
+
+
+def _superseded(entry: LedgerEntry, claimed: float, carried: Sequence[LedgerEntry]) -> bool:
+    """A failure from before the claim that a later run of the same tool followed.
+
+    A listed failure is its own identity's latest run, so "a later run of the
+    same check" never exists; the agent's later runs are other identities of
+    the same tool, often with no recorded result. Measured on the second drift
+    replay run's 7 claims departures, it withdraws a failure 74 minutes old
+    and one 967 minutes old, each with the same tool run since. Any later
+    run counts, whatever its result, after the failure's result and at or
+    before the claim; the ruling:
+    [DEC-17](docs/design-reading-a-session.md#amended-2026-10-04-owner-what-the-agent-claims-is-its-own-constraint)
+    """
+    if entry.get("subject") != CHECK_SUBJECT or entry["type"] != TOOL_REPORT_TYPE:
+        return False
+    failed_at = evidence_at(entry) or entry["at"]
+    family = check_family(_check_text(entry))
+    if failed_at >= claimed or not family:
+        return False
+    return any(
+        other["id"] != entry["id"]
+        and other.get("subject") == CHECK_SUBJECT
+        and other["type"] == TOOL_REPORT_TYPE
+        and failed_at < other["at"] <= claimed
+        and check_family(_check_text(other)) == family
+        for other in carried
     )
-    return WHY_STANDS if stands else WHY_CLAIM_UNCITED
+
+
+def _check_text(entry: LedgerEntry) -> str:
+    """A check row's own segment: its summary less the result words `build_ledger` appended."""
+    summary = entry["summary"]
+    return summary.rsplit(" (", 1)[0] if summary.endswith(")") else summary
+
+
+# Runners whose next word names a different tool: `npm test` and `npm run lint`
+# are two, as are `ruff check` and `ruff format`.
+_SUBCOMMAND_RUNNERS = frozenset(
+    {
+        "npm", "pnpm", "yarn", "bun", "deno", "go", "cargo", "make", "ruff", "gh",
+        "mvn", "gradle", "gradlew", "dotnet", "swift", "rake", "bundle", "coverage", "poetry",
+    }
+)  # fmt: skip
+_SCRIPT_RUNNERS = frozenset({"npm", "pnpm", "yarn", "bun"})
+_FAMILY_PYTHON_RE = re.compile(r"^python(?:\d+(?:\.\d+)?)?$")
+_ASSIGNMENT_WORD_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*=")
+
+
+def check_family(line: str) -> str:
+    """The tool a check's line runs, or "" where it cannot be told.
+
+    Deterministic and conservative: `python -m X`, `uv run X`, `npx X` and a
+    leading `rtk` read as X, an interpreter running a script reads as that
+    script's file name, and a runner with subcommands keeps its subcommand
+    (`npm run X` keeps X). Two different tools are never one family; ""
+    matches nothing.
+    """
+    words = _unwrapped(line.split())
+    if not words:
+        return ""
+    first = os.path.basename(words[0])
+    if _FAMILY_PYTHON_RE.match(first) or first == "node":
+        script = words[1] if len(words) > 1 else "-"
+        return "" if script.startswith("-") else os.path.basename(script)
+    if first.startswith("-") or first not in _SUBCOMMAND_RUNNERS:
+        return "" if first.startswith("-") else first
+    rest = [word for word in words[1:] if not word.startswith("-")]
+    if first in _SCRIPT_RUNNERS and rest[:1] == ["run"] and len(rest) > 1:
+        return f"{first} run {rest[1]}"
+    return f"{first} {rest[0]}" if rest else first
+
+
+def _unwrapped(words: list[str]) -> list[str]:
+    """The words with leading assignments, `rtk`, `npx`, `uv run` and `python -m` taken off."""
+    while words:
+        first = os.path.basename(words[0])
+        if _ASSIGNMENT_WORD_RE.match(words[0]) or first in {"rtk", "npx"}:
+            words = words[1:]
+        elif (first == "uv" and words[1:2] == ["run"]) or (
+            (_FAMILY_PYTHON_RE.match(first) or first == "node") and words[1:2] == ["-m"]
+        ):
+            words = words[2:]
+        else:
+            break
+    return words
 
 
 def _shows_work(entry: Mapping[str, Any]) -> bool:
@@ -2536,6 +2650,7 @@ def _evidence_rules(  # noqa: PLR0913 - one keyword per fact a rule reads
     line_text: str = "",
     latest_check_at: float = 0.0,
     checks_unread: bool = False,
+    carried: Sequence[LedgerEntry] = (),
 ) -> tuple[list[LedgerEntry], str]:
     """The entries a verdict rests on, and which rule it fails, as its `why` token.
 
@@ -2559,7 +2674,9 @@ def _evidence_rules(  # noqa: PLR0913 - one keyword per fact a rule reads
     supporting = [entry for entry in cited if check_supports(entry, result, window_start)]
     dropped = len(supporting) < len(cited)
     if name == CONSTRAINT_CLAIMS:
-        why = _claims_rule(result, supporting, dropped=dropped, checks_unread=checks_unread)
+        why = _claims_rule(
+            result, supporting, dropped=dropped, checks_unread=checks_unread, carried=carried
+        )
     else:
         why = (
             _rests_on_nothing(result, name, supporting)
@@ -2688,6 +2805,7 @@ def _resolve_one(  # noqa: PLR0913 - each is one fact the evidence rules read
             line_text=clause if line_text is None else line_text,
             latest_check_at=latest_check_at,
             checks_unread=checks_unread,
+            carried=tuple(by_index.values()),
         )
         if rests_on_nothing:
             result, why = RESULT_UNVERIFIABLE, rests_on_nothing
@@ -2838,7 +2956,9 @@ def resolve(
             failed_on_record=failed_on_record,
             line_text=clauses[name],
             latest_check_at=latest_check_at,
-            checks_unread=selection.checks_unsent or bool(selection.unread_checks),
+            checks_unread=selection.checks_unsent
+            or bool(selection.unread_checks)
+            or any(at >= window_start for at in selection.unlisted),
         )
     return out
 
@@ -3010,6 +3130,7 @@ def produce(  # noqa: PLR0913
         selected,
         record_failed=_failed_on_record(unsent, harness, sid, window_start(latest)),
         checks_unsent=not admitted and _has_reports(facts, harness, sid),
+        unlisted=tool_output.unlisted if admitted and tool_output is not None else (),
     )
     raw, status = model(prompt, output_cap_bytes=REPLY_CAP_BYTES)
     # A reply that reached the cap is the one a cut can explain. The exec layer
