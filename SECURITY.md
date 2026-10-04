@@ -1402,6 +1402,14 @@ admits it to a reading only under a tool-output grant for a named destination, t
 no grant, and in the unasked lane always, it drops it, and nothing in it leaves this machine. The
 named read is listed under Irreversible actions.
 
+The delegated launch summary added on 2026-10-04 reads the same bounded parent
+and admitted child records. It publishes counts and launch, completion and
+activity times, with no command, task description or notification output. Those
+fields are held in memory and published on the session row; they do not enter
+session history. Launch facts are excluded from every Analyze ledger, including
+one with a tool-output grant. Terminal task notifications pair only within the
+originating admitted stream, and their text is never published or stored.
+
 The content class is what a Claude Code transcript recorded about the checks a session ran and the
 files it wrote. Since 2026-09-28 that includes the session's subagents, read from their own
 transcripts under the session's directory. One check-evidence scan spends at most the configured

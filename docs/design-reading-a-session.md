@@ -3819,7 +3819,9 @@ part of what the owner's marks validate.
   equals the pass's is read as after it, because the times cannot say which ran first.
 - The live floor also withholds when the scan counts a background launch, because a check only ever
   run in the background is neither listed nor counted (DEC-23 item 1) and the launch count cannot
-  tell it from a server. It also withholds when the listed entries cannot place every pass, and
+  tell it from a server. The [delegated-launch amendment](#amended-2026-10-04-owner-delegated-launches)
+  later changed this blocker to unpaired launches. It also withholds when the listed entries cannot
+  place every pass, and
   when the scan is missing any count, which reads as too little rather than as zero.
 - An analysis needs at least one outcome line, whatever its Goal says, and a reading whose rows are
   not all objects, or whose keys are not exactly the Goal and `line_1` to `line_N` for the intent it
