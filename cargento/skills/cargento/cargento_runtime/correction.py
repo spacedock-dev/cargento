@@ -48,13 +48,16 @@ NUMBER_MAX_CHARS = len(" (#999999)")
 _DEPARTED = "departed"
 _CONSISTENT = "consistent"
 _NOT_SHOWN = "not-shown"
+_SAID = "said"
 
 Part = str | dict[str, str]
 
 
 def clock_text(at: float) -> str:
     """Hours and minutes on this machine's clock, the page's `nextSessionClock`."""
-    return time.strftime("%H:%M", time.localtime(at))
+    then, today = time.localtime(at), time.localtime()
+    pattern = "%H:%M" if then[:3] == today[:3] else "%Y-%m-%d %H:%M"
+    return time.strftime(pattern, then)
 
 
 def _placeholder(fact: Mapping[str, Any]) -> dict[str, str]:
@@ -119,18 +122,12 @@ def unsettled_directions(
     return len(_unsettled(row, _later_directions(_own(row, facts), floor)))
 
 
-def _failed_checks(facts: list[dict[str, Any]], window: float) -> list[dict[str, Any]]:
-    """Checks whose latest run failed with its result in the words' evidence window."""
+def _failed_checks(
+    facts: list[dict[str, Any]], window: float, person_at: float | None
+) -> list[dict[str, Any]]:
+    """One boundary with the levels: after the person's last recorded message."""
     return [
-        f
-        for f in facts
-        if f.get("type") == reading.TOOL_REPORT_TYPE
-        and f.get("subject") == reading.CHECK_SUBJECT
-        and f.get("result") == reading.RESULT_FAILED
-        and (at := reading.evidence_at(f)) is not None
-        and at > 0
-        and at >= window
-        and reading.valid_prompt_time(f.get("at")) is not None
+        dict(f) for f in reading.failed_checks_after_person(facts, anchor=person_at, floor=window)
     ]
 
 
@@ -225,7 +222,14 @@ class _Rows:
             and reading.check_supports(f, result, self.window)
             and reading.demonstrates_work(f)
         ]
-        return (_CONSISTENT, reported[0]) if reported and line else (_NOT_SHOWN, None)
+        said = [
+            f
+            for f in timed
+            if f.get("type") == reading.AGENT_MESSAGE_TYPE
+            and reading.check_supports(f, result, self.window)
+        ]
+        state = (_SAID, said[0]) if said and line else (_NOT_SHOWN, None)
+        return (_CONSISTENT, reported[0]) if reported and line else state
 
     def claim(self) -> tuple[str, dict[str, Any], dict[str, Any] | None] | None:
         """A claims departure or `unsupported` as (result, the agent's message, what
@@ -309,6 +313,8 @@ def _current_rows(
 ) -> _Rows | None:
     """The stored reading, only while it read the words saved now."""
     assessment = row.get("annotation_assessment")
+    if row.get("annotation_not_accurate") is True:
+        return None
     if not isinstance(assessment, dict) or set(assessment) - set(reading.ASSESSMENT_KEYS):
         return None
     read, current = assessment.get("revision_read"), row.get("annotation_revision")
@@ -363,8 +369,12 @@ def _body(
                 ", as the tool reported",
             ]
             body.append((state, said))
+        elif state == _SAID:
+            body.append(
+                (_SAID, [f"- {text}: the session says this is done; not confirmed by a tool"])
+            )
         else:
-            body.append((_NOT_SHOWN, [f"- {text}: nothing recorded shows this yet"]))
+            body.append((_NOT_SHOWN, [f"- {text}: can you show evidence for this?"]))
     return body
 
 
@@ -384,24 +394,24 @@ def _claim_line(
     """
     result, fact, record = claim
     title = reading.claim_title(fact).rstrip(".").strip()
-    said: list[Part] = [f'You said "{title}" at {at(fact)}', _placeholder(fact)]
+    quoted = len(title.split()) > 2 and not title.startswith(("http://", "https://"))
+    label = f'You said "{title}"' if quoted else "Your claim"
+    said: list[Part] = [f"{label} at {at(fact)}", _placeholder(fact)]
     if result == reading.RESULT_DEPARTURE and record is not None:
         return [*said, f"; the record shows otherwise at {at(record)}", _placeholder(record), "."]
-    return [*said, "; the record does not show it."]
+    quotation = f'"{title}"' if quoted else "what you said"
+    return [f"Can you show evidence for {quotation} at {at(fact)}", _placeholder(fact), "?"]
 
 
 def _tail(
     failed: list[dict[str, Any]],
-    later: list[dict[str, Any]],
     at: Callable[[Mapping[str, Any]], str],
 ) -> list[list[Part]]:
-    """The latest failed check, the latest later direction, and the closing request."""
+    """The current failed check, followed by the closing request."""
     tail: list[list[Part]] = []
     if failed:
         latest = max(failed, key=lambda f: reading.valid_prompt_time(f.get("at")) or 0.0)
         tail.append([f"A check failed at {at(latest)}", _placeholder(latest), "."])
-    if later:
-        tail.append([f"I gave a later direction at {at(later[-1])}", _placeholder(later[-1]), "."])
     tail.append(["Please continue from here."])
     return tail
 
@@ -413,6 +423,7 @@ def compose(
     floor: float | None,
     lines_judged: bool,
     clock: Callable[[float], str] = clock_text,
+    person_at: float | None = None,
 ) -> dict[str, Any]:
     """The correction for one session, or why there is none.
 
@@ -432,7 +443,7 @@ def compose(
     later = _later_directions(own, floor)
     unsettled = bool(_unsettled(row, later))
     window = reading.valid_prompt_time(row.get("annotation_window_start")) or 0.0
-    failed = _failed_checks(own, window)
+    failed = _failed_checks(own, window, person_at)
     rows = _current_rows(row, own, unsettled=unsettled, lines_judged=lines_judged)
 
     def at(fact: Mapping[str, Any]) -> str:
@@ -443,16 +454,44 @@ def compose(
     departed = any(state == _DEPARTED for state, _ in body) or (
         rows is not None and rows.state(reading.CONSTRAINT_GOAL)[0] == _DEPARTED
     )
-    if not departed and claim is None and not failed and not later:
+    if not departed and claim is None and not failed:
         return {"ok": False, "reason": REASON_NOTHING}
     head: list[list[Part]] = [[f"Back to my goal: {goal}"]] if goal.strip() else []
+    if head and row.get("annotation_goal_source") in reading.PROMPT_SOURCES:
+        adopted = reading.adopted_prompt(
+            {
+                "goal_source": row["annotation_goal_source"],
+                "goal_source_at": row.get("annotation_goal_source_at"),
+                "goal": goal,
+            },
+            own,
+            str(row.get("harness") or ""),
+            str(row.get("sid") or ""),
+        )
+        if adopted:
+            head[0].append({"entry": adopted[0]})
+        else:
+            head[0][0] = f"Back to my goal: {goal.rstrip('…')}…"
     said = [_claim_line(claim, at)] if claim is not None else []
-    tail = _tail(failed, later, at)
+    tail = _tail(failed, at)
+    goal_gap = rows.state(reading.CONSTRAINT_GOAL) if rows is not None else (_NOT_SHOWN, None)
+    goal_line: list[list[Part]] = (
+        [
+            [
+                f"The session departed from my goal at {at(goal_gap[1])}",
+                _placeholder(goal_gap[1]),
+                ".",
+            ]
+        ]
+        if goal_gap[0] == _DEPARTED and goal_gap[1]
+        else []
+    )
+    body.sort(key=lambda item: item[0] != _DEPARTED)
 
     def assemble() -> list[Part]:
         opening: list[Part] = ["Where it stands against what I expect:"]
         middle: list[list[Part]] = [opening, *(line for _, line in body)]
-        return _joined([*head, *(middle if body else []), *said, *tail])
+        return _joined([*head, *goal_line, *said, *tail[:-1], *(middle if body else []), tail[-1]])
 
     parts = assemble()
     # The consistent lines go first, the last of them first, and nothing is ever cut short.

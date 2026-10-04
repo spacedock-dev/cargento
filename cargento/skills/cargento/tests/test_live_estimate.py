@@ -648,7 +648,9 @@ class WhereItRoseTest(_Replay):
             {f["subject"] for f in facts if f["branch"]["record_id"] == "toolu_002"},
         )
         answer = self.estimate()
-        self.assertEqual((levels.HIGH, levels.NONE_OR_LOW), (answer["level"], answer["rose_from"]))
+        self.assertEqual(
+            (levels.MEDIUM, levels.NONE_OR_LOW), (answer["level"], answer["rose_from"])
+        )
         failing = [f["fact_id"] for f in facts if f.get("result") == "failed"]
         self.assertEqual(failing, [answer["rose_at"]])
 

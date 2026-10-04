@@ -2817,6 +2817,62 @@ def _check_identity(directory: str, words: list[str], *, unplaced: str = "") -> 
     return identity + "\0unplaced\0" + unplaced if unplaced else identity
 
 
+def _check_coverage(
+    directory: str, words: list[str], worker: str, raw: tuple[str, ...]
+) -> dict[str, Any] | None:
+    """Closed explicit Python selectors, hashed before any replay checkpoint.
+
+    Only a matching interpreter, runner, directory and worker may cover a
+    narrower selector. Filtering options and implicit discovery prove nothing.
+    """
+    if not directory or len(words) < 4 or words[1] != "-m":
+        return None
+    runner = words[2]
+    original = next((i for i in range(len(raw) - 1) if raw[i : i + 2] == ("-m", runner)), None)
+    if original is None:
+        return None
+    execution = "\0".join(raw[: original + 2])
+    if not _PYTHON_RE.fullmatch(words[0]) or runner not in {"unittest", "pytest"}:
+        return None
+    selectors = [word for word in words[3:] if word not in {"-v", "-q", "--verbose", "--quiet"}]
+    if not selectors or any(word.startswith("-") for word in selectors):
+        return None
+    pattern = (
+        r"[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*"
+        if runner == "unittest"
+        else (r"(?:[\w.-]+/)*[\w.-]+\.py(?:::[A-Za-z_]\w*)*")
+    )
+    if any(re.fullmatch(pattern, word) is None for word in selectors):
+        return None
+
+    def digest(value: str) -> str:
+        return hashlib.sha256(value.encode("utf-8", "replace")).hexdigest()
+
+    ancestors = []
+    for word in selectors:
+        segments = word.split("." if runner == "unittest" else "::")
+        joiner = "." if runner == "unittest" else "::"
+        ancestors.append(
+            tuple(digest(joiner.join(segments[:k])) for k in range(1, len(segments) + 1))
+        )
+    return {
+        "scope": digest(f"{directory}\0{execution}\0{worker}"),
+        "selectors": tuple(digest(word) for word in selectors),
+        "ancestors": tuple(ancestors),
+    }
+
+
+def _covers_check(passed: dict[str, Any], failed: dict[str, Any]) -> bool:
+    cover, old = passed.get("coverage"), failed.get("coverage")
+    return bool(
+        isinstance(cover, dict)
+        and isinstance(old, dict)
+        and cover["scope"] == old["scope"]
+        and _evidence_at(passed) > _evidence_at(failed)
+        and all(set(cover["selectors"]) & set(ancestors) for ancestors in old["ancestors"])
+    )
+
+
 class _Result(NamedTuple):
     """A call's `tool_result` block, and the time of the record that holds it."""
 
@@ -3391,7 +3447,7 @@ class _ToolReportTally:
             )
             if self._hash_identities:
                 identity = hashlib.sha256(identity.encode("utf-8", "replace")).hexdigest()
-            self._entry_cache.pop(identity, None)
+            self._entry_cache.clear()
             self.runs.setdefault(identity, []).append(
                 {
                     "at": call.at,
@@ -3409,6 +3465,11 @@ class _ToolReportTally:
                     "tail": _scrubbed_tail(text, call.masked_values) if result is not None else "",
                     "seq": self.shell_seq,
                     "worker": worker,
+                    "coverage": _check_coverage(
+                        call.directories[index], words, worker, call.parts[index].raw
+                    )
+                    if call.placed[index]
+                    else None,
                     "changes_later_in_call": any(
                         i > index
                         for i in (
@@ -3481,8 +3542,7 @@ class _ToolReportTally:
             "earlier_failed": any(
                 run["result"] == "failed" for i, run in enumerate(history) if i != index
             ),
-            "before_last_change": latest["result"] == "passed"
-            and (
+            "before_last_change": (
                 latest["fixes"]
                 or any(
                     at >= latest["at"] and call_id != latest["record_id"]
@@ -3511,13 +3571,23 @@ class _ToolReportTally:
         return entry
 
     def _histories(self) -> list[tuple[str, list[dict[str, Any]]]]:
-        # A check that only ever ran in the background has no run to list
-        # (item 1); a background re-run still supersedes an earlier result.
-        return [
-            (identity, history)
+        histories = {
+            identity: list(history)
             for identity, history in self.runs.items()
             if not all(run["background"] for run in history)
-        ]
+        }
+        latest = {
+            identity: history[self._latest(history)] for identity, history in histories.items()
+        }
+        passes = [(identity, run) for identity, run in latest.items() if run["result"] == "passed"]
+        for identity, run in latest.items():
+            if run["result"] != "failed":
+                continue
+            covering = [(key, passed) for key, passed in passes if _covers_check(passed, run)]
+            if covering:
+                key, _passed = max(covering, key=lambda pair: _evidence_at(pair[1]))
+                histories[key].extend(histories.pop(identity))
+        return list(histories.items())
 
     def entries(self, sid: str) -> list[dict[str, Any]]:
         histories = self._histories()
@@ -3914,6 +3984,7 @@ def _tally_of(
     """
     tally = _ToolReportTally(_merged_check_results(parent, subagents))
     tally.reads_from = reads_from
+    tally.scan["last_user_at"] = _last_person_at(parent)
     tally.named_unread = named_unread
     tally.parent_failed = parent_failed
     tally.orphan_unread = orphan_unread
@@ -3998,6 +4069,20 @@ class _WindowNotRequested:
 
 
 _WINDOW_NOT_REQUESTED = _WindowNotRequested()
+
+
+def _last_person_at(parent: list[dict[str, Any]]) -> float | None:
+    """Parent-only human boundary, excluding tool results and injected messages."""
+    times = []
+    for record in parent:
+        message = observer.parse_message_record(record)
+        if message is not None and message.get("role") == "user":
+            text = str(message.get("text") or "")
+            if text and not records.injected_prompt(text, "claude"):
+                at = _record_timestamp(record)
+                if at is not None:
+                    times.append(at)
+    return max(times, default=None)
 
 
 def _delegated_last_turn_floor(parent: list[dict[str, Any]]) -> float:

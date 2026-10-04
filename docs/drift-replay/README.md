@@ -309,7 +309,9 @@ counting toward Medium until it does.
 
 The old arms and stored model replies stay unchanged. New tagged scores execute the shipped page's answer and level guards, show the blind marks beside the reconciled key, and split counts by kind and salted session group. Stops inside an annotated drift window are listed separately from ordinary no-drift controls. Every mark is an agent's; the owner's review remains pending.
 
-The [corrected old-arm score](results-stage0-old.json) reuses the stored replies, with no new model calls. Its final key has 22 drift cuts, two persistence cuts and 71 no-drift cuts; four unclear cuts contribute only to the blind column. With no outcome lines, all 95 adopted-arm page levels say "Not enough recorded yet", despite model departures. On the current arm, the 71 no-drift cuts show 12 High, 27 Medium, 31 "Not enough recorded yet" and one refused reading. These are page levels after Keep plus analysis, not model verdicts or an evaluation of a new prompt.
+The first instrument score passed a truthy object as the page reducer's route-limit notice and
+silently demoted claim and outcome rows. It is superseded by this repaired measurement. The
+[corrected old-arm score](results-stage0-old-corrected.json) reuses the stored replies, with no new model calls. Its final key has 22 drift cuts, two persistence cuts and 71 no-drift cuts; four unclear cuts contribute only to the blind column. With no outcome lines, all 95 adopted-arm page levels say "Not enough recorded yet", despite model departures. On the current arm, the 71 no-drift cuts show 12 High, 27 Medium, 31 "Not enough recorded yet" and one refused reading. These are page levels after Keep plus analysis, not model verdicts or an evaluation of a new prompt.
 
 A complete-input, model-free baseline reproduces all 492 composer offers. Worktrees need the nested child logs as well as the four parent logs; omitting them changed 19 offers. With an available reader and no analysis, the actual page shows 214 later-direction questions, 65 secondary Steer back offers and 213 with neither; its offered boolean agrees on all 492. The adopted-source dry run finds the prompt at all 99 cuts, with no fallback. That repairs the source lookup; stored adopted reads remain evidence for the old clipped arm until new reads test the change.
 
@@ -320,3 +322,22 @@ Two fresh blind agents re-marked nine distinct running or waiting claims (eleven
 New reads keep their raw verdict, model status, prompt digest and saved intent/window locally, before rule effects. An adopted arm whose recorded sources all fall back is refused by the scorer. Tagged live runs preserve the old live.json; `--counterfactual-read base` explicitly models Keep plus the stored read. Scoring can name its inputs with `--score-read base` and `--score-live <tag>`, while `--tag` names the new result. Correction words, paths and model sentences stay outside Git.
 
 No run evaluated the unasked lane. Its rules and daily cap exclude many away-person moments; these four Claude Code sessions do not establish its value, or the behavior of the thinner Codex reading path.
+
+## Agreement rules, 2026-10-05
+
+The [agreement score](results-stage1-agreement.json) reuses the same stored replies under the
+shared last-person failure boundary and claim caution rules. At the 71 no-drift current-arm cuts,
+the page shows two High, 29 Medium, 39 "Not enough recorded yet" and one refused reading,
+compared with 12 High, 27 Medium and 31 not-enough before the change. Primary corrections fall
+from 38 to 29; secondary corrections rise from one to ten. These are deterministic page effects,
+not evidence that a changed model prompt detects drift better.
+
+A complete-input replay of Keep plus those readings agrees on all 492 composer/page offered
+booleans: 130 primary corrections, 66 secondary and 296 with neither. No correction carries a
+later-direction line. All five specified right-flag cut-arms still offer a correction, and none
+of the current-arm live High cuts lacks a cited correction entry. Realistic live High falls to
+two of 99 cuts under the last-person boundary. The replay admits the write half of folder
+evidence; its redacted working directory cannot establish whether a named folder exists.
+
+The agent marks still decide which cuts count as no drift. The prepared owner review can change
+that key. No new model call was made for either score.

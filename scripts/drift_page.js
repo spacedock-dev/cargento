@@ -23,16 +23,16 @@ const results = vm.runInContext(`payloads.map(payload => {
   nextData = {annotate: true};
   const entries = payload.facts
     ? nextCockpitWorkEntries(payload.session, {facts: payload.facts}) : payload.entries;
-  const source = {state: entries.length ? "read" : "empty", all: entries, entries};
+  const source = {state: entries.length ? "read" : "empty", all: entries, entries, scan: payload.scan};
   const rawShape = payload.assessment
-    ? nextCockpitReadingShape(payload.assessment, payload.annotation, entries, {}, payload.unsettled > 0)
+    ? nextCockpitReadingShape(payload.assessment, payload.annotation, entries, "", payload.unsettled > 0)
     : null;
   const pending = payload.session
     ? nextCockpitDirectionsOpen(payload.session, payload.annotation, source) : [];
   const offer = payload.session
     ? nextCockpitSteerOffer(payload.session, payload.annotation, source, rawShape) : null;
   const state = pending.length ? "question" : offer
-    ? (offer.departed || offer.claimed || payload.reader_available === false
+    ? (nextCockpitSteerPrimary(offer, payload.reader_available === false)
       ? "steer-primary" : "steer-secondary") : "nothing";
   const correctionText = payload.correctionParts
     ? nextCockpitCorrectionText(payload.correctionParts,
@@ -40,9 +40,9 @@ const results = vm.runInContext(`payloads.map(payload => {
   if(payload.snapshot) return {page_state: state, page_offered: Boolean(offer),
     correction_text: correctionText};
   const shape = nextCockpitReadingShape(payload.assessment, payload.annotation,
-    entries, {}, payload.unsettled > 0);
+    entries, "", payload.unsettled > 0);
   if(shape.malformed) return {answer: "malformed", level: null, criteria: []};
-  const answer = nextDriftAnswer(shape, entries);
+  const answer = nextDriftAnswer(shape, entries, payload.scan);
   let level = payload.level;
   if(level === "none_or_low" && !nextDriftAnalysisShown(shape)) level = "not_enough";
   return {answer: answer.kind, level, page_state: payload.session ? state : payload.page_state,

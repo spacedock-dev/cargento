@@ -119,6 +119,7 @@ class ChecksUseTheirShellsDirectory(ClaudeChecksTestCase):
         ):
             with self.subTest(command=command):
                 self.session = Transcript(self.cwd)
+                self.session.prompt("Continue")
                 self.session.bash("cd sub && pytest", "1 failed", is_error=True)
                 self.session.bash(command, "", is_error=False)
                 rows, counts = self.read()
@@ -127,7 +128,15 @@ class ChecksUseTheirShellsDirectory(ClaudeChecksTestCase):
                 self.assertEqual(
                     levels.HIGH,
                     levels.live_level(
-                        evidence(rows, counts),
+                        evidence(
+                            [
+                                project_context._semantic_fact_from_event(
+                                    row, row["kind"], "tool_report", ""
+                                )
+                                for row in rows
+                            ],
+                            counts,
+                        ),
                         levels.Intent(True, "Finish the work", ("Checks pass",)),
                     ).level,
                 )
@@ -151,7 +160,15 @@ class ChecksUseTheirShellsDirectory(ClaudeChecksTestCase):
                 self.assertEqual(
                     levels.NOT_ENOUGH,
                     levels.live_level(
-                        evidence(rows, counts),
+                        evidence(
+                            [
+                                project_context._semantic_fact_from_event(
+                                    row, row["kind"], "tool_report", ""
+                                )
+                                for row in rows
+                            ],
+                            counts,
+                        ),
                         levels.Intent(True, "Finish the work", ("Checks pass",)),
                     ).level,
                 )

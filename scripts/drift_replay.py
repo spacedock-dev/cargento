@@ -1038,9 +1038,13 @@ def _drift_start(case: Mapping[str, Any], messages: list[Message]) -> float | No
 
 
 def _steer(
-    correction: Any, row: Mapping[str, Any], facts: list[dict[str, Any]], floor: float
+    correction: Any,
+    row: Mapping[str, Any],
+    facts: list[dict[str, Any]],
+    floor: float,
+    person_at: float | None = None,
 ) -> dict[str, Any]:
-    composed = correction.compose(row, facts, floor=floor, lines_judged=True)
+    composed = correction.compose(row, facts, floor=floor, lines_judged=True, person_at=person_at)
     entries = [
         p["entry"] for p in composed.get("parts") or () if isinstance(p, dict) and "entry" in p
     ]
@@ -1223,7 +1227,8 @@ def live(
         except Exception as error:  # noqa: BLE001 - an apparatus refusal is an outcome, not a crash
             out[case["id"]] = {"refused": type(error).__name__}
             continue
-        arms: dict[str, Any] = {}
+        _reports, scan = project_context.claude_tool_reports(config, path, sid)
+        out[case["id"]] = {"arms": {}, "history": history_counts}
         for intent in _reading_intents(
             intents(case, messages, annotation, current), stored.get(case["id"]) or {}
         ):
@@ -1235,7 +1240,7 @@ def live(
             level, folder_measure = _live_measured(
                 live_estimate, config, row, path, facts, intent, cut + _SETTLE_EXTRA, measurements
             )
-            steer = _steer(correction, row, facts, intent.at)
+            steer = _steer(correction, row, facts, intent.at, scan.get("last_user_at"))
             snapshots.append(
                 {
                     "snapshot": True,
@@ -1246,12 +1251,13 @@ def live(
                     ),
                     "assessment": reading_entry.get("assessment"),
                     "facts": facts,
+                    "scan": scan,
                     "unsettled": correction_count(row, facts, intent.at),
                     "correctionParts": steer["parts"],
                 }
             )
             snapshot_keys.append((case["id"], intent.arm))
-            arms[intent.arm] = {
+            out[case["id"]]["arms"][intent.arm] = {
                 "level": level.get("level"),
                 "reasons": list(level.get("reasons") or ()),
                 "steer": steer["offered"],
@@ -1267,7 +1273,6 @@ def live(
                     "cites": steer["cites"],
                 },
             }
-        out[case["id"]] = {"arms": arms, "history": history_counts}
         _remove_tree(here)
     _finish_live_pages(out, snapshot_keys, snapshots)
     output = os.path.join(paths["dir"], f"live-{tag}.json") if tag else paths["live"]
@@ -2445,7 +2450,7 @@ def _score_pages(
                 row["annotation_assessment"] = assessment
                 row["annotation_settled_through"] = cut
                 unsettled = correction.unsettled_directions(row, arm_facts, floor=intent.at)
-                steer = _steer(correction, row, arm_facts, intent.at)
+                steer = _steer(correction, row, arm_facts, intent.at, scan.get("last_user_at"))
                 level = levels.analysis_level(
                     assessment,
                     levels.Evidence(tuple(arm_facts), scan, unsettled),
@@ -2459,6 +2464,7 @@ def _score_pages(
                         "annotation": _page_annotation(intent, settled=cut),
                         "session": row,
                         "facts": arm_facts,
+                        "scan": scan,
                         "level": level.level,
                         "unsettled": unsettled,
                         "page_state": steer["page_state"],

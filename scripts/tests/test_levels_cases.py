@@ -47,6 +47,7 @@ class Transcript:
         self.cwd = cwd
         self.rows: list[dict[str, Any]] = []
         self.calls = 0
+        self._row("user", 0, [{"type": "text", "text": "Build the game"}])
 
     def _row(self, kind: str, at: int, content: list[dict[str, Any]]) -> None:
         self.rows.append(

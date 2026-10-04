@@ -558,8 +558,9 @@ Its results, on this constraint only:
   the record can show, a check or tests or lint passing, something fixed as a check would show, a
   file written or changed, and nothing in the record read shows it. It cites the message. It is not
   a departure, because absence of evidence never produces one (rule 3 stands as written). It reads
-  Medium in the analysis level with its own reason, `claim-not-shown`, because it is the first
-  run's most common drift. The row says the record read is the board's recent tail, so "not shown"
+  Medium in the original analysis level with its own reason, `claim-not-shown`. The
+  [later owner amendment](#amended-2026-10-04-owner-claim-caution-and-secondary-correction)
+  makes it a blocker on None or low only. The row says the record read is the board's recent tail, so "not shown"
   is about what was read, never that the thing did not happen.
 - `consistent`: every such claim is shown, by the work: it cites the message and a tool report or
   work result showing it, never a person agreeing with the agent.
@@ -639,6 +640,20 @@ crosses a shipped release and rests on the owner's delegation of 2026-10-04, not
 own. The abstention scorer's question list gains `claims` only where a reading answered it, with an
 outcome of its own, `judged:unsupported`, never counted as a departure; that branch cannot run
 until the packets carry the agent's messages, and marking it is owed then.
+
+### Amended 2026-10-04: owner, claim caution and secondary correction
+
+The owner, approving the Analyze drift plan, amended DEC-17's claim display and level.
+"Not shown by the record" blocks None or low; it does not raise Medium. A contradicted claim
+still reads Medium. A withdrawn claim draws no row, while an unshown claim keeps its row and asks
+for evidence in the correction: `Can you show evidence for "<claim>" at <time> (#n)?` Titles of two
+words or fewer and bare URLs are not quoted there. A claim alone offers Steer back as a secondary
+control, including when no model reader is available. It never offers Update intent instead.
+
+The second replay withdrew 107 of 164 claims rows. Keeping those rows and treating a lack of
+recorded proof as Medium made ordinary work look like drift. Neither change widens what the
+model reads, what is stored, or what a claim can establish. The claims row still does not enter
+an intent-departure count or its answer; an unshown claim now holds the analysis floor back.
 
 ### The two typed fields are one line each, and that is a security decision
 
@@ -2411,7 +2426,8 @@ the later-direction floor (item 9).
    each outcome line with its state, and the cited entry numbers and times. No model prose, no tool
    output, and no recorded command as an instruction. It is editable before copying, at most 2,000
    characters, and offered from an analysis and, with no analysis, from the recorded facts (a
-   failed check, a later direction). Copy only, and the panel uses Copy-only wording where the
+   failed check). A later direction alone ceased to offer one under the
+   [owner amendment](#amended-2026-10-04-owner-correction-triggers-and-wording). Copy only, and the panel uses Copy-only wording where the
    design had a Send hint. Sending it into the session is DEC-25, a follow-on that is not ruled
    (DRC-4698). Since
    [2026-10-04](#amended-2026-10-04-owner-what-the-agent-claims-is-its-own-constraint) it also
@@ -2437,7 +2453,9 @@ the later-direction floor (item 9).
    reader's while the tail holds it.
 10. Not accurate. A token the reader can set on a reading, stored with the annotation entry and
     removed with it. `--forget` does not reach it. It is never sent, never counted and never entered
-    into abstention marks, and SECURITY.md notes it.
+    into abstention marks, and SECURITY.md notes it. The
+    [2026-10-04 amendment](#amended-2026-10-04-owner-correction-triggers-and-wording) also removes
+    that reading from the derived level and correction until the mark is cleared.
 11. Numbering. The activity list numbers entries in the evidence window, and a citation says
     "#<n>". It says "turn" only where the harness supplies a stable turn identity. Stored readings
     cite fact ids, so a number is recomputed, never stored.
@@ -3432,9 +3450,9 @@ saved-line labels. The calls the rulings left open:
   applies one only after its own rules have left the row unverifiable; one it does not know demotes
   it as unreadable. Otherwise the text could claim a departure the panel beside it has demoted. A
   goal departure counts as something to steer from, and the template says it as "Back to my goal".
-- One sentence each for a failed check and a later direction, at the latest of each. A settled
-  later direction still counts, because settling records that the baseline still applies, not
-  that the reader never said it. A copied correction is never one.
+- The original template had one sentence each for a failed check and a later direction, settled
+  or not. The [owner amendment](#amended-2026-10-04-owner-correction-triggers-and-wording) removes
+  every later direction from this template and names only a failure after the last person message.
 - Consistent lines are dropped one at a time, the last first, until the text fits. Every
   placeholder is counted at six digits, so the page's text never passes 2,000 whatever it numbers.
   Both sides count characters as code points: the page has no `maxlength`, which counts UTF-16
@@ -3507,6 +3525,33 @@ saved-line labels. The calls the rulings left open:
   from it, it keeps "added from an entry". The reading's row label beside a line still says "ADDED
   FROM AN ENTRY", which DRC-4695's result renders anew.
 
+### Amended 2026-10-04: owner, correction triggers and wording
+
+The owner, approving the Analyze drift plan, amended DEC-24 item 7 and the exact correction
+built on 2026-09-28. A later direction alone offers no correction, settled or not, and no later
+direction is copied into it. A surviving intent departure, a contradicted or unshown claim, or a
+failed check after the person's last message may offer one. The page and composer use the same
+boundary. Keeping an intent settles its direction question; it never turns a direction into drift.
+
+A goal departure gets its own timed sentence. Claim and failed-check sentences precede the
+outcome checklist, and departed outcome lines come before the others. An unconfirmed outcome asks
+for evidence. A line judged consistent on the agent's words says "the session says this is done;
+not confirmed by a tool". A clock outside today includes its date. An adopted goal cites its
+source entry where the observed record holds it; otherwise the saved excerpt ends in an ellipsis.
+The 2,000-character cap still drops consistent lines before refusing, and never truncates a line.
+
+The triggering entry and age sit beside the correction control. The Analyze control also shows
+the published rolling daily budget as "N of 12 left today"; unavailable budget storage publishes
+no number. New checks, file writes and messages are counted after the reading's own time, not
+a later intent save. The earlier correction put a later direction into 57 of 83 texts, and
+33 of 298 offers named no departure. These are the measured reasons for narrowing the template.
+
+The owner also amended item 10: marking a reading Not accurate removes that reading from the
+analysis level and from correction composition. Independent recorded facts may still offer a
+correction, and the live estimate still reads them. The reading and mark remain stored; clearing
+the mark restores the reading. [SECURITY.md](../SECURITY.md#analyze-drift-cancel-and-copied-corrections)
+owns the token and its exposure.
+
 ### What the result build decided, 2026-09-28
 
 DRC-4695 built items 6, 10 and 14 on the session page, with the analysis-derived level of
@@ -3541,9 +3586,10 @@ and each was settled on the withholding side.
   "ADDED FROM #n", as the saved line above it reads.
 - The answer reducer runs over the rows after every page rule. Under a surviving departure it is
   the headline "Departs from your intent" with the count beside it and, as the short account, each
-  departure's detail followed by its citation. With none, a failed check in the reading's window,
-  where a check with no time counts as inside it as `analysis_level` reads it, gives "A check failed
-  at #n." naming the latest; then any line without a valid verdict gives "Can't tell"; then
+  departure's detail followed by its citation. With no departure and at least one outcome line,
+  a failed check after the latest person message gives "A check failed at #n." naming the latest.
+  This [owner amendment](#amended-2026-10-04-owner-a-failure-after-the-persons-last-message)
+  replaces the original window-only test, which admitted checks with no recorded time; then any line without a valid verdict gives "Can't tell"; then
   "Nothing found against what it read. This is not a check that the work was done." That last
   rung needs at least one outcome line among the rows: otherwise a reading of a goal with no line,
   which the producer does not withhold, answers "Can't tell", as the level beside it reads "Not enough
@@ -3786,8 +3832,9 @@ some writes fall outside the named folders. High: the latest run of any check fa
 fall outside the named folders. Extreme: both hold. "None or low" is the per-source floor in item 1.
 Since [2026-10-04](#amended-2026-10-04-owner-what-the-agent-claims-is-its-own-constraint) a stored
 reading may carry a `claims` key beside the lines, and the analysis reads Medium on a claim the
-record contradicts (`claim-contradicted`) or does not show (`claim-not-shown`); the claims row
-never counts toward the floor.
+record contradicts (`claim-contradicted`). Under the
+[later owner amendment](#amended-2026-10-04-owner-claim-caution-and-secondary-correction), a claim
+the record does not show (`claim-not-shown`) blocks None or low only.
 
 ### What the levels build decided, 2026-09-24
 
@@ -3829,9 +3876,11 @@ part of what the owner's marks validate.
   `why` that cites a passing check. A cited pass that was followed by a change, when read or since,
   reads Medium, as a pass followed by a write does on the live side. The cited pass must also be
   inside the reading's window, as `reading.check_supports` requires. A failed check in the reading's
-  window reads High whether or not the reading cited it, and a check with no time counts as inside
-  the window. Both window tests read a check by when its result arrived, where one was recorded
-  (DRC-4702, 2026-09-27). A failed check before the window still blocks "None or low".
+  window originally read High whether or not the reading cited it, and a check with no time counted
+  as inside. The [owner amendment](#amended-2026-10-04-owner-a-failure-after-the-persons-last-message)
+  now requires a listed failure after the latest person message and limits an aged failure to
+  Medium. Both boundaries read a check by when its result arrived, where one was recorded
+  (DRC-4702, 2026-09-27). An older or unplaced failure still blocks "None or low".
 - The case tool takes the marks before any reading exists. Cases are built without readings, both
   levels are marked from the evidence and the intent alone, the digest is committed, and readings
   are attached afterwards, stamped with that commit. The first build showed a stored reading on the
@@ -3849,6 +3898,36 @@ part of what the owner's marks validate.
 - A level passes the owner's mark when it matches or reassures less. "Not enough recorded yet" is
   more cautious than "None or low" only. Said of a case marked Medium or higher, it hides drift the
   owner saw.
+
+### Amended 2026-10-04: owner, a failure after the person's last message
+
+The owner, approving the Analyze drift plan, amended DEC-26, DEC-23 item 4, and the levels build
+of 2026-09-24. Live level, analysis level, answer and correction all anchor a failed check after
+the person's latest recorded message. The result's arrival time places it. A same-time, older,
+untimed or unlisted failure cannot raise High; it only blocks None or low and stays visible as a
+named check with its age. A fresh failure followed by recorded file changes, with no passing
+re-run, reads Medium at most on that signal. A separate proven outside-folder signal may raise
+High. The Analyze nudge needs a cited signal after that same person boundary.
+
+The zero-outcome-line gate remains first: a goal-only reading answers Can't tell before a failed
+check can become its answer. An analysis level of Not enough recorded yet does not replace a
+measured live pill. A departure leads the analysis reasons. Its short source line is "Analysis
+at <time>, intent against cited checks and messages".
+
+A broader recorded pass retires a narrower failure only where explicit Python unittest or pytest
+selectors prove coverage, under the same execution prefix, working directory and worker. Module
+or file selectors may cover their tests; filtering options, implicit discovery, unknown placement,
+another interpreter or explicit environment, another runner and an earlier pass prove no coverage.
+The private replay checkpoint holds hashes of the scope and selector ancestry, never the raw
+execution prefix. A broader run without a recorded pass leaves the failure in place.
+
+A path-shaped word is weighed as a folder only if that directory exists or contains a recorded
+write. Lexical shape alone cannot turn a branch name into a folder. No named folder is a caveat,
+not a blocker on None or low. The replay can measure the write half only, because its working
+directory is redacted. Before this amendment all 29 realistic-arm High cuts rested on failed
+checks; 20 failures were over an hour old, including five about 60 hours old. Exact command
+identity kept method failures active after whole-module passes. These changes remove stale alarms;
+they do not establish that drift is detected.
 
 ### What the live estimate build decided, 2026-09-28
 

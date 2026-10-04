@@ -2339,6 +2339,64 @@ def _states_a_verdict(
     return False
 
 
+def latest_person_at(facts: Iterable[Mapping[str, Any]]) -> float | None:
+    """Latest recorded user message; saved intent and model prose cannot open a turn."""
+    return max(
+        (
+            at
+            for fact in facts
+            if fact.get("type") == "user_message"
+            and (at := valid_prompt_time(fact.get("at"))) is not None
+        ),
+        default=None,
+    )
+
+
+def failed_checks_after_person(
+    facts: Sequence[Mapping[str, Any]],
+    *,
+    anchor: float | None = None,
+    floor: float = 0.0,
+) -> list[Mapping[str, Any]]:
+    """A named failure whose result arrived after the person's last message.
+
+    Unknown times and unlisted counts block reassurance but cannot raise High.
+    [DEC-26](docs/design-reading-a-session.md#dec-26-four-drift-levels-and-a-live-estimate-after-every-turn)
+    """
+    found = latest_person_at(facts)
+    times = [t for t in (found, valid_prompt_time(anchor)) if t is not None]
+    if not times:
+        return []
+    start = max(floor, *times)
+    return [
+        f
+        for f in facts
+        if f.get("type") == TOOL_REPORT_TYPE
+        and f.get("subject") == CHECK_SUBJECT
+        and f.get("result") == RESULT_FAILED
+        and (at := evidence_at(f)) is not None
+        and at > start
+    ]
+
+
+def failure_followed_by_write(
+    failed: Mapping[str, Any],
+    facts: Sequence[Mapping[str, Any]],
+) -> bool:
+    """A file change ages a failure; a later shell command alone does not."""
+    at = valid_prompt_time(failed.get("at"))
+    return failed.get("before_last_change") is True or (
+        at is not None
+        and any(
+            f.get("type") == TOOL_REPORT_TYPE
+            and f.get("subject") == "write"
+            and (written := valid_prompt_time(f.get("at"))) is not None
+            and written >= at
+            for f in facts
+        )
+    )
+
+
 def check_supports(entry: Mapping[str, Any], result: str, window_start: float) -> bool:
     """Whether one cited entry may carry this verdict, per the ruling's item 8.
 

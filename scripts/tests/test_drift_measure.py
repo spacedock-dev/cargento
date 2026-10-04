@@ -47,7 +47,7 @@ class TheReplayKeepsItsBaselineAndText(unittest.TestCase):
         facts, _press = dr.facts_at(mock.Mock(), context, "unused", SID, _at(10))
         self.assertEqual(["failed", "passed"], [fact["result"] for fact in facts])
 
-    def test_unsettled_direction_shows_question_even_when_compose_offers(self) -> None:
+    def test_unsettled_direction_shows_question_without_a_correction(self) -> None:
         config, context, _live, correction, _reading = dr._runtime()
         with _Session() as session:
             home = _Home(session)
@@ -55,10 +55,10 @@ class TheReplayKeepsItsBaselineAndText(unittest.TestCase):
             facts, _press = dr.facts_at(config, context, str(session.log), SID, case["cut"])
             intent = dr.Intent("realistic", "Change only the parser", _at(0))
             result = dr._steer(correction, dr._row(SID, intent, case["cut"]), facts, intent.at)
-            self.assertTrue(result["offered"])
+            self.assertFalse(result["offered"])
             self.assertEqual("question", result["page_state"])
-            self.assertIn("Back to my goal", result["text"])
-            self.assertIn("later-direction", result["kinds"])
+            self.assertEqual("", result["text"])
+            self.assertNotIn("later-direction", result["kinds"])
 
     def test_live_tag_preserves_earlier_output_and_names_its_counterfactual(self) -> None:
         with _Session() as session, mock.patch.object(dr, "_run_refusal", return_value=""):

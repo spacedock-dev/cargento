@@ -273,9 +273,9 @@ class WhereSteerBackIsDrawnTest(_DraftPage):
                 self.assertNotIn("steer-back", html)
                 self.assertNotIn("Steer back", html)
 
-    def test_a_settled_later_direction_alone_is_something_to_steer_from(self) -> None:
+    def test_a_settled_later_direction_alone_offers_no_correction(self) -> None:
         html = self.html(TYPED + SETTLED)
-        self.assertIn('data-next-cockpit-action="steer-back"', html)
+        self.assertNotIn('data-next-cockpit-action="steer-back"', html)
         self.assertEqual(
             ["Analyze drift"], [visible_text(b).strip() for b in PRIMARY.findall(html)]
         )
@@ -306,12 +306,12 @@ class TheCorrectionTest(_DraftPage):
 
     def test_the_box_shows_the_servers_correction_with_the_pages_numbers(self) -> None:
         out = self.opened()
-        failed = clock(104.5)
+        failed = time.strftime("%Y-%m-%d %H:%M", time.localtime(104.5))
         self.assertEqual(
             "Back to my goal: Ship the retry queue\n"
+            f"A check failed at {failed} (#4 in Cargento).\n"
             "Where it stands against what I expect:\n"
-            f"- The parser tests pass: departed at {failed} (#4 in Cargento)\n"
-            f"A check failed at {failed} (#4).\n"
+            f"- The parser tests pass: departed at {failed} (#4)\n"
             "Please continue from here.",
             textarea_of(out["html"]),
         )

@@ -1730,7 +1730,9 @@ It never reads a fact's summary, a command, a check name, tool output, a reading
 message's text, so none of them can reach the correction, with one exception since 2026-10-04: for
 a claim of the agent's that a stored reading found the record contradicts or does not show, it
 quotes that one agent message's published title, its first sentence of at most 112 characters,
-which the activity list already shows, and never the message's words
+which the activity list already shows, and never the message's words. The owner amendment of
+2026-10-04 omits titles of two words or fewer and bare URLs; the correction uses a generic
+evidence request in their place
 ([the amendment](docs/design-reading-a-session.md#amended-2026-10-04-owner-what-the-agent-claims-is-its-own-constraint)).
 A reader who copies such a correction and edits it before sending it pastes the quoted claim back
 into the session; edited past recognition, it arrives as the reader's own words, as any edited
@@ -1751,9 +1753,13 @@ does, because that time orders eviction at the store cap; so the time of the las
 back until the entry is next written. A mark naming any other reading is refused, and a new reading clears it. The token is
 stored with the annotation entry and removed with it, and, like the words and readings in that
 file, it is not reached by `--forget`. It is published on the session row as
-`annotation_not_accurate` for the page alone: it is never sent to a model, never counted, never in
+`annotation_not_accurate` for the page and derived reading guards: it is never sent to a model, never counted, never in
 session history or the unasked lane, and never entered into abstention marks. Any local process
-that can reach the loopback route can set or clear it, as it can the words themselves.
+that can reach the loopback route can set or clear it, as it can the words themselves. The owner,
+approving the Analyze drift plan on 2026-10-04, amended DEC-24 item 10: a marked reading no longer
+contributes to its analysis level or Steer back composition. This changes use of the token, not
+its stored shape or exposure; independent recorded facts still count. Clearing the mark restores
+the reading.
 
 ### The abstention check
 

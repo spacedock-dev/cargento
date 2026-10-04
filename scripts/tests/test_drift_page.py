@@ -37,6 +37,7 @@ class TheReplayMeasuresThePage(unittest.TestCase):
                     "source_session": {"harness": "claude", "sid": "synthetic"},
                 }
             ],
+            "scan": {"last_user_at": 15},
             "correctionParts": ["A check failed at 12:00", {"entry": "failure"}, "."],
         }
         measured = dr._page_states([payload])[0]
@@ -56,7 +57,84 @@ class TheReplayMeasuresThePage(unittest.TestCase):
         )
         self.assertEqual("question", dr._page_states([payload])[0]["page_state"])
         payload["annotation"]["settled_through"] = 30
-        self.assertEqual("steer-primary", dr._page_states([payload])[0]["page_state"])
+        self.assertEqual("nothing", dr._page_states([payload])[0]["page_state"])
+
+    def test_retained_scan_anchor_reaches_the_actual_page_and_composer(self) -> None:
+        _config, _pc, _live, correction, _reading = dr._runtime()
+        row = {
+            "harness": "claude",
+            "sid": "synthetic",
+            "annotation_revision": 1,
+            "annotation_goal": "Tests pass",
+            "annotation_window_start": 10,
+        }
+        facts = [
+            {
+                "fact_id": "failed",
+                "type": "tool_report",
+                "subject": "check",
+                "result": "failed",
+                "at": 30,
+                "summary": "Parser checks",
+                "source_session": {"harness": "claude", "sid": "synthetic"},
+            }
+        ]
+        steer = dr._steer(correction, row, facts, 10, 20)
+        self.assertTrue(steer["offered"])
+        assessment = {
+            "revision_read": 1,
+            "read_at": 40,
+            "window_start": 10,
+            "criteria": {
+                "goal": {"result": "unverifiable", "cites": []},
+                "line_1": {"result": "unverifiable", "cites": []},
+            },
+        }
+        payload = {
+            "session": row,
+            "facts": facts,
+            "scan": {"last_user_at": 20},
+            "annotation": {"revision": 1, "goal": "Tests pass", "line_1": "Tests pass"},
+            "assessment": assessment,
+            "level": "high",
+            "unsettled": 0,
+        }
+        measured = dr._page_states([payload])[0]
+        self.assertEqual("failed-check", measured["answer"])
+        self.assertEqual("steer-secondary", measured["page_state"])
+
+    def test_a_valid_claim_reaches_the_actual_page_without_an_invented_route_limit(self) -> None:
+        _config, _pc, _live, _correction, reading = dr._runtime()
+        payload = {
+            "session": {"harness": "claude", "sid": "synthetic", "annotation_revision": 1},
+            "annotation": {"revision": 1, "goal": "Ship the parser"},
+            "facts": [
+                {
+                    "fact_id": "claim",
+                    "type": "agent_message",
+                    "at": 20,
+                    "summary": "The parser checks have all passed",
+                    "agent_words": "The parser checks have all passed",
+                    "evidence": {"source": "Synthetic assistant message", "confidence": "exact"},
+                    "source_session": {"harness": "claude", "sid": "synthetic"},
+                }
+            ],
+            "assessment": {
+                "revision_read": 1,
+                "read_at": 100,
+                "window_start": 10,
+                "criteria": {
+                    "goal": {"result": reading.RESULT_UNVERIFIABLE, "cites": []},
+                    "claims": {"result": reading.RESULT_UNSUPPORTED, "cites": ["claim"]},
+                },
+            },
+            "level": "not_enough",
+            "unsettled": 0,
+        }
+        page = dr._page_states([payload])[0]
+        self.assertEqual("steer-secondary", page["page_state"])
+        claim = next(row for row in page["criteria"] if row["key"] == "claims")
+        self.assertEqual(reading.RESULT_UNSUPPORTED, claim["result"])
 
     def test_goal_only_departure_is_separate_from_the_not_enough_level(self) -> None:
         reading = {
