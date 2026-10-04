@@ -489,6 +489,8 @@ class CorrectionRouteTest(_App):
 
     def test_a_person_outside_the_tail_still_anchors_the_http_correction(self) -> None:
         self.save_goal()
+        self.session.seconds = 90_000
+        self.now = START.timestamp() + 91_000
         self.session.bash("python3 -m unittest tests.test_retry", "1 failed", is_error=True)
         call = self.session.call("Read", {"file_path": "src/a.py"})
         self.session.result(call, "placeholder " * 500)
