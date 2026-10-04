@@ -25,7 +25,7 @@ const results = vm.runInContext(`payloads.map(payload => {
     ? nextCockpitWorkEntries(payload.session, {facts: payload.facts}) : payload.entries;
   const source = {state: entries.length ? "read" : "empty", all: entries, entries, scan: payload.scan};
   const rawShape = payload.assessment
-    ? nextCockpitReadingShape(payload.assessment, payload.annotation, entries, {}, payload.unsettled > 0)
+    ? nextCockpitReadingShape(payload.assessment, payload.annotation, entries, "", payload.unsettled > 0)
     : null;
   const pending = payload.session
     ? nextCockpitDirectionsOpen(payload.session, payload.annotation, source) : [];
@@ -40,7 +40,7 @@ const results = vm.runInContext(`payloads.map(payload => {
   if(payload.snapshot) return {page_state: state, page_offered: Boolean(offer),
     correction_text: correctionText};
   const shape = nextCockpitReadingShape(payload.assessment, payload.annotation,
-    entries, {}, payload.unsettled > 0);
+    entries, "", payload.unsettled > 0);
   if(shape.malformed) return {answer: "malformed", level: null, criteria: []};
   const answer = nextDriftAnswer(shape, entries, payload.scan);
   let level = payload.level;

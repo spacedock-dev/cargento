@@ -103,6 +103,39 @@ class TheReplayMeasuresThePage(unittest.TestCase):
         self.assertEqual("failed-check", measured["answer"])
         self.assertEqual("steer-secondary", measured["page_state"])
 
+    def test_a_valid_claim_reaches_the_actual_page_without_an_invented_route_limit(self) -> None:
+        _config, _pc, _live, _correction, reading = dr._runtime()
+        payload = {
+            "session": {"harness": "claude", "sid": "synthetic", "annotation_revision": 1},
+            "annotation": {"revision": 1, "goal": "Ship the parser"},
+            "facts": [
+                {
+                    "fact_id": "claim",
+                    "type": "agent_message",
+                    "at": 20,
+                    "summary": "The parser checks have all passed",
+                    "agent_words": "The parser checks have all passed",
+                    "evidence": {"source": "Synthetic assistant message", "confidence": "exact"},
+                    "source_session": {"harness": "claude", "sid": "synthetic"},
+                }
+            ],
+            "assessment": {
+                "revision_read": 1,
+                "read_at": 100,
+                "window_start": 10,
+                "criteria": {
+                    "goal": {"result": reading.RESULT_UNVERIFIABLE, "cites": []},
+                    "claims": {"result": reading.RESULT_UNSUPPORTED, "cites": ["claim"]},
+                },
+            },
+            "level": "not_enough",
+            "unsettled": 0,
+        }
+        page = dr._page_states([payload])[0]
+        self.assertEqual("steer-secondary", page["page_state"])
+        claim = next(row for row in page["criteria"] if row["key"] == "claims")
+        self.assertEqual(reading.RESULT_UNSUPPORTED, claim["result"])
+
     def test_goal_only_departure_is_separate_from_the_not_enough_level(self) -> None:
         reading = {
             "revision_read": 1,
