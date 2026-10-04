@@ -898,6 +898,20 @@ console.log(JSON.stringify({{
         self.assertEqual(reading.RESULT_UNVERIFIABLE, row["result"])
         self.assertEqual("no route", row["limit"])
 
+    def test_a_claims_row_with_no_claim_is_not_drawn_under_a_route_limit(self) -> None:
+        none = self.shape(
+            {"claims": {"result": reading.RESULT_UNVERIFIABLE, "cites": []}},
+            [SAID],
+            limit="no route",
+        )
+        self.assertEqual([], none["drawn"])
+        claimed = self.shape(
+            {"claims": {"result": reading.RESULT_UNSUPPORTED, "cites": ["a1"]}},
+            [SAID],
+            limit="no route",
+        )
+        self.assertEqual(["claims"], claimed["drawn"])
+
     def test_a_stored_record_unread_reason_reads_back(self) -> None:
         stored = {
             "claims": {

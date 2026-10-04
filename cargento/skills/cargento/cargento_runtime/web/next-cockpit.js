@@ -3090,6 +3090,9 @@ function nextCockpitReadingCriterion(key, label, clause, raw, entries, limit, un
       ? claimRecord.find(entry => String(entry.type || "") === "tool_report" ||
         entry.subject === "check") || claimRecord[0] || null : null,
     result,
+    /* Whether the stored row itself declared a verdict, before any limit: a claims row with no
+       claim is not drawn under a route limit either. */
+    declared: Boolean(declared) && declared !== NEXT_READING_UNVERIFIABLE,
     /* Only under a departure that survived every rule above. It was set
        unconditionally and rendered whenever truthy, so a declared departure
        that rule 3, 5, 7 or the baseline rule demoted still printed its
@@ -3417,7 +3420,7 @@ function nextCockpitResultItem(row, numbers, byId, tag = "li"){
    overusing prose", owner 2026-10-02; review, PR C). */
 function nextCockpitClaimsDrawn(shape){
   return shape.criteria.filter(row => row.key === NEXT_READING_CLAIMS &&
-    (row.result !== NEXT_READING_UNVERIFIABLE || row.why || row.limit));
+    (row.result !== NEXT_READING_UNVERIFIABLE || row.why || (row.limit && row.declared)));
 }
 
 function nextDriftAnswer(shape, entries){

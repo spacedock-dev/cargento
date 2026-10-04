@@ -479,8 +479,8 @@ agent's messages, never beside a check that failed after your words, and the lev
 once that message leaves the transcript tail the board reads. A press that carries the agent's
 messages also asks whether any of them claims a state of the work (running, merged, passing and
 the like) that the record contradicts, or, for a pass, a fix or a file written, that the record
-does not show; a claim nothing Cargento records can show (merged, pushed, deployed) is never "not
-shown". "What the agent claimed" reads "is contradicted at #m", "is not shown by the record" (the
+does not show; the reading is asked to keep "not shown" for those, so a claim nothing Cargento
+records can show (merged, pushed, deployed) is not meant to read "not shown". "What the agent claimed" reads "is contradicted at #m", "is not shown by the record" (the
 record read being the board's recent tail, and never where some of the session's checks went
 unread), "is shown at #m" or "Can't tell", and is not drawn when there was no claim. A
 contradicted or unshown claim reads Medium, is never counted as a departure from your intent, is
