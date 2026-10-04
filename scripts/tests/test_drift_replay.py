@@ -558,6 +558,154 @@ class _Home:
         self.ids = [str(c["id"]) for c in self.body["cases"]]
 
 
+class UnusableCallsStopTheReplay(unittest.TestCase):
+    def run_batch(
+        self, replies: list[tuple[str, str]], *, dry_run: bool = False
+    ) -> tuple[int, int, dict[str, Any], list[str]]:
+        with _Session() as s:
+            home = _Home(s)
+            ledger = dr.Ledger(str(s.home / "spend.json"))
+            done: dict[str, Any] = {}
+            said: list[str] = []
+            index = 0
+
+            def model(_prompt: str, **_kw: Any) -> tuple[str, str]:
+                nonlocal index
+                result = replies[min(index, len(replies) - 1)]
+                index += 1
+                return result
+
+            result = dr._read_cases(
+                home.body,
+                home.paths,
+                model,
+                ledger,
+                done,
+                "fixtures",
+                ("realistic",),
+                dry_run=dry_run,
+                say=said.append,
+            )
+            return result, ledger.used(), done, said
+
+    def test_two_consecutive_failures_stop_and_remain_retryable(self) -> None:
+        for status in ("failed", "unstopped", "oversized"):
+            with self.subTest(status=status):
+                result, charges, done, said = self.run_batch([("", status)])
+                self.assertEqual(2, abs(result))
+                self.assertEqual(2, charges)
+                self.assertEqual({}, done)
+                self.assertTrue(any("two consecutive" in line for line in said), said)
+
+    def test_ok_without_any_parsed_answer_also_stops(self) -> None:
+        for reply in ("", "{}", "not json", '{"goal":{"result":"wrong"}}'):
+            with self.subTest(reply=reply):
+                result, charges, done, _said = self.run_batch([(reply, "ok")])
+                self.assertEqual(2, abs(result))
+                self.assertEqual(2, charges)
+                self.assertEqual({}, done)
+
+    def test_an_answered_abstention_resets_the_consecutive_failure_count(self) -> None:
+        good = '{"goal":{"result":"unverifiable","cites":[],"detail":""}}'
+        result, charges, done, _said = self.run_batch(
+            [("", "failed"), (good, "ok"), ("", "oversized"), ("", "failed")]
+        )
+        self.assertEqual(4, abs(result))
+        self.assertEqual(4, charges)
+        self.assertEqual(1, sum(len(arms) for arms in done.values()))
+
+    def test_a_dry_run_counts_every_call_without_stopping_or_charging(self) -> None:
+        result, charges, done, said = self.run_batch([("", "failed")], dry_run=True)
+        self.assertGreater(result, 2)
+        self.assertEqual(0, charges)
+        self.assertEqual({}, done)
+        self.assertFalse(any("two consecutive" in line for line in said))
+
+    def test_authorized_cap_leaves_443_calls_on_the_existing_ledger(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            ledger = dr.Ledger(str(Path(tmp) / "spend.json"), floor=427)
+            self.assertEqual(443, ledger.cap - ledger.used())
+
+    def test_a_failed_tag_can_retry_the_same_cut_arm(self) -> None:
+        with _Session() as s:
+            home = _Home(s)
+            ledger = dr.Ledger(str(s.home / "spend.json"))
+            done: dict[str, Any] = {}
+            selection = frozenset({f"{home.ids[0]}:realistic"})
+            for status in ("failed", "ok"):
+                result = dr._read_cases(
+                    home.body,
+                    home.paths,
+                    lambda _prompt, _status=status, **_kw: (
+                        '{"goal":{"result":"unverifiable"}}',
+                        _status,
+                    ),
+                    ledger,
+                    done,
+                    "fixtures",
+                    ("realistic",),
+                    dry_run=False,
+                    say=lambda _m: None,
+                    selection=selection,
+                )
+                self.assertEqual(1, result)
+            self.assertEqual(2, ledger.used())
+            self.assertEqual(1, sum(len(arms) for arms in done.values()))
+
+    def test_unsent_cases_do_not_reset_and_any_answered_criterion_does(self) -> None:
+        _config, _context, _live, _correction, reading = dr._runtime()
+        with tempfile.TemporaryDirectory() as tmp:
+            ledger = dr.Ledger(str(Path(tmp) / "spend.json"))
+            done: dict[str, Any] = {}
+            batch = dr._ReadBatch(
+                reading,
+                str(Path(tmp) / "read-tag.json"),
+                done,
+                "fixtures",
+                dry_run=False,
+                say=lambda _m: None,
+            )
+            failed = dr._Charged(_Recorder([], "failed"), ledger, "failed")
+            failed("p", output_cap_bytes=10)
+            entry = {"withheld": "model-failed", "assessment": None}
+            self.assertFalse(batch.record(failed, "failed", "realistic", entry))
+            unsent = dr._Charged(_Recorder([], "failed"), ledger, "unsent")
+            self.assertFalse(batch.record(unsent, "unsent", "realistic", entry))
+            self.assertEqual(1, batch.unusable)
+            # Goal need not be the answered criterion: one parsed line answer is usable.
+            good = dr._Charged(
+                lambda _prompt, **_kw: ('{"line_1":{"result":"unverifiable"}}', "ok"),
+                ledger,
+                "good",
+            )
+            good("p", output_cap_bytes=100)
+            self.assertFalse(
+                batch.record(
+                    good,
+                    "good",
+                    "realistic",
+                    {
+                        "withheld": "",
+                        "assessment": {"criteria": {"goal": {}, "line_1": {}}},
+                    },
+                )
+            )
+            self.assertEqual(0, batch.unusable)
+            self.assertFalse(batch.record(failed, "failed-2", "realistic", entry))
+            self.assertTrue(batch.record(failed, "failed-3", "realistic", entry))
+            self.assertNotIn("failed", done)
+
+    def test_a_capped_reply_retains_an_answer_that_arrived_whole(self) -> None:
+        _config, _context, _live, _correction, reading = dr._runtime()
+        raw = '{"goal":{"result":"unverifiable"},"claims":'
+        raw += " " * (reading.REPLY_CAP_BYTES - len(raw))
+        result, charges, done, said = self.run_batch([(raw, "ok")])
+        self.assertGreater(result, 2)
+        self.assertEqual(result, charges)
+        self.assertEqual(result, sum(len(arms) for arms in done.values()))
+        self.assertFalse(any("two consecutive" in line for line in said))
+
+
 class ATaggedReadKeepsTheEarlierRunsOutput(unittest.TestCase):
     def test_dry_run_reports_adopted_source_coverage_without_charging(self) -> None:
         with (

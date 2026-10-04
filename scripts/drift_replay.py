@@ -737,8 +737,9 @@ def report(*, home: str, say: Callable[[str], Any] = print) -> int:
 
 # The Analyze tier's spend, on this tool's own fixed-path ledger: authorized by the owner on
 # 2026-10-03 at 240 calls ("I authorize the spend for the analyze tier"), and raised to 440 on
-# 2026-10-04 for the re-run with the adopted and current intent arms.
-MAX_CALLS = 440
+# 2026-10-04 for the re-run with the adopted and current intent arms, then to 870 for the
+# Analyze drift follow-up. The cumulative count stays on the same ledger.
+MAX_CALLS = 870
 ARMS = ("realistic", "part", "hindsight", "adopted", "current")
 _SETTLE_EXTRA = 1.0
 
@@ -1122,6 +1123,8 @@ class _Charged:
         self.charged = False
         self.capped = False
         self.sent = False
+        self.raw = ""
+        self.status = ""
 
     def available(self) -> bool:
         return bool(getattr(self.inner, "available", lambda: True)())
@@ -1139,7 +1142,78 @@ class _Charged:
     def _send(self, prompt: str, output_cap_bytes: int) -> tuple[str, str]:
         self.sent = True
         raw, status = self.inner(prompt, output_cap_bytes=output_cap_bytes)
-        return str(raw), str(status)
+        self.raw, self.status = str(raw), str(status)
+        return self.raw, self.status
+
+
+class _ReadBatch:
+    """Persist usable results and stop after two consecutive charged unusable calls."""
+
+    def __init__(
+        self,
+        reading: Any,
+        path: str,
+        done: dict[str, Any],
+        src: str,
+        *,
+        dry_run: bool,
+        say: Callable[[str], Any],
+    ) -> None:
+        self.reading = reading
+        self.path = path
+        self.done = done
+        self.src = src
+        self.dry_run = dry_run
+        self.say = say
+        self.unusable = 0
+
+    def _failed(self, model: _Charged, entry: Mapping[str, Any]) -> bool:
+        if entry["withheld"] == self.reading.WITHHELD_MODEL_FAILED or model.status in {
+            "failed",
+            "model-failed",
+            "unstopped",
+            "oversized",
+        }:
+            return True
+        if model.status != "ok":
+            return False
+        names = tuple((entry["assessment"] or {}).get("criteria") or {})
+        cut = len(model.raw.encode("utf-8", "replace")) >= (
+            self.reading.REPLY_CAP_BYTES - self.reading.REPLY_CUT_SLACK_BYTES
+        )
+        parsed = self.reading.parse_reply(model.raw, names, salvage=cut)
+        return not any(self.reading.result_for(name, row["token"]) for name, row in parsed.items())
+
+    def record(
+        self,
+        model: _Charged,
+        case_id: str,
+        arm: str,
+        entry: dict[str, Any],
+    ) -> bool:
+        """True means no further call may be made in this batch."""
+        if model.capped:
+            self.say("The ledger cap is reached; this call was not made and is not recorded.")
+            return True
+        if self.dry_run:
+            return False
+        if model.charged and self._failed(model, entry):
+            self.unusable += 1
+            if self.unusable >= 2:
+                self.say(
+                    "Stopped after two consecutive charged unusable calls; "
+                    "no further model call was made. Failed cut-arms remain retryable."
+                )
+                return True
+        else:
+            if model.charged:
+                self.unusable = 0
+            self.done.setdefault(case_id, {})[arm] = entry
+            lc._write(self.path, {"v": 1, "source": self.src, "cases": self.done})  # noqa: SLF001
+        if model.ledger is not None and model.ledger.used() >= model.ledger.cap:
+            self.say("The ledger cap is reached; stopping.")
+            return True
+        return False
 
 
 _TAG_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,31}$")
@@ -1307,6 +1381,7 @@ def read(  # noqa: PLR0911 - one return per refusal, each before anything is sen
         finally:
             _remove_tree(os.path.join(paths["dir"], "scratch-read"))
         if calls < 0:
+            say(f"Made {abs(calls)} calls; ledger {ledger.used()} of {ledger.cap}.")
             return 0
     if dry_run:
         plan = {"v": 1, "cases_digest": bound, "arms": list(arms), "calls": calls}
@@ -1366,6 +1441,7 @@ def _read_cases(  # noqa: PLR0913 - every input of one pass, named
     calls = 0
     source_state = build_runtime_state(config, started=0.0)
     source_total = source_found = 0
+    batch = _ReadBatch(reading, paths["read"], done, src, dry_run=dry_run, say=say)
     for case in body["cases"]:
         if selection and not any(pair.startswith(f"{case['id']}:") for pair in selection):
             continue
@@ -1422,13 +1498,7 @@ def _read_cases(  # noqa: PLR0913 - every input of one pass, named
                 admit_turn_stop=True,
             )
             calls += 1 if model.sent else 0
-            if model.capped:
-                say("The ledger cap is reached; this call was not made and is not recorded.")
-                return -calls
-            if dry_run:
-                continue
-            entry = done.setdefault(case["id"], {})
-            entry[intent.arm] = {
+            entry = {
                 "withheld": why or "",
                 "charged": model.charged,
                 "assessment": assessment,
@@ -1438,9 +1508,7 @@ def _read_cases(  # noqa: PLR0913 - every input of one pass, named
                     if f.get("fact_id")
                 },
             }
-            lc._write(paths["read"], {"v": 1, "source": src, "cases": done})  # noqa: SLF001
-            if ledger.used() >= ledger.cap:
-                say("The ledger cap is reached; stopping.")
+            if batch.record(model, case["id"], intent.arm, entry):
                 return -calls
         _remove_tree(here)
     say(

@@ -46,7 +46,9 @@ A mark written after seeing an output is agreement, not a mark, so the tool hold
 5. `--live` runs the live estimate and Steer back at every cut. No model, no spend.
 6. `--read --dry-run` counts the calls that would reach the model and records that plan. `--read`
    refuses without a plan for the same cases and arms, or when the plan needs more calls than the
-   ledger has left, and charges each call before it is made.
+   ledger has left, and charges each call before it is made. Two consecutive charged failures
+   (`model-failed`, `unstopped`, `oversized`) or replies with no parsed answer stop the batch.
+   Failed cut-arms are not saved as read; a tagged retry can read them again, at another charge.
 7. `--score` writes `results.json`.
 
 ```bash
@@ -57,7 +59,7 @@ python3 scripts/drift_replay.py --reconcile
 git add docs/drift-replay/marks-digest.json && git commit -s
 python3 scripts/drift_replay.py --live
 python3 scripts/drift_replay.py --read --dry-run
-python3 scripts/drift_replay.py --read         # spends: capped at 440 calls in all
+python3 scripts/drift_replay.py --read         # spends: capped at 870 calls in all
 python3 scripts/drift_replay.py --score
 ```
 
