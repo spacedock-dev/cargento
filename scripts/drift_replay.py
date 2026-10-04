@@ -720,8 +720,8 @@ def report(*, home: str, say: Callable[[str], Any] = print) -> int:
 # --- Replay: the cut, the facts, the intent arms --------------------------------------------------
 
 # The Analyze tier's spend, on this tool's own fixed-path ledger: authorized by the owner on
-# 2026-10-03 at 240 calls ("I authorize the spend for the analyze tier") and raised to 440 on 2026-10-04 for
-# the re-run with the adopted and current intent arms.
+# 2026-10-03 at 240 calls ("I authorize the spend for the analyze tier"), and raised to 440 on
+# 2026-10-04 for the re-run with the adopted and current intent arms.
 MAX_CALLS = 440
 ARMS = ("realistic", "part", "hindsight", "adopted", "current")
 _SETTLE_EXTRA = 1.0
