@@ -61,6 +61,9 @@ class RuntimeState:
     metadata_cache: dict[str, dict[str, Any]] = field(default_factory=dict)
     claude_title_cache: dict[str, tuple[int, int, str | None]] = field(default_factory=dict)
     claude_user_event_cache: dict[str, tuple[int, int, str | None]] = field(default_factory=dict)
+    transcript_user_cache: dict[tuple[str, str, str], tuple[int, int, list[dict[str, Any]]]] = (
+        field(default_factory=dict)
+    )
     # transcript path -> ((mtime_ns, size), the published instruction reading).
     # Both are `bounded_put` at `config.max_cache_entries`, like every cache
     # above them.

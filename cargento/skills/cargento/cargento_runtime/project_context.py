@@ -4040,6 +4040,73 @@ def _user_message_facts(
     return facts
 
 
+TRANSCRIPT_USER_CACHE_ENTRIES = 8
+TRANSCRIPT_USER_FACTS_MAX = 4096
+
+
+def transcript_user_facts(
+    config: RuntimeConfig, state: RuntimeState, path: str, harness: str, sid: str
+) -> list[dict[str, Any]]:
+    """Press-only user words from a bounded forward scan, never the published ledger.
+
+    Starting at the beginning restores adopted prompts that left the tail. The
+    existing backfill byte allowance bounds the scan; an incomplete final record
+    is ignored. Cache only redacted, capped words and give each caller its own copy.
+    """
+    if harness not in {"claude", "codex"}:
+        return []
+    key = (path, harness, sid)
+    try:
+        stamp = os.stat(path)
+        if not stat.S_ISREG(stamp.st_mode):
+            return []
+        with state.cache_lock:
+            cached = state.transcript_user_cache.get(key)
+            if cached is not None and cached[:2] == (stamp.st_size, stamp.st_mtime_ns):
+                return copy.deepcopy(cached[2])
+        raw = runtime_io.read_prefix_bytes(path, max_bytes=SEMANTIC_BACKFILL_MAX_BYTES)
+        if len(raw) < stamp.st_size and not raw.endswith(b"\n"):
+            raw = raw.rsplit(b"\n", 1)[0] if b"\n" in raw else b""
+        facts = _transcript_user_scan(config, raw, harness, sid)
+        after = os.stat(path)
+        if (after.st_size, after.st_mtime_ns) != (stamp.st_size, stamp.st_mtime_ns):
+            return []
+    except OSError:
+        return []
+    with state.cache_lock:
+        runtime_state.bounded_put(
+            state.transcript_user_cache,
+            key,
+            (stamp.st_size, stamp.st_mtime_ns, facts),
+            limit=TRANSCRIPT_USER_CACHE_ENTRIES,
+        )
+    return copy.deepcopy(facts)
+
+
+def _transcript_user_scan(
+    config: RuntimeConfig, raw: bytes, harness: str, sid: str
+) -> list[dict[str, Any]]:
+    facts: list[dict[str, Any]] = []
+    seen: set[tuple[str, str]] = set()
+    for line in raw.splitlines():
+        try:
+            record = json.loads(line)
+        except (ValueError, RecursionError):
+            continue
+        event = _instruction_event(config, record, harness, sid)
+        if event is None:
+            continue
+        fact = _semantic_fact_from_event(event, "steer", "user_message", "")
+        key = (str(fact["fact_id"]), str(fact.get(READER_WORDS_FIELD) or ""))
+        if key in seen:
+            continue
+        seen.add(key)
+        facts.append(fact)
+        if len(facts) >= TRANSCRIPT_USER_FACTS_MAX:
+            break
+    return facts
+
+
 def frozen_claude_user_messages(
     config: RuntimeConfig, transcript_path: str, sid: str, *, until: float, size: int | None = None
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:

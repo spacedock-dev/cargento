@@ -123,10 +123,12 @@ class _Producer(unittest.TestCase):
         answer: str = "{}",
         read_agent_words: bool = True,
         tool_output: reading.ToolOutput | None = None,
+        goal_source_lookup: Any = None,
+        row: dict[str, Any] | None = None,
     ) -> Any:
         return reading.produce(
             cast("Any", self._Config()),
-            {**SID, "state": "working", "ended_at": None},
+            {**SID, "state": "working", "ended_at": None, **(row or {})},
             [revision or {"n": 1, "at": 50.0, "goal": "add retry", "output": "tests pass"}],
             facts,
             now=500.0,
@@ -135,6 +137,7 @@ class _Producer(unittest.TestCase):
             tool_output=tool_output,
             read_lines=True,
             read_agent_words=read_agent_words,
+            goal_source_lookup=goal_source_lookup,
         )
 
 
@@ -146,6 +149,67 @@ ADOPTED = {
     "goal_source": "first-prompt",
     "goal_source_at": 60.0,
 }
+
+
+class APressCanFindItsGoalOutsideTheEvidenceTail(_Producer):
+    def test_empty_prefix_keeps_a_source_already_in_the_tail(self) -> None:
+        assessment, _, _ = self.produce(
+            [_person("p1", 60.0, WHOLE)],
+            revision=ADOPTED,
+            goal_source_lookup=list,
+        )
+        self.assertIn(POINT, self.prompts[0])
+        self.assertNotIn(reading.GOAL_SOURCE_GONE.strip(), assessment["cutoff"])
+
+    def test_a_copy_mark_in_the_tail_also_marks_the_lookup_source(self) -> None:
+        source = _person("p1", 60.0, WHOLE)
+        assessment, _, _ = self.produce(
+            [{**source, reading.COPIED_FLAG: True}, _agent("a1", 90.0, "The queue was written.")],
+            revision=ADOPTED,
+            goal_source_lookup=lambda: [source],
+        )
+        self.assertNotIn(POINT, self.prompts[0])
+        self.assertIn(reading.GOAL_SOURCE_GONE.strip(), assessment["cutoff"])
+
+    def test_a_copy_mark_outside_the_tail_still_refuses_the_source(self) -> None:
+        source = _person("p1", 60.0, WHOLE)
+        assessment, _, _ = self.produce(
+            [_agent("a1", 90.0, "The queue was written.")],
+            revision=ADOPTED,
+            goal_source_lookup=lambda: [source],
+            row={reading.COPIED_PROMPTS: [{"fact_id": "p1", "at": 60.0}]},
+        )
+        self.assertNotIn(POINT, self.prompts[0])
+        self.assertIn(reading.GOAL_SOURCE_GONE.strip(), assessment["cutoff"])
+
+    def test_duplicate_source_in_tail_and_lookup_is_not_an_ambiguity(self) -> None:
+        source = _person("p1", 60.0, WHOLE)
+        self.produce([source], revision=ADOPTED, goal_source_lookup=lambda: [source])
+        self.assertIn(POINT, self.prompts[0])
+
+    def test_the_lookup_supplies_only_the_goal_and_never_widens_the_ledger(self) -> None:
+        source = _person("old-source", 60.0, WHOLE)
+        unrelated = _person("old-unrelated", 70.0, "Never send these other old words.")
+        assessment, why, spent = self.produce(
+            [_agent("recent", 100.0, "The queue was written.")],
+            revision=ADOPTED,
+            goal_source_lookup=lambda: [source, unrelated],
+        )
+        self.assertEqual("", why)
+        self.assertTrue(spent)
+        self.assertIsNotNone(assessment)
+        self.assertIn(POINT, self.prompts[0])
+        self.assertNotIn("Never send these other old words.", self.prompts[0])
+        self.assertNotIn("old-unrelated", self.prompts[0])
+        self.assertNotIn(reading.GOAL_SOURCE_GONE.strip(), assessment["cutoff"])
+
+    def test_typed_goals_never_read_the_source_lookup(self) -> None:
+        def forbidden() -> Any:
+            self.fail("Typed goals must not scan a second transcript source")
+
+        self.produce(
+            [_agent("recent", 100.0, "The queue was written.")], goal_source_lookup=forbidden
+        )
 
 
 class AnAdoptedGoalIsReadWholeTest(_Producer):

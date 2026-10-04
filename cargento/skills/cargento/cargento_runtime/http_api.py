@@ -2711,6 +2711,19 @@ class _RequestHandler(BaseHTTPRequestHandler):
             row,
             entry["revisions"],
             _facts_of(context),
+            goal_source_lookup=lambda: runtime_project_context.transcript_user_facts(
+                application.config,
+                application.state,
+                runtime_observer.resolve_transcript(
+                    application.config,
+                    application.state,
+                    str(row.get("harness")),
+                    str(row.get("sid")),
+                )
+                or "",
+                str(row.get("harness")),
+                str(row.get("sid")),
+            ),
             # A record never read withholds in its own sentence, not as an
             # empty one (DRC-4689).
             record_withheld=runtime_reading.record_withheld(
