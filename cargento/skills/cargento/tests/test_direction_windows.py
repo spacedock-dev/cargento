@@ -117,6 +117,20 @@ class AnUnchangedGoalKeepsItsWindow(unittest.TestCase):
 
 
 class AListedDirectionReachesItsSource(_ClaudeSession):
+    def test_a_source_disappearing_or_becoming_unreadable_is_refused(self) -> None:
+        fact_id = str(self.direction()["fact_id"])
+        for failure in (FileNotFoundError, PermissionError):
+            with (
+                self.subTest(failure=failure.__name__),
+                mock.patch.object(runtime_io, "read_prefix_bytes", side_effect=failure),
+            ):
+                self.assertEqual(
+                    "",
+                    project_context.direction_text(
+                        self.config, self.state, "claude", SHORT, fact_id
+                    ).text,
+                )
+
     def test_a_direction_outside_the_tail_can_be_opened_whole(self) -> None:
         fact_id = str(self.direction()["fact_id"])
         for _ in range(40):
@@ -194,6 +208,31 @@ class AListedDirectionReachesItsSource(_ClaudeSession):
             "",
             project_context.direction_text(self.config, self.state, "claude", SHORT, fact_id).text,
         )
+
+    def test_a_menu_refuses_ambiguous_raw_words_before_they_are_folded(self) -> None:
+        fact = self.direction()
+        altered = copy.deepcopy(self.session.rows[-1])
+        altered["message"]["content"][0]["text"] = LONG.replace("Use the", "Use   the", 1)
+        self.session.rows.append(altered)
+        self.session.save(self.path)
+        app = SimpleNamespace(config=self.config, state=self.state)
+        choices = http_api._prompt_facts(app, _row(), [fact])
+        self.assertEqual([], annotation_store.prompt_choices(_row(), choices, 240))
+
+    def test_goal_menu_masking_does_not_change_or_poison_analyze_words(self) -> None:
+        self.session.prompt("Keep retry. AKIAIOSFODNN7\nEXAMPLE")
+        self.session.save(self.path)
+        before = project_context.transcript_user_facts(
+            self.config, self.state, str(self.path), "claude", SHORT
+        )
+        menu = project_context.transcript_user_facts(
+            self.config, self.state, str(self.path), "claude", SHORT, goal_choices=True
+        )
+        after = project_context.transcript_user_facts(
+            self.config, self.state, str(self.path), "claude", SHORT
+        )
+        self.assertEqual(before, after)
+        self.assertNotEqual(before[-1]["reader_words"], menu[-1]["reader_words"])
 
 
 class AReadingKeepsTheBaselineItRead(unittest.TestCase):
@@ -305,6 +344,64 @@ class TheQuestionLetsTheReaderChoose(_DraftPage):
 
 
 class TheServerVerifiesAnExplicitDirection(_ClaudeSession):
+    def test_a_goal_choice_uses_the_same_safe_words_inside_and_outside_the_menu(self) -> None:
+        samples = (
+            "Keep   retry bounded.",
+            "Keep retry. -pPLACEHOLDERpw9",
+            "Keep retry. 'deploy:PLACEHOLDERpw9 two@db.example'",
+            "Keep retry. AKIAIOSFODNN7\nEXAMPLE",
+        )
+        for words in samples:
+            for newer in (0, 8):
+                with self.subTest(words=words, newer=newer):
+                    self.session.prompt(words)
+                    self.session.save(self.path)
+                    selected = max(
+                        (fact for fact in self.facts() if fact["type"] == "user_message"),
+                        key=lambda fact: fact["at"],
+                    )
+                    for k in range(newer):
+                        self.session.prompt(f"Use fixture variant {k} after {selected['at']}.")
+                    self.session.save(self.path)
+                    entry = annotation_store.find(
+                        annotation_store.load(self.config), "claude", SHORT
+                    )
+                    revision = entry["revisions"][-1]["n"] if entry else 0
+                    with self.serving() as port:
+                        opened = self.request(
+                            port,
+                            "/api/direction",
+                            {"harness": "claude", "sid": SHORT, "fact_id": selected["fact_id"]},
+                        )
+                        choice = opened["goal_choice"]
+                        expected = annotation_store.direction_review(
+                            words, self.config.annotation_text_cap_chars
+                        )[0]
+                        self.assertEqual(expected, choice["text"])
+                        menu = self.request(
+                            port,
+                            f"/api/project-context?project=billing&session=claude:{SHORT}&prompts=1",
+                        )
+                        for offered in menu["prompt_choices"]:
+                            if offered["fact_id"] == selected["fact_id"]:
+                                self.assertEqual(expected, offered["text"])
+                        answer = self.request(
+                            port,
+                            "/api/annotate",
+                            {
+                                "harness": "claude",
+                                "sid": SHORT,
+                                "adopt": "chosen-prompt",
+                                "prompt_fact": choice["fact_id"],
+                                "expected_prompt": choice["text"],
+                                "expected_prompt_at": choice["at"],
+                                "expected_revision": revision,
+                            },
+                        )
+                    self.assertEqual("stored", answer["outcome"])
+                    saved = annotation_store.load(self.config)[0]["revisions"][-1]
+                    self.assertEqual(expected, saved["goal"])
+
     @contextlib.contextmanager
     def serving(self) -> Any:
         spec = aggregate.HarnessSpec(
@@ -421,6 +518,80 @@ class TheServerVerifiesAnExplicitDirection(_ClaudeSession):
 
 
 class ChoosingADirectionDoesNotSaveIt(_DraftPage):
+    def test_a_goal_typed_while_the_direction_opens_survives_the_reply(self) -> None:
+        got = self.drive(
+            self.CHOICE,
+            """
+const oldFetch = __fetchImpl; let finish;
+__fetchImpl = async (url, init) => String(url) === "/api/direction" ? await new Promise(resolve => {
+  finish = () => resolve({ok:true,json:async()=>({ok:true,goal_choice:{fact_id:"fo-a",at:104,text:"New retry goal",cut:false}})});
+}) : oldFetch(url, init);
+__press("direction-goal","fo-a"); await __settle();
+__typeGoal("Typed while opening"); finish(); await __settle(); await __settle();
+console.log(JSON.stringify({draft:nextCockpitHeldDrafts.get("held:claude:focus-1:goal"),chosen:nextIntentChosenPrompts.has("held:claude:focus-1:goal"),html:__els.app.innerHTML}));
+""",
+        )
+        self.assertEqual("Typed while opening", got.get("draft"))
+        self.assertFalse(got["chosen"])
+        self.assertIn("Typed while opening", got["html"])
+
+    def test_new_lines_or_a_saved_revision_refuse_a_pending_goal_choice(self) -> None:
+        for change in (
+            'nextCockpitHeldDrafts.set("held:claude:focus-1:lines",["New outcome line"]);',
+            "__s.annotation_revision = 99;",
+        ):
+            with self.subTest(change=change):
+                got = self.drive(
+                    self.CHOICE,
+                    """
+let finish;
+__fetchImpl = async () => await new Promise(resolve => {finish = () => resolve({ok:true,json:async()=>({ok:true,goal_choice:{fact_id:"fo-a",at:104,text:"New retry goal",cut:false}})});});
+__press("direction-goal","fo-a"); await __settle();
+"""
+                    + change
+                    + """
+finish(); await __settle(); await __settle();
+console.log(JSON.stringify({chosen:nextIntentChosenPrompts.has("held:claude:focus-1:goal"),lines:nextCockpitHeldDrafts.get("held:claude:focus-1:lines")}));
+""",
+                )
+                self.assertFalse(got["chosen"])
+                if "New outcome" in change:
+                    self.assertEqual(["New outcome line"], got["lines"])
+
+    def test_a_closed_menu_refreshes_on_null_blur_choice_and_escape(self) -> None:
+        got = self.drive(
+            after="""
+let requests = 0;
+__fetchImpl = async () => ({ok:true,json:async()=>({prompt_choices:[{fact_id:"menu-"+(++requests),at:104+requests,text:"Choice "+requests,cut:false}]})});
+const select = {tagName:"SELECT",dataset:{},value:"menu-2",closest(selector){return selector === "[data-next-cockpit-prompt-select]" ? this : null;}};
+await nextIntentLoadPromptChoices(__s);
+__fire("focusout",{relatedTarget:null,target:select});
+await nextIntentLoadPromptChoices(__s);
+__fire("change",{target:select});
+await nextIntentLoadPromptChoices(__s);
+__fire("keydown",{type:"keydown",key:"Escape",target:select,preventDefault(){}});
+await nextIntentLoadPromptChoices(__s);
+console.log(JSON.stringify({requests,choices:nextIntentPromptChoices(__s)}));
+"""
+        )
+        self.assertEqual(4, got["requests"])
+        self.assertEqual("menu-4", got["choices"][0]["factId"])
+
+    def test_closing_a_pending_menu_stays_closed_when_its_reply_arrives(self) -> None:
+        got = self.drive(
+            after="""
+let finish; let requests = 0;
+__fetchImpl = async () => {requests++; return await new Promise(resolve => {finish = () => resolve({ok:true,json:async()=>({prompt_choices:[{fact_id:"menu",at:104,text:"Choose retry",cut:false}]})});});};
+const first = nextIntentLoadPromptChoices(__s);
+await nextIntentLoadPromptChoices(__s);
+__fire("focusout",{relatedTarget:null,target:{closest:()=>({})}});
+finish(); await first;
+console.log(JSON.stringify({requests,menu:nextIntentPromptLists.get("claude:focus-1")}));
+"""
+        )
+        self.assertEqual(1, got["requests"])
+        self.assertFalse(got["menu"]["open"])
+
     CHOICE = (
         TYPED
         + """

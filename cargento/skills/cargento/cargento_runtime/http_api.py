@@ -479,7 +479,7 @@ def _prompt_facts(
     path = runtime_observer.resolve_transcript(application.config, application.state, harness, sid)
     source = (
         runtime_project_context.transcript_user_facts(
-            application.config, application.state, path, harness, sid
+            application.config, application.state, path, harness, sid, goal_choices=True
         )
         if path
         else []
@@ -2278,12 +2278,9 @@ class _RequestHandler(BaseHTTPRequestHandler):
         if found is None:
             return None
         at, words, cut = found
-        text = records.safe_text(
-            words, self.server.application.config.annotation_text_cap_chars
-        ).strip()
-        if not text or records.harness_control(text):
-            return None
-        return {"fact_id": fact_id, "at": at, "text": text, "cut": cut or text != words.strip()}
+        return annotation_store.prompt_choice(
+            fact_id, at, words, self.server.application.config.annotation_text_cap_chars, cut=cut
+        )
 
     def _session_row(self, harness: str, sid: str) -> dict[str, Any] | None:
         """This session's published row, or None. See `_published_row`."""
@@ -2322,10 +2319,9 @@ class _RequestHandler(BaseHTTPRequestHandler):
 
         Every check is the server's own: the fact must be a person's message
         in THIS session's published record, later than the words it would join
-        (`annotations.direction_floor`), and still in the record's tail, where
-        its whole text is read again (`project_context.direction_text`). A
-        direction the tail no longer reaches is refused rather than stood in
-        for by its summary, which would be saving a summary
+        (`annotations.direction_floor`), with its whole text read again from
+        the bounded source (`project_context.direction_text`). A direction
+        outside that bound is refused rather than stood in for by its summary
         (`annotations.direction_floor` cites the ruling).
         """
         application = self.server.application
@@ -2441,12 +2437,9 @@ class _RequestHandler(BaseHTTPRequestHandler):
                 "text": text,
                 "clipped": clipped,
                 "fits": fits,
-                "goal_choice": {
-                    "fact_id": fact_id,
-                    "at": found[0],
-                    "text": records.safe_text(found[1], config.annotation_text_cap_chars).strip(),
-                    "cut": found[2] or len(found[1].strip()) > config.annotation_text_cap_chars,
-                }
+                "goal_choice": annotation_store.prompt_choice(
+                    str(fact_id), found[0], found[1], config.annotation_text_cap_chars, cut=found[2]
+                )
                 if harness in annotation_store.ADOPTION_HARNESSES
                 and not records.harness_control(found[1])
                 else None,

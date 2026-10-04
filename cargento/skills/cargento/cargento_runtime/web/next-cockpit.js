@@ -8699,12 +8699,17 @@ document.addEventListener("input", event => {
 });
 
 function nextIntentPromptMenuOpen(event){
-  if(event.type === "keydown" && !["ArrowDown","ArrowUp"," ","Enter"].includes(event.key)) return;
   const select = event.target?.closest?.("[data-next-cockpit-prompt-select]");
   if(!select) return;
   const group = nextCockpitRouteGroup();
   const session = group ? nextCockpitFocusedSession(group) : null;
   if(!session) return;
+  if(event.type === "keydown" && event.key === "Escape"){
+    const held = nextIntentPromptLists.get(sessKey(session));
+    if(held) held.open = false;
+    return;
+  }
+  if(event.type === "keydown" && !["ArrowDown","ArrowUp"," ","Enter"].includes(event.key)) return;
   if(typeof select.showPicker === "function"){
     event.preventDefault();
     select.focus();
@@ -8717,7 +8722,7 @@ function nextIntentPromptMenuOpen(event){
 document.addEventListener("pointerdown", nextIntentPromptMenuOpen);
 document.addEventListener("keydown", nextIntentPromptMenuOpen);
 document.addEventListener("focusout", event => {
-  if(!event.relatedTarget || !event.target?.closest?.("[data-next-cockpit-prompt-select]")) return;
+  if(!event.target?.closest?.("[data-next-cockpit-prompt-select]")) return;
   const group = nextCockpitRouteGroup();
   const session = group ? nextCockpitFocusedSession(group) : null;
   const held = session && nextIntentPromptLists.get(sessKey(session));
@@ -8744,6 +8749,8 @@ document.addEventListener("change", event => {
   const group = nextCockpitRouteGroup();
   const session = group ? nextCockpitFocusedSession(group) : null;
   if(!session) return;
+  const menu = nextIntentPromptLists.get(sessKey(session));
+  if(menu) menu.open = false;
   const pending = nextDeferredRender;
   nextDeferredRender = null;
   nextDeferredRenderCount = 0;
@@ -9196,6 +9203,7 @@ function nextDirectionGoalButton(session, factId, scope = "question"){
 
 async function nextDirectionUseGoal(session, factId){
   const annotation = nextCockpitAnnotation(session);
+  const revision = nextNumber(session.annotation_revision) || 0;
   if(nextIntentUnsaved(session, annotation)){
     nextCockpitAnnounceCue(nextCockpitIntentKey(session), NEXT_INTENT_EDITED, false);
     return;
@@ -9208,6 +9216,12 @@ async function nextDirectionUseGoal(session, factId){
       headers:{"Content-Type":"application/json"},
       body:JSON.stringify({harness:session.harness,sid:session.sid,fact_id:factId})}, press.signal);
     const answer = response && response.ok ? await response.json() : null;
+    const current = nextData?.sessions?.find(row => sessKey(row) === sessKey(session)) || session;
+    if(nextIntentUnsaved(current, nextCockpitAnnotation(current)) ||
+        (nextNumber(current.annotation_revision) || 0) !== revision){
+      nextCockpitAnnounceCue(nextCockpitIntentKey(session), NEXT_INTENT_EDITED, false);
+      return;
+    }
     const choice = answer && answer.ok === true && answer.goal_choice;
     if(!choice || choice.fact_id !== factId || typeof choice.text !== "string" ||
         !choice.text.trim() || !(nextNumber(choice.at) > 0)){
@@ -9246,9 +9260,9 @@ async function nextIntentLoadPromptChoices(session){
     const response = await nextFetchBounded('/api/project-context?project=' +
       encodeURIComponent(nextCockpitStableKey(group)) + '&session=' + encodeURIComponent(key) + '&prompts=1');
     const data = response && response.ok ? await response.json() : null;
-    nextIntentPromptLists.set(key,{pending:false,open:true,choices:Array.isArray(data?.prompt_choices) ?
+    nextIntentPromptLists.set(key,{pending:false,open:nextIntentPromptLists.get(key)?.open === true,choices:Array.isArray(data?.prompt_choices) ?
       data.prompt_choices.map(choice => ({factId:choice.fact_id,text:choice.text,at:choice.at,cut:choice.cut === true})) : []});
-  }catch(_error){ nextIntentPromptLists.set(key,{pending:false,open:true,choices:[]}); }
+  }catch(_error){ nextIntentPromptLists.set(key,{pending:false,open:nextIntentPromptLists.get(key)?.open === true,choices:[]}); }
   /* Replacing the select closes the browser's open native menu. Fill only
      its options; ordinary polling already waits while this select holds focus. */
   const focus = `${nextCockpitHeldKey(session,"goal")}:prompt`;
