@@ -100,6 +100,9 @@ class RuntimeState:
     claude_subagent_cache: dict[str, tuple[tuple[float, ...], list[str]]] = field(
         default_factory=dict
     )
+    delegated_work_cache: dict[
+        str, tuple[tuple[tuple[str, int, int], ...], list[dict[str, Any]], bool, float]
+    ] = field(default_factory=dict)
     cwd_cache: dict[str, str] = field(default_factory=dict)
     pi_scan: dict[str, dict[str, Any]] = field(default_factory=dict)
     turn_scan: dict[str, Any] = field(default_factory=dict)

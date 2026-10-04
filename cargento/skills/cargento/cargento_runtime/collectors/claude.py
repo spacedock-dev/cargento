@@ -6,7 +6,7 @@ import json
 import os
 from typing import TYPE_CHECKING, Any
 
-from cargento_runtime import claude_data, notifications, records
+from cargento_runtime import claude_data, notifications, project_context, records
 from cargento_runtime import io as runtime_io
 from cargento_runtime import quota as runtime_quota
 from cargento_runtime import sessions as runtime_sessions
@@ -1035,6 +1035,14 @@ def collect(
                 "state_detail": state_detail,
                 "blocked_since": blocked_since,
                 "turn_end_at": turn_end_at,
+                **project_context.delegated_work_published(
+                    config,
+                    transcript if active else None,
+                    own_activity=(info or {}).get("last_conversation_ts") or 0,
+                    now=now,
+                    state=state,
+                    child_paths=[path for path, _mtime in agent_files],
+                ),
                 "active": active,
                 "last_activity": last_activity,
                 "work_activity": work_activity,

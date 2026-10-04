@@ -38,8 +38,8 @@ if TYPE_CHECKING:
 
 HARNESSES = frozenset({"claude"})
 # The calls whose arrival can move the level: a write, or a shell command. A
-# read, a search or a subagent launch never changes the tally.
-_MOVING_TOOLS = frozenset({*pc._WRITE_TOOLS, "Bash"})  # noqa: SLF001
+# read or a search never changes the tally; delegated launches now block its floor.
+_MOVING_TOOLS = frozenset({*pc._WRITE_TOOLS, "Bash", "Agent", "Task", "Monitor"})  # noqa: SLF001
 # How many of the latest moving calls the level is asked after. Each ask
 # re-derives the entries from the whole tally, so an unbounded replay grew
 # about cubically: 24 s for a 3,000-call transcript of targeted checks, and
@@ -238,6 +238,8 @@ def _checkpoint(tally: pc._ToolReportTally) -> pc._ToolReportTally:
         for identity, history in tally.runs.items()
     }
     saved.writes = {path: dict(write) for path, write in tally.writes.items()}
+    saved.launches = {key: dict(row) for key, row in tally.launches.items()}
+    saved.completed_launch_calls = dict(tally.completed_launch_calls)
     saved.write_calls = list(tally.write_calls)
     saved.shell_seq = tally.shell_seq
     saved.changing_seqs = list(tally.changing_seqs)
@@ -459,6 +461,7 @@ def _new_tally(
     scan: pc._CheckScan, results: dict[str, Any], *, force_incomplete: bool
 ) -> pc._ToolReportTally:
     tally = pc._ToolReportTally(results)  # noqa: SLF001
+    tally.completed_launch_calls = pc._completed_background_calls(scan.parent)  # noqa: SLF001
     tally.reads_from = scan.horizon
     tally.named_unread = scan.named_unread
     tally.parent_failed = scan.parent_failed or force_incomplete
@@ -508,6 +511,7 @@ def _replay(
         scan.horizon,
         scan.named_unread,
         scan.parent_failed or force_incomplete,
+        tuple(sorted(pc._completed_background_calls(scan.parent).items())),  # noqa: SLF001
         scan.orphan_unread,
         len(scan.children),
     )

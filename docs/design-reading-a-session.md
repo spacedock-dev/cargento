@@ -3881,3 +3881,33 @@ was settled on the withholding side.
   its meter and drops its detail line, as the design's analyzing state does. Over an unsaved edit to
   saved words the nudge goes too, because Analyze is refused there; the level and the pill stay,
   since they are about the saved words.
+
+
+### Amended 2026-10-04 (owner): delegated launches
+
+Owner, approving the Analyze drift plan, 2026-10-04. Four reviewed Claude Code
+sessions contained five direct questions about delegated work. In two, the work
+had stopped after a true running claim. A background launch followed by thirty
+quiet minutes occurred at five stops, including both stalls and two development
+servers deliberately left running. The parser cannot distinguish those uses.
+
+Item 6 now admits a timed `background_launch` tool-report fact. It carries the
+launch count, tool kind, and completion and activity times when recorded; it
+carries no command, task description or output. Explicit background Bash calls,
+structural shell background lists, and background Agent, Task and Monitor calls
+qualify. `nohup` without a background operator remains a foreground call.
+
+A matching task-notification with a terminal status or an agent result envelope,
+or a terminal TaskOutput status, pairs a single launch with completion. One
+notification cannot retire several shell jobs launched by the same call. Notifications remain harness records, never the person's intent.
+Their text is not published or stored. Launch facts stay out of the Analyze
+ledger entirely: its existing non-check report formatter calls a row a file
+write, which cannot describe a launch. Launches, completions and attributed
+child activity are counts and times, never evidence that a process is running.
+Independent command-line sessions have no proven parent link and cannot be
+joined merely by repository or time. The page must disclose that visibility gap.
+
+The background-run blocker in [DEC-26](#dec-26-four-drift-levels-and-a-live-estimate-after-every-turn)
+now reads unpaired launches rather than the cumulative launch count. This does
+not raise a drift level. The thirty-minute quiet observation belongs to Attention,
+with the same distinction between a server and a job left explicit.

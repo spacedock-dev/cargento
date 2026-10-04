@@ -377,11 +377,9 @@ def _live_floor_blockers(evidence: Evidence, passes: list[Mapping[str, Any]]) ->
         blockers.append(REASON_NO_PASSING_CHECK)
     if _count(scan, "not_recorded"):
         blockers.append(REASON_CHECK_NOT_RECORDED)
-    if _count(scan, "background"):
-        # A check only ever launched in the background is neither listed nor
-        # counted (the check record's item 1), so the launch count is the one sign of it.
-        # A background server launch withholds the floor too; that is the
-        # cautious side of a count that cannot tell the two apart.
+    if _count(scan, "background_unpaired" if "background_unpaired" in scan else "background"):
+        # Old saved scans lack completion pairing and retain their conservative floor.
+        # [DEC-26](docs/design-reading-a-session.md#amended-2026-10-04-owner-delegated-launches)
         blockers.append(REASON_BACKGROUND_RUN)
     if passed > len(passes) or any(_at(f) is None for f in passes):
         blockers.append(REASON_UNLISTED)
