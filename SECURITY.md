@@ -1122,6 +1122,13 @@ dropped the point of a measured correction
 A goal adopted from one of those messages is sent as that message's whole field too, from the same
 half, in place of the goal box's 240 characters; the goal stored and shown stays the excerpt
 ([the amendment](docs/design-reading-a-session.md#amended-2026-10-04-owner-an-adopted-goal-is-read-whole)).
+The owner, approving the Analyze drift plan, amended the source lookup on 2026-10-04. A reader's
+press can find that adopted source outside the recent transcript tail: a forward scan reads at
+most the first 32 MiB and retains at most 4,096 user-message facts. Only the adopted source can
+replace the Goal; the other facts do not enter the reading's evidence ledger. The runtime caches
+the redacted, 1,000-character fields in memory for at most eight transcripts, keyed by path,
+harness, session, size and modification time. It writes and publishes none of that cache. The
+lookup does not run for a typed goal or an unasked reading.
 The field holding the whole message (`reader_words`) is held in memory for the reading and is
 neither stored nor published: the history stores' field allowlists do not name it, and
 `/api/project-context` drops it (`project_context.for_page`), so the page still shows the first

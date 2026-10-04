@@ -1654,12 +1654,15 @@ in one session cut off the instruction that mattered and in another kept only pl
 - If the prompt could not be found in the record read (no message of the reader's at its time,
   two within a millisecond that the goal's words do not tell apart, or one with no words left), or
   its words have no room, the reading reads the clip and the cutoff sentence says which.
-- For a long session that fallback is the common case for an adopted first prompt: the board reads
-  the transcript's tail, and the first prompt is published from its head, so the source message is
-  often not among the facts a reading reads. Reading its words from the head at the press was not
-  built: the reading producer is handed facts, not a transcript, and adding a second transcript
-  read to the press is a larger change than this one. The latest prompt and a chosen one are in the
-  tail by construction.
+- The owner, approving the Analyze drift plan, amended this on 2026-10-04. The tail lookup
+  fell back to the goal clip in all 123 adopted readings in the replay. At a press, a separate
+  forward lookup now finds the source in the transcript's first 32 MiB, retaining at most 4,096
+  user-message facts. It uses the same author, source-time and ambiguity checks as the tail lookup.
+  Its capped, redacted words stay in memory, cached for at most eight transcripts by path,
+  harness, session, size and modification time. Neither the cache nor its facts enter a store or
+  a page response. They supply only the adopted Goal, leaving the evidence ledger unchanged.
+  A model-free replay found the adopted source at all 99 cuts, with no fallback. A source outside
+  these bounds still falls back with the cutoff note above.
 - The goal box tells the reader: where an adopted prompt was clipped, "Shown excerpt only." under the
   box is now "Excerpt. Analyze reads up to 1,000 characters.", in the draft's marks and in the saved
   goal's source line alike, true past 1,000 characters and on the fallback alike. Short, because
