@@ -53,7 +53,7 @@ python3 scripts/drift_replay.py --reconcile
 git add docs/drift-replay/marks-digest.json && git commit -s
 python3 scripts/drift_replay.py --live
 python3 scripts/drift_replay.py --read --dry-run
-python3 scripts/drift_replay.py --read         # spends: capped at 240 calls
+python3 scripts/drift_replay.py --read         # spends: capped at 440 calls in all
 python3 scripts/drift_replay.py --score
 ```
 
