@@ -39,6 +39,8 @@ import os
 import random
 import re
 import secrets
+import shutil
+import subprocess
 import sys
 from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, field
@@ -976,6 +978,26 @@ def _steer(
         p["entry"] for p in composed.get("parts") or () if isinstance(p, dict) and "entry" in p
     ]
     return {"offered": bool(composed.get("ok")), "cites": entries, "reason": composed.get("reason")}
+
+
+def _page_states(payloads: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """The shipped page's resolved criteria, answer and None-or-low guard, without a browser."""
+    _runtime()
+    from cargento_runtime.web import page  # noqa: PLC0415
+
+    node = shutil.which("node")
+    if node is None:
+        raise RuntimeError("Page replay requires node; no page result was guessed.")
+    result = subprocess.run(
+        [node, os.path.join(_ROOT, "scripts", "drift_page.js")],
+        input=json.dumps({"script": page.load_script(), "payloads": payloads}),
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        timeout=30,
+        check=True,
+    )
+    return list(json.loads(result.stdout))
 
 
 def live(*, home: str, source: str | None = None, say: Callable[[str], Any] = print) -> int:
