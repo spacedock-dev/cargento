@@ -484,7 +484,8 @@ records can show (merged, pushed, deployed) is not meant to read "not shown". "W
 record read being the board's recent tail, and never where some of the session's checks, passes
 or file writes went unread), "is shown at #m" or "Can't tell", and is not
 drawn when there was no claim. A check that failed before the claim does not contradict it once
-the agent ran the same tool again, at least as widely and without failing, before claiming. A
+the agent ran the same tool again before claiming, with no failure in that run or an earlier one of it,
+naming nothing after the tool but flags or `.`; the working directory is not recorded. A
 contradicted or unshown claim reads Medium, is never counted as a departure from your intent, is
 not held back by an unsettled later direction, and adds one line to Steer back: `You said "<its
 first sentence>" at 14:02 (#12 in Cargento); the record does not show it.`, or, contradicted,

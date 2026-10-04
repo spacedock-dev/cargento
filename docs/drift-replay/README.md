@@ -217,11 +217,12 @@ its own case. What was built instead:
   in [the design record](../design-reading-a-session.md#amended-2026-10-04-no-recorded-result-is-listed-last)).
 - A claim is not "not shown by the record" when the session holds a pass or a write inside the
   reading's window that the prompt did not carry. A failure does not contradict a claim when, after
-  it and before the claim, the agent ran the same tool again without a failure and at least as
-  widely, for example the whole suite or a folder holding the failed test; a later run that also
-  failed, or ran a narrower or different target, leaves the contradiction standing
+  it and before the claim, the agent ran the same tool again, the run did not fail and had no
+  earlier failure, and it named nothing after the tool but flags or `.`. A run naming any target,
+  or a flag's value, leaves the contradiction standing. The working directory is not recorded, so
+  the same command in two folders reads as one run
   ([DEC-17](../design-reading-a-session.md#amended-2026-10-04-owner-what-the-agent-claims-is-its-own-constraint)).
-  On the second run's 7 claims departures this withdraws 2, one of them on a no-drift cut.
+  On the second run's 7 claims departures this withdraws none.
 - The scorer judges each departed criterion on its own cites, and a claims departure leaves the
   claim itself out before asking whether everything left is your own words. On the second run's
   readings this turns one judged catch, on the current arm, into an echo.

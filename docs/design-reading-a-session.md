@@ -536,18 +536,19 @@ Its results, on this constraint only:
   contradicts it, so rule 3 holds: a departure names its evidence. The contradiction comes at or
   after the claim: a later message stating otherwise, an admission, or a check, whose fact is its
   latest run and so contradicts whenever it ran. Amended later on 2026-10-04 (owner-delegated,
-  through the review of the second drift replay run, and narrowed on its own review the same day):
-  a check that failed before the claim does not contradict it when the prompt carried a later run
-  of the same tool, after the failure and at or before the claim, that did not fail and covers what
-  failed. It covers it when it names no target, runs the whole suite (`.` or `discover`), or names
-  only targets that are a path or dotted-name prefix of the failed run's, so `pytest tests/` covers
-  `pytest tests/a.py` and `pytest tests/a.py::test_x` does not cover `pytest`. A listed failure is
-  its own check's latest run, so the agent's later runs are other checks of the same tool, usually
-  with no recorded result. The review found cited failures 32 to 967 minutes older than the claim
-  with the same tool run since. Measured on that run's 7 claims departures, the narrowed rule still
-  withdraws 2, a failure 74 minutes old on a no-drift cut and one 967 minutes old on a cut left
-  unmarked, each followed by a covering run with no recorded result; the other 5 rest on a later
-  message or on a failure at the claim, and stand. The tool is read from the check's own line,
+  through the review of the second drift replay run, and narrowed twice on its own review the same
+  day): a check that failed before the claim does not contradict it when the prompt carried a later
+  run of the same tool, after the failure and at or before the claim, whose result is not a
+  failure, which carries no earlier failure of its own, and which names nothing after the tool but
+  flags or exactly `.` or `./`. Any other word, a flag's value such as `-k expr` or `-s dir`
+  included, keeps the failure standing, so a narrower, wider or different target never withdraws
+  it: `pytest tests`, `discover -s tests` and `--deselect` all leave it in place. One known limit:
+  the fact does not carry the working directory, so `npm test` run in `web` and in `api` reads as
+  the same run. A listed failure is its own check's latest run, so the agent's later runs are other
+  checks of the same tool, usually with no recorded result. The review found cited failures 32 to
+  967 minutes older than the claim with the same tool run since. Measured on that run's 7 claims
+  departures, this rule withdraws none: the two the first version withdrew were followed only by
+  runs that named a target. The tool is read from the check's own line,
   conservatively: a wrapper such as `uv run`, `npx`, `poetry run`, `bundle exec`, `env`, `time` or
   `rtk` and `python -m X` are the command after them, a script run by python, node, bash, sh or zsh
   is its file name, a shell's `-c` names no tool, and `npm run lint` is not `npm test`. Such a

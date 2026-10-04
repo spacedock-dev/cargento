@@ -18,10 +18,10 @@ import shlex
 import tempfile
 import unittest
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 from unittest import mock
 
-from cargento_runtime import levels, observer, project_context, semantic_history
+from cargento_runtime import levels, observer, project_context, reading, semantic_history
 from cargento_runtime.config import build_runtime_config
 from cargento_runtime.state import build_runtime_state
 
@@ -998,12 +998,43 @@ class WhichFormsAreStripped(ClaudeChecksTestCase):
 
 
 class WhichOrderTheEntriesAreKeptIn(ClaudeChecksTestCase):
-    def left_out(self, events: list[dict[str, Any]]) -> list[tuple[str, float]]:
-        """The press's passes and writes whose record the listed events do not hold."""
+    def left_out(self, events: list[dict[str, Any]]) -> tuple[float, ...]:
+        """What the reading counts as not carried, when the prompt carried every listed event."""
         self.session.save(self.path)
         press = project_context.claude_check_press(self.config, str(self.path))
-        listed = {e["record_id"] for e in events}
-        return [(rid, at) for rid, at in press.passes_and_writes if rid not in listed]
+        facts = [
+            {"fact_id": f"f{i}", "summary": e["title"], "branch": {"record_id": e["record_id"]}}
+            for i, e in enumerate(events)
+        ]
+        carried = cast("list[reading.LedgerEntry]", [{"id": f["fact_id"]} for f in facts])
+        output = reading.ToolOutput(
+            destination="d", label="l", passes_and_writes=press.passes_and_writes
+        )
+        return reading._left_out(output, facts, carried, 0.0)
+
+    def test_a_sibling_pass_in_a_listed_call_is_not_read_as_carried(self) -> None:
+        # Verification 2: one call, two passing checks, one record id; one is listed.
+        self.session.bash("ruff check . && mypy", "ok", is_error=False)
+        for n in range(11):
+            self.session.bash(f"pytest tests/f{n}.py", "1 failed", is_error=True)
+        events, scan = self.read()
+        self.assertEqual(1, scan["more"])
+        self.assertEqual(1, len(self.left_out(events)))
+
+    def test_a_shell_calls_write_is_not_read_as_carried_with_its_check(self) -> None:
+        # The check is listed and its own redirect's write, under the same record id, is not.
+        self.session.bash("pytest > out.txt", "", is_error=False)
+        for n in range(11):
+            self.session.bash(f"pytest tests/f{n}.py", "1 failed", is_error=True)
+        events, scan = self.read()
+        self.assertEqual(1, scan["more"])
+        listed = [e for e in events if e["subject"] == "check" and e.get("result") == "passed"]
+        self.assertEqual(1, len(listed))
+        self.session.save(self.path)
+        press = project_context.claude_check_press(self.config, str(self.path))
+        write = [p for p in press.passes_and_writes if p[0] == listed[0]["record_id"]]
+        self.assertEqual(2, len(write))
+        self.assertEqual(1, len(self.left_out(events)))
 
     def test_item_four_keeps_failures_then_passes_then_unrecorded(self) -> None:  # T5
         # DEC-23 item 4 as amended on 2026-10-04.
@@ -1035,7 +1066,7 @@ class WhichOrderTheEntriesAreKeptIn(ClaudeChecksTestCase):
         self.assertEqual(10, sum(1 for e in events if e.get("result") == "not-recorded"))
         self.assertEqual(4, scan["more"])
         # Nothing the press counts as left out: the cap only dropped runs with no result.
-        self.assertEqual([], self.left_out(events))
+        self.assertEqual((), self.left_out(events))
 
     def test_a_run_with_no_result_after_a_failure_is_kept_with_the_failures(self) -> None:
         # Review C1: its only recorded result is the failure, so writes never push it out.
@@ -1060,7 +1091,7 @@ class WhichOrderTheEntriesAreKeptIn(ClaudeChecksTestCase):
         # The oldest pass and the write are past the cap; the unrecorded run is not counted.
         self.assertEqual(2, len(unlisted))
         listed = sorted(float(e.get("result_at") or e["at"]) for e in events)
-        self.assertTrue(all(at not in listed for _rid, at in unlisted))
+        self.assertTrue(all(at not in listed for at in unlisted))
 
 
 class WhatAReaderIsNeverShownOfACommandLineEither(ClaudeChecksTestCase):

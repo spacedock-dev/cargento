@@ -393,10 +393,10 @@ class ToolOutput:
     # False when a destination was named and the grant was gone by the time
     # the reading ran, so the cutoff says which of the two kept checks back.
     allowed: bool = True
-    # (record id, time) of each latest passing check and written path, read at
-    # the press and never sent or stored; `produce` keeps those its prompt did
-    # not carry.
-    passes_and_writes: tuple[tuple[str, float], ...] = ()
+    # (record id, title, time) of each latest passing check and written path,
+    # read at the press and never sent or stored; `produce` keeps those its
+    # prompt did not carry.
+    passes_and_writes: tuple[tuple[str, str, float], ...] = ()
 
 
 SCOPE_MID_FLIGHT = "mid-flight"
@@ -2509,22 +2509,24 @@ def _claims_compared(
 
 
 def _superseded(entry: LedgerEntry, claimed: float, carried: Sequence[LedgerEntry]) -> bool:
-    """A failure from before the claim that a later run of the same tool, as
-    wide as it, followed without failing.
+    """A failure from before the claim that a later whole-suite run of the same tool followed.
 
     A listed failure is its own identity's latest run, so "a later run of the
     same check" never exists; the agent's later runs are other identities of
     the same tool, often with no recorded result. A later run counts only when
-    it did not fail, falls after the failure's result and at or before the
-    claim, so a failure at or after the claim always stands, and covers what
-    failed (`_covers`): a narrower or different target says nothing about it.
-    The ruling:
+    it falls after the failure's result and at or before the claim, so a
+    failure at or after the claim always stands; did not fail, and carries no
+    earlier failure of its own; and names nothing after the tool but flags or
+    `.` (`_whole_suite`), so a narrower target, a flag's value (`-k expr`,
+    `-s dir`) or a different target never supersedes. The fact carries no
+    working directory, so the same command run in two directories reads as
+    one. The ruling:
     [DEC-17](docs/design-reading-a-session.md#amended-2026-10-04-owner-what-the-agent-claims-is-its-own-constraint)
     """
     if entry.get("subject") != CHECK_SUBJECT or entry["type"] != TOOL_REPORT_TYPE:
         return False
     failed_at = evidence_at(entry) or entry["at"]
-    family, targets = check_scope(_check_text(entry))
+    family = check_family(_check_text(entry))
     if not family:
         return False
     for other in carried:
@@ -2533,38 +2535,28 @@ def _superseded(entry: LedgerEntry, claimed: float, carried: Sequence[LedgerEntr
             or other.get("subject") != CHECK_SUBJECT
             or other["type"] != TOOL_REPORT_TYPE
             or other.get("result") == RESULT_FAILED
+            or other.get("earlier_failed") is True
             or not failed_at < other["at"] <= claimed
         ):
             continue
         later_family, later_targets = check_scope(_check_text(other))
-        if later_family == family and _covers(later_targets, targets):
+        if later_family == family and _whole_suite(later_targets):
             return True
     return False
 
 
-# Whole-suite arguments: what a later run names when it runs everything.
-_WHOLE_SUITE = frozenset({".", "./", "discover"})
+# The only words besides flags a whole-suite run may name after its tool.
+_WHOLE_SUITE = frozenset({".", "./"})
 
 
-def _covers(later: Sequence[str], failed: Sequence[str]) -> bool:
-    """Whether a later run's targets include everything the failed run ran.
+def _whole_suite(targets: Sequence[str]) -> bool:
+    """Whether a run named nothing after its tool but flags and `.`.
 
-    No target, or a whole-suite form (`.`, `discover`), runs everything. Else
-    each target must be a path or dotted-name prefix of one of the failed
-    run's: `tests` covers `tests/a.py` and `tests.a` covers `tests.a.B`, and
-    `tests/a.py` covers `tests/a.py::test_x`, never the other way round.
+    Deliberately minimal: no path, module or flag value is read as covering
+    another, because a narrower or different target cannot show the failed
+    one now passes (review, 2026-10-04).
     """
-    if not later or any(target in _WHOLE_SUITE for target in later):
-        return True
-    return all(any(_prefix_of(target, one) for one in failed) for target in later)
-
-
-def _prefix_of(target: str, failed: str) -> bool:
-    target, failed = target.removeprefix("./").rstrip("/"), failed.removeprefix("./")
-    # A dot separates names only in a dotted name: `tests/a` does not cover `tests/a.py`.
-    dotted = "/" not in target and "/" not in failed
-    seps = ("/", "::", ".") if dotted else ("/", "::")
-    return failed == target or any(failed.startswith(target + sep) for sep in seps)
+    return all(target in _WHOLE_SUITE for target in targets)
 
 
 def _check_text(entry: LedgerEntry) -> str:
@@ -3269,23 +3261,24 @@ def _left_out(
 ) -> tuple[float, ...]:
     """When each pass or write the press read, and the prompt did not carry, arrived.
 
-    Matched by record id against the facts the prompt carried, so a pass that
-    arrived after the facts were published, or one the listing's cap or the
-    byte bound left out, counts, and one the prompt carried never does. Inside
-    the window only; one with no time (0) is counted, because it cannot be
-    shown to be outside it.
+    Matched on (record id, title) against the facts the prompt carried, since
+    one call can hold several checks and writes under one record id: a pass
+    that arrived after the facts were published, or one the listing's cap or
+    the byte bound left out, counts, and one the prompt carried never does.
+    Inside the window only; one with no time (0) is counted, because it cannot
+    be shown to be outside it.
     """
     ids = {entry["id"] for entry in carried}
-    shown: set[str] = set()
+    shown: set[tuple[str, str]] = set()
     for fact in facts:
         branch = fact.get("branch")
         fact_id = records.safe_text(fact.get("fact_id"), 160).strip()
         if fact_id in ids and isinstance(branch, dict):
-            shown.add(str(branch.get("record_id") or ""))
+            shown.add((str(branch.get("record_id") or ""), str(fact.get("summary") or "")))
     return tuple(
         at
-        for record_id, at in tool_output.passes_and_writes
-        if record_id not in shown and (at <= 0 or at >= since)
+        for record_id, title, at in tool_output.passes_and_writes
+        if (record_id, title) not in shown and (at <= 0 or at >= since)
     )
 
 
