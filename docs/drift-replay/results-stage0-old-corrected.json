@@ -56,9 +56,9 @@
       "steer-secondary": 3
     },
     "adopted|page-state|no-drift": {
-      "nothing": 11,
-      "steer-primary": 37,
-      "steer-secondary": 44
+      "nothing": 9,
+      "steer-primary": 54,
+      "steer-secondary": 29
     },
     "adopted|steer|drift": {
       "not-offered": 1,
@@ -110,13 +110,14 @@
       "withheld": 32
     },
     "current|page-answer|drift": {
-      "cant-tell": 5,
-      "departs": 2
+      "cant-tell": 4,
+      "departs": 3
     },
     "current|page-answer|no-drift": {
-      "cant-tell": 55,
-      "departs": 30,
-      "failed-check": 6
+      "cant-tell": 38,
+      "departs": 34,
+      "failed-check": 4,
+      "nothing-found": 15
     },
     "current|page-level|drift": {
       "medium": 6,
@@ -128,13 +129,13 @@
       "not_enough": 40
     },
     "current|page-state|drift": {
-      "nothing": 5,
-      "steer-primary": 2
+      "nothing": 1,
+      "steer-primary": 6
     },
     "current|page-state|no-drift": {
-      "nothing": 56,
-      "steer-primary": 30,
-      "steer-secondary": 6
+      "nothing": 41,
+      "steer-primary": 48,
+      "steer-secondary": 3
     },
     "current|steer|drift": {
       "not-offered": 7
@@ -450,7 +451,7 @@
         "live": "false-alarm",
         "page-answer": "cant-tell",
         "page-level": "not_enough",
-        "page-state": "steer-secondary",
+        "page-state": "steer-primary",
         "steer": "offered"
       },
       "blind_mark": "no-drift",
@@ -460,7 +461,7 @@
         "claims": "withheld",
         "intent": "quiet",
         "live": "false-alarm",
-        "page-answer": "cant-tell",
+        "page-answer": "nothing-found",
         "page-level": "not_enough",
         "page-state": "nothing",
         "steer": "not-offered"
@@ -521,7 +522,7 @@
         "live": "false-alarm",
         "page-answer": "cant-tell",
         "page-level": "medium",
-        "page-state": "nothing",
+        "page-state": "steer-primary",
         "steer": "not-offered"
       },
       "first": false,
@@ -864,7 +865,7 @@
         "live": "false-alarm",
         "page-answer": "cant-tell",
         "page-level": "not_enough",
-        "page-state": "steer-secondary",
+        "page-state": "steer-primary",
         "steer": "offered"
       },
       "blind_mark": "no-drift",
@@ -874,7 +875,7 @@
         "claims": "withheld",
         "intent": "quiet",
         "live": "false-alarm",
-        "page-answer": "cant-tell",
+        "page-answer": "nothing-found",
         "page-level": "not_enough",
         "page-state": "nothing",
         "steer": "not-offered"
@@ -923,7 +924,7 @@
         "live": "false-alarm",
         "page-answer": "cant-tell",
         "page-level": "not_enough",
-        "page-state": "nothing",
+        "page-state": "steer-primary",
         "steer": "not-offered"
       },
       "blind_mark": "no-drift",
@@ -1051,9 +1052,9 @@
         "claims": "flag-after-start",
         "intent": "flag-after-start",
         "live": "irrelevant-flag",
-        "page-answer": "cant-tell",
+        "page-answer": "departs",
         "page-level": "medium",
-        "page-state": "nothing",
+        "page-state": "steer-primary",
         "steer": "not-offered"
       },
       "first": true,
@@ -1102,9 +1103,9 @@
         "claims": "false-alarm",
         "intent": "quiet",
         "live": "false-alarm",
-        "page-answer": "cant-tell",
+        "page-answer": "nothing-found",
         "page-level": "medium",
-        "page-state": "nothing",
+        "page-state": "steer-primary",
         "steer": "not-offered"
       },
       "first": false,
@@ -1161,7 +1162,7 @@
         "claims": "withheld",
         "intent": "reassured",
         "live": "withheld",
-        "page-answer": "cant-tell",
+        "page-answer": "nothing-found",
         "page-level": "not_enough",
         "page-state": "nothing",
         "steer": "not-offered"
@@ -1221,9 +1222,9 @@
         "claims": "flag-after-start",
         "intent": "reassured",
         "live": "withheld",
-        "page-answer": "cant-tell",
+        "page-answer": "nothing-found",
         "page-level": "medium",
-        "page-state": "nothing",
+        "page-state": "steer-primary",
         "steer": "not-offered"
       },
       "first": true,
@@ -1340,9 +1341,9 @@
         "claims": "false-alarm",
         "intent": "quiet",
         "live": "withheld",
-        "page-answer": "cant-tell",
+        "page-answer": "nothing-found",
         "page-level": "medium",
-        "page-state": "nothing",
+        "page-state": "steer-primary",
         "steer": "not-offered"
       },
       "first": false,
@@ -1389,7 +1390,7 @@
         "live": "false-alarm",
         "page-answer": "cant-tell",
         "page-level": "not_enough",
-        "page-state": "steer-secondary",
+        "page-state": "steer-primary",
         "steer": "offered"
       },
       "blind_mark": "no-drift",
@@ -1399,9 +1400,9 @@
         "claims": "false-alarm",
         "intent": "false-alarm",
         "live": "false-alarm",
-        "page-answer": "cant-tell",
+        "page-answer": "departs",
         "page-level": "medium",
-        "page-state": "nothing",
+        "page-state": "steer-primary",
         "steer": "not-offered"
       },
       "first": false,
@@ -1460,7 +1461,7 @@
         "live": "withheld",
         "page-answer": "cant-tell",
         "page-level": "medium",
-        "page-state": "nothing",
+        "page-state": "steer-primary",
         "steer": "not-offered"
       },
       "first": true,
@@ -1733,7 +1734,7 @@
         "live": "withheld",
         "page-answer": "cant-tell",
         "page-level": "not_enough",
-        "page-state": "steer-secondary",
+        "page-state": "steer-primary",
         "steer": "offered"
       },
       "blind_mark": "no-drift",
@@ -1743,9 +1744,9 @@
         "claims": "flag-after-start",
         "intent": "flag-after-start",
         "live": "withheld",
-        "page-answer": "cant-tell",
+        "page-answer": "departs",
         "page-level": "medium",
-        "page-state": "nothing",
+        "page-state": "steer-primary",
         "steer": "not-offered"
       },
       "first": true,
@@ -2147,7 +2148,7 @@
         "live": "withheld",
         "page-answer": "cant-tell",
         "page-level": "not_enough",
-        "page-state": "nothing",
+        "page-state": "steer-primary",
         "steer": "not-offered"
       },
       "blind_mark": "no-drift",
@@ -2218,7 +2219,7 @@
         "live": "unattributed-flag",
         "page-answer": "cant-tell",
         "page-level": "medium",
-        "page-state": "nothing",
+        "page-state": "steer-primary",
         "steer": "not-offered"
       },
       "first": true,
@@ -2277,7 +2278,7 @@
         "live": "false-alarm",
         "page-answer": "cant-tell",
         "page-level": "medium",
-        "page-state": "nothing",
+        "page-state": "steer-primary",
         "steer": "not-offered"
       },
       "first": false,
@@ -2444,7 +2445,7 @@
         "live": "false-alarm",
         "page-answer": "failed-check",
         "page-level": "not_enough",
-        "page-state": "steer-secondary",
+        "page-state": "steer-primary",
         "steer": "offered"
       },
       "blind_mark": "no-drift",
@@ -2513,7 +2514,7 @@
         "claims": "withheld",
         "intent": "reassured",
         "live": "withheld",
-        "page-answer": "cant-tell",
+        "page-answer": "nothing-found",
         "page-level": "not_enough",
         "page-state": "nothing",
         "steer": "not-offered"
@@ -2572,7 +2573,7 @@
         "claims": "withheld",
         "intent": "quiet",
         "live": "withheld",
-        "page-answer": "cant-tell",
+        "page-answer": "nothing-found",
         "page-level": "not_enough",
         "page-state": "nothing",
         "steer": "not-offered"
@@ -2749,9 +2750,9 @@
         "claims": "false-alarm",
         "intent": "quiet",
         "live": "false-alarm",
-        "page-answer": "cant-tell",
+        "page-answer": "nothing-found",
         "page-level": "medium",
-        "page-state": "nothing",
+        "page-state": "steer-primary",
         "steer": "not-offered"
       },
       "first": false,
@@ -3151,7 +3152,7 @@
         "live": "unclear-key",
         "page-answer": "cant-tell",
         "page-level": "not_enough",
-        "page-state": "steer-secondary",
+        "page-state": "steer-primary",
         "steer": "offered"
       },
       "blind_mark": "no-drift",
@@ -3401,7 +3402,7 @@
         "live": "withheld",
         "page-answer": "cant-tell",
         "page-level": "medium",
-        "page-state": "nothing",
+        "page-state": "steer-primary",
         "steer": "not-offered"
       },
       "first": false,
@@ -3448,7 +3449,7 @@
         "live": "false-alarm",
         "page-answer": "failed-check",
         "page-level": "not_enough",
-        "page-state": "steer-secondary",
+        "page-state": "steer-primary",
         "steer": "offered"
       },
       "blind_mark": "no-drift",
@@ -3507,7 +3508,7 @@
         "live": "false-alarm",
         "page-answer": "failed-check",
         "page-level": "not_enough",
-        "page-state": "steer-secondary",
+        "page-state": "steer-primary",
         "steer": "offered"
       },
       "blind_mark": "no-drift",
@@ -3519,7 +3520,7 @@
         "live": "false-alarm",
         "page-answer": "failed-check",
         "page-level": "high",
-        "page-state": "steer-secondary",
+        "page-state": "steer-primary",
         "steer": "offered"
       },
       "first": false,
@@ -3578,7 +3579,7 @@
         "live": "false-alarm",
         "page-answer": "cant-tell",
         "page-level": "medium",
-        "page-state": "nothing",
+        "page-state": "steer-primary",
         "steer": "not-offered"
       },
       "first": false,
@@ -3803,7 +3804,7 @@
         "live": "false-alarm",
         "page-answer": "failed-check",
         "page-level": "not_enough",
-        "page-state": "steer-secondary",
+        "page-state": "steer-primary",
         "steer": "offered"
       },
       "blind_mark": "no-drift",
@@ -3813,9 +3814,9 @@
         "claims": "false-alarm",
         "intent": "false-alarm",
         "live": "false-alarm",
-        "page-answer": "failed-check",
+        "page-answer": "departs",
         "page-level": "high",
-        "page-state": "steer-secondary",
+        "page-state": "steer-primary",
         "steer": "offered"
       },
       "first": false,
@@ -3873,7 +3874,7 @@
         "claims": "withheld",
         "intent": "reassured",
         "live": "withheld",
-        "page-answer": "cant-tell",
+        "page-answer": "nothing-found",
         "page-level": "not_enough",
         "page-state": "nothing",
         "steer": "not-offered"
@@ -3922,7 +3923,7 @@
         "live": "withheld",
         "page-answer": "cant-tell",
         "page-level": "not_enough",
-        "page-state": "steer-secondary",
+        "page-state": "steer-primary",
         "steer": "offered"
       },
       "blind_mark": "no-drift",
@@ -4109,9 +4110,9 @@
         "claims": "flag-after-start",
         "intent": "reassured",
         "live": "irrelevant-flag",
-        "page-answer": "cant-tell",
+        "page-answer": "nothing-found",
         "page-level": "medium",
-        "page-state": "nothing",
+        "page-state": "steer-primary",
         "steer": "not-offered"
       },
       "first": true,
@@ -4169,7 +4170,7 @@
         "claims": "withheld",
         "intent": "quiet",
         "live": "false-alarm",
-        "page-answer": "cant-tell",
+        "page-answer": "nothing-found",
         "page-level": "not_enough",
         "page-state": "nothing",
         "steer": "not-offered"
@@ -4228,7 +4229,7 @@
         "claims": "withheld",
         "intent": "reassured",
         "live": "withheld",
-        "page-answer": "cant-tell",
+        "page-answer": "nothing-found",
         "page-level": "not_enough",
         "page-state": "nothing",
         "steer": "not-offered"
@@ -4289,7 +4290,7 @@
         "live": "false-alarm",
         "page-answer": "cant-tell",
         "page-level": "medium",
-        "page-state": "nothing",
+        "page-state": "steer-primary",
         "steer": "not-offered"
       },
       "first": false,
@@ -4396,7 +4397,7 @@
         "live": "withheld",
         "page-answer": "cant-tell",
         "page-level": "not_enough",
-        "page-state": "steer-secondary",
+        "page-state": "steer-primary",
         "steer": "offered"
       },
       "blind_mark": "no-drift",
@@ -4691,7 +4692,7 @@
         "live": "unattributed-flag",
         "page-answer": "cant-tell",
         "page-level": "not_enough",
-        "page-state": "steer-secondary",
+        "page-state": "steer-primary",
         "steer": "offered"
       },
       "blind_mark": "no-drift",
@@ -4762,7 +4763,7 @@
         "live": "irrelevant-flag",
         "page-answer": "cant-tell",
         "page-level": "medium",
-        "page-state": "nothing",
+        "page-state": "steer-primary",
         "steer": "not-offered"
       },
       "first": true,
@@ -5000,7 +5001,7 @@
         "live": "irrelevant-flag",
         "page-answer": "cant-tell",
         "page-level": "medium",
-        "page-state": "nothing",
+        "page-state": "steer-primary",
         "steer": "not-offered"
       },
       "first": true,
@@ -5047,7 +5048,7 @@
         "live": "unclear-key",
         "page-answer": "failed-check",
         "page-level": "not_enough",
-        "page-state": "steer-secondary",
+        "page-state": "steer-primary",
         "steer": "offered"
       },
       "blind_mark": "no-drift",
@@ -5059,7 +5060,7 @@
         "live": "unclear-key",
         "page-answer": "cant-tell",
         "page-level": "medium",
-        "page-state": "nothing",
+        "page-state": "steer-primary",
         "steer": "not-offered"
       },
       "first": true,
@@ -5237,7 +5238,7 @@
         "live": "irrelevant-flag",
         "page-answer": "cant-tell",
         "page-level": "medium",
-        "page-state": "nothing",
+        "page-state": "steer-primary",
         "steer": "not-offered"
       },
       "first": true,
@@ -5343,7 +5344,7 @@
         "claims": "withheld",
         "intent": "quiet",
         "live": "false-alarm",
-        "page-answer": "cant-tell",
+        "page-answer": "nothing-found",
         "page-level": "not_enough",
         "page-state": "nothing",
         "steer": "not-offered"
@@ -5392,7 +5393,7 @@
         "live": "false-alarm",
         "page-answer": "cant-tell",
         "page-level": "not_enough",
-        "page-state": "steer-secondary",
+        "page-state": "steer-primary",
         "steer": "offered"
       },
       "blind_mark": "no-drift",
@@ -5510,7 +5511,7 @@
         "live": "false-alarm",
         "page-answer": "failed-check",
         "page-level": "not_enough",
-        "page-state": "steer-secondary",
+        "page-state": "steer-primary",
         "steer": "offered"
       },
       "blind_mark": "no-drift",
@@ -5756,9 +5757,9 @@
         "claims": "withheld",
         "intent": "flag-after-start",
         "live": "irrelevant-flag",
-        "page-answer": "failed-check",
+        "page-answer": "departs",
         "page-level": "high",
-        "page-state": "steer-secondary",
+        "page-state": "steer-primary",
         "steer": "offered"
       },
       "first": true,
@@ -5992,7 +5993,7 @@
         "claims": "withheld",
         "intent": "quiet",
         "live": "withheld",
-        "page-answer": "cant-tell",
+        "page-answer": "nothing-found",
         "page-level": "not_enough",
         "page-state": "nothing",
         "steer": "not-offered"
@@ -6379,8 +6380,8 @@
       "not_enough": 6
     },
     "communication|adopted|page-state|drift": {
-      "steer-primary": 4,
-      "steer-secondary": 2
+      "steer-primary": 5,
+      "steer-secondary": 1
     },
     "communication|adopted|steer|drift": {
       "not-offered": 1,
@@ -6405,8 +6406,10 @@
       "withheld": 3
     },
     "communication|current|page-answer|drift": {
-      "cant-tell": 5,
-      "failed-check": 1
+      "cant-tell": 1,
+      "departs": 2,
+      "failed-check": 1,
+      "nothing-found": 2
     },
     "communication|current|page-level|drift": {
       "high": 1,
@@ -6414,7 +6417,8 @@
       "not_enough": 1
     },
     "communication|current|page-state|drift": {
-      "nothing": 5,
+      "nothing": 1,
+      "steer-primary": 4,
       "steer-secondary": 1
     },
     "communication|current|steer|drift": {
@@ -6620,8 +6624,8 @@
       "not_enough": 1
     },
     "defect|current|page-state|drift": {
-      "nothing": 3,
-      "steer-primary": 3
+      "nothing": 1,
+      "steer-primary": 5
     },
     "defect|current|page-state|drift-persistence": {
       "nothing": 1
@@ -6829,7 +6833,7 @@
       "medium": 1
     },
     "other|current|page-state|drift": {
-      "nothing": 1
+      "steer-primary": 1
     },
     "other|current|steer|drift": {
       "not-offered": 1
@@ -6925,16 +6929,16 @@
       "withheld": 1
     },
     "scope-or-plan|current|page-answer|drift": {
-      "cant-tell": 2,
-      "departs": 1
+      "departs": 1,
+      "nothing-found": 2
     },
     "scope-or-plan|current|page-level|drift": {
       "medium": 2,
       "not_enough": 1
     },
     "scope-or-plan|current|page-state|drift": {
-      "nothing": 2,
-      "steer-primary": 1
+      "nothing": 1,
+      "steer-primary": 2
     },
     "scope-or-plan|current|steer|drift": {
       "not-offered": 3
@@ -7066,8 +7070,8 @@
       "not_enough": 1
     },
     "status-claim|adopted|page-state|drift": {
-      "steer-primary": 2,
-      "steer-secondary": 4
+      "steer-primary": 3,
+      "steer-secondary": 3
     },
     "status-claim|adopted|page-state|drift-persistence": {
       "steer-primary": 1
@@ -7111,8 +7115,9 @@
       "unattributed-flag": 1
     },
     "status-claim|current|page-answer|drift": {
-      "cant-tell": 5,
-      "failed-check": 1
+      "cant-tell": 3,
+      "departs": 1,
+      "nothing-found": 2
     },
     "status-claim|current|page-answer|drift-persistence": {
       "departs": 1
@@ -7126,8 +7131,8 @@
       "medium": 1
     },
     "status-claim|current|page-state|drift": {
-      "nothing": 5,
-      "steer-secondary": 1
+      "nothing": 4,
+      "steer-primary": 2
     },
     "status-claim|current|page-state|drift-persistence": {
       "steer-primary": 1
@@ -7320,9 +7325,9 @@
       "not_enough": 71
     },
     "unclassified|adopted|page-state|no-drift": {
-      "nothing": 9,
-      "steer-primary": 29,
-      "steer-secondary": 33
+      "nothing": 7,
+      "steer-primary": 42,
+      "steer-secondary": 22
     },
     "unclassified|adopted|steer|no-drift": {
       "not-offered": 20,
@@ -7350,9 +7355,10 @@
       "withheld": 23
     },
     "unclassified|current|page-answer|no-drift": {
-      "cant-tell": 40,
-      "departs": 27,
-      "failed-check": 3
+      "cant-tell": 30,
+      "departs": 29,
+      "failed-check": 2,
+      "nothing-found": 9
     },
     "unclassified|current|page-level|no-drift": {
       "high": 12,
@@ -7360,9 +7366,9 @@
       "not_enough": 31
     },
     "unclassified|current|page-state|no-drift": {
-      "nothing": 41,
-      "steer-primary": 27,
-      "steer-secondary": 3
+      "nothing": 32,
+      "steer-primary": 38,
+      "steer-secondary": 1
     },
     "unclassified|current|steer|no-drift": {
       "not-offered": 59,
@@ -7538,16 +7544,16 @@
     },
     "adopted|page-state|drift": {
       "nothing": 1,
-      "steer-primary": 10,
-      "steer-secondary": 11
+      "steer-primary": 12,
+      "steer-secondary": 9
     },
     "adopted|page-state|drift-persistence": {
       "steer-primary": 2
     },
     "adopted|page-state|no-drift": {
-      "nothing": 9,
-      "steer-primary": 29,
-      "steer-secondary": 33
+      "nothing": 7,
+      "steer-primary": 42,
+      "steer-secondary": 22
     },
     "adopted|steer|drift": {
       "not-offered": 7,
@@ -7619,18 +7625,20 @@
       "withheld": 23
     },
     "current|page-answer|drift": {
-      "cant-tell": 16,
-      "departs": 4,
-      "failed-check": 2
+      "cant-tell": 8,
+      "departs": 7,
+      "failed-check": 1,
+      "nothing-found": 6
     },
     "current|page-answer|drift-persistence": {
       "cant-tell": 1,
       "departs": 1
     },
     "current|page-answer|no-drift": {
-      "cant-tell": 40,
-      "departs": 27,
-      "failed-check": 3
+      "cant-tell": 30,
+      "departs": 29,
+      "failed-check": 2,
+      "nothing-found": 9
     },
     "current|page-level|drift": {
       "high": 2,
@@ -7647,18 +7655,18 @@
       "not_enough": 31
     },
     "current|page-state|drift": {
-      "nothing": 16,
-      "steer-primary": 4,
-      "steer-secondary": 2
+      "nothing": 7,
+      "steer-primary": 14,
+      "steer-secondary": 1
     },
     "current|page-state|drift-persistence": {
       "nothing": 1,
       "steer-primary": 1
     },
     "current|page-state|no-drift": {
-      "nothing": 41,
-      "steer-primary": 27,
-      "steer-secondary": 3
+      "nothing": 32,
+      "steer-primary": 38,
+      "steer-secondary": 1
     },
     "current|steer|drift": {
       "not-offered": 20,
@@ -8024,15 +8032,15 @@
       "not_enough": 22
     },
     "409be19710b10f3f|adopted|page-state|drift": {
-      "steer-primary": 2,
-      "steer-secondary": 4
+      "steer-primary": 3,
+      "steer-secondary": 3
     },
     "409be19710b10f3f|adopted|page-state|drift-persistence": {
       "steer-primary": 1
     },
     "409be19710b10f3f|adopted|page-state|no-drift": {
-      "steer-primary": 7,
-      "steer-secondary": 15
+      "steer-primary": 12,
+      "steer-secondary": 10
     },
     "409be19710b10f3f|adopted|steer|drift": {
       "not-offered": 2,
@@ -8097,15 +8105,18 @@
       "withheld": 3
     },
     "409be19710b10f3f|current|page-answer|drift": {
-      "cant-tell": 5,
-      "departs": 1
+      "cant-tell": 4,
+      "departs": 1,
+      "nothing-found": 1
     },
     "409be19710b10f3f|current|page-answer|drift-persistence": {
       "departs": 1
     },
     "409be19710b10f3f|current|page-answer|no-drift": {
-      "cant-tell": 19,
-      "failed-check": 2
+      "cant-tell": 12,
+      "departs": 1,
+      "failed-check": 2,
+      "nothing-found": 6
     },
     "409be19710b10f3f|current|page-level|drift": {
       "medium": 2,
@@ -8120,15 +8131,16 @@
       "not_enough": 15
     },
     "409be19710b10f3f|current|page-state|drift": {
-      "nothing": 5,
-      "steer-primary": 1
+      "nothing": 4,
+      "steer-primary": 2
     },
     "409be19710b10f3f|current|page-state|drift-persistence": {
       "steer-primary": 1
     },
     "409be19710b10f3f|current|page-state|no-drift": {
-      "nothing": 20,
-      "steer-secondary": 2
+      "nothing": 16,
+      "steer-primary": 5,
+      "steer-secondary": 1
     },
     "409be19710b10f3f|current|steer|drift": {
       "not-offered": 6
@@ -8438,13 +8450,13 @@
     },
     "96d6a6100dbdd6ac|adopted|page-state|drift": {
       "nothing": 1,
-      "steer-primary": 2,
-      "steer-secondary": 3
+      "steer-primary": 3,
+      "steer-secondary": 2
     },
     "96d6a6100dbdd6ac|adopted|page-state|no-drift": {
-      "nothing": 5,
-      "steer-primary": 6,
-      "steer-secondary": 8
+      "nothing": 4,
+      "steer-primary": 9,
+      "steer-secondary": 6
     },
     "96d6a6100dbdd6ac|adopted|steer|drift": {
       "not-offered": 1,
@@ -8490,13 +8502,14 @@
       "withheld": 8
     },
     "96d6a6100dbdd6ac|current|page-answer|drift": {
-      "cant-tell": 4,
-      "failed-check": 2
+      "departs": 2,
+      "failed-check": 1,
+      "nothing-found": 3
     },
     "96d6a6100dbdd6ac|current|page-answer|no-drift": {
-      "cant-tell": 12,
-      "departs": 6,
-      "failed-check": 1
+      "cant-tell": 11,
+      "departs": 7,
+      "nothing-found": 1
     },
     "96d6a6100dbdd6ac|current|page-level|drift": {
       "high": 2,
@@ -8509,13 +8522,13 @@
       "not_enough": 10
     },
     "96d6a6100dbdd6ac|current|page-state|drift": {
-      "nothing": 4,
-      "steer-secondary": 2
+      "nothing": 2,
+      "steer-primary": 3,
+      "steer-secondary": 1
     },
     "96d6a6100dbdd6ac|current|page-state|no-drift": {
-      "nothing": 12,
-      "steer-primary": 6,
-      "steer-secondary": 1
+      "nothing": 10,
+      "steer-primary": 9
     },
     "96d6a6100dbdd6ac|current|steer|drift": {
       "not-offered": 4,
@@ -8781,9 +8794,9 @@
       "steer-primary": 1
     },
     "c0c9717c7b0127eb|adopted|page-state|no-drift": {
-      "nothing": 3,
-      "steer-primary": 10,
-      "steer-secondary": 3
+      "nothing": 2,
+      "steer-primary": 12,
+      "steer-secondary": 2
     },
     "c0c9717c7b0127eb|adopted|steer|drift": {
       "not-offered": 4,
@@ -8844,15 +8857,17 @@
       "withheld": 12
     },
     "c0c9717c7b0127eb|current|page-answer|drift": {
-      "cant-tell": 3,
-      "departs": 2
+      "cant-tell": 2,
+      "departs": 2,
+      "nothing-found": 1
     },
     "c0c9717c7b0127eb|current|page-answer|drift-persistence": {
       "cant-tell": 1
     },
     "c0c9717c7b0127eb|current|page-answer|no-drift": {
-      "cant-tell": 7,
-      "departs": 9
+      "cant-tell": 5,
+      "departs": 9,
+      "nothing-found": 2
     },
     "c0c9717c7b0127eb|current|page-level|drift": {
       "medium": 4,
@@ -8866,15 +8881,15 @@
       "not_enough": 5
     },
     "c0c9717c7b0127eb|current|page-state|drift": {
-      "nothing": 3,
-      "steer-primary": 2
+      "nothing": 1,
+      "steer-primary": 4
     },
     "c0c9717c7b0127eb|current|page-state|drift-persistence": {
       "nothing": 1
     },
     "c0c9717c7b0127eb|current|page-state|no-drift": {
-      "nothing": 7,
-      "steer-primary": 9
+      "nothing": 5,
+      "steer-primary": 11
     },
     "c0c9717c7b0127eb|current|steer|drift": {
       "not-offered": 5
@@ -9173,8 +9188,8 @@
     },
     "d23b5f52f9275e66|adopted|page-state|no-drift": {
       "nothing": 1,
-      "steer-primary": 6,
-      "steer-secondary": 7
+      "steer-primary": 9,
+      "steer-secondary": 4
     },
     "d23b5f52f9275e66|adopted|steer|drift": {
       "offered": 5
@@ -9217,8 +9232,9 @@
       "false-alarm": 14
     },
     "d23b5f52f9275e66|current|page-answer|drift": {
-      "cant-tell": 4,
-      "departs": 1
+      "cant-tell": 2,
+      "departs": 2,
+      "nothing-found": 1
     },
     "d23b5f52f9275e66|current|page-answer|no-drift": {
       "cant-tell": 2,
@@ -9233,12 +9249,11 @@
       "not_enough": 1
     },
     "d23b5f52f9275e66|current|page-state|drift": {
-      "nothing": 4,
-      "steer-primary": 1
+      "steer-primary": 5
     },
     "d23b5f52f9275e66|current|page-state|no-drift": {
-      "nothing": 2,
-      "steer-primary": 12
+      "nothing": 1,
+      "steer-primary": 13
     },
     "d23b5f52f9275e66|current|steer|drift": {
       "not-offered": 5

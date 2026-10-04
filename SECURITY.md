@@ -1730,7 +1730,9 @@ It never reads a fact's summary, a command, a check name, tool output, a reading
 message's text, so none of them can reach the correction, with one exception since 2026-10-04: for
 a claim of the agent's that a stored reading found the record contradicts or does not show, it
 quotes that one agent message's published title, its first sentence of at most 112 characters,
-which the activity list already shows, and never the message's words
+which the activity list already shows, and never the message's words. The owner amendment of
+2026-10-04 omits titles of two words or fewer and bare URLs; the correction uses a generic
+evidence request in their place
 ([the amendment](docs/design-reading-a-session.md#amended-2026-10-04-owner-what-the-agent-claims-is-its-own-constraint)).
 A reader who copies such a correction and edits it before sending it pastes the quoted claim back
 into the session; edited past recognition, it arrives as the reader's own words, as any edited
