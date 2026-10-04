@@ -833,6 +833,7 @@ class LedgerEntry(TypedDict):
     # An agent message whole, sent in place of its summary only inside
     # `AGENT_WORDS_SHARE_DIVISOR`'s share. Absent on every other row.
     agent_words: NotRequired[str]
+    agent_excerpt: NotRequired[str]
     # Whether this entry demonstrates work on its session's harness, stamped by
     # `build_ledger` from `WORK_EVIDENCE_BY_HARNESS`.
     work: NotRequired[bool]
@@ -1484,6 +1485,9 @@ def _add_agent_words(row: LedgerEntry, fact: Mapping[str, Any]) -> None:
     ).strip()
     if words:
         row["agent_words"] = json.dumps(words, ensure_ascii=False)
+        total = fact.get("agent_words_total")
+        if type(total) is int and len(words) < total < 2**53:
+            row["agent_excerpt"] = f"first {len(words):,} of {total:,} characters"
 
 
 def _add_report_fields(
@@ -2008,7 +2012,8 @@ def _row_body(row: LedgerEntry) -> str:
     if row.get("words"):
         return row["words"]
     if row.get("agent_words"):
-        return f"quoted, untrusted: {row['agent_words']}"
+        excerpt = f" ({row['agent_excerpt']})" if row.get("agent_excerpt") else ""
+        return f"quoted, untrusted{excerpt}: {row['agent_words']}"
     return row["summary"]
 
 
@@ -2122,6 +2127,16 @@ def _read_whole(
                 left -= size
                 room -= grows
                 whole.add(id(row))
+    # The reader's half has already been offered, and no entry is removed.
+    # Unused room may now carry more agent excerpts, newest first.
+    for row in sorted(chosen, key=lambda row: -row["at"]):
+        if id(row) in whole or not row.get("agent_words"):
+            continue
+        size = len(_menu_row(10**width - 1, row, whole=True).encode("utf-8", "replace"))
+        grows = size - sizes[id(row)]
+        if room >= grows:
+            room -= grows
+            whole.add(id(row))
     return whole
 
 
@@ -3265,6 +3280,9 @@ def produce(  # noqa: PLR0913
     record_withheld: str = "",
     read_agent_words: bool = False,
     goal_source_lookup: Callable[[], Sequence[Mapping[str, Any]]] | None = None,
+    person_source_lookup: (
+        Callable[[Sequence[LedgerEntry]], Sequence[Mapping[str, Any]]] | None
+    ) = None,
     record_coverage_lookup: Callable[[], Mapping[str, Any]] | None = None,
 ) -> tuple[Assessment | None, str, bool]:
     """One reading, or the reason there is none. Returns (assessment, why, spent).
@@ -3331,6 +3349,8 @@ def produce(  # noqa: PLR0913
     if withheld:
         return None, withheld, False
     adopted = latest.get("goal_source") in PROMPT_SOURCES and asks_goal(goal)
+    if person_source_lookup is not None:
+        ledger = _restored_person_words(ledger, person_source_lookup(ledger), harness, sid)
     source_facts = (
         _goal_source_candidates(row, facts, goal_source_lookup())
         if adopted and goal_source_lookup is not None
@@ -3723,6 +3743,30 @@ def _goal_note(*, adopted: bool, source: tuple[str, str] | None, goal: str, whol
     if source is not None and not whole and _collapsed(source[1]) != _collapsed(goal):
         return GOAL_SOURCE_UNROOMED
     return ""
+
+
+def _restored_person_words(
+    ledger: Sequence[LedgerEntry],
+    sources: Sequence[Mapping[str, Any]],
+    harness: str,
+    sid: str,
+) -> tuple[LedgerEntry, ...]:
+    """Words on existing person rows only; an unverifiable source keeps its title."""
+    verified = build_ledger(sources, harness, sid)
+    matches: dict[tuple[str, float], set[str]] = {}
+    for source in verified:
+        if source["type"] == "user_message" and source["author"] == AUTHOR_PERSON:
+            matches.setdefault((source["id"], source["at"]), set()).add(source.get("words", ""))
+    restored: list[LedgerEntry] = []
+    for original in ledger:
+        row = original.copy()
+        if row["type"] == "user_message" and row["author"] == AUTHOR_PERSON:
+            row.pop("words", None)
+            candidates = matches.get((row["id"], row["at"]), set())
+            if len(candidates) == 1 and (words := next(iter(candidates))):
+                row["words"] = words
+        restored.append(row)
+    return tuple(restored)
 
 
 def _goal_source_candidates(

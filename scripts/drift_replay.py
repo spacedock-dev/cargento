@@ -1711,7 +1711,9 @@ def _goal_source(
 ) -> tuple[list[dict[str, Any]], int, int]:
     if not intent.source:
         return [], 0, 0
-    facts = project_context.transcript_user_facts(config, state, path, "claude", sid)
+    facts = project_context.transcript_user_facts(
+        config, state, path, "claude", sid, goal_choices=True
+    )
     candidates = reading._goal_source_candidates(  # noqa: SLF001 - the same source-only merge as the press
         _row(sid, intent, intent.at), ordinary, facts
     )
@@ -1795,6 +1797,9 @@ def _read_cases(  # noqa: PLR0913 - every input of one pass, named
                 [intent.revision()],
                 facts,
                 goal_source_lookup=source_facts.copy,
+                person_source_lookup=lambda wanted, path=path, sid=sid: (
+                    project_context.transcript_window_words(config, path, "claude", sid, wanted)
+                ),
                 now=cut + float(getattr(config, "reading_settle_sec", 8.0)) + _SETTLE_EXTRA,
                 stamp_text=f"{observer.CLAUDE_READING_MODEL} · drift replay",
                 model=model,

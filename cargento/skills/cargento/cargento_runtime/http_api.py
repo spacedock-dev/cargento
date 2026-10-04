@@ -2809,6 +2809,19 @@ class _RequestHandler(BaseHTTPRequestHandler):
                 transcript,
                 str(row.get("harness")),
                 str(row.get("sid")),
+                goal_choices=True,
+            ),
+            person_source_lookup=lambda wanted: (
+                runtime_project_context.transcript_window_words(
+                    application.config,
+                    transcript,
+                    str(row.get("harness")),
+                    str(row.get("sid")),
+                    wanted,
+                    expected_stamp=press_stamp,
+                )
+                if press_stamp is not None
+                else []
             ),
             # A record never read withholds in its own sentence, not as an
             # empty one (DRC-4689).
