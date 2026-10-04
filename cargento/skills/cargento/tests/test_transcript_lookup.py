@@ -9,6 +9,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
+from cargento_runtime import io as runtime_io
 from cargento_runtime import project_context, reading
 from cargento_runtime.config import build_runtime_config
 from cargento_runtime.state import build_runtime_state
@@ -96,7 +97,7 @@ class TranscriptSourceLookupTest(unittest.TestCase):
     def test_a_cached_source_survives_a_redundant_read_failure(self) -> None:
         self.lookup()
         with mock.patch.object(
-            project_context.runtime_io, "read_prefix_bytes", side_effect=OSError
+            runtime_io, "read_prefix_bytes", side_effect=OSError
         ):
             self.assertEqual(self.words, self.lookup()[0]["reader_words"])
 
@@ -117,7 +118,7 @@ class TranscriptSourceLookupTest(unittest.TestCase):
 
     def test_a_read_failure_does_not_cache_an_empty_source(self) -> None:
         with mock.patch.object(
-            project_context.runtime_io, "read_prefix_bytes", side_effect=OSError
+            runtime_io, "read_prefix_bytes", side_effect=OSError
         ):
             self.assertEqual([], self.lookup())
         self.assertEqual(self.words, self.lookup()[0]["reader_words"])
