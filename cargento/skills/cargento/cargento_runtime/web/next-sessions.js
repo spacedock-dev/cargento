@@ -392,7 +392,9 @@ function nextSessionsDrift(source){
   const raw = source.annotation_assessment;
   if(raw && typeof raw === "object" && !Array.isArray(raw) &&
       Object.keys(raw).every(key => NEXT_READING_ASSESSMENT_KEYS.includes(key)) &&
-      Object.keys(raw.criteria || {}).filter(nextReadingNamesConstraint).some(key => {
+      /* A contradicted claim is not drift from the intent (review, PR C). */
+      Object.keys(raw.criteria || {}).filter(key => nextReadingNamesConstraint(key) &&
+        key !== NEXT_READING_CLAIMS).some(key => {
         const criterion = raw.criteria && raw.criteria[key];
         return criterion && criterion.result === "departure" &&
           Array.isArray(criterion.cites) && criterion.cites.some(cite => typeof cite === "string" && cite.trim());

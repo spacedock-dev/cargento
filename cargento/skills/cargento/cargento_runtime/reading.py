@@ -105,7 +105,7 @@ _OUTCOME_LINE = re.compile(r"line_([1-9][0-9]*)")
 # Two of the figures item 3 left to this layer, and they are written there. The
 # intent's share of `observer.OBSERVER_MODEL_MAX_PROMPT_BYTES`: the worst goal
 # and six lines at four bytes a character, with the claims question, measure
-# 9,198 bytes with the skeleton, so this leaves at least 7,168 for the record.
+# 9,214 bytes with the skeleton, so this leaves at least 7,168 for the record.
 # The reply cap: eight answers with twelve four-digit citations and a
 # 240-character detail each measure 4,751 bytes compact and 5,664 indented in
 # raw two-byte UTF-8, and a
@@ -258,6 +258,9 @@ WHY_FAILED_CHECK_ON_RECORD = "failed-check-on-record"
 # making the claim and, under a departure or a consistent, the entry it was
 # compared with (owner, 2026-10-04).
 WHY_CLAIM_UNCITED = "claim-uncited"
+# An `unsupported` withdrawn because the session's checks were not all read:
+# no grant or destination sent them, or the prompt had no room (review, PR C).
+WHY_CLAIM_RECORD_UNREAD = "claim-record-unread"
 WHY_TOKENS = (
     WHY_STANDS,
     WHY_NOT_ASKED,
@@ -275,6 +278,7 @@ WHY_TOKENS = (
     WHY_TELLS_THE_PERSON,
     WHY_FAILED_CHECK_ON_RECORD,
     WHY_CLAIM_UNCITED,
+    WHY_CLAIM_RECORD_UNREAD,
 )
 
 # Rule 7 turns on who wrote an evidence entry, so the answer is a closed
@@ -859,6 +863,11 @@ class Selection:
     # Whether the Goal went to the model as the adopted prompt's whole words
     # rather than the goal box's clip (`build_prompt`'s `goal_words`).
     goal_whole: bool = False
+    # Whether the session's record holds checks the prompt did not carry for
+    # want of a grant or a named destination: `produce` sets it, as it sets
+    # `record_failed`. With `unread_checks`, what keeps a claim from reading as
+    # not shown by a record that was never read whole.
+    checks_unsent: bool = False
 
     def __post_init__(self) -> None:
         if self.asked_output is None:
@@ -1850,13 +1859,18 @@ EVIDENCE_RULES = (
 
 # The claims question, said once and only when it is posed: a state of the work
 # an agent message claims, against the record, independent of the intent
-# (owner, 2026-10-04). The words in the parenthesis are the owner's list.
+# (owner, 2026-10-04). The parenthesis is the spec's list less "finished",
+# which "done" covers, for room. `unsupported` is asked only of a kind of claim
+# the record can show (a pass, a fix shown by a check, a file written; the
+# arbiter, PR C review); the resolver cannot tell a claim's kind from what it
+# cites, so the prompt carries that rule alone. No write carries a claims
+# verdict (`check_supports`), so "write" names only what an absence is of.
 CLAIMS_RULE = (
-    '"claims": does an agent message claim a state of the work (running, done, finished, '
-    "merged, pushed, deployed, passing, fixed, sent, filed) the recorded checks, writes and "
-    'messages contradict or do not show? "departure" cites it and what contradicts it; '
-    '"unsupported" cites it when nothing recorded shows it; "consistent" cites it and what '
-    'shows it; "unverifiable" if no such claim.\n'
+    '"claims": does an agent message claim a state of the work (running, done, merged, pushed, '
+    'deployed, passing, fixed, sent, filed) checks or messages contradict? "departure" '
+    'cites it and what contradicts it at or after it; "consistent" cites it and the check '
+    'showing it; "unsupported" cites it only for passing, fixed or written no check or write '
+    'shows; else "unverifiable".\n'
 )
 
 
@@ -1901,9 +1915,16 @@ def _header(
         + "\n"
         "Answer ONLY with JSON of this exact shape, where each A is "
         '{"result": "<token>", "cites": [<int>, ...], "detail": "<one sentence>"}:\n'
-        "{" + ", ".join(parts) + "}\n"
-        'A <token> is exactly one of "departure", "consistent" or "unverifiable". '
-        'Use "unverifiable" whenever the entries below do not settle the question. '
+        "{"
+        + ", ".join(parts)
+        + "}\n"
+        + (
+            'A <token> is one of "departure", "consistent", "unverifiable" or, for claims '
+            'only, "unsupported". '
+            if claims
+            else 'A <token> is exactly one of "departure", "consistent" or "unverifiable". '
+        )
+        + 'Use "unverifiable" whenever the entries below do not settle the question. '
         "Every <int> is an entry number from the list below; never cite a number that "
         "is not listed, and never name an entry any other way.\n"
         + (
@@ -2397,7 +2418,9 @@ def _rests_on_nothing(result: str, name: str, cited: Sequence[LedgerEntry]) -> s
     return WHY_STANDS
 
 
-def _claims_rule(result: str, supporting: Sequence[LedgerEntry], *, dropped: bool) -> str:
+def _claims_rule(
+    result: str, supporting: Sequence[LedgerEntry], *, dropped: bool, checks_unread: bool = False
+) -> str:
     """Which rule a claims verdict fails, as its `why` token, or `WHY_STANDS`.
 
     Every result but `unverifiable` names the agent's message making the claim,
@@ -2417,14 +2440,43 @@ def _claims_rule(result: str, supporting: Sequence[LedgerEntry], *, dropped: boo
     said = [entry for entry in supporting if entry["type"] == AGENT_MESSAGE_TYPE]
     record = [entry for entry in supporting if entry["type"] != AGENT_MESSAGE_TYPE]
     if result == RESULT_UNSUPPORTED:
-        return WHY_STANDS if said else WHY_CLAIM_UNCITED
+        why = WHY_STANDS if said else WHY_CLAIM_UNCITED
+        # "Not shown" is about the session's record, and a record whose checks
+        # went unread for want of a grant, a destination or room cannot say it:
+        # that would be configuration read as absence (review, PR C).
+        return WHY_CLAIM_RECORD_UNREAD if not why and checks_unread else why
     if not said:
         return WHY_CLAIM_UNCITED
     if not record:
         return WHY_CHECK_DOES_NOT_SHOW_IT if dropped else WHY_CLAIM_UNCITED
+    return _claims_compared(result, said, record)
+
+
+def _claims_compared(
+    result: str, said: Sequence[LedgerEntry], record: Sequence[LedgerEntry]
+) -> str:
+    """A claims departure's or consistent's rule over what it was compared with.
+
+    Not only Cargento's paraphrase. A consistent rests on the work, a tool
+    report or a work result, never a person agreeing with the agent. A
+    contradiction comes at or after the claim; a check is its latest run, so
+    it contradicts whenever it ran (review, PR C).
+    """
     if {entry["author"] for entry in record} == {AUTHOR_DERIVED}:
         return WHY_BOARD_QUOTING_ITSELF
-    return WHY_STANDS
+    claimed = min(entry["at"] for entry in said)
+    stands = (
+        any(_shows_work(entry) for entry in record)
+        if result == RESULT_CONSISTENT
+        else any(
+            entry.get("subject") == CHECK_SUBJECT or entry["at"] >= claimed for entry in record
+        )
+    )
+    return WHY_STANDS if stands else WHY_CLAIM_UNCITED
+
+
+def _shows_work(entry: Mapping[str, Any]) -> bool:
+    return demonstrates_work(entry) or str(entry.get("type") or "") == TOOL_REPORT_TYPE
 
 
 # Whole words, so "reporter" and "sayings" name things and stay out; "report"
@@ -2473,7 +2525,7 @@ def _reported_after(
     return any(entry["type"] == AGENT_MESSAGE_TYPE and entry["at"] >= floor for entry in supporting)
 
 
-def _evidence_rules(
+def _evidence_rules(  # noqa: PLR0913 - one keyword per fact a rule reads
     result: str,
     name: str,
     cited: list[LedgerEntry],
@@ -2483,6 +2535,7 @@ def _evidence_rules(
     failed_on_record: bool = False,
     line_text: str = "",
     latest_check_at: float = 0.0,
+    checks_unread: bool = False,
 ) -> tuple[list[LedgerEntry], str]:
     """The entries a verdict rests on, and which rule it fails, as its `why` token.
 
@@ -2506,7 +2559,7 @@ def _evidence_rules(
     supporting = [entry for entry in cited if check_supports(entry, result, window_start)]
     dropped = len(supporting) < len(cited)
     if name == CONSTRAINT_CLAIMS:
-        why = _claims_rule(result, supporting, dropped=dropped)
+        why = _claims_rule(result, supporting, dropped=dropped, checks_unread=checks_unread)
     else:
         why = (
             _rests_on_nothing(result, name, supporting)
@@ -2586,6 +2639,7 @@ def _resolve_one(  # noqa: PLR0913 - each is one fact the evidence rules read
     failed_on_record: bool = False,
     line_text: str | None = None,
     latest_check_at: float = 0.0,
+    checks_unread: bool = False,
 ) -> Criterion:
     """One constraint's criterion, with every server-side rule applied.
 
@@ -2633,6 +2687,7 @@ def _resolve_one(  # noqa: PLR0913 - each is one fact the evidence rules read
             failed_on_record=failed_on_record,
             line_text=clause if line_text is None else line_text,
             latest_check_at=latest_check_at,
+            checks_unread=checks_unread,
         )
         if rests_on_nothing:
             result, why = RESULT_UNVERIFIABLE, rests_on_nothing
@@ -2649,10 +2704,15 @@ def _resolve_one(  # noqa: PLR0913 - each is one fact the evidence rules read
         and entry["type"] == TOOL_REPORT_TYPE
         and check_supports(entry, RESULT_CONSISTENT, window_start)
     ]
+    # A claims departure or `unsupported` quotes the agent's own success words
+    # by its nature ("said the change works"), and neither says the work
+    # landed, so the backstop reads only a claims `consistent` (review, PR C).
+    quoting = name == CONSTRAINT_CLAIMS and result in (RESULT_DEPARTURE, RESULT_UNSUPPORTED)
     if (
         result
         and result != RESULT_UNVERIFIABLE
         and raw_detail
+        and not quoting
         and _states_a_verdict(
             raw_detail,
             result,
@@ -2778,6 +2838,7 @@ def resolve(
             failed_on_record=failed_on_record,
             line_text=clauses[name],
             latest_check_at=latest_check_at,
+            checks_unread=selection.checks_unsent or bool(selection.unread_checks),
         )
     return out
 
@@ -2946,7 +3007,9 @@ def produce(  # noqa: PLR0913
     # ledger carried them and `resolve` reads them there.
     unsent = () if admitted else facts
     selected = replace(
-        selected, record_failed=_failed_on_record(unsent, harness, sid, window_start(latest))
+        selected,
+        record_failed=_failed_on_record(unsent, harness, sid, window_start(latest)),
+        checks_unsent=not admitted and _has_reports(facts, harness, sid),
     )
     raw, status = model(prompt, output_cap_bytes=REPLY_CAP_BYTES)
     # A reply that reached the cap is the one a cut can explain. The exec layer
@@ -3238,7 +3301,7 @@ def baseline_at(revision: Mapping[str, Any]) -> float:
 # 2026-10-04): the stored goal is the goal box's clip, and the model read only
 # that. Composed by the code, never model prose.
 GOAL_SOURCE_GONE = (
-    " Your goal came from a prompt whose words are no longer in the record, so only the goal "
+    " The prompt your goal came from could not be found in the record read, so only the goal "
     "box's words were read as the goal."
 )
 GOAL_SOURCE_UNROOMED = (
@@ -3276,9 +3339,10 @@ def adopted_prompt(
     own `user_message` at the revision's source time, its `WORDS_FIELD` as the
     record carries it, up to `LEDGER_WORDS_CAP_CHARS`. Two at the same moment
     are told apart by which one the goal's words open; neither is guessed at.
-    A copied correction is never the source (`author_of`). None when the
-    record no longer holds it, and the reading then reads the clip.
-    See [DEC-22](docs/design-reading-a-session.md#amended-2026-10-04-an-adopted-goal-is-read-whole).
+    A copied correction is never the source (`author_of`). None when it
+    cannot be found in the record read, and the reading then reads the clip.
+    The ruling:
+    [DEC-22](docs/design-reading-a-session.md#amended-2026-10-04-owner-an-adopted-goal-is-read-whole)
     """
     if revision.get("goal_source") not in PROMPT_SOURCES:
         return None

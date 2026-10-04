@@ -226,7 +226,9 @@ class TheGoalArrivesDraftedTest(_DraftPage):
 
     def test_a_clipped_first_prompt_is_marked_as_an_excerpt(self) -> None:
         html = self.html('__s.first_prompt = "Build the retry queue and then…";\n')
-        self.assertIn("Excerpt. Analyze reads the whole prompt.", visible_text(intent_of(html)))
+        self.assertIn(
+            "Excerpt. Analyze reads up to 1,000 characters.", visible_text(intent_of(html))
+        )
 
     def test_with_no_first_prompt_the_latest_is_drafted_and_marked_latest(self) -> None:
         html = self.html('__s.first_prompt = ""; __s.first_prompt_at = null;\n')

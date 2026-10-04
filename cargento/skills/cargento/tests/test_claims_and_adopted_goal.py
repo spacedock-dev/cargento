@@ -412,6 +412,38 @@ class EachClaimsResultCitesWhatItNeedsTest(unittest.TestCase):
             reading.WHY_BOARD_QUOTING_ITSELF,
         ),
         (
+            "shown by a person agreeing",
+            "consistent",
+            [SAID, _person("p1", 92.0, "yes merged")],
+            [1, 2],
+            reading.RESULT_UNVERIFIABLE,
+            reading.WHY_CLAIM_UNCITED,
+        ),
+        (
+            "contradicted by a message before the claim",
+            "departure",
+            [_person("p0", 80.0, "it is not merged"), _agent("a1", 90.0, "Merged it.")],
+            [1, 2],
+            reading.RESULT_UNVERIFIABLE,
+            reading.WHY_CLAIM_UNCITED,
+        ),
+        (
+            "contradicted by a message after the claim",
+            "departure",
+            [_agent("a1", 90.0, "Merged it."), _person("p2", 95.0, "it is not merged")],
+            [1, 2],
+            reading.RESULT_DEPARTURE,
+            "",
+        ),
+        (
+            "contradicted by a check run before the claim",
+            "departure",
+            [_check("c1", 85.0, "failed"), SAID],
+            [1, 2],
+            reading.RESULT_DEPARTURE,
+            "",
+        ),
+        (
             "a message from before the words",
             "unsupported",
             [_agent("a0", 40.0, "Merged."), SAID],
@@ -436,15 +468,49 @@ class EachClaimsResultCitesWhatItNeedsTest(unittest.TestCase):
         unshown = _resolve("unsupported", [SAID], [1], detail="nothing shows a merge")
         self.assertEqual("", unshown["detail"])
 
-    def test_a_stated_verdict_still_withdraws_it(self) -> None:
-        row = _resolve("unsupported", [SAID], [1], detail="it delivered the feature")
+    def test_a_contradicted_or_unshown_claim_may_quote_the_agents_success_words(self) -> None:
+        # Review blocker 1: the backstop withdrew exactly the claims it exists for.
+        for detail in (
+            "The agent said the change works, but the latest check errored.",
+            "claimed all tests passed while the check reports a failure.",
+        ):
+            with self.subTest(detail=detail):
+                departed = _resolve("departure", [SAID, FAILED], [1, 2], detail=detail)
+                self.assertEqual(reading.RESULT_DEPARTURE, departed["result"])
+                self.assertEqual(detail, departed["detail"])
+                unshown = _resolve("unsupported", [SAID], [1], detail=detail)
+                self.assertEqual(reading.RESULT_UNSUPPORTED, unshown["result"])
+
+    def test_a_stated_verdict_still_withdraws_a_shown_claim(self) -> None:
+        row = _resolve("consistent", [SAID, PASSED], [1, 2], detail="it delivered the feature")
         self.assertEqual(reading.WHY_VERDICT_STATED, row["why"])
 
-    def test_a_shown_claim_beside_an_uncited_failure_on_record_is_withdrawn(self) -> None:
-        row = _resolve(
-            "consistent", [SAID, _person("p1", 92.0, "yes merged")], [1, 2], failed_on_record=True
+    def test_a_shown_claim_rests_on_the_work_never_on_a_person(self) -> None:
+        row = _resolve("consistent", [SAID, _person("p1", 92.0, "yes merged")], [1, 2])
+        self.assertEqual(reading.WHY_CLAIM_UNCITED, row["why"])
+
+    def test_a_contradiction_comes_at_or_after_the_claim_unless_a_check(self) -> None:
+        before = _person("p0", 80.0, "it is not merged yet")
+        after = _person("p2", 95.0, "it is not merged yet")
+        merged = _agent("a1", 90.0, "Merged the branch.")
+        self.assertEqual(
+            reading.WHY_CLAIM_UNCITED, _resolve("departure", [before, merged], [1, 2])["why"]
         )
-        self.assertEqual(reading.WHY_FAILED_CHECK_ON_RECORD, row["why"])
+        self.assertEqual(reading.WHY_STANDS, _resolve("departure", [merged, after], [1, 2])["why"])
+        early = _check("c1", 85.0, "failed")
+        self.assertEqual(reading.WHY_STANDS, _resolve("departure", [early, SAID], [1, 2])["why"])
+
+    def test_a_shown_claim_beside_an_unread_failure_is_withdrawn(self) -> None:
+        unread = reading.build_ledger(
+            [_check("c9", 99.0, "failed")], "claude", "s1", tool_output={}
+        )
+        row = _resolve("consistent", [SAID, PASSED], [1, 2], unread_failures=unread)
+        self.assertEqual(reading.WHY_FAILED_CHECK_UNREAD, row["why"])
+
+    def test_unshown_is_withdrawn_where_the_checks_went_unread(self) -> None:
+        row = _resolve("unsupported", [SAID], [1], checks_unread=True)
+        self.assertEqual(reading.RESULT_UNVERIFIABLE, row["result"])
+        self.assertEqual(reading.WHY_CLAIM_RECORD_UNREAD, row["why"])
 
 
 class TheStoreKnowsTheQuestionAndItsResultTest(unittest.TestCase):
@@ -613,6 +679,23 @@ class TheAnalysisLevelReadsAClaimMediumTest(unittest.TestCase):
         level = self.level(reading.RESULT_CONSISTENT, ["a1", "c1"], [SAID, PASSED])
         self.assertEqual(levels.NOT_ENOUGH, level.level)
 
+    def test_a_claims_row_never_holds_the_floor_back(self) -> None:
+        # Review blocker 3, the server half: lines shown by a pass reach None or low
+        # beside a claims row with nothing to say.
+        stored = _stored(reading.RESULT_UNVERIFIABLE, [])
+        stored["criteria"]["line_1"] = {
+            "result": reading.RESULT_CONSISTENT,
+            "cites": ["c1"],
+            "detail": "",
+            "clause": "",
+            "why": "",
+        }
+        evidence = levels.Evidence(
+            (PASSED,), {**dict.fromkeys(levels.SCAN_KEYS, 0), "passed": 1}, 0
+        )
+        level = levels.analysis_level(stored, evidence, outcome_lines=1)
+        self.assertEqual(levels.NONE_OR_LOW, level.level)
+
     def test_unsupported_on_a_line_is_malformed(self) -> None:
         stored = _stored(reading.RESULT_UNVERIFIABLE, [])
         stored["criteria"]["line_1"]["result"] = reading.RESULT_UNSUPPORTED
@@ -621,9 +704,18 @@ class TheAnalysisLevelReadsAClaimMediumTest(unittest.TestCase):
         self.assertEqual((levels.REASON_READING_MALFORMED,), level.reasons)
 
 
+SID_AGENT_PADDED = {**SAID, "fact_id": " a1 "}
+
+
 class SteerBackSaysWhatTheRecordDoesNotShowTest(unittest.TestCase):
     def compose(
-        self, result: str, cites: list[str], facts: list[dict[str, Any]], **row: Any
+        self,
+        result: str,
+        cites: list[str],
+        facts: list[dict[str, Any]],
+        *,
+        lines_judged: bool = True,
+        **row: Any,
     ) -> str:
         published = {
             **SID,
@@ -643,7 +735,7 @@ class SteerBackSaysWhatTheRecordDoesNotShowTest(unittest.TestCase):
         for k in range(1, 7):
             published.setdefault(f"annotation_line_{k}", "")
         answer = correction.compose(
-            published, facts, floor=50.0, lines_judged=True, clock=lambda at: f"T{int(at)}"
+            published, facts, floor=50.0, lines_judged=lines_judged, clock=lambda at: f"T{int(at)}"
         )
         return "".join(
             part if isinstance(part, str) else "{" + part["entry"] + "}"
@@ -656,9 +748,11 @@ class SteerBackSaysWhatTheRecordDoesNotShowTest(unittest.TestCase):
         self.assertTrue(text.startswith("Back to my goal: Ship the retry"))
         self.assertTrue(text.endswith("Please continue from here."))
 
-    def test_a_contradicted_claim_is_said_the_same_way(self) -> None:
+    def test_a_contradicted_claim_names_what_shows_otherwise(self) -> None:
         text = self.compose(reading.RESULT_DEPARTURE, ["a1", "c1"], [SAID, FAILED])
-        self.assertIn('You said "All tests pass" at T90{a1}; the record does not show it.', text)
+        self.assertIn(
+            'You said "All tests pass" at T90{a1}; the record shows otherwise at T95{c1}.', text
+        )
         self.assertIn("A check failed at T95{c1}.", text)
 
     def test_a_shown_claim_adds_nothing_and_alone_is_nothing_to_steer_from(self) -> None:
@@ -667,11 +761,26 @@ class SteerBackSaysWhatTheRecordDoesNotShowTest(unittest.TestCase):
     def test_a_claim_the_record_no_longer_holds_adds_nothing(self) -> None:
         self.assertEqual("", self.compose(reading.RESULT_UNSUPPORTED, ["a1"], []))
 
-    def test_an_unsettled_later_direction_holds_it_back(self) -> None:
+    def test_an_unsettled_later_direction_never_holds_a_claim_back(self) -> None:
+        # Claims are independent of the intent (review, PR C, reversing the first build).
         later = _person("p2", 120.0, "actually, pause the retry work")
         text = self.compose(reading.RESULT_UNSUPPORTED, ["a1"], [SAID, later])
-        self.assertNotIn("You said", text)
+        self.assertIn('You said "All tests pass" at T90{a1}; the record does not show it.', text)
         self.assertIn("I gave a later direction at T120{p2}.", text)
+
+    def test_where_no_route_can_carry_checks_no_claim_is_said(self) -> None:
+        published = {**SID, "annotation_goal": "Ship the retry", "annotation_revision": 2}
+        self.assertEqual(
+            "",
+            self.compose(
+                reading.RESULT_UNSUPPORTED, ["a1"], [SAID], lines_judged=False, **published
+            ),
+        )
+
+    def test_a_cited_id_cleaned_by_the_ledger_still_finds_its_fact(self) -> None:
+        padded = {**SID_AGENT_PADDED}
+        text = self.compose(reading.RESULT_UNSUPPORTED, ["a1"], [padded])
+        self.assertIn('You said "All tests pass"', text)
 
     def test_only_the_title_is_quoted_never_the_words(self) -> None:
         text = self.compose(reading.RESULT_UNSUPPORTED, ["a1"], [SAID])
@@ -685,30 +794,39 @@ class ThePageDrawsWhatTheAgentClaimedTest(NextPageJsHarness):
             storage_prelude({}) + cockpit_tests.NextCockpitCompositionTest.FIXTURE,
         )
 
-    def facts_js(self, facts: list[dict[str, Any]]) -> str:
-        return json.dumps(facts)
-
-    def shape(self, criteria: dict[str, Any], facts: list[dict[str, Any]]) -> Any:
+    def shape(
+        self,
+        criteria: dict[str, Any],
+        facts: list[dict[str, Any]],
+        *,
+        unsettled: str = "",
+        limit: str = "",
+    ) -> Any:
         return self.run_fixture(f"""
 const session = {{harness:"claude", sid:"s1"}};
-const entries = nextCockpitWorkEntries(session, {{facts:{self.facts_js(facts)}}});
+const entries = nextCockpitWorkEntries(session, {{facts:{json.dumps(facts)}}});
 const numbers = new Map(entries.map((e, i) => [e.id, i + 1]));
 const byId = new Map(entries.map(e => [e.id, e]));
 const shape = nextCockpitReadingShape({{revision_read_at:50, criteria:{json.dumps(criteria)}}},
-  {{goal:"add retry", line_1:"the retry backs off"}}, entries, "");
+  {{goal:"add retry", line_1:"the retry backs off"}}, entries, {json.dumps(limit)},
+  {json.dumps(unsettled)});
 const why = row => (Object.entries(NEXT_READING_STORED_WHY).find(([, v]) => v === row.why) || [""])[0];
 console.log(JSON.stringify({{
   rows: shape.criteria.map(row => ({{key: row.key, label: row.label, result: row.result,
     why: why(row), status: nextCockpitResultStatus(row, numbers, byId),
-    short: nextCockpitResultStatus(row, numbers, byId, true),
-    state: nextCockpitResultState(row), clause: row.clause, known: row.clauseKnown}})),
+    short: nextCockpitResultStatus(row, numbers, byId, true), limit: row.limit,
+    state: nextCockpitResultState(row), clause: row.clause, known: row.clauseKnown,
+    item: nextCockpitResultItem(row, numbers, byId, "div")}})),
+  drawn: nextCockpitClaimsDrawn(shape).map(row => row.key),
+  departures: shape.departures.map(row => row.key),
+  shown: nextDriftAnalysisShown(shape),
   answer: nextDriftAnswer(shape, entries).kind,
   html: nextCockpitResultAnswer(nextDriftAnswer(shape, entries), numbers, byId),
 }}));
 """)
 
-    def claims(self, result: str, cites: list[str], facts: list[dict[str, Any]]) -> Any:
-        out = self.shape({"claims": {"result": result, "cites": cites}}, facts)
+    def claims(self, result: str, cites: list[str], facts: list[dict[str, Any]], **kw: Any) -> Any:
+        out = self.shape({"claims": {"result": result, "cites": cites}}, facts, **kw)
         (row,) = [row for row in out["rows"] if row["key"] == "claims"]
         return row, out
 
@@ -720,8 +838,12 @@ console.log(JSON.stringify({{
             f"What the agent said at #1 is not shown by the record. {tail}", row["status"]
         )
         self.assertEqual("unshown", row["state"])
-        self.assertEqual("claim", out["answer"])
-        self.assertIn("What the agent said at #1 is not shown by the record.", out["html"])
+        # Said once: in its row, never again as the answer about the intent.
+        self.assertNotIn("not shown by the record", out["html"])
+        self.assertEqual(["claims"], out["drawn"])
+        # No question sentence under the heading.
+        self.assertEqual("", row["clause"])
+        self.assertNotIn("next-cockpit-reading-clause", row["item"])
         row, out = self.claims(reading.RESULT_DEPARTURE, ["a1", "c1"], [SAID, FAILED])
         self.assertEqual("What the agent said at #1 is contradicted at #2", row["status"])
         self.assertEqual("departs", row["state"])
@@ -731,24 +853,61 @@ console.log(JSON.stringify({{
             row["status"],
         )
         self.assertEqual("What the agent said at #1 is shown at #2", row["short"])
-        row, _ = self.claims(reading.RESULT_UNVERIFIABLE, [], [SAID])
+
+    def test_no_claim_draws_no_row(self) -> None:
+        row, out = self.claims(reading.RESULT_UNVERIFIABLE, [], [SAID])
         self.assertEqual("cant-tell", row["state"])
-        self.assertFalse(row["known"])
+        self.assertEqual([], out["drawn"])
+        # A withdrawn verdict still draws, with its reason.
+        withdrawn = {
+            "claims": {"result": reading.RESULT_UNVERIFIABLE, "cites": [], "why": "claim-uncited"}
+        }
+        self.assertEqual(["claims"], self.shape(withdrawn, [SAID])["drawn"])
 
     def test_a_contradicted_claim_is_not_a_departure_from_the_intent(self) -> None:
         _row, out = self.claims(reading.RESULT_DEPARTURE, ["a1", "c1"], [SAID, FAILED])
-        # The failed check is the answer before the claim, and nothing says "departs".
+        self.assertEqual([], out["departures"])
         self.assertEqual("failed-check", out["answer"])
         self.assertNotIn("Departs from your intent", out["html"])
 
-    def test_a_claim_with_none_never_holds_nothing_found_back(self) -> None:
-        criteria = {
-            "goal": {"result": reading.RESULT_CONSISTENT, "cites": ["c1"]},
-            "line_1": {"result": reading.RESULT_CONSISTENT, "cites": ["c1"]},
-            "claims": {"result": reading.RESULT_UNVERIFIABLE, "cites": []},
+    def test_a_claim_never_holds_nothing_found_or_none_or_low_back(self) -> None:
+        for claim in (reading.RESULT_UNVERIFIABLE, reading.RESULT_UNSUPPORTED):
+            with self.subTest(claim=claim):
+                criteria = {
+                    "goal": {"result": reading.RESULT_CONSISTENT, "cites": ["c1"]},
+                    "line_1": {"result": reading.RESULT_CONSISTENT, "cites": ["c1"]},
+                    "claims": {"result": claim, "cites": ["a1"]},
+                }
+                out = self.shape(criteria, [_person("p1", 60.0, "add retry"), SAID, PASSED])
+                self.assertEqual("nothing-found", out["answer"])
+                self.assertTrue(out["shown"])
+
+    def test_an_unsettled_later_direction_never_demotes_the_claims_row(self) -> None:
+        row, _ = self.claims(reading.RESULT_UNSUPPORTED, ["a1"], [SAID], unsettled="open")
+        self.assertEqual(reading.RESULT_UNSUPPORTED, row["result"])
+        out = self.shape(
+            {"goal": {"result": reading.RESULT_DEPARTURE, "cites": ["p1"]}},
+            [_person("p1", 60.0, "stop")],
+            unsettled="open",
+        )
+        (goal,) = [row for row in out["rows"] if row["key"] == "goal"]
+        self.assertEqual(reading.RESULT_UNVERIFIABLE, goal["result"])
+
+    def test_the_route_limit_holds_the_claims_row_as_it_holds_a_line(self) -> None:
+        row, _ = self.claims(reading.RESULT_UNSUPPORTED, ["a1"], [SAID], limit="no route")
+        self.assertEqual(reading.RESULT_UNVERIFIABLE, row["result"])
+        self.assertEqual("no route", row["limit"])
+
+    def test_a_stored_record_unread_reason_reads_back(self) -> None:
+        stored = {
+            "claims": {
+                "result": reading.RESULT_UNVERIFIABLE,
+                "cites": [],
+                "why": "claim-record-unread",
+            }
         }
-        out = self.shape(criteria, [_person("p1", 60.0, "add retry"), PASSED])
-        self.assertEqual("nothing-found", out["answer"])
+        (row,) = [r for r in self.shape(stored, [SAID])["rows"] if r["key"] == "claims"]
+        self.assertEqual("claim-record-unread", row["why"])
 
     def test_unsupported_on_the_goal_reads_as_unreadable(self) -> None:
         out = self.shape({"goal": {"result": reading.RESULT_UNSUPPORTED, "cites": ["a1"]}}, [SAID])
@@ -767,6 +926,43 @@ console.log(JSON.stringify({{
                 row, _ = self.claims(stored, ids, facts)
                 self.assertEqual(result, row["result"])
                 self.assertEqual(why, row["why"])
+
+
+class SteerBackIsOfferedForAClaimWithoutUpdateIntentTest(NextPageJsHarness):
+    def test_the_offer_names_the_claim_and_not_a_departure(self) -> None:
+        out = self._run_page_js(
+            "await __settle();\n"
+            f"""
+nextData = {{...nextData, annotate: true}};
+const session = {{harness:"claude", sid:"s1"}};
+const entries = nextCockpitWorkEntries(session, {{facts:{json.dumps([SAID])}}});
+const annotation = {{goal:"add retry", revision:1}};
+const shape = nextCockpitReadingShape({{revision_read:1, revision_read_at:50,
+  criteria:{{claims:{{result:"not shown by the record", cites:["a1"]}}}}}}, annotation, entries, "");
+console.log(JSON.stringify(nextCockpitSteerOffer(session, annotation,
+  {{state:"read", all: entries}}, shape)));
+""",
+            storage_prelude({}) + cockpit_tests.NextCockpitCompositionTest.FIXTURE,
+        )
+        self.assertEqual({"departed": False, "claimed": True}, out)
+
+
+class TheFirstScreenNeverCallsAClaimDriftTest(NextPageJsHarness):
+    def test_a_contradicted_claim_alone_marks_no_drift(self) -> None:
+        out = self._run_page_js(
+            "await __settle();\n"
+            """
+nextData = {...nextData, annotate: true};
+const assessment = (criteria) => ({annotation_assessment: {revision_read: 1, read_at: 500,
+  criteria}});
+console.log(JSON.stringify([
+  nextSessionsDrift(assessment({claims: {result: "departure", cites: ["a1", "c1"]}})).length,
+  nextSessionsDrift(assessment({goal: {result: "departure", cites: ["a1"]}})).length,
+]));
+""",
+            storage_prelude({}) + cockpit_tests.NextCockpitCompositionTest.FIXTURE,
+        )
+        self.assertEqual([0, 1], out)
 
 
 class ThePageSaysTheLevelsClaimReasonsTest(NextPageJsHarness):
@@ -835,7 +1031,7 @@ console.log(JSON.stringify([
 """,
             storage_prelude({}) + cockpit_tests.NextCockpitCompositionTest.FIXTURE,
         )
-        self.assertIn("Excerpt. Analyze reads the whole prompt.", out[0])
+        self.assertIn("Excerpt. Analyze reads up to 1,000 characters.", out[0])
         self.assertNotIn("Analyze reads", out[1])
 
 

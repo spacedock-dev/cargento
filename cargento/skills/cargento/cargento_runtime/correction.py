@@ -227,17 +227,21 @@ class _Rows:
         ]
         return (_CONSISTENT, reported[0]) if reported and line else (_NOT_SHOWN, None)
 
-    def claim(self) -> dict[str, Any] | None:
-        """The agent's message a claims departure or `unsupported` rests on, or None.
+    def claim(self) -> tuple[str, dict[str, Any], dict[str, Any] | None] | None:
+        """A claims departure or `unsupported` as (result, the agent's message, what
+        contradicts it), or None.
 
         Re-resolved against the record as it stands now by the resolver that
         first accepted it, as `levels` re-reads a stored line, so the text never
-        says a claim is unshown that the panel beside it has withdrawn.
+        says a claim is unshown that the panel beside it has withdrawn. Not held
+        back by an unsettled later direction: a claim is independent of the
+        intent (review, PR C). Held back where the route cannot carry checks, as
+        the page's limit holds the row.
         """
         row = self.criteria.get(reading.CONSTRAINT_CLAIMS)
         why = row.get("why") if isinstance(row, dict) else None
         if (
-            self.unsettled
+            not self.lines_judged
             or not isinstance(row, dict)
             or set(row) - set(reading.CRITERION_KEYS)
             or (why and (not isinstance(why, str) or why not in reading.WHY_TOKENS))
@@ -245,38 +249,50 @@ class _Rows:
         ):
             return None
         raw = row.get("cites")
-        facts = [
-            self.facts[c]
-            for c in (raw if isinstance(raw, list) else [])
-            if isinstance(c, str) and c in self.facts
-        ]
-        entries = reading.build_ledger(
-            facts, self.harness, self.sid, tool_output={}, read_agent_words=True
-        )
-        for entry in entries:
-            entry["changed_after"] = self.facts[entry["id"]].get("changed_after") is True
+        # Each fact paired with the entry the ledger makes of it, so a lookup by
+        # the entry's own (cleaned) id never misses its fact.
+        wanted = {c for c in (raw if isinstance(raw, list) else []) if isinstance(c, str)}
+        pairs: list[tuple[reading.LedgerEntry, dict[str, Any]]] = []
+        for fact in self.facts.values():
+            for entry in reading.build_ledger(
+                [fact], self.harness, self.sid, tool_output={}, read_agent_words=True
+            ):
+                if entry["id"] in wanted:
+                    entry["changed_after"] = fact.get("changed_after") is True
+                    pairs.append((entry, fact))
+        pairs.sort(key=lambda pair: pair[0]["at"])
         resolved = reading._resolve_one(  # noqa: SLF001 - the resolver's own rules, re-applied
             {
                 "token": reading.token_for(row.get("result")),
-                "cites": list(range(1, len(entries) + 1)),
+                "cites": list(range(1, len(pairs) + 1)),
                 "detail": "",
             },
-            dict(enumerate(entries, 1)),
+            {k: entry for k, (entry, _fact) in enumerate(pairs, 1)},
             name=reading.CONSTRAINT_CLAIMS,
             clause="",
             detail_cap_chars=0,
             window_start=self.window,
         )
-        if resolved.get("result") not in {reading.RESULT_DEPARTURE, reading.RESULT_UNSUPPORTED}:
+        result = resolved.get("result")
+        if result not in {reading.RESULT_DEPARTURE, reading.RESULT_UNSUPPORTED}:
             return None
-        said = [
-            self.facts[c]
-            for c in resolved["cites"]
-            if self.facts[c].get("type") == reading.AGENT_MESSAGE_TYPE
-            and reading.valid_prompt_time(self.facts[c].get("at")) is not None
-            and reading.claim_title(self.facts[c])
+        kept = {str(c) for c in resolved["cites"]}
+        standing = [
+            fact
+            for entry, fact in pairs
+            if entry["id"] in kept and reading.valid_prompt_time(fact.get("at")) is not None
         ]
-        return said[0] if said else None
+        said = [
+            f
+            for f in standing
+            if f.get("type") == reading.AGENT_MESSAGE_TYPE and reading.claim_title(f)
+        ]
+        if not said:
+            return None
+        record = [f for f in standing if f.get("type") != reading.AGENT_MESSAGE_TYPE]
+        checks = [f for f in record if f.get("subject") == reading.CHECK_SUBJECT]
+        found = checks or record
+        return str(result), said[0], found[0] if found else None
 
 
 def _saved_lines(row: Mapping[str, Any]) -> list[tuple[int, str]]:
@@ -352,21 +368,26 @@ def _body(
     return body
 
 
-def _claim_line(fact: Mapping[str, Any], at: Callable[[Mapping[str, Any]], str]) -> list[Part]:
+def _claim_line(
+    claim: tuple[str, Mapping[str, Any], Mapping[str, Any] | None],
+    at: Callable[[Mapping[str, Any]], str],
+) -> list[Part]:
     """The one line a claim the record contradicts or does not show adds.
 
     Owner, 2026-10-04, wording delegated: "You said <claim, first sentence> at
-    #n; the record does not show it." The claim is the message's published
-    title, its first sentence, which the page already shows; never its words.
-    Quoted, and its closing stop dropped, so it reads as what was said rather
-    than as this sentence's own clause.
+    #n; the record does not show it." A contradicted claim ends "the record
+    shows otherwise at #m" instead, naming what contradicts it (the arbiter's
+    wording, PR C review). The claim is the message's published title, its
+    first sentence, which the page already shows; never its words. Quoted, and
+    its closing stop dropped, so it reads as what was said rather than as this
+    sentence's own clause.
     """
-    claim = reading.claim_title(fact).rstrip(".").strip()
-    return [
-        f'You said "{claim}" at {at(fact)}',
-        _placeholder(fact),
-        "; the record does not show it.",
-    ]
+    result, fact, record = claim
+    title = reading.claim_title(fact).rstrip(".").strip()
+    said: list[Part] = [f'You said "{title}" at {at(fact)}', _placeholder(fact)]
+    if result == reading.RESULT_DEPARTURE and record is not None:
+        return [*said, f"; the record shows otherwise at {at(record)}", _placeholder(record), "."]
+    return [*said, "; the record does not show it."]
 
 
 def _tail(

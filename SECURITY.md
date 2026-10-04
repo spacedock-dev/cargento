@@ -1121,7 +1121,7 @@ dropped the point of a measured correction
 ([the amendment](docs/design-reading-a-session.md#amended-2026-10-01-a-reading-sees-the-readers-whole-message)).
 A goal adopted from one of those messages is sent as that message's whole field too, from the same
 half, in place of the goal box's 240 characters; the goal stored and shown stays the excerpt
-([the amendment](docs/design-reading-a-session.md#amended-2026-10-04-an-adopted-goal-is-read-whole)).
+([the amendment](docs/design-reading-a-session.md#amended-2026-10-04-owner-an-adopted-goal-is-read-whole)).
 The field holding the whole message (`reader_words`) is held in memory for the reading and is
 neither stored nor published: the history stores' field allowlists do not name it, and
 `/api/project-context` drops it (`project_context.for_page`), so the page still shows the first
@@ -1712,7 +1712,14 @@ else, and answers a correction the server composes without a model from that ses
 row and observed record: the goal and outcome lines the reader saved, each line's state re-derived
 from a stored reading of those exact words, and the time of each entry a line or sentence rests on.
 It never reads a fact's summary, a command, a check name, tool output, a reading's detail or a
-message's text, so none of them can reach the correction; each entry travels as its time and a
+message's text, so none of them can reach the correction, with one exception since 2026-10-04: for
+a claim of the agent's that a stored reading found the record contradicts or does not show, it
+quotes that one agent message's published title, its first sentence of at most 112 characters,
+which the activity list already shows, and never the message's words
+([the amendment](docs/design-reading-a-session.md#amended-2026-10-04-owner-what-the-agent-claims-is-its-own-constraint)).
+A reader who copies such a correction and edits it before sending it pastes the quoted claim back
+into the session; edited past recognition, it arrives as the reader's own words, as any edited
+correction does. Each entry travels as its time and a
 placeholder holding its fact id, which the page replaces with the number its own list draws, or
 drops. A reply is at most 2,000 characters however the page numbers it, and is never truncated: a
 longer one drops its consistent lines and then answers a refusal sentence. It stores nothing of
@@ -2985,7 +2992,8 @@ reachable dashboard can be killed, and a question a session is waiting on can be
 somebody other than you. Two of the seventeen store nothing of their own: `POST /api/direction` returns the whole text
 of a direction a session's user gave, which `/api/project-context` names by its first sentence, and
 `POST /api/correction` returns the goal and outcome lines a reader saved, composed as Steer back's
-correction. Both answer only a loopback peer, so a non-default bind does not widen them; their
+correction, and, for a claim of the agent's the record contradicts or does not show, that one agent
+message's published title of at most 112 characters. Both answer only a loopback peer, so a non-default bind does not widen them; their
 bounds are in Analyze drift, Cancel and copied corrections. There is nothing to authenticate with on fifteen of them, for the reason the
 ask-lane paragraph below gives: the page is served as fixed bytes with no per-run secret in them.
 Two carry a capability and they are not worth the same. `POST /api/events/<harness>` takes a per-run

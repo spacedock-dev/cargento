@@ -1240,7 +1240,7 @@ function nextCockpitStoreUnreadable(){
    keeps the excerpt, and Analyze reads the prompt whole, up to the 1,000
    characters `reading.adopted_prompt` reads. Short, because it sits in the row
    under the box that holds one control's height. */
-const NEXT_INTENT_EXCERPT_READ_WHOLE = "Excerpt. Analyze reads the whole prompt.";
+const NEXT_INTENT_EXCERPT_READ_WHOLE = "Excerpt. Analyze reads up to 1,000 characters.";
 
 function nextIntentDraftMarks(session, draft){
   /* A chosen prompt is named by its own time, which is what tells it apart
@@ -2666,11 +2666,13 @@ const NEXT_READING_FAILED_CHECK_ON_RECORD =
 const NEXT_READING_FAILED_CHECK_UNREAD =
   "A check that failed was not read, because the reading had no room for it, so nothing here " +
   "says the output is consistent.";
-/* The claims row (owner, 2026-10-04): its question, said in the board's
-   voice where a line shows the reader's words, and why a verdict on it was
-   withdrawn for want of the citations it needs (`claim-uncited`). */
-const NEXT_READING_CLAIMS_QUESTION =
-  "Whether what the agent said about the state of the work is shown by the record";
+/* The claims row (owner, 2026-10-04): why a verdict on it was withdrawn for
+   want of the citations it needs (`claim-uncited`), and why "not shown" was
+   withdrawn where the session's checks were not all read
+   (`claim-record-unread`, review, PR C). */
+const NEXT_READING_CLAIM_RECORD_UNREAD =
+  "Not all of this session's checks were read, so the analysis cannot say the record does " +
+  "not show what the agent said.";
 const NEXT_READING_CLAIM_UNCITED =
   "The analysis did not cite the agent's message and, for a contradiction or a match, the " +
   "entry it compared it with, so it reads as not verifiable.";
@@ -2697,6 +2699,7 @@ const NEXT_READING_STORED_WHY = {
   "tells-the-person": NEXT_READING_TELLS_THE_PERSON,
   "failed-check-on-record": NEXT_READING_FAILED_CHECK_ON_RECORD,
   "claim-uncited": NEXT_READING_CLAIM_UNCITED,
+  "claim-record-unread": NEXT_READING_CLAIM_RECORD_UNREAD,
 };
 
 /* Who wrote an evidence entry. A closed set on the person side, because the
@@ -2914,7 +2917,9 @@ function nextCockpitReadingCriterion(key, label, clause, raw, entries, limit, un
     // `limit ·`.
     why = "";
   }
-  if(result !== NEXT_READING_UNVERIFIABLE && unsettled){
+  /* The claims row is independent of the intent, so an unsettled later
+     direction never demotes it (review, PR C). */
+  if(result !== NEXT_READING_UNVERIFIABLE && unsettled && !claims){
     /* DRC-4511: an unresolved baseline conflict never becomes an agent-drift
        verdict. A demotion rather than a filter over `shape.departures`, for
        the reason the shape-contract comment above gives: filtering would
@@ -2976,6 +2981,15 @@ function nextCockpitReadingCriterion(key, label, clause, raw, entries, limit, un
     }else if(result !== NEXT_READING_UNSUPPORTED &&
         claimRecord.every(entry => nextReadingAuthor(entry) === "derived")){
       token = NEXT_READING_DERIVED_ONLY;
+    }else if(result === NEXT_READING_CONSISTENT && !claimRecord.some(entry =>
+        nextReadingDemonstratesWork(entry) || String(entry.type || "") === "tool_report")){
+      /* `reading._claims_compared`: shown means shown by the work. */
+      token = NEXT_READING_CLAIM_UNCITED;
+    }else if(result === NEXT_READING_DEPARTURE && !claimRecord.some(entry =>
+        entry.subject === "check" ||
+        (nextNumber(entry.at) || 0) >= Math.min(...claimSaid.map(said => nextNumber(said.at) || 0)))){
+      /* A contradiction at or after the claim; a check is its latest run. */
+      token = NEXT_READING_CLAIM_UNCITED;
     }
     if(token){
       result = NEXT_READING_UNVERIFIABLE;
@@ -3066,9 +3080,9 @@ function nextCockpitReadingCriterion(key, label, clause, raw, entries, limit, un
   const restsOnEntry = tool || said || null;
   return {
     key, label,
-    /* The claims question carries no words of the reader's, so the board
-       names it, in the board's own register rather than a quotation's. */
-    clause: claims ? NEXT_READING_CLAIMS_QUESTION : clause || NEXT_READING_CLAUSE_UNRETAINED,
+    /* The claims question carries no words of the reader's, and its heading
+       names it, so it has no clause to draw. */
+    clause: claims ? "" : clause || NEXT_READING_CLAUSE_UNRETAINED,
     clauseKnown: !claims && Boolean(clause),
     /* The claim and what the record says of it, where the claims row stands. */
     claimEntry: claims && result !== NEXT_READING_UNVERIFIABLE ? claimSaid[0] || null : null,
@@ -3174,10 +3188,15 @@ function nextCockpitReadingShape(raw, annotation, entries, limit, unsettled,
         ? "GOAL FROM YOUR PROMPT"
         : nextCockpitLineLabel(key, label, rows[key], annotation, historical, lineSource),
       nextCockpitReadingClause(key, rows[key], annotation, historical),
-      rows[key], entries, nextReadingIsOutcomeLine(key) ? limit : "", unsettled, windowStart));
+      rows[key], entries,
+      nextReadingIsOutcomeLine(key) || key === NEXT_READING_CLAIMS ? limit : "", unsettled,
+      windowStart));
   return {
     criteria,
-    departures: criteria.filter(row => row.result === NEXT_READING_DEPARTURE),
+    /* The intent's departures: a contradicted claim is not one, so it is in no
+       count, flag or answer about the intent (review, PR C). */
+    departures: criteria.filter(row => row.result === NEXT_READING_DEPARTURE &&
+      row.key !== NEXT_READING_CLAIMS),
     revisionRead,
     revisionReadAt: nextNumber(source.revision_read_at),
     windowStart,
@@ -3251,6 +3270,7 @@ function nextCockpitReadingStates(annotation, model){
    the class it applies to; `clauseKnown` was computed for this and never
    read. */
 function nextCockpitReadingClauseCell(row){
+  if(row.key === NEXT_READING_CLAIMS) return "";
   return `<span class="next-cockpit-reading-clause${row.clauseKnown ? "" : "-absent"}">` +
     `${esc(row.clause)}</span>`;
 }
@@ -3388,13 +3408,20 @@ function nextCockpitResultItem(row, numbers, byId, tag = "li"){
    verdict, a malformed or missing result included, cannot tell; otherwise
    nothing was found. A reading with no outcome line cannot tell either: the
    goal row alone is not an answer against what the work was for. */
-/* The claims row is not the intent, so it never counts as departing from it
-   and never holds "Nothing found" back; a claim the record contradicts or
-   does not show is its own answer, after a failed check (owner, 2026-10-04). */
+/* The answer is about the intent alone. The claims row is not the intent, so
+   it never counts as departing from it and never holds "Nothing found" back;
+   a claim is said once, in its own row, and the level names it as a reason
+   (review, PR C: a fact said once on the panel). */
+/* The claims row as the result draws it: not where the agent made no claim,
+   which the reading says as its own `unverifiable` with no reason ("stop
+   overusing prose", owner 2026-10-02; review, PR C). */
+function nextCockpitClaimsDrawn(shape){
+  return shape.criteria.filter(row => row.key === NEXT_READING_CLAIMS &&
+    (row.result !== NEXT_READING_UNVERIFIABLE || row.why || row.limit));
+}
+
 function nextDriftAnswer(shape, entries){
   const intent = shape.criteria.filter(row => row.key !== NEXT_READING_CLAIMS);
-  const claim = shape.criteria.find(row => row.key === NEXT_READING_CLAIMS &&
-    [NEXT_READING_DEPARTURE, NEXT_READING_UNSUPPORTED].includes(row.result));
   const departures = intent.filter(row => row.result === NEXT_READING_DEPARTURE);
   if(departures.length) return {kind: "departs", count: departures.length, departures};
   const start = shape.windowStart;
@@ -3405,7 +3432,6 @@ function nextDriftAnswer(shape, entries){
       (nextReadingEvidenceAt(b) || 0) >= (nextReadingEvidenceAt(a) || 0) ? b : a);
     return {kind: "failed-check", failed: latest};
   }
-  if(claim) return {kind: "claim", claim};
   const verdict = row => row.result === NEXT_READING_CONSISTENT && row.restsOn;
   if(!intent.some(row => nextReadingIsOutcomeLine(row.key)) ||
       !intent.every(verdict)) return {kind: "cant-tell"};
@@ -3441,10 +3467,6 @@ function nextCockpitResultAnswer(answer, numbers, byId, midFlight = false){
     const where = nextCockpitResultWhere(answer.failed, numbers);
     return open + `<p class="next-cockpit-result-line">${lead}${esc(where
       ? `A check failed at ${where}.` : "A check failed.")}</p></div>`;
-  }
-  if(answer.kind === "claim"){
-    return open + `<p class="next-cockpit-result-line">${lead}` +
-      `${esc(nextCockpitClaimStatus(answer.claim, numbers, true))}.</p></div>`;
   }
   return open + `<p class="next-cockpit-result-line">${lead}${esc(answer.kind === "cant-tell"
     ? NEXT_RESULT_CANT_TELL : NEXT_RESULT_NOTHING_FOUND)}</p></div>`;
@@ -4428,13 +4450,16 @@ function nextCockpitSteerOffer(session, annotation, source, shape){
   const entries = source.all || source.entries || [];
   const current = Boolean(shape && !shape.malformed && shape.revisionRead != null &&
     shape.revisionRead === nextNumber(annotation && annotation.revision));
+  const departed = current && shape.departures.length > 0;
   /* A claim the record contradicts or does not show is something to steer
-     from too (`correction._claim_line`, owner 2026-10-04). */
-  const departed = current && (shape.departures.length > 0 || shape.criteria.some(row =>
-    row.key === NEXT_READING_CLAIMS && row.result === NEXT_READING_UNSUPPORTED));
+     from too (`correction._claim_line`, owner 2026-10-04), read from the
+     claims row itself: it is not a departure from the intent, so it never
+     offers "Update intent instead" (review, PR C). */
+  const claimed = current && shape.criteria.some(row => row.key === NEXT_READING_CLAIMS &&
+    [NEXT_READING_DEPARTURE, NEXT_READING_UNSUPPORTED].includes(row.result));
   const failed = nextCockpitFailedChecks(session, entries).length > 0;
   const later = nextCockpitLaterDirections(annotation, entries, session).length > 0;
-  return departed || failed || later ? {departed} : null;
+  return departed || claimed || failed || later ? {departed, claimed} : null;
 }
 
 /* The direction Update intent instead offers (owner, 2026-09-28): the later
@@ -5131,6 +5156,7 @@ function nextCockpitReadingParts(session, annotation, entries, model, observed, 
   nextCockpitCorrectionFollow(session, annotation, source, steerable);
   const offer = question ? null : steerable;
   const departed = Boolean(offer && offer.departed);
+  const claimOffer = Boolean(offer && offer.claimed);
   const noReader = nextData && nextData.annotate === true ? nextReadingRouteRefusal(session) : "";
   const update = departed
     ? '<button type="button" class="next-action next-action--secondary" data-next-cockpit-action="update-intent" ' +
@@ -5139,8 +5165,9 @@ function nextCockpitReadingParts(session, annotation, entries, model, observed, 
       `${nextPendingAttrs(`update-intent:${sessKey(session)}`)}>` +
       `${nextPendingLabel(`update-intent:${sessKey(session)}`, "Update intent instead")}</button>`
     : "";
-  const slotted = offer ? {lead: departed,
-    button: nextCockpitSteerButton(session, primary && (departed || Boolean(noReader))) + update,
+  const slotted = offer ? {lead: departed || claimOffer,
+    button: nextCockpitSteerButton(session,
+      primary && (departed || claimOffer || Boolean(noReader))) + update,
     box: nextCockpitSteerBox(session, source)} : null;
   /* Said once. The send disclosure already ends on the server's "never a
      verification that the work was done", so the page's own wording rides
@@ -5237,7 +5264,7 @@ function nextCockpitReadingParts(session, annotation, entries, model, observed, 
   const lines = shape.criteria.filter(row => nextReadingIsOutcomeLine(row.key));
   /* What the agent claimed, after the intent it is independent of (owner,
      2026-10-04), under its own heading. */
-  const claimed = shape.criteria.filter(row => row.key === NEXT_READING_CLAIMS);
+  const claimed = nextCockpitClaimsDrawn(shape);
   const checklist = goal.map(row => nextCockpitResultItem(row, numbers, byId, "div")).join("") +
     (lines.length
       ? '<div class="next-cockpit-result-checklist"><h3>Against expected outcome</h3>' +
@@ -5927,6 +5954,15 @@ function nextDriftAnalysisRow(group, session){
   return rows.find(row => row && sessKey(row) === sessKey(session)) || null;
 }
 
+/* Whether every row of the intent stands consistent on what it names. The
+   intent's rows only: the claims row is not the intent, and holding it to a
+   consistent made None or low unreachable (review, PR C). */
+function nextDriftAnalysisShown(shape){
+  const intent = shape.criteria.filter(line => line.key !== NEXT_READING_CLAIMS);
+  return intent.length > 0 && intent.every(line =>
+    line.result === NEXT_READING_CONSISTENT && line.restsOn);
+}
+
 function nextDriftAnalysis(group, session, annotation, shape){
   const raw = annotation && annotation.assessment;
   if(!raw || !shape || shape.malformed) return null;
@@ -5941,9 +5977,7 @@ function nextDriftAnalysis(group, session, annotation, shape){
   if(current != null && nextNumber(raw.revision_read) !== current) return null;
   let level = String(row.level || "");
   if(!NEXT_DRIFT_LEVEL_NAMES[level]) return null;
-  const shown = shape.criteria.length > 0 && shape.criteria.every(line =>
-    line.result === NEXT_READING_CONSISTENT && line.restsOn);
-  if(level === "none_or_low" && !shown) level = "not_enough";
+  if(level === "none_or_low" && !nextDriftAnalysisShown(shape)) level = "not_enough";
   const clock = nextSessionClock(readAt);
   /* The time is said once, in the ruled line; the source chip names the
      source alone and the caption carries the range alone (DRC-4758 slice C). */

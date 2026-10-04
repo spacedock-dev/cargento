@@ -371,7 +371,7 @@ A goal-less Claude Code or Codex session arrives with its goal drafted from your
 Cargento publishes it, or from your latest prompt, marked "latest", where no first prompt with a
 time is published. A session that opened with a harness control such as `/clear` drafts nothing,
 not even the latest prompt, and says there is no first prompt to draft from, so you type a goal.
-The draft is marked "from your prompt", an excerpt says "Excerpt. Analyze reads the whole prompt."
+The draft is marked "from your prompt", an excerpt says "Excerpt. Analyze reads up to 1,000 characters."
 (the goal keeps the excerpt, and a reading reads the prompt it came from whole, up to 1,000
 characters, or says in what it read that it could not), and the box is tinted: nothing is saved until you press Save intent, edit the box and save, or
 press `Analyze drift`, which adopts the draft. `Use your prompt` lists up to five of your own
@@ -478,11 +478,15 @@ agent's messages, never beside a check that failed after your words, and the lev
 "None or low" on the agent's word alone. A departure resting on an agent message stops counting
 once that message leaves the transcript tail the board reads. A press that carries the agent's
 messages also asks whether any of them claims a state of the work (running, merged, passing and
-the like) that the record contradicts or does not show. "What the agent claimed" reads "is
-contradicted at #m", "is not shown by the record" (the record read being the board's recent tail),
-"is shown at #m" or "Can't tell"; a contradicted or unshown claim reads Medium, is never counted as
-a departure from your intent, and adds one line to Steer back: `You said "<its first sentence>" at
-#n; the record does not show it.` "Where the work went" groups the written files by folder. A
+the like) that the record contradicts, or, for a pass, a fix or a file written, that the record
+does not show; a claim nothing Cargento records can show (merged, pushed, deployed) is never "not
+shown". "What the agent claimed" reads "is contradicted at #m", "is not shown by the record" (the
+record read being the board's recent tail, and never where some of the session's checks went
+unread), "is shown at #m" or "Can't tell", and is not drawn when there was no claim. A
+contradicted or unshown claim reads Medium, is never counted as a departure from your intent, is
+not held back by an unsettled later direction, and adds one line to Steer back: `You said "<its
+first sentence>" at 14:02 (#12 in Cargento); the record does not show it.`, or, contradicted,
+`...; the record shows otherwise at 14:05 (#13).` "Where the work went" groups the written files by folder. A
 result says when your intent changed after it or new work arrived since, with "Analyze again", and
 "Not accurate?" marks the reading with a token that is stored beside it and never sent or counted.
 The box offers Cancel, which stops the call and records a cancelled attempt that still counts, or one that spent nothing when it landed before anything was sent. A failed request says its result could
