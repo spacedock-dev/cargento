@@ -2464,6 +2464,8 @@ missing, changing and ambiguous sources are refused. The draft asks whether to k
 standing outcome lines and saves only on Save intent. No list or whole source text is stored.
 Every offered goal choice masks named credential forms before raw line breaks are folded and
 before the goal cap is applied. This goal-only scan is uncached; Analyze keeps its own words.
+It returns at most 4,096 source facts but checks the rest of the bounded prefix for conflicting
+copies of those identities. Known source clipping remains an excerpt even after whitespace folds.
 Adopted goals never authorize unasked checks, even when the same revision has a typed output.
 
 The history record also keeps `first_prompt_at`, `annotation_goal_source`,

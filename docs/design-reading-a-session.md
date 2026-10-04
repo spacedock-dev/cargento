@@ -3282,6 +3282,8 @@ direction and lets the reader select another. "Use this as my goal" fills a pend
 asks whether to keep standing outcome lines, and waits for Save intent. A refused or too-long
 Add offers that choice; its line editor says "Write the rule, not the moment". The menu's five
 choices are resolved only when opened, under the same source checks as adoption.
+They retain known source clipping after whitespace folds. The source-list cap limits returned
+facts, not ambiguity checks against their identities within the bounded prefix.
 
 A stored reading keeps the baseline it read: only unsettled directions at or before its
 `read_at` demote its intent rows, answer, level and correction. A later message instead labels
