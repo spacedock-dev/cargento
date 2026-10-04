@@ -83,7 +83,8 @@ jobs:
           AGY_INSTALLER_SHA256: 62966c07365423bd4dc209355060744058fb30d60f5323e2d360e39de64e5042
         run: |
           set -euo pipefail
-          curl -fsSL https://antigravity.google/cli/install.sh -o "$RUNNER_TEMP/install-agy.sh"
+          # Hash the decoded script; the upstream endpoint also serves gzip.
+          curl --compressed -fsSL https://antigravity.google/cli/install.sh -o "$RUNNER_TEMP/install-agy.sh"
           echo "${AGY_INSTALLER_SHA256}  $RUNNER_TEMP/install-agy.sh" | sha256sum --check - || {
             echo "::error::antigravity.google/cli/install.sh changed upstream." \
               "Review the new script, then update AGY_INSTALLER_SHA256 in this workflow." \
