@@ -520,13 +520,22 @@ def _replay(
         for call in pc._merged_check_calls(scan.parent, scan.children)  # noqa: SLF001
         if call[3] in _MOVING_TOOLS
     ]
-    ids = [call[2] for call in calls]
-    found_results = [results.get(call_id) for call_id in ids]
+    # Check rows keep parent-first result pairing; launches use the call's
+    # own stream. A late result in either view invalidates its replay prefix.
+    found_results = [
+        (
+            results.get(call[2]),
+            results.get(pc._launch_record_id(call[2], call[5] or "parent")),  # noqa: SLF001
+        )
+        for call in calls
+    ]
     marks = [
         hashlib.sha256(
-            repr((call, None if got is None else (got.at, got.block))).encode("utf-8", "replace")
+            repr(
+                (call, tuple(None if got is None else (got.at, got.block) for got in paired))
+            ).encode("utf-8", "replace")
         ).digest()
-        for call, got in zip(calls, found_results, strict=True)
+        for call, paired in zip(calls, found_results, strict=True)
     ]
     valid = (
         _reusable(previous, marks) if previous is not None and previous.context == context else 0

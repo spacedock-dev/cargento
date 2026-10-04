@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import copy
 import datetime as dt
 import json
 import unittest
@@ -382,6 +383,47 @@ class DelegatedWorkLaunchFacts(ClaudeChecksTestCase):
             self.config, saved_row(), str(self.path), [], floor=None, now=10**10
         )
         self.assertNotIn(levels.REASON_BACKGROUND_RUN, after["reasons"])
+
+    def result_collision(
+        self, command: str, output: str, *, rejected: bool
+    ) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
+        self.session.bash("pytest", "2 passed")
+        self.session.save(self.path)
+        child_call = copy.deepcopy(self.session.rows[1])
+        child_call["isSidechain"] = True
+        child_call["message"]["content"][0]["input"]["command"] = command
+        child = self.child_rows("agent-acde.jsonl", [child_call])
+        row = saved_row(annotation_goal="Run tests", annotation_line_1="Tests pass")
+        before = live_estimate.for_session(
+            self.config, row, str(self.path), [], floor=None, now=10**10
+        )
+        child_result = copy.deepcopy(self.session.rows[2])
+        child_result["isSidechain"] = True
+        child_result["message"]["content"][0].update(content=output, is_error=rejected)
+        child.write_text(child.read_text() + json.dumps(child_result) + "\n")
+        after = live_estimate.for_session(
+            self.config, row, str(self.path), [], floor=None, now=10**10
+        )
+        fresh = live_estimate._replay(
+            self.config, str(self.path), row["sid"], live_estimate.saved_intent(row), 0, None
+        ).found
+        return before, after, fresh
+
+    def test_late_child_rejection_retires_launch_in_cached_replay(self) -> None:
+        before, after, fresh = self.result_collision("worker &", "Rejected", rejected=True)
+        self.assertIn(levels.REASON_BACKGROUND_RUN, before["reasons"])
+        self.assertNotIn(levels.REASON_BACKGROUND_RUN, after["reasons"])
+        self.assertEqual(fresh["level"], after["level"])
+        self.assertEqual(fresh["reasons"], after["reasons"])
+
+    def test_late_child_background_result_blocks_cached_reassurance(self) -> None:
+        before, after, fresh = self.result_collision(
+            "pytest", "Command running in background with ID: b1.", rejected=False
+        )
+        self.assertNotIn(levels.REASON_BACKGROUND_RUN, before["reasons"])
+        self.assertIn(levels.REASON_BACKGROUND_RUN, after["reasons"])
+        self.assertEqual(fresh["level"], after["level"])
+        self.assertEqual(fresh["reasons"], after["reasons"])
 
     def test_parent_sidechain_notification_is_not_parent_completion(self) -> None:
         call = self.session.bash("worker &")
