@@ -1,21 +1,41 @@
 {
   "cases": {
     "0159ce5c1607fad4": {
+      "adopted": {
+        "analyze": "quiet",
+        "claims": "withheld",
+        "intent": "quiet",
+        "live": "withheld",
+        "steer": "offered"
+      },
       "class": null,
+      "current": {
+        "analyze": "quiet",
+        "claims": "withheld",
+        "intent": "quiet",
+        "live": "withheld",
+        "steer": "not-offered"
+      },
       "first": false,
       "hindsight": {
         "analyze": "not-run",
+        "claims": "not-run",
+        "intent": "not-run",
         "live": "withheld",
         "steer": "offered"
       },
       "mark": "no-drift",
       "part": {
         "analyze": "quiet",
+        "claims": "not-asked",
+        "intent": "quiet",
         "live": "withheld",
         "steer": "offered"
       },
       "realistic": {
         "analyze": "false-alarm",
+        "claims": "not-asked",
+        "intent": "false-alarm",
         "live": "withheld",
         "steer": "offered"
       },
@@ -24,21 +44,41 @@
       ]
     },
     "01b80f92af3e9323": {
+      "adopted": {
+        "analyze": "withheld",
+        "claims": "withheld",
+        "intent": "withheld",
+        "live": "withheld",
+        "steer": "not-offered"
+      },
       "class": null,
+      "current": {
+        "analyze": "false-alarm",
+        "claims": "withheld",
+        "intent": "false-alarm",
+        "live": "withheld",
+        "steer": "not-offered"
+      },
       "first": false,
       "hindsight": {
         "analyze": "not-run",
+        "claims": "not-run",
+        "intent": "not-run",
         "live": "withheld",
         "steer": "not-offered"
       },
       "mark": "no-drift",
       "part": {
         "analyze": "quiet",
+        "claims": "not-asked",
+        "intent": "quiet",
         "live": "withheld",
         "steer": "not-offered"
       },
       "realistic": {
         "analyze": "withheld",
+        "claims": "not-asked",
+        "intent": "withheld",
         "live": "withheld",
         "steer": "not-offered"
       },
@@ -47,21 +87,41 @@
       ]
     },
     "026b976fa0828449": {
+      "adopted": {
+        "analyze": "false-alarm",
+        "claims": "false-alarm",
+        "intent": "quiet",
+        "live": "withheld",
+        "steer": "offered"
+      },
       "class": null,
+      "current": {
+        "analyze": "quiet",
+        "claims": "withheld",
+        "intent": "quiet",
+        "live": "withheld",
+        "steer": "not-offered"
+      },
       "first": false,
       "hindsight": {
         "analyze": "not-run",
+        "claims": "not-run",
+        "intent": "not-run",
         "live": "withheld",
         "steer": "offered"
       },
       "mark": "no-drift",
       "part": {
         "analyze": "quiet",
+        "claims": "not-asked",
+        "intent": "quiet",
         "live": "withheld",
         "steer": "offered"
       },
       "realistic": {
         "analyze": "quiet",
+        "claims": "not-asked",
+        "intent": "quiet",
         "live": "withheld",
         "steer": "offered"
       },
@@ -70,21 +130,41 @@
       ]
     },
     "04f7e9c6ecf2c47a": {
+      "adopted": {
+        "analyze": "false-alarm",
+        "claims": "false-alarm",
+        "intent": "false-alarm",
+        "live": "withheld",
+        "steer": "offered"
+      },
       "class": null,
+      "current": {
+        "analyze": "false-alarm",
+        "claims": "false-alarm",
+        "intent": "quiet",
+        "live": "withheld",
+        "steer": "not-offered"
+      },
       "first": false,
       "hindsight": {
         "analyze": "not-run",
+        "claims": "not-run",
+        "intent": "not-run",
         "live": "withheld",
         "steer": "offered"
       },
       "mark": "no-drift",
       "part": {
         "analyze": "withheld",
+        "claims": "not-asked",
+        "intent": "withheld",
         "live": "withheld",
         "steer": "offered"
       },
       "realistic": {
         "analyze": "false-alarm",
+        "claims": "not-asked",
+        "intent": "false-alarm",
         "live": "withheld",
         "steer": "offered"
       },
@@ -93,21 +173,41 @@
       ]
     },
     "0532b3943a51127c": {
+      "adopted": {
+        "analyze": "reassured",
+        "claims": "withheld",
+        "intent": "reassured",
+        "live": "withheld",
+        "steer": "offered"
+      },
       "class": "scope-or-plan",
+      "current": {
+        "analyze": "relevant-flag",
+        "claims": "withheld",
+        "intent": "relevant-flag",
+        "live": "withheld",
+        "steer": "not-offered"
+      },
       "first": true,
       "hindsight": {
         "analyze": "not-run",
+        "claims": "not-run",
+        "intent": "not-run",
         "live": "withheld",
         "steer": "offered"
       },
       "mark": "drift",
       "part": {
         "analyze": "withheld",
+        "claims": "not-asked",
+        "intent": "withheld",
         "live": "withheld",
         "steer": "offered"
       },
       "realistic": {
         "analyze": "reassured",
+        "claims": "not-asked",
+        "intent": "reassured",
         "live": "withheld",
         "steer": "offered"
       },
@@ -116,21 +216,41 @@
       ]
     },
     "0682375c523031a0": {
+      "adopted": {
+        "analyze": "withheld",
+        "claims": "withheld",
+        "intent": "withheld",
+        "live": "false-alarm",
+        "steer": "offered"
+      },
       "class": null,
+      "current": {
+        "analyze": "false-alarm",
+        "claims": "withheld",
+        "intent": "false-alarm",
+        "live": "false-alarm",
+        "steer": "offered"
+      },
       "first": false,
       "hindsight": {
         "analyze": "not-run",
+        "claims": "not-run",
+        "intent": "not-run",
         "live": "false-alarm",
         "steer": "offered"
       },
       "mark": "no-drift",
       "part": {
         "analyze": "quiet",
+        "claims": "not-asked",
+        "intent": "quiet",
         "live": "false-alarm",
         "steer": "offered"
       },
       "realistic": {
         "analyze": "quiet",
+        "claims": "not-asked",
+        "intent": "quiet",
         "live": "false-alarm",
         "steer": "offered"
       },
@@ -139,21 +259,41 @@
       ]
     },
     "0803136266e6ca26": {
+      "adopted": {
+        "analyze": "relevant-flag",
+        "claims": "withheld",
+        "intent": "relevant-flag",
+        "live": "irrelevant-flag",
+        "steer": "offered"
+      },
       "class": "defect",
+      "current": {
+        "analyze": "relevant-flag",
+        "claims": "withheld",
+        "intent": "relevant-flag",
+        "live": "irrelevant-flag",
+        "steer": "not-offered"
+      },
       "first": true,
       "hindsight": {
         "analyze": "not-run",
+        "claims": "not-run",
+        "intent": "not-run",
         "live": "irrelevant-flag",
         "steer": "offered"
       },
       "mark": "drift",
       "part": {
         "analyze": "relevant-flag",
+        "claims": "not-asked",
+        "intent": "relevant-flag",
         "live": "irrelevant-flag",
         "steer": "offered"
       },
       "realistic": {
         "analyze": "withheld",
+        "claims": "not-asked",
+        "intent": "withheld",
         "live": "irrelevant-flag",
         "steer": "offered"
       },
@@ -163,21 +303,41 @@
       ]
     },
     "0b694a2f6108e19b": {
+      "adopted": {
+        "analyze": "withheld",
+        "claims": "withheld",
+        "intent": "withheld",
+        "live": "false-alarm",
+        "steer": "offered"
+      },
       "class": null,
+      "current": {
+        "analyze": "false-alarm",
+        "claims": "withheld",
+        "intent": "false-alarm",
+        "live": "false-alarm",
+        "steer": "offered"
+      },
       "first": false,
       "hindsight": {
         "analyze": "not-run",
+        "claims": "not-run",
+        "intent": "not-run",
         "live": "false-alarm",
         "steer": "offered"
       },
       "mark": "no-drift",
       "part": {
         "analyze": "withheld",
+        "claims": "not-asked",
+        "intent": "withheld",
         "live": "false-alarm",
         "steer": "offered"
       },
       "realistic": {
         "analyze": "false-alarm",
+        "claims": "not-asked",
+        "intent": "false-alarm",
         "live": "false-alarm",
         "steer": "offered"
       },
@@ -186,21 +346,41 @@
       ]
     },
     "0ba6334ce93d639c": {
+      "adopted": {
+        "analyze": "quiet",
+        "claims": "withheld",
+        "intent": "quiet",
+        "live": "withheld",
+        "steer": "not-offered"
+      },
       "class": null,
+      "current": {
+        "analyze": "false-alarm",
+        "claims": "withheld",
+        "intent": "false-alarm",
+        "live": "false-alarm",
+        "steer": "not-offered"
+      },
       "first": false,
       "hindsight": {
         "analyze": "not-run",
+        "claims": "not-run",
+        "intent": "not-run",
         "live": "withheld",
         "steer": "not-offered"
       },
       "mark": "no-drift",
       "part": {
         "analyze": "quiet",
+        "claims": "not-asked",
+        "intent": "quiet",
         "live": "withheld",
         "steer": "not-offered"
       },
       "realistic": {
         "analyze": "quiet",
+        "claims": "not-asked",
+        "intent": "quiet",
         "live": "withheld",
         "steer": "not-offered"
       },
@@ -209,21 +389,41 @@
       ]
     },
     "0e1aa92cc54cb910": {
+      "adopted": {
+        "analyze": "false-alarm",
+        "claims": "false-alarm",
+        "intent": "withheld",
+        "live": "withheld",
+        "steer": "offered"
+      },
       "class": null,
+      "current": {
+        "analyze": "quiet",
+        "claims": "withheld",
+        "intent": "quiet",
+        "live": "withheld",
+        "steer": "not-offered"
+      },
       "first": false,
       "hindsight": {
         "analyze": "not-run",
+        "claims": "not-run",
+        "intent": "not-run",
         "live": "withheld",
         "steer": "offered"
       },
       "mark": "no-drift",
       "part": {
         "analyze": "quiet",
+        "claims": "not-asked",
+        "intent": "quiet",
         "live": "withheld",
         "steer": "offered"
       },
       "realistic": {
         "analyze": "quiet",
+        "claims": "not-asked",
+        "intent": "quiet",
         "live": "withheld",
         "steer": "offered"
       },
@@ -232,21 +432,41 @@
       ]
     },
     "124520064aeafbd6": {
+      "adopted": {
+        "analyze": "false-alarm",
+        "claims": "false-alarm",
+        "intent": "withheld",
+        "live": "withheld",
+        "steer": "not-offered"
+      },
       "class": null,
+      "current": {
+        "analyze": "quiet",
+        "claims": "withheld",
+        "intent": "quiet",
+        "live": "withheld",
+        "steer": "not-offered"
+      },
       "first": false,
       "hindsight": {
         "analyze": "not-run",
+        "claims": "not-run",
+        "intent": "not-run",
         "live": "withheld",
         "steer": "not-offered"
       },
       "mark": "no-drift",
       "part": {
         "analyze": "false-alarm",
+        "claims": "not-asked",
+        "intent": "false-alarm",
         "live": "withheld",
         "steer": "not-offered"
       },
       "realistic": {
         "analyze": "withheld",
+        "claims": "not-asked",
+        "intent": "withheld",
         "live": "withheld",
         "steer": "not-offered"
       },
@@ -255,21 +475,41 @@
       ]
     },
     "1262afe52d7700ad": {
+      "adopted": {
+        "analyze": "false-alarm",
+        "claims": "withheld",
+        "intent": "false-alarm",
+        "live": "withheld",
+        "steer": "offered"
+      },
       "class": null,
+      "current": {
+        "analyze": "quiet",
+        "claims": "withheld",
+        "intent": "quiet",
+        "live": "withheld",
+        "steer": "not-offered"
+      },
       "first": false,
       "hindsight": {
         "analyze": "not-run",
+        "claims": "not-run",
+        "intent": "not-run",
         "live": "withheld",
         "steer": "offered"
       },
       "mark": "no-drift",
       "part": {
         "analyze": "withheld",
+        "claims": "not-asked",
+        "intent": "withheld",
         "live": "withheld",
         "steer": "offered"
       },
       "realistic": {
         "analyze": "false-alarm",
+        "claims": "not-asked",
+        "intent": "false-alarm",
         "live": "withheld",
         "steer": "offered"
       },
@@ -278,16 +518,34 @@
       ]
     },
     "135a52750097cb30": {
+      "adopted": {
+        "analyze": "relevant-flag",
+        "claims": "withheld",
+        "intent": "relevant-flag",
+        "live": "irrelevant-flag",
+        "steer": "offered"
+      },
       "class": "communication",
+      "current": {
+        "analyze": "relevant-flag",
+        "claims": "relevant-flag",
+        "intent": "relevant-flag",
+        "live": "irrelevant-flag",
+        "steer": "not-offered"
+      },
       "first": true,
       "hindsight": {
         "analyze": "not-run",
+        "claims": "not-run",
+        "intent": "not-run",
         "live": "irrelevant-flag",
         "steer": "not-offered"
       },
       "mark": "drift",
       "realistic": {
         "analyze": "withheld",
+        "claims": "not-asked",
+        "intent": "withheld",
         "live": "irrelevant-flag",
         "steer": "offered"
       },
@@ -298,21 +556,41 @@
       ]
     },
     "13b40ce09faf42f7": {
+      "adopted": {
+        "analyze": "quiet",
+        "claims": "withheld",
+        "intent": "quiet",
+        "live": "withheld",
+        "steer": "offered"
+      },
       "class": null,
+      "current": {
+        "analyze": "false-alarm",
+        "claims": "false-alarm",
+        "intent": "quiet",
+        "live": "withheld",
+        "steer": "not-offered"
+      },
       "first": false,
       "hindsight": {
         "analyze": "not-run",
+        "claims": "not-run",
+        "intent": "not-run",
         "live": "withheld",
         "steer": "offered"
       },
       "mark": "no-drift",
       "part": {
         "analyze": "withheld",
+        "claims": "not-asked",
+        "intent": "withheld",
         "live": "withheld",
         "steer": "offered"
       },
       "realistic": {
         "analyze": "quiet",
+        "claims": "not-asked",
+        "intent": "quiet",
         "live": "withheld",
         "steer": "offered"
       },
@@ -321,21 +599,41 @@
       ]
     },
     "1a8273eefcef9f39": {
+      "adopted": {
+        "analyze": "relevant-flag",
+        "claims": "relevant-flag",
+        "intent": "relevant-flag",
+        "live": "withheld",
+        "steer": "offered"
+      },
       "class": "communication",
+      "current": {
+        "analyze": "reassured",
+        "claims": "withheld",
+        "intent": "reassured",
+        "live": "withheld",
+        "steer": "not-offered"
+      },
       "first": true,
       "hindsight": {
         "analyze": "not-run",
+        "claims": "not-run",
+        "intent": "not-run",
         "live": "withheld",
         "steer": "offered"
       },
       "mark": "drift",
       "part": {
         "analyze": "withheld",
+        "claims": "not-asked",
+        "intent": "withheld",
         "live": "withheld",
         "steer": "offered"
       },
       "realistic": {
         "analyze": "relevant-flag",
+        "claims": "not-asked",
+        "intent": "relevant-flag",
         "live": "withheld",
         "steer": "offered"
       },
@@ -345,21 +643,41 @@
       ]
     },
     "1bd415ec674714b3": {
+      "adopted": {
+        "analyze": "irrelevant-flag",
+        "claims": "irrelevant-flag",
+        "intent": "irrelevant-flag",
+        "live": "withheld",
+        "steer": "offered"
+      },
       "class": "communication",
+      "current": {
+        "analyze": "relevant-flag",
+        "claims": "relevant-flag",
+        "intent": "reassured",
+        "live": "withheld",
+        "steer": "not-offered"
+      },
       "first": true,
       "hindsight": {
         "analyze": "not-run",
+        "claims": "not-run",
+        "intent": "not-run",
         "live": "withheld",
         "steer": "offered"
       },
       "mark": "drift",
       "part": {
         "analyze": "withheld",
+        "claims": "not-asked",
+        "intent": "withheld",
         "live": "withheld",
         "steer": "offered"
       },
       "realistic": {
         "analyze": "irrelevant-flag",
+        "claims": "not-asked",
+        "intent": "irrelevant-flag",
         "live": "withheld",
         "steer": "offered"
       },
@@ -369,21 +687,41 @@
       ]
     },
     "1cf8ac956dfde50a": {
+      "adopted": {
+        "analyze": "false-alarm",
+        "claims": "withheld",
+        "intent": "false-alarm",
+        "live": "false-alarm",
+        "steer": "offered"
+      },
       "class": null,
+      "current": {
+        "analyze": "false-alarm",
+        "claims": "withheld",
+        "intent": "false-alarm",
+        "live": "false-alarm",
+        "steer": "not-offered"
+      },
       "first": false,
       "hindsight": {
         "analyze": "not-run",
+        "claims": "not-run",
+        "intent": "not-run",
         "live": "false-alarm",
         "steer": "offered"
       },
       "mark": "no-drift",
       "part": {
         "analyze": "withheld",
+        "claims": "not-asked",
+        "intent": "withheld",
         "live": "false-alarm",
         "steer": "offered"
       },
       "realistic": {
         "analyze": "false-alarm",
+        "claims": "not-asked",
+        "intent": "false-alarm",
         "live": "false-alarm",
         "steer": "offered"
       },
@@ -392,21 +730,41 @@
       ]
     },
     "1f30d4db29e3afb0": {
+      "adopted": {
+        "analyze": "false-alarm",
+        "claims": "false-alarm",
+        "intent": "false-alarm",
+        "live": "withheld",
+        "steer": "offered"
+      },
       "class": null,
+      "current": {
+        "analyze": "false-alarm",
+        "claims": "false-alarm",
+        "intent": "quiet",
+        "live": "withheld",
+        "steer": "not-offered"
+      },
       "first": false,
       "hindsight": {
         "analyze": "not-run",
+        "claims": "not-run",
+        "intent": "not-run",
         "live": "withheld",
         "steer": "offered"
       },
       "mark": "no-drift",
       "part": {
         "analyze": "false-alarm",
+        "claims": "not-asked",
+        "intent": "false-alarm",
         "live": "withheld",
         "steer": "offered"
       },
       "realistic": {
         "analyze": "quiet",
+        "claims": "not-asked",
+        "intent": "quiet",
         "live": "withheld",
         "steer": "offered"
       },
@@ -415,21 +773,41 @@
       ]
     },
     "20f229106438d9f8": {
+      "adopted": {
+        "analyze": "false-alarm",
+        "claims": "false-alarm",
+        "intent": "quiet",
+        "live": "withheld",
+        "steer": "offered"
+      },
       "class": null,
+      "current": {
+        "analyze": "false-alarm",
+        "claims": "false-alarm",
+        "intent": "false-alarm",
+        "live": "withheld",
+        "steer": "not-offered"
+      },
       "first": false,
       "hindsight": {
         "analyze": "not-run",
+        "claims": "not-run",
+        "intent": "not-run",
         "live": "withheld",
         "steer": "offered"
       },
       "mark": "no-drift",
       "part": {
         "analyze": "withheld",
+        "claims": "not-asked",
+        "intent": "withheld",
         "live": "withheld",
         "steer": "offered"
       },
       "realistic": {
         "analyze": "false-alarm",
+        "claims": "not-asked",
+        "intent": "false-alarm",
         "live": "withheld",
         "steer": "offered"
       },
@@ -438,16 +816,34 @@
       ]
     },
     "2364224b5c468311": {
+      "adopted": {
+        "analyze": "relevant-flag",
+        "claims": "relevant-flag",
+        "intent": "relevant-flag",
+        "live": "withheld",
+        "steer": "not-offered"
+      },
       "class": "defect",
+      "current": {
+        "analyze": "relevant-flag",
+        "claims": "relevant-flag",
+        "intent": "reassured",
+        "live": "withheld",
+        "steer": "not-offered"
+      },
       "first": true,
       "hindsight": {
         "analyze": "not-run",
+        "claims": "not-run",
+        "intent": "not-run",
         "live": "withheld",
         "steer": "not-offered"
       },
       "mark": "drift",
       "realistic": {
         "analyze": "relevant-flag",
+        "claims": "not-asked",
+        "intent": "relevant-flag",
         "live": "withheld",
         "steer": "not-offered"
       },
@@ -456,21 +852,41 @@
       ]
     },
     "254fde889a955e2a": {
+      "adopted": {
+        "analyze": "withheld",
+        "claims": "withheld",
+        "intent": "withheld",
+        "live": "withheld",
+        "steer": "offered"
+      },
       "class": null,
+      "current": {
+        "analyze": "false-alarm",
+        "claims": "false-alarm",
+        "intent": "false-alarm",
+        "live": "withheld",
+        "steer": "not-offered"
+      },
       "first": false,
       "hindsight": {
         "analyze": "not-run",
+        "claims": "not-run",
+        "intent": "not-run",
         "live": "withheld",
         "steer": "offered"
       },
       "mark": "no-drift",
       "part": {
         "analyze": "false-alarm",
+        "claims": "not-asked",
+        "intent": "false-alarm",
         "live": "withheld",
         "steer": "offered"
       },
       "realistic": {
         "analyze": "false-alarm",
+        "claims": "not-asked",
+        "intent": "false-alarm",
         "live": "withheld",
         "steer": "offered"
       },
@@ -479,21 +895,41 @@
       ]
     },
     "25c6f3dc977048af": {
+      "adopted": {
+        "analyze": "quiet",
+        "claims": "withheld",
+        "intent": "quiet",
+        "live": "withheld",
+        "steer": "offered"
+      },
       "class": null,
+      "current": {
+        "analyze": "quiet",
+        "claims": "withheld",
+        "intent": "quiet",
+        "live": "withheld",
+        "steer": "not-offered"
+      },
       "first": false,
       "hindsight": {
         "analyze": "not-run",
+        "claims": "not-run",
+        "intent": "not-run",
         "live": "withheld",
         "steer": "offered"
       },
       "mark": "no-drift",
       "part": {
         "analyze": "false-alarm",
+        "claims": "not-asked",
+        "intent": "false-alarm",
         "live": "withheld",
         "steer": "offered"
       },
       "realistic": {
         "analyze": "quiet",
+        "claims": "not-asked",
+        "intent": "quiet",
         "live": "withheld",
         "steer": "offered"
       },
@@ -502,21 +938,41 @@
       ]
     },
     "28c32aff6c034846": {
+      "adopted": {
+        "analyze": "false-alarm",
+        "claims": "withheld",
+        "intent": "false-alarm",
+        "live": "withheld",
+        "steer": "not-offered"
+      },
       "class": null,
+      "current": {
+        "analyze": "withheld",
+        "claims": "withheld",
+        "intent": "withheld",
+        "live": "withheld",
+        "steer": "not-offered"
+      },
       "first": false,
       "hindsight": {
         "analyze": "not-run",
+        "claims": "not-run",
+        "intent": "not-run",
         "live": "withheld",
         "steer": "not-offered"
       },
       "mark": "no-drift",
       "part": {
         "analyze": "withheld",
+        "claims": "not-asked",
+        "intent": "withheld",
         "live": "withheld",
         "steer": "not-offered"
       },
       "realistic": {
         "analyze": "withheld",
+        "claims": "not-asked",
+        "intent": "withheld",
         "live": "withheld",
         "steer": "not-offered"
       },
@@ -525,21 +981,41 @@
       ]
     },
     "292e1f01f4fac111": {
+      "adopted": {
+        "analyze": "false-alarm",
+        "claims": "withheld",
+        "intent": "false-alarm",
+        "live": "withheld",
+        "steer": "not-offered"
+      },
       "class": null,
+      "current": {
+        "analyze": "withheld",
+        "claims": "withheld",
+        "intent": "withheld",
+        "live": "withheld",
+        "steer": "not-offered"
+      },
       "first": false,
       "hindsight": {
         "analyze": "not-run",
+        "claims": "not-run",
+        "intent": "not-run",
         "live": "withheld",
         "steer": "not-offered"
       },
       "mark": "no-drift",
       "part": {
         "analyze": "quiet",
+        "claims": "not-asked",
+        "intent": "quiet",
         "live": "withheld",
         "steer": "not-offered"
       },
       "realistic": {
         "analyze": "withheld",
+        "claims": "not-asked",
+        "intent": "withheld",
         "live": "withheld",
         "steer": "not-offered"
       },
@@ -548,21 +1024,41 @@
       ]
     },
     "391d8c45fb26047b": {
+      "adopted": {
+        "analyze": "relevant-flag",
+        "claims": "relevant-flag",
+        "intent": "reassured",
+        "live": "withheld",
+        "steer": "offered"
+      },
       "class": "communication",
+      "current": {
+        "analyze": "relevant-flag",
+        "claims": "relevant-flag",
+        "intent": "relevant-flag",
+        "live": "withheld",
+        "steer": "not-offered"
+      },
       "first": true,
       "hindsight": {
         "analyze": "not-run",
+        "claims": "not-run",
+        "intent": "not-run",
         "live": "withheld",
         "steer": "offered"
       },
       "mark": "drift",
       "part": {
         "analyze": "relevant-flag",
+        "claims": "not-asked",
+        "intent": "relevant-flag",
         "live": "withheld",
         "steer": "offered"
       },
       "realistic": {
         "analyze": "relevant-flag",
+        "claims": "not-asked",
+        "intent": "relevant-flag",
         "live": "withheld",
         "steer": "offered"
       },
@@ -571,21 +1067,41 @@
       ]
     },
     "392a91a820423a1a": {
+      "adopted": {
+        "analyze": "false-alarm",
+        "claims": "withheld",
+        "intent": "false-alarm",
+        "live": "false-alarm",
+        "steer": "offered"
+      },
       "class": null,
+      "current": {
+        "analyze": "false-alarm",
+        "claims": "withheld",
+        "intent": "false-alarm",
+        "live": "false-alarm",
+        "steer": "offered"
+      },
       "first": false,
       "hindsight": {
         "analyze": "not-run",
+        "claims": "not-run",
+        "intent": "not-run",
         "live": "false-alarm",
         "steer": "offered"
       },
       "mark": "no-drift",
       "part": {
         "analyze": "withheld",
+        "claims": "not-asked",
+        "intent": "withheld",
         "live": "false-alarm",
         "steer": "offered"
       },
       "realistic": {
         "analyze": "false-alarm",
+        "claims": "not-asked",
+        "intent": "false-alarm",
         "live": "false-alarm",
         "steer": "offered"
       },
@@ -594,21 +1110,41 @@
       ]
     },
     "3beb43678c8157ba": {
+      "adopted": {
+        "analyze": "false-alarm",
+        "claims": "withheld",
+        "intent": "false-alarm",
+        "live": "withheld",
+        "steer": "offered"
+      },
       "class": null,
+      "current": {
+        "analyze": "quiet",
+        "claims": "withheld",
+        "intent": "quiet",
+        "live": "false-alarm",
+        "steer": "not-offered"
+      },
       "first": false,
       "hindsight": {
         "analyze": "not-run",
+        "claims": "not-run",
+        "intent": "not-run",
         "live": "withheld",
         "steer": "offered"
       },
       "mark": "no-drift",
       "part": {
         "analyze": "false-alarm",
+        "claims": "not-asked",
+        "intent": "false-alarm",
         "live": "withheld",
         "steer": "offered"
       },
       "realistic": {
         "analyze": "false-alarm",
+        "claims": "not-asked",
+        "intent": "false-alarm",
         "live": "withheld",
         "steer": "offered"
       },
@@ -618,21 +1154,41 @@
       ]
     },
     "45ff45d1d23bb910": {
+      "adopted": {
+        "analyze": "quiet",
+        "claims": "withheld",
+        "intent": "quiet",
+        "live": "false-alarm",
+        "steer": "offered"
+      },
       "class": null,
+      "current": {
+        "analyze": "false-alarm",
+        "claims": "withheld",
+        "intent": "false-alarm",
+        "live": "false-alarm",
+        "steer": "offered"
+      },
       "first": false,
       "hindsight": {
         "analyze": "not-run",
+        "claims": "not-run",
+        "intent": "not-run",
         "live": "false-alarm",
         "steer": "offered"
       },
       "mark": "no-drift",
       "part": {
         "analyze": "false-alarm",
+        "claims": "not-asked",
+        "intent": "false-alarm",
         "live": "false-alarm",
         "steer": "offered"
       },
       "realistic": {
         "analyze": "false-alarm",
+        "claims": "not-asked",
+        "intent": "false-alarm",
         "live": "false-alarm",
         "steer": "offered"
       },
@@ -641,21 +1197,41 @@
       ]
     },
     "4f5ee8c72c65b23d": {
+      "adopted": {
+        "analyze": "reassured",
+        "claims": "withheld",
+        "intent": "reassured",
+        "live": "withheld",
+        "steer": "offered"
+      },
       "class": "defect",
+      "current": {
+        "analyze": "withheld",
+        "claims": "withheld",
+        "intent": "withheld",
+        "live": "withheld",
+        "steer": "not-offered"
+      },
       "first": true,
       "hindsight": {
         "analyze": "not-run",
+        "claims": "not-run",
+        "intent": "not-run",
         "live": "withheld",
         "steer": "offered"
       },
       "mark": "drift",
       "part": {
         "analyze": "relevant-flag",
+        "claims": "not-asked",
+        "intent": "relevant-flag",
         "live": "withheld",
         "steer": "offered"
       },
       "realistic": {
         "analyze": "reassured",
+        "claims": "not-asked",
+        "intent": "reassured",
         "live": "withheld",
         "steer": "offered"
       },
@@ -664,21 +1240,41 @@
       ]
     },
     "50c9ae84cf8cb5a4": {
+      "adopted": {
+        "analyze": "false-alarm",
+        "claims": "withheld",
+        "intent": "false-alarm",
+        "live": "withheld",
+        "steer": "not-offered"
+      },
       "class": null,
+      "current": {
+        "analyze": "quiet",
+        "claims": "withheld",
+        "intent": "quiet",
+        "live": "withheld",
+        "steer": "not-offered"
+      },
       "first": false,
       "hindsight": {
         "analyze": "not-run",
+        "claims": "not-run",
+        "intent": "not-run",
         "live": "withheld",
         "steer": "not-offered"
       },
       "mark": "no-drift",
       "part": {
         "analyze": "withheld",
+        "claims": "not-asked",
+        "intent": "withheld",
         "live": "withheld",
         "steer": "not-offered"
       },
       "realistic": {
         "analyze": "withheld",
+        "claims": "not-asked",
+        "intent": "withheld",
         "live": "withheld",
         "steer": "not-offered"
       },
@@ -687,21 +1283,41 @@
       ]
     },
     "5361ef2c07d7da96": {
+      "adopted": {
+        "analyze": "withheld",
+        "claims": "withheld",
+        "intent": "withheld",
+        "live": "withheld",
+        "steer": "offered"
+      },
       "class": null,
+      "current": {
+        "analyze": "quiet",
+        "claims": "withheld",
+        "intent": "quiet",
+        "live": "false-alarm",
+        "steer": "not-offered"
+      },
       "first": false,
       "hindsight": {
         "analyze": "not-run",
+        "claims": "not-run",
+        "intent": "not-run",
         "live": "withheld",
         "steer": "offered"
       },
       "mark": "no-drift",
       "part": {
         "analyze": "withheld",
+        "claims": "not-asked",
+        "intent": "withheld",
         "live": "withheld",
         "steer": "offered"
       },
       "realistic": {
         "analyze": "quiet",
+        "claims": "not-asked",
+        "intent": "quiet",
         "live": "withheld",
         "steer": "offered"
       },
@@ -710,21 +1326,41 @@
       ]
     },
     "53ee29add03233d2": {
+      "adopted": {
+        "analyze": "false-alarm",
+        "claims": "false-alarm",
+        "intent": "quiet",
+        "live": "withheld",
+        "steer": "not-offered"
+      },
       "class": null,
+      "current": {
+        "analyze": "quiet",
+        "claims": "withheld",
+        "intent": "quiet",
+        "live": "withheld",
+        "steer": "not-offered"
+      },
       "first": false,
       "hindsight": {
         "analyze": "not-run",
+        "claims": "not-run",
+        "intent": "not-run",
         "live": "withheld",
         "steer": "not-offered"
       },
       "mark": "no-drift",
       "part": {
         "analyze": "quiet",
+        "claims": "not-asked",
+        "intent": "quiet",
         "live": "withheld",
         "steer": "not-offered"
       },
       "realistic": {
         "analyze": "false-alarm",
+        "claims": "not-asked",
+        "intent": "false-alarm",
         "live": "withheld",
         "steer": "not-offered"
       },
@@ -733,21 +1369,41 @@
       ]
     },
     "559e308f6ed28c2d": {
+      "adopted": {
+        "analyze": "relevant-flag",
+        "claims": "relevant-flag",
+        "intent": "relevant-flag",
+        "live": "withheld",
+        "steer": "not-offered"
+      },
       "class": "communication",
+      "current": {
+        "analyze": "relevant-flag",
+        "claims": "relevant-flag",
+        "intent": "reassured",
+        "live": "withheld",
+        "steer": "not-offered"
+      },
       "first": true,
       "hindsight": {
         "analyze": "not-run",
+        "claims": "not-run",
+        "intent": "not-run",
         "live": "withheld",
         "steer": "not-offered"
       },
       "mark": "drift",
       "part": {
         "analyze": "withheld",
+        "claims": "not-asked",
+        "intent": "withheld",
         "live": "withheld",
         "steer": "not-offered"
       },
       "realistic": {
         "analyze": "relevant-flag",
+        "claims": "not-asked",
+        "intent": "relevant-flag",
         "live": "withheld",
         "steer": "not-offered"
       },
@@ -756,21 +1412,41 @@
       ]
     },
     "55eb0add7d3e7e97": {
+      "adopted": {
+        "analyze": "withheld",
+        "claims": "withheld",
+        "intent": "withheld",
+        "live": "withheld",
+        "steer": "offered"
+      },
       "class": null,
+      "current": {
+        "analyze": "false-alarm",
+        "claims": "false-alarm",
+        "intent": "withheld",
+        "live": "false-alarm",
+        "steer": "not-offered"
+      },
       "first": false,
       "hindsight": {
         "analyze": "not-run",
+        "claims": "not-run",
+        "intent": "not-run",
         "live": "withheld",
         "steer": "offered"
       },
       "mark": "no-drift",
       "part": {
         "analyze": "withheld",
+        "claims": "not-asked",
+        "intent": "withheld",
         "live": "withheld",
         "steer": "offered"
       },
       "realistic": {
         "analyze": "quiet",
+        "claims": "not-asked",
+        "intent": "quiet",
         "live": "withheld",
         "steer": "offered"
       },
@@ -779,21 +1455,41 @@
       ]
     },
     "56f82b3cd71a41d8": {
+      "adopted": {
+        "analyze": "relevant-flag",
+        "claims": "relevant-flag",
+        "intent": "relevant-flag",
+        "live": "withheld",
+        "steer": "not-offered"
+      },
       "class": "defect",
+      "current": {
+        "analyze": "relevant-flag",
+        "claims": "withheld",
+        "intent": "relevant-flag",
+        "live": "withheld",
+        "steer": "not-offered"
+      },
       "first": true,
       "hindsight": {
         "analyze": "not-run",
+        "claims": "not-run",
+        "intent": "not-run",
         "live": "withheld",
         "steer": "not-offered"
       },
       "mark": "drift",
       "part": {
         "analyze": "withheld",
+        "claims": "not-asked",
+        "intent": "withheld",
         "live": "withheld",
         "steer": "not-offered"
       },
       "realistic": {
         "analyze": "relevant-flag",
+        "claims": "not-asked",
+        "intent": "relevant-flag",
         "live": "withheld",
         "steer": "not-offered"
       },
@@ -802,21 +1498,41 @@
       ]
     },
     "615b5511325ab371": {
+      "adopted": {
+        "analyze": "relevant-flag",
+        "claims": "withheld",
+        "intent": "relevant-flag",
+        "live": "withheld",
+        "steer": "offered"
+      },
       "class": "status-claim",
+      "current": {
+        "analyze": "relevant-flag",
+        "claims": "withheld",
+        "intent": "relevant-flag",
+        "live": "withheld",
+        "steer": "not-offered"
+      },
       "first": false,
       "hindsight": {
         "analyze": "not-run",
+        "claims": "not-run",
+        "intent": "not-run",
         "live": "withheld",
         "steer": "offered"
       },
       "mark": "drift",
       "part": {
         "analyze": "relevant-flag",
+        "claims": "not-asked",
+        "intent": "relevant-flag",
         "live": "withheld",
         "steer": "offered"
       },
       "realistic": {
         "analyze": "relevant-flag",
+        "claims": "not-asked",
+        "intent": "relevant-flag",
         "live": "withheld",
         "steer": "offered"
       },
@@ -827,21 +1543,41 @@
       ]
     },
     "62a227b39baf01ab": {
+      "adopted": {
+        "analyze": "false-alarm",
+        "claims": "false-alarm",
+        "intent": "withheld",
+        "live": "false-alarm",
+        "steer": "offered"
+      },
       "class": null,
+      "current": {
+        "analyze": "false-alarm",
+        "claims": "withheld",
+        "intent": "false-alarm",
+        "live": "false-alarm",
+        "steer": "offered"
+      },
       "first": false,
       "hindsight": {
         "analyze": "not-run",
+        "claims": "not-run",
+        "intent": "not-run",
         "live": "false-alarm",
         "steer": "offered"
       },
       "mark": "no-drift",
       "part": {
         "analyze": "withheld",
+        "claims": "not-asked",
+        "intent": "withheld",
         "live": "false-alarm",
         "steer": "offered"
       },
       "realistic": {
         "analyze": "false-alarm",
+        "claims": "not-asked",
+        "intent": "false-alarm",
         "live": "false-alarm",
         "steer": "offered"
       },
@@ -850,21 +1586,41 @@
       ]
     },
     "62e622939db159b5": {
+      "adopted": {
+        "analyze": "reassured",
+        "claims": "withheld",
+        "intent": "reassured",
+        "live": "withheld",
+        "steer": "not-offered"
+      },
       "class": "scope-or-plan",
+      "current": {
+        "analyze": "reassured",
+        "claims": "withheld",
+        "intent": "reassured",
+        "live": "withheld",
+        "steer": "not-offered"
+      },
       "first": true,
       "hindsight": {
         "analyze": "not-run",
+        "claims": "not-run",
+        "intent": "not-run",
         "live": "withheld",
         "steer": "not-offered"
       },
       "mark": "drift",
       "part": {
         "analyze": "reassured",
+        "claims": "not-asked",
+        "intent": "reassured",
         "live": "withheld",
         "steer": "not-offered"
       },
       "realistic": {
         "analyze": "reassured",
+        "claims": "not-asked",
+        "intent": "reassured",
         "live": "withheld",
         "steer": "not-offered"
       },
@@ -873,21 +1629,41 @@
       ]
     },
     "6b3f8b2f21f3ebf4": {
+      "adopted": {
+        "analyze": "false-alarm",
+        "claims": "false-alarm",
+        "intent": "false-alarm",
+        "live": "withheld",
+        "steer": "offered"
+      },
       "class": null,
+      "current": {
+        "analyze": "quiet",
+        "claims": "withheld",
+        "intent": "quiet",
+        "live": "withheld",
+        "steer": "not-offered"
+      },
       "first": false,
       "hindsight": {
         "analyze": "not-run",
+        "claims": "not-run",
+        "intent": "not-run",
         "live": "withheld",
         "steer": "offered"
       },
       "mark": "no-drift",
       "part": {
         "analyze": "withheld",
+        "claims": "not-asked",
+        "intent": "withheld",
         "live": "withheld",
         "steer": "offered"
       },
       "realistic": {
         "analyze": "withheld",
+        "claims": "not-asked",
+        "intent": "withheld",
         "live": "withheld",
         "steer": "offered"
       },
@@ -896,21 +1672,41 @@
       ]
     },
     "74680d83e2b8749e": {
+      "adopted": {
+        "analyze": "quiet",
+        "claims": "withheld",
+        "intent": "quiet",
+        "live": "withheld",
+        "steer": "not-offered"
+      },
       "class": null,
+      "current": {
+        "analyze": "withheld",
+        "claims": "withheld",
+        "intent": "withheld",
+        "live": "withheld",
+        "steer": "not-offered"
+      },
       "first": false,
       "hindsight": {
         "analyze": "not-run",
+        "claims": "not-run",
+        "intent": "not-run",
         "live": "withheld",
         "steer": "not-offered"
       },
       "mark": "no-drift",
       "part": {
         "analyze": "quiet",
+        "claims": "not-asked",
+        "intent": "quiet",
         "live": "withheld",
         "steer": "not-offered"
       },
       "realistic": {
         "analyze": "withheld",
+        "claims": "not-asked",
+        "intent": "withheld",
         "live": "withheld",
         "steer": "not-offered"
       },
@@ -919,21 +1715,41 @@
       ]
     },
     "7611cfe4d1969017": {
+      "adopted": {
+        "analyze": "false-alarm",
+        "claims": "withheld",
+        "intent": "false-alarm",
+        "live": "false-alarm",
+        "steer": "not-offered"
+      },
       "class": null,
+      "current": {
+        "analyze": "false-alarm",
+        "claims": "false-alarm",
+        "intent": "quiet",
+        "live": "false-alarm",
+        "steer": "not-offered"
+      },
       "first": false,
       "hindsight": {
         "analyze": "not-run",
+        "claims": "not-run",
+        "intent": "not-run",
         "live": "false-alarm",
         "steer": "not-offered"
       },
       "mark": "no-drift",
       "part": {
         "analyze": "withheld",
+        "claims": "not-asked",
+        "intent": "withheld",
         "live": "false-alarm",
         "steer": "not-offered"
       },
       "realistic": {
         "analyze": "false-alarm",
+        "claims": "not-asked",
+        "intent": "false-alarm",
         "live": "false-alarm",
         "steer": "not-offered"
       },
@@ -942,21 +1758,41 @@
       ]
     },
     "77a94e811eb818ed": {
+      "adopted": {
+        "analyze": "relevant-flag",
+        "claims": "relevant-flag",
+        "intent": "relevant-flag",
+        "live": "withheld",
+        "steer": "not-offered"
+      },
       "class": "status-claim",
+      "current": {
+        "analyze": "reassured",
+        "claims": "withheld",
+        "intent": "reassured",
+        "live": "unattributed-flag",
+        "steer": "not-offered"
+      },
       "first": true,
       "hindsight": {
         "analyze": "not-run",
+        "claims": "not-run",
+        "intent": "not-run",
         "live": "withheld",
         "steer": "not-offered"
       },
       "mark": "drift",
       "part": {
         "analyze": "reassured",
+        "claims": "not-asked",
+        "intent": "reassured",
         "live": "withheld",
         "steer": "not-offered"
       },
       "realistic": {
         "analyze": "relevant-flag",
+        "claims": "not-asked",
+        "intent": "relevant-flag",
         "live": "withheld",
         "steer": "not-offered"
       },
@@ -965,21 +1801,41 @@
       ]
     },
     "7b935800187dbec1": {
+      "adopted": {
+        "analyze": "quiet",
+        "claims": "withheld",
+        "intent": "quiet",
+        "live": "withheld",
+        "steer": "offered"
+      },
       "class": null,
+      "current": {
+        "analyze": "quiet",
+        "claims": "withheld",
+        "intent": "quiet",
+        "live": "withheld",
+        "steer": "not-offered"
+      },
       "first": false,
       "hindsight": {
         "analyze": "not-run",
+        "claims": "not-run",
+        "intent": "not-run",
         "live": "withheld",
         "steer": "offered"
       },
       "mark": "no-drift",
       "part": {
         "analyze": "withheld",
+        "claims": "not-asked",
+        "intent": "withheld",
         "live": "withheld",
         "steer": "offered"
       },
       "realistic": {
         "analyze": "quiet",
+        "claims": "not-asked",
+        "intent": "quiet",
         "live": "withheld",
         "steer": "offered"
       },
@@ -989,21 +1845,41 @@
       ]
     },
     "7ea22cfcc63cd0df": {
+      "adopted": {
+        "analyze": "false-alarm",
+        "claims": "withheld",
+        "intent": "false-alarm",
+        "live": "withheld",
+        "steer": "not-offered"
+      },
       "class": null,
+      "current": {
+        "analyze": "quiet",
+        "claims": "withheld",
+        "intent": "quiet",
+        "live": "withheld",
+        "steer": "not-offered"
+      },
       "first": false,
       "hindsight": {
         "analyze": "not-run",
+        "claims": "not-run",
+        "intent": "not-run",
         "live": "withheld",
         "steer": "not-offered"
       },
       "mark": "no-drift",
       "part": {
         "analyze": "withheld",
+        "claims": "not-asked",
+        "intent": "withheld",
         "live": "withheld",
         "steer": "not-offered"
       },
       "realistic": {
         "analyze": "withheld",
+        "claims": "not-asked",
+        "intent": "withheld",
         "live": "withheld",
         "steer": "not-offered"
       },
@@ -1012,21 +1888,41 @@
       ]
     },
     "8591d4f0b0bd6d46": {
+      "adopted": {
+        "analyze": "quiet",
+        "claims": "withheld",
+        "intent": "quiet",
+        "live": "withheld",
+        "steer": "not-offered"
+      },
       "class": null,
+      "current": {
+        "analyze": "false-alarm",
+        "claims": "withheld",
+        "intent": "false-alarm",
+        "live": "withheld",
+        "steer": "not-offered"
+      },
       "first": false,
       "hindsight": {
         "analyze": "not-run",
+        "claims": "not-run",
+        "intent": "not-run",
         "live": "withheld",
         "steer": "not-offered"
       },
       "mark": "no-drift",
       "part": {
         "analyze": "quiet",
+        "claims": "not-asked",
+        "intent": "quiet",
         "live": "withheld",
         "steer": "not-offered"
       },
       "realistic": {
         "analyze": "withheld",
+        "claims": "not-asked",
+        "intent": "withheld",
         "live": "withheld",
         "steer": "not-offered"
       },
@@ -1035,21 +1931,41 @@
       ]
     },
     "86b1f27ae2b56029": {
+      "adopted": {
+        "analyze": "quiet",
+        "claims": "withheld",
+        "intent": "quiet",
+        "live": "withheld",
+        "steer": "offered"
+      },
       "class": null,
+      "current": {
+        "analyze": "quiet",
+        "claims": "withheld",
+        "intent": "quiet",
+        "live": "withheld",
+        "steer": "not-offered"
+      },
       "first": false,
       "hindsight": {
         "analyze": "not-run",
+        "claims": "not-run",
+        "intent": "not-run",
         "live": "withheld",
         "steer": "offered"
       },
       "mark": "no-drift",
       "part": {
         "analyze": "quiet",
+        "claims": "not-asked",
+        "intent": "quiet",
         "live": "withheld",
         "steer": "offered"
       },
       "realistic": {
         "analyze": "quiet",
+        "claims": "not-asked",
+        "intent": "quiet",
         "live": "withheld",
         "steer": "offered"
       },
@@ -1058,21 +1974,41 @@
       ]
     },
     "8836cc0a1cd79d83": {
+      "adopted": {
+        "analyze": "quiet",
+        "claims": "withheld",
+        "intent": "quiet",
+        "live": "withheld",
+        "steer": "offered"
+      },
       "class": null,
+      "current": {
+        "analyze": "refused",
+        "claims": "refused",
+        "intent": "refused",
+        "live": "withheld",
+        "steer": "not-offered"
+      },
       "first": false,
       "hindsight": {
         "analyze": "not-run",
+        "claims": "not-run",
+        "intent": "not-run",
         "live": "withheld",
         "steer": "offered"
       },
       "mark": "no-drift",
       "part": {
         "analyze": "quiet",
+        "claims": "not-asked",
+        "intent": "quiet",
         "live": "withheld",
         "steer": "offered"
       },
       "realistic": {
         "analyze": "quiet",
+        "claims": "not-asked",
+        "intent": "quiet",
         "live": "withheld",
         "steer": "offered"
       },
@@ -1081,21 +2017,41 @@
       ]
     },
     "8a976d8b6b740873": {
+      "adopted": {
+        "analyze": "withheld",
+        "claims": "withheld",
+        "intent": "withheld",
+        "live": "withheld",
+        "steer": "offered"
+      },
       "class": null,
+      "current": {
+        "analyze": "withheld",
+        "claims": "withheld",
+        "intent": "withheld",
+        "live": "withheld",
+        "steer": "not-offered"
+      },
       "first": false,
       "hindsight": {
         "analyze": "not-run",
+        "claims": "not-run",
+        "intent": "not-run",
         "live": "withheld",
         "steer": "not-offered"
       },
       "mark": "no-drift",
       "part": {
         "analyze": "withheld",
+        "claims": "not-asked",
+        "intent": "withheld",
         "live": "withheld",
         "steer": "not-offered"
       },
       "realistic": {
         "analyze": "false-alarm",
+        "claims": "not-asked",
+        "intent": "false-alarm",
         "live": "withheld",
         "steer": "offered"
       },
@@ -1104,21 +2060,41 @@
       ]
     },
     "8d971283cbdf118e": {
+      "adopted": {
+        "analyze": "withheld",
+        "claims": "withheld",
+        "intent": "withheld",
+        "live": "withheld",
+        "steer": "not-offered"
+      },
       "class": null,
+      "current": {
+        "analyze": "false-alarm",
+        "claims": "false-alarm",
+        "intent": "false-alarm",
+        "live": "false-alarm",
+        "steer": "not-offered"
+      },
       "first": false,
       "hindsight": {
         "analyze": "not-run",
+        "claims": "not-run",
+        "intent": "not-run",
         "live": "withheld",
         "steer": "not-offered"
       },
       "mark": "no-drift",
       "part": {
         "analyze": "withheld",
+        "claims": "not-asked",
+        "intent": "withheld",
         "live": "withheld",
         "steer": "not-offered"
       },
       "realistic": {
         "analyze": "false-alarm",
+        "claims": "not-asked",
+        "intent": "false-alarm",
         "live": "withheld",
         "steer": "not-offered"
       },
@@ -1127,21 +2103,41 @@
       ]
     },
     "912e9c2f57d77a68": {
+      "adopted": {
+        "analyze": "relevant-flag",
+        "claims": "withheld",
+        "intent": "relevant-flag",
+        "live": "withheld",
+        "steer": "not-offered"
+      },
       "class": "defect",
+      "current": {
+        "analyze": "relevant-flag",
+        "claims": "withheld",
+        "intent": "relevant-flag",
+        "live": "withheld",
+        "steer": "not-offered"
+      },
       "first": true,
       "hindsight": {
         "analyze": "not-run",
+        "claims": "not-run",
+        "intent": "not-run",
         "live": "withheld",
         "steer": "not-offered"
       },
       "mark": "drift",
       "part": {
         "analyze": "relevant-flag",
+        "claims": "not-asked",
+        "intent": "relevant-flag",
         "live": "withheld",
         "steer": "not-offered"
       },
       "realistic": {
         "analyze": "relevant-flag",
+        "claims": "not-asked",
+        "intent": "relevant-flag",
         "live": "withheld",
         "steer": "not-offered"
       },
@@ -1151,21 +2147,41 @@
       ]
     },
     "9214be15326366f3": {
+      "adopted": {
+        "analyze": "false-alarm",
+        "claims": "false-alarm",
+        "intent": "false-alarm",
+        "live": "withheld",
+        "steer": "offered"
+      },
       "class": null,
+      "current": {
+        "analyze": "false-alarm",
+        "claims": "false-alarm",
+        "intent": "withheld",
+        "live": "withheld",
+        "steer": "not-offered"
+      },
       "first": false,
       "hindsight": {
         "analyze": "not-run",
+        "claims": "not-run",
+        "intent": "not-run",
         "live": "withheld",
         "steer": "offered"
       },
       "mark": "no-drift",
       "part": {
         "analyze": "withheld",
+        "claims": "not-asked",
+        "intent": "withheld",
         "live": "withheld",
         "steer": "offered"
       },
       "realistic": {
         "analyze": "false-alarm",
+        "claims": "not-asked",
+        "intent": "false-alarm",
         "live": "withheld",
         "steer": "offered"
       },
@@ -1174,21 +2190,41 @@
       ]
     },
     "923040a39df0f4f0": {
+      "adopted": {
+        "analyze": "false-alarm",
+        "claims": "false-alarm",
+        "intent": "withheld",
+        "live": "false-alarm",
+        "steer": "offered"
+      },
       "class": null,
+      "current": {
+        "analyze": "false-alarm",
+        "claims": "withheld",
+        "intent": "false-alarm",
+        "live": "false-alarm",
+        "steer": "offered"
+      },
       "first": false,
       "hindsight": {
         "analyze": "not-run",
+        "claims": "not-run",
+        "intent": "not-run",
         "live": "false-alarm",
         "steer": "offered"
       },
       "mark": "no-drift",
       "part": {
         "analyze": "withheld",
+        "claims": "not-asked",
+        "intent": "withheld",
         "live": "false-alarm",
         "steer": "offered"
       },
       "realistic": {
         "analyze": "withheld",
+        "claims": "not-asked",
+        "intent": "withheld",
         "live": "false-alarm",
         "steer": "offered"
       },
@@ -1197,21 +2233,41 @@
       ]
     },
     "96b0a775f8003a3b": {
+      "adopted": {
+        "analyze": "false-alarm",
+        "claims": "false-alarm",
+        "intent": "quiet",
+        "live": "false-alarm",
+        "steer": "offered"
+      },
       "class": null,
+      "current": {
+        "analyze": "false-alarm",
+        "claims": "false-alarm",
+        "intent": "quiet",
+        "live": "false-alarm",
+        "steer": "offered"
+      },
       "first": false,
       "hindsight": {
         "analyze": "not-run",
+        "claims": "not-run",
+        "intent": "not-run",
         "live": "false-alarm",
         "steer": "offered"
       },
       "mark": "no-drift",
       "part": {
         "analyze": "quiet",
+        "claims": "not-asked",
+        "intent": "quiet",
         "live": "false-alarm",
         "steer": "offered"
       },
       "realistic": {
         "analyze": "withheld",
+        "claims": "not-asked",
+        "intent": "withheld",
         "live": "false-alarm",
         "steer": "offered"
       },
@@ -1220,21 +2276,41 @@
       ]
     },
     "98ad50f9d055ad30": {
+      "adopted": {
+        "analyze": "false-alarm",
+        "claims": "false-alarm",
+        "intent": "false-alarm",
+        "live": "false-alarm",
+        "steer": "offered"
+      },
       "class": null,
+      "current": {
+        "analyze": "false-alarm",
+        "claims": "false-alarm",
+        "intent": "quiet",
+        "live": "false-alarm",
+        "steer": "not-offered"
+      },
       "first": false,
       "hindsight": {
         "analyze": "not-run",
+        "claims": "not-run",
+        "intent": "not-run",
         "live": "false-alarm",
         "steer": "not-offered"
       },
       "mark": "no-drift",
       "part": {
         "analyze": "quiet",
+        "claims": "not-asked",
+        "intent": "quiet",
         "live": "false-alarm",
         "steer": "not-offered"
       },
       "realistic": {
         "analyze": "withheld",
+        "claims": "not-asked",
+        "intent": "withheld",
         "live": "false-alarm",
         "steer": "offered"
       },
@@ -1243,21 +2319,41 @@
       ]
     },
     "9ef3d9b283e78536": {
+      "adopted": {
+        "analyze": "quiet",
+        "claims": "withheld",
+        "intent": "quiet",
+        "live": "false-alarm",
+        "steer": "offered"
+      },
       "class": null,
+      "current": {
+        "analyze": "quiet",
+        "claims": "withheld",
+        "intent": "quiet",
+        "live": "false-alarm",
+        "steer": "offered"
+      },
       "first": false,
       "hindsight": {
         "analyze": "not-run",
+        "claims": "not-run",
+        "intent": "not-run",
         "live": "false-alarm",
         "steer": "offered"
       },
       "mark": "no-drift",
       "part": {
         "analyze": "quiet",
+        "claims": "not-asked",
+        "intent": "quiet",
         "live": "false-alarm",
         "steer": "offered"
       },
       "realistic": {
         "analyze": "quiet",
+        "claims": "not-asked",
+        "intent": "quiet",
         "live": "false-alarm",
         "steer": "offered"
       },
@@ -1266,21 +2362,41 @@
       ]
     },
     "a17a0cd01bc7f9cf": {
+      "adopted": {
+        "analyze": "withheld",
+        "claims": "withheld",
+        "intent": "withheld",
+        "live": "withheld",
+        "steer": "offered"
+      },
       "class": null,
+      "current": {
+        "analyze": "quiet",
+        "claims": "withheld",
+        "intent": "quiet",
+        "live": "withheld",
+        "steer": "not-offered"
+      },
       "first": true,
       "hindsight": {
         "analyze": "not-run",
+        "claims": "not-run",
+        "intent": "not-run",
         "live": "withheld",
         "steer": "offered"
       },
       "mark": "no-drift",
       "part": {
         "analyze": "withheld",
+        "claims": "not-asked",
+        "intent": "withheld",
         "live": "withheld",
         "steer": "offered"
       },
       "realistic": {
         "analyze": "withheld",
+        "claims": "not-asked",
+        "intent": "withheld",
         "live": "withheld",
         "steer": "offered"
       },
@@ -1289,21 +2405,41 @@
       ]
     },
     "a196d3850c518c9d": {
+      "adopted": {
+        "analyze": "quiet",
+        "claims": "withheld",
+        "intent": "quiet",
+        "live": "withheld",
+        "steer": "offered"
+      },
       "class": null,
+      "current": {
+        "analyze": "quiet",
+        "claims": "withheld",
+        "intent": "quiet",
+        "live": "withheld",
+        "steer": "not-offered"
+      },
       "first": true,
       "hindsight": {
         "analyze": "not-run",
+        "claims": "not-run",
+        "intent": "not-run",
         "live": "withheld",
         "steer": "offered"
       },
       "mark": "no-drift",
       "part": {
         "analyze": "withheld",
+        "claims": "not-asked",
+        "intent": "withheld",
         "live": "withheld",
         "steer": "offered"
       },
       "realistic": {
         "analyze": "quiet",
+        "claims": "not-asked",
+        "intent": "quiet",
         "live": "withheld",
         "steer": "offered"
       },
@@ -1313,21 +2449,41 @@
       ]
     },
     "a4b45e73b15a380f": {
+      "adopted": {
+        "analyze": "false-alarm",
+        "claims": "false-alarm",
+        "intent": "withheld",
+        "live": "false-alarm",
+        "steer": "offered"
+      },
       "class": null,
+      "current": {
+        "analyze": "false-alarm",
+        "claims": "false-alarm",
+        "intent": "false-alarm",
+        "live": "false-alarm",
+        "steer": "offered"
+      },
       "first": false,
       "hindsight": {
         "analyze": "not-run",
+        "claims": "not-run",
+        "intent": "not-run",
         "live": "false-alarm",
         "steer": "offered"
       },
       "mark": "no-drift",
       "part": {
         "analyze": "withheld",
+        "claims": "not-asked",
+        "intent": "withheld",
         "live": "false-alarm",
         "steer": "offered"
       },
       "realistic": {
         "analyze": "false-alarm",
+        "claims": "not-asked",
+        "intent": "false-alarm",
         "live": "false-alarm",
         "steer": "offered"
       },
@@ -1337,21 +2493,41 @@
       ]
     },
     "a6738439b350a5db": {
+      "adopted": {
+        "analyze": "reassured",
+        "claims": "withheld",
+        "intent": "reassured",
+        "live": "withheld",
+        "steer": "offered"
+      },
       "class": "status-claim",
+      "current": {
+        "analyze": "reassured",
+        "claims": "withheld",
+        "intent": "reassured",
+        "live": "withheld",
+        "steer": "not-offered"
+      },
       "first": true,
       "hindsight": {
         "analyze": "not-run",
+        "claims": "not-run",
+        "intent": "not-run",
         "live": "withheld",
         "steer": "offered"
       },
       "mark": "drift",
       "part": {
         "analyze": "withheld",
+        "claims": "not-asked",
+        "intent": "withheld",
         "live": "withheld",
         "steer": "offered"
       },
       "realistic": {
         "analyze": "withheld",
+        "claims": "not-asked",
+        "intent": "withheld",
         "live": "withheld",
         "steer": "offered"
       },
@@ -1360,21 +2536,41 @@
       ]
     },
     "a8b5b8d08851e43f": {
+      "adopted": {
+        "analyze": "false-alarm",
+        "claims": "false-alarm",
+        "intent": "withheld",
+        "live": "withheld",
+        "steer": "offered"
+      },
       "class": null,
+      "current": {
+        "analyze": "quiet",
+        "claims": "withheld",
+        "intent": "quiet",
+        "live": "false-alarm",
+        "steer": "not-offered"
+      },
       "first": false,
       "hindsight": {
         "analyze": "not-run",
+        "claims": "not-run",
+        "intent": "not-run",
         "live": "withheld",
         "steer": "offered"
       },
       "mark": "no-drift",
       "part": {
         "analyze": "withheld",
+        "claims": "not-asked",
+        "intent": "withheld",
         "live": "withheld",
         "steer": "offered"
       },
       "realistic": {
         "analyze": "withheld",
+        "claims": "not-asked",
+        "intent": "withheld",
         "live": "withheld",
         "steer": "offered"
       },
@@ -1383,21 +2579,41 @@
       ]
     },
     "ab158d56f9149db9": {
+      "adopted": {
+        "analyze": "withheld",
+        "claims": "withheld",
+        "intent": "withheld",
+        "live": "false-alarm",
+        "steer": "offered"
+      },
       "class": null,
+      "current": {
+        "analyze": "false-alarm",
+        "claims": "false-alarm",
+        "intent": "false-alarm",
+        "live": "false-alarm",
+        "steer": "not-offered"
+      },
       "first": false,
       "hindsight": {
         "analyze": "not-run",
+        "claims": "not-run",
+        "intent": "not-run",
         "live": "false-alarm",
         "steer": "not-offered"
       },
       "mark": "no-drift",
       "part": {
         "analyze": "quiet",
+        "claims": "not-asked",
+        "intent": "quiet",
         "live": "false-alarm",
         "steer": "not-offered"
       },
       "realistic": {
         "analyze": "withheld",
+        "claims": "not-asked",
+        "intent": "withheld",
         "live": "false-alarm",
         "steer": "offered"
       },
@@ -1406,21 +2622,41 @@
       ]
     },
     "ac2e71e54a1b3ca7": {
+      "adopted": {
+        "analyze": "false-alarm",
+        "claims": "withheld",
+        "intent": "false-alarm",
+        "live": "withheld",
+        "steer": "offered"
+      },
       "class": null,
+      "current": {
+        "analyze": "false-alarm",
+        "claims": "withheld",
+        "intent": "false-alarm",
+        "live": "withheld",
+        "steer": "not-offered"
+      },
       "first": false,
       "hindsight": {
         "analyze": "not-run",
+        "claims": "not-run",
+        "intent": "not-run",
         "live": "withheld",
         "steer": "offered"
       },
       "mark": "no-drift",
       "part": {
         "analyze": "withheld",
+        "claims": "not-asked",
+        "intent": "withheld",
         "live": "withheld",
         "steer": "offered"
       },
       "realistic": {
         "analyze": "false-alarm",
+        "claims": "not-asked",
+        "intent": "false-alarm",
         "live": "withheld",
         "steer": "offered"
       },
@@ -1429,21 +2665,41 @@
       ]
     },
     "ac3d733d0009e8b6": {
+      "adopted": {
+        "analyze": "withheld",
+        "claims": "withheld",
+        "intent": "withheld",
+        "live": "irrelevant-flag",
+        "steer": "offered"
+      },
       "class": "scope-or-plan",
+      "current": {
+        "analyze": "relevant-flag",
+        "claims": "relevant-flag",
+        "intent": "reassured",
+        "live": "irrelevant-flag",
+        "steer": "not-offered"
+      },
       "first": true,
       "hindsight": {
         "analyze": "not-run",
+        "claims": "not-run",
+        "intent": "not-run",
         "live": "irrelevant-flag",
         "steer": "offered"
       },
       "mark": "drift",
       "part": {
         "analyze": "reassured",
+        "claims": "not-asked",
+        "intent": "reassured",
         "live": "irrelevant-flag",
         "steer": "offered"
       },
       "realistic": {
         "analyze": "reassured",
+        "claims": "not-asked",
+        "intent": "reassured",
         "live": "irrelevant-flag",
         "steer": "offered"
       },
@@ -1453,21 +2709,41 @@
       ]
     },
     "acb681eff8c3be4d": {
+      "adopted": {
+        "analyze": "false-alarm",
+        "claims": "withheld",
+        "intent": "false-alarm",
+        "live": "withheld",
+        "steer": "not-offered"
+      },
       "class": null,
+      "current": {
+        "analyze": "quiet",
+        "claims": "withheld",
+        "intent": "quiet",
+        "live": "false-alarm",
+        "steer": "not-offered"
+      },
       "first": false,
       "hindsight": {
         "analyze": "not-run",
+        "claims": "not-run",
+        "intent": "not-run",
         "live": "withheld",
         "steer": "not-offered"
       },
       "mark": "no-drift",
       "part": {
         "analyze": "withheld",
+        "claims": "not-asked",
+        "intent": "withheld",
         "live": "withheld",
         "steer": "not-offered"
       },
       "realistic": {
         "analyze": "withheld",
+        "claims": "not-asked",
+        "intent": "withheld",
         "live": "withheld",
         "steer": "not-offered"
       },
@@ -1476,21 +2752,41 @@
       ]
     },
     "ad5f8fac9debdc73": {
+      "adopted": {
+        "analyze": "reassured",
+        "claims": "withheld",
+        "intent": "reassured",
+        "live": "withheld",
+        "steer": "offered"
+      },
       "class": "status-claim",
+      "current": {
+        "analyze": "reassured",
+        "claims": "withheld",
+        "intent": "reassured",
+        "live": "withheld",
+        "steer": "not-offered"
+      },
       "first": true,
       "hindsight": {
         "analyze": "not-run",
+        "claims": "not-run",
+        "intent": "not-run",
         "live": "withheld",
         "steer": "offered"
       },
       "mark": "drift",
       "part": {
         "analyze": "reassured",
+        "claims": "not-asked",
+        "intent": "reassured",
         "live": "withheld",
         "steer": "offered"
       },
       "realistic": {
         "analyze": "reassured",
+        "claims": "not-asked",
+        "intent": "reassured",
         "live": "withheld",
         "steer": "offered"
       },
@@ -1499,21 +2795,41 @@
       ]
     },
     "adf27f8c6b7ccffa": {
+      "adopted": {
+        "analyze": "withheld",
+        "claims": "withheld",
+        "intent": "withheld",
+        "live": "withheld",
+        "steer": "offered"
+      },
       "class": null,
+      "current": {
+        "analyze": "false-alarm",
+        "claims": "false-alarm",
+        "intent": "withheld",
+        "live": "false-alarm",
+        "steer": "not-offered"
+      },
       "first": false,
       "hindsight": {
         "analyze": "not-run",
+        "claims": "not-run",
+        "intent": "not-run",
         "live": "withheld",
         "steer": "offered"
       },
       "mark": "no-drift",
       "part": {
         "analyze": "withheld",
+        "claims": "not-asked",
+        "intent": "withheld",
         "live": "withheld",
         "steer": "offered"
       },
       "realistic": {
         "analyze": "quiet",
+        "claims": "not-asked",
+        "intent": "quiet",
         "live": "withheld",
         "steer": "offered"
       },
@@ -1522,21 +2838,41 @@
       ]
     },
     "b5ed1d889f4ebfd8": {
+      "adopted": {
+        "analyze": "false-alarm",
+        "claims": "withheld",
+        "intent": "false-alarm",
+        "live": "withheld",
+        "steer": "offered"
+      },
       "class": null,
+      "current": {
+        "analyze": "quiet",
+        "claims": "withheld",
+        "intent": "quiet",
+        "live": "withheld",
+        "steer": "not-offered"
+      },
       "first": false,
       "hindsight": {
         "analyze": "not-run",
+        "claims": "not-run",
+        "intent": "not-run",
         "live": "withheld",
         "steer": "offered"
       },
       "mark": "no-drift",
       "part": {
         "analyze": "quiet",
+        "claims": "not-asked",
+        "intent": "quiet",
         "live": "withheld",
         "steer": "offered"
       },
       "realistic": {
         "analyze": "false-alarm",
+        "claims": "not-asked",
+        "intent": "false-alarm",
         "live": "withheld",
         "steer": "offered"
       },
@@ -1546,21 +2882,41 @@
       ]
     },
     "b6a7c9d8d47e3510": {
+      "adopted": {
+        "analyze": "false-alarm",
+        "claims": "false-alarm",
+        "intent": "withheld",
+        "live": "withheld",
+        "steer": "offered"
+      },
       "class": null,
+      "current": {
+        "analyze": "false-alarm",
+        "claims": "withheld",
+        "intent": "false-alarm",
+        "live": "withheld",
+        "steer": "not-offered"
+      },
       "first": false,
       "hindsight": {
         "analyze": "not-run",
+        "claims": "not-run",
+        "intent": "not-run",
         "live": "withheld",
         "steer": "offered"
       },
       "mark": "no-drift",
       "part": {
         "analyze": "withheld",
+        "claims": "not-asked",
+        "intent": "withheld",
         "live": "withheld",
         "steer": "offered"
       },
       "realistic": {
         "analyze": "withheld",
+        "claims": "not-asked",
+        "intent": "withheld",
         "live": "withheld",
         "steer": "offered"
       },
@@ -1569,21 +2925,41 @@
       ]
     },
     "bad0aad6be5f4752": {
+      "adopted": {
+        "analyze": "false-alarm",
+        "claims": "withheld",
+        "intent": "false-alarm",
+        "live": "false-alarm",
+        "steer": "not-offered"
+      },
       "class": null,
+      "current": {
+        "analyze": "false-alarm",
+        "claims": "false-alarm",
+        "intent": "false-alarm",
+        "live": "false-alarm",
+        "steer": "not-offered"
+      },
       "first": false,
       "hindsight": {
         "analyze": "not-run",
+        "claims": "not-run",
+        "intent": "not-run",
         "live": "false-alarm",
         "steer": "not-offered"
       },
       "mark": "no-drift",
       "part": {
         "analyze": "false-alarm",
+        "claims": "not-asked",
+        "intent": "false-alarm",
         "live": "false-alarm",
         "steer": "not-offered"
       },
       "realistic": {
         "analyze": "withheld",
+        "claims": "not-asked",
+        "intent": "withheld",
         "live": "false-alarm",
         "steer": "not-offered"
       },
@@ -1592,21 +2968,41 @@
       ]
     },
     "bc40eacfd19c6c85": {
+      "adopted": {
+        "analyze": "false-alarm",
+        "claims": "withheld",
+        "intent": "false-alarm",
+        "live": "false-alarm",
+        "steer": "offered"
+      },
       "class": null,
+      "current": {
+        "analyze": "false-alarm",
+        "claims": "withheld",
+        "intent": "false-alarm",
+        "live": "false-alarm",
+        "steer": "offered"
+      },
       "first": false,
       "hindsight": {
         "analyze": "not-run",
+        "claims": "not-run",
+        "intent": "not-run",
         "live": "false-alarm",
         "steer": "offered"
       },
       "mark": "no-drift",
       "part": {
         "analyze": "withheld",
+        "claims": "not-asked",
+        "intent": "withheld",
         "live": "false-alarm",
         "steer": "offered"
       },
       "realistic": {
         "analyze": "withheld",
+        "claims": "not-asked",
+        "intent": "withheld",
         "live": "false-alarm",
         "steer": "offered"
       },
@@ -1615,21 +3011,41 @@
       ]
     },
     "bf55aae95a817072": {
+      "adopted": {
+        "analyze": "quiet",
+        "claims": "withheld",
+        "intent": "quiet",
+        "live": "false-alarm",
+        "steer": "not-offered"
+      },
       "class": null,
+      "current": {
+        "analyze": "false-alarm",
+        "claims": "withheld",
+        "intent": "false-alarm",
+        "live": "false-alarm",
+        "steer": "not-offered"
+      },
       "first": false,
       "hindsight": {
         "analyze": "not-run",
+        "claims": "not-run",
+        "intent": "not-run",
         "live": "false-alarm",
         "steer": "not-offered"
       },
       "mark": "no-drift",
       "part": {
         "analyze": "withheld",
+        "claims": "not-asked",
+        "intent": "withheld",
         "live": "false-alarm",
         "steer": "not-offered"
       },
       "realistic": {
         "analyze": "withheld",
+        "claims": "not-asked",
+        "intent": "withheld",
         "live": "false-alarm",
         "steer": "not-offered"
       },
@@ -1638,21 +3054,41 @@
       ]
     },
     "c19d1b414007e10f": {
+      "adopted": {
+        "analyze": "false-alarm",
+        "claims": "withheld",
+        "intent": "false-alarm",
+        "live": "withheld",
+        "steer": "offered"
+      },
       "class": null,
+      "current": {
+        "analyze": "false-alarm",
+        "claims": "withheld",
+        "intent": "false-alarm",
+        "live": "withheld",
+        "steer": "not-offered"
+      },
       "first": false,
       "hindsight": {
         "analyze": "not-run",
+        "claims": "not-run",
+        "intent": "not-run",
         "live": "withheld",
         "steer": "offered"
       },
       "mark": "no-drift",
       "part": {
         "analyze": "withheld",
+        "claims": "not-asked",
+        "intent": "withheld",
         "live": "withheld",
         "steer": "offered"
       },
       "realistic": {
         "analyze": "false-alarm",
+        "claims": "not-asked",
+        "intent": "false-alarm",
         "live": "withheld",
         "steer": "offered"
       },
@@ -1661,21 +3097,41 @@
       ]
     },
     "c41e322982d5a6e4": {
+      "adopted": {
+        "analyze": "irrelevant-flag",
+        "claims": "irrelevant-flag",
+        "intent": "reassured",
+        "live": "withheld",
+        "steer": "offered"
+      },
       "class": "status-claim",
+      "current": {
+        "analyze": "withheld",
+        "claims": "withheld",
+        "intent": "withheld",
+        "live": "withheld",
+        "steer": "not-offered"
+      },
       "first": true,
       "hindsight": {
         "analyze": "not-run",
+        "claims": "not-run",
+        "intent": "not-run",
         "live": "withheld",
         "steer": "offered"
       },
       "mark": "drift",
       "part": {
         "analyze": "withheld",
+        "claims": "not-asked",
+        "intent": "withheld",
         "live": "withheld",
         "steer": "offered"
       },
       "realistic": {
         "analyze": "reassured",
+        "claims": "not-asked",
+        "intent": "reassured",
         "live": "withheld",
         "steer": "offered"
       },
@@ -1684,21 +3140,41 @@
       ]
     },
     "c736d5e5b4fa8927": {
+      "adopted": {
+        "analyze": "withheld",
+        "claims": "withheld",
+        "intent": "withheld",
+        "live": "irrelevant-flag",
+        "steer": "offered"
+      },
       "class": "defect",
+      "current": {
+        "analyze": "irrelevant-flag",
+        "claims": "irrelevant-flag",
+        "intent": "withheld",
+        "live": "irrelevant-flag",
+        "steer": "not-offered"
+      },
       "first": true,
       "hindsight": {
         "analyze": "not-run",
+        "claims": "not-run",
+        "intent": "not-run",
         "live": "irrelevant-flag",
         "steer": "offered"
       },
       "mark": "drift",
       "part": {
         "analyze": "withheld",
+        "claims": "not-asked",
+        "intent": "withheld",
         "live": "irrelevant-flag",
         "steer": "offered"
       },
       "realistic": {
         "analyze": "reassured",
+        "claims": "not-asked",
+        "intent": "reassured",
         "live": "irrelevant-flag",
         "steer": "offered"
       },
@@ -1709,21 +3185,41 @@
       ]
     },
     "ce728399e1d1a4a7": {
+      "adopted": {
+        "analyze": "false-alarm",
+        "claims": "withheld",
+        "intent": "false-alarm",
+        "live": "withheld",
+        "steer": "offered"
+      },
       "class": null,
+      "current": {
+        "analyze": "withheld",
+        "claims": "withheld",
+        "intent": "withheld",
+        "live": "withheld",
+        "steer": "not-offered"
+      },
       "first": false,
       "hindsight": {
         "analyze": "not-run",
+        "claims": "not-run",
+        "intent": "not-run",
         "live": "withheld",
         "steer": "not-offered"
       },
       "mark": "no-drift",
       "part": {
         "analyze": "withheld",
+        "claims": "not-asked",
+        "intent": "withheld",
         "live": "withheld",
         "steer": "not-offered"
       },
       "realistic": {
         "analyze": "withheld",
+        "claims": "not-asked",
+        "intent": "withheld",
         "live": "withheld",
         "steer": "offered"
       },
@@ -1732,21 +3228,41 @@
       ]
     },
     "cefcec9613579d45": {
+      "adopted": {
+        "analyze": "false-alarm",
+        "claims": "withheld",
+        "intent": "false-alarm",
+        "live": "withheld",
+        "steer": "offered"
+      },
       "class": null,
+      "current": {
+        "analyze": "quiet",
+        "claims": "withheld",
+        "intent": "quiet",
+        "live": "withheld",
+        "steer": "not-offered"
+      },
       "first": false,
       "hindsight": {
         "analyze": "not-run",
+        "claims": "not-run",
+        "intent": "not-run",
         "live": "withheld",
         "steer": "not-offered"
       },
       "mark": "no-drift",
       "part": {
         "analyze": "withheld",
+        "claims": "not-asked",
+        "intent": "withheld",
         "live": "withheld",
         "steer": "not-offered"
       },
       "realistic": {
         "analyze": "false-alarm",
+        "claims": "not-asked",
+        "intent": "false-alarm",
         "live": "withheld",
         "steer": "offered"
       },
@@ -1755,21 +3271,41 @@
       ]
     },
     "d1278d25228ee614": {
+      "adopted": {
+        "analyze": "false-alarm",
+        "claims": "withheld",
+        "intent": "false-alarm",
+        "live": "false-alarm",
+        "steer": "offered"
+      },
       "class": null,
+      "current": {
+        "analyze": "false-alarm",
+        "claims": "withheld",
+        "intent": "false-alarm",
+        "live": "false-alarm",
+        "steer": "offered"
+      },
       "first": false,
       "hindsight": {
         "analyze": "not-run",
+        "claims": "not-run",
+        "intent": "not-run",
         "live": "false-alarm",
         "steer": "offered"
       },
       "mark": "no-drift",
       "part": {
         "analyze": "withheld",
+        "claims": "not-asked",
+        "intent": "withheld",
         "live": "false-alarm",
         "steer": "offered"
       },
       "realistic": {
         "analyze": "withheld",
+        "claims": "not-asked",
+        "intent": "withheld",
         "live": "false-alarm",
         "steer": "offered"
       },
@@ -1778,21 +3314,41 @@
       ]
     },
     "d133d4d6c88383d6": {
+      "adopted": {
+        "analyze": "relevant-flag",
+        "claims": "relevant-flag",
+        "intent": "relevant-flag",
+        "live": "irrelevant-flag",
+        "steer": "not-offered"
+      },
       "class": "status-claim",
+      "current": {
+        "analyze": "relevant-flag",
+        "claims": "relevant-flag",
+        "intent": "withheld",
+        "live": "irrelevant-flag",
+        "steer": "not-offered"
+      },
       "first": true,
       "hindsight": {
         "analyze": "not-run",
+        "claims": "not-run",
+        "intent": "not-run",
         "live": "irrelevant-flag",
         "steer": "not-offered"
       },
       "mark": "drift",
       "part": {
         "analyze": "withheld",
+        "claims": "not-asked",
+        "intent": "withheld",
         "live": "irrelevant-flag",
         "steer": "not-offered"
       },
       "realistic": {
         "analyze": "withheld",
+        "claims": "not-asked",
+        "intent": "withheld",
         "live": "irrelevant-flag",
         "steer": "not-offered"
       },
@@ -1801,21 +3357,41 @@
       ]
     },
     "d2045c73ca8889d9": {
+      "adopted": {
+        "analyze": "quiet",
+        "claims": "withheld",
+        "intent": "quiet",
+        "live": "withheld",
+        "steer": "offered"
+      },
       "class": null,
+      "current": {
+        "analyze": "quiet",
+        "claims": "withheld",
+        "intent": "quiet",
+        "live": "withheld",
+        "steer": "not-offered"
+      },
       "first": false,
       "hindsight": {
         "analyze": "not-run",
+        "claims": "not-run",
+        "intent": "not-run",
         "live": "withheld",
         "steer": "offered"
       },
       "mark": "no-drift",
       "part": {
         "analyze": "withheld",
+        "claims": "not-asked",
+        "intent": "withheld",
         "live": "withheld",
         "steer": "offered"
       },
       "realistic": {
         "analyze": "quiet",
+        "claims": "not-asked",
+        "intent": "quiet",
         "live": "withheld",
         "steer": "offered"
       },
@@ -1824,21 +3400,41 @@
       ]
     },
     "d7f9dc22ddec48c9": {
+      "adopted": {
+        "analyze": "withheld",
+        "claims": "withheld",
+        "intent": "withheld",
+        "live": "withheld",
+        "steer": "not-offered"
+      },
       "class": null,
+      "current": {
+        "analyze": "false-alarm",
+        "claims": "withheld",
+        "intent": "false-alarm",
+        "live": "false-alarm",
+        "steer": "not-offered"
+      },
       "first": false,
       "hindsight": {
         "analyze": "not-run",
+        "claims": "not-run",
+        "intent": "not-run",
         "live": "withheld",
         "steer": "not-offered"
       },
       "mark": "no-drift",
       "part": {
         "analyze": "quiet",
+        "claims": "not-asked",
+        "intent": "quiet",
         "live": "withheld",
         "steer": "not-offered"
       },
       "realistic": {
         "analyze": "quiet",
+        "claims": "not-asked",
+        "intent": "quiet",
         "live": "withheld",
         "steer": "not-offered"
       },
@@ -1847,16 +3443,34 @@
       ]
     },
     "d9bf4da2f6a6d278": {
+      "adopted": {
+        "analyze": "withheld",
+        "claims": "withheld",
+        "intent": "withheld",
+        "live": "irrelevant-flag",
+        "steer": "offered"
+      },
       "class": "other",
+      "current": {
+        "analyze": "relevant-flag",
+        "claims": "relevant-flag",
+        "intent": "reassured",
+        "live": "irrelevant-flag",
+        "steer": "not-offered"
+      },
       "first": true,
       "hindsight": {
         "analyze": "not-run",
+        "claims": "not-run",
+        "intent": "not-run",
         "live": "irrelevant-flag",
         "steer": "not-offered"
       },
       "mark": "drift",
       "realistic": {
         "analyze": "withheld",
+        "claims": "not-asked",
+        "intent": "withheld",
         "live": "irrelevant-flag",
         "steer": "offered"
       },
@@ -1865,21 +3479,41 @@
       ]
     },
     "de2d7d7355e7d127": {
+      "adopted": {
+        "analyze": "withheld",
+        "claims": "withheld",
+        "intent": "withheld",
+        "live": "false-alarm",
+        "steer": "offered"
+      },
       "class": null,
+      "current": {
+        "analyze": "false-alarm",
+        "claims": "false-alarm",
+        "intent": "false-alarm",
+        "live": "false-alarm",
+        "steer": "offered"
+      },
       "first": false,
       "hindsight": {
         "analyze": "not-run",
+        "claims": "not-run",
+        "intent": "not-run",
         "live": "false-alarm",
         "steer": "offered"
       },
       "mark": "no-drift",
       "part": {
         "analyze": "withheld",
+        "claims": "not-asked",
+        "intent": "withheld",
         "live": "false-alarm",
         "steer": "offered"
       },
       "realistic": {
         "analyze": "withheld",
+        "claims": "not-asked",
+        "intent": "withheld",
         "live": "false-alarm",
         "steer": "offered"
       },
@@ -1888,21 +3522,41 @@
       ]
     },
     "e211b0a4396f52c5": {
+      "adopted": {
+        "analyze": "false-alarm",
+        "claims": "withheld",
+        "intent": "false-alarm",
+        "live": "withheld",
+        "steer": "offered"
+      },
       "class": null,
+      "current": {
+        "analyze": "quiet",
+        "claims": "withheld",
+        "intent": "quiet",
+        "live": "withheld",
+        "steer": "not-offered"
+      },
       "first": false,
       "hindsight": {
         "analyze": "not-run",
+        "claims": "not-run",
+        "intent": "not-run",
         "live": "withheld",
         "steer": "offered"
       },
       "mark": "no-drift",
       "part": {
         "analyze": "false-alarm",
+        "claims": "not-asked",
+        "intent": "false-alarm",
         "live": "withheld",
         "steer": "offered"
       },
       "realistic": {
         "analyze": "false-alarm",
+        "claims": "not-asked",
+        "intent": "false-alarm",
         "live": "withheld",
         "steer": "offered"
       },
@@ -1911,21 +3565,41 @@
       ]
     },
     "e332dc91e8103edb": {
+      "adopted": {
+        "analyze": "false-alarm",
+        "claims": "false-alarm",
+        "intent": "quiet",
+        "live": "withheld",
+        "steer": "offered"
+      },
       "class": null,
+      "current": {
+        "analyze": "quiet",
+        "claims": "withheld",
+        "intent": "quiet",
+        "live": "withheld",
+        "steer": "not-offered"
+      },
       "first": false,
       "hindsight": {
         "analyze": "not-run",
+        "claims": "not-run",
+        "intent": "not-run",
         "live": "withheld",
         "steer": "offered"
       },
       "mark": "no-drift",
       "part": {
         "analyze": "quiet",
+        "claims": "not-asked",
+        "intent": "quiet",
         "live": "withheld",
         "steer": "offered"
       },
       "realistic": {
         "analyze": "quiet",
+        "claims": "not-asked",
+        "intent": "quiet",
         "live": "withheld",
         "steer": "offered"
       },
@@ -1934,21 +3608,41 @@
       ]
     },
     "e338c005fd75e4ca": {
+      "adopted": {
+        "analyze": "quiet",
+        "claims": "withheld",
+        "intent": "quiet",
+        "live": "withheld",
+        "steer": "offered"
+      },
       "class": null,
+      "current": {
+        "analyze": "false-alarm",
+        "claims": "withheld",
+        "intent": "false-alarm",
+        "live": "false-alarm",
+        "steer": "not-offered"
+      },
       "first": false,
       "hindsight": {
         "analyze": "not-run",
+        "claims": "not-run",
+        "intent": "not-run",
         "live": "withheld",
         "steer": "offered"
       },
       "mark": "no-drift",
       "part": {
         "analyze": "withheld",
+        "claims": "not-asked",
+        "intent": "withheld",
         "live": "withheld",
         "steer": "offered"
       },
       "realistic": {
         "analyze": "withheld",
+        "claims": "not-asked",
+        "intent": "withheld",
         "live": "withheld",
         "steer": "offered"
       },
@@ -1957,21 +3651,41 @@
       ]
     },
     "e6792c74446aa599": {
+      "adopted": {
+        "analyze": "false-alarm",
+        "claims": "false-alarm",
+        "intent": "withheld",
+        "live": "false-alarm",
+        "steer": "offered"
+      },
       "class": null,
+      "current": {
+        "analyze": "false-alarm",
+        "claims": "withheld",
+        "intent": "false-alarm",
+        "live": "false-alarm",
+        "steer": "not-offered"
+      },
       "first": false,
       "hindsight": {
         "analyze": "not-run",
+        "claims": "not-run",
+        "intent": "not-run",
         "live": "false-alarm",
         "steer": "not-offered"
       },
       "mark": "no-drift",
       "part": {
         "analyze": "withheld",
+        "claims": "not-asked",
+        "intent": "withheld",
         "live": "false-alarm",
         "steer": "not-offered"
       },
       "realistic": {
         "analyze": "withheld",
+        "claims": "not-asked",
+        "intent": "withheld",
         "live": "false-alarm",
         "steer": "offered"
       },
@@ -1980,21 +3694,41 @@
       ]
     },
     "ea326d1d39933df8": {
+      "adopted": {
+        "analyze": "withheld",
+        "claims": "withheld",
+        "intent": "withheld",
+        "live": "relevant-flag",
+        "steer": "offered"
+      },
       "class": "communication",
+      "current": {
+        "analyze": "reassured",
+        "claims": "withheld",
+        "intent": "reassured",
+        "live": "relevant-flag",
+        "steer": "offered"
+      },
       "first": true,
       "hindsight": {
         "analyze": "not-run",
+        "claims": "not-run",
+        "intent": "not-run",
         "live": "relevant-flag",
         "steer": "offered"
       },
       "mark": "drift",
       "part": {
         "analyze": "withheld",
+        "claims": "not-asked",
+        "intent": "withheld",
         "live": "relevant-flag",
         "steer": "offered"
       },
       "realistic": {
         "analyze": "reassured",
+        "claims": "not-asked",
+        "intent": "reassured",
         "live": "relevant-flag",
         "steer": "offered"
       },
@@ -2003,21 +3737,41 @@
       ]
     },
     "ea5b96fe81147806": {
+      "adopted": {
+        "analyze": "false-alarm",
+        "claims": "withheld",
+        "intent": "false-alarm",
+        "live": "withheld",
+        "steer": "not-offered"
+      },
       "class": null,
+      "current": {
+        "analyze": "false-alarm",
+        "claims": "withheld",
+        "intent": "false-alarm",
+        "live": "withheld",
+        "steer": "not-offered"
+      },
       "first": false,
       "hindsight": {
         "analyze": "not-run",
+        "claims": "not-run",
+        "intent": "not-run",
         "live": "withheld",
         "steer": "not-offered"
       },
       "mark": "no-drift",
       "part": {
         "analyze": "false-alarm",
+        "claims": "not-asked",
+        "intent": "false-alarm",
         "live": "withheld",
         "steer": "not-offered"
       },
       "realistic": {
         "analyze": "false-alarm",
+        "claims": "not-asked",
+        "intent": "false-alarm",
         "live": "withheld",
         "steer": "not-offered"
       },
@@ -2026,21 +3780,41 @@
       ]
     },
     "eb7be83f69796d87": {
+      "adopted": {
+        "analyze": "false-alarm",
+        "claims": "withheld",
+        "intent": "false-alarm",
+        "live": "withheld",
+        "steer": "offered"
+      },
       "class": null,
+      "current": {
+        "analyze": "false-alarm",
+        "claims": "withheld",
+        "intent": "false-alarm",
+        "live": "withheld",
+        "steer": "not-offered"
+      },
       "first": false,
       "hindsight": {
         "analyze": "not-run",
+        "claims": "not-run",
+        "intent": "not-run",
         "live": "withheld",
         "steer": "not-offered"
       },
       "mark": "no-drift",
       "part": {
         "analyze": "withheld",
+        "claims": "not-asked",
+        "intent": "withheld",
         "live": "withheld",
         "steer": "not-offered"
       },
       "realistic": {
         "analyze": "withheld",
+        "claims": "not-asked",
+        "intent": "withheld",
         "live": "withheld",
         "steer": "offered"
       },
@@ -2049,21 +3823,41 @@
       ]
     },
     "ef62767dff874608": {
+      "adopted": {
+        "analyze": "reassured",
+        "claims": "withheld",
+        "intent": "reassured",
+        "live": "irrelevant-flag",
+        "steer": "offered"
+      },
       "class": "status-claim",
+      "current": {
+        "analyze": "relevant-flag",
+        "claims": "withheld",
+        "intent": "relevant-flag",
+        "live": "irrelevant-flag",
+        "steer": "offered"
+      },
       "first": true,
       "hindsight": {
         "analyze": "not-run",
+        "claims": "not-run",
+        "intent": "not-run",
         "live": "irrelevant-flag",
         "steer": "offered"
       },
       "mark": "drift",
       "part": {
         "analyze": "reassured",
+        "claims": "not-asked",
+        "intent": "reassured",
         "live": "irrelevant-flag",
         "steer": "offered"
       },
       "realistic": {
         "analyze": "reassured",
+        "claims": "not-asked",
+        "intent": "reassured",
         "live": "irrelevant-flag",
         "steer": "offered"
       },
@@ -2072,21 +3866,41 @@
       ]
     },
     "f2f823dc548161a0": {
+      "adopted": {
+        "analyze": "relevant-flag",
+        "claims": "withheld",
+        "intent": "relevant-flag",
+        "live": "withheld",
+        "steer": "offered"
+      },
       "class": "defect",
+      "current": {
+        "analyze": "withheld",
+        "claims": "withheld",
+        "intent": "withheld",
+        "live": "withheld",
+        "steer": "not-offered"
+      },
       "first": false,
       "hindsight": {
         "analyze": "not-run",
+        "claims": "not-run",
+        "intent": "not-run",
         "live": "withheld",
         "steer": "offered"
       },
       "mark": "drift",
       "part": {
         "analyze": "reassured",
+        "claims": "not-asked",
+        "intent": "reassured",
         "live": "withheld",
         "steer": "offered"
       },
       "realistic": {
         "analyze": "withheld",
+        "claims": "not-asked",
+        "intent": "withheld",
         "live": "withheld",
         "steer": "offered"
       },
@@ -2095,21 +3909,41 @@
       ]
     },
     "f793fb1ca0724b26": {
+      "adopted": {
+        "analyze": "quiet",
+        "claims": "withheld",
+        "intent": "quiet",
+        "live": "withheld",
+        "steer": "offered"
+      },
       "class": null,
+      "current": {
+        "analyze": "withheld",
+        "claims": "withheld",
+        "intent": "withheld",
+        "live": "withheld",
+        "steer": "not-offered"
+      },
       "first": false,
       "hindsight": {
         "analyze": "not-run",
+        "claims": "not-run",
+        "intent": "not-run",
         "live": "withheld",
         "steer": "offered"
       },
       "mark": "no-drift",
       "part": {
         "analyze": "withheld",
+        "claims": "not-asked",
+        "intent": "withheld",
         "live": "withheld",
         "steer": "offered"
       },
       "realistic": {
         "analyze": "quiet",
+        "claims": "not-asked",
+        "intent": "quiet",
         "live": "withheld",
         "steer": "offered"
       },
@@ -2118,21 +3952,41 @@
       ]
     },
     "f94c1d5aad9a53fb": {
+      "adopted": {
+        "analyze": "false-alarm",
+        "claims": "false-alarm",
+        "intent": "false-alarm",
+        "live": "withheld",
+        "steer": "not-offered"
+      },
       "class": null,
+      "current": {
+        "analyze": "quiet",
+        "claims": "withheld",
+        "intent": "quiet",
+        "live": "withheld",
+        "steer": "not-offered"
+      },
       "first": false,
       "hindsight": {
         "analyze": "not-run",
+        "claims": "not-run",
+        "intent": "not-run",
         "live": "withheld",
         "steer": "not-offered"
       },
       "mark": "no-drift",
       "part": {
         "analyze": "false-alarm",
+        "claims": "not-asked",
+        "intent": "false-alarm",
         "live": "withheld",
         "steer": "not-offered"
       },
       "realistic": {
         "analyze": "false-alarm",
+        "claims": "not-asked",
+        "intent": "false-alarm",
         "live": "withheld",
         "steer": "not-offered"
       },
@@ -2141,21 +3995,41 @@
       ]
     },
     "fe690993017a2f65": {
+      "adopted": {
+        "analyze": "false-alarm",
+        "claims": "withheld",
+        "intent": "false-alarm",
+        "live": "withheld",
+        "steer": "not-offered"
+      },
       "class": null,
+      "current": {
+        "analyze": "false-alarm",
+        "claims": "withheld",
+        "intent": "false-alarm",
+        "live": "withheld",
+        "steer": "not-offered"
+      },
       "first": false,
       "hindsight": {
         "analyze": "not-run",
+        "claims": "not-run",
+        "intent": "not-run",
         "live": "withheld",
         "steer": "not-offered"
       },
       "mark": "no-drift",
       "part": {
         "analyze": "false-alarm",
+        "claims": "not-asked",
+        "intent": "false-alarm",
         "live": "withheld",
         "steer": "not-offered"
       },
       "realistic": {
         "analyze": "false-alarm",
+        "claims": "not-asked",
+        "intent": "false-alarm",
         "live": "withheld",
         "steer": "not-offered"
       },
@@ -2164,21 +4038,41 @@
       ]
     },
     "ff9aaf4f70aeac8f": {
+      "adopted": {
+        "analyze": "false-alarm",
+        "claims": "false-alarm",
+        "intent": "false-alarm",
+        "live": "withheld",
+        "steer": "not-offered"
+      },
       "class": null,
+      "current": {
+        "analyze": "withheld",
+        "claims": "withheld",
+        "intent": "withheld",
+        "live": "withheld",
+        "steer": "not-offered"
+      },
       "first": false,
       "hindsight": {
         "analyze": "not-run",
+        "claims": "not-run",
+        "intent": "not-run",
         "live": "withheld",
         "steer": "not-offered"
       },
       "mark": "no-drift",
       "part": {
         "analyze": "withheld",
+        "claims": "not-asked",
+        "intent": "withheld",
         "live": "withheld",
         "steer": "not-offered"
       },
       "realistic": {
         "analyze": "false-alarm",
+        "claims": "not-asked",
+        "intent": "false-alarm",
         "live": "withheld",
         "steer": "not-offered"
       },
@@ -2189,6 +4083,137 @@
   },
   "cases_digest": "8bf4cb5fea6a34f83ede4b1f3b57f5b64573746c4f76143ccf9e15c6671a06f2",
   "counts": {
+    "adopted|analyze|drift": {
+      "irrelevant-flag": 2,
+      "reassured": 6,
+      "relevant-flag": 10,
+      "withheld": 4
+    },
+    "adopted|analyze|drift-persistence": {
+      "relevant-flag": 2
+    },
+    "adopted|analyze|no-drift": {
+      "false-alarm": 42,
+      "quiet": 16,
+      "withheld": 13
+    },
+    "adopted|claims|drift": {
+      "irrelevant-flag": 2,
+      "relevant-flag": 7,
+      "withheld": 13
+    },
+    "adopted|claims|drift-persistence": {
+      "withheld": 2
+    },
+    "adopted|claims|no-drift": {
+      "false-alarm": 20,
+      "withheld": 51
+    },
+    "adopted|intent|drift": {
+      "irrelevant-flag": 1,
+      "reassured": 8,
+      "relevant-flag": 9,
+      "withheld": 4
+    },
+    "adopted|intent|drift-persistence": {
+      "relevant-flag": 2
+    },
+    "adopted|intent|no-drift": {
+      "false-alarm": 29,
+      "quiet": 21,
+      "withheld": 21
+    },
+    "adopted|live|drift": {
+      "irrelevant-flag": 7,
+      "relevant-flag": 1,
+      "withheld": 14
+    },
+    "adopted|live|drift-persistence": {
+      "withheld": 2
+    },
+    "adopted|live|no-drift": {
+      "false-alarm": 19,
+      "withheld": 52
+    },
+    "adopted|steer|drift": {
+      "not-offered": 7,
+      "offered": 15
+    },
+    "adopted|steer|drift-persistence": {
+      "offered": 2
+    },
+    "adopted|steer|no-drift": {
+      "not-offered": 20,
+      "offered": 51
+    },
+    "current|analyze|drift": {
+      "irrelevant-flag": 1,
+      "reassured": 6,
+      "relevant-flag": 13,
+      "withheld": 2
+    },
+    "current|analyze|drift-persistence": {
+      "relevant-flag": 1,
+      "withheld": 1
+    },
+    "current|analyze|no-drift": {
+      "false-alarm": 38,
+      "quiet": 25,
+      "refused": 1,
+      "withheld": 7
+    },
+    "current|claims|drift": {
+      "irrelevant-flag": 1,
+      "relevant-flag": 8,
+      "withheld": 13
+    },
+    "current|claims|drift-persistence": {
+      "withheld": 2
+    },
+    "current|claims|no-drift": {
+      "false-alarm": 16,
+      "refused": 1,
+      "withheld": 54
+    },
+    "current|intent|drift": {
+      "reassured": 11,
+      "relevant-flag": 7,
+      "withheld": 4
+    },
+    "current|intent|drift-persistence": {
+      "relevant-flag": 1,
+      "withheld": 1
+    },
+    "current|intent|no-drift": {
+      "false-alarm": 29,
+      "quiet": 31,
+      "refused": 1,
+      "withheld": 10
+    },
+    "current|live|drift": {
+      "irrelevant-flag": 7,
+      "relevant-flag": 1,
+      "unattributed-flag": 1,
+      "withheld": 13
+    },
+    "current|live|drift-persistence": {
+      "withheld": 2
+    },
+    "current|live|no-drift": {
+      "false-alarm": 29,
+      "withheld": 42
+    },
+    "current|steer|drift": {
+      "not-offered": 20,
+      "offered": 2
+    },
+    "current|steer|drift-persistence": {
+      "not-offered": 2
+    },
+    "current|steer|no-drift": {
+      "not-offered": 59,
+      "offered": 12
+    },
     "hindsight|analyze|drift": {
       "not-run": 22
     },
@@ -2196,6 +4221,24 @@
       "not-run": 2
     },
     "hindsight|analyze|no-drift": {
+      "not-run": 71
+    },
+    "hindsight|claims|drift": {
+      "not-run": 22
+    },
+    "hindsight|claims|drift-persistence": {
+      "not-run": 2
+    },
+    "hindsight|claims|no-drift": {
+      "not-run": 71
+    },
+    "hindsight|intent|drift": {
+      "not-run": 22
+    },
+    "hindsight|intent|drift-persistence": {
+      "not-run": 2
+    },
+    "hindsight|intent|no-drift": {
       "not-run": 71
     },
     "hindsight|live|drift": {
@@ -2235,6 +4278,29 @@
       "quiet": 19,
       "withheld": 41
     },
+    "part|claims|drift": {
+      "not-asked": 19
+    },
+    "part|claims|drift-persistence": {
+      "not-asked": 2
+    },
+    "part|claims|no-drift": {
+      "not-asked": 71
+    },
+    "part|intent|drift": {
+      "reassured": 5,
+      "relevant-flag": 4,
+      "withheld": 10
+    },
+    "part|intent|drift-persistence": {
+      "reassured": 1,
+      "relevant-flag": 1
+    },
+    "part|intent|no-drift": {
+      "false-alarm": 11,
+      "quiet": 19,
+      "withheld": 41
+    },
     "part|live|drift": {
       "irrelevant-flag": 5,
       "relevant-flag": 1,
@@ -2269,6 +4335,30 @@
       "withheld": 1
     },
     "realistic|analyze|no-drift": {
+      "false-alarm": 26,
+      "quiet": 19,
+      "withheld": 26
+    },
+    "realistic|claims|drift": {
+      "not-asked": 22
+    },
+    "realistic|claims|drift-persistence": {
+      "not-asked": 2
+    },
+    "realistic|claims|no-drift": {
+      "not-asked": 71
+    },
+    "realistic|intent|drift": {
+      "irrelevant-flag": 1,
+      "reassured": 9,
+      "relevant-flag": 7,
+      "withheld": 5
+    },
+    "realistic|intent|drift-persistence": {
+      "relevant-flag": 1,
+      "withheld": 1
+    },
+    "realistic|intent|no-drift": {
       "false-alarm": 26,
       "quiet": 19,
       "withheld": 26

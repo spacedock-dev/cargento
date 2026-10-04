@@ -135,3 +135,62 @@ What it found, on four sessions from one person (a development set, so no rates)
 The `relevant-flag` outcome in `results.json` uses the time rule above, which nearly every flag
 passes because a departure usually cites the agent's last message; the blind judges' ratings are
 the stricter reading. `results.json` counts 24 drift cuts; 22 of them are first pushbacks.
+
+## The second run, 2026-10-04
+
+After the first run, two product changes merged in #482. A goal adopted from your prompt is now read
+whole, up to 1,000 characters, and every reading also asks a `claims` question that does not depend
+on the intent: does a status claim in the agent's own words go against the record, or does nothing
+in the record show it? The second run read the same 99 cuts against the same marks, on two new arms.
+The adopted arm is your opening prompt, marked as adopted. The current arm is a goal plus up to three
+outcome lines, which fresh agents drafted from your own messages before each cut, without seeing
+anything the agent said. That took 198 Analyze calls, so 393 of the 440 authorized have been used.
+`results.json` scores Analyze as a whole, and the intent questions and the claims question
+separately.
+
+On the 22 first-pushback drift cuts against the 71 no-drift cuts:
+
+| Detector | Adopted arm | Current arm |
+|---|---|---|
+| Analyze, any departure | 12 of 22, 42 of 71 | 14 of 22, 38 of 71 |
+| Intent questions only | 10 of 22, 29 of 71 | 7 of 22, 29 of 71 |
+| Claims question only | 9 of 22, 20 of 71 | 9 of 22, 16 of 71 |
+| Live estimate | 8 of 22, 19 of 71 | 9 of 22, 29 of 71 |
+
+A fresh critic checked every flag before these numbers were reported, and most of the apparent gain
+did not survive:
+
+- One first-pushback catch is genuine: a claim that reviews were running, which the person then
+  questioned. The blind judges rated two more cuts as catches. One rests on the person's own
+  screenshot complaint, which makes it an echo the scorer's rule lets through because one other cite
+  is an agent message. The other repeats the agent's own admission that the tool was unusable. A
+  later "nothing is running" catch on a persistence cut is also an admission.
+- The claims question's lean toward drift (9 of 22 against 16 of 71 on the current arm) comes mostly
+  from one hour of one session. Outside it the split is 5 of 17 against 12 of 57. The question is
+  also unstable: it does not depend on the intent, yet the two arms agreed on only 12 of the 42 cuts
+  either one flagged.
+- Of the 36 claims flags on no-drift cuts, 17 were claims the prompt already says to leave alone
+  (merged, CI running, posted) or were not status claims, 13 were true claims the record could not
+  show, 5 were model errors that read a failure 45 to 76 minutes old as contradicting a later green
+  run, and 1 was a real unsupported claim ("Built and working", half an hour before the person found
+  the tool broken). The marks measure pushback, not whether a claim was true, so that one scores as
+  a false alarm.
+- The record cannot show what the claims question needs. Across the 99 cuts the reading saw 1,062
+  checks with no recorded result, 48 failures and no passes, because the usual run pipes its output
+  (`... 2>&1 | tail -30`), so the error flag belongs to `tail` and the output cannot be attributed.
+  It saw 22 file writes, because writes made by Bash heredocs are not recorded as writes. A "suite
+  is green" or "file written" claim is therefore nearly always "not shown by the record".
+- Steer back on the current arm was offered at 2 of 22 drift cuts and 12 of 71 others, exactly the
+  cuts with a failed check in the window. That is an artefact: each drafted intent was saved at your
+  last message, so no later direction exists, and the replay never hands Steer back a reading. The
+  same missing later direction is why the live estimate raised more false alarms on this arm.
+- No drafted current intent encoded the coming pushback. Several restate an earlier complaint, which
+  is what an intent kept up to date should do.
+
+So the second run does not show that either new question detects drift. What it supports is three
+changes. Let the claims question treat a check whose result was not recorded as unread, and stop it
+citing a failure as a contradiction when a later run of the same check exists. Enforce in code the
+claim kinds `unsupported` may apply to (passing, fixed, written), which would remove 17 of the 36
+false alarms above. And score a departure as an echo when its contradicting evidence is your own
+message or the agent's own admission. A third run would also mark each claim as true or false rather
+than by pushback, so an early warning like the one above counts.
