@@ -1945,9 +1945,11 @@ committed half. `scripts/drift_replay.py` reads the pushback fixtures under `tes
 (redacted by `scripts/redact_session.py`, gitignored) or, with `--source original`, the logs under
 `~/.claude/projects`. Its cases, its owner's blind marks, its outputs, its spend ledger and the salt
 behind its case ids stay under `~/.cargento/drift-replay/`, and the build refuses a `CARGENTO_HOME`
-inside the repository. Only `marks-digest.json` and `results.json` are committed: the first holds
-digests and counts, the second closed tokens, counts and case ids salted with a local secret, so a
-committed id cannot be recomputed from a session id and a time. `--live` calls no model. `--read`
+inside the repository. Its claim items and claim marks, each with the marker's one-line reason,
+stay there too. Only `marks-digest.json`, `claim-marks-digest.json`, `results.json` and a tagged
+re-read's `results-<tag>.json` are committed: the digests hold digests and counts, the results
+closed tokens, counts, and case and claim ids salted with a local secret, so a committed id cannot
+be recomputed from a session id and a time. `--live` calls no model. `--read`
 sends what a press on that session would send, through the same verified, pinned Claude Code CLI
 the qualification uses: the person's messages, the agent's messages once the producer reads them,
 each check's line, result, times and redacted output tail, and the intent. The owner authorized that

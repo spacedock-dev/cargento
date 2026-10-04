@@ -7,6 +7,7 @@ marks. These tests build small synthetic sessions; nothing here reads a real ses
 from __future__ import annotations
 
 import datetime as dt
+import hashlib
 import json
 import multiprocessing as mp
 import os
@@ -14,12 +15,13 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
-from typing import Any, Self
+from typing import Any, ClassVar, Self
 from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import drift_replay as dr
+import levels_cases as lc
 
 START = dt.datetime(2026, 9, 24, 3, 0, tzinfo=dt.UTC)
 SID = "11111111-2222-3333-4444-555555555555"
@@ -123,11 +125,13 @@ class _Session:
         (self.annotations / SID / "annotation.md").write_text(ANNOTATION, encoding="utf-8")
         self.digest = base / "docs" / "marks-digest.json"
         self.results = base / "docs" / "results.json"
+        self.claim_digest = base / "docs" / "claim-marks-digest.json"
         self.patches = [
             mock.patch.object(dr, "FIXTURES", str(self.fixtures)),
             mock.patch.object(dr, "ANNOTATIONS", str(self.annotations)),
             mock.patch.object(dr, "DIGEST_PATH", str(self.digest)),
             mock.patch.object(dr, "RESULTS_PATH", str(self.results)),
+            mock.patch.object(dr, "CLAIM_DIGEST_PATH", str(self.claim_digest)),
         ]
 
     def __enter__(self) -> Self:
@@ -477,6 +481,263 @@ class OutcomesKeepRelevanceApart(unittest.TestCase):
             "assessment": {"criteria": {"goal": {"result": "consistent with the evidence read"}}},
         }
         self.assertEqual(dr._read_bin(consistent, drifted=True, start=1.0), "reassured")
+
+
+def _reading(criteria: dict[str, Any], facts: dict[str, Any]) -> dict[str, Any]:
+    return {"withheld": "", "assessment": {"criteria": criteria}, "facts": facts}
+
+
+class EachDepartedCriterionIsJudgedOnItsOwnCites(unittest.TestCase):
+    FACTS: ClassVar[dict[str, Any]] = {
+        "p_late": {"at": 50.0, "type": "user_message"},
+        "a_early": {"at": 10.0, "type": "agent_message"},
+        "a_claim": {"at": 45.0, "type": "agent_message"},
+        "a_admits": {"at": 55.0, "type": "agent_message"},
+        "c_late": {"at": 60.0, "type": "tool_report"},
+    }
+
+    def test_a_persons_words_never_lend_another_criterion_their_timing(self) -> None:
+        # The goal rests on the person's late message alone: an echo. The line rests on early
+        # agent work: irrelevant. Pooled, the late message made both "relevant".
+        entry = _reading(
+            {
+                "goal": {"result": "departure", "cites": ["p_late"]},
+                "line_1": {"result": "departure", "cites": ["a_early"]},
+            },
+            self.FACTS,
+        )
+        self.assertEqual("irrelevant-flag", dr._read_bin(entry, drifted=True, start=40.0))
+        alone = _reading({"goal": {"result": "departure", "cites": ["p_late"]}}, self.FACTS)
+        self.assertEqual("echo", dr._read_bin(alone, drifted=True, start=40.0))
+
+    def test_a_criterion_citing_work_is_not_made_an_echo_by_another(self) -> None:
+        entry = _reading(
+            {
+                "goal": {"result": "departure", "cites": ["p_late"]},
+                "line_1": {"result": "departure", "cites": ["c_late"]},
+            },
+            self.FACTS,
+        )
+        self.assertEqual("relevant-flag", dr._read_bin(entry, drifted=True, start=40.0))
+
+    def test_a_claims_departure_on_the_claim_and_the_persons_words_is_an_echo(self) -> None:
+        entry = _reading(
+            {"claims": {"result": "departure", "cites": ["a_claim", "p_late"]}}, self.FACTS
+        )
+        self.assertEqual("echo", dr._read_bin(entry, drifted=True, start=40.0))
+        self.assertEqual("echo", dr._read_bin(entry, drifted=True, start=40.0, only="claims"))
+
+    def test_a_claims_departure_on_a_later_message_of_the_agents_is_not_an_echo(self) -> None:
+        # No word list for admissions: the agent's own later message is evidence like a check.
+        for cites in (
+            ["a_claim", "a_admits"],
+            ["a_claim", "c_late"],
+            ["a_claim", "p_late", "c_late"],
+        ):
+            with self.subTest(cites=cites):
+                entry = _reading({"claims": {"result": "departure", "cites": cites}}, self.FACTS)
+                self.assertEqual("relevant-flag", dr._read_bin(entry, drifted=True, start=40.0))
+
+    def test_the_claim_is_left_out_only_on_a_claims_departure(self) -> None:
+        unshown = _reading({"claims": {"result": dr.UNSUPPORTED, "cites": ["a_claim"]}}, self.FACTS)
+        self.assertEqual("relevant-flag", dr._read_bin(unshown, drifted=True, start=40.0))
+        goal = _reading(
+            {"goal": {"result": "departure", "cites": ["a_claim", "p_late"]}}, self.FACTS
+        )
+        self.assertEqual("relevant-flag", dr._read_bin(goal, drifted=True, start=40.0))
+
+
+class _Home:
+    """A built case set in a temporary home, with the run gate held open."""
+
+    def __init__(self, s: _Session) -> None:
+        self.s = s
+        dr.build(home=str(s.home), source="fixtures", say=lambda _m: None)
+        self.paths = dr._paths(str(s.home))
+        self.body = json.loads(Path(self.paths["cases"]).read_text())
+        self.ids = [str(c["id"]) for c in self.body["cases"]]
+
+
+class ATaggedReadKeepsTheEarlierRunsOutput(unittest.TestCase):
+    def test_a_narrowed_read_needs_a_tag_and_a_case_it_can_name(self) -> None:
+        with _Session() as s, mock.patch.object(dr, "_run_refusal", return_value=""):
+            home = _Home(s)
+            said: list[str] = []
+            self.assertEqual(
+                1, dr.read(home=str(s.home), dry_run=True, cases=(home.ids[0],), say=said.append)
+            )
+            self.assertIn("--tag", said[-1])
+            self.assertEqual(
+                1, dr.read(home=str(s.home), dry_run=True, tag="Bad Tag", say=said.append)
+            )
+            self.assertEqual(
+                1,
+                dr.read(home=str(s.home), dry_run=True, tag="t", cases=("nope",), say=said.append),
+            )
+            self.assertIn("names 0 cases", said[-1])
+
+    def test_a_dry_run_plans_only_the_chosen_cuts_and_arms_beside_read_json(self) -> None:
+        with (
+            _Session() as s,
+            tempfile.TemporaryDirectory() as tmp,
+            mock.patch.object(dr, "_run_refusal", return_value=""),
+            mock.patch.object(dr, "LEDGER_PATH", os.path.join(tmp, "spend.json")),
+        ):
+            home = _Home(s)
+            Path(home.paths["read"]).write_text('{"v": 1, "cases": {}}')
+            before = Path(home.paths["read"]).read_text()
+            chosen = f"{home.ids[0][:8]}:realistic"
+            said: list[str] = []
+            code = dr.read(
+                home=str(s.home), dry_run=True, tag="rerun", cases=(chosen,), say=said.append
+            )
+            self.assertEqual(0, code, said)
+            plan = json.loads(
+                (Path(home.paths["dir"]) / "plan-rerun.json").read_text(encoding="utf-8")
+            )
+            self.assertEqual([f"{home.ids[0]}:realistic"], plan["selection"])
+            self.assertEqual(1, plan["calls"])
+            self.assertEqual(before, Path(home.paths["read"]).read_text())
+            self.assertFalse(Path(home.paths["plan"]).exists())
+            # The real run must match the plan: a different selection is refused before any call.
+            said.clear()
+            other = f"{home.ids[-1]}:realistic"
+            self.assertEqual(
+                1, dr.read(home=str(s.home), tag="rerun", cases=(other,), say=said.append)
+            )
+
+    def test_a_tagged_score_reads_its_own_file_and_leaves_unchosen_cuts_not_run(self) -> None:
+        with _Session() as s:
+            home = _Home(s)
+            pair = f"{home.ids[0]}:realistic"
+            (Path(home.paths["dir"]) / "plan-rerun.json").write_text(
+                json.dumps({"arms": ["realistic"], "selection": [pair]})
+            )
+            (Path(home.paths["dir"]) / "read-rerun.json").write_text(
+                json.dumps({"cases": {home.ids[0]: {"realistic": {"withheld": "idle-unknown"}}}})
+            )
+            readings, planned, out = dr._scored_read(home.paths, "rerun")
+        self.assertIn(home.ids[0], readings)
+        self.assertTrue(planned(home.ids[0], "realistic"))
+        self.assertFalse(planned(home.ids[-1], "realistic"))
+        self.assertFalse(planned(home.ids[0], "part"))
+        self.assertTrue(out.endswith("results-rerun.json"))
+
+    def test_the_ledger_floor_counts_every_read_file(self) -> None:
+        with _Session() as s:
+            home = _Home(s)
+            (Path(home.paths["dir"]) / "read-a.json").write_text("{}")
+            self.assertEqual(
+                [home.paths["read"], os.path.join(home.paths["dir"], "read-a.json")],
+                dr._read_files(home.paths),
+            )
+
+
+ARMS_AND_RESULTS = ("adopted", "current", "realistic", "departure", "not shown", "unsupported")
+
+
+class ClaimsAreMarkedTrueOrFalseBlind(unittest.TestCase):
+    def _flagged(self, s: _Session) -> _Home:
+        home = _Home(s)
+        cid = home.ids[0]
+        facts = {
+            "m1": {"at": _at(6), "type": "agent_message"},
+            "u1": {"at": _at(8), "type": "user_message"},
+        }
+        Path(home.paths["read"]).write_text(
+            json.dumps(
+                {
+                    "cases": {
+                        cid: {
+                            "adopted": _reading(
+                                {"claims": {"result": "departure", "cites": ["m1", "u1"]}}, facts
+                            ),
+                            "current": _reading(
+                                {"claims": {"result": dr.UNSUPPORTED, "cites": ["m1"]}}, facts
+                            ),
+                        }
+                    }
+                }
+            )
+        )
+        return home
+
+    def test_one_item_per_cut_and_claim_with_nothing_that_names_what_flagged_it(self) -> None:
+        with _Session() as s:
+            home = self._flagged(s)
+            dr.export_claims(home=str(s.home), say=lambda _m: None)
+            body = json.loads(Path(home.paths["claim_items"]).read_text())
+        (item,) = body["items"]
+        exported = json.dumps(body)
+        for word in ARMS_AND_RESULTS:
+            self.assertNotIn(word, exported)
+        self.assertNotIn(home.ids[0], item["id"])
+        self.assertEqual(4, item["claim_message"])  # the agent's drifted reply, #4
+
+    def test_the_screen_shows_the_claim_and_what_followed_and_no_detector(self) -> None:
+        with _Session() as s:
+            self._flagged(s)
+            dr.export_claims(home=str(s.home), say=lambda _m: None)
+            shown: list[str] = []
+            replies = iter(["n", "y", "it was reverted later"])
+            dr.mark_claims(home=str(s.home), ask=lambda _p: next(replies), say=shown.append)
+            marks = json.loads((s.home / "drift-replay" / "claim-marks.json").read_text())
+            digest = json.loads(s.claim_digest.read_text())
+            raw = (s.home / "drift-replay" / "claim-marks.json").read_bytes()
+        screen = "\n".join(shown)
+        self.assertIn("rewrote the exporter", screen)
+        self.assertIn("Reverted the exporter", screen)
+        for word in ARMS_AND_RESULTS:
+            self.assertNotIn(word, screen)
+        (mark,) = marks["marks"].values()
+        self.assertEqual({"true": "no", "visible": "yes", "reason": "it was reverted later"}, mark)
+        self.assertEqual(hashlib.sha256(raw).hexdigest(), digest["marks_digest"])
+
+    def test_each_flag_is_scored_on_the_claims_own_marks(self) -> None:
+        cases = {
+            ("departure", "no", "yes"): "right",
+            ("departure", "yes", "no"): "wrong",
+            ("departure", "unclear", "no"): "unclear",
+            (dr.UNSUPPORTED, "no", "yes"): "right",
+            (dr.UNSUPPORTED, "yes", "no"): "right",
+            (dr.UNSUPPORTED, "yes", "yes"): "wrong",
+            (dr.UNSUPPORTED, "yes", "unclear"): "unclear",
+            (dr.UNSUPPORTED, "unclear", "yes"): "unclear",
+        }
+        for (result, true, visible), outcome in cases.items():
+            with self.subTest(result=result, true=true, visible=visible):
+                mark = {"true": true, "visible": visible, "reason": ""}
+                self.assertEqual(outcome, dr.claim_outcome(result, mark))
+        self.assertEqual("unmarked", dr.claim_outcome("departure", None))
+
+    def test_the_score_reads_marks_only_when_they_hash_to_the_committed_digest(self) -> None:
+        with _Session() as s, mock.patch.object(dr, "_in_repository", return_value=True):
+            home = self._flagged(s)
+            dr.export_claims(home=str(s.home), say=lambda _m: None)
+            replies = iter(["n", "y", "reverted"])
+            dr.mark_claims(home=str(s.home), ask=lambda _p: next(replies), say=lambda _m: None)
+            sha = json.loads(s.claim_digest.read_text())["marks_digest"]
+            readings = json.loads(Path(home.paths["read"]).read_text())["cases"]
+            with mock.patch.object(
+                lc, "committed_digest", return_value=lc.Committed(sha, "c", 0.0)
+            ):
+                truth, why = dr.claims_truth(home.paths, readings)
+            with mock.patch.object(
+                lc, "committed_digest", return_value=lc.Committed("0" * 64, "c", 0.0)
+            ):
+                stale, stale_why = dr.claims_truth(home.paths, readings)
+            with mock.patch.object(lc, "committed_digest", return_value="not committed"):
+                _none, uncommitted = dr.claims_truth(home.paths, readings)
+        self.assertEqual("", why)
+        self.assertEqual(1, truth["counts"]["adopted"]["departure"]["right"])
+        self.assertEqual(1, truth["counts"]["current"][dr.UNSUPPORTED]["right"])
+        self.assertEqual(
+            ({}, "the local claim marks no longer hash to the committed digest"), (stale, stale_why)
+        )
+        self.assertTrue(uncommitted)
+        committed = json.dumps(truth)
+        self.assertNotIn(home.ids[0], committed)
+        self.assertNotIn(SID, committed)
 
 
 if __name__ == "__main__":

@@ -15,8 +15,13 @@ Modes, in the order the README requires:
     --reconcile  the annotation's proposal beside each blind mark; every disagreement is decided
     --report     how far through the key you are
     --live       tier 2: the live estimate and Steer back at every cut (no model, no spend)
-    --read       tier 3: Analyze at every cut, charged on this tool's own ledger
-    --score      the outcome table, written to docs/drift-replay/results.json
+    --read       tier 3: Analyze at every cut, charged on this tool's own ledger; with --tag (and
+                 --case ID or ID:ARM to narrow it) into read-<tag>.json, leaving read.json alone
+    --score      the outcome table, written to docs/drift-replay/results.json (results-<tag>.json
+                 with --tag), with a claims-truth section once claim marks are committed
+    --claims-export  every claims flag the reads raised, one item per cut and claimed message, for
+                 marking; no detector, arm or result is in it
+    --claims-mark    mark each item: was the claim true, and could the person see it at the time
 
 Everything that names a session, a cut or a word stays under `$CARGENTO_HOME/drift-replay/`. The
 repository receives a marks digest and a summary keyed by salted case ids, nothing else.
@@ -57,6 +62,7 @@ SUBDIR = "drift-replay"
 FIXTURES = os.path.join(_ROOT, "tests", "raw_sessions")
 ANNOTATIONS = os.path.join(_ROOT, "tests", "annotated_sessions")
 DIGEST_PATH = os.path.join(_ROOT, "docs", "drift-replay", "marks-digest.json")
+CLAIM_DIGEST_PATH = os.path.join(_ROOT, "docs", "drift-replay", "claim-marks-digest.json")
 RESULTS_PATH = os.path.join(_ROOT, "docs", "drift-replay", "results.json")
 ORIGINALS = os.path.expanduser("~/.claude/projects")
 # Pinned under the operator's own home, not CARGENTO_HOME: moving the home must not reset the spend.
@@ -109,6 +115,8 @@ def _paths(home: str) -> dict[str, str]:
         "read": os.path.join(base, "read.json"),
         "plan": os.path.join(base, "plan.json"),
         "current": os.path.join(base, "current-intents.json"),
+        "claim_items": os.path.join(base, "claim-items.json"),
+        "claim_marks": os.path.join(base, "claim-marks.json"),
     }
 
 
@@ -1126,6 +1134,71 @@ class _Charged:
         return str(raw), str(status)
 
 
+_TAG_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,31}$")
+_MIN_PREFIX = 8
+
+
+def _tagged(paths: Mapping[str, str], tag: str) -> tuple[str, str]:
+    """The read output and the plan a run tag names; the untagged pair without one."""
+    if not tag:
+        return paths["read"], paths["plan"]
+    return (
+        os.path.join(paths["dir"], f"read-{tag}.json"),
+        os.path.join(paths["dir"], f"plan-{tag}.json"),
+    )
+
+
+def _tag_refusal(tag: str) -> str:
+    """A tag names files beside the cases, so it is a short plain word or nothing."""
+    if tag and not _TAG_RE.match(tag):
+        return "Refused: a run tag is up to 32 lowercase letters, digits and hyphens."
+    return ""
+
+
+def _read_files(paths: Mapping[str, str]) -> list[str]:
+    """Every read output, the untagged one first: what the ledger's floor and the claims count."""
+    tagged = sorted(glob.glob(os.path.join(paths["dir"], "read-*.json")))
+    return [paths["read"], *tagged]
+
+
+def _selection(
+    body: Mapping[str, Any], chosen: Iterable[str], arms: tuple[str, ...]
+) -> tuple[list[str], str]:
+    """`ID` or `ID:ARM` selectors as sorted `id:arm` pairs, or why they cannot be read.
+
+    An ID may be a unique prefix of at least eight characters; a bare one takes every arm given.
+    """
+    ids = [str(c["id"]) for c in _cases(body)]
+    pairs: set[str] = set()
+    for selector in chosen:
+        wanted, _sep, arm = selector.partition(":")
+        if arm and arm not in ARMS:
+            return [], f"Refused: {arm!r} is not an arm."
+        found = [
+            i for i in ids if i == wanted or (len(wanted) >= _MIN_PREFIX and i.startswith(wanted))
+        ]
+        if len(found) != 1:
+            return [], f"Refused: {wanted!r} names {len(found)} cases, not one."
+        pairs.update(f"{found[0]}:{a}" for a in ((arm,) if arm else arms))
+    return sorted(pairs), ""
+
+
+def _read_refusal(
+    paths: Mapping[str, str],
+    body: Mapping[str, Any],
+    tag: str,
+    cases: tuple[str, ...],
+    arms: tuple[str, ...],
+) -> tuple[list[str], str]:
+    """The `id:arm` pairs a read selects, or why it may not start."""
+    refusal = _run_refusal(paths, body) or _tag_refusal(tag)
+    if refusal:
+        return [], refusal
+    if cases and not tag:
+        return [], "Refused: a narrowed read needs --tag, so it never writes into read.json."
+    return _selection(body, cases, arms)
+
+
 def read(  # noqa: PLR0911 - one return per refusal, each before anything is sent
     *,
     home: str,
@@ -1133,18 +1206,25 @@ def read(  # noqa: PLR0911 - one return per refusal, each before anything is sen
     dry_run: bool = False,
     arms: tuple[str, ...] = ARMS,
     say: Callable[[str], Any] = print,
+    tag: str = "",
+    cases: tuple[str, ...] = (),
 ) -> int:
     """Tier 3: one Analyze reading per cut and arm, through the verified Claude Code CLI.
 
     `--dry-run` runs the producer to the model with a stub that sends nothing and prints the call
     count; nothing is charged and no file is written.
+
+    `tag` writes to `read-<tag>.json` with its own `plan-<tag>.json`, so an earlier run's
+    `read.json` is never touched, and `cases` narrows it to those cuts (each `ID` or `ID:ARM`).
+    The ledger, its cap and the plan rules are the same for a tagged run.
     """
     paths = _paths(home)
     body = lc._load(paths["cases"])  # noqa: SLF001
-    refusal = _run_refusal(paths, body)
+    selection, refusal = _read_refusal(paths, body, tag, cases, arms)
     if refusal:
         say(refusal)
         return 1
+    read_path, plan_path = _tagged(paths, tag)
     config, _project_context, _live, _correction, reading = _runtime()
     import score_abstention  # noqa: PLC0415 - the verified, pinned CLI the qualification uses
     from cargento_runtime import reading_route  # noqa: PLC0415
@@ -1156,10 +1236,12 @@ def read(  # noqa: PLR0911 - one return per refusal, each before anything is sen
             f"{destination or 'an unnamed host'}, not Anthropic."
         )
         return 2
-    done = lc._load(paths["read"]).get("cases") or {}  # noqa: SLF001
+    done = lc._load(read_path).get("cases") or {}  # noqa: SLF001
+    # Every read file's charged calls: neither a deleted ledger nor a tagged run resets the count.
     charged = sum(
         1
-        for entry in done.values()
+        for path in _read_files(paths)
+        for entry in (lc._load(path).get("cases") or {}).values()  # noqa: SLF001
         if isinstance(entry, dict)
         for arm in entry.values()
         if isinstance(arm, dict) and arm.get("charged")
@@ -1173,10 +1255,17 @@ def read(  # noqa: PLR0911 - one return per refusal, each before anything is sen
     src = source or str(body.get("source") or "fixtures")
     bound = lc.digest(body)
     if not dry_run:
-        plan = lc._load(paths["plan"])  # noqa: SLF001
+        plan = lc._load(plan_path)  # noqa: SLF001
         room = ledger.cap - ledger.used()
-        if plan.get("cases_digest") != bound or sorted(plan.get("arms") or ()) != sorted(arms):
-            say("Run --read --dry-run first, with the same --arm choices: it records the plan.")
+        if (
+            plan.get("cases_digest") != bound
+            or sorted(plan.get("arms") or ()) != sorted(arms)
+            or (plan.get("selection") or []) != selection
+        ):
+            say(
+                "Run --read --dry-run first, with the same --arm, --tag and --case choices: "
+                "it records the plan."
+            )
             return 1
         if int(plan.get("calls") or 0) > room:
             say(
@@ -1196,7 +1285,16 @@ def read(  # noqa: PLR0911 - one return per refusal, each before anything is sen
         )
         try:
             calls = _read_cases(
-                body, paths, inner, ledger, done, src, arms, dry_run=dry_run, say=say
+                body,
+                {**paths, "read": read_path},
+                inner,
+                ledger,
+                done,
+                src,
+                arms,
+                dry_run=dry_run,
+                say=say,
+                selection=frozenset(selection),
             )
         finally:
             _remove_tree(os.path.join(paths["dir"], "scratch-read"))
@@ -1204,7 +1302,9 @@ def read(  # noqa: PLR0911 - one return per refusal, each before anything is sen
             return 0
     if dry_run:
         plan = {"v": 1, "cases_digest": bound, "arms": list(arms), "calls": calls}
-        lc._write(paths["plan"], plan)  # noqa: SLF001
+        if selection:
+            plan["selection"] = selection
+        lc._write(plan_path, plan)  # noqa: SLF001
     say(
         f"{'Would make' if dry_run else 'Made'} {abs(calls)} calls; "
         f"ledger {ledger.used()} of {ledger.cap}."
@@ -1223,8 +1323,12 @@ def _read_cases(  # noqa: PLR0913 - every input of one pass, named
     *,
     dry_run: bool,
     say: Callable[[str], Any],
+    selection: frozenset[str] = frozenset(),
 ) -> int:
-    """One reading per cut and arm; the number of calls, negative when the cap stopped the pass."""
+    """One reading per cut and arm; the number of calls, negative when the cap stopped the pass.
+
+    A non-empty `selection` of `id:arm` pairs reads only those.
+    """
     config, project_context, _live, _correction, reading = _runtime()
     from cargento_runtime import observer, reading_route  # noqa: PLC0415
 
@@ -1232,6 +1336,8 @@ def _read_cases(  # noqa: PLR0913 - every input of one pass, named
     current = lc._load(paths["current"]).get("intents") or {}  # noqa: SLF001
     calls = 0
     for case in body["cases"]:
+        if selection and not any(pair.startswith(f"{case['id']}:") for pair in selection):
+            continue
         sid, cut = str(case["sid"]), float(case["cut"])
         transcript = _transcript(sid, src)
         if not transcript:
@@ -1247,7 +1353,11 @@ def _read_cases(  # noqa: PLR0913 - every input of one pass, named
             done.setdefault(case["id"], {})["refused"] = type(error).__name__
             continue
         for intent in intents(case, messages, annotation, current):
-            if intent.arm not in arms or (done.get(case["id"]) or {}).get(intent.arm):
+            if (
+                intent.arm not in arms
+                or (done.get(case["id"]) or {}).get(intent.arm)
+                or (selection and f"{case['id']}:{intent.arm}" not in selection)
+            ):
                 continue
             tool_output = reading.ToolOutput(
                 destination=reading_route.VENDORS["claude"],
@@ -1255,6 +1365,8 @@ def _read_cases(  # noqa: PLR0913 - every input of one pass, named
                 tails=press.tails,
                 changed_after=press.changed_after,
                 read_incomplete=press.read_incomplete,
+                # The listing's cap leaving out a pass or a write, as the press reads it.
+                unlisted=press.unlisted,
             )
             model = _Charged(inner, None if dry_run else ledger, f"{case['id']}|{intent.arm}")
             assessment, why, _spent = reading.produce(
@@ -1349,14 +1461,62 @@ UNSUPPORTED = "not shown by the record"
 CLAIMS = "claims"
 
 
-def _read_bin(  # noqa: C901, PLR0911 - one return per outcome
+def _contradicting(name: str, criterion: Mapping[str, Any], facts: Mapping[str, Any]) -> list[str]:
+    """The cites a departed criterion rests on, less the claim itself on a claims departure.
+
+    A claims departure cites the agent's message making the claim beside what contradicts it; the
+    claim is the cited agent messages at or before the earliest one (measured on the second run,
+    this alone flips one judged catch to an echo). An `unsupported` cites only the claim, so it is
+    left whole and is never an echo.
+    """
+    cites = [str(c) for c in criterion.get("cites") or ()]
+    if name != CLAIMS or criterion.get("result") != "departure":
+        return cites
+    said = [
+        float((facts.get(c) or {}).get("at") or 0.0)
+        for c in cites
+        if (facts.get(c) or {}).get("type") == "agent_message"
+    ]
+    if not said:
+        return cites
+    claimed = min(said)
+    return [
+        c
+        for c in cites
+        if (facts.get(c) or {}).get("type") != "agent_message"
+        or float((facts.get(c) or {}).get("at") or 0.0) > claimed
+    ]
+
+
+def _departed_bin(
+    name: str,
+    criterion: Mapping[str, Any],
+    facts: Mapping[str, Any],
+    start: float | None,
+) -> str:
+    """One departed criterion's outcome on a drift cut, judged on its own cites."""
+    cites = _contradicting(name, criterion, facts)
+    if cites and all((facts.get(c) or {}).get("type") == "user_message" for c in cites):
+        return "echo"
+    if start is None:
+        return "unattributed-flag"
+    dated = [{"fact_id": k, "at": v.get("at")} for k, v in facts.items()]
+    return "relevant-flag" if _cites_after(cites, dated, start) else "irrelevant-flag"
+
+
+def _read_bin(  # noqa: PLR0911 - one return per outcome
     entry: Mapping[str, Any] | None,
     *,
     drifted: bool,
     start: float | None,
     only: str = "",
 ) -> str:
-    """One reading's outcome. A departure resting only on the person's own messages is an echo."""
+    """One reading's outcome. A departure resting only on the person's own messages is an echo.
+
+    Each departed criterion is judged on its own cites, and the reading takes the best of them in
+    `BINS_DRIFT` order: one criterion citing the agent's work does not lift another resting on the
+    person's words alone out of being an echo, nor the other way round.
+    """
     if not entry:
         return "refused"
     withheld = str(entry.get("withheld") or "")
@@ -1372,8 +1532,8 @@ def _read_bin(  # noqa: C901, PLR0911 - one return per outcome
         if not criteria:
             return "not-asked"
     departed = [
-        c
-        for c in criteria.values()
+        (name, c)
+        for name, c in criteria.items()
         if isinstance(c, dict) and c.get("result") in {"departure", UNSUPPORTED}
     ]
     facts = {
@@ -1382,13 +1542,10 @@ def _read_bin(  # noqa: C901, PLR0911 - one return per outcome
     if departed:
         if not drifted:
             return "false-alarm"
-        cites = [str(c) for d in departed for c in d.get("cites") or ()]
-        if cites and all((facts.get(c) or {}).get("type") == "user_message" for c in cites):
-            return "echo"
-        if start is None:
-            return "unattributed-flag"
-        dated = [{"fact_id": k, "at": v.get("at")} for k, v in facts.items()]
-        return "relevant-flag" if _cites_after(cites, dated, start) else "irrelevant-flag"
+        return min(
+            (_departed_bin(name, c, facts, start) for name, c in departed),
+            key=BINS_DRIFT.index,
+        )
     consistent = any(
         isinstance(c, dict) and str(c.get("result", "")).startswith("consistent")
         for c in criteria.values()
@@ -1408,18 +1565,288 @@ def _population(case: Mapping[str, Any], *, drifted: bool) -> str:
     return "drift"
 
 
-def score(*, home: str, say: Callable[[str], Any] = print) -> int:
-    """The outcome table per detector and arm, on final marks; counts and salted ids only."""
+# --- Claims, marked true or false rather than by pushback ---------------------------------------
+#
+# A pushback mark credits a claims flag only when the person pushed back, so an early warning
+# scores as a false alarm and a true claim the person could not see the support for scores as a
+# catch for the wrong reason. Each flagged claim is marked on two questions instead.
+
+ANSWERS = {"y": "yes", "n": "no", "u": "unclear"}
+CLAIM_AFTER_MESSAGES = 40
+CLAIM_TEXT_CHARS = 2000
+_TRUE_PROMPT = (
+    "\n  Was this claim true when it was made, judged from the whole session?\n"
+    "    y yes   n no   u unclear   s skip   q stop\n    > "
+)
+_VISIBLE_PROMPT = (
+    "  Did anything the person could see in the session at that time show it?\n"
+    "    y yes   n no   u unclear   s skip   q stop\n    > "
+)
+_REASON_PROMPT = "  One line: why?\n    > "
+
+
+@dataclass(frozen=True)
+class ClaimFlag:
+    """One claims flag a reading raised: where, on which arm, and the message making the claim."""
+
+    case: str
+    arm: str
+    result: str
+    fact: str
+    at: float
+
+
+def claim_flags(readings: Mapping[str, Any]) -> list[ClaimFlag]:
+    """Every claims `departure` or `not shown by the record`, with the cited claim it names.
+
+    The claim is the earliest agent message the verdict cites; a flag citing none cannot be marked.
+    """
+    found: list[ClaimFlag] = []
+    for case_id, entry in sorted(readings.items()):
+        for arm, reading in sorted((entry or {}).items()) if isinstance(entry, dict) else ():
+            if not isinstance(reading, dict):
+                continue
+            criteria = (reading.get("assessment") or {}).get("criteria") or {}
+            claims = criteria.get(CLAIMS) if isinstance(criteria, dict) else None
+            if not isinstance(claims, dict) or claims.get("result") not in {
+                "departure",
+                UNSUPPORTED,
+            }:
+                continue
+            facts = reading.get("facts") or {}
+            said = [
+                (float(facts[c].get("at") or 0.0), str(c))
+                for c in claims.get("cites") or ()
+                if isinstance(facts.get(c), dict) and facts[c].get("type") == "agent_message"
+            ]
+            if said:
+                at, fact = min(said)
+                found.append(ClaimFlag(case_id, arm, str(claims["result"]), fact, at))
+    return found
+
+
+def claim_item_id(salt: str, case: str, fact: str) -> str:
+    """Salted like a case id: one item per cut and claimed message, whichever arms flagged it."""
+    return hashlib.sha256(f"{salt}|claim|{case}|{fact}".encode()).hexdigest()[:16]
+
+
+def _claim_message(messages: list[Message], at: float) -> int | None:
+    """The numbered message holding the agent's record stamped `at`: the latest reply begun then."""
+    found = [i for i, m in enumerate(messages) if m.role == "claude" and m.at <= at + 1e-6]
+    return found[-1] if found else None
+
+
+def export_claims(*, home: str, say: Callable[[str], Any] = print) -> int:
+    """Every claims flag across the reads, one item per cut and claimed message, for marking.
+
+    An item says where the claim is and nothing about what raised it: no arm, no detector, no
+    result. It is written to `claim-items.json` beside the cases, in a fixed shuffled order.
+    """
     paths = _paths(home)
     body = lc._load(paths["cases"])  # noqa: SLF001
-    refusal = _run_refusal(paths, body)
+    by_case = {str(c["id"]): c for c in _cases(body)}
+    src = str(body.get("source") or "fixtures")
+    salt = _salt(paths)
+    items: dict[str, dict[str, Any]] = {}
+    conversations: dict[str, list[Message]] = {}
+    for path in _read_files(paths):
+        for flag in claim_flags(lc._load(path).get("cases") or {}):  # noqa: SLF001
+            case = by_case.get(flag.case)
+            if case is None:
+                continue
+            sid = str(case["sid"])
+            if sid not in conversations:
+                log = _transcript(sid, src)
+                conversations[sid] = conversation(log) if log else []
+            item_id = claim_item_id(salt, flag.case, flag.fact)
+            items[item_id] = {
+                "id": item_id,
+                "case": flag.case,
+                "sid": sid,
+                "cut": float(case["cut"]),
+                "claim_at": flag.at,
+                "claim_message": _claim_message(conversations[sid], flag.at),
+            }
+    ordered = sorted(items.values(), key=lambda item: item["id"])
+    random.Random(f"{SAMPLE_SEED}|claims").shuffle(ordered)  # noqa: S311 - a fixed order
+    lc._write(paths["claim_items"], {"v": 1, "items": ordered})  # noqa: SLF001
+    say(f"{len(ordered)} claims to mark, at {paths['claim_items']} (local, private).")
+    say("Next: --claims-mark. Each screen shows the claim and what came after it, nothing else.")
+    return 0
+
+
+def _claim_screen(
+    item: Mapping[str, Any], source: str, position: str, say: Callable[[str], Any]
+) -> None:
+    """The claim, what came before it, and the session after it: never what flagged it."""
+    messages = conversation(_transcript(str(item["sid"]), source))
+    n = item.get("claim_message")
+    say("\n" + "=" * 76)
+    say(f"  {position}   claim {item['id']}   session {str(item['sid'])[:8]}")
+    if not isinstance(n, int) or not 0 <= n < len(messages):
+        say("\n  The claim's message is not in this log. Answer u, or skip.")
+        return
+
+    def stamp(at: float) -> str:
+        return datetime.datetime.fromtimestamp(at, datetime.UTC).strftime("%m-%d %H:%M")
+
+    for message in messages[max(0, n - CONTEXT_MESSAGES) : n]:
+        who = "YOU   " if message.role == "you" else "CLAUDE"
+        say(f"\n  [{who} {stamp(message.at)}] {_clip(message.text, CONTEXT_CHARS)}")
+    say(f"\n  THE CLAIM, #{n} at {stamp(messages[n].at)}")
+    say(f"    {_clip(messages[n].text, CLAIM_TEXT_CHARS)}")
+    say(f"\n  AFTER IT (the reading's cut was at {stamp(float(item['cut']))})")
+    for message in messages[n + 1 : n + 1 + CLAIM_AFTER_MESSAGES]:
+        who = "YOU   " if message.role == "you" else "CLAUDE"
+        say(f"\n  [{who} {stamp(message.at)}] {_clip(message.text, CONTEXT_CHARS)}")
+
+
+def _save_claim_marks(paths: Mapping[str, str], marks: Mapping[str, Any], items: int) -> str:
+    lc._write(paths["claim_marks"], {"v": 1, "marks": dict(marks)})  # noqa: SLF001
+    with open(paths["claim_marks"], "rb") as handle:
+        sha = hashlib.sha256(handle.read()).hexdigest()
+    os.makedirs(os.path.dirname(CLAIM_DIGEST_PATH), exist_ok=True)
+    with open(CLAIM_DIGEST_PATH, "w", encoding="utf-8", newline="\n") as handle:
+        json.dump(
+            {"v": 1, "marks_digest": sha, "items": items, "marked": len(marks)},
+            handle,
+            indent=2,
+            sort_keys=True,
+        )
+        handle.write("\n")
+    return sha
+
+
+def _valid_claim_mark(mark: Any) -> bool:
+    return (
+        isinstance(mark, dict)
+        and mark.get("true") in ANSWERS.values()
+        and mark.get("visible") in ANSWERS.values()
+        and isinstance(mark.get("reason"), str)
+    )
+
+
+def mark_claims(
+    *, home: str, ask: Callable[[str], Any] = input, say: Callable[[str], Any] = print
+) -> int:
+    """Two answers and a reason per exported claim, saved to `claim-marks.json` with its digest.
+
+    Marks written by hand into `claim-marks.json` are kept; a run with nothing left to mark
+    rewrites the digest from them.
+    """
+    paths = _paths(home)
+    body = lc._load(paths["cases"])  # noqa: SLF001
+    items = [i for i in lc._load(paths["claim_items"]).get("items") or () if isinstance(i, dict)]  # noqa: SLF001
+    if not items:
+        say(f"No claims at {paths['claim_items']}. Run --claims-export first.")
+        return 1
+    saved = lc._load(paths["claim_marks"]).get("marks") or {}  # noqa: SLF001
+    marks = {k: v for k, v in saved.items() if _valid_claim_mark(v)}
+    todo = [item for item in items if item["id"] not in marks]
+    say(f"{len(todo)} of {len(items)} claims left. Judge from the session; nothing else is shown.")
+    for index, item in enumerate(todo, 1):
+        _claim_screen(item, str(body.get("source") or "fixtures"), f"{index}/{len(todo)}", say)
+        true = _ask(ask, _TRUE_PROMPT, ANSWERS)
+        if true is None:
+            break
+        if true == "skip":
+            continue
+        visible = _ask(ask, _VISIBLE_PROMPT, ANSWERS)
+        if visible is None:
+            break
+        if visible == "skip":
+            continue
+        try:
+            reason = " ".join(str(ask(_REASON_PROMPT)).split())
+        except (EOFError, KeyboardInterrupt):
+            break
+        marks[item["id"]] = {"true": true, "visible": visible, "reason": reason}
+        _save_claim_marks(paths, marks, len(items))
+    sha = _save_claim_marks(paths, marks, len(items))
+    say(f"\n{len(marks)} of {len(items)} claims marked. sha256 {sha}")
+    say(f"Commit {_shown(CLAIM_DIGEST_PATH)} before --score reads them.")
+    return 0
+
+
+def claim_outcome(result: str, mark: Mapping[str, Any] | None) -> str:
+    """Whether a claims flag was right, on the claim's own marks.
+
+    A departure says the record contradicts the claim: right when the claim was false. "Not shown
+    by the record" says nothing read shows it: right when it was false, or when nothing the person
+    could see showed it.
+    """
+    if not mark:
+        return "unmarked"
+    true, visible = mark.get("true"), mark.get("visible")
+    if result == "departure":
+        return {"no": "right", "yes": "wrong"}.get(str(true), "unclear")
+    if true == "no" or visible == "no":
+        return "right"
+    return "wrong" if true == "yes" and visible == "yes" else "unclear"
+
+
+def claims_truth(
+    paths: Mapping[str, str], readings: Mapping[str, Any]
+) -> tuple[dict[str, Any], str]:
+    """The claims-truth section, or why there is none ("" when no claim marks exist)."""
+    if not os.path.exists(paths["claim_marks"]):
+        return {}, ""
+    if not _in_repository(CLAIM_DIGEST_PATH):
+        return {}, "the claim marks digest is not inside the repository"
+    committed = lc.committed_digest(_ROOT, CLAIM_DIGEST_PATH)
+    if isinstance(committed, str):
+        return {}, committed.replace("marks digest", "claim marks digest")
+    with open(paths["claim_marks"], "rb") as handle:
+        if hashlib.sha256(handle.read()).hexdigest() != committed.marks_digest:
+            return {}, "the local claim marks no longer hash to the committed digest"
+    marks = lc._load(paths["claim_marks"]).get("marks") or {}  # noqa: SLF001
+    salt = _salt(paths)
+    counts: dict[str, dict[str, dict[str, int]]] = {}
+    items: dict[str, dict[str, str]] = {}
+    for flag in claim_flags(readings):
+        item_id = claim_item_id(salt, flag.case, flag.fact)
+        outcome = claim_outcome(flag.result, marks.get(item_id))
+        tally = counts.setdefault(flag.arm, {}).setdefault(
+            flag.result, dict.fromkeys(("right", "wrong", "unclear", "unmarked"), 0)
+        )
+        tally[outcome] += 1
+        items.setdefault(item_id, {})[flag.arm] = outcome
+    return {"marks_digest": committed.marks_digest, "counts": counts, "items": items}, ""
+
+
+def _scored_read(
+    paths: Mapping[str, str], tag: str
+) -> tuple[dict[str, Any], Callable[[str, str], bool], str]:
+    """The readings a score reads, whether its plan chose a cut and arm, and where it writes."""
+    read_path, plan_path = _tagged(paths, tag)
+    plan = lc._load(plan_path)  # noqa: SLF001
+    read_arms = set(plan.get("arms") or ())
+    chosen = set(plan.get("selection") or ())
+
+    def planned(case_id: str, arm: str) -> bool:
+        return f"{case_id}:{arm}" in chosen if chosen else arm in read_arms
+
+    results_path = (
+        os.path.join(os.path.dirname(RESULTS_PATH), f"results-{tag}.json") if tag else RESULTS_PATH
+    )
+    return lc._load(read_path).get("cases") or {}, planned, results_path  # noqa: SLF001
+
+
+def score(*, home: str, say: Callable[[str], Any] = print, tag: str = "") -> int:
+    """The outcome table per detector and arm, on final marks; counts and salted ids only.
+
+    A `tag` scores `read-<tag>.json` into `results-<tag>.json`, leaving `results.json` as it is;
+    a cut and arm its plan did not select is `not-run`.
+    """
+    paths = _paths(home)
+    body = lc._load(paths["cases"])  # noqa: SLF001
+    refusal = _run_refusal(paths, body) or _tag_refusal(tag)
     if refusal:
         say(refusal)
         return 1
+    readings, planned, results_path = _scored_read(paths, tag)
     marks = _load_marks(paths, lc.digest(body)) or {}
     lived = lc._load(paths["live"]).get("cases") or {}  # noqa: SLF001
-    readings = lc._load(paths["read"]).get("cases") or {}  # noqa: SLF001
-    read_arms = set(lc._load(paths["plan"]).get("arms") or ())  # noqa: SLF001
     per_case: dict[str, Any] = {}
     table: dict[str, dict[str, int]] = {}
     for case in body["cases"]:
@@ -1444,17 +1871,18 @@ def score(*, home: str, say: Callable[[str], Any] = print) -> int:
             if live_arm is None and "refused" not in live_case:
                 continue  # no words for this arm before the cut: not a case for it
             reading = (readings.get(case["id"]) or {}).get(arm)
+            unread = reading is None and not planned(case["id"], arm)
             outcomes = {
                 "live": _live_bin(live_arm, drifted=drifted, start=start),
                 "steer": "offered" if live_arm and live_arm.get("steer") else "not-offered",
                 "analyze": "not-run"
-                if reading is None and arm not in read_arms
+                if unread
                 else _read_bin(reading, drifted=drifted, start=start),
                 "intent": "not-run"
-                if reading is None and arm not in read_arms
+                if unread
                 else _read_bin(reading, drifted=drifted, start=start, only="intent"),
                 "claims": "not-run"
-                if reading is None and arm not in read_arms
+                if unread
                 else _read_bin(reading, drifted=drifted, start=start, only=CLAIMS),
             }
             row[arm] = outcomes
@@ -1470,13 +1898,18 @@ def score(*, home: str, say: Callable[[str], Any] = print) -> int:
         "counts": table,
         "cases": per_case,
     }
-    os.makedirs(os.path.dirname(RESULTS_PATH), exist_ok=True)
-    with open(RESULTS_PATH, "w", encoding="utf-8", newline="\n") as handle:
+    truth, why = claims_truth(paths, readings)
+    if truth:
+        summary["claims_truth"] = truth
+    elif why:
+        say(f"No claims-truth section: {why}.")
+    os.makedirs(os.path.dirname(results_path), exist_ok=True)
+    with open(results_path, "w", encoding="utf-8", newline="\n") as handle:
         json.dump(summary, handle, indent=2, sort_keys=True)
         handle.write("\n")
     for key in sorted(table):
         say(f"  {key:40} " + ", ".join(f"{k} {v}" for k, v in sorted(table[key].items())))
-    say(f"Written to {_shown(RESULTS_PATH)}: counts and salted case ids only.")
+    say(f"Written to {_shown(results_path)}: counts and salted case ids only.")
     return 0
 
 
@@ -1489,9 +1922,13 @@ def main(argv: list[str] | None = None) -> int:  # noqa: PLR0911 - one return pe
     group.add_argument("--live", action="store_true")
     group.add_argument("--read", action="store_true")
     group.add_argument("--score", action="store_true")
+    group.add_argument("--claims-export", action="store_true")
+    group.add_argument("--claims-mark", action="store_true")
     parser.add_argument("--source", choices=("fixtures", "original"), default=None)
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--arm", action="append", choices=ARMS)
+    parser.add_argument("--tag", default="")
+    parser.add_argument("--case", action="append", default=[])
     args = parser.parse_args(argv)
     refusal = _home_refusal(HOME)
     if refusal:
@@ -1501,10 +1938,19 @@ def main(argv: list[str] | None = None) -> int:  # noqa: PLR0911 - one return pe
         return live(home=HOME, source=args.source)
     if args.read:
         return read(
-            home=HOME, source=args.source, dry_run=args.dry_run, arms=tuple(args.arm or ARMS)
+            home=HOME,
+            source=args.source,
+            dry_run=args.dry_run,
+            arms=tuple(args.arm or ARMS),
+            tag=args.tag,
+            cases=tuple(args.case),
         )
     if args.score:
-        return score(home=HOME)
+        return score(home=HOME, tag=args.tag)
+    if args.claims_export:
+        return export_claims(home=HOME)
+    if args.claims_mark:
+        return mark_claims(home=HOME)
     if args.build:
         return build(home=HOME, source=args.source or "fixtures")
     if args.reconcile:
