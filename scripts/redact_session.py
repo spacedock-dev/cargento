@@ -46,6 +46,13 @@ QUERY_SECRET = re.compile(
     r"|x-amz-security-token|signature|sig|sk|token|key|secret|access_token)=)"
     r"([A-Za-z0-9_.%/+-]{8,})"
 )
+# A 64-hex value keyed by a harness name (Cargento's per-run event capability, read from its state
+# file) or right after a token-like key. Measured 2026-10-04: one fixture held eight of them.
+HEX_CAPABILITY = re.compile(
+    r"(\\?\"(?:claude|codex|antigravity|gemini|pi|copilot|opencode|cursor|goose|droid)\\?\"\s*:\s*\\?\")"
+    r"([0-9a-f]{64})(?![0-9a-f])"
+    r"|((?i:token|capability|secret|hmac)[^\n\"]{0,24}?[\"':= ]+)([0-9a-f]{64})(?![0-9a-f])"
+)
 # A documented placeholder, not a credential.
 KEEP_SECRET = frozenset({"AKIAIOSFODNN7EXAMPLE"})
 EMAIL = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z][A-Za-z0-9-]*(?:\.[A-Za-z0-9-]*)+")
@@ -186,6 +193,12 @@ class Redactor:
                 m.group(0)
                 if KEEP_EMAIL.search(m.group(0))
                 else self.tag("PII_ANONYMIZED", m.group(0).lower())
+            ),
+            value,
+        )
+        value = HEX_CAPABILITY.sub(
+            lambda m: (
+                (m.group(1) or m.group(3)) + self.tag("REDACTED_SECRET", m.group(2) or m.group(4))
             ),
             value,
         )
