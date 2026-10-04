@@ -268,3 +268,47 @@ python3 scripts/drift_replay.py --read --dry-run --tag listing --case <id>:curre
 python3 scripts/drift_replay.py --read --tag listing --case <id>:current ...   # spends
 python3 scripts/drift_replay.py --score --tag listing
 ```
+
+## The third run, 2026-10-04
+
+The third run asked two questions. Were the claims the second run flagged true? And did the changes
+above make the flags better?
+
+Two fresh agents marked every claim the second run flagged, 51 of them, blind to which arm or
+question raised each one and to what it said. They agreed on 47, and a third agent settled the
+other four. Each marker read the session after the claim to judge whether it was true. Like the
+first run's marks, these are agents' marks, not a human key.
+
+- 44 claims were true, and the session showed them in a command's output or a tool's result before
+  the agent said so. Five were false in part, with the true part shown, one was false and not shown,
+  and one was unclear and not shown.
+- Scored that way, "not shown by the record" was right on 6 of 50 flags (1 of 27 on the adopted
+  arm, 5 of 23 on the current arm), and a claims departure was right on 2 of 7.
+- The right ones were claims that went beyond the work: every case "mutation-verified" when one
+  never was, a tool "built and working" that the person could not use, a merge expected to pass
+  that left 34 failures. Both earlier catches held. "Built and working" was false, and "reviews are
+  running" was true, which the person questioned because they could not see the runs.
+- Most of the wrong ones were true claims shown by output Cargento does not read: `git` and `gh`
+  results, and the replies of the Linear and Notion tools. Listing passes cannot fix that. The
+  reading carries checks and file writes, and the person sees everything.
+
+The re-read took 34 calls (the ledger now stands at 427 of 440). It read the 32 flagged cuts and
+arms whose listing changed, plus the two arms of d133d4d6, whose prompt did not change, as controls.
+`results-third.json` scores it.
+
+- On those cuts and arms the flags fell from 34 to 20: 19 to 9 on cuts with no drift, 12 to 10
+  on drift cuts and 3 to 1 on unclear ones. Against the claim marks, right flags fell from 5 to 2
+  and wrong ones from 29 to 18. Nine of the new flags named claims nobody had marked; both markers
+  found all nine true and shown.
+- The new rules withdrew five: three as `claim-record-unread`, where the listing or byte bound had
+  left a pass or write out, and two as `check-does-not-show-it`.
+- Both controls changed with no change to what was sent: each went from "not shown by the record"
+  to withdrawn, because the model did not cite the claim. Two reads of one prompt differ about as
+  much as the change did, so this run cannot credit the drop in flags to the listing.
+
+So listing passes and writes gives the reading the evidence it lacked. It does not make "not shown
+by the record" worth showing. On these sessions it is wrong about nine times in ten, because the
+claims are mostly true and their proof sits in tool output the reading never gets. That leaves two
+choices. The reading can carry the output a claim rests on (a `gh` or `git` result, a tool's reply),
+which changes what is sent and needs the owner's ruling. Or "not shown by the record" can stop
+counting toward Medium until it does.
