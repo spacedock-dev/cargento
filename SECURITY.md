@@ -1761,6 +1761,16 @@ contributes to its analysis level or Steer back composition. This changes use of
 its stored shape or exposure; independent recorded facts still count. Clearing the mark restores
 the reading.
 
+Reading coverage, owner amendment of 2026-10-04. A pressed reading may store and publish an
+optional `coverage` mapping beside its existing assessment: whether the bounded transcript tail
+was truncated (boolean or unknown), its earliest time (or unknown), counts of unlisted passes or
+writes and checks with no prompt room, and a closed adopted-source state. The state is `typed`,
+`whole`, `excerpt`, `unroomed` or `unknown`; it holds no source words. The file identity used to
+bind the measurement to fact collection stays in memory and is not part of that mapping. Missing
+legacy coverage stays unknown. The metadata is never sent to a model, copied into session history
+or used to alter a verdict. It permits no additional transcript text to be stored or published
+([the ruling](docs/design-reading-a-session.md#amended-2026-10-04-owner-disclose-measured-reading-coverage)).
+
 ### The abstention check
 
 The `Analyze drift` control (named `Ask for a reading` until DRC-4639 and `Check for drift` until DRC-4680) is enabled by the captain's acceptance of the recorded case review

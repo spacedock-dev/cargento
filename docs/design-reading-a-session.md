@@ -2410,7 +2410,10 @@ the later-direction floor (item 9).
    [DEC-17's amendment of 2026-10-03](#amended-2026-10-03-owner-the-agents-own-words-are-evidence),
    which says what a `consistent` resting on the agent's messages reads now. Never "Done" and
    never a check mark. Otherwise
-   "Can't tell: nothing recorded shows this yet". A headline and short account render only under a departure,
+   "Can't tell: nothing recorded shows this yet". Amended 2026-10-04: a blank row that cites
+   entries instead says "Can't tell: what was read does not settle this"
+   ([the coverage amendment](#amended-2026-10-04-owner-disclose-measured-reading-coverage)).
+   A headline and short account render only under a departure,
    built from departure detail with its citations. "Where the work went" groups written paths by
    folder without a model. The session's activity flags each entry a departure cites ("Cited") and
    a later direction ("A later direction you gave"). A reading stores `evidence_through`, and it is
@@ -3146,6 +3149,15 @@ DOM behind a worded summary, under tier 2 of
 [NUI-19](design-next-ui.md#nui-19-a-caveat-has-three-tiers); absences and anything the reader acts
 on stay in view.
 
+Amended by the owner on 2026-10-04: coverage belongs beside the answer, before the intent rows,
+because an answer read from part of the window must not look like a reading of all of it. The
+message-tail start, the minutes outside it, omitted passes or writes, checks with no room and an
+adopted-source fallback stay in view when applicable. An older reading says its coverage was not
+recorded. The existing stored-reading fixtures now show at most 167 words outside field values
+(170 ceiling); the partial-tail fixture with three intent rows shows 248 (270 ceiling). Its
+needed coverage and row labels account for the extra text. The full cutoff and general scope
+remain behind "What it read". This amends the tiering pass, not the evidence rules.
+
 - What a reading is (the offer that opened the READING section) sits inside "What is sent", after
   the provider disclosure, while no reading is stored; where no disclosure is published it sits
   behind "What a reading reads". The READING section is drawn only for a stored reading this build
@@ -3428,6 +3440,35 @@ decisions below follow that ruling and the DRC-4702 decisions of the same date.
   after your words; 1 earlier and 1 untimed entries were not read; 1 entry after the last observed
   stop was not read." Each clause appears only when its count is not zero, in the singular for
   one, and the time and author mix follow in their own sentence, "Of those read, ...".
+
+#### Amended 2026-10-04 (owner): disclose measured reading coverage
+
+The cutoff counts what was available to this reading, not everything the session recorded. At a
+press the server binds a regular transcript's identity, size and modification time before fact
+collection to a bounded tail read after prompt preparation. A file missing, replaced or changed
+across those reads has unknown coverage. An internally stable second read alone cannot describe
+the earlier facts. A short file with a long silence is complete; a time gap alone proves no loss.
+
+When a measured truncated tail starts inside the intent window, the cutoff names its start and
+the approximate minutes outside it instead of equal "Read N of N" counts. Every intent row gets
+"may be in the part not read", from those measurements. Claims remain independent. Checks can
+come from an older scan, so the tail start does not describe the check listing. The mix separates
+passed, failed and unrecorded runs, files written, launches, person messages, agent messages and
+derived entries. Omitted pass and write counts cover only the reading's window through its stop,
+not the session-wide count; checks the prompt could not fit have their own count. Loss and source
+clauses fit the stored cutoff's 640-character bound without truncation.
+
+Coverage stores only an optional closed mapping of counts, a time, a boolean and the source state.
+It changes no model prompt. A found adopted source already equal to the saved goal was read whole,
+even though no expansion was needed. A missing or unroomed source is named beside the answer; only
+a found source that was read gets the up-to-1,000-character promise. Drafts promise a lookup
+attempt. Absent legacy measurements stay unknown, never measured zero.
+
+This also amends DEC-24 item 6: an otherwise blank unverifiable row citing entries says "Can't
+tell: what was read does not settle this". An uncited blank keeps the recorded-absence sentence.
+The scope names unread git, gh and connected-tool replies and the person's screen. The Codex
+limit explicitly says the agent's replies were not read. No detector verdict changes merely
+because coverage is partial.
 
 ### What the Steer back and Update intent build decided, 2026-09-28
 
