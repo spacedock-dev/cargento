@@ -35,7 +35,7 @@ CONSISTENT = runtime_reading.RESULT_CONSISTENT
 UNVERIFIABLE = runtime_reading.RESULT_UNVERIFIABLE
 READ_AT = 106.0
 NOTHING_FOUND = "Nothing found against what it read. This is not a check that the work was done."
-SOURCE_LINE = "From the analysis at {time}: each line of your intent against the checks and messages it cited."
+SOURCE_LINE = "Analysis at {time} · intent against cited checks and messages."
 LINE_1 = "The parser tests pass"
 LINE_2 = "Only src/parser changes"
 
@@ -759,9 +759,9 @@ class TheReducerTest(_ResultPage):
         later = (*FACTS, _report("c-fail-2", 104.95, "check", result="failed", summary="ruff"))
         self.assertEqual("c-fail-2", self.reduce(ALL_CANT_TELL, later)["failed"])
 
-    def test_an_untimed_failure_counts_as_inside_the_window(self) -> None:
+    def test_an_untimed_failure_cannot_be_placed_after_the_person(self) -> None:
         untimed = tuple({**f, "at": None} if f["fact_id"] == "c-fail" else f for f in FACTS)
-        self.assertEqual("failed-check", self.reduce(ALL_CONSISTENT, untimed)["kind"])
+        self.assertEqual("nothing-found", self.reduce(ALL_CONSISTENT, untimed)["kind"])
 
 
 if __name__ == "__main__":

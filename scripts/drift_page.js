@@ -32,7 +32,7 @@ const results = vm.runInContext(`payloads.map(payload => {
   const offer = payload.session
     ? nextCockpitSteerOffer(payload.session, payload.annotation, source, rawShape) : null;
   const state = pending.length ? "question" : offer
-    ? (offer.departed || offer.claimed || payload.reader_available === false
+    ? (nextCockpitSteerPrimary(offer, payload.reader_available === false)
       ? "steer-primary" : "steer-secondary") : "nothing";
   const correctionText = payload.correctionParts
     ? nextCockpitCorrectionText(payload.correctionParts,

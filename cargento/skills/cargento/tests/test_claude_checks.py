@@ -868,10 +868,10 @@ class WhatAResultMayRestOn(ClaudeChecksTestCase):
         self.session.bash("pytest", "1 failed", is_error=True)
         self.assertIs(False, self.only_check()["earlier_failed"])
 
-    def test_a_failure_before_a_write_is_not_marked_before_the_last_change(self) -> None:  # T4
+    def test_a_failure_before_a_write_is_marked_before_the_last_change(self) -> None:  # T4
         self.session.bash("pytest", "1 failed", is_error=True)
         self.session.edit(self.file("src/retry.py"))
-        self.assertIs(False, self.only_check()["before_last_change"])
+        self.assertIs(True, self.only_check()["before_last_change"])
 
     def test_the_result_is_read_from_the_last_180_characters_only(self) -> None:  # T11
         # Item 5's window: a failure scrolled out of the tail is not read.
@@ -1456,6 +1456,7 @@ class ACheckWritesTheFileItsOutputIsRedirectedInto(ClaudeChecksTestCase):
         self.assertEqual("Claude Bash call", write["source"])
         self.assertEqual(1, scan["written_paths"])
         facts, scan = self.facts()
+        (self.cwd / "web").mkdir()
         level = levels.live_level(
             levels.Evidence(tuple(facts), scan, 0, str(self.cwd)),
             levels.Intent(saved=True, goal="Fix it", lines=("only touch web/",)),

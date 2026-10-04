@@ -986,10 +986,12 @@ class TheAnalysisLevelReadsAClaimMediumTest(unittest.TestCase):
         self.assertNotIn(levels.REASON_DEPARTURE, level.reasons)
         self.assertIn("a1", level.cites)
 
-    def test_an_unshown_claim_reads_medium_with_its_own_reason(self) -> None:
+    def test_an_unshown_claim_blocks_low_with_its_own_reason(self) -> None:
         level = self.level(reading.RESULT_UNSUPPORTED, ["a1"], [SAID])
-        self.assertEqual(levels.MEDIUM, level.level)
-        self.assertEqual((levels.REASON_CLAIM_NOT_SHOWN,), level.reasons)
+        self.assertEqual(levels.NOT_ENOUGH, level.level)
+        self.assertEqual(
+            (levels.REASON_CLAIM_NOT_SHOWN, levels.REASON_LINE_NOT_SHOWN), level.reasons
+        )
         self.assertEqual(("a1",), level.cites)
 
     def test_an_unshown_claim_whose_message_left_the_record_reads_nothing(self) -> None:
@@ -1065,7 +1067,7 @@ class SteerBackSaysWhatTheRecordDoesNotShowTest(unittest.TestCase):
 
     def test_an_unshown_claim_is_said_in_one_line(self) -> None:
         text = self.compose(reading.RESULT_UNSUPPORTED, ["a1"], [SAID])
-        self.assertIn('You said "All tests pass" at T90{a1}; the record does not show it.', text)
+        self.assertIn('Can you show evidence for "All tests pass" at T90{a1}?', text)
         self.assertTrue(text.startswith("Back to my goal: Ship the retry"))
         self.assertTrue(text.endswith("Please continue from here."))
 
@@ -1074,7 +1076,7 @@ class SteerBackSaysWhatTheRecordDoesNotShowTest(unittest.TestCase):
         self.assertIn(
             'You said "All tests pass" at T90{a1}; the record shows otherwise at T95{c1}.', text
         )
-        self.assertIn("A check failed at T95{c1}.", text)
+        self.assertNotIn("A check failed", text)
 
     def test_a_shown_claim_adds_nothing_and_alone_is_nothing_to_steer_from(self) -> None:
         self.assertEqual("", self.compose(reading.RESULT_CONSISTENT, ["a1", "c1"], [SAID, PASSED]))
@@ -1086,8 +1088,8 @@ class SteerBackSaysWhatTheRecordDoesNotShowTest(unittest.TestCase):
         # Claims are independent of the intent (review, PR C, reversing the first build).
         later = _person("p2", 120.0, "actually, pause the retry work")
         text = self.compose(reading.RESULT_UNSUPPORTED, ["a1"], [SAID, later])
-        self.assertIn('You said "All tests pass" at T90{a1}; the record does not show it.', text)
-        self.assertIn("I gave a later direction at T120{p2}.", text)
+        self.assertIn('Can you show evidence for "All tests pass" at T90{a1}?', text)
+        self.assertNotIn("later direction", text)
 
     def test_where_no_route_can_carry_checks_no_claim_is_said(self) -> None:
         published = {**SID, "annotation_goal": "Ship the retry", "annotation_revision": 2}
@@ -1101,7 +1103,7 @@ class SteerBackSaysWhatTheRecordDoesNotShowTest(unittest.TestCase):
     def test_a_cited_id_cleaned_by_the_ledger_still_finds_its_fact(self) -> None:
         padded = {**SID_AGENT_PADDED}
         text = self.compose(reading.RESULT_UNSUPPORTED, ["a1"], [padded])
-        self.assertIn('You said "All tests pass"', text)
+        self.assertIn('Can you show evidence for "All tests pass"', text)
 
     def test_only_the_title_is_quoted_never_the_words(self) -> None:
         text = self.compose(reading.RESULT_UNSUPPORTED, ["a1"], [SAID])
@@ -1183,12 +1185,12 @@ console.log(JSON.stringify({{
         withdrawn = {
             "claims": {"result": reading.RESULT_UNVERIFIABLE, "cites": [], "why": "claim-uncited"}
         }
-        self.assertEqual(["claims"], self.shape(withdrawn, [SAID])["drawn"])
+        self.assertEqual([], self.shape(withdrawn, [SAID])["drawn"])
 
     def test_a_contradicted_claim_is_not_a_departure_from_the_intent(self) -> None:
         _row, out = self.claims(reading.RESULT_DEPARTURE, ["a1", "c1"], [SAID, FAILED])
         self.assertEqual([], out["departures"])
-        self.assertEqual("failed-check", out["answer"])
+        self.assertEqual("cant-tell", out["answer"])
         self.assertNotIn("Departs from your intent", out["html"])
 
     def test_a_claim_never_holds_nothing_found_or_none_or_low_back(self) -> None:
@@ -1201,7 +1203,7 @@ console.log(JSON.stringify({{
                 }
                 out = self.shape(criteria, [_person("p1", 60.0, "add retry"), SAID, PASSED])
                 self.assertEqual("nothing-found", out["answer"])
-                self.assertTrue(out["shown"])
+                self.assertEqual(claim != reading.RESULT_UNSUPPORTED, out["shown"])
 
     def test_an_unsettled_later_direction_never_demotes_the_claims_row(self) -> None:
         row, _ = self.claims(reading.RESULT_UNSUPPORTED, ["a1"], [SAID], unsettled="open")
@@ -1231,7 +1233,7 @@ console.log(JSON.stringify({{
             [SAID],
             limit="no route",
         )
-        self.assertEqual(["claims"], claimed["drawn"])
+        self.assertEqual([], claimed["drawn"])
 
     def test_a_stored_record_unread_reason_reads_back(self) -> None:
         stored = {
@@ -1279,7 +1281,7 @@ console.log(JSON.stringify(nextCockpitSteerOffer(session, annotation,
 """,
             storage_prelude({}) + cockpit_tests.NextCockpitCompositionTest.FIXTURE,
         )
-        self.assertEqual({"departed": False, "claimed": True}, out)
+        self.assertEqual({"departed": False, "claimed": True, "failed": False}, out)
 
 
 class TheFirstScreenNeverCallsAClaimDriftTest(NextPageJsHarness):

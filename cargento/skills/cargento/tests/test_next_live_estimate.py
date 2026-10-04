@@ -63,6 +63,7 @@ def live(level: str = "high", **extra: Any) -> dict[str, Any]:
         "computed_at": COMPUTED_AT,
         "level": level,
         "reasons": [],
+        "cites": ["c-fail"],
         "rose_from": None,
         "rose_at": None,
     }

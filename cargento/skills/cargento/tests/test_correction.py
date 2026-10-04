@@ -81,7 +81,7 @@ def check(fact_id: str, at: float, result: str, **extra: Any) -> dict[str, Any]:
 FACTS = (
     check("c-fail", 110, "failed"),
     check("c-pass", 115, "passed"),
-    fact("d1", 114, "user_message", summary="INJECTED-DIRECTION"),
+    fact("d1", 104, "user_message", summary="INJECTED-DIRECTION"),
     fact("a1", 112, "assistant_message", summary="INJECTED-PROSE"),
 )
 
@@ -134,7 +134,7 @@ def words(parts: list[Any]) -> str:
 def compose(row: dict[str, Any] | None = None, facts: Any = FACTS, **kw: Any) -> dict[str, Any]:
     return correction.compose(
         row or session_row(),
-        facts,
+        (*facts, fact("p0", 100, "user_message")),
         floor=kw.pop("floor", 100.0),
         lines_judged=kw.pop("lines_judged", True),
         clock=clock,
@@ -147,12 +147,11 @@ class TemplateTest(unittest.TestCase):
         self.assertIs(True, answer["ok"])
         self.assertEqual(
             "Back to my goal: Ship the placeholder parser\n"
+            "A check failed at T110{c-fail}.\n"
             "Where it stands against what I expect:\n"
             "- The parser tests pass: departed at T110{c-fail}\n"
-            "- The lexer is unchanged: nothing recorded shows this yet\n"
+            "- The lexer is unchanged: can you show evidence for this?\n"
             "- Lint is clean: consistent with T115{c-pass}, as the tool reported\n"
-            "A check failed at T110{c-fail}.\n"
-            "I gave a later direction at T114{d1}.\n"
             "Please continue from here.",
             rendered(answer["parts"]),
         )
@@ -165,27 +164,26 @@ class TemplateTest(unittest.TestCase):
     def test_the_times_are_the_servers_local_clock_by_default(self) -> None:
         answer = correction.compose(session_row(), FACTS, floor=100.0, lines_judged=True)
         self.assertIn(
-            f"departed at {time.strftime('%H:%M', time.localtime(110))}", words(answer["parts"])
+            f"departed at {time.strftime('%Y-%m-%d %H:%M', time.localtime(110))}",
+            words(answer["parts"]),
         )
 
     def test_a_reading_of_an_older_revision_lends_no_line_its_state(self) -> None:
         answer = compose(session_row(annotation_revision=3))
         text = rendered(answer["parts"])
-        self.assertIn("- The parser tests pass: nothing recorded shows this yet", text)
-        self.assertIn("- Lint is clean: nothing recorded shows this yet", text)
+        self.assertIn("- The parser tests pass: can you show evidence for this?", text)
+        self.assertIn("- Lint is clean: can you show evidence for this?", text)
         self.assertIn("A check failed at T110{c-fail}.", text)
 
     def test_an_unsettled_later_direction_demotes_a_departure(self) -> None:
         text = rendered(compose(session_row(annotation_settled_through=None))["parts"])
-        self.assertIn("- The parser tests pass: nothing recorded shows this yet", text)
-        self.assertIn("- Lint is clean: nothing recorded shows this yet", text)
-        self.assertIn("I gave a later direction at T114{d1}.", text)
+        self.assertIn("- The parser tests pass: can you show evidence for this?", text)
+        self.assertIn("- Lint is clean: can you show evidence for this?", text)
+        self.assertNotIn("later direction", text)
 
     def test_a_departure_on_a_check_before_the_window_does_not_stand(self) -> None:
         facts = (check("c-fail", 90, "failed"), check("c-pass", 115, "passed"), FACTS[2])
-        text = rendered(compose(facts=facts)["parts"])
-        self.assertIn("- The parser tests pass: nothing recorded shows this yet", text)
-        self.assertNotIn("A check failed", text)
+        self.assertEqual({"ok": False, "reason": "nothing"}, compose(facts=facts))
 
     def test_a_consistent_line_on_an_aged_pass_is_not_shown(self) -> None:
         facts = (
@@ -193,14 +191,14 @@ class TemplateTest(unittest.TestCase):
             check("c-pass", 115, "passed", before_last_change=True),
         )
         text = rendered(compose(facts=facts)["parts"])
-        self.assertIn("- Lint is clean: nothing recorded shows this yet", text)
+        self.assertIn("- Lint is clean: can you show evidence for this?", text)
 
     def test_where_no_reading_can_carry_the_checks_no_outcome_line_keeps_a_verdict(self) -> None:
         # The page's Expected Output limit (`nextReadingOutputLimit`): a Claude Code route that
         # cannot name where the checks go demotes every outcome-line verdict, stored or not.
         text = rendered(compose(lines_judged=False)["parts"])
-        self.assertIn("- The parser tests pass: nothing recorded shows this yet", text)
-        self.assertIn("- Lint is clean: nothing recorded shows this yet", text)
+        self.assertIn("- The parser tests pass: can you show evidence for this?", text)
+        self.assertIn("- Lint is clean: can you show evidence for this?", text)
         self.assertIn("A check failed at T110{c-fail}.", text)
 
     def test_a_copied_correction_is_not_a_later_direction(self) -> None:
@@ -224,7 +222,6 @@ class TemplateTest(unittest.TestCase):
         self.assertEqual(
             "Back to my goal: Ship the placeholder parser\n"
             "A check failed at T110{c-fail}.\n"
-            "I gave a later direction at T114{d1}.\n"
             "Please continue from here.",
             rendered(compose(row)["parts"]),
         )
@@ -236,12 +233,11 @@ class SomethingToSteerFromTest(unittest.TestCase):
         self.assertIs(True, answer["ok"])
         self.assertIn("A check failed at T110{c-fail}.", rendered(answer["parts"]))
 
-    def test_with_no_analysis_a_later_direction_is_enough(self) -> None:
+    def test_with_no_analysis_a_later_direction_offers_nothing(self) -> None:
         answer = compose(
             session_row(annotation_assessment=None), (fact("d1", 114, "user_message"),)
         )
-        self.assertIs(True, answer["ok"])
-        self.assertIn("I gave a later direction at T114{d1}.", rendered(answer["parts"]))
+        self.assertEqual({"ok": False, "reason": "nothing"}, answer)
 
     def test_consistent_lines_alone_are_nothing_to_steer_from(self) -> None:
         quiet = reading(line_3=row_of(CONSISTENT, ("c-pass",), clause=L3))
@@ -274,29 +270,31 @@ class WhatCountsTest(unittest.TestCase):
         answer = compose(row, (fact("a1", 112, "assistant_message"),), floor=200.0)
         self.assertIs(True, answer["ok"], answer)
         self.assertEqual(
-            "Back to my goal: Ship the placeholder parser\nPlease continue from here.",
+            "Back to my goal: Ship the placeholder parser\n"
+            "The session departed from my goal at T112{a1}.\nPlease continue from here.",
             rendered(answer["parts"]),
         )
 
-    def test_the_latest_failed_check_and_the_latest_direction_are_the_ones_named(self) -> None:
+    def test_only_the_latest_failure_after_the_person_is_named(self) -> None:
         facts = (
-            check("c-late", 113, "failed"),
+            check("c-late", 118, "failed"),
             check("c-fail", 110, "failed"),
             fact("d-late", 116, "user_message"),
             fact("d1", 114, "user_message"),
         )
         row = session_row(annotation_assessment=None, annotation_settled_through=120.0)
         text = rendered(compose(row, facts)["parts"])
-        self.assertIn("A check failed at T113{c-late}.", text)
-        self.assertIn("I gave a later direction at T116{d-late}.", text)
+        self.assertIn("A check failed at T118{c-late}.", text)
+        self.assertNotIn("later direction", text)
         self.assertNotIn("{c-fail}", text)
         self.assertNotIn("{d1}", text)
 
     def test_a_direction_after_the_settlement_demotes_a_departure(self) -> None:
         facts = (*FACTS, fact("d-late", 116, "user_message"))
-        text = rendered(compose(session_row(annotation_settled_through=114.0), facts)["parts"])
-        self.assertIn("- The parser tests pass: nothing recorded shows this yet", text)
-        self.assertIn("I gave a later direction at T116{d-late}.", text)
+        self.assertEqual(
+            {"ok": False, "reason": "nothing"},
+            compose(session_row(annotation_settled_through=114.0), facts),
+        )
         # Settled through it, the same departure stands.
         settled = rendered(compose(session_row(annotation_settled_through=116.0), facts)["parts"])
         self.assertIn("- The parser tests pass: departed at T110{c-fail}", settled)
@@ -307,7 +305,7 @@ class WhatCountsTest(unittest.TestCase):
         for why, said in (
             ("uncited", "- The parser tests pass: departed at T110{c-fail}"),
             ("not-asked", "- The parser tests pass: departed at T110{c-fail}"),
-            ("made-up", "- The parser tests pass: nothing recorded shows this yet"),
+            ("made-up", "- The parser tests pass: can you show evidence for this?"),
         ):
             with self.subTest(why=why):
                 criteria = {"line_1": row_of(DEPARTED, ("c-fail",), why=why)}
@@ -321,7 +319,7 @@ class InjectionTest(unittest.TestCase):
     def test_nothing_planted_in_the_facts_or_the_reading_appears(self) -> None:
         facts = (
             *FACTS,
-            check("INJECTED-ID", 111, "failed"),
+            check("INJECTED-ID", 118, "failed"),
             fact("o1", 113, "observer_snapshot", summary="INJECTED-PROSE"),
         )
         for row in (
@@ -343,7 +341,7 @@ class InjectionTest(unittest.TestCase):
             "Back to my goal: ",
             "Where it stands against what I expect:",
             ": departed at T110",
-            ": nothing recorded shows this yet",
+            ": can you show evidence for this?",
             ": consistent with T115, as the tool reported",
             "A check failed at T110.",
             "I gave a later direction at T114.",
@@ -389,7 +387,7 @@ class LengthTest(unittest.TestCase):
         row = session_row(annotation_goal=self.LONG, annotation_assessment=None)
         for k in range(1, 7):
             row[f"annotation_line_{k}"] = f"{k}{self.LONG[1:]}"
-        answer = compose(row, (check("c-fail", 110, "failed"), fact("d1", 114, "user_message")))
+        answer = compose(row, (check("c-fail", 118, "failed"), fact("d1", 114, "user_message")))
         self.assertEqual(
             {
                 "ok": False,
@@ -403,8 +401,8 @@ class LengthTest(unittest.TestCase):
     def test_each_number_is_counted_at_its_widest(self) -> None:
         # The page draws " (#n in Cargento)" on the first number and " (#n)" after it, so a text
         # that fits only without them is refused rather than let past the cap on the page.
-        facts = (check("c-fail", 110, "failed"), fact("d1", 114, "user_message"))
-        allowance = len(" (#999999 in Cargento)") + len(" (#999999)")
+        facts = (check("c-fail", 118, "failed"), fact("d1", 114, "user_message"))
+        allowance = len(" (#999999 in Cargento)")
 
         def with_goal(size: int) -> dict[str, Any]:
             row = session_row(
@@ -484,7 +482,7 @@ class CorrectionRouteTest(_App):
         self.assertIs(True, answer["ok"], answer)
         text = words(answer["parts"])
         self.assertTrue(text.startswith("Back to my goal: Ship the placeholder parser\n"), text)
-        self.assertIn("- The parser tests pass: nothing recorded shows this yet\n", text)
+        self.assertIn("- The parser tests pass: can you show evidence for this?\n", text)
         self.assertIn("A check failed at ", text)
         for planted in ("INJECTED-COMMAND", "INJECTED-OUTPUT", "pytest"):
             self.assertNotIn(planted, text)

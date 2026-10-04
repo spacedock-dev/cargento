@@ -425,7 +425,7 @@ def _analysis_levels(
     a revision the store no longer holds gives no level rather than a guess.
     """
     assessment = entry.get("assessment") if entry else None
-    if not entry or not assessment:
+    if not entry or not assessment or entry.get("not_accurate") is True:
         return []
     read = next(
         (rev for rev in entry["revisions"] if rev["n"] == assessment.get("revision_read")), None

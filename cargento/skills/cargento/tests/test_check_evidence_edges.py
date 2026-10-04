@@ -119,6 +119,7 @@ class ChecksUseTheirShellsDirectory(ClaudeChecksTestCase):
         ):
             with self.subTest(command=command):
                 self.session = Transcript(self.cwd)
+                self.session.prompt("Continue")
                 self.session.bash("cd sub && pytest", "1 failed", is_error=True)
                 self.session.bash(command, "", is_error=False)
                 rows, counts = self.read()

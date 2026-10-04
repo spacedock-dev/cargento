@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import unittest
 from typing import TYPE_CHECKING, Any
+from unittest import mock
 
 from cargento_runtime import levels, reading
 
@@ -58,6 +59,7 @@ def scan(**counts: Any) -> dict[str, Any]:
         0,
     )
     body["last_changing_command_at"] = None
+    body["last_user_at"] = SAVE
     body.update(counts)
     return body
 
@@ -347,9 +349,10 @@ class IntentNamesNoFolderTest(unittest.TestCase):
         self.assertEqual((got.writes_outside, got.writes_total), (0, 3))
 
     def test_a_write_outside_the_working_directory_is_outside_every_folder(self) -> None:
-        facts = evidence([check("c1", SAVE + 20, "passed")], scan(passed=1, outside_paths=1))
-        got = levels.live_level(facts, intent("Only touch server/"))
-        self.assertEqual(got.level, levels.HIGH)
+        with mock.patch("cargento_runtime.levels.os.path.isdir", return_value=True):
+            facts = evidence([check("c1", SAVE + 20, "passed")], scan(passed=1, outside_paths=1))
+            got = levels.live_level(facts, intent("Only touch server/"))
+            self.assertEqual(got.level, levels.HIGH)
 
     def test_the_analysis_does_not_read_folders_at_all(self) -> None:
         self.assertEqual(analyze(SUPPORTED, self.SPREAD).level, levels.NONE_OR_LOW)
@@ -470,13 +473,14 @@ class ExtremeTest(unittest.TestCase):
     """Extreme: both of High's conditions hold."""
 
     def test_a_failed_check_and_most_writes_outside_is_extreme(self) -> None:
-        facts = evidence(
-            [check("c1", SAVE + 20, "failed"), wrote("w1", SAVE + 5, "server/app.py")],
-            scan(failed=1, written_paths=1),
-        )
-        got = levels.live_level(facts, intent("Only touch web/"))
-        self.assertEqual(got.level, levels.EXTREME)
-        self.assertEqual(set(got.cites), {"c1", "w1"})
+        with mock.patch("cargento_runtime.levels.os.path.isdir", return_value=True):
+            facts = evidence(
+                [check("c1", SAVE + 20, "failed"), wrote("w1", SAVE + 5, "server/app.py")],
+                scan(failed=1, written_paths=1),
+            )
+            got = levels.live_level(facts, intent("Only touch web/"))
+            self.assertEqual(got.level, levels.EXTREME)
+            self.assertEqual(set(got.cites), {"c1", "w1"})
 
     def test_an_analysis_never_reads_extreme_because_it_reads_no_folder(self) -> None:
         facts = evidence([check("c1", SAVE + 20, "failed")], scan(failed=1))
@@ -533,13 +537,14 @@ class NamedFoldersTest(unittest.TestCase):
         self.assertEqual(levels.named_folders(intent(prose)), ())
 
     def test_v1_a_named_multi_part_folder_reads_writes_outside_it(self) -> None:
-        facts = evidence(
-            [wrote("w1", SAVE + 5, "src/x.py"), check("c1", SAVE + 20, "passed")],
-            scan(passed=1, written_paths=1),
-        )
-        got = levels.live_level(facts, intent("only touch web/app"))
-        self.assertEqual(got.level, levels.HIGH)
-        self.assertIn(levels.REASON_MOST_OUTSIDE, got.reasons)
+        with mock.patch("cargento_runtime.levels.os.path.isdir", return_value=True):
+            facts = evidence(
+                [wrote("w1", SAVE + 5, "src/x.py"), check("c1", SAVE + 20, "passed")],
+                scan(passed=1, written_paths=1),
+            )
+            got = levels.live_level(facts, intent("only touch web/app"))
+            self.assertEqual(got.level, levels.HIGH)
+            self.assertIn(levels.REASON_MOST_OUTSIDE, got.reasons)
 
     def test_prose_with_a_slash_names_nothing(self) -> None:
         # L8: "and/or" and "client/server" are words, not paths.
@@ -592,14 +597,15 @@ class CorrectionRoundTest(unittest.TestCase):
         self.assertEqual(levels.live_level(facts, intent("Tests pass")).level, levels.NOT_ENOUGH)
 
     def test_l2_an_unplaced_write_counts_as_outside(self) -> None:
-        facts = evidence(
-            [check("c1", SAVE + 20, "passed"), wrote("w1", SAVE + 5, "src/a.py")],
-            scan(passed=1, written_paths=3, more=2),
-        )
-        got = levels.live_level(facts, intent("Only touch web/"))
-        self.assertEqual(got.level, levels.HIGH)
-        self.assertEqual((got.writes_outside, got.writes_total), (3, 3))
-        self.assertIn(levels.REASON_UNLISTED, got.reasons)
+        with mock.patch("cargento_runtime.levels.os.path.isdir", return_value=True):
+            facts = evidence(
+                [check("c1", SAVE + 20, "passed"), wrote("w1", SAVE + 5, "src/a.py")],
+                scan(passed=1, written_paths=3, more=2),
+            )
+            got = levels.live_level(facts, intent("Only touch web/"))
+            self.assertEqual(got.level, levels.HIGH)
+            self.assertEqual((got.writes_outside, got.writes_total), (3, 3))
+            self.assertIn(levels.REASON_UNLISTED, got.reasons)
 
     def test_l2_unplaced_writes_can_make_a_listed_inside_write_a_minority(self) -> None:
         facts = evidence(
@@ -617,13 +623,14 @@ class CorrectionRoundTest(unittest.TestCase):
         self.assertEqual(got.level, levels.NOT_ENOUGH)
         self.assertIn(levels.REASON_FAILED_CHECK, got.reasons)
 
-    def test_l3_a_failure_with_no_time_counts_as_inside_the_window(self) -> None:
+    def test_l3_a_failure_with_no_time_blocks_the_floor_without_raising_high(self) -> None:
         facts = evidence(
             [check("f1", None, "failed"), check("c1", SAVE + 20, "passed")],
             scan(failed=1, passed=1),
         )
         got = analyze(a_reading(line_1=criterion(reading.RESULT_CONSISTENT, "c1")), facts)
-        self.assertEqual(got.level, levels.HIGH)
+        self.assertEqual(got.level, levels.NOT_ENOUGH)
+        self.assertIn(levels.REASON_FAILED_CHECK, got.reasons)
 
     def test_l4_a_row_that_is_not_an_object_is_malformed(self) -> None:
         row = a_reading(line_1=criterion(reading.RESULT_CONSISTENT, "c1"))
@@ -698,12 +705,15 @@ class CorrectionRoundTest(unittest.TestCase):
         self.assertIn(levels.REASON_NO_OUTCOME_LINE, got.reasons)
 
     def test_l8_a_file_path_no_longer_widens_to_prose(self) -> None:
-        # "change src/retry.py" names src/; a write elsewhere is outside it.
-        facts = evidence(
-            [wrote("w1", SAVE + 5, "lib/other.py"), check("c1", SAVE + 20, "passed")],
-            scan(passed=1, written_paths=1),
-        )
-        self.assertEqual(levels.live_level(facts, intent("Change src/retry.py")).level, levels.HIGH)
+        with mock.patch("cargento_runtime.levels.os.path.isdir", return_value=True):
+            # "change src/retry.py" names src/; a write elsewhere is outside it.
+            facts = evidence(
+                [wrote("w1", SAVE + 5, "lib/other.py"), check("c1", SAVE + 20, "passed")],
+                scan(passed=1, written_paths=1),
+            )
+            self.assertEqual(
+                levels.live_level(facts, intent("Change src/retry.py")).level, levels.HIGH
+            )
 
     def test_l8_a_dotted_folder_keeps_its_boundary(self) -> None:
         facts = evidence(

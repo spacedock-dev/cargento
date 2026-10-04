@@ -20,6 +20,7 @@ is a level that reads safe when little is seen.
 
 from __future__ import annotations
 
+import os
 import re
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
@@ -321,19 +322,25 @@ def live_level(evidence: Evidence, intent: Intent) -> Level:
         return Level(NO_LIVE_LEVEL, SOURCE_LIVE, (REASON_DRAFT_UNSAVED,))
     scan = evidence.scan
     checks = _checks(evidence)
-    failed = [f for f in checks if f.get("result") == reading.RESULT_FAILED]
     passes = [f for f in checks if f.get("result") == reading.RESULT_PASSED]
     aged = [f for f in passes if f.get("before_last_change") is True]
 
-    folders = named_folders(intent, evidence.cwd)
+    folders = tuple(
+        folder
+        for folder in named_folders(intent, evidence.cwd)
+        if os.path.isdir(os.path.join(evidence.cwd, folder))
+        or any(inside(str(f.get("summary") or ""), (folder,)) for f in _writes(evidence))
+    )
     share = _folder_share(evidence, folders) if folders else None
     some_outside = share is not None and share.outside > 0
     most_outside = share is not None and share.outside * 2 > share.total
 
-    # A listed failure the counts miss still reads High (L6).
-    failing = _count(scan, "failed") > 0 or bool(failed)
+    anchored = reading.failed_checks_after_person(evidence.facts, anchor=scan.get("last_user_at"))
+    fresh = [f for f in anchored if not reading.failure_followed_by_write(f, evidence.facts)]
+    failing = bool(fresh)
+    aging_failure = bool(anchored) and not fresh
     signals: tuple[tuple[str, bool, list[str]], ...] = (
-        (REASON_FAILED_CHECK, failing, _ids(failed)),
+        (REASON_FAILED_CHECK, bool(anchored), _ids(anchored)),
         (REASON_MOST_OUTSIDE, most_outside, share.cites if share else []),
         (REASON_SOME_OUTSIDE, some_outside and not most_outside, share.cites if share else []),
         (REASON_PASS_THEN_WRITE, bool(aged), _ids(aged)),
@@ -348,7 +355,7 @@ def live_level(evidence: Evidence, intent: Intent) -> Level:
         level = EXTREME
     elif any(high):
         level = HIGH
-    elif aged or some_outside:
+    elif aged or some_outside or aging_failure:
         level = MEDIUM
     else:
         blockers = _live_floor_blockers(evidence, passes)
@@ -371,6 +378,10 @@ def _live_floor_blockers(evidence: Evidence, passes: list[Mapping[str, Any]]) ->
     blockers: list[str] = []
     if not scan_complete(scan):
         blockers.append(REASON_SCAN_INCOMPLETE)
+    if _count(scan, "failed") or any(
+        f.get("result") == reading.RESULT_FAILED for f in _checks(evidence)
+    ):
+        blockers.append(REASON_FAILED_CHECK)
     passed = _count(scan, "passed")
     if not passed:
         # Zero is too little: at least one check whose latest run passed.
@@ -598,16 +609,19 @@ def analysis_level(
         tally.read(row, name=name, line_text=by_name.get(name, ""))
 
     failed = [f for f in _checks(evidence) if f.get("result") == reading.RESULT_FAILED]
-    in_window = [
-        f for f in failed if window is None or (reading.evidence_at(f) or window) >= window
-    ]
+    in_window = reading.failed_checks_after_person(
+        evidence.facts,
+        anchor=evidence.scan.get("last_user_at"),
+        floor=window or 0.0,
+    )
+    fresh = [f for f in in_window if not reading.failure_followed_by_write(f, evidence.facts)]
     # A failure the counts hold and the listing dropped has no time to place.
     unplaced = _count(evidence.scan, "failed") > len(failed)
     reasons = [
         reason
         for reason, holds in (
-            (REASON_FAILED_CHECK, failed or unplaced),
             (REASON_DEPARTURE, tally.departed),
+            (REASON_FAILED_CHECK, bool(in_window)),
             (REASON_PASS_THEN_WRITE, tally.aged),
             (REASON_CLAIM_CONTRADICTED, tally.claim_contradicted),
             (REASON_CLAIM_NOT_SHOWN, tally.claim_unshown),
@@ -615,9 +629,9 @@ def analysis_level(
         if holds
     ]
     cites = [*_ids(in_window or failed), *tally.cites]
-    if in_window or unplaced:
+    if fresh:
         level = HIGH
-    elif tally.departed or tally.aged or tally.claim_contradicted or tally.claim_unshown:
+    elif in_window or tally.departed or tally.aged or tally.claim_contradicted:
         level = MEDIUM
     else:
         blockers = [
@@ -625,15 +639,16 @@ def analysis_level(
             for reason, holds in (
                 (REASON_SCAN_INCOMPLETE, not scan_complete(evidence.scan)),
                 (REASON_LINE_NOT_SHOWN, tally.not_shown),
+                (REASON_CLAIM_NOT_SHOWN, tally.claim_unshown),
                 (REASON_LATER_DIRECTION, evidence.unsettled_directions > 0),
             )
             if holds
         ]
-        if failed and REASON_FAILED_CHECK not in blockers:
+        if (failed or unplaced) and REASON_FAILED_CHECK not in blockers:
             blockers.insert(0, REASON_FAILED_CHECK)
         reasons.extend(r for r in (blockers or [REASON_FLOOR_MET]) if r not in reasons)
         cites.extend(tally.shown)
-        level = NOT_ENOUGH if blockers or failed else NONE_OR_LOW
+        level = NOT_ENOUGH if blockers else NONE_OR_LOW
     return Level(level, SOURCE_ANALYSIS, tuple(reasons), _ordered(cites), computed_at=computed_at)
 
 

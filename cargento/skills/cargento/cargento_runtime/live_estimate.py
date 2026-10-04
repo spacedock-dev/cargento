@@ -463,6 +463,7 @@ def _new_tally(
     tally = pc._ToolReportTally(results)  # noqa: SLF001
     tally.completed_launch_calls = pc._stream_completed_background_calls(scan.parent, scan.children)  # noqa: SLF001
     tally.reads_from = scan.horizon
+    tally.scan["last_user_at"] = pc._last_person_at(scan.parent)  # noqa: SLF001
     tally.named_unread = scan.named_unread
     tally.parent_failed = scan.parent_failed or force_incomplete
     tally.orphan_unread = scan.orphan_unread
@@ -514,6 +515,7 @@ def _replay(
         tuple(sorted(pc._stream_completed_background_calls(scan.parent, scan.children).items())),  # noqa: SLF001
         scan.orphan_unread,
         len(scan.children),
+        pc._last_person_at(scan.parent),  # noqa: SLF001 - invalidate a turn without new tools
     )
     calls = [
         call

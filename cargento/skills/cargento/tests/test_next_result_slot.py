@@ -194,7 +194,10 @@ class TheLevelSaysWhyTest(_ResultPage):
         )
         reason = re.search(r'<p class="next-session-drift-reason">([^<]*)</p>', html)
         assert reason is not None
-        self.assertEqual(f"A check failed at #{NUMBER['c-fail']}.", reason.group(1))
+        self.assertEqual(
+            f"pytest tests/lexer failed 0s ago at #{NUMBER['c-fail']}; no passing re-run recorded.",
+            reason.group(1),
+        )
         self.assertEqual(1, len(re.findall('next-session-drift-reason"', html)))
 
     def test_not_enough_puts_what_holds_it_back_one_click_away(self) -> None:
@@ -228,7 +231,10 @@ class TheLevelSaysWhyTest(_ResultPage):
         )
         reason = re.search(r'<p class="next-session-drift-reason">([^<]*)</p>', html)
         assert reason is not None
-        self.assertEqual(f"A check failed at #{NUMBER['c-fail']}.", reason.group(1))
+        self.assertEqual(
+            f"pytest tests/lexer failed 0s ago at #{NUMBER['c-fail']}; no passing re-run recorded.",
+            reason.group(1),
+        )
 
 
 if __name__ == "__main__":

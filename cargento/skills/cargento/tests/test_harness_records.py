@@ -278,7 +278,9 @@ class APiCheckReachesTheLevelsAndTheReadingRules(PiRecord):
         }
         got = levels.analysis_level(
             row,
-            levels.Evidence(facts=tuple(facts), scan={}, unsettled_directions=0),
+            levels.Evidence(
+                facts=tuple(facts), scan={"last_user_at": AT_EPOCH - 1}, unsettled_directions=0
+            ),
             outcome_lines=1,
         )
         self.assertEqual(levels.HIGH, got.level)
