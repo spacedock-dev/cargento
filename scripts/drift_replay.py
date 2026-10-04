@@ -1367,6 +1367,7 @@ def score(*, home: str, say: Callable[[str], Any] = print) -> int:
     marks = _load_marks(paths, lc.digest(body)) or {}
     lived = lc._load(paths["live"]).get("cases") or {}  # noqa: SLF001
     readings = lc._load(paths["read"]).get("cases") or {}  # noqa: SLF001
+    read_arms = set(lc._load(paths["plan"]).get("arms") or ())  # noqa: SLF001
     per_case: dict[str, Any] = {}
     table: dict[str, dict[str, int]] = {}
     for case in body["cases"]:
@@ -1388,12 +1389,15 @@ def score(*, home: str, say: Callable[[str], Any] = print) -> int:
         live_case = lived.get(case["id"]) or {}
         for arm in ARMS:
             live_arm = (live_case.get("arms") or {}).get(arm)
+            if live_arm is None and "refused" not in live_case:
+                continue  # no words for this arm before the cut: not a case for it
+            reading = (readings.get(case["id"]) or {}).get(arm)
             outcomes = {
                 "live": _live_bin(live_arm, drifted=drifted, start=start),
                 "steer": "offered" if live_arm and live_arm.get("steer") else "not-offered",
-                "analyze": _read_bin(
-                    (readings.get(case["id"]) or {}).get(arm), drifted=drifted, start=start
-                ),
+                "analyze": "not-run"
+                if reading is None and arm not in read_arms
+                else _read_bin(reading, drifted=drifted, start=start),
             }
             row[arm] = outcomes
             for detector, outcome in outcomes.items():
