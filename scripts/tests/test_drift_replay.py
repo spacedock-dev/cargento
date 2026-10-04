@@ -559,6 +559,26 @@ class _Home:
 
 
 class ATaggedReadKeepsTheEarlierRunsOutput(unittest.TestCase):
+    def test_dry_run_reports_adopted_source_coverage_without_charging(self) -> None:
+        with (
+            _Session() as s,
+            mock.patch.object(dr, "_run_refusal", return_value=""),
+            mock.patch.object(dr, "LEDGER_PATH", str(s.home / "spend.json")),
+        ):
+            home = _Home(s)
+            said: list[str] = []
+            code = dr.read(
+                home=str(s.home),
+                dry_run=True,
+                tag="source",
+                arms=("adopted",),
+                cases=(f"{home.ids[0]}:adopted",),
+                say=said.append,
+            )
+            self.assertEqual(0, code, said)
+            self.assertIn("Adopted goal source: found 1 of 1; fallbacks 0.", said)
+            self.assertFalse((s.home / "spend.json").exists())
+
     def test_a_narrowed_read_needs_a_tag_and_a_case_it_can_name(self) -> None:
         with _Session() as s, mock.patch.object(dr, "_run_refusal", return_value=""):
             home = _Home(s)

@@ -3109,6 +3109,7 @@ def produce(  # noqa: PLR0913
     on_phase: Callable[[str], None] | None = None,
     record_withheld: str = "",
     read_agent_words: bool = False,
+    goal_source_lookup: Callable[[], Sequence[Mapping[str, Any]]] | None = None,
 ) -> tuple[Assessment | None, str, bool]:
     """One reading, or the reason there is none. Returns (assessment, why, spent).
 
@@ -3174,7 +3175,12 @@ def produce(  # noqa: PLR0913
     if withheld:
         return None, withheld, False
     adopted = latest.get("goal_source") in PROMPT_SOURCES and asks_goal(goal)
-    source = adopted_prompt(latest, facts, harness, sid) if adopted else None
+    source_facts = (
+        _goal_source_candidates(row, facts, goal_source_lookup())
+        if adopted and goal_source_lookup is not None
+        else facts
+    )
+    source = adopted_prompt(latest, source_facts, harness, sid) if adopted else None
     prompt, selected = build_prompt(
         ledger,
         goal=goal,
@@ -3539,6 +3545,30 @@ def _goal_note(*, adopted: bool, source: tuple[str, str] | None, goal: str, whol
     if source is not None and not whole and _collapsed(source[1]) != _collapsed(goal):
         return GOAL_SOURCE_UNROOMED
     return ""
+
+
+def _goal_source_candidates(
+    row: Mapping[str, Any],
+    facts: Sequence[Mapping[str, Any]],
+    looked_up: Sequence[Mapping[str, Any]],
+) -> list[dict[str, Any]]:
+    # The prefix may stop before a source already in the tail; distinct same-time
+    # words must survive the merge so adopted_prompt can refuse ambiguity.
+    copied = {
+        str(item.get("fact_id")) for item in row.get(COPIED_PROMPTS) or () if isinstance(item, dict)
+    }
+    copied.update(
+        str(fact.get("fact_id")) for fact in (*facts, *looked_up) if fact.get(COPIED_FLAG) is True
+    )
+    candidates: dict[tuple[str, str], dict[str, Any]] = {}
+    for fact in (*looked_up, *facts):
+        fact_id = records.safe_text(fact.get("fact_id"), 160)
+        words = records.safe_text(fact.get(WORDS_FIELD), LEDGER_WORDS_CAP_CHARS)
+        candidates[(fact_id, words)] = {
+            **fact,
+            **({COPIED_FLAG: True} if fact_id in copied else {}),
+        }
+    return list(candidates.values())
 
 
 def adopted_prompt(

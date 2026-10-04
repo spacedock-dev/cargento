@@ -1320,6 +1320,26 @@ def read(  # noqa: PLR0911 - one return per refusal, each before anything is sen
     return 0
 
 
+def _goal_source(
+    config: Any,
+    state: Any,
+    project_context: Any,
+    reading: Any,
+    path: str,
+    sid: str,
+    intent: Intent,
+    ordinary: list[dict[str, Any]],
+) -> tuple[list[dict[str, Any]], int, int]:
+    if not intent.source:
+        return [], 0, 0
+    facts = project_context.transcript_user_facts(config, state, path, "claude", sid)
+    candidates = reading._goal_source_candidates(  # noqa: SLF001 - the same source-only merge as the press
+        _row(sid, intent, intent.at), ordinary, facts
+    )
+    found = reading.adopted_prompt(intent.revision(), candidates, "claude", sid) is not None
+    return facts, 1, int(found)
+
+
 def _read_cases(  # noqa: PLR0913 - every input of one pass, named
     body: Mapping[str, Any],
     paths: Mapping[str, str],
@@ -1339,10 +1359,13 @@ def _read_cases(  # noqa: PLR0913 - every input of one pass, named
     """
     config, project_context, _live, _correction, reading = _runtime()
     from cargento_runtime import observer, reading_route  # noqa: PLC0415
+    from cargento_runtime.state import build_runtime_state  # noqa: PLC0415
 
     scratch = os.path.join(paths["dir"], "scratch-read")
     current = lc._load(paths["current"]).get("intents") or {}  # noqa: SLF001
     calls = 0
+    source_state = build_runtime_state(config, started=0.0)
+    source_total = source_found = 0
     for case in body["cases"]:
         if selection and not any(pair.startswith(f"{case['id']}:") for pair in selection):
             continue
@@ -1377,11 +1400,17 @@ def _read_cases(  # noqa: PLR0913 - every input of one pass, named
                 passes_and_writes=press.passes_and_writes,
             )
             model = _Charged(inner, None if dry_run else ledger, f"{case['id']}|{intent.arm}")
+            source_facts, total, found = _goal_source(
+                config, source_state, project_context, reading, path, sid, intent, facts
+            )
+            source_total += total
+            source_found += found
             assessment, why, _spent = reading.produce(
                 config,
                 _row(sid, intent, cut),
                 [intent.revision()],
                 facts,
+                goal_source_lookup=source_facts.copy,
                 now=cut + float(getattr(config, "reading_settle_sec", 8.0)) + _SETTLE_EXTRA,
                 stamp_text=f"{observer.CLAUDE_READING_MODEL} · drift replay",
                 model=model,
@@ -1414,6 +1443,10 @@ def _read_cases(  # noqa: PLR0913 - every input of one pass, named
                 say("The ledger cap is reached; stopping.")
                 return -calls
         _remove_tree(here)
+    say(
+        f"Adopted goal source: found {source_found} of {source_total}; "
+        f"fallbacks {source_total - source_found}."
+    )
     return calls
 
 
