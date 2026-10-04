@@ -19,7 +19,7 @@ function nextAttentionHarnessOrder(payload){
 }
 
 const NEXT_RISK_KIND_ORDER = new Map([
-  ["attribution", 0], ["loop", 1], ["quota", 2], ["long-turn", 3], ["collision", 4],
+  ["attribution", 0], ["loop", 1], ["quota", 2], ["long-turn", 3], ["collision", 4], ["quiet-launch", 5],
 ]);
 /* What is at stake leads and the end breaks its ties: uncommitted work is the
    reason to open the row at all, and an ended session's dirty tree is the one
@@ -438,6 +438,9 @@ function nextAttentionModel(payload){
     addSessionRisk(session, nextAttentionAttributionSignal(session, sourceIndex), sourceIndex);
     addSessionRisk(session, nextAttentionLoopSignal(session, sourceIndex), sourceIndex);
     addSessionRisk(session, nextAttentionLongTurnSignal(session, sourceIndex), sourceIndex);
+    const delegated = nextDelegatedWork(session, nextNumber(payload.generated));
+    if(delegated.risky) addSessionRisk(session,
+      {kind:"quiet-launch",section:"risk",sourceIndex,detail:{text:delegated.text}},sourceIndex);
   }
 
   const usage = payload && typeof payload === "object" && !Array.isArray(payload) &&
@@ -644,6 +647,7 @@ const NEXT_ATTENTION_KIND_LABELS = new Map([
   ["quota", "Quota pressure"],
   ["long-turn", "Long-running turn"],
   ["collision", "Identity collision"],
+  ["quiet-launch", "Quiet delegated launch"],
   ["stop-dirty", "Stop observed with uncommitted work"],
   ["stop-clean", "Stop observed; git state clean"],
   ["stop-unknown", "Stop observed; git state not measured"],
@@ -801,6 +805,7 @@ function nextAttentionSignalNow(signal, subject){
       : "";
     return {text: elapsed ? `${state} · ${elapsed} elapsed` : state, note: ""};
   }
+  if(signal.kind === "quiet-launch") return {text:detail.text,note:"Recorded activity only; not a process check."};
   if(signal.kind === "collision"){
     return {
       text: `${detail.memberCount} exact sessions share ${String(detail.label || "")} display label`,

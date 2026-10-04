@@ -1,3 +1,27 @@
+/* Counts concern recorded launches; unpaired/activity concern this parent's
+   own launches. An unread child is never a completed job. */
+function nextDelegatedWork(session, now = nextNumber(nextData && nextData.generated) || Date.now() / 1000){
+  const count = session && session.delegated_launches;
+  const unpaired = session && session.delegated_unpaired;
+  const visibility = String(session && session.delegated_visibility || "not-recorded");
+  const measured = Number.isInteger(count) && count >= 0 && Number.isInteger(unpaired) && unpaired >= 0;
+  if(!measured){
+    return {draw:nextNumber(session && session.delegated_latest_launch_at) > 0,risky:false,text:"Delegated work: not measured; Cargento cannot see work this session started."};
+  }
+  const latest = nextNumber(session.delegated_latest_launch_at);
+  const activity = nextNumber(session.delegated_last_activity_at);
+  const quiet = nextNumber(session.delegated_quiet_since);
+  const age = quiet > 0 && quiet <= now ? now - quiet : null;
+  const risky = unpaired > 0 && age != null && age >= 1800;
+  const limit = ["partial","unattributed","not-recorded"].includes(visibility)
+    ? " Cargento cannot see all work this session started." : "";
+  const times = (latest > 0 ? ` Latest launch ${nextSessionClock(latest)}.` : "") +
+    (activity > 0 ? ` Last recorded activity ${nextSessionClock(activity)}.` : "");
+  const quietText = risky ? ` Nothing recorded for ${Math.floor(age / 60)} minutes. A server left running can also show here.` : "";
+  return {draw:count > 0,risky,text:`Delegated work: ${count} recorded launch${count === 1 ? "" : "es"}; ` +
+    `${unpaired} of this session's launches ${unpaired === 1 ? "has" : "have"} no recorded completion.${times}${quietText}${limit}`};
+}
+
 function nextObservedString(value){
   return typeof value === "string" ? value.trim() : "";
 }
@@ -497,6 +521,10 @@ function nextObserved(payload, evidence){
     else if(session.stuckKnown) risks.push(nextObservedRisk(session, "loop", "Stuck signal", session.stuckText));
     else if(session.isWorking && source.turn && source.turn.long === true){
       risks.push(nextObservedRisk(session, "long-turn", "Long working turn", session.turnText));
+    }
+    else if(nextDelegatedWork(source, nextNumber(payload.generated)).risky){
+      risks.push(nextObservedRisk(session,"quiet-launch","Quiet delegated launch",
+        nextDelegatedWork(source,nextNumber(payload.generated)).text));
     }
   });
   const riskKeys = new Set(risks.map(nextSessionKey));

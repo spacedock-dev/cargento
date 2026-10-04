@@ -2446,13 +2446,26 @@ source token `chosen-prompt`. The five are published as `prompt_choices` on the 
 context only, each redacted by `records.safe_text` before it is bounded to the same 240 characters,
 and they are neither stored nor admitted here: no history field holds the list, and only the one
 the reader adopts is kept, as `annotation_goal`. A choice is resolved again on the server by its
-fact id, and refused unless it is still one of the five with the same text and time; a copied
+fact id, and refused unless its displayed text and time still match an offered source; a copied
 correction, a harness control and a local command are never offered. Authorship is inferred from the
 harness user-message shape and injected-prompt filter, which fails open; it is not proof a person
 wrote the message. The server resolves the published source again, requires its displayed text and
 source time to match, and refuses implicit adoption over an existing goal. Adoption uses the same
 240-character, one-line annotation writer. Its closed source token and source time survive with
 the revision and the reading that used it; an explicit goal save makes typed words instead.
+
+Amended by the owner, approving the Analyze drift plan, 2026-10-04: the menu's five choices are
+built only when the reader opens it. A listed later direction may also be explicitly chosen with
+"Use this as my goal". The server resolves its fact id in the same session's own source record,
+requires a person-authored message after the goal's direction floor, and verifies the displayed
+words, source time and saved revision again before adoption. Claude and Codex use a stable,
+bounded 32 MiB prefix so a listed history message can be reached after it leaves the live tail;
+missing, changing and ambiguous sources are refused. The draft asks whether to keep or clear
+standing outcome lines and saves only on Save intent. No list or whole source text is stored.
+Every offered goal choice masks named credential forms before raw line breaks are folded and
+before the goal cap is applied. This goal-only scan is uncached; Analyze keeps its own words.
+It returns at most 4,096 source facts but checks the rest of the bounded prefix for conflicting
+copies of those identities. Known source clipping remains an excerpt even after whitespace folds.
 Adopted goals never authorize unasked checks, even when the same revision has a typed output.
 
 The history record also keeps `first_prompt_at`, `annotation_goal_source`,

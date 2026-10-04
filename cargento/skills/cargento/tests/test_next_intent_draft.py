@@ -408,7 +408,7 @@ class TheQuestionBeforeThePressTest(_DraftPage):
         html = self.html()
         drift = visible_text(drift_of(html))
         self.assertIn(
-            f'You gave 2 later directions since your first prompt, the earliest at #1: "{EARLIEST}".',
+            f'You gave 2 later directions since your first prompt, the selected direction at #3: "{LATEST}".',
             drift,
         )
         self.assertNotIn("CONFLICT TO SETTLE", html)
@@ -421,10 +421,10 @@ class TheQuestionBeforeThePressTest(_DraftPage):
         self.assertIn("Add it to my intent", drift)
         self.assertNotIn('data-next-cockpit-action="reading-ask"', html)
         # The number named is a drawn row, and the direction Add opens (owner, 2026-09-28).
-        self.assertRegex(html, r'data-next-entry="1" data-next-entry-id="fo-b"')
+        self.assertRegex(html, r'data-next-entry="3" data-next-entry-id="fo-a"')
         add = re.search(r'data-next-cockpit-action="direction-add" data-arg="([^"]*)"', html)
         assert add is not None
-        self.assertEqual("fo-b", add.group(1))
+        self.assertEqual("fo-a", add.group(1))
 
     def test_a_typed_goal_floors_on_its_goal_save_time_not_its_revision_time(self) -> None:
         html = self.html(TYPED)
@@ -434,8 +434,8 @@ class TheQuestionBeforeThePressTest(_DraftPage):
     def test_several_since_saving_a_typed_goal(self) -> None:
         html = self.html(TYPED + "__s.annotation_goal_saved_at = 100;\n")
         self.assertIn(
-            f"You gave 2 later directions since saving your intent, the earliest at #1: "
-            f'"{EARLIEST}".',
+            f"You gave 2 later directions since saving your intent, the selected direction at #3: "
+            f'"{LATEST}".',
             visible_text(drift_of(html)),
         )
 
@@ -647,7 +647,7 @@ class AddItToMyIntentTest(_DraftPage):
     def test_a_short_direction_opens_for_review_and_saves_with_the_draft_adopted(self) -> None:
         out = self.opened(LATEST, then='__press("direction-save");\nawait __settle();\n')
         self.assertEqual(
-            {"harness": "claude", "sid": "focus-1", "fact_id": "fo-b"}, out["posts"][0]["body"]
+            {"harness": "claude", "sid": "focus-1", "fact_id": "fo-a"}, out["posts"][0]["body"]
         )
         self.assertEqual("/api/direction", out["posts"][0]["url"])
         save = out["posts"][1]
@@ -656,7 +656,7 @@ class AddItToMyIntentTest(_DraftPage):
             {
                 "harness": "claude",
                 "sid": "focus-1",
-                "add_direction": "fo-b",
+                "add_direction": "fo-a",
                 "text": LATEST,
                 "expected_revision": 0,
                 "adopt": "first-prompt",
@@ -669,7 +669,7 @@ class AddItToMyIntentTest(_DraftPage):
     def test_the_pending_line_says_where_it_came_from_and_that_it_is_not_saved(self) -> None:
         out = self.opened(LATEST)
         line = self.pending(out["html"])
-        self.assertIn("from #1 · not saved", visible_text(line))
+        self.assertIn("from #3 · not saved", visible_text(line))
         self.assertIn(f">{LATEST}</textarea>", line)
 
     def test_a_long_direction_is_shown_whole_counted_over_and_never_saved(self) -> None:
@@ -1324,7 +1324,7 @@ class KeepSettlesWithoutConsentTest(_DraftPage):
 class ThePendingLineTest(_DraftPage):
     """Layout F2 and Codex 7, and consent F3: which direction Add opens and how its line lives."""
 
-    def test_add_opens_the_earliest_unsettled_direction(self) -> None:
+    def test_add_opens_the_newest_unsettled_direction(self) -> None:
         out = self.drive(
             OPENED,
             "const arg = __argOf('direction-add');\n"
@@ -1333,9 +1333,9 @@ class ThePendingLineTest(_DraftPage):
             "console.log(JSON.stringify({arg, posts:__posts}));",
         )
         assert isinstance(out, dict)
-        self.assertEqual("fo-b", out["arg"])
-        self.assertEqual("fo-b", out["posts"][0]["body"]["fact_id"])
-        self.assertEqual("fo-b", out["posts"][1]["body"]["add_direction"])
+        self.assertEqual("fo-a", out["arg"])
+        self.assertEqual("fo-a", out["posts"][0]["body"]["fact_id"])
+        self.assertEqual("fo-a", out["posts"][1]["body"]["add_direction"])
 
     def test_a_second_add_press_keeps_the_edited_line_and_focuses_it(self) -> None:
         out = self.drive(
@@ -1358,18 +1358,18 @@ class ThePendingLineTest(_DraftPage):
         )
         assert isinstance(out, str)
         line = visible_text(pending_line(out))
-        self.assertIn("from your direction · not saved", line)
-        self.assertNotIn("#1", line)
+        self.assertIn("from #2 · not saved", line)
+        self.assertNotIn("#3", line)
 
-    def test_the_pending_line_goes_when_its_direction_is_no_longer_open(self) -> None:
+    def test_a_pending_listed_direction_stays_after_settlement(self) -> None:
         out = self.drive(
             OPENED,
-            OPEN_ADD + "__s.annotation_settled_through = 102; __s.annotation_settled_at = 105;\n"
+            OPEN_ADD + "__s.annotation_settled_through = 104; __s.annotation_settled_at = 105;\n"
             "await refreshNext();\nawait __settle();\n"
             "console.log(JSON.stringify(__els.app.innerHTML));",
         )
         assert isinstance(out, str)
-        self.assertNotIn("data-next-cockpit-direction-line", out)
+        self.assertIn("data-next-cockpit-direction-line", out)
 
     def test_the_pending_line_goes_once_its_save_lands(self) -> None:
         out = self.drive(
@@ -1418,7 +1418,7 @@ class EveryOpenDirectionIsDrawnTest(_DraftPage):
         work = visible_text(html[html.index("data-next-cockpit-work") :])
         self.assertNotIn("from before your intent\u2019s window opened", work)
         self.assertIn(
-            f'You gave 2 later directions since your first prompt, the earliest: "{EARLIEST}".',
+            f'You gave 2 later directions since your first prompt, the selected direction at #2: "{LATEST}".',
             visible_text(drift_of(html)),
         )
 
@@ -1440,7 +1440,7 @@ class EveryOpenDirectionIsDrawnTest(_DraftPage):
         )
         html = self.html('__s.first_prompt = ""; __s.first_prompt_at = null;\n' + later)
         self.assertIn(
-            "You gave 2 later directions since your latest prompt, the earliest at",
+            "You gave 2 later directions since your latest prompt, the selected direction at",
             visible_text(drift_of(html)),
         )
 

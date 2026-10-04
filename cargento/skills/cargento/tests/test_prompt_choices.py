@@ -226,7 +226,7 @@ class TheMenuOverARealSocket(_App):
 
     def _choices(self, port: int) -> Any:
         context = self._request(
-            port, "GET", f"/api/project-context?project=billing&session=claude:{SHORT}"
+            port, "GET", f"/api/project-context?project=billing&session=claude:{SHORT}&prompts=1"
         )
         self.assertNotIn(runtime_reading.WORDS_FIELD, json.dumps(context))
         return context["prompt_choices"]

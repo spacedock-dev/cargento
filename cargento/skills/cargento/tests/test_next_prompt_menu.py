@@ -209,14 +209,15 @@ class TheMenuIsOneNativeSelectTest(_DraftPage):
         # No option carries a key of its own: the select is the one control.
         self.assertNotIn(":prompt:p-", out["before"])
 
-    def test_no_menu_without_published_prompts_or_with_annotations_off(self) -> None:
+    def test_an_unloaded_menu_can_be_opened_but_annotations_off_has_none(self) -> None:
         none = self.page("__choices = [];\n")
         off = self.page("__dashboard.annotate = false;\n")
         assert isinstance(none, str)
         assert isinstance(off, str)
-        self.assertNotIn("next-intent-prompt-select", none)
+        self.assertIn("next-intent-prompt-select", none)
         self.assertNotIn("next-intent-prompt-select", off)
-        self.assertNotIn("Use your prompt", none + off)
+        self.assertIn("Use your prompt", none)
+        self.assertNotIn("Use your prompt", off)
 
     def test_a_malformed_choice_is_not_offered(self) -> None:
         out = self.page(

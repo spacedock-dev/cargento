@@ -2211,7 +2211,11 @@ def _annotate(  # noqa: PLR0913
                 return OUTCOME_UNCHANGED
             revision: Revision = {
                 **source_fields,
-                **_opened(source_fields, window_start, stamp),
+                **_opened(
+                    source_fields,
+                    _carried_window(last, source_fields, text_goal, window_start),
+                    stamp,
+                ),
                 **_goal_saved_at(last, source_fields, text_goal, stamp),
                 "n": last["n"] + 1,
                 "at": stamp,
@@ -2581,13 +2585,20 @@ def _goal_saved_at(
     return {"goal_saved_at": stamp}
 
 
+def _carried_window(last: Revision, provenance: Mapping[str, Any], goal: str, typed: Any) -> Any:
+    """Unchanged typed words keep their window, as their goal save time does."""
+    if not provenance and not _provenance(last) and last["goal"] == goal:
+        return last.get("window_start") or last["at"]
+    return typed
+
+
 def _opened(provenance: Mapping[str, Any], typed: Any, stamp: float) -> Window:
     """The window start a new revision stores: the words' own time.
 
     Adopted words, including an adopted goal carried under a lines-only save,
-    open at their source time. Typed words open at `typed`, recomputed on every
-    save as item 13 says, else at the save. A stamp that is not itself a moment
-    stores nothing, so the revision still reads back.
+    open at their source time. Unchanged typed words carry their window through
+    a lines-only save; new goal words open at `typed`, else at the save. A stamp
+    that is not itself a moment stores nothing, so the revision still reads back.
     """
     saved = reading.valid_prompt_time(stamp)
     if saved is None:
@@ -2643,6 +2654,17 @@ class PromptChoice(TypedDict):
     cut: bool
 
 
+def prompt_choice(
+    fact_id: str, at: float, words: str, cap: int, *, cut: bool = False
+) -> PromptChoice | None:
+    """Mask source words before folding and bounding every offered goal choice."""
+    reviewed, clipped, _ = direction_review(words, cap, cut=cut)
+    text = records.safe_text(reviewed, cap).strip()
+    if not text or records.harness_control(text):
+        return None
+    return {"fact_id": fact_id, "at": at, "text": text, "cut": clipped or text != reviewed}
+
+
 def prompt_choices(
     row: Mapping[str, Any], facts: Iterable[Mapping[str, Any]], cap: int
 ) -> list[PromptChoice]:
@@ -2651,9 +2673,9 @@ def prompt_choices(
     Owner ruling Q7, 2026-10-01, recorded in
     docs/design-reading-a-session.md#amended-2026-10-01-up-to-five-of-your-prompts-may-be-chosen.
     From the observed record's person-authored
-    messages for THIS session, each resolved whole: the message as a reading
-    reads it (`reading.WORDS_FIELD`, already redacted and bounded), clipped to
-    the goal's cap through `records.safe_text`, so the text offered is the text
+    messages for THIS session, each resolved whole for the private goal menu,
+    with named forms masked before raw separators are folded. Clipped to the
+    goal's cap through `prompt_choice`, so the text offered is the text
     an adoption stores. Refused exactly as the first-prompt draft refuses: a
     correction copied from Cargento, a harness control, and a local command
     (which the record already publishes with no words, so it never arrives).
@@ -2681,10 +2703,11 @@ def prompt_choices(
         fact_id = fact.get("fact_id")
         if at is None or not isinstance(words, str) or not isinstance(fact_id, str) or not fact_id:
             continue
-        text = records.safe_text(words, cap).strip()
-        if not text or records.harness_control(text):
-            continue
-        found.append({"fact_id": fact_id, "at": at, "text": text, "cut": text != words.strip()})
+        choice = prompt_choice(
+            fact_id, at, words, cap, cut=fact.get(records.GOAL_SOURCE_CUT_FIELD) is True
+        )
+        if choice is not None:
+            found.append(choice)
     found.sort(key=lambda choice: choice["at"])
     ordered = found[:1] + sorted(found[1:], key=lambda choice: choice["at"], reverse=True)
     choices: list[PromptChoice] = []

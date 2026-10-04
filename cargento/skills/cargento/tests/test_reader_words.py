@@ -562,7 +562,7 @@ SENTINEL = "SENTINEL-READER-WORDS"
 GET_ROUTES = {
     "/api/data": "/api/data?all=1",
     "/api/observe": f"/api/observe?harness=claude&sid={SHORT}",
-    "/api/project-context": f"/api/project-context?project=billing&session=claude:{SHORT}",
+    "/api/project-context": f"/api/project-context?project=billing&session=claude:{SHORT}&prompts=1",
     "/api/overlays": "/api/overlays",
     "/api/cleared": "/api/cleared",
     "/api/annotations": "/api/annotations",
@@ -609,6 +609,11 @@ class EveryPageRouteDropsTheWordsTest(_Collected):
     def test_no_get_route_answers_with_the_words(self) -> None:
         with (
             mock.patch.object(project_context, "collect", self.context),
+            mock.patch.object(
+                project_context,
+                "transcript_user_facts",
+                return_value=self.context()["semantic"]["facts"],
+            ),
             self.serving() as port,
         ):
             for route, path in GET_ROUTES.items():
@@ -637,7 +642,15 @@ class EveryPageRouteDropsTheWordsTest(_Collected):
             built["semantic"]["facts"][0][FIELD] = long
             return built
 
-        with mock.patch.object(project_context, "collect", context), self.serving() as port:
+        with (
+            mock.patch.object(project_context, "collect", context),
+            mock.patch.object(
+                project_context,
+                "transcript_user_facts",
+                return_value=context()["semantic"]["facts"],
+            ),
+            self.serving() as port,
+        ):
             _status, body = self.request(port, "GET", GET_ROUTES["/api/project-context"])
         self.assertNotIn(b"TAIL-PAST-THE-CAP", body)
         (choice,) = json.loads(body)["prompt_choices"]

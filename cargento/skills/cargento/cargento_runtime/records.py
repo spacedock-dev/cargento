@@ -13,6 +13,9 @@ import unicodedata
 from datetime import UTC, datetime
 from typing import Any, Final
 
+# Private goal-source metadata; never part of the Analyze words or their cache.
+GOAL_SOURCE_CUT_FIELD: Final = "goal_source_cut"
+
 # C0 and DEL, the zero-width space, the two directional marks, and the bidi
 # embedding and isolate ranges. Listed one by one across U+200B to U+200F rather
 # than as a range, because U+200C and U+200D are inside it and must survive:

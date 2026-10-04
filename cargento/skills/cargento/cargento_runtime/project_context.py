@@ -47,7 +47,9 @@ READER_WORDS_FIELD = "reader_words"
 AGENT_WORDS_CAP_CHARS = 1_000
 AGENT_WORDS_FIELD = "agent_words"
 # Every server-side-only words field, which no page route may publish.
-_SERVER_ONLY_FIELDS = frozenset({READER_WORDS_FIELD, AGENT_WORDS_FIELD})
+_SERVER_ONLY_FIELDS = frozenset(
+    {READER_WORDS_FIELD, AGENT_WORDS_FIELD, records.GOAL_SOURCE_CUT_FIELD}
+)
 # The harnesses whose top-level assistant text this module reads as the agent's messages.
 # Claude Code only for now; Codex's final answers are a follow-up.
 AGENT_MESSAGE_HARNESSES = ("claude",)
@@ -4535,13 +4537,21 @@ def transcript_tail_coverage(
 
 
 def transcript_user_facts(
-    config: RuntimeConfig, state: RuntimeState, path: str, harness: str, sid: str
+    config: RuntimeConfig,
+    state: RuntimeState,
+    path: str,
+    harness: str,
+    sid: str,
+    *,
+    goal_choices: bool = False,
 ) -> list[dict[str, Any]]:
     """Press-only user words from a bounded forward scan, never the published ledger.
 
     Starting at the beginning restores adopted prompts that left the tail. The
     existing backfill byte allowance bounds the scan; an incomplete final record
     is ignored. Cache only redacted, capped words and give each caller its own copy.
+    The uncached goal-menu arm additionally masks named forms before folding raw
+    separators; it never changes the default Analyze words or their cache.
     """
     if harness not in {"claude", "codex"}:
         return []
@@ -4552,32 +4562,41 @@ def transcript_user_facts(
             return []
         with state.cache_lock:
             cached = state.transcript_user_cache.get(key)
-            if cached is not None and cached[:2] == (stamp.st_size, stamp.st_mtime_ns):
+            if (
+                not goal_choices
+                and cached is not None
+                and cached[:2] == (stamp.st_size, stamp.st_mtime_ns)
+            ):
                 return copy.deepcopy(cached[2])
         raw = runtime_io.read_prefix_bytes(path, max_bytes=SEMANTIC_BACKFILL_MAX_BYTES)
         if len(raw) < stamp.st_size and not raw.endswith(b"\n"):
             raw = raw.rsplit(b"\n", 1)[0] if b"\n" in raw else b""
-        facts = _transcript_user_scan(config, raw, harness, sid)
+        facts = _transcript_user_scan(config, raw, harness, sid, goal_choices=goal_choices)
         after = os.stat(path)
-        if (after.st_size, after.st_mtime_ns) != (stamp.st_size, stamp.st_mtime_ns):
+        if (after.st_size, after.st_mtime_ns) != (stamp.st_size, stamp.st_mtime_ns) or (
+            goal_choices and (after.st_dev, after.st_ino) != (stamp.st_dev, stamp.st_ino)
+        ):
             return []
     except OSError:
         return []
-    with state.cache_lock:
-        runtime_state.bounded_put(
-            state.transcript_user_cache,
-            key,
-            (stamp.st_size, stamp.st_mtime_ns, facts),
-            limit=TRANSCRIPT_USER_CACHE_ENTRIES,
-        )
+    if not goal_choices:
+        with state.cache_lock:
+            runtime_state.bounded_put(
+                state.transcript_user_cache,
+                key,
+                (stamp.st_size, stamp.st_mtime_ns, facts),
+                limit=TRANSCRIPT_USER_CACHE_ENTRIES,
+            )
     return copy.deepcopy(facts)
 
 
 def _transcript_user_scan(
-    config: RuntimeConfig, raw: bytes, harness: str, sid: str
+    config: RuntimeConfig, raw: bytes, harness: str, sid: str, *, goal_choices: bool = False
 ) -> list[dict[str, Any]]:
     facts: list[dict[str, Any]] = []
     seen: set[tuple[str, str]] = set()
+    goal_sources: dict[str, DirectionText] = {}
+    ambiguous: set[str] = set()
     for line in raw.splitlines():
         try:
             record = json.loads(line)
@@ -4587,14 +4606,37 @@ def _transcript_user_scan(
         if event is None:
             continue
         fact = _semantic_fact_from_event(event, "steer", "user_message", "")
+        if goal_choices:
+            fact_id = str(fact["fact_id"])
+            # The returned list stays bounded, but a later conflicting source
+            # inside the byte budget must still invalidate an offered identity.
+            if len(facts) >= TRANSCRIPT_USER_FACTS_MAX and fact_id not in goal_sources:
+                continue
+            source_words = _direction_words(config, record, harness)
+            previous = goal_sources.get(fact_id)
+            if previous is not None and previous != source_words:
+                ambiguous.add(fact_id)
+            goal_sources[fact_id] = source_words
+            # This uncached menu-only arm sees raw separators before masking;
+            # the default Analyze words and its cache remain unchanged.
+            fact[READER_WORDS_FIELD] = records.safe_text(
+                " ".join(records.mask_prose(source_words.text).split()), READER_WORDS_CAP_CHARS
+            )
+            fact[records.GOAL_SOURCE_CUT_FIELD] = source_words.cut
         key = (str(fact["fact_id"]), str(fact.get(READER_WORDS_FIELD) or ""))
         if key in seen:
             continue
         seen.add(key)
-        facts.append(fact)
-        if len(facts) >= TRANSCRIPT_USER_FACTS_MAX:
+        if len(facts) < TRANSCRIPT_USER_FACTS_MAX:
+            facts.append(fact)
+        if not goal_choices and len(facts) >= TRANSCRIPT_USER_FACTS_MAX:
             break
-    return facts
+    # Keep an empty, verified source match for an ambiguous identity, so a
+    # menu caller cannot fall back to its already-folded published words.
+    return [
+        {**fact, READER_WORDS_FIELD: ""} if str(fact["fact_id"]) in ambiguous else fact
+        for fact in facts
+    ]
 
 
 def frozen_claude_user_messages(
@@ -4773,55 +4815,71 @@ class DirectionText(NamedTuple):
 def direction_text(
     config: RuntimeConfig, state: RuntimeState, harness: str, sid: str, fact_id: str
 ) -> DirectionText:
-    """The whole text of one user message in the bounded tail, found by its fact id, or "".
+    """The source words of one direction, verified by its published fact id.
 
-    For DRC-4682's "Add it to my intent", which needs a direction's raw words
-    where the published fact holds only its first sentence. Found by
-    recomputing each tail message's fact id exactly as `instruction_events`
-    and `_semantic_fact_from_event` publish it, first of a duplicate pair
-    included, because a Claude user message carries no record id to look up:
-    Claude spells it `uuid`, and joining that to the hash would move every
-    stored citation of a Claude message (the 2026-09-12 precedent in
-    `_semantic_fact_from_event`). A message older than the tail is not found,
-    and the caller refuses rather than saving the summary in its place.
+    Claude and Codex search a bounded prefix so a history-listed message can
+    still be opened after it leaves the live tail. Other harnesses keep their
+    existing source bounds. Recompute the published identity rather than
+    trusting a summary; refuse missing, changing or ambiguous source records.
     """
     transcript_path = observer.resolve_transcript(
         config, state, harness, sid
     ) or observer.resolve_directions(config, state, harness, sid)
     if not transcript_path:
         return DirectionText("")
-    seen: set[tuple[float, str]] = set()
     follow = harness not in observer.DIRECTION_HARNESSES
-    for raw in runtime_io.read_tail(config, transcript_path, follow_links=follow):
-        if not raw or not raw.lstrip().startswith("{"):
+    stamp = transcript_stamp(transcript_path)
+    if stamp is None:
+        return DirectionText("")
+    try:
+        lines = _direction_lines(config, transcript_path, harness, stamp, follow)
+    except OSError:
+        return DirectionText("")
+    matches: set[DirectionText] = set()
+    for raw_line in lines:
+        if not raw_line or not raw_line.lstrip().startswith("{"):
             continue
         try:
-            record = json.loads(raw)
+            record = json.loads(raw_line)
         except (ValueError, RecursionError):
             continue
         event = _instruction_event(config, record, harness, sid)
-        if event is None or (event["at"], event["title"]) in seen:
+        if event is None:
             continue
-        seen.add((event["at"], event["title"]))
         fact = _semantic_fact_from_event(event, "steer", _SEMANTIC_FACT_TYPES["steer"], "")
         if fact["fact_id"] == fact_id:
-            if harness in observer.DIRECTION_HARNESSES:
-                # A direction the harness cut short is refused rather than
-                # saved as the whole of what was typed.
-                direction = transcripts.antigravity_direction(record)
-                return DirectionText(
-                    direction.text if direction and not direction.truncated else ""
-                )
-            message = observer.parse_message_record(record)
-            if not message:
-                return DirectionText("")
-            text = str(message["text"])
-            # The command as typed, never the tags it arrived in.
-            command = transcripts.command_direction(config, text) if harness == "claude" else None
-            if command:
-                return DirectionText(command, transcripts.command_cut(text))
-            return DirectionText(text)
-    return DirectionText("")
+            matches.add(_direction_words(config, record, harness))
+    # A repeated identity with different words is not a choice the server can verify.
+    if transcript_stamp(transcript_path) != stamp or len(matches) != 1:
+        return DirectionText("")
+    return next(iter(matches))
+
+
+def _direction_lines(
+    config: RuntimeConfig, path: str, harness: str, stamp: tuple[int, int, int, int], follow: bool
+) -> list[str]:
+    if harness in {"claude", "codex"}:
+        raw = runtime_io.read_prefix_bytes(path, max_bytes=SEMANTIC_BACKFILL_MAX_BYTES)
+        if len(raw) < stamp[2] and not raw.endswith(b"\n"):
+            raw = raw.rsplit(b"\n", 1)[0] if b"\n" in raw else b""
+        return raw.decode("utf-8", errors="replace").splitlines()
+    return runtime_io.read_tail(config, path, follow_links=follow)
+
+
+def _direction_words(config: RuntimeConfig, record: Any, harness: str) -> DirectionText:
+    if harness in observer.DIRECTION_HARNESSES:
+        direction = transcripts.antigravity_direction(record)
+        return DirectionText(direction.text if direction and not direction.truncated else "")
+    message = observer.parse_message_record(record)
+    if not message:
+        return DirectionText("")
+    text = str(message["text"])
+    command = transcripts.command_direction(config, text) if harness == "claude" else None
+    return (
+        DirectionText(command, transcripts.command_cut(text))
+        if command
+        else DirectionText(text, len(text) >= records.EXTRACT_TEXT_CAP_CHARS)
+    )
 
 
 def _codex_dispatch_artifact(task_name: str) -> tuple[str, str, str, str] | None:

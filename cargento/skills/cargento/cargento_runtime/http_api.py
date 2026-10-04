@@ -47,6 +47,8 @@ from cargento_runtime import stream as runtime_stream
 _WEBSOCKET_GUID = b"258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
 
 if TYPE_CHECKING:
+    from collections.abc import Mapping
+
     from cargento_runtime.aggregate import Application
     from cargento_runtime.interaction_prototype import InteractionPrototype
     from cargento_runtime.observation import Observation
@@ -443,7 +445,11 @@ def _analysis_levels(
         == (harness, sid)
     )
     scan = _scan_of(context, harness, sid)
-    evidence = levels.Evidence(mine, scan, correction.unsettled_directions(row, facts, floor=floor))
+    evidence = levels.Evidence(
+        mine,
+        scan,
+        correction.unsettled_directions(row, facts, floor=floor, until=assessment.get("read_at")),
+    )
     level = levels.analysis_level(
         assessment,
         evidence,
@@ -462,6 +468,52 @@ def _analysis_levels(
             "cites": list(level.cites),
         }
     ]
+
+
+def _prompt_facts(
+    application: Any, row: Mapping[str, Any], facts: list[Any]
+) -> list[dict[str, Any]]:
+    """Restore only this session's listed person words, when the menu is opened."""
+    harness, sid = str(row.get("harness") or ""), str(row.get("sid") or "")
+    wanted = {"harness": harness, "sid": sid}
+    path = runtime_observer.resolve_transcript(application.config, application.state, harness, sid)
+    source = (
+        runtime_project_context.transcript_user_facts(
+            application.config, application.state, path, harness, sid, goal_choices=True
+        )
+        if path
+        else []
+    )
+    restored: list[dict[str, Any]] = []
+    for fact in facts:
+        if (
+            not isinstance(fact, dict)
+            or fact.get("source_session") != wanted
+            or fact.get("type") != "user_message"
+            or runtime_reading.author_of(fact) != runtime_reading.AUTHOR_PERSON
+        ):
+            continue
+        matches = {
+            (
+                str(item.get(runtime_reading.WORDS_FIELD) or ""),
+                item.get(records.GOAL_SOURCE_CUT_FIELD) is True,
+            )
+            for item in source
+            if item.get("fact_id") == fact.get("fact_id")
+            and item.get("at") == fact.get("at")
+            and item.get("source_session") == wanted
+        }
+        if len(matches) != 1:
+            continue
+        words, cut = next(iter(matches))
+        restored.append(
+            {
+                **fact,
+                runtime_reading.WORDS_FIELD: words,
+                records.GOAL_SOURCE_CUT_FIELD: cut,
+            }
+        )
+    return restored
 
 
 def _with_prompt_choices(
@@ -489,7 +541,9 @@ def _with_prompt_choices(
     ]
     choices = (
         annotation_store.prompt_choices(
-            matching[0], _facts_of(context), application.config.annotation_text_cap_chars
+            matching[0],
+            _prompt_facts(application, matching[0], _facts_of(context)),
+            application.config.annotation_text_cap_chars,
         )
         if application.config.annotations_enabled and len(matching) == 1
         else []
@@ -1064,9 +1118,10 @@ class _RequestHandler(BaseHTTPRequestHandler):
         result = copied_corrections.mark(result, collected["sessions"])
         if focus is not None:
             result = _with_levels(application, result, collected["sessions"], focus, project)
-            result = _with_prompt_choices(
-                application, result, collected["sessions"], focus, project
-            )
+            if parse_qs(url.query).get("prompts", ["0"])[0] == "1":
+                result = _with_prompt_choices(
+                    application, result, collected["sessions"], focus, project
+                )
         # The page shows titles; a reader message whole is for a reading only.
         result = runtime_project_context.for_page(result)
         self._send(
@@ -2214,18 +2269,27 @@ class _RequestHandler(BaseHTTPRequestHandler):
     ) -> annotation_store.PromptChoice | None:
         """The server's own choice for the fact id the page sent, or None (Q7).
 
-        Resolved from this session's record as the page's list was, so a fact
-        that is not one of the reader's offered prompts, or whose words have
-        changed since they were offered, adopts nothing.
+        Resolve one of the five menu prompts or an explicitly selected later
+        direction from this session's own record. The final adoption checks
+        the offered words, source time and revision again before writing.
         """
         if not isinstance(fact_id, str) or not fact_id:
             return None
         choices = annotation_store.prompt_choices(
             row,
-            self._session_facts(row),
+            _prompt_facts(self.server.application, row, self._session_facts(row)),
             self.server.application.config.annotation_text_cap_chars,
         )
-        return next((choice for choice in choices if choice["fact_id"] == fact_id), None)
+        choice = next((choice for choice in choices if choice["fact_id"] == fact_id), None)
+        if choice is not None:
+            return choice
+        found = self._later_direction(row, fact_id)
+        if found is None:
+            return None
+        at, words, cut = found
+        return annotation_store.prompt_choice(
+            fact_id, at, words, self.server.application.config.annotation_text_cap_chars, cut=cut
+        )
 
     def _session_row(self, harness: str, sid: str) -> dict[str, Any] | None:
         """This session's published row, or None. See `_published_row`."""
@@ -2264,10 +2328,9 @@ class _RequestHandler(BaseHTTPRequestHandler):
 
         Every check is the server's own: the fact must be a person's message
         in THIS session's published record, later than the words it would join
-        (`annotations.direction_floor`), and still in the record's tail, where
-        its whole text is read again (`project_context.direction_text`). A
-        direction the tail no longer reaches is refused rather than stood in
-        for by its summary, which would be saving a summary
+        (`annotations.direction_floor`), with its whole text read again from
+        the bounded source (`project_context.direction_text`). A direction
+        outside that bound is refused rather than stood in for by its summary
         (`annotations.direction_floor` cites the ruling).
         """
         application = self.server.application
@@ -2383,6 +2446,12 @@ class _RequestHandler(BaseHTTPRequestHandler):
                 "text": text,
                 "clipped": clipped,
                 "fits": fits,
+                "goal_choice": annotation_store.prompt_choice(
+                    str(fact_id), found[0], found[1], config.annotation_text_cap_chars, cut=found[2]
+                )
+                if harness in annotation_store.ADOPTION_HARNESSES
+                and not records.harness_control(found[1])
+                else None,
             }
         self._send(json.dumps(answer, separators=(",", ":")).encode(), "application/json")
 

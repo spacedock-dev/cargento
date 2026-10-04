@@ -1,0 +1,27 @@
+{
+  "measurement": "model-free dry ledger listings; current arms previously used wide windows",
+  "model_calls": 0,
+  "counts": {
+    "cuts": 99,
+    "claim_check_cites_wide": 1,
+    "claim_check_cites_narrow": 1,
+    "claim_readings_with_checks": 1,
+    "claim_readings_losing_checks": 0,
+    "differing_cuts": 68
+  },
+  "wide_by_kind": {
+    "user_message": 213,
+    "tool_report": 380,
+    "agent_message": 871
+  },
+  "narrow_by_kind": {
+    "user_message": 69,
+    "tool_report": 211,
+    "agent_message": 472
+  },
+  "median_gap_minutes": 40.034991665681204,
+  "limitations": [
+    "cold counterfactual history, not original live publication",
+    "stored claims citations measure listed checks, not new model conclusions"
+  ]
+}

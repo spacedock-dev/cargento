@@ -378,11 +378,11 @@ press `Analyze drift`, which adopts the draft. `Use your prompt` lists up to fiv
 prompts, and choosing one fills the goal box for you to save. Analyze drift, Keep and an added line's save are refused
 while the goal box or the outcome lines hold an edit you have not saved, because each would stand
 on words that are not on screen; your edit stays in the box. No drift level or pill is drawn over
-an unsaved draft. Once a goal is saved, a "Saved" disclosure under the Intent heading holds the revision line.
+an unsaved draft. Once a goal is saved, "Saved" names the window's opening time and holds the revision line. Adding or editing outcome lines keeps that window; new goal words open another.
 
 A direction you gave after your intent (after the saved goal's words, or after the drafted prompt)
 is asked about before the press, in the control's place: "You gave a later direction at #n" names
-the entry by its number in the list (of several, it quotes the earliest, the one Add opens), and
+the selected entry by its number in the list (the newest is preselected; you can choose another), and
 every unsettled one is listed at its own number past the twenty-row bound. Nothing there decides whether it changes what you asked for: that is yours, and
 Cargento does not write into the session either way. `Keep my intent and analyze` settles them
 through the newest one shown, adopting a draft in the same write, and starts the analysis. Of two
@@ -391,11 +391,18 @@ shown. Keep
 never gives the Allow: where none is given yet it reads `Keep my intent`, settles, and asks you to
 press `Allow and analyze`, beside its disclosure, to send it; where no analysis can start it reads
 `Keep my intent`, settles, and says no analysis was started. `Add it to my intent` opens the
-earliest unsettled direction's whole text as a pending line under Expected outcome, marked "not
+selected direction's whole text as a pending line under Expected outcome, marked "not
 saved", for you to edit, and its save settles through that direction only, so the question comes
 back for any later one: a line over 240 characters is refused rather than clipped, and at six
-lines you choose the line it replaces. While
-a later direction is unsettled a reading states no departure at all.
+lines you choose the line it replaces. "Use this as my goal" fills a draft, asks whether to keep
+standing outcome lines, and waits for Save intent. Add on an activity entry opens that listed
+direction too. The prompt menu resolves choices when opened. An unsettled direction at or before
+a stored reading demotes its intent rows; a later message labels the reading as preceding it.
+
+Delegated work names recorded launches and their clocks when present. Missing or partial
+attribution says Cargento cannot see all the work; a missing count is not zero. An unpaired
+launch followed by thirty quiet minutes in the last turn adds an At-risk item and a question
+to copy into the session. It records no finding about whether a process is running or finished.
 
 A reading you asked for states its departures once, in its result. What the checks run while you
 were away raised is reviewed under `Raised while you were away: N`, drawn only where they raised
@@ -736,7 +743,7 @@ Paths 2 and 3 are complementary and can both be installed. Keep `Notification` o
 | `POST /api/dismiss` | Mark one session handled, or with `{"clear": false}` put one back. Body is `{"harness", "sid"}` and carries no timestamp — the watermark is the server's clock. Answers `persisted: false` when the store could not be written. 503 under `--no-dismiss`. |
 | `POST /api/tripwire` | Save, Remove or Rearm one workflow stage condition. Requires `action`, opaque `id`, declared `stage` and `expected_revision`; stale revisions return 409, failed writes 503. Disabled by `--no-tripwires`. |
 | `POST /api/annotate` | Record a goal or the expected outcome checklist against one session, clear both, or settle a later direction; the paragraph on what you asked for above has the body. Answers `persisted` (are the words on disk) and `outcome`, one of `stored`, `unchanged`, `refused`, `unwritable`, `untrusted` or `unreadable`, so a refused request and a failed write are told apart and re-saving the same words is not reported as a new revision. 503 under `--no-annotations`. |
-| `POST /api/direction` | Open one later direction you gave for review before adding it as a line. Body is `{"harness", "sid", "fact_id"}`. Answers the message's whole text, redacted, on one line and bounded at 2,000 characters, with `clipped` and `fits` (whether the store would take it as a line); every direction it will not open answers one `{"ok": false, "reason": "unavailable"}` body. Stores nothing of its own; the collection it runs to read the session may rewrite the semantic history store, as any collection does. Loopback-only and refused on a document navigation; 503 under `--no-annotations`. |
+| `POST /api/direction` | Open one later direction you gave for review before adding it as a line. Body is `{"harness", "sid", "fact_id"}`. Answers the message's whole text, redacted, on one line and bounded at 2,000 characters, with `clipped` and `fits` (whether the store would take it as a line), and for Claude Code or Codex a verified `goal_choice` for explicit adoption; every direction it will not open answers one `{"ok": false, "reason": "unavailable"}` body. Stores nothing of its own; the collection it runs to read the session may rewrite the semantic history store, as any collection does. Loopback-only and refused on a document navigation; 503 under `--no-annotations`. |
 | `POST /api/correction` | Compose Steer back's correction for a Claude Code session. Body is `{"harness", "sid"}`. Answers `{"ok": true, "parts": [...]}`, each part text or `{"entry": fact_id}` for the page to number, built only from your saved goal and lines, each line's state and entry times, and the first sentence of an agent message whose claim the record contradicts or does not show; `{"ok": false, "reason": "too-long", "why": ...}` over 2,000 characters; and one `{"ok": false, "reason": "nothing"}` body otherwise. Stores nothing of its own (its collection may rewrite the semantic history store, as `/api/direction`'s does) and never sends anything to the session. Loopback-only and refused on a document navigation; 503 under `--no-annotations`. |
 | `/api/cleared` | The sessions marked handled: a harness key, a session id and when each was marked, and nothing else. 503 under `--no-dismiss`. |
 | `/api/annotations` | Every session you have typed a goal or an expected outcome line against, including sessions no longer on the board, with what an unasked check raised against each. Serves the words themselves, so it is read when the Intent log is opened rather than on the refresh loop. 503 under `--no-annotations`. |

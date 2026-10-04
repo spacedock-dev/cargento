@@ -112,14 +112,18 @@ def _unsettled(row: Mapping[str, Any], later: list[dict[str, Any]]) -> list[dict
 
 
 def unsettled_directions(
-    row: Mapping[str, Any], facts: Iterable[Any], *, floor: float | None
+    row: Mapping[str, Any], facts: Iterable[Any], *, floor: float | None, until: Any = None
 ) -> int:
     """How many later directions stand unsettled, by the rule `compose` steers from.
 
     The live estimate's `unsettled_directions` (DRC-4696), so the two never
     disagree about whether a direction is still open.
     """
-    return len(_unsettled(row, _later_directions(_own(row, facts), floor)))
+    stopped = reading.valid_prompt_time(until)
+    return sum(
+        stopped is None or (reading.valid_prompt_time(f.get("at")) or 0.0) <= stopped
+        for f in _unsettled(row, _later_directions(_own(row, facts), floor))
+    )
 
 
 def _failed_checks(
@@ -440,8 +444,9 @@ def compose(
     lines = _saved_lines(row)
     if not goal.strip() and not lines:
         return {"ok": False, "reason": REASON_NOTHING}
-    later = _later_directions(own, floor)
-    unsettled = bool(_unsettled(row, later))
+    assessment = row.get("annotation_assessment")
+    read_at = assessment.get("read_at") if isinstance(assessment, dict) else None
+    unsettled = unsettled_directions(row, own, floor=floor, until=read_at) > 0
     window = reading.valid_prompt_time(row.get("annotation_window_start")) or 0.0
     failed = _failed_checks(own, window, person_at)
     rows = _current_rows(row, own, unsettled=unsettled, lines_judged=lines_judged)
