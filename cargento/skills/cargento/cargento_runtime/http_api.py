@@ -500,9 +500,9 @@ def _prompt_facts(
             and item.get("at") == fact.get("at")
             and item.get("source_session") == wanted
         }
-        if len(matches) > 1:
+        if len(matches) != 1:
             continue
-        words = next(iter(matches)) if matches else fact.get(runtime_reading.WORDS_FIELD)
+        words = next(iter(matches))
         restored.append({**fact, runtime_reading.WORDS_FIELD: words})
     return restored
 

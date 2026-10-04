@@ -234,6 +234,18 @@ class AListedDirectionReachesItsSource(_ClaudeSession):
         self.assertEqual(before, after)
         self.assertNotEqual(before[-1]["reader_words"], menu[-1]["reader_words"])
 
+    def test_missing_raw_source_never_offers_folded_words_as_a_goal(self) -> None:
+        self.session.prompt("Keep retry. AKIAIOSFODNN7\nEXAMPLE")
+        self.session.save(self.path)
+        fact = max(
+            (item for item in self.facts() if item["type"] == "user_message"),
+            key=lambda item: item["at"],
+        )
+        app = SimpleNamespace(config=self.config, state=self.state)
+        with mock.patch.object(runtime_io, "read_prefix_bytes", side_effect=PermissionError):
+            restored = http_api._prompt_facts(app, _row(), [fact])
+            self.assertEqual([], annotation_store.prompt_choices(_row(), restored, 240))
+
 
 class AReadingKeepsTheBaselineItRead(unittest.TestCase):
     def test_a_message_after_the_read_does_not_erase_a_departure(self) -> None:
@@ -518,6 +530,36 @@ class TheServerVerifiesAnExplicitDirection(_ClaudeSession):
 
 
 class ChoosingADirectionDoesNotSaveIt(_DraftPage):
+    def test_a_closed_pending_native_menu_is_not_reopened_by_its_reply(self) -> None:
+        for close in (
+            '__fire("focusout",{relatedTarget:null,target});',
+            '__fire("keydown",{type:"keydown",key:"Escape",target,preventDefault(){}});',
+        ):
+            with self.subTest(close=close):
+                got = self.drive(
+                    after="""
+let finish; let picker = 0;
+__fetchImpl = async () => await new Promise(resolve => {finish = () => resolve({ok:true,json:async()=>({prompt_choices:[{fact_id:"menu",at:104,text:"Choose retry",cut:false}]})});});
+const select = {tagName:"SELECT",dataset:{},isConnected:true,focus(){},showPicker(){picker++;},closest(selector){return selector === "[data-next-cockpit-prompt-select]" ? this : null;}};
+const target = select;
+nextIntentPromptMenuOpen({type:"pointerdown",target,preventDefault(){}});
+await __settle();
+"""
+                    + close
+                    + """
+finish(); await __settle(); await __settle();
+console.log(JSON.stringify({picker,menu:nextIntentPromptLists.get("claude:focus-1")}));
+""",
+                )
+                self.assertFalse(got["menu"]["open"])
+                self.assertEqual(0, got["picker"])
+
+    def test_one_unpaired_launch_uses_singular_grammar(self) -> None:
+        got = self.drive(
+            after='console.log(JSON.stringify(nextDelegatedWork({delegated_launches:1,delegated_unpaired:1,delegated_visibility:"recorded"},1910)));'
+        )
+        self.assertIn("1 of this session's launches has no recorded completion", got["text"])
+
     def test_a_goal_typed_while_the_direction_opens_survives_the_reply(self) -> None:
         got = self.drive(
             self.CHOICE,
@@ -724,7 +766,7 @@ console.log(JSON.stringify({said,posts:__posts}));
             after="""
 const events = [];
 const select = {isConnected:true,focus(){events.push("focus");},showPicker(){events.push("picker");}};
-nextIntentLoadPromptChoices = async () => {events.push("load");};
+nextIntentLoadPromptChoices = async () => {events.push("load");nextIntentPromptLists.set("claude:focus-1",{open:true});};
 nextIntentPromptMenuOpen({type:"keydown",key:"ArrowDown",preventDefault(){events.push("prevent");},target:{closest:()=>select}});
 await __settle();
 console.log(JSON.stringify(events));

@@ -8714,7 +8714,7 @@ function nextIntentPromptMenuOpen(event){
     event.preventDefault();
     select.focus();
     nextIntentLoadPromptChoices(session).then(() => {
-      if(!select.isConnected) return;
+      if(!select.isConnected || nextIntentPromptLists.get(sessKey(session))?.open !== true) return;
       try{ select.showPicker(); }catch(_error){ select.focus(); }
     });
   }else nextIntentLoadPromptChoices(session);

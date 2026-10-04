@@ -19,7 +19,7 @@ function nextDelegatedWork(session, now = nextNumber(nextData && nextData.genera
     (activity > 0 ? ` Last recorded activity ${nextSessionClock(activity)}.` : "");
   const quietText = risky ? ` Nothing recorded for ${Math.floor(age / 60)} minutes. A server left running can also show here.` : "";
   return {draw:count > 0,risky,text:`Delegated work: ${count} recorded launch${count === 1 ? "" : "es"}; ` +
-    `${unpaired} of this session's launches have no recorded completion.${times}${quietText}${limit}`};
+    `${unpaired} of this session's launches ${unpaired === 1 ? "has" : "have"} no recorded completion.${times}${quietText}${limit}`};
 }
 
 function nextObservedString(value){
