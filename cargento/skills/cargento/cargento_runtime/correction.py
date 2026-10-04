@@ -7,7 +7,10 @@ owner approved the template on 2026-09-28 as exact text, and ruled that the serv
 entry as a placeholder the page fills with "#n" from its own numbering or drops, because a number
 is recomputed on the page and never stored (item 11). So nothing here reads a summary, a command, a
 check name, tool output, a reading's detail or a message's words: a fact contributes its time and
-its id, and the id travels only inside a placeholder.
+its id, and the id travels only inside a placeholder. One exception, by the owner's delegation of
+2026-10-04: a claim of the agent's that the record contradicts or does not show is quoted by its
+message's published title, the first sentence the activity list already shows, and never by the
+words a reading read.
 
 `compose` is pure. The route hands it the session's published row, its observed record and the
 later-direction floor (`annotations.direction_floor`), and it answers the parts or why there are
@@ -155,11 +158,15 @@ class _Rows:
         *,
         unsettled: bool,
         lines_judged: bool,
+        sid: str = "",
     ) -> None:
         criteria = assessment.get("criteria")
         self.criteria: Mapping[str, Any] = criteria if isinstance(criteria, dict) else {}
         self.window = _reading_window(assessment)
         self.by_id = {str(f["fact_id"]): _as_evidence(f, harness) for f in facts}
+        self.facts = {str(f["fact_id"]): f for f in facts}
+        self.harness = harness
+        self.sid = sid
         self.unsettled = unsettled
         self.lines_judged = lines_judged
 
@@ -220,6 +227,57 @@ class _Rows:
         ]
         return (_CONSISTENT, reported[0]) if reported and line else (_NOT_SHOWN, None)
 
+    def claim(self) -> dict[str, Any] | None:
+        """The agent's message a claims departure or `unsupported` rests on, or None.
+
+        Re-resolved against the record as it stands now by the resolver that
+        first accepted it, as `levels` re-reads a stored line, so the text never
+        says a claim is unshown that the panel beside it has withdrawn.
+        """
+        row = self.criteria.get(reading.CONSTRAINT_CLAIMS)
+        why = row.get("why") if isinstance(row, dict) else None
+        if (
+            self.unsettled
+            or not isinstance(row, dict)
+            or set(row) - set(reading.CRITERION_KEYS)
+            or (why and (not isinstance(why, str) or why not in reading.WHY_TOKENS))
+            or row.get("result") not in {reading.RESULT_DEPARTURE, reading.RESULT_UNSUPPORTED}
+        ):
+            return None
+        raw = row.get("cites")
+        facts = [
+            self.facts[c]
+            for c in (raw if isinstance(raw, list) else [])
+            if isinstance(c, str) and c in self.facts
+        ]
+        entries = reading.build_ledger(
+            facts, self.harness, self.sid, tool_output={}, read_agent_words=True
+        )
+        for entry in entries:
+            entry["changed_after"] = self.facts[entry["id"]].get("changed_after") is True
+        resolved = reading._resolve_one(  # noqa: SLF001 - the resolver's own rules, re-applied
+            {
+                "token": reading.token_for(row.get("result")),
+                "cites": list(range(1, len(entries) + 1)),
+                "detail": "",
+            },
+            dict(enumerate(entries, 1)),
+            name=reading.CONSTRAINT_CLAIMS,
+            clause="",
+            detail_cap_chars=0,
+            window_start=self.window,
+        )
+        if resolved.get("result") not in {reading.RESULT_DEPARTURE, reading.RESULT_UNSUPPORTED}:
+            return None
+        said = [
+            self.facts[c]
+            for c in resolved["cites"]
+            if self.facts[c].get("type") == reading.AGENT_MESSAGE_TYPE
+            and reading.valid_prompt_time(self.facts[c].get("at")) is not None
+            and reading.claim_title(self.facts[c])
+        ]
+        return said[0] if said else None
+
 
 def _saved_lines(row: Mapping[str, Any]) -> list[tuple[int, str]]:
     lines = []
@@ -246,6 +304,7 @@ def _current_rows(
         str(row.get("harness") or ""),
         unsettled=unsettled,
         lines_judged=lines_judged,
+        sid=str(row.get("sid") or ""),
     )
 
 
@@ -291,6 +350,23 @@ def _body(
         else:
             body.append((_NOT_SHOWN, [f"- {text}: nothing recorded shows this yet"]))
     return body
+
+
+def _claim_line(fact: Mapping[str, Any], at: Callable[[Mapping[str, Any]], str]) -> list[Part]:
+    """The one line a claim the record contradicts or does not show adds.
+
+    Owner, 2026-10-04, wording delegated: "You said <claim, first sentence> at
+    #n; the record does not show it." The claim is the message's published
+    title, its first sentence, which the page already shows; never its words.
+    Quoted, and its closing stop dropped, so it reads as what was said rather
+    than as this sentence's own clause.
+    """
+    claim = reading.claim_title(fact).rstrip(".").strip()
+    return [
+        f'You said "{claim}" at {at(fact)}',
+        _placeholder(fact),
+        "; the record does not show it.",
+    ]
 
 
 def _tail(
@@ -342,18 +418,20 @@ def compose(
         return clock(reading.valid_prompt_time(fact.get("at")) or 0.0)
 
     body = _body(lines, rows, at)
+    claim = rows.claim() if rows is not None else None
     departed = any(state == _DEPARTED for state, _ in body) or (
         rows is not None and rows.state(reading.CONSTRAINT_GOAL)[0] == _DEPARTED
     )
-    if not departed and not failed and not later:
+    if not departed and claim is None and not failed and not later:
         return {"ok": False, "reason": REASON_NOTHING}
     head: list[list[Part]] = [[f"Back to my goal: {goal}"]] if goal.strip() else []
+    said = [_claim_line(claim, at)] if claim is not None else []
     tail = _tail(failed, later, at)
 
     def assemble() -> list[Part]:
         opening: list[Part] = ["Where it stands against what I expect:"]
         middle: list[list[Part]] = [opening, *(line for _, line in body)]
-        return _joined([*head, *(middle if body else []), *tail])
+        return _joined([*head, *(middle if body else []), *said, *tail])
 
     parts = assemble()
     # The consistent lines go first, the last of them first, and nothing is ever cut short.

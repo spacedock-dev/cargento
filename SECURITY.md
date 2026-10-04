@@ -132,7 +132,9 @@ The posture rests on two invariants:
    the count above: `POST /api/direction` hands back the whole text of one later direction you
    gave, for review before it becomes an outcome line, and `POST /api/correction` hands back Steer
    back's correction, which is the goal and outcome lines you saved, each line's state and the
-   times of the entries it rests on. Each runs a collection to read the session, and that
+   times of the entries it rests on, and since 2026-10-04 the first sentence of an agent message
+   whose claim the record contradicts or does not show, the title the activity list already
+   publishes. Each runs a collection to read the session, and that
    collection may rewrite `semantic-work-history.json` as any collection does. [Analyze drift, Cancel and copied corrections](#analyze-drift-cancel-and-copied-corrections)
    owns the bounds of both.
    One `GET` reads wider than the rest, and is named here for that reason rather than for the
@@ -1117,6 +1119,9 @@ sends more of what the reader typed than the first sentence did, including any p
 later sentence that redaction does not recognize. The owner accepted that, because a first sentence
 dropped the point of a measured correction
 ([the amendment](docs/design-reading-a-session.md#amended-2026-10-01-a-reading-sees-the-readers-whole-message)).
+A goal adopted from one of those messages is sent as that message's whole field too, from the same
+half, in place of the goal box's 240 characters; the goal stored and shown stays the excerpt
+([the amendment](docs/design-reading-a-session.md#amended-2026-10-04-an-adopted-goal-is-read-whole)).
 The field holding the whole message (`reader_words`) is held in memory for the reading and is
 neither stored nor published: the history stores' field allowlists do not name it, and
 `/api/project-context` drops it (`project_context.for_page`), so the page still shows the first

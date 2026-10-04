@@ -266,7 +266,7 @@ class ChoosingFillsTheGoalAsAPendingAdoptionTest(_DraftPage):
         out = self.page(after='__pick("p-long");\nawait __settle();\n' + HTML)
         assert isinstance(out, str)
         self.assertEqual(LONG, goal_box(out))
-        self.assertIn("Shown excerpt only.", visible_text(intent_of(out)))
+        self.assertIn("Excerpt. Analyze reads the whole prompt.", visible_text(intent_of(out)))
 
     def test_save_intent_adopts_the_choice_by_its_fact_and_time(self) -> None:
         out = self.page(

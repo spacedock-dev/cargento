@@ -72,6 +72,12 @@ REASON_DEPARTURE = "departure"
 REASON_LINE_NOT_SHOWN = "line-not-shown-by-a-check"
 REASON_READING_MALFORMED = "reading-malformed"
 REASON_SCAN_INCOMPLETE = "scan-incomplete"
+# What the agent claimed, read by the analysis (owner, 2026-10-04): a claim the
+# record contradicts, and one nothing in the record read shows. Each reads
+# Medium, because the first drift replay run's most common drift was a status
+# claim no intent line speaks to; neither is a departure from the intent.
+REASON_CLAIM_CONTRADICTED = "claim-contradicted"
+REASON_CLAIM_NOT_SHOWN = "claim-not-shown"
 REASONS = (
     REASON_DRAFT_UNSAVED,
     REASON_FAILED_CHECK,
@@ -93,6 +99,8 @@ REASONS = (
     REASON_LINE_NOT_SHOWN,
     REASON_READING_MALFORMED,
     REASON_SCAN_INCOMPLETE,
+    REASON_CLAIM_CONTRADICTED,
+    REASON_CLAIM_NOT_SHOWN,
 )
 
 _NOT_RECORDED = "not-recorded"
@@ -412,6 +420,8 @@ class _LineTally:
     departed: bool = False
     aged: bool = False
     not_shown: int = 0
+    claim_contradicted: bool = False
+    claim_unshown: bool = False
     cites: list[str] = field(default_factory=list)
     shown: list[str] = field(default_factory=list)
 
@@ -433,7 +443,7 @@ class _LineTally:
         # reads Medium here (owner ruling, 2026-10-03).
         resolved = reading._resolve_one(  # noqa: SLF001 - reuse the seven-rule evidence contract
             {
-                "token": next((t for t, r in reading.RESULT_BY_TOKEN.items() if r == result), ""),
+                "token": reading.token_for(result),
                 "cites": list(range(1, len(cited) + 1)),
                 "detail": "",
             },
@@ -444,6 +454,19 @@ class _LineTally:
             window_start=window,
             line_text=line_text or str(row.get("clause") or ""),
         )
+        if name == reading.CONSTRAINT_CLAIMS:
+            # Its own two flags, never `departed`: a claim is not the intent.
+            # The ids are the agent's messages it rests on, which the page numbers.
+            said = [
+                c for c in resolved["cites"] if self.by_id[c]["type"] == reading.AGENT_MESSAGE_TYPE
+            ]
+            if resolved.get("result") == reading.RESULT_DEPARTURE:
+                self.claim_contradicted = True
+                self.cites.extend(said)
+            elif resolved.get("result") == reading.RESULT_UNSUPPORTED:
+                self.claim_unshown = True
+                self.cites.extend(said)
+            return
         if resolved.get("result") == reading.RESULT_DEPARTURE:
             self.departed = True
             self.cites.extend(resolved["cites"])
@@ -507,12 +530,20 @@ def _well_formed(criteria: Any, outcome_lines: int) -> bool:
     """
     if not isinstance(criteria, dict) or not all(isinstance(v, dict) for v in criteria.values()):
         return False
-    keys = set(criteria) - {reading.CONSTRAINT_GOAL}
+    keys = set(criteria) - {reading.CONSTRAINT_GOAL, reading.CONSTRAINT_CLAIMS}
     wanted = set(reading.constraints_for(["x"] * outcome_lines)) - {reading.CONSTRAINT_GOAL}
     legacy = outcome_lines == 1 and keys == {reading.CONSTRAINT_OUTPUT}
     if keys != wanted and not legacy:
         return False
-    return all("result" not in row or row["result"] in reading.RESULTS for row in criteria.values())
+    # `unsupported` is the claims question's alone, as the store reads it.
+    return all(
+        "result" not in row
+        or (
+            row["result"] in reading.RESULTS
+            and (row["result"] != reading.RESULT_UNSUPPORTED or name == reading.CONSTRAINT_CLAIMS)
+        )
+        for name, row in criteria.items()
+    )
 
 
 def analysis_level(
@@ -532,7 +563,8 @@ def analysis_level(
     never reaches the floor, though a departure resting on one reads Medium.
 
     Zero outcome lines is too little whatever the Goal says (L7). Medium: a
-    departure, or a line whose cited pass was followed by a change. High: a
+    departure, a line whose cited pass was followed by a change, or a claim of
+    the agent's that the record contradicts or does not show. High: a
     failed check in the evidence window, cited or not, where a check with no
     time counts as inside it (L3). A failed check outside the window still
     blocks the floor. Never Extreme: that needs both of High's conditions, and
@@ -579,13 +611,15 @@ def analysis_level(
             (REASON_FAILED_CHECK, failed or unplaced),
             (REASON_DEPARTURE, tally.departed),
             (REASON_PASS_THEN_WRITE, tally.aged),
+            (REASON_CLAIM_CONTRADICTED, tally.claim_contradicted),
+            (REASON_CLAIM_NOT_SHOWN, tally.claim_unshown),
         )
         if holds
     ]
     cites = [*_ids(in_window or failed), *tally.cites]
     if in_window or unplaced:
         level = HIGH
-    elif tally.departed or tally.aged:
+    elif tally.departed or tally.aged or tally.claim_contradicted or tally.claim_unshown:
         level = MEDIUM
     else:
         blockers = [

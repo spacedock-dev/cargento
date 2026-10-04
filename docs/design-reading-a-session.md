@@ -272,7 +272,9 @@ Seven rules:
 
 Rule 7 is amended below, last by
 [the amendment of 2026-10-03](#amended-2026-10-03-owner-the-agents-own-words-are-evidence), which
-lets an outcome line rest on one of the agent's own messages.
+lets an outcome line rest on one of the agent's own messages. Rules 1 and 6 gain a constraint about
+what the agent claims, with a fourth result of its own, by
+[the amendment of 2026-10-04](#amended-2026-10-04-owner-what-the-agent-claims-is-its-own-constraint).
 
 Rules 3 and 7 are load bearing: they make an uncited departure and a deliverable claim resting on
 nothing that shows work unrenderable rather than rare. Rule 4 is weaker than it reads, and the
@@ -510,6 +512,81 @@ rewind leaves the abandoned branch in the transcript and nothing filters it by `
 agent message from a branch the reader rewound past can be evidence; and the page's expected-output
 limit (`nextReadingOutputLimit`) keys on whether the route has a provider alone, not on whether the
 record holds an agent message or a sent check.
+
+### Amended 2026-10-04 (owner): what the agent claims is its own constraint
+
+The owner, 2026-10-04, after
+[the first drift replay run](drift-replay/README.md#the-first-run-2026-10-04), delegated this
+build and its wording: "do the 'What I'd do next' section yourself". That run found most of the
+drift a reader pushed back on was a status claim, such as "six sessions running", "merged" or
+"tests pass", that no line of the intent speaks to, so no constraint a reading asked could hold it.
+
+The question. Every reader-requested reading of a Claude Code session whose prompt carries one of
+the agent's messages also asks a third kind of constraint, keyed `claims`, independent of the goal
+and the lines: does any message the agent wrote claim a state of the work (running, done, finished,
+merged, pushed, deployed, passing, fixed, sent, filed) that the recorded checks, writes and
+messages contradict, or that nothing recorded shows? It is posed the way the lines are: sized into
+the header when the ledger holds an agent message, and kept only when one was selected. The unasked
+lane never asks it, because it never carries what the agent said, and nor do the scorers, whose
+packets do not carry it yet.
+
+Its results, on this constraint only:
+
+- `departure`: the record contradicts the claim. It cites the agent's message and the entry that
+  contradicts it, so rule 3 holds: a departure names its evidence.
+- `not shown by the record`, a fourth result and the token `unsupported`: the claim is a state of
+  the work and nothing in the record read shows it. It cites the message. It is not a departure,
+  because absence of evidence never produces one (rule 3 stands as written). It is shown as a
+  caution, and it reads Medium in the analysis level with its own reason, `claim-not-shown`,
+  because it is the first run's most common drift. The row says the record read is the board's
+  recent tail, so "not shown" is about what was read, never that the thing did not happen.
+- `consistent`: every such claim is shown. It cites the message and the entries showing it.
+- `not verifiable`: there is no such claim, or the evidence cannot settle it.
+
+So rule 1's closed set has a fourth member on this one constraint, and the token `unsupported`
+anywhere else is outside its set and leaves no result (rule 2). Rule 6 gains a third kind of
+constraint, so a reading names up to eight, the goal, six lines and the claims.
+
+The resolver rules that already applied still apply, and one is added in the withholding direction.
+A result without the citations it needs, the message and, for a departure or a consistent, the
+entry it was compared with, is withdrawn as `claim-uncited`; a consistent resting on the agent's
+message alone is the agent agreeing with itself, which is rule 4's backstop for this question. The
+success-word backstop reads its prose as before. A comparison resting only on Cargento's own
+paraphrase is `board-quoting-itself`. `check_supports` drops a cited check that does not carry the
+verdict, so a pass followed by a change does not show "passing" now, and a consistent beside a
+failure in the window is withdrawn as for a line, cited (`check-does-not-show-it`), unread
+(`failed-check-unread`) or only on record (`failed-check-on-record`).
+
+The prompt had 6 bytes of room under `INTENT_SHARE_BYTES`, the worst goal and six lines measuring
+9,210 of 9,216. The answer shape is now spelt once and named `A` where it was spelt per constraint,
+which freed most of what the worst intent spent, and the claims instruction is one sentence; the
+worst header with the claims question measures 9,198, and the record keeps at least 7,168 bytes.
+Eight answers at the reply cap's worst measure 4,751 bytes compact and 5,664 indented, under
+8,192.
+
+The page. A row "What the agent claimed", after the outcome lines under its own heading, with its
+states: "What the agent said at #n is contradicted at #m"; "… is not shown by the record. The record
+read is the board's recent tail."; "… is shown at #m", with "as the tool reported; not inspected"
+when that is a check; and "Can't tell". A contradicted or unshown claim is not a departure from the
+intent: the answer counts only the intent's departures, says a failed check first, then the claim,
+and a claims row with nothing to say never holds "Nothing found" back. The analysis level names a
+contradicted claim `claim-contradicted` rather than a departure. Steer back adds one line for a
+claim the record contradicts or does not show, in the owner-approved template's style: `You said
+"<claim>" at 14:02 (#12 in Cargento); the record does not show it.` The claim is the message's
+published title, its first sentence, which the activity list already shows, and never the words a
+reading read; that is the one place the correction reads a summary.
+
+What is sent to the model does not change: the agent's messages already go on a press that carries
+them ([SECURITY.md](../SECURITY.md#claude-code-reading-calls)). What `POST /api/correction` returns
+does, by the claim's first sentence, a title the page already publishes, and SECURITY.md says so.
+
+The downgrade. A stored reading may now carry the key `claims`, the result `not shown by the
+record` and the reason `claim-uncited`. A build that knows none of them refuses the reading whole,
+publishes the refusal beside the press count and writes the raw reading back untouched, the
+existing refusal of 2026-09-12, so stepping forward reads it again. The abstention scorer's
+question list gains `claims` only where a reading answered it, with an outcome of its own,
+`judged:unsupported`, never counted as a departure; marking it is owed when the packets carry the
+agent's messages.
 
 ### The two typed fields are one line each, and that is a security decision
 
@@ -1502,6 +1579,37 @@ redraw does not shut the list mid-choice.
   the label row, they moved the box the pick fills 25px down, and the first keystroke pulled it
   back up under the caret. The select, the box and the Expected outcome field below it now hold
   their places at rest, after a pick, after typing and after a redraw, at 1440, 760 and 375.
+
+### Amended 2026-10-04: an adopted goal is read whole
+
+Owner, 2026-10-04, after
+[the first drift replay run](drift-replay/README.md#the-first-run-2026-10-04): a goal adopted from
+the opening prompt keeps 240 characters, and on Claude Code a latest prompt only its first line,
+which in one session cut off the instruction that mattered and in another kept only plan-file
+preamble.
+
+- When the revision a reading reads was adopted (`goal_source` is one of the three prompt sources,
+  with `goal_source_at`), the reading sends that prompt's whole words as the Goal the model reads,
+  in place of the clip: the reader's own `user_message` at the source time, its `reader_words`, up
+  to 1,000 characters, redacted as every reader's message is (`reading.adopted_prompt`). A copied
+  correction is never the source; two prompts at the same moment are told apart by which one the
+  goal's words open, and neither is guessed at.
+- The stored goal, the page and the history keep the clip. Nothing new is stored or published, and
+  the criterion's clause is still the goal box's words.
+- The words come out of the reader's half of the prompt, before any other message is read whole,
+  and only where the room left holds them, so they never cost an entry. That prompt's own row in the
+  record then keeps its first sentence rather than sending the same words twice.
+- If the prompt's words are no longer in the record, or have no room, the reading reads the clip
+  and the cutoff sentence says which.
+- The goal box tells the reader: where an adopted prompt was clipped, "Shown excerpt only." under the
+  box is now "Excerpt. Analyze reads the whole prompt.", in the draft's marks and in the saved
+  goal's source line alike. Short, because that row holds one control's height; the 375px layout was
+  not re-measured in a browser for this change. "Use your prompt" still names an excerpt
+  "· excerpt" in its option.
+
+What is sent does not change in kind: the reader's own messages already go whole up to 1,000
+characters ([the 2026-10-01 amendment](#amended-2026-10-01-a-reading-sees-the-readers-whole-message)),
+and the adopted prompt is one of them.
 
 ## DEC-23: a Claude Code session's record of its checks may show the work
 

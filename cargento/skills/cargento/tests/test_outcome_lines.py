@@ -1313,7 +1313,7 @@ class EachLineIsAskedOnItsOwnTest(_ProducerCase):
         for k, text in enumerate(SIX, start=1):
             with self.subTest(line=k):
                 self.assertIn(f'<outcome_line n="{k}">\n{text}\n</outcome_line>', prompt)
-                self.assertIn(f'"line_{k}": {{', prompt)
+                self.assertIn(f'"line_{k}": A', prompt)
         self.assertIn("Answer each line on its own", prompt)
         self.assertNotIn("<expected_output>", prompt)
 
@@ -1490,7 +1490,9 @@ class TheReplyAndThePromptHaveRoomForSevenTest(_ProducerCase):
 
     def test_the_worst_intent_fits_its_share_and_leaves_room_for_the_record(self) -> None:
         astral = "\U0001f600" * 240
-        header = reading._header(astral, (astral,) * 6, tool_note=True)
+        # With the claims question too (owner, 2026-10-04): it took its room
+        # from the answer shape, spelt once, and not from the record.
+        header = reading._header(astral, (astral,) * 6, tool_note=True, claims=True)
 
         size = len(header.encode("utf-8"))
         self.assertLessEqual(size, reading.INTENT_SHARE_BYTES)
