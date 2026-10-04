@@ -3442,6 +3442,10 @@ class _ToolReportTally:
             "source": source,
             "rank": _RESULT_ORDER[latest["result"]],
         }
+        if latest["result"] == "not-recorded" and entry["earlier_failed"]:
+            # Its only recorded result is a failure: ranked with the failures,
+            # or twelve writes would push the failure out of the listing.
+            entry["rank"] = _RESULT_ORDER["failed"]
         if latest["result_source"]:
             entry["result_source"] = latest["result_source"]
         if latest["result_at"] is not None:
@@ -3505,19 +3509,20 @@ class _ToolReportTally:
         candidates.sort(key=lambda row: (row["rank"], -float(row["at"])))
         return candidates
 
-    def unlisted(self) -> tuple[float, ...]:
-        """When each passing check or written path past the listing's cap arrived.
+    def passes_and_writes(self) -> tuple[tuple[str, float], ...]:
+        """(record id, time) of every latest passing check and every written path.
 
-        For the press alone, like the tails: a claim the listing could not show
-        because the cap left its evidence out is not "not shown by the record".
-        A check's time is its result's where one arrived. The ruling:
+        For the press alone, like the tails. The reading compares the record
+        ids with the facts its prompt carried, so a pass the listing's cap left
+        out, or one that arrived after the facts were published, is part of
+        the record it did not read, and "not shown by the record" cannot stand
+        on it. A check's time is its result's where one arrived. The ruling:
         [DEC-17](docs/design-reading-a-session.md#amended-2026-10-04-owner-what-the-agent-claims-is-its-own-constraint)
         """
-        left_out = self._ranked(self._histories())[TOOL_REPORT_MAX_ENTRIES:]
         return tuple(
             sorted(
-                float(row.get("result_at") or row["at"])
-                for row in left_out
+                (str(row["record_id"]), float(row.get("result_at") or row["at"]))
+                for row in self._ranked(self._histories())
                 if row["subject"] == "write" or row.get("result") == "passed"
             )
         )
@@ -3568,17 +3573,17 @@ class PressChecks(NamedTuple):
     tails: dict[str, str]
     changed_after: frozenset[tuple[str, str]]
     read_incomplete: frozenset[tuple[str, str]] = frozenset()
-    # When each pass or write the listing's cap left out arrived
-    # (`_ToolReportTally.unlisted`): times only, never a line or a path.
-    unlisted: tuple[float, ...] = ()
+    # (record id, time) of each latest pass and each write
+    # (`_ToolReportTally.passes_and_writes`): never a line or a path.
+    passes_and_writes: tuple[tuple[str, float], ...] = ()
 
 
 def claude_check_press(
     config: RuntimeConfig, transcript_path: str, *, max_bytes: int | None = None
 ) -> PressChecks:
     """The output tails, later-command flags and incomplete-read flags a press
-    may carry, keyed by the call's record id and check line, and when each
-    pass or write the listing left out arrived.
+    may carry, keyed by the call's record id and check line, and the record
+    id and time of each pass and write.
 
     Read again at the press rather than published: the owner ruled that the
     model sees each check's redacted tail (DRC-4677, Q1), and it stays off the
@@ -3592,7 +3597,7 @@ def claude_check_press(
 
 def _press(tally: _ToolReportTally) -> PressChecks:
     return PressChecks(
-        tally.tails(), tally.changed_after(), tally.read_incomplete(), tally.unlisted()
+        tally.tails(), tally.changed_after(), tally.read_incomplete(), tally.passes_and_writes()
     )
 
 

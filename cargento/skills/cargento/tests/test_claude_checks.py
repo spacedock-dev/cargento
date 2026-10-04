@@ -998,9 +998,12 @@ class WhichFormsAreStripped(ClaudeChecksTestCase):
 
 
 class WhichOrderTheEntriesAreKeptIn(ClaudeChecksTestCase):
-    def press_unlisted(self) -> tuple[float, ...]:
+    def left_out(self, events: list[dict[str, Any]]) -> list[tuple[str, float]]:
+        """The press's passes and writes whose record the listed events do not hold."""
         self.session.save(self.path)
-        return project_context.claude_check_press(self.config, str(self.path)).unlisted
+        press = project_context.claude_check_press(self.config, str(self.path))
+        listed = {e["record_id"] for e in events}
+        return [(rid, at) for rid, at in press.passes_and_writes if rid not in listed]
 
     def test_item_four_keeps_failures_then_passes_then_unrecorded(self) -> None:  # T5
         # DEC-23 item 4 as amended on 2026-10-04.
@@ -1032,7 +1035,19 @@ class WhichOrderTheEntriesAreKeptIn(ClaudeChecksTestCase):
         self.assertEqual(10, sum(1 for e in events if e.get("result") == "not-recorded"))
         self.assertEqual(4, scan["more"])
         # Nothing the press counts as left out: the cap only dropped runs with no result.
-        self.assertEqual((), self.press_unlisted())
+        self.assertEqual([], self.left_out(events))
+
+    def test_a_run_with_no_result_after_a_failure_is_kept_with_the_failures(self) -> None:
+        # Review C1: its only recorded result is the failure, so writes never push it out.
+        self.session.bash("pytest", "1 failed", is_error=True)
+        self.session.bash("pytest 2>&1 | tail -3", "....", is_error=False)
+        for n in range(12):
+            self.session.write(self.file(f"m{n}.py"))
+        events, scan = self.read()
+        checks = [e for e in events if e["subject"] == "check"]
+        self.assertEqual(1, len(checks), scan)
+        self.assertEqual(("not-recorded", True), (checks[0]["result"], checks[0]["earlier_failed"]))
+        self.assertEqual(1, scan["more"])
 
     def test_the_press_knows_when_each_left_out_pass_or_write_arrived(self) -> None:
         for n in range(13):
@@ -1041,11 +1056,11 @@ class WhichOrderTheEntriesAreKeptIn(ClaudeChecksTestCase):
         self.session.bash("pytest tests/u.py | tail -1", "....", is_error=False)
         events, scan = self.read()
         self.assertEqual(3, scan["more"])
-        unlisted = self.press_unlisted()
+        unlisted = self.left_out(events)
         # The oldest pass and the write are past the cap; the unrecorded run is not counted.
         self.assertEqual(2, len(unlisted))
         listed = sorted(float(e.get("result_at") or e["at"]) for e in events)
-        self.assertTrue(all(at not in listed for at in unlisted))
+        self.assertTrue(all(at not in listed for _rid, at in unlisted))
 
 
 class WhatAReaderIsNeverShownOfACommandLineEither(ClaudeChecksTestCase):

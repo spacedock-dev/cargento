@@ -575,6 +575,19 @@ class ATaggedReadKeepsTheEarlierRunsOutput(unittest.TestCase):
                 dr.read(home=str(s.home), dry_run=True, tag="t", cases=("nope",), say=said.append),
             )
             self.assertIn("names 0 cases", said[-1])
+            # Review A2: an arm the read does not cover is refused, not scored as refused later.
+            self.assertEqual(
+                1,
+                dr.read(
+                    home=str(s.home),
+                    dry_run=True,
+                    tag="t",
+                    arms=("current",),
+                    cases=(f"{home.ids[0]}:adopted",),
+                    say=said.append,
+                ),
+            )
+            self.assertIn("not one of the arms read", said[-1])
 
     def test_a_dry_run_plans_only_the_chosen_cuts_and_arms_beside_read_json(self) -> None:
         with (
@@ -672,6 +685,9 @@ class ClaimsAreMarkedTrueOrFalseBlind(unittest.TestCase):
         for word in ARMS_AND_RESULTS:
             self.assertNotIn(word, exported)
         self.assertNotIn(home.ids[0], item["id"])
+        # Review A3: the case id keys results.json, so naming it would name the outcome.
+        self.assertNotIn(home.ids[0], exported)
+        self.assertNotIn("case", item)
         self.assertEqual(4, item["claim_message"])  # the agent's drifted reply, #4
 
     def test_the_screen_shows_the_claim_and_what_followed_and_no_detector(self) -> None:
@@ -738,6 +754,35 @@ class ClaimsAreMarkedTrueOrFalseBlind(unittest.TestCase):
         committed = json.dumps(truth)
         self.assertNotIn(home.ids[0], committed)
         self.assertNotIn(SID, committed)
+
+
+class TheScreenFindsAClaimDeepInALongReply(unittest.TestCase):
+    """Review A1: a reply's records join into one message; the claim is its own record."""
+
+    def test_a_claim_far_into_a_long_reply_is_shown_with_its_own_time(self) -> None:
+        records = [
+            _user(1, "Build the importer and nothing else."),
+            _claude(10, "Working through the importer. " * 120),
+            _claude(70, "ZZCLAIM the importer is built and every test passes."),
+            _claude(80, "A closing note."),
+            _stop(81),
+            _user(90, "Thanks."),
+        ]
+        with _Session() as s:
+            s.log.write_text("".join(json.dumps(r) + "\n" for r in records), encoding="utf-8")
+            messages = dr.conversation(str(s.log))
+            n = dr._claim_message(messages, _at(70))
+            assert n is not None
+            self.assertGreater(messages[n].text.index("ZZCLAIM"), dr.CLAIM_TEXT_CHARS)
+            shown: list[str] = []
+            item = {"id": "x", "sid": SID, "cut": _at(81), "claim_at": _at(70), "claim_message": n}
+            dr._claim_screen(item, "fixtures", "1/1", shown.append)
+        screen = "\n".join(shown)
+        claim = screen.split("THE CLAIM", 1)[1]
+        self.assertIn("ZZCLAIM", claim.split("LATER IN THE SAME REPLY", 1)[0])
+        self.assertIn(dt.datetime.fromtimestamp(_at(70), dt.UTC).strftime("%H:%M"), claim[:40])
+        self.assertIn("A closing note.", screen)
+        self.assertIn("EARLIER IN THE SAME REPLY", screen)
 
 
 if __name__ == "__main__":

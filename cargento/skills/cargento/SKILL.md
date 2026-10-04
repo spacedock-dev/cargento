@@ -481,10 +481,10 @@ messages also asks whether any of them claims a state of the work (running, merg
 the like) that the record contradicts, or, for a pass, a fix or a file written, that the record
 does not show; the reading is asked to keep "not shown" for those, so a claim nothing Cargento
 records can show (merged, pushed, deployed) is not meant to read "not shown". "What the agent claimed" reads "is contradicted at #m", "is not shown by the record" (the
-record read being the board's recent tail, and never where some of the session's checks, or a pass
-or file write the check list left out, went unread), "is shown at #m" or "Can't tell", and is not
+record read being the board's recent tail, and never where some of the session's checks, passes
+or file writes went unread), "is shown at #m" or "Can't tell", and is not
 drawn when there was no claim. A check that failed before the claim does not contradict it once
-the agent ran the same tool again before claiming. A
+the agent ran the same tool again, at least as widely and without failing, before claiming. A
 contradicted or unshown claim reads Medium, is never counted as a departure from your intent, is
 not held back by an unsettled later direction, and adds one line to Steer back: `You said "<its
 first sentence>" at 14:02 (#12 in Cargento); the record does not show it.`, or, contradicted,

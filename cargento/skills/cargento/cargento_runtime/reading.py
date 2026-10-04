@@ -393,9 +393,10 @@ class ToolOutput:
     # False when a destination was named and the grant was gone by the time
     # the reading ran, so the cutoff says which of the two kept checks back.
     allowed: bool = True
-    # When each passing check or written path the collector's listing cap left
-    # out arrived: times only, read at the press and never sent or stored.
-    unlisted: tuple[float, ...] = ()
+    # (record id, time) of each latest passing check and written path, read at
+    # the press and never sent or stored; `produce` keeps those its prompt did
+    # not carry.
+    passes_and_writes: tuple[tuple[str, float], ...] = ()
 
 
 SCOPE_MID_FLIGHT = "mid-flight"
@@ -875,9 +876,9 @@ class Selection:
     # `record_failed`. With `unread_checks`, what keeps a claim from reading as
     # not shown by a record that was never read whole.
     checks_unsent: bool = False
-    # When each pass or write the collector's 12-entry listing left out
-    # arrived (`ToolOutput.unlisted`): one inside the window is a part of the
-    # record the prompt never carried, as an entry with no room is.
+    # When each pass or write inside the window that the prompt did not carry
+    # arrived (`_left_out`): a part of the record never read, as an entry with
+    # no room is.
     unlisted: tuple[float, ...] = ()
 
     def __post_init__(self) -> None:
@@ -1890,6 +1891,10 @@ def _priority(entry: LedgerEntry) -> int:
     if entry["author"] == AUTHOR_PERSON:
         return 0
     if entry.get("subject") == CHECK_SUBJECT:
+        # A run with no result whose earlier run failed is ranked with the
+        # failures, as the collector lists it (item 4, amended 2026-10-04).
+        if entry.get("result") == "not-recorded" and entry.get("earlier_failed") is True:
+            return _CHECK_PRIORITY[RESULT_FAILED]
         return _CHECK_PRIORITY.get(entry.get("result", ""), _CHECK_PRIORITY["not-recorded"])
     if entry.get("subject") == WRITE_SUBJECT:
         return _WRITE_PRIORITY
@@ -2504,32 +2509,62 @@ def _claims_compared(
 
 
 def _superseded(entry: LedgerEntry, claimed: float, carried: Sequence[LedgerEntry]) -> bool:
-    """A failure from before the claim that a later run of the same tool followed.
+    """A failure from before the claim that a later run of the same tool, as
+    wide as it, followed without failing.
 
     A listed failure is its own identity's latest run, so "a later run of the
     same check" never exists; the agent's later runs are other identities of
-    the same tool, often with no recorded result. Measured on the second drift
-    replay run's 7 claims departures, it withdraws a failure 74 minutes old
-    and one 967 minutes old, each with the same tool run since. Any later
-    run counts, whatever its result, after the failure's result and at or
-    before the claim, so a failure at or after the claim always stands; the
-    ruling:
+    the same tool, often with no recorded result. A later run counts only when
+    it did not fail, falls after the failure's result and at or before the
+    claim, so a failure at or after the claim always stands, and covers what
+    failed (`_covers`): a narrower or different target says nothing about it.
+    The ruling:
     [DEC-17](docs/design-reading-a-session.md#amended-2026-10-04-owner-what-the-agent-claims-is-its-own-constraint)
     """
     if entry.get("subject") != CHECK_SUBJECT or entry["type"] != TOOL_REPORT_TYPE:
         return False
     failed_at = evidence_at(entry) or entry["at"]
-    family = check_family(_check_text(entry))
+    family, targets = check_scope(_check_text(entry))
     if not family:
         return False
-    return any(
-        other["id"] != entry["id"]
-        and other.get("subject") == CHECK_SUBJECT
-        and other["type"] == TOOL_REPORT_TYPE
-        and failed_at < other["at"] <= claimed
-        and check_family(_check_text(other)) == family
-        for other in carried
-    )
+    for other in carried:
+        if (
+            other["id"] == entry["id"]
+            or other.get("subject") != CHECK_SUBJECT
+            or other["type"] != TOOL_REPORT_TYPE
+            or other.get("result") == RESULT_FAILED
+            or not failed_at < other["at"] <= claimed
+        ):
+            continue
+        later_family, later_targets = check_scope(_check_text(other))
+        if later_family == family and _covers(later_targets, targets):
+            return True
+    return False
+
+
+# Whole-suite arguments: what a later run names when it runs everything.
+_WHOLE_SUITE = frozenset({".", "./", "discover"})
+
+
+def _covers(later: Sequence[str], failed: Sequence[str]) -> bool:
+    """Whether a later run's targets include everything the failed run ran.
+
+    No target, or a whole-suite form (`.`, `discover`), runs everything. Else
+    each target must be a path or dotted-name prefix of one of the failed
+    run's: `tests` covers `tests/a.py` and `tests.a` covers `tests.a.B`, and
+    `tests/a.py` covers `tests/a.py::test_x`, never the other way round.
+    """
+    if not later or any(target in _WHOLE_SUITE for target in later):
+        return True
+    return all(any(_prefix_of(target, one) for one in failed) for target in later)
+
+
+def _prefix_of(target: str, failed: str) -> bool:
+    target, failed = target.removeprefix("./").rstrip("/"), failed.removeprefix("./")
+    # A dot separates names only in a dotted name: `tests/a` does not cover `tests/a.py`.
+    dotted = "/" not in target and "/" not in failed
+    seps = ("/", "::", ".") if dotted else ("/", "::")
+    return failed == target or any(failed.startswith(target + sep) for sep in seps)
 
 
 def _check_text(entry: LedgerEntry) -> str:
@@ -2546,43 +2581,77 @@ _SUBCOMMAND_RUNNERS = frozenset(
         "mvn", "gradle", "gradlew", "dotnet", "swift", "rake", "bundle", "coverage", "poetry",
     }
 )  # fmt: skip
-_SCRIPT_RUNNERS = frozenset({"npm", "pnpm", "yarn", "bun"})
+# Subcommands that run something named next: `npm run lint`, `deno task test`,
+# `go run ./cmd/a`. With nothing named, or a flag first, the tool is not told.
+_RUNNING_SUBCOMMANDS = frozenset({"run", "task", "exec", "x", "dlx"})
+# Wrappers that run the command after them; that command is the tool.
+_WRAPPERS = (
+    ("rtk", "proxy"), ("rtk",), ("npx",), ("bunx",), ("uv", "run"), ("poetry", "run"),
+    ("pipenv", "run"), ("pnpm", "exec"), ("npm", "exec"), ("yarn", "dlx"), ("pnpm", "dlx"),
+    ("bundle", "exec"), ("coverage", "run", "-m"), ("env",), ("time",),
+)  # fmt: skip
+_INTERPRETERS = frozenset({"node", "bash", "sh", "zsh"})
 _FAMILY_PYTHON_RE = re.compile(r"^python(?:\d+(?:\.\d+)?)?$")
 _ASSIGNMENT_WORD_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*=")
+_DURATION_WORD_RE = re.compile(r"^\d+(?:\.\d+)?[smhd]?$")
 
 
 def check_family(line: str) -> str:
-    """The tool a check's line runs, or "" where it cannot be told.
+    """The tool a check's line runs, or "" where it cannot be told (`check_scope`)."""
+    return check_scope(line)[0]
 
-    Deterministic and conservative: `python -m X`, `uv run X`, `npx X` and a
-    leading `rtk` read as X, an interpreter running a script reads as that
-    script's file name, and a runner with subcommands keeps its subcommand
-    (`npm run X` keeps X). Two different tools are never one family; ""
-    matches nothing.
+
+def check_scope(line: str) -> tuple[str, tuple[str, ...]]:  # noqa: PLR0911 - one per runner shape
+    """The tool a check's line runs and the targets it names, or ("", ()).
+
+    Deterministic and conservative: a wrapper (`rtk`, `npx`, `uv run`,
+    `poetry run`, `bundle exec`, `env`, `time`, `timeout N` and the like) and
+    `python -m` read as the command after them; an interpreter (python, node,
+    bash, sh, zsh) running a script reads as that script's file name, and with
+    a flag such as `-c` names no tool; a runner with subcommands keeps its
+    subcommand, and a running subcommand what it runs (`npm run lint`). Two
+    different tools are never one family; "" matches nothing. The targets are
+    the words after the tool that are not flags.
     """
     words = _unwrapped(line.split())
-    if not words:
-        return ""
+    if not words or words[0].startswith("-") or words[0] == "cd":
+        return "", ()
     first = os.path.basename(words[0])
-    if _FAMILY_PYTHON_RE.match(first) or first == "node":
+    if _FAMILY_PYTHON_RE.match(first) or first in _INTERPRETERS:
         script = words[1] if len(words) > 1 else "-"
-        return "" if script.startswith("-") else os.path.basename(script)
-    if first.startswith("-") or first not in _SUBCOMMAND_RUNNERS:
-        return "" if first.startswith("-") else first
-    rest = [word for word in words[1:] if not word.startswith("-")]
-    if first in _SCRIPT_RUNNERS and rest[:1] == ["run"] and len(rest) > 1:
-        return f"{first} run {rest[1]}"
-    return f"{first} {rest[0]}" if rest else first
+        if script.startswith("-"):
+            return "", ()
+        return os.path.basename(script), _targets(words[2:])
+    if first not in _SUBCOMMAND_RUNNERS:
+        return first, _targets(words[1:])
+    if len(words) < 2:
+        return first, ()
+    sub = words[1]
+    if sub.startswith("-"):
+        return "", ()
+    if sub not in _RUNNING_SUBCOMMANDS:
+        return f"{first} {sub}", _targets(words[2:])
+    named = words[2] if len(words) > 2 else "-"
+    if named.startswith("-"):
+        return "", ()
+    return f"{first} {sub} {named}", _targets(words[3:])
+
+
+def _targets(words: Sequence[str]) -> tuple[str, ...]:
+    return tuple(word for word in words if not word.startswith("-"))
 
 
 def _unwrapped(words: list[str]) -> list[str]:
-    """The words with leading assignments, `rtk`, `npx`, `uv run` and `python -m` taken off."""
+    """The words with leading assignments, wrappers and `python -m` taken off."""
     while words:
         first = os.path.basename(words[0])
-        if _ASSIGNMENT_WORD_RE.match(words[0]) or first in {"rtk", "npx"}:
+        wrapper = next((w for w in _WRAPPERS if [first, *words[1 : len(w)]] == list(w)), None)
+        if _ASSIGNMENT_WORD_RE.match(words[0]):
             words = words[1:]
-        elif (first == "uv" and words[1:2] == ["run"]) or (
-            (_FAMILY_PYTHON_RE.match(first) or first == "node") and words[1:2] == ["-m"]
+        elif wrapper is not None:
+            words = words[len(wrapper) :]
+        elif (first == "timeout" and len(words) > 1 and _DURATION_WORD_RE.match(words[1])) or (
+            _FAMILY_PYTHON_RE.match(first) and words[1:2] == ["-m"]
         ):
             words = words[2:]
         else:
@@ -2959,7 +3028,7 @@ def resolve(
             latest_check_at=latest_check_at,
             checks_unread=selection.checks_unsent
             or bool(selection.unread_checks)
-            or any(at >= window_start for at in selection.unlisted),
+            or bool(selection.unlisted),
         )
     return out
 
@@ -3131,7 +3200,9 @@ def produce(  # noqa: PLR0913
         selected,
         record_failed=_failed_on_record(unsent, harness, sid, window_start(latest)),
         checks_unsent=not admitted and _has_reports(facts, harness, sid),
-        unlisted=tool_output.unlisted if admitted and tool_output is not None else (),
+        unlisted=_left_out(tool_output, facts, selected.entries, window_start(latest))
+        if admitted and tool_output is not None
+        else (),
     )
     raw, status = model(prompt, output_cap_bytes=REPLY_CAP_BYTES)
     # A reply that reached the cap is the one a cut can explain. The exec layer
@@ -3188,6 +3259,34 @@ def produce(  # noqa: PLR0913
         assessment["goal_source"] = str(latest["goal_source"])
         assessment["goal_source_at"] = baseline_at(latest)
     return assessment, "", True
+
+
+def _left_out(
+    tool_output: ToolOutput,
+    facts: Sequence[Mapping[str, Any]],
+    carried: Sequence[LedgerEntry],
+    since: float,
+) -> tuple[float, ...]:
+    """When each pass or write the press read, and the prompt did not carry, arrived.
+
+    Matched by record id against the facts the prompt carried, so a pass that
+    arrived after the facts were published, or one the listing's cap or the
+    byte bound left out, counts, and one the prompt carried never does. Inside
+    the window only; one with no time (0) is counted, because it cannot be
+    shown to be outside it.
+    """
+    ids = {entry["id"] for entry in carried}
+    shown: set[str] = set()
+    for fact in facts:
+        branch = fact.get("branch")
+        fact_id = records.safe_text(fact.get("fact_id"), 160).strip()
+        if fact_id in ids and isinstance(branch, dict):
+            shown.add(str(branch.get("record_id") or ""))
+    return tuple(
+        at
+        for record_id, at in tool_output.passes_and_writes
+        if record_id not in shown and (at <= 0 or at >= since)
+    )
 
 
 # The exec statuses that name their own cause, and whether each spent.

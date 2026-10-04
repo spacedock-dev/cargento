@@ -2795,6 +2795,33 @@ class YourOwnWordsAreAlwaysInThePrompt(unittest.TestCase):
         chosen = [row["id"] for row in selection.entries]
         self.assertIn("pass", chosen)
         self.assertIn("write", chosen)
+        # Review C1: one whose earlier run failed is kept with the failures.
+        refailed = check_fact(
+            fact_id="refailed",
+            result="not-recorded",
+            result_source="",
+            earlier_failed=True,
+            at=5.0,
+            branch={"record_id": "r"},
+        )
+        writes = [
+            check_fact(
+                fact_id=f"w{index}",
+                subject="write",
+                result=None,
+                summary=f"src/m{index}.py",
+                at=float(20 + index),
+                branch={"record_id": f"w{index}"},
+            )
+            for index in range(60)
+        ]
+        crowded = reading.build_ledger(
+            [{**WORDS_FACT, "at": 1.0}, refailed, *writes], "claude", "s1", tool_output={}
+        )
+        _prompt, kept = reading.build_prompt(
+            crowded, goal="add retry", lines=["tests pass"], max_bytes=2500
+        )
+        self.assertIn("refailed", [row["id"] for row in kept.entries])
         self.assertTrue(selection.unread_checks)
         self.assertTrue(all(row["result"] == "not-recorded" for row in selection.unread_checks))
 

@@ -215,9 +215,13 @@ its own case. What was built instead:
 
 - The listing puts passes and writes ahead of runs with no recorded result (DEC-23 item 4, amended
   in [the design record](../design-reading-a-session.md#amended-2026-10-04-no-recorded-result-is-listed-last)).
-- A claim is not "not shown by the record" when the listing left out a pass or a write inside the
-  reading's window, and a failure the agent ran the same tool again after, before claiming, does
-  not contradict the claim ([DEC-17](../design-reading-a-session.md#amended-2026-10-04-owner-what-the-agent-claims-is-its-own-constraint)).
+- A claim is not "not shown by the record" when the session holds a pass or a write inside the
+  reading's window that the prompt did not carry. A failure does not contradict a claim when, after
+  it and before the claim, the agent ran the same tool again without a failure and at least as
+  widely, for example the whole suite or a folder holding the failed test; a later run that also
+  failed, or ran a narrower or different target, leaves the contradiction standing
+  ([DEC-17](../design-reading-a-session.md#amended-2026-10-04-owner-what-the-agent-claims-is-its-own-constraint)).
+  On the second run's 7 claims departures this withdraws 2, one of them on a no-drift cut.
 - The scorer judges each departed criterion on its own cites, and a claims departure leaves the
   claim itself out before asking whether everything left is your own words. On the second run's
   readings this turns one judged catch, on the current arm, into an echo.
@@ -228,10 +232,12 @@ its own case. What was built instead:
 
 `--claims-export` collects every claims flag the reads raised, `departure` or "not shown by the
 record", into `~/.cargento/drift-replay/claim-items.json`, one item per cut and claimed message.
-An item names the session, the cut and where the claim is in the log, and never which arm or
-question raised it or what the reading said. `--claims-mark` then shows each one: the eight messages
-before the claim, the claim, and up to 40 messages after it, with the cut's time. It asks two
-questions and a one-line reason:
+An item names the session, the cut and where the claim is in the log, and never the case, which
+arm or question raised it, or what the reading said: the case id keys `results.json`, so naming it
+would show the outcome. `--claims-mark` then shows each one: the eight messages before the claim,
+the claim itself with its own time, found inside the reply that holds it with a little of that
+reply before and after, and up to 40 messages after it, with the cut's time. It asks two questions
+and a one-line reason:
 
 - true: was the claim true when it was made, judged from the whole session, including what came
   after (yes, no or unclear)
@@ -248,7 +254,7 @@ unmarked. Items are keyed by salted ids, as cases are.
 
 `--read --tag <tag>` writes `read-<tag>.json` and its own plan, `plan-<tag>.json`, so the second
 run's `read.json` is never touched. `--case <id>` narrows it to one cut on every `--arm` given, and
-`--case <id>:<arm>` to one cut and arm; an id may be its first eight characters. The ledger, its cap
+`--case <id>:<arm>` to one cut and one of those arms; an id may be its first eight characters. The ledger, its cap
 and the dry-run plan rule are unchanged, and the ledger's floor counts every read file.
 `--score --tag <tag>` scores that file into `results-<tag>.json` and leaves `results.json` alone; a
 cut and arm the plan did not choose reads `not-run`.

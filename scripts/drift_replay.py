@@ -151,6 +151,8 @@ class Message:
     at: float
     text: str
     uuids: list[str] = field(default_factory=list)
+    # Each reply text joined into this message, with its record's time.
+    parts: list[tuple[float, str]] = field(default_factory=list)
 
 
 def _typed(record: Mapping[str, Any]) -> str | None:  # noqa: PLR0911 - one return per excluded kind
@@ -216,6 +218,7 @@ def conversation(path: str, until: float | None = None) -> list[Message]:  # noq
                     pending = Message("claude", at, "", [])
                 pending.text = (pending.text + "\n\n" + block["text"].strip()).strip()
                 pending.uuids.append(str(record.get("uuid") or ""))
+                pending.parts.append((at, block["text"].strip()))
     if pending is not None:
         found.append(pending)
     return found
@@ -1172,8 +1175,8 @@ def _selection(
     pairs: set[str] = set()
     for selector in chosen:
         wanted, _sep, arm = selector.partition(":")
-        if arm and arm not in ARMS:
-            return [], f"Refused: {arm!r} is not an arm."
+        if arm and arm not in arms:
+            return [], f"Refused: {arm!r} is not one of the arms read ({', '.join(arms)})."
         found = [
             i for i in ids if i == wanted or (len(wanted) >= _MIN_PREFIX and i.startswith(wanted))
         ]
@@ -1366,7 +1369,7 @@ def _read_cases(  # noqa: PLR0913 - every input of one pass, named
                 changed_after=press.changed_after,
                 read_incomplete=press.read_incomplete,
                 # The listing's cap leaving out a pass or a write, as the press reads it.
-                unlisted=press.unlisted,
+                passes_and_writes=press.passes_and_writes,
             )
             model = _Charged(inner, None if dry_run else ledger, f"{case['id']}|{intent.arm}")
             assessment, why, _spent = reading.produce(
@@ -1661,7 +1664,6 @@ def export_claims(*, home: str, say: Callable[[str], Any] = print) -> int:
             item_id = claim_item_id(salt, flag.case, flag.fact)
             items[item_id] = {
                 "id": item_id,
-                "case": flag.case,
                 "sid": sid,
                 "cut": float(case["cut"]),
                 "claim_at": flag.at,
@@ -1693,12 +1695,40 @@ def _claim_screen(
     for message in messages[max(0, n - CONTEXT_MESSAGES) : n]:
         who = "YOU   " if message.role == "you" else "CLAUDE"
         say(f"\n  [{who} {stamp(message.at)}] {_clip(message.text, CONTEXT_CHARS)}")
-    say(f"\n  THE CLAIM, #{n} at {stamp(messages[n].at)}")
-    say(f"    {_clip(messages[n].text, CLAIM_TEXT_CHARS)}")
+    before, claim, after = _claim_in_turn(messages[n], float(item.get("claim_at") or 0.0))
+    if before:
+        say(f"\n  EARLIER IN THE SAME REPLY (it began at {stamp(messages[n].at)})")
+        say(f"    ...{' '.join(before.split())[-CONTEXT_CHARS:]}")
+    said_at = float(item.get("claim_at") or messages[n].at)
+    say(f"\n  THE CLAIM, in #{n}, at {stamp(said_at)}")
+    say(f"    {_clip(claim, CLAIM_TEXT_CHARS)}")
+    if after:
+        say("\n  LATER IN THE SAME REPLY")
+        say(f"    {_clip(after, CONTEXT_CHARS)}")
     say(f"\n  AFTER IT (the reading's cut was at {stamp(float(item['cut']))})")
     for message in messages[n + 1 : n + 1 + CLAIM_AFTER_MESSAGES]:
         who = "YOU   " if message.role == "you" else "CLAUDE"
         say(f"\n  [{who} {stamp(message.at)}] {_clip(message.text, CONTEXT_CHARS)}")
+
+
+def _claim_in_turn(message: Message, at: float) -> tuple[str, str, str]:
+    """The reply's text before the claim, the claim's own record, and the text after it.
+
+    A numbered message joins every reply text of a turn, and a claim can sit thousands of
+    characters in (measured: 31 of 51 exported claims began past the first 2,000). The claim is
+    the record stamped `at`; with no record stamped then, the latest one before it.
+    """
+    parts = message.parts or [(message.at, message.text)]
+    stamped = [i for i, (when, _text) in enumerate(parts) if abs(when - at) < 1e-3]
+    if not stamped:
+        earlier = [i for i, (when, _text) in enumerate(parts) if when <= at]
+        stamped = earlier[-1:] or [0]
+    first, last = stamped[0], stamped[-1]
+
+    def joined(chosen: list[tuple[float, str]]) -> str:
+        return "\n\n".join(text for _when, text in chosen)
+
+    return joined(parts[:first]), joined(parts[first : last + 1]), joined(parts[last + 1 :])
 
 
 def _save_claim_marks(paths: Mapping[str, str], marks: Mapping[str, Any], items: int) -> str:
@@ -1824,7 +1854,7 @@ def _scored_read(
     chosen = set(plan.get("selection") or ())
 
     def planned(case_id: str, arm: str) -> bool:
-        return f"{case_id}:{arm}" in chosen if chosen else arm in read_arms
+        return arm in read_arms and (not chosen or f"{case_id}:{arm}" in chosen)
 
     results_path = (
         os.path.join(os.path.dirname(RESULTS_PATH), f"results-{tag}.json") if tag else RESULTS_PATH
