@@ -96,9 +96,7 @@ class TranscriptSourceLookupTest(unittest.TestCase):
 
     def test_a_cached_source_survives_a_redundant_read_failure(self) -> None:
         self.lookup()
-        with mock.patch.object(
-            runtime_io, "read_prefix_bytes", side_effect=OSError
-        ):
+        with mock.patch.object(runtime_io, "read_prefix_bytes", side_effect=OSError):
             self.assertEqual(self.words, self.lookup()[0]["reader_words"])
 
     def test_one_cache_entry_cannot_be_reused_for_a_different_session(self) -> None:
@@ -117,9 +115,7 @@ class TranscriptSourceLookupTest(unittest.TestCase):
         )
 
     def test_a_read_failure_does_not_cache_an_empty_source(self) -> None:
-        with mock.patch.object(
-            runtime_io, "read_prefix_bytes", side_effect=OSError
-        ):
+        with mock.patch.object(runtime_io, "read_prefix_bytes", side_effect=OSError):
             self.assertEqual([], self.lookup())
         self.assertEqual(self.words, self.lookup()[0]["reader_words"])
 
