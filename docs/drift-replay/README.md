@@ -95,3 +95,39 @@ an echo, not a catch.
 Four sessions from one person is a development set. It supports "caught this, here, because of that"
 and "cannot see this kind at all". It does not support a rate. A rate needs sessions collected after
 the check is frozen.
+
+## The first run, 2026-10-04
+
+The owner delegated the marking. Two fresh agents marked all 99 cuts blind, a third broke two
+ties, and two more reconciled the 26 cuts where the blind answer disagreed with the annotations,
+each seeing what the person typed next; the three cuts they split on are unclear and left out. None
+of them had seen any detector output, and the marks digest was committed before any run. Every
+marker is an agent, likely of the same model family as the Claude Code reader being scored, so this
+is not a human key.
+
+Live estimate and Steer back ran at every cut and arm. Analyze ran the realistic and part arms only
+(195 calls of the 240 authorized; the hindsight arm would have passed the cap), and every call came
+back as a reading. A score models a reader who presses "Keep my intent and analyze", because the
+page otherwise shows a departure as not verifiable while a later direction is unsettled.
+
+What it found, on four sessions from one person (a development set, so no rates):
+
+- Neither detector separated drift from no drift. On the realistic arm, Analyze raised a departure at
+  8 of 22 first-pushback drift cuts and 26 of 71 no-drift cuts; the live estimate flagged 8 of 22 and
+  19 of 71, every time on a failed check, some of them days old.
+- Two blind judges, shown each flag's evidence beside the drift without being told which detector
+  raised it, rated none of the live estimate's 14 flags on drift cuts as pointing at the drift, and
+  one Analyze cut as doing so: a false "running" claim, caught from the agent's own words at a later
+  pushback in the same episode, so not counted among first pushbacks.
+- The intent fed to Analyze drove most of the result. A goal adopted from the opening prompt keeps
+  240 characters, which in one session cut off the instruction that mattered and in another kept
+  only plan-file preamble, and once the person had moved the work on, every later turn read as a
+  departure from it. About 7 of the 26 no-drift departures were model errors, two of them reading a
+  passing run as failed.
+- Most of the drift the person pushed back on (false status claims, buried questions, effects seen
+  only on their screen) was invisible to the blind markers too until they saw the person's reply.
+- Steer back was offered at 68% of drift cuts and 72% of the rest.
+
+The `relevant-flag` outcome in `results.json` uses the time rule above, which nearly every flag
+passes because a departure usually cites the agent's last message; the blind judges' ratings are
+the stricter reading. `results.json` counts 24 drift cuts; 22 of them are first pushbacks.

@@ -74,6 +74,14 @@ class WhatIsHidden(unittest.TestCase):
         self.assertNotIn("abcdef0123456789", got)
         self.assertIn("[REDACTED_SECRET_", got)
 
+    def test_a_harness_keyed_capability_is_hidden(self) -> None:
+        hexed = "ab" * 32
+        got = _redactor().text(f'{{"claude": "{hexed}", "note": "capability token: {hexed}"}}')
+        self.assertNotIn(hexed, got)
+        self.assertEqual(got.count("[REDACTED_SECRET_1]"), 2)
+        commit = "cd" * 32
+        self.assertIn(commit, _redactor().text(f"tree {commit}"))
+
     def test_the_documented_placeholder_key_is_kept(self) -> None:
         self.assertIn("AKIAIOSFODNN7EXAMPLE", _redactor().text("AKIAIOSFODNN7EXAMPLE"))
 
