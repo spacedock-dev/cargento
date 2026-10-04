@@ -413,7 +413,7 @@ class OutcomesKeepRelevanceApart(unittest.TestCase):
     def test_a_live_flag_is_judged_by_when_its_cause_happened(self) -> None:
         stale, fresh = {"level": "high", "cause_at": 10.0}, {"level": "high", "cause_at": 50.0}
         self.assertEqual(dr._live_bin(stale, drifted=True, start=40.0), "irrelevant-flag")
-        self.assertEqual(dr._live_bin(fresh, drifted=True, start=40.0), "relevant-flag")
+        self.assertEqual(dr._live_bin(fresh, drifted=True, start=40.0), "flag-after-start")
         self.assertEqual(
             dr._live_bin({"level": "high"}, drifted=True, start=40.0), "unattributed-flag"
         )
@@ -445,9 +445,9 @@ class OutcomesKeepRelevanceApart(unittest.TestCase):
             },
             "facts": {"a1": {"at": 50.0, "type": "agent_message"}, "c1": {"at": 5.0}},
         }
-        self.assertEqual(dr._read_bin(entry, drifted=True, start=40.0), "relevant-flag")
+        self.assertEqual(dr._read_bin(entry, drifted=True, start=40.0), "flag-after-start")
         self.assertEqual(
-            dr._read_bin(entry, drifted=True, start=40.0, only="claims"), "relevant-flag"
+            dr._read_bin(entry, drifted=True, start=40.0, only="claims"), "flag-after-start"
         )
         self.assertEqual(dr._read_bin(entry, drifted=True, start=40.0, only="intent"), "reassured")
         bare = {
@@ -471,7 +471,7 @@ class OutcomesKeepRelevanceApart(unittest.TestCase):
             "assessment": {"criteria": {"goal": {"result": "departure", "cites": ["f2"]}}},
             "facts": {"f1": 10.0, "f2": 50.0},
         }
-        self.assertEqual(dr._read_bin(entry, drifted=True, start=40.0), "relevant-flag")
+        self.assertEqual(dr._read_bin(entry, drifted=True, start=40.0), "flag-after-start")
         self.assertEqual(dr._read_bin(entry, drifted=True, start=60.0), "irrelevant-flag")
         self.assertEqual(
             dr._read_bin({"withheld": "idle-unknown"}, drifted=True, start=1.0), "withheld"
@@ -518,7 +518,7 @@ class EachDepartedCriterionIsJudgedOnItsOwnCites(unittest.TestCase):
             },
             self.FACTS,
         )
-        self.assertEqual("relevant-flag", dr._read_bin(entry, drifted=True, start=40.0))
+        self.assertEqual("flag-after-start", dr._read_bin(entry, drifted=True, start=40.0))
 
     def test_a_claims_departure_on_the_claim_and_the_persons_words_is_an_echo(self) -> None:
         entry = _reading(
@@ -536,15 +536,15 @@ class EachDepartedCriterionIsJudgedOnItsOwnCites(unittest.TestCase):
         ):
             with self.subTest(cites=cites):
                 entry = _reading({"claims": {"result": "departure", "cites": cites}}, self.FACTS)
-                self.assertEqual("relevant-flag", dr._read_bin(entry, drifted=True, start=40.0))
+                self.assertEqual("flag-after-start", dr._read_bin(entry, drifted=True, start=40.0))
 
     def test_the_claim_is_left_out_only_on_a_claims_departure(self) -> None:
         unshown = _reading({"claims": {"result": dr.UNSUPPORTED, "cites": ["a_claim"]}}, self.FACTS)
-        self.assertEqual("relevant-flag", dr._read_bin(unshown, drifted=True, start=40.0))
+        self.assertEqual("flag-after-start", dr._read_bin(unshown, drifted=True, start=40.0))
         goal = _reading(
             {"goal": {"result": "departure", "cites": ["a_claim", "p_late"]}}, self.FACTS
         )
-        self.assertEqual("relevant-flag", dr._read_bin(goal, drifted=True, start=40.0))
+        self.assertEqual("flag-after-start", dr._read_bin(goal, drifted=True, start=40.0))
 
 
 class _Home:
@@ -880,7 +880,11 @@ class ClaimsAreMarkedTrueOrFalseBlind(unittest.TestCase):
         for word in ARMS_AND_RESULTS:
             self.assertNotIn(word, screen)
         (mark,) = marks["marks"].values()
-        self.assertEqual({"true": "no", "visible": "yes", "reason": "it was reverted later"}, mark)
+        self.assertEqual(
+            {"true": "no", "visible": "yes", "reason": "it was reverted later"},
+            {key: mark[key] for key in ("true", "visible", "reason")},
+        )
+        self.assertEqual("operator", mark["provenance"]["markers"][0]["marker"])
         self.assertEqual(hashlib.sha256(raw).hexdigest(), digest["marks_digest"])
 
     def test_each_flag_is_scored_on_the_claims_own_marks(self) -> None:

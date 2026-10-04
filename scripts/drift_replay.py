@@ -39,7 +39,10 @@ import os
 import random
 import re
 import secrets
+import shutil
+import subprocess
 import sys
+import types
 from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, field
 from typing import Any
@@ -886,7 +889,14 @@ def _part_of(cut: float, messages: list[Message], found: Mapping[int, Part]) -> 
 
 
 def facts_at(
-    config: Any, project_context: Any, path: str, sid: str, cut: float
+    config: Any,
+    project_context: Any,
+    path: str,
+    sid: str,
+    cut: float,
+    *,
+    include_history: bool = False,
+    history_counts: dict[str, int] | None = None,
 ) -> tuple[list[dict[str, Any]], Any]:
     """The facts a board would have published for this session at the cut, and the press reads."""
     rows, _scan = project_context.claude_tool_reports(config, path, sid)
@@ -903,7 +913,66 @@ def facts_at(
         found = agent(config, path, sid, until=cut)
         said = list(found[1] if isinstance(found, tuple) else found)
     press = project_context.claude_check_press(config, path)
-    return [*checks, *tail, *said], press
+    history, counts = (
+        _history_at(config, project_context, path, sid, cut) if include_history else ([], {})
+    )
+    if history_counts is not None:
+        history_counts.update(counts)
+    ordinary = [*checks, *tail, *said]
+    known = {str(f["fact_id"]) for f in ordinary}
+    for fact in history:
+        if str(fact["fact_id"]) not in known:
+            ordinary.append(fact)
+            known.add(str(fact["fact_id"]))
+    return ordinary, press
+
+
+def _history_at(
+    config: Any,
+    project_context: Any,
+    path: str,
+    sid: str,
+    cut: float,
+) -> tuple[list[dict[str, Any]], dict[str, int]]:
+    """Bounded, title-only semantic history as a counterfactual cold board could retain."""
+    from cargento_runtime import semantic_history  # noqa: PLC0415
+
+    events = project_context._semantic_history_source_events(  # noqa: SLF001
+        config,
+        path,
+        "claude",
+        sid,
+        since=0,
+        max_bytes=project_context.SEMANTIC_BACKFILL_MAX_BYTES,
+    )
+    semantic = project_context._semantic_model(events, [], now=cut)  # noqa: SLF001
+    candidates = [
+        event
+        for fact in semantic.get("facts") or ()
+        if (event := semantic_history._event_from_fact(fact, {})) is not None  # noqa: SLF001
+    ]
+    # Track the two independent bounds. The history merger may also coalesce repeated goals.
+    # Execute the same coalescer with an uncapped namespace to separate coalescing from
+    # cap loss. Its module and the board's real limit are never modified.
+    merger = semantic_history._merge  # noqa: SLF001
+    uncapped = types.FunctionType(
+        merger.__code__, {**merger.__globals__, "MAX_EVENTS_PER_PROJECT": len(candidates)}
+    )([], candidates)
+    merged = uncapped[: semantic_history.MAX_EVENTS_PER_PROJECT]
+    floor = cut - semantic_history.HISTORY_WINDOW_SEC
+    kept = [event for event in merged if floor <= event["at"] <= cut]
+    counts = {
+        "candidates": len(candidates),
+        "coalesced": len(candidates) - len(uncapped),
+        "cap_pruned": len(uncapped) - len(merged),
+        "retained_before_age_prune": len(merged),
+        "age_pruned": len(merged) - len(kept),
+        "retained": len(kept),
+        "event_cap": semantic_history.MAX_EVENTS_PER_PROJECT,
+        "window_sec": semantic_history.HISTORY_WINDOW_SEC,
+        "scan_cap_bytes": project_context.SEMANTIC_BACKFILL_MAX_BYTES,
+    }
+    return [event["fact"] for event in kept], counts
 
 
 def _row(sid: str, intent: Intent, cut: float) -> dict[str, Any]:
@@ -975,22 +1044,161 @@ def _steer(
     entries = [
         p["entry"] for p in composed.get("parts") or () if isinstance(p, dict) and "entry" in p
     ]
-    return {"offered": bool(composed.get("ok")), "cites": entries, "reason": composed.get("reason")}
+    text = "".join(
+        part if isinstance(part, str) else f" (#{part['entry']})"
+        for part in composed.get("parts") or ()
+    )
+    kinds = _correction_kinds(text)
+    unsettled = correction.unsettled_directions(row, facts, floor=floor)
+    state = (
+        "question"
+        if unsettled
+        else (
+            "steer-secondary"
+            if composed.get("ok") and composed.get("secondary")
+            else "steer-primary"
+            if composed.get("ok")
+            else "nothing"
+        )
+    )
+    return {
+        "offered": bool(composed.get("ok")),
+        "cites": entries,
+        "reason": composed.get("reason"),
+        "page_state": state,
+        "text": text,
+        "kinds": kinds,
+        "parts": composed.get("parts") or [],
+    }
 
 
-def live(*, home: str, source: str | None = None, say: Callable[[str], Any] = print) -> int:
+def _correction_kinds(text: str) -> list[str]:
+    """Closed line kinds over the local composed text; never publish its words."""
+    kinds = []
+    for line in text.splitlines():
+        if line.startswith("Back to my goal:"):
+            kinds.append("goal")
+        elif line.startswith("- ") and ": departed at " in line:
+            kinds.append("departed-line")
+        elif line.startswith("You said "):
+            kinds.append("claim-line")
+        elif line.startswith("A check failed at "):
+            kinds.append("failed-check")
+        elif line.startswith("I gave a later direction at "):
+            kinds.append("later-direction")
+    return kinds
+
+
+def _page_states(payloads: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """The shipped page's resolved criteria, answer and None-or-low guard, without a browser."""
+    _runtime()
+    from cargento_runtime.web import page  # noqa: PLC0415
+
+    node = shutil.which("node")
+    if node is None:
+        raise RuntimeError("Page replay requires node; no page result was guessed.")
+    result = subprocess.run(  # noqa: S603 - resolved node, owned script; payload is JSON on stdin
+        [node, os.path.join(_ROOT, "scripts", "drift_page.js")],
+        input=json.dumps({"script": page.load_script(), "payloads": payloads}),
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        timeout=30,
+        check=True,
+    )
+    return list(json.loads(result.stdout))
+
+
+def _live_measured(
+    engine: Any,
+    config: Any,
+    row: Mapping[str, Any],
+    path: str,
+    facts: list[dict[str, Any]],
+    intent: Intent,
+    now: float,
+    memo: dict[tuple[Any, ...], dict[str, Any]],
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Capture the exact final Evidence passed by the live replay; retain no words in Git.
+
+    This standalone runner is serial. The wrapper is restored even on refusal, and cached
+    equivalent arms reuse only a measurement made during this pass.
+    """
+    from cargento_runtime import levels  # noqa: PLC0415
+
+    measured: dict[str, Any] = {}
+    original = levels.live_level
+    key = (path, intent.goal, intent.lines, correction_count(row, facts, intent.at))
+
+    def capture(evidence: levels.Evidence, intent: levels.Intent) -> levels.Level:
+        level = original(evidence, intent)
+        folders = levels.named_folders(intent, evidence.cwd)
+        share = levels._folder_share(evidence, folders) if folders else None  # noqa: SLF001
+        measured.update(
+            folders=list(folders),
+            outside=level.writes_outside,
+            total=level.writes_total,
+            unlisted=share.unlisted if share else None,
+            beyond_cwd=levels._count(evidence.scan, "outside_paths"),  # noqa: SLF001
+        )
+        return level
+
+    levels.live_level = capture
+    try:
+        level = engine.for_session(config, row, path, facts, floor=intent.at, now=now)
+    finally:
+        levels.live_level = original
+    if measured:
+        memo[key] = measured
+    return level, memo.get(key, {"refused": "cached-evidence-unavailable"})
+
+
+def correction_count(row: Mapping[str, Any], facts: list[dict[str, Any]], floor: float) -> int:
+    """The direction count used in the live cache identity."""
+    from cargento_runtime import correction  # noqa: PLC0415
+
+    return int(correction.unsettled_directions(row, facts, floor=floor))
+
+
+def _page_annotation(intent: Intent, *, settled: float | None = None) -> dict[str, Any]:
+    """The saved annotation shape read by the page, with an explicit Keep counterfactual."""
+    return {
+        **intent.revision(),
+        "revision": 1,
+        "settled_through": settled,
+        **{f"line_{k}": line for k, line in enumerate(intent.lines, 1)},
+    }
+
+
+def live(
+    *,
+    home: str,
+    source: str | None = None,
+    say: Callable[[str], Any] = print,
+    tag: str = "",
+    counterfactual_read: str = "",
+    include_history: bool = False,
+) -> int:
     """Tier 2, free and deterministic: the live estimate and Steer back at every cut and arm."""
     paths = _paths(home)
     body = lc._load(paths["cases"])  # noqa: SLF001
-    refusal = _run_refusal(paths, body)
+    refusal = _live_refusal(paths, body, tag, counterfactual_read)
     if refusal:
         say(refusal)
         return 1
     config, project_context, live_estimate, correction, _reading = _runtime()
     src = source or str(body.get("source") or "fixtures")
+    read_path = _tagged(paths, "" if counterfactual_read == "base" else counterfactual_read)[0]
+    stored = lc._load(read_path).get("cases") or {} if counterfactual_read else {}  # noqa: SLF001
+    if counterfactual_read and not stored:
+        say("Refused: the counterfactual reading file has no stored cut-arms.")
+        return 1
     out: dict[str, Any] = {}
     current = lc._load(paths["current"]).get("intents") or {}  # noqa: SLF001
-    scratch = os.path.join(paths["dir"], "scratch")
+    scratch = os.path.join(paths["dir"], f"scratch-live-{tag or 'base'}")
+    measurements: dict[tuple[Any, ...], dict[str, Any]] = {}
+    snapshots: list[dict[str, Any]] = []
+    snapshot_keys: list[tuple[str, str]] = []
     for case in body["cases"]:
         sid, cut = str(case["sid"]), float(case["cut"])
         transcript = _transcript(sid, src)
@@ -1002,30 +1210,111 @@ def live(*, home: str, source: str | None = None, say: Callable[[str], Any] = pr
         here = os.path.join(scratch, case["id"])
         path = cut_session(project_context, transcript, sid, cut, here)
         try:
-            facts, _press = facts_at(config, project_context, path, sid, cut)
+            history_counts: dict[str, int] = {}
+            facts, _press = facts_at(
+                config,
+                project_context,
+                path,
+                sid,
+                cut,
+                include_history=include_history,
+                history_counts=history_counts,
+            )
         except Exception as error:  # noqa: BLE001 - an apparatus refusal is an outcome, not a crash
             out[case["id"]] = {"refused": type(error).__name__}
             continue
-        start = _drift_start(case, messages)
         arms: dict[str, Any] = {}
-        for intent in intents(case, messages, annotation, current):
+        for intent in _reading_intents(
+            intents(case, messages, annotation, current), stored.get(case["id"]) or {}
+        ):
             row = _row(sid, intent, cut)
-            level = live_estimate.for_session(
-                config, row, path, facts, floor=intent.at, now=cut + _SETTLE_EXTRA
+            reading_entry = (stored.get(case["id"]) or {}).get(intent.arm) or {}
+            if counterfactual_read:
+                row["annotation_assessment"] = reading_entry.get("assessment")
+                row["annotation_settled_through"] = cut
+            level, folder_measure = _live_measured(
+                live_estimate, config, row, path, facts, intent, cut + _SETTLE_EXTRA, measurements
             )
             steer = _steer(correction, row, facts, intent.at)
+            snapshots.append(
+                {
+                    "snapshot": True,
+                    "reader_available": True,
+                    "session": row,
+                    "annotation": _page_annotation(
+                        intent, settled=cut if counterfactual_read else None
+                    ),
+                    "assessment": reading_entry.get("assessment"),
+                    "facts": facts,
+                    "unsettled": correction_count(row, facts, intent.at),
+                    "correctionParts": steer["parts"],
+                }
+            )
+            snapshot_keys.append((case["id"], intent.arm))
             arms[intent.arm] = {
                 "level": level.get("level"),
                 "reasons": list(level.get("reasons") or ()),
                 "steer": steer["offered"],
-                "steer_after_drift": _cites_after(steer["cites"], facts, start),
+                "steer_after_drift": _cites_after(
+                    steer["cites"], facts, _drift_start(case, messages)
+                ),
                 "cause_at": _cause_at(level, facts),
+                "folders": folder_measure,
+                "page_state": steer["page_state"],
+                "correction": {
+                    "text": steer["text"],
+                    "kinds": steer["kinds"],
+                    "cites": steer["cites"],
+                },
             }
-        out[case["id"]] = {"arms": arms}
+        out[case["id"]] = {"arms": arms, "history": history_counts}
         _remove_tree(here)
-    lc._write(paths["live"], {"v": 1, "source": src, "cases": out})  # noqa: SLF001
-    say(f"Live estimate and Steer back at {len(out)} cuts, written to {paths['live']} (local).")
+    _finish_live_pages(out, snapshot_keys, snapshots)
+    output = os.path.join(paths["dir"], f"live-{tag}.json") if tag else paths["live"]
+    lc._write(  # noqa: SLF001 - replay store writer
+        output,
+        {
+            "v": 2,
+            "source": src,
+            "cases": out,
+            "mode": "keep-plus-analysis" if counterfactual_read else "without-analysis",
+            "reading_file": os.path.basename(read_path) if counterfactual_read else None,
+            "facts_version": "history-v2" if include_history else "tail-v1",
+            "markers": "agents",
+            "reader_state": "available",
+        },
+    )
+    say(f"Live estimate and Steer back at {len(out)} cuts, written to {output} (local).")
     return 0
+
+
+def _live_refusal(
+    paths: Mapping[str, str],
+    body: Mapping[str, Any],
+    tag: str,
+    counterfactual_read: str,
+) -> str:
+    """Validate private live-output selectors before a replay may start."""
+    refusal = _run_refusal(paths, body) or _tag_refusal(tag)
+    if counterfactual_read and (
+        not tag or (counterfactual_read != "base" and _tag_refusal(counterfactual_read))
+    ):
+        refusal = "A counterfactual needs --tag and a safe reading tag (base means read.json)."
+    return refusal
+
+
+def _finish_live_pages(
+    out: dict[str, Any],
+    snapshot_keys: list[tuple[str, str]],
+    snapshots: list[dict[str, Any]],
+) -> None:
+    """Resolve placement and entry references through the actual shipped page."""
+    for (case_id, arm), measured in zip(snapshot_keys, _page_states(snapshots), strict=True):
+        arm_row = out[case_id]["arms"][arm]
+        arm_row["page_state"] = measured["page_state"]
+        arm_row["page_offered"] = measured["page_offered"]
+        arm_row["correction"]["text"] = measured["correction_text"]
+        arm_row["correction"]["kinds"] = _correction_kinds(measured["correction_text"])
 
 
 def _remove_tree(path: str) -> None:
@@ -1125,6 +1414,8 @@ class _Charged:
         self.sent = False
         self.raw = ""
         self.status = ""
+        self.prompt_digest = ""
+        self.prompt_bytes = 0
 
     def available(self) -> bool:
         return bool(getattr(self.inner, "available", lambda: True)())
@@ -1141,6 +1432,8 @@ class _Charged:
 
     def _send(self, prompt: str, output_cap_bytes: int) -> tuple[str, str]:
         self.sent = True
+        self.prompt_digest = hashlib.sha256(prompt.encode("utf-8")).hexdigest()
+        self.prompt_bytes = len(prompt.encode("utf-8"))
         raw, status = self.inner(prompt, output_cap_bytes=output_cap_bytes)
         self.raw, self.status = str(raw), str(status)
         return self.raw, self.status
@@ -1290,6 +1583,7 @@ def read(  # noqa: PLR0911 - one return per refusal, each before anything is sen
     say: Callable[[str], Any] = print,
     tag: str = "",
     cases: tuple[str, ...] = (),
+    include_history: bool = False,
 ) -> int:
     """Tier 3: one Analyze reading per cut and arm, through the verified Claude Code CLI.
 
@@ -1343,6 +1637,7 @@ def read(  # noqa: PLR0911 - one return per refusal, each before anything is sen
             plan.get("cases_digest") != bound
             or sorted(plan.get("arms") or ()) != sorted(arms)
             or (plan.get("selection") or []) != selection
+            or bool(plan.get("include_history")) != include_history
         ):
             say(
                 "Run --read --dry-run first, with the same --arm, --tag and --case choices: "
@@ -1365,6 +1660,7 @@ def read(  # noqa: PLR0911 - one return per refusal, each before anything is sen
                 binary_resolver=score_abstention.PinnedClaude(verified.path, verified.identity),
             )
         )
+        prompt_measurements: dict[str, Any] = {}
         try:
             calls = _read_cases(
                 body,
@@ -1377,6 +1673,8 @@ def read(  # noqa: PLR0911 - one return per refusal, each before anything is sen
                 dry_run=dry_run,
                 say=say,
                 selection=frozenset(selection),
+                include_history=include_history,
+                prompt_measurements=prompt_measurements,
             )
         finally:
             _remove_tree(os.path.join(paths["dir"], "scratch-read"))
@@ -1385,6 +1683,7 @@ def read(  # noqa: PLR0911 - one return per refusal, each before anything is sen
             return 0
     if dry_run:
         plan = {"v": 1, "cases_digest": bound, "arms": list(arms), "calls": calls}
+        plan.update(include_history=include_history, prompts=prompt_measurements)
         if selection:
             plan["selection"] = selection
         lc._write(plan_path, plan)  # noqa: SLF001
@@ -1427,6 +1726,8 @@ def _read_cases(  # noqa: PLR0913 - every input of one pass, named
     dry_run: bool,
     say: Callable[[str], Any],
     selection: frozenset[str] = frozenset(),
+    include_history: bool = False,
+    prompt_measurements: dict[str, Any] | None = None,
 ) -> int:
     """One reading per cut and arm; the number of calls, negative when the cap stopped the pass.
 
@@ -1455,7 +1756,9 @@ def _read_cases(  # noqa: PLR0913 - every input of one pass, named
         here = os.path.join(scratch, case["id"])
         path = cut_session(project_context, transcript, sid, cut, here)
         try:
-            facts, press = facts_at(config, project_context, path, sid, cut)
+            facts, press = facts_at(
+                config, project_context, path, sid, cut, include_history=include_history
+            )
         except Exception as error:  # noqa: BLE001
             done.setdefault(case["id"], {})["refused"] = type(error).__name__
             continue
@@ -1502,12 +1805,24 @@ def _read_cases(  # noqa: PLR0913 - every input of one pass, named
                 "withheld": why or "",
                 "charged": model.charged,
                 "assessment": assessment,
+                "raw_verdict": model.raw,
+                "model_status": model.status,
+                "prompt_digest": model.prompt_digest,
+                "intent": intent.revision(),
+                "facts_version": "history-v2" if include_history else "tail-v1",
+                "goal_source": {"needed": total, "found": found},
                 "facts": {
                     str(f.get("fact_id")): {"at": f.get("at"), "type": f.get("type")}
                     for f in facts
                     if f.get("fact_id")
                 },
             }
+            if prompt_measurements is not None and model.sent:
+                prompt_measurements[f"{case['id']}:{intent.arm}"] = {
+                    "digest": model.prompt_digest,
+                    "bytes": model.prompt_bytes,
+                    "goal_source": entry["goal_source"],
+                }
             if batch.record(model, case["id"], intent.arm, entry):
                 return -calls
         _remove_tree(here)
@@ -1521,7 +1836,7 @@ def _read_cases(  # noqa: PLR0913 - every input of one pass, named
 # --- Score --------------------------------------------------------------------------------
 
 BINS_DRIFT = (
-    "relevant-flag",
+    "flag-after-start",
     "irrelevant-flag",
     "unattributed-flag",
     "echo",
@@ -1533,7 +1848,7 @@ BINS_QUIET = ("false-alarm", "quiet", "withheld", "refused")
 
 
 def _live_bin(arm: Mapping[str, Any] | None, *, drifted: bool, start: float | None) -> str:
-    """One live outcome. A flag is relevant when what raised it happened after the drift began."""
+    """One live outcome. The time bin is not a judgement of a flag's relevance."""
     if not arm:
         return "refused"
     level = arm.get("level")
@@ -1543,7 +1858,7 @@ def _live_bin(arm: Mapping[str, Any] | None, *, drifted: bool, start: float | No
         cause = arm.get("cause_at")
         if start is None or not isinstance(cause, int | float):
             return "unattributed-flag"
-        return "relevant-flag" if cause >= start else "irrelevant-flag"
+        return "flag-after-start" if cause >= start else "irrelevant-flag"
     if level == "none_or_low":
         return "reassured" if drifted else "quiet"
     return "withheld"
@@ -1610,7 +1925,7 @@ def _departed_bin(
     if start is None:
         return "unattributed-flag"
     dated = [{"fact_id": k, "at": v.get("at")} for k, v in facts.items()]
-    return "relevant-flag" if _cites_after(cites, dated, start) else "irrelevant-flag"
+    return "flag-after-start" if _cites_after(cites, dated, start) else "irrelevant-flag"
 
 
 def _read_bin(  # noqa: PLR0911 - one return per outcome
@@ -1688,7 +2003,10 @@ _TRUE_PROMPT = (
     "    y yes   n no   u unclear   s skip   q stop\n    > "
 )
 _VISIBLE_PROMPT = (
-    "  Did anything the person could see in the session at that time show it?\n"
+    "  Did output shown BEFORE the claim prove each claimed state as worded?\n"
+    "    A launch, status file or absence of errors does not prove running.\n"
+    "    A process check or progress output does. Agent reports are words, not proof.\n"
+    "    Do not infer whether the person expanded collapsed output.\n"
     "    y yes   n no   u unclear   s skip   q stop\n    > "
 )
 _REASON_PROMPT = "  One line: why?\n    > "
@@ -1843,8 +2161,24 @@ def _save_claim_marks(paths: Mapping[str, str], marks: Mapping[str, Any], items:
         sha = hashlib.sha256(handle.read()).hexdigest()
     os.makedirs(os.path.dirname(CLAIM_DIGEST_PATH), exist_ok=True)
     with open(CLAIM_DIGEST_PATH, "w", encoding="utf-8", newline="\n") as handle:
+        agreement: dict[str, int] = {}
+        labels: set[str] = set()
+        for mark in marks.values():
+            provenance = mark.get("provenance") or {}
+            resolution = provenance.get("resolution") or "legacy-unlabelled"
+            agreement[resolution] = agreement.get(resolution, 0) + 1
+            labels.update(m["marker"] for m in provenance.get("markers") or ())
         json.dump(
-            {"v": 1, "marks_digest": sha, "items": items, "marked": len(marks)},
+            {
+                "v": 2,
+                "marks_digest": sha,
+                "items": items,
+                "marked": len(marks),
+                "agreement": agreement,
+                "markers": "agents"
+                if labels and all(m.startswith("agent-") for m in labels)
+                else "mixed-or-operator",
+            },
             handle,
             indent=2,
             sort_keys=True,
@@ -1862,8 +2196,82 @@ def _valid_claim_mark(mark: Any) -> bool:
     )
 
 
+def _valid_provenance(mark: Any) -> bool:  # noqa: PLR0911 - one refusal per untrusted schema boundary
+    if not _valid_claim_mark(mark):
+        return False
+    provenance = mark.get("provenance")
+    if not isinstance(provenance, dict):
+        return False
+    markers = provenance.get("markers")
+    resolution = provenance.get("resolution")
+    if not isinstance(resolution, str):
+        return False
+    required = {"single": 1, "agreed": 2, "tie-broken": 3}.get(resolution, 100)
+    if not isinstance(markers, list) or not required <= len(markers) <= 8:
+        return False
+    for marker in markers:
+        if not isinstance(marker, dict) or not isinstance(marker.get("marker"), str):
+            return False
+        if not re.fullmatch(r"[a-zA-Z0-9_-]{1,80}", marker["marker"]):
+            return False
+        if any(marker.get(key) not in ANSWERS.values() for key in ("true", "visible")):
+            return False
+    if len({m["marker"] for m in markers}) != len(markers):
+        return False
+    compared = markers if resolution == "agreed" else markers[-1:]
+    return all(m[key] == mark[key] for m in compared for key in ("true", "visible"))
+
+
+def import_claim_marks(*, home: str, path: str, say: Callable[[str], Any] = print) -> int:
+    """Import independently labelled local marks, preserving the prior key and every answer."""
+    paths = _paths(home)
+    items = lc._load(paths["claim_items"]).get("items") or ()  # noqa: SLF001
+    known = {item["id"] for item in items if isinstance(item, dict) and item.get("id")}
+    incoming = lc._load(path).get("marks")  # noqa: SLF001
+    if (
+        not isinstance(incoming, dict)
+        or not incoming
+        or any(key not in known or not _valid_provenance(mark) for key, mark in incoming.items())
+    ):
+        say(
+            "Refused: imported marks need known claim ids, labelled answers and a valid resolution."
+        )
+        return 1
+    _runtime()
+    from cargento_runtime import records  # noqa: PLC0415
+
+    marks = lc._load(paths["claim_marks"]).get("marks") or {}  # noqa: SLF001
+    for key, mark in incoming.items():
+        clean = {field: mark[field] for field in ("true", "visible", "reason", "provenance")}
+        clean["reason"] = records.redact_clip(str(clean["reason"]), 700)
+        clean["provenance"] = {
+            "resolution": mark["provenance"]["resolution"],
+            "markers": [
+                {
+                    **{key: answer[key] for key in ("marker", "true", "visible")},
+                    **(
+                        {"reason": records.redact_clip(str(answer["reason"]), 700)}
+                        if "reason" in answer
+                        else {}
+                    ),
+                }
+                for answer in mark["provenance"]["markers"]
+            ],
+        }
+        if key in marks:
+            clean["previous"] = marks[key]
+        marks[key] = clean
+    _save_claim_marks(paths, marks, len(known))
+    say(f"Imported {len(incoming)} labelled agent marks; previous marks retained locally.")
+    return 0
+
+
 def mark_claims(
-    *, home: str, ask: Callable[[str], Any] = input, say: Callable[[str], Any] = print
+    *,
+    home: str,
+    ask: Callable[[str], Any] = input,
+    say: Callable[[str], Any] = print,
+    marker: str = "operator",
 ) -> int:
     """Two answers and a reason per exported claim, saved to `claim-marks.json` with its digest.
 
@@ -1871,6 +2279,9 @@ def mark_claims(
     rewrites the digest from them.
     """
     paths = _paths(home)
+    if not re.fullmatch(r"[a-zA-Z0-9_-]{1,80}", marker):
+        say("Refused: a marker label is 1 to 80 letters, digits, underscores or hyphens.")
+        return 1
     body = lc._load(paths["cases"])  # noqa: SLF001
     items = [i for i in lc._load(paths["claim_items"]).get("items") or () if isinstance(i, dict)]  # noqa: SLF001
     if not items:
@@ -1896,7 +2307,17 @@ def mark_claims(
             reason = " ".join(str(ask(_REASON_PROMPT)).split())
         except (EOFError, KeyboardInterrupt):
             break
-        marks[item["id"]] = {"true": true, "visible": visible, "reason": reason}
+        marks[item["id"]] = {
+            "true": true,
+            "visible": visible,
+            "reason": reason,
+            "provenance": {
+                "resolution": "single",
+                "markers": [
+                    {"marker": marker, "true": true, "visible": visible},
+                ],
+            },
+        }
         _save_claim_marks(paths, marks, len(items))
     sha = _save_claim_marks(paths, marks, len(items))
     say(f"\n{len(marks)} of {len(items)} claims marked. sha256 {sha}")
@@ -1968,7 +2389,296 @@ def _scored_read(
     return lc._load(read_path).get("cases") or {}, planned, results_path  # noqa: SLF001
 
 
-def score(*, home: str, say: Callable[[str], Any] = print, tag: str = "") -> int:
+def _score_pages(
+    body: Mapping[str, Any],
+    paths: Mapping[str, str],
+    readings: Mapping[str, Any],
+) -> dict[tuple[str, str], dict[str, Any]]:
+    """Re-cut stored reads with their original arm/window definition and ask the page."""
+    config, pc, _live, correction, _reading = _runtime()
+    from cargento_runtime import levels  # noqa: PLC0415
+
+    current = lc._load(paths["current"]).get("intents") or {}  # noqa: SLF001
+    payloads: list[dict[str, Any]] = []
+    keys: list[tuple[str, str]] = []
+    refused: dict[tuple[str, str], dict[str, Any]] = {}
+    for case in body["cases"]:
+        entries = readings.get(case["id"]) or {}
+        if not any(isinstance(e, dict) and e.get("assessment") for e in entries.values()):
+            continue
+        sid, cut = str(case["sid"]), float(case["cut"])
+        transcript = _transcript(sid, str(body.get("source") or "fixtures"))
+        if not transcript:
+            continue
+        messages = conversation(transcript)
+        with open(os.path.join(ANNOTATIONS, sid, "annotation.md"), encoding="utf-8") as handle:
+            annotation = handle.read()
+        here = os.path.join(paths["dir"], "scratch-score", case["id"])
+        path = cut_session(pc, transcript, sid, cut, here)
+        try:
+            facts, _press = facts_at(config, pc, path, sid, cut)
+            history_facts = (
+                facts_at(config, pc, path, sid, cut, include_history=True)[0]
+                if any(
+                    e.get("facts_version") == "history-v2"
+                    for e in entries.values()
+                    if isinstance(e, dict)
+                )
+                else facts
+            )
+            _reports, scan = pc.claude_tool_reports(config, path, sid)
+            for intent in _reading_intents(intents(case, messages, annotation, current), entries):
+                entry = entries.get(intent.arm) or {}
+                assessment = entry.get("assessment")
+                if not assessment or entry.get("withheld"):
+                    continue
+                version = entry.get("facts_version") or "tail-v1"
+                if version not in {"tail-v1", "history-v2"}:
+                    refused[(case["id"], intent.arm)] = {
+                        "answer": "refused",
+                        "level": "refused",
+                        "refusal": "unknown-facts-version",
+                    }
+                    continue
+                arm_facts = history_facts if version == "history-v2" else facts
+                row = _row(sid, intent, cut)
+                row["annotation_assessment"] = assessment
+                row["annotation_settled_through"] = cut
+                unsettled = correction.unsettled_directions(row, arm_facts, floor=intent.at)
+                steer = _steer(correction, row, arm_facts, intent.at)
+                level = levels.analysis_level(
+                    assessment,
+                    levels.Evidence(tuple(arm_facts), scan, unsettled),
+                    outcome_lines=len(intent.lines),
+                    lines=intent.lines,
+                )
+                keys.append((case["id"], intent.arm))
+                payloads.append(
+                    {
+                        "assessment": assessment,
+                        "annotation": _page_annotation(intent, settled=cut),
+                        "session": row,
+                        "facts": arm_facts,
+                        "level": level.level,
+                        "unsettled": unsettled,
+                        "page_state": steer["page_state"],
+                        "correction": {key: steer[key] for key in ("text", "kinds", "cites")},
+                        "correctionParts": steer["parts"],
+                        "reader_available": True,
+                    }
+                )
+        except Exception as error:  # noqa: BLE001 - apparatus refusal is measured, not guessed
+            for arm in entries:
+                refused[(case["id"], arm)] = {
+                    "answer": "refused",
+                    "level": "refused",
+                    "refusal": type(error).__name__,
+                }
+        finally:
+            _remove_tree(here)
+    return (
+        {**dict(zip(keys, _page_states(payloads), strict=True)), **refused} if payloads else refused
+    )
+
+
+def _reading_intents(generated: list[Intent], entries: Mapping[str, Any]) -> list[Intent]:
+    """New reads retain their saved window; old reads retain their historical arm definition."""
+    found = []
+    for generated_intent in generated:
+        intent = generated_intent
+        saved = (entries.get(intent.arm) or {}).get("intent")
+        if isinstance(saved, dict):
+            intent = Intent(
+                intent.arm,
+                str(saved["goal"]),
+                float(saved["at"]),
+                tuple(saved.get("lines") or ()),
+                float(saved["window_start"]),
+                str(saved.get("goal_source") or ""),
+            )
+        found.append(intent)
+    return found
+
+
+def _fallback_arms(readings: Mapping[str, Any]) -> set[str]:
+    """Refuse a new arm whose adopted source always fell back; legacy reads stay legacy."""
+    counts: dict[str, list[int]] = {}
+    for entries in readings.values():
+        for arm, entry in entries.items():
+            source = entry.get("goal_source") or {}
+            if source.get("needed"):
+                row = counts.setdefault(arm, [0, 0])
+                row[0] += int(source["needed"])
+                row[1] += int(source.get("found") or 0)
+    return {arm for arm, (total, found) in counts.items() if total and not found}
+
+
+def _score_outcomes(
+    reading: Any,
+    live_arm: Any,
+    page: Any,
+    *,
+    unread: bool,
+    drifted: bool,
+    start: float | None,
+) -> dict[str, str]:
+    outcomes = {
+        "live": _live_bin(live_arm, drifted=drifted, start=start),
+        "steer": "offered" if live_arm and live_arm.get("steer") else "not-offered",
+        **{
+            key: "not-run"
+            if unread
+            else _read_bin(reading, drifted=drifted, start=start, only=only)
+            for key, only in (("analyze", ""), ("intent", "intent"), ("claims", CLAIMS))
+        },
+    }
+    if page:
+        outcomes["page-answer"] = page["answer"]
+        outcomes["page-level"] = page["level"] or "not-drawn"
+    if page and page.get("page_state"):
+        outcomes["page-state"] = page["page_state"]
+    elif live_arm:
+        outcomes["page-state"] = live_arm.get("page_state") or "legacy-unmeasured"
+    return outcomes
+
+
+@dataclass
+class _ScoreTables:
+    """Counts against final pushback marks, their blind column, kind and salted session groups."""
+
+    counts: dict[str, dict[str, int]] = field(default_factory=dict)
+    blind: dict[str, dict[str, int]] = field(default_factory=dict)
+    kinds: dict[str, dict[str, int]] = field(default_factory=dict)
+    sessions: dict[str, dict[str, int]] = field(default_factory=dict)
+
+    @staticmethod
+    def _add(table: dict[str, dict[str, int]], key: str, outcome: str) -> None:
+        row = table.setdefault(key, {})
+        row[outcome] = row.get(outcome, 0) + 1
+
+    def record(
+        self,
+        case: Mapping[str, Any],
+        arm: str,
+        final: Mapping[str, Any],
+        outcomes: Mapping[str, str],
+        blind: Mapping[str, str],
+        session: str,
+    ) -> None:
+        population = _population(case, drifted=final.get("drift") == "drift")
+        kind = final.get("class") if final.get("class") in CLASSES.values() else "unclassified"
+        if final.get("drift") in {"drift", "no-drift"}:
+            for detector, outcome in outcomes.items():
+                key = f"{arm}|{detector}|{population}"
+                self._add(self.counts, key, outcome)
+                self._add(self.kinds, f"{kind}|{key}", outcome)
+                self._add(self.sessions, f"{session}|{key}", outcome)
+        for detector, outcome in blind.items():
+            self._add(self.blind, f"{arm}|{detector}", outcome)
+
+
+def _span_position(
+    case: Mapping[str, Any], messages: list[Message], annotation: str, stops: list[float]
+) -> dict[str, Any]:
+    """A cut inside the annotated gap, and its number of stops before the next pushback."""
+    cut = float(case["cut"])
+    for event in events(annotation):
+        if event.push >= len(messages):
+            continue
+        end = messages[event.push].at
+        starts = [messages[n].at for n in event.drift if n < len(messages) and messages[n].at < end]
+        if starts and min(starts) <= cut < end:
+            return {
+                "in_annotated_window": True,
+                "stops_before_pushback": sum(cut < stop < end for stop in stops),
+            }
+    return {"in_annotated_window": False, "stops_before_pushback": None}
+
+
+def _score_case(  # noqa: PLR0913 - one closed case and its corresponding stores
+    case: Mapping[str, Any],
+    marks: Mapping[str, Any],
+    lived: Mapping[str, Any],
+    readings: Mapping[str, Any],
+    pages: Mapping[tuple[str, str], Any],
+    planned: Callable[[str, str], bool],
+    tables: _ScoreTables,
+    *,
+    salt: str,
+    source: str,
+    fallback_arms: set[str],
+) -> dict[str, Any]:
+    final = (marks.get(case["id"]) or {}).get("final") or {}
+    blind = (marks.get(case["id"]) or {}).get("blind") or {}
+    drift = final.get("drift")
+    log = _transcript(str(case["sid"]), source)
+    messages = conversation(log) if log else []
+    start = _drift_start(case, messages)
+    row: dict[str, Any] = {
+        "mark": drift,
+        "blind_mark": blind.get("drift"),
+        "class": final.get("class"),
+        "roles": case["roles"],
+        "first": any(e.get("first") for e in case.get("events") or ()),
+    }
+    with open(os.path.join(ANNOTATIONS, str(case["sid"]), "annotation.md"), encoding="utf-8") as f:
+        row.update(_span_position(case, messages, f.read(), turn_stops(log) if log else []))
+    live_case = lived.get(case["id"]) or {}
+    for arm in ARMS:
+        live_arm = (live_case.get("arms") or {}).get(arm)
+        if live_arm is None and "refused" not in live_case:
+            continue
+        reading = (readings.get(case["id"]) or {}).get(arm)
+        unread = reading is None and not planned(case["id"], arm)
+        page = pages.get((case["id"], arm)) or {}
+        outcomes = _score_outcomes(
+            reading, live_arm, page, unread=unread, drifted=drift == "drift", start=start
+        )
+        if drift not in {"drift", "no-drift"}:
+            outcomes.update(dict.fromkeys(("live", "analyze", "intent", "claims"), "unclear-key"))
+        if arm in fallback_arms:
+            outcomes.update(
+                dict.fromkeys(
+                    ("analyze", "intent", "claims", "page-answer", "page-level"),
+                    "refused-goal-source",
+                )
+            )
+        row[arm] = outcomes
+        blind_outcomes = (
+            _score_outcomes(
+                reading,
+                live_arm,
+                page,
+                unread=unread,
+                drifted=blind.get("drift") == "drift",
+                start=start,
+            )
+            if blind.get("drift") in {"drift", "no-drift"}
+            else {}
+        )
+        if arm in fallback_arms and blind_outcomes:
+            blind_outcomes.update(
+                dict.fromkeys(
+                    ("analyze", "intent", "claims", "page-answer", "page-level"),
+                    "refused-goal-source",
+                )
+            )
+        blind_outcomes = {
+            f"{detector}|{blind['drift']}": value for detector, value in blind_outcomes.items()
+        }
+        group = hashlib.sha256(f"{salt}|session|{case['sid']}".encode()).hexdigest()[:16]
+        tables.record(case, arm, final, outcomes, blind_outcomes, group)
+    return row
+
+
+def score(
+    *,
+    home: str,
+    say: Callable[[str], Any] = print,
+    tag: str = "",
+    read_tag: str | None = None,
+    live_tag: str = "",
+) -> int:
     """The outcome table per detector and arm, on final marks; counts and salted ids only.
 
     A `tag` scores `read-<tag>.json` into `results-<tag>.json`, leaving `results.json` as it is;
@@ -1976,63 +2686,67 @@ def score(*, home: str, say: Callable[[str], Any] = print, tag: str = "") -> int
     """
     paths = _paths(home)
     body = lc._load(paths["cases"])  # noqa: SLF001
-    refusal = _run_refusal(paths, body) or _tag_refusal(tag)
+    selected_read = tag if read_tag is None else "" if read_tag == "base" else read_tag
+    refusal = (
+        _run_refusal(paths, body)
+        or _tag_refusal(tag)
+        or _tag_refusal(selected_read)
+        or _tag_refusal(live_tag)
+    )
     if refusal:
         say(refusal)
         return 1
-    readings, planned, results_path = _scored_read(paths, tag)
+    readings, planned, _read_results_path = _scored_read(paths, selected_read)
+    results_path = (
+        os.path.join(os.path.dirname(RESULTS_PATH), f"results-{tag}.json") if tag else RESULTS_PATH
+    )
     marks = _load_marks(paths, lc.digest(body)) or {}
-    lived = lc._load(paths["live"]).get("cases") or {}  # noqa: SLF001
+    live_path = os.path.join(paths["dir"], f"live-{live_tag}.json") if live_tag else paths["live"]
+    lived = lc._load(live_path).get("cases") or {}  # noqa: SLF001
+    pages = _score_pages(body, paths, readings)
     per_case: dict[str, Any] = {}
-    table: dict[str, dict[str, int]] = {}
+    tables = _ScoreTables()
+    salt = _salt(paths)
+    fallback_arms = _fallback_arms(readings)
     for case in body["cases"]:
-        final = (marks.get(case["id"]) or {}).get("final") or {}
-        drift = final.get("drift")
-        if drift not in {"drift", "no-drift"}:
-            continue
-        drifted = drift == "drift"
-        first = any(e.get("first") for e in case.get("events") or ())
-        log = _transcript(str(case["sid"]), str(body.get("source") or "fixtures"))
-        messages = conversation(log) if log else []
-        start = _drift_start(case, messages)
-        row: dict[str, Any] = {
-            "mark": drift,
-            "class": final.get("class"),
-            "roles": case["roles"],
-            "first": first,
-        }
-        live_case = lived.get(case["id"]) or {}
-        for arm in ARMS:
-            live_arm = (live_case.get("arms") or {}).get(arm)
-            if live_arm is None and "refused" not in live_case:
-                continue  # no words for this arm before the cut: not a case for it
-            reading = (readings.get(case["id"]) or {}).get(arm)
-            unread = reading is None and not planned(case["id"], arm)
-            outcomes = {
-                "live": _live_bin(live_arm, drifted=drifted, start=start),
-                "steer": "offered" if live_arm and live_arm.get("steer") else "not-offered",
-                "analyze": "not-run"
-                if unread
-                else _read_bin(reading, drifted=drifted, start=start),
-                "intent": "not-run"
-                if unread
-                else _read_bin(reading, drifted=drifted, start=start, only="intent"),
-                "claims": "not-run"
-                if unread
-                else _read_bin(reading, drifted=drifted, start=start, only=CLAIMS),
-            }
-            row[arm] = outcomes
-            for detector, outcome in outcomes.items():
-                key = f"{arm}|{detector}|{_population(case, drifted=drifted)}"
-                table.setdefault(key, {})
-                table[key][outcome] = table[key].get(outcome, 0) + 1
-        per_case[case["id"]] = row
+        per_case[case["id"]] = _score_case(
+            case,
+            marks,
+            lived,
+            readings,
+            pages,
+            planned,
+            tables,
+            salt=salt,
+            source=str(body.get("source") or "fixtures"),
+            fallback_arms=fallback_arms,
+        )
+    # Correction words and resolved criteria stay in the replay home, never in the summary.
+    lc._write(  # noqa: SLF001
+        os.path.join(paths["dir"], f"page-{tag or 'base'}.json"),
+        {"v": 1, "cases": {f"{key[0]}:{key[1]}": value for key, value in pages.items()}},
+    )
     summary = {
         "v": 1,
         "marks_digest": lc.committed_digest(_ROOT, DIGEST_PATH).marks_digest,  # type: ignore[union-attr]
         "cases_digest": lc.digest(body),
-        "counts": table,
+        "counts": tables.counts,
+        "blind_counts": tables.blind,
+        "refused_goal_source_arms": sorted(fallback_arms),
+        "excluded_final_unclear": sum(row["mark"] == "unclear" for row in per_case.values()),
+        "in_window_no_drift": sorted(
+            key
+            for key, row in per_case.items()
+            if row["mark"] == "no-drift" and row["in_annotated_window"]
+        ),
+        "class_counts": tables.kinds,
+        "session_counts": tables.sessions,
         "cases": per_case,
+        "markers": "agents",
+        "reading_file": os.path.basename(_tagged(paths, selected_read)[0]),
+        "live_file": os.path.basename(live_path),
+        "page_mode": "keep-plus-analysis",
+        "reader_state": "available",
     }
     truth, why = claims_truth(paths, readings)
     if truth:
@@ -2043,13 +2757,13 @@ def score(*, home: str, say: Callable[[str], Any] = print, tag: str = "") -> int
     with open(results_path, "w", encoding="utf-8", newline="\n") as handle:
         json.dump(summary, handle, indent=2, sort_keys=True)
         handle.write("\n")
-    for key in sorted(table):
-        say(f"  {key:40} " + ", ".join(f"{k} {v}" for k, v in sorted(table[key].items())))
+    for key in sorted(tables.counts):
+        say(f"  {key:40} " + ", ".join(f"{k} {v}" for k, v in sorted(tables.counts[key].items())))
     say(f"Written to {_shown(results_path)}: counts and salted case ids only.")
     return 0
 
 
-def main(argv: list[str] | None = None) -> int:  # noqa: PLR0911 - one return per mode
+def main(argv: list[str] | None = None) -> int:  # noqa: C901, PLR0911 - one branch/return per CLI mode
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     group = parser.add_mutually_exclusive_group()
     group.add_argument("--build", action="store_true")
@@ -2060,18 +2774,30 @@ def main(argv: list[str] | None = None) -> int:  # noqa: PLR0911 - one return pe
     group.add_argument("--score", action="store_true")
     group.add_argument("--claims-export", action="store_true")
     group.add_argument("--claims-mark", action="store_true")
+    group.add_argument("--claims-import", default="")
     parser.add_argument("--source", choices=("fixtures", "original"), default=None)
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--arm", action="append", choices=ARMS)
     parser.add_argument("--tag", default="")
     parser.add_argument("--case", action="append", default=[])
+    parser.add_argument("--counterfactual-read", default="")
+    parser.add_argument("--include-history", action="store_true")
+    parser.add_argument("--marker", default="operator")
+    parser.add_argument("--score-read", default=None)
+    parser.add_argument("--score-live", default="")
     args = parser.parse_args(argv)
     refusal = _home_refusal(HOME)
     if refusal:
         print(refusal)
         return 1
     if args.live:
-        return live(home=HOME, source=args.source)
+        return live(
+            home=HOME,
+            source=args.source,
+            tag=args.tag,
+            counterfactual_read=args.counterfactual_read,
+            include_history=args.include_history,
+        )
     if args.read:
         return read(
             home=HOME,
@@ -2080,13 +2806,16 @@ def main(argv: list[str] | None = None) -> int:  # noqa: PLR0911 - one return pe
             arms=tuple(args.arm or ARMS),
             tag=args.tag,
             cases=tuple(args.case),
+            include_history=args.include_history,
         )
     if args.score:
-        return score(home=HOME, tag=args.tag)
+        return score(home=HOME, tag=args.tag, read_tag=args.score_read, live_tag=args.score_live)
     if args.claims_export:
         return export_claims(home=HOME)
     if args.claims_mark:
-        return mark_claims(home=HOME)
+        return mark_claims(home=HOME, marker=args.marker)
+    if args.claims_import:
+        return import_claim_marks(home=HOME, path=args.claims_import)
     if args.build:
         return build(home=HOME, source=args.source or "fixtures")
     if args.reconcile:
