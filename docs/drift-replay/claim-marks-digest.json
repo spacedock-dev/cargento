@@ -1,6 +1,11 @@
 {
+  "agreement": {
+    "agreed": 55,
+    "tie-broken": 5
+  },
   "items": 60,
   "marked": 60,
-  "marks_digest": "c2393ad44c791e1a1d0f832658f8d9a6337813e70ec12a9b53457a2d4213d8f7",
-  "v": 1
+  "markers": "agents",
+  "marks_digest": "0768f0bd8185503f2d020476df0aaba2c44ac026972850da7fdfe2a58082311b",
+  "v": 2
 }

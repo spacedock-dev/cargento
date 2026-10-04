@@ -1,6 +1,6 @@
 # The drift replay check, committed half
 
-This directory holds what the owner marked at each cut of the pushback sessions, and what Cargento's
+This directory holds what blind agents marked at each cut of the pushback sessions, and what Cargento's
 drift detectors did there. It never holds the session text either one came from.
 [SECURITY.md](../../SECURITY.md#the-abstention-check) holds the ruling for this check and its two
 siblings, the abstention check and the [drift levels check](../drift-levels/README.md).
@@ -12,12 +12,12 @@ redacted copy under `tests/raw_sessions/<sid>/`, which is gitignored and made by
 
 ## What lives here
 
-- `marks-digest.json`, written each time the owner marks. It holds the sha256 of
+- `marks-digest.json`, written each time marks are saved. It holds the sha256 of
   `~/.cargento/drift-replay/marks.json`, the digest of the case set the marks belong to, and counts.
   It is committed before any run, and every run reads it from `HEAD`, never from the working copy.
 - `results.json`, once a score has been committed. Per case it holds a case id salted with a local
-  secret, the owner's final mark (drift or no drift) and its class, the case's roles, and one outcome
-  per detector and intent arm. A cut marked unclear is left out. It also holds the digests and the counts. It names no session,
+  secret, the reconciled agent mark (drift, no drift or unclear) and its class, the case's roles, and one outcome
+  per detector and intent arm. Historical summaries leave unclear cuts out. New summaries retain them for the blind column, and exclude them from final-key counts. They also hold the digests and counts. It names no session,
   path, command, word or model sentence.
 - `claim-marks-digest.json`, once claims have been marked true or false: the sha256 of
   `~/.cargento/drift-replay/claim-marks.json` and counts. `results.json` then also holds a
@@ -65,12 +65,11 @@ python3 scripts/drift_replay.py --score
 
 ## The intent arms
 
-Each cut is read once per intent arm. The first two are your own words, dated before the
-cut; the third is written afterwards on purpose.
+Each cut can be read under five intent arms. Four use the person's words dated before the cut; hindsight is written afterwards.
 
-- realistic: your opening prompt, saved when you typed it, which is what "Use your prompt" adopts.
+- realistic: the first 240 characters of your opening prompt, saved as typed words when you sent it.
 - part: the first message you typed in the annotated part the cut belongs to.
-- hindsight: the goal the annotation wrote afterwards. An upper bound, never a headline.
+- hindsight: the goal the annotation wrote afterwards. It is a retrospective comparison, not an upper bound or a headline.
 - adopted: the opening prompt taken with "Use your prompt", so the producer knows its source.
 - current: a goal and up to three outcome lines drafted from your own messages before the cut, by
   agents shown nothing the session's agent said, as if you kept your intent up to date. They live in
@@ -82,7 +81,7 @@ Each detector lands in one outcome per cut and arm.
 
 On a cut you marked as drift:
 
-- relevant flag: it flagged, and what raised it happened at or after the drift began. For the live
+- flag after start: it flagged, and what raised it happened at or after the drift began. This is a time test, not a judgement that the flag names the gap. For the live
   estimate that is the rise it names, or else the latest failed check; for Analyze, what a
   departure cites
 - irrelevant flag: it flagged on something older, such as a check that failed hours before
@@ -96,8 +95,7 @@ On a cut you marked as drift:
 
 On a cut you marked as no drift: false alarm, quiet, withheld or refused.
 
-Steer back is reported as offered or not. Once an intent is saved, any later message of yours makes
-it available, so "offered" says little by itself. What it would have said is in the local output.
+Historical runs counted the composer's offer, even where the page showed a Keep/Add question instead. They did not store correction text. New runs retain the composed text locally and execute the shipped page reducers to count questions, primary and secondary offers, and no offer. They name whether the reader is available and whether Keep is assumed.
 
 Withheld counts as a miss when the question is whether drift was found, and it is shown on its own
 because abstaining is the designed behaviour. Only the first pushback of an episode counts toward
@@ -112,7 +110,7 @@ the check is frozen.
 
 The owner delegated the marking. Two fresh agents marked all 99 cuts blind, a third broke two
 ties, and two more reconciled the 26 cuts where the blind answer disagreed with the annotations,
-each seeing what the person typed next; the three cuts they split on are unclear and left out. None
+each seeing what the person typed next; four final cuts are unclear and left out of historical final-key counts. None
 of them had seen any detector output, and the marks digest was committed before any run. Every
 marker is an agent, likely of the same model family as the Claude Code reader being scored, so this
 is not a human key.
@@ -129,28 +127,25 @@ What it found, on four sessions from one person (a development set, so no rates)
   19 of 71, every time on a failed check, some of them days old.
 - Two blind judges, shown each flag's evidence beside the drift without being told which detector
   raised it, rated none of the live estimate's 14 flags on drift cuts as pointing at the drift, and
-  one Analyze cut as doing so: a false "running" claim, caught from the agent's own words at a later
-  pushback in the same episode, so not counted among first pushbacks.
+  one Analyze cut as doing so: a "running" claim at a later pushback in the same episode. The later claim-truth pass marked it true; a launch alone does not prove continuing activity. It was not a first-pushback catch.
 - The intent fed to Analyze drove most of the result. A goal adopted from the opening prompt keeps
   240 characters, which in one session cut off the instruction that mattered and in another kept
-  only plan-file preamble, and once the person had moved the work on, every later turn read as a
-  departure from it. About 7 of the 26 no-drift departures were model errors, two of them reading a
+  only plan-file preamble, and after the work moved on, many later turns read as departures from it. The result was not monotonic in the number of later messages. About 7 of the 26 no-drift departures were model errors, two of them reading a
   passing run as failed.
 - Most of the drift the person pushed back on (false status claims, buried questions, effects seen
-  only on their screen) was invisible to the blind markers too until they saw the person's reply.
+  only on their screen) was not settled by the blind markers' clipped screen. That does not establish invisibility in the full record; screen-only effects remain outside Cargento's view.
 - Steer back was offered at 68% of drift cuts and 72% of the rest.
 
-The `relevant-flag` outcome in `results.json` uses the time rule above, which nearly every flag
+The historical `relevant-flag` outcome in `results.json` uses the time rule above (new scores call it `flag-after-start`), which nearly every flag
 passes because a departure usually cites the agent's last message; the blind judges' ratings are
 the stricter reading. `results.json` counts 24 drift cuts; 22 of them are first pushbacks.
 
 ## The second run, 2026-10-04
 
-After the first run, two product changes merged in #482. A goal adopted from your prompt is now read
-whole, up to 1,000 characters, and every reading also asks a `claims` question that does not depend
+After the first run, two product changes merged in #482. The intended change reads a goal adopted from your prompt whole, up to 1,000 characters, and every reading also asks a `claims` question that does not depend
 on the intent: does a status claim in the agent's own words go against the record, or does nothing
 in the record show it? The second run read the same 99 cuts against the same marks, on two new arms.
-The adopted arm is your opening prompt, marked as adopted. The current arm is a goal plus up to three
+The adopted arm marks your opening prompt as adopted. The source was outside the tail at every cut, so all 99 reads fell back to the 240-character clip; this run did not test the whole-prompt behavior promised by DEC-22. The current arm is a goal plus up to three
 outcome lines, which fresh agents drafted from your own messages before each cut, without seeing
 anything the agent said. That took 198 Analyze calls, so 393 of the 440 authorized have been used.
 `results.json` scores Analyze as a whole, and the intent questions and the claims question
@@ -168,8 +163,7 @@ On the 22 first-pushback drift cuts against the 71 no-drift cuts:
 A fresh critic checked every flag before these numbers were reported, and most of the apparent gain
 did not survive:
 
-- One first-pushback catch is genuine: a claim that reviews were running, which the person then
-  questioned. The blind judges rated two more cuts as catches. One rests on the person's own
+- The judged first-pushback catch at d133d4d6 was a claim that reviews were running. It was marked true, and neither arm reproduced the flag on an unchanged-prompt re-read. This is not a stable catch. The blind judges rated two more cuts as catches. One rests on the person's own
   screenshot complaint, which makes it an echo the scorer's rule lets through because one other cite
   is an agent message. The other repeats the agent's own admission that the tool was unusable. A
   later "nothing is running" catch on a persistence cut is also an admission.
@@ -191,10 +185,8 @@ did not survive:
   418 written paths, and the 12 listed entries put runs with no recorded result ahead of passes and
   writes, so none of the passes and few of the writes reached the reading. A "suite is green" or
   "file written" claim was therefore nearly always "not shown by the record".
-- Steer back on the current arm was offered at 2 of 22 drift cuts and 12 of 71 others, exactly the
-  cuts with a failed check in the window. That is an artefact: each drafted intent was saved at your
-  last message, so no later direction exists, and the replay never hands Steer back a reading. The
-  same missing later direction is why the live estimate raised more false alarms on this arm.
+- Steer back on the current arm was offered at 2 of 22 drift cuts and 12 of 71 others, at 15 of the 29 cuts with a failed check, where the failed check was inside the window. That is an artefact: each drafted intent was saved at your
+  last message, so no later direction exists, and the replay never hands Steer back a reading. The live estimate's extra flags came from path-shaped words in the drafted intent, including branch names and issue pairs read as folders. Missing later directions only block None or low; they do not raise High.
 - No drafted current intent encoded the coming pushback. Several restate an earlier complaint, which
   is what an intent kept up to date should do.
 
@@ -288,10 +280,8 @@ first run's marks, these are agents' marks, not a human key.
   arm, 5 of 23 on the current arm), and a claims departure was right on 2 of 7.
 - The right ones were claims that went beyond the work: every case "mutation-verified" when one
   never was, a tool "built and working" that the person could not use, a merge expected to pass
-  that left 34 failures. Both earlier catches held. "Built and working" was false, and "reviews are
-  running" was true, which the person questioned because they could not see the runs.
-- Most of the wrong ones were true claims shown by output Cargento does not read: `git` and `gh`
-  results, and the replies of the Linear and Notion tools. Listing passes cannot fix that. The
+  that left 34 failures. The earlier flags were not two reproduced catches. "Built and working" was false, and the earlier "reviews are running" judgement was true. The re-mark below distinguishes proof of a launch from proof of continuing activity.
+- Most of the wrong ones were true claims shown by output Cargento does not read: plain shell output, `git` and `gh` results, and replies from connected tools. Listing passes cannot fix that. The
   reading carries checks and file writes, and the person sees everything.
 
 The re-read took 34 calls (the ledger now stands at 427 of 440). It read the 32 flagged cuts and
@@ -314,3 +304,17 @@ claims are mostly true and their proof sits in tool output the reading never get
 choices. The reading can carry the output a claim rests on (a `gh` or `git` result, a tool's reply),
 which changes what is sent and needs the owner's ruling. Or "not shown by the record" can stop
 counting toward Medium until it does.
+
+## The instrument repair, 2026-10-05
+
+The old arms and stored model replies stay unchanged. New tagged scores execute the shipped page's answer and level guards, show the blind marks beside the reconciled key, and split counts by kind and salted session group. Stops inside an annotated drift window are listed separately from ordinary no-drift controls. Every mark is an agent's; the owner's review remains pending.
+
+A complete-input, model-free baseline reproduces all 492 composer offers. Worktrees need the nested child logs as well as the four parent logs; omitting them changed 19 offers. The adopted-source dry run finds the prompt at all 99 cuts, with no fallback. That repairs the source lookup; stored adopted reads remain evidence for the old clipped arm until new reads test the change.
+
+`--include-history` is a labelled cold-board counterfactual: bounded, title-only backfill, 24 hours and 512 events. At 99 cuts it retains 1,405 event observations, prunes 134 by age and none by the event cap. These are repeated observations across cuts, not distinct events. A model-disabled live board lists an older direction that Add still refuses outside the tail. The intent-window carry must ship before the revised current arm is measured.
+
+Two fresh blind agents re-marked nine distinct running or waiting claims (eleven review memberships overlap); they agreed on eight, and a third resolved one tie. Three answers changed. Launch or status wording alone is not proof that work is still active, and collapsed output is not proof a person could not see it. The local key preserves the previous marks and each labelled answer; the digest records 55 agreements and five ties across all 60 items.
+
+New reads keep their raw verdict, model status, prompt digest and saved intent/window locally, before rule effects. An adopted arm whose recorded sources all fall back is refused by the scorer. Tagged live runs preserve the old live.json; `--counterfactual-read base` explicitly models Keep plus the stored read. Scoring can name its inputs with `--score-read base` and `--score-live <tag>`, while `--tag` names the new result. Correction words, paths and model sentences stay outside Git.
+
+No run evaluated the unasked lane. Its rules and daily cap exclude many away-person moments; these four Claude Code sessions do not establish its value, or the behavior of the thinner Codex reading path.
