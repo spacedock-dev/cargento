@@ -75,8 +75,8 @@ and brings recorded departures forward. The session page asks once before a read
 your answer, and offers an off switch and a way back into the session, without steering it for you.
 On Claude Code sessions, you can turn on a live drift estimate in the panel and header after every
 turn, based on recorded checks and file paths rather than the meaning of your intent. An analysis
-shows its level, each outcome line against the recorded work with its source, where files were
-written, and why a result is stale. Recorded checks and file paths include subagent work, labelled
+shows its level, each outcome line against the recorded work and what the agent said with its
+source, where files were written, and why a result is stale. Recorded checks and file paths include subagent work, labelled
 as such.
 Reader-requested readings are capped at twelve attempts per rolling twenty-four hours. With no saved
 goal, a check can adopt your latest Claude Code or Codex prompt; the goal field also offers your
