@@ -1,0 +1,2302 @@
+{
+  "cases": {
+    "0159ce5c1607fad4": {
+      "class": null,
+      "first": false,
+      "hindsight": {
+        "analyze": "not-run",
+        "live": "withheld",
+        "steer": "offered"
+      },
+      "mark": "no-drift",
+      "part": {
+        "analyze": "quiet",
+        "live": "withheld",
+        "steer": "offered"
+      },
+      "realistic": {
+        "analyze": "false-alarm",
+        "live": "withheld",
+        "steer": "offered"
+      },
+      "roles": [
+        "ordinary"
+      ]
+    },
+    "01b80f92af3e9323": {
+      "class": null,
+      "first": false,
+      "hindsight": {
+        "analyze": "not-run",
+        "live": "withheld",
+        "steer": "not-offered"
+      },
+      "mark": "no-drift",
+      "part": {
+        "analyze": "quiet",
+        "live": "withheld",
+        "steer": "not-offered"
+      },
+      "realistic": {
+        "analyze": "withheld",
+        "live": "withheld",
+        "steer": "not-offered"
+      },
+      "roles": [
+        "after-fix"
+      ]
+    },
+    "026b976fa0828449": {
+      "class": null,
+      "first": false,
+      "hindsight": {
+        "analyze": "not-run",
+        "live": "withheld",
+        "steer": "offered"
+      },
+      "mark": "no-drift",
+      "part": {
+        "analyze": "quiet",
+        "live": "withheld",
+        "steer": "offered"
+      },
+      "realistic": {
+        "analyze": "quiet",
+        "live": "withheld",
+        "steer": "offered"
+      },
+      "roles": [
+        "ordinary"
+      ]
+    },
+    "04f7e9c6ecf2c47a": {
+      "class": null,
+      "first": false,
+      "hindsight": {
+        "analyze": "not-run",
+        "live": "withheld",
+        "steer": "offered"
+      },
+      "mark": "no-drift",
+      "part": {
+        "analyze": "withheld",
+        "live": "withheld",
+        "steer": "offered"
+      },
+      "realistic": {
+        "analyze": "false-alarm",
+        "live": "withheld",
+        "steer": "offered"
+      },
+      "roles": [
+        "after-fix"
+      ]
+    },
+    "0532b3943a51127c": {
+      "class": "scope-or-plan",
+      "first": true,
+      "hindsight": {
+        "analyze": "not-run",
+        "live": "withheld",
+        "steer": "offered"
+      },
+      "mark": "drift",
+      "part": {
+        "analyze": "withheld",
+        "live": "withheld",
+        "steer": "offered"
+      },
+      "realistic": {
+        "analyze": "reassured",
+        "live": "withheld",
+        "steer": "offered"
+      },
+      "roles": [
+        "pushback"
+      ]
+    },
+    "0682375c523031a0": {
+      "class": null,
+      "first": false,
+      "hindsight": {
+        "analyze": "not-run",
+        "live": "false-alarm",
+        "steer": "offered"
+      },
+      "mark": "no-drift",
+      "part": {
+        "analyze": "quiet",
+        "live": "false-alarm",
+        "steer": "offered"
+      },
+      "realistic": {
+        "analyze": "quiet",
+        "live": "false-alarm",
+        "steer": "offered"
+      },
+      "roles": [
+        "after-fix"
+      ]
+    },
+    "0803136266e6ca26": {
+      "class": "defect",
+      "first": true,
+      "hindsight": {
+        "analyze": "not-run",
+        "live": "irrelevant-flag",
+        "steer": "offered"
+      },
+      "mark": "drift",
+      "part": {
+        "analyze": "relevant-flag",
+        "live": "irrelevant-flag",
+        "steer": "offered"
+      },
+      "realistic": {
+        "analyze": "withheld",
+        "live": "irrelevant-flag",
+        "steer": "offered"
+      },
+      "roles": [
+        "pushback",
+        "before-drift"
+      ]
+    },
+    "0b694a2f6108e19b": {
+      "class": null,
+      "first": false,
+      "hindsight": {
+        "analyze": "not-run",
+        "live": "false-alarm",
+        "steer": "offered"
+      },
+      "mark": "no-drift",
+      "part": {
+        "analyze": "withheld",
+        "live": "false-alarm",
+        "steer": "offered"
+      },
+      "realistic": {
+        "analyze": "false-alarm",
+        "live": "false-alarm",
+        "steer": "offered"
+      },
+      "roles": [
+        "ordinary"
+      ]
+    },
+    "0ba6334ce93d639c": {
+      "class": null,
+      "first": false,
+      "hindsight": {
+        "analyze": "not-run",
+        "live": "withheld",
+        "steer": "not-offered"
+      },
+      "mark": "no-drift",
+      "part": {
+        "analyze": "quiet",
+        "live": "withheld",
+        "steer": "not-offered"
+      },
+      "realistic": {
+        "analyze": "quiet",
+        "live": "withheld",
+        "steer": "not-offered"
+      },
+      "roles": [
+        "ordinary"
+      ]
+    },
+    "0e1aa92cc54cb910": {
+      "class": null,
+      "first": false,
+      "hindsight": {
+        "analyze": "not-run",
+        "live": "withheld",
+        "steer": "offered"
+      },
+      "mark": "no-drift",
+      "part": {
+        "analyze": "quiet",
+        "live": "withheld",
+        "steer": "offered"
+      },
+      "realistic": {
+        "analyze": "quiet",
+        "live": "withheld",
+        "steer": "offered"
+      },
+      "roles": [
+        "before-drift"
+      ]
+    },
+    "124520064aeafbd6": {
+      "class": null,
+      "first": false,
+      "hindsight": {
+        "analyze": "not-run",
+        "live": "withheld",
+        "steer": "not-offered"
+      },
+      "mark": "no-drift",
+      "part": {
+        "analyze": "false-alarm",
+        "live": "withheld",
+        "steer": "not-offered"
+      },
+      "realistic": {
+        "analyze": "withheld",
+        "live": "withheld",
+        "steer": "not-offered"
+      },
+      "roles": [
+        "before-drift"
+      ]
+    },
+    "1262afe52d7700ad": {
+      "class": null,
+      "first": false,
+      "hindsight": {
+        "analyze": "not-run",
+        "live": "withheld",
+        "steer": "offered"
+      },
+      "mark": "no-drift",
+      "part": {
+        "analyze": "withheld",
+        "live": "withheld",
+        "steer": "offered"
+      },
+      "realistic": {
+        "analyze": "false-alarm",
+        "live": "withheld",
+        "steer": "offered"
+      },
+      "roles": [
+        "ordinary"
+      ]
+    },
+    "135a52750097cb30": {
+      "class": "communication",
+      "first": true,
+      "hindsight": {
+        "analyze": "not-run",
+        "live": "irrelevant-flag",
+        "steer": "not-offered"
+      },
+      "mark": "drift",
+      "realistic": {
+        "analyze": "withheld",
+        "live": "irrelevant-flag",
+        "steer": "offered"
+      },
+      "roles": [
+        "after-fix",
+        "pushback",
+        "before-drift"
+      ]
+    },
+    "13b40ce09faf42f7": {
+      "class": null,
+      "first": false,
+      "hindsight": {
+        "analyze": "not-run",
+        "live": "withheld",
+        "steer": "offered"
+      },
+      "mark": "no-drift",
+      "part": {
+        "analyze": "withheld",
+        "live": "withheld",
+        "steer": "offered"
+      },
+      "realistic": {
+        "analyze": "quiet",
+        "live": "withheld",
+        "steer": "offered"
+      },
+      "roles": [
+        "before-drift"
+      ]
+    },
+    "1a8273eefcef9f39": {
+      "class": "communication",
+      "first": true,
+      "hindsight": {
+        "analyze": "not-run",
+        "live": "withheld",
+        "steer": "offered"
+      },
+      "mark": "drift",
+      "part": {
+        "analyze": "withheld",
+        "live": "withheld",
+        "steer": "offered"
+      },
+      "realistic": {
+        "analyze": "relevant-flag",
+        "live": "withheld",
+        "steer": "offered"
+      },
+      "roles": [
+        "pushback",
+        "before-drift"
+      ]
+    },
+    "1bd415ec674714b3": {
+      "class": "communication",
+      "first": true,
+      "hindsight": {
+        "analyze": "not-run",
+        "live": "withheld",
+        "steer": "offered"
+      },
+      "mark": "drift",
+      "part": {
+        "analyze": "withheld",
+        "live": "withheld",
+        "steer": "offered"
+      },
+      "realistic": {
+        "analyze": "irrelevant-flag",
+        "live": "withheld",
+        "steer": "offered"
+      },
+      "roles": [
+        "after-fix",
+        "pushback"
+      ]
+    },
+    "1cf8ac956dfde50a": {
+      "class": null,
+      "first": false,
+      "hindsight": {
+        "analyze": "not-run",
+        "live": "false-alarm",
+        "steer": "offered"
+      },
+      "mark": "no-drift",
+      "part": {
+        "analyze": "withheld",
+        "live": "false-alarm",
+        "steer": "offered"
+      },
+      "realistic": {
+        "analyze": "false-alarm",
+        "live": "false-alarm",
+        "steer": "offered"
+      },
+      "roles": [
+        "after-fix"
+      ]
+    },
+    "1f30d4db29e3afb0": {
+      "class": null,
+      "first": false,
+      "hindsight": {
+        "analyze": "not-run",
+        "live": "withheld",
+        "steer": "offered"
+      },
+      "mark": "no-drift",
+      "part": {
+        "analyze": "false-alarm",
+        "live": "withheld",
+        "steer": "offered"
+      },
+      "realistic": {
+        "analyze": "quiet",
+        "live": "withheld",
+        "steer": "offered"
+      },
+      "roles": [
+        "before-drift"
+      ]
+    },
+    "20f229106438d9f8": {
+      "class": null,
+      "first": false,
+      "hindsight": {
+        "analyze": "not-run",
+        "live": "withheld",
+        "steer": "offered"
+      },
+      "mark": "no-drift",
+      "part": {
+        "analyze": "withheld",
+        "live": "withheld",
+        "steer": "offered"
+      },
+      "realistic": {
+        "analyze": "false-alarm",
+        "live": "withheld",
+        "steer": "offered"
+      },
+      "roles": [
+        "after-fix"
+      ]
+    },
+    "2364224b5c468311": {
+      "class": "defect",
+      "first": true,
+      "hindsight": {
+        "analyze": "not-run",
+        "live": "withheld",
+        "steer": "not-offered"
+      },
+      "mark": "drift",
+      "realistic": {
+        "analyze": "relevant-flag",
+        "live": "withheld",
+        "steer": "not-offered"
+      },
+      "roles": [
+        "pushback"
+      ]
+    },
+    "254fde889a955e2a": {
+      "class": null,
+      "first": false,
+      "hindsight": {
+        "analyze": "not-run",
+        "live": "withheld",
+        "steer": "offered"
+      },
+      "mark": "no-drift",
+      "part": {
+        "analyze": "false-alarm",
+        "live": "withheld",
+        "steer": "offered"
+      },
+      "realistic": {
+        "analyze": "false-alarm",
+        "live": "withheld",
+        "steer": "offered"
+      },
+      "roles": [
+        "ordinary"
+      ]
+    },
+    "25c6f3dc977048af": {
+      "class": null,
+      "first": false,
+      "hindsight": {
+        "analyze": "not-run",
+        "live": "withheld",
+        "steer": "offered"
+      },
+      "mark": "no-drift",
+      "part": {
+        "analyze": "false-alarm",
+        "live": "withheld",
+        "steer": "offered"
+      },
+      "realistic": {
+        "analyze": "quiet",
+        "live": "withheld",
+        "steer": "offered"
+      },
+      "roles": [
+        "after-fix"
+      ]
+    },
+    "28c32aff6c034846": {
+      "class": null,
+      "first": false,
+      "hindsight": {
+        "analyze": "not-run",
+        "live": "withheld",
+        "steer": "not-offered"
+      },
+      "mark": "no-drift",
+      "part": {
+        "analyze": "withheld",
+        "live": "withheld",
+        "steer": "not-offered"
+      },
+      "realistic": {
+        "analyze": "withheld",
+        "live": "withheld",
+        "steer": "not-offered"
+      },
+      "roles": [
+        "ordinary"
+      ]
+    },
+    "292e1f01f4fac111": {
+      "class": null,
+      "first": false,
+      "hindsight": {
+        "analyze": "not-run",
+        "live": "withheld",
+        "steer": "not-offered"
+      },
+      "mark": "no-drift",
+      "part": {
+        "analyze": "quiet",
+        "live": "withheld",
+        "steer": "not-offered"
+      },
+      "realistic": {
+        "analyze": "withheld",
+        "live": "withheld",
+        "steer": "not-offered"
+      },
+      "roles": [
+        "after-fix"
+      ]
+    },
+    "391d8c45fb26047b": {
+      "class": "communication",
+      "first": true,
+      "hindsight": {
+        "analyze": "not-run",
+        "live": "withheld",
+        "steer": "offered"
+      },
+      "mark": "drift",
+      "part": {
+        "analyze": "relevant-flag",
+        "live": "withheld",
+        "steer": "offered"
+      },
+      "realistic": {
+        "analyze": "relevant-flag",
+        "live": "withheld",
+        "steer": "offered"
+      },
+      "roles": [
+        "pushback"
+      ]
+    },
+    "392a91a820423a1a": {
+      "class": null,
+      "first": false,
+      "hindsight": {
+        "analyze": "not-run",
+        "live": "false-alarm",
+        "steer": "offered"
+      },
+      "mark": "no-drift",
+      "part": {
+        "analyze": "withheld",
+        "live": "false-alarm",
+        "steer": "offered"
+      },
+      "realistic": {
+        "analyze": "false-alarm",
+        "live": "false-alarm",
+        "steer": "offered"
+      },
+      "roles": [
+        "ordinary"
+      ]
+    },
+    "3beb43678c8157ba": {
+      "class": null,
+      "first": false,
+      "hindsight": {
+        "analyze": "not-run",
+        "live": "withheld",
+        "steer": "offered"
+      },
+      "mark": "no-drift",
+      "part": {
+        "analyze": "false-alarm",
+        "live": "withheld",
+        "steer": "offered"
+      },
+      "realistic": {
+        "analyze": "false-alarm",
+        "live": "withheld",
+        "steer": "offered"
+      },
+      "roles": [
+        "after-fix",
+        "pushback"
+      ]
+    },
+    "45ff45d1d23bb910": {
+      "class": null,
+      "first": false,
+      "hindsight": {
+        "analyze": "not-run",
+        "live": "false-alarm",
+        "steer": "offered"
+      },
+      "mark": "no-drift",
+      "part": {
+        "analyze": "false-alarm",
+        "live": "false-alarm",
+        "steer": "offered"
+      },
+      "realistic": {
+        "analyze": "false-alarm",
+        "live": "false-alarm",
+        "steer": "offered"
+      },
+      "roles": [
+        "after-fix"
+      ]
+    },
+    "4f5ee8c72c65b23d": {
+      "class": "defect",
+      "first": true,
+      "hindsight": {
+        "analyze": "not-run",
+        "live": "withheld",
+        "steer": "offered"
+      },
+      "mark": "drift",
+      "part": {
+        "analyze": "relevant-flag",
+        "live": "withheld",
+        "steer": "offered"
+      },
+      "realistic": {
+        "analyze": "reassured",
+        "live": "withheld",
+        "steer": "offered"
+      },
+      "roles": [
+        "pushback"
+      ]
+    },
+    "50c9ae84cf8cb5a4": {
+      "class": null,
+      "first": false,
+      "hindsight": {
+        "analyze": "not-run",
+        "live": "withheld",
+        "steer": "not-offered"
+      },
+      "mark": "no-drift",
+      "part": {
+        "analyze": "withheld",
+        "live": "withheld",
+        "steer": "not-offered"
+      },
+      "realistic": {
+        "analyze": "withheld",
+        "live": "withheld",
+        "steer": "not-offered"
+      },
+      "roles": [
+        "ordinary"
+      ]
+    },
+    "5361ef2c07d7da96": {
+      "class": null,
+      "first": false,
+      "hindsight": {
+        "analyze": "not-run",
+        "live": "withheld",
+        "steer": "offered"
+      },
+      "mark": "no-drift",
+      "part": {
+        "analyze": "withheld",
+        "live": "withheld",
+        "steer": "offered"
+      },
+      "realistic": {
+        "analyze": "quiet",
+        "live": "withheld",
+        "steer": "offered"
+      },
+      "roles": [
+        "ordinary"
+      ]
+    },
+    "53ee29add03233d2": {
+      "class": null,
+      "first": false,
+      "hindsight": {
+        "analyze": "not-run",
+        "live": "withheld",
+        "steer": "not-offered"
+      },
+      "mark": "no-drift",
+      "part": {
+        "analyze": "quiet",
+        "live": "withheld",
+        "steer": "not-offered"
+      },
+      "realistic": {
+        "analyze": "false-alarm",
+        "live": "withheld",
+        "steer": "not-offered"
+      },
+      "roles": [
+        "ordinary"
+      ]
+    },
+    "559e308f6ed28c2d": {
+      "class": "communication",
+      "first": true,
+      "hindsight": {
+        "analyze": "not-run",
+        "live": "withheld",
+        "steer": "not-offered"
+      },
+      "mark": "drift",
+      "part": {
+        "analyze": "withheld",
+        "live": "withheld",
+        "steer": "not-offered"
+      },
+      "realistic": {
+        "analyze": "relevant-flag",
+        "live": "withheld",
+        "steer": "not-offered"
+      },
+      "roles": [
+        "pushback"
+      ]
+    },
+    "55eb0add7d3e7e97": {
+      "class": null,
+      "first": false,
+      "hindsight": {
+        "analyze": "not-run",
+        "live": "withheld",
+        "steer": "offered"
+      },
+      "mark": "no-drift",
+      "part": {
+        "analyze": "withheld",
+        "live": "withheld",
+        "steer": "offered"
+      },
+      "realistic": {
+        "analyze": "quiet",
+        "live": "withheld",
+        "steer": "offered"
+      },
+      "roles": [
+        "ordinary"
+      ]
+    },
+    "56f82b3cd71a41d8": {
+      "class": "defect",
+      "first": true,
+      "hindsight": {
+        "analyze": "not-run",
+        "live": "withheld",
+        "steer": "not-offered"
+      },
+      "mark": "drift",
+      "part": {
+        "analyze": "withheld",
+        "live": "withheld",
+        "steer": "not-offered"
+      },
+      "realistic": {
+        "analyze": "relevant-flag",
+        "live": "withheld",
+        "steer": "not-offered"
+      },
+      "roles": [
+        "pushback"
+      ]
+    },
+    "615b5511325ab371": {
+      "class": "status-claim",
+      "first": false,
+      "hindsight": {
+        "analyze": "not-run",
+        "live": "withheld",
+        "steer": "offered"
+      },
+      "mark": "drift",
+      "part": {
+        "analyze": "relevant-flag",
+        "live": "withheld",
+        "steer": "offered"
+      },
+      "realistic": {
+        "analyze": "relevant-flag",
+        "live": "withheld",
+        "steer": "offered"
+      },
+      "roles": [
+        "after-fix",
+        "pushback",
+        "before-drift"
+      ]
+    },
+    "62a227b39baf01ab": {
+      "class": null,
+      "first": false,
+      "hindsight": {
+        "analyze": "not-run",
+        "live": "false-alarm",
+        "steer": "offered"
+      },
+      "mark": "no-drift",
+      "part": {
+        "analyze": "withheld",
+        "live": "false-alarm",
+        "steer": "offered"
+      },
+      "realistic": {
+        "analyze": "false-alarm",
+        "live": "false-alarm",
+        "steer": "offered"
+      },
+      "roles": [
+        "ordinary"
+      ]
+    },
+    "62e622939db159b5": {
+      "class": "scope-or-plan",
+      "first": true,
+      "hindsight": {
+        "analyze": "not-run",
+        "live": "withheld",
+        "steer": "not-offered"
+      },
+      "mark": "drift",
+      "part": {
+        "analyze": "reassured",
+        "live": "withheld",
+        "steer": "not-offered"
+      },
+      "realistic": {
+        "analyze": "reassured",
+        "live": "withheld",
+        "steer": "not-offered"
+      },
+      "roles": [
+        "pushback"
+      ]
+    },
+    "6b3f8b2f21f3ebf4": {
+      "class": null,
+      "first": false,
+      "hindsight": {
+        "analyze": "not-run",
+        "live": "withheld",
+        "steer": "offered"
+      },
+      "mark": "no-drift",
+      "part": {
+        "analyze": "withheld",
+        "live": "withheld",
+        "steer": "offered"
+      },
+      "realistic": {
+        "analyze": "withheld",
+        "live": "withheld",
+        "steer": "offered"
+      },
+      "roles": [
+        "before-drift"
+      ]
+    },
+    "74680d83e2b8749e": {
+      "class": null,
+      "first": false,
+      "hindsight": {
+        "analyze": "not-run",
+        "live": "withheld",
+        "steer": "not-offered"
+      },
+      "mark": "no-drift",
+      "part": {
+        "analyze": "quiet",
+        "live": "withheld",
+        "steer": "not-offered"
+      },
+      "realistic": {
+        "analyze": "withheld",
+        "live": "withheld",
+        "steer": "not-offered"
+      },
+      "roles": [
+        "before-drift"
+      ]
+    },
+    "7611cfe4d1969017": {
+      "class": null,
+      "first": false,
+      "hindsight": {
+        "analyze": "not-run",
+        "live": "false-alarm",
+        "steer": "not-offered"
+      },
+      "mark": "no-drift",
+      "part": {
+        "analyze": "withheld",
+        "live": "false-alarm",
+        "steer": "not-offered"
+      },
+      "realistic": {
+        "analyze": "false-alarm",
+        "live": "false-alarm",
+        "steer": "not-offered"
+      },
+      "roles": [
+        "ordinary"
+      ]
+    },
+    "77a94e811eb818ed": {
+      "class": "status-claim",
+      "first": true,
+      "hindsight": {
+        "analyze": "not-run",
+        "live": "withheld",
+        "steer": "not-offered"
+      },
+      "mark": "drift",
+      "part": {
+        "analyze": "reassured",
+        "live": "withheld",
+        "steer": "not-offered"
+      },
+      "realistic": {
+        "analyze": "relevant-flag",
+        "live": "withheld",
+        "steer": "not-offered"
+      },
+      "roles": [
+        "pushback"
+      ]
+    },
+    "7b935800187dbec1": {
+      "class": null,
+      "first": false,
+      "hindsight": {
+        "analyze": "not-run",
+        "live": "withheld",
+        "steer": "offered"
+      },
+      "mark": "no-drift",
+      "part": {
+        "analyze": "withheld",
+        "live": "withheld",
+        "steer": "offered"
+      },
+      "realistic": {
+        "analyze": "quiet",
+        "live": "withheld",
+        "steer": "offered"
+      },
+      "roles": [
+        "after-fix",
+        "before-drift"
+      ]
+    },
+    "7ea22cfcc63cd0df": {
+      "class": null,
+      "first": false,
+      "hindsight": {
+        "analyze": "not-run",
+        "live": "withheld",
+        "steer": "not-offered"
+      },
+      "mark": "no-drift",
+      "part": {
+        "analyze": "withheld",
+        "live": "withheld",
+        "steer": "not-offered"
+      },
+      "realistic": {
+        "analyze": "withheld",
+        "live": "withheld",
+        "steer": "not-offered"
+      },
+      "roles": [
+        "ordinary"
+      ]
+    },
+    "8591d4f0b0bd6d46": {
+      "class": null,
+      "first": false,
+      "hindsight": {
+        "analyze": "not-run",
+        "live": "withheld",
+        "steer": "not-offered"
+      },
+      "mark": "no-drift",
+      "part": {
+        "analyze": "quiet",
+        "live": "withheld",
+        "steer": "not-offered"
+      },
+      "realistic": {
+        "analyze": "withheld",
+        "live": "withheld",
+        "steer": "not-offered"
+      },
+      "roles": [
+        "ordinary"
+      ]
+    },
+    "86b1f27ae2b56029": {
+      "class": null,
+      "first": false,
+      "hindsight": {
+        "analyze": "not-run",
+        "live": "withheld",
+        "steer": "offered"
+      },
+      "mark": "no-drift",
+      "part": {
+        "analyze": "quiet",
+        "live": "withheld",
+        "steer": "offered"
+      },
+      "realistic": {
+        "analyze": "quiet",
+        "live": "withheld",
+        "steer": "offered"
+      },
+      "roles": [
+        "after-fix"
+      ]
+    },
+    "8836cc0a1cd79d83": {
+      "class": null,
+      "first": false,
+      "hindsight": {
+        "analyze": "not-run",
+        "live": "withheld",
+        "steer": "offered"
+      },
+      "mark": "no-drift",
+      "part": {
+        "analyze": "quiet",
+        "live": "withheld",
+        "steer": "offered"
+      },
+      "realistic": {
+        "analyze": "quiet",
+        "live": "withheld",
+        "steer": "offered"
+      },
+      "roles": [
+        "before-drift"
+      ]
+    },
+    "8a976d8b6b740873": {
+      "class": null,
+      "first": false,
+      "hindsight": {
+        "analyze": "not-run",
+        "live": "withheld",
+        "steer": "not-offered"
+      },
+      "mark": "no-drift",
+      "part": {
+        "analyze": "withheld",
+        "live": "withheld",
+        "steer": "not-offered"
+      },
+      "realistic": {
+        "analyze": "false-alarm",
+        "live": "withheld",
+        "steer": "offered"
+      },
+      "roles": [
+        "before-drift"
+      ]
+    },
+    "8d971283cbdf118e": {
+      "class": null,
+      "first": false,
+      "hindsight": {
+        "analyze": "not-run",
+        "live": "withheld",
+        "steer": "not-offered"
+      },
+      "mark": "no-drift",
+      "part": {
+        "analyze": "withheld",
+        "live": "withheld",
+        "steer": "not-offered"
+      },
+      "realistic": {
+        "analyze": "false-alarm",
+        "live": "withheld",
+        "steer": "not-offered"
+      },
+      "roles": [
+        "after-fix"
+      ]
+    },
+    "912e9c2f57d77a68": {
+      "class": "defect",
+      "first": true,
+      "hindsight": {
+        "analyze": "not-run",
+        "live": "withheld",
+        "steer": "not-offered"
+      },
+      "mark": "drift",
+      "part": {
+        "analyze": "relevant-flag",
+        "live": "withheld",
+        "steer": "not-offered"
+      },
+      "realistic": {
+        "analyze": "relevant-flag",
+        "live": "withheld",
+        "steer": "not-offered"
+      },
+      "roles": [
+        "pushback",
+        "before-drift"
+      ]
+    },
+    "9214be15326366f3": {
+      "class": null,
+      "first": false,
+      "hindsight": {
+        "analyze": "not-run",
+        "live": "withheld",
+        "steer": "offered"
+      },
+      "mark": "no-drift",
+      "part": {
+        "analyze": "withheld",
+        "live": "withheld",
+        "steer": "offered"
+      },
+      "realistic": {
+        "analyze": "false-alarm",
+        "live": "withheld",
+        "steer": "offered"
+      },
+      "roles": [
+        "after-fix"
+      ]
+    },
+    "923040a39df0f4f0": {
+      "class": null,
+      "first": false,
+      "hindsight": {
+        "analyze": "not-run",
+        "live": "false-alarm",
+        "steer": "offered"
+      },
+      "mark": "no-drift",
+      "part": {
+        "analyze": "withheld",
+        "live": "false-alarm",
+        "steer": "offered"
+      },
+      "realistic": {
+        "analyze": "withheld",
+        "live": "false-alarm",
+        "steer": "offered"
+      },
+      "roles": [
+        "ordinary"
+      ]
+    },
+    "96b0a775f8003a3b": {
+      "class": null,
+      "first": false,
+      "hindsight": {
+        "analyze": "not-run",
+        "live": "false-alarm",
+        "steer": "offered"
+      },
+      "mark": "no-drift",
+      "part": {
+        "analyze": "quiet",
+        "live": "false-alarm",
+        "steer": "offered"
+      },
+      "realistic": {
+        "analyze": "withheld",
+        "live": "false-alarm",
+        "steer": "offered"
+      },
+      "roles": [
+        "ordinary"
+      ]
+    },
+    "98ad50f9d055ad30": {
+      "class": null,
+      "first": false,
+      "hindsight": {
+        "analyze": "not-run",
+        "live": "false-alarm",
+        "steer": "not-offered"
+      },
+      "mark": "no-drift",
+      "part": {
+        "analyze": "quiet",
+        "live": "false-alarm",
+        "steer": "not-offered"
+      },
+      "realistic": {
+        "analyze": "withheld",
+        "live": "false-alarm",
+        "steer": "offered"
+      },
+      "roles": [
+        "after-fix"
+      ]
+    },
+    "9ef3d9b283e78536": {
+      "class": null,
+      "first": false,
+      "hindsight": {
+        "analyze": "not-run",
+        "live": "false-alarm",
+        "steer": "offered"
+      },
+      "mark": "no-drift",
+      "part": {
+        "analyze": "quiet",
+        "live": "false-alarm",
+        "steer": "offered"
+      },
+      "realistic": {
+        "analyze": "quiet",
+        "live": "false-alarm",
+        "steer": "offered"
+      },
+      "roles": [
+        "ordinary"
+      ]
+    },
+    "a17a0cd01bc7f9cf": {
+      "class": null,
+      "first": true,
+      "hindsight": {
+        "analyze": "not-run",
+        "live": "withheld",
+        "steer": "offered"
+      },
+      "mark": "no-drift",
+      "part": {
+        "analyze": "withheld",
+        "live": "withheld",
+        "steer": "offered"
+      },
+      "realistic": {
+        "analyze": "withheld",
+        "live": "withheld",
+        "steer": "offered"
+      },
+      "roles": [
+        "pushback"
+      ]
+    },
+    "a196d3850c518c9d": {
+      "class": null,
+      "first": true,
+      "hindsight": {
+        "analyze": "not-run",
+        "live": "withheld",
+        "steer": "offered"
+      },
+      "mark": "no-drift",
+      "part": {
+        "analyze": "withheld",
+        "live": "withheld",
+        "steer": "offered"
+      },
+      "realistic": {
+        "analyze": "quiet",
+        "live": "withheld",
+        "steer": "offered"
+      },
+      "roles": [
+        "pushback",
+        "before-drift"
+      ]
+    },
+    "a4b45e73b15a380f": {
+      "class": null,
+      "first": false,
+      "hindsight": {
+        "analyze": "not-run",
+        "live": "false-alarm",
+        "steer": "offered"
+      },
+      "mark": "no-drift",
+      "part": {
+        "analyze": "withheld",
+        "live": "false-alarm",
+        "steer": "offered"
+      },
+      "realistic": {
+        "analyze": "false-alarm",
+        "live": "false-alarm",
+        "steer": "offered"
+      },
+      "roles": [
+        "after-fix",
+        "before-drift"
+      ]
+    },
+    "a6738439b350a5db": {
+      "class": "status-claim",
+      "first": true,
+      "hindsight": {
+        "analyze": "not-run",
+        "live": "withheld",
+        "steer": "offered"
+      },
+      "mark": "drift",
+      "part": {
+        "analyze": "withheld",
+        "live": "withheld",
+        "steer": "offered"
+      },
+      "realistic": {
+        "analyze": "withheld",
+        "live": "withheld",
+        "steer": "offered"
+      },
+      "roles": [
+        "pushback"
+      ]
+    },
+    "a8b5b8d08851e43f": {
+      "class": null,
+      "first": false,
+      "hindsight": {
+        "analyze": "not-run",
+        "live": "withheld",
+        "steer": "offered"
+      },
+      "mark": "no-drift",
+      "part": {
+        "analyze": "withheld",
+        "live": "withheld",
+        "steer": "offered"
+      },
+      "realistic": {
+        "analyze": "withheld",
+        "live": "withheld",
+        "steer": "offered"
+      },
+      "roles": [
+        "ordinary"
+      ]
+    },
+    "ab158d56f9149db9": {
+      "class": null,
+      "first": false,
+      "hindsight": {
+        "analyze": "not-run",
+        "live": "false-alarm",
+        "steer": "not-offered"
+      },
+      "mark": "no-drift",
+      "part": {
+        "analyze": "quiet",
+        "live": "false-alarm",
+        "steer": "not-offered"
+      },
+      "realistic": {
+        "analyze": "withheld",
+        "live": "false-alarm",
+        "steer": "offered"
+      },
+      "roles": [
+        "before-drift"
+      ]
+    },
+    "ac2e71e54a1b3ca7": {
+      "class": null,
+      "first": false,
+      "hindsight": {
+        "analyze": "not-run",
+        "live": "withheld",
+        "steer": "offered"
+      },
+      "mark": "no-drift",
+      "part": {
+        "analyze": "withheld",
+        "live": "withheld",
+        "steer": "offered"
+      },
+      "realistic": {
+        "analyze": "false-alarm",
+        "live": "withheld",
+        "steer": "offered"
+      },
+      "roles": [
+        "after-fix"
+      ]
+    },
+    "ac3d733d0009e8b6": {
+      "class": "scope-or-plan",
+      "first": true,
+      "hindsight": {
+        "analyze": "not-run",
+        "live": "irrelevant-flag",
+        "steer": "offered"
+      },
+      "mark": "drift",
+      "part": {
+        "analyze": "reassured",
+        "live": "irrelevant-flag",
+        "steer": "offered"
+      },
+      "realistic": {
+        "analyze": "reassured",
+        "live": "irrelevant-flag",
+        "steer": "offered"
+      },
+      "roles": [
+        "pushback",
+        "before-drift"
+      ]
+    },
+    "acb681eff8c3be4d": {
+      "class": null,
+      "first": false,
+      "hindsight": {
+        "analyze": "not-run",
+        "live": "withheld",
+        "steer": "not-offered"
+      },
+      "mark": "no-drift",
+      "part": {
+        "analyze": "withheld",
+        "live": "withheld",
+        "steer": "not-offered"
+      },
+      "realistic": {
+        "analyze": "withheld",
+        "live": "withheld",
+        "steer": "not-offered"
+      },
+      "roles": [
+        "ordinary"
+      ]
+    },
+    "ad5f8fac9debdc73": {
+      "class": "status-claim",
+      "first": true,
+      "hindsight": {
+        "analyze": "not-run",
+        "live": "withheld",
+        "steer": "offered"
+      },
+      "mark": "drift",
+      "part": {
+        "analyze": "reassured",
+        "live": "withheld",
+        "steer": "offered"
+      },
+      "realistic": {
+        "analyze": "reassured",
+        "live": "withheld",
+        "steer": "offered"
+      },
+      "roles": [
+        "pushback"
+      ]
+    },
+    "adf27f8c6b7ccffa": {
+      "class": null,
+      "first": false,
+      "hindsight": {
+        "analyze": "not-run",
+        "live": "withheld",
+        "steer": "offered"
+      },
+      "mark": "no-drift",
+      "part": {
+        "analyze": "withheld",
+        "live": "withheld",
+        "steer": "offered"
+      },
+      "realistic": {
+        "analyze": "quiet",
+        "live": "withheld",
+        "steer": "offered"
+      },
+      "roles": [
+        "after-fix"
+      ]
+    },
+    "b5ed1d889f4ebfd8": {
+      "class": null,
+      "first": false,
+      "hindsight": {
+        "analyze": "not-run",
+        "live": "withheld",
+        "steer": "offered"
+      },
+      "mark": "no-drift",
+      "part": {
+        "analyze": "quiet",
+        "live": "withheld",
+        "steer": "offered"
+      },
+      "realistic": {
+        "analyze": "false-alarm",
+        "live": "withheld",
+        "steer": "offered"
+      },
+      "roles": [
+        "after-fix",
+        "before-drift"
+      ]
+    },
+    "b6a7c9d8d47e3510": {
+      "class": null,
+      "first": false,
+      "hindsight": {
+        "analyze": "not-run",
+        "live": "withheld",
+        "steer": "offered"
+      },
+      "mark": "no-drift",
+      "part": {
+        "analyze": "withheld",
+        "live": "withheld",
+        "steer": "offered"
+      },
+      "realistic": {
+        "analyze": "withheld",
+        "live": "withheld",
+        "steer": "offered"
+      },
+      "roles": [
+        "ordinary"
+      ]
+    },
+    "bad0aad6be5f4752": {
+      "class": null,
+      "first": false,
+      "hindsight": {
+        "analyze": "not-run",
+        "live": "false-alarm",
+        "steer": "not-offered"
+      },
+      "mark": "no-drift",
+      "part": {
+        "analyze": "false-alarm",
+        "live": "false-alarm",
+        "steer": "not-offered"
+      },
+      "realistic": {
+        "analyze": "withheld",
+        "live": "false-alarm",
+        "steer": "not-offered"
+      },
+      "roles": [
+        "ordinary"
+      ]
+    },
+    "bc40eacfd19c6c85": {
+      "class": null,
+      "first": false,
+      "hindsight": {
+        "analyze": "not-run",
+        "live": "false-alarm",
+        "steer": "offered"
+      },
+      "mark": "no-drift",
+      "part": {
+        "analyze": "withheld",
+        "live": "false-alarm",
+        "steer": "offered"
+      },
+      "realistic": {
+        "analyze": "withheld",
+        "live": "false-alarm",
+        "steer": "offered"
+      },
+      "roles": [
+        "ordinary"
+      ]
+    },
+    "bf55aae95a817072": {
+      "class": null,
+      "first": false,
+      "hindsight": {
+        "analyze": "not-run",
+        "live": "false-alarm",
+        "steer": "not-offered"
+      },
+      "mark": "no-drift",
+      "part": {
+        "analyze": "withheld",
+        "live": "false-alarm",
+        "steer": "not-offered"
+      },
+      "realistic": {
+        "analyze": "withheld",
+        "live": "false-alarm",
+        "steer": "not-offered"
+      },
+      "roles": [
+        "before-drift"
+      ]
+    },
+    "c19d1b414007e10f": {
+      "class": null,
+      "first": false,
+      "hindsight": {
+        "analyze": "not-run",
+        "live": "withheld",
+        "steer": "offered"
+      },
+      "mark": "no-drift",
+      "part": {
+        "analyze": "withheld",
+        "live": "withheld",
+        "steer": "offered"
+      },
+      "realistic": {
+        "analyze": "false-alarm",
+        "live": "withheld",
+        "steer": "offered"
+      },
+      "roles": [
+        "before-drift"
+      ]
+    },
+    "c41e322982d5a6e4": {
+      "class": "status-claim",
+      "first": true,
+      "hindsight": {
+        "analyze": "not-run",
+        "live": "withheld",
+        "steer": "offered"
+      },
+      "mark": "drift",
+      "part": {
+        "analyze": "withheld",
+        "live": "withheld",
+        "steer": "offered"
+      },
+      "realistic": {
+        "analyze": "reassured",
+        "live": "withheld",
+        "steer": "offered"
+      },
+      "roles": [
+        "pushback"
+      ]
+    },
+    "c736d5e5b4fa8927": {
+      "class": "defect",
+      "first": true,
+      "hindsight": {
+        "analyze": "not-run",
+        "live": "irrelevant-flag",
+        "steer": "offered"
+      },
+      "mark": "drift",
+      "part": {
+        "analyze": "withheld",
+        "live": "irrelevant-flag",
+        "steer": "offered"
+      },
+      "realistic": {
+        "analyze": "reassured",
+        "live": "irrelevant-flag",
+        "steer": "offered"
+      },
+      "roles": [
+        "after-fix",
+        "pushback",
+        "before-drift"
+      ]
+    },
+    "ce728399e1d1a4a7": {
+      "class": null,
+      "first": false,
+      "hindsight": {
+        "analyze": "not-run",
+        "live": "withheld",
+        "steer": "not-offered"
+      },
+      "mark": "no-drift",
+      "part": {
+        "analyze": "withheld",
+        "live": "withheld",
+        "steer": "not-offered"
+      },
+      "realistic": {
+        "analyze": "withheld",
+        "live": "withheld",
+        "steer": "offered"
+      },
+      "roles": [
+        "ordinary"
+      ]
+    },
+    "cefcec9613579d45": {
+      "class": null,
+      "first": false,
+      "hindsight": {
+        "analyze": "not-run",
+        "live": "withheld",
+        "steer": "not-offered"
+      },
+      "mark": "no-drift",
+      "part": {
+        "analyze": "withheld",
+        "live": "withheld",
+        "steer": "not-offered"
+      },
+      "realistic": {
+        "analyze": "false-alarm",
+        "live": "withheld",
+        "steer": "offered"
+      },
+      "roles": [
+        "before-drift"
+      ]
+    },
+    "d1278d25228ee614": {
+      "class": null,
+      "first": false,
+      "hindsight": {
+        "analyze": "not-run",
+        "live": "false-alarm",
+        "steer": "offered"
+      },
+      "mark": "no-drift",
+      "part": {
+        "analyze": "withheld",
+        "live": "false-alarm",
+        "steer": "offered"
+      },
+      "realistic": {
+        "analyze": "withheld",
+        "live": "false-alarm",
+        "steer": "offered"
+      },
+      "roles": [
+        "ordinary"
+      ]
+    },
+    "d133d4d6c88383d6": {
+      "class": "status-claim",
+      "first": true,
+      "hindsight": {
+        "analyze": "not-run",
+        "live": "irrelevant-flag",
+        "steer": "not-offered"
+      },
+      "mark": "drift",
+      "part": {
+        "analyze": "withheld",
+        "live": "irrelevant-flag",
+        "steer": "not-offered"
+      },
+      "realistic": {
+        "analyze": "withheld",
+        "live": "irrelevant-flag",
+        "steer": "not-offered"
+      },
+      "roles": [
+        "pushback"
+      ]
+    },
+    "d2045c73ca8889d9": {
+      "class": null,
+      "first": false,
+      "hindsight": {
+        "analyze": "not-run",
+        "live": "withheld",
+        "steer": "offered"
+      },
+      "mark": "no-drift",
+      "part": {
+        "analyze": "withheld",
+        "live": "withheld",
+        "steer": "offered"
+      },
+      "realistic": {
+        "analyze": "quiet",
+        "live": "withheld",
+        "steer": "offered"
+      },
+      "roles": [
+        "after-fix"
+      ]
+    },
+    "d7f9dc22ddec48c9": {
+      "class": null,
+      "first": false,
+      "hindsight": {
+        "analyze": "not-run",
+        "live": "withheld",
+        "steer": "not-offered"
+      },
+      "mark": "no-drift",
+      "part": {
+        "analyze": "quiet",
+        "live": "withheld",
+        "steer": "not-offered"
+      },
+      "realistic": {
+        "analyze": "quiet",
+        "live": "withheld",
+        "steer": "not-offered"
+      },
+      "roles": [
+        "ordinary"
+      ]
+    },
+    "d9bf4da2f6a6d278": {
+      "class": "other",
+      "first": true,
+      "hindsight": {
+        "analyze": "not-run",
+        "live": "irrelevant-flag",
+        "steer": "not-offered"
+      },
+      "mark": "drift",
+      "realistic": {
+        "analyze": "withheld",
+        "live": "irrelevant-flag",
+        "steer": "offered"
+      },
+      "roles": [
+        "pushback"
+      ]
+    },
+    "de2d7d7355e7d127": {
+      "class": null,
+      "first": false,
+      "hindsight": {
+        "analyze": "not-run",
+        "live": "false-alarm",
+        "steer": "offered"
+      },
+      "mark": "no-drift",
+      "part": {
+        "analyze": "withheld",
+        "live": "false-alarm",
+        "steer": "offered"
+      },
+      "realistic": {
+        "analyze": "withheld",
+        "live": "false-alarm",
+        "steer": "offered"
+      },
+      "roles": [
+        "ordinary"
+      ]
+    },
+    "e211b0a4396f52c5": {
+      "class": null,
+      "first": false,
+      "hindsight": {
+        "analyze": "not-run",
+        "live": "withheld",
+        "steer": "offered"
+      },
+      "mark": "no-drift",
+      "part": {
+        "analyze": "false-alarm",
+        "live": "withheld",
+        "steer": "offered"
+      },
+      "realistic": {
+        "analyze": "false-alarm",
+        "live": "withheld",
+        "steer": "offered"
+      },
+      "roles": [
+        "ordinary"
+      ]
+    },
+    "e332dc91e8103edb": {
+      "class": null,
+      "first": false,
+      "hindsight": {
+        "analyze": "not-run",
+        "live": "withheld",
+        "steer": "offered"
+      },
+      "mark": "no-drift",
+      "part": {
+        "analyze": "quiet",
+        "live": "withheld",
+        "steer": "offered"
+      },
+      "realistic": {
+        "analyze": "quiet",
+        "live": "withheld",
+        "steer": "offered"
+      },
+      "roles": [
+        "before-drift"
+      ]
+    },
+    "e338c005fd75e4ca": {
+      "class": null,
+      "first": false,
+      "hindsight": {
+        "analyze": "not-run",
+        "live": "withheld",
+        "steer": "offered"
+      },
+      "mark": "no-drift",
+      "part": {
+        "analyze": "withheld",
+        "live": "withheld",
+        "steer": "offered"
+      },
+      "realistic": {
+        "analyze": "withheld",
+        "live": "withheld",
+        "steer": "offered"
+      },
+      "roles": [
+        "ordinary"
+      ]
+    },
+    "e6792c74446aa599": {
+      "class": null,
+      "first": false,
+      "hindsight": {
+        "analyze": "not-run",
+        "live": "false-alarm",
+        "steer": "not-offered"
+      },
+      "mark": "no-drift",
+      "part": {
+        "analyze": "withheld",
+        "live": "false-alarm",
+        "steer": "not-offered"
+      },
+      "realistic": {
+        "analyze": "withheld",
+        "live": "false-alarm",
+        "steer": "offered"
+      },
+      "roles": [
+        "after-fix"
+      ]
+    },
+    "ea326d1d39933df8": {
+      "class": "communication",
+      "first": true,
+      "hindsight": {
+        "analyze": "not-run",
+        "live": "relevant-flag",
+        "steer": "offered"
+      },
+      "mark": "drift",
+      "part": {
+        "analyze": "withheld",
+        "live": "relevant-flag",
+        "steer": "offered"
+      },
+      "realistic": {
+        "analyze": "reassured",
+        "live": "relevant-flag",
+        "steer": "offered"
+      },
+      "roles": [
+        "pushback"
+      ]
+    },
+    "ea5b96fe81147806": {
+      "class": null,
+      "first": false,
+      "hindsight": {
+        "analyze": "not-run",
+        "live": "withheld",
+        "steer": "not-offered"
+      },
+      "mark": "no-drift",
+      "part": {
+        "analyze": "false-alarm",
+        "live": "withheld",
+        "steer": "not-offered"
+      },
+      "realistic": {
+        "analyze": "false-alarm",
+        "live": "withheld",
+        "steer": "not-offered"
+      },
+      "roles": [
+        "ordinary"
+      ]
+    },
+    "eb7be83f69796d87": {
+      "class": null,
+      "first": false,
+      "hindsight": {
+        "analyze": "not-run",
+        "live": "withheld",
+        "steer": "not-offered"
+      },
+      "mark": "no-drift",
+      "part": {
+        "analyze": "withheld",
+        "live": "withheld",
+        "steer": "not-offered"
+      },
+      "realistic": {
+        "analyze": "withheld",
+        "live": "withheld",
+        "steer": "offered"
+      },
+      "roles": [
+        "ordinary"
+      ]
+    },
+    "ef62767dff874608": {
+      "class": "status-claim",
+      "first": true,
+      "hindsight": {
+        "analyze": "not-run",
+        "live": "irrelevant-flag",
+        "steer": "offered"
+      },
+      "mark": "drift",
+      "part": {
+        "analyze": "reassured",
+        "live": "irrelevant-flag",
+        "steer": "offered"
+      },
+      "realistic": {
+        "analyze": "reassured",
+        "live": "irrelevant-flag",
+        "steer": "offered"
+      },
+      "roles": [
+        "pushback"
+      ]
+    },
+    "f2f823dc548161a0": {
+      "class": "defect",
+      "first": false,
+      "hindsight": {
+        "analyze": "not-run",
+        "live": "withheld",
+        "steer": "offered"
+      },
+      "mark": "drift",
+      "part": {
+        "analyze": "reassured",
+        "live": "withheld",
+        "steer": "offered"
+      },
+      "realistic": {
+        "analyze": "withheld",
+        "live": "withheld",
+        "steer": "offered"
+      },
+      "roles": [
+        "pushback"
+      ]
+    },
+    "f793fb1ca0724b26": {
+      "class": null,
+      "first": false,
+      "hindsight": {
+        "analyze": "not-run",
+        "live": "withheld",
+        "steer": "offered"
+      },
+      "mark": "no-drift",
+      "part": {
+        "analyze": "withheld",
+        "live": "withheld",
+        "steer": "offered"
+      },
+      "realistic": {
+        "analyze": "quiet",
+        "live": "withheld",
+        "steer": "offered"
+      },
+      "roles": [
+        "after-fix"
+      ]
+    },
+    "f94c1d5aad9a53fb": {
+      "class": null,
+      "first": false,
+      "hindsight": {
+        "analyze": "not-run",
+        "live": "withheld",
+        "steer": "not-offered"
+      },
+      "mark": "no-drift",
+      "part": {
+        "analyze": "false-alarm",
+        "live": "withheld",
+        "steer": "not-offered"
+      },
+      "realistic": {
+        "analyze": "false-alarm",
+        "live": "withheld",
+        "steer": "not-offered"
+      },
+      "roles": [
+        "before-drift"
+      ]
+    },
+    "fe690993017a2f65": {
+      "class": null,
+      "first": false,
+      "hindsight": {
+        "analyze": "not-run",
+        "live": "withheld",
+        "steer": "not-offered"
+      },
+      "mark": "no-drift",
+      "part": {
+        "analyze": "false-alarm",
+        "live": "withheld",
+        "steer": "not-offered"
+      },
+      "realistic": {
+        "analyze": "false-alarm",
+        "live": "withheld",
+        "steer": "not-offered"
+      },
+      "roles": [
+        "before-drift"
+      ]
+    },
+    "ff9aaf4f70aeac8f": {
+      "class": null,
+      "first": false,
+      "hindsight": {
+        "analyze": "not-run",
+        "live": "withheld",
+        "steer": "not-offered"
+      },
+      "mark": "no-drift",
+      "part": {
+        "analyze": "withheld",
+        "live": "withheld",
+        "steer": "not-offered"
+      },
+      "realistic": {
+        "analyze": "false-alarm",
+        "live": "withheld",
+        "steer": "not-offered"
+      },
+      "roles": [
+        "after-fix"
+      ]
+    }
+  },
+  "cases_digest": "8bf4cb5fea6a34f83ede4b1f3b57f5b64573746c4f76143ccf9e15c6671a06f2",
+  "counts": {
+    "hindsight|analyze|drift": {
+      "not-run": 22
+    },
+    "hindsight|analyze|drift-persistence": {
+      "not-run": 2
+    },
+    "hindsight|analyze|no-drift": {
+      "not-run": 71
+    },
+    "hindsight|live|drift": {
+      "irrelevant-flag": 7,
+      "relevant-flag": 1,
+      "withheld": 14
+    },
+    "hindsight|live|drift-persistence": {
+      "withheld": 2
+    },
+    "hindsight|live|no-drift": {
+      "false-alarm": 19,
+      "withheld": 52
+    },
+    "hindsight|steer|drift": {
+      "not-offered": 9,
+      "offered": 13
+    },
+    "hindsight|steer|drift-persistence": {
+      "offered": 2
+    },
+    "hindsight|steer|no-drift": {
+      "not-offered": 27,
+      "offered": 44
+    },
+    "part|analyze|drift": {
+      "reassured": 5,
+      "relevant-flag": 4,
+      "withheld": 10
+    },
+    "part|analyze|drift-persistence": {
+      "reassured": 1,
+      "relevant-flag": 1
+    },
+    "part|analyze|no-drift": {
+      "false-alarm": 11,
+      "quiet": 19,
+      "withheld": 41
+    },
+    "part|live|drift": {
+      "irrelevant-flag": 5,
+      "relevant-flag": 1,
+      "withheld": 13
+    },
+    "part|live|drift-persistence": {
+      "withheld": 2
+    },
+    "part|live|no-drift": {
+      "false-alarm": 19,
+      "withheld": 52
+    },
+    "part|steer|drift": {
+      "not-offered": 6,
+      "offered": 13
+    },
+    "part|steer|drift-persistence": {
+      "offered": 2
+    },
+    "part|steer|no-drift": {
+      "not-offered": 27,
+      "offered": 44
+    },
+    "realistic|analyze|drift": {
+      "irrelevant-flag": 1,
+      "reassured": 9,
+      "relevant-flag": 7,
+      "withheld": 5
+    },
+    "realistic|analyze|drift-persistence": {
+      "relevant-flag": 1,
+      "withheld": 1
+    },
+    "realistic|analyze|no-drift": {
+      "false-alarm": 26,
+      "quiet": 19,
+      "withheld": 26
+    },
+    "realistic|live|drift": {
+      "irrelevant-flag": 7,
+      "relevant-flag": 1,
+      "withheld": 14
+    },
+    "realistic|live|drift-persistence": {
+      "withheld": 2
+    },
+    "realistic|live|no-drift": {
+      "false-alarm": 19,
+      "withheld": 52
+    },
+    "realistic|steer|drift": {
+      "not-offered": 7,
+      "offered": 15
+    },
+    "realistic|steer|drift-persistence": {
+      "offered": 2
+    },
+    "realistic|steer|no-drift": {
+      "not-offered": 20,
+      "offered": 51
+    }
+  },
+  "marks_digest": "a09c2dd823dad1e1da1827a1fe5dc4f3a60891c54b02f34db28c84e755ea78f3",
+  "v": 1
+}
