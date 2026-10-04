@@ -1513,9 +1513,9 @@ def _read_bin(  # noqa: PLR0911 - one return per outcome
 ) -> str:
     """One reading's outcome. A departure resting only on the person's own messages is an echo.
 
-    Each departed criterion is judged on its own cites, and the reading takes the best of them in
-    `BINS_DRIFT` order: one criterion citing the agent's work does not lift another resting on the
-    person's words alone out of being an echo, nor the other way round.
+    Each departed criterion is judged on its own cites, so the person's words cited by one never
+    make another relevant or an echo, and the reading's outcome is the best of them in
+    `BINS_DRIFT` order.
     """
     if not entry:
         return "refused"

@@ -2512,14 +2512,15 @@ def _superseded(entry: LedgerEntry, claimed: float, carried: Sequence[LedgerEntr
     replay run's 7 claims departures, it withdraws a failure 74 minutes old
     and one 967 minutes old, each with the same tool run since. Any later
     run counts, whatever its result, after the failure's result and at or
-    before the claim; the ruling:
+    before the claim, so a failure at or after the claim always stands; the
+    ruling:
     [DEC-17](docs/design-reading-a-session.md#amended-2026-10-04-owner-what-the-agent-claims-is-its-own-constraint)
     """
     if entry.get("subject") != CHECK_SUBJECT or entry["type"] != TOOL_REPORT_TYPE:
         return False
     failed_at = evidence_at(entry) or entry["at"]
     family = check_family(_check_text(entry))
-    if failed_at >= claimed or not family:
+    if not family:
         return False
     return any(
         other["id"] != entry["id"]
