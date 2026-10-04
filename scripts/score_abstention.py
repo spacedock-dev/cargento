@@ -209,6 +209,9 @@ OUTCOME_ABSTAINED = "abstained"
 OUTCOME_UNPARSED = "unparsed"
 OUTCOME_JUDGED_CONSISTENT = "judged:consistent"
 OUTCOME_JUDGED_DEPARTURE = "judged:departure"
+# The claims question's fourth result (owner, 2026-10-04): a judgement, and
+# never counted as a departure, which it is not.
+OUTCOME_JUDGED_UNSUPPORTED = "judged:unsupported"
 WITHHELD_PREFIX = "withheld:"
 # Our own withheld reason, not the producer's: the board no longer lists the
 # session the case was drawn from.
@@ -294,6 +297,9 @@ RESULT_BY_TOKEN = {
 _UNVERIFIABLE = RESULT_BY_TOKEN["unverifiable"]
 _CONSISTENT = RESULT_BY_TOKEN["consistent"]
 _DEPARTURE = RESULT_BY_TOKEN["departure"]
+# Spelt here for the rubric's reason above; `reading.RESULT_UNSUPPORTED`, held
+# equal by `RubricTokensMirrorTheProducerTest`.
+_UNSUPPORTED = "not shown by the record"
 
 
 @dataclasses.dataclass(frozen=True)
@@ -675,6 +681,8 @@ def outcome(criterion: Mapping[str, Any] | None, withheld: str) -> str:
         return OUTCOME_ABSTAINED
     if result == _CONSISTENT:
         return OUTCOME_JUDGED_CONSISTENT
+    if result == _UNSUPPORTED:
+        return OUTCOME_JUDGED_UNSUPPORTED
     return OUTCOME_JUDGED_DEPARTURE
 
 
@@ -828,6 +836,13 @@ def score_case(  # noqa: PLR0913 - one keyword per thing a case decides
         except abstention_ledger.LedgerError:
             assessment, why, spent = None, WITHHELD_LEDGER, False
     stored = assessment["criteria"] if assessment else {}
+    # The claims question is the producer's to pose, only where the press read
+    # the agent's messages, which this scorer does not send (`produce`'s
+    # default), so it joins the list only where a reading answered it and is
+    # never marked by the captain yet (owner, 2026-10-04).
+    if reading.CONSTRAINT_CLAIMS in stored:
+        names = (*names, reading.CONSTRAINT_CLAIMS)
+    marks = {name: str(mark.get(name) or "") for name in names}
     criteria = {name: stored[_stored_name(name)] for name in names if _stored_name(name) in stored}
     # The producer's own predicate over the ledger it read, so the scorer
     # cannot call a column asked that `resolve` answered without asking. Where

@@ -7958,7 +7958,13 @@ console.log(JSON.stringify({
         self.assertEqual({"goal": unverifiable, "line_1": unverifiable}, out["met"])
         self.assertEqual(unverifiable, out["invented"]["goal"])
         self.assertEqual(
-            ["departure", "consistent with the evidence read", unverifiable], out["closed"]
+            [
+                "departure",
+                "consistent with the evidence read",
+                unverifiable,
+                "not shown by the record",
+            ],
+            out["closed"],
         )
 
     def test_rule_2_absent_or_unparseable_output_falls_to_not_verifiable(self) -> None:

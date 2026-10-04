@@ -1603,8 +1603,8 @@ details.next-cockpit-held-stamp[open]>span{display:block}
    panel allows (owner Q10), a neutral filled dot for consistent, never a
    check and never green, and a dashed circle for can't tell. */
 .next-cockpit-result{gap:14px}
-.next-cockpit-result-checklist{display:flex;flex-direction:column;gap:8px}
-.next-cockpit-result-checklist h3{margin:0;color:var(--ink);font:600 var(--fs-body)/1.45 var(--sans)}
+.next-cockpit-result-checklist,.next-cockpit-result-claims{display:flex;flex-direction:column;gap:8px}
+.next-cockpit-result-checklist h3,.next-cockpit-result-claims h3{margin:0;color:var(--ink);font:600 var(--fs-body)/1.45 var(--sans)}
 .next-cockpit-result-lines{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:10px}
 .next-cockpit-result .next-cockpit-reading-row{flex-direction:row;align-items:flex-start;gap:10px;padding-left:0;border-left:0}
 .next-cockpit-result .next-cockpit-reading-row+.next-cockpit-reading-row{margin-top:0}
@@ -1617,6 +1617,10 @@ details.next-cockpit-held-stamp[open]>span{display:block}
 [data-next-result-state="departs"]>.next-cockpit-result-glyph{border-color:var(--clay)}
 [data-next-result-state="departs"]>.next-cockpit-result-glyph::before,[data-next-result-state="departs"]>.next-cockpit-result-glyph::after{content:"";position:absolute;left:50%;top:50%;width:7px;height:1.5px;background:var(--clay);transform:translate(-50%,-50%) rotate(45deg)}
 [data-next-result-state="departs"]>.next-cockpit-result-glyph::after{transform:translate(-50%,-50%) rotate(-45deg)}
+/* A claim the record read does not show (owner, 2026-10-04): a caution, not
+   a cross and not the clay, so a dashed circle with one upright stroke. */
+[data-next-result-state="unshown"]>.next-cockpit-result-glyph{border-style:dashed}
+[data-next-result-state="unshown"]>.next-cockpit-result-glyph::before{content:"";position:absolute;left:50%;top:50%;width:1.5px;height:6px;background:var(--ink2);transform:translate(-50%,-50%)}
 .next-cockpit-result-press{display:flex;flex-direction:column;gap:8px}
 /* HOW IT LANDED. Two cards side by side and never one verdict: what ended and
    who says the work finished are different questions. The board is talking

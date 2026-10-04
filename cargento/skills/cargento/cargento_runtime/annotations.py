@@ -837,7 +837,7 @@ def _assessment(value: Any, cap: int) -> reading.Assessment | None:
 
 
 def _criteria(value: Any, cap: int) -> dict[str, reading.Criterion] | None:
-    """A reading's criteria, keyed goal then each line in order, or nothing.
+    """A reading's criteria, keyed goal, each line in order, then any claims, or nothing.
 
     The keys are the goal and `line_1` to `line_N` with no gap, N at most six:
     a gap would caption one line's verdict with another's words. A reading
@@ -855,6 +855,12 @@ def _criteria(value: Any, cap: int) -> dict[str, reading.Criterion] | None:
         if criterion is None:
             return None
         parsed[str(name)] = criterion
+    # The claims question is optional and comes last; `unsupported` is its
+    # result alone, so a Goal or a line carrying it is refused whole
+    # (owner, 2026-10-04).
+    claims = parsed.pop(reading.CONSTRAINT_CLAIMS, None)
+    if any(row.get("result") == reading.RESULT_UNSUPPORTED for row in parsed.values()):
+        return None
     if set(parsed) == {reading.CONSTRAINT_GOAL, reading.CONSTRAINT_OUTPUT}:
         output = parsed.pop(reading.CONSTRAINT_OUTPUT)
         verdict = output.get("result") in (reading.RESULT_DEPARTURE, reading.RESULT_CONSISTENT)
@@ -863,7 +869,10 @@ def _criteria(value: Any, cap: int) -> dict[str, reading.Criterion] | None:
     names = reading.constraints_for(["line"] * (len(parsed) - 1))
     if len(parsed) - 1 > reading.MAX_OUTCOME_LINES or set(parsed) != set(names):
         return None
-    return {name: parsed[name] for name in names}
+    ordered = {name: parsed[name] for name in names}
+    if claims is not None:
+        ordered[reading.CONSTRAINT_CLAIMS] = claims
+    return ordered
 
 
 def _settlement(value: Any) -> Settlement | None:

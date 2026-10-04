@@ -1236,12 +1236,19 @@ function nextCockpitStoreUnreadable(){
    and a box put back to the draft redraws them. Save intent is the one way
    to save the draft: the "Looks right" button that did the same thing beside
    it is gone (owner, 2026-10-02). */
+/* An adopted prompt longer than the goal box (owner, 2026-10-04): the box
+   keeps the excerpt, and Analyze reads the prompt whole, up to the 1,000
+   characters `reading.adopted_prompt` reads. Short, because it sits in the row
+   under the box that holds one control's height. */
+const NEXT_INTENT_EXCERPT_READ_WHOLE = "Excerpt. Analyze reads up to 1,000 characters.";
+
 function nextIntentDraftMarks(session, draft){
   /* A chosen prompt is named by its own time, which is what tells it apart
      from the others the menu listed. */
   const which = draft.source === "latest-prompt" ? " \u00b7 latest"
     : draft.source === NEXT_PROMPT_CHOSEN ? ` \u00b7 ${nextSessionClock(draft.at)}` : "";
-  const clipped = draft.cut === true || draft.text.endsWith("\u2026") ? " Shown excerpt only." : "";
+  const clipped = draft.cut === true || draft.text.endsWith("\u2026")
+    ? ` ${NEXT_INTENT_EXCERPT_READ_WHOLE}` : "";
   return '<span class="next-intent-draft-marks" data-next-cockpit-draft-marks>' +
     `<span class="next-intent-draft-source">from your prompt${which}</span>` +
     (clipped ? `<span class="next-cockpit-held-cue">${clipped.trim()}</span>` : "") + '</span>';
@@ -2440,10 +2447,18 @@ function nextCockpitObserverModel(group, focus = nextCockpitFocusedSession(group
 const NEXT_READING_DEPARTURE = "departure";
 const NEXT_READING_CONSISTENT = "consistent with the evidence read";
 const NEXT_READING_UNVERIFIABLE = "not verifiable from available evidence";
+/* `reading.RESULT_UNSUPPORTED`: the claims question's own fourth result, a
+   claim of the agent's nothing in the record read shows. Never a departure
+   (rule 3), and only ever on the `claims` row (owner, 2026-10-04). */
+const NEXT_READING_UNSUPPORTED = "not shown by the record";
 // Rule 1, as data. A result reaches the page only by being one of these.
 const NEXT_READING_RESULTS = [
   NEXT_READING_DEPARTURE, NEXT_READING_CONSISTENT, NEXT_READING_UNVERIFIABLE,
+  NEXT_READING_UNSUPPORTED,
 ];
+/* `reading.CONSTRAINT_CLAIMS`: what the agent claimed about the work, asked
+   beside the intent on a press that carries its messages, and drawn after it. */
+const NEXT_READING_CLAIMS = "claims";
 // Rule 6: the goal and each outcome line, each naming itself, never blended.
 // Keyed on identity so rule 7 needs no reading of the clause. `output` is the
 // single expected output a reading stored before the checklist carries; the
@@ -2457,7 +2472,7 @@ function nextReadingIsOutcomeLine(key){
 }
 
 function nextReadingNamesConstraint(key){
-  return key === "goal" || nextReadingIsOutcomeLine(key);
+  return key === "goal" || key === NEXT_READING_CLAIMS || nextReadingIsOutcomeLine(key);
 }
 
 /* The constraints a reading's rows are drawn for, goal first and then each
@@ -2475,10 +2490,12 @@ function nextReadingConstraints(rows, annotation, current = false){
   const keys = new Set(["goal", ...Object.keys(rows || {}).filter(nextReadingNamesConstraint),
     ...typed.filter(key => !(rows && rows.output && key === "line_1"))]);
   const order = key => key === "goal" ? 0 : key === "output" ? 1
+    : key === NEXT_READING_CLAIMS ? NEXT_OUTCOME_LINES_MAX + 1
     : Number(NEXT_READING_OUTCOME_LINE.exec(key)[1]);
   return [...keys].sort((left, right) => order(left) - order(right))
     .filter(key => (rows && rows[key]) || String(annotation && annotation[key] || "").trim())
     .map(key => [key, key === "goal" ? "TYPED GOAL" : key === "output" ? "EXPECTED OUTCOME"
+      : key === NEXT_READING_CLAIMS ? "WHAT THE AGENT CLAIMED"
       : `EXPECTED OUTCOME · LINE ${order(key)}`]);
 }
 /* Rule 7 stopped keying on WHO wrote an entry on 2026-09-10 and this sentence
@@ -2649,6 +2666,16 @@ const NEXT_READING_FAILED_CHECK_ON_RECORD =
 const NEXT_READING_FAILED_CHECK_UNREAD =
   "A check that failed was not read, because the reading had no room for it, so nothing here " +
   "says the output is consistent.";
+/* The claims row (owner, 2026-10-04): why a verdict on it was withdrawn for
+   want of the citations it needs (`claim-uncited`), and why "not shown" was
+   withdrawn where the session's checks were not all read
+   (`claim-record-unread`, review, PR C). */
+const NEXT_READING_CLAIM_RECORD_UNREAD =
+  "Not all of this session's checks were read, so the analysis cannot say the record does " +
+  "not show what the agent said.";
+const NEXT_READING_CLAIM_UNCITED =
+  "The analysis did not cite the agent's message and, for a contradiction or a match, the " +
+  "entry it compared it with, so it reads as not verifiable.";
 /* Why a stored row is `not verifiable`, token to sentence. The producer owns
    the tokens (`reading.WHY_TOKENS`, compared by `ReadingVocabularyIsSpeltOnceTest`)
    and this page owns every sentence, so no producer prose reaches the page
@@ -2671,6 +2698,8 @@ const NEXT_READING_STORED_WHY = {
   "checks-not-read": NEXT_READING_CHECKS_NOT_READ,
   "tells-the-person": NEXT_READING_TELLS_THE_PERSON,
   "failed-check-on-record": NEXT_READING_FAILED_CHECK_ON_RECORD,
+  "claim-uncited": NEXT_READING_CLAIM_UNCITED,
+  "claim-record-unread": NEXT_READING_CLAIM_RECORD_UNREAD,
 };
 
 /* Who wrote an evidence entry. A closed set on the person side, because the
@@ -2856,7 +2885,12 @@ function nextCockpitReadingCriterion(key, label, clause, raw, entries, limit, un
   const declared = raw && typeof raw === "object" ? String(raw.result || "") : "";
   const stored = raw && typeof raw === "object" ? String(raw.why || "") : "";
   let limitText = limit || "";
-  let result = NEXT_READING_RESULTS.includes(declared) ? declared : NEXT_READING_UNVERIFIABLE;
+  const claims = key === NEXT_READING_CLAIMS;
+  /* `unsupported` is the claims row's alone; anywhere else it is a result
+     outside the row's set, as the store would refuse it. */
+  const known = claims ? NEXT_READING_RESULTS
+    : NEXT_READING_RESULTS.filter(name => name !== NEXT_READING_UNSUPPORTED);
+  let result = known.includes(declared) ? declared : NEXT_READING_UNVERIFIABLE;
   // Rule 2, and it is the reason the default above is not `consistent`: a
   // producer that returned nothing has said nothing, and silence is not a pass.
   let why = result === declared ? "" : NEXT_READING_MALFORMED;
@@ -2883,7 +2917,9 @@ function nextCockpitReadingCriterion(key, label, clause, raw, entries, limit, un
     // `limit ·`.
     why = "";
   }
-  if(result !== NEXT_READING_UNVERIFIABLE && unsettled){
+  /* The claims row is independent of the intent, so an unsettled later
+     direction never demotes it (review, PR C). */
+  if(result !== NEXT_READING_UNVERIFIABLE && unsettled && !claims){
     /* DRC-4511: an unresolved baseline conflict never becomes an agent-drift
        verdict. A demotion rather than a filter over `shape.departures`, for
        the reason the shape-contract comment above gives: filtering would
@@ -2930,6 +2966,36 @@ function nextCockpitReadingCriterion(key, label, clause, raw, entries, limit, un
         : NEXT_READING_CHECK_DOES_NOT_SHOW_IT;
     }
   }
+  /* The claims row, as `reading._claims_rule` reads it: every result names
+     the agent's message making the claim; a departure or a consistent also
+     the entry contradicting or showing it, and that entry not only
+     Cargento's paraphrase. An `unsupported` is about absence, so the message
+     is all it can cite. */
+  const claimSaid = claims ? citations.filter(nextReadingAgentMessage) : [];
+  const claimRecord = claims ? citations.filter(entry => !nextReadingAgentMessage(entry)) : [];
+  if(claims && result !== NEXT_READING_UNVERIFIABLE){
+    let token = "";
+    if(!claimSaid.length) token = NEXT_READING_CLAIM_UNCITED;
+    else if(result !== NEXT_READING_UNSUPPORTED && !claimRecord.length){
+      token = droppedCheck ? NEXT_READING_CHECK_DOES_NOT_SHOW_IT : NEXT_READING_CLAIM_UNCITED;
+    }else if(result !== NEXT_READING_UNSUPPORTED &&
+        claimRecord.every(entry => nextReadingAuthor(entry) === "derived")){
+      token = NEXT_READING_DERIVED_ONLY;
+    }else if(result === NEXT_READING_CONSISTENT && !claimRecord.some(entry =>
+        nextReadingDemonstratesWork(entry) || String(entry.type || "") === "tool_report")){
+      /* `reading._claims_compared`: shown means shown by the work. */
+      token = NEXT_READING_CLAIM_UNCITED;
+    }else if(result === NEXT_READING_DEPARTURE && !claimRecord.some(entry =>
+        entry.subject === "check" ||
+        (nextNumber(entry.at) || 0) >= Math.min(...claimSaid.map(said => nextNumber(said.at) || 0)))){
+      /* A contradiction at or after the claim; a check is its latest run. */
+      token = NEXT_READING_CLAIM_UNCITED;
+    }
+    if(token){
+      result = NEXT_READING_UNVERIFIABLE;
+      why = token;
+    }
+  }
   const shows = citations.filter(nextReadingDemonstratesWork);
   const authors = citations.map(nextReadingAuthor);
   const derivedOnly = authors.length > 0 && authors.every(name => name === "derived");
@@ -2970,7 +3036,8 @@ function nextCockpitReadingCriterion(key, label, clause, raw, entries, limit, un
     result = NEXT_READING_UNVERIFIABLE;
     why = NEXT_READING_CHECK_DOES_NOT_SHOW_IT;
   }
-  if(result === NEXT_READING_CONSISTENT && nextReadingIsOutcomeLine(key) && !shows.length &&
+  if(result === NEXT_READING_CONSISTENT && (nextReadingIsOutcomeLine(key) || claims) &&
+      !shows.length &&
       (entries || []).some(entry => entry && entry.subject === "check" &&
         nextReadingCheckSupports(entry, NEXT_READING_DEPARTURE, windowStart))){
     /* A line's consistent resting on no work beside a failed check this page
@@ -3013,9 +3080,19 @@ function nextCockpitReadingCriterion(key, label, clause, raw, entries, limit, un
   const restsOnEntry = tool || said || null;
   return {
     key, label,
-    clause: clause || NEXT_READING_CLAUSE_UNRETAINED,
-    clauseKnown: Boolean(clause),
+    /* The claims question carries no words of the reader's, and its heading
+       names it, so it has no clause to draw. */
+    clause: claims ? "" : clause || NEXT_READING_CLAUSE_UNRETAINED,
+    clauseKnown: !claims && Boolean(clause),
+    /* The claim and what the record says of it, where the claims row stands. */
+    claimEntry: claims && result !== NEXT_READING_UNVERIFIABLE ? claimSaid[0] || null : null,
+    recordEntry: claims && result !== NEXT_READING_UNVERIFIABLE
+      ? claimRecord.find(entry => String(entry.type || "") === "tool_report" ||
+        entry.subject === "check") || claimRecord[0] || null : null,
     result,
+    /* Whether the stored row itself declared a verdict, before any limit: a claims row with no
+       claim is not drawn under a route limit either. */
+    declared: Boolean(declared) && declared !== NEXT_READING_UNVERIFIABLE,
     /* Only under a departure that survived every rule above. It was set
        unconditionally and rendered whenever truthy, so a declared departure
        that rule 3, 5, 7 or the baseline rule demoted still printed its
@@ -3114,10 +3191,15 @@ function nextCockpitReadingShape(raw, annotation, entries, limit, unsettled,
         ? "GOAL FROM YOUR PROMPT"
         : nextCockpitLineLabel(key, label, rows[key], annotation, historical, lineSource),
       nextCockpitReadingClause(key, rows[key], annotation, historical),
-      rows[key], entries, nextReadingIsOutcomeLine(key) ? limit : "", unsettled, windowStart));
+      rows[key], entries,
+      nextReadingIsOutcomeLine(key) || key === NEXT_READING_CLAIMS ? limit : "", unsettled,
+      windowStart));
   return {
     criteria,
-    departures: criteria.filter(row => row.result === NEXT_READING_DEPARTURE),
+    /* The intent's departures: a contradicted claim is not one, so it is in no
+       count, flag or answer about the intent (review, PR C). */
+    departures: criteria.filter(row => row.result === NEXT_READING_DEPARTURE &&
+      row.key !== NEXT_READING_CLAIMS),
     revisionRead,
     revisionReadAt: nextNumber(source.revision_read_at),
     windowStart,
@@ -3128,7 +3210,8 @@ function nextCockpitReadingShape(raw, annotation, entries, limit, unsettled,
        retained: `_criterion` coerces a missing clause to "", so after a store
        round trip the two are indistinguishable and only one of those sentences
        can be honest. */
-    readClauses: constraints
+    /* The reader's words only: the claims question has none to show. */
+    readClauses: constraints.filter(([key]) => key !== NEXT_READING_CLAIMS)
       .map(([key, label]) =>
         [key === "goal" && NEXT_PROMPT_SOURCES.includes(source.goal_source)
           ? "GOAL FROM YOUR PROMPT" : label, nextCockpitReadingClause(key, rows[key], annotation, historical)]),
@@ -3190,6 +3273,7 @@ function nextCockpitReadingStates(annotation, model){
    the class it applies to; `clauseKnown` was computed for this and never
    read. */
 function nextCockpitReadingClauseCell(row){
+  if(row.key === NEXT_READING_CLAIMS) return "";
   return `<span class="next-cockpit-reading-clause${row.clauseKnown ? "" : "-absent"}">` +
     `${esc(row.clause)}</span>`;
 }
@@ -3211,7 +3295,34 @@ function nextCockpitResultWhere(entry, numbers){
   return at != null && at > 0 ? nextSessionClock(at) : "";
 }
 
+/* The claims row's four states (owner, 2026-10-04), each naming the agent's
+   message by the list's number. "Not shown" says the record read is the
+   board's recent tail, so it is about what was read, never that the thing
+   did not happen. */
+const NEXT_RESULT_CLAIM_TAIL = "The record read is the board's recent tail.";
+
+function nextCockpitClaimStatus(row, numbers, short){
+  const said = nextCockpitResultWhere(row.claimEntry, numbers);
+  const record = nextCockpitResultWhere(row.recordEntry, numbers);
+  const what = said ? `What the agent said at ${said}` : "What the agent said";
+  if(row.result === NEXT_READING_DEPARTURE){
+    return `${what} is contradicted${record ? ` at ${record}` : ""}`;
+  }
+  if(row.result === NEXT_READING_UNSUPPORTED){
+    return short ? `${what} is not shown by the record`
+      : `${what} is not shown by the record. ${NEXT_RESULT_CLAIM_TAIL}`;
+  }
+  if(row.result === NEXT_READING_CONSISTENT && record){
+    const tool = row.recordEntry && (String(row.recordEntry.type || "") === "tool_report" ||
+      row.recordEntry.subject === "check");
+    return `${what} is shown at ${record}` +
+      (tool && !short ? ", as the tool reported; not inspected" : "");
+  }
+  return row.why || row.limit ? NEXT_RESULT_CANT_TELL : NEXT_RESULT_NOTHING_SHOWS;
+}
+
 function nextCockpitResultStatus(row, numbers, byId, short = false){
+  if(row.key === NEXT_READING_CLAIMS) return nextCockpitClaimStatus(row, numbers, short);
   if(row.result === NEXT_READING_DEPARTURE){
     const where = nextCockpitResultWhere(byId.get(String((row.citedIds || [])[0] || "")), numbers);
     return where ? `Departs at ${where}` : "Departs";
@@ -3239,6 +3350,11 @@ function nextCockpitResultStatus(row, numbers, byId, short = false){
 }
 
 function nextCockpitResultState(row){
+  if(row.key === NEXT_READING_CLAIMS){
+    return row.result === NEXT_READING_DEPARTURE ? "departs"
+      : row.result === NEXT_READING_UNSUPPORTED ? "unshown"
+      : row.result === NEXT_READING_CONSISTENT && row.recordEntry ? "consistent" : "cant-tell";
+  }
   return row.result === NEXT_READING_DEPARTURE ? "departs"
     : row.result === NEXT_READING_CONSISTENT && row.restsOn ? "consistent" : "cant-tell";
 }
@@ -3279,7 +3395,8 @@ function nextCockpitResultItem(row, numbers, byId, tag = "li"){
     (full === status ? "" : `<span class="next-cockpit-reading-evidence">${esc(full)}</span>`) +
     (row.why ? `<span class="next-cockpit-reading-why">${esc(row.why)}</span>` : "") + tail;
   return `<${tag} class="next-cockpit-reading-row" data-next-result-state="${nextCockpitResultState(row)}"` +
-    `${tag === "li" ? "" : " data-next-result-goal"}>` +
+    `${tag === "li" ? "" : row.key === NEXT_READING_CLAIMS ? " data-next-result-claims"
+      : " data-next-result-goal"}>` +
     '<span class="next-cockpit-result-glyph" aria-hidden="true"></span>' +
     '<span class="next-cockpit-result-body">' + nextCockpitReadingClauseCell(row) +
     `<em class="next-cockpit-reading-result">${esc(status)}</em>` +
@@ -3294,8 +3411,21 @@ function nextCockpitResultItem(row, numbers, byId, tag = "li"){
    verdict, a malformed or missing result included, cannot tell; otherwise
    nothing was found. A reading with no outcome line cannot tell either: the
    goal row alone is not an answer against what the work was for. */
+/* The answer is about the intent alone. The claims row is not the intent, so
+   it never counts as departing from it and never holds "Nothing found" back;
+   a claim is said once, in its own row, and the level names it as a reason
+   (review, PR C: a fact said once on the panel). */
+/* The claims row as the result draws it: not where the agent made no claim,
+   which the reading says as its own `unverifiable` with no reason ("stop
+   overusing prose", owner 2026-10-02; review, PR C). */
+function nextCockpitClaimsDrawn(shape){
+  return shape.criteria.filter(row => row.key === NEXT_READING_CLAIMS &&
+    (row.result !== NEXT_READING_UNVERIFIABLE || row.why || (row.limit && row.declared)));
+}
+
 function nextDriftAnswer(shape, entries){
-  const departures = shape.criteria.filter(row => row.result === NEXT_READING_DEPARTURE);
+  const intent = shape.criteria.filter(row => row.key !== NEXT_READING_CLAIMS);
+  const departures = intent.filter(row => row.result === NEXT_READING_DEPARTURE);
   if(departures.length) return {kind: "departs", count: departures.length, departures};
   const start = shape.windowStart;
   const failed = (entries || []).filter(entry => entry && entry.subject === "check" &&
@@ -3306,8 +3436,8 @@ function nextDriftAnswer(shape, entries){
     return {kind: "failed-check", failed: latest};
   }
   const verdict = row => row.result === NEXT_READING_CONSISTENT && row.restsOn;
-  if(!shape.criteria.some(row => nextReadingIsOutcomeLine(row.key)) ||
-      !shape.criteria.every(verdict)) return {kind: "cant-tell"};
+  if(!intent.some(row => nextReadingIsOutcomeLine(row.key)) ||
+      !intent.every(verdict)) return {kind: "cant-tell"};
   return {kind: "nothing-found"};
 }
 
@@ -4324,9 +4454,15 @@ function nextCockpitSteerOffer(session, annotation, source, shape){
   const current = Boolean(shape && !shape.malformed && shape.revisionRead != null &&
     shape.revisionRead === nextNumber(annotation && annotation.revision));
   const departed = current && shape.departures.length > 0;
+  /* A claim the record contradicts or does not show is something to steer
+     from too (`correction._claim_line`, owner 2026-10-04), read from the
+     claims row itself: it is not a departure from the intent, so it never
+     offers "Update intent instead" (review, PR C). */
+  const claimed = current && shape.criteria.some(row => row.key === NEXT_READING_CLAIMS &&
+    [NEXT_READING_DEPARTURE, NEXT_READING_UNSUPPORTED].includes(row.result));
   const failed = nextCockpitFailedChecks(session, entries).length > 0;
   const later = nextCockpitLaterDirections(annotation, entries, session).length > 0;
-  return departed || failed || later ? {departed} : null;
+  return departed || claimed || failed || later ? {departed, claimed} : null;
 }
 
 /* The direction Update intent instead offers (owner, 2026-09-28): the later
@@ -5023,6 +5159,7 @@ function nextCockpitReadingParts(session, annotation, entries, model, observed, 
   nextCockpitCorrectionFollow(session, annotation, source, steerable);
   const offer = question ? null : steerable;
   const departed = Boolean(offer && offer.departed);
+  const claimOffer = Boolean(offer && offer.claimed);
   const noReader = nextData && nextData.annotate === true ? nextReadingRouteRefusal(session) : "";
   const update = departed
     ? '<button type="button" class="next-action next-action--secondary" data-next-cockpit-action="update-intent" ' +
@@ -5031,8 +5168,9 @@ function nextCockpitReadingParts(session, annotation, entries, model, observed, 
       `${nextPendingAttrs(`update-intent:${sessKey(session)}`)}>` +
       `${nextPendingLabel(`update-intent:${sessKey(session)}`, "Update intent instead")}</button>`
     : "";
-  const slotted = offer ? {lead: departed,
-    button: nextCockpitSteerButton(session, primary && (departed || Boolean(noReader))) + update,
+  const slotted = offer ? {lead: departed || claimOffer,
+    button: nextCockpitSteerButton(session,
+      primary && (departed || claimOffer || Boolean(noReader))) + update,
     box: nextCockpitSteerBox(session, source)} : null;
   /* Said once. The send disclosure already ends on the server's "never a
      verification that the work was done", so the page's own wording rides
@@ -5125,13 +5263,20 @@ function nextCockpitReadingParts(session, annotation, entries, model, observed, 
      a test asserts the two derivations match. */
   const scope = shape.scopeText
     ? `<p class="next-cockpit-reading-why">${esc(shape.scopeText)}</p>` : "";
-  const goal = shape.criteria.filter(row => !nextReadingIsOutcomeLine(row.key));
+  const goal = shape.criteria.filter(row => row.key === "goal");
   const lines = shape.criteria.filter(row => nextReadingIsOutcomeLine(row.key));
+  /* What the agent claimed, after the intent it is independent of (owner,
+     2026-10-04), under its own heading. */
+  const claimed = nextCockpitClaimsDrawn(shape);
   const checklist = goal.map(row => nextCockpitResultItem(row, numbers, byId, "div")).join("") +
     (lines.length
       ? '<div class="next-cockpit-result-checklist"><h3>Against expected outcome</h3>' +
         '<ol class="next-cockpit-result-lines">' +
         lines.map(row => nextCockpitResultItem(row, numbers, byId)).join("") + "</ol></div>"
+      : "") +
+    (claimed.length
+      ? '<div class="next-cockpit-result-claims"><h3>What the agent claimed</h3>' +
+        claimed.map(row => nextCockpitResultItem(row, numbers, byId, "div")).join("") + "</div>"
       : "");
   /* What it read, one click away: the definition, the model stamp, the
      baseline's source, the cutoff and the revision it read. */
@@ -5812,6 +5957,15 @@ function nextDriftAnalysisRow(group, session){
   return rows.find(row => row && sessKey(row) === sessKey(session)) || null;
 }
 
+/* Whether every row of the intent stands consistent on what it names. The
+   intent's rows only: the claims row is not the intent, and holding it to a
+   consistent made None or low unreachable (review, PR C). */
+function nextDriftAnalysisShown(shape){
+  const intent = shape.criteria.filter(line => line.key !== NEXT_READING_CLAIMS);
+  return intent.length > 0 && intent.every(line =>
+    line.result === NEXT_READING_CONSISTENT && line.restsOn);
+}
+
 function nextDriftAnalysis(group, session, annotation, shape){
   const raw = annotation && annotation.assessment;
   if(!raw || !shape || shape.malformed) return null;
@@ -5826,9 +5980,7 @@ function nextDriftAnalysis(group, session, annotation, shape){
   if(current != null && nextNumber(raw.revision_read) !== current) return null;
   let level = String(row.level || "");
   if(!NEXT_DRIFT_LEVEL_NAMES[level]) return null;
-  const shown = shape.criteria.length > 0 && shape.criteria.every(line =>
-    line.result === NEXT_READING_CONSISTENT && line.restsOn);
-  if(level === "none_or_low" && !shown) level = "not_enough";
+  if(level === "none_or_low" && !nextDriftAnalysisShown(shape)) level = "not_enough";
   const clock = nextSessionClock(readAt);
   /* The time is said once, in the ruled line; the source chip names the
      source alone and the caption carries the range alone (DRC-4758 slice C). */
@@ -5841,8 +5993,8 @@ function nextDriftAnalysis(group, session, annotation, shape){
     range: nextDriftRange(held, numbers, nextNumber(raw.window_start),
       nextNumber(raw.evidence_through) ?? readAt),
     reasons: nextDriftReasons(level, row.reasons, row.cites, held, numbers,
-      new Set(shape.criteria.filter(line => line.result === NEXT_READING_DEPARTURE)
-        .flatMap(line => line.citedIds || []).map(String)))};
+      new Set(shape.criteria.filter(line => line.result === NEXT_READING_DEPARTURE &&
+        line.key !== NEXT_READING_CLAIMS).flatMap(line => line.citedIds || []).map(String)))};
 }
 
 /* "#a to #b": the first and last entries the activity list numbers inside
@@ -5875,6 +6027,10 @@ const NEXT_DRIFT_REASON_LINES = {
   "departure": n => n ? `The session departed from your intent at ${n}.`
     : "The session departed from your intent.",
   "pass-then-write": () => "A check passed, then files were written after it.",
+  "claim-contradicted": n => n ? `The record contradicts what the agent said at ${n}.`
+    : "The record contradicts what the agent said.",
+  "claim-not-shown": n => n ? `The record read does not show what the agent said at ${n}.`
+    : "The record read does not show what the agent said.",
   "writes-outside-folders": () => "Some files were written outside the folders your intent names.",
   "most-writes-outside-folders": () =>
     "Most files were written outside the folders your intent names.",
@@ -5906,6 +6062,8 @@ function nextDriftReasons(level, tokens, cites, entries, numbers, departing){
   const finders = {
     "failed-check": entry => entry && entry.subject === "check" && entry.result === "failed",
     "departure": (_entry, fid) => departing.has(fid),
+    "claim-contradicted": entry => nextReadingAgentMessage(entry),
+    "claim-not-shown": entry => nextReadingAgentMessage(entry),
   };
   if(level === "not_enough"){
     const held = said.map(token => NEXT_DRIFT_BLOCKER_LINES[token] ||
@@ -8981,7 +9139,8 @@ function nextPromptSourceLine(annotation){
   const which = annotation.goal_source === "first-prompt" ? "first"
     : annotation.goal_source === "latest-prompt" ? "latest"
     : at != null && at > 0 ? nextSessionClock(at) : "chosen";
-  const clipped = String(annotation.goal || "").endsWith("…") ? " Shown excerpt only." : "";
+  const clipped = String(annotation.goal || "").endsWith("…")
+    ? ` ${NEXT_INTENT_EXCERPT_READ_WHOLE}` : "";
   return `<small class="next-cockpit-held-cue">from your prompt · ${which}.${clipped}</small>`;
 }
 
