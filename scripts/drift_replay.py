@@ -1224,7 +1224,9 @@ def live(
             out[case["id"]] = {"refused": type(error).__name__}
             continue
         arms: dict[str, Any] = {}
-        for intent in intents(case, messages, annotation, current):
+        for intent in _reading_intents(
+            intents(case, messages, annotation, current), stored.get(case["id"]) or {}
+        ):
             row = _row(sid, intent, cut)
             reading_entry = (stored.get(case["id"]) or {}).get(intent.arm) or {}
             if counterfactual_read:
@@ -2654,6 +2656,13 @@ def _score_case(  # noqa: PLR0913 - one closed case and its corresponding stores
             if blind.get("drift") in {"drift", "no-drift"}
             else {}
         )
+        if arm in fallback_arms and blind_outcomes:
+            blind_outcomes.update(
+                dict.fromkeys(
+                    ("analyze", "intent", "claims", "page-answer", "page-level"),
+                    "refused-goal-source",
+                )
+            )
         blind_outcomes = {
             f"{detector}|{blind['drift']}": value for detector, value in blind_outcomes.items()
         }

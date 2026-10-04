@@ -243,6 +243,51 @@ class TheReplayKeepsItsBaselineAndText(unittest.TestCase):
         self.assertEqual(3, found.window_start)
         self.assertEqual(("Old line",), found.lines)
 
+    def test_live_counterfactual_uses_the_saved_window_after_a_draft_changes(self) -> None:
+        with _Session() as session, mock.patch.object(dr, "_run_refusal", return_value=""):
+            home = _Home(session)
+            saved = {"goal": "Old goal", "at": _at(0), "window_start": _at(0), "lines": []}
+            entries = {case["id"]: {"current": {"intent": saved}} for case in home.body["cases"]}
+            Path(home.paths["read"]).write_text(json.dumps({"cases": entries}))
+            changed = dr.Intent("current", "New goal", _at(5), window_start=_at(5))
+            with (
+                mock.patch.object(dr, "intents", return_value=[changed]),
+                mock.patch.object(dr, "_live_measured", return_value=({}, {})) as measured,
+            ):
+                self.assertEqual(
+                    0,
+                    dr.live(
+                        home=str(session.home),
+                        tag="saved",
+                        counterfactual_read="base",
+                        say=lambda _m: None,
+                    ),
+                )
+            self.assertTrue(measured.call_args_list)
+            self.assertTrue(
+                all(call.args[5].goal == "Old goal" for call in measured.call_args_list)
+            )
+
+    def test_goal_source_refusal_also_applies_to_the_blind_outcomes(self) -> None:
+        with _Session() as session:
+            home = _Home(session)
+            case = home.body["cases"][0]
+            tables = dr._ScoreTables()
+            marks = {case["id"]: {"final": {"drift": "no-drift"}, "blind": {"drift": "drift"}}}
+            dr._score_case(
+                case,
+                marks,
+                {case["id"]: {"arms": {"adopted": {}}}},
+                {},
+                {},
+                lambda _case, _arm: True,
+                tables,
+                salt="synthetic",
+                source="fixtures",
+                fallback_arms={"adopted"},
+            )
+            self.assertEqual({"refused-goal-source": 1}, tables.blind["adopted|analyze|drift"])
+
     def test_folder_diagnostics_use_the_exact_evidence_the_live_level_read(self) -> None:
         dr._runtime()
         from cargento_runtime import levels  # noqa: PLC0415
