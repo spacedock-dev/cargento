@@ -103,6 +103,7 @@ _SEMANTIC_FACT_TYPES = {
     # ruling `claude_tool_reports` cites, item 6.
     "check_run": "tool_report",
     "path_written": "tool_report",
+    "background_launch": "tool_report",
 }
 _DISPATCH_BUILD_RE = re.compile(r"^\s*spacedock\s+dispatch\s+build(?:\s+(.*))?$", re.IGNORECASE)
 # This is transcript grammar from the dispatch contract, not a location we create or write.
@@ -1603,7 +1604,7 @@ def work_events(
 # Called from `collect` only, never from `_semantic_history_source_events`, so
 # the history store never sees these facts; `semantic_history._FACT_EVENT_TYPES`
 # not naming the type is the second wall (item 6).
-_TOOL_REPORT_KINDS = frozenset({"check_run", "path_written"})
+_TOOL_REPORT_KINDS = frozenset({"check_run", "path_written", "background_launch"})
 TOOL_REPORT_MAX_ENTRIES = 12
 TOOL_REPORT_LINE_CHARS = 120
 # The existing ledger cap (`reading.LEDGER_SUMMARY_CAP_CHARS`), which item 5 names.
@@ -3168,6 +3169,9 @@ class _ToolReportTally:
     def __init__(self, results: dict[str, _Result]) -> None:
         self.results = results
         self.runs: dict[str, list[dict[str, Any]]] = {}
+        self.launches: dict[str, dict[str, Any]] = {}
+        self.last_turn_floor = 0.0
+        self.completed_launch_calls: dict[str, float] = {}
         self._hash_identities = False
         self._last_added_runs: list[tuple[str, dict[str, Any]]] = []
         # Replay asks for entries after nearby calls. A new check changes one
@@ -3214,14 +3218,43 @@ class _ToolReportTally:
         tool_input: dict[str, Any],
         worker: str = "",
     ) -> None:
+        # The merged call carries stream identity for launch pairing, while
+        # published checks retain their existing generic worker label.
+        stream = worker
+        worker = SUBAGENT_WORKER if worker else ""
         self._last_added_runs.clear()
         changes_before = (len(self.write_calls), len(self.changing_seqs))
         if name in _WRITE_TOOLS:
             self._add_write(at, cwd, call_id, name, tool_input, worker)
         elif name == "Bash":
-            self._add_shell(at, cwd, call_id, tool_input, worker)
+            self._add_shell(at, cwd, call_id, tool_input, worker, stream)
+        elif name in {"Agent", "Task", "Monitor"} and tool_input.get("run_in_background") is True:
+            found = self.results.get(_launch_record_id(call_id, stream or "parent"))
+            if found is None or found.block.get("is_error") is not True:
+                self._add_launch(at, call_id, name, 1, worker, stream)
         if changes_before != (len(self.write_calls), len(self.changing_seqs)):
             self._entry_cache.clear()
+
+    def _add_launch(
+        self, at: float, call_id: str, tool: str, count: int, worker: str, stream: str
+    ) -> None:
+        call_id = _launch_record_id(call_id, stream)
+        completed = self.completed_launch_calls.get(call_id)
+        if count != 1 or (completed is not None and completed < at):
+            completed = None
+        self.launches[call_id] = {
+            "kind": "background_launch",
+            "subject": "launch",
+            "at": at,
+            "record_id": call_id,
+            "title": f"Background {tool} work launched",
+            "source": f"Claude {tool} call",
+            "count": count,
+            "completed_at": completed,
+            "last_activity_at": completed or at,
+            "activity_seen": False,
+            **({"worker_kind": worker} if worker else {}),
+        }
 
     def _add_write(
         self,
@@ -3257,16 +3290,40 @@ class _ToolReportTally:
         self.writes[path] = {"at": at, "record_id": call_id, "tool": tool, "worker": worker}
 
     def _add_shell(
-        self, at: float, cwd: str, call_id: str, tool_input: dict[str, Any], worker: str
+        self,
+        at: float,
+        cwd: str,
+        call_id: str,
+        tool_input: dict[str, Any],
+        worker: str,
+        stream: str,
     ) -> None:
         found = self.results.get(call_id)
         result = found.block if found is not None else None
         text = _tool_result_text(result) if result is not None else ""
+        launch_found = self.results.get(_launch_record_id(call_id, stream or "parent"))
+        launch_result = launch_found.block if launch_found is not None else None
+        launch_text = _tool_result_text(launch_result) if launch_result is not None else ""
+        launch_call = _ShellCall(
+            at, cwd, tool_input, moved=bool(_MOVED_TO_BACKGROUND_RE.match(launch_text))
+        )
+        launched = not (
+            launch_result is not None
+            and launch_result.get("is_error") is True
+            and not _EXITED_RE.match(launch_text)
+        )
+        if launched and not launch_call.unbalanced and (count := launch_call.launches()):
+            self.scan["background"] += count
+            self._add_launch(at, call_id, "Bash", count, worker, stream)
         if result is not None and result.get("is_error") is True and not _EXITED_RE.match(text):
             # V3: the call never ran, so it is no run and supersedes nothing.
             self.scan["not_run"] += 1
             return
-        call = _ShellCall(at, cwd, tool_input, moved=bool(_MOVED_TO_BACKGROUND_RE.match(text)))
+        call = (
+            launch_call
+            if launch_found is found
+            else _ShellCall(at, cwd, tool_input, moved=bool(_MOVED_TO_BACKGROUND_RE.match(text)))
+        )
         self.shell_seq += 1
         if call.changes():
             self.changing_seqs.append(self.shell_seq)
@@ -3281,7 +3338,6 @@ class _ToolReportTally:
             # Owner, 2026-09-27: published only inside the working directory;
             # a target outside it, or one the shell decides, counts as outside.
             self._record_write(at, call_id, "Bash", call.written_path(target, start, cwd), worker)
-        self.scan["background"] += call.launches()
         foreground = [i for i in call.meaningful if not call.background(i)]
         if foreground and not [i for i in call.checks if i in foreground]:
             self.scan["other_commands"] += 1
@@ -3474,7 +3530,13 @@ class _ToolReportTally:
             distinct_checks=len(histories),
             written_paths=len(self.writes),
             listed=len(listed),
-            more=len(candidates) - len(listed),
+            more=sum(row["subject"] != "launch" for row in candidates[TOOL_REPORT_MAX_ENTRIES:]),
+            background_unpaired=sum(
+                row["count"] for row in self.launches.values() if row["completed_at"] is None
+            ),
+            background_more=sum(
+                row["subject"] == "launch" for row in candidates[TOOL_REPORT_MAX_ENTRIES:]
+            ),
         )
         return [
             {**{k: v for k, v in row.items() if k != "rank"}, "harness": "claude", "sid": sid}
@@ -3503,6 +3565,7 @@ class _ToolReportTally:
             }
             for path, write in self.writes.items()
         )
+        candidates.extend({**launch, "rank": 4} for launch in self.launches.values())
         # Item 4, amended 2026-10-04: failed, then passed, then written paths,
         # then no recorded result, newest first within each. The page shows the
         # kept ones in time order (orchestrator, 2026-09-24).
@@ -3640,28 +3703,49 @@ _SUBAGENT_FILE_RE = re.compile(r"agent-[0-9a-f]+\.jsonl")
 SUBAGENT_WORKER = "subagent"
 
 
-def _subagent_transcripts(transcript_path: str) -> list[str]:
-    """Every subagent transcript of one Claude Code session, by
-    [DEC-23](docs/design-reading-a-session.md#amended-2026-09-28-a-subagents-checks-and-writes-are-the-parents)
+def _admitted_subagent_path(transcript_path: str, path: str) -> bool:
+    session_dir = transcript_path[: -len(".jsonl")]
+    try:
+        relative = os.path.relpath(path, session_dir)
+    except ValueError:
+        return False
+    parts = relative.split(os.sep)
+    shape = (len(parts) == 2 and parts[0] == "subagents") or (
+        len(parts) == 4 and parts[:2] == ["subagents", "workflows"]
+    )
+    return bool(
+        transcript_path.endswith(".jsonl")
+        and shape
+        and _SUBAGENT_FILE_RE.fullmatch(os.path.basename(path))
+        and not os.path.islink(path)
+        and os.path.realpath(path) == os.path.join(os.path.realpath(session_dir), relative)
+    )
 
-    A linked file, or one reached through a linked `subagents` or workflow run
-    directory, is refused: each must resolve inside the session directory. A
-    linked session directory itself is followed, as the parent transcript is.
+
+def _subagent_transcripts(transcript_path: str) -> list[str]:
+    """Every owned, plain-hex child; copied-context forks and links are refused.
+
+    [DEC-23](docs/design-reading-a-session.md#amended-2026-09-28-a-subagents-checks-and-writes-are-the-parents)
     """
     if not transcript_path.endswith(".jsonl"):
         return []
     session_dir = transcript_path[: -len(".jsonl")]
     if not os.path.isdir(session_dir):
         return []
-    root = os.path.realpath(session_dir)
     return [
         path
         for pattern in _SUBAGENT_GLOBS
         for path in runtime_io.glob_under(session_dir, *pattern)
-        if _SUBAGENT_FILE_RE.fullmatch(os.path.basename(path))
-        and not os.path.islink(path)
-        and os.path.realpath(path) == os.path.join(root, os.path.relpath(path, session_dir))
+        if _admitted_subagent_path(transcript_path, path)
     ]
+
+
+def _admitted_subagent_paths(transcript_path: str, supplied: Sequence[str] | None) -> list[str]:
+    return (
+        _subagent_transcripts(transcript_path)
+        if supplied is None
+        else [path for path in supplied if _admitted_subagent_path(transcript_path, path)]
+    )
 
 
 def _oldest_at(records_: list[dict[str, Any]]) -> float | None:
@@ -3742,7 +3826,11 @@ class _CheckScan(NamedTuple):
 
 
 def _live_check_scan(
-    config: RuntimeConfig, transcript_path: str, *, max_bytes: int | None = None
+    config: RuntimeConfig,
+    transcript_path: str,
+    *,
+    max_bytes: int | None = None,
+    child_paths: Sequence[str] | None = None,
 ) -> _CheckScan:
     """Parent-first actual bytes; metadata sorts children without spending B."""
     budget = _scan_budget(config, max_bytes)
@@ -3750,7 +3838,7 @@ def _live_check_scan(
     parent = _scan_records(parent_read)
     horizon = None if parent_read.complete else _oldest_at(parent) or _mtime(transcript_path)
     session_dir = transcript_path[: -len(".jsonl")]
-    paths = _subagent_transcripts(transcript_path)
+    paths = _admitted_subagent_paths(transcript_path, child_paths)
     paths.sort(key=lambda path: (-(_mtime(path) or 0), os.path.relpath(path, session_dir)))
     children: list[list[dict[str, Any]]] = []
     source_reads: list[tuple[str, runtime_io.TranscriptRead | None]] = [
@@ -3829,8 +3917,14 @@ def _tally_of(
     tally.named_unread = named_unread
     tally.parent_failed = parent_failed
     tally.orphan_unread = orphan_unread
+    tally.completed_launch_calls = _stream_completed_background_calls(parent, subagents)
     for call in _merged_check_calls(parent, subagents):
         tally.add(*call)
+    tally.last_turn_floor = _delegated_last_turn_floor(parent)
+    _pair_background_launches(tally, parent, subagents)
+    tally.scan["background_unpaired"] = sum(
+        row["count"] for row in tally.launches.values() if row["completed_at"] is None
+    )
     tally.scan.update(subagent_transcripts=len(subagents), subagent_transcripts_unread=unread)
     if reads_from is not None:
         tally.scan["reads_from"] = reads_from
@@ -3840,12 +3934,23 @@ def _tally_of(
 def _merged_check_results(
     parent: list[dict[str, Any]], subagents: list[list[dict[str, Any]]]
 ) -> dict[str, _Result]:
-    """Pair results with the same parent-first collision rule as published work."""
+    """Keep check collisions parent-first; launch result aliases stay stream-owned."""
     results = _tool_result_blocks(parent)
-    for records_ in subagents:
+    results.update(
+        {_launch_record_id(key, "parent"): found for key, found in list(results.items())}
+    )
+    for index, records_ in enumerate(subagents):
         for call_id, found in _tool_result_blocks(records_, sidechain=True).items():
             results.setdefault(call_id, found)
+            results[_launch_record_id(call_id, f"{SUBAGENT_WORKER}:{index}")] = found
     return results
+
+
+def _child_check_calls(
+    child: list[dict[str, Any]], stream: str
+) -> Iterator[tuple[float, str, str, str, dict[str, Any], str]]:
+    for call in _claude_tool_uses(child, sidechain=True):
+        yield (*call[:-1], stream)
 
 
 def _merged_check_calls(
@@ -3854,15 +3959,22 @@ def _merged_check_calls(
     """Parent first at equal call times, matching the published work record."""
     streams = [
         _claude_tool_uses(parent),
-        *(_claude_tool_uses(records_, sidechain=True) for records_ in subagents),
+        *(
+            _child_check_calls(child, f"{SUBAGENT_WORKER}:{index}")
+            for index, child in enumerate(subagents)
+        ),
     ]
     return heapq.merge(*streams, key=lambda row: row[0])
 
 
 def _claude_tally(
-    config: RuntimeConfig, transcript_path: str, *, max_bytes: int | None = None
+    config: RuntimeConfig,
+    transcript_path: str,
+    *,
+    max_bytes: int | None = None,
+    child_paths: Sequence[str] | None = None,
 ) -> _ToolReportTally:
-    scan = _live_check_scan(config, transcript_path, max_bytes=max_bytes)
+    scan = _live_check_scan(config, transcript_path, max_bytes=max_bytes, child_paths=child_paths)
     return _tally_of(
         scan.parent,
         scan.children,
@@ -3886,6 +3998,247 @@ class _WindowNotRequested:
 
 
 _WINDOW_NOT_REQUESTED = _WindowNotRequested()
+
+
+def _delegated_last_turn_floor(parent: list[dict[str, Any]]) -> float:
+    stops = sorted(
+        _record_timestamp(record) or 0
+        for record in parent
+        if record.get("type") == "system" and record.get("subtype") == "stop_hook_summary"
+    )
+    directions = []
+    for record in parent:
+        message = observer.parse_message_record(record)
+        if message is not None and message.get("role") == "user":
+            text = str(message.get("text") or "")
+            if not records.injected_prompt(text, "claude"):
+                directions.append(_record_timestamp(record) or 0)
+    return max([*directions, stops[-2] if len(stops) > 1 else 0])
+
+
+def _notification_field(text: str, field: str) -> str:
+    found = re.search(rf"<{field}>([^<>]*)</{field}>", text)
+    return found.group(1).strip() if found else ""
+
+
+def _result_metadata(
+    parent: list[dict[str, Any]], *, sidechain: bool = False
+) -> dict[str, dict[str, Any]]:
+    found: dict[str, dict[str, Any]] = {}
+    for record in parent:
+        if record.get("type") != "user" or (record.get("isSidechain") is True) is not sidechain:
+            continue
+        metadata = record.get("toolUseResult")
+        content = records.message_dict(record).get("content")
+        if not isinstance(metadata, dict) or not isinstance(content, list):
+            continue
+        for block in content:
+            call_id = block.get("tool_use_id") if isinstance(block, dict) else None
+            if isinstance(call_id, str):
+                found[call_id] = metadata
+    return found
+
+
+def _launch_task_calls(
+    metadata: dict[str, dict[str, Any]],
+) -> dict[str, str]:
+    found: dict[str, str] = {}
+    for call_id, result in metadata.items():
+        task_id = result.get("backgroundTaskId") or result.get("agentId")
+        if isinstance(task_id, str):
+            found[task_id] = call_id
+    return found
+
+
+def _task_output_completions(
+    parent: list[dict[str, Any]],
+    task_calls: dict[str, str],
+    metadata: dict[str, dict[str, Any]],
+    *,
+    sidechain: bool = False,
+) -> dict[str, float]:
+    found: dict[str, float] = {}
+    results = _tool_result_blocks(parent, sidechain=sidechain)
+    for at, _cwd, call_id, name, tool_input, _worker in _claude_tool_uses(
+        parent, sidechain=sidechain
+    ):
+        if name != "TaskOutput":
+            continue
+        result = results.get(call_id)
+        task_id = tool_input.get("task_id")
+        task = metadata.get(call_id, {}).get("task")
+        paired = task_calls.get(task_id) if isinstance(task_id, str) else None
+        if (
+            paired
+            and result is not None
+            and result.block.get("is_error") is not True
+            and isinstance(task, dict)
+            and task.get("status") in {"completed", "failed", "killed"}
+        ):
+            found[paired] = result.at or at
+    return found
+
+
+def _notification_completions(
+    parent: list[dict[str, Any]],
+    task_calls: dict[str, str],
+    *,
+    sidechain: bool = False,
+) -> dict[str, float]:
+    found: dict[str, float] = {}
+    for record in parent:
+        if record.get("type") != "user" or (record.get("isSidechain") is True) is not sidechain:
+            continue
+        at = _record_timestamp(record)
+        text = _tool_result_text(records.message_dict(record))
+        if at is None or not text.lstrip().startswith("<task-notification>"):
+            continue
+        call_id = _notification_field(text, "tool-use-id") or task_calls.get(
+            _notification_field(text, "task-id"),
+            "",
+        )
+        status = _notification_field(text, "status")
+        terminal = status in {"completed", "failed", "killed"} or (
+            not status and "<result>" in text and "</result>" in text
+        )
+        if call_id and terminal:
+            found[call_id] = at
+    return found
+
+
+def _completed_background_calls(
+    parent: list[dict[str, Any]], *, sidechain: bool = False
+) -> dict[str, float]:
+    metadata = _result_metadata(parent, sidechain=sidechain)
+    task_calls = _launch_task_calls(metadata)
+    return {
+        **_task_output_completions(parent, task_calls, metadata, sidechain=sidechain),
+        **_notification_completions(parent, task_calls, sidechain=sidechain),
+    }
+
+
+def _launch_record_id(call_id: str, stream: str) -> str:
+    """A private launch key: identical raw tool ids in children cannot collide."""
+    return f"{stream}/{call_id}" if stream else call_id
+
+
+def _stream_completed_background_calls(
+    parent: list[dict[str, Any]],
+    subagents: list[list[dict[str, Any]]],
+) -> dict[str, float]:
+    found = _completed_background_calls(parent)
+    for index, child in enumerate(subagents):
+        found.update(
+            {
+                _launch_record_id(call_id, f"{SUBAGENT_WORKER}:{index}"): at
+                for call_id, at in _completed_background_calls(child, sidechain=True).items()
+            }
+        )
+    return found
+
+
+def _pair_child_activity(
+    tally: _ToolReportTally,
+    subagents: list[list[dict[str, Any]]],
+    task_calls: dict[str, str],
+) -> None:
+    for child in subagents:
+        task_ids = {row.get("agentId") for row in child if isinstance(row.get("agentId"), str)}
+        activity = max((_record_timestamp(row) or 0 for row in child), default=0)
+        for task_id in task_ids:
+            call_id = task_calls.get(str(task_id))
+            if call_id in tally.launches and activity >= tally.launches[call_id]["at"]:
+                tally.launches[call_id]["last_activity_at"] = activity
+                tally.launches[call_id]["activity_seen"] = True
+
+
+def _pair_background_launches(
+    tally: _ToolReportTally,
+    parent: list[dict[str, Any]],
+    subagents: list[list[dict[str, Any]]],
+) -> None:
+    metadata = _result_metadata(parent)
+    task_calls = _launch_task_calls(metadata)
+    _pair_child_activity(tally, subagents, task_calls)
+    for launch in tally.launches.values():
+        if launch["completed_at"] is not None:
+            launch["last_activity_at"] = max(launch["last_activity_at"], launch["completed_at"])
+
+
+def delegated_work_published(
+    config: RuntimeConfig,
+    transcript_path: str | None,
+    *,
+    own_activity: float,
+    now: float,
+    state: RuntimeState | None = None,
+    child_paths: Sequence[str] | None = None,
+) -> dict[str, Any]:
+    """Counts and times only; a command-line launch cannot identify another session.
+
+    [DEC-23](docs/design-reading-a-session.md#amended-2026-10-04-owner-delegated-launches)
+    """
+    launches: list[dict[str, Any]] = []
+    partial = False
+    last_turn_floor = 0.0
+    if transcript_path:
+        stamps: list[tuple[str, int, int]] = []
+        paths = _admitted_subagent_paths(transcript_path, child_paths)
+        for path in [transcript_path, *paths]:
+            try:
+                stat_result = os.stat(path)
+                stamps.append((path, stat_result.st_size, stat_result.st_mtime_ns))
+            except OSError:
+                stamps.append((path, -1, -1))
+        stamp = tuple(stamps)
+        hit = None
+        if state is not None:
+            with state.cache_lock:
+                hit = state.delegated_work_cache.get(transcript_path)
+        if hit is not None and hit[0] == stamp:
+            launches, partial, last_turn_floor = hit[1:]
+        else:
+            tally = _claude_tally(config, transcript_path, child_paths=paths)
+            launches = list(tally.launches.values())
+            partial = tally.reads_from is not None or tally.parent_failed
+            last_turn_floor = tally.last_turn_floor
+            if state is not None:
+                with state.cache_lock:
+                    runtime_state.bounded_put(
+                        state.delegated_work_cache,
+                        transcript_path,
+                        (stamp, launches, partial, last_turn_floor),
+                        limit=config.max_cache_entries,
+                    )
+    unpaired = [
+        row for row in launches if row["completed_at"] is None and not row.get("worker_kind")
+    ]
+    latest = max((row["at"] for row in launches), default=None)
+    activity = max((row["last_activity_at"] for row in unpaired), default=None)
+    last_turn_launch = any(row["at"] >= last_turn_floor for row in unpaired)
+    quiet = max(activity, own_activity) if activity is not None and last_turn_launch else None
+    return {
+        "delegated_launches": sum(row["count"] for row in launches)
+        if transcript_path and (launches or not partial)
+        else None,
+        "delegated_unpaired": sum(row["count"] for row in unpaired)
+        if transcript_path and (launches or not partial)
+        else None,
+        "delegated_latest_launch_at": latest,
+        "delegated_last_activity_at": activity,
+        "delegated_quiet_since": quiet if quiet is not None and now - quiet >= 30 * 60 else None,
+        "delegated_visibility": (
+            "not-recorded"
+            if transcript_path is None
+            else "partial"
+            if partial
+            else "unattributed"
+            if any(not row["activity_seen"] for row in unpaired)
+            else "linked"
+            if unpaired
+            else "recorded"
+        ),
+    }
 
 
 def claude_tool_reports(
@@ -5188,6 +5541,9 @@ def _semantic_fact_from_event(
         "changed_after",
         "read_incomplete",
         "result_at",
+        "count",
+        "completed_at",
+        "last_activity_at",
         READER_WORDS_FIELD,
         AGENT_WORDS_FIELD,
     ):

@@ -1443,6 +1443,10 @@ def _listed(fact: Any, harness: str, sid: str, *, reports: bool, said: bool) -> 
     ):
         return False
     kind = fact.get("type")
+    # Launches are observations for Attention, never evidence of an outcome.
+    # [DEC-23](docs/design-reading-a-session.md#amended-2026-10-04-owner-delegated-launches)
+    if kind == TOOL_REPORT_TYPE and fact.get("subject") == "launch":
+        return False
     return (reports or kind != TOOL_REPORT_TYPE) and (said or kind != AGENT_MESSAGE_TYPE)
 
 

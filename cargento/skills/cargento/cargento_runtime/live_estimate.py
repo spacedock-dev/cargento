@@ -38,8 +38,8 @@ if TYPE_CHECKING:
 
 HARNESSES = frozenset({"claude"})
 # The calls whose arrival can move the level: a write, or a shell command. A
-# read, a search or a subagent launch never changes the tally.
-_MOVING_TOOLS = frozenset({*pc._WRITE_TOOLS, "Bash"})  # noqa: SLF001
+# read or a search never changes the tally; delegated launches now block its floor.
+_MOVING_TOOLS = frozenset({*pc._WRITE_TOOLS, "Bash", "Agent", "Task", "Monitor"})  # noqa: SLF001
 # How many of the latest moving calls the level is asked after. Each ask
 # re-derives the entries from the whole tally, so an unbounded replay grew
 # about cubically: 24 s for a 3,000-call transcript of targeted checks, and
@@ -238,6 +238,8 @@ def _checkpoint(tally: pc._ToolReportTally) -> pc._ToolReportTally:
         for identity, history in tally.runs.items()
     }
     saved.writes = {path: dict(write) for path, write in tally.writes.items()}
+    saved.launches = {key: dict(row) for key, row in tally.launches.items()}
+    saved.completed_launch_calls = dict(tally.completed_launch_calls)
     saved.write_calls = list(tally.write_calls)
     saved.shell_seq = tally.shell_seq
     saved.changing_seqs = list(tally.changing_seqs)
@@ -386,7 +388,7 @@ def _found_from_steps(
             for row in rows
             if row.get("record_id") == call[2]
             and row.get("at") == call[0]
-            and row.get("worker_kind", "") == call[5]
+            and row.get("worker_kind", "") == (pc.SUBAGENT_WORKER if call[5] else "")
             and row.get("subject") == subject
         ]
         if len(mine) == 1:
@@ -459,6 +461,7 @@ def _new_tally(
     scan: pc._CheckScan, results: dict[str, Any], *, force_incomplete: bool
 ) -> pc._ToolReportTally:
     tally = pc._ToolReportTally(results)  # noqa: SLF001
+    tally.completed_launch_calls = pc._stream_completed_background_calls(scan.parent, scan.children)  # noqa: SLF001
     tally.reads_from = scan.horizon
     tally.named_unread = scan.named_unread
     tally.parent_failed = scan.parent_failed or force_incomplete
@@ -508,6 +511,7 @@ def _replay(
         scan.horizon,
         scan.named_unread,
         scan.parent_failed or force_incomplete,
+        tuple(sorted(pc._stream_completed_background_calls(scan.parent, scan.children).items())),  # noqa: SLF001
         scan.orphan_unread,
         len(scan.children),
     )
@@ -516,13 +520,22 @@ def _replay(
         for call in pc._merged_check_calls(scan.parent, scan.children)  # noqa: SLF001
         if call[3] in _MOVING_TOOLS
     ]
-    ids = [call[2] for call in calls]
-    found_results = [results.get(call_id) for call_id in ids]
+    # Check rows keep parent-first result pairing; launches use the call's
+    # own stream. A late result in either view invalidates its replay prefix.
+    found_results = [
+        (
+            results.get(call[2]),
+            results.get(pc._launch_record_id(call[2], call[5] or "parent")),  # noqa: SLF001
+        )
+        for call in calls
+    ]
     marks = [
         hashlib.sha256(
-            repr((call, None if got is None else (got.at, got.block))).encode("utf-8", "replace")
+            repr(
+                (call, tuple(None if got is None else (got.at, got.block) for got in paired))
+            ).encode("utf-8", "replace")
         ).digest()
-        for call, got in zip(calls, found_results, strict=True)
+        for call, paired in zip(calls, found_results, strict=True)
     ]
     valid = (
         _reusable(previous, marks) if previous is not None and previous.context == context else 0

@@ -461,7 +461,7 @@ class WhatAReaderSeesOfTheChecksASessionRan(ClaudeChecksTestCase):
         )
         self.session.bash("pytest &", "", is_error=False)
         events, scan = self.read()
-        self.assertEqual([], events)
+        self.assertEqual(["background_launch"] * 2, [row["kind"] for row in events])
         self.assertEqual(2, scan["background"])
         self.assertEqual(0, scan["check_runs"])
 

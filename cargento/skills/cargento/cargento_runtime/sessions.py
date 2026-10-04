@@ -598,6 +598,12 @@ def base_session(harness: str, sid: Any, project: str) -> Session:
         # the one place the two are read together. None means no such record
         # stands, never "did not finish".
         "turn_end_at": None,
+        "delegated_launches": None,
+        "delegated_unpaired": None,
+        "delegated_latest_launch_at": None,
+        "delegated_last_activity_at": None,
+        "delegated_quiet_since": None,
+        "delegated_visibility": "not-recorded",
         # How this row was reached, which is the qualifier on `finished_at`
         # above. None means the harness has an event adapter and no event has
         # landed on this row; `events.ACQUISITION_EVENT` means one has;
