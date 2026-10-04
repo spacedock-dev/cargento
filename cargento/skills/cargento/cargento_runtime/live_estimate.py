@@ -388,7 +388,7 @@ def _found_from_steps(
             for row in rows
             if row.get("record_id") == call[2]
             and row.get("at") == call[0]
-            and row.get("worker_kind", "") == call[5]
+            and row.get("worker_kind", "") == (pc.SUBAGENT_WORKER if call[5] else "")
             and row.get("subject") == subject
         ]
         if len(mine) == 1:
@@ -461,7 +461,7 @@ def _new_tally(
     scan: pc._CheckScan, results: dict[str, Any], *, force_incomplete: bool
 ) -> pc._ToolReportTally:
     tally = pc._ToolReportTally(results)  # noqa: SLF001
-    tally.completed_launch_calls = pc._completed_background_calls(scan.parent)  # noqa: SLF001
+    tally.completed_launch_calls = pc._stream_completed_background_calls(scan.parent, scan.children)  # noqa: SLF001
     tally.reads_from = scan.horizon
     tally.named_unread = scan.named_unread
     tally.parent_failed = scan.parent_failed or force_incomplete
@@ -511,7 +511,7 @@ def _replay(
         scan.horizon,
         scan.named_unread,
         scan.parent_failed or force_incomplete,
-        tuple(sorted(pc._completed_background_calls(scan.parent).items())),  # noqa: SLF001
+        tuple(sorted(pc._stream_completed_background_calls(scan.parent, scan.children).items())),  # noqa: SLF001
         scan.orphan_unread,
         len(scan.children),
     )

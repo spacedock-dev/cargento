@@ -3900,7 +3900,13 @@ qualify. `nohup` without a background operator remains a foreground call.
 A matching task-notification with a terminal status or an agent result envelope,
 or a terminal TaskOutput status, pairs a single launch with completion. One
 notification cannot retire several shell jobs launched by the same call. Notifications remain harness records, never the person's intent.
-Their text is not published or stored. Launch facts stay out of the Analyze
+Their text is not published or stored. Only plain hexadecimal child transcript
+files under the parent-owned subagent layout qualify, including when the
+collector supplies its cached inventory. Compaction copies and links cannot
+supply launches or completions. A qualifying child's own sidechain records can
+pair its launch; raw tool identifiers match only within their originating
+stream, so a child's notification cannot retire a parent's or sibling's launch.
+Launch facts stay out of the Analyze
 ledger entirely: its existing non-check report formatter calls a row a file
 write, which cannot describe a launch. Launches, completions and attributed
 child activity are counts and times, never evidence that a process is running.

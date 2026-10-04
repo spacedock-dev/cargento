@@ -5,7 +5,10 @@ from __future__ import annotations
 import datetime as dt
 import json
 import unittest
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 from cargento_runtime import levels, live_estimate, project_context, reading, records
 from cargento_runtime.state import build_runtime_state
@@ -271,6 +274,119 @@ class DelegatedWorkLaunchFacts(ClaudeChecksTestCase):
             self.config, saved_row(), str(self.path), [], floor=None, now=10**10
         )
         self.assertNotIn(levels.REASON_BACKGROUND_RUN, after["reasons"])
+
+    def child_rows(self, name: str, rows: list[dict[str, Any]]) -> Path:
+        child = self.path.with_suffix("") / "subagents" / name
+        child.parent.mkdir(parents=True, exist_ok=True)
+        child.write_text("\n".join(json.dumps(row) for row in rows) + "\n")
+        return child
+
+    def notification(self, call_id: str, *, sidechain: bool) -> dict[str, Any]:
+        return {
+            "type": "user",
+            "isSidechain": sidechain,
+            "timestamp": (START + dt.timedelta(minutes=2)).isoformat(),
+            "message": {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "text",
+                        "text": f"<task-notification><tool-use-id>{call_id}</tool-use-id><status>completed</status></task-notification>",
+                    }
+                ],
+            },
+        }
+
+    def test_collector_supplied_compaction_cannot_replace_parent_launch(self) -> None:
+        self.session.bash("worker &")
+        self.session.save(self.path)
+        copied = dict(self.session.rows[1], isSidechain=True)
+        child = self.child_rows("agent-acompact-example.jsonl", [copied])
+        row = project_context.delegated_work_published(
+            self.config, str(self.path), own_activity=0, now=10**10, child_paths=[str(child)]
+        )
+        self.assertEqual(1, row["delegated_launches"])
+        self.assertEqual(1, row["delegated_unpaired"])
+        self.assertIsNotNone(row["delegated_quiet_since"])
+
+    def test_child_own_completion_retires_only_its_launch(self) -> None:
+        call = self.session.bash("worker &")
+        self.session.save(self.path)
+        copied = dict(self.session.rows[1], isSidechain=True)
+        self.child_rows("agent-acde.jsonl", [copied, self.notification(call, sidechain=True)])
+        tally = project_context._claude_tally(self.config, str(self.path))
+        self.assertEqual(2, len(tally.launches))
+        self.assertEqual(1, tally.scan["background_unpaired"])
+        self.assertIsNone(tally.launches[call]["completed_at"])
+
+    def test_sibling_completion_cannot_complete_another_stream(self) -> None:
+        call = self.session.bash("worker &")
+        copied = dict(self.session.rows[1], isSidechain=True)
+        self.session.rows = self.session.rows[:1]
+        self.session.save(self.path)
+        self.child_rows("agent-acde.jsonl", [copied, self.notification(call, sidechain=True)])
+        self.child_rows("agent-bcde.jsonl", [copied])
+        tally = project_context._claude_tally(self.config, str(self.path))
+        self.assertEqual(2, len(tally.launches))
+        self.assertEqual(1, tally.scan["background_unpaired"])
+
+    def test_child_rejected_result_cannot_reject_parent_launch(self) -> None:
+        call = self.session.call("Agent", {"run_in_background": True})
+        copied = dict(self.session.rows[1], isSidechain=True)
+        self.session.result(call, "Rejected", is_error=True)
+        rejected = dict(self.session.rows[2], isSidechain=True)
+        self.session.rows = self.session.rows[:2]
+        self.session.save(self.path)
+        self.child_rows("agent-acde.jsonl", [copied, rejected])
+        tally = project_context._claude_tally(self.config, str(self.path))
+        self.assertEqual(1, len(tally.launches))
+        self.assertIn(call, tally.launches)
+
+    def test_child_launch_completion_clears_the_floor(self) -> None:
+        call = self.session.bash("worker &")
+        copied = dict(self.session.rows[1], isSidechain=True)
+        self.session.rows = self.session.rows[:1]
+        self.session.save(self.path)
+        self.child_rows("agent-acde.jsonl", [copied, self.notification(call, sidechain=True)])
+        self.assertEqual(0, self.read()[1]["background_unpaired"])
+
+    def test_child_terminal_task_output_uses_its_own_metadata(self) -> None:
+        call = self.session.call("Bash", {"command": "worker", "run_in_background": True})
+        self.session.result(call, "Started", tool_use_result={"backgroundTaskId": "b1"})
+        read = self.session.call("TaskOutput", {"task_id": "b1"})
+        self.session.result(
+            read, "PRIVATE_OUTPUT", tool_use_result={"task": {"id": "b1", "status": "completed"}}
+        )
+        child = [dict(row, isSidechain=True) for row in self.session.rows[1:]]
+        self.session.rows = self.session.rows[:1]
+        self.session.save(self.path)
+        self.child_rows("agent-acde.jsonl", child)
+        self.assertEqual(0, self.read()[1]["background_unpaired"])
+        self.assertNotIn("PRIVATE_OUTPUT", str(self.launches()))
+
+    def test_child_late_completion_refreshes_live_cache(self) -> None:
+        call = self.session.bash("worker &")
+        copied = dict(self.session.rows[1], isSidechain=True)
+        self.session.rows = self.session.rows[:1]
+        self.session.bash("pytest", "2 passed")
+        self.session.save(self.path)
+        child = self.child_rows("agent-acde.jsonl", [copied])
+        before = live_estimate.for_session(
+            self.config, saved_row(), str(self.path), [], floor=None, now=10**10
+        )
+        self.assertIn(levels.REASON_BACKGROUND_RUN, before["reasons"])
+        child.write_text(
+            child.read_text() + json.dumps(self.notification(call, sidechain=True)) + "\n"
+        )
+        after = live_estimate.for_session(
+            self.config, saved_row(), str(self.path), [], floor=None, now=10**10
+        )
+        self.assertNotIn(levels.REASON_BACKGROUND_RUN, after["reasons"])
+
+    def test_parent_sidechain_notification_is_not_parent_completion(self) -> None:
+        call = self.session.bash("worker &")
+        self.session.rows.append(self.notification(call, sidechain=True))
+        self.assertEqual(1, self.read()[1]["background_unpaired"])
 
 
 class DelegatedWorkFloor(unittest.TestCase):
