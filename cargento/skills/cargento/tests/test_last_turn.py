@@ -472,7 +472,7 @@ class YourRevisionKeepsWhereItsWindowOpensTest(_StoreCase):
                 )
                 self.assertEqual(SAVE, self.latest()["window_start"])
 
-    def test_every_save_recomputes_the_window_even_when_only_a_line_changed(self) -> None:
+    def test_a_line_only_save_keeps_the_typed_goals_window(self) -> None:
         annotation_store.annotate(
             self.config, self.state, "claude", "s1", goal="G", now=SAVE, window_start=PROMPT
         )
@@ -485,7 +485,7 @@ class YourRevisionKeepsWhereItsWindowOpensTest(_StoreCase):
             now=SAVE + 60,
             window_start=SAVE + 30,
         )
-        self.assertEqual(SAVE + 30, self.latest()["window_start"])
+        self.assertEqual(PROMPT, self.latest()["window_start"])
 
     def test_words_adopted_from_your_prompt_open_their_window_at_the_prompt(self) -> None:
         row = {

@@ -2211,7 +2211,11 @@ def _annotate(  # noqa: PLR0913
                 return OUTCOME_UNCHANGED
             revision: Revision = {
                 **source_fields,
-                **_opened(source_fields, window_start, stamp),
+                **_opened(
+                    source_fields,
+                    _carried_window(last, source_fields, text_goal, window_start),
+                    stamp,
+                ),
                 **_goal_saved_at(last, source_fields, text_goal, stamp),
                 "n": last["n"] + 1,
                 "at": stamp,
@@ -2581,13 +2585,20 @@ def _goal_saved_at(
     return {"goal_saved_at": stamp}
 
 
+def _carried_window(last: Revision, provenance: Mapping[str, Any], goal: str, typed: Any) -> Any:
+    """Unchanged typed words keep their window, as their goal save time does."""
+    if not provenance and not _provenance(last) and last["goal"] == goal:
+        return last.get("window_start") or last["at"]
+    return typed
+
+
 def _opened(provenance: Mapping[str, Any], typed: Any, stamp: float) -> Window:
     """The window start a new revision stores: the words' own time.
 
     Adopted words, including an adopted goal carried under a lines-only save,
-    open at their source time. Typed words open at `typed`, recomputed on every
-    save as item 13 says, else at the save. A stamp that is not itself a moment
-    stores nothing, so the revision still reads back.
+    open at their source time. Unchanged typed words carry their window through
+    a lines-only save; new goal words open at `typed`, else at the save. A stamp
+    that is not itself a moment stores nothing, so the revision still reads back.
     """
     saved = reading.valid_prompt_time(stamp)
     if saved is None:

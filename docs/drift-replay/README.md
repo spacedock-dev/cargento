@@ -25,6 +25,12 @@ redacted copy under `tests/raw_sessions/<sid>/`, which is gitignored and made by
 - `results-<tag>.json`, the score of a narrowed, tagged re-read, in the same shape as `results.json`.
 - `coverage-<tag>.json`, a model-free reconstruction's counts of measured transcript-tail coverage.
   It holds counts and runtime provenance, no transcript times or session text.
+- [windows-stage3.json](windows-stage3.json) compares the wide drafted current-arm window with
+  the old lines-only save's narrowed window. At 68 of 99 cuts, a median 40 minutes differs:
+  wide listings hold 213 person messages, 380 tool reports and 871 agent messages; narrow
+  listings hold 69, 211 and 472. One stored claims reading cites a listed check, retained in
+  both windows. These are model-free listings from counterfactual history. Earlier current-arm
+  results used the wide window; this count measures no change in detector accuracy.
 
 ## What does not live here
 

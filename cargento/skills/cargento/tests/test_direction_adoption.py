@@ -806,7 +806,7 @@ class DirectionReReadTest(_ClaudeSession):
         fact = self.direction()
         self.assertNotIn("record_id", fact.get("branch") or {})
 
-    def test_an_unknown_id_or_a_message_older_than_the_tail_reads_nothing(self) -> None:
+    def test_an_unknown_id_reads_nothing_and_an_older_message_reaches_its_source(self) -> None:
         fact_id = str(self.direction()["fact_id"])
         self.assertEqual(
             "",
@@ -817,7 +817,7 @@ class DirectionReReadTest(_ClaudeSession):
         self.session.save(self.path)
         narrow = dataclasses.replace(self.config, tail_bytes=4096)
         self.assertEqual(
-            "", project_context.direction_text(narrow, self.state, "claude", SHORT, fact_id).text
+            LONG, project_context.direction_text(narrow, self.state, "claude", SHORT, fact_id).text
         )
 
 
@@ -922,6 +922,12 @@ class DirectionRouteTest(_ClaudeSession):
                 "text": " ".join(LONG.split()),
                 "clipped": False,
                 "fits": False,
+                "goal_choice": {
+                    "fact_id": fact_id,
+                    "at": self.direction()["at"],
+                    "text": records.safe_text(LONG, 240).strip(),
+                    "cut": True,
+                },
             },
             body,
         )
@@ -1060,7 +1066,7 @@ class DirectionRouteTest(_ClaudeSession):
         for answer in answers:
             self.assertEqual(expected, answer)
 
-    def test_a_direction_older_than_the_tail_is_refused_not_summarised(self) -> None:
+    def test_a_direction_older_than_the_tail_is_opened_and_added_from_its_source(self) -> None:
         # The fact still resolves (history keeps it) while the tail no longer
         # holds its record, which is exactly when the 112-character summary
         # would be the only text left to save.
@@ -1089,9 +1095,13 @@ class DirectionRouteTest(_ClaudeSession):
                     "expected_prompt_at": FIRST_AT,
                 },
             )
-        self.assertEqual((200, "unavailable"), (status, body["reason"]))
-        self.assertEqual("refused", added["outcome"])
-        self.assertEqual((), annotation_store.load(self.config))
+        self.assertEqual(200, status)
+        self.assertEqual(" ".join(LONG.split()), body["text"])
+        self.assertEqual("stored", added["outcome"])
+        self.assertEqual(
+            "Use the placeholder lexer",
+            annotation_store.load(self.config)[0]["revisions"][-1]["lines"][0]["text"],
+        )
 
     def test_the_text_comes_back_redacted(self) -> None:
         self.session.prompt("Rotate AKIAIOSFODNN7EXAMPLE before the release")

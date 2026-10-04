@@ -452,13 +452,21 @@ class TheQuestionEndsWithOneMarkTest(_DraftPage):
 
     def test_the_plural_form_gets_no_second_mark_either(self) -> None:
         said = "Should the lanes swap?"
-        drift = visible_text(drift_of(self.html(self.summary("fo-b", said))))
-        self.assertIn(f'the earliest at #1: "{said}"', drift)
+        drift = visible_text(
+            drift_of(
+                self.html(
+                    self.summary("fo-b", said) + 'nextDirectionPicks.set("claude:focus-1","fo-b");'
+                )
+            )
+        )
+        self.assertIn(f'the selected direction at #1: "{said}"', drift)
         self.assertNotIn(f'"{said}".', drift)
 
     def test_a_quote_with_no_mark_of_its_own_still_ends_the_sentence(self) -> None:
-        drift = visible_text(drift_of(self.html()))
-        self.assertIn(f'the earliest at #1: "{EARLIEST}".', drift)
+        drift = visible_text(
+            drift_of(self.html('nextDirectionPicks.set("claude:focus-1","fo-b");'))
+        )
+        self.assertIn(f'the selected direction at #1: "{EARLIEST}".', drift)
 
 
 class TheWholeDirectionListWrapsAlikeTest(unittest.TestCase):

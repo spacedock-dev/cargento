@@ -1332,6 +1332,7 @@ function nextCockpitHeldField(session, annotation, spec, cap){
     (why ? `<p class="next-cockpit-held-absent next-visually-hidden" ` +
       `id="${nextCockpitHeldAbsentId(kind)}" data-next-cockpit-held-absent="${kind}"` +
       `${draft ? " hidden" : ""}>${esc(why)}</p>` : "") +
+    nextDirectionLinesQuestion(session) +
     (cue ? `<small class="next-cockpit-held-cue">${esc(cue)}</small>` : "") + '</div>';
 }
 
@@ -1520,7 +1521,7 @@ function nextCockpitIntentFooter(session, annotation){
     '<span class="next-cockpit-held-tools">' +
     nextCockpitHeldControl("held-undo", "Undo changes", "intent", changes.undoable && !saving, true,
       "", `${key}:undo`) +
-    nextCockpitHeldControl("held-save", "Save intent", "intent", changes.any || changes.adoptable, true,
+    nextCockpitHeldControl("held-save", "Save intent", "intent", (changes.any || changes.adoptable) && !nextDirectionLinesQuestion(session), true,
       absent.join(" "), `${key}:save`, "secondary") +
     '</span>' +
     (cue ? `<small class="next-cockpit-held-cue">${esc(cue)}</small>` : "") + '</div>';
@@ -1543,7 +1544,7 @@ function nextCockpitIntentFooterToggle(session){
   const key = nextCockpitIntentKey(session);
   const saving = nextPendingHas(`${key}:save`);
   for(const [action, live, why, focus] of [
-    ["held-save", changes.any || changes.adoptable, describes, `${key}:save`],
+    ["held-save", (changes.any || changes.adoptable) && !nextDirectionLinesQuestion(session), describes, `${key}:save`],
     ["held-undo", changes.undoable && !saving, "", `${key}:undo`]]){
     const control = footer.querySelector(`[data-next-cockpit-action="${action}"]`);
     /* A keystroke during a save never re-arms Save intent: the press is still
@@ -1655,11 +1656,13 @@ function nextCockpitDirectionLine(session, annotation, cap, source = null){
     `data-next-focus="direction-cancel:${esc(key)}">Remove</button></span></div>` + choose +
     '<p class="next-cockpit-held-full" id="next-cockpit-direction-why" data-next-cockpit-direction-why' +
     `${why ? "" : " hidden"}>${esc(why)}</p>` +
+    '<p class="next-cockpit-held-hint">Write the rule, not the moment.</p>' +
+    (why || held.clipped ? nextDirectionGoalButton(session, held.factId, "line") : "") +
     (held.clipped ? `<p class="next-cockpit-held-full">${esc(NEXT_COCKPIT_DIRECTION_CLIPPED)}</p>` : "") +
     (cue ? `<small class="next-cockpit-held-cue">${esc(cue)}</small>` : "") + "</li>";
 }
 
-async function nextCockpitOpenDirection(session, factId, n, later = false){
+async function nextCockpitOpenDirection(session, factId, n, later = false, action = "direction-add"){
   const key = sessKey(session);
   /* A second press while a line is pending goes to that line: reopening it
      would put the server's text back over the reader's edits (layout F2). */
@@ -1668,7 +1671,7 @@ async function nextCockpitOpenDirection(session, factId, n, later = false){
     if(!open.opening) renderNext({named: `direction:${key}`});
     return;
   }
-  const control = later ? `update-intent:${key}` : `direction-add:${key}`;
+  const control = `${action}:${key}`;
   const press = nextPendingStart(control, "Opening\u2026");
   if(!press) return;
   nextCockpitDirectionLines.set(key, {factId, n, later, opening: true});
@@ -2277,7 +2280,9 @@ function nextCockpitWorkEvidence(session, source, cited = new Set()){
       `${entry.actorClaim && !entry.source.includes(entry.actorClaim)
         ? ` · ${esc(entry.actorClaim)}` : ""}</span>` +
       `<span class="next-cockpit-work-at">${esc(at == null ? "time not published" : `${at} ago`)}` +
-      `</span>${turn}</div></div>`;
+      `</span>${turn}` +
+      (later.has(entry) ? '<button type="button" data-next-cockpit-action="direction-add" ' +
+        `data-arg="${esc(entry.id)}">Add to my intent</button>` : "") + '</div></div>';
   }).join("");
   /* Where the words' window opens, a message of the reader's should sit: the
      latest one at or before the save for typed words, the prompt itself for
@@ -3230,6 +3235,11 @@ function nextCockpitReadingShape(raw, annotation, entries, limit, unsettled,
   const windowStart = nextNumber(source.window_start) != null ? nextNumber(source.window_start)
     : nextNumber(NEXT_PROMPT_SOURCES.includes(source.goal_source)
       ? source.goal_source_at : source.revision_read_at);
+  const readAt = nextNumber(source.read_at);
+  if(readAt != null && readAt > 0 && unsettled){
+    unsettled = nextCockpitConflictCandidates(annotation, entries).some(entry =>
+      (nextNumber(entry.at) || 0) <= readAt);
+  }
   const constraints = nextReadingConstraints(rows, annotation,
     revisionRead != null && current != null && !historical);
   const partial = nextReadingWindowPartial({coverage,windowStart});
@@ -3594,7 +3604,12 @@ function nextCockpitResultStale(shape, raw, annotation, entries, again){
   const newer = !superseded && through != null &&
     (entries || []).some(entry => (nextNumber(entry && entry.at) || 0) > through);
   if(!superseded && !newer) return "";
-  const head = superseded ? "Your intent changed after this analysis." : "New work since this analysis.";
+  const readAt = nextNumber(raw && raw.read_at);
+  const after = !superseded && readAt != null ? (entries || []).filter(nextReadingPersonAuthored)
+    .find(entry => (nextNumber(entry.at) || 0) > readAt) : null;
+  const head = superseded ? "Your intent changed after this analysis."
+    : after ? `Read before your message at ${nextSessionClock(after.at)}. New work since this analysis.`
+    : "New work since this analysis.";
   return `<div class="next-cockpit-result-stale" data-next-result-stale="${superseded ? "intent" : "work"}">` +
     `<p class="next-cockpit-result-stale-head">${head}</p>` +
     (superseded ? `<p class="next-cockpit-reading-stale">${esc(superseded)}</p>` : "") +
@@ -5634,7 +5649,7 @@ const NEXT_COCKPIT_KEEP_UNCONFIRMED =
    2026-09-28, verifier V4): quoting the latest named a direction Add could not
    reach until the ones before it were added or kept. */
 function nextCockpitDirectionSentence(session, annotation, pending, numbers){
-  const earliest = pending[0];
+  const earliest = nextDirectionSelected(session, pending);
   const n = numbers.get(String(earliest.id || ""));
   const summary = String(earliest.summary || "").trim();
   /* No second mark after a quote that ends in its own (DRC-4736): the
@@ -5650,7 +5665,7 @@ function nextCockpitDirectionSentence(session, annotation, pending, numbers){
   const since = !draft ? "since saving your intent"
     : draft.source === "first-prompt" ? "since your first prompt"
     : draft.source === NEXT_PROMPT_CHOSEN ? "since the prompt you chose" : "since your latest prompt";
-  return `You gave ${pending.length} later directions ${since}, the earliest` +
+  return `You gave ${pending.length} later directions ${since}, the selected direction` +
     `${n == null ? "" : ` at #${n}`}: ${said}`;
 }
 
@@ -5691,7 +5706,7 @@ function nextCockpitDirectionQuestion(session, annotation, source, model, primar
   const answered = request && request.message && !request.refusal ? String(request.message) : "";
   /* The earliest: its save settles through that direction only, so the
      question comes back for any later one (consent F3, Codex 5). */
-  const earliest = pending[0];
+  const earliest = nextDirectionSelected(session, pending);
   const described = edited ? NEXT_READING_REFUSED_ID : disclosure && analyze ? NEXT_READING_DISCLOSURE_ID : "";
   /* The fallback hands focus on once the question goes with a settle: to
      Analyze or Allow and analyze, or to a started job's title, which holds
@@ -5714,11 +5729,12 @@ function nextCockpitDirectionQuestion(session, annotation, source, model, primar
   const running = nextSessionEndedAt(session) == null && session.state !== "idle";
   return (job ? nextReadingJobBox(job, key, running) : "") +
     '<div class="next-cockpit-direction-question" data-next-cockpit-direction-question>' +
+    nextDirectionSelect(session, pending, numbers) +
     `<p class="next-cockpit-direction-said">${esc(nextCockpitDirectionSentence(
       session, annotation, pending, numbers))}</p>` +
     nextCockpitDirectionWholeList(key, pending, numbers) +
     /* The Drift card's own Turn off readings, busy state and all (verifier F2). */
-    `<div class="next-cockpit-reading-ask">${keep}${add}${nextReadingAnyConsent()
+    `<div class="next-cockpit-reading-ask">${keep}${add}${nextDirectionGoalButton(session, String(earliest.id || ""))}${nextReadingAnyConsent()
       ? '<button type="button" class="next-action" data-next-cockpit-action="reading-off" ' +
         `data-next-focus="reading-off:${esc(key)}"${nextPendingAttrs(`reading-off:${key}`)}>` +
         `${nextPendingLabel(`reading-off:${key}`, "Turn off readings")}</button>` : ""}</div>` +
@@ -6453,7 +6469,9 @@ function nextCockpitDriftBlock(group, session, primary){
      names the session. */
   const saved = revisionLine
     ? '<details class="next-cockpit-why next-cockpit-held-stamp"' +
-      `${nextCockpitDisclosureAttr("held-stamp")}><summary>Saved</summary>` +
+      `${nextCockpitDisclosureAttr("held-stamp")}><summary>Saved${nextNumber(annotation.window_start) > 0
+        ? ` · reads from ${esc(nextSessionClock(annotation.window_start))}` : ""}</summary>` +
+      '<p>Adding a line keeps this window; saving new goal words opens another.</p>' +
       `<span class="next-cockpit-held-revision">${esc(revisionLine)}</span>` +
       `<span class="next-cockpit-define">${NEXT_COCKPIT_REVISION_DEFINITION}</span>` +
       `<span class="next-cockpit-held-bound">${esc(sessKey(session))}</span></details>` : "";
@@ -6497,7 +6515,10 @@ function nextCockpitDriftBlock(group, session, primary){
      reading it is not drawn at all: it explains a step already done (NU-10,
      2026-10-02). */
   const savedIntroduction = drafted || nextDriftReadingStored(annotation) ? "" : lede;
-  const panel = open + intent + head + reading.control + savedIntroduction + reading.reading +
+  const delegated = nextDelegatedWork(session);
+  const delegatedLine = delegated.draw ? `<p data-next-delegated-work>${esc(delegated.text)}</p>` +
+    (delegated.risky ? '<p data-next-delegated-check>Is the work this session launched still running? Show its process and latest output.</p>' : "") : "";
+  const panel = open + intent + head + reading.control + savedIntroduction + delegatedLine + reading.reading +
     nextCockpitConflict(session, annotation, workSource) + caveats + reading.departures +
     '</section></aside>';
   /* In the activity column: the numbered list the reading cites right after
@@ -6892,7 +6913,7 @@ async function nextCockpitIntentSave(session){
      the gate cannot disagree. Without it an inert-but-reachable control mints
      a revision identical to the stored one. An inert press starts nothing. */
   const changes = nextCockpitIntentChanges(session, nextCockpitAnnotation(session));
-  if(!changes.any && !changes.chosen && !changes.adoptable) return;
+  if(nextDirectionLinesQuestion(session) || (!changes.any && !changes.chosen && !changes.adoptable)) return;
   const press = nextPendingStart(control, "Saving\u2026", "Saving your intent.");
   if(!press) return;
   renderNext({named: control});
@@ -6929,7 +6950,8 @@ async function nextCockpitIntentSaveWork(session, signal){
         .find(row => sessKey(row) === sessKey(session)) || session;
       return nextCockpitIntentSaveWork(fresh, signal);
     }
-    return adopted === "unconfirmed" ? "unconfirmed" : null;
+    if(adopted === true) nextCockpitHeldMark(key,"saved",{say:false});
+    return adopted === true ? "saved" : adopted === "unconfirmed" ? "unconfirmed" : null;
   }
   if(!changes.any){
     /* The goal back at the draft adopts it, never a typed save of an excerpt
@@ -8676,6 +8698,40 @@ document.addEventListener("input", event => {
   if(absent) absent.hidden = nextCockpitLinesToSend(draft).length > 0;
 });
 
+function nextIntentPromptMenuOpen(event){
+  if(event.type === "keydown" && !["ArrowDown","ArrowUp"," ","Enter"].includes(event.key)) return;
+  const select = event.target?.closest?.("[data-next-cockpit-prompt-select]");
+  if(!select) return;
+  const group = nextCockpitRouteGroup();
+  const session = group ? nextCockpitFocusedSession(group) : null;
+  if(!session) return;
+  if(typeof select.showPicker === "function"){
+    event.preventDefault();
+    select.focus();
+    nextIntentLoadPromptChoices(session).then(() => {
+      if(!select.isConnected) return;
+      try{ select.showPicker(); }catch(_error){ select.focus(); }
+    });
+  }else nextIntentLoadPromptChoices(session);
+}
+document.addEventListener("pointerdown", nextIntentPromptMenuOpen);
+document.addEventListener("keydown", nextIntentPromptMenuOpen);
+document.addEventListener("focusout", event => {
+  if(!event.relatedTarget || !event.target?.closest?.("[data-next-cockpit-prompt-select]")) return;
+  const group = nextCockpitRouteGroup();
+  const session = group ? nextCockpitFocusedSession(group) : null;
+  const held = session && nextIntentPromptLists.get(sessKey(session));
+  if(held) held.open = false;
+});
+
+document.addEventListener("change", event => {
+  const select = event.target?.closest?.("[data-next-direction-select]");
+  if(!select) return;
+  const group = nextCockpitRouteGroup();
+  const session = group ? nextCockpitFocusedSession(group) : null;
+  if(session){ nextDirectionPicks.set(sessKey(session),String(select.value)); renderNext(); }
+});
+
 /* A pick in "Use your prompt". Registered before `next-render.js`'s own
    change listener (the part order in `page.py`), so the poll that list
    deferred while it held focus is taken here and not painted after the pick
@@ -8792,7 +8848,7 @@ document.addEventListener("click", event => {
          2026-09-28). The goal is never touched. */
       const factId = String(target.dataset.arg || "");
       const n = nextCockpitEntryNumbers(session, nextCockpitWorkSource(group, session)).get(factId);
-      if(factId) nextCockpitOpenDirection(session, factId, n == null ? null : n, true);
+      if(factId) nextCockpitOpenDirection(session, factId, n == null ? null : n, true, "update-intent");
       else nextCockpitLinesAdd(session);
     }
     return;
@@ -8840,17 +8896,26 @@ document.addEventListener("click", event => {
     return;
   }
   if(["direction-keep", "direction-add", "direction-save", "direction-cancel",
-      "direction-replace"].includes(action)){
+      "direction-replace", "direction-goal", "direction-lines-keep", "direction-lines-clear"].includes(action)){
     const session = group ? nextCockpitFocusedSession(group) : null;
     if(!session) return;
     event.preventDefault();
     const key = sessKey(session);
-    if(action === "direction-keep"){
+    if(action === "direction-goal"){
+      nextDirectionUseGoal(session, String(target.dataset.arg || ""));
+    }else if(action === "direction-lines-keep" || action === "direction-lines-clear"){
+      const chosen = nextIntentChosenPrompts.get(nextCockpitHeldKey(session,"goal"));
+      if(chosen){
+        chosen.linesAnswer = action === "direction-lines-clear" ? "clear" : "keep";
+        if(chosen.linesAnswer === "clear") nextCockpitLinesKeep(nextCockpitHeldKey(session,"lines"),[],[]);
+        renderNext();
+      }
+    }else if(action === "direction-keep"){
       nextCockpitKeepIntent(session, nextCockpitObserverModel(group));
     }else if(action === "direction-add"){
       const factId = String(target.dataset.arg || "");
       const n = nextCockpitEntryNumbers(session, nextCockpitWorkSource(group, session)).get(factId);
-      if(factId) nextCockpitOpenDirection(session, factId, n == null ? null : n);
+      if(factId) nextCockpitOpenDirection(session, factId, n == null ? null : n, true);
     }else if(action === "direction-save"){
       nextCockpitSaveDirection(session);
     }else if(action === "direction-cancel"){
@@ -9084,6 +9149,10 @@ const NEXT_PROMPT_SOURCES = ["latest-prompt", "first-prompt", NEXT_PROMPT_CHOSEN
    would refuse its adoption. [] until that context has loaded. */
 function nextIntentPromptChoices(session){
   if(!session) return [];
+  const menu = nextIntentPromptLists.get(sessKey(session));
+  if(menu && Array.isArray(menu.choices)) return menu.choices.filter(choice =>
+    choice && typeof choice.factId === "string" && choice.factId && typeof choice.text === "string" &&
+    choice.text.trim() && nextNumber(choice.at) > 0);
   const suffix = `\n${sessKey(session)}`;
   for(const [key, entry] of nextCockpitContexts){
     const choices = entry && entry.data && entry.data.prompt_choices;
@@ -9100,6 +9169,96 @@ function nextIntentPromptChoices(session){
    {factId, text, at}: tab memory, never browser storage, and never the box's
    typed draft, so the box holds it as a pending adoption the way it holds the
    first-prompt draft (docs/design-reader-state.md). */
+const nextDirectionPicks = new Map();
+const nextIntentPromptLists = new Map();
+
+function nextDirectionSelected(session, pending){
+  const pick = nextDirectionPicks.get(sessKey(session));
+  return pending.find(entry => entry.id === pick) || pending[pending.length - 1];
+}
+
+function nextDirectionSelect(session, pending, numbers){
+  if(pending.length < 2) return "";
+  const chosen = nextDirectionSelected(session, pending);
+  return '<label>Direction <select data-next-direction-select ' +
+    `data-next-focus="direction-pick:${esc(sessKey(session))}">` +
+    pending.map(entry => `<option value="${esc(entry.id)}"${entry === chosen ? " selected" : ""}>` +
+      `${esc(`${numbers.has(entry.id) ? `#${numbers.get(entry.id)}` : nextSessionClock(entry.at)} · ${entry.summary || "Your direction"}`)}</option>`).join("") +
+    '</select></label>';
+}
+
+function nextDirectionGoalButton(session, factId, scope = "question"){
+  if(!["claude", "codex"].includes(String(session.harness || "")) || !factId) return "";
+  return '<button type="button" class="next-action" data-next-cockpit-action="direction-goal" ' +
+    `data-arg="${esc(factId)}" data-next-focus="direction-goal:${esc(sessKey(session))}:${esc(scope)}:${esc(factId)}"` +
+    `${nextPendingAttrs(`direction-goal:${sessKey(session)}`)}>Use this as my goal</button>`;
+}
+
+async function nextDirectionUseGoal(session, factId){
+  const annotation = nextCockpitAnnotation(session);
+  if(nextIntentUnsaved(session, annotation)){
+    nextCockpitAnnounceCue(nextCockpitIntentKey(session), NEXT_INTENT_EDITED, false);
+    return;
+  }
+  const control = `direction-goal:${sessKey(session)}`;
+  const press = nextPendingStart(control, "Opening…");
+  if(!press) return;
+  try{
+    const response = await nextFetchBounded("/api/direction", {method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({harness:session.harness,sid:session.sid,fact_id:factId})}, press.signal);
+    const answer = response && response.ok ? await response.json() : null;
+    const choice = answer && answer.ok === true && answer.goal_choice;
+    if(!choice || choice.fact_id !== factId || typeof choice.text !== "string" ||
+        !choice.text.trim() || !(nextNumber(choice.at) > 0)){
+      nextCockpitDirectionLines.set(sessKey(session), {factId,error:NEXT_COCKPIT_DIRECTION_UNOPENED});
+      return;
+    }
+    const key = nextCockpitHeldKey(session, "goal");
+    nextIntentChosenPrompts.set(key, {factId, text:choice.text, at:choice.at,
+      cut:choice.cut === true, direction:true, linesAnswer:nextAnnotationLines(annotation).length ? null : "keep"});
+    nextCockpitHeldDrafts.delete(key);
+    nextCockpitDirectionLines.delete(sessKey(session));
+    nextCockpitAnnounceCue(`${key}:chosen`, NEXT_INTENT_CHOSEN_SAID, false);
+  }catch(_error){
+    nextCockpitDirectionLines.set(sessKey(session), {factId,error:NEXT_COCKPIT_DIRECTION_UNOPENED});
+  }finally{
+    nextPendingEnd(control, press);
+    renderNext({named:nextCockpitHeldKey(session,"goal")});
+  }
+}
+
+function nextDirectionLinesQuestion(session){
+  const chosen = nextIntentChosenPrompts.get(nextCockpitHeldKey(session,"goal"));
+  if(!chosen || !chosen.direction || chosen.linesAnswer != null) return "";
+  return '<p>Keep your standing outcome lines with this goal?</p>' +
+    '<button type="button" data-next-cockpit-action="direction-lines-keep" data-next-focus="direction-lines-keep">Keep outcome lines</button>' +
+    '<button type="button" data-next-cockpit-action="direction-lines-clear" data-next-focus="direction-lines-clear">Clear outcome lines</button>';
+}
+
+async function nextIntentLoadPromptChoices(session){
+  const key = sessKey(session);
+  if(nextIntentPromptLists.get(key)?.pending || nextIntentPromptLists.get(key)?.open) return;
+  const group = nextCockpitRouteGroup();
+  if(!group) return;
+  nextIntentPromptLists.set(key,{pending:true,open:true,choices:nextIntentPromptChoices(session)});
+  try{
+    const response = await nextFetchBounded('/api/project-context?project=' +
+      encodeURIComponent(nextCockpitStableKey(group)) + '&session=' + encodeURIComponent(key) + '&prompts=1');
+    const data = response && response.ok ? await response.json() : null;
+    nextIntentPromptLists.set(key,{pending:false,open:true,choices:Array.isArray(data?.prompt_choices) ?
+      data.prompt_choices.map(choice => ({factId:choice.fact_id,text:choice.text,at:choice.at,cut:choice.cut === true})) : []});
+  }catch(_error){ nextIntentPromptLists.set(key,{pending:false,open:true,choices:[]}); }
+  /* Replacing the select closes the browser's open native menu. Fill only
+     its options; ordinary polling already waits while this select holds focus. */
+  const focus = `${nextCockpitHeldKey(session,"goal")}:prompt`;
+  const app = document.getElementById("app");
+  const select = app.querySelectorAll && [...app.querySelectorAll("[data-next-cockpit-prompt-select]")]
+    .find(element => element.dataset.nextFocus === focus);
+  if(select) select.innerHTML = nextIntentPromptOptions(session);
+  else renderNext({named:focus});
+}
+
 const nextIntentChosenPrompts = new Map();
 
 function nextPromptCandidate(session, source = "latest-prompt"){
@@ -9110,8 +9269,8 @@ function nextPromptCandidate(session, source = "latest-prompt"){
        under that fact: the adoption names all three, and a changed record
        must not adopt new words under an old choice. */
     const held = nextIntentChosenPrompts.get(nextCockpitHeldKey(session, "goal"));
-    const found = held && nextIntentPromptChoices(session).find(choice =>
-      choice.factId === held.factId && choice.text === held.text && choice.at === held.at);
+    const found = held && (held.direction ? held : nextIntentPromptChoices(session).find(choice =>
+      choice.factId === held.factId && choice.text === held.text && choice.at === held.at));
     return found ? {text: found.text, at: found.at, source, factId: found.factId,
       cut: found.cut} : null;
   }
@@ -9149,7 +9308,10 @@ function nextIntentDraft(session, annotation){
   const chosenKey = nextCockpitHeldKey(session, "goal");
   if(nextIntentChosenPrompts.has(chosenKey)){
     const chosen = nextPromptCandidate(session, NEXT_PROMPT_CHOSEN);
-    if(chosen && String(goal || "").trim() !== chosen.text) return chosen;
+    const held = nextIntentChosenPrompts.get(chosenKey);
+    const sourceChanged = held && held.direction &&
+      (annotation?.goal_source !== NEXT_PROMPT_CHOSEN || nextNumber(annotation?.goal_source_at) !== chosen?.at);
+    if(chosen && (String(goal || "").trim() !== chosen.text || sourceChanged)) return chosen;
     if(chosen || nextIntentChoicesSettled(session)) nextIntentChosenPrompts.delete(chosenKey);
   }
   if(String(goal || "").trim()) return null;
@@ -9296,15 +9458,30 @@ function nextPromptSourceLine(annotation){
    [DEC-24](docs/design-reading-a-session.md#dec-24-your-intent-is-a-drafted-goal-and-a-checklist-and-a-correction-is-yours-to-copy)). */
 function nextIntentPromptSelect(session){
   if(!(nextData && nextData.annotate === true) || nextCockpitStoreUnreadable()) return "";
+  if(!["claude","codex"].includes(String(session && session.harness || ""))) return "";
   const choices = nextIntentPromptChoices(session);
-  if(!choices.length) return "";
+  const candidate = nextPromptCandidate(session,"first-prompt") || nextPromptCandidate(session,"latest-prompt");
+  const suffix = `\n${sessKey(session)}`;
+  const listed = [...nextCockpitContexts].some(([contextKey,entry]) => String(contextKey).endsWith(suffix) &&
+    (entry?.data?.semantic?.facts || []).some(fact => fact.type === "user_message" &&
+      fact.source_session?.harness === session.harness && fact.source_session?.sid === session.sid));
+  if(!choices.length && !(candidate && candidate.at > 0) && !listed) return "";
   const key = nextCockpitHeldKey(session, "goal");
+  return '<label class="next-intent-prompt-pick">' +
+    '<span class="next-visually-hidden">Fill the goal from one of your prompts</span>' +
+    '<select class="next-intent-prompt-select" data-next-cockpit-prompt-select ' +
+    `data-next-focus="${esc(`${key}:prompt`)}">${nextIntentPromptOptions(session)}</select></label>`;
+}
+
+function nextIntentPromptOptions(session){
+  const choices = nextIntentPromptChoices(session);
+  const key = nextCockpitHeldKey(session,"goal");
   /* "First" only for the row's own first prompt. The choices come from the
      focused record, which holds the newest 100 events, so in a long session
      its earliest prompt is a later message (DRC-4758 fix round, F2). */
   const firstAt = nextNumber(session && session.first_prompt_at);
   const first = !nextIntentOpenedWithControl(session) && firstAt != null &&
-    choices[0].at === firstAt ? "First prompt" : "Earliest prompt";
+    choices[0] && choices[0].at === firstAt ? "First prompt" : "Earliest prompt";
   /* The face shows the pick only while the box still holds it untouched; a
      keystroke puts it back to the placeholder, so the same prompt can be
      picked again. */
@@ -9318,11 +9495,7 @@ function nextIntentPromptSelect(session){
     const selected = holds && chosen.factId === choice.factId ? " selected" : "";
     return `<option value="${esc(choice.factId)}"${selected}>${esc(label)}</option>`;
   }).join("");
-  return '<label class="next-intent-prompt-pick">' +
-    '<span class="next-visually-hidden">Fill the goal from one of your prompts</span>' +
-    '<select class="next-intent-prompt-select" data-next-cockpit-prompt-select ' +
-    `data-next-focus="${esc(`${key}:prompt`)}"><option value="">Use your prompt</option>` +
-    `${options}</select></label>`;
+  return '<option value="">Use your prompt</option>' + options;
 }
 
 /* An option's words, cut at the last space at or before `limit` characters.

@@ -4773,55 +4773,68 @@ class DirectionText(NamedTuple):
 def direction_text(
     config: RuntimeConfig, state: RuntimeState, harness: str, sid: str, fact_id: str
 ) -> DirectionText:
-    """The whole text of one user message in the bounded tail, found by its fact id, or "".
+    """The source words of one direction, verified by its published fact id.
 
-    For DRC-4682's "Add it to my intent", which needs a direction's raw words
-    where the published fact holds only its first sentence. Found by
-    recomputing each tail message's fact id exactly as `instruction_events`
-    and `_semantic_fact_from_event` publish it, first of a duplicate pair
-    included, because a Claude user message carries no record id to look up:
-    Claude spells it `uuid`, and joining that to the hash would move every
-    stored citation of a Claude message (the 2026-09-12 precedent in
-    `_semantic_fact_from_event`). A message older than the tail is not found,
-    and the caller refuses rather than saving the summary in its place.
+    Claude and Codex search a bounded prefix so a history-listed message can
+    still be opened after it leaves the live tail. Other harnesses keep their
+    existing source bounds. Recompute the published identity rather than
+    trusting a summary; refuse missing, changing or ambiguous source records.
     """
     transcript_path = observer.resolve_transcript(
         config, state, harness, sid
     ) or observer.resolve_directions(config, state, harness, sid)
     if not transcript_path:
         return DirectionText("")
-    seen: set[tuple[float, str]] = set()
     follow = harness not in observer.DIRECTION_HARNESSES
-    for raw in runtime_io.read_tail(config, transcript_path, follow_links=follow):
-        if not raw or not raw.lstrip().startswith("{"):
+    stamp = transcript_stamp(transcript_path)
+    if stamp is None:
+        return DirectionText("")
+    lines = _direction_lines(config, transcript_path, harness, stamp, follow)
+    matches: set[DirectionText] = set()
+    for raw_line in lines:
+        if not raw_line or not raw_line.lstrip().startswith("{"):
             continue
         try:
-            record = json.loads(raw)
+            record = json.loads(raw_line)
         except (ValueError, RecursionError):
             continue
         event = _instruction_event(config, record, harness, sid)
-        if event is None or (event["at"], event["title"]) in seen:
+        if event is None:
             continue
-        seen.add((event["at"], event["title"]))
         fact = _semantic_fact_from_event(event, "steer", _SEMANTIC_FACT_TYPES["steer"], "")
         if fact["fact_id"] == fact_id:
-            if harness in observer.DIRECTION_HARNESSES:
-                # A direction the harness cut short is refused rather than
-                # saved as the whole of what was typed.
-                direction = transcripts.antigravity_direction(record)
-                return DirectionText(
-                    direction.text if direction and not direction.truncated else ""
-                )
-            message = observer.parse_message_record(record)
-            if not message:
-                return DirectionText("")
-            text = str(message["text"])
-            # The command as typed, never the tags it arrived in.
-            command = transcripts.command_direction(config, text) if harness == "claude" else None
-            if command:
-                return DirectionText(command, transcripts.command_cut(text))
-            return DirectionText(text)
-    return DirectionText("")
+            matches.add(_direction_words(config, record, harness))
+    # A repeated identity with different words is not a choice the server can verify.
+    if transcript_stamp(transcript_path) != stamp or len(matches) != 1:
+        return DirectionText("")
+    return next(iter(matches))
+
+
+def _direction_lines(
+    config: RuntimeConfig, path: str, harness: str, stamp: tuple[int, int, int, int], follow: bool
+) -> list[str]:
+    if harness in {"claude", "codex"}:
+        raw = runtime_io.read_prefix_bytes(path, max_bytes=SEMANTIC_BACKFILL_MAX_BYTES)
+        if len(raw) < stamp[2] and not raw.endswith(b"\n"):
+            raw = raw.rsplit(b"\n", 1)[0] if b"\n" in raw else b""
+        return raw.decode("utf-8", errors="replace").splitlines()
+    return runtime_io.read_tail(config, path, follow_links=follow)
+
+
+def _direction_words(config: RuntimeConfig, record: Any, harness: str) -> DirectionText:
+    if harness in observer.DIRECTION_HARNESSES:
+        direction = transcripts.antigravity_direction(record)
+        return DirectionText(direction.text if direction and not direction.truncated else "")
+    message = observer.parse_message_record(record)
+    if not message:
+        return DirectionText("")
+    text = str(message["text"])
+    command = transcripts.command_direction(config, text) if harness == "claude" else None
+    return (
+        DirectionText(command, transcripts.command_cut(text))
+        if command
+        else DirectionText(text, len(text) >= records.EXTRACT_TEXT_CAP_CHARS)
+    )
 
 
 def _codex_dispatch_artifact(task_name: str) -> tuple[str, str, str, str] | None:

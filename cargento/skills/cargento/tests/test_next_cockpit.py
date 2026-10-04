@@ -8471,19 +8471,19 @@ console.log(JSON.stringify({has: __els.app.innerHTML.includes('class="next-cockp
         self.assertEqual("", out["block"])
         self.assertEqual(0, out["rows"])
         self.assertEqual(
-            "You gave 2 later directions since saving your intent, the earliest at #1: "
-            "&quot;Correct the lane order&quot;.",
+            "You gave 2 later directions since saving your intent, the selected direction at #3: "
+            "&quot;Newest direction&quot;.",
             out["said"],
         )
         self.assertTrue(out["keep"])
         # Detected, not judged: nothing in the question calls the direction a conflict.
         self.assertNotIn("conflict", str(out["said"]).lower())
 
-    def test_add_opens_the_earliest_direction_the_reader_was_shown(self) -> None:
+    def test_add_opens_the_newest_direction_the_reader_was_shown(self) -> None:
         # Its save settles through that direction only, so the question comes back for the
         # later one (consent F3).
         out = self.held(at=100)
-        self.assertEqual("fo-b", out["add"])
+        self.assertEqual("fo-a", out["add"])
 
     def test_a_later_direction_demotes_a_departure_rather_than_filtering_it(self) -> None:
         open_case = self.held(at=100, assessment=self.ASSESSMENT)

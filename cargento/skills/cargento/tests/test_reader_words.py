@@ -562,7 +562,7 @@ SENTINEL = "SENTINEL-READER-WORDS"
 GET_ROUTES = {
     "/api/data": "/api/data?all=1",
     "/api/observe": f"/api/observe?harness=claude&sid={SHORT}",
-    "/api/project-context": f"/api/project-context?project=billing&session=claude:{SHORT}",
+    "/api/project-context": f"/api/project-context?project=billing&session=claude:{SHORT}&prompts=1",
     "/api/overlays": "/api/overlays",
     "/api/cleared": "/api/cleared",
     "/api/annotations": "/api/annotations",

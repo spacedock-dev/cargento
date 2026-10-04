@@ -2503,12 +2503,15 @@ within the milestone's scope and recorded on the issue.
 - Words typed after a session end are still withheld. Only the turn stop is relaxed, and the
   withholding test still compares the save time, `baseline_at`. The window start moves only the
   evidence.
-- The window start is recomputed on every save, a lines-only save included. For typed words it is
+- Amended by the owner, approving the Analyze drift plan, 2026-10-04: unchanged typed goal words
+  carry their existing window through a lines-only save or an added direction. New goal words
+  recompute the window. For those typed words it is
   the latest `user_message` of this session at or before the save, read on the server from the
   session's record, found in the all-sessions collection so a save from that view on an aged session
   still finds it. A permission approval is not a message, so it never moves the window. A record
   that cannot be read opens the window at the save and never refuses the save. Adopted words,
-  including an adopted goal carried under a lines-only save, open at their source time.
+  including an adopted goal carried under a lines-only save, open at their source time. A clock
+  moving backwards clamps the carried start to the save. "Saved" names the window beside the goal.
 - A stored window start that is not a moment at or before its own save refuses the entry, as a bad
   provenance does, because reading around it could restore older words.
 - A check keeps its call time. The window start alone fixes the case the live walk found: none of
@@ -3158,6 +3161,11 @@ recorded. The existing stored-reading fixtures now show at most 167 words outsid
 needed coverage and row labels account for the extra text. The full cutoff and general scope
 remain behind "What it read". This amends the tiering pass, not the evidence rules.
 
+The same owner approval requires the saved window beside the save and the prompt menu to remain
+available when its source has left the live tail. With those controls, the stored fixtures show
+at most 174 words (175 ceiling), the idle fixture 82 (85 ceiling), and the partial-tail fixture
+255 (270 ceiling). The window explanation stays inside "Saved"; the menu loads when opened.
+
 - What a reading is (the offer that opened the READING section) sits inside "What is sent", after
   the provider disclosure, while no reading is stored; where no disclosure is published it sits
   behind "What a reading reads". The READING section is drawn only for a stored reading this build
@@ -3265,6 +3273,24 @@ calls below on the issue; the rest follow the analysis.
 
 ### What the direction-adoption server build decided, 2026-09-27
 
+#### Amended 2026-10-04: owner, any listed direction may be selected
+
+Owner, approving the Analyze drift plan, 2026-10-04. A direction retained in history was listed
+but Add could not open its source once it left the live tail. Add now verifies any listed
+direction against its bounded source record. The question preselects the newest unsettled
+direction and lets the reader select another. "Use this as my goal" fills a pending adoption,
+asks whether to keep standing outcome lines, and waits for Save intent. A refused or too-long
+Add offers that choice; its line editor says "Write the rule, not the moment". The menu's five
+choices are resolved only when opened, under the same source checks as adoption.
+
+A stored reading keeps the baseline it read: only unsettled directions at or before its
+`read_at` demote its intent rows, answer, level and correction. A later message instead labels
+the reading as preceding that message. The live monitor still considers all later directions.
+The current-arm replay previously used wide drafted windows; those results do not measure the
+window narrowing of the old lines-only save. The [window count](drift-replay/windows-stage3.json)
+compares the two listings without a model call. Typed outcome lines have no stored source time;
+a guard against judging earlier work against a newly added line needs that lineage first.
+
 DRC-4682's server half built item 4's two answers and the store they write. The owner ruled that
 Add over an unsaved draft adopts it in the same write, and that Keep settles even where no analysis
 can start. The page half comes after it.
@@ -3282,16 +3308,16 @@ can start. The page half comes after it.
   revision instead meant adding one direction hid a later one the reader never answered, where
   adopted words kept it open; the two now behave alike. A revision an older build saved has no
   such field and falls back to its save time.
-- The text. It is read again from the transcript tail by recomputing each message's fact id,
+- The text. As amended on 2026-10-04 above, it is read again from the bounded source by recomputing each message's fact id,
   because a Claude user message carries no record id. The id was not changed to add one: that
-  would move every stored citation of a Claude message. A message older than the tail is refused
+  would move every stored citation of a Claude message. A message absent from that source is refused
   with one sentence, never replaced by its clipped summary. The open returns the whole message
   scrubbed as a save would scrub it, up to 2,000 characters, with a clipped flag and the store's
   own answer to whether it fits as a line. The record reader cuts a message at the same 2,000
   characters first, so raw text that reaches the bound counts as clipped; one of exactly 2,000 is
   flagged too, which says less was shown than was, the safe error.
 - One refusal body. An unknown session or fact, another session's entry, one that is not a
-  person's message, one not later than the words and one older than the tail all answer the same
+  person's message, one not later than the words and one outside the source bound all answer the same
   200 body, so the route says nothing about which sessions exist.
 - The write. The line, the settlement through that direction's time and, over a draft, the adopted
   goal go in one store write, under the revision the page drafted against. A full list is refused
@@ -4012,6 +4038,13 @@ sessions contained five direct questions about delegated work. In two, the work
 had stopped after a true running claim. A background launch followed by thirty
 quiet minutes occurred at five stops, including both stalls and two development
 servers deliberately left running. The parser cannot distinguish those uses.
+
+The page shows Delegated work only for recorded launches, with counts and clocks. Partial or
+unavailable attribution is named; an unknown count stays unknown. Unpaired and quiet counts
+concern this session's own launches, while launch totals can include admitted children. Thirty
+quiet minutes after an unpaired launch in the last turn adds an At-risk item and a generic
+question to copy into the session. It infers no running process, completion or drift and adds
+no words to an Analyze prompt.
 
 Item 6 now admits a timed `background_launch` tool-report fact. It carries the
 launch count, tool kind, and completion and activity times when recorded; it

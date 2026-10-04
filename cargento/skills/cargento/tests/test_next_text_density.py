@@ -3,7 +3,7 @@
 The owner's walk: "so much text it is unclear where to look". The plan's critic gave that a
 number, measured with the shared visibility helper: an idle-drafted aside (a Claude Code session,
 consent given, the goal drafted from the first prompt) shows no more than about 90 words outside
-the field values, and an aside under a stored reading no more than about 170, including the
+the field values, and an aside under a stored reading no more than about 175, including the
 unknown-coverage clause approved on 2026-10-04. Measured partial coverage adds its needed limits.
 Every sentence
 moved to meet it stays in the DOM behind a worded `<details>`
@@ -56,11 +56,12 @@ __dashboard.sessions[0].departures = [{
   evidence: "turn transcript"}];
 """
 # The original figures were about 90 and about 160; mandatory unknown coverage adds seven
-# visible words (owner amendment, 2026-10-04). The idle one is held at 80 since the stamp went
+# visible words (owner amendment, 2026-10-04). The saved window and on-demand prompt menu
+# set the measured ceilings to 175 stored and 85 idle. The stamp stays
 # behind "Saved" (DRC-4758 fix round), so a sentence creeping back into view is caught before it
 # reaches the plan's ceiling.
-IDLE_BUDGET = 80
-STORED_BUDGET = 170
+IDLE_BUDGET = 85
+STORED_BUDGET = 175
 
 # What the popover says under the server's list, which already says what a reading is (ui4 V2).
 SCOPE = "What it reads is the evidence on this page"
