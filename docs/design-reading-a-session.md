@@ -535,7 +535,25 @@ Its results, on this constraint only:
 - `departure`: the record contradicts the claim. It cites the agent's message and the entry that
   contradicts it, so rule 3 holds: a departure names its evidence. The contradiction comes at or
   after the claim: a later message stating otherwise, an admission, or a check, whose fact is its
-  latest run and so contradicts whenever it ran.
+  latest run and so contradicts whenever it ran. Amended later on 2026-10-04 (owner-delegated,
+  through the review of the second drift replay run, and narrowed twice on its own review the same
+  day): a check that failed before the claim does not contradict it when the prompt carried a later
+  run of the same tool, after the failure and at or before the claim, whose result is not a
+  failure, which carries no earlier failure of its own, and which names nothing after the tool but
+  flags or exactly `.` or `./`. Any other word, a flag's value such as `-k expr` or `-s dir`
+  included, keeps the failure standing, so a narrower, wider or different target never withdraws
+  it: `pytest tests`, `discover -s tests` and `--deselect` all leave it in place. One known limit:
+  the fact does not carry the working directory, so `npm test` run in `web` and in `api` reads as
+  the same run. A listed failure is its own check's latest run, so the agent's later runs are other
+  checks of the same tool, usually with no recorded result. The review found cited failures 32 to
+  967 minutes older than the claim with the same tool run since. Measured on that run's 7 claims
+  departures, this rule withdraws none: the two the first version withdrew were followed only by
+  runs that named a target. The tool is read from the check's own line,
+  conservatively: a wrapper such as `uv run`, `npx`, `poetry run`, `bundle exec`, `env`, `time` or
+  `rtk` and `python -m X` are the command after them, a script run by python, node, bash, sh or zsh
+  is its file name, a shell's `-c` names no tool, and `npm run lint` is not `npm test`. Such a
+  departure is withdrawn as `check-does-not-show-it`. A failure at or after the claim still
+  contradicts it.
 - `not shown by the record`, a fourth result and the token `unsupported`: the claim is of a kind
   the record can show, a check or tests or lint passing, something fixed as a check would show, a
   file written or changed, and nothing in the record read shows it. It cites the message. It is not
@@ -561,7 +579,16 @@ consistent resting on the agent's message alone is the agent agreeing with itsel
 4's backstop for this question. An `unsupported` is withdrawn as `claim-record-unread` when the
 session's checks were not all read, for want of a grant, a named destination or room in the prompt,
 because "not shown" would then be configuration read as absence; the page holds the claims row to
-the route's limit as it holds a line. The success-word backstop reads a claims `consistent`'s
+the route's limit as it holds a line. Room includes the listing's own cap: since later on
+2026-10-04, an `unsupported` is also withdrawn as `claim-record-unread` when the session holds a
+passing check or a written path, inside the reading's window, that the prompt did not carry. The
+press reads each one's record id and time beside the output tails, and the reading matches the
+record ids against the facts its prompt carried, so a pass the listing's cap or the byte bound left
+out counts, as does one that arrived after the facts were published, and one the prompt carried
+never does. One with no recorded time counts, because it cannot be shown to be outside the window.
+Nothing of it is published, sent or stored. Measured with the amended listing order, this fires on
+3 of 31 no-drift `unsupported` flags and none of the 17 on drift cuts, and keeps both claims the
+second run found to be real. The success-word backstop reads a claims `consistent`'s
 prose as before, and not a departure's or an `unsupported`'s, which quote the agent's own success
 words by their nature ("said the change works, but the check errored") and say nothing landed. A
 comparison resting only on Cargento's own paraphrase is `board-quoting-itself`. `check_supports`
@@ -1726,7 +1753,9 @@ qualifies the producer against it.
    run of the same check failed without listing that run. A file write after a passing run marks
    that pass as before the last change. At most 12 entries are listed, chosen in this order: latest
    runs that failed, then latest runs with no recorded result, then latest runs that passed, then
-   written paths, newest first within each. The rest are counted ("and N more"). Every answer about
+   written paths, newest first within each. Amended 2026-10-04: runs with no recorded result now
+   come last ([the amendment](#amended-2026-10-04-no-recorded-result-is-listed-last)).
+   The rest are counted ("and N more"). Every answer about
    checks is derived from the full scan, never from the listed entries alone, so a dropped entry
    can never produce "No check was recorded" or a reassuring answer.
 5. Fields read: the check's own segment, its runner form and arguments and never the rest of the
@@ -2252,6 +2281,28 @@ their parent, and 60 sampled sessions' subagents shared none with each other. In
 sessions, all 1,107 agent ids an Agent result named had a transcript. 3,000 agent files, forks
 included, held 41,205 Bash, 11,944 Edit and 2,903 Write calls. The largest session held 389
 subagent transcripts totalling 405 MB, and the 95th percentile 69 and 23 MB.
+
+### Amended 2026-10-04: no recorded result is listed last
+
+The owner delegated this change on 2026-10-04, through an adversarial review of what the
+[second drift replay run](drift-replay/README.md#the-second-run-2026-10-04) suggested changing.
+Item 4 listed latest runs that failed, then runs with no recorded result, then runs that passed,
+then written paths. Across that run's 99 cuts the scan held 85 passing checks, at least one on 54
+cuts, and 418 written paths, and the listing carried no pass and 22 writes: the runs with no
+recorded result filled the 12 entries first. Such a run carries no verdict (`check_supports`), so
+it was the least informative entry and it crowded out every pass. The page then showed a claim as
+"not shown by the record" beside a scan sentence saying "1 passed".
+
+The order is now failed, then passed, then written paths, then no recorded result, newest first
+within each. On the same 99 cuts the listing now carries 70 of the 85 passes, on 51 cuts, and 291
+writes; the other passes sit behind failures or newer passes, and 76 cuts list something different
+from what the second run's readings were given. Failures still come first, so item 4's purpose holds: a pass is never
+chosen over a failure. A check whose latest run has no recorded result but whose earlier run
+failed is ranked with the failures, because that failure is the only result it recorded: ranked
+last, twelve writes would push it out and leave the prompt with no failure at all (found on review
+the same day). The reading's own byte bound keeps the same order after the reader's messages, so a run
+with no recorded result never takes a pass's or a write's place in the prompt either. Everything
+else in item 4 stands: every answer about checks still comes from the full scan.
 
 ## DEC-24: your intent is a drafted goal and a checklist, and a correction is yours to copy
 

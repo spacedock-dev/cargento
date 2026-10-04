@@ -362,8 +362,12 @@ CHECK_REPORT_WORDS = frozenset({"passed", "passes", "passing"})
 CHECK_BEFORE_LAST_CHANGE = "before the last change"
 PATH_WRITTEN = "file written"
 # Priority inside the byte bound, after the reader's own messages: the tool
-# report ruling's item 4 order, so a pass is never chosen over a failure.
-_CHECK_PRIORITY = {RESULT_FAILED: 1, "not-recorded": 2, RESULT_PASSED: 3}
+# report ruling's item 4 order as amended on 2026-10-04, so a pass is never
+# chosen over a failure, and a run with no recorded result, which carries no
+# verdict, never over a pass or a write.
+WRITE_SUBJECT = "write"
+_WRITE_PRIORITY = 3
+_CHECK_PRIORITY = {RESULT_FAILED: 1, RESULT_PASSED: 2, "not-recorded": 4}
 
 
 @dataclass(frozen=True)
@@ -389,6 +393,10 @@ class ToolOutput:
     # False when a destination was named and the grant was gone by the time
     # the reading ran, so the cutoff says which of the two kept checks back.
     allowed: bool = True
+    # (record id, title, time) of each latest passing check and written path,
+    # read at the press and never sent or stored; `produce` keeps those its
+    # prompt did not carry.
+    passes_and_writes: tuple[tuple[str, str, float], ...] = ()
 
 
 SCOPE_MID_FLIGHT = "mid-flight"
@@ -868,6 +876,10 @@ class Selection:
     # `record_failed`. With `unread_checks`, what keeps a claim from reading as
     # not shown by a record that was never read whole.
     checks_unsent: bool = False
+    # When each pass or write inside the window that the prompt did not carry
+    # arrived (`_left_out`): a part of the record never read, as an entry with
+    # no room is.
+    unlisted: tuple[float, ...] = ()
 
     def __post_init__(self) -> None:
         if self.asked_output is None:
@@ -1879,13 +1891,19 @@ def _priority(entry: LedgerEntry) -> int:
     if entry["author"] == AUTHOR_PERSON:
         return 0
     if entry.get("subject") == CHECK_SUBJECT:
-        return _CHECK_PRIORITY.get(entry.get("result", ""), 2)
+        # A run with no result whose earlier run failed is ranked with the
+        # failures, as the collector lists it (item 4, amended 2026-10-04).
+        if entry.get("result") == "not-recorded" and entry.get("earlier_failed") is True:
+            return _CHECK_PRIORITY[RESULT_FAILED]
+        return _CHECK_PRIORITY.get(entry.get("result", ""), _CHECK_PRIORITY["not-recorded"])
+    if entry.get("subject") == WRITE_SUBJECT:
+        return _WRITE_PRIORITY
     # The agent's messages last, below a write: a long session says far more
     # than it does, and a hundred newer messages dropped the older write that
     # showed what it did (review, 2026-10-03).
     if entry["type"] == AGENT_MESSAGE_TYPE:
-        return 5
-    return 4
+        return 6
+    return 5
 
 
 def _row_body(row: LedgerEntry) -> str:
@@ -2022,8 +2040,9 @@ def build_prompt(
     """The prompt, and exactly the entries it carried.
 
     Entries are selected against the byte cap in priority order -- the
-    reader's own messages, then checks (failed, then no recorded result, then
-    passed), then everything else, newest first within each -- and then
+    reader's own messages, then failed checks, passed checks, written paths
+    and checks with no recorded result, then everything else, the agent's
+    messages last, newest first within each -- and then
     printed oldest-first, so the numbering the model sees and the list the
     resolver indexes are the same list. Selection stops at the first row that
     does not fit rather than skipping it, so a smaller passing check can never
@@ -2419,7 +2438,12 @@ def _rests_on_nothing(result: str, name: str, cited: Sequence[LedgerEntry]) -> s
 
 
 def _claims_rule(
-    result: str, supporting: Sequence[LedgerEntry], *, dropped: bool, checks_unread: bool = False
+    result: str,
+    supporting: Sequence[LedgerEntry],
+    *,
+    dropped: bool,
+    checks_unread: bool = False,
+    carried: Sequence[LedgerEntry] = (),
 ) -> str:
     """Which rule a claims verdict fails, as its `why` token, or `WHY_STANDS`.
 
@@ -2443,36 +2467,188 @@ def _claims_rule(
         why = WHY_STANDS if said else WHY_CLAIM_UNCITED
         # "Not shown" is about the session's record, and a record whose checks
         # went unread for want of a grant, a destination or room cannot say it:
-        # that would be configuration read as absence (review, PR C).
+        # that would be configuration read as absence (review, PR C). Room
+        # includes the listing's cap leaving out a pass or a write inside the
+        # window (2026-10-04).
         return WHY_CLAIM_RECORD_UNREAD if not why and checks_unread else why
     if not said:
         return WHY_CLAIM_UNCITED
     if not record:
         return WHY_CHECK_DOES_NOT_SHOW_IT if dropped else WHY_CLAIM_UNCITED
-    return _claims_compared(result, said, record)
+    return _claims_compared(result, said, record, carried)
 
 
 def _claims_compared(
-    result: str, said: Sequence[LedgerEntry], record: Sequence[LedgerEntry]
+    result: str,
+    said: Sequence[LedgerEntry],
+    record: Sequence[LedgerEntry],
+    carried: Sequence[LedgerEntry] = (),
 ) -> str:
     """A claims departure's or consistent's rule over what it was compared with.
 
     Not only Cargento's paraphrase. A consistent rests on the work, a tool
     report or a work result, never a person agreeing with the agent. A
     contradiction comes at or after the claim; a check is its latest run, so
-    it contradicts whenever it ran (review, PR C).
+    it contradicts whenever it ran (review, PR C), unless it failed before the
+    claim and the agent ran the same tool again before claiming
+    (`_superseded`). `carried` is every entry the prompt carried.
     """
     if {entry["author"] for entry in record} == {AUTHOR_DERIVED}:
         return WHY_BOARD_QUOTING_ITSELF
     claimed = min(entry["at"] for entry in said)
-    stands = (
-        any(_shows_work(entry) for entry in record)
-        if result == RESULT_CONSISTENT
-        else any(
-            entry.get("subject") == CHECK_SUBJECT or entry["at"] >= claimed for entry in record
-        )
-    )
-    return WHY_STANDS if stands else WHY_CLAIM_UNCITED
+    if result == RESULT_CONSISTENT:
+        return WHY_STANDS if any(_shows_work(entry) for entry in record) else WHY_CLAIM_UNCITED
+    contradicting = [
+        entry for entry in record if entry.get("subject") == CHECK_SUBJECT or entry["at"] >= claimed
+    ]
+    if not contradicting:
+        return WHY_CLAIM_UNCITED
+    if all(_superseded(entry, claimed, carried) for entry in contradicting):
+        return WHY_CHECK_DOES_NOT_SHOW_IT
+    return WHY_STANDS
+
+
+def _superseded(entry: LedgerEntry, claimed: float, carried: Sequence[LedgerEntry]) -> bool:
+    """A failure from before the claim that a later whole-suite run of the same tool followed.
+
+    A listed failure is its own identity's latest run, so "a later run of the
+    same check" never exists; the agent's later runs are other identities of
+    the same tool, often with no recorded result. A later run counts only when
+    it falls after the failure's result and at or before the claim, so a
+    failure at or after the claim always stands; did not fail, and carries no
+    earlier failure of its own; and names nothing after the tool but flags or
+    `.` (`_whole_suite`), so a narrower target, a flag's value (`-k expr`,
+    `-s dir`) or a different target never supersedes. The fact carries no
+    working directory, so the same command run in two directories reads as
+    one. The ruling:
+    [DEC-17](docs/design-reading-a-session.md#amended-2026-10-04-owner-what-the-agent-claims-is-its-own-constraint)
+    """
+    if entry.get("subject") != CHECK_SUBJECT or entry["type"] != TOOL_REPORT_TYPE:
+        return False
+    failed_at = evidence_at(entry) or entry["at"]
+    family = check_family(_check_text(entry))
+    if not family:
+        return False
+    for other in carried:
+        if (
+            other["id"] == entry["id"]
+            or other.get("subject") != CHECK_SUBJECT
+            or other["type"] != TOOL_REPORT_TYPE
+            or other.get("result") == RESULT_FAILED
+            or other.get("earlier_failed") is True
+            or not failed_at < other["at"] <= claimed
+        ):
+            continue
+        later_family, later_targets = check_scope(_check_text(other))
+        if later_family == family and _whole_suite(later_targets):
+            return True
+    return False
+
+
+# The only words besides flags a whole-suite run may name after its tool.
+_WHOLE_SUITE = frozenset({".", "./"})
+
+
+def _whole_suite(targets: Sequence[str]) -> bool:
+    """Whether a run named nothing after its tool but flags and `.`.
+
+    Deliberately minimal: no path, module or flag value is read as covering
+    another, because a narrower or different target cannot show the failed
+    one now passes (review, 2026-10-04).
+    """
+    return all(target in _WHOLE_SUITE for target in targets)
+
+
+def _check_text(entry: LedgerEntry) -> str:
+    """A check row's own segment: its summary less the result words `build_ledger` appended."""
+    summary = entry["summary"]
+    return summary.rsplit(" (", 1)[0] if summary.endswith(")") else summary
+
+
+# Runners whose next word names a different tool: `npm test` and `npm run lint`
+# are two, as are `ruff check` and `ruff format`.
+_SUBCOMMAND_RUNNERS = frozenset(
+    {
+        "npm", "pnpm", "yarn", "bun", "deno", "go", "cargo", "make", "ruff", "gh",
+        "mvn", "gradle", "gradlew", "dotnet", "swift", "rake", "bundle", "coverage", "poetry",
+    }
+)  # fmt: skip
+# Subcommands that run something named next: `npm run lint`, `deno task test`,
+# `go run ./cmd/a`. With nothing named, or a flag first, the tool is not told.
+_RUNNING_SUBCOMMANDS = frozenset({"run", "task", "exec", "x", "dlx"})
+# Wrappers that run the command after them; that command is the tool.
+_WRAPPERS = (
+    ("rtk", "proxy"), ("rtk",), ("npx",), ("bunx",), ("uv", "run"), ("poetry", "run"),
+    ("pipenv", "run"), ("pnpm", "exec"), ("npm", "exec"), ("yarn", "dlx"), ("pnpm", "dlx"),
+    ("bundle", "exec"), ("coverage", "run", "-m"), ("env",), ("time",),
+)  # fmt: skip
+_INTERPRETERS = frozenset({"node", "bash", "sh", "zsh"})
+_FAMILY_PYTHON_RE = re.compile(r"^python(?:\d+(?:\.\d+)?)?$")
+_ASSIGNMENT_WORD_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*=")
+_DURATION_WORD_RE = re.compile(r"^\d+(?:\.\d+)?[smhd]?$")
+
+
+def check_family(line: str) -> str:
+    """The tool a check's line runs, or "" where it cannot be told (`check_scope`)."""
+    return check_scope(line)[0]
+
+
+def check_scope(line: str) -> tuple[str, tuple[str, ...]]:  # noqa: PLR0911 - one per runner shape
+    """The tool a check's line runs and the targets it names, or ("", ()).
+
+    Deterministic and conservative: a wrapper (`rtk`, `npx`, `uv run`,
+    `poetry run`, `bundle exec`, `env`, `time`, `timeout N` and the like) and
+    `python -m` read as the command after them; an interpreter (python, node,
+    bash, sh, zsh) running a script reads as that script's file name, and with
+    a flag such as `-c` names no tool; a runner with subcommands keeps its
+    subcommand, and a running subcommand what it runs (`npm run lint`). Two
+    different tools are never one family; "" matches nothing. The targets are
+    the words after the tool that are not flags.
+    """
+    words = _unwrapped(line.split())
+    if not words or words[0].startswith("-") or words[0] == "cd":
+        return "", ()
+    first = os.path.basename(words[0])
+    if _FAMILY_PYTHON_RE.match(first) or first in _INTERPRETERS:
+        script = words[1] if len(words) > 1 else "-"
+        if script.startswith("-"):
+            return "", ()
+        return os.path.basename(script), _targets(words[2:])
+    if first not in _SUBCOMMAND_RUNNERS:
+        return first, _targets(words[1:])
+    if len(words) < 2:
+        return first, ()
+    sub = words[1]
+    if sub.startswith("-"):
+        return "", ()
+    if sub not in _RUNNING_SUBCOMMANDS:
+        return f"{first} {sub}", _targets(words[2:])
+    named = words[2] if len(words) > 2 else "-"
+    if named.startswith("-"):
+        return "", ()
+    return f"{first} {sub} {named}", _targets(words[3:])
+
+
+def _targets(words: Sequence[str]) -> tuple[str, ...]:
+    return tuple(word for word in words if not word.startswith("-"))
+
+
+def _unwrapped(words: list[str]) -> list[str]:
+    """The words with leading assignments, wrappers and `python -m` taken off."""
+    while words:
+        first = os.path.basename(words[0])
+        wrapper = next((w for w in _WRAPPERS if [first, *words[1 : len(w)]] == list(w)), None)
+        if _ASSIGNMENT_WORD_RE.match(words[0]):
+            words = words[1:]
+        elif wrapper is not None:
+            words = words[len(wrapper) :]
+        elif (first == "timeout" and len(words) > 1 and _DURATION_WORD_RE.match(words[1])) or (
+            _FAMILY_PYTHON_RE.match(first) and words[1:2] == ["-m"]
+        ):
+            words = words[2:]
+        else:
+            break
+    return words
 
 
 def _shows_work(entry: Mapping[str, Any]) -> bool:
@@ -2536,6 +2712,7 @@ def _evidence_rules(  # noqa: PLR0913 - one keyword per fact a rule reads
     line_text: str = "",
     latest_check_at: float = 0.0,
     checks_unread: bool = False,
+    carried: Sequence[LedgerEntry] = (),
 ) -> tuple[list[LedgerEntry], str]:
     """The entries a verdict rests on, and which rule it fails, as its `why` token.
 
@@ -2559,7 +2736,9 @@ def _evidence_rules(  # noqa: PLR0913 - one keyword per fact a rule reads
     supporting = [entry for entry in cited if check_supports(entry, result, window_start)]
     dropped = len(supporting) < len(cited)
     if name == CONSTRAINT_CLAIMS:
-        why = _claims_rule(result, supporting, dropped=dropped, checks_unread=checks_unread)
+        why = _claims_rule(
+            result, supporting, dropped=dropped, checks_unread=checks_unread, carried=carried
+        )
     else:
         why = (
             _rests_on_nothing(result, name, supporting)
@@ -2688,6 +2867,7 @@ def _resolve_one(  # noqa: PLR0913 - each is one fact the evidence rules read
             line_text=clause if line_text is None else line_text,
             latest_check_at=latest_check_at,
             checks_unread=checks_unread,
+            carried=tuple(by_index.values()),
         )
         if rests_on_nothing:
             result, why = RESULT_UNVERIFIABLE, rests_on_nothing
@@ -2838,7 +3018,9 @@ def resolve(
             failed_on_record=failed_on_record,
             line_text=clauses[name],
             latest_check_at=latest_check_at,
-            checks_unread=selection.checks_unsent or bool(selection.unread_checks),
+            checks_unread=selection.checks_unsent
+            or bool(selection.unread_checks)
+            or bool(selection.unlisted),
         )
     return out
 
@@ -3010,6 +3192,9 @@ def produce(  # noqa: PLR0913
         selected,
         record_failed=_failed_on_record(unsent, harness, sid, window_start(latest)),
         checks_unsent=not admitted and _has_reports(facts, harness, sid),
+        unlisted=_left_out(tool_output, facts, selected.entries, window_start(latest))
+        if admitted and tool_output is not None
+        else (),
     )
     raw, status = model(prompt, output_cap_bytes=REPLY_CAP_BYTES)
     # A reply that reached the cap is the one a cut can explain. The exec layer
@@ -3066,6 +3251,35 @@ def produce(  # noqa: PLR0913
         assessment["goal_source"] = str(latest["goal_source"])
         assessment["goal_source_at"] = baseline_at(latest)
     return assessment, "", True
+
+
+def _left_out(
+    tool_output: ToolOutput,
+    facts: Sequence[Mapping[str, Any]],
+    carried: Sequence[LedgerEntry],
+    since: float,
+) -> tuple[float, ...]:
+    """When each pass or write the press read, and the prompt did not carry, arrived.
+
+    Matched on (record id, title) against the facts the prompt carried, since
+    one call can hold several checks and writes under one record id: a pass
+    that arrived after the facts were published, or one the listing's cap or
+    the byte bound left out, counts, and one the prompt carried never does.
+    Inside the window only; one with no time (0) is counted, because it cannot
+    be shown to be outside it.
+    """
+    ids = {entry["id"] for entry in carried}
+    shown: set[tuple[str, str]] = set()
+    for fact in facts:
+        branch = fact.get("branch")
+        fact_id = records.safe_text(fact.get("fact_id"), 160).strip()
+        if fact_id in ids and isinstance(branch, dict):
+            shown.add((str(branch.get("record_id") or ""), str(fact.get("summary") or "")))
+    return tuple(
+        at
+        for record_id, title, at in tool_output.passes_and_writes
+        if (record_id, title) not in shown and (at <= 0 or at >= since)
+    )
 
 
 # The exec statuses that name their own cause, and whether each spent.

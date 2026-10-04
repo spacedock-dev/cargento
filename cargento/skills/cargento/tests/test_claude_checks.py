@@ -18,10 +18,10 @@ import shlex
 import tempfile
 import unittest
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 from unittest import mock
 
-from cargento_runtime import levels, observer, project_context, semantic_history
+from cargento_runtime import levels, observer, project_context, reading, semantic_history
 from cargento_runtime.config import build_runtime_config
 from cargento_runtime.state import build_runtime_state
 
@@ -998,22 +998,100 @@ class WhichFormsAreStripped(ClaudeChecksTestCase):
 
 
 class WhichOrderTheEntriesAreKeptIn(ClaudeChecksTestCase):
-    def test_item_four_keeps_failures_then_unrecorded_then_the_newest_passes(self) -> None:  # T5
+    def left_out(self, events: list[dict[str, Any]]) -> tuple[float, ...]:
+        """What the reading counts as not carried, when the prompt carried every listed event."""
+        self.session.save(self.path)
+        press = project_context.claude_check_press(self.config, str(self.path))
+        facts = [
+            {"fact_id": f"f{i}", "summary": e["title"], "branch": {"record_id": e["record_id"]}}
+            for i, e in enumerate(events)
+        ]
+        carried = cast("list[reading.LedgerEntry]", [{"id": f["fact_id"]} for f in facts])
+        output = reading.ToolOutput(
+            destination="d", label="l", passes_and_writes=press.passes_and_writes
+        )
+        return reading._left_out(output, facts, carried, 0.0)
+
+    def test_a_sibling_pass_in_a_listed_call_is_not_read_as_carried(self) -> None:
+        # Verification 2: one call, two passing checks, one record id; one is listed.
+        self.session.bash("ruff check . && mypy", "ok", is_error=False)
+        for n in range(11):
+            self.session.bash(f"pytest tests/f{n}.py", "1 failed", is_error=True)
+        events, scan = self.read()
+        self.assertEqual(1, scan["more"])
+        self.assertEqual(1, len(self.left_out(events)))
+
+    def test_a_shell_calls_write_is_not_read_as_carried_with_its_check(self) -> None:
+        # The check is listed and its own redirect's write, under the same record id, is not.
+        self.session.bash("pytest > out.txt", "", is_error=False)
+        for n in range(11):
+            self.session.bash(f"pytest tests/f{n}.py", "1 failed", is_error=True)
+        events, scan = self.read()
+        self.assertEqual(1, scan["more"])
+        listed = [e for e in events if e["subject"] == "check" and e.get("result") == "passed"]
+        self.assertEqual(1, len(listed))
+        self.session.save(self.path)
+        press = project_context.claude_check_press(self.config, str(self.path))
+        write = [p for p in press.passes_and_writes if p[0] == listed[0]["record_id"]]
+        self.assertEqual(2, len(write))
+        self.assertEqual(1, len(self.left_out(events)))
+
+    def test_item_four_keeps_failures_then_passes_then_unrecorded(self) -> None:  # T5
+        # DEC-23 item 4 as amended on 2026-10-04.
         for n in range(3):
             self.session.bash(f"pytest tests/f{n}.py", "1 failed", is_error=True)
-        for n in range(4):
-            self.session.bash(f"pytest tests/u{n}.py | tail -1", "....", is_error=False)
         for n in range(8):
             self.session.bash(f"pytest tests/p{n}.py", "1 passed", is_error=False)
+        for n in range(4):
+            self.session.bash(f"pytest tests/u{n}.py | tail -1", "....", is_error=False)
         events, scan = self.read()
         titles = [e["title"] for e in events]
         self.assertEqual(12, len(events))
         self.assertEqual(
             ["pytest tests/f2.py", "pytest tests/f1.py", "pytest tests/f0.py"], titles[:3]
         )
-        self.assertEqual([f"pytest tests/u{n}.py" for n in (3, 2, 1, 0)], titles[3:7])
-        self.assertEqual([f"pytest tests/p{n}.py" for n in (7, 6, 5, 4, 3)], titles[7:])
+        self.assertEqual([f"pytest tests/p{n}.py" for n in range(7, -1, -1)], titles[3:11])
+        self.assertEqual(["pytest tests/u3.py"], titles[11:])
         self.assertEqual(3, scan["more"])
+
+    def test_runs_with_no_recorded_result_never_hide_a_pass_or_a_write(self) -> None:
+        self.session.bash("pytest tests/p.py", "1 passed", is_error=False)
+        self.session.write(self.file("app.py"))
+        for n in range(14):
+            self.session.bash(f"pytest tests/u{n}.py | tail -1", "....", is_error=False)
+        events, scan = self.read()
+        kept = [(e["subject"], e.get("result")) for e in events]
+        self.assertEqual(("check", "passed"), kept[0])
+        self.assertEqual(("write", None), kept[1])
+        self.assertEqual(10, sum(1 for e in events if e.get("result") == "not-recorded"))
+        self.assertEqual(4, scan["more"])
+        # Nothing the press counts as left out: the cap only dropped runs with no result.
+        self.assertEqual((), self.left_out(events))
+
+    def test_a_run_with_no_result_after_a_failure_is_kept_with_the_failures(self) -> None:
+        # Review C1: its only recorded result is the failure, so writes never push it out.
+        self.session.bash("pytest", "1 failed", is_error=True)
+        self.session.bash("pytest 2>&1 | tail -3", "....", is_error=False)
+        for n in range(12):
+            self.session.write(self.file(f"m{n}.py"))
+        events, scan = self.read()
+        checks = [e for e in events if e["subject"] == "check"]
+        self.assertEqual(1, len(checks), scan)
+        self.assertEqual(("not-recorded", True), (checks[0]["result"], checks[0]["earlier_failed"]))
+        self.assertEqual(1, scan["more"])
+
+    def test_the_press_knows_when_each_left_out_pass_or_write_arrived(self) -> None:
+        for n in range(13):
+            self.session.bash(f"pytest tests/p{n}.py", "1 passed", is_error=False)
+        self.session.write(self.file("app.py"))
+        self.session.bash("pytest tests/u.py | tail -1", "....", is_error=False)
+        events, scan = self.read()
+        self.assertEqual(3, scan["more"])
+        unlisted = self.left_out(events)
+        # The oldest pass and the write are past the cap; the unrecorded run is not counted.
+        self.assertEqual(2, len(unlisted))
+        listed = sorted(float(e.get("result_at") or e["at"]) for e in events)
+        self.assertTrue(all(at not in listed for at in unlisted))
 
 
 class WhatAReaderIsNeverShownOfACommandLineEither(ClaudeChecksTestCase):
