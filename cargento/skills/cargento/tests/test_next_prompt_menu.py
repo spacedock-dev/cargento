@@ -267,7 +267,7 @@ class ChoosingFillsTheGoalAsAPendingAdoptionTest(_DraftPage):
         assert isinstance(out, str)
         self.assertEqual(LONG, goal_box(out))
         self.assertIn(
-            "Excerpt. Analyze reads up to 1,000 characters.", visible_text(intent_of(out))
+            "Excerpt. Analyze looks up the source when pressed.", visible_text(intent_of(out))
         )
 
     def test_save_intent_adopts_the_choice_by_its_fact_and_time(self) -> None:

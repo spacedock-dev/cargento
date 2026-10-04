@@ -22,6 +22,18 @@ from .test_next_intent_draft import visible_text
 
 
 class ThePressMeasuresTheMessageTail(checks.ClaudeChecksTestCase):
+    def test_a_file_changed_after_fact_collection_has_unknown_coverage(self) -> None:
+        self.session.save(self.path)
+        before = self.path.stat()
+        expected = (before.st_dev, before.st_ino, before.st_size, before.st_mtime_ns)
+        with self.path.open("a") as handle:
+            handle.write("\n")
+        got = project_context.transcript_tail_coverage(
+            self.config, str(self.path), expected_stamp=expected
+        )
+        self.assertIsNone(got["tail_truncated"])
+        self.assertIsNone(got["tail_start"])
+
     def test_the_http_reading_measures_the_resolved_file_at_the_press(self) -> None:
         self.session.prompt("Padding " + "x" * 4000)
         self.session.prompt("Keep the retry in scope.")
@@ -46,22 +58,38 @@ class ThePressMeasuresTheMessageTail(checks.ClaudeChecksTestCase):
                 ]
             }
         }
-        with (
-            mock.patch.object(http_api, "_session_context", return_value=context),
-            mock.patch.object(observer, "resolve_transcript", return_value=str(self.path)),
-        ):
-            compose: Any = http_api._RequestHandler._compose_reading
-            got, why, spent = compose(
-                handler,
-                {"harness": "claude", "sid": "s1", "state": "working"},
-                {"revisions": [{"n": 1, "at": 50.0, "goal": "Keep retry", "output": "Tests pass"}]},
-                {},
-                SimpleNamespace(phase=None),
-            )
-        self.assertEqual("", why)
-        self.assertTrue(spent)
-        self.assertIs(got["coverage"]["tail_truncated"], True)
-        self.assertEqual(checks.START.timestamp() + 15, got["coverage"]["tail_start"])
+        for changed in (False, True):
+
+            def collected(*_args: Any, changes_file: bool = changed) -> dict[str, Any]:
+                if changes_file:
+                    with self.path.open("a") as handle:
+                        handle.write("\n")
+                return context
+
+            with (
+                self.subTest(changed=changed),
+                mock.patch.object(http_api, "_session_context", side_effect=collected),
+                mock.patch.object(observer, "resolve_transcript", return_value=str(self.path)),
+            ):
+                compose: Any = http_api._RequestHandler._compose_reading
+                got, why, spent = compose(
+                    handler,
+                    {"harness": "claude", "sid": "s1", "state": "working"},
+                    {
+                        "revisions": [
+                            {"n": 1, "at": 50.0, "goal": "Keep retry", "output": "Tests pass"}
+                        ]
+                    },
+                    {},
+                    SimpleNamespace(phase=None),
+                )
+                self.assertEqual("", why)
+                self.assertTrue(spent)
+                self.assertIs(got["coverage"]["tail_truncated"], None if changed else True)
+                self.assertEqual(
+                    None if changed else checks.START.timestamp() + 15,
+                    got["coverage"]["tail_start"],
+                )
 
     def test_a_short_file_is_measured_complete_even_after_a_long_silence(self) -> None:
         self.session.seconds = 90_000
@@ -244,6 +272,62 @@ class TheCutoffNamesKindsAndOmissions(unittest.TestCase):
 
 
 class TheReadingCarriesMeasuredCoverage(producer.AClaudeCodeReadingProducer):
+    def test_a_found_source_already_equal_to_the_goal_is_whole(self) -> None:
+        text = "Keep the retry in scope."
+        source = producer.fact(
+            fact_id="source",
+            type="user_message",
+            at=40.0,
+            reader_words=text,
+            source_session={"harness": "claude", "sid": "s1"},
+        )
+        got, _, _ = reading.produce(
+            cast("Any", self.config),
+            {"harness": "claude", "sid": "s1", "state": "working"},
+            [
+                {
+                    "n": 1,
+                    "at": 50.0,
+                    "goal": text,
+                    "output": "Tests pass",
+                    "goal_source": "first-prompt",
+                    "goal_source_at": 40.0,
+                }
+            ],
+            [source, producer.fact(at=110.0, source_session={"harness": "claude", "sid": "s1"})],
+            now=200.0,
+            stamp_text="read",
+            model=self._model(),
+            read_lines=True,
+            goal_source_lookup=lambda: [source],
+        )
+        assert got is not None
+        assert got["coverage"] is not None
+        self.assertEqual("whole", got["coverage"]["goal_source"])
+
+    def test_unlisted_work_after_the_stop_is_not_counted_inside_the_read_window(self) -> None:
+        output = reading.ToolOutput(
+            destination="local",
+            label="Local reader",
+            passes_and_writes=(("inside", "inside.py", 90.0), ("later", "later.py", 110.0)),
+        )
+        got, _, _ = reading.produce(
+            cast("Any", self.config),
+            {"harness": "claude", "sid": "s1", "state": "idle", "finished_at": 100.0},
+            [{"n": 1, "at": 50.0, "goal": "Keep retry", "output": "Tests pass"}],
+            [producer.fact(at=60.0, source_session={"harness": "claude", "sid": "s1"})],
+            now=200.0,
+            stamp_text="read",
+            model=self._model(),
+            read_lines=True,
+            admit_turn_stop=True,
+            tool_output=output,
+        )
+        assert got is not None
+        assert got["coverage"] is not None
+        self.assertEqual("last-turn", got["scope"])
+        self.assertEqual(1, got["coverage"]["unlisted"])
+
     def test_coverage_changes_no_model_prompt_before_the_frozen_pilot(self) -> None:
         for measurement in (None, lambda: {"tail_truncated": True, "tail_start": 100.0}):
             reading.produce(

@@ -32,7 +32,7 @@ FIXTURE = cockpit_tests.NextCockpitCompositionTest.FIXTURE
 ANNOTATED = cockpit_tests.CockpitHeldToTabTest.ANNOTATED
 
 HARNESSES = ("codex", "pi", "claude", "antigravity")
-LIMIT = "Cargento can't read work from this harness"
+LIMIT = "Cargento can't read work or the agent's replies from this harness"
 PRIMARY = re.compile(r"<button\b[^>]*next-action--primary[^>]*>([\s\S]*?)</button>")
 
 # A stored reading with one departure, as `test_next_session_drift` stores it.

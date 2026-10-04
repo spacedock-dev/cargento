@@ -1356,8 +1356,8 @@ class TheScorerKnowsTheQuestionTest(unittest.TestCase):
         self.assertEqual(reading.RESULT_BY_TOKEN, score_abstention.RESULT_BY_TOKEN)
 
 
-class TheGoalBoxSaysAnExcerptIsReadWholeTest(NextPageJsHarness):
-    def test_the_sentence_is_short_and_names_the_whole_prompt(self) -> None:
+class TheGoalBoxNamesTheSourceLookupTest(NextPageJsHarness):
+    def test_the_sentence_names_the_attempt_without_promising_success(self) -> None:
         out = self._run_page_js(
             "await __settle();\n"
             """
@@ -1368,8 +1368,8 @@ console.log(JSON.stringify([
 """,
             storage_prelude({}) + cockpit_tests.NextCockpitCompositionTest.FIXTURE,
         )
-        self.assertIn("Excerpt. Analyze reads up to 1,000 characters.", out[0])
-        self.assertNotIn("Analyze reads", out[1])
+        self.assertIn("Excerpt. Analyze looks up the source when pressed.", out[0])
+        self.assertNotIn("Analyze looks up", out[1])
 
 
 if __name__ == "__main__":

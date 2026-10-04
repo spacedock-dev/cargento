@@ -3351,7 +3351,9 @@ def produce(  # noqa: PLR0913
         selected,
         record_failed=_failed_on_record(unsent, harness, sid, window_start(latest)),
         checks_unsent=not admitted and _has_reports(facts, harness, sid),
-        unlisted=_left_out(tool_output, facts, selected.entries, window_start(latest))
+        unlisted=_left_out(
+            tool_output, facts, selected.entries, window_start(latest), until=stopped
+        )
         if admitted and tool_output is not None
         else (),
     )
@@ -3367,7 +3369,7 @@ def produce(  # noqa: PLR0913
             else "excerpt"
             if source is None
             else "whole"
-            if selected.goal_whole
+            if selected.goal_whole or source[1] == goal
             else "unroomed"
         ),
     }
@@ -3434,6 +3436,8 @@ def _left_out(
     facts: Sequence[Mapping[str, Any]],
     carried: Sequence[LedgerEntry],
     since: float,
+    *,
+    until: float | None = None,
 ) -> tuple[float, ...]:
     """When each pass or write the press read, and the prompt did not carry, arrived.
 
@@ -3454,7 +3458,8 @@ def _left_out(
     return tuple(
         at
         for record_id, title, at in tool_output.passes_and_writes
-        if (record_id, title) not in shown and (at <= 0 or at >= since)
+        if (record_id, title) not in shown
+        and (at <= 0 or (at >= since and (until is None or at <= until)))
     )
 
 
