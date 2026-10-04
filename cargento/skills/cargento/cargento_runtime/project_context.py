@@ -4482,6 +4482,58 @@ TRANSCRIPT_USER_CACHE_ENTRIES = 8
 TRANSCRIPT_USER_FACTS_MAX = 4096
 
 
+def transcript_stamp(path: str) -> tuple[int, int, int, int] | None:
+    """Identity of the regular file whose facts a press is about to collect."""
+    try:
+        value = os.stat(path)
+    except OSError:
+        return None
+    return (
+        (value.st_dev, value.st_ino, value.st_size, value.st_mtime_ns)
+        if stat.S_ISREG(value.st_mode)
+        else None
+    )
+
+
+def transcript_tail_coverage(
+    config: RuntimeConfig, path: str, *, expected_stamp: tuple[int, int, int, int] | None = None
+) -> dict[str, Any]:
+    """Press-only size and time measurements, with unknowns when the file moves."""
+    unknown = {"tail_truncated": None, "tail_start": None}
+    try:
+        before = os.stat(path)
+        if not stat.S_ISREG(before.st_mode):
+            return unknown
+        if expected_stamp is not None and expected_stamp != (
+            before.st_dev,
+            before.st_ino,
+            before.st_size,
+            before.st_mtime_ns,
+        ):
+            return unknown
+        lines = runtime_io.read_tail(config, path)
+        times = [
+            at
+            for line in lines
+            if (record := _json_dict(line.encode("utf-8"))) is not None
+            and (at := _record_timestamp(record)) is not None
+        ]
+        after = os.stat(path)
+        if (before.st_dev, before.st_ino, before.st_size, before.st_mtime_ns) != (
+            after.st_dev,
+            after.st_ino,
+            after.st_size,
+            after.st_mtime_ns,
+        ):
+            return unknown
+    except OSError:
+        return unknown
+    return {
+        "tail_truncated": before.st_size > config.tail_bytes,
+        "tail_start": min(times) if times else None,
+    }
+
+
 def transcript_user_facts(
     config: RuntimeConfig, state: RuntimeState, path: str, harness: str, sid: str
 ) -> list[dict[str, Any]]:

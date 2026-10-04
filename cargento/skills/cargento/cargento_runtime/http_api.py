@@ -2712,22 +2712,32 @@ class _RequestHandler(BaseHTTPRequestHandler):
         launch or fails. A fresh press is the only retry.
         """
         application = self.server.application
+        transcript = (
+            runtime_observer.resolve_transcript(
+                application.config, application.state, str(row.get("harness")), str(row.get("sid"))
+            )
+            or ""
+        )
+        press_stamp = runtime_project_context.transcript_stamp(transcript)
         context = _session_context(application, row)
         return runtime_reading.produce(
             application.config,
             row,
             entry["revisions"],
             _facts_of(context),
+            record_coverage_lookup=lambda: (
+                runtime_project_context.transcript_tail_coverage(
+                    application.config,
+                    transcript,
+                    expected_stamp=press_stamp,
+                )
+                if press_stamp is not None
+                else {}
+            ),
             goal_source_lookup=lambda: runtime_project_context.transcript_user_facts(
                 application.config,
                 application.state,
-                runtime_observer.resolve_transcript(
-                    application.config,
-                    application.state,
-                    str(row.get("harness")),
-                    str(row.get("sid")),
-                )
-                or "",
+                transcript,
                 str(row.get("harness")),
                 str(row.get("sid")),
             ),

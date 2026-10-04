@@ -1021,7 +1021,7 @@ class CapabilityDeliveryTest(unittest.TestCase):
         # would fail on the reader rather than on an injected token.
         self.assertNotIn(b'<meta name="cargento-focus"', assembled)
         self.assertEqual(
-            "3033a032c3e23de97ea218e6cfd91c0e4a45abe78dced816e807ca00ec8ae440",
+            "5e46297e6945483456fe32c21b2b029255edc67a9aef6a0d5165f365e5d2648c",
             hashlib.sha256(assembled).hexdigest(),
         )
 

@@ -1,0 +1,20 @@
+{
+  "measurement": "model-free press-time byte-tail coverage on frozen replay cuts",
+  "readings": 426,
+  "partial_windows": 387,
+  "truncated": 426,
+  "unknown": 0,
+  "partial_by_arm": {
+    "adopted": 123,
+    "current": 79,
+    "part": 86,
+    "realistic": 99
+  },
+  "unique_cuts": 99,
+  "model_calls": 0,
+  "runtime_commit": "67285cac",
+  "tail_bytes": 400000,
+  "required_control_cut_arms": 4,
+  "required_control_intent_rows": 7,
+  "required_control_untagged_rows": 0
+}

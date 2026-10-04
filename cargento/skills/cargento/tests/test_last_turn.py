@@ -1087,7 +1087,7 @@ class AReadingCitesNothingFromBeforeItsWindowTest(_PressCase):
         )
         self.assertTrue(
             assessment["cutoff"].startswith(
-                "Read 2 of the 2 entries after your words; 1 earlier and 1 untimed entries were "
+                "Read 2 of the 2 entries available after your words; 1 earlier and 1 untimed entries were "
                 "not read; 1 entry after the last observed stop was not read. Of those read, "
             ),
             assessment["cutoff"],
@@ -1105,13 +1105,13 @@ class AReadingCitesNothingFromBeforeItsWindowTest(_PressCase):
         )
         self.assertTrue(
             assessment["cutoff"].startswith(
-                "Read 2 of the 2 entries after your words; 2 earlier entries were not read."
+                "Read 2 of the 2 entries available after your words; 2 earlier entries were not read."
             ),
             assessment["cutoff"],
         )
         assessment, _why, _spent = self.produce([_message("m1", PROMPT), _check(PROMPT + 60)])
         self.assertTrue(
-            assessment["cutoff"].startswith("Read 2 of the 2 entries after your words. "),
+            assessment["cutoff"].startswith("Read 2 of the 2 entries available after your words. "),
             assessment["cutoff"],
         )
 

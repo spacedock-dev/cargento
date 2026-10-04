@@ -3,7 +3,9 @@
 The owner's walk: "so much text it is unclear where to look". The plan's critic gave that a
 number, measured with the shared visibility helper: an idle-drafted aside (a Claude Code session,
 consent given, the goal drafted from the first prompt) shows no more than about 90 words outside
-the field values, and an aside under a stored reading no more than about 160. Every sentence
+the field values, and an aside under a stored reading no more than about 170, including the
+unknown-coverage clause approved on 2026-10-04. Measured partial coverage adds its needed limits.
+Every sentence
 moved to meet it stays in the DOM behind a worded `<details>`
 ([NUI-19](docs/design-next-ui.md#nui-19-a-caveat-has-three-tiers)), so each test below also
 asserts the moved text is still on the page.
@@ -53,11 +55,12 @@ __dashboard.sessions[0].departures = [{
   cutoff_text: "Read 4 of the 4 entries after your words.",
   evidence: "turn transcript"}];
 """
-# The plan's figures are about 90 and about 160. The idle one is held at 80 since the stamp went
+# The original figures were about 90 and about 160; mandatory unknown coverage adds seven
+# visible words (owner amendment, 2026-10-04). The idle one is held at 80 since the stamp went
 # behind "Saved" (DRC-4758 fix round), so a sentence creeping back into view is caught before it
 # reaches the plan's ceiling.
 IDLE_BUDGET = 80
-STORED_BUDGET = 160
+STORED_BUDGET = 170
 
 # What the popover says under the server's list, which already says what a reading is (ui4 V2).
 SCOPE = "What it reads is the evidence on this page"
@@ -87,7 +90,7 @@ class TheAsideHoldsToItsWordBudgetTest(PanelPage):
         print(f"\nidle-drafted aside: {count} visible words outside field values")
         self.assertLessEqual(count, IDLE_BUDGET, visible_text(outside_fields(aside)))
 
-    def test_a_stored_reading_aside_shows_no_more_than_about_one_hundred_sixty(self) -> None:
+    def test_a_stored_reading_aside_shows_no_more_than_about_one_hundred_seventy(self) -> None:
         aside = aside_of(self.page("claude", STORED))
         count = words(aside)
         print(f"\nstored-reading aside: {count} visible words outside field values")
@@ -100,7 +103,7 @@ class ALeveledReadingHoldsToTheStoredBudgetTest(_ResultPage):
     headline, the checklist and where the work went. STORED above draws none of those, so the
     budget is measured here as well (DRC-4758 fix round)."""
 
-    def test_each_leveled_state_shows_no_more_than_about_one_hundred_sixty(self) -> None:
+    def test_each_leveled_state_shows_no_more_than_about_one_hundred_seventy(self) -> None:
         for name, value, level, facts in (
             ("mixed, high", MIXED, levels.HIGH, FACTS),
             ("all consistent, none or low", ALL_CONSISTENT, levels.NONE_OR_LOW, NO_FAILURE),
@@ -113,6 +116,27 @@ class ALeveledReadingHoldsToTheStoredBudgetTest(_ResultPage):
                 count = words(aside)
                 print(f"\nstored reading, {name}: {count} visible words outside field values")
                 self.assertLessEqual(count, STORED_BUDGET, visible_text(outside_fields(aside)))
+
+    def test_a_partial_read_keeps_its_needed_coverage_in_view(self) -> None:
+        value = {
+            **MIXED,
+            "coverage": {
+                "tail_truncated": True,
+                "tail_start": 103.0,
+                "unlisted": 2,
+                "unread_checks": 1,
+                "goal_source": "excerpt",
+            },
+        }
+        html = self.page(value, levels.HIGH)
+        aside = aside_of(html)
+        text = visible_text(outside_fields(aside))
+        count = words(aside)
+        print(f"\npartial reading: {count} visible words outside field values")
+        self.assertLessEqual(count, 270, text)
+        self.assertIn("Message tail starts", text)
+        self.assertIn("saved excerpt", text)
+        self.assertEqual(3, text.count("may be in the part not read"))
 
     def test_what_the_budget_moved_is_still_on_the_page(self) -> None:
         html = self.page(ALL_CONSISTENT, levels.NONE_OR_LOW, facts=NO_FAILURE)
@@ -160,7 +184,8 @@ class MovedTextStaysOnThePageTest(PanelPage):
         body = sent[: sent.index("</details>")]
         self.assertEqual(1, body.count("account of the evidence"), body)
         self.assertIn("never a verification", body)
-        self.assertIn("It does not read a diff, a file, a test or a deliverable.", body)
+        self.assertIn("It does not read a diff, a file, a test or a deliverable,", body)
+        self.assertIn("replies from git, gh or connected tools, or your screen.", body)
 
     def test_a_refused_reading_is_still_said_in_view(self) -> None:
         aside = aside_of(

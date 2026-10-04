@@ -23,6 +23,8 @@ redacted copy under `tests/raw_sessions/<sid>/`, which is gitignored and made by
   `~/.cargento/drift-replay/claim-marks.json` and counts. `results.json` then also holds a
   `claims_truth` section, keyed by salted claim ids.
 - `results-<tag>.json`, the score of a narrowed, tagged re-read, in the same shape as `results.json`.
+- `coverage-<tag>.json`, a model-free reconstruction's counts of measured transcript-tail coverage.
+  It holds counts and runtime provenance, no transcript times or session text.
 
 ## What does not live here
 
@@ -341,3 +343,17 @@ evidence; its redacted working directory cannot establish whether a named folder
 
 The agent marks still decide which cuts count as no drift. The prepared owner review can change
 that key. No new model call was made for either score.
+
+## Reading coverage, 2026-10-05
+
+The [coverage reconstruction](coverage-stage2.json) measures the actual bounded transcript tail
+at each of the 99 frozen cuts behind 426 stored readings. All 426 files exceed the tail's byte
+bound; at 387 readings the tail begins inside the intent window (123 adopted, 79 current, 86 part
+and 99 realistic). At the other 39 it begins before the window. No measurement is unknown. This
+reconstructs what a new press would disclose, rather than adding measurements to old readings.
+
+The required control's four cut-arms have seven intent rows, all tagged by the shipped page as
+possibly in the part not read. Claims remain independent. Long and short fixtures distinguish a
+truncated tail from a complete file after a silence; a changing file is unknown. Coverage changes
+no model prompt or verdict and spends no model calls. The owner marks and new-prompt checks
+remain pending.
