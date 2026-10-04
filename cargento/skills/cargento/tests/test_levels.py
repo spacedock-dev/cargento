@@ -69,7 +69,7 @@ def evidence(
     counts: Mapping[str, Any],
     *,
     directions: int = 0,
-    cwd: str = "",
+    cwd: str = "/synthetic/project",
 ) -> levels.Evidence:
     return levels.Evidence(
         facts=tuple(facts), scan=counts, unsettled_directions=directions, cwd=cwd

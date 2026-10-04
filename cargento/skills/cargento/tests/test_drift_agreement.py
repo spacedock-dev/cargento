@@ -467,6 +467,17 @@ console.log(JSON.stringify(nextCockpitSteerTrigger({failed:true,departed:false,c
         self.assertIn("ago", got)
         self.assertIn("failed", got)
 
+    def test_the_later_direction_question_keeps_the_daily_budget_beside_its_controls(self) -> None:
+        got = self.fixture("""
+nextData.annotate=true; nextData.reading={used:3,limit:12};
+const session={harness:"claude",sid:"s1",annotation_goal:"Tests pass",annotation_revision:1,annotation_window_start:50};
+const annotation={goal:"Tests pass",revision:1,window_start:50,at:50};
+const entries=[{id:"direction",type:"user_message",at:100,by:"you",author:"you",summary:"Keep the retry safe"}];
+console.log(JSON.stringify(nextCockpitDirectionQuestion(session,annotation,{state:"read",entries,all:entries},{},false)));
+""")
+        self.assertIn("Keep my intent", got)
+        self.assertIn("9 of 12 left today", got)
+
     def test_new_work_is_counted_after_the_reading_not_after_the_save(self) -> None:
         got = self.fixture("""
 const annotation={assessment:{read_at:100}};

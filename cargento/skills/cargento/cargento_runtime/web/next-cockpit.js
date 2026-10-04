@@ -5670,7 +5670,7 @@ function nextCockpitDirectionQuestion(session, annotation, source, model, primar
       ? `<p class="next-cockpit-reading-why" role="status">${esc(opened.error)}</p>` : "") +
     (answered ? `<p class="next-cockpit-reading-why"${request && request.announced ? ""
       : ' role="status"'}>${esc(answered)}</p>` : "") +
-    (annotation ? nextCockpitReadingCount(count) : "") +
+    (annotation ? nextCockpitReadingCount(count) : "") + nextReadingBudgetLine() +
     nextReadingRefusedLine(session, reason, request,
       edited ? {settling: false, inert: false, pressed: null} : board) +
     "</div>";
