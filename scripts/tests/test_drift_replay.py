@@ -613,11 +613,17 @@ class ATaggedReadKeepsTheEarlierRunsOutput(unittest.TestCase):
             self.assertEqual(before, Path(home.paths["read"]).read_text())
             self.assertFalse(Path(home.paths["plan"]).exists())
             # The real run must match the plan: a different selection is refused before any call.
+            # The destination is pinned, since a runner without the CLI refuses on that first.
             said.clear()
             other = f"{home.ids[-1]}:realistic"
-            self.assertEqual(
-                1, dr.read(home=str(s.home), tag="rerun", cases=(other,), say=said.append)
-            )
+            dr._runtime()  # puts cargento_runtime on the path
+            from cargento_runtime import reading_route  # noqa: PLC0415
+
+            with mock.patch.object(
+                reading_route, "destination", return_value=reading_route.VENDORS["claude"]
+            ):
+                code = dr.read(home=str(s.home), tag="rerun", cases=(other,), say=said.append)
+            self.assertEqual(1, code, said)
 
     def test_a_tagged_score_reads_its_own_file_and_leaves_unchosen_cuts_not_run(self) -> None:
         with _Session() as s:

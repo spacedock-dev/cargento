@@ -707,7 +707,12 @@ def _closed(paths: Mapping[str, str], bound: str) -> str:
 
 def _shown(path: str) -> str:
     """A path as the operator types it: relative to the repository where git can name it."""
-    return os.path.relpath(path, _ROOT) if _in_repository(path) else path
+    if not _in_repository(path):
+        return path
+    try:
+        return os.path.relpath(path, _ROOT)
+    except ValueError:  # Windows: another drive has no relative form (measured on CI)
+        return path
 
 
 def _in_repository(path: str) -> bool:
