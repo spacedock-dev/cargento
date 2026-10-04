@@ -128,7 +128,15 @@ class ChecksUseTheirShellsDirectory(ClaudeChecksTestCase):
                 self.assertEqual(
                     levels.HIGH,
                     levels.live_level(
-                        evidence(rows, counts),
+                        evidence(
+                            [
+                                project_context._semantic_fact_from_event(
+                                    row, row["kind"], "tool_report", ""
+                                )
+                                for row in rows
+                            ],
+                            counts,
+                        ),
                         levels.Intent(True, "Finish the work", ("Checks pass",)),
                     ).level,
                 )
@@ -152,7 +160,15 @@ class ChecksUseTheirShellsDirectory(ClaudeChecksTestCase):
                 self.assertEqual(
                     levels.NOT_ENOUGH,
                     levels.live_level(
-                        evidence(rows, counts),
+                        evidence(
+                            [
+                                project_context._semantic_fact_from_event(
+                                    row, row["kind"], "tool_report", ""
+                                )
+                                for row in rows
+                            ],
+                            counts,
+                        ),
                         levels.Intent(True, "Finish the work", ("Checks pass",)),
                     ).level,
                 )

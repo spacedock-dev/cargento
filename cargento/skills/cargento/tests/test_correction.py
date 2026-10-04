@@ -487,6 +487,19 @@ class CorrectionRouteTest(_App):
         for planted in ("INJECTED-COMMAND", "INJECTED-OUTPUT", "pytest"):
             self.assertNotIn(planted, text)
 
+    def test_a_person_outside_the_tail_still_anchors_the_http_correction(self) -> None:
+        self.save_goal()
+        self.session.bash("python3 -m unittest tests.test_retry", "1 failed", is_error=True)
+        call = self.session.call("Read", {"file_path": "src/a.py"})
+        self.session.result(call, "placeholder " * 500)
+        self.session.save(self.path)
+        object.__setattr__(self.config, "tail_bytes", 500)
+        with self.serving() as port:
+            status, answer = self.post(port, {"harness": "claude", "sid": SHORT})
+        self.assertEqual(200, status)
+        self.assertTrue(answer["ok"], answer)
+        self.assertIn("A check failed", words(answer["parts"]))
+
     def test_nothing_to_steer_from_and_an_unknown_session_answer_without_a_correction(self) -> None:
         self.save_goal()
         with self.serving() as port:

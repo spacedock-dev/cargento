@@ -2856,7 +2856,7 @@ def _check_coverage(
             tuple(digest(joiner.join(segments[:k])) for k in range(1, len(segments) + 1))
         )
     return {
-        "scope": digest("\0".join((directory, execution, worker))),
+        "scope": digest(f"{directory}\0{execution}\0{worker}"),
         "selectors": tuple(digest(word) for word in selectors),
         "ancestors": tuple(ancestors),
     }

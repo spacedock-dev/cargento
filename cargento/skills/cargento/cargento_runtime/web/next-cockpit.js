@@ -4444,12 +4444,12 @@ function nextFailedChecksAfterPerson(entries, anchor = null, floor = 0){
     nextReadingEvidenceAt(entry) > start);
 }
 
-function nextCockpitSteerTrigger(offer, shape, session, entries, numbers){
+function nextCockpitSteerTrigger(offer, shape, session, entries, numbers, scan = null){
   if(!offer) return "";
   const ids = offer.departed && shape ? shape.departures.flatMap(row => row.citedIds || [])
     : offer.claimed && shape ? shape.criteria.filter(row => row.key === NEXT_READING_CLAIMS)
       .flatMap(row => row.citedIds || []) : [];
-  const candidates = offer.failed && !ids.length ? nextCockpitFailedChecks(session,entries)
+  const candidates = offer.failed && !ids.length ? nextCockpitFailedChecks(session,entries,scan)
     : (entries || []).filter(entry => ids.includes(String(entry.id || "")));
   const fact = candidates.reduce((last, entry) => !last ||
     nextReadingEvidenceAt(entry) > nextReadingEvidenceAt(last) ? entry : last, null);
@@ -4480,8 +4480,8 @@ function nextReadingArrivedLine(annotation, entries){
   return parts.length ? `<p class="next-cockpit-reading-why">${esc(parts.join(", "))} arrived since this analysis.</p>` : "";
 }
 
-function nextCockpitFailedChecks(session, entries){
-  return nextFailedChecksAfterPerson(entries, null,
+function nextCockpitFailedChecks(session, entries, scan = null){
+  return nextFailedChecksAfterPerson(entries, scan && scan.last_user_at,
     nextNumber(session && session.annotation_window_start) || 0);
 }
 
@@ -4507,7 +4507,7 @@ function nextCockpitSteerOffer(session, annotation, source, shape){
      offers "Update intent instead" (review, PR C). */
   const claimed = current && shape.criteria.some(row => row.key === NEXT_READING_CLAIMS &&
     [NEXT_READING_DEPARTURE, NEXT_READING_UNSUPPORTED].includes(row.result));
-  const failed = nextCockpitFailedChecks(session, entries).length > 0;
+  const failed = nextCockpitFailedChecks(session, entries, source.scan).length > 0;
   return departed || claimed || failed ? {departed, claimed, failed} : null;
 }
 
@@ -4580,7 +4580,7 @@ function nextCockpitCorrectionIds(source){
 
 function nextCockpitCorrectionFailedIds(session, source){
   const read = source && (source.state === "read" || source.state === "empty");
-  return read ? nextCockpitFailedChecks(session, source.all || source.entries || [])
+  return read ? nextCockpitFailedChecks(session, source.all || source.entries || [], source.scan)
     .map(entry => String(entry.id || "")) : null;
 }
 
@@ -5225,7 +5225,7 @@ function nextCockpitReadingParts(session, annotation, entries, model, observed, 
     button: nextCockpitSteerButton(session,
       nextCockpitSteerPrimary(offer, Boolean(noReader), primary)) + update,
     box: nextCockpitSteerTrigger(offer,early,session,source.all || source.entries || [],
-      nextCockpitEntryNumbers(session,source)) + nextCockpitSteerBox(session, source)} : null;
+      nextCockpitEntryNumbers(session,source), source.scan) + nextCockpitSteerBox(session, source)} : null;
   /* Said once. The send disclosure already ends on the server's "never a
      verification that the work was done", so the page's own wording rides
      with what a reading is only where no disclosure was published. */
@@ -6134,7 +6134,7 @@ function nextDriftReasons(level, tokens, cites, entries, numbers, departing){
     const at = nextReadingEvidenceAt(fact);
     const age = at > 0 ? `${fmtDur(Math.max(0,(nextData && nextData.generated || 0)-at))} ago` : "time not recorded";
     const n = numbers.get(fid);
-    return `${String(fact.title || fact.summary || "A check")} failed ${age}${n != null ? ` at #${n}` : ""}${fact.before_last_change ? "; files changed after it" : "; no passing re-run recorded"}.`;
+    return `${String(fact.title || fact.summary || "A check")} failed ${age}${n != null ? ` at #${n}` : ""}${fact.beforeLastChange ? "; files changed after it" : "; no passing re-run recorded"}.`;
   };
   const finders = {
     "failed-check": entry => entry && entry.subject === "check" && entry.result === "failed",

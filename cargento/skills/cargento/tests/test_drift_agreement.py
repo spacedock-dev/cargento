@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import json
+import time
 import unittest
 from typing import Any
+from unittest import mock
 
 from cargento_runtime import correction, levels, reading
 
@@ -98,6 +100,10 @@ class AFailureBelongsToThePersonsLastTurn(unittest.TestCase):
             self.assertEqual(levels.NOT_ENOUGH, result.level)
             self.assertIn(levels.REASON_FAILED_CHECK, result.reasons)
 
+    def test_an_older_listed_failure_keeps_its_citation(self) -> None:
+        got = levels.live_level(self.facts(tier.SAVE - 5), tier.intent("Tests pass"))
+        self.assertIn("failed", got.cites)
+
     def test_a_failure_after_the_last_message_is_high_on_both_sources(self) -> None:
         facts = self.facts(tier.SAVE + 10)
         for result in (
@@ -148,6 +154,21 @@ class AFolderSignalNamesARecordedPlace(unittest.TestCase):
         got = levels.live_level(facts, tier.intent("Review feat/my-branch and web/ PR"))
         self.assertIsNone(got.writes_total)
         self.assertIn(levels.REASON_NO_FOLDER, got.reasons)
+
+    def test_unknown_or_relative_session_cwd_cannot_borrow_a_daemon_folder(self) -> None:
+        for cwd in ("", "relative"):
+            with (
+                self.subTest(cwd=cwd),
+                mock.patch("cargento_runtime.levels.os.path.isdir", return_value=True),
+            ):
+                facts = levels.Evidence(
+                    (tier.wrote("w", tier.SAVE + 1, "outside/a.py"),),
+                    tier.scan(written_paths=1),
+                    0,
+                    cwd,
+                )
+                got = levels.live_level(facts, tier.intent("Only touch scripts/"))
+                self.assertIsNone(got.writes_total)
 
     def test_a_folder_with_a_recorded_write_can_be_weighed_without_disk_access(self) -> None:
         facts = tier.evidence(
@@ -219,6 +240,14 @@ class ACorrectionNamesTheCurrentGap(unittest.TestCase):
         text = "".join(p if isinstance(p, str) else "{entry}" for p in result["parts"])
         self.assertIn("departed from my goal at T90", text)
         self.assertLess(text.index("departed"), text.index("can you show evidence"))
+
+    def test_an_older_correction_clock_includes_its_date(self) -> None:
+        today = time.struct_time((2026, 10, 5, 12, 0, 0, 0, 278, -1))
+        older = time.struct_time((2026, 10, 4, 9, 15, 0, 6, 277, -1))
+        with mock.patch("cargento_runtime.correction.time.localtime", side_effect=[older, today]):
+            self.assertEqual("2026-10-04 09:15", correction.clock_text(1))
+        with mock.patch("cargento_runtime.correction.time.localtime", side_effect=[today, today]):
+            self.assertEqual("12:00", correction.clock_text(1))
 
     def test_an_unconfirmed_consistent_line_names_the_sessions_account(self) -> None:
         result = self.compose(
@@ -339,6 +368,58 @@ console.log(JSON.stringify({{answer:nextDriftAnswer(shape,entries).kind,
                 self.assertEqual(fresh, page["correction"])
                 self.assertEqual("failed-check" if fresh else "nothing-found", page["answer"])
 
+    def test_a_person_anchor_outside_the_fact_tail_keeps_all_four_readers_in_agreement(
+        self,
+    ) -> None:
+        facts = [{**tier.check("failed", tier.SAVE + 1, "failed"), "source_session": claims.SID}]
+        scan = tier.scan(failed=1, last_user_at=tier.SAVE)
+        evidence = tier.evidence(facts, scan)
+        self.assertEqual(levels.HIGH, levels.live_level(evidence, tier.intent("Tests pass")).level)
+        self.assertEqual(levels.HIGH, tier.analyze(tier.SUPPORTED, evidence).level)
+        composed = correction.compose(
+            {
+                **claims.SID,
+                "annotation_goal": "Tests pass",
+                "annotation_window_start": tier.SAVE - 10,
+            },
+            facts,
+            floor=0,
+            lines_judged=True,
+            person_at=tier.SAVE,
+        )
+        self.assertTrue(composed["ok"])
+        out = self.fixture(f"""
+nextData.annotate=true;
+const session={{harness:"claude",sid:"s1",annotation_window_start:{tier.SAVE - 10},annotation_goal:"Tests pass",annotation_revision:1}};
+const annotation={{goal:"Tests pass",revision:1}};
+const entries=nextCockpitWorkEntries(session,{{facts:{json.dumps(facts)}}});
+const source={{state:"read",entries,all:entries,scan:{json.dumps(scan)}}};
+const shape={{criteria:[{{key:"line_1",result:NEXT_READING_CONSISTENT,restsOn:true}}],windowStart:{tier.SAVE - 10}}};
+const offer=nextCockpitSteerOffer(session,annotation,source,null);
+console.log(JSON.stringify({{answer:nextDriftAnswer(shape,entries,source.scan).kind,offer,
+  ids:nextCockpitCorrectionFailedIds(session,source),
+  trigger:nextCockpitSteerTrigger(offer,null,session,entries,new Map([["failed",1]]),source.scan)}}));
+""")
+        self.assertEqual("failed-check", out["answer"])
+        self.assertTrue(out["offer"]["failed"])
+        self.assertEqual(["failed"], out["ids"])
+        self.assertIn("Check failed at #1", out["trigger"])
+
+    def test_the_mapped_failure_reason_says_files_changed_when_they_did(self) -> None:
+        fact = {
+            **tier.check("aged", 140, "failed"),
+            "source_session": claims.SID,
+            "before_last_change": True,
+        }
+        out = self.fixture(f"""
+nextData.generated=200;
+const session={{harness:"claude",sid:"s1"}};
+const entries=nextCockpitWorkEntries(session,{{facts:{json.dumps([fact])}}});
+console.log(JSON.stringify(nextDriftReasons("medium",["failed-check"],["aged"],entries,new Map([["aged",1]]),new Set())));
+""")
+        self.assertIn("files changed after it", out["first"])
+        self.assertNotIn("no passing re-run", out["first"])
+
     def test_a_goal_only_answer_cannot_become_a_failed_check_answer(self) -> None:
         out = self.fixture("""
 const entries=[{type:"user_message",id:"p",at:10},
@@ -349,6 +430,17 @@ console.log(JSON.stringify(nextDriftAnswer({criteria:[{key:"goal",result:NEXT_RE
 
 
 class TheButtonNamesTheEvidenceAndBudget(ThePageKeepsAClaimSecondary):
+    def test_not_enough_analysis_does_not_hide_the_live_high_pill(self) -> None:
+        got = self.fixture("""
+const session={harness:"claude",sid:"s1",annotation_goal:"Tests pass",annotation_revision:1};
+const annotation={goal:"Tests pass",revision:1};
+const live={level:"high",label:"High",reasons:{first:"Check failed",blockers:[]}};
+const analysis={level:"not_enough",label:"Not enough recorded yet",reasons:{first:"",blockers:[]}};
+console.log(JSON.stringify(nextDriftLevel(session,annotation,null,live,analysis)));
+""")
+        self.assertIn('next-session-drift-level">High', got)
+        self.assertNotIn('next-session-drift-level">Not enough', got)
+
     def test_the_daily_budget_distinguishes_unknown_from_measured_zero(self) -> None:
         got = self.fixture("""
 nextData.reading={used:4,limit:12};

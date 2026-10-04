@@ -279,7 +279,9 @@ class APiCheckReachesTheLevelsAndTheReadingRules(PiRecord):
         got = levels.analysis_level(
             row,
             levels.Evidence(
-                facts=tuple(facts), scan={"last_user_at": AT_EPOCH - 1}, unsettled_directions=0
+                facts=tuple({**fact, "type": "tool_report"} for fact in facts),
+                scan={"last_user_at": AT_EPOCH - 1},
+                unsettled_directions=0,
             ),
             outcome_lines=1,
         )

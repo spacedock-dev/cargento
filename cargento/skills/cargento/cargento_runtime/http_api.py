@@ -442,16 +442,7 @@ def _analysis_levels(
         and (fact["source_session"].get("harness"), fact["source_session"].get("sid"))
         == (harness, sid)
     )
-    work = (context.get("sources") or {}).get("work") or {}
-    scans = work.get("tool_reports") if isinstance(work, dict) else None
-    scan = next(
-        (
-            s
-            for s in (scans if isinstance(scans, list) else [])
-            if isinstance(s, dict) and s.get("harness") == harness and s.get("sid") == sid
-        ),
-        {},
-    )
+    scan = _scan_of(context, harness, sid)
     evidence = levels.Evidence(mine, scan, correction.unsettled_directions(row, facts, floor=floor))
     level = levels.analysis_level(
         assessment,
@@ -518,6 +509,20 @@ def _press_content(harness: str) -> int:
         reading_policy.CONTENT_VERSION
         if harness in runtime_project_context.AGENT_MESSAGE_HARNESSES
         else reading_policy.WORDS_CONTENT_VERSION
+    )
+
+
+def _scan_of(context: dict[str, Any], harness: str, sid: str) -> dict[str, Any]:
+    """The full-scan metadata for this session, beside its bounded fact ledger."""
+    work = (context.get("sources") or {}).get("work") or {}
+    scans = work.get("tool_reports") if isinstance(work, dict) else None
+    return next(
+        (
+            s
+            for s in (scans if isinstance(scans, list) else [])
+            if isinstance(s, dict) and s.get("harness") == harness and s.get("sid") == sid
+        ),
+        {},
     )
 
 
@@ -2427,9 +2432,11 @@ class _RequestHandler(BaseHTTPRequestHandler):
                 annotation_store.active(config, application.state), str(harness), str(sid)
             )
             route = runtime_reading_route.resolve(str(harness))
+            context = _session_context(self.server.application, row)
             answer = correction.compose(
                 row,
-                self._session_facts(row),
+                _facts_of(context),
+                person_at=_scan_of(context, str(harness), str(sid)).get("last_user_at"),
                 floor=annotation_store.direction_floor(entry, row),
                 # The agent's messages carry a line verdict where no check can be sent
                 # (owner ruling, 2026-10-03), as the page's `nextReadingOutputLimit` says.

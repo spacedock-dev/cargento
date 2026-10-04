@@ -444,8 +444,11 @@ server. With it on, a Claude Code session's page shows a live estimate (None or 
 Extreme, or Not enough recorded yet), labelled `Live estimate` with the time it was computed and
 worked out after every turn from the recorded checks and written paths against your saved intent,
 with no model call. It says where it last rose ("Rose from Medium at #12"), recomputed each time and
-never stored, adds a nudge to analyze at High, and shows the level in the page header beside the
-entry count. Over an unsaved draft it reads "Save your intent to see a live estimate" and there is no
+never stored, adds a nudge to analyze only for a cited High signal after your last message, and shows the level in the page header beside the
+entry count. An older failure blocks None or low and keeps its name and age; a failure followed
+by file writes reads Medium at most until a re-run. A broader explicit passing run can retire a
+covered failure in the same directory and execution context. A folder counts only when it exists
+in the session's known working directory or holds a recorded write. Over an unsaved draft it reads "Save your intent to see a live estimate" and there is no
 pill. It never appears on a Sessions row, raises no notification, and never feeds the unasked lane.
 Drift marks show departures already on record, from a
 reader-requested reading or the optional unasked lane. With nothing typed the block says there is nothing to read against; with the observer
@@ -468,9 +471,10 @@ board, so a reload or another tab shows the same analysis at the same step, and 
 starts nothing. The result, or why there is none, replaces the box when it is stored; an analysis
 a stop or restart cut short is recorded as an interrupted attempt. On a Claude Code session the
 result shows the analysis level (worked out again from the stored reading on every view, never
-stored, never on a row) with its time, then the answer: "Departs from your intent" with a count and
-each departure's own account under a departure, otherwise a failed check in the window, "Can't
-tell", or "Nothing found against what it read". Each line reads "Departs at #n", "Consistent with
+stored, never on a row) with its time. Not enough recorded yet leaves a live level in view.
+The answer follows: "Departs from your intent" with a count and
+each departure's own account under a departure, otherwise a failed check after your last message,
+"Can't tell", or "Nothing found against what it read". Each line reads "Departs at #n", "Consistent with
 #n, as the tool reported; not inspected", "Consistent with what the agent said at #n; not a
 check" where it rests on the agent's messages alone, "Consistent with what the session said at #n;
 not a check" or "Can't tell", never "Done". A line may depart, or read consistent, on one of the
@@ -486,12 +490,19 @@ or file writes went unread), "is shown at #m" or "Can't tell", and is not
 drawn when there was no claim. A check that failed before the claim does not contradict it once
 the agent ran the same tool again before claiming, with no failure in that run or an earlier one of it,
 naming nothing after the tool but flags or `.`; the working directory is not recorded. A
-contradicted or unshown claim reads Medium, is never counted as a departure from your intent, is
-not held back by an unsettled later direction, and adds one line to Steer back: `You said "<its
-first sentence>" at 14:02 (#12 in Cargento); the record does not show it.`, or, contradicted,
-`...; the record shows otherwise at 14:05 (#13).` "Where the work went" groups the written files by folder. A
+contradicted claim reads Medium. An unshown claim blocks None or low without raising Medium.
+Neither is counted as a departure from your intent or held back by an unsettled later direction.
+A withdrawn claim draws no row. A claim alone offers Steer back as a secondary evidence request:
+`Can you show evidence for "<its first sentence>" at 14:02 (#12 in Cargento)?`, or, contradicted,
+`You said "<its first sentence>" at 14:02 (#12 in Cargento); the record shows otherwise at 14:05 (#13).`
+Short titles and bare URLs are not quoted in the correction. "Where the work went" groups the written files by folder. A
 result says when your intent changed after it or new work arrived since, with "Analyze again", and
-"Not accurate?" marks the reading with a token that is stored beside it and never sent or counted.
+"Not accurate?" marks the reading with a token that is stored beside it and never sent or counted;
+that reading no longer contributes to the level or Steer back until you clear the mark. A later
+direction alone offers no correction. A correction puts departures and failed checks first, dates
+a time from an earlier day, and asks for evidence where an outcome is not shown. Its button names
+the triggering entry and age; the daily reading budget remains beside the control, and What it
+read counts new work since the analysis.
 The box offers Cancel, which stops the call and records a cancelled attempt that still counts, or one that spent nothing when it landed before anything was sent. A failed request says its result could
 not be confirmed and is never retried automatically. The counter reports recorded model requests, so a refusal before the model runs
 does not increase it.

@@ -122,9 +122,13 @@ def unsettled_directions(
     return len(_unsettled(row, _later_directions(_own(row, facts), floor)))
 
 
-def _failed_checks(facts: list[dict[str, Any]], window: float) -> list[dict[str, Any]]:
+def _failed_checks(
+    facts: list[dict[str, Any]], window: float, person_at: float | None
+) -> list[dict[str, Any]]:
     """One boundary with the levels: after the person's last recorded message."""
-    return [dict(f) for f in reading.failed_checks_after_person(facts, floor=window)]
+    return [
+        dict(f) for f in reading.failed_checks_after_person(facts, anchor=person_at, floor=window)
+    ]
 
 
 def _reading_window(assessment: Mapping[str, Any]) -> float:
@@ -419,6 +423,7 @@ def compose(
     floor: float | None,
     lines_judged: bool,
     clock: Callable[[float], str] = clock_text,
+    person_at: float | None = None,
 ) -> dict[str, Any]:
     """The correction for one session, or why there is none.
 
@@ -438,7 +443,7 @@ def compose(
     later = _later_directions(own, floor)
     unsettled = bool(_unsettled(row, later))
     window = reading.valid_prompt_time(row.get("annotation_window_start")) or 0.0
-    failed = _failed_checks(own, window)
+    failed = _failed_checks(own, window, person_at)
     rows = _current_rows(row, own, unsettled=unsettled, lines_judged=lines_judged)
 
     def at(fact: Mapping[str, Any]) -> str:

@@ -328,7 +328,7 @@ def live_level(evidence: Evidence, intent: Intent) -> Level:
     folders = tuple(
         folder
         for folder in named_folders(intent, evidence.cwd)
-        if os.path.isdir(os.path.join(evidence.cwd, folder))
+        if (os.path.isabs(evidence.cwd) and os.path.isdir(os.path.join(evidence.cwd, folder)))
         or any(inside(str(f.get("summary") or ""), (folder,)) for f in _writes(evidence))
     )
     share = _folder_share(evidence, folders) if folders else None
@@ -360,7 +360,9 @@ def live_level(evidence: Evidence, intent: Intent) -> Level:
     else:
         blockers = _live_floor_blockers(evidence, passes)
         reasons.extend(blockers or [REASON_FLOOR_MET])
-        cites.extend(_ids(passes))
+        cites.extend(
+            _ids([*passes, *(f for f in checks if f.get("result") == reading.RESULT_FAILED)])
+        )
         level = NOT_ENOUGH if blockers else NONE_OR_LOW
     return Level(
         level,
