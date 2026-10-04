@@ -720,9 +720,10 @@ class CorrectionRoundTest(unittest.TestCase):
             [wrote("w1", SAVE + 5, "src/app.py"), check("c1", SAVE + 20, "passed")],
             scan(passed=1, written_paths=1),
         )
-        self.assertEqual(
-            levels.live_level(facts, intent("Only touch `.github/`")).level, levels.HIGH
-        )
+        with mock.patch("cargento_runtime.levels.os.path.isdir", return_value=True):
+            self.assertEqual(
+                levels.live_level(facts, intent("Only touch `.github/`")).level, levels.HIGH
+            )
 
     def test_l9_an_absolute_folder_inside_the_cwd_places_relative_writes(self) -> None:
         facts = evidence(
