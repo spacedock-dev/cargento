@@ -108,6 +108,7 @@ def _paths(home: str) -> dict[str, str]:
         "live": os.path.join(base, "live.json"),
         "read": os.path.join(base, "read.json"),
         "plan": os.path.join(base, "plan.json"),
+        "current": os.path.join(base, "current-intents.json"),
     }
 
 
@@ -721,7 +722,7 @@ def report(*, home: str, say: Callable[[str], Any] = print) -> int:
 # The Analyze tier's spend: authorized by the owner on 2026-10-03 for this check ("I authorize the
 # spend for the analyze tier"), bounded here, charged on this tool's own fixed-path ledger.
 MAX_CALLS = 240
-ARMS = ("realistic", "part", "hindsight")
+ARMS = ("realistic", "part", "hindsight", "adopted", "current")
 _SETTLE_EXTRA = 1.0
 
 
@@ -778,25 +779,61 @@ def cut_session(project_context: Any, transcript: str, sid: str, until: float, i
 
 @dataclass
 class Intent:
-    """One intent arm: the goal saved, when, and where it came from."""
+    """One intent arm: the goal and lines saved, when, the window they open, and their source."""
 
     arm: str
     goal: str
     at: float
+    lines: tuple[str, ...] = ()
+    window_start: float | None = None
+    source: str = ""
+
+    def revision(self) -> dict[str, Any]:
+        """The saved revision a press would read, as `reading.produce` takes it."""
+        body: dict[str, Any] = {
+            "n": 1,
+            "at": self.at,
+            "goal": self.goal,
+            "lines": list(self.lines),
+            "window_start": self.window_start if self.window_start is not None else self.at,
+        }
+        if self.source:
+            body.update(goal_source=self.source, goal_source_at=self.at)
+        return body
 
 
-def intents(case: Mapping[str, Any], messages: list[Message], annotation: str) -> list[Intent]:
-    """The arms, built only from words dated before the cut.
+def intents(
+    case: Mapping[str, Any],
+    messages: list[Message],
+    annotation: str,
+    current: Mapping[str, Any] | None = None,
+) -> list[Intent]:
+    """The arms, built only from words dated before the cut, but for hindsight.
 
-    realistic: the person's opening prompt, saved once when it was typed (what "Use your prompt"
-    adopts). part: the message that opened the annotated part holding this cut, when it precedes the
-    cut. hindsight: the goal the annotation wrote afterwards, an upper bound and never a headline.
+    realistic: the person's opening prompt, saved once when it was typed, as typed words.
+    adopted: the same prompt adopted with "Use your prompt", so the producer may read it whole.
+    part: the message that opened the annotated part holding this cut, when it precedes the cut.
+    hindsight: the goal the annotation wrote afterwards, an upper bound and never a headline.
+    current: a goal and outcome lines drafted, blind, from the person's own messages before the
+    cut, as a person keeping their intent up to date would (`current-intents.json`).
     """
     cut = float(case["cut"])
     typed = [m for m in messages if m.role == "you" and not m.text.startswith("/") and m.at <= cut]
     found: list[Intent] = []
     if typed:
         found.append(Intent("realistic", typed[0].text[:240], typed[0].at))
+        found.append(Intent("adopted", typed[0].text[:240], typed[0].at, source="first-prompt"))
+    drafted = (current or {}).get(str(case["id"]))
+    if isinstance(drafted, dict) and str(drafted.get("goal") or "").strip():
+        found.append(
+            Intent(
+                "current",
+                str(drafted["goal"])[:240],
+                float(drafted["at"]),
+                tuple(str(line)[:240] for line in drafted.get("lines") or ())[:6],
+                window_start=float(drafted.get("window_start") or drafted["at"]),
+            )
+        )
     found_parts = parts(annotation)
     pushed = [
         int(e["part"]) for e in case.get("events") or () if isinstance(e, dict) and "part" in e
@@ -860,7 +897,10 @@ def _row(sid: str, intent: Intent, cut: float) -> dict[str, Any]:
         "ended_at": None,
         "annotation_revision": 1,
         "annotation_goal": intent.goal,
-        "annotation_window_start": intent.at,
+        "annotation_window_start": intent.window_start
+        if intent.window_start is not None
+        else intent.at,
+        **{f"annotation_line_{k}": line for k, line in enumerate(intent.lines, 1)},
     }
 
 
@@ -931,6 +971,7 @@ def live(*, home: str, source: str | None = None, say: Callable[[str], Any] = pr
     config, project_context, live_estimate, correction, _reading = _runtime()
     src = source or str(body.get("source") or "fixtures")
     out: dict[str, Any] = {}
+    current = lc._load(paths["current"]).get("intents") or {}  # noqa: SLF001
     scratch = os.path.join(paths["dir"], "scratch")
     for case in body["cases"]:
         sid, cut = str(case["sid"]), float(case["cut"])
@@ -949,7 +990,7 @@ def live(*, home: str, source: str | None = None, say: Callable[[str], Any] = pr
             continue
         start = _drift_start(case, messages)
         arms: dict[str, Any] = {}
-        for intent in intents(case, messages, annotation):
+        for intent in intents(case, messages, annotation, current):
             row = _row(sid, intent, cut)
             level = live_estimate.for_session(
                 config, row, path, facts, floor=intent.at, now=cut + _SETTLE_EXTRA
@@ -1187,6 +1228,7 @@ def _read_cases(  # noqa: PLR0913 - every input of one pass, named
     from cargento_runtime import observer, reading_route  # noqa: PLC0415
 
     scratch = os.path.join(paths["dir"], "scratch-read")
+    current = lc._load(paths["current"]).get("intents") or {}  # noqa: SLF001
     calls = 0
     for case in body["cases"]:
         sid, cut = str(case["sid"]), float(case["cut"])
@@ -1203,7 +1245,7 @@ def _read_cases(  # noqa: PLR0913 - every input of one pass, named
         except Exception as error:  # noqa: BLE001
             done.setdefault(case["id"], {})["refused"] = type(error).__name__
             continue
-        for intent in intents(case, messages, annotation):
+        for intent in intents(case, messages, annotation, current):
             if intent.arm not in arms or (done.get(case["id"]) or {}).get(intent.arm):
                 continue
             tool_output = reading.ToolOutput(
@@ -1217,15 +1259,7 @@ def _read_cases(  # noqa: PLR0913 - every input of one pass, named
             assessment, why, _spent = reading.produce(
                 config,
                 _row(sid, intent, cut),
-                [
-                    {
-                        "n": 1,
-                        "at": intent.at,
-                        "goal": intent.goal,
-                        "lines": [],
-                        "window_start": intent.at,
-                    }
-                ],
+                [intent.revision()],
                 facts,
                 now=cut + float(getattr(config, "reading_settle_sec", 8.0)) + _SETTLE_EXTRA,
                 stamp_text=f"{observer.CLAUDE_READING_MODEL} · drift replay",

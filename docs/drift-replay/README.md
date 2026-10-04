@@ -59,12 +59,16 @@ python3 scripts/drift_replay.py --score
 
 ## The intent arms
 
-Each cut is read three times, once per intent. The first two are your own words, dated before the
+Each cut is read once per intent arm. The first two are your own words, dated before the
 cut; the third is written afterwards on purpose.
 
 - realistic: your opening prompt, saved when you typed it, which is what "Use your prompt" adopts.
 - part: the first message you typed in the annotated part the cut belongs to.
 - hindsight: the goal the annotation wrote afterwards. An upper bound, never a headline.
+- adopted: the opening prompt taken with "Use your prompt", so the producer knows its source.
+- current: a goal and up to three outcome lines drafted from your own messages before the cut, by
+  agents shown nothing the session's agent said, as if you kept your intent up to date. They live in
+  `~/.cargento/drift-replay/current-intents.json`, with the time they would have been saved.
 
 ## How to argue with a result
 

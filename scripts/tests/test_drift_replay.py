@@ -210,6 +210,46 @@ class TheKeyIsReadFromTheCommittedAnnotation(unittest.TestCase):
         self.assertEqual((part.opening, part.goal), (1, "Build the importer only."))
 
 
+class TheIntentArms(unittest.TestCase):
+    def _messages(self) -> list[dr.Message]:
+        with _Session() as s:
+            return dr.conversation(str(s.log))
+
+    def test_adopted_is_the_opening_prompt_marked_as_adopted(self) -> None:
+        found = {
+            i.arm: i for i in dr.intents({"id": "x", "cut": _at(7)}, self._messages(), ANNOTATION)
+        }
+        self.assertEqual(found["adopted"].goal, found["realistic"].goal)
+        self.assertEqual(found["adopted"].revision()["goal_source"], "first-prompt")
+        self.assertNotIn("goal_source", found["realistic"].revision())
+
+    def test_current_comes_from_the_drafted_file_with_its_lines_and_window(self) -> None:
+        drafted = {
+            "x": {
+                "goal": "Only the importer.",
+                "lines": ["exporter untouched"],
+                "at": 4.0,
+                "window_start": 3.0,
+            }
+        }
+        found = {
+            i.arm: i
+            for i in dr.intents({"id": "x", "cut": _at(7)}, self._messages(), ANNOTATION, drafted)
+        }
+        revision = found["current"].revision()
+        self.assertEqual(
+            (revision["lines"], revision["window_start"]), (["exporter untouched"], 3.0)
+        )
+        row = dr._row(SID, found["current"], _at(7))
+        self.assertEqual(row["annotation_line_1"], "exporter untouched")
+
+    def test_no_drafted_intent_means_no_current_arm(self) -> None:
+        found = {
+            i.arm for i in dr.intents({"id": "y", "cut": _at(7)}, self._messages(), ANNOTATION, {})
+        }
+        self.assertNotIn("current", found)
+
+
 class EveryCutHasItsRoles(unittest.TestCase):
     def test_pushback_before_drift_after_fix_and_ordinary_cuts(self) -> None:
         with _Session():
