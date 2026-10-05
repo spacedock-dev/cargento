@@ -1994,6 +1994,9 @@ def _read_cases(  # noqa: PLR0913 - every input of one pass, named
             annotation = handle.read()
         here = os.path.join(scratch, case["id"])
         path = cut_session(project_context, transcript, sid, cut, here)
+        # The cut file's version, taken before its facts are read, as the press stamps its
+        # source before the context: the newest-final lookup refuses a file that changed since.
+        cut_stamp = project_context.transcript_stamp(path)
         try:
             facts, press = facts_at(
                 config, project_context, path, sid, cut, include_history=include_history
@@ -2038,6 +2041,13 @@ def _read_cases(  # noqa: PLR0913 - every input of one pass, named
                 goal_source_lookup=source_facts.copy,
                 person_source_lookup=lambda wanted, path=path, sid=sid: (
                     project_context.transcript_window_words(config, path, "claude", sid, wanted)
+                ),
+                # The press's own lookup, under this cut's version: a replay that simulated
+                # eligibility with another implementation would measure a producer nobody ships.
+                final_source_lookup=lambda wanted, path=path, sid=sid, stamp=cut_stamp: (
+                    project_context.transcript_newest_final_words(
+                        config, path, "claude", sid, wanted, expected_stamp=stamp
+                    )
                 ),
                 now=cut + float(getattr(config, "reading_settle_sec", 8.0)) + _SETTLE_EXTRA,
                 stamp_text=f"{config.claude_reading_model} · drift replay",

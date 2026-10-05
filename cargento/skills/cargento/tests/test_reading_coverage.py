@@ -253,6 +253,8 @@ class TheCutoffNamesKindsAndOmissions(unittest.TestCase):
             },
         )
         text += reading._goal_note(adopted=True, source=None, goal="Saved excerpt", whole=False)
+        # The longest note `produce` appends after it, for a final reply that stayed an excerpt.
+        text += max(reading._FINAL_NOTES.values(), key=len)
         self.assertLessEqual(len(text), reading.CUTOFF_CAP_CHARS)
         for words in (
             "message tail",
@@ -395,7 +397,7 @@ class TheReadingCarriesMeasuredCoverage(producer.AClaudeCodeReadingProducer):
             got["coverage"],
         )
 
-    def test_the_complete_cutoff_keeps_tail_source_and_grant_loss_under_640_characters(
+    def test_the_complete_cutoff_keeps_tail_source_and_grant_loss_inside_the_store_bound(
         self,
     ) -> None:
         facts = [

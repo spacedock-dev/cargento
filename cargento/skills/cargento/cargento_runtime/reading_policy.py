@@ -60,13 +60,19 @@ DESTINATION_MOVED = "destination-changed"
 # the first press after asks once more (review, 2026-10-03). Raise it whenever
 # the disclosure names a new class of content.
 #
+# 3 is the agent's newest final reply sent whole (owner amendment, 2026-10-05): where a
+# Claude Code transcript records a message as ending its turn and the whole of it fits
+# 4,096 bytes of the prompt, that reply goes in full rather than as its first 1,000
+# characters. The agent's other messages keep the 1,000, and nothing is added from a shell or
+# an MCP tool, so an Allow from 2 does not cover the longer reply and asks once more.
+#
 # Required only of a press on a route that can carry the agent's words: a
 # Claude Code session, read by Claude Code or by Codex. A press on another
 # harness, and the unasked lane, which never sends them, read at
 # `WORDS_CONTENT_VERSION`, so an Allow from before the bump still covers them
 # (final review, 2026-10-03). The version is stored with the destination it
 # was given for, and covers only while that is still the bound destination.
-CONTENT_VERSION = 2
+CONTENT_VERSION = 3
 WORDS_CONTENT_VERSION = 1
 CONTENT_CHANGED = "What a reading sends has changed since you allowed this, so allow it again."
 

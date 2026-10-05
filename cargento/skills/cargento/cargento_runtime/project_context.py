@@ -69,6 +69,19 @@ MAX_PRIMARY_ACTIVITY_NODES = 5
 MAX_PRIMARY_STEERING_NODES = 3
 SEMANTIC_HISTORY_HORIZON_SEC = 24 * 60 * 60
 SEMANTIC_BACKFILL_MAX_BYTES = 32 * 1024 * 1024
+# The newest-final lookup reads recent source only, never more than the other press-only
+# lookups, and refuses an assistant record too large to be a reply that could fit the prompt:
+# a whole reply must fit the 4,096-byte agent share, so a megabyte-scale record never could.
+FINAL_WORDS_SCAN_MAX_BYTES = SEMANTIC_BACKFILL_MAX_BYTES
+FINAL_WORDS_RECORD_MAX_BYTES = 1024 * 1024
+FINAL_WORDS_STOP_REASON = "end_turn"
+_ASSISTANT_TYPE_RE = re.compile(rb'"type"\s*:\s*"assistant"')
+# The most a candidate's whole words may hold in memory: the reading's prompt cap
+# (`observer.OBSERVER_MODEL_MAX_PROMPT_BYTES`) counts bytes and a character is at least one,
+# so a reply past it could never fit. It is named apart so a candidate that long is recognised
+# without being kept. And the most assistant UUIDs one scan tracks for conflicting duplicates.
+FINAL_WORDS_MAX_CHARS = 16_384
+FINAL_WORDS_UUIDS_MAX = 100_000
 WORKFLOW_DISCOVERY_TIMEOUT_SEC = 2.0
 WORKFLOW_DISCOVERY_CACHE_SEC = 30.0
 WORKFLOW_DISCOVERY_MAX_BYTES = 64 * 1024
@@ -4626,6 +4639,187 @@ def transcript_window_words(
     if transcript_stamp(path) != before:
         return []
     return [fact for key, (_, fact) in found.items() if key not in ambiguous]
+
+
+def _final_signature(record: dict[str, Any]) -> bytes:
+    """A pre-mask fingerprint of every field that decides whether a reply is final.
+
+    Stop reason, model, time, session and the child markers ride with the content, so two
+    records sharing a UUID but differing in any of them conflict, and equal masked words
+    cannot hide it. Sixteen bytes of the digest, because one is held per assistant UUID.
+    """
+    message = records.message_dict(record)
+    shape = {
+        "content": message.get("content"),
+        "stop": message.get("stop_reason"),
+        "model": message.get("model"),
+        "at": record.get("timestamp"),
+        "sid": record.get("sessionId"),
+        "side": record.get("isSidechain"),
+        "meta": record.get("isMeta"),
+        "child": record.get("agentId"),
+    }
+    return hashlib.sha256(
+        json.dumps(shape, sort_keys=True, ensure_ascii=False, default=str).encode(
+            "utf-8", "replace"
+        )
+    ).digest()[:16]
+
+
+def _agent_whole_words(record: dict[str, Any], size: int) -> str | None:
+    """A reply's text whole, as `_agent_message_event` reads it: one line, masked, unclipped.
+
+    The same masking and spacing as the 1,000-character excerpt, so the excerpt is the
+    start of these words. `size` is the record's own byte length, a bound its text cannot
+    pass. None where the words are longer than `FINAL_WORDS_MAX_CHARS`, which no prompt
+    could carry, so a reply that long is never copied.
+    """
+    full = observer.parse_message_record(record, cap=size)
+    if full is None or len(full["text"]) > FINAL_WORDS_MAX_CHARS * 2:
+        return None
+    words = records.safe_text(
+        " ".join(records.mask_prose(full["text"]).split()), FINAL_WORDS_MAX_CHARS + 1
+    )
+    return words if len(words) <= FINAL_WORDS_MAX_CHARS else None
+
+
+def _final_status(record: dict[str, Any], sid: str, uuid: Any) -> str:
+    """`final` for a recorded end of turn, `nonfinal` for another recorded stop, else `refused`.
+
+    Only the record's own `message.stop_reason` says a turn ended: text with no tool block, a
+    quiet session and a newer timestamp are each how a mid-turn message looks.
+    """
+    if (
+        not isinstance(uuid, str)
+        or not uuid
+        or record.get("sessionId") != sid
+        or record.get("isSidechain")
+        or record.get("isMeta")
+        or record.get("agentId")
+    ):
+        return "refused"
+    stop = records.message_dict(record).get("stop_reason")
+    if stop == FINAL_WORDS_STOP_REASON:
+        return "final"
+    return "nonfinal" if isinstance(stop, str) and stop else "refused"
+
+
+def transcript_newest_final_words(  # noqa: C901, PLR0911, PLR0912, PLR0915 - one bounded scan and its source guards
+    config: RuntimeConfig,
+    path: str,
+    harness: str,
+    sid: str,
+    wanted: Sequence[Mapping[str, Any]],
+    *,
+    expected_stamp: tuple[int, int, int, int] | None = None,
+) -> dict[str, Any]:
+    """The newest selected recorded final reply, whole, as private press-only words.
+
+    `wanted` is the selection the model is about to receive, so a record outside it is never
+    restored. A reply qualifies only on its own recorded `end_turn`, and only when it is the
+    unique newest such reply among the selected rows with no newer selected row the source
+    cannot prove non-final. The expected stamp is the source version the press read its facts
+    from; the file must match it before the scan and still after. The scan is memory-only,
+    newest first, capped at `FINAL_WORDS_SCAN_MAX_BYTES`; nothing is cached or kept.
+
+    The result names no path, session or source fingerprint: only an outcome token, the
+    row's own identity and, on success, the words. Why whole words and why only this one:
+    docs/design-reading-a-session.md#amended-2026-10-05-owner-the-newest-recorded-final-reply-is-read-whole
+    """
+    rows = {
+        (str(entry.get("id")), entry.get("at")): entry
+        for entry in wanted
+        if entry.get("type") == "agent_message" and entry.get("author") == "agent"
+    }
+    if harness not in AGENT_MESSAGE_HARNESSES or not rows:
+        return {"outcome": "none"}
+    before = transcript_stamp(path)
+    if before is None or expected_stamp is None or before != expected_stamp:
+        return {"outcome": "source-moved"}
+    oldest_wanted = min((float(at) for _, at in rows if isinstance(at, int | float)), default=0.0)
+    # Words are None for a candidate too long for any prompt: still a final, never a copy.
+    found: dict[tuple[str, Any], tuple[str, str, str | None]] = {}
+    signatures: dict[str, bytes] = {}
+    conflicted: set[str] = set()
+    oldest_seen: float | None = None
+    try:
+        for raw in runtime_io.reverse_lines(
+            config, path, end_pos=before[2], max_bytes=FINAL_WORDS_SCAN_MAX_BYTES
+        ):
+            # A line that never names the type is not a reply, so most of 32 MiB of tool
+            # results is skipped unparsed. An oversized reply is refused, never skipped.
+            if b'"assistant"' not in raw:
+                continue
+            if len(raw) > FINAL_WORDS_RECORD_MAX_BYTES:
+                # Conservatively withhold on an unescaped assistant type marker rather
+                # than decode an oversized record. Quoted artifact JSON escapes it.
+                if _ASSISTANT_TYPE_RE.search(raw):
+                    return {"outcome": "oversized"}
+                continue
+            record = _json_dict(raw)
+            if record is None or record.get("type") != "assistant":
+                continue
+            # Only replies mark how far back the scan got: that is the claim a wanted
+            # reply has no older copy in what was read.
+            at = _record_timestamp(record)
+            if at is not None and (oldest_seen is None or at < oldest_seen):
+                oldest_seen = at
+            uuid = record.get("uuid")
+            signature = _final_signature(record)
+            if isinstance(uuid, str) and uuid:
+                if signatures.setdefault(uuid, signature) != signature:
+                    conflicted.add(uuid)
+                if len(signatures) > FINAL_WORDS_UUIDS_MAX:
+                    return {"outcome": "scan-limit"}
+            event = _agent_message_event(config, record, harness, sid, text_cap=len(raw))
+            if event is None:
+                continue
+            fact = _semantic_fact_from_event(event, _AGENT_SAY, "agent_message", "")
+            key = (str(fact["fact_id"]), fact["at"])
+            if key not in rows:
+                continue
+            status = _final_status(record, sid, uuid)
+            if key in found and found[key][0] != status:
+                status = "refused"
+            found[key] = (
+                status,
+                str(uuid or ""),
+                _agent_whole_words(record, len(raw)) if status == "final" else "",
+            )
+    except OSError:
+        return {"outcome": "source-moved"}
+    if transcript_stamp(path) != before:
+        return {"outcome": "source-moved"}
+    if before[2] > FINAL_WORDS_SCAN_MAX_BYTES and (
+        oldest_seen is None or oldest_seen >= oldest_wanted
+    ):
+        return {"outcome": "scan-limit"}
+    finals = {
+        key: found[key]
+        for key in rows
+        if key in found and found[key][0] == "final" and found[key][1] not in conflicted
+    }
+    if not finals:
+        return {"outcome": "not-final"}
+    top = max(float(at) for _, at in finals)
+    newest = [key for key in finals if float(key[1]) == top]
+    if len(newest) != 1:
+        return {"outcome": "ambiguous"}
+    for key, row in rows.items():
+        proven = found.get(key)
+        if (
+            (proven is None or proven[0] == "refused" or proven[1] in conflicted)
+            and isinstance(row.get("at"), int | float)
+            and float(row["at"]) >= top
+        ):
+            return {"outcome": "unproven"}
+    fact_id, at = newest[0]
+    words = finals[newest[0]][2]
+    if words is None:
+        return {"outcome": "too-long", "fact_id": fact_id, "at": at}
+    if not words:
+        return {"outcome": "not-final"}
+    return {"outcome": "whole", "fact_id": fact_id, "at": at, "words": words}
 
 
 def transcript_user_facts(

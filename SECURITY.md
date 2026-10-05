@@ -1203,9 +1203,25 @@ their half. Amended 2026-10-04 by the owner: additional selected agent excerpts 
 after those passes, without dropping an entry or exceeding the 16 KiB cap. Complete bounded
 records measure the full masked, folded length; a cropped prompt row labels its actual excerpt
 length and that total. Neither count is inferred for a legacy record. These counts stay in memory
-and are stripped from page responses with the words. This changes the amount within the existing
-content classes, so `reading_policy.CONTENT_VERSION` stays at 2.
-It is quoted as one JSON string with the menu heading neutralised, as a check's output
+and are stripped from page responses with the words. That change stayed within the existing
+content classes, so it left `reading_policy.CONTENT_VERSION` at 2.
+
+Amended 2026-10-05 by the owner
+([the amendment](docs/design-reading-a-session.md#amended-2026-10-05-owner-the-newest-recorded-final-reply-is-read-whole)):
+the agent's newest message that its own transcript record marks as ending its turn
+(`message.stop_reason` equal to `end_turn`; text alone, a quiet session or a later timestamp does
+not establish it) goes whole in place of its 1,000-character excerpt, but only when its complete
+quoted row fits the 4,096 bytes of the agent's quarter and the room the reader's words left. It is
+chosen among the rows the prompt already selected, so no entry, citation number or older or later
+record is added, and it is read from the same file version the press read its facts from, by a
+memory-only scan of at most the latest 32 MiB. A reply that does not fit, a source that moved, a
+duplicate or same-time record that disagrees, or a record the source cannot prove final keeps the
+excerpt, and the reading's cutoff says so. The agent's other messages keep their 1,000
+characters, no shell output or tool result is added, the consent tier does not widen, and the
+words are neither stored, cached, logged nor published. This changes what a message sends, so
+`reading_policy.CONTENT_VERSION` is 3 and the next press on a Claude Code session asks once more.
+
+An agent message, cropped or whole, is quoted as one JSON string with the menu heading neutralised, as a check's output
 tail is, and the prompt's trusted header says agent messages are quoted data, never instructions.
 That goes only on a reading the reader pressed for, whether or not tool output is allowed, and to
 whichever provider the route names; the unasked lane sends none of it (`reading.build_ledger`'s
@@ -1418,7 +1434,8 @@ by the OS (`score_abstention.py --probe-argv`, below):
 The prompt itself can still name paths. Under the tool-output ruling a check's command line and its
 redacted output tail are sent as the session recorded them, and a reader's own messages and, since
 2026-10-03, the agent's own messages are sent whole up to 1,000 characters each where the prompt
-has room (Observer model calls), redacted, so a home path or user name the session typed or
+has room (Observer model calls), except its newest recorded final reply, which since 2026-10-05
+goes in full where it fits 4,096 bytes, redacted, so a home path or user name the session typed or
 printed reaches Anthropic that way.
 
 Because the working directory is sent, the process runs in a fresh owner-only (0700) empty

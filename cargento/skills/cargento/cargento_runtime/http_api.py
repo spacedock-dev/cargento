@@ -2916,6 +2916,24 @@ class _RequestHandler(BaseHTTPRequestHandler):
                 if row.get("harness") in {"claude", "codex"}
                 else None
             ),
+            # The newest recorded final reply, read whole from the source version stamped
+            # above, before the context read: a file that moved since is refused there.
+            # Only this press carries it; the unasked lane never builds this call.
+            final_source_lookup=(
+                (
+                    lambda wanted: runtime_project_context.transcript_newest_final_words(
+                        application.config,
+                        transcript,
+                        str(row.get("harness")),
+                        str(row.get("sid")),
+                        wanted,
+                        expected_stamp=press_stamp,
+                    )
+                )
+                if press_stamp is not None
+                and row.get("harness") in runtime_project_context.AGENT_MESSAGE_HARNESSES
+                else None
+            ),
             # A record never read withholds in its own sentence, not as an
             # empty one (DRC-4689).
             record_withheld=runtime_reading.record_withheld(

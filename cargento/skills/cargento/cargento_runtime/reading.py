@@ -62,6 +62,9 @@ if TYPE_CHECKING:
 
     from .config import RuntimeConfig
 
+    # Given the selected agent rows' identities, names the newest recorded final reply.
+    FinalLookup = Callable[[Sequence[Mapping[str, Any]]], Mapping[str, Any]]
+
 # Rule 1: three results per constraint, and the set is closed. These are
 # the rendered sentences, not tokens -- the model never emits one.
 RESULT_DEPARTURE = "departure"
@@ -827,7 +830,9 @@ AGENT_MESSAGE_TYPE = "agent_message"
 # cap, 240, and the counted sentence alone runs to about 180, so the clauses
 # saying the checks were not sent, or had no room, were cut off in the store
 # (review, 2026-09-24). Composed by the code from counts, never model prose.
-CUTOFF_CAP_CHARS = 640
+# The newest-final fallback clause raises the measured seven-digit count case
+# to 697 characters. Keep all loss clauses rather than clipping their tail.
+CUTOFF_CAP_CHARS = 768
 
 
 class LedgerEntry(TypedDict):
@@ -912,6 +917,11 @@ class Selection:
     # arrived (`_left_out`): a part of the record never read, as an entry with
     # no room is.
     unlisted: tuple[float, ...] = ()
+    # What became of the newest recorded final reply, set by `build_prompt` only where its
+    # lookup named a selected row: "whole" (read whole in place of its excerpt), "unfit" (the
+    # row could not hold it, so the excerpt stayed) or "unavailable" (the source could not
+    # prove one). Never the words, which the prompt alone carries.
+    newest_final: str | None = None
 
     def __post_init__(self) -> None:
         if self.asked_output is None:
@@ -2336,7 +2346,7 @@ def _wider_goal(
     return _header(words, lines, tool_note=tool_note, claims=claims, scope=scope), words
 
 
-def _read_whole(
+def _read_whole(  # noqa: C901 - reader-first lanes and one selected replacement share the budget
     chosen: Sequence[LedgerEntry],
     sizes: Mapping[int, int],
     *,
@@ -2344,8 +2354,9 @@ def _read_whole(
     room: int,
     shares: tuple[int, int],
     skip: str,
-) -> set[int]:
-    """Which chosen rows go whole, as `id`s.
+    final: Mapping[int, LedgerEntry] | None = None,
+) -> tuple[set[int], dict[int, LedgerEntry]]:
+    """Which chosen rows go whole, as `id`s, and which of them print a restored row.
 
     The words, newest message first, each in place of its summary only where
     the whole row fits the words' share and the room left; one that does not
@@ -2353,14 +2364,31 @@ def _read_whole(
     Goal's whole words took), then the agent's under their own quarter, so the
     agent's never take room a reader's message read whole would have had.
     `skip` is the adopted prompt's own row while the Goal carries its words.
+
+    `final` maps a chosen agent row's `id` to the same row carrying its newest final
+    reply whole. It is offered first within the agent share, after every reader's message
+    has had theirs, and admitted only as a complete row under the same two tests: a
+    reply that fits neither leaves the excerpt exactly as it was and takes nothing.
     """
     whole: set[int] = set()
+    restored: dict[int, LedgerEntry] = {}
     for field_name, share in zip(("words", "agent_words"), shares, strict=True):
         left = share
+        for row in chosen if final and field_name == "agent_words" else ():
+            replacement = final.get(id(row)) if final else None
+            if replacement is None:
+                continue
+            size = len(_menu_row(10**width - 1, replacement, whole=True).encode("utf-8", "replace"))
+            grows = size - sizes[id(row)]
+            if left >= size and room >= grows:
+                left -= size
+                room -= grows
+                whole.add(id(row))
+                restored[id(row)] = replacement
         for row in sorted(
             (row for row in chosen if row.get(field_name)), key=lambda row: -row["at"]
         ):
-            if skip and row["id"] == skip:
+            if (skip and row["id"] == skip) or id(row) in whole:
                 continue
             size = len(_menu_row(10**width - 1, row, whole=True).encode("utf-8", "replace"))
             grows = size - sizes[id(row)]
@@ -2378,7 +2406,83 @@ def _read_whole(
         if room >= grows:
             room -= grows
             whole.add(id(row))
-    return whole
+    return whole, restored
+
+
+# What the newest-final lookup may answer. `_FINAL_UNPROVEN` names a source that could not
+# establish a final reply, and the prompt keeps the excerpt and says so in the cutoff. Anything
+# else (`none`, `not-final`, a mapping without these) means no recorded final reply was
+# named, which is silent: a session whose newest message was not recorded final has none.
+_FINAL_WHOLE = "whole"
+_FINAL_TOO_LONG = "too-long"
+_FINAL_UNPROVEN = frozenset({"source-moved", "oversized", "scan-limit", "ambiguous", "unproven"})
+
+
+def _newest_final(  # noqa: C901, PLR0911 - one guard per selected source/word boundary
+    selected: Sequence[LedgerEntry], lookup: FinalLookup | None, *, share: int
+) -> tuple[LedgerEntry | None, LedgerEntry | None, str | None]:
+    """The selected row the newest recorded final reply belongs to, that row carrying the
+    reply whole, and `Selection.newest_final`'s state before the allocation decides.
+
+    Called with the rows the byte bound already chose, never the ledger the window and the
+    stop left, so a reply the prompt does not carry is never restored. The lookup is shown
+    each row's identity and time only. Its answer is used for the one selected row it
+    names by both, and for nothing else: an unlisted or re-timed identity, the person's
+    row and an unreadable answer change nothing. The words go through the same scrub as an
+    excerpt and are quoted as one JSON string, and one longer than the agent's share in
+    characters, which are never more than its bytes, is `unfit` without being measured.
+    """
+    agents = [
+        row
+        for row in selected
+        if row["type"] == AGENT_MESSAGE_TYPE and row["author"] == AUTHOR_AGENT
+    ]
+    if lookup is None or not agents:
+        return None, None, None
+    agents.sort(key=lambda row: row["at"])
+    result = lookup(
+        [
+            {"id": row["id"], "type": row["type"], "author": row["author"], "at": row["at"]}
+            for row in agents
+        ]
+    )
+    if not isinstance(result, dict):
+        return None, None, None
+    outcome = result.get("outcome")
+    if outcome in _FINAL_UNPROVEN:
+        return None, None, "unavailable"
+    if outcome not in (_FINAL_WHOLE, _FINAL_TOO_LONG):
+        return None, None, None
+    identity = (result.get("fact_id"), result.get("at"))
+    named = [row for row in agents if (row["id"], row["at"]) == identity]
+    if len(named) != 1:
+        return None, None, None
+    row = named[0]
+    if outcome == _FINAL_TOO_LONG:
+        return row, None, "unfit"
+    words = result.get("words")
+    if not isinstance(words, str):
+        return None, None, None
+    collapsed = " ".join(words.split())
+    cap = share + 1
+    # Measured before and after the scrub, and before the strip: a bound that clipped
+    # would leave a reply one character under the share looking whole.
+    if len(collapsed) > share:
+        return row, None, "unfit"
+    scrubbed = _field_text(_menu_field(records.safe_text(collapsed, cap)), cap)
+    if len(scrubbed) > share:
+        return row, None, "unfit"
+    text = scrubbed.strip()
+    if not text:
+        return None, None, None
+    quoted = json.dumps(text, ensure_ascii=False)
+    if quoted == row.get("agent_words"):
+        # The excerpt was already the whole reply: nothing to restore, nothing to say.
+        return None, None, None
+    replacement = row.copy()
+    replacement["agent_words"] = quoted
+    replacement.pop("agent_excerpt", None)
+    return row, replacement, "whole"
 
 
 def build_prompt(
@@ -2390,6 +2494,7 @@ def build_prompt(
     goal_words: str = "",
     goal_fact: str = "",
     scope: str = SCOPE_LAST_TURN,
+    final_lookup: FinalLookup | None = None,
 ) -> tuple[str, Selection]:
     """The prompt, and exactly the entries it carried.
 
@@ -2435,6 +2540,14 @@ def build_prompt(
     message's words do, and only where the room left holds them, so they never
     cost an entry; `goal_fact` is that prompt's own row, which then keeps its
     summary rather than sending the same words twice.
+
+    `final_lookup` is the reading route's alone (the unasked lane leaves it `None`) and is
+    called once, with the agent rows the bound selected, so it can neither widen the list nor
+    renumber it. The newest recorded final reply it names goes whole in place of its
+    excerpt, after the reader's words and inside the agent share, and only as the complete
+    quoted row: one that does not fit leaves the prompt exactly as it would have been, and
+    `Selection.newest_final` says so for the cutoff. Why:
+    docs/design-reading-a-session.md#amended-2026-10-05-owner-the-newest-recorded-final-reply-is-read-whole
     """
     budget = max(0, max_bytes)
     # The goal's own bound, a quarter of the budget, so it cannot crowd out
@@ -2503,14 +2616,23 @@ def build_prompt(
         header, goal_read = wider
         words_share -= extra
         used += extra
-    whole = _read_whole(
+    # After the byte bound chose its rows and before any word is allocated: the lookup sees
+    # what the model is about to receive, and a reply outside it is never restored.
+    agent_share = budget // AGENT_WORDS_SHARE_DIVISOR
+    final_row, final_swap, final_state = _newest_final(
+        [citable[i] for i in chosen], final_lookup, share=agent_share
+    )
+    whole, restored = _read_whole(
         [citable[i] for i in chosen],
         {id(citable[i]): sizes[i] for i in chosen},
         width=width,
         room=budget - used,
-        shares=(words_share, budget // AGENT_WORDS_SHARE_DIVISOR),
+        shares=(words_share, agent_share),
         skip=goal_fact if goal_read != goal_text else "",
+        final={id(final_row): final_swap} if final_row is not None and final_swap else None,
     )
+    if final_state == "whole" and id(final_row) not in restored:
+        final_state = "unfit"
     selected = tuple(citable[i] for i in sorted(chosen))
     if posed and not asks_output(" ".join(line_texts), selected):
         posed = False
@@ -2525,7 +2647,8 @@ def build_prompt(
             scope=scope,
         )
     body = "".join(
-        row_text(index, row, whole=id(row) in whole) for index, row in enumerate(selected, start=1)
+        row_text(index, restored.get(id(row), row), whole=id(row) in whole)
+        for index, row in enumerate(selected, start=1)
     )
     taken = {id(row) for row in selected}
     return header + body, Selection(
@@ -2536,6 +2659,7 @@ def build_prompt(
         lines=line_texts,
         asked_claims=asked_claims,
         goal_whole=goal_read != goal_text,
+        newest_final=final_state,
     )
 
 
@@ -3546,6 +3670,7 @@ def produce(  # noqa: PLR0913
         Callable[[Sequence[LedgerEntry]], Sequence[Mapping[str, Any]]] | None
     ) = None,
     record_coverage_lookup: Callable[[], Mapping[str, Any]] | None = None,
+    final_source_lookup: FinalLookup | None = None,
 ) -> tuple[Assessment | None, str, bool]:
     """One reading, or the reason there is none. Returns (assessment, why, spent).
 
@@ -3572,6 +3697,11 @@ def produce(  # noqa: PLR0913
     (`build_ledger`).
 
     `admit_turn_stop` is the reading route's too, for `eligibility`'s reason.
+
+    `final_source_lookup` is the reading route's, and honoured only with `read_agent_words`:
+    it reads the newest recorded final reply from the exact source the press read, for the
+    rows the prompt selected (`build_prompt`'s `final_lookup`). The unasked lane never
+    sends agent messages, so it never reaches it.
 
     `on_phase` is a reading job's, told `PHASE_CHECKING` once a reply arrived
     and never otherwise, so a published phase is one that really happened.
@@ -3629,6 +3759,7 @@ def produce(  # noqa: PLR0913
         goal_words=source[1] if source else "",
         goal_fact=source[0] if source else "",
         scope=scope,
+        final_lookup=final_source_lookup if read_agent_words else None,
     )
     if not selected.entries:
         return None, WITHHELD_LEDGER_EMPTY, False
@@ -3692,6 +3823,7 @@ def produce(  # noqa: PLR0913
         window_start=window_start(latest),
     )
     cutoff += _goal_note(adopted=adopted, source=source, goal=goal, whole=selected.goal_whole)
+    cutoff += _FINAL_NOTES.get(selected.newest_final or "", "")
     if tool_output is not None and not admitted and _has_reports(facts, harness, sid):
         cutoff += (
             " The checks this session recorded were not sent, because tool output was not "
@@ -3997,6 +4129,14 @@ GOAL_SOURCE_UNROOMED = (
     " Your goal's whole prompt had no room in the reading, so only the goal box's words were "
     "read as the goal."
 )
+# Said in the cutoff when the newest final reply was not read whole (owner, 2026-10-05):
+# the agent's newest message that the transcript records as ending its turn goes whole where
+# its row fits, and otherwise its excerpt stands. Keyed by `Selection.newest_final`, and
+# composed by the code, so the reply's words are never in it.
+_FINAL_NOTES = {
+    "unfit": " The agent's newest final reply was too long to read whole.",
+    "unavailable": " The agent's newest final reply could not be read whole.",
+}
 # How far a fact's time may sit from the adopted source time and still be that
 # prompt: the two are read from the same transcript record, so this only
 # forgives a float's rounding, never a neighbouring message.

@@ -485,10 +485,18 @@ def _base_parts(
     elif harness in OUTCOME_HARNESSES and harness not in TOOL_OUTPUT_HARNESSES:
         outcome = ", and your expected outcome lines when a work result is among them"
     cli_adds = _CLI_ADDS.get(provider, "")
+    # The newest final reply goes whole (owner amendment, 2026-10-05), and it is the only
+    # message that does: every other keeps the cap above, and no shell or tool output joins it.
+    final = (
+        " The agent's newest final reply, as its transcript records one, goes whole instead "
+        f"where it fits {_FINAL_REPLY_BYTES:,} bytes."
+        if harness in AGENT_MESSAGE_HARNESSES
+        else ""
+    )
     return [
         (
             f"Sent: your goal and a bounded set of the session's entries, with {messages} "
-            f"up to {_WORDS_CAP:,} characters each{outcome}."
+            f"up to {_WORDS_CAP:,} characters each{outcome}.{final}"
         ),
         *([tool_output] if tool_output else []),
         (
@@ -520,6 +528,10 @@ _CLI_ADDS = {
 # which the `Sent:` item states. Copied rather than imported, because this module
 # sits below `reading` in the import graph; a test holds the two equal.
 _WORDS_CAP = 1_000
+# The bytes the newest final reply may take whole: the agent's share of the prompt
+# (`observer.OBSERVER_MODEL_MAX_PROMPT_BYTES` over `reading.AGENT_WORDS_SHARE_DIVISOR`). Copied
+# for the same reason, and held equal by a test.
+_FINAL_REPLY_BYTES = 4_096
 
 
 def _state(provider: str, which: Callable[[str], Any]) -> str:

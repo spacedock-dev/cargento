@@ -1765,6 +1765,52 @@ first. No entry is removed to fit words, the adopted Goal keeps its priority, an
 still includes the header and every row. This changes the amount of content already disclosed,
 so the consent content version stays at 2. Sending a new class of content requires a new version.
 
+### Amended 2026-10-05 (owner): the newest recorded final reply is read whole
+
+The owner asked that the agent's final answer reach the reading whole where it fits, because its
+first 1,000 characters often dropped the sentence that says what was done. This source change has its own privacy and consent review, independent of the prospective
+8b accuracy study. Neither review qualifies the failed original 4b or DEC-17 for accuracy.
+
+What qualifies: A reply is final only when its own record says so: the top-level assistant
+text record of the parent session carries `message.stop_reason` equal to `end_turn`, a UUID, a
+timestamp and the parent session id, and is not meta, sidechain, a child agent's or the CLI's
+`<synthetic>` notice. Text with no tool block, a quiet session, an idle state, adjacency to a
+check and a newer timestamp each describe a mid-turn message as well, so none is evidence of
+finality. `project_context._agent_message_event` is unchanged and still admits non-final text;
+only the lookup tests the stop reason.
+
+Where it is read: After the producer has applied the reading window and the observed stop and
+the byte bound has selected its rows, `build_prompt` shows the lookup the identity and time of
+the agent rows it selected, once. The lookup restores words for the unique newest of those that
+is final and for no other row: it cannot widen the list, renumber a citation, revive an earlier
+or later record, import a child transcript or infer an answer the prompt does not carry. A newer
+selected row that the source cannot prove non-final, two finals at one instant, and a duplicate
+UUID or fact that differs in any field that decides finality (compared as a fingerprint of the raw
+record, before masking, so equal masked words cannot hide it) all keep the excerpt. An identical
+duplicate is one source. A legacy fact with no source keeps its excerpt.
+
+Which file: The press stamps the transcript (device, inode, size, modified time) before it
+reads the session context, and the lookup refuses unless the file still has that stamp before and
+after its scan. The scan is newest first over at most the latest 32 MiB, in memory only, with a
+1 MiB bound on one assistant record, and a file larger than the bound is accepted only when the
+scan reached back past the oldest selected row. Nothing is cached, spooled, logged, put in
+history or published; the lookup answers an outcome token, the row's own fact id and time, and
+the words. The drift replay passes the same lookup under its cut file's stamp.
+
+Whether it fits: The reader's words allocate first. The reply is normalised to one line,
+masked as every excerpt is, quoted as one JSON string with the menu heading neutralised, and
+admitted only as the complete row: its serialized UTF-8 size must fit the agent's quarter
+(4,096 bytes at the 16,384-byte cap) and its growth over the summary row the room left. A reply
+that does not fit is not clipped under a "whole" label; the original excerpt stands byte for byte
+and the cutoff says the newest final reply was too long, or could not be confirmed. The agent's
+other messages keep their 1,000-character bound and may take unused room as before.
+
+The consent boundary: No consent tier is added. No shell or MCP output is added to the
+prompt. The unasked lane never reaches the lookup. Because a reply sent whole is different content
+from an excerpt, `reading_policy.CONTENT_VERSION` moves from 2 to 3 (`WORDS_CONTENT_VERSION` stays
+1), and the route's "What is sent" list names the newest final reply and the 4,096-byte bound.
+SECURITY.md's [Claude Code reading calls](../SECURITY.md#claude-code-reading-calls) says the same.
+
 ## DEC-23: a Claude Code session's record of its checks may show the work
 
 Decided 2026-09-24 (DRC-4674). DRC-4676 builds the record and keeps it off every model prompt.
@@ -3627,7 +3673,8 @@ come from an older scan, so the tail start does not describe the check listing. 
 passed, failed and unrecorded runs, files written, launches, person messages, agent messages and
 derived entries. Omitted pass and write counts cover only the reading's window through its stop,
 not the session-wide count; checks the prompt could not fit have their own count. Loss and source
-clauses fit the stored cutoff's 640-character bound without truncation.
+clauses fit the stored cutoff's 768-character bound without truncation. The newest-final
+fallback raises the measured large-count case to 697 characters; this keeps every loss clause.
 
 Coverage stores only an optional closed mapping of counts, a time, a boolean and the source state.
 It changes no model prompt. A found adopted source already equal to the saved goal was read whole,
