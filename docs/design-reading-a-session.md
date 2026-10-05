@@ -1417,6 +1417,15 @@ nothing else is tried: a fresh press is the only retry. The flags the Claude Cod
 and the fact that they are CLI restrictions rather than an OS sandbox, are in
 [the light harness usage bounds](../SECURITY.md#claude-code-reading-calls).
 
+### Amended 2026-10-05: selected Claude model keeps the Sonnet baseline
+
+The owner replaced the single Sonnet 5 pin with a baseline policy. The selected explicit model
+must meet the Sonnet 5 floor; the default request is Sonnet 5.5. Configuration, the published
+route, the command and the reading stamp name that same selection. An unavailable selection
+fails without retrying another model. [SECURITY.md](../SECURITY.md#amended-2026-10-05-claude-reading-model-baseline)
+owns admission, provenance and the limit of the text-only model receipt. This opens no measured
+qualification claim: each comparison remains bound to its own selected model and envelope.
+
 ### Amended 2026-09-24: Analyze drift and Allow and analyze
 
 [DEC-24](#dec-24-your-intent-is-a-drafted-goal-and-a-checklist-and-a-correction-is-yours-to-copy)

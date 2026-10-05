@@ -692,6 +692,8 @@ def spawn_argv(config: RuntimeConfig, args: argparse.Namespace) -> list[str]:
         str(args.window_hours),
     ]
     argv.extend(_opt_out_argv(args))
+    if config.claude_reading_model != runtime_config.CLAUDE_READING_DEFAULT_MODEL:
+        argv.extend(["--claude-reading-model", config.claude_reading_model])
     reach_url = getattr(args, "reach_url", None)
     if reach_url:
         argv.extend(["--reach-url", reach_url])

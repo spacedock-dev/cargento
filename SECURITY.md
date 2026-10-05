@@ -1322,13 +1322,35 @@ The argv, every flag checked against `claude --help` on 2.1.280, run without a s
   to disk.
 - `--permission-mode dontAsk --permission-prompts none`: anything that would prompt is denied, and
   nobody is asked. `bypassPermissions` and the `--dangerously-*` flags never appear.
-- `--output-format text`, `--model claude-sonnet-5` (fixed, never the CLI default) and
-  `--effort high`.
+- `--output-format text`, `--model` with the explicitly selected admitted model, and `--effort high`.
+  The [model admission amendment](#amended-2026-10-05-claude-reading-model-baseline) owns the selection.
 - `--system-prompt` with one fixed sentence, `observer.CLAUDE_READING_SYSTEM_PROMPT`, in place of
   Claude Code's default system prompt (owner ruling, DRC-4666, 2026-09-27). Checked on 2.1.283.
   `--append-system-prompt`, which would keep the default, never appears.
 
 `--bare` is not used, because it refuses OAuth sign-in. `--json-schema` is not used either.
+
+#### Amended 2026-10-05: Claude reading model baseline
+
+The owner replaced the single Sonnet 5 pin with a Sonnet 5 admission floor. The default request
+is `claude-sonnet-5-5`; `--claude-reading-model` selects another explicit ID. A refused model
+never falls back to another model or provider. Selecting `claude-sonnet-5` explicitly requests the
+baseline when the account does not admit the default; that selection may also be refused.
+
+The versioned policy admits Sonnet and Opus generation 5 or later, with bounded positive integer
+version components and an optional valid eight-digit snapshot date. Its generation/minor/family
+rank gives Sonnet tier 1 and Opus tier 2. This is an owner admission policy, not a measured ordering
+of accuracy. Haiku has no admitted tier; a larger Haiku version number does not establish that it
+meets the Sonnet floor. Floating aliases, unknown families, lower generations and malformed IDs
+are refused before launch. A canonical ID whose model is unavailable fails normally; naming it
+does not prove that an account has access.
+
+The selected ID reaches the same restricted call and its stamp. Tagged replay plans bind the
+selected model, effort, policy and command-envelope digest, and each stored read retains that
+binding. Changing it requires a new matching dry plan; a tag containing another or unbound model
+cannot be extended. Qualification results bind their selected model too. Historical qualification
+or replay results do not qualify another selection. The text-only CLI reply supplies no resolved
+model receipt, so the served snapshot is unknown rather than inferred from the requested ID.
 
 The process runs with the daemon's environment minus the markers of any Claude Code session the
 daemon was started from (`observer.claude_environment`: `CLAUDECODE`, `CLAUDE_CODE_*SESSION*`,

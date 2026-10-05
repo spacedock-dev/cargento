@@ -24,6 +24,7 @@ from typing import TYPE_CHECKING, Any, TypedDict
 from urllib.parse import urlsplit
 
 from . import annotations as annotation_store
+from . import config as runtime_config
 from . import observer, records
 
 if TYPE_CHECKING:
@@ -542,6 +543,7 @@ def _route(
     *,
     fallback: bool,
     where: Callable[[str], str],
+    claude_model: str,
 ) -> Route:
     # Where the words go, on every harness; tool output, only where checks exist.
     to = where(provider) if provider else ""
@@ -557,7 +559,7 @@ def _route(
         "provider": provider,
         "label": LABELS.get(provider, ""),
         "vendor": VENDORS.get(provider, ""),
-        "model": MODELS.get(provider, ""),
+        "model": claude_model if provider == CLAUDE else MODELS.get(provider, ""),
         "reason": reason,
         "note": note,
         "disclosure": " ".join(parts),
@@ -575,6 +577,7 @@ def resolve(
     binary_resolver: Callable[[str], Any] | None = None,
     environ: Mapping[str, str] | None = None,
     root: Path | None = None,
+    config: runtime_config.RuntimeConfig | None = None,
 ) -> Route:
     """The one provider that reads a session on this harness, or why none can.
 
@@ -583,6 +586,9 @@ def resolve(
     failed: the route is decided once, here, before anything is spent.
     """
     which = binary_resolver or shutil.which
+    claude_model = runtime_config.validate_claude_reading_model(
+        config.claude_reading_model if config is not None else observer.CLAUDE_READING_MODEL
+    )
 
     def where(provider: str) -> str:
         return destination(provider, environ=environ, root=root)
@@ -604,6 +610,7 @@ def resolve(
                 "This session's own harness reads it.",
                 fallback=False,
                 where=where,
+                claude_model=claude_model,
             )
         return _route(
             harness,
@@ -612,6 +619,7 @@ def resolve(
             f"{_NO_PRODUCER}, so {label} reads this session.",
             fallback=False,
             where=where,
+            claude_model=claude_model,
         )
     second = _state(other, which)
     if second == "usable":
@@ -624,6 +632,7 @@ def resolve(
             ),
             fallback=True,
             where=where,
+            claude_model=claude_model,
         )
     # The harness's own lack stands as a sentence of its own, so the two
     # machine facts after it join with one "and" rather than a chain of them.
@@ -639,6 +648,7 @@ def resolve(
         ),
         fallback=False,
         where=where,
+        claude_model=claude_model,
     )
 
 
@@ -648,6 +658,7 @@ def resolve_all(
     binary_resolver: Callable[[str], Any] | None = None,
     environ: Mapping[str, str] | None = None,
     root: Path | None = None,
+    config: runtime_config.RuntimeConfig | None = None,
 ) -> dict[str, Route]:
     """One route per harness, looking each CLI up at most once per call."""
     which = binary_resolver or shutil.which
@@ -659,6 +670,6 @@ def resolve_all(
         return memo[name]
 
     return {
-        harness: resolve(harness, binary_resolver=cached, environ=environ, root=root)
+        harness: resolve(harness, binary_resolver=cached, environ=environ, root=root, config=config)
         for harness in sorted(set(harnesses))
     }

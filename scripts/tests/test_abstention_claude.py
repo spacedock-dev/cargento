@@ -315,6 +315,37 @@ class TheClaudeProducerIsChosenExplicitlyTest(unittest.TestCase):
         self.assertEqual(28, seen["max_calls"])
         self.assertEqual(abstention_ledger.LEDGER_PATH, seen["ledger_path"])
 
+    def test_an_explicit_baseline_is_bound_to_the_qualification_model_and_result(self) -> None:
+        seen: dict[str, Any] = {}
+
+        def fake_score(*_args: Any, **kwargs: Any) -> int:
+            seen.update(kwargs)
+            return 0
+
+        corpus = score_abstention.Corpus({"v": 5, "cases": [_claude_case()]}, {}, b"", {})
+        with (
+            mock.patch.object(score_abstention, "_load_corpus", return_value=corpus),
+            mock.patch.object(score_abstention, "score", side_effect=fake_score),
+            mock.patch.object(score_abstention, "argv_digest", return_value="cd" * 32),
+            mock.patch.object(score_abstention, "verify_claude_binary", return_value=_VERIFIED),
+            mock.patch("cargento_runtime.reading_route.destination", return_value="Anthropic"),
+            mock.patch("builtins.print"),
+        ):
+            self.assertEqual(
+                0,
+                score_abstention.main(
+                    [
+                        "--score",
+                        "--producer",
+                        "claude",
+                        "--claude-reading-model",
+                        "claude-sonnet-5",
+                    ]
+                ),
+            )
+        self.assertEqual("claude-sonnet-5", seen["model"].config.claude_reading_model)
+        self.assertEqual("claude-sonnet-5", seen["binding"]["model"])
+
     def test_the_argv_digest_is_read_without_running_anything(self) -> None:
         with mock.patch("subprocess.run", side_effect=AssertionError("spent")):
             first = score_abstention.argv_digest("claude", _state_config())

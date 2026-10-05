@@ -494,6 +494,14 @@ Each flag belongs to the dashboard process, so changing one means restarting.
 
 [SKILL.md](cargento/skills/cargento/SKILL.md#options) owns the full option reference.
 
+### Select the Claude reading model
+
+Start the dashboard with `--claude-reading-model claude-sonnet-5` to select the Sonnet 5 baseline.
+The default requests `claude-sonnet-5-5`. Use an explicit Sonnet or Opus generation 5 or later ID;
+floating aliases such as `sonnet` are refused. An account that cannot use the chosen model gets a
+failed reading, without a retry on another model. A daemon respawn keeps your selection.
+[SECURITY.md](SECURITY.md#amended-2026-10-05-claude-reading-model-baseline) owns the admission policy.
+
 ### Move the history's two bounds
 
 The history keeps 14 days of observations inside a 1 MiB file, and both figures are flags rather

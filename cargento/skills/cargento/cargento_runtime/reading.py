@@ -54,6 +54,7 @@ from dataclasses import dataclass, field, replace
 from typing import TYPE_CHECKING, Any, NotRequired, TypedDict
 
 from . import observer, records, supervise
+from .config import validate_claude_reading_model
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterable, Mapping, Sequence
@@ -3742,6 +3743,10 @@ class ClaudeReadingModel:
 
     def available(self) -> bool:
         """A missing executable is known before reserving a reading attempt."""
+        try:
+            validate_claude_reading_model(self.config.claude_reading_model)
+        except ValueError:
+            return False
         binary = self.binary_resolver("claude")
         return bool(binary and os.path.isabs(binary))
 

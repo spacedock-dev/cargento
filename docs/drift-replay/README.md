@@ -383,6 +383,14 @@ and the dry-run plan rule are unchanged, and the ledger's floor counts every rea
 `--score --tag <tag>` scores that file into `results-<tag>.json` and leaves `results.json` alone; a
 cut and arm the plan did not choose reads `not-run`.
 
+As of the owner's 2026-10-05 amendment, `--read --claude-reading-model <id>` chooses an admitted
+Claude model under the [Sonnet baseline policy](../../SECURITY.md#amended-2026-10-05-claude-reading-model-baseline).
+The default is `claude-sonnet-5-5`. Give the same selection to the dry run and the spending run:
+the plan and each charged record bind the selected model, admission policy and restricted argv
+digest. A tag with another model, or old records without that binding, requires a fresh tag.
+The selected ID does not establish the served snapshot, which remains unknown; historical
+qualification belongs to its recorded model and execution envelope.
+
 ```bash
 python3 scripts/drift_replay.py --claims-export
 python3 scripts/drift_replay.py --claims-mark

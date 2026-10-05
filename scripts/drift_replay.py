@@ -44,7 +44,7 @@ import subprocess
 import sys
 import types
 from collections.abc import Callable, Iterable, Mapping
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any
 
@@ -1649,7 +1649,26 @@ def _read_refusal(
     return _selection(body, cases, arms)
 
 
-def read(  # noqa: PLR0911 - one return per refusal, each before anything is sent
+def _read_model_config(config: Any, selected: str | None) -> Any:
+    from cargento_runtime import config as runtime_config  # noqa: PLC0415
+
+    if selected is None:
+        return config
+    return replace(
+        config, claude_reading_model=runtime_config.validate_claude_reading_model(selected)
+    )
+
+
+def _tag_has_other_model(done: Mapping[str, Any], producer: Mapping[str, Any]) -> bool:
+    return any(
+        isinstance(entry, dict) and entry.get("charged") and entry.get("producer") != producer
+        for arm_rows in done.values()
+        if isinstance(arm_rows, dict)
+        for entry in arm_rows.values()
+    )
+
+
+def read(  # noqa: C901, PLR0911, PLR0913, PLR0915 - admission refusals precede any charge
     *,
     home: str,
     source: str | None = None,
@@ -1659,6 +1678,7 @@ def read(  # noqa: PLR0911 - one return per refusal, each before anything is sen
     tag: str = "",
     cases: tuple[str, ...] = (),
     include_history: bool = False,
+    claude_model: str | None = None,
 ) -> int:
     """Tier 3: one Analyze reading per cut and arm, through the verified Claude Code CLI.
 
@@ -1678,7 +1698,14 @@ def read(  # noqa: PLR0911 - one return per refusal, each before anything is sen
     read_path, plan_path = _tagged(paths, tag)
     config, _project_context, _live, _correction, reading = _runtime()
     import score_abstention  # noqa: PLC0415 - the verified, pinned CLI the qualification uses
-    from cargento_runtime import reading_route  # noqa: PLC0415
+    from cargento_runtime import observer, reading_route  # noqa: PLC0415
+
+    try:
+        config = _read_model_config(config, claude_model)
+    except ValueError:
+        say("Refused: choose an explicit Sonnet or Opus generation 5 or later model ID.")
+        return 1
+    producer = observer.claude_reading_provenance(config)
 
     destination = reading_route.destination("claude")
     if not dry_run and destination != reading_route.VENDORS["claude"]:
@@ -1688,6 +1715,9 @@ def read(  # noqa: PLR0911 - one return per refusal, each before anything is sen
         )
         return 2
     done = lc._load(read_path).get("cases") or {}  # noqa: SLF001
+    if _tag_has_other_model(done, producer):
+        say("Refused: this tag contains another or unbound model. Use a new tag.")
+        return 1
     # Every read file's charged calls: neither a deleted ledger nor a tagged run resets the count.
     charged = sum(
         1
@@ -1713,6 +1743,7 @@ def read(  # noqa: PLR0911 - one return per refusal, each before anything is sen
             or sorted(plan.get("arms") or ()) != sorted(arms)
             or (plan.get("selection") or []) != selection
             or bool(plan.get("include_history")) != include_history
+            or plan.get("producer") != producer
         ):
             say(
                 "Run --read --dry-run first, with the same --arm, --tag and --case choices: "
@@ -1750,6 +1781,7 @@ def read(  # noqa: PLR0911 - one return per refusal, each before anything is sen
                 selection=frozenset(selection),
                 include_history=include_history,
                 prompt_measurements=prompt_measurements,
+                runtime_config=config,
             )
         finally:
             _remove_tree(os.path.join(paths["dir"], "scratch-read"))
@@ -1758,7 +1790,7 @@ def read(  # noqa: PLR0911 - one return per refusal, each before anything is sen
             return 0
     if dry_run:
         plan = {"v": 1, "cases_digest": bound, "arms": list(arms), "calls": calls}
-        plan.update(include_history=include_history, prompts=prompt_measurements)
+        plan.update(include_history=include_history, prompts=prompt_measurements, producer=producer)
         if selection:
             plan["selection"] = selection
         lc._write(plan_path, plan)  # noqa: SLF001
@@ -1805,6 +1837,7 @@ def _read_cases(  # noqa: PLR0913 - every input of one pass, named
     selection: frozenset[str] = frozenset(),
     include_history: bool = False,
     prompt_measurements: dict[str, Any] | None = None,
+    runtime_config: Any = None,
 ) -> int:
     """One reading per cut and arm; the number of calls, negative when the cap stopped the pass.
 
@@ -1813,6 +1846,10 @@ def _read_cases(  # noqa: PLR0913 - every input of one pass, named
     config, project_context, _live, _correction, reading = _runtime()
     from cargento_runtime import observer, reading_route  # noqa: PLC0415
     from cargento_runtime.state import build_runtime_state  # noqa: PLC0415
+
+    if runtime_config is not None:
+        config = runtime_config
+    producer = observer.claude_reading_provenance(config)
 
     scratch = os.path.join(paths["dir"], "scratch-read")
     current = lc._load(paths["current"]).get("intents") or {}  # noqa: SLF001
@@ -1871,7 +1908,7 @@ def _read_cases(  # noqa: PLR0913 - every input of one pass, named
                     project_context.transcript_window_words(config, path, "claude", sid, wanted)
                 ),
                 now=cut + float(getattr(config, "reading_settle_sec", 8.0)) + _SETTLE_EXTRA,
-                stamp_text=f"{observer.CLAUDE_READING_MODEL} · drift replay",
+                stamp_text=f"{config.claude_reading_model} · drift replay",
                 model=model,
                 tool_output=tool_output,
                 read_lines=True,
@@ -1887,6 +1924,7 @@ def _read_cases(  # noqa: PLR0913 - every input of one pass, named
                 "assessment": assessment,
                 "raw_verdict": model.raw,
                 "model_status": model.status,
+                "producer": producer,
                 "prompt_digest": model.prompt_digest,
                 "intent": intent.revision(),
                 "facts_version": "history-v2" if include_history else "tail-v1",
@@ -2850,6 +2888,13 @@ def score(
     return 0
 
 
+def _claude_model_arg(value: str) -> str:
+    _runtime()
+    from cargento_runtime import cli  # noqa: PLC0415 - import after installing the runtime path
+
+    return cli.claude_reading_model_arg(value)
+
+
 def main(argv: list[str] | None = None) -> int:  # noqa: C901, PLR0911 - one branch/return per CLI mode
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     group = parser.add_mutually_exclusive_group()
@@ -2873,10 +2918,14 @@ def main(argv: list[str] | None = None) -> int:  # noqa: C901, PLR0911 - one bra
     parser.add_argument("--case", action="append", default=[])
     parser.add_argument("--counterfactual-read", default="")
     parser.add_argument("--include-history", action="store_true")
+    parser.add_argument("--claude-reading-model", type=_claude_model_arg, default=None)
     parser.add_argument("--marker", default="operator")
     parser.add_argument("--score-read", default=None)
     parser.add_argument("--score-live", default="")
     args = parser.parse_args(argv)
+    if args.claude_reading_model is not None and not args.read:
+        print("Refused: --claude-reading-model belongs to --read only.")
+        return 1
     refusal = _home_refusal(HOME)
     if refusal:
         print(refusal)
@@ -2905,6 +2954,7 @@ def main(argv: list[str] | None = None) -> int:  # noqa: C901, PLR0911 - one bra
             tag=args.tag,
             cases=tuple(args.case),
             include_history=args.include_history,
+            claude_model=args.claude_reading_model,
         )
     if args.score:
         return score(home=HOME, tag=args.tag, read_tag=args.score_read, live_tag=args.score_live)

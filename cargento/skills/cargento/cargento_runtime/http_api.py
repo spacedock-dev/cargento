@@ -2121,7 +2121,7 @@ class _RequestHandler(BaseHTTPRequestHandler):
         one whose disclosure named another, or none where one is named now, is
         refused before it could bind to a destination the reader never saw.
         """
-        route = runtime_reading_route.resolve(harness)
+        route = runtime_reading_route.resolve(harness, config=self.server.application.config)
         allow = payload.get("allow") is True
         refusal = (
             (503, route["reason"])
@@ -2500,7 +2500,7 @@ class _RequestHandler(BaseHTTPRequestHandler):
             entry = annotation_store.find(
                 annotation_store.active(config, application.state), str(harness), str(sid)
             )
-            route = runtime_reading_route.resolve(str(harness))
+            route = runtime_reading_route.resolve(str(harness), config=config)
             context = _session_context(self.server.application, row)
             answer = correction.compose(
                 row,

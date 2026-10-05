@@ -584,7 +584,7 @@ class _Home:
 
 class UnusableCallsStopTheReplay(unittest.TestCase):
     def run_batch(
-        self, replies: list[tuple[str, str]], *, dry_run: bool = False
+        self, replies: list[tuple[str, str]], *, dry_run: bool = False, runtime_config: Any = None
     ) -> tuple[int, int, dict[str, Any], list[str]]:
         with _Session() as s:
             home = _Home(s)
@@ -609,8 +609,28 @@ class UnusableCallsStopTheReplay(unittest.TestCase):
                 ("realistic",),
                 dry_run=dry_run,
                 say=said.append,
+                runtime_config=runtime_config,
             )
             return result, ledger.used(), done, said
+
+    def test_stored_reads_bind_the_model_of_this_batch_instead_of_the_default(self) -> None:
+        config, _context, _live, _correction, _reading = dr._runtime()
+        selected = dr._read_model_config(config, "claude-sonnet-5")
+        calls, _charges, done, _said = self.run_batch(
+            [('{"goal":{"result":"unverifiable"}}', "ok")],
+            runtime_config=selected,
+        )
+        self.assertGreater(calls, 0)
+        measured = 0
+        for arms in done.values():
+            for entry in arms.values():
+                if not entry["charged"]:
+                    continue
+                measured += 1
+                self.assertEqual("claude-sonnet-5", entry["producer"]["selected_model"])
+                self.assertIsNone(entry["producer"]["resolved_model"])
+                self.assertIn("claude-sonnet-5 · drift replay", entry["assessment"]["stamp"])
+        self.assertEqual(calls, measured)
 
     def test_two_consecutive_failures_stop_and_remain_retryable(self) -> None:
         for status in ("failed", "unstopped", "oversized"):
@@ -731,6 +751,103 @@ class UnusableCallsStopTheReplay(unittest.TestCase):
 
 
 class ATaggedReadKeepsTheEarlierRunsOutput(unittest.TestCase):
+    def test_a_tag_with_legacy_unbound_reads_cannot_receive_a_new_model(self) -> None:
+        with (
+            _Session() as s,
+            mock.patch.object(dr, "_run_refusal", return_value=""),
+            mock.patch.object(dr, "LEDGER_PATH", str(s.home / "spend.json")),
+        ):
+            home = _Home(s)
+            out = s.home / "drift-replay" / "read-model.json"
+            out.write_text(json.dumps({"cases": {home.ids[0]: {"realistic": {"charged": True}}}}))
+            before = out.read_bytes()
+            said: list[str] = []
+            self.assertEqual(
+                1,
+                dr.read(
+                    home=str(s.home),
+                    dry_run=True,
+                    tag="model",
+                    arms=("realistic",),
+                    cases=(home.ids[0],),
+                    claude_model="claude-sonnet-5",
+                    say=said.append,
+                ),
+            )
+            self.assertTrue(any("new tag" in line for line in said))
+            self.assertEqual(before, out.read_bytes())
+            self.assertFalse((s.home / "spend.json").exists())
+
+    def test_a_dry_plan_binds_the_selected_model(self) -> None:
+        with (
+            _Session() as s,
+            mock.patch.object(dr, "_run_refusal", return_value=""),
+            mock.patch.object(dr, "LEDGER_PATH", str(s.home / "spend.json")),
+        ):
+            home = _Home(s)
+            self.assertEqual(
+                0,
+                dr.read(
+                    home=str(s.home),
+                    dry_run=True,
+                    tag="model",
+                    arms=("realistic",),
+                    cases=(home.ids[0],),
+                    claude_model="claude-sonnet-5",
+                    say=lambda _m: None,
+                ),
+            )
+            plan = lc._load(str(s.home / "drift-replay" / "plan-model.json"))
+            self.assertEqual("claude-sonnet-5", plan["producer"]["selected_model"])
+            self.assertIsNone(plan["producer"]["resolved_model"])
+            self.assertFalse((s.home / "spend.json").exists())
+
+    def test_a_real_run_cannot_change_the_planned_model_before_charging(self) -> None:
+        with (
+            _Session() as s,
+            mock.patch.object(dr, "_run_refusal", return_value=""),
+            mock.patch.object(dr, "LEDGER_PATH", str(s.home / "spend.json")),
+        ):
+            home = _Home(s)
+            selected = (home.ids[0],)
+            self.assertEqual(
+                0,
+                dr.read(
+                    home=str(s.home),
+                    dry_run=True,
+                    tag="model",
+                    cases=selected,
+                    arms=("realistic",),
+                    claude_model="claude-sonnet-5",
+                    say=lambda _m: None,
+                ),
+            )
+            import score_abstention  # noqa: PLC0415
+            from cargento_runtime import reading_route  # noqa: PLC0415 - runtime is installed above
+
+            with (
+                mock.patch.object(reading_route, "destination", return_value="Anthropic"),
+                mock.patch.object(
+                    score_abstention,
+                    "verify_claude_binary",
+                    side_effect=AssertionError("must refuse before launch"),
+                ),
+            ):
+                said: list[str] = []
+                self.assertEqual(
+                    1,
+                    dr.read(
+                        home=str(s.home),
+                        tag="model",
+                        cases=selected,
+                        arms=("realistic",),
+                        claude_model="claude-sonnet-5-5",
+                        say=said.append,
+                    ),
+                )
+            self.assertTrue(any("dry-run" in line for line in said))
+            self.assertFalse((s.home / "spend.json").exists())
+
     def test_dry_run_reports_adopted_source_coverage_without_charging(self) -> None:
         with (
             _Session() as s,

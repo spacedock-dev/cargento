@@ -957,7 +957,7 @@ class Application:
                         # a button that sends a reader's words is the failure
                         # the disclosure exists to prevent.
                         "reading_routes": reading_route.resolve_all(
-                            str(row.get("harness") or "") for row in out_sessions
+                            (str(row.get("harness") or "") for row in out_sessions), config=config
                         ),
                         # Covered only where today's destination is the one
                         # each Allow was given for, from the resolver the

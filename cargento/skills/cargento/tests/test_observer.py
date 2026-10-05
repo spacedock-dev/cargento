@@ -1835,7 +1835,7 @@ class ClaudeExecTest(unittest.TestCase):
     def test_the_empty_mcp_config_names_no_server(self) -> None:
         self.assertEqual({"mcpServers": {}}, json.loads(observer.CLAUDE_EMPTY_MCP_CONFIG))
 
-    def test_the_reading_model_is_a_fixed_explicit_id_and_the_effort_is_bounded(self) -> None:
+    def test_the_default_reading_model_is_explicit_and_the_effort_is_bounded(self) -> None:
         self.assertTrue(observer.CLAUDE_READING_MODEL.startswith("claude-"))
         self.assertIn(observer.CLAUDE_READING_EFFORT, ("low", "medium", "high"))
 
