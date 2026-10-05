@@ -82,17 +82,25 @@ regression. The artifact separates full baseline counts, observed lower bounds, 
 pages and the matched subset. Its lost-flag and offer lists cover only measured pairs, never
 the unread remainder. Across 40 matched drift case-arms, ten previously flagged arms no
 longer flag and nine lose a correction offer. Of ten formerly drawn claims rows marked right,
-four are withdrawn; three of the nine unique marked claim items lose every formerly drawn row.
+four are withdrawn across four items; three of the nine unique marked claim items lose every
+formerly drawn row and the fourth affected item keeps another row.
 Two surviving rows also stop citing the previously marked agent record. Those losses are
 listed by salted case and claim ids, without treating unread cases as losses. The right-row
 protection check therefore fails too. All marks are agents' development judgments.
 
-Further window reads and the dependent turn-scope model measurement are blocked by this guard.
-The turn-scope schema and page support have shipped, but no new Analyze measurement qualifies
-their accuracy. The closed git/gh proof proposal is also blocked: even command incidence can
-cover at most 35 of the required 61 wrong not-shown flags, before attribution and truncation
-guards. Its publisher and consent-version change were not built. The whole final-reply change
-depends on that proposal and remains blocked too.
+This campaign remains failed and stopped. The owner subsequently delegated acceptance to
+adversarial agent review, which retained bounded source recovery as explicitly unqualified and
+retired the original closed git/gh proof proposal on feasibility grounds. Command incidence
+covers at most 35 of the original 61 wrong not-shown flag occurrences before attribution and
+truncation guards; current re-marks leave 57. No closed-tier clearance was verified, and its
+publisher and model gate were not built or passed. The
+[dated ruling](../design-reading-a-session.md#amended-2026-10-05-source-recovery-retained-with-failed-accuracy-qualification)
+keeps the failed result and a narrower rollback option.
+
+That ruling removes the retired proposal as a prerequisite for prospective newest-final work.
+Independent source, privacy and consent checks still gate that work. No new Analyze measurement
+qualifies newest-final or turn-scope accuracy. A later preregistered campaign must bind fresh
+matched conditions and its actual model; it cannot convert this campaign into a pass.
 
 The ledger ends at 631 of 870, with 239 left: 199 verified calls in this run, plus five
 conservative reservations for earlier test calls whose execution could not be proved. The

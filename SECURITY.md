@@ -1206,7 +1206,7 @@ length and that total. Neither count is inferred for a legacy record. These coun
 and are stripped from page responses with the words. That change stayed within the existing
 content classes, so it left `reading_policy.CONTENT_VERSION` at 2.
 
-Amended 2026-10-05 by the owner
+Amended 2026-10-05 by the owner through delegated adversarial acceptance
 ([the amendment](docs/design-reading-a-session.md#amended-2026-10-05-owner-the-newest-recorded-final-reply-is-read-whole)):
 the agent's newest message that its own transcript record marks as ending its turn
 (`message.stop_reason` equal to `end_turn`; text alone, a quiet session or a later timestamp does
@@ -1253,6 +1253,25 @@ does rendering, polling, reconnecting, resuming, changing focus or saving a revi
 server also requires `observer_model=1` on either request, following the quota consent pattern;
 the page sends it only on an explicit request. A reading additionally requires its durable
 permission; summaries require their own browser-stored answer.
+
+### Accepted source-recovery and model-accuracy limits, 2026-10-05
+
+The owner delegated acceptance to adversarial agent review. Source recovery may send more of
+already-disclosed message prose at a requested press, bound to an already-selected parent message
+and the source version the press read. A mismatch supplies no new words. Recovered prose stays
+in memory, adds no citable fact, enters no history or page response, and is not read by the
+unasked lane. The newest-final path requires renewed disclosure and consent.
+
+This acceptance retains source-fidelity behavior while the expanded-input accuracy gate remains
+failed and unqualified. Sanitizing, quoting, provenance checks and CI do not establish truth or
+improve model accuracy. A local process may rewrite stored assessment prose: sanitization and
+escaping do not authenticate it. The instruction-text guard can reject legitimate quoted text
+and is a mitigation, not a signature.
+
+Usage is reported in its actual unit. Engineering launch, wall-time and captured-output limits
+do not bound tokens or remaining subscription usage. A CLI dollar-budget flag is not a conversion
+to weekly quota. Analyze reservations, qualification allowances and engineering calls remain
+separate ledgers; calling work a review does not replenish an exhausted or failed study.
 Only loopback peers can authorize a model call, and cross-origin Fetch Metadata is refused.
 The response publishes the disclosure and byte cap. The backend does not treat `usage=1` as
 observer consent. Console presents that disclosure for an exact session and stores the answer separately from

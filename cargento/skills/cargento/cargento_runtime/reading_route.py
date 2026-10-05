@@ -488,7 +488,7 @@ def _base_parts(
     # The newest final reply goes whole (owner amendment, 2026-10-05), and it is the only
     # message that does: every other keeps the cap above, and no shell or tool output joins it.
     final = (
-        " The agent's newest final reply, as its transcript records one, goes whole instead "
+        "The agent's newest final reply, as its transcript records one, goes whole instead "
         f"where it fits {_FINAL_REPLY_BYTES:,} bytes."
         if harness in AGENT_MESSAGE_HARNESSES
         else ""
@@ -496,8 +496,9 @@ def _base_parts(
     return [
         (
             f"Sent: your goal and a bounded set of the session's entries, with {messages} "
-            f"up to {_WORDS_CAP:,} characters each{outcome}.{final}"
+            f"up to {_WORDS_CAP:,} characters each{outcome}."
         ),
+        *([final] if final else []),
         *([tool_output] if tool_output else []),
         (
             f"{head}, with credential shapes redacted, through your {label} CLI and its "

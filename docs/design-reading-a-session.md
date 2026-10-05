@@ -1765,11 +1765,55 @@ first. No entry is removed to fit words, the adopted Goal keeps its priority, an
 still includes the header and every row. This changes the amount of content already disclosed,
 so the consent content version stays at 2. Sending a new class of content requires a new version.
 
+### Amended 2026-10-05: source recovery retained with failed accuracy qualification
+
+The owner delegated acceptance to adversarial agent review. That review accepts retaining
+bounded source recovery and crop disclosure as source-fidelity behavior, with model accuracy
+unresolved. The original expanded-input replay failed its gate: grouped no-drift departures
+increased, intent and steering offers were lost, and four previously drawn protected rows across
+four marked claims were withdrawn. Three of nine protected claims lost every former row; the
+fourth affected claim retained another row. Remaining calls stopped. Source-only saved-reply
+replay found no deterministic parser or page defect; it did not establish improved accuracy or
+disprove the protected marks. CI, operational availability, agent review and a later limited
+study cannot turn the failed campaign into a pass.
+
+Recovery still verifies the selected source, reserves the reader's share, preserves selected
+evidence and citation identities, and falls back when source or room is missing. Historical
+marks, keys and guards remain. A rollback remains available: a blanket rollback would also
+remove the separately promised adopted-goal recovery, while a narrower rollback of remaining-room
+agent expansion can preserve that recovery and disclosure. The adopted-goal contract does not
+require retaining agent expansion.
+
+### Amended 2026-10-05: the original closed-proof proposal is retired
+
+The all-flags closed-proof proposal is retired as infeasible under its approved scope. Its
+original denominator is 61 wrong not-shown flag occurrences; subsequent protected re-marks leave
+57 under current marks. These are occurrences, not distinct items. No closed-tier clearance was
+verified. Even the generous incidence bound admits at most 35 original occurrences as having a
+closed command in the claim's own turn; it proves neither execution, relevance, retained evidence
+nor attribution. Feasibility evaluation is complete; the proposed publisher and its model gate
+were not built or passed. Retirement authorizes neither a smaller denominator nor shell, worker,
+background or connector expansion.
+
+### Amended 2026-10-05: acceptance and empirical limits remain separate
+
+Identified agent-operated application and ruling reviews may supply the owner's delegated
+acceptance. The original cold study still requires two actual uncoached people. It remains
+deferred until both use the ready build, select real sessions, give their own consent, answer the
+protocol questions and approve the exact captures and destination. Agents cannot supply human
+testimony. Historical delegated-work attribution remains unknown where original structural
+parent links are absent; a new capture cannot establish them retroactively.
+
 ### Amended 2026-10-05 (owner): the newest recorded final reply is read whole
 
 The owner asked that the agent's final answer reach the reading whole where it fits, because its
-first 1,000 characters often dropped the sentence that says what was done. This source change has its own privacy and consent review, independent of the prospective
-8b accuracy study. Neither review qualifies the failed original 4b or DEC-17 for accuracy.
+first 1,000 characters often dropped the sentence that says what was done. Delegated review
+removes the retired closed-proof proposal as a prerequisite. This source change has its own
+privacy and consent review, independent of the prospective 8b accuracy study. Neither review
+qualifies the failed original 4b or DEC-17 for accuracy. A fresh campaign binds its actual
+requested model and matched conditions, with exact predicates, repeats, blind marks and stop
+rules frozen before output. Old outputs are not that campaign's baseline; model labels describe
+routing, not qualification or a provider snapshot receipt.
 
 What qualifies: A reply is final only when its own record says so: the top-level assistant
 text record of the parent session carries `message.stop_reason` equal to `end_turn`, a UUID, a
