@@ -20,6 +20,10 @@ A report therefore does not establish success. Other harnesses say reporting is 
 [SECURITY.md](SECURITY.md#irreversible-actions-hook-side-destructive-shape-matching) owns the exact
 forms, exclusions, current-run retention and qualified timing contract.
 
+Downgrading can discard checklist lines or saved annotations. Read the
+[annotation-store downgrade limits](docs/design-reading-a-session.md#amended-2026-09-24-an-intent-revision-and-a-reading-hold-more)
+before using an older build.
+
 ## Platform-specific behavior
 
 This file owns the Python floor. The dashboard server is stdlib-only Python 3.11+, with

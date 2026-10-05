@@ -133,15 +133,18 @@ databases, and assembles the HTML, CSS and JavaScript under `cargento_runtime/we
 self-refreshing dashboard at `http://127.0.0.1:4553/`. The server binds to 127.0.0.1 unless you ask
 for another address with `--host`, which has no authentication behind it. Session content stays on
 the machine by default. The quota poll requires disclosure consent, carries a vendor token and no
-session content, and can be disabled with `--no-usage`. The optional observer model is the one path
-that can send session content off the machine through the installed Codex CLI. It requires
-`--observer-model` and separate disclosure consent; `--no-observer-model` overrides enablement.
-The Console tab carries that disclosure for one exact session, keeps the answer in this browser,
-and sends nothing until the reader asks for a summary.
+session content, and can be disabled with `--no-usage`. Model calls can send session content
+through an installed Claude Code or Codex CLI. A reader-requested drift analysis requires the
+permission disclosed on the session page, which names the reader, what it sends and any
+limits on identifying the destination.
+Optional goal summaries in Console use Codex and require `--observer-model` and their own
+consent; the answer stays in this browser. Unasked drift checks are a separate opt-in.
+`--no-observer-model` refuses every model call for the run.
 Dashboard assets, including the optional terminal's vendored xterm files, need no external fetch.
 A third outbound pathway sends counts-only nudges to an operator-supplied endpoint. It stays off
-until you configure a URL, and `--no-reach` disables it. See [SECURITY.md](SECURITY.md) for all
-three, and before you use `--host`.
+until you configure a URL, and `--no-reach` disables it. See [SECURITY.md](SECURITY.md#scope)
+for all three, and before you use `--host`; its [model-call policy](SECURITY.md#observer-model-calls)
+owns the disclosures and bounds.
 
 The dashboard opens on Sessions. Projects, one click away, groups sessions by the label their
 harness publishes, and each project opens a cockpit with a Scope rail, a persistent assignment/execution/command briefing,
