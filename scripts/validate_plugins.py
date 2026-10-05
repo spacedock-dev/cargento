@@ -323,13 +323,12 @@ def validate_public_docs(validation: Validation) -> None:
             ["git", "ls-files", "-z"],  # noqa: S607
             cwd=ROOT,
             capture_output=True,
-            text=True,
             check=False,
         )
         if tracked.returncode == 0:
             paths.update(
                 ROOT / name
-                for name in tracked.stdout.split("\0")
+                for name in tracked.stdout.decode("utf-8", errors="surrogateescape").split("\0")
                 if name and _public_doc_candidate(Path(name))
             )
     except OSError:
@@ -1565,16 +1564,20 @@ def _git_ignored(paths: list[Path]) -> set[Path]:
     `check-ignore` rather than `ls-files`, so a doc that is merely new still gets
     validated before it is staged. Fails open: any git error validates
     everything, which is the behaviour this replaces and can only over-check.
+    NUL-delimited UTF-8 paths avoid Git C-quoting, Windows locale decoding and
+    newline translation. Forward slashes preserve Windows absolute paths.
     """
     if not paths:
         return set()
     try:
         result = subprocess.run(
-            ["git", "check-ignore", "--stdin"],  # noqa: S607
+            ["git", "check-ignore", "-z", "--stdin"],  # noqa: S607
             cwd=ROOT,
-            input="\n".join(str(path) for path in paths),
+            input=b"\0".join(
+                path.as_posix().encode("utf-8", errors="surrogateescape") for path in paths
+            )
+            + b"\0",
             capture_output=True,
-            text=True,
             check=False,
         )
     except OSError:
@@ -1582,7 +1585,11 @@ def _git_ignored(paths: list[Path]) -> set[Path]:
     # 0 = at least one ignored, 1 = none ignored; anything else is a real error.
     if result.returncode not in (0, 1):
         return set()
-    return {Path(line) for line in result.stdout.splitlines() if line}
+    return {
+        Path(name)
+        for name in result.stdout.decode("utf-8", errors="surrogateescape").split("\0")
+        if name
+    }
 
 
 def validate_repo_docs(validation: Validation) -> None:

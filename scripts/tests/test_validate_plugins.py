@@ -1048,6 +1048,62 @@ class ReleasePublicNotesGateTest(unittest.TestCase):
                 )
 
 
+class GitIgnoredPathsTest(unittest.TestCase):
+    """Git paths must round-trip without quoting, locale or newline conversion."""
+
+    def test_real_git_ignored_unicode_path_is_not_a_quoted_filename(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory).resolve()
+            subprocess.run(["git", "init", "-q", str(root)], check=True)  # noqa: S607
+            (root / ".gitignore").write_text("private/\n", encoding="utf-8")
+            private = root / "private"
+            private.mkdir()
+            ignored = private / "café.md"
+            ignored.write_text("private development notes", encoding="utf-8")
+            with mock.patch.object(validator, "ROOT", root):
+                self.assertEqual({ignored}, validator._git_ignored([ignored]))
+
+    def test_raw_nul_protocol_preserves_path_delimiters(self) -> None:
+        paths = [Path("C:/Users/RUNNER/hidden.md"), Path("folder/a\nb.md"), Path("folder/a\rb.md")]
+        encoded = b"\0".join(path.as_posix().encode("utf-8") for path in paths) + b"\0"
+
+        def raw_git(args: list[str], **kwargs: Any) -> subprocess.CompletedProcess[bytes]:
+            self.assertIn("-z", args)
+            self.assertEqual(encoded, kwargs["input"])
+            return subprocess.CompletedProcess(args, 0, stdout=encoded, stderr=b"")
+
+        with mock.patch.object(subprocess, "run", side_effect=raw_git):
+            self.assertEqual(set(paths), validator._git_ignored(paths))
+
+    def test_tracked_unicode_discovery_does_not_use_the_windows_locale(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory).resolve()
+            subprocess.run(["git", "init", "-q", str(root)], check=True)  # noqa: S607
+            vendor = root / "node_modules"
+            vendor.mkdir()
+            tracked = vendor / "café.md"
+            tracked.write_text("DRC-123", encoding="utf-8")
+            real_run = subprocess.run
+
+            def windows_git(args: list[str], **kwargs: Any) -> Any:
+                if args == ["git", "ls-files", "-z"]:
+                    raw = b"node_modules/caf\xc3\xa9.md\0"
+                    if kwargs.get("text"):
+                        raw_text = raw.decode(kwargs.get("encoding", "cp1252"))
+                        return subprocess.CompletedProcess(args, 0, stdout=raw_text, stderr="")
+                    return subprocess.CompletedProcess(args, 0, stdout=raw, stderr=b"")
+                return real_run(args, **kwargs)
+
+            validation = validator.Validation()
+            with (
+                mock.patch.object(validator, "ROOT", root),
+                mock.patch.object(subprocess, "run", side_effect=windows_git),
+            ):
+                validator.validate_public_docs(validation)
+            self.assertEqual(1, len(validation.errors), validation.errors)
+            self.assertIn("node_modules/café.md:1", validation.errors[0])
+
+
 class PublicDocumentationBoundaryTest(unittest.TestCase):
     """New public documents and raw link syntax must not leak tracker provenance."""
 
