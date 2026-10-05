@@ -138,7 +138,7 @@ through an installed Claude Code or Codex CLI. A reader-requested drift analysis
 permission disclosed on the session page, which names the reader, what it sends and any
 limits on identifying the destination.
 Optional goal summaries in Console use Codex and require `--observer-model` and their own
-consent; the answer stays in this browser. Unasked drift checks are a separate opt-in.
+consent; the consent choice stays in this browser. Unasked drift checks are a separate opt-in.
 `--no-observer-model` refuses every model call for the run.
 Dashboard assets, including the optional terminal's vendored xterm files, need no external fetch.
 A third outbound pathway sends counts-only nudges to an operator-supplied endpoint. It stays off
