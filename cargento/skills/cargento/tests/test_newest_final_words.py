@@ -198,7 +198,7 @@ class TheNewestSelectedFinalIsReadWhole(_Source):
 
     def test_raw_text_above_the_whole_limit_is_refused_before_prose_masking(self) -> None:
         row = record("u1", 1, "Finished. " + "x" * 32_000)
-        with mock.patch.object(project_context.records, "mask_prose") as mask:
+        with mock.patch.object(records, "mask_prose") as mask:
             self.assertIsNone(project_context._agent_whole_words(row, len(json.dumps(row))))
         mask.assert_not_called()
 
