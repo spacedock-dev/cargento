@@ -24,6 +24,7 @@ import unittest
 from typing import Any
 
 from .test_next_intent_draft import FIRST, GOAL_KEY, ROUTE, _DraftPage, intent_of
+from .test_next_intent_draft import LATEST as DRAFT_LATEST
 from .test_next_prompt_menu import CHOICES, SERVE_CHOICES, goal_box
 
 LATEST = next(c["text"] for c in CHOICES if c["fact_id"] == "p-latest")
@@ -234,6 +235,75 @@ class ALateAdoptionResponseTest(_DraftPage):
 
     # What the press held is saved, once, against the revision its adoption minted.
 
+    def test_untouched_first_or_latest_draft_and_lines_are_saved_together(self) -> None:
+        for first, source, words in (
+            ("", "first-prompt", FIRST),
+            ('__s.first_prompt=""; __s.first_prompt_at=null;\n', "latest-prompt", DRAFT_LATEST),
+            (type_goal(FIRST + " edited") + type_goal(FIRST), "first-prompt", FIRST),
+        ):
+            with self.subTest(source=source, first=first):
+                out = self.late(first=first + PRESSED)
+                self.assertEqual(2, len(out["posts"]), "the drafted goal must be adopted first")
+                self.assertEqual(source, out["posts"][0]["adopt"])
+                self.assertEqual(words, out["posts"][0]["expected_prompt"])
+                self.assertEqual(words, out["saved"])
+                self.assertEqual(["Pressed line"], out["posts"][1]["lines"])
+                self.assertIsNone(out["posts"][1]["goal"])
+                self.assertEqual(1, out["posts"][1]["expected_revision"])
+                self.assertNotIn(LINES_KEY, out["drafts"])
+
+    def test_a_draft_with_lines_freezes_the_press_and_keeps_newer_edits(self) -> None:
+        out = self.late(
+            first=PRESSED,
+            meanwhile=type_goal(TYPED_LATE)
+            + f"nextCockpitHeldDrafts.set({json.dumps(LINES_KEY)}, ['Newer held line']);\n",
+        )
+        self.assertEqual(FIRST, out["posts"][0]["expected_prompt"])
+        self.assertEqual(["Pressed line"], out["posts"][1]["lines"])
+        self.assertEqual(FIRST, out["saved"])
+        self.assertEqual(TYPED_LATE, out["drafts"][GOAL_KEY])
+        self.assertEqual(["Newer held line"], out["drafts"][LINES_KEY])
+
+    def test_a_draft_with_lines_keeps_its_lines_if_adoption_is_refused(self) -> None:
+        out = self.late(first=PRESSED, reply=NOT_ON_DISK)
+        self.assertEqual(1, len(out["posts"]))
+        self.assertEqual("first-prompt", out["posts"][0]["adopt"])
+        self.assertEqual(["Pressed line"], out["drafts"][LINES_KEY])
+
+    def test_cancelled_draft_adoption_with_lines_keeps_the_press_words(self) -> None:
+        out = self.drive(
+            SERVE_CHOICES + HOLD + LANDS,
+            PRESSED
+            + '__holdAnnotate = true;\n__press("held-save", "intent");\nawait __settle();\n'
+            + f"nextPending.get({SAVE_KEY}).controller.abort();\n"
+            + SETTLE
+            + REPORT,
+        )
+        assert isinstance(out, dict)
+        self.assertEqual([], out["pending"])
+        self.assertEqual("", out["saved"])
+        self.assertEqual(["Pressed line"], out["drafts"][LINES_KEY])
+
+    def test_a_typed_new_goal_and_lines_use_one_direct_save(self) -> None:
+        out = self.late(first=type_goal(TYPED_LATE) + PRESSED)
+        self.assertEqual(1, len(out["posts"]))
+        self.assertNotIn("adopt", out["posts"][0])
+        self.assertEqual(TYPED_LATE, out["posts"][0]["goal"])
+        self.assertEqual(["Pressed line"], out["posts"][0]["lines"])
+
+    def test_lines_beside_an_existing_saved_goal_use_one_direct_save(self) -> None:
+        stored = (
+            '__s.annotation_goal="Already saved"; __s.annotation_goal_why="";'
+            "__s.annotation_revision=3; __s.annotation_revision_count=3;\n"
+        )
+        out = self.late(first=stored + PRESSED)
+        self.assertEqual(1, len(out["posts"]))
+        self.assertNotIn("adopt", out["posts"][0])
+        self.assertIsNone(out["posts"][0]["goal"])
+        self.assertEqual(3, out["posts"][0]["expected_revision"])
+        self.assertEqual("Already saved", out["saved"])
+        self.assertEqual(["Pressed line"], out["posts"][0]["lines"])
+
     def test_the_lines_the_press_held_are_still_saved_after_the_adoption(self) -> None:
         out = self.late(first=PICK_LATEST + PRESSED)
         self.assertEqual(LATEST, out["saved"])
@@ -295,7 +365,7 @@ class ALateAdoptionResponseTest(_DraftPage):
             '__reply["/api/annotate"] = body => { Object.assign(__s, {annotation_revision:2,'
             ' annotation_goal:body.expected_prompt, annotation_goal_why:""});'
             ' return {status:200, body:{ok:true, persisted:true, outcome:"unchanged",'
-            ' revision:2, saved_revision:2}}; };\n'
+            " revision:2, saved_revision:2}}; };\n"
         )
         out = self.late(first=PICK_LATEST + PRESSED, reply=upgraded)
         self.assertEqual(1, len(out["posts"]))

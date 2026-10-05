@@ -7016,12 +7016,14 @@ async function nextCockpitIntentSaveWork(session, signal, chain = null){
     : nextCockpitIntentChanges(session, annotation);
   const frozen = chain ? chain.frozen
     : changes.lines ? nextCockpitLinesFrozen(session, annotation) : null;
-  if(changes.chosen || changes.pending){
-    /* The choice first, as its own adoption naming the saved revision, then
-       the lines against the revision that adoption minted: `/api/annotate`
-       takes an adoption or typed words in one request, not both. */
+  if(changes.chosen || changes.pending || (changes.lines && changes.adoptable)){
+    /* Adopt the chosen or untouched drafted goal first, then save the frozen lines
+       against its locked receipt. `/api/annotate` takes an adoption or typed words
+       in one request, so changed lines must not leave the displayed draft unsaved. */
+    const source = changes.chosen || changes.pending ? NEXT_PROMPT_CHOSEN
+      : nextIntentDraft(session, annotation).source;
     const minted = {};
-    const adopted = await nextAdoptPrompt(session, NEXT_PROMPT_CHOSEN, signal, minted);
+    const adopted = await nextAdoptPrompt(session, source, signal, minted);
     if(adopted === true && frozen){
       /* Only the lines the press held, with no goal, and against the revision the adoption
          minted rather than the refreshed row's, so a newer revision another tab saved in
