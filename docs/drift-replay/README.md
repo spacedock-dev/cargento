@@ -38,6 +38,29 @@ The cases, the marks, the live and read outputs, the spend ledger and the salt s
 `~/.cargento/drift-replay/`. The cases name sessions and times; the outputs hold the agent's and
 the person's words through the readings.
 
+## Repeated-read pilot, 2026-10-05
+
+[pilot-stage4a.json](pilot-stage4a.json) measures 29 usable reads on seven frozen current-arm
+prompts after the model-free changes merged. Four prompts were read five times, three critical
+controls three times. Every repeated app-prompt digest matched. Of 31 case/question pairs, 13 kept
+the same resolved verdict across repeats and 15 kept the same raw token. The other 18 resolved
+questions varied. Resolver guards and citations explain why raw and resolved agreement differ.
+The file also holds citation overlap, with an empty/empty pair defined as overlap 1.
+
+These are seven development-set prompts under agent marks, from the same four sessions. This is
+variation on unchanged prompts, not a detector rate or person outcome. A later changed-prompt
+result must be read against this spread; one changed verdict alone demonstrates no improvement.
+
+## Word recovery before paired reads
+
+[words-stage4b.json](words-stage4b.json) rebuilds the 16 historical readings whose flagged claim
+reply had been sent as its title. With verified person-word recovery, measured agent crops and
+unused-room allocation, 15 of those 16 now carry the reply excerpt. All 16 claim entries remain
+selected. The largest prompt is 16,336 bytes; substituting a worst-case goal and six outcome lines
+raises the maximum to 16,373, below the unchanged 16,384-byte cap. This is a model-free measurement
+of wording and room. It does not show that a flag became right or that the complete reply was read:
+the agent excerpt is still capped at 1,000 characters.
+
 ## The order: cases, blind marks, digest, runs, score
 
 A mark written after seeing an output is agreement, not a mark, so the tool holds this order.

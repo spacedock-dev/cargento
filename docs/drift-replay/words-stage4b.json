@@ -1,0 +1,13 @@
+{
+  "v": 1,
+  "model_calls": 0,
+  "historical_readings": 16,
+  "before_whole": 0,
+  "after_whole": 15,
+  "after_selected": 16,
+  "max_prompt_bytes": 16336,
+  "max_worst_intent_bytes": 16373,
+  "worst_claim_selected": 16,
+  "prompt_cap_bytes": 16384,
+  "limits": "Sixteen historical summarized claim rows; source recovery and excerpt room measured without a model. Counts are not accuracy or a person outcome."
+}

@@ -46,9 +46,10 @@ READER_WORDS_FIELD = "reader_words"
 # docs/design-reading-a-session.md#amended-2026-10-03-owner-the-agents-own-words-are-evidence
 AGENT_WORDS_CAP_CHARS = 1_000
 AGENT_WORDS_FIELD = "agent_words"
+AGENT_WORDS_TOTAL_FIELD = "agent_words_total"
 # Every server-side-only words field, which no page route may publish.
 _SERVER_ONLY_FIELDS = frozenset(
-    {READER_WORDS_FIELD, AGENT_WORDS_FIELD, records.GOAL_SOURCE_CUT_FIELD}
+    {READER_WORDS_FIELD, AGENT_WORDS_FIELD, AGENT_WORDS_TOTAL_FIELD, records.GOAL_SOURCE_CUT_FIELD}
 )
 # The harnesses whose top-level assistant text this module reads as the agent's messages.
 # Claude Code only for now; Codex's final answers are a follow-up.
@@ -523,6 +524,8 @@ def _agent_message_event(
     record: Any,
     harness: str,
     sid: str,
+    *,
+    text_cap: int = records.EXTRACT_TEXT_CAP_CHARS,
 ) -> dict[str, Any] | None:
     """One timestamped top-level assistant text message, as what the agent said.
 
@@ -548,16 +551,22 @@ def _agent_message_event(
     title = _semantic_line(text, min(MAX_SEMANTIC_LINE, config.observer_goal_cap_chars))
     if not title:
         return None
+    full = observer.parse_message_record(record, cap=text_cap)
+    words = records.safe_text(
+        " ".join(records.mask_prose(full["text"] if full else text).split()), text_cap
+    )
     event: dict[str, Any] = {
         "at": at,
         "kind": _AGENT_SAY,
         "phase": "assistant message",
         "title": title,
-        AGENT_WORDS_FIELD: records.safe_text(" ".join(text.split()), AGENT_WORDS_CAP_CHARS),
+        AGENT_WORDS_FIELD: words[:AGENT_WORDS_CAP_CHARS],
         "source": "timestamped top-level assistant text record",
         "harness": harness,
         "sid": sid,
     }
+    if full is not None and len(full["text"]) < text_cap:
+        event[AGENT_WORDS_TOTAL_FIELD] = len(words)
     # Claude spells a record's identity `uuid`. A new fact type has no stored citation to
     # keep, so it joins the id here: two text blocks in one second opening with the same
     # sentence stay two entries.
@@ -579,7 +588,7 @@ def _agent_message_lines(
             record = json.loads(raw)
         except (ValueError, RecursionError):
             continue
-        event = _agent_message_event(config, record, harness, sid)
+        event = _agent_message_event(config, record, harness, sid, text_cap=len(raw))
         if event is None:
             continue
         key = (event["at"], event["title"], str(event.get("record_id") or ""))
@@ -4536,6 +4545,81 @@ def transcript_tail_coverage(
     }
 
 
+def transcript_window_words(
+    config: RuntimeConfig,
+    path: str,
+    harness: str,
+    sid: str,
+    wanted: Sequence[Mapping[str, Any]],
+    *,
+    expected_stamp: tuple[int, int, int, int] | None = None,
+) -> list[dict[str, Any]]:
+    """Verify already-listed in-window person sources under the backfill byte bound.
+
+    The producer passes its filtered ledger, so this never widens the citable
+    list or sends words from before its window or after its stop. Recent source
+    records are scanned without caching or publishing raw words. Conflicting
+    raw sources invalidate an identity even when masking would make them equal.
+    """
+    if harness not in {"claude", "codex"}:
+        return []
+    identities = {
+        (entry.get("id"), entry.get("at"))
+        for entry in wanted
+        if entry.get("type") == "user_message" and entry.get("author") == "person"
+    }
+    before = transcript_stamp(path)
+    if (
+        not identities
+        or before is None
+        or (expected_stamp is not None and before != expected_stamp)
+    ):
+        return []
+    found: dict[tuple[Any, Any], tuple[str, dict[str, Any]]] = {}
+    ambiguous: set[tuple[Any, Any]] = set()
+    try:
+        for raw in runtime_io.reverse_lines(
+            config, path, end_pos=before[2], max_bytes=SEMANTIC_BACKFILL_MAX_BYTES
+        ):
+            record = _json_dict(raw)
+            event = _instruction_event(config, record, harness, sid)
+            if event is None:
+                continue
+            fact = _semantic_fact_from_event(event, "steer", "user_message", "")
+            key = (fact["fact_id"], fact["at"])
+            if key not in identities:
+                continue
+            message = observer.parse_message_record(record, cap=len(raw))
+            if message is None:
+                continue
+            text = message["text"]
+            # The eligibility parser has already redacted values. Compare a
+            # bounded raw-content fingerprint before accepting this identity;
+            # equal redacted words cannot vouch for equal source records.
+            content = (
+                records.as_dict(record.get("payload")).get("content")
+                if record is not None and record.get("type") == "response_item"
+                else records.message_dict(record).get("content")
+            )
+            signature = hashlib.sha256(
+                json.dumps(content, sort_keys=True, ensure_ascii=False).encode("utf-8", "replace")
+            ).hexdigest()
+            masked = records.mask_prose(text)
+            command = transcripts.command_direction(config, masked) if harness == "claude" else None
+            previous = found.get(key)
+            if previous is not None and previous[0] != signature:
+                ambiguous.add(key)
+            fact[READER_WORDS_FIELD] = records.safe_text(
+                " ".join((command or masked).split()), READER_WORDS_CAP_CHARS
+            )
+            found[key] = (signature, fact)
+    except OSError:
+        return []
+    if transcript_stamp(path) != before:
+        return []
+    return [fact for key, (_, fact) in found.items() if key not in ambiguous]
+
+
 def transcript_user_facts(
     config: RuntimeConfig,
     state: RuntimeState,
@@ -5741,6 +5825,7 @@ def _semantic_fact_from_event(
         "last_activity_at",
         READER_WORDS_FIELD,
         AGENT_WORDS_FIELD,
+        AGENT_WORDS_TOTAL_FIELD,
     ):
         if source_event.get(key) not in (None, ""):
             fact[key] = source_event[key]

@@ -302,9 +302,10 @@ class TheAgentsWordsNeverCostAVerdictItsEvidenceTest(unittest.TestCase):
                     self.assertIn(f"a{n:02d}", prompt)
                 rows = self.whole_rows(prompt, " SAID ")
                 self.assertTrue(rows)
-                # A quarter, written as a figure so a moved divisor fails here.
+                # The quarter is offered after the reader's half, then unused
+                # prompt room may hold additional agent excerpts.
                 self.assertEqual(4, reading.AGENT_WORDS_SHARE_DIVISOR)
-                self.assertLessEqual(sum(len((row + "\n").encode()) for row in rows), BUDGET // 4)
+                self.assertLessEqual(len(prompt.encode()), BUDGET)
 
     def test_the_readers_words_go_first_and_keep_their_half(self) -> None:
         people = [
