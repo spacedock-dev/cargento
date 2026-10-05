@@ -218,14 +218,15 @@ def clip(text: str, limit: int) -> str:
     return kept + "…"
 
 
-def prompt_title(config: RuntimeConfig, text: str, limit: int = 80) -> str | None:
+def prompt_title(config: RuntimeConfig, text: str, limit: int | None = 80) -> str | None:
     """A readable one-line title from a raw user prompt, or None.
 
     Slash commands keep their name and any arguments, so `/plugin` reads as
     `/plugin` rather than as the markup it arrived in. Everything else has its
     wrapper tags removed and falls back to the first line with real content in
     it, which is what makes a `<teammate-message>` show the instruction instead
-    of the envelope.
+    of the envelope. ``None`` leaves the rendered words whole for a direction;
+    ordinary titles retain their character bound.
     """
     # Capture the original framing first: a cued value next to a closing
     # wrapper can consume that wrapper when the entire record is redacted.
@@ -237,12 +238,13 @@ def prompt_title(config: RuntimeConfig, text: str, limit: int = 80) -> str | Non
             _PROMPT_TAG_RE.sub(" ", records.redact_secrets(args.group(1))).strip() if args else ""
         )
         joined = f"{command} {argument}".strip() if argument else command
-        return clip(" ".join(shorten_paths(config, joined).split()), limit) or None
+        rendered = " ".join(shorten_paths(config, joined).split())
+        return (clip(rendered, limit) if limit is not None else rendered) or None
     text = records.redact_secrets(text)
     for line in _PROMPT_TAG_RE.sub("", text).split("\n"):
         collapsed = " ".join(shorten_paths(config, line).split())
         if collapsed:
-            return clip(collapsed, limit)
+            return clip(collapsed, limit) if limit is not None else collapsed
     return None
 
 
@@ -303,7 +305,7 @@ def command_direction(config: RuntimeConfig, text: str) -> str | None:
         joined = " ".join(shorten_paths(config, arrived).split())
         command = records.redact_secrets(name.group(1)).strip() if name else ""
         return f"{command} {joined}".strip() + "\u2026"
-    return prompt_title(config, text, limit=len(text)) or ""
+    return prompt_title(config, text, limit=None) or ""
 
 
 def command_cut(text: str) -> bool:

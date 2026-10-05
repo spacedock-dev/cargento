@@ -131,6 +131,19 @@ class InlineCredentialsStayMasked(unittest.TestCase):
         self.assertEqual("/review …REDACTED", transcripts.prompt_title(self.config, raw))
         self.assertEqual("/review …REDACTED", transcripts.command_direction(self.config, raw))
 
+    def test_a_complete_direction_keeps_every_value_when_masking_expands_the_words(self) -> None:
+        words = " ".join(["pwd=abc"] * 40)
+        expected = "/review " + " ".join(["pwd=…REDACTED"] * 40)
+        for trailing in ("", " "):
+            with self.subTest(trailing=bool(trailing)):
+                raw = command(words + trailing)
+                self.assertFalse(transcripts.command_cut(raw))
+                self.assertEqual(expected, transcripts.command_direction(self.config, raw))
+                self.assertEqual(expected, transcripts.prompt_title(self.config, raw, limit=None))
+                title = transcripts.prompt_title(self.config, raw)
+                assert title is not None
+                self.assertLessEqual(len(title), 81)
+
     def test_a_genuine_cut_and_already_premasked_cut_remain_honestly_cut(self) -> None:
         raw = command("note secret=staging").removesuffix("</command-args>")
         self.assertEqual(
