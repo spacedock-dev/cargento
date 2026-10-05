@@ -500,6 +500,7 @@ Start the dashboard with `--claude-reading-model claude-sonnet-5` to select the 
 The default requests `claude-sonnet-5-5`. Use an explicit Sonnet or Opus generation 5 or later ID;
 floating aliases such as `sonnet` are refused. An account that cannot use the chosen model gets a
 failed reading, without a retry on another model. A daemon respawn keeps your selection.
+The disclosure before **Allow and analyze** names the selected Claude model.
 [SECURITY.md](SECURITY.md#amended-2026-10-05-claude-reading-model-baseline) owns the admission policy.
 
 ### Move the history's two bounds

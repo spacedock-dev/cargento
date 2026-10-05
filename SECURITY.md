@@ -1345,7 +1345,8 @@ meets the Sonnet floor. Floating aliases, unknown families, lower generations an
 are refused before launch. A canonical ID whose model is unavailable fails normally; naming it
 does not prove that an account has access.
 
-The selected ID reaches the same restricted call and its stamp. Tagged replay plans bind the
+The selected ID is named in the before-press disclosure and reaches the same restricted call and
+its stamp. Tagged replay plans bind the
 selected model, effort, policy and command-envelope digest, and each stored read retains that
 binding. Changing it requires a new matching dry plan; a tag containing another or unbound model
 cannot be extended. Qualification results bind their selected model too. Historical qualification

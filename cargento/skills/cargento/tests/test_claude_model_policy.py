@@ -164,9 +164,29 @@ class ConfigurationAndDisclosureSelectTheSameModel(unittest.TestCase):
         )
         self.assertEqual("claude", route["provider"])
         self.assertEqual("claude-sonnet-5", route["model"])
+        self.assertIn("using claude-sonnet-5, spending your capacity", route["disclosure"])
+        self.assertTrue(
+            any(
+                "using claude-sonnet-5, spending your capacity" in part
+                for part in route["disclosure_parts"]
+            )
+        )
         all_routes = reading_route.resolve_all(
             ["claude", "codex"],
             config=cfg,
             binary_resolver=lambda name: f"/synthetic/{name}",
         )
         self.assertEqual("claude-sonnet-5", all_routes["claude"]["model"])
+        self.assertNotIn("claude-sonnet", all_routes["codex"]["disclosure"])
+
+    def test_default_and_fallback_claude_disclosures_name_the_selected_model(self) -> None:
+        default = reading_route.resolve("claude", binary_resolver=lambda name: f"/synthetic/{name}")
+        self.assertIn("using claude-sonnet-5-5, spending your capacity", default["disclosure"])
+        cfg = dataclasses.replace(make_config(), claude_reading_model="claude-opus-5")
+        fallback = reading_route.resolve(
+            "codex",
+            config=cfg,
+            binary_resolver=lambda name: "/synthetic/claude" if name == "claude" else None,
+        )
+        self.assertEqual("claude", fallback["provider"])
+        self.assertIn("using claude-opus-5, spending your capacity", fallback["disclosure"])

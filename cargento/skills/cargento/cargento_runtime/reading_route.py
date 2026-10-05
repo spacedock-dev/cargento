@@ -451,7 +451,12 @@ def _to_head(provider: str, where: str) -> str:
 
 
 def _base_parts(
-    provider: str, where: str | None = None, *, harness: str = "", tool_output: str = ""
+    provider: str,
+    where: str | None = None,
+    *,
+    harness: str = "",
+    tool_output: str = "",
+    model: str = "",
 ) -> list[str]:
     """What a reading sends, to whom and through what, one short item each.
 
@@ -467,6 +472,7 @@ def _base_parts(
     vendor, for callers that only want the wording.
     """
     label = LABELS[provider]
+    model_clause = f" using {model or MODELS[CLAUDE]}" if provider == CLAUDE else ""
     head = _to_head(provider, VENDORS[provider] if where is None else where)
     # On Claude Code the agent's own messages go, and the lines with them, whether or not
     # tool output may (owner ruling, 2026-10-03). On Pi a work result is sent with no
@@ -487,7 +493,7 @@ def _base_parts(
         *([tool_output] if tool_output else []),
         (
             f"{head}, with credential shapes redacted, through your {label} CLI and its "
-            "sign-in, spending your capacity."
+            f"sign-in{model_clause}, spending your capacity."
         ),
         *([cli_adds] if cli_adds else []),
     ]
@@ -550,7 +556,11 @@ def _route(
     reached = to if harness in TOOL_OUTPUT_HARNESSES else ""
     sentence = _tool_output_sentence(provider, harness, reached)
     parts = (
-        [note, *_base_parts(provider, to, harness=harness, tool_output=sentence), CAVEAT]
+        [
+            note,
+            *_base_parts(provider, to, harness=harness, tool_output=sentence, model=claude_model),
+            CAVEAT,
+        ]
         if provider
         else []
     )

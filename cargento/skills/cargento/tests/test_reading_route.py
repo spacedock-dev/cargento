@@ -843,11 +843,12 @@ class TheDisclosureIsAShortListThatKeepsEveryFact(unittest.TestCase):
         # 2026-10-03 added five words to a Claude Code session's list: the agent's messages
         # are sent, and the outcome lines moved from the tool output item to the `Sent:` one.
         # Its review added four more: the agent's messages may quote the tool output.
+        # The 2026-10-05 selected-model amendment adds two words on Claude routes: using <id>.
         budgets = {
             "codex": (4, 61),
-            "claude": (6, 129),
+            "claude": (6, 131),
             "claude-by-codex": (5, 110),
-            "codex-by-claude": (5, 98),
+            "codex-by-claude": (5, 100),
         }
         for name, (harness, installed) in self.ROUTES.items():
             route = _named(harness, installed)
