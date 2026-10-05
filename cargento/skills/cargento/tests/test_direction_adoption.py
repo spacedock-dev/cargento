@@ -17,6 +17,7 @@ import io
 import json
 import shutil
 import tempfile
+import threading
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
@@ -460,6 +461,103 @@ class AddDirectionStoreTest(unittest.TestCase):
         self.assertEqual((), self._entry()["revisions"][-1]["lines"])
 
 
+class AdoptionReceiptStoreTest(unittest.TestCase):
+    """A receipt names the saved revision, never the client's revision guess."""
+
+    def setUp(self) -> None:
+        home = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, home, True)
+        self.config, self.state = make_runtime(state_home=home, state_dir=Path(home))
+
+    def _adopt(self, receipt: dict[str, int], **over: Any) -> str:
+        return annotation_store.adopt(
+            self.config,
+            self.state,
+            _row(),
+            source="first-prompt",
+            expected_text=FIRST,
+            expected_at=FIRST_AT,
+            now=NOW,
+            receipt=receipt,
+            **over,
+        )
+
+    def test_stored_and_stale_repeat_receipts_name_actual_saved_revision(self) -> None:
+        receipt = {"saved_revision": 999}
+        self.assertEqual("stored", self._adopt(receipt, expected_revision=0))
+        self.assertEqual({"saved_revision": 1}, receipt)
+        self.assertEqual("unchanged", self._adopt(receipt, expected_revision=0))
+        self.assertEqual({"saved_revision": 1}, receipt)
+
+    def test_rebirth_and_settlement_receipts_do_not_guess_an_increment(self) -> None:
+        for n in range(3):
+            annotation_store.annotate(
+                self.config,
+                self.state,
+                "claude",
+                SHORT,
+                goal=f"Synthetic goal {n}",
+                now=NOW + n,
+            )
+        self.assertEqual("stored", annotation_store.clear(self.config, self.state, "claude", SHORT))
+        receipt: dict[str, int] = {}
+        self.assertEqual("stored", self._adopt(receipt, expected_revision=0))
+        self.assertEqual({"saved_revision": 4}, receipt)
+        self.assertEqual(
+            "stored",
+            self._adopt(
+                receipt,
+                expected_revision=4,
+                settle_through=FIRST_AT + 60,
+            ),
+        )
+        self.assertEqual({"saved_revision": 4}, receipt)
+
+    def test_refused_unwritten_disabled_and_invalid_source_clear_receipts(self) -> None:
+        self.assertEqual("stored", self._adopt({}, expected_revision=0))
+        receipt = {"saved_revision": 999}
+        self.assertEqual(
+            "refused", self._adopt(receipt, expected_revision=8, settle_through=FIRST_AT + 60)
+        )
+        self.assertEqual({}, receipt)
+        for over in ({"expected_text": "Other words"}, {"source": "unknown"}):
+            with self.subTest(over=over):
+                receipt["saved_revision"] = 999
+                arguments: dict[str, Any] = {
+                    "source": "first-prompt",
+                    "expected_text": FIRST,
+                    "expected_at": FIRST_AT,
+                    "now": NOW,
+                }
+                arguments.update(over)
+                self.assertEqual(
+                    "refused",
+                    annotation_store.adopt(
+                        self.config,
+                        self.state,
+                        _row(),
+                        receipt=receipt,
+                        **arguments,
+                    ),
+                )
+                self.assertEqual({}, receipt)
+        with mock.patch.object(annotation_store, "save", return_value=False):
+            receipt["saved_revision"] = 999
+            self.assertEqual(
+                annotation_store.OUTCOME_UNWRITABLE,
+                self._adopt(
+                    receipt,
+                    expected_revision=1,
+                    settle_through=FIRST_AT + 60,
+                ),
+            )
+            self.assertEqual({}, receipt)
+        receipt["saved_revision"] = 999
+        self.config = dataclasses.replace(self.config, annotations_enabled=False)
+        self.assertEqual("refused", self._adopt(receipt))
+        self.assertEqual({}, receipt)
+
+
 class KeepStoreTest(unittest.TestCase):
     def setUp(self) -> None:
         home = tempfile.mkdtemp()
@@ -824,6 +922,241 @@ class DirectionReReadTest(_ClaudeSession):
 class DirectionRouteTest(_ClaudeSession):
     """`POST /api/direction` and the `add_direction` arm over a real socket."""
 
+    def _adoption_payload(self, **over: Any) -> dict[str, Any]:
+        return {
+            "harness": "claude",
+            "sid": SHORT,
+            "adopt": "first-prompt",
+            "expected_prompt": FIRST,
+            "expected_prompt_at": FIRST_AT,
+            "expected_revision": 0,
+            **over,
+        }
+
+    def test_adoption_receipt_survives_an_actual_post_lock_concurrent_write(self) -> None:
+        # The adoption releases the real store lock before the HTTP route rereads
+        # current state. Another dashboard's write then advances only `revision`.
+        for repeated in (False, True):
+            with self.subTest(repeated=repeated):
+                self._post_lock_race(repeated)
+
+    def _post_lock_race(self, repeated: bool) -> None:
+        if repeated:
+            # A fresh source goal replaces the preceding concurrent edit.
+            annotation_store.adopt(
+                self.config,
+                self.state,
+                _row(),
+                source="first-prompt",
+                expected_text=FIRST,
+                expected_at=FIRST_AT,
+                now=NOW,
+                expected_revision=2,
+            )
+        saved = 3 if repeated else 1
+        completed = threading.Event()
+        resume = threading.Event()
+        answers: list[tuple[int, dict[str, Any]]] = []
+        original = annotation_store.adopt
+
+        def pause_after_commit(*args: Any, **kwargs: Any) -> str:
+            outcome = original(*args, **kwargs)
+            completed.set()
+            if not resume.wait(5):
+                raise AssertionError("Synthetic concurrent writer did not resume adoption")
+            return outcome
+
+        with (
+            self._serving() as port,
+            mock.patch.object(annotation_store, "adopt", pause_after_commit),
+        ):
+            caller = threading.Thread(
+                target=lambda: answers.append(
+                    self._post(
+                        port,
+                        "/api/annotate",
+                        self._adoption_payload(expected_revision=saved if repeated else 0),
+                    )
+                )
+            )
+            caller.start()
+            try:
+                self.assertTrue(completed.wait(5))
+                self.assertEqual(
+                    "stored",
+                    annotation_store.annotate(
+                        self.config,
+                        self.state,
+                        "claude",
+                        SHORT,
+                        goal=f"Concurrent synthetic goal {saved}",
+                        now=NOW + 1,
+                    ),
+                )
+            finally:
+                resume.set()
+                caller.join(timeout=10)
+            self.assertFalse(caller.is_alive())
+        status, reply = answers[0]
+        self.assertEqual((200, "unchanged" if repeated else "stored"), (status, reply["outcome"]))
+        self.assertEqual(saved + 1, reply["revision"])
+        self.assertEqual(saved, reply["saved_revision"])
+        self.assertEqual(saved + 1, annotation_store.load(self.config)[0]["revisions"][-1]["n"])
+
+    def test_reborn_unchanged_and_refused_socket_receipts_are_server_authored(self) -> None:
+        for n in range(3):
+            annotation_store.annotate(
+                self.config, self.state, "claude", SHORT, goal=f"Synthetic {n}", now=NOW + n
+            )
+        annotation_store.clear(self.config, self.state, "claude", SHORT)
+        with self._serving() as port:
+            for expected, outcome, receipt in (
+                (0, "stored", 4),
+                (0, "unchanged", 4),
+                (8, "refused", None),
+            ):
+                payload = self._adoption_payload(
+                    expected_revision=expected,
+                    saved_revision=999,
+                    receipt={"saved_revision": 999},
+                    **({"settle_through": FIRST_AT + 60} if outcome == "refused" else {}),
+                )
+                status, reply = self._post(port, "/api/annotate", payload)
+                self.assertEqual((200, outcome), (status, reply["outcome"]))
+                self.assertEqual(receipt, reply["saved_revision"])
+                self.assertEqual(4, reply["revision"])
+            status, reply = self._post(
+                port,
+                "/api/annotate",
+                {
+                    "harness": "claude",
+                    "sid": SHORT,
+                    "goal": "Typed synthetic goal",
+                    "saved_revision": 999,
+                },
+            )
+            self.assertEqual(
+                (200, "stored", None), (status, reply["outcome"], reply["saved_revision"])
+            )
+            self.assertNotIn("saved_revision", annotation_store.load(self.config)[0])
+
+    def test_unchanged_receipt_does_not_hide_a_concurrent_checklist_revision(self) -> None:
+        with self._serving() as port:
+            status, first = self._post(port, "/api/annotate", self._adoption_payload())
+            self.assertEqual(
+                (200, "stored", 1), (status, first["outcome"], first["saved_revision"])
+            )
+            status, concurrent = self._post(
+                port,
+                "/api/annotate",
+                {
+                    "harness": "claude",
+                    "sid": SHORT,
+                    "lines": ["Concurrent synthetic checklist"],
+                    "expected_revision": 1,
+                },
+            )
+            self.assertEqual(
+                (200, "stored", 2), (status, concurrent["outcome"], concurrent["revision"])
+            )
+            # Adoption's exact goal repeat intentionally accepts a stale baseline.
+            # This honest receipt must not upgrade a frozen checklist's baseline.
+            status, repeat = self._post(
+                port, "/api/annotate", self._adoption_payload(expected_revision=1)
+            )
+            self.assertEqual(
+                (200, "unchanged", 2), (status, repeat["outcome"], repeat["saved_revision"])
+            )
+            status, refused = self._post(
+                port,
+                "/api/annotate",
+                {
+                    "harness": "claude",
+                    "sid": SHORT,
+                    "lines": ["Frozen synthetic checklist"],
+                    "expected_revision": 1,
+                },
+            )
+            self.assertEqual(
+                (200, "refused", None), (status, refused["outcome"], refused["saved_revision"])
+            )
+        revision = annotation_store.load(self.config)[0]["revisions"][-1]
+        self.assertEqual(
+            (2, ["Concurrent synthetic checklist"]),
+            (
+                revision["n"],
+                [line["text"] for line in revision["lines"]],
+            ),
+        )
+
+    def test_non_adoption_socket_arms_have_no_receipt(self) -> None:
+        annotation_store.annotate(self.config, self.state, "claude", SHORT, goal=FIRST, now=NOW)
+        with self._serving() as port:
+            for fields in (
+                {"add_direction": "fact:unknown", "text": "Synthetic", "expected_revision": 1},
+                {"not_accurate": True, "read_at": NOW},
+                {"settle_through": FIRST_AT + 60, "expected_revision": 1},
+                {"clear": True},
+            ):
+                with self.subTest(arm=next(iter(fields))):
+                    status, reply = self._post(
+                        port,
+                        "/api/annotate",
+                        {
+                            "harness": "claude",
+                            "sid": SHORT,
+                            "saved_revision": 999,
+                            "receipt": {"saved_revision": 999},
+                            **fields,
+                        },
+                    )
+                    self.assertEqual(200, status)
+                    self.assertIsNone(reply["saved_revision"])
+
+    def test_unpersisted_socket_adoption_has_no_receipt(self) -> None:
+        with (
+            self._serving() as port,
+            mock.patch.object(annotation_store, "save", return_value=False),
+        ):
+            status, reply = self._post(port, "/api/annotate", self._adoption_payload())
+        self.assertEqual(
+            (200, annotation_store.OUTCOME_UNWRITABLE, False, None),
+            (
+                status,
+                reply["outcome"],
+                reply["persisted"],
+                reply["saved_revision"],
+            ),
+        )
+
+    def test_an_unedited_complete_direction_keeps_its_actual_request_time(self) -> None:
+        text = "Keep every test."
+        self.session.prompt(text)
+        self.session.save(self.path)
+        source = max(
+            (fact for fact in self.facts() if fact.get("type") == "user_message"),
+            key=lambda fact: float(fact["at"]),
+        )
+        with self._serving() as port:
+            status, body = self._post(
+                port,
+                "/api/annotate",
+                {
+                    "harness": "claude",
+                    "sid": SHORT,
+                    "add_direction": source["fact_id"],
+                    "text": text,
+                    "expected_revision": 0,
+                    "adopt": "first-prompt",
+                    "expected_prompt": FIRST,
+                    "expected_prompt_at": FIRST_AT,
+                },
+            )
+        self.assertEqual((200, "stored"), (status, body["outcome"]))
+        line = annotation_store.load(self.config)[0]["revisions"][-1]["lines"][0]
+        self.assertEqual(text, line["text"])
+        self.assertEqual(float(source["at"]), line["request"]["at"])
+
     def _app(self, **row: Any) -> Any:
         def collect(
             config: Any, state: Any, now: float, window_hours: float, show_all: bool
@@ -951,7 +1284,11 @@ class DirectionRouteTest(_ClaudeSession):
         self.assertEqual("stored", stored["outcome"])
         lines = annotation_store.load(self.config)[0]["revisions"][-1]["lines"]
         self.assertEqual(6, len(lines))
-        self.assertEqual({"text": edited, "source": "entry", "source_id": fact_id}, lines[5])
+        self.assertEqual(
+            {"text": edited, "source": "entry", "source_id": fact_id},
+            {key: lines[5][key] for key in ("text", "source", "source_id")},
+        )
+        self.assertNotIn("request", lines[5])
         self.assertNotIn(opened["text"], json.dumps(annotation_store.load(self.config)))
 
     def test_a_settled_direction_that_is_not_the_latest_prompt_is_added_from_its_entry(
@@ -1018,8 +1355,9 @@ class DirectionRouteTest(_ClaudeSession):
                 "source": "entry",
                 "source_id": fact_id,
             },
-            revision["lines"][1],
+            {key: revision["lines"][1][key] for key in ("text", "source", "source_id")},
         )
+        self.assertNotIn("request", revision["lines"][1])
 
     def test_add_over_the_draft_adopts_it_in_the_same_request(self) -> None:
         fact_id = str(self.direction()["fact_id"])

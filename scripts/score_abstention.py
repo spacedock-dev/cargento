@@ -2671,11 +2671,19 @@ def probe_argv(
     return worst
 
 
+def _claude_model_arg(value: str) -> str:
+    _runtime()
+    from cargento_runtime import cli  # noqa: PLC0415 - import after installing the runtime path
+
+    return cli.claude_reading_model_arg(value)
+
+
 def main(argv: list[str] | None = None) -> int:  # noqa: PLR0911 - one refusal per line
     parser = argparse.ArgumentParser(description="Score the reading producer against the marks.")
     parser.add_argument("--score", action="store_true", help="run the producer; spends")
     parser.add_argument("--report", action="store_true", help="where things stand; spends nothing")
     parser.add_argument("--producer", choices=PRODUCERS, help="required with --score")
+    parser.add_argument("--claude-reading-model", type=_claude_model_arg, default=None)
     parser.add_argument(
         "--max-calls", type=int, default=MAX_CALLS, help=f"spend ledger cap, at most {MAX_CALLS}"
     )
@@ -2692,7 +2700,7 @@ def main(argv: list[str] | None = None) -> int:  # noqa: PLR0911 - one refusal p
         print(refusal)
         return 2
     config_mod, reading, _records = _runtime()
-    from cargento_runtime import observer, reading_route  # noqa: PLC0415 - see `_runtime`
+    from cargento_runtime import reading_route  # noqa: PLC0415 - see `_runtime`
 
     config = config_mod.build_runtime_config(
         environ=os.environ,
@@ -2700,6 +2708,7 @@ def main(argv: list[str] | None = None) -> int:  # noqa: PLR0911 - one refusal p
         os_name=os.name,
         launcher_path=pathlib.Path(_SKILL, "server.py"),
         observer_model_enabled=True,
+        claude_reading_model=args.claude_reading_model or config_mod.CLAUDE_READING_DEFAULT_MODEL,
     )
     if args.probe_argv:
         try:
@@ -2738,7 +2747,7 @@ def main(argv: list[str] | None = None) -> int:  # noqa: PLR0911 - one refusal p
     with verified:
         binding = {
             "producer": "claude",
-            "model": observer.CLAUDE_READING_MODEL,
+            "model": config.claude_reading_model,
             "argv_digest": argv_digest("claude", config),
             "destination": destination,
             "binary": verified.shown,

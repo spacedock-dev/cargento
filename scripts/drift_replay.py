@@ -31,6 +31,7 @@ from __future__ import annotations
 
 import argparse
 import contextlib
+import copy
 import datetime
 import glob
 import hashlib
@@ -44,7 +45,7 @@ import subprocess
 import sys
 import types
 from collections.abc import Callable, Iterable, Mapping
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any
 
@@ -1438,10 +1439,18 @@ class Ledger:
     from resetting the count.
     """
 
-    def __init__(self, path: str, cap: int = MAX_CALLS, floor: int = 0) -> None:
+    def __init__(
+        self,
+        path: str,
+        cap: int = MAX_CALLS,
+        floor: int = 0,
+        *,
+        binding: tuple[str, Mapping[str, Any]] | None = None,
+    ) -> None:
         self.path = path
         self.cap = cap
         self.floor = floor
+        self.binding = binding
 
     def calls(self) -> list[dict[str, Any]]:
         try:
@@ -1461,6 +1470,16 @@ class Ledger:
     def used(self) -> int:
         return max(len(self.calls()), self.floor)
 
+    def other_producer(self, calls: list[dict[str, Any]] | None = None) -> bool:
+        """Every charged attempt binds its opaque tag scope, including unusable replies."""
+        if self.binding is None:
+            return False
+        scope, producer = self.binding
+        return any(
+            call.get("read_scope") == scope and call.get("producer") != producer
+            for call in (self.calls() if calls is None else calls)
+        )
+
     def charge(self, key: str) -> bool:
         """Record a call before it is made; False when the cap is reached."""
         os.makedirs(os.path.dirname(self.path), mode=0o700, exist_ok=True)
@@ -1468,9 +1487,17 @@ class Ledger:
             if fcntl is not None:
                 fcntl.flock(lock, fcntl.LOCK_EX)
             calls = self.calls()
+            if self.other_producer(calls):
+                raise LedgerError("this tag has charged calls from another producer; use a new tag")
             if max(len(calls), self.floor) >= self.cap:
                 return False
-            calls.append({"key": key, "at": datetime.datetime.now(datetime.UTC).isoformat()})
+            receipt: dict[str, Any] = {
+                "key": key,
+                "at": datetime.datetime.now(datetime.UTC).isoformat(),
+            }
+            if self.binding is not None:
+                receipt.update(read_scope=self.binding[0], producer=dict(self.binding[1]))
+            calls.append(receipt)
             lc._write(self.path, {"v": 1, "cap": self.cap, "calls": calls})  # noqa: SLF001
             self.floor = max(self.floor, len(calls))
         return True
@@ -1479,7 +1506,14 @@ class Ledger:
 class _Charged:
     """The model `produce` calls, charging the ledger first; a withheld case never reaches it."""
 
-    def __init__(self, inner: Any, ledger: Ledger | None, key: str) -> None:
+    def __init__(
+        self,
+        inner: Any,
+        ledger: Ledger | None,
+        key: str,
+        *,
+        expected_prompt: Mapping[str, Any] | None = None,
+    ) -> None:
         self.unavailable_reason = str(getattr(inner, "unavailable_reason", "model-unavailable"))
         self.inner = inner
         self.ledger = ledger
@@ -1491,11 +1525,17 @@ class _Charged:
         self.status = ""
         self.prompt_digest = ""
         self.prompt_bytes = 0
+        self.expected_prompt = expected_prompt
 
     def available(self) -> bool:
         return bool(getattr(self.inner, "available", lambda: True)())
 
     def __call__(self, prompt: str, *, output_cap_bytes: int) -> tuple[str, str]:
+        if self.expected_prompt is not None and (
+            self.expected_prompt.get("digest") != hashlib.sha256(prompt.encode("utf-8")).hexdigest()
+            or self.expected_prompt.get("bytes") != len(prompt.encode("utf-8"))
+        ):
+            raise LedgerError("this prompt differs from its dry plan; replan before spending")
         if self.ledger is None:
             # A dry run: measured by the stub, never charged.
             return self._send(prompt, output_cap_bytes)
@@ -1598,6 +1638,12 @@ def _tagged(paths: Mapping[str, str], tag: str) -> tuple[str, str]:
     )
 
 
+def _read_scope(path: str) -> str:
+    """A canonical tag identity in the ledger without storing its private path."""
+    canonical = os.path.normcase(os.path.realpath(path))
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
 def _tag_refusal(tag: str) -> str:
     """A tag names files beside the cases, so it is a short plain word or nothing."""
     if tag and not _TAG_RE.match(tag):
@@ -1649,7 +1695,94 @@ def _read_refusal(
     return _selection(body, cases, arms)
 
 
-def read(  # noqa: PLR0911 - one return per refusal, each before anything is sent
+def _read_model_config(config: Any, selected: str | None) -> Any:
+    from cargento_runtime import config as runtime_config  # noqa: PLC0415
+
+    if selected is None:
+        return config
+    return replace(
+        config, claude_reading_model=runtime_config.validate_claude_reading_model(selected)
+    )
+
+
+def _tag_has_other_model(done: Mapping[str, Any], producer: Mapping[str, Any]) -> bool:
+    return any(
+        isinstance(entry, dict) and entry.get("charged") and entry.get("producer") != producer
+        for arm_rows in done.values()
+        if isinstance(arm_rows, dict)
+        for entry in arm_rows.values()
+    )
+
+
+def _read_plan_refusal(  # noqa: PLR0913 - one plan's admission inputs, before any spend
+    body: Mapping[str, Any],
+    paths: Mapping[str, str],
+    plan: Mapping[str, Any],
+    ledger: Ledger,
+    done: dict[str, Any],
+    src: str,
+    arms: tuple[str, ...],
+    *,
+    selection: list[str],
+    include_history: bool,
+    config: Any,
+    producer: Mapping[str, Any],
+    dry_run: bool,
+) -> str:
+    """Rebuild all pending prompts without a provider before accepting a paid plan."""
+    if dry_run:
+        return (
+            "Refused: this tag has an unbound historical plan. Use a new tag."
+            if plan and not plan.get("producer")
+            else ""
+        )
+    if (
+        plan.get("cases_digest") != lc.digest(body)
+        or sorted(plan.get("arms") or ()) != sorted(arms)
+        or (plan.get("selection") or []) != selection
+        or bool(plan.get("include_history")) != include_history
+        or plan.get("producer") != producer
+    ):
+        return (
+            "Run --read --dry-run first, with the same --arm, --tag and --case choices: "
+            "it records the plan."
+        )
+    room = ledger.cap - ledger.used()
+    if int(plan.get("calls") or 0) > room:
+        return (
+            f"Refused: the plan needs {plan.get('calls')} calls and the ledger has {room} "
+            "left. Narrow it with --arm."
+        )
+    current_prompts: dict[str, Any] = {}
+    try:
+        _read_cases(
+            body,
+            paths,
+            lc._Spy(),  # noqa: SLF001 - sibling measuring stub
+            ledger,
+            copy.deepcopy(done),
+            src,
+            arms,
+            dry_run=True,
+            say=lambda _message: None,
+            selection=frozenset(selection),
+            include_history=include_history,
+            prompt_measurements=current_prompts,
+            runtime_config=config,
+        )
+    finally:
+        _remove_tree(os.path.join(paths["dir"], "scratch-read"))
+    expected_prompts = {
+        key: value
+        for key, value in (plan.get("prompts") or {}).items()
+        if not (done.get(key.rpartition(":")[0]) or {}).get(key.rpartition(":")[2])
+    }
+    if current_prompts != expected_prompts:
+        return "Refused: current prompts differ from the dry plan. Replan before spending."
+    return ""
+
+
+def read(  # noqa: C901, PLR0911, PLR0913, PLR0915 - admission refusals precede any charge
     *,
     home: str,
     source: str | None = None,
@@ -1659,6 +1792,7 @@ def read(  # noqa: PLR0911 - one return per refusal, each before anything is sen
     tag: str = "",
     cases: tuple[str, ...] = (),
     include_history: bool = False,
+    claude_model: str | None = None,
 ) -> int:
     """Tier 3: one Analyze reading per cut and arm, through the verified Claude Code CLI.
 
@@ -1678,7 +1812,14 @@ def read(  # noqa: PLR0911 - one return per refusal, each before anything is sen
     read_path, plan_path = _tagged(paths, tag)
     config, _project_context, _live, _correction, reading = _runtime()
     import score_abstention  # noqa: PLC0415 - the verified, pinned CLI the qualification uses
-    from cargento_runtime import reading_route  # noqa: PLC0415
+    from cargento_runtime import observer, reading_route  # noqa: PLC0415
+
+    try:
+        config = _read_model_config(config, claude_model)
+    except ValueError:
+        say("Refused: choose an explicit Sonnet or Opus generation 5 or later model ID.")
+        return 1
+    producer = observer.claude_reading_provenance(config)
 
     destination = reading_route.destination("claude")
     if not dry_run and destination != reading_route.VENDORS["claude"]:
@@ -1688,6 +1829,9 @@ def read(  # noqa: PLR0911 - one return per refusal, each before anything is sen
         )
         return 2
     done = lc._load(read_path).get("cases") or {}  # noqa: SLF001
+    if _tag_has_other_model(done, producer):
+        say("Refused: this tag contains another or unbound model. Use a new tag.")
+        return 1
     # Every read file's charged calls: neither a deleted ledger nor a tagged run resets the count.
     charged = sum(
         1
@@ -1697,34 +1841,35 @@ def read(  # noqa: PLR0911 - one return per refusal, each before anything is sen
         for arm in entry.values()
         if isinstance(arm, dict) and arm.get("charged")
     )
-    ledger = Ledger(LEDGER_PATH, floor=charged)
+    ledger = Ledger(LEDGER_PATH, floor=charged, binding=(_read_scope(read_path), producer))
     try:
         ledger.used()
+        if ledger.other_producer():
+            say("Refused: this tag contains another charged producer. Use a new tag.")
+            return 1
     except LedgerError as error:
         say(f"Refused: {error}. Nothing was sent.")
         return 2
     src = source or str(body.get("source") or "fixtures")
     bound = lc.digest(body)
-    if not dry_run:
-        plan = lc._load(plan_path)  # noqa: SLF001
-        room = ledger.cap - ledger.used()
-        if (
-            plan.get("cases_digest") != bound
-            or sorted(plan.get("arms") or ()) != sorted(arms)
-            or (plan.get("selection") or []) != selection
-            or bool(plan.get("include_history")) != include_history
-        ):
-            say(
-                "Run --read --dry-run first, with the same --arm, --tag and --case choices: "
-                "it records the plan."
-            )
-            return 1
-        if int(plan.get("calls") or 0) > room:
-            say(
-                f"Refused: the plan needs {plan.get('calls')} calls and the ledger has {room} "
-                "left. Narrow it with --arm."
-            )
-            return 1
+    plan = lc._load(plan_path)  # noqa: SLF001
+    refusal = _read_plan_refusal(
+        body,
+        {**paths, "read": read_path},
+        plan,
+        ledger,
+        done,
+        src,
+        arms,
+        selection=selection,
+        include_history=include_history,
+        config=config,
+        producer=producer,
+        dry_run=dry_run,
+    )
+    if refusal:
+        say(refusal)
+        return 1
     with contextlib.ExitStack() as stack:
         verified = None if dry_run else stack.enter_context(score_abstention.verify_claude_binary())
         inner: Any = (
@@ -1750,7 +1895,12 @@ def read(  # noqa: PLR0911 - one return per refusal, each before anything is sen
                 selection=frozenset(selection),
                 include_history=include_history,
                 prompt_measurements=prompt_measurements,
+                runtime_config=config,
+                expected_prompts=plan.get("prompts") if not dry_run else None,
             )
+        except LedgerError as error:
+            say(f"Refused: {error}. No further call was made.")
+            return 2
         finally:
             _remove_tree(os.path.join(paths["dir"], "scratch-read"))
         if calls < 0:
@@ -1758,7 +1908,7 @@ def read(  # noqa: PLR0911 - one return per refusal, each before anything is sen
             return 0
     if dry_run:
         plan = {"v": 1, "cases_digest": bound, "arms": list(arms), "calls": calls}
-        plan.update(include_history=include_history, prompts=prompt_measurements)
+        plan.update(include_history=include_history, prompts=prompt_measurements, producer=producer)
         if selection:
             plan["selection"] = selection
         lc._write(plan_path, plan)  # noqa: SLF001
@@ -1805,6 +1955,8 @@ def _read_cases(  # noqa: PLR0913 - every input of one pass, named
     selection: frozenset[str] = frozenset(),
     include_history: bool = False,
     prompt_measurements: dict[str, Any] | None = None,
+    runtime_config: Any = None,
+    expected_prompts: Mapping[str, Any] | None = None,
 ) -> int:
     """One reading per cut and arm; the number of calls, negative when the cap stopped the pass.
 
@@ -1813,6 +1965,16 @@ def _read_cases(  # noqa: PLR0913 - every input of one pass, named
     config, project_context, _live, _correction, reading = _runtime()
     from cargento_runtime import observer, reading_route  # noqa: PLC0415
     from cargento_runtime.state import build_runtime_state  # noqa: PLC0415
+
+    if runtime_config is not None:
+        config = runtime_config
+    producer = observer.claude_reading_provenance(config)
+    ledger = Ledger(
+        ledger.path,
+        cap=ledger.cap,
+        floor=ledger.floor,
+        binding=(_read_scope(paths["read"]), producer),
+    )
 
     scratch = os.path.join(paths["dir"], "scratch-read")
     current = lc._load(paths["current"]).get("intents") or {}  # noqa: SLF001
@@ -1832,6 +1994,9 @@ def _read_cases(  # noqa: PLR0913 - every input of one pass, named
             annotation = handle.read()
         here = os.path.join(scratch, case["id"])
         path = cut_session(project_context, transcript, sid, cut, here)
+        # The cut file's version, taken before its facts are read, as the press stamps its
+        # source before the context: the newest-final lookup refuses a file that changed since.
+        cut_stamp = project_context.transcript_stamp(path)
         try:
             facts, press = facts_at(
                 config, project_context, path, sid, cut, include_history=include_history
@@ -1855,7 +2020,14 @@ def _read_cases(  # noqa: PLR0913 - every input of one pass, named
                 # The listing's cap leaving out a pass or a write, as the press reads it.
                 passes_and_writes=press.passes_and_writes,
             )
-            model = _Charged(inner, None if dry_run else ledger, f"{case['id']}|{intent.arm}")
+            model = _Charged(
+                inner,
+                None if dry_run else ledger,
+                f"{case['id']}|{intent.arm}",
+                expected_prompt=expected_prompts.get(f"{case['id']}:{intent.arm}", {})
+                if expected_prompts is not None
+                else None,
+            )
             source_facts, total, found = _goal_source(
                 config, source_state, project_context, reading, path, sid, intent, facts
             )
@@ -1870,8 +2042,15 @@ def _read_cases(  # noqa: PLR0913 - every input of one pass, named
                 person_source_lookup=lambda wanted, path=path, sid=sid: (
                     project_context.transcript_window_words(config, path, "claude", sid, wanted)
                 ),
+                # The press's own lookup, under this cut's version: a replay that simulated
+                # eligibility with another implementation would measure a producer nobody ships.
+                final_source_lookup=lambda wanted, path=path, sid=sid, stamp=cut_stamp: (
+                    project_context.transcript_newest_final_words(
+                        config, path, "claude", sid, wanted, expected_stamp=stamp
+                    )
+                ),
                 now=cut + float(getattr(config, "reading_settle_sec", 8.0)) + _SETTLE_EXTRA,
-                stamp_text=f"{observer.CLAUDE_READING_MODEL} · drift replay",
+                stamp_text=f"{config.claude_reading_model} · drift replay",
                 model=model,
                 tool_output=tool_output,
                 read_lines=True,
@@ -1887,6 +2066,7 @@ def _read_cases(  # noqa: PLR0913 - every input of one pass, named
                 "assessment": assessment,
                 "raw_verdict": model.raw,
                 "model_status": model.status,
+                "producer": producer,
                 "prompt_digest": model.prompt_digest,
                 "intent": intent.revision(),
                 "facts_version": "history-v2" if include_history else "tail-v1",
@@ -2850,6 +3030,13 @@ def score(
     return 0
 
 
+def _claude_model_arg(value: str) -> str:
+    _runtime()
+    from cargento_runtime import cli  # noqa: PLC0415 - import after installing the runtime path
+
+    return cli.claude_reading_model_arg(value)
+
+
 def main(argv: list[str] | None = None) -> int:  # noqa: C901, PLR0911 - one branch/return per CLI mode
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     group = parser.add_mutually_exclusive_group()
@@ -2873,10 +3060,14 @@ def main(argv: list[str] | None = None) -> int:  # noqa: C901, PLR0911 - one bra
     parser.add_argument("--case", action="append", default=[])
     parser.add_argument("--counterfactual-read", default="")
     parser.add_argument("--include-history", action="store_true")
+    parser.add_argument("--claude-reading-model", type=_claude_model_arg, default=None)
     parser.add_argument("--marker", default="operator")
     parser.add_argument("--score-read", default=None)
     parser.add_argument("--score-live", default="")
     args = parser.parse_args(argv)
+    if args.claude_reading_model is not None and not args.read:
+        print("Refused: --claude-reading-model belongs to --read only.")
+        return 1
     refusal = _home_refusal(HOME)
     if refusal:
         print(refusal)
@@ -2905,6 +3096,7 @@ def main(argv: list[str] | None = None) -> int:  # noqa: C901, PLR0911 - one bra
             tag=args.tag,
             cases=tuple(args.case),
             include_history=args.include_history,
+            claude_model=args.claude_reading_model,
         )
     if args.score:
         return score(home=HOME, tag=args.tag, read_tag=args.score_read, live_tag=args.score_live)

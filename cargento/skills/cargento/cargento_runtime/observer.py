@@ -18,6 +18,7 @@ to a crash or a hallucination.
 from __future__ import annotations
 
 import contextlib
+import hashlib
 import json
 import os
 import re
@@ -285,11 +286,9 @@ def codex_exec(
                 os.unlink(output_path)
 
 
-# The Claude Code reading producer (DRC-4650). A fixed, explicit model id
-# rather than the CLI's default, so a stamp names what read the session and a
-# CLI update cannot silently change it. Unmeasured: whether every signed-in
-# account may use this id. A refusal is an ordinary nonzero exit, `failed`.
-CLAUDE_READING_MODEL = "claude-sonnet-5"
+# The default is an explicit request, never the CLI's floating alias. Accounts
+# may refuse it; the call never retries with another model.
+CLAUDE_READING_MODEL = runtime_config.CLAUDE_READING_DEFAULT_MODEL
 # Bounded below the CLI's top levels so one reading fit the 60 seconds readings
 # then had. Both lanes now share `OBSERVER_READING_TIMEOUT_SEC`; this effort was
 # not re-measured against it.
@@ -479,6 +478,7 @@ class PreparedClaude:
         output: Any,
         runner: Any,
         on_spawn: Callable[[supervise.Group], None] | None,
+        model: str,
     ) -> None:
         self.binary = binary
         self.workdir = workdir
@@ -486,34 +486,10 @@ class PreparedClaude:
         self.output = output
         self.runner = runner
         self.on_spawn = on_spawn
+        self.model = model
 
     def __call__(self, prompt: str, *, output_cap_bytes: int) -> tuple[str, str]:
-        command = [
-            self.binary,
-            "--print",
-            "--safe-mode",
-            "--restricted",
-            "--tools",
-            "",
-            "--strict-mcp-config",
-            "--mcp-config",
-            CLAUDE_EMPTY_MCP_CONFIG,
-            "--disable-slash-commands",
-            "--no-chrome",
-            "--no-session-persistence",
-            "--permission-mode",
-            "dontAsk",
-            "--permission-prompts",
-            "none",
-            "--output-format",
-            "text",
-            "--model",
-            CLAUDE_READING_MODEL,
-            "--effort",
-            CLAUDE_READING_EFFORT,
-            "--system-prompt",
-            CLAUDE_READING_SYSTEM_PROMPT,
-        ]
+        command = [self.binary, *_claude_reading_argv(self.model)]
         try:
             result = self.runner(
                 command,
@@ -544,6 +520,50 @@ class PreparedClaude:
             return "", "failed"
 
 
+def _claude_reading_argv(model: str) -> list[str]:
+    return [
+        "--print",
+        "--safe-mode",
+        "--restricted",
+        "--tools",
+        "",
+        "--strict-mcp-config",
+        "--mcp-config",
+        CLAUDE_EMPTY_MCP_CONFIG,
+        "--disable-slash-commands",
+        "--no-chrome",
+        "--no-session-persistence",
+        "--permission-mode",
+        "dontAsk",
+        "--permission-prompts",
+        "none",
+        "--output-format",
+        "text",
+        "--model",
+        runtime_config.validate_claude_reading_model(model),
+        "--effort",
+        CLAUDE_READING_EFFORT,
+        "--system-prompt",
+        CLAUDE_READING_SYSTEM_PROMPT,
+    ]
+
+
+def claude_reading_provenance(config: RuntimeConfig) -> dict[str, Any]:
+    """Bind the requested model/envelope, without inventing a remote receipt."""
+    argv = _claude_reading_argv(config.claude_reading_model)
+    return {
+        "provider": "claude",
+        "selected_model": config.claude_reading_model,
+        "resolved_model": None,
+        "effort": CLAUDE_READING_EFFORT,
+        "model_policy": runtime_config.CLAUDE_READING_MODEL_POLICY,
+        "admission_rank": list(
+            runtime_config.claude_reading_model_rank(config.claude_reading_model)
+        ),
+        "envelope_digest": hashlib.sha256(json.dumps(argv).encode("utf-8")).hexdigest(),
+    }
+
+
 @contextlib.contextmanager
 def prepare_claude_exec(
     config: RuntimeConfig,
@@ -564,6 +584,12 @@ def prepare_claude_exec(
     output: BinaryIO | None = None
     try:
         try:
+            selected_model = runtime_config.validate_claude_reading_model(
+                config.claude_reading_model
+            )
+        except ValueError as error:
+            raise ClaudePreparationError("unavailable") from error
+        try:
             binary = binary_resolver("claude")
             if not binary or not os.path.isabs(binary):
                 raise ClaudePreparationError("unavailable")
@@ -578,7 +604,7 @@ def prepare_claude_exec(
             output = os.fdopen(descriptor, "wb")
         except (KeyError, OSError) as error:
             raise ClaudePreparationError("failed") from error
-        yield PreparedClaude(binary, workdir, output_path, output, runner, on_spawn)
+        yield PreparedClaude(binary, workdir, output_path, output, runner, on_spawn, selected_model)
     finally:
         # Ownership starts at allocation, before a stream or yielded context
         # exists. Cancellation keeps its exception and cannot strand the cwd.

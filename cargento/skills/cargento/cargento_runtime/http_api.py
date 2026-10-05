@@ -47,7 +47,7 @@ from cargento_runtime import stream as runtime_stream
 _WEBSOCKET_GUID = b"258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping
+    from collections.abc import Mapping, Sequence
 
     from cargento_runtime.aggregate import Application
     from cargento_runtime.interaction_prototype import InteractionPrototype
@@ -400,7 +400,11 @@ def _with_levels(
     sources: dict[str, Any] = raw_sources if isinstance(raw_sources, dict) else {}
     raw_work = sources.get("work")
     work: dict[str, Any] = dict(raw_work) if isinstance(raw_work, dict) else {}
-    work["analysis_levels"] = _analysis_levels(application, context, row, entry, floor)
+    request_sources = _request_sources(application, row, _facts_of(context), entry) if entry else []
+    work["line_requests"] = _line_requests(entry, request_sources, row)
+    work["analysis_levels"] = _analysis_levels(
+        application, context, row, entry, floor, request_sources=request_sources
+    )
     transcript = runtime_observer.resolve_transcript(config, application.state, harness, sid)
     if transcript:
         live = live_estimate.for_session(
@@ -410,12 +414,33 @@ def _with_levels(
     return {**context, "sources": {**sources, "work": work}}
 
 
+def _line_requests(
+    entry: annotation_store.Annotation | None, facts: list[Any], row: Mapping[str, Any]
+) -> list[dict[str, Any]]:
+    """The page receives verified times, never untrusted stored binding digests."""
+    if not entry or not entry["revisions"]:
+        return []
+    latest = entry["revisions"][-1]
+    harness, sid = str(row.get("harness") or ""), str(row.get("sid") or "")
+    own = [fact for fact in facts if isinstance(fact, dict)]
+    floors = runtime_reading.line_request_floors(latest, own, harness, sid)
+    lines = {
+        name: {"at": at, "source_id": latest["lines"][int(name.split("_")[1]) - 1]["source_id"]}
+        for name, at in floors.items()
+    }
+    return (
+        [{"harness": harness, "sid": sid, "revision": latest["n"], "lines": lines}] if lines else []
+    )
+
+
 def _analysis_levels(
     application: Any,
     context: dict[str, Any],
     row: dict[str, Any],
     entry: annotation_store.Annotation | None,
     floor: float | None,
+    *,
+    request_sources: Sequence[Mapping[str, Any]] = (),
 ) -> list[dict[str, Any]]:
     """The analysis-derived level of the stored reading, recomputed now and never stored.
 
@@ -455,6 +480,9 @@ def _analysis_levels(
         evidence,
         outcome_lines=len(read["lines"]),
         lines=runtime_reading.outcome_lines(read),
+        line_requests=runtime_reading.line_request_floors(read, request_sources, harness, sid)
+        if read["n"] == entry["revisions"][-1]["n"]
+        else {},
     )
     return [
         {
@@ -468,6 +496,31 @@ def _analysis_levels(
             "cites": list(level.cites),
         }
     ]
+
+
+def _request_sources(
+    application: Any,
+    row: Mapping[str, Any],
+    facts: list[Any],
+    entry: annotation_store.Annotation | None = None,
+) -> list[Mapping[str, Any]]:
+    """One version-checked bounded prefix read, shared by this operation's consumers."""
+    if entry is not None and (
+        not entry["revisions"] or not runtime_reading.has_line_requests(entry["revisions"][-1])
+    ):
+        return []
+    harness, sid = str(row.get("harness") or ""), str(row.get("sid") or "")
+    path = runtime_observer.resolve_transcript(application.config, application.state, harness, sid)
+    recovered = (
+        runtime_project_context.transcript_user_facts(
+            application.config, application.state, path, harness, sid
+        )
+        if path
+        else []
+    )
+    return runtime_reading.listed_request_sources(
+        [fact for fact in facts if isinstance(fact, dict)], recovered
+    )
 
 
 def _prompt_facts(
@@ -1717,7 +1770,8 @@ class _RequestHandler(BaseHTTPRequestHandler):
             self._reject(400)
             return
         state = application.state
-        outcome, withdrew = self._annotation_outcome(harness, sid, payload)
+        receipt: dict[str, int] = {}
+        outcome, withdrew = self._annotation_outcome(harness, sid, payload, receipt=receipt)
         # Dropped rather than waited out, for `_dismiss`'s reason: the next GET
         # would otherwise serve the pre-save payload for up to `collect_memo_sec`.
         state.snapshot.clear()
@@ -1730,6 +1784,10 @@ class _RequestHandler(BaseHTTPRequestHandler):
             in (annotation_store.OUTCOME_STORED, annotation_store.OUTCOME_UNCHANGED),
             "outcome": outcome,
             "revision": current["revision"],
+            # Stable adoption result captured under the write lock, not the
+            # potentially newer current revision read above. Other arms owe
+            # no adoption receipt and always answer null.
+            "saved_revision": receipt.get("saved_revision"),
             "revision_count": current["revision_count"],
             # When the discard this session carries a record of happened, or
             # None. Read back through `published` like the two above it, so
@@ -1747,7 +1805,12 @@ class _RequestHandler(BaseHTTPRequestHandler):
         self._send(json.dumps(answer, separators=(",", ":")).encode(), "application/json")
 
     def _annotation_outcome(
-        self, harness: str, sid: str, payload: dict[str, Any]
+        self,
+        harness: str,
+        sid: str,
+        payload: dict[str, Any],
+        *,
+        receipt: dict[str, int] | None = None,
     ) -> tuple[str, bool]:
         application = self.server.application
         config = application.config
@@ -1780,7 +1843,12 @@ class _RequestHandler(BaseHTTPRequestHandler):
             # can start (no reader, or readings off): the draft is adopted and
             # the directions settled in one write, and nothing is read.
             outcome = self._adopt_prompt(
-                harness, sid, payload, standalone=True, settle_through=settle_through
+                harness,
+                sid,
+                payload,
+                standalone=True,
+                settle_through=settle_through,
+                receipt=receipt,
             )
         elif settle_through is not None:
             # A third arm on this route rather than a route of its own: the
@@ -2120,8 +2188,10 @@ class _RequestHandler(BaseHTTPRequestHandler):
         words go (owner, 2026-10-02): an Allow binds to `words_destination`, so
         one whose disclosure named another, or none where one is named now, is
         refused before it could bind to a destination the reader never saw.
+        The Claude model on every press must also match the selection the page
+        drew; a stale or missing selection records no Allow and spends nothing.
         """
-        route = runtime_reading_route.resolve(harness)
+        route = runtime_reading_route.resolve(harness, config=self.server.application.config)
         allow = payload.get("allow") is True
         refusal = (
             (503, route["reason"])
@@ -2136,6 +2206,9 @@ class _RequestHandler(BaseHTTPRequestHandler):
                 payload.get("words_destination", "") != route["words_destination"]
                 or (route["destination"] and payload.get("tool_output") != route["destination"])
             )
+            else (409, "destination-changed")
+            if route["provider"] == runtime_reading_route.CLAUDE
+            and payload.get("model") != route["model"]
             else None
         )
         if refusal is None:
@@ -2229,6 +2302,7 @@ class _RequestHandler(BaseHTTPRequestHandler):
         standalone: bool = False,
         settle_through: Any = None,
         now: float | None = None,
+        receipt: dict[str, int] | None = None,
     ) -> str:
         application = self.server.application
         expected = payload.get("expected_revision")
@@ -2257,6 +2331,7 @@ class _RequestHandler(BaseHTTPRequestHandler):
             now=application.clock() if now is None else now,
             expected_revision=expected if guarded else None,
             settle_through=settle_through,
+            receipt=receipt,
             chosen=(
                 self._chosen_prompt(rows[0], payload.get("prompt_fact"))
                 if source == runtime_reading.PROMPT_CHOSEN
@@ -2389,6 +2464,7 @@ class _RequestHandler(BaseHTTPRequestHandler):
             expected_prompt_at=payload.get("expected_prompt_at"),
             window_start=self._typed_window_start(harness, sid, now),
             diagnostic_sink=application.diagnostic_sink,
+            source_facts=_request_sources(application, row, self._session_facts(row)),
         )
 
     def _direction(self) -> None:
@@ -2500,13 +2576,24 @@ class _RequestHandler(BaseHTTPRequestHandler):
             entry = annotation_store.find(
                 annotation_store.active(config, application.state), str(harness), str(sid)
             )
-            route = runtime_reading_route.resolve(str(harness))
+            route = runtime_reading_route.resolve(str(harness), config=config)
             context = _session_context(self.server.application, row)
+            latest = entry["revisions"][-1] if entry and entry["revisions"] else None
+            request_sources = (
+                _request_sources(application, row, _facts_of(context), entry)
+                if latest and latest["n"] == row.get("annotation_revision")
+                else []
+            )
             answer = correction.compose(
                 row,
                 _facts_of(context),
                 person_at=_scan_of(context, str(harness), str(sid)).get("last_user_at"),
                 floor=annotation_store.direction_floor(entry, row),
+                line_requests=runtime_reading.line_request_floors(
+                    latest, request_sources, str(harness), str(sid)
+                )
+                if latest
+                else {},
                 # The agent's messages carry a line verdict where no check can be sent
                 # (owner ruling, 2026-10-03), as the page's `nextReadingOutputLimit` says.
                 lines_judged=bool(
@@ -2827,6 +2914,24 @@ class _RequestHandler(BaseHTTPRequestHandler):
                     )
                 )
                 if row.get("harness") in {"claude", "codex"}
+                else None
+            ),
+            # The newest recorded final reply, read whole from the source version stamped
+            # above, before the context read: a file that moved since is refused there.
+            # Only this press carries it; the unasked lane never builds this call.
+            final_source_lookup=(
+                (
+                    lambda wanted: runtime_project_context.transcript_newest_final_words(
+                        application.config,
+                        transcript,
+                        str(row.get("harness")),
+                        str(row.get("sid")),
+                        wanted,
+                        expected_stamp=press_stamp,
+                    )
+                )
+                if press_stamp is not None
+                and row.get("harness") in runtime_project_context.AGENT_MESSAGE_HARNESSES
                 else None
             ),
             # A record never read withholds in its own sentence, not as an

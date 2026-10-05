@@ -474,6 +474,36 @@ class TheAnswerTest(_ResultPage):
         answer = self.answer_of(self.page(ALL_CONSISTENT, levels.NOT_ENOUGH, facts=early))
         self.assertEqual(NOTHING_FOUND, answer)
 
+    def test_overlapping_failures_name_the_later_result_not_the_later_call(self) -> None:
+        # DRC-4780: A was called first and returned last; B was called later and returned first.
+        # The server's correction names A at its result, so the page's answer must too.
+        pair = (
+            *NO_FAILURE,
+            _report("c-a", 104.55, "check", result="failed", result_at=104.9, summary="pytest a"),
+            _report("c-b", 104.58, "check", result="failed", result_at=104.6, summary="pytest b"),
+        )
+        html = self.page(ALL_CONSISTENT, levels.HIGH, facts=pair)
+        numbers = {
+            match.group(2): match.group(1)
+            for match in re.finditer(
+                r'data-next-entry="(\d+)"[^>]*data-next-entry-id="([^"]+)"', html
+            )
+        }
+        self.assertIn("c-a", numbers, "the fixture numbers both checks")
+        self.assertIn("c-b", numbers)
+        self.assertEqual(f"A check failed at #{numbers['c-a']}.", self.answer_of(html))
+
+    def test_an_unnumbered_failed_check_is_timed_at_its_result_not_its_call(self) -> None:
+        # DRC-4780: called before the window opens (so it takes no number) and returned after it.
+        # The clock the page falls back to is the result's, as the correction's sentence is.
+        straddling = (
+            *NO_FAILURE,
+            _report("c-s", 99.0, "check", result="failed", result_at=200.0, summary="pytest s"),
+        )
+        answer = self.answer_of(self.page(ALL_CONSISTENT, levels.HIGH, facts=straddling))
+        self.assertEqual(f"A check failed at {clock(200.0)}.", answer)
+        self.assertNotEqual(clock(99.0), clock(200.0), "the fixture must tell the two clocks apart")
+
     def test_every_line_consistent_and_no_failure_is_nothing_found(self) -> None:
         answer = self.answer_of(self.page(ALL_CONSISTENT, levels.NONE_OR_LOW, facts=NO_FAILURE))
         self.assertEqual(NOTHING_FOUND, answer)

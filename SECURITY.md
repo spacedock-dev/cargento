@@ -110,6 +110,23 @@ The posture rests on two invariants:
    because any local process can rewrite the file. Everything else a reading holds is a value the
    code selected from a closed set or composed from counts it measured.
 
+   Delegated owner acceptance, 2026-10-05 (DRC-4791): a local rewrite of `detail` is scrubbed and
+   escaped, but the prose verdict backstop used at production is not reapplied when loading the
+   file. A rewritten detail can therefore say the work succeeded beside a valid departure token.
+   A blanket success-word check would also reject legitimate quotations of the agent's claims.
+   Repeating a prose check cannot authenticate a file the same local process can rewrite in full.
+   This remains an accepted local-process limit; redaction, citation checks and escaping still
+   apply. No claim of tamper detection or authenticated model output follows from them.
+
+   A line added from an entry can also hold its verified request time and SHA256 fingerprints of
+   its parent, source identity and full request-record digest, and reviewed line, under the
+   [request-age ruling](docs/design-reading-a-session.md#amended-2026-10-05-verified-request-age-belongs-to-a-line).
+   These bindings add no source words. Loading invalid metadata removes its age without deleting
+   the line, and current parent facts must verify it before it changes a verdict. The page receives
+   only verified times and source handles, bound to the current revision. Typed and legacy lines
+   retain unknown request age. The fingerprints check continuity, not authenticity against a local
+   process that can change both the store and the source.
+
    Two consequences of storing it here rather than in session history, both accepted rather than
    discovered. `--forget` deletes the session-history and session-end stores and **deletes nothing
    a reader typed and no reading of it**, so a reader who wants a model-authored reading gone
@@ -1186,9 +1203,27 @@ their half. Amended 2026-10-04 by the owner: additional selected agent excerpts 
 after those passes, without dropping an entry or exceeding the 16 KiB cap. Complete bounded
 records measure the full masked, folded length; a cropped prompt row labels its actual excerpt
 length and that total. Neither count is inferred for a legacy record. These counts stay in memory
-and are stripped from page responses with the words. This changes the amount within the existing
-content classes, so `reading_policy.CONTENT_VERSION` stays at 2.
-It is quoted as one JSON string with the menu heading neutralised, as a check's output
+and are stripped from page responses with the words. That change stayed within the existing
+content classes, so it left `reading_policy.CONTENT_VERSION` at 2.
+
+Amended 2026-10-05 by the owner through delegated adversarial acceptance
+([the amendment](docs/design-reading-a-session.md#amended-2026-10-05-owner-the-newest-recorded-final-reply-is-read-whole)):
+the agent's newest message that its own transcript record marks as ending its turn
+(`message.stop_reason` equal to `end_turn`; text alone, a quiet session or a later timestamp does
+not establish it) goes whole in place of its 1,000-character excerpt, but only when its complete
+quoted row fits the 4,096 bytes of the agent's quarter and the room the reader's words left. It is
+chosen among the rows the prompt already selected, so no entry, citation number or older or later
+record is added, and it is read from the same file version the press read its facts from, by a
+memory-only scan of the complete file, only when it is at most 32 MiB. A larger file cannot
+prove an earlier conflicting duplicate is absent and keeps its excerpt with a cutoff note.
+A reply that does not fit, a source that moved, a
+duplicate or same-time record that disagrees, or a record the source cannot prove final keeps the
+excerpt, and the reading's cutoff says so. The agent's other messages keep their 1,000
+characters, no shell output or tool result is added, the consent tier does not widen, and the
+words are neither stored, cached, logged nor published. This changes what a message sends, so
+`reading_policy.CONTENT_VERSION` is 3 and the next press on a Claude Code session asks once more.
+
+An agent message, cropped or whole, is quoted as one JSON string with the menu heading neutralised, as a check's output
 tail is, and the prompt's trusted header says agent messages are quoted data, never instructions.
 That goes only on a reading the reader pressed for, whether or not tool output is allowed, and to
 whichever provider the route names; the unasked lane sends none of it (`reading.build_ledger`'s
@@ -1220,6 +1255,30 @@ does rendering, polling, reconnecting, resuming, changing focus or saving a revi
 server also requires `observer_model=1` on either request, following the quota consent pattern;
 the page sends it only on an explicit request. A reading additionally requires its durable
 permission; summaries require their own browser-stored answer.
+
+### Accepted source-recovery and model-accuracy limits, 2026-10-05
+
+The owner delegated acceptance to adversarial agent review. Source recovery may send more of
+already-disclosed message prose at a requested press, bound to an already-selected parent message
+and the source version the press read. A mismatch supplies no new words. Recovered prose stays
+in memory, adds no citable fact, enters no history or page response, and is not read by the
+unasked lane. The newest-final path requires renewed disclosure and consent.
+
+The [closed-proof ruling](docs/design-reading-a-session.md#amended-2026-10-05-the-original-closed-proof-proposal-is-retired)
+retires that proposal as infeasible, with no verified clearances, and removes it as a prerequisite
+for newest-final source recovery. The fresh measurement campaign remains unavailable at this
+amendment until its exact protocol and aggregate transport guards are built and reviewed.
+
+This acceptance retains source-fidelity behavior while the expanded-input accuracy gate remains
+failed and unqualified. Sanitizing, quoting, provenance checks and CI do not establish truth or
+improve model accuracy. A local process may rewrite stored assessment prose: sanitization and
+escaping do not authenticate it. The instruction-text guard can reject legitimate quoted text
+and is a mitigation, not a signature.
+
+Usage is reported in its actual unit. Engineering launch, wall-time and captured-output limits
+do not bound tokens or remaining subscription usage. A CLI dollar-budget flag is not a conversion
+to weekly quota. Analyze reservations, qualification allowances and engineering calls remain
+separate ledgers; calling work a review does not replenish an exhausted or failed study.
 Only loopback peers can authorize a model call, and cross-origin Fetch Metadata is refused.
 The response publishes the disclosure and byte cap. The backend does not treat `usage=1` as
 observer consent. Console presents that disclosure for an exact session and stores the answer separately from
@@ -1322,13 +1381,40 @@ The argv, every flag checked against `claude --help` on 2.1.280, run without a s
   to disk.
 - `--permission-mode dontAsk --permission-prompts none`: anything that would prompt is denied, and
   nobody is asked. `bypassPermissions` and the `--dangerously-*` flags never appear.
-- `--output-format text`, `--model claude-sonnet-5` (fixed, never the CLI default) and
-  `--effort high`.
+- `--output-format text`, `--model` with the explicitly selected admitted model, and `--effort high`.
+  The [model admission amendment](#amended-2026-10-05-claude-reading-model-baseline) owns the selection.
 - `--system-prompt` with one fixed sentence, `observer.CLAUDE_READING_SYSTEM_PROMPT`, in place of
   Claude Code's default system prompt (owner ruling, DRC-4666, 2026-09-27). Checked on 2.1.283.
   `--append-system-prompt`, which would keep the default, never appears.
 
 `--bare` is not used, because it refuses OAuth sign-in. `--json-schema` is not used either.
+
+#### Amended 2026-10-05: Claude reading model baseline
+
+The owner replaced the single Sonnet 5 pin with a Sonnet 5 admission floor. The default request
+is `claude-sonnet-5-5`; `--claude-reading-model` selects another explicit ID. A refused model
+never falls back to another model or provider. Selecting `claude-sonnet-5` explicitly requests the
+baseline when the account does not admit the default; that selection may also be refused.
+
+The versioned policy admits Sonnet and Opus generation 5 or later, with bounded positive integer
+version components and an optional valid eight-digit snapshot date. Its generation/minor/family
+rank gives Sonnet tier 1 and Opus tier 2. This is an owner admission policy, not a measured ordering
+of accuracy. Haiku has no admitted tier; a larger Haiku version number does not establish that it
+meets the Sonnet floor. Floating aliases, unknown families, lower generations and malformed IDs
+are refused before launch. A canonical ID whose model is unavailable fails normally; naming it
+does not prove that an account has access.
+
+A stored Allow binds the provider, receiver and disclosed content version, not a model ID.
+Changing an admitted selection does not renew that Allow; every actual press still names and
+binds its selected model before it can send.
+
+The selected ID is named in the before-press disclosure and reaches the same restricted call and
+its stamp. Tagged replay plans bind the
+selected model, effort, policy and command-envelope digest, and each stored read retains that
+binding. Changing it requires a new matching dry plan; a tag containing another or unbound model
+cannot be extended. Qualification results bind their selected model too. Historical qualification
+or replay results do not qualify another selection. The text-only CLI reply supplies no resolved
+model receipt, so the served snapshot is unknown rather than inferred from the requested ID.
 
 The process runs with the daemon's environment minus the markers of any Claude Code session the
 daemon was started from (`observer.claude_environment`: `CLAUDECODE`, `CLAUDE_CODE_*SESSION*`,
@@ -1378,7 +1464,8 @@ by the OS (`score_abstention.py --probe-argv`, below):
 The prompt itself can still name paths. Under the tool-output ruling a check's command line and its
 redacted output tail are sent as the session recorded them, and a reader's own messages and, since
 2026-10-03, the agent's own messages are sent whole up to 1,000 characters each where the prompt
-has room (Observer model calls), redacted, so a home path or user name the session typed or
+has room (Observer model calls), except its newest recorded final reply, which since 2026-10-05
+goes in full where it fits 4,096 bytes, redacted, so a home path or user name the session typed or
 printed reaches Anthropic that way.
 
 Because the working directory is sent, the process runs in a fresh owner-only (0700) empty

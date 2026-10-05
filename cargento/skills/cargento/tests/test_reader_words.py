@@ -579,6 +579,7 @@ CONTEXT_READERS = {
     "_later_direction": "a time and one message's text from `direction_text`, bounded on its own",
     "_correction": "Steer back's parts, from the reader's saved lines and fact ids",
     "_chosen_prompt": "one `prompt_choices` entry, bounded at the goal's cap, adopted, not answered",
+    "_add_direction": "verifies request lineage and stores a line, answers only an outcome token",
 }
 # The one published carrier of a reader message's words, by the owner's ruling Q7 of
 # 2026-10-01: up to five prompts, each clipped to the goal's 240-character cap, on the

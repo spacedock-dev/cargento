@@ -353,9 +353,10 @@ list states the limit under it: demonstrated work results are read on Pi, and on
 Claude Code the record also lists the checks a session ran and the files it wrote, each result as
 the tool reported it and counted from the whole transcript read, and what the agent said, each of
 its messages an entry marked "Agent said". A reading you press for sends the agent's messages as
-evidence of what it said and claimed, each redacted and up to 1,000 characters. The prompt names a
-measured crop's excerpt length and full reply length, and may use remaining room after your messages
-have had their share. Cargento never stores or
+evidence of what it said and claimed, each redacted and up to 1,000 characters, except the newest
+reply the transcript records as ending its turn, which goes whole where it fits 4,096 bytes. The
+prompt names a measured crop's excerpt length and full reply length, and may use remaining room
+after your messages have had their share. Cargento never stores or
 shows more than the first sentence; an unasked reading sends none of them, and an Allow given
 before they were named asks once more. It sends those checks, with
 the last 180 characters each printed and the paths of the files written, only after you allow tool output for the destination named
@@ -712,6 +713,7 @@ Paths 2 and 3 are complementary and can both be installed. Keep `Notification` o
 
 | Flag / URL | Effect |
 |---|---|
+| `--claude-reading-model MODEL` | Select an explicit Claude Sonnet or Opus generation 5 or later ID for reader-requested Claude readings (default `claude-sonnet-5-5`). `claude-sonnet-5` is the baseline. Unavailable models fail without retrying another selection; aliases and lower or unknown families refuse before launch. This selection supplies no accuracy qualification. |
 | `--observer-model` / `--no-observer-model` | Offer optional Codex goal summaries, or refuse every model call for this run (refusal wins, including unasked checks). Goal summaries are off by default and retain their separate browser consent. On a goal-less Claude Code or Codex session the goal is drafted from the published first prompt (the latest where no first one with a time is published), and Analyze drift or Save intent adopts it. A session whose first prompt is a harness control such as `/clear` drafts nothing, says so, and never drafts a later prompt in its place. The goal field also offers the latest prompt without checking. Adopted goals say "from your prompt" and never enable unasked readings; editing the goal makes typed words. Reader-requested readings need no startup flag: the first Analyze drift presents its disclosure and Allow and analyze. The answer is remembered across tabs and restarts while the destination its disclosure named is unchanged, and asked for again once it moves; Turn off readings revokes it. They spend the capacity of the provider the disclosure names (Claude Code for a Claude Code session when `claude` is on PATH, Codex otherwise) and are capped at twelve reserved or actual attempts per rolling twenty-four hours. Failed attempts are not refunded; off/on and `--forget` do not reset that budget. Each prompt is bounded to 16,384 redacted bytes, with one call in flight per session; a reading has a 180-second timeout and a goal summary a 60-second one. Quota consent authorizes neither path. |
 | `--interaction-origin-session <harness:sid>` / `--interaction-origin-registration-file <private-file>` | Enable the prototype terminal for one exact session only when both flags are supplied. The generated private file supplies the registration capability; registration must happen inside that session's tmux pane. Output is read-only and bounded; no terminal input is accepted. |
 | `--port N` | Change port (default 4553; valid range 1–65535). If the port is busy, check `--status` first — a running dashboard may already be there; don't kill it blindly. |

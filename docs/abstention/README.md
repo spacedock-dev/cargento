@@ -64,6 +64,10 @@ every earlier failure in place. So the second is `claude-continuation-2.json`, w
   sha256 of the argv its exec builds, read without starting a process. A later change to a flag,
   the model or the effort moves the digest, so a result cannot be carried over to a producer that
   no longer runs that way.
+  The owner's 2026-10-05 [Sonnet baseline policy](../../SECURITY.md#amended-2026-10-05-claude-reading-model-baseline)
+  defaults new Claude runs to `claude-sonnet-5-5`; `--claude-reading-model <id>` selects another
+  admitted model. `model` records that selection, while the served snapshot remains unknown.
+  Changing the selection requires its own qualification; no earlier result is promoted by name.
 - `destination`, `binary` and `cli_version`: where `reading_route.destination` says the call goes,
   the installed CLI it ran (its path with the home directory written `~`) and that CLI's
   `--version` line. A Claude Code result is written only when the destination is `Anthropic` and

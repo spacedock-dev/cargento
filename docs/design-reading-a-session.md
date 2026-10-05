@@ -1417,6 +1417,15 @@ nothing else is tried: a fresh press is the only retry. The flags the Claude Cod
 and the fact that they are CLI restrictions rather than an OS sandbox, are in
 [the light harness usage bounds](../SECURITY.md#claude-code-reading-calls).
 
+### Amended 2026-10-05: selected Claude model keeps the Sonnet baseline
+
+The owner replaced the single Sonnet 5 pin with a baseline policy. The selected explicit model
+must meet the Sonnet 5 floor; the default request is Sonnet 5.5. Configuration, the published
+route, the command and the reading stamp name that same selection. An unavailable selection
+fails without retrying another model. [SECURITY.md](../SECURITY.md#amended-2026-10-05-claude-reading-model-baseline)
+owns admission, provenance and the limit of the text-only model receipt. This opens no measured
+qualification claim: each comparison remains bound to its own selected model and envelope.
+
 ### Amended 2026-09-24: Analyze drift and Allow and analyze
 
 [DEC-24](#dec-24-your-intent-is-a-drafted-goal-and-a-checklist-and-a-correction-is-yours-to-copy)
@@ -1755,6 +1764,105 @@ after those passes, additional selected agent excerpts may use the remaining pro
 first. No entry is removed to fit words, the adopted Goal keeps its priority, and the 16 KiB cap
 still includes the header and every row. This changes the amount of content already disclosed,
 so the consent content version stays at 2. Sending a new class of content requires a new version.
+
+### Amended 2026-10-05: source recovery retained with failed accuracy qualification
+
+The owner delegated acceptance to adversarial agent review. That review accepts retaining
+bounded source recovery and crop disclosure as source-fidelity behavior, with model accuracy
+unresolved. The original expanded-input replay failed its gate: grouped no-drift departures
+increased, intent and steering offers were lost, and four previously drawn protected rows across
+four marked claims were withdrawn. Three of nine protected claims lost every former row; the
+fourth affected claim retained another row. Remaining calls stopped. Source-only saved-reply
+replay found no deterministic parser or page defect; it did not establish improved accuracy or
+disprove the protected marks. CI, operational availability, agent review and a later limited
+study cannot turn the failed campaign into a pass.
+
+Recovery still verifies the selected source, reserves the reader's share, preserves selected
+evidence and citation identities, and falls back when source or room is missing. Historical
+marks, keys and guards remain. A rollback remains available: a blanket rollback would also
+remove the separately promised adopted-goal recovery, while a narrower rollback of remaining-room
+agent expansion can preserve that recovery and disclosure. The adopted-goal contract does not
+require retaining agent expansion.
+
+### Amended 2026-10-05: the original closed-proof proposal is retired
+
+The all-flags closed-proof proposal is retired as infeasible under its approved scope. Its
+original denominator is 61 wrong not-shown flag occurrences; subsequent protected re-marks leave
+57 under current marks. These are occurrences, not distinct items. No closed-tier clearance was
+verified. Even the generous incidence bound admits at most 35 original occurrences as having a
+closed command in the claim's own turn; it proves neither execution, relevance, retained evidence
+nor attribution. Feasibility evaluation is complete; the proposed publisher and its model gate
+were not built or passed. Retirement authorizes neither a smaller denominator nor shell, worker,
+background or connector expansion.
+
+### Amended 2026-10-05: acceptance and empirical limits remain separate
+
+Identified agent-operated application and ruling reviews may supply the owner's delegated
+acceptance. The original cold study still requires two actual uncoached people. It remains
+deferred until both use the ready build, select real sessions, give their own consent, answer the
+protocol questions and approve the exact captures and destination. Agents cannot supply human
+testimony. Historical delegated-work attribution remains unknown where original structural
+parent links are absent; a new capture cannot establish them retroactively.
+
+### Amended 2026-10-05 (owner): the newest recorded final reply is read whole
+
+The owner asked that the agent's final answer reach the reading whole where it fits, because its
+first 1,000 characters often dropped the sentence that says what was done. Delegated review
+removes the retired closed-proof proposal as a prerequisite. This source change has its own
+privacy and consent review, independent of the prospective 8b accuracy study. Neither review
+qualifies the failed original 4b or DEC-17 for accuracy. A fresh campaign binds its actual
+requested model and matched conditions, with exact predicates, repeats, blind marks and stop
+rules frozen before output. Old outputs are not that campaign's baseline; model labels describe
+routing, not qualification or a provider snapshot receipt. At this amendment the fresh
+campaign is not runnable: its exact protocol and aggregate transport guards still need review.
+
+What qualifies: A reply is final only when its own record says so: the top-level assistant
+text record of the parent session carries `message.stop_reason` equal to `end_turn`, a UUID, a
+timestamp and the parent session id, and is not meta, sidechain, a child agent's or the CLI's
+`<synthetic>` notice. Text with no tool block, a quiet session, an idle state, adjacency to a
+check and a newer timestamp each describe a mid-turn message as well, so none is evidence of
+finality. `project_context._agent_message_event` is unchanged and still admits non-final text;
+only the lookup tests the stop reason.
+
+Where it is read: After the producer has applied the reading window and the observed stop and
+the byte bound has selected its rows, `build_prompt` shows the lookup the identity and time of
+the agent rows it selected, once. The lookup restores words for the unique newest of those that
+is final and for no other row: it cannot widen the list, renumber a citation, revive an earlier
+or later record, import a child transcript or infer an answer the prompt does not carry. A newer
+selected row that the source cannot prove non-final, two finals at one instant, and a duplicate
+UUID or fact that differs in any field that decides finality (compared as a fingerprint of the raw
+record, before masking, so equal masked words cannot hide it) all keep the excerpt. An identical
+duplicate is one source. A legacy fact with no source keeps its excerpt.
+
+Which file: The press stamps the transcript (device, inode, size, modified time) before it
+reads the session context, and the lookup refuses unless the file still has that stamp before and
+after its scan. The scan is newest first over the complete file, in memory only, with a
+32 MiB file bound and a 1 MiB bound on one assistant record. A larger file keeps the excerpt
+and the cutoff says the whole reply could not be confirmed: a timestamp inside a tail cannot
+prove an earlier conflicting duplicate is absent. Conflicting candidates also say so when none
+can qualify; a missing or refused selected source or an incomplete scan does too. The
+lookup checks the complete yielded byte count so a silent short read or I/O error cannot
+qualify a tail. Only rows each proved non-final
+are silent when no final qualifies. Nothing is cached, spooled, logged, put in
+history or published; the lookup answers an outcome token, the row's own fact id and time, and
+the words. The drift replay passes the same lookup under its cut file's stamp.
+
+Whether it fits: The reader's words allocate first. Before prose masking, the lookup refuses
+raw message text above 16,384 characters; a long single token otherwise spends seconds being
+masked only to be rejected. Every duplicate still has its raw finality signature compared, but
+its identity and whole words are recovered only once in the scan. The reply is normalised to one line,
+masked as every excerpt is, quoted as one JSON string with the menu heading neutralised, and
+admitted only as the complete row: its serialized UTF-8 size must fit the agent's quarter
+(4,096 bytes at the 16,384-byte cap) and its growth over the summary row the room left. A reply
+that does not fit is not clipped under a "whole" label; the original excerpt stands byte for byte
+and the cutoff says the newest final reply was too long, or could not be confirmed. The agent's
+other messages keep their 1,000-character bound and may take unused room as before.
+
+The consent boundary: No consent tier is added. No shell or MCP output is added to the
+prompt. The unasked lane never reaches the lookup. Because a reply sent whole is different content
+from an excerpt, `reading_policy.CONTENT_VERSION` moves from 2 to 3 (`WORDS_CONTENT_VERSION` stays
+1), and the route's "What is sent" list names the newest final reply and the 4,096-byte bound.
+SECURITY.md's [Claude Code reading calls](../SECURITY.md#claude-code-reading-calls) says the same.
 
 ## DEC-23: a Claude Code session's record of its checks may show the work
 
@@ -2550,6 +2658,51 @@ the later-direction floor (item 9).
     process states, never answers. All of it is session-page only: never on a row, a total or a
     notification. Elsewhere than Claude Code the panel states the harness limit ("Cargento can't
     read work from this harness"). "Stop session" is not offered (DEC-16, SECURITY.md).
+
+### Amended 2026-10-05: verified request age belongs to a line
+
+Delegated owner acceptance, 2026-10-05 (DRC-4783), narrows item 3 without changing item 13's
+goal window. A typed checklist may describe work the reader wants to evaluate retrospectively.
+Saving it does not prove when the agent received that requirement. Typed and legacy lines therefore
+keep unknown request age; a line's save time is never substituted for its request time.
+
+Add can bind a line to its actual parent-person request. The server verifies the source fact's
+identity, parent session and time, and stores that time with fingerprints of the parent, source
+identity and full request record, and reviewed line. These are local binding data, not additional copies of the request's
+words. Unchanged and reordered lines keep the binding once; a newly typed duplicate or an edit
+does not inherit it. A request at the save time, a future or copied request, duplicate source
+identity or ambiguous same-time parent messages supplies no binding.
+
+An edit made while first adding the entry also keeps unknown age. Only exact equality with the
+complete authoritative request words, redacted and normalised as a saved line, can bind those
+words to that earlier time. A shortened request, changed requirement or incomplete extraction
+still saves the reviewed line and its source handle; none inherits the source's request age.
+
+Loading a malformed, cross-session or after-save binding removes only that binding. The person's
+words stay. Before a binding can affect a reading, it is checked again against the actual current
+parent fact and the line's words. A missing or changed source leaves age unknown. A downgraded
+build may discard this optional binding, which also leaves age unknown. No time is guessed for
+older lines.
+
+Source proof comes from the existing bounded transcript prefix, not from historical summaries.
+Each operation reuses one source lookup; the bounded cache checks device, inode, size and
+modification time before reuse. A record beyond the byte or fact bound supplies no proof. The
+transient raw-record and complete-word digests and source version never reach the page, model
+prompt or history.
+
+For a verified line, a citation can judge work against that request only if its action or call was
+recorded strictly after the request. A call made earlier does not become later work when its
+result arrives afterward. Same-time work is not ordered by the clock. The existing goal-window
+check still uses result arrival for checks, and the global failure and visibility signals are not
+weakened. Removing an earlier citation can only withdraw a verdict; it never creates reassurance
+or a neutral unfinished-work result.
+
+The focused page context carries only revalidated request times and source handles, tied to the
+current intent revision. Binding fingerprints stay in the annotation store. The producer,
+analysis level, page and correction apply the same action-time boundary. A historical reading
+whose revision differs from the current intent carries no request-age exemption. Existing replay intents
+have typed or legacy lines and retain unknown request age. No new class of words reaches the
+model, so this changes neither the permission disclosure nor its content version.
 
 ### What the last-turn build decided, 2026-09-24
 
@@ -3406,6 +3559,27 @@ can start. The page half comes after it.
 - Not permanent. A line added from an entry becomes a typed line once the reader edits it and
   saves, as an edited adopted goal becomes typed, so "added from #n" lasts until the first edit.
 
+### Amended 2026-10-05: an adoption reply names its own saved revision
+
+Delegated owner acceptance (DRC-4784) adds `saved_revision` to the successful
+`POST /api/annotate` reply shape. The adoption captures the actual stored revision under the
+annotation write lock. An unchanged repeat reports the revision it found, and a saved settlement
+that mints no revision reports the one it kept. Refused or unwritten adoptions and every other
+arm report `null`. The existing `revision` field still reports current state, which another write
+may have advanced before the route rereads it.
+
+A discard keeps its last revision number while publishing no live baseline, so the next adoption
+can save revision 4 when the page posted baseline 0. Inferring an increment would refuse that
+legitimate save. Reading the later current revision would instead let a concurrent write lend its
+number to a different request. The receipt avoids both. It carries only a number generated by the
+server, remains outside the annotation, session, reading and history schemas, and ignores
+caller-authored receipt fields. The checklist save follows this receipt with the existing locked
+revision guard. For an unchanged adoption it follows only when the receipt equals the frozen
+baseline, because matching goal words can accept a stale revision while the checklist changed
+elsewhere. The receipt reports that repeat honestly; it does not authorize rebasing the frozen
+checklist. The frozen draft rule is owned by
+[reader state](design-reader-state.md#the-inventory).
+
 ### What the draft and question page build decided, 2026-09-27
 
 DRC-4682's page half, on the server half's wire, built to the owner's decisions of the same date:
@@ -3552,7 +3726,8 @@ come from an older scan, so the tail start does not describe the check listing. 
 passed, failed and unrecorded runs, files written, launches, person messages, agent messages and
 derived entries. Omitted pass and write counts cover only the reading's window through its stop,
 not the session-wide count; checks the prompt could not fit have their own count. Loss and source
-clauses fit the stored cutoff's 640-character bound without truncation.
+clauses fit the stored cutoff's 768-character bound without truncation. The newest-final
+fallback raises the measured large-count case to 697 characters; this keeps every loss clause.
 
 Coverage stores only an optional closed mapping of counts, a time, a boolean and the source state.
 It changes no model prompt. A found adopted source already equal to the saved goal was read whole,
@@ -3724,7 +3899,10 @@ and each was settled on the withholding side.
 - The answer reducer runs over the rows after every page rule. Under a surviving departure it is
   the headline "Departs from your intent" with the count beside it and, as the short account, each
   departure's detail followed by its citation. With no departure and at least one outcome line,
-  a failed check after the latest person message gives "A check failed at #n." naming the latest.
+  a failed check after the latest person message gives "A check failed at #n." naming the one
+  whose result arrived last (`reading.evidence_at`, the later entry on a tie), numbered from its
+  call. The correction's sentence names the same check, timed at its result, and so does the
+  page where it has no number to show (DRC-4780).
   This [owner amendment](#amended-2026-10-04-owner-a-failure-after-the-persons-last-message)
   replaces the original window-only test, which admitted checks with no recorded time; then any line without a valid verdict gives "Can't tell"; then
   "Nothing found against what it read. This is not a check that the work was done." That last

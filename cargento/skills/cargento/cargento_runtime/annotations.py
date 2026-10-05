@@ -44,7 +44,7 @@ from cargento_runtime import io as runtime_io
 from cargento_runtime import reading, records
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
+    from collections.abc import Callable, Iterable, Iterator, Mapping, MutableMapping, Sequence
 
     from cargento_runtime.config import RuntimeConfig
     from cargento_runtime.state import RuntimeState
@@ -379,6 +379,7 @@ class OutcomeLine(TypedDict):
     text: str
     source: str
     source_id: NotRequired[str]
+    request: NotRequired[reading.LineRequest]
 
 
 class Revision(TypedDict):
@@ -672,6 +673,9 @@ def _line(value: Any, cap: int) -> OutcomeLine | None:
         if not fact:
             return None
         line["source_id"] = fact
+        request = reading.valid_line_request(value.get("request"), line["text"])
+        if request is not None:
+            line["request"] = request
     return line
 
 
@@ -954,6 +958,7 @@ def _entry(value: Any, *, text_cap: int, revision_cap: int) -> Annotation | None
         # authorize the unasked lane against a baseline we no longer know.
         return None
     parsed = [rev for rev in (_revision(item, text_cap) for item in raw) if rev is not None]
+    _drop_unbound_request_ages(parsed, harness, sid)
     kept = tuple(sorted(parsed, key=lambda rev: rev["n"])[-revision_cap:]) if revision_cap else ()
     if not kept:
         return _discard_record(value, harness, sid)
@@ -983,6 +988,21 @@ def _entry(value: Any, *, text_cap: int, revision_cap: int) -> Annotation | None
     if value.get("not_accurate") is True and ("assessment" in entry or entry.get("refused")):
         entry["not_accurate"] = True
     return _counters(entry, value)
+
+
+def _drop_unbound_request_ages(revisions: list[Revision], harness: str, sid: str) -> None:
+    for revision in revisions:
+        for line in revision["lines"]:
+            if (
+                reading.valid_line_request(
+                    line.get("request"),
+                    line["text"],
+                    session=(harness, sid),
+                    saved_at=revision["at"],
+                )
+                is None
+            ):
+                line.pop("request", None)
 
 
 def _counters(entry: Annotation, value: dict[str, Any]) -> Annotation:
@@ -2115,6 +2135,14 @@ def direction_review(raw: str, cap: int, *, cut: bool = False) -> tuple[str, boo
     return text, clipped, not clipped and _typed_lines([text], cap) == [text]
 
 
+def _set_adoption_receipt(receipt: MutableMapping[str, int] | None, revision: int | None) -> None:
+    """Replace an optional server-owned receipt; no failed attempt retains one."""
+    if receipt is not None:
+        receipt.clear()
+        if revision is not None:
+            receipt["saved_revision"] = revision
+
+
 def _annotate(  # noqa: PLR0913
     config: RuntimeConfig,
     state: RuntimeState,
@@ -2124,6 +2152,7 @@ def _annotate(  # noqa: PLR0913
     lines: Any = None,
     now: float | None = None,
     adoption: dict[str, Any] | None = None,
+    receipt: MutableMapping[str, int] | None = None,
     window_start: Any = None,
     diagnostic_sink: Callable[[str], None] = print,
 ) -> str:
@@ -2136,6 +2165,7 @@ def _annotate(  # noqa: PLR0913
     `OUTCOME_STORED`: the words are on disk either way, and only the second
     minted anything, which is the difference the page's cue states.
     """
+    _set_adoption_receipt(receipt, None)
     key = _key(*identity)
     if not config.annotations_enabled or not key[0] or not key[1]:
         return OUTCOME_REFUSED
@@ -2214,6 +2244,7 @@ def _annotate(  # noqa: PLR0913
                 # cache is how this process went on reporting "no goal typed"
                 # for words the other one had already saved.
                 _cache(state, _bounded(current, config.annotation_max_sessions))
+                _set_adoption_receipt(receipt, last["n"])
                 return OUTCOME_UNCHANGED
             revision: Revision = {
                 **source_fields,
@@ -2281,9 +2312,16 @@ def _annotate(  # noqa: PLR0913
         # read the pre-write store, both mint revision n+1, and the later write
         # would erase the earlier one. Holding the lock across the write costs
         # one file write and closes the window in and across processes.
-        return _commit(
+        outcome = _commit(
             config, state, store, key, [*others, updated], diagnostic_sink=diagnostic_sink
         )
+        # The receipt belongs to this write under the lock. A route's later
+        # reread may already show another tab's revision, and a discarded
+        # entry can resume above 1 despite having no published baseline.
+        _set_adoption_receipt(
+            receipt, updated["revisions"][-1]["n"] if outcome == OUTCOME_STORED else None
+        )
+        return outcome
 
 
 def settle(
@@ -2739,6 +2777,7 @@ def adopt(  # noqa: PLR0913
     expected_revision: int | None = None,
     settle_through: Any = None,
     chosen: PromptChoice | None = None,
+    receipt: MutableMapping[str, int] | None = None,
 ) -> str:
     """Adopt a prompt as the goal. Returns an `OUTCOMES` token.
 
@@ -2753,6 +2792,7 @@ def adopt(  # noqa: PLR0913
     adopts over a saved goal holding other words: a press labelled "Keep my
     intent" must not replace the reader's own.
     """
+    _set_adoption_receipt(receipt, None)
     options = _adoption(row, source, expected_text, expected_at, now, chosen=chosen)
     keep = settle_through is not None
     if (
@@ -2770,6 +2810,7 @@ def adopt(  # noqa: PLR0913
         (row.get("harness"), row.get("sid")),
         goal=text,
         now=now,
+        receipt=receipt,
         adoption={
             **options,
             "empty_goal_only": expected_revision is None,
@@ -2837,6 +2878,7 @@ def add_direction(  # noqa: PLR0913
     expected_prompt_at: Any = None,
     window_start: Any = None,
     diagnostic_sink: Callable[[str], None] = print,
+    source_facts: Sequence[Mapping[str, Any]] = (),
 ) -> str:
     """Add a later direction as an outcome line. Returns an `OUTCOMES` token.
 
@@ -2878,6 +2920,17 @@ def add_direction(  # noqa: PLR0913
     at = reading.valid_prompt_time(entry_at)
     if at is None or at > now:
         return OUTCOME_REFUSED
+    line: OutcomeLine = {"text": texts[0], "source": LINE_ENTRY, "source_id": fact}
+    request = reading.line_request_binding(
+        source_facts,
+        source_id=fact,
+        text=texts[0],
+        harness=str(row.get("harness") or ""),
+        sid=str(row.get("sid") or ""),
+        now=now,
+    )
+    if request is not None and request["at"] == at:
+        line["request"] = request
     return _annotate(
         config,
         state,
@@ -2889,7 +2942,7 @@ def add_direction(  # noqa: PLR0913
         adoption={
             **options,
             "expected_revision": expected_revision,
-            "entry_line": {"text": texts[0], "source": LINE_ENTRY, "source_id": fact},
+            "entry_line": line,
             "replace": replace,
             "row": row,
             "direction_at": at,

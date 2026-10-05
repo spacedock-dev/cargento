@@ -160,6 +160,7 @@ class _Rows:
         unsettled: bool,
         lines_judged: bool,
         sid: str = "",
+        line_requests: Mapping[str, float] | None = None,
     ) -> None:
         criteria = assessment.get("criteria")
         self.criteria: Mapping[str, Any] = criteria if isinstance(criteria, dict) else {}
@@ -171,6 +172,7 @@ class _Rows:
         self.sid = sid
         self.unsettled = unsettled
         self.lines_judged = lines_judged
+        self.line_requests = line_requests or {}
 
     def state(self, name: str) -> tuple[str, dict[str, Any] | None]:
         """One constraint's state and the entry its time is read from."""
@@ -204,6 +206,7 @@ class _Rows:
             for f in cites
             if (at := reading.evidence_at(f) or 0.0) >= self.window
             and not (self.window > 0 and at <= 0)
+            and reading.after_line_request(f, self.line_requests.get(name))
         ]
         if not cites or {reading.author_of(f) for f in cites} == {reading.AUTHOR_DERIVED}:
             return _NOT_SHOWN, None
@@ -330,7 +333,12 @@ def _saved_lines(row: Mapping[str, Any]) -> list[tuple[int, str]]:
 
 
 def _current_rows(
-    row: Mapping[str, Any], facts: list[dict[str, Any]], *, unsettled: bool, lines_judged: bool
+    row: Mapping[str, Any],
+    facts: list[dict[str, Any]],
+    *,
+    unsettled: bool,
+    lines_judged: bool,
+    line_requests: Mapping[str, float] | None = None,
 ) -> _Rows | None:
     """The stored reading, only while it read the words saved now."""
     assessment = row.get("annotation_assessment")
@@ -348,6 +356,7 @@ def _current_rows(
         unsettled=unsettled,
         lines_judged=lines_judged,
         sid=str(row.get("sid") or ""),
+        line_requests=line_requests,
     )
 
 
@@ -426,15 +435,32 @@ def _claim_line(
     return [f"Can you show evidence for {quotation} at {at(fact)}", _placeholder(fact), "?"]
 
 
+def _latest_result(failed: list[dict[str, Any]]) -> dict[str, Any]:
+    """The failed check whose result arrived last, as the page's `nextDriftAnswer` picks it.
+
+    By `reading.evidence_at`, so a check called first and returned last wins. `failed` is in the
+    page's order (call time, then id) and a tie keeps the later entry, which the page's `>=` does.
+    """
+    latest = failed[0]
+    for fact in failed[1:]:
+        if (reading.evidence_at(fact) or 0.0) >= (reading.evidence_at(latest) or 0.0):
+            latest = fact
+    return latest
+
+
 def _tail(
     failed: list[dict[str, Any]],
-    at: Callable[[Mapping[str, Any]], str],
+    clock: Callable[[float], str],
 ) -> list[list[Part]]:
-    """The current failed check, followed by the closing request."""
+    """The current failed check, followed by the closing request.
+
+    The sentence is timed at the result; the entry stays the one the page numbers from its call.
+    """
     tail: list[list[Part]] = []
     if failed:
-        latest = max(failed, key=lambda f: reading.valid_prompt_time(f.get("at")) or 0.0)
-        tail.append([f"A check failed at {at(latest)}", _placeholder(latest), "."])
+        latest = _latest_result(failed)
+        when = clock(reading.evidence_at(latest) or 0.0)
+        tail.append([f"A check failed at {when}", _placeholder(latest), "."])
     tail.append(["Please continue from here."])
     return tail
 
@@ -447,6 +473,7 @@ def compose(
     lines_judged: bool,
     clock: Callable[[float], str] = clock_text,
     person_at: float | None = None,
+    line_requests: Mapping[str, float] | None = None,
 ) -> dict[str, Any]:
     """The correction for one session, or why there is none.
 
@@ -468,7 +495,9 @@ def compose(
     unsettled = unsettled_directions(row, own, floor=floor, until=read_at) > 0
     window = reading.valid_prompt_time(row.get("annotation_window_start")) or 0.0
     failed = _failed_checks(own, window, person_at)
-    rows = _current_rows(row, own, unsettled=unsettled, lines_judged=lines_judged)
+    rows = _current_rows(
+        row, own, unsettled=unsettled, lines_judged=lines_judged, line_requests=line_requests
+    )
 
     def at(fact: Mapping[str, Any]) -> str:
         return clock(reading.valid_prompt_time(fact.get("at")) or 0.0)
@@ -497,7 +526,7 @@ def compose(
         else:
             head[0][0] = f"Back to my goal: {goal.rstrip('…')}…"
     said = [_claim_line(claim, at)] if claim is not None else []
-    tail = _tail(failed, at)
+    tail = _tail(failed, clock)
     goal_gap = rows.state(reading.CONSTRAINT_GOAL) if rows is not None else (_NOT_SHOWN, None)
     goal_line: list[list[Part]] = (
         [

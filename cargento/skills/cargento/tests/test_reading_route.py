@@ -843,11 +843,14 @@ class TheDisclosureIsAShortListThatKeepsEveryFact(unittest.TestCase):
         # 2026-10-03 added five words to a Claude Code session's list: the agent's messages
         # are sent, and the outcome lines moved from the tool output item to the `Sent:` one.
         # Its review added four more: the agent's messages may quote the tool output.
+        # The 2026-10-05 selected-model amendment adds two words on Claude routes: using <id>.
+        # Content version 3 adds one 19-word item for the newest recorded final reply.
+        # Keep the existing 31-word per-item limit and all previous disclosure facts.
         budgets = {
             "codex": (4, 61),
-            "claude": (6, 129),
-            "claude-by-codex": (5, 110),
-            "codex-by-claude": (5, 98),
+            "claude": (7, 150),
+            "claude-by-codex": (6, 129),
+            "codex-by-claude": (5, 100),
         }
         for name, (harness, installed) in self.ROUTES.items():
             route = _named(harness, installed)
@@ -874,6 +877,24 @@ class TheDisclosureIsAShortListThatKeepsEveryFact(unittest.TestCase):
                     self.assertNotIn(label, route["note"])
                 for mechanism in ("work evidence", "an empty temporary", "which reaches"):
                     self.assertNotIn(mechanism, text)
+
+    def test_the_whole_final_reply_has_one_short_item_before_the_destination(self) -> None:
+        for installed in ({"claude"}, {"codex"}):
+            with self.subTest(provider=next(iter(installed))):
+                parts = _named("claude", installed)["disclosure_parts"]
+                replies = [part for part in parts if part.startswith("The agent's newest final")]
+                self.assertEqual(1, len(replies))
+                reply = replies[0]
+                self.assertLessEqual(len(reply.split()), 19)
+                self.assertIn("as its transcript records one", reply)
+                self.assertIn("whole", reply)
+                self.assertIn("4,096 bytes", reply)
+                destination = next(part for part in parts if part.startswith("To:"))
+                self.assertLess(parts.index(reply), parts.index(destination))
+                self.assertNotIn("newest final", parts[1])
+        self.assertFalse(
+            any("newest final" in part for part in _named("codex", {"codex"})["disclosure_parts"])
+        )
 
     def test_every_route_still_says_what_is_sent_to_whom_and_through_what(self) -> None:
         cap = f"{reading.LEDGER_WORDS_CAP_CHARS:,} characters"

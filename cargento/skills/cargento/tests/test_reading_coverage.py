@@ -253,6 +253,8 @@ class TheCutoffNamesKindsAndOmissions(unittest.TestCase):
             },
         )
         text += reading._goal_note(adopted=True, source=None, goal="Saved excerpt", whole=False)
+        # The longest note `produce` appends after it, for a final reply that stayed an excerpt.
+        text += max(reading._FINAL_NOTES.values(), key=len)
         self.assertLessEqual(len(text), reading.CUTOFF_CAP_CHARS)
         for words in (
             "message tail",
@@ -395,7 +397,7 @@ class TheReadingCarriesMeasuredCoverage(producer.AClaudeCodeReadingProducer):
             got["coverage"],
         )
 
-    def test_the_complete_cutoff_keeps_tail_source_and_grant_loss_under_640_characters(
+    def test_the_complete_cutoff_keeps_tail_source_and_grant_loss_inside_the_store_bound(
         self,
     ) -> None:
         facts = [
@@ -411,6 +413,14 @@ class TheReadingCarriesMeasuredCoverage(producer.AClaudeCodeReadingProducer):
                 subject="check",
                 result="passed",
                 at=120.0,
+                source_session={"harness": "claude", "sid": "s1"},
+            ),
+            producer.fact(
+                fact_id="said",
+                type="agent_message",
+                by="agent",
+                agent_words="Finished the synthetic task.",
+                at=150.0,
                 source_session={"harness": "claude", "sid": "s1"},
             ),
         ]
@@ -432,6 +442,8 @@ class TheReadingCarriesMeasuredCoverage(producer.AClaudeCodeReadingProducer):
             stamp_text="read",
             model=self._model(),
             read_lines=True,
+            read_agent_words=True,
+            final_source_lookup=lambda _wanted: {"outcome": "source-moved"},
             record_coverage_lookup=lambda: {"tail_truncated": True, "tail_start": 100.0},
             goal_source_lookup=list,
             tool_output=reading.ToolOutput(
@@ -443,6 +455,7 @@ class TheReadingCarriesMeasuredCoverage(producer.AClaudeCodeReadingProducer):
         self.assertIn("message tail", got["cutoff"])
         self.assertIn(reading.GOAL_SOURCE_GONE.strip(), got["cutoff"])
         self.assertIn("tool output was not allowed", got["cutoff"])
+        self.assertIn(reading._FINAL_NOTES["unavailable"].strip(), got["cutoff"])
 
 
 class CoverageSurvivesTheStoreWithoutNewWords(producer.AClaudeCodeReadingProducer):

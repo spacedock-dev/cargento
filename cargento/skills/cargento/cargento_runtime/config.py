@@ -6,7 +6,9 @@ import json
 import ntpath
 import os
 import posixpath
+import re
 from dataclasses import dataclass
+from datetime import date
 from pathlib import Path
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Any, Final
@@ -23,6 +25,38 @@ STORE_ENV_VARS = (
     "PI_CODING_AGENT_SESSION_DIR",
 )
 CARGENTO_HOME_ENV = "CARGENTO_HOME"
+
+CLAUDE_READING_DEFAULT_MODEL: Final = "claude-sonnet-5-5"
+CLAUDE_READING_MODEL_POLICY: Final = "sonnet-5-floor-v1"
+_CLAUDE_READING_ID = re.compile(
+    r"claude-(sonnet|opus)-([1-9][0-9]?)(?:-([1-9][0-9]?))?(?:-([0-9]{8}))?"
+)
+CLAUDE_READING_FAMILY_RANKS: Final = MappingProxyType({"sonnet": 1, "opus": 2})
+
+
+def validate_claude_reading_model(value: str) -> str:
+    """Admit explicit Sonnet/Opus generation 5 or later, never a floating alias.
+
+    This is the owner's admission policy, not a measured model-quality rank.
+    Haiku's generation numbers cannot establish a Sonnet-equivalent tier.
+    """
+    match = _CLAUDE_READING_ID.fullmatch(value) if isinstance(value, str) else None
+    if match is None or int(match[2]) < 5:
+        msg = "Choose an explicit Claude Sonnet or Opus generation 5 or later model ID."
+        raise ValueError(msg)
+    if snapshot := match[4]:
+        date.fromisoformat(f"{snapshot[:4]}-{snapshot[4:6]}-{snapshot[6:]}")
+    return value
+
+
+def claude_reading_model_rank(value: str) -> tuple[int, int, int]:
+    """Owner-policy generation/minor/family rank; not an accuracy measurement."""
+    match = _CLAUDE_READING_ID.fullmatch(validate_claude_reading_model(value))
+    if match is None:
+        msg = "The model ID has no admitted rank."
+        raise ValueError(msg)
+    return int(match[2]), int(match[3] or 0), CLAUDE_READING_FAMILY_RANKS[match[1]]
+
 
 # The history store's two bounds as shipped, and the defaults the two flags that
 # override them carry. Named rather than written twice, because `cli.py`'s
@@ -58,6 +92,7 @@ class RuntimeConfig:
     usage_fetch_enabled: bool
     observer_model_enabled: bool
     model_calls_disabled: bool
+    claude_reading_model: str
     # Whether the end-of-session git probe runs at all. `--no-git` is the off
     # switch [DEC-3](SECURITY.md#repository-git-reads-the-end-of-session-probe) made part of its
     # ruling, and off means no git command runs and
@@ -601,6 +636,7 @@ def build_runtime_config(
     usage_fetch_enabled: bool = True,
     observer_model_enabled: bool = False,
     model_calls_disabled: bool = False,
+    claude_reading_model: str = CLAUDE_READING_DEFAULT_MODEL,
     git_probe_enabled: bool = True,
     focus_enabled: bool = True,
     irreversible_enabled: bool = True,
@@ -618,6 +654,7 @@ def build_runtime_config(
     history_max_bytes: int = HISTORY_MAX_BYTES_DEFAULT,
 ) -> RuntimeConfig:
     """Construct runtime configuration solely from explicit inputs."""
+    selected_claude_model = validate_claude_reading_model(claude_reading_model)
     windows = platform_name == "win32"
     join = ntpath.join if windows else posixpath.join
     home_key = "USERPROFILE" if windows else "HOME"
@@ -657,6 +694,7 @@ def build_runtime_config(
         usage_fetch_enabled=usage_fetch_enabled,
         observer_model_enabled=observer_model_enabled,
         model_calls_disabled=model_calls_disabled,
+        claude_reading_model=selected_claude_model,
         git_probe_enabled=git_probe_enabled,
         focus_enabled=focus_enabled,
         irreversible_enabled=irreversible_enabled,

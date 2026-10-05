@@ -23,6 +23,7 @@ from typing import Any
 from cargento_runtime import annotations as annotation_store
 
 from . import test_next_cockpit as cockpit_tests
+from . import test_next_drift_panel as drift_panel
 from .next_harness import NEXT_STYLES, NextPageJsHarness, storage_prelude
 
 FIXTURE = cockpit_tests.NextCockpitCompositionTest.FIXTURE
@@ -475,6 +476,17 @@ class KeepInEveryRouteStateTest(_DraftPage):
         )
         assert isinstance(out, dict)
         return out
+
+    def test_keep_posts_the_selected_claude_model_with_its_reading(self) -> None:
+        setup = (
+            "__dashboard.reading_routes = "
+            + json.dumps(drift_panel.routes(installed=("claude",), enabled=("claude",)))
+            + ";\n__dashboard.reading.providers = {claude:true};\n"
+            + "__dashboard.reading.tool_output = {claude:['Anthropic']};\n"
+        )
+        out = self.keep(setup)
+        self.assertEqual("/api/reading", out["posts"][0]["url"])
+        self.assertEqual("claude-sonnet-5-5", out["posts"][0]["body"].get("model"))
 
     def test_keep_over_a_draft_settles_adopts_and_analyzes_in_one_reading_press(self) -> None:
         out = self.keep()

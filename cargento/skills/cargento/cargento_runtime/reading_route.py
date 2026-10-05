@@ -24,6 +24,7 @@ from typing import TYPE_CHECKING, Any, TypedDict
 from urllib.parse import urlsplit
 
 from . import annotations as annotation_store
+from . import config as runtime_config
 from . import observer, records
 
 if TYPE_CHECKING:
@@ -450,7 +451,12 @@ def _to_head(provider: str, where: str) -> str:
 
 
 def _base_parts(
-    provider: str, where: str | None = None, *, harness: str = "", tool_output: str = ""
+    provider: str,
+    where: str | None = None,
+    *,
+    harness: str = "",
+    tool_output: str = "",
+    model: str = "",
 ) -> list[str]:
     """What a reading sends, to whom and through what, one short item each.
 
@@ -466,6 +472,7 @@ def _base_parts(
     vendor, for callers that only want the wording.
     """
     label = LABELS[provider]
+    model_clause = f" using {model or MODELS[CLAUDE]}" if provider == CLAUDE else ""
     head = _to_head(provider, VENDORS[provider] if where is None else where)
     # On Claude Code the agent's own messages go, and the lines with them, whether or not
     # tool output may (owner ruling, 2026-10-03). On Pi a work result is sent with no
@@ -478,15 +485,24 @@ def _base_parts(
     elif harness in OUTCOME_HARNESSES and harness not in TOOL_OUTPUT_HARNESSES:
         outcome = ", and your expected outcome lines when a work result is among them"
     cli_adds = _CLI_ADDS.get(provider, "")
+    # The newest final reply goes whole (owner amendment, 2026-10-05), and it is the only
+    # message that does: every other keeps the cap above, and no shell or tool output joins it.
+    final = (
+        "The agent's newest final reply, as its transcript records one, goes whole instead "
+        f"where it fits {_FINAL_REPLY_BYTES:,} bytes."
+        if harness in AGENT_MESSAGE_HARNESSES
+        else ""
+    )
     return [
         (
             f"Sent: your goal and a bounded set of the session's entries, with {messages} "
             f"up to {_WORDS_CAP:,} characters each{outcome}."
         ),
+        *([final] if final else []),
         *([tool_output] if tool_output else []),
         (
             f"{head}, with credential shapes redacted, through your {label} CLI and its "
-            "sign-in, spending your capacity."
+            f"sign-in{model_clause}, spending your capacity."
         ),
         *([cli_adds] if cli_adds else []),
     ]
@@ -513,6 +529,10 @@ _CLI_ADDS = {
 # which the `Sent:` item states. Copied rather than imported, because this module
 # sits below `reading` in the import graph; a test holds the two equal.
 _WORDS_CAP = 1_000
+# The bytes the newest final reply may take whole: the agent's share of the prompt
+# (`observer.OBSERVER_MODEL_MAX_PROMPT_BYTES` over `reading.AGENT_WORDS_SHARE_DIVISOR`). Copied
+# for the same reason, and held equal by a test.
+_FINAL_REPLY_BYTES = 4_096
 
 
 def _state(provider: str, which: Callable[[str], Any]) -> str:
@@ -542,13 +562,18 @@ def _route(
     *,
     fallback: bool,
     where: Callable[[str], str],
+    claude_model: str,
 ) -> Route:
     # Where the words go, on every harness; tool output, only where checks exist.
     to = where(provider) if provider else ""
     reached = to if harness in TOOL_OUTPUT_HARNESSES else ""
     sentence = _tool_output_sentence(provider, harness, reached)
     parts = (
-        [note, *_base_parts(provider, to, harness=harness, tool_output=sentence), CAVEAT]
+        [
+            note,
+            *_base_parts(provider, to, harness=harness, tool_output=sentence, model=claude_model),
+            CAVEAT,
+        ]
         if provider
         else []
     )
@@ -557,7 +582,7 @@ def _route(
         "provider": provider,
         "label": LABELS.get(provider, ""),
         "vendor": VENDORS.get(provider, ""),
-        "model": MODELS.get(provider, ""),
+        "model": claude_model if provider == CLAUDE else MODELS.get(provider, ""),
         "reason": reason,
         "note": note,
         "disclosure": " ".join(parts),
@@ -575,6 +600,7 @@ def resolve(
     binary_resolver: Callable[[str], Any] | None = None,
     environ: Mapping[str, str] | None = None,
     root: Path | None = None,
+    config: runtime_config.RuntimeConfig | None = None,
 ) -> Route:
     """The one provider that reads a session on this harness, or why none can.
 
@@ -583,6 +609,9 @@ def resolve(
     failed: the route is decided once, here, before anything is spent.
     """
     which = binary_resolver or shutil.which
+    claude_model = runtime_config.validate_claude_reading_model(
+        config.claude_reading_model if config is not None else observer.CLAUDE_READING_MODEL
+    )
 
     def where(provider: str) -> str:
         return destination(provider, environ=environ, root=root)
@@ -604,6 +633,7 @@ def resolve(
                 "This session's own harness reads it.",
                 fallback=False,
                 where=where,
+                claude_model=claude_model,
             )
         return _route(
             harness,
@@ -612,6 +642,7 @@ def resolve(
             f"{_NO_PRODUCER}, so {label} reads this session.",
             fallback=False,
             where=where,
+            claude_model=claude_model,
         )
     second = _state(other, which)
     if second == "usable":
@@ -624,6 +655,7 @@ def resolve(
             ),
             fallback=True,
             where=where,
+            claude_model=claude_model,
         )
     # The harness's own lack stands as a sentence of its own, so the two
     # machine facts after it join with one "and" rather than a chain of them.
@@ -639,6 +671,7 @@ def resolve(
         ),
         fallback=False,
         where=where,
+        claude_model=claude_model,
     )
 
 
@@ -648,6 +681,7 @@ def resolve_all(
     binary_resolver: Callable[[str], Any] | None = None,
     environ: Mapping[str, str] | None = None,
     root: Path | None = None,
+    config: runtime_config.RuntimeConfig | None = None,
 ) -> dict[str, Route]:
     """One route per harness, looking each CLI up at most once per call."""
     which = binary_resolver or shutil.which
@@ -659,6 +693,6 @@ def resolve_all(
         return memo[name]
 
     return {
-        harness: resolve(harness, binary_resolver=cached, environ=environ, root=root)
+        harness: resolve(harness, binary_resolver=cached, environ=environ, root=root, config=config)
         for harness in sorted(set(harnesses))
     }

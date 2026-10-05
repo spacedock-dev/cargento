@@ -1332,6 +1332,8 @@ details.next-cockpit-held-stamp[open]>span{display:block}
    list drops over the page. */
 .next-intent-prompt-pick{margin-left:auto;display:flex;min-width:0;max-inline-size:min(18rem,100%)}
 .next-intent-prompt-select{inline-size:auto;max-inline-size:100%;min-width:0;padding:0 28px 0 12px;color:var(--ink);font:500 var(--fs-body)/1.55 var(--sans);text-overflow:ellipsis}
+.next-direction-select{display:grid;gap:4px;min-inline-size:0;max-inline-size:100%}
+.next-direction-select select{inline-size:100%;max-inline-size:100%;min-inline-size:0;text-overflow:ellipsis}
 .next-cockpit-held-label{grid-column:1/-1;color:var(--ink-label);font-family:var(--mono);font-size:var(--fs-label);font-weight:600;letter-spacing:.07em}
 .next-cockpit-held-field textarea{grid-column:1/-1;width:100%;min-height:56px;box-sizing:border-box;resize:vertical;padding:7px;border:1px solid var(--line);background:var(--panel);color:var(--ink-value);font:var(--fs-body)/1.55 var(--sans)}
 .next-cockpit-held-count{color:var(--ink-caption);font-family:var(--mono);font-size:var(--fs-label)}

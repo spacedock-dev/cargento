@@ -1840,6 +1840,7 @@ class WhatOnePressActuallyCostsAndProduces(unittest.TestCase):
     class _Config:
         reading_settle_sec = 8.0
         annotation_text_cap_chars = 240
+        claude_reading_model = "claude-sonnet-5-5"
 
     FACT: ClassVar[dict[str, Any]] = {
         "fact_id": "f1",
@@ -2061,6 +2062,7 @@ class WhatAClaudeCodeReadingCostsAndProduces(unittest.TestCase):
         class _Config:
             reading_settle_sec = 8.0
             annotation_text_cap_chars = 240
+            claude_reading_model = "claude-sonnet-5-5"
 
         self.config = _Config()
         self.config.state_dir = state_dir  # type: ignore[attr-defined]

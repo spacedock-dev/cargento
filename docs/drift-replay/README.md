@@ -82,17 +82,27 @@ regression. The artifact separates full baseline counts, observed lower bounds, 
 pages and the matched subset. Its lost-flag and offer lists cover only measured pairs, never
 the unread remainder. Across 40 matched drift case-arms, ten previously flagged arms no
 longer flag and nine lose a correction offer. Of ten formerly drawn claims rows marked right,
-four are withdrawn; three of the nine unique marked claim items lose every formerly drawn row.
+four are withdrawn across four items; three of the nine unique marked claim items lose every
+formerly drawn row and the fourth affected item keeps another row.
 Two surviving rows also stop citing the previously marked agent record. Those losses are
 listed by salted case and claim ids, without treating unread cases as losses. The right-row
 protection check therefore fails too. All marks are agents' development judgments.
 
-Further window reads and the dependent turn-scope model measurement are blocked by this guard.
-The turn-scope schema and page support have shipped, but no new Analyze measurement qualifies
-their accuracy. The closed git/gh proof proposal is also blocked: even command incidence can
-cover at most 35 of the required 61 wrong not-shown flags, before attribution and truncation
-guards. Its publisher and consent-version change were not built. The whole final-reply change
-depends on that proposal and remains blocked too.
+This campaign remains failed and stopped. The owner subsequently delegated acceptance to
+adversarial agent review, which retained bounded source recovery as explicitly unqualified and
+retired the original closed git/gh proof proposal on feasibility grounds. Command incidence
+covers at most 35 of the original 61 wrong not-shown flag occurrences before attribution and
+truncation guards; current re-marks leave 57. No closed-tier clearance was verified, and its
+publisher and model gate were not built or passed. The
+[dated ruling](../design-reading-a-session.md#amended-2026-10-05-source-recovery-retained-with-failed-accuracy-qualification)
+keeps the failed result and a narrower rollback option.
+
+That ruling removes the retired proposal as a prerequisite for prospective newest-final work.
+Independent source, privacy and consent checks still gate that work. No new Analyze measurement
+qualifies newest-final or turn-scope accuracy. A later preregistered campaign must bind fresh
+matched conditions and its actual model; it cannot convert this campaign into a pass. At the
+2026-10-05 amendment it is not runnable until its exact protocol and aggregate transport guards
+are built and reviewed.
 
 The ledger ends at 631 of 870, with 239 left: 199 verified calls in this run, plus five
 conservative reservations for earlier test calls whose execution could not be proved. The
@@ -382,6 +392,23 @@ run's `read.json` is never touched. `--case <id>` narrows it to one cut on every
 and the dry-run plan rule are unchanged, and the ledger's floor counts every read file.
 `--score --tag <tag>` scores that file into `results-<tag>.json` and leaves `results.json` alone; a
 cut and arm the plan did not choose reads `not-run`.
+
+As of the owner's 2026-10-05 amendment, `--read --claude-reading-model <id>` chooses an admitted
+Claude model under the [Sonnet baseline policy](../../SECURITY.md#amended-2026-10-05-claude-reading-model-baseline).
+The default is `claude-sonnet-5-5`. Give the same selection to the dry run and the spending run:
+the plan and each charged record bind the selected model, admission policy and restricted argv
+digest. Every charged attempt, including an unusable reply, also binds its tag to that producer
+in the spend ledger. The ledger records a digest of the tag's output location rather than its raw
+path; it adds no prompt words. Failed cut-arms remain retryable with the same producer, and their
+charges are not refunded. A tag with another model, or old records or a historical plan without
+that binding, requires a fresh tag.
+
+Before spending, the runner rebuilds every pending prompt without a provider and compares its
+digest and byte count with the dry plan. A changed fixture, producer or pending prompt requires
+another dry run. A second comparison at each charge catches a prompt that changes after this
+preflight; completed cut-arms retain their existing results on resume.
+The selected ID does not establish the served snapshot, which remains unknown; historical
+qualification belongs to its recorded model and execution envelope.
 
 ```bash
 python3 scripts/drift_replay.py --claims-export
