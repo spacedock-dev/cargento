@@ -217,6 +217,151 @@ BANNED_DOC_LITERALS = {
     "http://localhost:4553": "the server is IPv4-only; write http://127.0.0.1:4553",
 }
 
+# Reader-facing documents are restricted by default, including newly created
+# Markdown. Development provenance survives only in these explicit areas.
+PUBLIC_TRACKER_DEVELOPMENT_FILES = frozenset(
+    {
+        "AGENTS.md",
+        "CLAUDE.md",
+        "CONTRIBUTING.md",
+        ".github/PULL_REQUEST_TEMPLATE.md",
+        "docs/development-tracking.md",
+    }
+)
+PUBLIC_TRACKER_DEVELOPMENT_DIRS = (
+    ".claude/skills/",
+    ".claude/agents/",
+    ".agents/skills/",
+    "tests/",
+    "docs/plans/",
+    "docs/superpowers/plans/",
+    "docs/captures/",
+    "docs/abstention/",
+    "docs/drift-replay/",
+    "docs/drift-levels/",
+    "docs/feedback/",
+    "docs/probes/",
+    "docs/future-ui-exploration/",
+    "docs/roadmap-burndown/",
+    "docs/visibility-2x2/",
+)
+PUBLIC_TRACKER_EVIDENCE_DEVELOPMENT_FILES = frozenset(
+    {
+        "docs/evidence/intent-and-drift/COLD_STUDY_PROTOCOL.md",
+        "docs/evidence/intent-and-drift/RUN_TEMPLATE.md",
+    }
+)
+PUBLIC_TRACKER_EVIDENCE_PUBLIC_FILES = frozenset(
+    {
+        "docs/evidence/intent-and-drift/README.md",
+        "docs/evidence/intent-and-drift/PROMPT.md",
+        "docs/evidence/intent-and-drift/PARTICIPANT_KICKOFF.md",
+        "docs/promise-map.md",
+    }
+)
+PUBLIC_TRACKER_TOKENS = re.compile(r"\blinear\b|linear\.app|linear://|\bdrc-\d+\b", re.IGNORECASE)
+# A lowercase mathematical adjective is not a brand. Keep this explicit and
+# narrow: unfamiliar uses can be reworded or reviewed rather than exempting
+# lowercase brand mentions or silently weakening the raw-text scan.
+PUBLIC_LINEAR_MATH = re.compile(
+    r"^\s+(?:scan|time|complexity|scaling|growth|interpolation|algebra|equations?|"
+    r"functions?|algorithms?|passes?|combinations?|in\s+the\s+number|JSONL transcript)\b"
+)
+PUBLIC_DOC_WALK_PRUNE = frozenset({".git", "node_modules", ".venv", "venv", "__pycache__"})
+
+
+def _public_document(path: Path) -> bool:
+    relative = path.relative_to(ROOT).as_posix()
+    # Shipped roots win even over a nested development-looking directory.
+    if relative.split("/", 1)[0] in {*PLUGIN_NAMES, GEMINI_EXTENSION_ROOT, DROID_EXTENSION_ROOT}:
+        return True
+    if relative in PUBLIC_TRACKER_EVIDENCE_PUBLIC_FILES:
+        return True
+    if relative in PUBLIC_TRACKER_DEVELOPMENT_FILES or relative.startswith(
+        PUBLIC_TRACKER_DEVELOPMENT_DIRS
+    ):
+        return False
+    if relative.startswith("docs/design-") and "/" not in relative[len("docs/") :]:
+        return False
+    if relative in PUBLIC_TRACKER_EVIDENCE_DEVELOPMENT_FILES:
+        return False
+    return not (
+        relative.startswith("docs/evidence/intent-and-drift/run-")
+        and "/" not in relative[len("docs/evidence/intent-and-drift/") :]
+    )
+
+
+def validate_public_text(path: Path, validation: Validation) -> None:
+    """Scan raw content, including code, reference definitions and HTML links."""
+    try:
+        body = path.read_text(encoding="utf-8")
+    except (OSError, UnicodeError):
+        validation.error(path, "cannot read public text as UTF-8")
+        return
+    for match in PUBLIC_TRACKER_TOKENS.finditer(body):
+        if match.group() == "linear" and PUBLIC_LINEAR_MATH.match(body[match.end() :]):
+            continue
+        line = body.count("\n", 0, match.start()) + 1
+        validation.error(
+            f"{path}:{line}",
+            "public text contains a private tracker reference; "
+            "remove the brand, host or issue key before publication",
+        )
+
+
+def _public_doc_candidate(path: Path) -> bool:
+    return path.suffix.lower() == ".md" or path.name in {"LICENSE", "NOTICE"}
+
+
+def validate_public_docs(validation: Validation) -> None:
+    """Discover nonignored new Markdown and tracked files, pruning private trees."""
+    # Union tracked paths before pruning: tracked text stays covered even when a
+    # later ignore rule hides its parent from an ordinary filesystem walk.
+    paths: set[Path] = set()
+    try:
+        tracked = subprocess.run(
+            ["git", "ls-files", "-z"],  # noqa: S607
+            cwd=ROOT,
+            capture_output=True,
+            check=False,
+        )
+        if tracked.returncode == 0:
+            paths.update(
+                ROOT / name
+                for name in tracked.stdout.decode("utf-8", errors="surrogateescape").split("\0")
+                if name and _public_doc_candidate(Path(name))
+            )
+    except OSError:
+        pass  # Git failure falls back to filesystem discovery, never skips text.
+    for directory, children, files in os.walk(ROOT, followlinks=False):
+        parent = Path(directory)
+        candidates = [
+            parent / name
+            for name in children
+            if name not in PUBLIC_DOC_WALK_PRUNE
+            and not (parent.name in {".claude", ".agents"} and name == "worktrees")
+        ]
+        ignored = _git_ignored(candidates)
+        children[:] = [path.name for path in candidates if path not in ignored]
+        candidates = [parent / name for name in files if _public_doc_candidate(Path(name))]
+        ignored = _git_ignored(candidates)
+        paths.update(path for path in candidates if path not in ignored)
+    for path in sorted(paths):
+        if _public_document(path):
+            validate_public_text(path, validation)
+
+
+def check_public_text(path: Path) -> int:
+    """Standalone release-body gate; no checkout inventory or links are needed."""
+    validation = Validation()
+    validate_public_text(path, validation)
+    for error in validation.errors:
+        print(f"::error::{error}")
+    if validation.errors:
+        return 1
+    print(f"Public text boundary passed: {path}")
+    return 0
+
 
 class UniqueKeyLoader(yaml.SafeLoader):  # type: ignore[misc]  # PyYAML ships no stubs, so SafeLoader is Any
     """Safe YAML loader that rejects duplicate mapping keys."""
@@ -1317,8 +1462,11 @@ def validate_skills(plugin_root: Path, validation: Validation) -> tuple[set[str]
     # References and operation modules are shipped with the skill just like
     # SKILL.md. Validate every bundled Markdown resource so a top-level skill
     # cannot route an agent into a missing or repository-external file.
-    for resource_path in sorted(skills_root.rglob("*.md")):
+    for resource_path in sorted(
+        path for path in skills_root.rglob("*") if path.is_file() and path.suffix.lower() == ".md"
+    ):
         validate_markdown_links(resource_path, validation)
+        validate_public_text(resource_path, validation)
         body = resource_path.read_text(encoding="utf-8")
         for marker, guidance in PORTABILITY_MARKERS.items():
             if marker in body:
@@ -1416,16 +1564,20 @@ def _git_ignored(paths: list[Path]) -> set[Path]:
     `check-ignore` rather than `ls-files`, so a doc that is merely new still gets
     validated before it is staged. Fails open: any git error validates
     everything, which is the behaviour this replaces and can only over-check.
+    NUL-delimited UTF-8 paths avoid Git C-quoting, Windows locale decoding and
+    newline translation. Forward slashes preserve Windows absolute paths.
     """
     if not paths:
         return set()
     try:
         result = subprocess.run(
-            ["git", "check-ignore", "--stdin"],  # noqa: S607
+            ["git", "check-ignore", "-z", "--stdin"],  # noqa: S607
             cwd=ROOT,
-            input="\n".join(str(path) for path in paths),
+            input=b"\0".join(
+                path.as_posix().encode("utf-8", errors="surrogateescape") for path in paths
+            )
+            + b"\0",
             capture_output=True,
-            text=True,
             check=False,
         )
     except OSError:
@@ -1433,7 +1585,11 @@ def _git_ignored(paths: list[Path]) -> set[Path]:
     # 0 = at least one ignored, 1 = none ignored; anything else is a real error.
     if result.returncode not in (0, 1):
         return set()
-    return {Path(line) for line in result.stdout.splitlines() if line}
+    return {
+        Path(name)
+        for name in result.stdout.decode("utf-8", errors="surrogateescape").split("\0")
+        if name
+    }
 
 
 def validate_repo_docs(validation: Validation) -> None:
@@ -1626,6 +1782,11 @@ def check_installed_runtime(plugin_root: Path) -> int:
 
 
 def main() -> int:
+    if "--public-text" in sys.argv[1:]:
+        if len(sys.argv) != 3 or sys.argv[1] != "--public-text":
+            print("::error::usage: validate_plugins.py --public-text FILE")
+            return 2
+        return check_public_text(Path(sys.argv[2]))
     if len(sys.argv) == 3 and sys.argv[1] == "--runtime-files":
         return check_installed_runtime(Path(sys.argv[2]))
     validation = Validation()
@@ -1672,6 +1833,7 @@ def main() -> int:
     validate_readme(skill_names, validation)
     validate_repository_skills(validation)
     validate_repo_docs(validation)
+    validate_public_docs(validation)
     validate_promise_parity(validation)
 
     catalog_text = "\n".join(catalog_lines) + "\n"

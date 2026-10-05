@@ -9,6 +9,7 @@ The shared repository instructions are imported above. The following notes apply
 - `${CLAUDE_PLUGIN_ROOT}` is safe in Claude hook commands. Shared skill bodies must use portable resource resolution because Codex does not guarantee that variable there.
 - Validate the marketplace and the plugin with `claude plugin validate <path> --strict`.
 - Test a plugin session with `claude --plugin-dir ./cargento`.
+- Claude Code native docs/release-generation and publishing tools follow the shared [public documentation rule](AGENTS.md#public-documentation-and-release-notes), including the final whole-body check.
 - Claude Code discovers the canonical repository development skills directly from `.claude/skills/`.
   They are **not** part of the shipped plugin; the portability rules in `AGENTS.md` apply to
   `cargento/skills/` only. The shared instructions own their Codex aliases and pre-PR use.

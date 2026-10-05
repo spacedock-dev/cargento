@@ -46,7 +46,8 @@ diff-and-reconcile pass, not a rewrite.
 | `COMPATIBILITY.md` | **Canonical** cross-harness and cross-platform contract: the per-runtime surface matrix, the per-OS capability matrix, the platform caveats, the native per-runtime validators, and **the Python floor** (with the list of every other place it is restated). Carries the sync marker. | Matrices and their footnotes. *Why* a row reads the way it does belongs in `docs/design-*.md`. |
 | `SECURITY.md` | Security posture: the invariants, the known-and-accepted exposures, and private reporting. Covers the whole shipped surface — `server.py` **and** `notify_hook.py`. | Anything that weakens an invariant is a security bug and belongs here. Keep the contact address equal to the one in `CODE_OF_CONDUCT.md`; nothing checks it. |
 | `cargento/skills/cargento/SKILL.md` | **Canonical** product surface: per-harness data sources, session states, start/stop, notifications, options, interpretation notes, common mistakes. | A *shipped, validated artifact* — see the constraints below. It is installed without the repository, so it must never contain a repo-relative link or repo process. |
-| `docs/promise-map.md` | **Canonical** user-facing promise: the five questions of a user's day, one promise each, the shipped capability that backs it, and the limit that keeps it honest. | A promise may not enter it before the capability ships, and the wording of each promise is duplicated verbatim in `docs/visibility-2x2/items.json` (`columns[].promise`) and in the Linear project description. Change one, change all three. The "How work links to a promise" section is the only place the promise IDs and the move taxonomy are defined; every other file links to it. |
+| `docs/promise-map.md` | **Canonical** user-facing promise: the five questions of a user's day, one promise each, the shipped capability that backs it, and the limit that keeps it honest. | A promise may not enter it before the capability ships, and the wording of each promise is duplicated verbatim in `docs/visibility-2x2/items.json` (`columns[].promise`) and in the Linear project description. Change one, change all three. [Development tracking](../../../docs/development-tracking.md#how-work-links-to-a-promise) owns promise IDs and the move taxonomy; keep them out of user-facing tracker prose. |
+| `docs/development-tracking.md` | **Canonical** development taxonomy: promise IDs, journey labels, board columns, moves and tracker copies. | Preserve development provenance here; the public promise map owns reader-facing behavior and limits. |
 | `docs/design-runtime-architecture.md` | **Canonical** module map: what each runtime file owns, the inward-only dependency rule, top-level import identity, and the config/state/application split. | Other design docs link here for the module map instead of restating it. The import allowlist it describes is asserted by a test. |
 | `docs/design-*.md` | The durable *why/how* per area — decisions that outlive the build, **including alternatives that were tried and rejected and the reason why**. | A decision earns a place here if re-deriving it would cost a day, or if a maintainer would otherwise re-attempt something already proven wrong. |
 | `docs/plans/*.md` | **Transient** plans for *unshipped* work only. | Once the work ships, fold the durable *what* into the owning doc and the durable *why* into `docs/design-*.md`, then **delete the plan file.** |
@@ -80,6 +81,27 @@ The dashboard test suite asserts the skill body against the code. Both are requi
 
 After any edit under `cargento/skills/`, run `python3 scripts/validate_plugins.py` and
 `python3 -m unittest discover -s cargento/skills/cargento/tests -t .` before committing.
+
+## Public text boundary
+
+Follow [AGENTS.md's public documentation rule](../../../AGENTS.md#public-documentation-and-release-notes).
+User-facing docs and release notes contain no Linear names, issue keys or tracker URLs, including
+fenced examples, reference links, HTML and copied/generated text. Keep the security fact, date,
+ruling and limit; replace its tracker pointer with the durable public contract or a plain behavior
+statement. Do not delete development provenance from allowed records to make the public scan quiet.
+
+Unknown/new Markdown defaults to user-facing. Shipped Markdown and the promise map are always
+user-facing. The shared study entry point, participant kickoff and exploratory prompt remain
+user-facing even inside the evidence tree; facilitator protocols and run records are development
+records. The validator's explicit audience classifier owns the exceptions. Internal issue links
+remain legal in development records and PR bodies.
+
+Repository validation scans full raw public text. Use the validator's standalone `--public-text FILE`
+mode for the entire proposed release/announcement body, including generated sections, before
+publishing. An external body must be read back and checked after publication; the repository scan
+cannot inspect it. Moving the promise taxonomy also requires repointing all development consumers
+to [its owner](../../../docs/development-tracking.md#how-work-links-to-a-promise) while keeping the
+five canonical promise sentences unchanged.
 
 ## Voice and tone
 
@@ -403,7 +425,7 @@ minutes, a Python version. Stale counts are this repository's most common drift.
      -- '*plugin.json' '*marketplace.json' '*gemini-extension.json' | grep -E '^[+-].*"version"'
 
    # c. The validator: link and anchor resolution across prose docs and bundled skill Markdown,
-   #    the banned literals, description length, and the portability markers.
+   #    the public tracker boundary, banned literals, description length, and portability markers.
    python3 scripts/validate_plugins.py
 
    # d. If you touched the skill body, the documentation-matches-code assertions.

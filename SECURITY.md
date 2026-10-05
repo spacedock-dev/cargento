@@ -110,7 +110,7 @@ The posture rests on two invariants:
    because any local process can rewrite the file. Everything else a reading holds is a value the
    code selected from a closed set or composed from counts it measured.
 
-   Delegated owner acceptance, 2026-10-05 (DRC-4791): a local rewrite of `detail` is scrubbed and
+   Delegated owner acceptance, 2026-10-05: a local rewrite of `detail` is scrubbed and
    escaped, but the prose verdict backstop used at production is not reapplied when loading the
    file. A rewritten detail can therefore say the work succeeded beside a valid departure token.
    A blanket success-word check would also reject legitimate quotations of the agent's claims.
@@ -424,7 +424,7 @@ checked out at `$HOME` can reach this. It is not reachable on the machine these 
 taken on, where `git -C "$HOME" rev-parse --show-toplevel` finds no repository at all, and that is a
 fact about one machine rather than a property of the design.
 
-Decided 2026-09-07, and recorded rather than fixed (DRC-4442). Three measurements settled it, and
+Decided 2026-09-07, and recorded rather than fixed. Three measurements settled it, and
 the first is the one to read before proposing anything here:
 
 - The confinement this was originally filed with does not work. `GIT_CEILING_DIRECTORIES` set to the
@@ -447,7 +447,7 @@ ruling keeps the reading. What it costs a reader is written down rather than lef
 git reading names a session's directory, but the repository git discovers may be an unrelated
 ancestor such as `$HOME`.
 
-**Local metadata can also select a different working tree (DRC-4492).** Git can read
+**Local metadata can also select a different working tree.** Git can read
 `core.worktree` from the discovered `.git/config` and compare another directory's contents against
 that repository's index. Measured 2026-09-08: a clean source pointing at a directory with nine
 untracked entries returned `dirty=True, changed=9`; removing the setting restored clean/zero.
@@ -545,7 +545,7 @@ keeps Scope's repository-execution sentence meaningful rather than sidestepped.
 
 ### The named cases, and why the list is this short
 
-Two arrangements are candidates today, because DRC-4382 measured identification for exactly two: a
+Two arrangements are candidates today, because identification was measured for exactly two: a
 session in a bare macOS Terminal.app tab, and a session in a tmux pane. The identifier differs by
 harness even within one arrangement. A Codex hook keeps the controlling terminal and reads it
 directly; a Claude hook does not, because its stdin is the payload pipe, so the device has to be
@@ -553,17 +553,17 @@ read one level up off the harness process. In a pane neither works and tmux's ow
 what finds the window.
 
 **One arrangement is now a named case and the other is not, and the difference is what was run.**
-DRC-4385 ran the socket raise and recorded it: `switch-client` on a named socket moved the client it
+The socket-raise capture recorded that `switch-client` on a named socket moved the client it
 was told to, with a negative control that held still recorded first. So the tmux socket case is
-named, and it is what ships. The Apple Event case is not. DRC-4387 ran its arms and the one that
+named, and it is what ships. The Apple Event case is not. The probe ran its arms and the one that
 decides it, a daemon whose launching window has been quit, came back inconclusive: it moved a tab
 but its two responsible-identity fields were null, so the record cannot say who issued the raise.
 Until that is answered no Apple Event case may be named, and the paragraph below is why the bar is
 set there.
 
 This is the part most easily read too generously.
-**DRC-4382 measured which identifier finds a terminal. It did not raise one.** The capture says so in
-its own words: the lookup counts a tab and never activates one. So a raise command becomes a named
+**The identification capture measured which identifier finds a terminal. It did not raise one.**
+The capture says so in its own words: the lookup counts a tab and never activates one. So a raise command becomes a named
 case only once it has been run and recorded, one case per platform, per multiplexer and per harness
 where they differ, the way Usage quota reads requires a vendor's endpoint to be named before it
 ships. A section listing commands nobody has run would repeat the failure of documenting bounds the
@@ -581,8 +581,8 @@ socket path needs no operating-system permission at all. The Apple Event path is
 Automation privacy permission, which macOS attributes to the *responsible* process rather than the
 caller. Measured on the running daemon: after a double fork, a `setsid`, and three days re-parented
 to `launchd`, its responsible process is still the Terminal window that launched it. So the sixteen
-successful `osascript` calls recorded in DRC-4382 are that application automating itself while its
-launcher is alive, which is an exemption rather than a grant.
+successful `osascript` calls recorded in the identification capture are that application automating
+itself while its launcher is alive, which is an exemption rather than a grant.
 
 The launcher outliving the daemon is not the shipping case; the daemon exists to outlive it. What
 happens then is unmeasured, and the failure it risks is silent: an unbundled, ad-hoc-signed
@@ -629,7 +629,8 @@ Every field is substituted into a fixed argv position and never concatenated, an
 its grammar is not a raise.
 
 **Each grammar refuses a leading dash in its own first character class rather than in a sentence
-beside it, and that wording is the whole lesson of DRC-4381.** That issue shipped
+beside it, and that wording is the lesson of a reproduced command-injection defect.** An earlier
+version shipped
 `^[A-Za-z0-9._-]{1,64}$`, whose class contains a dash with nothing anchoring position 0, and review
 reproduced a poisoned transcript filename turning a copied command into one that disables a
 harness's permission checks. The first draft of this table repeated the same shape twice, and it was
@@ -661,8 +662,8 @@ the same operating-system user. The focus request itself names a session and nev
 
 Two measured facts make this a bound rather than an implementation note.
 
-The device is not known to hold still. DRC-4382's verdict field is named `identifier_shape_held_still`
-and claims exactly that: two devices mask to the same shape, so the capture establishes that the
+The device is not known to hold still. The identification capture's verdict field is named
+`identifier_shape_held_still` and claims exactly that: two devices mask to the same shape, so the capture establishes that the
 readings agree and deliberately leaves unmade the claim that the device itself stayed put. The case
 where it demonstrably moves is tmux, where detaching and reattaching from another tab moves the
 client device inside one session. So a target is resolved at the moment of the raise and never
@@ -712,8 +713,8 @@ untouched, no turn is started or stopped, and nothing is typed.
 **What a socket raise does change is the multiplexer session, and an earlier draft of this document
 denied it.** It read "the window moves, the session does not", which is false of the only mechanism
 this feature ships. `tmux switch-client` resolves the pane to its window and moves the tmux
-session's current window; every client attached to that session displays the change. DRC-4385
-measured it in both positive arms, and reproduced it outside them by steering one client and
+session's current window; every client attached to that session displays the change. The socket-raise
+capture measured it in both positive arms, and reproduced it outside them by steering one client and
 watching the other follow. The sentence is corrected rather than softened, because the bound below
 rests on the mechanism being described accurately.
 
@@ -853,8 +854,8 @@ who clicks is trusting a row Cargento measured rather than one a session proved.
 
 Raising a window is the first thing Cargento does that it cannot undo and that is visible outside
 Cargento. A raise that lands on the wrong window puts a keyboard in front of a session the operator
-did not mean to reach. DRC-4382 measured how that happens: for a session with no controlling
-terminal at all, both obvious readings report a terminal, and it belongs to somebody else. So a
+did not mean to reach. The identification capture measured how that happens: for a session with no
+controlling terminal at all, both obvious readings report a terminal, and it belongs to somebody else. So a
 lookup that cannot identify a terminal must decline rather than fall back, and "the first ancestor
 with a tty" and "an emulator variable is set" are both named here as refused readings.
 
@@ -937,8 +938,8 @@ not only of the page's URL builder.
 This paragraph previously described the banner as shipped when the page had no banner, no configure
 control and no stored setting at all: the next-UI promotion had dropped them, the page consequently
 sent the parameter never, and nothing failed because nothing bound this paragraph to the page. The
-promise was true only because the feature never acted. DRC-4376 restored the surface and DRC-4352
-made the page ask, in that order. `test_next_capacity.py` binds the builder and the mount, and
+promise was true only because the feature never acted. Restoring the surface and making the page
+ask, in that order, repaired it. `test_next_capacity.py` binds the builder and the mount, and
 `test_quota.NoFetchWithoutConsentTest` binds the server's refusal, so neither half can go missing
 again without a red test.
 
@@ -1036,17 +1037,17 @@ stated here rather than implied.
 ### Reader-requested permission and rolling budget
 
 [DEC-21](docs/design-reading-a-session.md#dec-21-a-reading-works-the-first-time-you-ask) replaces
-the startup flag for reader-requested readings (DRC-4640). The first "Analyze drift" presents the
-reading disclosure and "Allow and analyze" (named "Check for drift" and "Allow and check" until
-DRC-4680). The disclosure renders before "Allow and analyze", so the press that gives consent
+the startup flag for reader-requested readings. The first "Analyze drift" presents the
+reading disclosure and "Allow and analyze" (formerly named "Check for drift" and "Allow and check").
+The disclosure renders before "Allow and analyze", so the press that gives consent
 follows the text naming the receiver. The answer lives under `CARGENTO_HOME` (by default
 `~/.cargento`) in `cargento-reading-permission.sqlite3`, shared by tabs and respawned daemons.
 "Turn off readings" and `--forget` revoke it. Goal summaries keep `--observer-model` and their
 separate browser consent. The explicit model off switch overrides both permissions.
 
 The same SQLite store holds only that answer, model-attempt timestamps and, for 30 days, the
-random id of the job each attempt was charged to (DRC-4713), never session ids or content. A transaction reserves one of twelve reader-requested attempts in a rolling twenty-four
-hours before the model starts. Eligibility checks and a known missing CLI spend nothing; a failed
+random id of the job each attempt was charged to, never session ids or content. A transaction reserves
+one of twelve reader-requested attempts in a rolling twenty-four hours before the model starts. Eligibility checks and a known missing CLI spend nothing; a failed
 or timed-out attempt keeps its reservation because the provider may already have spent capacity.
 Concurrent processes share the transaction bound. A denied or corrupt store fails closed. The page
 reports the cap and the earliest time another attempt can be admitted. Turning permission off,
@@ -1056,7 +1057,7 @@ The store is created owner-only; SQLite is required for this permission path. De
 manually can reset its budget, as can any other modification by the owning local user. The cap
 bounds requests through the HTTP route, not a hostile owner editing their own files.
 
-The answer is kept per provider (DRC-4650). Allowing Codex to send a reader's words to OpenAI does
+The answer is kept per provider. Allowing Codex to send a reader's words to OpenAI does
 not allow Claude Code to send them to Anthropic, so each provider needs its own "Allow and analyze".
 An Allow given for a provider covers every session routed to that provider (owner, 2026-10-02): a
 Codex, Pi or other session that falls back to Claude Code on a machine without `codex` runs under a
@@ -1092,7 +1093,7 @@ An answer saved before the split reads as the Codex answer it was. "Turn off rea
 `--forget` revoke every provider at once. So does an older build's Turn off, which knows only the
 legacy Codex row: triggers in the store's own schema clear every other provider's answer and every
 tool-output grant whenever that row is written as off, so a rollback and re-upgrade cannot bring a
-Claude Code answer back (DRC-4666). The twelve-attempt cap is shared between providers, so a
+Claude Code answer back. The twelve-attempt cap is shared between providers, so a
 second provider cannot double it, and a spent budget is reported as `daily-cap` ahead of a missing
 answer, whichever provider the status names.
 
@@ -1304,7 +1305,7 @@ reused by another process, and the call returns only after the child is reaped, 
 files are removed after, never under, a live writer. When neither `waitid` nor kqueue can watch the
 exit, the call polls, which reaps the leader, so helpers still in its group after a normal exit are
 not swept; a timeout, a shutdown or a Cancel still kills the group, because each kills before the
-reap. That has been seen only under forced errors, and a test pins it (DRC-4712). On that path a
+reap. That has been seen only under forced errors, and a test pins it. On that path a
 helper still writing after the leader's exit is not reached at all, whether it was already
 writing under the bound or starts afterwards: the poll that sees the exit is the reap, the caller then removes the file, and the helper's writes to
 the removed file are bounded by nothing but the disk until the helper exits. Seeing the exit
@@ -1325,9 +1326,9 @@ cleanup, so a call cannot accumulate concurrent probe workers. The native probe 
 probe and Windows's job query are checked by their platform tests. A POSIX host without this native
 `ps` command's fields refuses the call rather than assuming its helpers stopped.
 
-A call's output file is bounded on disk as well as on read (DRC-4667): the runner checks its
+A call's output file is bounded on disk as well as on read: the runner checks its
 size every 0.01 s while the CLI runs, and once more after its group or Job Object has no live
-writer (DRC-4729). The unwatchable POSIX fallback above still cannot make that guarantee. Past
+writer. The unwatchable POSIX fallback above still cannot make that guarantee. Past
 **1 MiB** it kills the CLI's group or Job Object as a Cancel does. A reading
 records a spent `oversized` attempt; the goal lane falls back as on any failed call and records
 nothing. The file can exceed 1 MiB by what the CLI writes in one 0.01 s slice, which is bounded by
@@ -1384,7 +1385,7 @@ The argv, every flag checked against `claude --help` on 2.1.280, run without a s
 - `--output-format text`, `--model` with the explicitly selected admitted model, and `--effort high`.
   The [model admission amendment](#amended-2026-10-05-claude-reading-model-baseline) owns the selection.
 - `--system-prompt` with one fixed sentence, `observer.CLAUDE_READING_SYSTEM_PROMPT`, in place of
-  Claude Code's default system prompt (owner ruling, DRC-4666, 2026-09-27). Checked on 2.1.283.
+  Claude Code's default system prompt (owner ruling, 2026-09-27). Checked on 2.1.283.
   `--append-system-prompt`, which would keep the default, never appears.
 
 `--bare` is not used, because it refuses OAuth sign-in. `--json-schema` is not used either.
@@ -1447,7 +1448,7 @@ by the OS (`score_abstention.py --probe-argv`, below):
   and the account UUID in `metadata.user_id`, which is empty under an API key. The CLI reads the
   email from its cached account and no flag removes it. The owner accepted this on 2026-09-27 on
   condition that it is said before the press, and the Claude Code disclosure names it
-  (`reading_route._base_disclosure`). Amended 2026-10-01 (owner, Q1, DRC-4758): the press it is
+  (`reading_route._base_disclosure`). Amended 2026-10-01 (owner, Q1): the press it is
   said before is the one that sends. Idle, the disclosure is one click away in a popover under
   "What is sent to <receiver>", and a press there sends nothing; the press that would send opens a consent step
   that shows the whole disclosure, as the server's parts, before "Allow and analyze". Amended
@@ -1585,7 +1586,7 @@ encoding of a value can still reach the prompt through the tail.
 The destination rule: it may go to the reading producer that reads the session, or to the fallback
 route `reading_route.resolve` selects and discloses before the press, and on either only after a
 fresh Allow whose disclosure names tool output and the receiving vendor. The page's button reads
-"Allow and analyze" (DRC-4680). A permission given before
+"Allow and analyze". A permission given before
 tool output was named does not cover it. What is built:
 
 - The grant is its own table, `tool_output_permission` in the reading permission store, keyed by
@@ -1656,7 +1657,7 @@ It is quoted into the prompt as untrusted data, never into an instruction Cargen
 check is one numbered row whose result words are Cargento's own, and its output tail is one
 JSON-quoted field on that row with line breaks and the menu heading neutralised. A reply that obeys
 an instruction in that output is held to the same shape rules as any other. The unasked lane never
-receives it until DEC-18's rubric thresholds exist. The live drift estimate (DEC-26, DRC-4696) reads
+receives it until DEC-18's rubric thresholds exist. The live drift estimate (DEC-26) reads
 the check results and written paths on this machine, never the output tail, and publishes a derived
 level on the focused session's project context only: never on a row, in history, in the reading
 route's context or in any off-machine payload. It starts no model and no process, writes nothing,
@@ -1679,7 +1680,7 @@ Ruled 2026-09-24 by [DEC-24](docs/design-reading-a-session.md#dec-24-your-intent
 with the layer named beside it, and the route counts in Scope move in those layers, not here.
 
 The labels. "Check for drift" became "Analyze drift", and "Allow and check" became "Allow and
-analyze", with DRC-4680. When idle the disclosure sits one click away under "Analyze drift", in a
+analyze". When idle the disclosure sits one click away under "Analyze drift", in a
 popover whose summary reads "What is sent to <receiver>" until it is allowed (owner, 2026-10-01, Q1), and that
 press either opens the consent step first or runs under an Allow already given after this same
 disclosure; in the consent step it is shown whole, as the server's parts, before "Allow and
@@ -1690,7 +1691,7 @@ as the allow (owner, 2026-09-27): where the disclosure has not been allowed, it 
 intent", settles through `POST /api/annotate` with no `allow` and no `tool_output`, and leaves
 "Allow and analyze", with its disclosure, as the press that sends.
 
-Keeping your intent and adding a later direction, built with DRC-4682. "Keep my intent and
+Keeping your intent and adding a later direction. "Keep my intent and
 analyze" settles every unsettled later direction before anything else in the press, so a press
 that then starts no analysis (another provider, the budget, one already in flight) has still
 settled. Where no analysis can start at all, no reader or readings turned off, or where an Allow
@@ -1728,7 +1729,7 @@ any later direction in any session's transcript tail, each fact id listed by
 reads every one of them, so the ids bound nothing. A Claude Code slash command is the one message
 the record names by more than its first sentence: the record and this route both give the command
 as typed, its name and arguments on one line rather than the tags they arrived in, under the same
-redaction and bounds, and a harness control such as `/clear` is in neither (DRC-4764). Its
+redaction and bounds, and a harness control such as `/clear` is in neither. Its
 arguments go nowhere an ordinary message's words do not. Why it is no narrower: the reader edits a long direction down to one line of
 their own, so the page must show more than fits, and a summary in its place would be the one thing
 DEC-24 item 4 forbids saving.
@@ -1743,10 +1744,10 @@ through that direction's time and, over an unsaved draft, the adopted goal go in
 Keep names its revision too, on both routes, and a stale one settles nothing; Keep never adopts
 over a saved goal holding other words, and a settlement never moves back over one already given.
 The revision check holds across dashboards too: every store write takes the store's lock file, as
-the annotation store section above describes (DRC-4661), and the check reads the revision from disk
+the annotation store section above describes, and the check reads the revision from disk
 under it.
 
-The background job, built with DRC-4686. An admitted press answers `202` with a job the server
+The background job. An admitted press answers `202` with a job the server
 owns, before the model is called, and the reading runs on a thread of its own under the
 supervised runner above. The job's id, its phase, the three step names and when it started are
 published board-wide under `reading_jobs` in the payload, to any loopback client, as the board
@@ -1761,11 +1762,11 @@ and a spent attempt keeps its marker until the store holds it; a store that refu
 leaves the marker saying so, and the next start records the attempt with that sentence, or with
 the stop's or the unconfirmed kill's own sentence when that was the refused outcome. A job the
 shutdown ends is recorded as a spent `interrupted` attempt, unless its kill could not be confirmed,
-which keeps the "may still be running" sentence. The stop's line is the reservation (DRC-4712): the
+which keeps the "may still be running" sentence. The stop's line is the reservation: the
 charge commits under the lock the shutdown takes, so a shutdown before the commit charges nothing
 and records the unspent "Cargento was stopping" sentence. A marker the next dashboard start finds,
 whose pid no state file of a running dashboard on this state directory names (its own pid counts
-as an earlier run), is recorded from the job ledger (DRC-4713): spent when the budget store holds a
+as an earlier run), is recorded from the job ledger: spent when the budget store holds a
 charge for that job's id or cannot answer, and unspent ("stopping", or "cancelled-unsent" when the
 marker says cancelled) when it holds none.
 A recovery pass holds an OS lock on `reading-jobs.lock` beside that directory (`flock` on POSIX,
@@ -1775,7 +1776,7 @@ recover it. The lock is there because the rename is atomic on POSIX and not excl
 claimed marker that cannot be read is left in place for the next start, and only a malformed one is
 deleted.
 
-The Cancel route, built with DRC-4693. `POST /api/reading/cancel` names the running job's id and
+The Cancel route. `POST /api/reading/cancel` names the running job's id and
 kills that job's process group, or its Job Object on Windows, through the handle the supervised
 runner gives the job; nothing on that path can reach the daemon's own group. It releases the
 one-in-flight slot after the child is reaped and its temporary files are removed, records a
@@ -1791,7 +1792,7 @@ reader chose it, and it reaches no process but the reading's own. No job, anothe
 unknown session answer one `409 not-running` body, so the route says nothing about which sessions
 exist. It writes no consent and reserves nothing.
 
-The copied-correction route, built with DRC-4678. `POST /api/correction/copied` names a session
+The copied-correction route. `POST /api/correction/copied` names a session
 and the exact text the reader copied, at most 2,000 characters, and the server records its digest:
 a SHA-256 of the text after one normalisation, applied to both sides, which is what Claude Code
 2.1.283 was measured doing to a paste: CRLF and CR become LF, a tab becomes four spaces, and
@@ -1833,7 +1834,7 @@ unsettled later direction, so a process that records the exact text of a short d
 advance can keep that direction from raising the later-direction question and from blocking "None
 or low".
 
-Steer back's correction, built with DRC-4681. `POST /api/correction` names a session and nothing
+Steer back's correction. `POST /api/correction` names a session and nothing
 else, and answers a correction the server composes without a model from that session's published
 row and observed record: the goal and outcome lines the reader saved, each line's state re-derived
 from a stored reading of those exact words, and the time of each entry a line or sentence rests on.
@@ -1856,7 +1857,7 @@ store, as `POST /api/direction`'s does. It is guarded as `POST /api/direction` i
 unknown session, another harness, and a session with nothing to steer from alike. The reader edits
 the text in the page and copies it; Cargento never sends it into the session.
 
-The Not accurate token, built with DRC-4695. A reader may mark a reading not accurate, through the
+The Not accurate token. A reader may mark a reading not accurate, through the
 `not_accurate` arm of `POST /api/annotate`, which takes a bool and the reading's `read_at` and
 stores the literal token `true` beside the reading it names, and nothing else: no reason and no
 text. Setting or clearing a mark updates the entry's `written` time, as every write to the store
@@ -1884,8 +1885,8 @@ or used to alter a verdict. It permits no additional transcript text to be store
 
 ### The abstention check
 
-The `Analyze drift` control (named `Ask for a reading` until DRC-4639 and `Check for drift` until DRC-4680) is enabled by the captain's acceptance of the recorded case review
-on 2026-09-14, published as `reading_check: "accepted"`. The amended enablement rule is owned by
+The `Analyze drift` control (formerly named `Ask for a reading` and `Check for drift`) is enabled by
+the captain's acceptance of the recorded case review on 2026-09-14, published as `reading_check: "accepted"`. The amended enablement rule is owned by
 [DEC-17](docs/design-reading-a-session.md#amended-2026-09-14-the-captain-accepts-the-case-review).
 The acceptance record under `docs/abstention/` carries only marks, hashes and decision metadata.
 
@@ -1921,8 +1922,8 @@ a test asserts that none of the local half's fields (the session id, the project
 opening ask, the cutoff sentence, the model's detail) appears anywhere in the summary.
 
 A scoring run names its producer with a required `--producer`, and only `claude` may score:
-no Codex spend is authorized for DRC-4666, so `--producer codex` reports and refuses to score. A
-Claude Code run spends the operator's Anthropic capacity through `reading.ClaudeReadingModel`, the
+no Codex spend is authorized for this qualification, so `--producer codex` reports and refuses to
+score. A Claude Code run spends the operator's Anthropic capacity through `reading.ClaudeReadingModel`, the
 same subprocess and flags as `POST /api/reading` above, pinned to the CLI the run verified. It
 spends once per case whose ledger holds anything citable and sends exactly what that route sends
 for the same session: a format 5 case's own goal and outcome lines in place of the reader's typed
@@ -1930,7 +1931,7 @@ words, and the bounded, redacted menu of ledger entries. A Claude Code case also
 frozen from the transcript as it stood at the capture, with their redacted output tails, as a press
 with a tool-output grant would. The owner authorized that sending for this qualification only,
 2026-09-24, and bounded it at twenty calls, one of them the browser walk. The owner later
-raised the ceiling to 23 scorer calls and 26 Claude CLI invocations overall (DRC-4758), and on
+raised the ceiling to 23 scorer calls and 26 Claude CLI invocations overall, and on
 2026-10-01 directed the qualification to run to completion within it. When the second
 continuation failed and had spent the last of those calls, the owner authorized one more five-case
 run past that ceiling the same day: 28 scorer calls and 31 Claude CLI invocations overall.
@@ -1941,7 +1942,7 @@ unless every case is marked with closed tokens. On macOS the CLI must also satis
 requirement, checked with `codesign --verify --strict` before the file is first run: signed
 through Apple's Developer ID chain, identifier `com.anthropic.claude-code`, team `Q6L2SF6YDW`
 (Anthropic PBC, measured on 2.1.283). An unsigned stub saved in the install layout is refused, and
-so is a machine where `codesign` cannot run (DRC-4710). No other platform checks a signature. Linux
+so is a machine where `codesign` cannot run. No other platform checks a signature. Linux
 has none to check, and whether the Windows CLI carries an Authenticode signature was never measured.
 There the committed result records the binary's sha256 as `unchecked sha256:<hex>`, which names
 the file that ran and not who built it. The scorer copies bytes from one held regular-file handle
@@ -1951,7 +1952,7 @@ copy, and makes the executable read-only to its owner (0500). It refuses a sourc
 copy. Signature verification and
 `--version` run against that copy, and every scoring/probe call uses it. Rewriting or replacing
 the installation after the copy cannot select the executable for those calls. The context removes
-the copy when scoring or probing ends, including refusal paths and interrupted verification (DRC-4731).
+the copy when scoring or probing ends, including refusal paths and interrupted verification.
 
 The committed summary names the producer, model, argv digest, destination, installation path
 with the home directory written `~`, version, signature phrase and copied-byte digest
@@ -1981,9 +1982,8 @@ ARM64 prerequisites are now satisfied, and the same-owner limit remains explicit
 
 Local preparation owns its cwd, output file and descriptor before yielding. An interruption before
 charge removes them and is re-raised. Every call is charged after successful local preparation and
-before it runs to one ledger at a fixed path,
-`~/.cargento/drc-4666-spend.json`, under an exclusive lock, with the digests of the marks and the
-cases it was made under. It never follows `CARGENTO_HOME` or `HOME`: the home is the account's
+before it runs to one JSON ledger at a fixed path under `~/.cargento`, under an exclusive lock,
+with the digests of the marks and the cases it was made under. It never follows `CARGENTO_HOME` or `HOME`: the home is the account's
 own, and scoring refuses while `HOME` names another. Without an observable account home,
 canonical roots stay unavailable and scoring refuses before runtime configuration, packet reads
 or executable verification. The committed result records a hash chain
@@ -1997,7 +1997,7 @@ that moment. A stop the store still reaches is never vouched that way, and a sto
 not settled before the capture is refused at score time as it is at freeze. Whoever can edit the
 transcript or trim the history store's oldest observations can already forge either record, which
 is the local-process exposure this document accepts throughout. For a Claude Code case that includes
-its contents (DRC-4711), rebuilt from the transcript as it stood at the case's `captured_at`. The
+its contents, rebuilt from the transcript as it stood at the case's `captured_at`. The
 checks and their output tails must be exactly the transcript's. The user messages must be the
 newest ones up to the capture, in order, with none missing between them, none repeated, and at
 least as many as the board's bounded tail reads of the transcript as it stood at the capture, whose
@@ -2040,7 +2040,7 @@ the operator's account is never read. Removed from its environment: every `ANTHR
 `https_proxy`, `all_proxy` and `no_proxy` in either case, and the CLI's own
 `CLAUDE_CODE_HTTP_PROXY`, `CLAUDE_CODE_HTTPS_PROXY` and `CLAUDE_CODE_PROXY_URL`. It refuses to run
 when `reading_route.destination` would name anything but the stub, and counts the call good only
-when the reply carries a nonce only the stub knew (DRC-4710: refused, not charged). It reports
+when the reply carries a nonce only the stub knew (recorded probe: refused, not charged). It reports
 only yes or no facts about each request, never its text: whether the home path, the user name or
 the state directory appear anywhere, and in the OAuth pass whether the placeholder email appears
 in the disclosed block and whether the email or UUID appear anywhere else. Any of those found
@@ -2063,7 +2063,7 @@ two scored columns, never the case body. Each of those is a closed token or empt
 hand-written, so an entry naming anything else -- a kind, an origin or a harness outside the sets,
 or a key that is not a case id -- is refused rather than copied into the summary.
 
-The drift levels check (DRC-4692) is a second check under the same rules, and `docs/drift-levels/`
+The drift levels check is a second check under the same rules, and `docs/drift-levels/`
 is its committed half. `scripts/levels_cases.py --build` freezes cases from recorded Claude Code
 transcripts into `~/.cargento/drift-levels/cases.json`. Each case holds the session id, the
 transcript path, the working directory, the check lines and written paths layer 1 publishes, and the
@@ -2158,7 +2158,7 @@ both return 404 unless the interaction feature is enabled. Serving an asset star
 
 ## Antigravity directions (a directions-only transcript read)
 
-DRC-4689 reads one more file: Antigravity's
+The directions reader reads one more file: Antigravity's
 `<antigravity.root>/brain/<conversation-id>/.system_generated/logs/transcript.jsonl`, found by
 `observer.resolve_directions`. Only records whose `type` is `USER_INPUT` and whose `source` is
 `USER_EXPLICIT` are read, and of those only `content`, `created_at`, `step_index` and
@@ -2196,8 +2196,8 @@ browser notification in a tab that is open, the board itself. DEC-4 ruled on 202
 Cargento may reach further, in one shape and no other. The operator supplies one endpoint, and
 Cargento posts a count to it.
 
-This is the section to read before building that, and it grants nothing on its own. H2 (DRC-4034)
-ships this capability. The outbound surface is the quota poll, the explicitly enabled observer
+This is the section to read before building that, and it grants nothing on its own. The reach endpoint
+provides this capability. The outbound surface is the quota poll, the explicitly enabled observer
 model, and the operator-configured reach endpoint.
 
 Why this needs its own section rather than an entry under Usage quota reads: that section's
@@ -2393,7 +2393,7 @@ activity grace after its end is the only tell that the id is in use again, and t
 then not applied. Activity here is whatever the row counts as activity, which is wider than the
 session's own transcript: on Claude it is the newest of the task file, the parent transcript's
 newest conversation record, the subagent transcripts, the agent files and the child sessions. The
-parent is read by its newest `user` or `assistant` record rather than its mtime since DRC-4770,
+parent is read by its newest `user` or `assistant` record rather than its mtime,
 because Claude Code appends bookkeeping records such as `away_summary` after a turn stops, and
 read as mtime one retired the stop it followed. The exposure accepted with that
 guard is stated rather than solved. A harness that writes any of those after `SessionEnd` would
@@ -2710,7 +2710,7 @@ The operator-cockpit prototype also reads dispatch evidence:
   the bounded transcript tail, matching a child task or target before summarizing its message.
 - `project_context._tool_call_events` and `project_context._tool_support` read Pi `bash` and
   `subagent` arguments for dispatch events, assignment summaries, and counts. The first reads
-  through `project_context._call_arguments`, which the Pi check reader shares, so DRC-4690's
+  through `project_context._call_arguments`, which the Pi check reader shares, so the check
   results add no expression. That reader is two named reads. `project_context._pi_bash_check_runs`
   parses a `bash` command to find the runner, and keeps the runner and result under DEC-23's rules,
   publishing a title Cargento writes ("2 validation checks failed"), never the command or its
@@ -2892,7 +2892,7 @@ The ask lane runs one way. A session asks, a reader answers, and Cargento starts
 ruled on 2026-09-02 that Cargento may also start the exchange, in one shape and no other: when a
 quota window is about to close on a session that is mid-task, Cargento may send that session one
 request for a hand-off summary, so the operator gets the state of the work written down instead of
-writing it from memory before the cutoff. E7 (DRC-4040) is the feature. This is the boundary it has
+writing it from memory before the cutoff. This is the boundary the hand-off request has
 to respect, and it is written before the code exists for the same reason the quota, git-probe,
 history and light-harness boundaries were.
 
@@ -3156,8 +3156,8 @@ matched only when one of three spellings of its key name sits in front of the va
 In the other direction a genuine instruction line can be altered: 20 of 22,120 real prompts in the
 local corpus, 18 on Claude and 2 on Codex. That rate was re-measured when the filter was widened to
 cover a key with a character in front of it, a URL credential clipped short of its `@`, capped
-bodies, Linear keys and the cued AWS secret, and it did not move on any of them. Nothing here changes
-the rule outside the software, which is not to paste a credential into a prompt, and to rotate one
+bodies, `lin_api_` API keys and the cued AWS secret, and it did not move on any of them. Nothing here
+changes the rule outside the software, which is not to paste a credential into a prompt, and to rotate one
 that was.
 
 ## Known and accepted

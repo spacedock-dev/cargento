@@ -1648,7 +1648,7 @@ class OffMachineNudgeContractDocumentationTest(unittest.TestCase):
         )
 
     def test_the_pathway_is_documented_and_the_parser_agrees(self) -> None:
-        self.assertIn("H2 (DRC-4034) ships this capability", self.SECTION)
+        self.assertIn("The reach endpoint provides this capability", self.SECTION)
         self.assertIn("The feature ships `--no-reach` with it", self.SECTION)
         args = cli.build_parser().parse_args(["--no-reach"])
         self.assertTrue(args.no_reach)

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -11,6 +12,8 @@ import unittest
 from pathlib import Path
 from typing import Any, ClassVar
 from unittest import mock
+
+import yaml
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import validate_plugins as validator
@@ -885,6 +888,440 @@ class ValidatorTests(unittest.TestCase):
                 validator.validate_repo_docs(validation)
 
             self.assertEqual([], validation.errors)
+
+
+class ReleasePublicNotesGateTest(unittest.TestCase):
+    """A rejected generated body must fail before any release mutations."""
+
+    def release_steps(self) -> list[dict[str, Any]]:
+        path = validator.ROOT / ".github/workflows/release.yml"
+        workflow: dict[str, Any] = yaml.safe_load(path.read_text(encoding="utf-8"))
+        steps: list[dict[str, Any]] = workflow["jobs"]["release"]["steps"]
+        return steps
+
+    def test_resume_installs_validation_dependencies_before_the_public_note_gate(self) -> None:
+        steps = self.release_steps()
+        setup = [
+            step
+            for step in steps
+            if "pip install" in str(step.get("run", ""))
+            and "requirements-validation.txt" in str(step.get("run", ""))
+        ]
+        self.assertEqual(1, len(setup))
+        self.assertNotIn("if", setup[0], "Resumed releases also import the YAML validator")
+        names = [str(step.get("name", "")) for step in steps]
+        for name in [
+            "Run the full validation suite on the release tree (main tip)",
+            "Prepare and validate the public release notes",
+        ]:
+            self.assertLess(steps.index(setup[0]), names.index(name))
+
+    @unittest.skipIf(
+        os.name == "nt", "Release workflow uses POSIX Bash and executable script fixtures"
+    )
+    def test_dirty_generated_notes_prevent_publication_and_channel_mutations(self) -> None:
+        steps = self.release_steps()
+        names = [str(step.get("name", "")) for step in steps]
+        prepared = next(
+            (
+                step
+                for step in steps
+                if step.get("name") == "Prepare and validate the public release notes"
+            ),
+            None,
+        )
+        self.assertIsNotNone(prepared, "Release notes need a pre-publication gate")
+        assert prepared is not None
+        for name in [
+            "Bump version fields, re-validate, and push the release commit",
+            "Move the tag onto the release commit",
+            "Advance the stable branch",
+            "Publish the GitHub Release",
+        ]:
+            self.assertLess(names.index(str(prepared["name"])), names.index(name))
+        selected = [
+            step
+            for step in steps
+            if step is prepared
+            or step.get("name")
+            in {
+                "Move the tag onto the release commit",
+                "Advance the stable branch",
+                "Publish the GitHub Release",
+            }
+        ]
+        for body, existing, lookup, expected in [
+            ("A linear scan; see GitHub pull request12.", "", "normal", 0),
+            ("Generated title has DRC-123.", "", "normal", 1),
+            ("Generated title has DRC-123.", "Existing public notes.", "normal", 0),
+            ("Clean generated notes.", "Existing private DRC-123 notes.", "normal", 1),
+            ("GENERATION_ERROR", "", "normal", 7),
+            ("Clean generated notes.", "Existing private DRC-123 notes.", "transient", 1),
+            ("Clean generated notes.", "", "forbidden", 1),
+            ("Clean generated notes.", "Existing public notes.", "malformed", 1),
+            ("Clean generated notes.", "Existing public notes.", "invalid-body", 1),
+            ("Clean generated notes.", "", "malformed404", 1),
+        ]:
+            with self.subTest(body=body), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                binary = root / "bin"
+                binary.mkdir()
+                gh = binary / "gh"
+                gh.write_text(
+                    "#!" + sys.executable + "\n"
+                    "import json,os,sys\nfrom pathlib import Path\n"
+                    "args=sys.argv[1:]\n"
+                    "if args[0]=='api' and '--include' in args:\n"
+                    " assert args[-1]=='repos/example/project/releases/tags/v9.9.9'\n"
+                    " mode=os.environ['LOOKUP_MODE']\n"
+                    " if mode=='transient': sys.exit(7)\n"
+                    " if mode=='forbidden':\n"
+                    "  print('HTTP/2.0 403 Forbidden\\nContent-Type: application/json\\n\\n{}'); sys.exit(1)\n"
+                    " if mode=='malformed404':\n"
+                    "  print('HTTP/2.0 404 Not Found\\n\\nnot-json'); sys.exit(1)\n"
+                    " if mode=='malformed': print('HTTP/2.0 200 OK\\n\\nnot-json'); sys.exit(0)\n"
+                    " if mode=='invalid-body': print('HTTP/2.0 200 OK\\n\\n'+json.dumps({'body':None})); sys.exit(0)\n"
+                    " if not os.environ['EXISTING_BODY']:\n"
+                    "  print('HTTP/2.0 404 Not Found\\nContent-Type: application/json\\n\\n'+json.dumps({'message':'Not Found'})); sys.exit(1)\n"
+                    " print('HTTP/2.0 200 OK\\nContent-Type: application/json\\n\\n'+json.dumps({'body':os.environ['EXISTING_BODY']}))\n"
+                    "elif args[0]=='api':\n"
+                    " Path(os.environ['GENERATION_LOG']).write_text('generated')\n"
+                    " if os.environ['GENERATED_BODY']=='GENERATION_ERROR': sys.exit(7)\n"
+                    " assert args[1]=='repos/example/project/releases/generate-notes'\n"
+                    " assert 'tag_name=v9.9.9' in args and 'target_commitish=source-receipt' in args\n"
+                    " print(os.environ['GENERATED_BODY'])\n"
+                    "elif args[:2]==['release','view']:\n"
+                    " if not os.environ['EXISTING_BODY']: sys.exit(1)\n"
+                    " print(os.environ['EXISTING_BODY'])\n"
+                    "elif args[:2]==['release','create']:\n"
+                    " assert '--notes-file' in args and '--generate-notes' not in args\n"
+                    " body=Path(args[args.index('--notes-file')+1]).read_text()\n"
+                    " Path(os.environ['PUBLISHED_FILE']).write_text(body)\n"
+                    "else: sys.exit(9)\n",
+                    encoding="utf-8",
+                )
+                gh.chmod(0o700)
+                git = binary / "git"
+                git.write_text(
+                    '#!/bin/sh\nprintf "mutation\\n" >> "$MUTATION_LOG"\n', encoding="utf-8"
+                )
+                git.chmod(0o700)
+                env = dict(
+                    os.environ,
+                    PATH=str(binary) + os.pathsep + os.environ["PATH"],
+                    TAG="v9.9.9",
+                    VERSION="9.9.9",
+                    RELEASE_COMMIT="source-receipt",
+                    GITHUB_REPOSITORY="example/project",
+                    RUNNER_TEMP=directory,
+                    GITHUB_ENV=str(root / "env"),
+                    GENERATED_BODY=body,
+                    EXISTING_BODY=existing,
+                    LOOKUP_MODE=lookup,
+                    GENERATION_LOG=str(root / "generated"),
+                    PUBLISHED_FILE=str(root / "published"),
+                    MUTATION_LOG=str(root / "mutations"),
+                )
+                commands = [
+                    str(step["run"]) + '\nset -a\n. "$GITHUB_ENV"\nset +a' for step in selected
+                ]
+                result = subprocess.run(
+                    ["bash", "-euc", "\n".join(commands)],  # noqa: S607
+                    cwd=validator.ROOT,
+                    env=env,
+                    capture_output=True,
+                    text=True,
+                    check=False,
+                )
+                self.assertEqual(expected, result.returncode, result.stdout + result.stderr)
+                if expected:
+                    self.assertFalse((root / "published").exists())
+                    self.assertFalse((root / "mutations").exists())
+                else:
+                    if existing:
+                        self.assertFalse((root / "published").exists())
+                    else:
+                        self.assertEqual(body + "\n", (root / "published").read_text())
+                    self.assertTrue((root / "mutations").exists())
+                self.assertEqual(
+                    lookup == "normal" and not bool(existing), (root / "generated").exists()
+                )
+
+
+class GitIgnoredPathsTest(unittest.TestCase):
+    """Git paths must round-trip without quoting, locale or newline conversion."""
+
+    def test_real_git_ignored_unicode_path_is_not_a_quoted_filename(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory).resolve()
+            subprocess.run(["git", "init", "-q", str(root)], check=True)  # noqa: S607
+            (root / ".gitignore").write_text("private/\n", encoding="utf-8")
+            private = root / "private"
+            private.mkdir()
+            ignored = private / "café.md"
+            ignored.write_text("private development notes", encoding="utf-8")
+            with mock.patch.object(validator, "ROOT", root):
+                self.assertEqual({ignored}, validator._git_ignored([ignored]))
+
+    def test_raw_nul_protocol_preserves_path_delimiters(self) -> None:
+        paths = [Path("C:/Users/RUNNER/hidden.md"), Path("folder/a\nb.md"), Path("folder/a\rb.md")]
+        encoded = b"\0".join(path.as_posix().encode("utf-8") for path in paths) + b"\0"
+
+        def raw_git(args: list[str], **kwargs: Any) -> subprocess.CompletedProcess[bytes]:
+            self.assertIn("-z", args)
+            self.assertEqual(encoded, kwargs["input"])
+            return subprocess.CompletedProcess(args, 0, stdout=encoded, stderr=b"")
+
+        with mock.patch.object(subprocess, "run", side_effect=raw_git):
+            self.assertEqual(set(paths), validator._git_ignored(paths))
+
+    def test_tracked_unicode_discovery_does_not_use_the_windows_locale(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory).resolve()
+            subprocess.run(["git", "init", "-q", str(root)], check=True)  # noqa: S607
+            vendor = root / "node_modules"
+            vendor.mkdir()
+            tracked = vendor / "café.md"
+            tracked.write_text("DRC-123", encoding="utf-8")
+            real_run = subprocess.run
+
+            def windows_git(args: list[str], **kwargs: Any) -> Any:
+                if args == ["git", "ls-files", "-z"]:
+                    raw = b"node_modules/caf\xc3\xa9.md\0"
+                    if kwargs.get("text"):
+                        raw_text = raw.decode(kwargs.get("encoding", "cp1252"))
+                        return subprocess.CompletedProcess(args, 0, stdout=raw_text, stderr="")
+                    return subprocess.CompletedProcess(args, 0, stdout=raw, stderr=b"")
+                return real_run(args, **kwargs)
+
+            validation = validator.Validation()
+            with (
+                mock.patch.object(validator, "ROOT", root),
+                mock.patch.object(subprocess, "run", side_effect=windows_git),
+            ):
+                validator.validate_public_docs(validation)
+            self.assertEqual(1, len(validation.errors), validation.errors)
+            self.assertIn("node_modules/café.md:1", validation.errors[0])
+
+
+class PublicDocumentationBoundaryTest(unittest.TestCase):
+    """New public documents and raw link syntax must not leak tracker provenance."""
+
+    def scan(self, root: Path) -> list[str]:
+        validation = validator.Validation()
+        with mock.patch.object(validator, "ROOT", root):
+            validator.validate_public_docs(validation)
+        return validation.errors
+
+    def test_raw_public_text_rejects_brand_keys_and_hidden_links(self) -> None:
+        samples = [
+            "Use Linear.",
+            "Use linear.",
+            "LINEAR",
+            "lInEaR",
+            "linear issue tracker",
+            "DRC-123",
+            "drc-123",
+            "```text\nDRC-123\n```",
+            "[ticket][private]\n[private]: https://LINEAR.APP/team/item",
+            '<a href="linear://item/123">details</a>',
+            "<https://linear.app/team>",
+            "`https://linear.app/team`",
+            "<!-- DRC-123 -->",
+        ]
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "notes.md"
+            for sample in samples:
+                with self.subTest(sample=sample):
+                    path.write_text("Public heading\n" + sample, encoding="utf-8")
+                    validation = validator.Validation()
+                    validator.validate_public_text(path, validation)
+                    self.assertTrue(validation.errors)
+                    self.assertIn(
+                        "notes.md:" + ("3" if sample.startswith(("```", "[ticket]")) else "2"),
+                        validation.errors[0],
+                    )
+                    self.assertNotIn(sample, validation.errors[0])
+
+    def test_public_math_prose_and_github_links_pass(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "notes.md"
+            path.write_text(
+                "A linear scan runs in linear time. linear interpolation is supported.\n"
+                "A linear JSONL transcript differs from a tree.\n"
+                "Cost is linear in the number of entries; use a linear combination.\n"
+                "See [change](https://github.com/example/project/pull/12).\n",
+                encoding="utf-8",
+            )
+            validation = validator.Validation()
+            validator.validate_public_text(path, validation)
+            self.assertEqual([], validation.errors)
+
+    def test_new_unknown_markdown_and_plain_owned_notices_are_public(self) -> None:
+        names = ["NEW.MD", "docs/new-guide.md", "misc/new-notes.md", "LICENSE", "NOTICE"]
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            for name in names:
+                path = root / name
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text("DRC-123", encoding="utf-8")
+            errors = self.scan(root)
+            self.assertEqual(len(names), len(errors), errors)
+            for name in names:
+                self.assertTrue(any(name in error for error in errors))
+
+    def test_explicit_development_exceptions_and_public_overrides(self) -> None:
+        allowed = [
+            "AGENTS.md",
+            "CLAUDE.md",
+            "CONTRIBUTING.md",
+            ".github/PULL_REQUEST_TEMPLATE.md",
+            ".claude/skills/example/SKILL.md",
+            "docs/plans/test.md",
+            "docs/design-example.md",
+            "docs/development-tracking.md",
+            "docs/captures/example/README.md",
+            "docs/drift-replay/README.md",
+            "docs/abstention/README.md",
+            "docs/roadmap-burndown/README.md",
+            "tests/annotated_sessions/example/annotation.md",
+            "docs/evidence/intent-and-drift/COLD_STUDY_PROTOCOL.md",
+            "docs/evidence/intent-and-drift/run-example.md",
+        ]
+        public = [
+            "docs/promise-map.md",
+            "docs/evidence/intent-and-drift/README.md",
+            "docs/evidence/intent-and-drift/PROMPT.md",
+            "docs/evidence/intent-and-drift/PARTICIPANT_KICKOFF.md",
+            "docs/evidence/unknown.md",
+            "cargento/skills/example/docs/plans/guide.md",
+            "cargento-gemini/README.MD",
+            "cargento-droid/docs/design-example.md",
+        ]
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            for name in allowed + public:
+                path = root / name
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text("DRC-123", encoding="utf-8")
+            errors = self.scan(root)
+            self.assertEqual(len(public), len(errors), errors)
+            for name in public:
+                self.assertTrue(any(name in error for error in errors), name)
+
+    def test_private_ignored_directories_are_pruned_but_tracked_files_still_scanned(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            subprocess.run(["git", "init", "-q", str(root)], check=True)  # noqa: S607
+            (root / ".gitignore").write_text("private/\ntracked.md\n", encoding="utf-8")
+            private = root / "private"
+            private.mkdir()
+            (private / "hidden.md").write_text("DRC-123", encoding="utf-8")
+            (private / "retained.MD").write_text("DRC-123", encoding="utf-8")
+            vendor = root / "node_modules"
+            vendor.mkdir()
+            (vendor / "retained.md").write_text("DRC-123", encoding="utf-8")
+            tracked = root / "tracked.md"
+            tracked.write_text("DRC-123", encoding="utf-8")
+            subprocess.run(
+                [  # noqa: S607
+                    "git",
+                    "add",
+                    "-f",
+                    "tracked.md",
+                    "private/retained.MD",
+                    "node_modules/retained.md",
+                ],
+                cwd=root,
+                check=True,
+            )
+            (root / "new.md").write_text("DRC-123", encoding="utf-8")
+            errors = self.scan(root)
+            self.assertEqual(4, len(errors), errors)
+            self.assertTrue(any("tracked.md" in error for error in errors))
+            self.assertTrue(any("retained.MD" in error for error in errors))
+            self.assertTrue(any("new.md" in error for error in errors))
+            self.assertFalse(any("hidden.md" in error for error in errors))
+
+    def test_installed_skill_resources_are_checked_without_repository_discovery(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            skill = root / "skills/example"
+            skill.mkdir(parents=True)
+            (skill / "SKILL.md").write_text(
+                "---\nname: example\ndescription: A portable example skill\n---\n", encoding="utf-8"
+            )
+            (skill / "reference.MD").write_text("DRC-123", encoding="utf-8")
+            validation = validator.Validation()
+            with mock.patch.object(validator, "ROOT", root):
+                validator.validate_skills(root, validation)
+            self.assertTrue(any("reference.MD:1" in error for error in validation.errors))
+
+    def test_public_text_cli_rejects_malformed_arguments_without_repository_fallback(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "notes with spaces.md"
+            path.write_text("Public release notes.", encoding="utf-8")
+            script = validator.ROOT / "scripts/validate_plugins.py"
+            for args in [
+                ["--public-text"],
+                ["--public-text", str(path), "extra"],
+                ["extra", "--public-text", str(path)],
+            ]:
+                with self.subTest(args=args):
+                    result = subprocess.run(
+                        [sys.executable, str(script), *args],
+                        cwd=directory,
+                        capture_output=True,
+                        text=True,
+                        check=False,
+                    )
+                    self.assertNotEqual(0, result.returncode)
+                    self.assertNotIn("Validated ", result.stdout)
+                    self.assertNotIn("Traceback", result.stderr)
+
+    def test_public_text_cli_is_standalone_and_unreadable_input_refuses(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "notes.md"
+            path.write_text("DRC-123", encoding="utf-8")
+            script = validator.ROOT / "scripts/validate_plugins.py"
+            bad = subprocess.run(
+                [sys.executable, str(script), "--public-text", str(path)],
+                cwd=directory,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            self.assertEqual(1, bad.returncode)
+            self.assertIn("notes.md:1", bad.stdout)
+            path.write_text("A linear scan; see GitHub pull request12.", encoding="utf-8")
+            good = subprocess.run(
+                [sys.executable, str(script), "--public-text", str(path)],
+                cwd=directory,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            self.assertEqual(0, good.returncode, good.stdout + good.stderr)
+            path.write_bytes(b"\xff")
+            invalid = subprocess.run(
+                [sys.executable, str(script), "--public-text", str(path)],
+                cwd=directory,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            self.assertEqual(1, invalid.returncode)
+            self.assertNotIn("Traceback", invalid.stderr)
+            path.unlink()
+            missing = subprocess.run(
+                [sys.executable, str(script), "--public-text", str(path)],
+                cwd=directory,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            self.assertEqual(1, missing.returncode)
+            self.assertNotIn("Traceback", missing.stderr)
 
 
 if __name__ == "__main__":

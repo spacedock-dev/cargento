@@ -15,6 +15,22 @@ rather than silent. Pass `--dry-run` to analyse, print the proposal and stop wit
 Versions here are owned by the tag-driven Release workflow. This skill does not edit a version
 field, ever. It decides a number, pushes a tag and then watches.
 
+## Public notes and development traceability
+
+Follow [the shared publication rule](../../../AGENTS.md#public-documentation-and-release-notes).
+The complete release body and announcement contain no Linear names, issue keys or tracker URLs.
+The rule includes generated changelogs, copied PR titles, code fences, reference links and HTML.
+Use plain claims about shipped behavior and public GitHub PR references. Keep issue-to-commit,
+promise-ID and move evidence in private release preparation or allowed development records,
+[whose taxonomy is defined separately](../../../docs/development-tracking.md#how-work-links-to-a-promise).
+Do not publish that internal trace table as the release note.
+
+Use `scripts/validate_plugins.py --public-text FILE` on the final assembled text before publication;
+this mode checks only the supplied raw body. Unreadable/invalid input or any forbidden reference
+stops publication. Repository validation alone does not check GitHub's generated or published body.
+Re-read the actual body after publication and check it too. Do not claim the preflight covers text
+that changed or was generated afterwards.
+
 ## Prerequisites
 
 - A Git checkout on `main`, current with `origin`, with a clean tree and push access for tags.
@@ -183,6 +199,18 @@ The proposal carries:
    one `chore(release)` bump commit, move the tag onto it, advance `stable`, publish the Release.
 7. The question: cut it, and separately, do you want release notes posted to Slack afterwards?
 
+Prepare the complete public note before asking, including any generated changelog to be retained.
+Preview GitHub's generated notes for the proposed tag, previous tag and exact release head. Check
+that complete generated body with the standalone public-text validator too: the tag workflow may
+publish it before the hand-written note is applied. If the generated preview contains tracker
+references, correct the offending PR titles to plain behavior before tagging, then regenerate and
+validate the whole preview. Internal provenance remains in the PR bodies. If clean generation is
+still blocked, report it and stop before tagging; the workflow has no arbitrary curated-file input.
+For an already approved release, a curated complete body can be validated and applied through the
+authorized GitHub release operation, then the same release resumed with its actual body checked.
+Reconcile its version, tag and stable state before claiming it complete; do not infer those outcomes
+from the existence of a curated note. A preview checks specific bytes, not future generation.
+
 Ask the Slack question here so the run has one interruption rather than two. The notes themselves
 still get their own approval in step 7, because nobody can approve text they have not read.
 
@@ -215,7 +243,8 @@ name, check the type, delete it, and never push it.
 That second green check is not paranoia. The workflow releases the `main` tip, not the commit you
 tagged, so anything that merged while the proposal sat waiting is in this release and the pre-flight
 result no longer covers it. If the tip moved, re-run step 2 over the wider range before tagging: the
-number you got approved may no longer be the right one.
+number you got approved may no longer be the right one. Regenerate and validate the proposed public
+body and generated preview for that new head as well; an earlier clean body covers no later titles.
 
 The `v` prefix is canonical. A bare `0.17.0` also works, but pick one form per release and do not
 mix them in a single run.
@@ -251,27 +280,32 @@ idempotent and the workflow detects its own resume.
 
 ## 6.5 Write the release note for a person
 
-The workflow publishes with `--generate-notes`, which produces a list of merged pull requests. That
-is a changelog, not a release note, and a reader who did not follow the work learns nothing from it.
+The workflow prepares GitHub's generated list of merged pull requests, checks its complete body
+with the public-text validator and publishes that same file with `--notes-file`. A forbidden
+reference fails before the version bump or release publication; the workflow does not sanitize
+it automatically. The generated list is a changelog, not a release note, and a reader who did not
+follow the work learns nothing from it.
 It was CL's complaint about the 0.19 and 0.20 packaging, and 0.20's note was rewritten by hand
 afterwards.
 
-So after step 6 confirms the release exists, prepend a note above the generated section and keep the
-generated section underneath:
+After step 6 confirms the release exists, read its actual generated body into an owned, uniquely
+named draft file. Sanitize the generated section as well as writing the note above it: replace
+internal issue labels in titles with plain behavior, remove tracker links and keep public GitHub
+PR references. Do not blindly keep the original generated section underneath.
 
-```bash
-gh release view "v$VERSION" --json body -q .body > /tmp/rel.md   # keep this, it goes at the bottom
-# write the note above it, then:
-gh release edit "v$VERSION" --notes-file /tmp/rel.md
-```
+Validate the entire final file with `scripts/validate_plugins.py --public-text FILE` before passing
+that same file to `gh release edit --notes-file`. Read back the resulting body and validate those
+actual published bytes. If it differs or a generated section still violates the rule, report the
+failure and correct only the authorized release body; do not announce an unchecked note. A later
+edit does not make an earlier unscreened publication compliant.
 
 What the note says, in this order:
 
 1. The promise, in the words `docs/promise-map.md` uses. Do not write a new one for each release.
-2. What this release changes about keeping that promise, as two to four bolded claims grouped by
-   promise ID and move, each one sentence of what a user can now do and one of what backs it. The
-   IDs and moves are the ones on the merged issues; a claim with no issue behind it is a claim the
-   release did not ship.
+2. What this release changes about keeping that promise, as two to four plain claims grouped by
+   the reader's task. Each gives one sentence of what a user can now do and one of what backs it,
+   with public GitHub PR references where useful. Verify the issue/promise/move trace privately;
+   internal labels belong to preparation, not the published claims.
 3. How to upgrade, and what does not change.
 4. What the release does not add, and a link to the promise map. This is the paragraph that makes
    the rest believable.
@@ -285,8 +319,8 @@ followed it, and they belong in `docs/design-*.md`.
 Only after step 6 confirms the Release exists. Announcing a release that has not published is
 worse than not announcing.
 
-**Write the notes for a person, not a changelog.** GitHub already generated the full changelog with
-`--generate-notes`, and the Slack message that repeats it is noise. Slack gets what changed for
+**Write the notes for a person, not a changelog.** GitHub already generated the full changelog,
+and the Slack message that repeats it is noise. Slack gets what changed for
 someone using Cargento, and a link.
 
 Aim for a short paragraph or a few bullets: the version, the one or two things worth knowing,
@@ -297,6 +331,9 @@ does not need three bullets invented for it.
 **Verify before humanising.** Every claim has to trace to a commit in `$LAST..HEAD`. This is the
 step that stops a plausible summary describing work that shipped two releases ago. Check each
 sentence against the log, and delete anything you cannot point at.
+Keep that evidence trace in private preparation or development records; the announcement uses
+plain claims and public PR/release links. Check the whole final announcement with the standalone
+public-text validator after humanising and before showing it for approval.
 
 **Then invoke `humanizer:humanizer` on the draft.** The notes are human-facing prose and they carry
 the same voice standard the prose docs do. If that skill is not installed, apply the standard by
@@ -325,6 +362,8 @@ Never announce before `gh release view` succeeds.
 
 Never put a claim in the notes that is not in the commit range. Nothing else in this process has a
 check that would catch it.
+
+Never publish tracker references in any release-note or announcement section, generated or written.
 
 Never cut a major to mean "this one is big". At `0.x` that number is not available, and above
 `1.0.0` it means a break, which is a fact about the diff rather than a feeling about the release.

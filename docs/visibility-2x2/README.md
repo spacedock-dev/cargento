@@ -9,9 +9,11 @@ It came out of a workshop on the shared Figma board (the "Visibility" and
 that session; the other 30 were proposed afterwards.
 
 Each item's `column` is its link to one of the five promises in
-[`docs/promise-map.md`](../promise-map.md#how-work-links-to-a-promise), and the journey view's
+[`docs/promise-map.md`](../promise-map.md#the-five-questions-of-a-day), and the journey view's
 Promise row carries that file's wording verbatim. The board scores what to build; the map says what
 a user is promised. The link is what keeps them from saying different things.
+The [development tracking taxonomy](../development-tracking.md#how-work-links-to-a-promise)
+maps those promises to issue labels and board columns.
 
 ## The two axes
 
