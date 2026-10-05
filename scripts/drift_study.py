@@ -183,12 +183,16 @@ def _valid_bundle(body: Mapping[str, Any]) -> bool:
     if body["kind"] == "gap-truth":
         return isinstance(body.get("exposures"), list) and all(
             isinstance(row, dict)
+            and isinstance(row.get("id"), str)
             and row.get("id") in ids
             and row.get("arm") in ("realistic", "adopted", "part", "current", "hindsight")
             for row in body["exposures"]
         )
-    return isinstance(body.get("episodes"), list) and all(
-        _valid_episode(episode, cases) for episode in body["episodes"]
+    episodes = body.get("episodes")
+    return (
+        isinstance(episodes, list)
+        and all(_valid_episode(episode, cases) for episode in episodes)
+        and len({episode["id"] for episode in episodes}) == len(episodes)
     )
 
 

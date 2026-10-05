@@ -202,6 +202,7 @@ class AStudyClosesMarksBeforeProducingOutputs(unittest.TestCase):
             "duplicate-stop",
             "message-times",
             "proof",
+            "duplicate-episode",
         ):
             with tempfile.TemporaryDirectory() as directory:
                 root = Path(directory)
@@ -248,6 +249,8 @@ class AStudyClosesMarksBeforeProducingOutputs(unittest.TestCase):
                     body["marks"]["a" * 16]["message_times"] = 42
                 elif fault == "proof":
                     body["marks"]["c" * 16]["proof"] = 42
+                elif fault == "duplicate-episode":
+                    body["episodes"].append(dict(episode))
                 source = root / "source.json"
                 source.write_text(json.dumps(body), encoding="utf-8")
                 with self.subTest(fault=fault), self.assertRaises(ValueError):
@@ -321,6 +324,17 @@ class AStudyClosesMarksBeforeProducingOutputs(unittest.TestCase):
         with self.assertRaises(ValueError):
             study.study_paths(Path("/placeholder"), Path("/placeholder"), "../read")
 
+    def test_an_exposure_with_a_nonidentity_refuses_without_a_traceback(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            body: Any = self.bundle()
+            body["kind"] = "gap-truth"
+            body["exposures"] = [{"id": [], "arm": "current"}]
+            source = root / "source.json"
+            source.write_text(json.dumps(body), encoding="utf-8")
+            with self.assertRaises(ValueError):
+                study.import_study(root / "home", root, "closed", source)
+
     def test_public_session_keys_and_future_cause_marks_are_refused(self) -> None:
         for change in ("session", "future", "extra"):
             with tempfile.TemporaryDirectory() as directory:
@@ -339,6 +353,14 @@ class AStudyClosesMarksBeforeProducingOutputs(unittest.TestCase):
 
 
 class StudyOutputsUseTheirOwnFrozenCohort(unittest.TestCase):
+    def test_a_missing_study_tag_never_reaches_the_historical_live_runner(self) -> None:
+        with (
+            mock.patch.object(replay, "_home_refusal", return_value=""),
+            mock.patch.object(replay, "live", return_value=0) as live,
+        ):
+            self.assertEqual(1, replay.main(["--study-live"]))
+            live.assert_not_called()
+
     def test_empty_import_does_not_open_the_historical_marker(self) -> None:
         for flag in ("--study-import", "--codex-study"):
             with (

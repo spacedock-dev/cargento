@@ -1322,6 +1322,7 @@ def live(
 def _study_mode(args: argparse.Namespace) -> int:
     """Keep all private study writes behind this model-free replay entry point."""
     try:
+        study.study_paths(Path(HOME), Path(_ROOT), args.tag)
         if args.study_import is not None:
             result = study.import_study(
                 Path(HOME), Path(_ROOT), args.tag, _study_source(args.study_import)
