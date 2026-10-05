@@ -8,6 +8,11 @@ prompt chosen from the menu. Only the draft or the choice that was actually adop
 explicit-direction paths already forget by equality (`nextIntentForgetAdopted`) and are held by
 `test_next_intent_draft`.
 
+A press that also changes the outcome lines chains a second request after the adoption. It writes
+only the lines the press held, no goal, against the revision the adoption minted; what the reader
+chose, typed or edited meanwhile is not read, and a failure between the two stages leaves the
+adoption landed and every newer word held.
+
 Every assertion is on what the page holds or draws after the held reply is let go.
 """
 
@@ -39,19 +44,55 @@ __fetchImpl = (url, init) => {
 };
 """
 
-# What the store publishes once an adoption lands, from the words the request named.
+# What the store publishes once an adoption lands, from the words the request named. A typed
+# lines save after it changes nothing the goal holds.
 LANDS = (
-    '__reply["/api/annotate"] = body => { Object.assign(__s, {annotation_goal:'
+    '__reply["/api/annotate"] = body => { if(body.adopt) Object.assign(__s, {annotation_goal:'
     ' body.expected_prompt, annotation_goal_why:"", annotation_goal_source: body.adopt,'
-    " annotation_goal_source_at: body.expected_prompt_at, annotation_revision:3,"
-    " annotation_revision_count:3, annotation_at:105});"
-    ' return {status:200, body:{ok:true, persisted:true, outcome:"stored", revision:3,'
-    " revision_count:3}}; };\n"
+    " annotation_goal_source_at: body.expected_prompt_at, annotation_revision:body.expected_revision + 1,"
+    " annotation_revision_count:body.expected_revision + 1, annotation_at:105});"
+    ' return {status:200, body:{ok:true, persisted:true, outcome:"stored", revision:body.expected_revision + 1,'
+    " revision_count:body.expected_revision + 1}}; };\n"
 )
 NOT_ON_DISK = (
     '__reply["/api/annotate"] = () => ({status:200, body:{ok:true, persisted:false,'
     ' outcome:"stored", revision:3, revision_count:3}});\n'
 )
+# The adoption lands as revision 1, and another tab saves revision 2 before this page refreshes.
+# The store refuses any lines save that does not name the revision it holds, as the real one does.
+CONCURRENT = (
+    '__reply["/api/annotate"] = body => {\n'
+    "  if(body.adopt){\n"
+    "    Object.assign(__s, {annotation_goal: body.expected_prompt, annotation_goal_why:'',\n"
+    "      annotation_goal_source: body.adopt, annotation_goal_source_at: body.expected_prompt_at,\n"
+    "      annotation_at:105});\n"
+    '    const answer = {ok:true, persisted:true, outcome:"stored", revision:1, revision_count:1};\n'
+    "    Object.assign(__s, {annotation_revision:2, annotation_revision_count:2});\n"
+    "    return {status:200, body:answer};\n"
+    "  }\n"
+    "  if(body.expected_revision !== __s.annotation_revision){\n"
+    '    return {status:200, body:{ok:true, persisted:false, outcome:"refused",\n'
+    "      revision:__s.annotation_revision, revision_count:__s.annotation_revision_count}};\n"
+    "  }\n"
+    "  __s.annotation_revision += 1; __s.annotation_revision_count += 1;\n"
+    '  return {status:200, body:{ok:true, persisted:true, outcome:"stored",\n'
+    "    revision:__s.annotation_revision, revision_count:__s.annotation_revision_count}};\n"
+    "};\n"
+)
+
+
+# The adoption lands as in LANDS, and the lines save that follows is answered by `second`, a
+# JavaScript function expression of the request body.
+def lands_then(second: str) -> str:
+    return (
+        LANDS
+        + '{ const __adopts = __reply["/api/annotate"];\n'
+        + f'  __reply["/api/annotate"] = body => body.adopt ? __adopts(body) : ({second})(body); }}\n'
+    )
+
+
+PRESSED = 'nextCockpitHeldDrafts.set("held:claude:focus-1:lines", ["Pressed line"]);\n'
+LINES_KEY = "held:claude:focus-1:lines"
 
 PICK_LATEST = '__pick("p-latest");\nawait __settle();\n'
 PICK_EXCERPT = '__pick("p-long");\nawait __settle();\n'
@@ -71,6 +112,7 @@ console.log(JSON.stringify({
   posts: __posts.map(post => post.body),
   pending: [...nextPending.keys()],
   saved: __s.annotation_goal,
+  revision: __s.annotation_revision,
 }));
 """
 
@@ -155,6 +197,152 @@ class ALateAdoptionResponseTest(_DraftPage):
         self.assertEqual({GOAL_KEY: "p-long"}, out["chosen"])
         self.assertEqual(EXCERPT, goal_box(out["html"]))
         self.assertTrue(self.drafted(out))
+
+    def test_a_lines_save_does_not_adopt_the_prompt_chosen_after_the_press(self) -> None:
+        out = self.late(
+            first=PICK_LATEST
+            + 'nextCockpitHeldDrafts.set("held:claude:focus-1:lines", ["Pressed line"]);\n',
+            meanwhile=PICK_EXCERPT,
+        )
+        self.assertEqual(2, len(out["posts"]))
+        self.assertEqual(LATEST, out["saved"])
+        self.assertEqual({GOAL_KEY: "p-long"}, out["chosen"])
+        self.assertEqual(EXCERPT, goal_box(out["html"]))
+        self.assertIsNone(out["posts"][1]["goal"])
+        self.assertEqual(["Pressed line"], out["posts"][1]["lines"])
+
+    def test_a_lines_save_does_not_save_goal_words_typed_after_the_press(self) -> None:
+        out = self.late(
+            first=PICK_LATEST
+            + 'nextCockpitHeldDrafts.set("held:claude:focus-1:lines", ["Pressed line"]);\n',
+            meanwhile=type_goal(TYPED_LATE),
+        )
+        self.assertEqual(2, len(out["posts"]))
+        self.assertEqual(TYPED_LATE, goal_box(out["html"]))
+        self.assertEqual(TYPED_LATE, out["drafts"][GOAL_KEY])
+        self.assertIsNone(out["posts"][1]["goal"])
+        self.assertEqual(["Pressed line"], out["posts"][1]["lines"])
+
+    def test_the_chained_request_sends_only_lines_present_when_save_was_pressed(self) -> None:
+        out = self.late(
+            first=PICK_LATEST
+            + 'nextCockpitHeldDrafts.set("held:claude:focus-1:lines", ["Pressed line"]);\n',
+            meanwhile='nextCockpitHeldDrafts.set("held:claude:focus-1:lines", ["Later line"]);\n',
+        )
+        self.assertEqual(["Pressed line"], out["posts"][1]["lines"])
+        self.assertEqual(["Later line"], out["drafts"]["held:claude:focus-1:lines"])
+
+    # What the press held is saved, once, against the revision its adoption minted.
+
+    def test_the_lines_the_press_held_are_still_saved_after_the_adoption(self) -> None:
+        out = self.late(first=PICK_LATEST + PRESSED)
+        self.assertEqual(LATEST, out["saved"])
+        self.assertEqual(
+            {
+                "harness": "claude",
+                "sid": "focus-1",
+                "goal": None,
+                "lines": ["Pressed line"],
+                "origins": [0],
+                "expected_revision": 1,
+            },
+            out["posts"][1],
+        )
+        self.assertNotIn(LINES_KEY, out["drafts"])
+        self.assertEqual({}, out["chosen"])
+
+    def test_a_choice_with_no_line_change_makes_one_request(self) -> None:
+        out = self.late(first=PICK_LATEST)
+        self.assertEqual(1, len(out["posts"]))
+
+    def test_the_chained_lines_are_refused_over_a_revision_saved_after_the_adoption(self) -> None:
+        # The refreshed row already shows another tab's revision 2. The lines are written against
+        # the 1 the adoption minted, so the store refuses them rather than the page naming 4.
+        out = self.late(first=PICK_LATEST + PRESSED, reply=CONCURRENT)
+        self.assertEqual(2, len(out["posts"]))
+        self.assertEqual(1, out["posts"][1]["expected_revision"])
+        self.assertEqual(2, out["revision"], "the other tab's revision was not written over")
+        self.assertEqual(["Pressed line"], out["drafts"][LINES_KEY])
+        self.assertIn("Not saved. The server refused the write", out["html"])
+
+    # A failure between the stages leaves the adoption as it landed and the reader's words held.
+
+    def test_a_refused_adoption_sends_no_lines_and_keeps_both_drafts(self) -> None:
+        out = self.late(first=PICK_LATEST + PRESSED, reply=NOT_ON_DISK)
+        self.assertEqual(1, len(out["posts"]))
+        self.assertEqual(["Pressed line"], out["drafts"][LINES_KEY])
+        self.assertEqual({GOAL_KEY: "p-latest"}, out["chosen"])
+
+    def test_a_reply_that_rereads_a_newer_revision_does_not_chain_lines(self) -> None:
+        # The handler reads back after the store lock. Another save can land before that read;
+        # revision 2 is then an honest current revision, but is not this adoption's revision 1.
+        reread = CONCURRENT.replace("revision:1, revision_count:1", "revision:2, revision_count:2")
+        out = self.late(first=PICK_LATEST + PRESSED, reply=reread)
+        self.assertEqual(1, len(out["posts"]), "no lines write may name somebody else's revision")
+        self.assertEqual(2, out["revision"])
+        self.assertEqual(["Pressed line"], out["drafts"][LINES_KEY])
+        self.assertIn("Not saved. The server refused the write", out["html"])
+
+    def test_an_adoption_that_could_not_be_read_sends_no_lines(self) -> None:
+        broken = '__reply["/api/annotate"] = () => { throw new Error("no answer"); };\n'
+        out = self.late(first=PICK_LATEST + PRESSED, reply=broken)
+        self.assertEqual(1, len(out["posts"]))
+        self.assertEqual(["Pressed line"], out["drafts"][LINES_KEY])
+        self.assertIn("did not answer", out["html"])
+
+    def test_an_adoption_that_names_no_revision_sends_no_lines(self) -> None:
+        unnamed = (
+            '__reply["/api/annotate"] = () => ({status:200, body:{ok:true, persisted:true,'
+            ' outcome:"stored"}});\n'
+        )
+        out = self.late(first=PICK_LATEST + PRESSED, reply=unnamed)
+        self.assertEqual(1, len(out["posts"]))
+        self.assertEqual(["Pressed line"], out["drafts"][LINES_KEY])
+        self.assertIn("Not saved. The server refused the write", out["html"])
+
+    def test_refused_lines_leave_the_adopted_goal_and_a_newer_choice(self) -> None:
+        refused = (
+            '() => ({status:200, body:{ok:true, persisted:false, outcome:"refused",'
+            " revision:3, revision_count:3}})"
+        )
+        out = self.late(
+            first=PICK_LATEST + PRESSED, meanwhile=PICK_EXCERPT, reply=lands_then(refused)
+        )
+        self.assertEqual(2, len(out["posts"]))
+        self.assertEqual(LATEST, out["saved"], "the adoption landed and stays")
+        self.assertEqual(["Pressed line"], out["drafts"][LINES_KEY])
+        self.assertEqual({GOAL_KEY: "p-long"}, out["chosen"])
+        self.assertIn("Not saved. The server refused the write", out["html"])
+
+    def test_lost_lines_reply_is_unconfirmed_and_keeps_the_lines(self) -> None:
+        lost = '() => { throw new Error("no answer"); }'
+        out = self.late(first=PICK_LATEST + PRESSED, reply=lands_then(lost))
+        self.assertEqual(2, len(out["posts"]))
+        self.assertEqual(LATEST, out["saved"])
+        self.assertEqual(["Pressed line"], out["drafts"][LINES_KEY])
+        self.assertIn("did not answer", out["html"])
+
+    def test_a_save_cancelled_between_the_stages_keeps_the_lines_and_the_newer_choice(self) -> None:
+        # The adoption lands, the lines request is held open, and the reader cancels it.
+        out = self.drive(
+            SERVE_CHOICES + HOLD + LANDS,
+            PICK_LATEST
+            + PRESSED
+            + '__holdAnnotate = true;\n__press("held-save", "intent");\nawait __settle();\n'
+            + PICK_EXCERPT
+            + "const __adoption = __gate;\n__adoption();\n"
+            + SETTLE
+            + 'if(__gate === __adoption) throw new Error("the lines request was never opened");\n'
+            + f"nextPending.get({SAVE_KEY}).controller.abort();\n"
+            + SETTLE
+            + REPORT,
+        )
+        assert isinstance(out, dict)
+        self.assertEqual([], out["pending"], "the abort ended the request")
+        self.assertEqual(1, len(out["posts"]), "the held lines request was never answered")
+        self.assertEqual(LATEST, out["saved"])
+        self.assertEqual(["Pressed line"], out["drafts"][LINES_KEY])
+        self.assertEqual({GOAL_KEY: "p-long"}, out["chosen"])
 
     def test_the_same_prompt_offered_again_with_other_words_is_a_newer_choice(self) -> None:
         # A refreshed record can offer one fact with its whole words after an excerpt: the fact

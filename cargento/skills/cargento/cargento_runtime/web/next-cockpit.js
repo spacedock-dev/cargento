@@ -2001,8 +2001,13 @@ function nextCockpitWorkSource(group, session){
     entry.data.sources.work.tool_reports;
   const scan = (Array.isArray(reports) ? reports : []).find(row => row && sessKey(row) === key)
     || null;
+  const requests = entry.data.sources && entry.data.sources.work &&
+    entry.data.sources.work.line_requests;
+  const requestRows = (Array.isArray(requests) ? requests : []).filter(row => row &&
+    row.harness === session.harness && row.sid === session.sid);
+  const lineRequests = requestRows.length === 1 ? requestRows[0] : null;
   if(entries.length){
-    return {entries, all, scan, state: "read", shown: others.length, total: otherTotal};
+    return {entries, all, scan, lineRequests, state: "read", shown: others.length, total: otherTotal};
   }
   if(entry.error) return {entries, all, state: "error"};
   /* Whether the scan that produces these facts reached this session. The
@@ -2770,6 +2775,28 @@ function nextReadingBeforeWindow(entry, windowStart){
   return at < start || (start > 0 && at <= 0);
 }
 
+/* The server revalidates the private source binding; the page additionally joins that answer
+   to the current revision and its unique, non-copied parent entry (DRC-4783). */
+function nextCockpitLineRequests(session, annotation, source){
+  const bound = source && source.lineRequests;
+  if(!bound || !annotation || bound.harness !== session.harness || bound.sid !== session.sid ||
+      nextNumber(bound.revision) !== nextNumber(annotation.revision)) return {};
+  const entries = source.all || source.entries || [];
+  const floors = {};
+  for(let i=1; i<=6; i+=1){
+    const key = `line_${i}`;
+    const request = bound.lines && bound.lines[key];
+    const at = nextNumber(request && request.at);
+    const id = String(request && request.source_id || "");
+    if(!(at > 0) || at > 253402300799 || !id || annotation[`${key}_source`] !== "entry" ||
+        annotation[`${key}_source_id`] !== id) continue;
+    const parents = entries.filter(entry => String(entry.id || "") === id);
+    if(parents.length === 1 && parents[0].type === "user_message" && !parents[0].copied &&
+        nextNumber(parents[0].at) === at) floors[key] = at;
+  }
+  return floors;
+}
+
 /* `reading.check_supports`, spelt for the entries the page holds: a check, on
    any harness (a Pi validation run as well as a Claude Code tool report),
    carries a verdict only as a run whose result arrived in the window, failed
@@ -2882,12 +2909,13 @@ function nextCockpitConflictCandidates(annotation, entries, session = null){
 }
 
 function nextCockpitReadingCriterion(key, label, clause, raw, entries, limit, unsettled,
-    windowStart = null, scope = ""){
+    windowStart = null, scope = "", requestAt = null){
   /* Refused like any citation that does not resolve. The producer never
      numbers such an entry, so this holds only for a reading stored before it
      stopped (DRC-4715). */
   let citations = nextReadingCitations(raw, entries)
-    .filter(entry => !nextReadingBeforeWindow(entry, windowStart));
+    .filter(entry => !nextReadingBeforeWindow(entry, windowStart) &&
+      (requestAt == null || (nextNumber(entry.at) || 0) > requestAt));
   const declared = raw && typeof raw === "object" ? String(raw.result || "") : "";
   const stored = raw && typeof raw === "object" ? String(raw.why || "") : "";
   let limitText = limit || "";
@@ -3207,7 +3235,7 @@ function nextCockpitReadingCoverage(shape){
 }
 
 function nextCockpitReadingShape(raw, annotation, entries, limit, unsettled,
-    lineSource = nextOutcomeLineSource){
+    lineSource = nextOutcomeLineSource, lineRequests = {}){
   const source = raw && typeof raw === "object" ? raw : {};
   /* Unknown keys are fatal; MISSING keys are not. That asymmetry is the
      whole point. A producer that omits a field renders a reading with less
@@ -3257,7 +3285,10 @@ function nextCockpitReadingShape(raw, annotation, entries, limit, unsettled,
       nextCockpitReadingClause(key, rows[key], annotation, historical),
       rows[key], entries,
       nextReadingIsOutcomeLine(key) || key === NEXT_READING_CLAIMS ? limit : "", unsettled,
-      windowStart, source.scope))
+      windowStart, source.scope,
+      !historical && revisionRead === current && readAt > 0 &&
+        nextNumber(lineRequests[key]) > 0 && lineRequests[key] <= readAt
+        ? lineRequests[key] : null))
     .map(row => ({...row,coverage: partial && row.key !== NEXT_READING_CLAIMS
       ? "may be in the part not read" : ""}));
   return {
@@ -5303,7 +5334,8 @@ function nextCockpitReadingParts(session, annotation, entries, model, observed, 
      beside the route's reason; otherwise a secondary after Analyze drift
      (DRC-4681). Nothing is added to the result stage, which DRC-4695 fills. */
   const early = raw ? nextCockpitReadingShape(raw, annotation, entries, limit, unsettled,
-    line => nextCockpitLineSource(line, session, source)) : null;
+    line => nextCockpitLineSource(line, session, source),
+    nextCockpitLineRequests(session, annotation, source)) : null;
   const steerable = nextCockpitSteerOffer(session, annotation, source, early);
   nextCockpitCorrectionFollow(session, annotation, source, steerable);
   const offer = question ? null : steerable;
@@ -6401,7 +6433,8 @@ function nextCockpitDriftBlock(group, session, primary){
     const held = known.all || known.entries;
     analysis = nextDriftAnalysis(group, session, annotated, nextCockpitReadingShape(
       annotated.assessment, annotated, held, nextReadingOutputLimit(String(session.harness || "")),
-      Boolean(nextCockpitConflictCandidates(annotated, held, session).length)));
+      Boolean(nextCockpitConflictCandidates(annotated, held, session).length), nextOutcomeLineSource,
+      nextCockpitLineRequests(session, annotated, known)));
   }
   /* The analysis level is unaffected by the switch (item 4), so its pill
      shows whichever way the switch is set. */
@@ -6954,26 +6987,49 @@ async function nextCockpitIntentSave(session){
   }
 }
 
+/* The lines a press means to save, read before its first await: the words and
+   each line's stored position. The chain below posts these and never reads the
+   drafts again, so anything typed while the adoption was open stays held
+   (DRC-4784). */
+function nextCockpitLinesFrozen(session, annotation){
+  const draft = nextCockpitLinesDraft(session, annotation);
+  const from = nextCockpitLinesOrigins(nextCockpitHeldKey(session, "lines"), draft);
+  return {
+    sent: nextCockpitLinesToSend(draft),
+    origins: draft.map((text, index) => [text, from[index]])
+      .filter(([text]) => String(text || "").trim()).map(([_text, origin]) => origin),
+  };
+}
+
 /* The save itself, under the press's one pending entry: a choice chains its
    adoption and then the lines, and neither takes a guard of its own. Returns
-   the cue kind it stamped, for the caller to say after the paint, or null. */
-async function nextCockpitIntentSaveWork(session, signal){
+   the cue kind it stamped, for the caller to say after the paint, or null.
+
+   `chain` is the second stage only: the lines the press froze and the revision the
+   adoption minted. It reads neither the drafts nor the row again. */
+async function nextCockpitIntentSaveWork(session, signal, chain = null){
   const annotation = nextCockpitAnnotation(session);
-  const linesKey = nextCockpitHeldKey(session, "lines");
   const key = nextCockpitIntentKey(session);
-  const changes = nextCockpitIntentChanges(session, annotation);
+  const changes = chain ? {goal: false, lines: true, typed: "", any: true}
+    : nextCockpitIntentChanges(session, annotation);
+  const frozen = chain ? chain.frozen
+    : changes.lines ? nextCockpitLinesFrozen(session, annotation) : null;
   if(changes.chosen || changes.pending){
     /* The choice first, as its own adoption naming the saved revision, then
        the lines against the revision that adoption minted: `/api/annotate`
        takes an adoption or typed words in one request, not both. */
-    const adopted = await nextAdoptPrompt(session, NEXT_PROMPT_CHOSEN, signal);
-    if(adopted === true && changes.lines){
-      /* The refresh after the adoption replaced the rows, so the revision it
-         minted is on the fresh row, not the one this press was handed. The
-         held lines are keyed by session, so the fresh row still finds them. */
-      const fresh = (nextData && nextData.sessions || [])
-        .find(row => sessKey(row) === sessKey(session)) || session;
-      return nextCockpitIntentSaveWork(fresh, signal);
+    const minted = {};
+    const adopted = await nextAdoptPrompt(session, NEXT_PROMPT_CHOSEN, signal, minted);
+    if(adopted === true && frozen){
+      /* Only the lines the press held, with no goal, and against the revision the adoption
+         minted rather than the refreshed row's, so a newer revision another tab saved in
+         between is refused instead of overwritten. A choice or words the reader made while
+         the adoption was open are theirs, and this request does not read them. */
+      if(!(minted.revision > 0)){
+        nextCockpitHeldMark(key, "error", {say:false});
+        return "error";
+      }
+      return nextCockpitIntentSaveWork(session, signal, {frozen, revision: minted.revision});
     }
     if(adopted === true) nextCockpitHeldMark(key,"saved",{say:false});
     return adopted === true ? "saved" : adopted === "unconfirmed" ? "unconfirmed" : null;
@@ -6991,16 +7047,12 @@ async function nextCockpitIntentSaveWork(session, signal){
   const body = {harness: session.harness, sid: session.sid};
   if(changes.goal) body.goal = changes.typed;
   else if(changes.lines) body.goal = null;
-  let sentLines = null;
-  if(changes.lines){
-    const draft = nextCockpitLinesDraft(session, annotation);
-    const from = nextCockpitLinesOrigins(linesKey, draft);
-    sentLines = nextCockpitLinesToSend(draft);
+  const sentLines = frozen ? frozen.sent : null;
+  if(frozen){
     body.lines = sentLines;
-    body.origins = draft.map((text, index) => [text, from[index]])
-      .filter(([text]) => String(text || "").trim()).map(([_text, origin]) => origin);
+    body.origins = frozen.origins;
   }
-  body.expected_revision = nextNumber(annotation && annotation.revision) || 0;
+  body.expected_revision = chain ? chain.revision : nextNumber(annotation && annotation.revision) || 0;
   let response;
   let saved;
   try{
@@ -9584,10 +9636,12 @@ const NEXT_COCKPIT_ADOPT_REFUSED = {
 
 /* Always under Save intent's pending entry, whose `signal` bounds it: choosing
    a prompt only fills the box. True when adopted, "unconfirmed" when no
-   answer could be read, false when refused. */
-async function nextAdoptPrompt(session, source, signal = null){
+   answer could be read, false when refused. `minted`, where given, receives the
+   revision the adoption wrote. */
+async function nextAdoptPrompt(session, source, signal = null, minted = null){
   const candidate = nextPromptCandidate(session, source);
   if(!candidate || candidate.at == null || !(nextData && nextData.annotate === true)) return false;
+  const expected = nextNumber(session.annotation_revision) || 0;
   let response;
   let answer;
   try{
@@ -9595,7 +9649,7 @@ async function nextAdoptPrompt(session, source, signal = null){
       headers:{"Content-Type":"application/json"},
       body:JSON.stringify({harness:session.harness,sid:session.sid,
         ...nextIntentAdoption(candidate),
-        expected_revision:nextNumber(session.annotation_revision) || 0})}, signal);
+        expected_revision:expected})}, signal);
     // A refusal's body is read leniently: an answered refusal is not a lost answer.
     answer = response.ok ? await response.json()
       : await Promise.resolve().then(() => response.json()).catch(() => null);
@@ -9615,6 +9669,13 @@ async function nextAdoptPrompt(session, source, signal = null){
       return false;
     }
     if(!response.ok || !answer.persisted) throw new Error("adoption not saved");
+    /* The handler rereads after the store lock, so its current revision may belong to a
+       later save. A guarded stored adoption mints exactly n+1; an unchanged one keeps n.
+       Only that matching answer may base the chained lines write (DRC-4784). */
+    const ownRevision = answer.outcome === "stored" ? expected + 1
+      : answer.outcome === "unchanged" ? expected : null;
+    if(minted) minted.revision = ownRevision > 0 && answer.revision === ownRevision
+      ? ownRevision : 0;
     /* Only what this press adopted goes, and only while it is still what the box holds: the
        reply can arrive after the reader typed other words or picked another prompt, and the
        adoption's words are then the saved goal beneath a newer edit that is still theirs
