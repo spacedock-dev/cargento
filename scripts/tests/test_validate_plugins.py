@@ -916,6 +916,9 @@ class ReleasePublicNotesGateTest(unittest.TestCase):
         ]:
             self.assertLess(steps.index(setup[0]), names.index(name))
 
+    @unittest.skipIf(
+        os.name == "nt", "Release workflow uses POSIX Bash and executable script fixtures"
+    )
     def test_dirty_generated_notes_prevent_publication_and_channel_mutations(self) -> None:
         steps = self.release_steps()
         names = [str(step.get("name", "")) for step in steps]
