@@ -45,12 +45,14 @@ import sys
 import types
 from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any
 
 _ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if os.path.join(_ROOT, "scripts") not in sys.path:
     sys.path.insert(0, os.path.join(_ROOT, "scripts"))
 
+import drift_study as study  # noqa: E402 - scripts/ is put on the path just above
 import levels_cases as lc  # noqa: E402 - scripts/ is put on the path just above
 
 try:
@@ -1174,6 +1176,28 @@ def _page_annotation(intent: Intent, *, settled: float | None = None) -> dict[st
     }
 
 
+def _live_cohort(
+    home: str,
+    paths: Mapping[str, str],
+    tag: str,
+    counterfactual: str,
+    source: str | None,
+    study_tag: str,
+) -> tuple[dict[str, Any], str, str]:
+    if not study_tag:
+        body = lc._load(paths["cases"])  # noqa: SLF001 - replay store
+        return body, tag, _live_refusal(paths, body, tag, counterfactual)
+    if tag or counterfactual or source not in (None, "fixtures"):
+        return {}, tag, "Refused: a model-free study cannot select another source or reading."
+    try:
+        body = study.load_study(Path(home), Path(_ROOT), study_tag)
+    except (ValueError, OSError) as error:
+        return {}, tag, f"Refused: {error}."
+    if body["kind"] != "in-drift":
+        return {}, tag, "Refused: only an in-drift cohort has live measurements."
+    return body, f"study-{study_tag}", ""
+
+
 def live(
     *,
     home: str,
@@ -1182,11 +1206,11 @@ def live(
     tag: str = "",
     counterfactual_read: str = "",
     include_history: bool = False,
+    study_tag: str = "",
 ) -> int:
     """Tier 2, free and deterministic: the live estimate and Steer back at every cut and arm."""
     paths = _paths(home)
-    body = lc._load(paths["cases"])  # noqa: SLF001
-    refusal = _live_refusal(paths, body, tag, counterfactual_read)
+    body, tag, refusal = _live_cohort(home, paths, tag, counterfactual_read, source, study_tag)
     if refusal:
         say(refusal)
         return 1
@@ -1207,6 +1231,7 @@ def live(
         sid, cut = str(case["sid"]), float(case["cut"])
         transcript = _transcript(sid, src)
         if not transcript:
+            out[case["id"]] = {"refused": "source-absent"}
             continue
         messages = conversation(transcript)
         with open(os.path.join(ANNOTATIONS, sid, "annotation.md"), encoding="utf-8") as handle:
@@ -1287,10 +1312,55 @@ def live(
             "facts_version": "history-v2" if include_history else "tail-v1",
             "markers": "agents",
             "reader_state": "available",
+            **({"study_digest": lc.digest(body)} if study_tag else {}),
         },
     )
     say(f"Live estimate and Steer back at {len(out)} cuts, written to {output} (local).")
     return 0
+
+
+def _study_mode(args: argparse.Namespace) -> int:
+    """Keep all private study writes behind this model-free replay entry point."""
+    try:
+        study.study_paths(Path(HOME), Path(_ROOT), args.tag)
+        if args.study_import is not None:
+            result = study.import_study(
+                Path(HOME), Path(_ROOT), args.tag, _study_source(args.study_import)
+            )
+        elif args.study_live:
+            return live(
+                home=HOME,
+                study_tag=args.tag,
+                include_history=args.include_history,
+                source=args.source,
+                counterfactual_read=args.counterfactual_read,
+            )
+        elif args.codex_study is not None:
+            _runtime()
+            from cargento_runtime.records import mask_prose  # noqa: PLC0415 - after runtime loader
+
+            result = study.import_codex(
+                Path(HOME), Path(_ROOT), args.tag, _study_source(args.codex_study), mask_prose
+            )
+        else:
+            result = study.score_study(Path(HOME), Path(_ROOT), args.tag)
+    except (ValueError, OSError) as error:
+        print(f"Refused: {error}.")
+        return 1
+    print(
+        json.dumps(
+            {key: value for key, value in result.items() if key not in ("items", "episodes")},
+            sort_keys=True,
+        )
+    )
+    return 0
+
+
+def _study_source(value: str) -> Path:
+    if not value:
+        msg = "Study import requires a source path"
+        raise ValueError(msg)
+    return Path(value)
 
 
 def _live_refusal(
@@ -2792,6 +2862,10 @@ def main(argv: list[str] | None = None) -> int:  # noqa: C901, PLR0911 - one bra
     group.add_argument("--claims-export", action="store_true")
     group.add_argument("--claims-mark", action="store_true")
     group.add_argument("--claims-import", default="")
+    group.add_argument("--study-import", default=None)
+    group.add_argument("--study-live", action="store_true")
+    group.add_argument("--study-score", action="store_true")
+    group.add_argument("--codex-study", default=None)
     parser.add_argument("--source", choices=("fixtures", "original"), default=None)
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--arm", action="append", choices=ARMS)
@@ -2807,6 +2881,13 @@ def main(argv: list[str] | None = None) -> int:  # noqa: C901, PLR0911 - one bra
     if refusal:
         print(refusal)
         return 1
+    if (
+        args.study_import is not None
+        or args.study_live
+        or args.study_score
+        or args.codex_study is not None
+    ):
+        return _study_mode(args)
     if args.live:
         return live(
             home=HOME,

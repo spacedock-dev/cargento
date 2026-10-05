@@ -2001,8 +2001,7 @@ committed half. `scripts/drift_replay.py` reads the pushback fixtures under `tes
 `~/.claude/projects`. Its cases, its owner's blind marks, its outputs, its spend ledger and the salt
 behind its case ids stay under `~/.cargento/drift-replay/`, and the build refuses a `CARGENTO_HOME`
 inside the repository. Its claim items and claim marks, each with the marker's one-line reason,
-stay there too. Only `marks-digest.json`, `claim-marks-digest.json`, `results.json` and a tagged
-re-read's `results-<tag>.json` are committed: the digests hold digests and counts, the results
+stay there too. Only count and digest summaries are committed: the digests hold digests and counts, the results
 closed tokens, counts, and case and claim ids salted with a local secret, so a committed id cannot
 be recomputed from a session id and a time. `--live` calls no model. `--read`
 sends what a press on that session would send, through the same verified, pinned Claude Code CLI
@@ -2021,6 +2020,14 @@ can read them again. With `--source original` the words sent are the session's o
 through only the redaction a press applies, not the fixtures' redaction. It never writes the
 annotation store and never posts to the reading route. The
 [drift replay documentation](docs/drift-replay/README.md) owns its format.
+
+The model-free studies use separate tagged cohorts under that same private directory. Their
+initial blind marks and exact cohort hash are committed as counts and a digest before output;
+later positive-proof marks name only recorded evidence in the private key. The Codex study loader
+reads an operator-selected CLI or editor parent log, rejects exec and worker metadata, applies the
+runtime's measured injection filter and masks words before private storage. Its committed result
+holds one salted case id, counts and a digest. It calls no model, adds no runtime fact and grants
+no Analyze eligibility. The historical replay cases and reads are not overwritten.
 
 A violation here is a committed file under `docs/abstention/`, `docs/drift-levels/` or
 `docs/drift-replay/` carrying a session id, prompt text, a recorded command or path, or model prose,

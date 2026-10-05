@@ -1,0 +1,558 @@
+{
+  "arms": {
+    "adopted": {
+      "negative": 33,
+      "positive": 3,
+      "unclear": 5
+    },
+    "current": {
+      "negative": 37,
+      "positive": 8,
+      "unclear": 23
+    },
+    "part": {
+      "negative": 14,
+      "unclear": 3
+    },
+    "realistic": {
+      "negative": 29,
+      "positive": 1,
+      "unclear": 5
+    }
+  },
+  "items": [
+    {
+      "id": "010b545e4dc34bc8",
+      "outcome": "negative"
+    },
+    {
+      "id": "0172a16bfbc30194",
+      "outcome": "unclear"
+    },
+    {
+      "id": "02b510f70248c824",
+      "outcome": "unclear"
+    },
+    {
+      "id": "02fbeeb69b5e4ad0",
+      "outcome": "negative"
+    },
+    {
+      "id": "030b28aa12652358",
+      "outcome": "negative"
+    },
+    {
+      "id": "03afc2b3a9cebb63",
+      "outcome": "unclear"
+    },
+    {
+      "id": "04b25ca4c7c5d10a",
+      "outcome": "unclear"
+    },
+    {
+      "id": "0539d47c27967368",
+      "outcome": "negative"
+    },
+    {
+      "id": "06020d2cbb9e726b",
+      "outcome": "negative"
+    },
+    {
+      "id": "0d4255c96eb66437",
+      "outcome": "negative"
+    },
+    {
+      "id": "11221e2b9c5747f7",
+      "outcome": "negative"
+    },
+    {
+      "id": "1305dce4cbe1996b",
+      "outcome": "positive"
+    },
+    {
+      "id": "14f0e5a8ca61005c",
+      "outcome": "negative"
+    },
+    {
+      "id": "1d33a718f6227fe5",
+      "outcome": "negative"
+    },
+    {
+      "id": "1d8d6cbd04244dce",
+      "outcome": "unclear"
+    },
+    {
+      "id": "1da14e93f74f4a61",
+      "outcome": "unclear"
+    },
+    {
+      "id": "1e67437d4894c7e2",
+      "outcome": "unclear"
+    },
+    {
+      "id": "20ae0c548cf9b265",
+      "outcome": "unclear"
+    },
+    {
+      "id": "20ff46ca30d57fa5",
+      "outcome": "negative"
+    },
+    {
+      "id": "25a44324626c2975",
+      "outcome": "negative"
+    },
+    {
+      "id": "264d1184fdc53c7e",
+      "outcome": "positive"
+    },
+    {
+      "id": "272a1bd7f3f97ad9",
+      "outcome": "negative"
+    },
+    {
+      "id": "27342d4f94643305",
+      "outcome": "negative"
+    },
+    {
+      "id": "279942a9d7c84874",
+      "outcome": "positive"
+    },
+    {
+      "id": "280da2738024c72e",
+      "outcome": "unclear"
+    },
+    {
+      "id": "2a1f2cc34b3b4252",
+      "outcome": "negative"
+    },
+    {
+      "id": "2a58f3895829cb64",
+      "outcome": "negative"
+    },
+    {
+      "id": "315e7341ab3c6630",
+      "outcome": "negative"
+    },
+    {
+      "id": "3a5d773207c3bcae",
+      "outcome": "negative"
+    },
+    {
+      "id": "3aa56784bee75260",
+      "outcome": "negative"
+    },
+    {
+      "id": "3c5b96cdae4f6d08",
+      "outcome": "negative"
+    },
+    {
+      "id": "3fc50a942d26359d",
+      "outcome": "negative"
+    },
+    {
+      "id": "40afa04f73cb3c7b",
+      "outcome": "unclear"
+    },
+    {
+      "id": "4186f317287a3854",
+      "outcome": "negative"
+    },
+    {
+      "id": "4198f060905f2ee3",
+      "outcome": "negative"
+    },
+    {
+      "id": "41d71e758c5be679",
+      "outcome": "positive"
+    },
+    {
+      "id": "42df457b11b435d5",
+      "outcome": "positive"
+    },
+    {
+      "id": "441380394ed1e52b",
+      "outcome": "negative"
+    },
+    {
+      "id": "481da04dc00dc250",
+      "outcome": "negative"
+    },
+    {
+      "id": "4856f19df93ed4ec",
+      "outcome": "negative"
+    },
+    {
+      "id": "4882fd1008fa1251",
+      "outcome": "negative"
+    },
+    {
+      "id": "49e89156a90a6d72",
+      "outcome": "unclear"
+    },
+    {
+      "id": "4a30e4bf172a9706",
+      "outcome": "negative"
+    },
+    {
+      "id": "4d6c9cbb3545b029",
+      "outcome": "positive"
+    },
+    {
+      "id": "510325422097d8a1",
+      "outcome": "negative"
+    },
+    {
+      "id": "52ddf3fab9cd160e",
+      "outcome": "unclear"
+    },
+    {
+      "id": "52e636eb350413d1",
+      "outcome": "unclear"
+    },
+    {
+      "id": "554d905437e582a0",
+      "outcome": "negative"
+    },
+    {
+      "id": "592f236e3d5c2399",
+      "outcome": "unclear"
+    },
+    {
+      "id": "5f259ae28b85303a",
+      "outcome": "negative"
+    },
+    {
+      "id": "5f31ca5667453e98",
+      "outcome": "negative"
+    },
+    {
+      "id": "6205fdcb2f4946e7",
+      "outcome": "negative"
+    },
+    {
+      "id": "63ccf4ba681dd435",
+      "outcome": "negative"
+    },
+    {
+      "id": "65a0816709988717",
+      "outcome": "negative"
+    },
+    {
+      "id": "6a31d0331ad28a17",
+      "outcome": "negative"
+    },
+    {
+      "id": "6c2e882b8bdea72d",
+      "outcome": "negative"
+    },
+    {
+      "id": "6d267fe17bdea037",
+      "outcome": "negative"
+    },
+    {
+      "id": "6f151fd7bd3181fb",
+      "outcome": "negative"
+    },
+    {
+      "id": "713f90378e99b175",
+      "outcome": "negative"
+    },
+    {
+      "id": "736313d5bb028d80",
+      "outcome": "unclear"
+    },
+    {
+      "id": "768ed2b96e8aef41",
+      "outcome": "negative"
+    },
+    {
+      "id": "77dc069122aa9c52",
+      "outcome": "unclear"
+    },
+    {
+      "id": "79ffc2f97a4888da",
+      "outcome": "negative"
+    },
+    {
+      "id": "7b106fb2e8240b4e",
+      "outcome": "positive"
+    },
+    {
+      "id": "7d047807ebf5d00f",
+      "outcome": "unclear"
+    },
+    {
+      "id": "7d0d02b0d77b31d5",
+      "outcome": "negative"
+    },
+    {
+      "id": "7f3e8214a2e62e47",
+      "outcome": "positive"
+    },
+    {
+      "id": "7fd43a61721c5c16",
+      "outcome": "negative"
+    },
+    {
+      "id": "8331846e740c0aaf",
+      "outcome": "negative"
+    },
+    {
+      "id": "84a3d6ef586ebde8",
+      "outcome": "unclear"
+    },
+    {
+      "id": "854bec7de6f77db8",
+      "outcome": "positive"
+    },
+    {
+      "id": "8b05f621e185ad07",
+      "outcome": "negative"
+    },
+    {
+      "id": "8b86b9cc3207bb76",
+      "outcome": "negative"
+    },
+    {
+      "id": "8bf96f0656c085ba",
+      "outcome": "negative"
+    },
+    {
+      "id": "8e01d40e9d4d8b25",
+      "outcome": "unclear"
+    },
+    {
+      "id": "905611a14de225b6",
+      "outcome": "negative"
+    },
+    {
+      "id": "92f6e4681c2d50ee",
+      "outcome": "negative"
+    },
+    {
+      "id": "937d7a137ae4d870",
+      "outcome": "negative"
+    },
+    {
+      "id": "9432cab65a7afa63",
+      "outcome": "unclear"
+    },
+    {
+      "id": "9438a57eecde4d34",
+      "outcome": "negative"
+    },
+    {
+      "id": "9711fc43140deaf7",
+      "outcome": "negative"
+    },
+    {
+      "id": "975030ffb275ea81",
+      "outcome": "negative"
+    },
+    {
+      "id": "98fe7909a0fa56e0",
+      "outcome": "unclear"
+    },
+    {
+      "id": "9a13e75ea03eb0cb",
+      "outcome": "negative"
+    },
+    {
+      "id": "9d1605137f053a8d",
+      "outcome": "negative"
+    },
+    {
+      "id": "9da546dc24507e7c",
+      "outcome": "unclear"
+    },
+    {
+      "id": "a23af645a442b0f1",
+      "outcome": "negative"
+    },
+    {
+      "id": "a51b37df4eddf0fa",
+      "outcome": "unclear"
+    },
+    {
+      "id": "ab2c13dcfe40f112",
+      "outcome": "negative"
+    },
+    {
+      "id": "aebdcb66978cc280",
+      "outcome": "negative"
+    },
+    {
+      "id": "afcf168f1624577b",
+      "outcome": "negative"
+    },
+    {
+      "id": "affd2b8ef4843b45",
+      "outcome": "negative"
+    },
+    {
+      "id": "b2217082fd167edc",
+      "outcome": "negative"
+    },
+    {
+      "id": "b2c9c1f8ec55f98d",
+      "outcome": "unclear"
+    },
+    {
+      "id": "b332511313510c53",
+      "outcome": "unclear"
+    },
+    {
+      "id": "b37ab2f2b9f86814",
+      "outcome": "negative"
+    },
+    {
+      "id": "b3b6e2c99511e56c",
+      "outcome": "negative"
+    },
+    {
+      "id": "b87bb6b98c5a2975",
+      "outcome": "negative"
+    },
+    {
+      "id": "b96487d1c4224c62",
+      "outcome": "negative"
+    },
+    {
+      "id": "b993735da3bcdb6d",
+      "outcome": "negative"
+    },
+    {
+      "id": "bbbd8a3be0a1ffd8",
+      "outcome": "negative"
+    },
+    {
+      "id": "bcf9581f94e2b9c6",
+      "outcome": "unclear"
+    },
+    {
+      "id": "be74d7773dc50764",
+      "outcome": "unclear"
+    },
+    {
+      "id": "bfe0622484cdae62",
+      "outcome": "negative"
+    },
+    {
+      "id": "c091ddad2fdbc3d8",
+      "outcome": "negative"
+    },
+    {
+      "id": "c245ffdd75a14c7b",
+      "outcome": "negative"
+    },
+    {
+      "id": "c3b8b1a7839200ec",
+      "outcome": "positive"
+    },
+    {
+      "id": "c7a2f509b6a101a5",
+      "outcome": "unclear"
+    },
+    {
+      "id": "c8c07a5d47765606",
+      "outcome": "negative"
+    },
+    {
+      "id": "ce43511969ef3396",
+      "outcome": "unclear"
+    },
+    {
+      "id": "d2334777db896e4a",
+      "outcome": "positive"
+    },
+    {
+      "id": "d5159b45a46cfc12",
+      "outcome": "unclear"
+    },
+    {
+      "id": "d819782c0be051c7",
+      "outcome": "negative"
+    },
+    {
+      "id": "dd32215b5d38ebab",
+      "outcome": "negative"
+    },
+    {
+      "id": "e1bb7a19fa73d562",
+      "outcome": "negative"
+    },
+    {
+      "id": "e1d05fbe77d13d66",
+      "outcome": "negative"
+    },
+    {
+      "id": "e2680f67fe82428e",
+      "outcome": "negative"
+    },
+    {
+      "id": "e31ee55ebd066bb1",
+      "outcome": "unclear"
+    },
+    {
+      "id": "e36eab3133508f23",
+      "outcome": "negative"
+    },
+    {
+      "id": "e371bf56a5494427",
+      "outcome": "unclear"
+    },
+    {
+      "id": "e371c01fcf80b486",
+      "outcome": "negative"
+    },
+    {
+      "id": "e3f4308940974216",
+      "outcome": "negative"
+    },
+    {
+      "id": "e69cbcadc974e0c0",
+      "outcome": "negative"
+    },
+    {
+      "id": "e6dd68fd4f0d83ba",
+      "outcome": "unclear"
+    },
+    {
+      "id": "e9288ae538aa55a9",
+      "outcome": "negative"
+    },
+    {
+      "id": "f159a240dae55627",
+      "outcome": "negative"
+    },
+    {
+      "id": "f56c5deaef1d0412",
+      "outcome": "negative"
+    },
+    {
+      "id": "f5e5a17cde9bcebd",
+      "outcome": "negative"
+    },
+    {
+      "id": "faa77cbe5c9bc9a0",
+      "outcome": "negative"
+    },
+    {
+      "id": "fc6ac365b7558a99",
+      "outcome": "negative"
+    },
+    {
+      "id": "fdf032494372ff51",
+      "outcome": "negative"
+    }
+  ],
+  "kind": "gap-truth",
+  "markers": "agents",
+  "marks_digest": "27e33ce482ca13b3ed285bfd7c4c7bbb6ea972c37c1dbfb88f4dadce32741c10",
+  "unique": {
+    "negative": 87,
+    "positive": 11,
+    "unclear": 33
+  },
+  "v": 1
+}
