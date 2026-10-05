@@ -3451,7 +3451,7 @@ function nextCockpitReadingCriterionRow(row, numbers = null, byId = null){
 
 function nextCockpitUnfinishedDetail(row){
   return row.result === NEXT_READING_NOT_REACHED && row.detail
-    ? `<span class="next-cockpit-reading-detail">${esc(row.detail)}</span>` : "";
+    ? `<p class="next-cockpit-reading-detail">${esc(row.detail)}</p>` : "";
 }
 
 /* One line of the result's checklist, in the Drift card (DRC-4758 slice C):
