@@ -61,6 +61,56 @@ raises the maximum to 16,373, below the unchanged 16,384-byte cap. This is a mod
 of wording and room. It does not show that a flag became right or that the complete reply was read:
 the agent excerpt is still capped at 1,000 characters.
 
+## Model-free gap studies, 2026-10-05
+
+These studies keep the original 99 cases and their reads intact. Two agents mark the evidence
+without detector output; a third settles disagreements. Initial marks are saved before any later
+proof is opened. A separate private cohort is imported with `--study-import <file> --tag <tag>`.
+Its `study-<tag>-marks-digest.json` must be committed before `--study-live` or `--study-score` can
+produce output. Output closes marking. All these modes call no model.
+
+The [per-question gap study](results-study-gap-truth.json) revisits 161 historical non-claims
+departures on four arms, deduplicated to 131 questions at 70 cuts. Of those questions, agent marks
+confirm 11 gaps with specific later recorded proof, reject 87 and leave 33 unclear. A positive
+needs a later person correction, failed check, retraction or completed sibling result about that
+same gap. An opinion, generic continuation or a parent merge receipt alone is insufficient.
+Repeated appearances yield 12 positive, 113 negative and 36 unclear flags across the arms. These
+are developmental judgments, not a detector accuracy rate. The [committed marks digest](study-gap-truth-marks-digest.json)
+binds the private case and proof key.
+
+The [in-drift live study](results-study-in-drift.json) measures all 291 recorded stops, including
+104 stops inside 28 annotated drift episodes. The [blind marks digest](study-in-drift-marks-digest.json)
+was committed first. This model-free cold-board counterfactual includes recorded history
+(`--include-history`), rather than reproducing a particular live board. Agents marked 74 visible gaps, 26 no gap and four unclear stops. All 28
+episodes have a measured baseline; 12 contain more than one stop. No early catch is credited:
+none of the 17 recorded failure candidates was judged relevant to the current gap. A new cause
+must arise inside the episode and have its exact relevance marked before it can count. Other
+cause relevance remains unmeasured. There is no lead-time estimate from a zero-catch run.
+
+Outside the half-open annotated spans, 176 stops have a dated opening intent; per salted session
+their flagged counts are 30 of 36, nine of 36, zero of 78 and 25 of 26. Eleven earlier stops have
+no dated opening intent and cannot produce this arm. The current parser thus finds 187 outside
+stops, rather than reproducing the earlier estimate of 183. Being outside a pushback span does
+not establish no gap, so these remain raw counts. Within the blind classes, the live estimate
+flags nine of 59 defect cuts, three of 16 scope cuts, none of three status cuts and nine of 26
+no-gap cuts. Those counts do not establish timeliness or value to a person.
+
+The [Codex parent study](results-study-codex-parent-v2.json) holds one salted annotated case and
+counts for 354 parent messages after four canonical injected contexts are excluded. The local
+annotation traces a genuine request, an agent handoff that leaves that request unfinished and
+the person's correction. `--codex-study <file> --tag <tag>` loads the actual CLI or editor parent
+log and masks its words before local storage. It rejects exec and worker metadata and uses the
+runtime's measured injection filter. Loading a research case grants no Analyze eligibility, adds
+no Codex runtime fact and demonstrates no Codex detector performance.
+
+The [one-case agent-plan measurement](agent-plan-stage4e.json) finds an earlier plan 2,055,393 bytes
+before the cut, outside the 400,000-byte tail and absent from its 12 listed agent messages. The
+person directed the later detour and had not accepted that plan. This is one agent-marked case,
+not a plan detector or evidence that rereading it would improve a verdict. It spent no model call.
+
+No study here replaces the required cold walk with two real participants. Consent and readiness
+remain prerequisites; agent browser checks supply no participant outcome.
+
 ## The order: cases, blind marks, digest, runs, score
 
 A mark written after seeing an output is agreement, not a mark, so the tool holds this order.
