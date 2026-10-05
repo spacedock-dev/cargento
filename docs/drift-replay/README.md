@@ -61,6 +61,43 @@ raises the maximum to 16,373, below the unchanged 16,384-byte cap. This is a mod
 of wording and room. It does not show that a flag became right or that the complete reply was read:
 the agent excerpt is still capped at 1,000 characters.
 
+## Window comparison stopped at a failed guard, 2026-10-05
+
+The [window comparison](window-stage4b.json) stopped after 168 changed reads and two
+unchanged-prompt controls. All 170 were usable. The controls have byte-identical application
+prompts to their five pilot repeats; all changed reads use one frozen runtime and recorded
+history. The run leaves 28 planned changed reads unrun, including 20 no-drift case-arms.
+
+The actual page has measured 122 of the 142 no-drift case-arms. One salted session's adopted
+arm already has nine citable intent departures against six across its entire old baseline;
+another session's current arm has two against one. None comes from the old refused reading.
+Unread cases cannot remove those observed flags, so the no-increase guard fails when tested
+separately for each session and arm. The plan does not explicitly settle pooling; this is the
+conservative interpretation because the two arms compare different requests. A pooled
+per-session failure and a full-cohort total decrease are not claimed.
+
+Historical adopted reads used a clipped goal, and the new run adds recorded history as well as
+word recovery. The comparison cannot isolate a prompt effect or establish an accuracy
+regression. The artifact separates full baseline counts, observed lower bounds, unavailable
+pages and the matched subset. Its lost-flag and offer lists cover only measured pairs, never
+the unread remainder. Across 40 matched drift case-arms, ten previously flagged arms no
+longer flag and nine lose a correction offer. Of ten formerly drawn claims rows marked right,
+four are withdrawn; three of the nine unique marked claim items lose every formerly drawn row.
+Two surviving rows also stop citing the previously marked agent record. Those losses are
+listed by salted case and claim ids, without treating unread cases as losses. The right-row
+protection check therefore fails too. All marks are agents' development judgments.
+
+Further window reads and the dependent turn-scope model measurement are blocked by this guard.
+The turn-scope schema and page support have shipped, but no new Analyze measurement qualifies
+their accuracy. The closed git/gh proof proposal is also blocked: even command incidence can
+cover at most 35 of the required 61 wrong not-shown flags, before attribution and truncation
+guards. Its publisher and consent-version change were not built. The whole final-reply change
+depends on that proposal and remains blocked too.
+
+The ledger ends at 631 of 870, with 239 left: 199 verified calls in this run, plus five
+conservative reservations for earlier test calls whose execution could not be proved. The
+two-unusable-call budget stop did not fire. Spend stopped at the failed measurement guard.
+
 ## Model-free gap studies, 2026-10-05
 
 These studies keep the original 99 cases and their reads intact. Two agents mark the evidence

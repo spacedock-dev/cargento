@@ -2022,8 +2022,9 @@ annotation store and never posts to the reading route. The
 [drift replay documentation](docs/drift-replay/README.md) owns its format.
 
 The model-free studies use separate tagged cohorts under that same private directory. Their
-initial blind marks and exact cohort hash are committed as counts and a digest before output;
-later positive-proof marks name only recorded evidence in the private key. The Codex study loader
+initial blind marks stay private before later proof is opened. The exact imported cohort,
+including the later proof key where used, is bound by committed counts and a digest before
+output. Positive-proof marks name only recorded evidence in the private key. The Codex study loader
 reads an operator-selected CLI or editor parent log, rejects exec and worker metadata, applies the
 runtime's measured injection filter and masks words before private storage. Its committed result
 holds one salted case id, counts and a digest. It calls no model, adds no runtime fact and grants
