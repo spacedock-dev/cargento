@@ -547,6 +547,30 @@ class EachDepartedCriterionIsJudgedOnItsOwnCites(unittest.TestCase):
         self.assertEqual("flag-after-start", dr._read_bin(goal, drifted=True, start=40.0))
 
 
+class UnfinishedWorkKeepsItsOwnReplayOutcome(unittest.TestCase):
+    def test_unfinished_work_is_neither_withheld_nor_reassurance(self) -> None:
+        entry = _reading(
+            {
+                "goal": {"result": "consistent with the evidence read", "cites": []},
+                "line_1": {"result": "not reached at this stop", "cites": ["a1"]},
+            },
+            {},
+        )
+        for drifted in (True, False):
+            self.assertEqual(dr._read_bin(entry, drifted=drifted, start=40), "not-reached")
+
+    def test_a_separate_departure_still_counts_when_another_line_is_unfinished(self) -> None:
+        entry = _reading(
+            {
+                "goal": {"result": "departure", "cites": ["a1"]},
+                "line_1": {"result": "not reached at this stop", "cites": ["a1"]},
+            },
+            {"a1": {"type": "agent_message", "at": 50}},
+        )
+        self.assertEqual(dr._read_bin(entry, drifted=True, start=40), "flag-after-start")
+        self.assertEqual(dr._read_bin(entry, drifted=False, start=40), "false-alarm")
+
+
 class _Home:
     """A built case set in a temporary home, with the run gate held open."""
 

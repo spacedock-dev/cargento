@@ -145,6 +145,22 @@ class EveryPairLandsInExactlyOneOutcomeTest(unittest.TestCase):
         )
         self.assertEqual("judged:departure", score_abstention.outcome({"result": "departure"}, ""))
 
+    def test_unfinished_work_is_its_own_judgement_and_not_a_departure(self) -> None:
+        self.assertEqual(
+            "judged:not-reached",
+            score_abstention.outcome({"result": "not reached at this stop"}, ""),
+        )
+
+    def test_unfinished_work_is_not_scored_as_reassurance(self) -> None:
+        self.assertEqual(
+            score_abstention.RUBRIC_MISSED_DEPARTURE,
+            score_abstention.rubric_outcome("departure", "not reached at this stop"),
+        )
+        self.assertEqual(
+            score_abstention.RUBRIC_CORRECT,
+            score_abstention.rubric_outcome("not_reached", "not reached at this stop"),
+        )
+
 
 class RubricScoresTwoColumnsNotOne(unittest.TestCase):
     """Extraction and judgement are two fields. DEC-15 asks for them apart."""
@@ -943,7 +959,7 @@ class TheDisclosureIsWrittenWhereTheCodeSaysItIs(unittest.TestCase):
 
 
 class RubricTokensMirrorTheProducerTest(unittest.TestCase):
-    """The rubric's three tokens are the producer's three, spelt twice on purpose."""
+    """The rubric's intent tokens mirror the producer, spelt twice on purpose."""
 
     def test_the_two_mappings_are_equal(self) -> None:
         sys.path.insert(0, str(SKILL))

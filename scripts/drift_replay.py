@@ -1850,11 +1850,12 @@ BINS_DRIFT = (
     "irrelevant-flag",
     "unattributed-flag",
     "echo",
+    "not-reached",
     "withheld",
     "reassured",
     "refused",
 )
-BINS_QUIET = ("false-alarm", "quiet", "withheld", "refused")
+BINS_QUIET = ("false-alarm", "quiet", "not-reached", "withheld", "refused")
 
 
 def _live_bin(arm: Mapping[str, Any] | None, *, drifted: bool, start: float | None) -> str:
@@ -1980,6 +1981,11 @@ def _read_bin(  # noqa: PLR0911 - one return per outcome
             (_departed_bin(name, c, facts, start) for name, c in departed),
             key=BINS_DRIFT.index,
         )
+    if any(
+        isinstance(c, dict) and c.get("result") == "not reached at this stop"
+        for c in criteria.values()
+    ):
+        return "not-reached"
     consistent = any(
         isinstance(c, dict) and str(c.get("result", "")).startswith("consistent")
         for c in criteria.values()

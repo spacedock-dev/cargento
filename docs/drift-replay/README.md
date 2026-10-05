@@ -121,10 +121,21 @@ On a cut you marked as drift:
   on its own cites, and a claims departure leaves out the claim it names before it is judged, so
   "the agent said X, and you said otherwise" is an echo
 - withheld: "Not enough recorded yet" or not verifiable
+- not reached: a cited unfinished-work result at a non-final stop, kept apart from withheld and reassurance
 - reassured: None or low, or consistent; the worst outcome
 - refused: the apparatus could not read the cut, or the model call failed
 
 On a cut you marked as no drift: false alarm, quiet, withheld or refused.
+
+New schema runs also retain the not-reached outcome on no-drift cuts. A separate departure still
+counts; unfinished work never hides it. The page-answer column can say "Can't tell" when another
+line remains unverifiable, even when one line is unfinished.
+
+Before changing the non-final schema, agents blind to detector output sorted 58 historical
+current-arm no-drift intent departures. The [frozen sort](scope-stage4d.json) records 24 safely
+unfinished questions, 25 departures, eight consistent questions and one unclear question, with
+the marks digest. Critical controls were checked against fuller pre-cut context before the prompt
+changed. This is a pre-change semantic sort, not evidence that a new model reading improved.
 
 Historical runs counted the composer's offer, even where the page showed a Keep/Add question instead. They did not store correction text. New runs retain the composed text locally and execute the shipped page reducers to count questions, primary and secondary offers, and no offer. They name whether the reader is available and whether Keep is assumed.
 

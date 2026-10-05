@@ -1333,10 +1333,13 @@ class TheQuestionAndItsResultAreSpeltOnceEachSideTest(unittest.TestCase):
         self.assertIn(f'const NEXT_READING_CLAIMS = "{reading.CONSTRAINT_CLAIMS}";', source)
         self.assertIn(f'const NEXT_READING_UNSUPPORTED = "{reading.RESULT_UNSUPPORTED}";', source)
         self.assertEqual(
-            {**reading.RESULT_BY_TOKEN, "unsupported": reading.RESULT_UNSUPPORTED},
+            {
+                **{k: v for k, v in reading.RESULT_BY_TOKEN.items() if k != "not_reached"},
+                "unsupported": reading.RESULT_UNSUPPORTED,
+            },
             reading.CLAIMS_RESULT_BY_TOKEN,
         )
-        self.assertEqual(4, len(reading.RESULTS))
+        self.assertEqual(5, len(reading.RESULTS))
 
 
 class TheScorerKnowsTheQuestionTest(unittest.TestCase):

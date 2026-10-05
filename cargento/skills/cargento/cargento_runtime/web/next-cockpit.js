@@ -2456,10 +2456,11 @@ const NEXT_READING_UNVERIFIABLE = "not verifiable from available evidence";
    claim of the agent's nothing in the record read shows. Never a departure
    (rule 3), and only ever on the `claims` row (owner, 2026-10-04). */
 const NEXT_READING_UNSUPPORTED = "not shown by the record";
+const NEXT_READING_NOT_REACHED = "not reached at this stop";
 // Rule 1, as data. A result reaches the page only by being one of these.
 const NEXT_READING_RESULTS = [
   NEXT_READING_DEPARTURE, NEXT_READING_CONSISTENT, NEXT_READING_UNVERIFIABLE,
-  NEXT_READING_UNSUPPORTED,
+  NEXT_READING_UNSUPPORTED, NEXT_READING_NOT_REACHED,
 ];
 /* `reading.CONSTRAINT_CLAIMS`: what the agent claimed about the work, asked
    beside the intent on a press that carries its messages, and drawn after it. */
@@ -2881,7 +2882,7 @@ function nextCockpitConflictCandidates(annotation, entries, session = null){
 }
 
 function nextCockpitReadingCriterion(key, label, clause, raw, entries, limit, unsettled,
-    windowStart = null){
+    windowStart = null, scope = ""){
   /* Refused like any citation that does not resolve. The producer never
      numbers such an entry, so this holds only for a reading stored before it
      stopped (DRC-4715). */
@@ -2893,12 +2894,16 @@ function nextCockpitReadingCriterion(key, label, clause, raw, entries, limit, un
   const claims = key === NEXT_READING_CLAIMS;
   /* `unsupported` is the claims row's alone; anywhere else it is a result
      outside the row's set, as the store would refuse it. */
-  const known = claims ? NEXT_READING_RESULTS
+  const known = claims ? NEXT_READING_RESULTS.filter(name => name !== NEXT_READING_NOT_REACHED)
     : NEXT_READING_RESULTS.filter(name => name !== NEXT_READING_UNSUPPORTED);
   let result = known.includes(declared) ? declared : NEXT_READING_UNVERIFIABLE;
   // Rule 2, and it is the reason the default above is not `consistent`: a
   // producer that returned nothing has said nothing, and silence is not a pass.
   let why = result === declared ? "" : NEXT_READING_MALFORMED;
+  if(result === NEXT_READING_NOT_REACHED && !["last-turn","mid-flight"].includes(scope)){
+    result = NEXT_READING_UNVERIFIABLE;
+    why = NEXT_READING_MALFORMED;
+  }
   if(result !== NEXT_READING_UNVERIFIABLE && !citations.length){
     // Rule 3 names the departure arm. A `consistent` resting on nothing is the
     // same failure wearing the safer-looking face, so it is demoted too.
@@ -3103,7 +3108,8 @@ function nextCockpitReadingCriterion(key, label, clause, raw, entries, limit, un
        that rule 3, 5, 7 or the baseline rule demoted still printed its
        departure prose underneath the demoted result -- the reader saw the
        finding and the refusal of it at once. */
-    detail: result === NEXT_READING_DEPARTURE ? String(raw && raw.detail || "") : "",
+    detail: [NEXT_READING_DEPARTURE,NEXT_READING_NOT_REACHED].includes(result)
+      ? String(raw && raw.detail || "") : "",
     why, restsOn, restsOnEntry, limit: limitText,
     // Mutually exclusive with `limit`, and never both blank: a row states its
     // evidence or states why it has none.
@@ -3251,7 +3257,7 @@ function nextCockpitReadingShape(raw, annotation, entries, limit, unsettled,
       nextCockpitReadingClause(key, rows[key], annotation, historical),
       rows[key], entries,
       nextReadingIsOutcomeLine(key) || key === NEXT_READING_CLAIMS ? limit : "", unsettled,
-      windowStart))
+      windowStart, source.scope))
     .map(row => ({...row,coverage: partial && row.key !== NEXT_READING_CLAIMS
       ? "may be in the part not read" : ""}));
   return {
@@ -3384,6 +3390,7 @@ function nextCockpitClaimStatus(row, numbers, short){
 
 function nextCockpitResultStatus(row, numbers, byId, short = false){
   if(row.key === NEXT_READING_CLAIMS) return nextCockpitClaimStatus(row, numbers, short);
+  if(row.result === NEXT_READING_NOT_REACHED) return "Not reached at this stop";
   if(row.result === NEXT_READING_DEPARTURE){
     const where = nextCockpitResultWhere(byId.get(String((row.citedIds || [])[0] || "")), numbers);
     return where ? `Departs at ${where}` : "Departs";
@@ -3419,6 +3426,7 @@ function nextCockpitResultState(row){
       : row.result === NEXT_READING_CONSISTENT && row.recordEntry ? "consistent" : "cant-tell";
   }
   return row.result === NEXT_READING_DEPARTURE ? "departs"
+    : row.result === NEXT_READING_NOT_REACHED ? "not-reached"
     : row.result === NEXT_READING_CONSISTENT && row.restsOn ? "consistent" : "cant-tell";
 }
 
@@ -3438,7 +3446,12 @@ function nextCockpitReadingCriterionRow(row, numbers = null, byId = null){
     `<em class="next-cockpit-reading-result">${esc(nextCockpitResultStatus(row, numbered, entries))}</em>` +
     (row.coverage ? `<span class="next-cockpit-reading-why">${esc(row.coverage)}</span>` : "") +
     (row.why ? `<span class="next-cockpit-reading-why">${esc(row.why)}</span>` : "") +
-    tail + '</div>';
+    nextCockpitUnfinishedDetail(row) + tail + '</div>';
+}
+
+function nextCockpitUnfinishedDetail(row){
+  return row.result === NEXT_READING_NOT_REACHED && row.detail
+    ? `<p class="next-cockpit-reading-detail">${esc(row.detail)}</p>` : "";
 }
 
 /* One line of the result's checklist, in the Drift card (DRC-4758 slice C):
@@ -3457,7 +3470,8 @@ function nextCockpitResultItem(row, numbers, byId, tag = "li"){
   const full = nextCockpitResultStatus(row, numbers, byId);
   const evidence = `<span class="next-cockpit-reading-name">${esc(row.label)}</span>` +
     (full === status ? "" : `<span class="next-cockpit-reading-evidence">${esc(full)}</span>`) +
-    (row.why ? `<span class="next-cockpit-reading-why">${esc(row.why)}</span>` : "") + tail;
+    (row.why ? `<span class="next-cockpit-reading-why">${esc(row.why)}</span>` : "") +
+    nextCockpitUnfinishedDetail(row) + tail;
   return `<${tag} class="next-cockpit-reading-row" data-next-result-state="${nextCockpitResultState(row)}"` +
     `${tag === "li" ? "" : row.key === NEXT_READING_CLAIMS ? " data-next-result-claims"
       : " data-next-result-goal"}>` +
@@ -3501,6 +3515,10 @@ function nextDriftAnswer(shape, entries, scan = null){
     return {kind: "failed-check", failed: latest};
   }
   const verdict = row => row.result === NEXT_READING_CONSISTENT && row.restsOn;
+  if(intent.some(row => row.result === NEXT_READING_NOT_REACHED) && intent.every(row =>
+      verdict(row) || row.result === NEXT_READING_NOT_REACHED)){
+    return {kind:"not-reached"};
+  }
   if(!intent.some(row => nextReadingIsOutcomeLine(row.key)) ||
       !intent.every(verdict)) return {kind: "cant-tell"};
   return {kind: "nothing-found"};
@@ -3535,6 +3553,9 @@ function nextCockpitResultAnswer(answer, numbers, byId, midFlight = false){
     const where = nextCockpitResultWhere(answer.failed, numbers);
     return open + `<p class="next-cockpit-result-line">${lead}${esc(where
       ? `A check failed at ${where}.` : "A check failed.")}</p></div>`;
+  }
+  if(answer.kind === "not-reached"){
+    return open + `<p class="next-cockpit-result-line">${lead}Not reached at this stop.</p></div>`;
   }
   return open + `<p class="next-cockpit-result-line">${lead}${esc(answer.kind === "cant-tell"
     ? NEXT_RESULT_CANT_TELL : NEXT_RESULT_NOTHING_FOUND)}</p></div>`;
@@ -6188,6 +6209,7 @@ const NEXT_DRIFT_BLOCKER_LINES = {
   "intent-names-no-folder": "Your intent names no folder, so where files went is not weighed.",
   "scan-incomplete": "The record was not read in full.",
   "line-not-shown-by-a-check": "A line of your intent is not shown by any check.",
+  "outcome-not-reached": "Work against your intent was not reached at this stop.",
   "no-outcome-line": "No expected outcome line was saved.",
   "reading-malformed": "Part of the stored analysis could not be read.",
 };

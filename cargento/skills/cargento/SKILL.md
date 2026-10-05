@@ -483,7 +483,7 @@ result shows the analysis level (worked out again from the stored reading on eve
 stored, never on a row) with its time. Not enough recorded yet leaves a live level in view.
 The answer follows: "Departs from your intent" with a count and
 each departure's own account under a departure, otherwise a failed check after your last message,
-"Can't tell", or "Nothing found against what it read". Coverage beside it names a measured partial
+"Can't tell", "Not reached at this stop", or "Nothing found against what it read". Coverage beside it names a measured partial
 message tail, unlisted passes or writes, checks that did not fit and an adopted-source fallback.
 An older reading says coverage was not recorded. A tail starting inside the intent window tags
 every intent row "may be in the part not read"; claims stay independent. General scope and the
@@ -491,7 +491,11 @@ count-by-kind cutoff remain under What it read. Coverage holds only counts, time
 tokens and changes no verdict. Each line reads "Departs at #n", "Consistent with
 #n, as the tool reported; not inspected", "Consistent with what the agent said at #n; not a
 check" where it rests on the agent's messages alone, "Consistent with what the session said at #n;
-not a check" or "Can't tell", never "Done". A line may depart, or read consistent, on one of the
+not a check", "Not reached at this stop" or "Can't tell", never "Done". Unfinished work in flight
+at a non-final stop has its own result and cited explanation under Evidence. It raises no
+departure, Medium level or Steer back offer, and cannot establish None or low. An unkept promise
+to continue or finish, a needless wait on you or a stated remainder of the asked-for set still
+counts as departure. A line may depart, or read consistent, on one of the
 agent's messages, never beside a check that failed after your words, and the level never reads
 "None or low" on the agent's word alone. A departure resting on an agent message stops counting
 once that message leaves the transcript tail the board reads. A press that carries the agent's
