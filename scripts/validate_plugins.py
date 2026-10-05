@@ -202,6 +202,7 @@ MAX_CATALOG_TOKEN_ESTIMATE = 4_000
 # NOTICE are not Markdown, so none of them are listed.
 ROOT_DOCS = (
     "README.md",
+    "MANUAL.md",
     "HOW_TO_USE.md",
     "AGENTS.md",
     "CLAUDE.md",

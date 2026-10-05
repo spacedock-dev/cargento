@@ -34,6 +34,22 @@ from .support import (
 )
 
 
+class CommandManualOptionsTest(unittest.TestCase):
+    def test_option_rows_cover_every_parser_spelling(self) -> None:
+        manual = (SERVER_PATH.parents[3] / "MANUAL.md").read_text(encoding="utf-8")
+        first_cells = re.findall(r"^\| ([^|]+) \|", manual, flags=re.MULTILINE)
+        documented = [
+            option
+            for cell in first_cells
+            for option in re.findall(r"`(-{1,2}[a-z][a-z-]*)\b[^`]*`", cell)
+        ]
+        actual = {
+            option for action in cli.build_parser()._actions for option in action.option_strings
+        }
+        self.assertEqual(set(documented), actual, "Update MANUAL.md option rows with the CLI")
+        self.assertEqual(len(documented), len(set(documented)), "Document each spelling once")
+
+
 class RuntimeDecisionCitationsTest(unittest.TestCase):
     def test_runtime_pointers_resolve(self) -> None:
         root = SERVER_PATH.parents[3]
