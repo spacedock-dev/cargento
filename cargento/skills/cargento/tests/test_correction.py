@@ -313,6 +313,78 @@ class WhatCountsTest(unittest.TestCase):
                 self.assertIn(said, rendered(compose(row)["parts"]))
 
 
+class LatestFailedResultTest(unittest.TestCase):
+    """DRC-4780: "A check failed at" names the failure whose result arrived last.
+
+    `reading.evidence_at` is the one rule (owner, 2026-09-27, DRC-4702): a check's result time
+    where one was recorded and its call time otherwise. The window already counts a failure by it;
+    the sentence, its choice among several, and its clock all follow it. The entry stays
+    identified by its id, which the page numbers from the call time.
+    """
+
+    ROW = session_row(annotation_assessment=None, annotation_settled_through=300.0)
+
+    def text(self, *facts: dict[str, Any]) -> str:
+        return rendered(compose(self.ROW, facts)["parts"])
+
+    def test_a_call_before_the_person_with_a_result_after_is_shown_at_the_result(self) -> None:
+        # Called at 90, before the person's message at 100, but the result arrived at 140.
+        text = self.text(check("c-delayed", 90, "failed", result_at=140))
+        self.assertIn("A check failed at T140{c-delayed}.", text)
+        self.assertNotIn("T90", text)
+
+    def test_overlapping_failures_name_the_later_result_not_the_later_call(self) -> None:
+        # A was called first (90) and returned last (160); B was called later (110), returned at 140.
+        text = self.text(
+            check("c-a", 90, "failed", result_at=160),
+            check("c-b", 110, "failed", result_at=140),
+        )
+        self.assertIn("A check failed at T160{c-a}.", text)
+        self.assertNotIn("{c-b}", text)
+
+    def test_the_choice_does_not_depend_on_the_order_the_facts_arrive_in(self) -> None:
+        a = check("c-a", 90, "failed", result_at=160)
+        b = check("c-b", 110, "failed", result_at=140)
+        for facts in ((a, b), (b, a)):
+            with self.subTest(first=facts[0]["fact_id"]):
+                self.assertIn("A check failed at T160{c-a}.", self.text(*facts))
+
+    def test_a_result_time_is_what_places_a_failure_after_the_person(self) -> None:
+        # Result 95 is still before the person's message at 100: not a failure after them.
+        answer = compose(self.ROW, (check("c-early", 90, "failed", result_at=95),))
+        self.assertEqual({"ok": False, "reason": "nothing"}, answer)
+
+    def test_a_missing_or_unusable_result_time_falls_back_to_the_call(self) -> None:
+        for bad in (None, 0, -5, "later", True):
+            with self.subTest(result_at=bad):
+                text = self.text(
+                    check("c-a", 118, "failed", result_at=bad),
+                    check("c-b", 110, "failed", result_at=140),
+                )
+                self.assertIn("A check failed at T140{c-b}.", text)
+        text = self.text(
+            check("c-a", 150, "failed", result_at=None),
+            check("c-b", 110, "failed", result_at=140),
+        )
+        self.assertIn("A check failed at T150{c-a}.", text)
+
+    def test_a_departure_on_a_delayed_check_keeps_its_call_time_and_its_entry(self) -> None:
+        # Only the failure sentence follows the result; a line's own time is unchanged.
+        row = session_row(annotation_settled_through=300.0)
+        facts = (check("c-fail", 110, "failed", result_at=140), check("c-pass", 115, "passed"))
+        text = rendered(compose(row, facts)["parts"])
+        self.assertIn("A check failed at T140{c-fail}.", text)
+        self.assertIn("- The parser tests pass: departed at T110{c-fail}", text)
+
+    def test_a_tie_goes_to_the_one_the_page_lists_last(self) -> None:
+        # `nextDriftAnswer` keeps the later entry on equal evidence times.
+        text = self.text(
+            check("c-a", 90, "failed", result_at=140),
+            check("c-b", 110, "failed", result_at=140),
+        )
+        self.assertIn("A check failed at T140{c-b}.", text)
+
+
 class InjectionTest(unittest.TestCase):
     """Nothing but the reader's words, the connectives and times reaches the text."""
 

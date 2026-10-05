@@ -426,15 +426,32 @@ def _claim_line(
     return [f"Can you show evidence for {quotation} at {at(fact)}", _placeholder(fact), "?"]
 
 
+def _latest_result(failed: list[dict[str, Any]]) -> dict[str, Any]:
+    """The failed check whose result arrived last, as the page's `nextDriftAnswer` picks it.
+
+    By `reading.evidence_at`, so a check called first and returned last wins. `failed` is in the
+    page's order (call time, then id) and a tie keeps the later entry, which the page's `>=` does.
+    """
+    latest = failed[0]
+    for fact in failed[1:]:
+        if (reading.evidence_at(fact) or 0.0) >= (reading.evidence_at(latest) or 0.0):
+            latest = fact
+    return latest
+
+
 def _tail(
     failed: list[dict[str, Any]],
-    at: Callable[[Mapping[str, Any]], str],
+    clock: Callable[[float], str],
 ) -> list[list[Part]]:
-    """The current failed check, followed by the closing request."""
+    """The current failed check, followed by the closing request.
+
+    The sentence is timed at the result; the entry stays the one the page numbers from its call.
+    """
     tail: list[list[Part]] = []
     if failed:
-        latest = max(failed, key=lambda f: reading.valid_prompt_time(f.get("at")) or 0.0)
-        tail.append([f"A check failed at {at(latest)}", _placeholder(latest), "."])
+        latest = _latest_result(failed)
+        when = clock(reading.evidence_at(latest) or 0.0)
+        tail.append([f"A check failed at {when}", _placeholder(latest), "."])
     tail.append(["Please continue from here."])
     return tail
 
@@ -497,7 +514,7 @@ def compose(
         else:
             head[0][0] = f"Back to my goal: {goal.rstrip('…')}…"
     said = [_claim_line(claim, at)] if claim is not None else []
-    tail = _tail(failed, at)
+    tail = _tail(failed, clock)
     goal_gap = rows.state(reading.CONSTRAINT_GOAL) if rows is not None else (_NOT_SHOWN, None)
     goal_line: list[list[Part]] = (
         [

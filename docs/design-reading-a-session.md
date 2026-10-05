@@ -3724,7 +3724,10 @@ and each was settled on the withholding side.
 - The answer reducer runs over the rows after every page rule. Under a surviving departure it is
   the headline "Departs from your intent" with the count beside it and, as the short account, each
   departure's detail followed by its citation. With no departure and at least one outcome line,
-  a failed check after the latest person message gives "A check failed at #n." naming the latest.
+  a failed check after the latest person message gives "A check failed at #n." naming the one
+  whose result arrived last (`reading.evidence_at`, the later entry on a tie), numbered from its
+  call. The correction's sentence names the same check, timed at its result, and so does the
+  page where it has no number to show (DRC-4780).
   This [owner amendment](#amended-2026-10-04-owner-a-failure-after-the-persons-last-message)
   replaces the original window-only test, which admitted checks with no recorded time; then any line without a valid verdict gives "Can't tell"; then
   "Nothing found against what it read. This is not a check that the work was done." That last

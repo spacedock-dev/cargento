@@ -3354,11 +3354,14 @@ function nextCockpitReadingClauseCell(row){
 const NEXT_RESULT_CANT_TELL = "Can't tell";
 const NEXT_RESULT_NOTHING_SHOWS = "Can't tell: nothing recorded shows this yet";
 
-function nextCockpitResultWhere(entry, numbers){
+/* `arrived` is the failed-check answer's: the time it falls back to is when the result arrived
+   (`nextReadingEvidenceAt`, as the server's correction says it), not when the check was called
+   (DRC-4780). Every other caller keeps the call time. */
+function nextCockpitResultWhere(entry, numbers, arrived = false){
   if(!entry) return "";
   const n = numbers.get(String(entry.id || ""));
   if(n != null) return `#${n}`;
-  const at = nextNumber(entry.at);
+  const at = arrived ? nextReadingEvidenceAt(entry) : nextNumber(entry.at);
   return at != null && at > 0 ? nextSessionClock(at) : "";
 }
 
@@ -3550,7 +3553,7 @@ function nextCockpitResultAnswer(answer, numbers, byId, midFlight = false){
       `<span class="next-cockpit-result-count">${esc(count)}</span></p>${account}</div>`;
   }
   if(answer.kind === "failed-check"){
-    const where = nextCockpitResultWhere(answer.failed, numbers);
+    const where = nextCockpitResultWhere(answer.failed, numbers, true);
     return open + `<p class="next-cockpit-result-line">${lead}${esc(where
       ? `A check failed at ${where}.` : "A check failed.")}</p></div>`;
   }
@@ -9407,6 +9410,16 @@ function nextIntentForgetAdopted(session, draft){
   if(draft && nextCockpitHeldDrafts.get(key) === draft.text) nextCockpitHeldDrafts.delete(key);
 }
 
+/* After a press that adopted a chosen prompt, the held choice goes only while it is that
+   prompt, by the fact, the words and the time the adoption named. Another prompt picked while
+   the request was open is the reader's newer choice and stays. */
+function nextIntentForgetChosen(session, adopted){
+  const key = nextCockpitHeldKey(session, "goal");
+  const held = nextIntentChosenPrompts.get(key);
+  if(adopted && adopted.source === NEXT_PROMPT_CHOSEN && held && held.factId === adopted.factId &&
+      held.text === adopted.text && held.at === adopted.at) nextIntentChosenPrompts.delete(key);
+}
+
 /* The one predicate the level (DRC-4695) and the live estimate and its pill
    (DRC-4696) consult: over an unsaved draft neither is drawn (item 2 of
    [DEC-26](docs/design-reading-a-session.md#dec-26-four-drift-levels-and-a-live-estimate-after-every-turn)). */
@@ -9575,7 +9588,6 @@ const NEXT_COCKPIT_ADOPT_REFUSED = {
 async function nextAdoptPrompt(session, source, signal = null){
   const candidate = nextPromptCandidate(session, source);
   if(!candidate || candidate.at == null || !(nextData && nextData.annotate === true)) return false;
-  const key = nextCockpitHeldKey(session, "goal");
   let response;
   let answer;
   try{
@@ -9603,8 +9615,13 @@ async function nextAdoptPrompt(session, source, signal = null){
       return false;
     }
     if(!response.ok || !answer.persisted) throw new Error("adoption not saved");
-    nextCockpitHeldDrafts.delete(key);
-    nextIntentChosenPrompts.delete(key);
+    /* Only what this press adopted goes, and only while it is still what the box holds: the
+       reply can arrive after the reader typed other words or picked another prompt, and the
+       adoption's words are then the saved goal beneath a newer edit that is still theirs
+       (DRC-4784). Words put back to the adopted ones, or the same prompt picked again, are the
+       saved goal and lose nothing by going. */
+    nextIntentForgetAdopted(session, candidate);
+    nextIntentForgetChosen(session, candidate);
     await refreshNext();
     return true;
   }catch(_error){
