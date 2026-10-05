@@ -9,6 +9,8 @@ from __future__ import annotations
 
 import json
 import os
+import subprocess
+import sys
 import tempfile
 import unittest
 from dataclasses import replace
@@ -194,6 +196,49 @@ class TheNewestSelectedFinalIsReadWhole(_Source):
         # and it still decides the source: one UUID, two records that disagree.
         self.write([record("u1", 1, long_text()), record("u1", 59, long_text())])
         self.assertEqual("", self.words(self.ledger()[:1]))
+
+    def test_long_single_tokens_use_bounded_identity_extraction(self) -> None:
+        # subprocess.run kills and waits for its own child on timeout; no harness or hook
+        # is launched. A red cannot leave a CPU-bound daemon behind this test process.
+        code = r"""
+import json, tempfile
+from pathlib import Path
+from cargento.skills.cargento.tests.test_newest_final_words import record
+from cargento.skills.cargento.tests.support import make_runtime
+from cargento_runtime import project_context, reading
+with tempfile.TemporaryDirectory() as temp:
+    config, _ = make_runtime(state_home=temp, state_dir=Path(temp))
+    path = Path(temp) / 'synthetic.jsonl'
+    prefix = 'Finished the queue work. '
+    limit = project_context.FINAL_WORDS_RECORD_MAX_BYTES
+    sizes = (4_096, project_context.FINAL_WORDS_MAX_CHARS, limit - len(json.dumps(record('u1', 1, '')).encode()))
+    results = []
+    for size in sizes:
+        row = record('u1', 1, prefix + 'x' * (size - len(prefix)))
+        path.write_text(json.dumps(row) + '\n', encoding='utf-8')
+        event = project_context._agent_message_event(config, row, 'claude', 's1')
+        fact = project_context._semantic_fact_from_event(event, 'agent_say', 'agent_message', '')
+        wanted = reading.build_ledger([fact], 'claude', 's1', read_agent_words=True)
+        result = project_context.transcript_newest_final_words(config, str(path), 'claude', 's1', wanted, expected_stamp=project_context.transcript_stamp(str(path)))
+        results.append((result['outcome'], len(result.get('words', ''))))
+    print(json.dumps(results))
+"""
+        try:
+            completed = subprocess.run(
+                [sys.executable, "-c", code],
+                cwd=Path(__file__).resolve().parents[4],
+                capture_output=True,
+                text=True,
+                timeout=30,
+                check=False,
+            )
+        except subprocess.TimeoutExpired:
+            self.fail("bounded synthetic newest-final lookup stalled on a single token")
+        self.assertEqual(0, completed.returncode, completed.stderr)
+        self.assertEqual(
+            [["whole", 4_096], ["whole", project_context.FINAL_WORDS_MAX_CHARS], ["too-long", 0]],
+            json.loads(completed.stdout),
+        )
 
     def test_a_reply_no_prompt_could_carry_is_named_and_never_copied(self) -> None:
         self.write([record("u1", 1, "word " * 4_000)])

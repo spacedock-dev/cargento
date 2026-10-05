@@ -4774,7 +4774,9 @@ def transcript_newest_final_words(  # noqa: C901, PLR0911, PLR0912, PLR0915 - on
                     conflicted.add(uuid)
                 if len(signatures) > FINAL_WORDS_UUIDS_MAX:
                     return {"outcome": "scan-limit"}
-            event = _agent_message_event(config, record, harness, sid, text_cap=len(raw))
+            # Identity needs only the existing bounded title/time/UUID; full words
+            # are measured separately and rejected before their expensive prose mask.
+            event = _agent_message_event(config, record, harness, sid)
             if event is None:
                 continue
             fact = _semantic_fact_from_event(event, _AGENT_SAY, "agent_message", "")
