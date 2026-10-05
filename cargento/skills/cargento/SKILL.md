@@ -138,7 +138,7 @@ starts there. `Escape` returns from a session to that breadcrumb's last link and
 Sessions, under the same focus and modifier rules. Inside a tripwire draft it cancels the draft.
 
 MCP tools appear under the service being called rather than their wire name, for example
-`Linear · list issues`. The full recorded string remains available in the row tooltip.
+`GitHub · list issues`. The full recorded string remains available in the row tooltip.
 
 ## Attention
 

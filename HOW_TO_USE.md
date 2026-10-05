@@ -576,7 +576,7 @@ State files accumulate, but only from runs that never exited cleanly. A dashboar
 the way out, so a kill, a crash or a sleeping machine is what leaves one behind. They are inert, since
 a stale record is told from a live instance by probing the port, but each one holds that dead run's
 capability tokens and nothing sweeps them, so they are worth deleting by hand if you have collected a
-pile. Tracked as DRC-4181.
+pile.
 
 ## Troubleshooting
 

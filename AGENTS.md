@@ -83,7 +83,8 @@ shipped skill body, lives in the `sync-docs` skill at `.claude/skills/sync-docs/
 | `COMPATIBILITY.md` | The cross-harness and cross-platform contract, and the Python floor. |
 | `SECURITY.md` | Security invariants, accepted exposures, and private reporting. |
 | `cargento/skills/cargento/SKILL.md` | The shipped product surface. A validated artifact — see the portability rules below. |
-| `docs/promise-map.md` | **Canonical** user-facing promise: one promise per stage of the user's day, the shipped capability behind each, and where each stops. What a release note, the README lede and the Linear project all restate rather than reinvent. |
+| `docs/promise-map.md` | **Canonical** user-facing promise: one promise per stage of the user's day, the shipped capability behind each, and where each stops. Release notes and the README lede restate it rather than reinvent it. |
+| `docs/development-tracking.md` | **Canonical** development taxonomy: promise IDs, journey labels, board columns, moves and tracker copies. It links to the public promise map without putting tracker provenance into that map. |
 | `docs/design-runtime-architecture.md` | **Canonical** module map: what each runtime file owns, which way dependencies run, and how config/state/application are held. |
 | `docs/design-reader-state.md` | **Canonical** rule for what survives a redraw: one row per thing a reader can leave in the DOM, whether `renderNext` puts it back, and — for the two it does not manage — why. The code cites it instead of repeating it. |
 | `docs/design-reading-a-session.md` | **Canonical** record of the four rulings that govern what Cargento may say about a session against the words a reader typed: the evidence floor and the reader-requested model overlay, whether an assessment may be stored, that Cargento never writes into a session, and the seven-rule shape contract a reading must satisfy. The runtime cites its headings, because three of those rules are built into the producer rather than checked after it. |
@@ -121,6 +122,37 @@ every burndown leaves behind a paragraph that was true when written and nothing 
 `sync-docs` first, since the promise wording is canonical in `docs/promise-map.md` and the tracker
 copies it.
 
+## Public documentation and release notes
+
+User-facing docs and release notes must contain no Linear names, issue keys (such as `DRC-1234`)
+or tracker URLs. This applies to the whole body, including examples, code fences, link definitions,
+HTML, copied PR titles and generated release-note sections. Describe what a reader can do, its
+limits and the public source that supports it; use public GitHub PR links for release traceability.
+Do not remove a security fact, consent requirement or measured limitation just to remove its
+tracker reference.
+
+The user-facing set includes `README.md`, `HOW_TO_USE.md`, `COMPATIBILITY.md`, `SECURITY.md`,
+`CODE_OF_CONDUCT.md`, `LICENSE`, `NOTICE` when present, all Markdown shipped in the plugin roots,
+`docs/promise-map.md`, and the shared study entry point, participant kickoff and exploratory prompt
+under `docs/evidence/intent-and-drift/`. New Markdown is user-facing by default unless it is in a
+named development area. Shipped files remain user-facing even below a development-looking folder.
+
+Development provenance may remain in `AGENTS.md`, `CLAUDE.md`, `CONTRIBUTING.md`, repository
+development skills/agents, PR templates and bodies, tests and fixture annotations,
+`docs/development-tracking.md`, `docs/plans/`, design records, capture schemas, roadmap/visibility
+records, probes, feedback, exploration and abstention/drift study records. The facilitator protocol
+and run records are development records; the shared study entry point, kickoff and prompt are
+user-facing exceptions. The validator's audience classifier defines the exact development paths;
+do not exempt an unknown document merely because it mentions engineering. Copying permitted
+provenance into a public note does not preserve its exemption.
+
+`scripts/validate_plugins.py` checks repository documents. Its `--public-text FILE` mode checks a
+complete standalone draft before it is published. It scans raw text, not just rendered Markdown,
+and refuses unreadable or invalid UTF-8 input. Validate the final assembled release body and any
+announcement, including generated text, then read back the published body. A clean repository
+check cannot certify an external release body it did not read. The development taxonomy and
+tracker synchronization live in [development tracking](docs/development-tracking.md).
+
 ## Commit Conventions
 
 ```bash
@@ -140,6 +172,7 @@ git commit -s -m "feat(skill): add new capability to cargento"
   Linear work as `Implements [DRC-NNNN](<issue url>)`, one per line, which is the form the merged
   PRs use. Reserve `Closes #NNNN` for an actual GitHub issue, and then use explicit lines, one per
   issue, never comma-separated, so autoclose works.
+- PR titles must be ready for public release notes: plain shipped behavior, with no tracker brand, issue keys or tracker URLs. Generated notes copy these titles. Keep internal issue provenance in the PR body or development records.
 - After requesting a PR review, always check for Copilot inline review comments in addition to top-level reviews.
 - Never commit or push to another author's PR branch without explicit confirmation from the user.
 

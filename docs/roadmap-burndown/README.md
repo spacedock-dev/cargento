@@ -212,7 +212,7 @@ the only stage whose product is a change to the roadmap records rather than to t
     entity under `## Linear edits made`, before anything else, as the pre-edit record.
   - The issue's **User value** brief drafted as the first section of the rewrite: two sentences,
     who notices this and when in their day, then the promise ID and the move, in the vocabulary of
-    [the promise map](../promise-map.md#how-work-links-to-a-promise). For a decision issue, the
+    [the development tracking taxonomy](../development-tracking.md#how-work-links-to-a-promise). For a decision issue, the
     promise the ruling unblocks or forecloses.
   - The `journey:*` and `move:*` labels to set, named here and written by `implementation` with
     the rewrite. Until they are set the issue ranks as `none` at `selection`.
@@ -2046,7 +2046,7 @@ fetches it live and writes the sharpened version back there.
 ## User value
 
 {Triage: two sentences. Who notices this and when in their day. Then the promise ID and the move,
-per the promise map's "How work links to a promise". When the move is `none`, why no user sees it.}
+per [development tracking](../development-tracking.md#how-work-links-to-a-promise). When the move is `none`, why no user sees it.}
 
 ## Problem
 

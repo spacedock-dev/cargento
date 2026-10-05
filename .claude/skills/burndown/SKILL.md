@@ -169,7 +169,7 @@ the walk contradicts the issue's plan, correct the issue before writing code.
 
 If the issue carries no `journey:*` label, draft its User value brief before the walk: two
 sentences, who notices and when, then the promise ID and the move from
-[the promise map](../../../docs/promise-map.md#how-work-links-to-a-promise). Set `journey:*` and
+[the development tracking taxonomy](../../../docs/development-tracking.md#how-work-links-to-a-promise). Set `journey:*` and
 `move:*` to match. At least one acceptance criterion is a property a user can see, with its own
 `Verified by:` clause; when the move is `none`, the brief says instead why no user sees the
 change.

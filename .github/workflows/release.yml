@@ -145,17 +145,74 @@ jobs:
             echo "RELEASE_COMMIT=$RELEASE_COMMIT"
           } >> "$GITHUB_ENV"
 
+      - name: Install release validation dependencies
+        # The standalone public-note gate also runs on resume and imports YAML.
+        run: |
+          set -euo pipefail
+          python3 -m pip install --disable-pip-version-check --requirement requirements-validation.txt
+
       - name: Run the full validation suite on the release tree (main tip)
         # In resume mode the release tree was already validated when its
         # bump commit was first pushed.
         if: env.RELEASE_COMMIT == ''
         run: |
           set -euo pipefail
-          python3 -m pip install --disable-pip-version-check --requirement requirements-validation.txt
           python3 scripts/validate_plugins.py
           python3 -m unittest scripts/tests/test_validate_plugins.py
           python3 -m unittest scripts/tests/test_bump_version.py
           python3 -m unittest discover -s cargento/skills/cargento/tests -t .
+
+      - name: Prepare and validate the public release notes
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          NOTES_FILE="$RUNNER_TEMP/cargento-release-notes.md"
+          TARGET="${RELEASE_COMMIT:-$(git rev-parse HEAD)}"
+          # Fetch the raw generated body before bumping or moving any release
+          # reference. A private tracker reference requires a curated correction;
+          # the workflow never rewrites or publishes an unchecked body.
+          LOOKUP_RESPONSE="$RUNNER_TEMP/cargento-release-lookup.txt"
+          if gh api --include "repos/$GITHUB_REPOSITORY/releases/tags/$TAG" > "$LOOKUP_RESPONSE"; then
+            LOOKUP_EXIT=0
+          else
+            LOOKUP_EXIT=$?
+          fi
+          # Only an authenticated, well-formed 404 proves that generation is
+          # appropriate. Transport/permission/parse failure is not absence.
+          LOOKUP_STATE=$(python3 - "$LOOKUP_RESPONSE" "$NOTES_FILE" "$LOOKUP_EXIT" <<'PY'
+          import json
+          import re
+          import sys
+          from pathlib import Path
+
+          try:
+              response = Path(sys.argv[1]).read_text(encoding="utf-8")
+              headers, separator, raw_body = response.partition("\n\n")
+              first_line = headers.split("\n", 1)[0]
+              status = re.fullmatch(r"HTTP/\d+(?:\.\d+)? (200|404)(?: [^\n]*)?", first_line)
+              payload = json.loads(raw_body) if separator else None
+              exit_code = int(sys.argv[3])
+              if not status or not isinstance(payload, dict):
+                  raise ValueError("unproven response")
+              if status.group(1) == "200" and exit_code == 0 and isinstance(payload.get("body"), str):
+                  Path(sys.argv[2]).write_text(payload["body"], encoding="utf-8")
+                  print("existing")
+              elif status.group(1) == "404" and exit_code == 1 and payload.get("message") == "Not Found":
+                  print("missing")
+              else:
+                  raise ValueError("unproven lookup")
+          except (OSError, UnicodeError, ValueError, TypeError):
+              sys.exit("::error::Release lookup did not prove an existing text body or absence; refusing release mutations.")
+          PY
+          )
+          if [ "$LOOKUP_STATE" = "missing" ]; then
+            gh api "repos/$GITHUB_REPOSITORY/releases/generate-notes" \
+              --method POST -f "tag_name=$TAG" -f "target_commitish=$TARGET" \
+              --jq .body > "$NOTES_FILE"
+          fi
+          python3 scripts/validate_plugins.py --public-text "$NOTES_FILE"
+          echo "NOTES_FILE=$NOTES_FILE" >> "$GITHUB_ENV"
 
       - name: Bump version fields, re-validate, and push the release commit
         if: env.RELEASE_COMMIT == ''
@@ -220,5 +277,5 @@ jobs:
           fi
           gh release create "$TAG" \
             --title "Cargento $VERSION" \
-            --generate-notes \
+            --notes-file "$NOTES_FILE" \
             --verify-tag

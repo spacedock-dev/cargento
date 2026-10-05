@@ -47,7 +47,7 @@ separate `build` score and has nothing to do with the horizontal axis.
 Five views along the top: the **2x2 map**, **by outcome** (grouped by the six outcomes any
 signal can serve), **journey** (a story-map of narrative stage against release, where each
 column is an item's link to one of the five promises and the Promise row is the
-[promise map](../../../docs/promise-map.md#how-work-links-to-a-promise)'s wording verbatim),
+[promise map](../../../docs/promise-map.md#the-five-questions-of-a-day)'s wording verbatim),
 the two open **decisions** that need a human call, and a sortable **table**.
 
 ## Three things to say before anyone quotes a number

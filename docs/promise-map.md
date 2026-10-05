@@ -4,16 +4,8 @@ Run as many coding agents as you like. Cargento tells you which ones need you, w
 fine, and when it is safe to walk away. One local screen, every harness you use, and nothing
 leaves your machine that you cannot switch off.
 
-This file is the user-facing half of the roadmap. It says what Cargento answers today, what backs
-each answer, and where each answer stops. The internal half, the scored candidate signals and the
-build order, lives on the [Visibility 2x2 board](visibility-2x2/README.md), whose journey view
-carries the same five promises in a **Promise** row. The wording is the same in both places on
-purpose: one of them faces users and the other faces the build queue, and they should never say
-different things. The same rather than byte-identical, and the exception is exactly one character:
-each sentence here continues from the promise lead-in and so opens lowercase, while the board
-renders it standing alone after a promise label and so opens with a capital. `scripts/validate_plugins.py`
-holds those two copies to each other on that rule. The Linear project overview carries a third copy
-that no check can reach, so that one is read by hand.
+This file says what Cargento answers today, what backs each answer, and where each answer stops.
+The five promises below follow the questions a reader asks during a day of coding-agent work.
 
 It is written for someone who runs several coding agents at once and cannot see most of them.
 Nine or ten terminal tabs, three of them waiting on a question nobody noticed, one burning the
@@ -178,8 +170,7 @@ meant. A raise moves what that terminal displays and does not bring its window t
 desk. Where no raise is offered the queue says how far the feature reached rather than repeating
 the absence on every row, and the copy control is what remains. Cargento does not answer a prompt
 for you. The one shape it is allowed is the session asking and Cargento
-answering
-([DEC-2](https://linear.app/recce/issue/DRC-4054/dec-2-decision-let-cargento-act-not-just-observe)).
+answering, as the [ask lane design](design-ask-lane.md) describes.
 
 Cargento can now check a session against your words while you are away and raise a departure
 without being asked, which is off by default and the only thing here that spends your model capacity
@@ -327,10 +318,8 @@ covering it.
 
 Telling a session that died from one that finished is scoped and unstarted.
 
-Everything else, including where each of these sits in the build order and what it is waiting on,
-is on the [Cargento: Actions Front and Center](https://linear.app/recce/project/cargento-actions-front-and-center-eed1852b11e6/overview)
-project in Linear. Its description leads with this same map, and each milestone leads with the user
-value it is there to deliver.
+The [design records](design-next-ui.md) explain the alternatives behind the current interface.
+They do not turn a proposed capability into a shipped promise.
 
 ## Keeping this file honest
 
@@ -350,37 +339,3 @@ Before and after screenshots are the design record, not the promise. They explai
 got here to people who followed the process, and they belong in
 [the session operations board walkthrough](future-ui-exploration/presentations/future-ui-session-operations-board/README.md)
 and [the Next UI design record](design-next-ui.md).
-
-## How work links to a promise
-
-Every unit of roadmap work names the promise it serves and how it touches it. The link is two
-labels on the Linear issue and a two-sentence **User value** section at the top of its body: who
-notices this and when in their day, then the promise ID and the move. The
-[burndown workflow](roadmap-burndown/README.md) requires the section at triage and reads the labels
-at selection.
-
-| ID | Question | Linear label | Board column |
-|---|---|---|---|
-| P1 | Which of my agents are running? | `journey:open-sessions` | `open` |
-| P2 | What is it doing, and when should I come back? | `journey:mid-flight` | `mid` |
-| P3 | Is anything waiting on me? | `journey:stopped-at-gate` | `gate` |
-| P4 | Will I hit the wall before the work finishes? | `journey:usage` | `usage` |
-| P5 | Did anything die quietly? | `journey:end-of-sessions` | `end` |
-
-The five labels and the five columns predate the IDs. Nothing was renamed to make this table.
-
-The move says how the work touches its promise.
-
-| Move | Meaning | May change this file |
-|---|---|---|
-| `keep` | Without this, the board says something untrue about the promise. Most defects land here, because the limits are part of the promise. | No |
-| `sharpen` | The promise is kept and this makes it more precise, or covers one more harness. | No |
-| `extend` | A new clause on an existing promise. | Yes, that promise |
-| `new` | Territory no promise covers. Today that is only the Move up a level milestone. | Yes, a new promise |
-| `none` | No user-visible effect. The issue says why, and the Linear project overview counts these so the share stays visible. | No |
-
-A decision issue names the promise its ruling unblocks or forecloses, and takes the move of the
-work it gates.
-
-Only `extend` and `new` may change what this file says. A `keep` or `sharpen` merge changes no
-wording here, and a burndown that closes one says so in its report.

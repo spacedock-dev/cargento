@@ -75,7 +75,7 @@ Every experiment has YAML frontmatter with the following fields.
 The experiment is in framing while the crew turns the underlying ask into a bold, falsifiable design bet without assuming the current dashboard structure should survive.
 
 - Inputs include the 2026-08-27 project-cockpit debrief, the current `?next=true` UI, captain direction, available design records, and known source limitations.
-- Outputs include a concise bet, which of the five questions in [the promise map](../promise-map.md#how-work-links-to-a-promise) it answers by ID and which move the bet would be, the command-risk baseline, explicit non-goals, and evidence that would invalidate the model rather than merely suggest polish.
+- Outputs include a concise bet, which of the five questions in [the development tracking taxonomy](../development-tracking.md#how-work-links-to-a-promise) it answers by ID and which move the bet would be, the command-risk baseline, explicit non-goals, and evidence that would invalidate the model rather than merely suggest polish.
 - A good frame attacks the information or interaction model, names what should lead, and permits a materially different UI.
 - A bad frame treats the work as incremental cleanup, preserves existing regions by default, or defines success as visual preference.
 - The gate shows the bet, why it could improve comprehension, what it risks, how it will be falsified, and what the three harnesses must exercise.
