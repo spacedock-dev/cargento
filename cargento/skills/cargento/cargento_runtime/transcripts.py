@@ -227,6 +227,9 @@ def prompt_title(config: RuntimeConfig, text: str, limit: int = 80) -> str | Non
     it, which is what makes a `<teammate-message>` show the instruction instead
     of the envelope.
     """
+    # Mask against the raw formatting before command args replace tags with
+    # spaces, which would otherwise separate a credential into unmatched pieces.
+    text = records.redact_secrets(text)
     name = _COMMAND_NAME_RE.search(text)
     if name and name.group(1):
         args = _COMMAND_ARGS_RE.search(text)

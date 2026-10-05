@@ -3115,6 +3115,17 @@ key cut at a 140-character cap is still a hundred usable characters of key and a
 fallen off no longer matches. A slice that ran first is what published a URL credential cut short of
 its `@`.
 
+Since 2026-10-05 the shared filter also checks a second view with transparent HTML inline formatting
+removed, before the credential hint check. A match masks the corresponding original span; ordinary
+spaces, newlines and harmless formatting remain, and the raw scan still masks credentials in tag
+attributes. The supported elements are `a`, `abbr`, `b`, `code`, `del`, `em`, `i`, `ins`, `kbd`, `mark`,
+`s`, `samp`, `small`, `span`, `strong`, `sub`, `sup`, `time`, `u` and `var`, including closing and
+self-closing tags and quoted attributes. Slash-command arguments are masked before their tags turn
+into spaces. This extra view is limited to 16,384 characters: longer text containing one of those
+element starts is withheld as a redaction marker, including an unfinished attribute. Plain text
+does not acquire that bound. Arbitrary envelope tags, encoded markup and unseen text beyond an
+existing source extraction bound are outside this correction's claim.
+
 The card, the browser notification body and the native popup are pixels, and a screenshot is what
 each of them risks. Two of the things carrying this text are files. The first is the observer
 sidecar under `~/.cargento/observer/`, one JSON file per session holding the derived goal, which is
