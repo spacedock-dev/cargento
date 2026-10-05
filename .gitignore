@@ -51,6 +51,7 @@ docs/feedback/*
 # subagents (which also hold .json metadata with absolute paths), and any tool-results directory.
 tests/raw_sessions/*/*
 !tests/raw_sessions/*/steering-excerpts.txt
+tests/raw_sessions/**/*.jsonl
 tests/annotated_sessions/**/*.jsonl
 # The drift replay check's local files, should CARGENTO_HOME ever point at the repository root.
 /drift-replay/

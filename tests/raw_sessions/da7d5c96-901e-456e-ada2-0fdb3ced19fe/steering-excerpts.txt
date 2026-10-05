@@ -1,0 +1,426 @@
+Session: da7d5c96-901e-456e-ada2-0fdb3ced19fe
+Date: 2026-10-01 (UTC, first message)
+
+IDs follow replay numbering, including normalized typed slash commands. Gaps preserve excluded
+command/wrapper IDs, which can also separate approved assistant replies. Assistant records within
+each reply are joined with blank lines. Timestamp ranges span included records, not continuous activity.
+No tool calls or output appear. PUSHBACK marks every reviewed steering message. PR #N denotes a
+pull request; DEC references and bracketed source labels in historical text are not conversation citations.
+
+[#1] YOU — 2026-10-01 01:13:21.118 UTC
+As part of the work needed to finalize the "Intent and drift: see where a Claude Code session drifted and steer it back" milestone for the Cargento project (https://linear.app/[ORG_NAME_2]/project/cargento-actions-front-and-center-[ID_REDACTED_1]), I want you to fully read and fully execute the prompt at this location: `docs/evidence/intent-and-drift/PROMPT.md`
+
+[#2] CLAUDE — 2026-10-01 01:14:06.191 – 2026-10-01 01:29:29.761 UTC
+Checkout ready at `fa5f214`. Starting the sidecar server now.
+
+You picked session 2. Reading its transcript now.
+
+Opening your chosen session's page in the browser now.
+
+Browser showed an error page; checking whether the sidecar is still up.
+
+You say Browser 2 is on this Mac, so I'll retry. The first refusal may have been a one-off.
+
+Your Chrome reaches it, so the extension I was driving is a different Chrome. Switching to Browser 1.
+
+The board published nothing from inside this transcript: no first prompt, no title, no entries. It only has file-level facts like the mtime. Looking for why in the Claude collector.
+
+I'll save this state as evidence first. It's a real finding.
+
+Restarted with `--window-hours 240`. Now the row has its title, first prompt and model. Reloading the page without `?all=1`.
+
+You approved: **proposal + Keep**. Typing the goal and lines into the page now.
+
+Goal typed (96/240). Saving it, then filling line 1.
+
+Line 1 is in. `Analyze drift` is now disabled because of the unsaved edit, which is what the docs say. Typing line 2 and saving the list.
+
+Revision 2 saved, both lines marked "typed". Saving the screenshots, then checking why the evidence window opened at your last prompt.
+
+The window opens at your **last prompt** (Aug 21, prompt #11), not your first. Checking the docs to see whether that's by design.
+
+The layout moved up, so my click missed the switch. Clicking it where it is now.
+
+My tab still shows `Allow and analyze` and 0 requests. Checking the server to see whether your press arrived.
+
+The server never got it: consent is still `false`, 0 used, no job running, and nothing in the log. So the press didn't reach the sidecar. I won't press it for you.
+
+Steer back and Update intent only show up next to a stored reading, so this pass can't reach them. I'm writing the run file now. It won't be committed until you approve it.
+
+This pass got as far as the product allows, and it stopped at a real wall. Nothing has been committed or filed, and nothing went to the model.
+
+- **Result:** your Allow was stored, but no analysis ran. A newly started sidecar can't analyze a past session at all: the page says "idle with no stop and no end observed". That's one fewer road to try, and it's a gap in the study prompt itself.
+- **Reached:** saving the goal and lines, the live monitor, the disclosure, and the Allow.
+- **Not reached:** the result, citations, Steer back, Copy and Update intent. They all need a stored reading, and none exists.
+
+### Report (step 7)
+
+| Item | Value |
+|---|---|
+| SHA | `fa5f2149687a789d274988bbb7e80737882c7bb3` |
+| Start flags | `--port 4571 --daemon`, then restarted with `--window-hours 240` (you approved this). No observer flags. |
+| Session age | Last write about 9.6 days ago, started about 52 days ago |
+| Browser / width | Chrome 154 (Browser 1). 1280 wide for capture 01, 1697 wide for 02–10 |
+| Model consent | You pressed Allow. Codex and tool output to OpenAI are allowed. |
+| Attempts | 1 press, withheld before any model call, **0 model requests** |
+| Unverified steps | Result level, line verdicts, citations, Steer back, Copy, Update intent, Analyze again |
+
+### What I found
+
+```
+1. ?all=1 lists an old session but never reads it  -> 0 entries      (collectors/claude.py:774)
+2. a typed goal opens the window at your LAST prompt -> 6 entries -> 1 (by design, DEC-24 #13)
+3. a reading needs running / observed stop / end     -> past session = always withheld
+   (reading.py eligibility). The page still offers "Allow and analyze" first and names no next step.
+4. "Choose a goal or use your prompt..." hint stays after the goal is saved
+```
+
+Number 3 matters most. A cold participant following the same path would hit the same wall, so the prompt (or the product) needs to change before DRC-4722.
+
+### Private locations (not in Git)
+- Checkout: `[EXTERNAL_PATH]`
+- Scratch home: `[EXTERNAL_PATH]`
+- Screenshots: `[EXTERNAL_PATH]` (10 files, gitignored)
+- Draft run file: `docs/evidence/intent-and-drift/run-sidecar-055892.md` in the checkout (not committed)
+
+The sidecar is still running on port 4571, and the Browser 1 tab is still open.
+
+### What I need from you
+1. **Look at the 10 screenshots.** The prompt requires a person to read each one before any verdict.
+2. **Review the run file.** It has no name, session ID, paths, goal text or line text.
+3. Then tell me which of these to do:
+   - Commit the run file on a branch and open a PR into `main`.
+   - File a Linear issue in the Intent and drift milestone for finding 3, and maybe 1 and 4.
+   - Clean up: stop the sidecar, remove the checkout and home.
+
+That failed because this shell is already inside the checkout, so the relative path got doubled. Use the full path:
+
+```
+! open [EXTERNAL_PATH]
+```
+
+The run file to review is in the same checkout:
+
+```
+! open [EXTERNAL_PATH]
+```
+
+[#3] YOU — 2026-10-01 01:32:21.467 UTC
+ok the run file is ok, what should I do next?
+
+[#4] CLAUDE — 2026-10-01 01:32:34.724 UTC
+Next: tell me you've looked at the 10 screenshots, then approve the PR and the issue. I'll do the rest. The issue matters more than the PR, because finding 3 blocks the cold study.
+
+```
+you                                   me
+---                                   --
+1. "I looked at the screenshots"  ->  mark the review row "reviewed" in the run file
+2. "go PR"                        ->  branch, run pre-PR checks + sync-docs, open a PR into main
+3. "go issue" (+ wording ok)      ->  draft the Linear issue, show it to you, file only after your yes
+4. "clean up"                     ->  stop the sidecar, remove the checkout + private home
+```
+
+**Step 1: screenshots.** You said the run file is ok, but the prompt also needs a person to look at each image. The file still says "pending participant review". Once you've looked, I'll change that line. The images stay local; none go into Git.
+
+**Step 2: PR.** The PR only adds the one run file. I'll still run the full pre-PR check list, because `AGENTS.md` says to run it even for prose-only changes.
+
+**Step 3: Linear issue.** My suggestion is one issue in the Intent and drift milestone:
+
+> **A sidecar can't analyze a past session**
+> - `?all=1` shows an old session but doesn't read it (0 entries).
+> - Even with the window widened, the reading is withheld: "idle with no stop and no end observed".
+> - The page still offers "Allow and analyze" first and gives no next step.
+> - So the PROMPT.md / cold-study path can't reach a result. The fix is to change the prompt (use a live session) or the product.
+
+Finding 4 (the hint that stays after you save a goal) is small. I'd mention it in the same issue rather than file it separately. Finding 2 is by design, so no issue for it.
+
+**Step 4: cleanup.** Leave this until the PR and the issue are done, in case we need another screenshot.
+
+You can answer all of these in one message, e.g. "looked at screenshots, go PR, go issue".
+
+[#5] YOU — 2026-10-01 01:32:52.135 UTC
+looked at screenshots, go PR, go issue
+
+[#6] CLAUDE — 2026-10-01 01:32:59.915 – 2026-10-01 01:39:37.773 UTC
+Plan:  Mark the screenshots reviewed in the run file. File the Linear issue first, so the run file and the PR can link to it. Then branch, run the pre-PR checks and `sync-docs`, commit, and open the PR.
+Worth: Worth it. The issue holds the real finding, and the PR just keeps the record. Both are small.
+
+Neither PROMPT.md nor COLD_STUDY_PROTOCOL.md mentions hooks, and both start a fresh sidecar. So both have the gap. Filing the issue now.
+
+Filed **DRC-4763**, blocking DRC-4722. Now linking it from the run file.
+
+Run file updated. Now the branch and the pre-PR checks. The sidecar keeps running on 4571, and nothing else is running a suite.
+
+All clean with the pinned tools (ruff 0.16.0). The earlier errors were the system ruff. Now the test suite with coverage.
+
+"Implements DRC-4763" is wrong: this PR records the evidence, it doesn't fix the issue. Linear might even auto-close it. Rewording the commit.
+
+Now `sync-docs`, which `AGENTS.md` requires before every PR.
+
+Running the `sync-docs` checks. The diff is one evidence file. The doc map already covers that folder ("public redacted run template"), so no pointer needs updating.
+
+Linking the PR from the issue so the two point at each other.
+
+The PR and the issue are both up. CI is running on the PR, and I'll get a notice when it finishes.
+
+- **PR #459:** https://github.com/spacedock-dev/cargento/pull/459. It adds only the run file, with the screenshots marked as reviewed by you.
+- **Issue DRC-4763:** https://linear.app/[ORG_NAME_2]/issue/DRC-4763. It's in the Intent and drift milestone, High priority, and **blocks DRC-4722**. The PR is attached to it.
+
+One change from the wording I showed you. The milestone notes already say the withhold is **correct product behavior**: a reading needs a stop that the dashboard saw through its hooks. So the issue doesn't call the product broken. It says the **study prompts** don't tell you to point the hooks at the sidecar, so as written they can never reach a result. The two small UI points (no next step after Allow, the leftover "Choose a goal…" hint) are in the same issue as non-blocking.
+
+What the checks showed:
+- Lint, types, the validator and the version check all pass with the pinned tools.
+- The scripts suite passes: 797 tests.
+- The dashboard suite has **one import error** in `test_spacedock`, and only on this Mac's Python 3.14.6. The same module passes on Python 3.11, which CI uses, and this PR changes only one Markdown file. I left it alone. It might be worth its own small issue if 3.14 support matters. Your call.
+
+Two optional extras:
+1. Run `sync-project` to add DRC-4763 to the milestone's "What is left" list in Linear.
+2. Clean up: stop the sidecar on 4571 and remove the checkout and private home. The prompt says to wait until you've decided where the evidence goes. With the PR open and the captures staying local, that looks settled now.
+
+CI is green on PR #459, on the current head `5f2d91d`:
+
+| Check | Result |
+|---|---|
+| quality-gate | pass. The five measurable jobs were skipped because the diff is prose only, which is the documented short path. |
+| validate | pass. This run includes the full dashboard suite on CI's Python, so the `test_spacedock` error really is local to 3.14. |
+| version-guard | pass |
+
+The PR is now **BEHIND**: one commit landed on `main` after I pushed (`b626f2d`, PR #458, flaky timing tests). The merge rule requires the branch to be up to date, so merging means running `gh pr update-branch 459` first and waiting for one more CI run. I haven't done either, since you didn't ask me to merge.
+
+Still waiting on you:
+1. **Merge PR #459?** If yes, I'll update the branch, wait for green again, and merge.
+2. **`sync-project`** to add DRC-4763 to the milestone list.
+3. **Cleanup:** stop the sidecar on 4571 and remove the checkout and private home.
+
+[#7] YOU — 2026-10-01 01:44:39.258 UTC
+PR has been merged
+
+[#8] CLAUDE — 2026-10-01 01:44:53.222 UTC
+PR #459 is merged (`b8da979`, 01:44 UTC), and the remote branch is deleted.
+
+Two things are still waiting on your call:
+
+1. **Cleanup.** The PR merged and the captures stay local, so I think it's safe now. It would:
+   ```
+   stop sidecar on 4571
+   remove worktree      [EXTERNAL_PATH]        (includes the 10 local screenshots)
+   remove private home  [EXTERNAL_PATH]   (includes the saved goal/lines)
+   delete local branch  docs/intent-drift-sidecar-055892
+   close the Browser 1 tab
+   ```
+   Removing the worktree **deletes the 10 screenshots**. If you want to keep them, copy that folder somewhere first, or tell me where to move it.
+
+2. **`sync-project`.** This would add DRC-4763 to the milestone's "What is left" list in Linear.
+
+You can answer in one line, e.g. "clean up, keep screenshots in [EXTERNAL_PATH]" or "clean up, skip sync-project".
+
+[#9] YOU — 2026-10-01 01:45:25.225 UTC
+clean up skip sync-project
+
+[#10] CLAUDE — 2026-10-01 01:45:27.643 – 2026-10-01 01:45:41.352 UTC
+Cleaning up now. The screenshots get deleted along with the worktree, since you didn't ask to keep them.
+
+Cleanup is done, and I skipped `sync-project` as you asked.
+
+- **Sidecar:** stopped. Nothing is listening on port 4571 any more.
+- **Checkout:** the worktree is removed, and the 10 screenshots went with it.
+- **Private home:** deleted, including the saved goal and lines.
+- **Branch:** the local branch is deleted. The remote one was already gone after the merge.
+- **Venv:** the scratch venv is removed.
+- **Browser tab:** already closed, because the agent's tab group no longer exists.
+
+Your main checkout is clean on `main` and wasn't touched. It's still at `fa5f214`, so run `git pull` to get PR #459 and the other new commits.
+
+The open item is **DRC-4763**, which blocks DRC-4722. The study prompts need to tell you to send Cargento's hooks to the sidecar before any session can be analyzed.
+
+[#13] YOU — 2026-10-02 02:12:48.810 UTC
+What's the current direction of Cargento now?
+Can you use eli5 skill to explain to me
+
+[#14] CLAUDE — 2026-10-02 02:14:16.824 UTC
+Here's the picture explainer: https://claude.ai/artifact/[ID_REDACTED_1]
+
+In short:
+
+```
+Before:  "Which of my agents need me?"        <- built: one screen for 10 tools
+Now:     "Is my agent still doing what I asked?"   <- Intent and drift, 88.5% done
+Next:    prove it with real people, then (maybe) send the fix into the agent for you
+```
+
+- **What it is:** a control tower for your coding agents. It's one local screen that shows who is working, who is waiting on you, and who wandered off.
+- **What's being built now:** you write your goal. Cargento marks where the agent's work left that goal, then gives you a correction to copy back in. Cargento shows you the fix, but you paste it yourself.
+- **What's in the way:** the code is mostly done. What's left is proof:
+  1. Claude can't yet read its own sessions. It failed its scoring test twice, so Codex reads them for now.
+  2. Someone has to walk every step in the running app.
+  3. Two people who didn't build it have to try it on their own. That study is blocked by the issue we filed yesterday, DRC-4763.
+- **After that (not scheduled):** treat Codex's work as evidence, and decide whether Cargento should ever type the fix into your agent itself.
+
+The page is private for now. Share it from its Share menu if you want teammates to see it.
+
+[#15] YOU — 2026-10-02 03:44:09.607 UTC
+Check the git commit `https://github.com/spacedock-dev/cargento/commit/2c2590d59d29db8579dc27357e54c136f29fc8d0#diff-dce0dd067e092ffee0288ed8a9646793dfb46adaf22ee500553e223098bc6551`, use behaviro diff skill to check what's is the modify diff of burndown skill in thie commit change
+
+[#16] CLAUDE — 2026-10-02 03:44:22.672 – 2026-10-02 03:47:39.136 UTC
+Plan:  Look at what commit `2c2590d` changed in the `burndown` skill. Then run the `behavior-diff` skill to compare how an agent acts with the old version of the skill versus the new one.
+Worth: Worth it if you want to know whether the edit changes behavior, not just wording. One catch: `behavior-diff` is built for *uncommitted* edits, so I'll recreate the before/after state from the commit.
+
+`main` still has exactly the commit's version of the skill, so I can test `--file` (the version in this commit) against `--before-file` (its parent). Reading what changed.
+
+The behavior diff is running in the background. It runs fresh agent trials with the old skill and with the new skill, then builds a report that opens on its own. I'll summarize when it finishes.
+
+**The text diff** (`.claude/skills/burndown/SKILL.md`, +350 / −296 lines), in plain words:
+
+| | Before (parent) | After (2c2590d) |
+|---|---|---|
+| What you hand it | Nothing. It picks **one issue** from the whole project | A **milestone name**, which it works until the milestone is closed |
+| First move | "Print the pick in one line", move the issue to In Progress, start | Print a **plan** (groups, stack order, time and token estimate), then **wait for your yes**. Your yes covers the merges in that plan. |
+| How it ranks work | 7 rungs: release row, move label, panel score, estimate… | Groups issues by the view or contract they change. Security or High priority goes first, then the longest path to the Verification issue. |
+| PR shape | One PR per issue. `gh pr update-branch` before merge. | Every `web/` group is one layer of a **single `gh stack`**. Never `update-branch` or `gh pr merge` a layer. Land with `gh stack merge --squash`. |
+| `Implements DRC-…` | On every PR | Only on the layer that finishes the issue (Linear closes an issue on any merged PR that says it) |
+| When it stops | No end condition | A stop list (missing decision, NO-GO review, CI red twice, more than 50% over the estimate…) plus a report between groups |
+| Removed | — | Release rows, panel scores and probe rules. Design-reference rules moved to `references/design-reference.md`. |
+
+What I expect the trials to show: the old skill picks one issue (probably DRC-4751 or DRC-4755) and wants to start it, while the new one prints a grouped plan and asks first. The report will show whether that really happens.
+
+The edit changes behavior a lot, and every trial on each side agreed. 7 of the 9 decisions the report compared went differently:
+
+- **Old skill:** picks one issue (DRC-4755) and stops before moving it to In Progress.
+- **New skill:** prints a plan with six groups, the order, the review level and an estimate, then waits for your yes.
+
+The report is at `[EXTERNAL_PATH]` (it already opened by itself).
+
+**Setup:** the prompt was "burndown <Future passes milestone>" with its 8 open issues pasted in. 3 trials with the old skill, 3 with the new one, model Opus, no writes to Linear or GitHub.
+
+```
+                      OLD skill (parent)                  NEW skill (2c2590d)
+                      ------------------                  -------------------
+milestone name   ->   "the skill takes no milestone,      "work the whole milestone"
+                       so I'll use it as a filter"
+output           ->   1 issue: DRC-4755 (smallest)        6 groups, order, review level, stack
+estimate         ->   none                                calibrated vs full: ~4-5h vs ~7-8h
+DEC-25 decision  ->   ranked like a normal issue          no build: write the question, wait for a ruling
+stops at         ->   before moving the pick to           at the plan, asking for your yes
+                      In Progress
+asks you for     ->   blocker lists, Linear access        milestone description, Verification issue
+```
+
+These two stayed the same: both sides checked the receipts on the 4 completed issues, and neither wrote anything.
+
+**A new-skill trial's plan, for a feel:**
+- **First:** DRC-4688. It's Security and Medium priority, so it gets full adversarial review and its own PR.
+- **One PR:** 4753, 4754 and 4755 together. They all change the same shell-command parsing.
+- **The only `web/` stack:** DRC-4670.
+
+That's the grouping and "Security goes first" rule working as written.
+
+**Two things the trials surfaced that you might care about:**
+1. The new skill expects every milestone to have a **Verification issue**, and this maintenance milestone has none. All 3 new-skill trials stopped to ask about it. The skill doesn't say what to do with a milestone like this, so the gap is real.
+2. The old skill had no idea what to do with a milestone name. So the old version doesn't do the job badly; it can't do the job at all.
+
+**Limits:** this is one scenario with 3 trials per side, and every trial stopped at the planning step. It shows nothing about the later rules: stacking, putting `Implements` only on the finishing layer, never running `update-branch` on a layer. Testing those needs a task that starts mid-stack, e.g. "layer 2 is green, main moved, what do you run?". I can set that up if you want.
+
+[#18] YOU — 2026-10-02 03:47:47.141 UTC — PUSHBACK
+You are not using the latest version of behavior skill. I reload the plugin please rerun it again
+
+[#19] CLAUDE — 2026-10-02 03:47:54.001 – 2026-10-02 03:50:03.154 UTC
+Rerunning the same comparison with the new version (0.3.12, previously 0.3.9). Same before/after files and the same task.
+
+The rerun is going in the background with behavior-diff **0.3.12**. It compares the same old and new `burndown` skill files on the same "burndown Future passes" task. The report opens by itself when it's done, and then I'll summarize it and point out anything that differs from the 0.3.9 run.
+
+The rerun on behavior-diff **0.3.12** agrees with the 0.3.9 run. Every trial on each side made the same choice, and 7 of the 9 decisions changed:
+
+- **Old skill:** picks one issue (DRC-4755) and works it.
+- **New skill:** groups the milestone into PRs and prints the plan.
+
+The new report is at `[EXTERNAL_PATH]` (already open).
+
+The new version adds a **Summary** at the top. It guesses what the edit was for: "turn burndown from a one-issue pick-and-work skill into a milestone-level orchestrator". It also adds a "Watch out" line.
+
+```
+decision            OLD skill (3/3 trials)                   NEW skill (3/3 trials)
+------------------  ---------------------------------------  -------------------------------------------
+unit of work        pick ONE issue (DRC-4755), work it       group the milestone into PRs, print a plan
+how it ranks        move label, then estimate                Security/priority, blockers, review level, surface
+estimate            none                                     time + tokens at two rigor levels
+Verification issue  never mentioned                          flags it's missing, asks whether to file one
+stops at            before moving 4755 to In Progress        at plan approval, before any Linear write
+what it says is     blocker links, panel scores,             milestone description, each issue's Scope
+missing             design reference                         section
+looks at code?      only worktrees/docs (1 trial: nothing)   greps the runtime code to tag each issue's area
+-- same --          checks receipts on completed issues: yes; writes nothing to Linear or git
+```
+
+**What's different from the first run:**
+- The first run ended with **"Six groups"**. This one says **6–7 groups**, so the exact grouping wobbles a little between trials. The overall shape doesn't.
+- The new "Watch out" is a fair point: the groups are only a first guess, because the trials never saw each issue's Scope section or the milestone description.
+- Decision issues are no longer listed separately, so there's no row for how DEC-25 was handled. In the first run, the new skill held DEC-25 for a ruling.
+
+**Same limits as before:** one scenario, and every trial stopped at the planning step. The stacking rules haven't been tested yet: `Implements` only on the finishing layer, never running `update-branch` on a layer, `gh stack sync` when `main` moves. Testing those needs a task that starts mid-stack, and I can run one if you want.
+
+[#20] YOU — 2026-10-02 03:50:03.381 UTC
+put the output report to claude artifact, make sure we use light theme
+
+[#21] CLAUDE — 2026-10-02 03:50:09.949 – 2026-10-02 03:50:46.967 UTC
+Plan:  Read the whole report, then make a light-only copy: drop its dark-mode CSS and pin `color-scheme: light`. Publish that copy as a private artifact. The original report file stays as it is.
+Worth: Fine to do. The report quotes this public repo and a few local paths with your username, and the artifact is private until you share it.
+
+The report has no dark-mode CSS, so it's light-only already. I still have to read the whole file before publishing it.
+
+I published the report as a private artifact: https://claude.ai/artifact/[ID_REDACTED_2]
+
+- **Light theme:** the report only had light colors to begin with. I also locked the page to light mode, so the controls and scrollbars stay light even if your viewer is set to dark.
+- **Content:** the same as the 0.3.12 report: summary, decision diff, flow diff, all 6 trials and the full diff. I changed only the title, to "Burndown Behavior Diff", and removed the outer page wrapper, which the artifact adds itself. The original report under `[EXTERNAL_PATH]` is untouched.
+- **Before you share it:** the page shows local paths with your username, such as `/[EXTERNAL_PATH_1]` and the scratchpad path. One trial's answer also mentions that Gmail, PostHog and Sentry connectors need authorizing. Only you can open it until you share it from its Share menu.
+
+[#24] CLAUDE — 2026-10-05 03:33:57.161 UTC
+You pasted the "Pushback sessions" prompt but didn't say what to do with it, so I haven't started.
+
+This prompt has already been run once. `main` has four annotated sessions in `tests/raw_sessions/` and `tests/annotated_sessions/`. They came in through PR #477 (`f118a08`), and PR #478 then replayed them through Cargento's drift checks.
+
+Running it again as written would:
+
+- search your Claude sessions from the last 30 days (since 2026-09-05) for new pushback examples;
+- publish a new private artifact and open a new PR.
+
+Steps 1d and 2 each run several review agents, so it's a long pass.
+
+Which do you want?
+
+1. **Add new sessions:** run it in full, skip the four sessions already in the repo, and add 3–4 new ones from the last 30 days.
+2. **Refresh:** re-check or rebuild the existing four, for example with redaction or annotation fixes.
+3. **Something else:** for example, only Step 1, the artifact, with no PR.
+
+[#27] YOU — 2026-10-05 03:34:51.713 UTC
+2
+
+[#28] CLAUDE — 2026-10-05 03:34:59.833 – 2026-10-05 03:36:04.024 UTC
+Plan:  Re-check the four sessions already in the repo. First, scan the committed files for anything the redaction missed: secrets, names, hosts, paths. Then check each annotation against its steering excerpts. If I find problems, fix them on a branch and open a PR without merging. If I find nothing, I'll report that and won't open a PR.
+Worth: Worth a quick pass, since these files are public. But they were already reviewed in PR #477, so the likely result is "no changes." I won't rebuild the artifact unless you ask.
+
+Almost every word on that list is an ordinary verb or a product name. One word looks like a person's first name, so I'll look at its context, along with "Astra" and "Nimbalyst".
+
+None of these is a leak. "Astra" is a model name, and "Cezar" and "Nimbalyst" are public tools listed with their star counts. Last step: check that the annotations line up with the excerpts.
+
+I checked the four sessions again and found nothing to fix, so I didn't make a branch or open a PR.
+
+The full local `.jsonl` logs aren't on this machine any more, so this pass covered only the 8 committed files: the 4 annotations, the 4 steering-excerpt files, and `tests/README.md`.
+
+```
+check                                     result
+----------------------------------------  ------------------------------------------
+credential-shaped strings (keys, tokens)  0  (1 hit = README's AWS doc placeholder)
+emails / private IPs / your username,     0
+  company or org names / time zones
+[EXTERNAL_PATH]<real name> paths                  0  (all read [EXTERNAL_PATH])
+non-dictionary capitalised words          240, read by hand: verbs, products, model
+  (possible missed names)                   names; none is a person
+annotation cites #N -> exists in excerpt  195 of 195 found
+pushback quotes match excerpt word for    31 of 31
+  word
+.jsonl tracked in git                     none (git ls-files tests/)
+```
+
+One thing I couldn't check: your local name list, `[EXTERNAL_PATH]`, isn't on this machine either. So I couldn't re-run the exact list of teammates' names the redaction used. Instead I read every unusual capitalised word myself. If you still have that file on another machine, re-running it there would close this gap.
+
+So redoing these four has nothing left to fix. If you want new material, the next step is option 1: add new sessions from the last 30 days.
