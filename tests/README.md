@@ -1,9 +1,9 @@
 # Pushback session fixtures
 
-Seven Claude Code sessions in which the person steered the agent back after it drifted. Each one has
-a goal the person set, an outcome, drift that is visible in the transcript, and a steering message.
-They are reference material for the Intent and drift work: what drift looks like in a real session,
-and what the person typed when they noticed it.
+Eleven Claude Code sessions, in three collections, in which the person steered the agent back after
+it drifted. Each one has a goal the person set, an outcome, drift that is visible in the transcript,
+and a steering message. They are reference material for the Intent and drift work: what drift looks
+like in a real session, and what the person typed when they noticed it.
 
 ```
 tests/raw_sessions/<session_id>/
@@ -30,7 +30,10 @@ A bare `#N` is a message number. `PR #N` is a pull request. Message numbers coun
 top-level conversation with tool calls and tool output dropped:
 
 - A typed message counts as one. A slash command counts as one typed message, written as
-  `/command args`.
+  `/command args`. A typed message that the app running the session prefixed with its own
+  `<system_instruction>` or `<user-preferences>` block counts as one too, without that block.
+  `scripts/drift_replay.py` does not count these yet, so its numbers run behind the Conductor
+  collection's annotations.
 - All of Claude's reply text between two typed messages, joined, counts as one. That includes
   text the harness wrote in Claude's place, such as a usage-limit notice.
 - Not counted: messages from other agents, task notifications, interrupt markers, compaction
@@ -83,17 +86,18 @@ length changes. [The drift replay check](../docs/drift-replay/README.md) replays
 | `[NAME_N]` | People's names, usernames and handles, including the home-directory segment of paths |
 | `[ORG_NAME_N]` | Company and organisation names, and workspace slugs in tracker and chat URLs |
 | `[ID_REDACTED_N]` | Account, user, workspace, page, project and chat channel identifiers |
-| `[INTERNAL_HOST_N]` | Private-network addresses, internal hosts and machine names |
+| `[INTERNAL_HOST_N]` | Private-network and tailnet addresses, internal hosts, machine names and tunnel names |
 | `[TZ_REDACTED]` | Time zone names and abbreviations, which give away where someone lives |
-| `[LOCATION_REDACTED]` | Country and city names that say where someone lives |
+| `[LOCATION_REDACTED]` | Country and city names, and CDN edge codes, that say where someone lives |
 | `/[EXTERNAL_PATH_N]` | A path under the home directory outside this repository (local JSONL) |
 | `[EXTERNAL_PATH]` | A private path omitted from an extracted conversation |
 | `[OTHER_SESSION_LINE_REMOVED]` | A line quoting another session's prompt |
 | `[CROSS_SESSION_LISTING_REMOVED]` | Tool output listing other sessions' prompts (local JSONL) |
-| `[THIRD_PARTY_MESSAGE_REMOVED]` | The body of a chat message someone else wrote (local JSONL) |
+| `[THIRD_PARTY_MESSAGE_REMOVED]` | The body of a chat message someone else wrote (local JSONL), or a teammate's quoted words (Conductor collection) |
+| `[LOCAL_TIME]` | A clock time or day part in a message body not marked UTC, which beside the UTC header gives away the writer's offset (Conductor collection) |
 
 `[NAME_N]` and `[ORG_NAME_N]` come from a fixed table within each collection. Numbers are stable
-across that collection's sessions, but are not an identity key across the two collections. In the
+across that collection's sessions, but are not an identity key across collections. In the
 original four, a bare first name that two people share gets its own number, because the transcript
 cannot say which person it means. Other numbered tags are local to each session.
 
@@ -162,3 +166,34 @@ Public repository paths, session IDs, issue keys, loopback addresses and documen
 credentials are preserved. Name aliases next to Chinese characters use Latin-token boundaries;
 ordinary Unicode word boundaries can miss them. These logs have not been through the original
 collection's drift-replay equivalence check.
+
+### Conductor collection
+
+This collection adds four sessions from one contributor's own logs, typed in Conductor and mostly
+in Traditional Chinese. The scan covered top-level logs whose first message fell in the 30 days
+before 2026-10-05, with at least four typed messages. Sessions a script started through the Python
+SDK or the headless CLI were left out, which left 37. The flags also matched Chinese corrective
+wording (不是, 不對, 我說, 你說, 為什麼, 其實, 等等, 到底). A support thread full of an outside
+company's people and data was passed over, and so were the two longest sessions (748 and 328 typed
+messages), most of them short approvals.
+
+| Session | First message date (UTC) | Why it was selected |
+|---|---|---|
+| `e3cdfd6e-cc4c-47b6-a754-0ad338630872` | 2026-09-07 | Work widened past the references the user gave, and was reported by screenshot instead of a board the user could open. |
+| `574a4bc4-b214-4fc1-9249-603ac8820288` | 2026-09-11 | Settled questions answered with something new, where the user pointed back at what already existed. |
+| `14dc3d95-b694-4a8b-a913-1671cc2f17de` | 2026-09-16 | Answers to a slightly different question than the one asked, restated by the user each time. |
+| `6cfeff06-fbff-4c35-a88e-1dab42e5eb21` | 2026-09-23 | Work reported ready to review while skipping what the user would check next. |
+
+The annotations are written in English; each quote stays verbatim and carries an `(EN: …)`
+translation. One agent annotated each session and a separate reviewer checked it against the whole
+numbered conversation. A privacy reviewer and a fidelity reviewer then checked the generated files,
+and a second privacy pass checked the fixes.
+
+The redaction runs `scripts/redact_session.py` with this contributor's own configuration, through a
+local wrapper that adds rules for personal hosts, tailnet addresses, tunnel names, CDN edge codes,
+device, room and share ids, private repository slugs and local clock times, and removes quoted
+teammate remarks. The wrapper redacts the numbered conversation with the same instance as its JSONL,
+so a tag in an excerpt names the same value as in the log. Every local JSONL line parses and its
+line count matches the source. Base64 image data is left untouched, so screenshots inside the local
+logs are not redacted. These logs have not been through the original collection's drift-replay
+equivalence check.

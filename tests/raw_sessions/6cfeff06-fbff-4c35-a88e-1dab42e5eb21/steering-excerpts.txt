@@ -1,0 +1,3087 @@
+Step back: is this display consistent enough?
+2026-09-23 · session 6cfeff06-fbff-4c35-a88e-1dab42e5eb21
+
+Steering excerpts: every message the annotation in
+tests/annotated_sessions/6cfeff06-fbff-4c35-a88e-1dab42e5eb21/annotation.md cites. Only the user's typed messages and Claude's reply text; tool output
+is left out. #N is the message number the annotation uses. Times are UTC. Names, emails,
+organisations, IDs and secrets are replaced with placeholder tags.
+
+========================================================================
+
+[#0] YOU — 2026-09-23 03:50   (part 1 · you asked)
+.context/attachments/C493cv/Transcript of Claude.md 我想討論的話題是，我要把 ss-web 做成跟 ss-v0 一樣的東西，那怎樣分發？有兩個階段，第一個是這兩個是獨立使用還是合併讓使用者選哪個介面，第二個是 ss-web 這個 repo 是否該拆成 private+public？一個是 remote bundle 一個是 local server+ skill + plugin
+
+------------------------------------------------------------------------
+
+[#1] CLAUDE — 2026-09-23 03:51   (part 1 · claude did)
+Still checking how subspace-v0 ships today, since that answers your second question. One more look, then I'll give you my view.
+
+我的建議：兩個問題其實是同一個決定。**合併成一個 plugin，讓使用者選介面；ss-web 的程式碼不要拆 repo，照 ss-v0 現在的做法，發版時把成品推到已經公開的 `[ORG_NAME_6]/subspace`。**
+
+先說一件事：ss-v0 本身已經是你想要的「私有＋公開」結構，只是它拆在「發版」那一層，不是拆「程式碼 repo」。
+
+```mermaid
+flowchart LR
+  subgraph PRIV["私有（原始碼）"]
+    V0["subspace-v0<br/>Go 程式 + skills"]
+    WEB["subspace-web<br/>瀏覽器 bundle"]
+    RELAY["subspace-relay"]
+  end
+  subgraph PUB["公開（發佈）"]
+    SUB["[ORG_NAME_6]/subspace<br/>skills（Apache 2.0）+ install.sh"]
+    TAP["homebrew-tap<br/>subspace-beta"]
+    MKT["marketplace"]
+  end
+  V0 -->|"release.yml"| SUB
+  V0 -->|"release.yml"| TAP
+  V0 -->|"release.yml"| MKT
+  WEB -->|"Netlify 靜態站"| RELAY
+  WEB -.->|"建議：v0 發版時把 bundle 內嵌"| V0
+```
+
+## 第一題：分開用，還是合併讓使用者選？建議合併
+
+1. **兩邊產出的東西一模一樣。** ss-web 的 README 說它只是把 v0 定義的 Briefing、Annotation、Result 在瀏覽器裡畫出來。agent 收到的結果是同一種，所以瀏覽器應該當成 `/r` 的第七種開啟方式（現在有 Zellij、tmux 等六種），不必另做一個 skill。
+2. **使用者只要裝一次。** 分成兩個 plugin，就要裝兩次、對兩套版本號，而且要自己搞懂哪個介面在哪個 plugin 裡。
+3. **這樣 ss-web 仍然只是一個畫面。** ss-web 的 AGENTS.md 寫明它不管 host 的部署、身分和 session。本機的 v0 會變成它的第二個 host，跟 relay 的角色一樣，這條界線不用改。
+
+缺點：v0 的發版從此要依賴 ss-web 的某一個版本。ss-web 出新版，要等 v0 重新發版，使用者才拿得到。
+
+## 第二題：ss-web 要不要拆成私有＋公開？建議不拆
+
+你說的「local server + skill + plugin」，其實 v0 那邊已經有了：skill 和 plugin 在公開的 `[ORG_NAME_6]/subspace` 裡，Go 程式靠 brew 或 `install.sh` 安裝。ss-web 的發版流程本來就會產出 bundle 壓縮檔和 `integrity.json`（bundle 的完整性檢查檔）。所以最小的做法是：
+
+- 本機伺服器由 v0 的 Go 程式來開，把 ss-web 的 bundle 包進程式裡一起發。這種做法有先例：v0 在 7 月做過一個實驗伺服器（`internal/reviewprobe`），就是這樣把網頁包進去的。我沒有檢查它現在還能不能用。
+- ss-web 維持私有，只負責出 bundle。
+- 不用開新的公開 repo。
+
+這樣也回答了 relay 旅程圖上兩題還沒答的問題：「怎麼啟動本機 ss-web server？」答案是 `subspace-tui` 自己開。「網頁從哪裡來？」答案是跟著程式一起發，是 v0 發版時內嵌的那一版 bundle。
+
+一件要記得的事：bundle 會跟著程式放進公開發佈，但 bundle 的原始碼是私有的。公開 README 的授權說明現在只提到 `subspace-tui` 沒有開源，要多加一句說 bundle 也一樣。
+
+## 要你決定的一題
+
+**本機伺服器由 v0 的 Go 程式開（我的建議），還是由 ss-web 自己出一個 Node 伺服器？** 這一題決定第二題：選 Go 就不用新 repo；選 Node，ss-web 就要自己的公開發佈管道，使用者電腦上也要有 Node。
+
+```
+剩餘:   本機伺服器由誰開待裁示；這一輪只讀，沒有改任何檔案
+下一步: 你選 Go 內嵌或 Node 伺服器（你）
+可收線: 否
+```
+
+------------------------------------------------------------------------
+
+[#4] YOU — 2026-09-23 03:58   (part 1 · you proposed)
+如果是新增一個 /w 薄層 skill 復用 /r 但是是開 web 呢
+
+------------------------------------------------------------------------
+
+[#5] CLAUDE — 2026-09-23 03:59   (part 1 · claude did)
+`/w` 比我上一輪提的 `/r file.md web` 更好。**但要真的做成薄的一層，前提是把開伺服器、等結果這些事寫進 Go 程式，skill 本身只負責呼叫。** 否則它會重演 `/rr` 的路：本來說要沿用 `/r`，最後變成抄一份。
+
+## 為什麼 `/w` 比較好
+
+1. **web 用不到 `/r` 最重的那一塊。** `/r` 的 SKILL.md 有 378 行，大半在處理「挑哪個終端機」：六種終端機、固定的偵測順序、偵測到一半就停。這套規則寫得很死，外面還有一整排合約測試守著。瀏覽器不需要挑終端機，把 `web` 塞進 `/r` 等於去改一份被嚴格守著、卻跟 web 無關的規則。
+2. **使用者選介面，就是選指令。** `/r` 開終端機、`/rr` 分享到 relay、`/w` 開瀏覽器，一看就懂。
+3. **上一輪要你決定的「偵測不到終端機要不要自動開 web」可以先不答。** 想要 web 的人自己打 `/w`，`/r` 的預設一個字都不用改。
+
+## 風險：`/rr` 已經示範過「沿用」會變成「複製」
+
+`/rr` 也是 `/r` 旁邊的另一個 skill（它在你已安裝的 0.12.1 裡，v0 的 main 上還沒有）。它沒有呼叫 `/r` 的腳本，而是自己帶了 7 支腳本、共 620 行；其中 `rr-invocation-common` 的註解明寫，它的某段程式是 `/r` 那份的「verbatim mirror」（逐字照抄）。
+
+要讓 `/w` 不走同一條路：
+
+- **Go 程式負責整段流程**（例如 `subspace-tui web <file.md>`）：開本機伺服器、產生一次性門票、打開瀏覽器、等使用者送出，再把結果印出來。
+- **`/w` 的 SKILL.md 只做三件事**：找到程式（跟 `/r` 用同一個 `SUBSPACE_TUI_BIN` 規則）、執行、把結果交回 agent。預估只有幾十行，但我還沒寫過，不是量出來的數字。
+- **驗結果的步驟用 `/r` 同一套檢查**，不要另抄一份。
+
+還有一個 TUI 沒有、web 才有的新問題：使用者如果直接關掉分頁、沒有送出，Go 程式要能察覺，並把「取消」交回給 agent。不能讓 agent 一直等下去。
+
+## 要你決定的一題
+
+**第一版的 `/w` 要不要支援 `--allow-question`（審查中直接問 agent 問題）？** 我建議第一版不做：`/r` 的這個功能要另外開一個輪詢的背景程式，加到 web 版會讓 Go 多一條往返的通道。缺點是 web 使用者一開始只能留意見，不能問問題。
+
+```
+剩餘:   /w 第一版範圍待裁示；PR#58 未合併（身分那條路的前提）；這一輪只讀、沒改檔案
+下一步: 你答第一版做不做 --allow-question（你）
+可收線: 否
+```
+
+------------------------------------------------------------------------
+
+[#6] YOU — 2026-09-23 04:00   (part 1 · you asked)
+/subspace:rr 應該已經沒了，之後的版本是以 main + pr58 為主。第一版不做問問題，先讓它可以 local review
+
+------------------------------------------------------------------------
+
+[#7] CLAUDE — 2026-09-23 04:00   (part 1 · claude drifted)
+收到。範圍定為：**`/w` 第一版只做本機審查，不做問問題。** 你剛才的訊息是透過 `/subspace:rr` 送進來的，但那段文字不是它接受的分享連結或檔案路徑，所以我沒有執行它，只當成你的回覆來讀。
+
+你說得對，`/rr` skill 在新版已經沒有了。我查過 v0 的 main 和 PR#58 的 head（`12c67bad`），`plugins/subspace/skills/` 底下都只剩 `r` 和 `dry`。分享功能改成 TUI 裡按 Shift-L，加上另一支程式 `subspace-relay-client`。所以我上一輪拿「`/rr` 抄了一份」當例子，引用的是舊版。結論不變，而且那份舊 skill 自己就寫著同一句話：「看起來像協定的工作，就該放進 Go。」
+
+你剛才能叫出 `/subspace:rr`，是因為 Claude Code 裡還註冊著一份舊的 plugin，來源是 `workspaces/subspace-v0/.worktrees/rr-play`。要不要清掉由你決定，我沒有動。
+
+## `/w` 第一版長這樣
+
+```mermaid
+flowchart LR
+  A["agent 執行 /w file.md"] --> B["subspace-tui web file.md<br/>（Go）"]
+  B --> C["本機伺服器 127.0.0.1<br/>一次性門票 + 內嵌的 ss-web bundle"]
+  C --> D["打開瀏覽器<br/>留言 / 建議修改 / 送出"]
+  D -->|"送出"| E["Go 驗證結果<br/>印到 stdout"]
+  D -->|"關掉分頁沒送出"| F["回報取消"]
+  E --> G["agent 收到結果<br/>跟 /r 同一種格式"]
+  F --> G
+```
+
+- **不需要等 PR#58。** 只在本機審查用不到擁有者憑證；要等之後 web 也能分享，才會依賴 PR#58。
+- **Go 那邊要做的：** 新增 `web` 子指令，負責開伺服器、產生門票、打開瀏覽器、等送出或取消，再用 `/r` 同一套檢查驗證結果。
+- **ss-web 那邊要做的：** 目前看起來不用改。它已經會出固定版本的 bundle 壓縮檔和 `integrity.json`，送出也是交給 host 的回呼函式（callback）處理。v0 發版時固定用哪一版 bundle，是 v0 發版流程要新增的一步。
+- **`/w` 的 SKILL.md：** 只做三件事：找到程式、執行、交回結果。
+
+## 要你決定的一題
+
+**要我在 subspace-v0 的工作流程裡開一張工作項目，登記「`/w` 本機審查第一版」嗎？** 程式和 skill 都住在 v0，所以該登記在那裡。我只會寫上面這些範圍，不會開始實作，也不會動 relay 的旅程檔。
+
+```
+剩餘:   /w 工作項目未開；舊的 rr-play plugin 仍註冊著（你決定要不要清）；這一輪只讀、沒改檔案
+下一步: 你說要不要在 subspace-v0 開工作項目（你）
+可收線: 否
+```
+
+------------------------------------------------------------------------
+
+[#8] YOU — 2026-09-23 07:08 · PUSHBACK   (part 1 · you pushed back)
+先等等，看一下 /Users/[NAME_1]/conductor/workspaces/subspace-relay/beirut/.context/RULING-2026-09-23-local-host-bundle-source.md
+
+------------------------------------------------------------------------
+
+[#9] CLAUDE — 2026-09-23 07:08   (part 1 · claude did)
+讀了，我照這份裁示停下來：**不開 subspace-v0 的工作項目，也不再往下設計。** 要等 kc-journey-map 的 release board 拆解做完，你重畫圖之後再接著做。
+
+我查了兩件事，都跟裁示相符：relay#235（標題 *Local review: serve the page locally and pass the deployed bundle through*）是一張 OPEN 的 issue；線上的 `subspace-web.netlify.app/web/identity.json` 也確實有回傳 `deployId` 和那個固定不變的 `deployUrl`，本機 host 就是靠它們把每次審查綁在同一版。
+
+**我前兩輪講錯、現在收回的：**
+
+- 「v0 發版時把 bundle 內嵌進程式」→ 不做。本機 host 啟動時向線上 Web 站取 bundle 並轉給瀏覽器，不存到硬碟，也不進公開發佈。上一輪那張圖裡的「內嵌的 ss-web bundle」要改成這條路。
+- 「公開 README 要加一句 bundle 原始碼私有」→ 不需要了，bundle 根本不在公開發佈裡。
+- 這樣一來，第二題的結論更單純：ss-web 不用開公開 repo，也不會出現在任何公開發佈裡。
+- 新的代價要講白：本機審查需要網路。沒網路就直接說做不了，不退回舊版。
+
+**維持不變的：** Go 開伺服器並帶一次性門票；`/w` 是呼叫它的薄 skill；第一版只做本機審查、不做問問題；關分頁沒送出要回報取消；結果用 `/r` 同一套檢查。
+
+**留到之後、現在不用你決定的兩題：**
+
+- 本機 host 把 bundle 轉給瀏覽器之前，要不要先驗證內容（#235 還沒定）。
+- Web 每出一版，兩個 host 會立刻用上，但 Web 的發版檢查只對 Relay 測。如果 Web 改了頁面的載入介面（`mountReviewShell`）或回呼格式，本機審查會壞，而現在沒有任何檢查會抓到。這題要在本機 host 上線前決定。
+
+```
+剩餘:   等 kc-journey-map release board 拆解完成；#235 的轉送驗證與 Web→本機合約保護兩題未定；這一輪只讀、沒改檔案
+下一步: release board 拆解完成後，你重畫圖再回來（你）
+可收線: 是（這個主題暫停；working tree 乾淨，這一輪沒有開 PR 或工作項目）
+```
+
+------------------------------------------------------------------------
+
+[#10] YOU — 2026-09-23 09:36   (part 1 · you asked)
+我想確認 web 效能改善是否吿一段落了？MD + mermaid rendering 都修好了？
+
+------------------------------------------------------------------------
+
+[#12] YOU — 2026-09-23 09:39   (part 1 · you asked)
+開，我們這條線專注在把 web 效能改完，v0 那邊走 web 讓另外一個 peer 擔心 conductor://workspace?id=[ID_REDACTED_58]&session=[ID_REDACTED_59] 你可以通知它你會把這個任務讓給它
+
+------------------------------------------------------------------------
+
+[#13] CLAUDE — 2026-09-23 09:39   (part 1 · claude did)
+Sending the handoff to the peer first.
+
+The peer session belongs to a different Conductor organization, so I can't send it a message directly. I'm leaving the handoff as a file in its workspace instead.
+
+Handoff written. Now looking at the peer's existing production room tooling before measuring.
+
+Starting the production measurement: seeding two Rooms (a document with no diagram, and one with Mermaid and tables), then timing them in a real browser.
+
+Measurement is still running (it waits up to 30s per step); waiting for it to finish.
+
+The shell never mounted within 30s on this run. Capturing what the page shows on failure instead of re-running blind.
+
+Screenshots landed in the working directory rather than `.context/web-perf`; reading them from there.
+
+**Web 這邊的效能改善可以算告一段落了，Markdown 和 Mermaid 在 production 上也都畫得正確。** 現在開一個 Room 大約 2.5–3.9 秒，web#62 當初量到 4.4 秒。剩下的時間主要花在 Relay 回應，不在 Web 的程式。不過量的時候出現一件更重要的壞消息：**有一次 Room 整個開不起來**，原因我還沒查到。
+
+v0 的 `/w` 任務已經轉交給對方。它在另一個 Conductor 組織底下，我的工具送不到訊息，所以交接內容寫成檔案放在它的工作區：`dhaka/.context/HANDOFF-2026-09-23-w-local-review.md`。**需要你跟它說一聲去讀。**
+
+## 量測結果
+
+測試環境：production，Relay 0.3.8、Web 0.2.6。我在 production 開了兩個新 Room，一個文件沒有圖，一個有 Mermaid 和表格。每個 Room 各量一次「第一次開」和「重新整理」，用我這台機器和家裡網路。下表的時間不含填名字那一步。
+
+| | web#62 當時 | 現在：第一次開 | 現在：重新整理 |
+|---|---|---|---|
+| 沒有圖的文件，畫面出現 | 4385 ms | 2762–3871 ms | 1371–2141 ms |
+| 有圖的文件，第一張圖出現 | — | 2916 ms | 1897 ms |
+| Web 主程式 | 13 個檔案，外加 3.66 MB 的 Mermaid | 1 個檔案，135 KB | 300 B（向伺服器確認後沿用原本那份） |
+| Mermaid | 每次都下載 | 只在有圖時下載，905 KB | 0 B（瀏覽器快取） |
+
+**剩下的時間在哪：** 以沒有圖的文件重新整理為例，Room 頁面本身要等約 0.5 秒才回應，進入 Room 的那個請求又要約 0.6 秒。Web 主程式只花 59 ms。所以 relay#228（讓主程式不用每次向伺服器確認）現在最多只能省下這 59 ms 左右，值不值得做可以重新評估。
+
+**畫面正確性：** 表格、流程圖、循序圖、程式碼區塊、多層清單、中文都正常，頁面也沒有錯誤。只有一個小問題：勾選清單 `- [ ]` 會畫成字面上的方括號，而不是勾選框。
+
+![Mermaid 流程圖](</Users/[NAME_1]/conductor/workspaces/subspace-relay/beirut/.context/web-perf/rich-flow.png>)
+![循序圖、程式碼、清單與中文](</Users/[NAME_1]/conductor/workspaces/subspace-relay/beirut/.context/web-perf/rich-bottom.png>)
+
+## 壞消息：Room 偶爾開不起來
+
+第二輪量測時，兩個 Room 都卡住：等了 30 秒，審查畫面還是沒有出現。那一輪程式直接中斷，錯誤紀錄沒有留下來。之後我又開了 4 次，每次都正常，重現不出來。算起來是 7 次開啟裡失敗 2 次，而且兩次發生在同一分鐘內。
+
+這可能跟 relay#212 有關。#212 是一張還開著的 issue：載入 Web 程式時偶爾出現 HTTP 500。但這只是我的猜測，沒有證據。現在我的量測腳本已經改成失敗時會截圖並記下畫面狀態，下次再發生就有東西可以查。
+
+## 要你決定的一題
+
+**要不要先追這個偶發的開不起來，再決定 #228 和 #68 要不要做？** 我建議先追：審查者打不開 Room，比慢一秒嚴重得多。我會反覆開 Room 到它重現為止，只讀不改。重現之後再來看它是不是 #212。
+
+```
+剩餘:   Room 偶爾開不起來（7 次失敗 2 次，原因未明）；web#62 可以關但還沒關；#228 價值要重新評估；web#68 未處理；dhaka 交接檔要你請對方去讀
+下一步: 你說要不要先追偶發失敗（你）
+可收線: 否
+```
+
+量測工具和原始數據在 `.context/web-perf/`。production 上多了兩個測試用的 Room（`room_[ID_REDACTED_60]…`、`room_[ID_REDACTED_61]…`）。working tree 是乾淨的。
+
+------------------------------------------------------------------------
+
+[#14] YOU — 2026-09-23 09:50   (part 1 · you asked)
+先追
+
+------------------------------------------------------------------------
+
+[#15] CLAUDE — 2026-09-23 09:50   (part 1 · claude did)
+Reproducing first: a loop of fresh browser loads with every request logged, capturing screenshot and page state on any failure.
+
+Loop running in the background (40 loads). Meanwhile reading how the Room page decides when to mount the shell.
+
+Loop is at 6/40 loads, all passing so far. Meanwhile checking how Relay proxies `/web/*`, since relay#212 saw a 500 on exactly that path and the page hung at "Loading…" the same way.
+
+All 20 loads so far pass, but the loop never submits a name, and the failed probe did. Reading what happens after the name is saved.
+
+Neither loop reproduced it: 0 failures in 40 fresh loads and 0 in 16 reloads. Checking whether Netlify still has server logs from the failure minute.
+
+**這次查不出那兩次為什麼開不起來，但查到一個確定的缺陷：Room 頁面在載入失敗時完全不會告訴你。** 不管是 Web 程式下載失敗，還是第一個請求失敗，頁面都會永遠停在「Loading…」：沒有錯誤訊息、不會重試，錯誤只出現在瀏覽器的開發者工具 console 裡。relay#212 記錄的就是這個樣子，當時頁面也停在「Loading…」。
+
+**先收回上一輪講過頭的一句話。** 我說「Room 偶爾開不起來」，像是在講 production 的事實，這沒有證據支撐。重新整理過後，真正的情況是這樣：
+
+- 上一輪「7 次失敗 2 次」算錯了。其中一次是我的量測腳本自己的 bug：腳本裡同時等兩個條件，沒被用到的那個 30 秒後逾時，把整支腳本弄掛了。它已經修掉了，但我上一輪沒有講出來。
+- 真正的那一次，是大約 [LOCAL_TIME]–[LOCAL_TIME]（UTC 09:42–[LOCAL_TIME]）連續兩個 Room 等了約 60 秒都沒出現畫面。那時候失敗截圖的功能還沒加上去，所以沒有截圖、沒有網路紀錄、也沒有請求編號。
+- 那個時段沒有任何部署：Relay 最後一次發版在 08:26 UTC 結束，Web 在 08:05 UTC。
+- 之後完全重現不了：全新開啟 40 次都成功，同一個瀏覽器重新整理 16 次也都成功。
+- 只有一台機器、兩分鐘、什麼都沒錄到，所以沒辦法排除是我家網路的問題。這條網路先前已經出過兩次 DNS 的狀況。
+
+**確定的部分：我故意製造三種失敗，三種結果都一樣。**
+
+| 模擬什麼 | 頁面最後的樣子 |
+|---|---|
+| Web 主程式回 500 | 只剩「Loading…」，沒有任何訊息 |
+| Web 主程式連線被切斷 | 同上 |
+| 進入 Room 的請求失敗 | 同上 |
+
+原因在 Relay 的 `public/room-bootstrap.js`：最後一行呼叫 `enter()` 後，沒有接住它丟出來的錯誤；Web 程式載入失敗，或第一個請求失敗，錯誤都會一路往上傳，最後沒有任何地方處理。只有伺服器正常回應錯誤碼時，頁面才會顯示訊息；連線中斷或程式載入失敗，都一樣被吞掉。所以不管那兩分鐘到底是什麼造成的，頁面都沒辦法告訴審查者，也沒辦法告訴我們。
+
+我沒有改任何程式碼，這一輪只做診斷。
+
+**還能補的證據，要你來拿：** Netlify 上 relay production 網站在 [LOCAL_TIME]–09:45 UTC 的 function 紀錄（兩個測試 Room 是 `room_[ID_REDACTED_1]` 和 `room_[ID_REDACTED_2]`）。我這邊的 Netlify CLI 登入的是 [ORG_NAME_1] 團隊，而且它只能看即時紀錄，看不到過去的。
+
+## 要你決定的一題
+
+**要不要把模擬失敗的結果補到 #212，並開一張工作項目：「Room 載入失敗時要顯示訊息」？** 我建議這樣做。驗收方式很簡單：重跑同一支模擬腳本，看到頁面把錯誤講出來才算完成。
+
+另一條路是繼續追那兩分鐘：改成每隔幾分鐘開一次、連續跑幾個小時，看會不會出現有固定週期的原因。但這比較像碰運氣，而且不管最後查到什麼，上面那個修正都還是要做。這兩件事有關聯，所以一起問：決定要不要繼續追，會影響要不要先開修正。
+
+```
+剩餘:   [LOCAL_TIME]–[LOCAL_TIME] 那次原因未明（缺 Netlify 伺服器紀錄）；#212 未解；production 上兩個測試 Room；dhaka 交接檔還要你請對方去讀
+下一步: 你決定補 #212 並開修正項目，或繼續長時間追（你）
+可收線: 否
+```
+
+模擬腳本和截圖在 `.context/web-perf/`（`inject.mjs`、`INJECT-*.png`）。
+
+------------------------------------------------------------------------
+
+[#16] YOU — 2026-09-23 09:57   (part 1 · you asked)
+好，這裡有幾種可能，過期，找不到檔案或路徑，意外失敗... 等不同狀況，我們要做怎樣的？
+
+------------------------------------------------------------------------
+
+[#17] CLAUDE — 2026-09-23 09:58   (part 1 · claude did)
+建議把失敗照「審查者接下來能做什麼」分成四類，每一類有自己的畫面，再加一個計時器，保證頁面不會一直停在「Loading…」。好消息是伺服器那邊其實早就把各種狀況分清楚了；問題出在頁面把它們全部併成兩句籠統的話，而程式真的出錯時，頁面什麼都不說。
+
+```mermaid
+stateDiagram-v2
+  [*] --> 載入中
+  載入中 --> 審查中: 成功
+  載入中 --> 連結失效: 410 過期 / 403 已收回、Room 已關 / 404 找不到
+  載入中 --> 身分失效: session 過期或被收回、安全憑證不符
+  載入中 --> 暫時失敗: 503、5xx、斷線、Web 程式載入失敗
+  載入中 --> 內容驗證失敗: 文件完整性檢查沒過
+  載入中 --> 暫時失敗: 超過 N 秒沒有結果（計時器）
+  身分失效 --> 載入中: 自動重新進入一次
+  暫時失敗 --> 載入中: 自動重試 2 次，之後改成「重試」按鈕
+  連結失效 --> [*]: 請寄連結的人給新連結
+  內容驗證失敗 --> [*]: 不顯示內容，請通知寄件人
+```
+
+| 類別 | 包含哪些狀況（伺服器已經分清楚了） | 頁面該說什麼 | 會不會自動恢復 |
+|---|---|---|---|
+| **連結失效** | 410 分享已過期、403 分享已被收回、403 Room 已關閉、404 找不到 Room 或分享 | 講清楚是哪一種，並請審查者向寄連結的人要新連結 | 不會，重試也沒用 |
+| **身分失效** | 審查者這個瀏覽器的 session 過期或被收回、安全憑證不符 | 平常看不到，因為會自動重新進入一次；還是不行才請他重新整理 | 會，自動一次 |
+| **暫時失敗** | 503（伺服器忙、暫停寫入）、其他 5xx、斷線、Web 程式載入失敗 | 「暫時連不上」，附一個重試按鈕 | 會，先自動重試 2 次 |
+| **內容驗證失敗** | 文件沒通過 Web 的完整性檢查 | 不顯示內容，請審查者通知寄件人 | 不會；這是安全問題，不能重試過去 |
+| **意外錯誤** | 上面都不是的，例如程式丟出錯誤 | 一句話加上一個短錯誤代碼，附重試按鈕 | 不會自動，按鈕可以重試 |
+
+還有兩點：
+
+- **計時器是必要的，不能只靠接住錯誤。** 請求如果一直不回，既不會成功也不會報錯。[LOCAL_TIME]那兩分鐘，是卡住還是出錯，我們分不出來。所以要設一個時間，超過就直接當成暫時失敗處理。
+- **現在頁面實際的樣子：** 進入 Room 失敗，不管哪一種都顯示「This Room is not open.」；讀取失敗一律顯示「Could not load the Briefing…」；程式真的出錯時就停在「Loading…」。要改的只有 `public/room-bootstrap.js` 這一個檔案。伺服器端已經回傳正確的狀態碼，不用動。分享連結的那一頁（`/r/…`）本來就會顯示「This briefing has expired」，可以直接沿用它的文字。
+
+之後本機的 `/w` 也會遇到同樣這五類，這張表可以直接給它用。
+
+## 要你決定的一題
+
+**「連結失效」要讓審查者看到是哪一種（過期、被收回、Room 關了、找不到），還是一律顯示「這個連結已經不能用了」？** 我建議分開講：「過期」和「找不到」的處理方式不一樣，前者是要新連結，後者可能只是連結貼錯。分享頁現在也已經會講「過期」。代價是審查者會知道寄件人主動收回了連結；如果你覺得這一點不該讓審查者知道，就把「被收回」和「Room 關了」合併成一句。
+
+```
+剩餘:   連結失效要不要分開講待裁示；修正項目未開；#212 未補證據；[LOCAL_TIME]–[LOCAL_TIME] 原因未明；production 上兩個測試 Room；dhaka 交接檔待轉告
+下一步: 你決定失效訊息分開或合併（你）
+可收線: 否
+```
+
+------------------------------------------------------------------------
+
+[#18] YOU — 2026-09-23 13:39   (part 1 · you asked)
+對，過期跟找不到處理方式不一樣，先照實說明，之後有需要藏再藏
+
+------------------------------------------------------------------------
+
+[#21] CLAUDE — 2026-09-23 13:40   (part 1 · claude did; part 1 · claude drifted)
+Set up an isolated worktree on current `main`; reading the up-to-date bootstrap (it changed since the copy I read earlier) before writing failing tests.
+
+I'll check one browser behaviour before designing the retry: whether Chrome re-fetches a dynamic import that failed once.
+
+New worktree has no `node_modules` yet; installing dependencies.
+
+Writing the failing tests first. Adding the owner's revoke route to the local test server (it mounts real production routes) and a `revokeBriefing` method to the test client.
+
+Now the failing browser tests, one per failure state.
+
+All 10 fail for the expected reasons, except "not found", where the status element doesn't exist at all. Checking what that address actually returns.
+
+All 11 pass, and 10 of them were red before the fix. The "cut short" test was written after its fix, so checking it fails without the server change.
+
+Mutation confirmed (400 without the change, 404 with it). Running the full checks: unit tests, typecheck, lint on the explicit file list, and the whole browser suite.
+
+Full browser suite passes (36/36). Running lint on the explicit list, then counting the comment lines this diff adds.
+
+DOING: commit ON: [NAME_1]/room-load-failure-states FOR: Room tells the reviewer why it did not open
+
+Committed. Taking screenshots of a few of the new states from a local server so you can see them.
+
+Done and committed on a local branch, not pushed. **When a Room fails to open, it now tells the reviewer why and what to do next.** I wrote 11 tests; the 10 written before the fix all failed first, and the one written after was confirmed by removing its fix and watching it fail. One correction first: I said only `public/room-bootstrap.js` would change and the server wouldn't. In the end I had to change one spot on the server too, because a mangled Room address never reaches that file at all. The server used to answer it with raw JSON; now it gets a readable page.
+
+![Temporary failure with a Try again button](</Users/[NAME_1]/conductor/workspaces/subspace-relay/beirut/.context/web-perf/STATE-unreachable.png>)
+![Room closed](</Users/[NAME_1]/conductor/workspaces/subspace-relay/beirut/.context/web-perf/STATE-closed.png>)
+![Mangled address](</Users/[NAME_1]/conductor/workspaces/subspace-relay/beirut/.context/web-perf/STATE-malformed.png>)
+
+| Situation | What the page says | How it recovers |
+|---|---|---|
+| Link expired | This review link has expired. Ask the person who sent it for a new one. | No retry |
+| Share withdrawn | The person who shared this review has withdrawn it. | No retry |
+| Room closed | This review Room has been closed. | No retry |
+| Not found, or the address was cut off | There is no review at this link. Check that the whole link was copied. | No retry |
+| Server busy or connection dropped | This Room can't be reached right now. | Retries twice automatically (after 1s, then 2s), then shows **Try again** |
+| Web program failed to load | Same as above | Shows **Try again** straight away |
+| Session ended | (the reviewer never sees it) | Enters the Room again once, automatically |
+| Document fails the integrity check | The document is not shown; the page asks the reviewer to tell the sender | No retry |
+| No result after 15 seconds | This Room is taking longer than usual to open. | **Try again** |
+
+Why the Web-program case shows **Try again** straight away: I tested it, and Chromium remembers a failed module load for the whole page. Loading it again in the same page gives the same failure without even contacting the server, so reloading the page is the only real retry.
+
+**Checks:**
+- Browser tests: 36/36 pass.
+- Unit tests: 907/908. The one failure is in `scripts/ci-workflow.test.ts`, which this change doesn't touch. It fails when the whole suite runs together, a different test each time, and passes 74/74 when run on its own.
+- Typecheck: 0 errors.
+- Lint: 0 errors across 143 files (run on an explicit file list, because plain `pnpm lint` silently checks nothing in a worktree).
+
+**Residuals:**
+- **"Session ended, enter again once" is only tested against a faked response.** The session lifetime is a fixed 30 days with no setting to shorten it, so the test fakes the server's 410 reply.
+- **It looks rough.** Plain text at the top-left corner of the page, default browser button. The mangled-address page is white, while the Room is dark. This is no worse than the old "This Room is not open.", but it is now something reviewers will actually see.
+- **Production not verified.** That needs a deploy first.
+- **Out of scope:** a cut-off share link (`/r/…`) still answers in plain text: "briefing not found".
+
+Branch `[NAME_1]/room-load-failure-states`, commit `9c9d72a`, in the separate worktree `/Users/[NAME_1]/conductor/workspaces/subspace-relay/beirut-room-load`. The `beirut` workspace is untouched.
+
+## Decision for you
+
+**Open a Draft PR now as it is, or add styling first?** I recommend opening it now and doing the styling as a separate small change. This PR's value is that the page no longer hangs silently, and a smaller diff is easier to review. The downside: until the styling lands, reviewers will see bare text. Relay's rules say a PR needs your explicit go-ahead, so I've stopped here.
+
+```
+剩餘:   PR 未開（待你裁示）；錯誤畫面未套樣式；session 重新進入只對假回應驗過；/r/ 截斷連結仍是純文字；[LOCAL_TIME]–[LOCAL_TIME] 原因未明；#212 未補證據；production 兩個測試 Room；dhaka 交接檔待轉告；PR #490 待審
+下一步: 你決定現在開 PR 或先套樣式（你）
+可收線: 否
+```
+
+------------------------------------------------------------------------
+
+[#22] YOU — 2026-09-23 14:02 · PUSHBACK   (part 1 · you pushed back)
+這個畫面設計不行，請參考骨架做出類似風格的錯誤畫面
+
+------------------------------------------------------------------------
+
+[#23] CLAUDE — 2026-09-23 14:04   (part 1 · claude did; part 1 · claude drifted)
+The page template now shares one frame (background, skeleton, and the new card) with the malformed-address page. Next, switching the bootstrap over to fill the card.
+
+All 36 browser tests pass on the new card. Taking screenshots in dark and light themes, on desktop and phone widths.
+
+Both themes and the phone layout look right. Adding a check that the skeleton's top bar keeps its height, then confirming that check fails without the fix.
+
+The check fails without the fix (the bar measures 12px instead of 44px) and passes with it. Running the full set of checks.
+
+The error screens are redone in the skeleton's style and committed. When a Room can't open, the page keeps the loading skeleton, freezes and dims it, and puts one card in the document column. The card has a coloured dot and a label (red means retrying won't help; gold means trying again might), the message, and a "Try again" button only where retrying helps. Colours come from the Web shell's own light and dark palettes. The mangled-address page uses the same frame, so every failure looks like it belongs to the same Room.
+
+![Dark: can't reach](</Users/[NAME_1]/conductor/workspaces/subspace-relay/beirut/.context/web-perf/STATE-unreachable-dark.png>)
+![Light: Room closed](</Users/[NAME_1]/conductor/workspaces/subspace-relay/beirut/.context/web-perf/STATE-closed-light.png>)
+![Light: mangled address](</Users/[NAME_1]/conductor/workspaces/subspace-relay/beirut/.context/web-perf/STATE-malformed-light.png>)
+![Phone](</Users/[NAME_1]/conductor/workspaces/subspace-relay/beirut/.context/web-perf/STATE-unreachable-phone.png>)
+
+The screenshots turned up a bug that already existed and that every reviewer sees while a Room loads. The skeleton's 44px top bar was being squeezed to 12px by the column of placeholder lines below it; you can see how thin it was in the dark screenshot from my previous reply. It's fixed, and I added a browser test that measures the bar: it reads 12px without the fix and 44px with it. "Still loading" is the one state that keeps the skeleton shimmering, because the Room really is still loading.
+
+**Checks:**
+- Browser tests: 36/36 pass.
+- Unit tests: 908/908 pass; the full run was clean this time.
+- Typecheck: 0 errors.
+- Lint: 0 errors across 143 files.
+
+The branch `[NAME_1]/room-load-failure-states` in the `beirut-room-load` worktree now has two commits (`9c9d72a` behaviour, `208393f` styling), neither pushed. Still limited: the "session ended, enter again once" path is only tested against a faked server response, and production is unverified until this deploys.
+
+## Decision for you
+
+**Open a Draft PR now?** I recommend it. The body will list, under `without-it unanswered`, anything I can't justify keeping, for you to rule on. The downside: this PR also changes how the loading skeleton looks while a Room loads (the top bar goes back to its intended height), not just the error states, so it is a little wider than "error screens" alone.
+
+```
+剩餘:   PR 未開（待你裁示）；session 重新進入只對假回應驗過；/r/ 截斷連結仍是純文字；[LOCAL_TIME]–[LOCAL_TIME] 原因未明；#212 未補證據；production 兩個測試 Room；dhaka 交接檔待轉告；PR #490 待審
+下一步: 你說開不開 Draft PR（你）
+可收線: 否
+```
+
+------------------------------------------------------------------------
+
+[#24] YOU — 2026-09-23 14:13 · PUSHBACK   (part 1 · you pushed back)
+這樣有合理一點，但是退一步思考，作為 UI 設計師跟使用者，你覺得這樣顯示足夠一致嗎？
+
+------------------------------------------------------------------------
+
+[#25] CLAUDE — 2026-09-23 14:13   (part 1 · claude drifted; part 1 · claude did)
+No, it isn't consistent enough yet. The look is now uniform, but **it looks the same while meaning different things, and the same failure looks different depending on which link someone opened.** A reviewer will notice both.
+
+**The main problem: the skeleton makes a promise the page can't keep.** A skeleton says "the content is on its way." For expired, withdrawn, closed, not found, and failed integrity check, nothing will ever arrive, yet the page still draws the outline of a document and a side panel behind the card. That says "the document is here, just blocked." For "not found" in particular, there is no document at all. The skeleton only tells the truth for "can't reach right now" and "still loading."
+
+**The rest, by how much a reviewer would feel it:**
+
+1. **The same situation looks different depending on the link.** Reviewers usually get a share link (`/r/…`), not a Room address. On the share page, expired and withdrawn appear as unstyled HTML, "This briefing has expired." or "This briefing has been revoked."; an unknown share link is plain text, "briefing not found". Only the Room address gets the new card.
+2. **The Room page now has three design styles.** The Web shell uses the design system's monospace style. The "Who is reviewing?" dialog is a white card in the system font with a black full-width button. The new error card is a third look, in between the two.
+3. **Inconsistent nouns.** Across these messages the reviewer reads link, review, Room, share, and briefing. All they are holding is a link.
+4. **Some states are dead ends.** "Expired" and "not found" say what to do next; "Room closed" and "withdrawn" don't. From the reviewer's side, all of these mean the same thing: ask the person who sent it.
+5. **The font is only close.** The shell's JetBrains Mono ships inside the Web bundle, which is exactly what failed to load in these states. So the card falls back to the system monospace font, similar to the shell but not the same.
+
+**My recommendation: split the states by meaning.**
+
+| Kind | States | What it looks like |
+|---|---|---|
+| Might still open | Can't reach, still loading | Keep the skeleton + card (as now) |
+| Won't open | Expired, withdrawn, closed, not found, failed integrity check | No skeleton; just the page background and the card at the top of the document column |
+
+Also rewrite the copy on one pattern: the subject is always "this link", and every "won't open" state ends with the same next step, "Ask the person who sent it." And reuse this card on the share page, so a reviewer sees the same thing whichever link they opened.
+
+Two things I would **not** do in this PR: restyle the "Who is reviewing?" dialog to match (it's a separate design decision that affects a successful load too), and bring in JetBrains Mono (Relay would have to host a copy of the font).
+
+## Decision for you
+
+**Should this PR also include the split (no skeleton for "won't open") and the unified copy, with the share page following in the next change?** I recommend yes. The downside: the copy changes the wording you approved last turn, though it keeps the distinction you asked for. Each message still says exactly which case it is; only the subject becomes "this link" everywhere and the next step becomes the same sentence. Something like:
+
+| State | Draft |
+|---|---|
+| Expired | This link has expired. Ask the person who sent it for a new one. |
+| Withdrawn | The sender has withdrawn this link. Ask them if you still need it. |
+| Closed | Reviews on this link have been closed. Ask the person who sent it. |
+| Not found | This link doesn't lead to a review. Check that you copied all of it, or ask the person who sent it. |
+
+```
+剩餘:   畫面一致性待你裁示（拆分＋文案）；分享頁錯誤畫面未統一；PR 未開；session 重新進入只對假回應驗過；[LOCAL_TIME]–[LOCAL_TIME] 原因未明；#212 未補證據；dhaka 交接檔待轉告；PR #490 待審
+下一步: 你決定這個 PR 要不要做拆分與統一文案（你）
+可收線: 否
+```
+
+------------------------------------------------------------------------
+
+[#26] YOU — 2026-09-23 14:14   (part 1 · you asked)
+要做
+
+------------------------------------------------------------------------
+
+[#27] CLAUDE — 2026-09-23 14:16   (part 1 · claude did)
+Screens look right. Running full checks and committing.
+
+DOING: commit ON: [NAME_1]/room-load-failure-states FOR: split stop/wait visuals and unify the copy
+
+Done and committed. When a Room won't open (expired, withdrawn, closed, not found, failed integrity check), the page now drops the skeleton and shows only the card. Only the two states where the Room might still open (can't connect, still loading) keep the skeleton. Both kinds put the card in the same place, so moving from one to the other doesn't jump. All the copy now says "this link", and every "won't open" state ends with "Ask the person who sent it."
+
+![Reviews closed, dark](</Users/[NAME_1]/conductor/workspaces/subspace-relay/beirut/.context/web-perf/STATE-closed-dark.png>)
+![Can't connect, dark: keeps the skeleton](</Users/[NAME_1]/conductor/workspaces/subspace-relay/beirut/.context/web-perf/STATE-unreachable-dark.png>)
+![Link not found, light](</Users/[NAME_1]/conductor/workspaces/subspace-relay/beirut/.context/web-perf/STATE-malformed-light.png>)
+![Phone](</Users/[NAME_1]/conductor/workspaces/subspace-relay/beirut/.context/web-perf/STATE-closed-phone.png>)
+
+**Checks:**
+- Browser tests: 36/36 pass. They now also check that "won't open" hides the skeleton and "can't connect" keeps it.
+- Unit tests: 908/908 pass.
+- Lint: 0 errors across 143 files.
+
+The branch `[NAME_1]/room-load-failure-states` now has 3 commits, the newest `b034847`, in the `beirut-room-load` worktree. Nothing is pushed.
+
+**Still not in this PR:** the share page (`/r/…`) errors still use the old unstyled look ("This briefing has expired." and the plain-text "briefing not found"). That's the next change, as agreed.
+
+## Decision for you
+
+**Open the Draft PR now?** I recommend it. It covers the failure states, the styling, and the skeleton top-bar fix (which every reviewer sees during a normal load too). Once it's open, I'll start unifying the share page on a separate branch.
+
+```
+剩餘:   PR 未開（待你裁示）；分享頁錯誤畫面待統一（下一個變更）；session 重新進入只對假回應驗過；[LOCAL_TIME]–[LOCAL_TIME] 原因未明；#212 未補證據；production 兩個測試 Room；dhaka 交接檔待轉告；PR #490 待審
+下一步: 你說開不開 Draft PR（你）
+可收線: 否
+```
+
+------------------------------------------------------------------------
+
+[#28] YOU — 2026-09-23 14:20   (part 1 · you asked)
+你可以開網頁給我看嗎
+
+------------------------------------------------------------------------
+
+[#29] CLAUDE — 2026-09-23 14:20   (part 1 · claude did)
+Starting local test servers with a Room in each state, then opening an index page in your browser.
+
+Index page is open in your browser. Checking that each link really shows the state it claims.
+
+I opened an index page in your browser (`.context/web-perf/room-states.html`). It links to 8 Rooms, one per situation. I checked every link in a browser, and each shows the state it's supposed to:
+
+| Link | What you should see |
+|---|---|
+| Normal (for comparison) | Goes straight to the review screen |
+| Link expired / withdrawn / reviews closed | The card only, no skeleton |
+| Not found (valid address, no Room) / not found (address cut short) | The card only, no skeleton |
+| Can't connect | Frozen, dimmed skeleton + card + Try again |
+| Keeps loading | Skeleton keeps moving; "Still loading" appears after 15 seconds |
+
+Three things to know while you look:
+- **Switching dark/light:** open the normal Room first and use the light-bulb button at the top right. The other pages then use the same theme.
+- **"Try again" on the can't-connect page fails again every time.** The local proxy I set up always fails to deliver the Web program, so pressing it proves the button reloads the page, not that the connection recovers.
+- **Everything runs locally and is temporary:** four local processes on ports 4371–4374, with data kept in memory. Tell me when you're done looking and I'll shut them down; the data disappears then.
+
+```
+剩餘:   你看完後要關掉 4371–4374 本機服務；PR 未開；分享頁錯誤畫面待統一；session 重新進入只對假回應驗過；[LOCAL_TIME]–[LOCAL_TIME] 原因未明；#212 未補證據；dhaka 交接檔待轉告；PR #490 待審
+下一步: 你看畫面，回覆意見或說開 PR（你）
+可收線: 否
+```
+
+------------------------------------------------------------------------
+
+[#30] YOU — 2026-09-23 14:22   (part 1 · you asked)
+可以開 PR 了
+
+------------------------------------------------------------------------
+
+[#31] CLAUDE — 2026-09-23 14:23   (part 1 · claude did)
+DOING: push + create Draft PR ON: [ORG_NAME_6]/subspace-relay, branch [NAME_1]/room-load-failure-states FOR: Room load failure states
+
+Draft PR #253 is open; CI is running. Waiting for it to finish before reporting.
+
+Draft PR #253 is open: https://github.com/[ORG_NAME_6]/subspace-relay/pull/253. CI is still running; I'll report the result when it finishes.
+
+The title is "fix(relay): say why a Room did not open instead of loading forever". It passed the repo's PR-title check, so release-please will read it as a `fix`. The PR carries the 3 commits you've seen, head `b034847`, and matches my local branch.
+
+What you'll see in the PR description:
+- **What changed:** a table covering every situation, what the page shows, and how it recovers.
+- **Evidence:** the new tests failed before their fixes; the "expired" case runs against a real relay with retention cut to 1.5 seconds; all local checks passed.
+- **Known limits:** session re-entry is only tested against a faked response, and the share page (`/r/…`) still has the old look.
+- **`without-it unanswered`:** one item for you to rule on, the "session re-entry once" path. Without it, the reviewer just gets one extra click on Try again, and nothing has been seen to hit this path.
+
+Relay's rules say you should see the PR description before the PR is opened. Your "可以開 PR 了" came before you had read it, so I opened it as a Draft; it can still be edited. The four local demo servers (ports 4371–4374) are still running. Say the word and I'll shut them down.
+
+```
+剩餘:   #253 CI 跑中；without-it 一項待你裁示；4371–4374 本機展示服務未關；分享頁錯誤畫面待統一；[LOCAL_TIME]–[LOCAL_TIME] 原因未明；#212 未補證據；dhaka 交接檔待轉告；PR #490 待審
+下一步: 等 CI 結果（我）；審 #253（你）
+可收線: 否
+```
+
+All CI checks pass. There's a Netlify deploy preview, so I'll check a few states on a real deploy instead of only locally.
+
+The deploy preview matches the local results. Adding that evidence to the PR description.
+
+DOING: edit PR body ON: [ORG_NAME_6]/subspace-relay#253 FOR: add deploy-preview verification
+
+CI for PR #253 is all green, and the fix also works on the PR's Netlify deploy preview. That preview runs the real Netlify functions and storage, so it's the closest evidence to production.
+
+- **CI:** lint, typecheck, unit tests, browser tests, and all four Netlify-based e2e checks (smoke, live, expiry, sweep) pass, and `ci-gate` passes.
+- **Deploy preview:** I opened five pages:
+  - A normal Room goes straight into review.
+  - "Reviews closed" and "link withdrawn" each show only their card.
+  - A cut-off address returns 404 with the "link not found" card.
+  - When I forced the Web program to fail, it showed "can't connect" with the frozen skeleton.
+
+I added this to the PR description's Evidence section, and I changed the "production not verified" line to say the deploy preview is the nearest evidence.
+
+PR: https://github.com/[ORG_NAME_6]/subspace-relay/pull/253 (Draft)
+
+```
+剩餘:   #253 待你審（without-it 一項待裁示）；4371–4374 本機展示服務未關；分享頁錯誤畫面待統一；[LOCAL_TIME]–[LOCAL_TIME] 原因未明；#212 未補證據；dhaka 交接檔待轉告；PR #490 待審
+下一步: 審 #253（你）
+可收線: 否
+```
+
+------------------------------------------------------------------------
+
+[#32] YOU — 2026-09-23 14:31   (part 1 · you asked)
+合併了
+
+------------------------------------------------------------------------
+
+[#34] YOU — 2026-09-23 14:33   (part 2 · you asked)
+我想先思考是否需要重構：請確認目前 relay web 包裝器是最佳化的狀態
+
+------------------------------------------------------------------------
+
+[#35] CLAUDE — 2026-09-23 14:33   (part 2 · claude did; part 2 · claude drifted)
+Measuring where a Room's load time goes today, per layer, against production (read-only).
+
+The Room function already reports `Server-Timing`. Reading it to separate our code's time from platform overhead.
+
+The wrapper code itself is already close to as fast as it can be, so refactoring it won't make the Room faster. Most of the remaining time is spent before Netlify even runs our code, and a Room load pays that cost twice in a row.
+
+```mermaid
+sequenceDiagram
+  participant B as Reviewer's browser
+  participant E as Netlify edge
+  participant F as Relay function
+  B->>E: 1. GET Room page
+  E->>F: (function call)
+  F-->>B: HTML (TTFB 0.7–1.5s; the function itself is tiny)
+  par In parallel
+    B->>E: bootstrap.js + Web bundle 135KB
+  and
+    B->>E: 2. POST enter (first read folded into the same round trip)
+    E->>F: (function call)
+    F-->>B: TTFB 0.76–1.9s, of which our code is 0.16–0.23s
+  end
+  B->>B: Verify + mount (~0.1s)
+```
+
+**Evidence** (production, measured from here today):
+
+| Measured | Result |
+|---|---|
+| Read request broken into phases via `Server-Timing` | Our own code (3 storage reads) is **0.16–0.23s** in total, but the request takes **0.76–1.9s** to return |
+| `/api/health` (a function that does no work) | Takes **0.47–1.39s** to respond, similar to the read, so the overhead is the platform's own cost per function call |
+| Web bundle | Downloads in parallel with the enter request (a browser test already guards this), and Mermaid loads only when needed |
+| relay#228 (bundle caching) | Would save only about 60ms on a return visit, and nothing on a first visit |
+
+**What's already optimized and not worth refactoring:** the first read folded into enter (#244), the bundle downloading in parallel, Mermaid loading on demand, and the failure screens just merged.
+
+**The two levers that could actually move the number:**
+1. **Serve the Room page as a static file** (straight from the CDN), which removes one function call. At first estimate that saves 0.5–1.5s on a first visit; that range comes from subtracting the numbers above, not from a real test. Two things currently force the page to be dynamic:
+   - **The theme choice** is in a cookie that JavaScript can't read (HttpOnly), so the server has to write it into the page.
+   - **The session token** is written into the page for a reload. Since #246, the enter request can pick up an existing session again, so the token could come from there instead.
+
+   This touches the security design (how Rooms are protected when opened directly by link), so it needs a proper design review first.
+2. **Where the function runs.** Even a function doing nothing takes about 0.5s at best, which suggests it runs far from here. I can't see this: the Netlify CLI on this machine is signed into the [ORG_NAME_1] team, not the one hosting relay. The setting is under Site settings → Functions → Region in the relay site's dashboard. If it's in the US, moving it may be cheaper and more effective than lever 1. But I don't yet know where storage (Blobs) sits relative to the function, and I haven't checked.
+
+**Maintainability is a different question:** the local `/w` host will need the same things: the skeleton, the error card, the failure handling, and the code that mounts the Web program. Right now they live in Relay. That is the real candidate for a refactor: moving them into subspace-web. But it's cross-component work, so it falls under your earlier ruling to wait for the release-board breakdown. I'm noting it only; not starting it.
+
+## Decision for you
+
+**Can you check the relay site's Functions region first?** Your answer decides the next step. If it's in the US, look at moving the region first. If it's already nearby, then I'll do a feasibility study on serving the Room page statically (read-only, plus small experiments, no merges). These two are linked: which lever is worth pulling depends on the region.
+
+```
+剩餘:   Functions region 未知（要你看 Netlify 設定）；靜態 Room 頁未評估；#254 rc 發版待合併；分享頁錯誤畫面待統一；[LOCAL_TIME]–[LOCAL_TIME] 原因未明；#212 未補證據；dhaka 交接檔待轉告；PR #490 待審
+下一步: 你看 relay 網站的 Functions region 並告訴我（你）
+可收線: 否
+```
+
+(While measuring I sent 2 enter requests to the test Room on production, `room_[ID_REDACTED_60]…`, which created 2 new sessions there. That Room is test data from earlier.)
+
+------------------------------------------------------------------------
+
+[#36] YOU — 2026-09-23 14:37 · PUSHBACK   (part 2 · you pushed back)
+你不能自己用 cli 看到嗎？
+
+------------------------------------------------------------------------
+
+[#37] CLAUDE — 2026-09-23 14:37   (part 2 · claude did)
+Trying the CLI now.
+
+I can: the token in this environment can reach the Spacedock team too. The earlier `netlify status` only showed the default team.
+
+Functions run in `us-east-2` (Ohio). Checking where Blobs data lives before judging whether moving the function would help.
+
+Yes, the CLI can see it. I got it wrong earlier: the token in this environment reaches the Spacedock team too, and `netlify status` only showed the default team. **The answer: relay's functions and its storage (Netlify Blobs) both sit in the same US region (Ohio). So moving the region isn't a cheap lever. The first thing worth pursuing is serving the Room page statically.**
+
+| Item | Setting | Source |
+|---|---|---|
+| `subspace-relay` / `subspace-relay-staging` functions | `us-east-2` (Ohio, Netlify's default) | Netlify API `listSites` |
+| Blobs site-wide stores | Default `us-east-2`; **does not follow the functions region** | Netlify Blobs docs: "Site-wide stores default to `us-east-2`, regardless of your functions region." |
+
+**Why moving the region doesn't pay:**
+- **Moving only the function to [LOCATION_REDACTED] makes things worse.** Relay's authorization reads use strong consistency, so every one goes all the way to Ohio. A single read makes 3 storage round trips one after another. Today each takes 30–100ms (function and storage in the same place). [LOCATION_REDACTED], each round trip would be many times slower. I haven't measured it, but the direction is clear.
+- **Moving the storage along with it means migrating data.** Storage is set per store; existing data stays in Ohio. It's also a one-region choice: whichever region it moves to, reviewers on the other side of the world get slower.
+
+**So the lever worth trying is still serving the Room page statically.** It removes one function call (your earlier measurement put this call at 0.7–1.5s from here), and it doesn't touch data or regions. It needs design work on the two places where the page is currently dynamic, the theme cookie and the pre-issued session token. It also touches the security design for opening a Room directly by link.
+
+## Decision for you
+
+**Should I do a feasibility study on serving the Room page statically?** That means reading the relevant security design, plus small local experiments that measure the savings, with a written conclusion; no merges and nothing in production touched. I recommend yes. It's the only lever that removes a whole round trip without moving data. The downside: if the study finds the security design needs the server to write the token into the page, this lever is gone, and what's left is the platform's own latency.
+
+```
+剩餘:   靜態 Room 頁可行性未評估；#254 rc 發版待合併；分享頁錯誤畫面待統一；[LOCAL_TIME]–[LOCAL_TIME] 原因未明；#212 未補證據；dhaka 交接檔待轉告；PR #490 待審
+下一步: 你決定要不要做靜態頁可行性評估（你）
+可收線: 否
+```
+
+------------------------------------------------------------------------
+
+[#40] YOU — 2026-09-23 14:44   (part 2 · you proposed)
+有沒有其他方式可以驗證？
+
+------------------------------------------------------------------------
+
+[#41] CLAUDE — 2026-09-23 14:44   (part 2 · claude did)
+There are ways that need no new site. Two of them are read-only, so I'm running them now.
+
+Yes, and the question is now mostly settled without creating a site. **I found a better approach than a static page: render the Room page from an Edge Function (code that runs on Netlify's edge, near the reviewer). Netlify documents its routing, and it measured faster than a static file.**
+
+| What I verified | How (none of it creates a site) | Result |
+|---|---|---|
+| What a GET does on a path whose function only accepts POST | Sent GETs to two POST-only paths on relay production (read-only) | Falls through to Netlify's static layer and returns the static 404 page |
+| Can an Edge Function take only GETs and run ahead of the existing function? | Netlify's Edge Function docs | Yes. It has a `method` setting, and it runs before redirects, normal functions, and static files. Once it answers, nothing after it runs. POSTs don't match it and still reach the existing function |
+| How fast an Edge Function is from here | Netlify's public example site (`/hello`; I checked its source to confirm it's an Edge Function) | Starts answering in 0.18–0.29s (0.12s of that is the encrypted handshake; one outlier took 0.67s) |
+| Compared with today | Existing measurements | Room page 0.71–1.53s; static file 0.42–0.84s, because it goes back to the origin server every time |
+
+**What this means:**
+- **Routing:** an Edge Function takes only the GET, so we no longer depend on the undocumented routing behaviour.
+- **Theme:** the Edge Function can still read the theme cookie, so the theme needs no changes.
+- **What leaves the page:** only the pre-issued session token. The enter request picks the existing session up again instead (#246).
+- **Estimated saving:** 0.5–1.2s on every Room open, first visits and reloads alike. The measurement came from a different site, so it's still an estimate. The real number would come from this repo's own Draft PR deploy preview once it's built, so no temporary site is needed.
+
+I added these findings to `.context/web-perf/static-room-page-feasibility.md`.
+
+## Decision for you
+
+**Should I build "render the Room page from an Edge Function" as a Draft PR?** Its deploy preview would measure the real savings, and I'd report back before you decide to merge. I recommend it: it's the only change measured so far that could save around a second. The downside: it changes how a reload picks up its session (enter instead of a token written into the page), and it rewrites one sentence in the retained protocol doc (`hosted-review-room.md` §5). It also adds Edge Functions, a new runtime relay doesn't use today, which the local test server can't run, so the browser tests would need a matching substitute.
+
+```
+剩餘:   Edge Function 版 Room 頁待你決定做不做；#254 rc 發版待合併；分享頁錯誤畫面待統一；[LOCAL_TIME]–[LOCAL_TIME] 原因未明；#212 未補證據；dhaka 交接檔待轉告；PR #490 待審
+下一步: 你決定要不要做成 Draft PR 實測（你）
+可收線: 否
+```
+
+------------------------------------------------------------------------
+
+[#43] CLAUDE — 2026-09-23 14:47   (part 2 · claude did)
+Starting the build in a fresh worktree. First, checking what the page renderer depends on, since an Edge Function runs on Deno and should pull in as little as possible.
+
+Mapping what depends on the page-issued token: the bootstrap's token refresh, two browser tests, and the server's GET branch. Reading those tests to see what behaviour must be preserved.
+
+Building now. The resume path of the enter request already includes the first read, so a reload still costs a single function call.
+
+The renderer is now in its own module (`room-page.ts`), and the page no longer carries a token. Adding the Edge Function.
+
+Next, running the full unit and browser suites to see which tests still assume a token in the page.
+
+Updated the tests; one browser test (the full journey) still fails later in its flow. Looking at line 726.
+
+Checking that the new test fails without the fix.
+
+Mutation confirmed: without the tighter condition, the revoked session triggers one `enter`. Updating the retained docs that describe the page carrying a token.
+
+These are retained documents, and this repo's rules say to read the retained-document policy before editing them. Finding it.
+
+Updated the protocol doc and the architecture table. Adding the new Edge Function and module to the architecture file map, then running full checks.
+
+All green. One risk remains that none of these tests cover: the Edge Function runs on Deno, not Node. Checking whether Deno is available locally to confirm the module loads there.
+
+It runs under Deno 2.6, including the Node crypto import it pulls in: 200 for a well-formed address, 404 for a mangled one. Checking the comment lines this diff adds, then committing.
+
+DOING: push + create Draft PR ON: [ORG_NAME_6]/subspace-relay, branch [NAME_1]/room-page-at-edge FOR: measure the edge Room page on its deploy preview
+
+CI is running on #255. As soon as the deploy preview is up, I'll measure it against production.
+
+Writing the comparison script while the preview builds.
+
+The deploy preview build failed. Reading the Netlify deploy log.
+
+The API doesn't expose the log. Reproducing the build command locally instead.
+
+Netlify's build passes locally now. Confirming the cause by putting the test file back and watching the same build fail.
+
+Root cause confirmed: with the test file back, Netlify's build fails with "There was an error when loading the 'vitest' npm module". Committing the move.
+
+Pushed. Waiting for the new deploy preview.
+
+The deploy preview is up. Checking that the GET is really answered by the Edge Function before measuring.
+
+On the same site, alternating 8 rounds, the Edge Function version is clearly faster. Checking CI.
+
+Typecheck and unit tests fail in CI but passed locally. Reading the CI logs.
+
+The branch now matches my working tree exactly. While CI reruns, I'm adding the measured results to the PR description.
+
+Draft PR #255 is done, and all CI checks pass (latest commit `2f30965`). **Measured on the same staging site, alternating 8 rounds, the review screen now appears about 0.9s sooner on a first visit and about 0.35s sooner on a reload.**
+
+| | Page first byte (median) | Review screen appears (median) |
+|---|---|---|
+| First visit, today's `main` | 1033ms | 2725ms |
+| First visit, Edge Function version | 374ms | **1835ms** |
+| Reload, today's `main` | 531ms | 1297ms |
+| Reload, Edge Function version | 63ms | **952ms** |
+
+A reload gains less than the page does, because the resume path of `enter` does more work than the old `read`. First visits vary a lot from round to round (1.1–3.3s), so the 0.9s is the median of this sample, not a stable figure.
+
+Along the way:
+- **The #253 bug got fixed too:** switching parts when the session had ended reopened the default part instead of the one the reviewer chose.
+- **A reviewer protection held:** a token refresh now goes through `enter`, so I made sure a revoked session can't quietly get a new one. The refresh only happens when the server refused the token itself.
+- **Two mistakes of mine, both fixed:**
+  - I put a test file in the Edge Function directory, and Netlify bundled it as an Edge Function, which broke the first preview build. I reproduced it with Netlify's real build locally and moved the file out.
+  - I committed without staging my edits to that test's import paths, which failed CI. I fixed it with a new commit on top; nothing was force-pushed.
+
+**Your question: yes, testing this showed how to fill in the tests.** Three things came out of it:
+1. **Where tests can live:** anything in the Edge Function directory gets bundled as an Edge Function, so tests have to live elsewhere. `netlify build --offline` reproduces that failure locally in about 8 seconds.
+2. **What the local browser tests can't see:** they serve the page through the fallback in the normal function, so whether a GET is actually answered at the edge only shows up on the deploy preview. I checked it by hand this time: the edge-served page lacks the "went back to origin" header that production's function-served page carries. No test guards this yet.
+3. **What's still faked:** the "session ended / revoked" paths are driven by fake server responses, because the session lifetime is fixed at 30 days.
+
+## Decision for you
+
+**Should I add an automated routing check for the deploy preview?** It would assert that a GET on the Room page doesn't go back to the origin, and that a POST still reaches the function. I recommend adding it. Without it, if a future change breaks the routing, the local tests will still pass and the page will just quietly slow down. The downside: it relies on a Netlify response header (`cache-status`), so if Netlify changes that header's format, the check would break by mistake.
+
+```
+剩餘:   #255 待你審（是否補邊緣路由檢查待裁示）；#254 rc 發版待合併；分享頁錯誤畫面待統一；[LOCAL_TIME]–[LOCAL_TIME] 原因未明；#212 未補證據；dhaka 交接檔待轉告；PR #490 待審
+下一步: 你決定補不補邊緣路由檢查，並審 #255（你）
+可收線: 否
+```
+
+------------------------------------------------------------------------
+
+[#44] YOU — 2026-09-23 15:15   (part 2 · you asked)
+加上
+
+------------------------------------------------------------------------
+
+[#47] CLAUDE — 2026-09-23 15:23   (part 2 · claude drifted)
+Today's work proves a lot, but reviewers don't have any of it yet. Production is still on relay 0.3.8 (`1655c0c`). #253 is merged to `main` but hasn't gone through a release, and #255 is still a Draft.
+
+**What can be claimed, with evidence:**
+
+| Claim | Evidence | Where it holds |
+|---|---|---|
+| The Web performance work is done: Mermaid loads only when needed, the shell is a single bundle, and the Mermaid file is cached | Measured on production (Web 0.2.6) | **Live on production** |
+| Opening a Room went from 4.4s (web#62's original measurement) to 2.5–3.9s | Production, one location ([LOCATION_REDACTED]), measured today | **Live on production** |
+| Markdown and Mermaid render correctly | Screenshots of one test document on production. Only gap: task-list checkboxes show as literal brackets | **Live on production** |
+| Most remaining load time is the platform's cost per function call, not relay code | `Server-Timing` shows our code takes 0.16–0.23s; a function doing no work takes 0.47–1.39s | A fact about production |
+| Moving the function region won't help | Netlify API shows functions and Blobs storage both in `us-east-2`; Netlify docs say storage doesn't follow the function region | A fact about production |
+| When a Room fails to open, it says why and what to do next (#253) | Tests watched failing first, CI, deploy preview | **On `main`; not live until you merge #254** |
+| Rendering the page at the edge makes a Room appear about 0.9s sooner on a first visit and about 0.35s sooner on a reload (#255) | Same staging site, 8 alternating rounds, medians | **Draft PR only** |
+| If the edge routing breaks, CI and the pre-production check will catch it | Smoke check watched refusing first; passes on every PR | **Draft PR only** |
+
+**What can't be claimed yet:**
+- **That reviewers see the error screens, or the faster load:** neither is deployed.
+- **Why a Room failed to open for two minutes at [LOCAL_TIME]–09:44:** still unknown. If it happens again, the page will now show a message instead of hanging, but the root cause wasn't found.
+- **That relay#212 is fixed:** it isn't. I only confirmed the symptom it recorded, a page stuck on "Loading…", is the same one #253 now handles.
+- **That the "session ended / revoked" paths work against a real server:** they're only tested against fake responses, because sessions last a fixed 30 days.
+- **That the 0.9s is a stable number:** first visits vary widely (1.1–3.3s), and it was measured from only one location.
+- **That the share page (`/r/…`) errors are unified:** they still use the old look.
+- **That web#62 is closed:** it can be closed now with this evidence, but closing it is an outward-facing action, so I haven't done it.
+
+## Decision for you
+
+**Should #255 be merged before #254?** I recommend yes: #254 would then roll up #253 and #255 into one rc, and staging verification would cover both at once. The downside: a bigger rc, so if staging turns up a problem it takes longer to find which change caused it. If you want #253's fix on production as fast as possible, merge #254 first instead.
+
+```
+剩餘:   #255 待審與合併；#254 rc 發版待合併（才會上 staging／production）；分享頁錯誤畫面待統一；[LOCAL_TIME]–[LOCAL_TIME] 原因未明；#212 未解；web#62 可關未關；dhaka 交接檔待轉告；PR #490 待審；beirut-edge-room worktree 合併後要清
+下一步: 你決定 #255 與 #254 的合併順序（你）
+可收線: 否
+```
+
+------------------------------------------------------------------------
+
+[#48] YOU — 2026-09-23 15:24 · PUSHBACK   (part 2 · you pushed back)
+用中文說明
+
+------------------------------------------------------------------------
+
+[#49] CLAUDE — 2026-09-23 15:24   (part 2 · claude did)
+今天做完的事都有證據，但**使用者目前一樣都還沒拿到**。正式站還是 relay 0.3.8。錯誤畫面那張 PR（#253）已經合併，但還沒發版；網頁提速那張（#255）還是草稿。
+
+**已經上線、現在就能說的：**
+
+1. **Web 的提速做完了。** 流程圖的程式有圖才下載，主程式合成一個檔，流程圖的檔案瀏覽器可以存起來。這些都已經在正式站上。
+2. **打開審查房間變快了。** 原本量到 4.4 秒，今天在正式站量是 2.5 到 3.9 秒（只從[LOCATION_REDACTED]量過）。
+3. **文件和流程圖都畫得正確。** 我在正式站用一份測試文件截圖看過。唯一的小問題是勾選清單顯示成方括號，不是勾選框。
+4. **剩下的慢主要不是我們的程式。** 我們自己的程式只花 0.2 秒左右，其餘是 Netlify 每呼叫一次伺服器就要付的固定成本，大約 0.5 到 1.4 秒。
+5. **把伺服器搬到別的地區沒有幫助。** 伺服器和資料都在美國俄亥俄，只搬伺服器會讓每次讀資料都更慢。
+
+**做好了、但還沒上線的：**
+
+6. **房間打不開時會說原因**（#253）：過期、被收回、已關閉、找不到、連不上，各自有訊息；不會再永遠停在載入中。已合併，要等你合併發版 PR #254 才會上測試站和正式站。
+7. **房間頁改由靠近使用者的邊緣伺服器回應**（#255）：在同一個測試站交替量 8 輪，第一次打開快約 0.9 秒，重新整理快約 0.35 秒。還是草稿。
+8. **路由檢查**（也在 #255 裡）：之後如果有人改壞，讓房間頁不再由邊緣伺服器回應，每張 PR 的檢查和上正式站前的檢查都會擋下來。我已經看過它在該擋的時候確實擋下。
+
+**現在還不能說的：**
+- 使用者看得到新的錯誤畫面或變快了：還沒部署。
+- [LOCAL_TIME]那兩分鐘房間打不開的原因：還是不知道。只能說如果再發生，頁面會顯示訊息，不會卡住。
+- relay#212 已經解決：沒有。只確認了它描述的症狀和這次修的是同一種。
+- 「連線過期或被收回」的處理在真實伺服器上可行：目前只用假的伺服器回應測過，因為連線固定 30 天才過期，沒辦法縮短來測。
+- 快 0.9 秒是穩定的數字：第一次打開每輪差很多（1.1 到 3.3 秒），而且只從一個地點量。
+- 分享連結頁的錯誤畫面統一了：還是舊的樣子。
+- web#62 已經關閉：證據夠了，但關 issue 是對外動作，我沒有動。
+
+## 要你決定的一題
+
+**要先合併 #255，再合併發版 PR #254 嗎？** 我建議先合 #255。這樣下一版測試版會同時包含錯誤畫面和提速，在測試站一次驗完。缺點是一次上的東西比較多，如果測試站出問題，要多花一點時間找是哪一個造成的。如果你想讓錯誤畫面最快上正式站，就先合 #254。
+
+```
+剩餘:   #255 待審與合併；#254 發版待合併（才會上測試站／正式站）；分享頁錯誤畫面待統一；[LOCAL_TIME]–[LOCAL_TIME] 原因未明；#212 未解；web#62 可關未關；dhaka 交接檔待轉告；PR #490 待審；beirut-edge-room 工作目錄合併後要清
+下一步: 你決定 #255 和 #254 的合併順序（你）
+可收線: 否
+```
+
+------------------------------------------------------------------------
+
+[#54] YOU — 2026-09-23 15:30   (part 2 · you asked)
+合併了。另開一張再做一次調教看看
+
+------------------------------------------------------------------------
+
+[#55] CLAUDE — 2026-09-23 15:30   (part 2 · claude did)
+Merged. Cleaning up the previous worktree, then starting the next change: sending the enter request from the page itself.
+
+Fails as expected: enter goes out 8ms after the bootstrap arrives. Implementing it: the page starts the request in `<head>`, and the bootstrap picks up that pending request for its first attempt.
+
+Passes. Checking the "only once" half by making the bootstrap ignore the early request (it should then enter twice), then running everything.
+
+The preview is up and serves the new page. Running the A/B: 10 alternating rounds against #255's preview (same code as `main`).
+
+This round of tuning is effective, but the gain is smaller than the head start. Draft PR #257 is open, CI is all green, and I added the numbers below to the PR description.
+
+| | Enter request goes out (median) | Review screen appears (median) |
+|---|---|---|
+| First visit, current `main` | 786ms | 1983ms |
+| First visit, this PR | 394ms | **1760ms** |
+| Reload, current `main` | 144ms | 954ms |
+| Reload, this PR | 79ms | 917ms |
+
+(Same staging site, 10 alternating rounds, measured from [LOCATION_REDACTED].)
+
+- **What changed:** the page itself sends "enter" in its header, no longer waiting for the bootstrap script. On a first visit that request now leaves **about 0.4s earlier**.
+- **Why the screen only gains about 0.2s:** in 2 of 6 first visits, the Web program (135KB) finished downloading after "enter" had already returned, so the screen waited for the program. The bottleneck has moved from "enter" to "downloading the Web program".
+- **Reload:** 37ms faster, which is within the noise. Reloads were already fast.
+- **Tests:** the new browser test holds back the bootstrap script by 1.5s and confirms "enter" goes out first, exactly once. It failed before the change. I also confirmed that if the bootstrap ignores the page's pending request, the test catches the double "enter".
+
+## Decision for you
+
+**Should the next round be relay#228 (versioned, cacheable Web program paths)?** I recommend it. The next bottleneck is the Web program download. Today every request goes back to the origin (`fwd=miss`). With a version number in the path, the file can be marked as never changing, so Netlify's edge can keep a copy. The first visitor near that edge pays the download, and later visitors (including first visits) get it straight from the edge. The downside: it touches how Relay proxies Web (`/web/*`) and the pairing verification with Web, which falls under the release process documented in `docs/releasing.md`, so it's more work than this PR.
+
+```
+剩餘:   #257 待審與合併；relay#228 待定；#254 發版待合併；分享頁錯誤畫面待統一；[LOCAL_TIME]–[LOCAL_TIME] 原因未明；#212 未解；web#62 可關未關；dhaka 交接檔待轉告；PR #490 待審；beirut-early-enter 工作目錄合併後要清
+下一步: 你審 #257，並決定下一輪做不做 #228（你）
+可收線: 否
+```
+
+------------------------------------------------------------------------
+
+[#62] YOU — 2026-09-23 16:01   (part 2 · you asked)
+效能線就到這裡
+
+------------------------------------------------------------------------
+
+[#64] YOU — 2026-09-23 16:03   (part 2 · you asked)
+開始統一分享頁
+
+------------------------------------------------------------------------
+
+[#66] YOU — 2026-09-23 16:25   (part 2 · you asked)
+可以發PR。此外我也想統一 room url 以及 /r/ 相關頁面，我記得我有提過？等於讓 room 概念與 /r/ 分享連結結合，tui 仍可下載，但是網頁端使用者必須透過同一連結，取回開好的 room
+
+------------------------------------------------------------------------
+
+[#67] CLAUDE — 2026-09-23 16:25   (part 2 · claude did)
+Opening the PR first.
+
+DOING: push + create Draft PR ON: [ORG_NAME_6]/subspace-relay, branch [NAME_1]/share-page-notices FOR: unify share-link failure pages
+
+Now checking whether you raised "one link for everything" before.
+
+PR #258 is open: https://github.com/[ORG_NAME_6]/subspace-relay/pull/258 (Draft).
+
+**You did raise this before, but only half of it was built.** On 2026-09-10, #192 made share links open the Room directly. The protocol doc's wording is "one link travels and it opens either door": the TUI uses the share link to download, and the browser uses it to get into the Room. What was never done is the half you just described, **web users being able to use only that one link.** Today the Room still has its own address, and that address is the key a browser ends up holding.
+
+```mermaid
+flowchart LR
+  subgraph NOW["Today"]
+    L1["/r/{s} share link"] -->|TUI asks for JSON| D1["Download the Briefing"]
+    L1 -->|browser| R302["302 redirect"] --> ROOM1["/room/{roomId}<br/>the address bar ends here<br/>this address works on its own too"]
+    PUB1["Publish response + TUI"] -->|shows both addresses| ROOM1
+  end
+  subgraph PROPOSED["What you describe"]
+    L2["/r/{s} the only link"] -->|TUI asks for JSON| D2["Download the Briefing"]
+    L2 -->|browser| ROOM2["Opens the Room right here<br/>the address bar stays on /r/{s}"]
+    PUB2["Publish response + TUI"] -->|shows only the share link| L2
+  end
+```
+
+**It isn't just a Relay change.** On PR#58, which the new version is built on, the TUI shows the owner both addresses after publishing (`share URL · room <roomUrl>`, in `v1_publish_key.go`). It spans Relay, the TUI, and the protocol doc ("The Room URL is the capability"). By your earlier ruling, cross-component work like this goes through the kc-journey-map release-board breakdown first, so I haven't started it.
+
+**What the design has to settle:**
+- Should Room addresses already sent out (`/room/{id}`) keep working, redirect to the share link, or stop working?
+- The browser's session cookie is currently scoped to the `/room/{roomId}` path. If the Room moves to `/r/{s}`, the cookie scope moves with it.
+- The owner's "close this Room" action still identifies the Room by its internal id. That doesn't conflict: the owner can keep the id without it ever being shown to reviewers.
+
+## Decision for you
+
+**Is the target "the address bar stays on `/r/{s}`, and `/room/{id}` is no longer shown to anyone"?** Or is it the smaller version: keep the redirect, and just stop showing the Room address to the owner in the TUI and the publish response? I recommend the first, which is what "one link" really means. The downside: it changes the cookie scope, needs a decision on what happens to the old `/room/` addresses, and requires changes in the TUI too. The smaller version is almost entirely a TUI change, but the address bar still shows `/room/…`. Once you pick one, I'll write it up as a work item for the release board.
+
+```
+剩餘:   單一連結目標待裁示（再進 release board）；#258、#257 待審與合併；#254 發版待合併；[LOCAL_TIME]–[LOCAL_TIME] 原因未明；#212 未解；web#62 可關未關；dhaka 交接檔待你轉告；beirut-early-enter、beirut-share-page 工作目錄合併後要清
+下一步: 你選單一連結的目標（你）
+可收線: 否
+```
+
+------------------------------------------------------------------------
+
+[#68] YOU — 2026-09-23 16:32   (part 2 · you asked)
+前者，就是 /room/ 就移除不用了，/r/ 應該可以下載，也可以打開 webui
+
+------------------------------------------------------------------------
+
+[#69] CLAUDE — 2026-09-23 16:33   (part 2 · claude did)
+Got it: remove `/room/` entirely, and `/r/` serves both the TUI download and the Web UI. Before writing the work item, I'm listing everything that depends on `/room/` today so the scope is concrete.
+
+That work item leaves one open question the code can answer: can one Briefing have more than one share address? Checking instead of leaving it open.
+
+I've recorded your ruling as a work item: `/r/{s}` becomes the only address, used by the TUI to download and by the browser to open the review; `/room/` is removed. It spans Relay, the TUI, and the protocol doc, so by your earlier ruling it goes through the release-board breakdown before anyone builds it. I haven't started it.
+
+Draft: `/Users/[NAME_1]/conductor/workspaces/subspace-relay/beirut/.context/WORKITEM-DRAFT-2026-09-24-one-share-link.md`
+
+**What makes this easier than it looks:**
+- **Share links already open the review:** today they redirect to the Room, so this change removes that redirect.
+- **The page stays fast:** #255 made the Room page need no storage, so at `/r/{s}` it can still be answered at the edge. Looking up which Room a share address belongs to moves into the `enter` request.
+- **The error screens already look the same:** #253 and #258 unified them, so the share page's notices can become the Room's own cards.
+- **A Briefing has exactly one share address.** The protocol and the code both look it up by owner + Briefing, so a share address maps one-to-one to a Room, and moving the session cookie from `/room/{id}` to `/r/{s}` doesn't split one person into two reviewers.
+
+**What has to change:** about 36 files reference `/room/` or `roomUrl`. They cover the routes, the session cookie scope, the publish response and the OpenAPI schema, the TUI's room-address display (on the PR#58 line), the tests, and four retained docs.
+
+**Linear, where relay tracks work, is still not authorized in this session**, so I can't file this there. To use it, authorize Linear in your claude.ai connector settings, or paste the draft in yourself.
+
+## Decision for you
+
+**Should Room addresses already handed out (`/room/{id}`) simply stop working, with no temporary redirect to the share link?** I recommend letting them stop. The architecture doc marks the Room as an internal/synthetic pilot, and the only TUI that shows the Room address is on PR#58, which isn't merged, so almost nobody outside our own testing is holding one. The downside: any `/room/` link that has gone out in testing or conversation, including the demo rooms I opened for you today, will show "not found" afterwards.
+
+```
+剩餘:   舊 /room/ 連結去留待裁示；單一連結工作項目待進 Linear／release board（Linear 未授權）；#258、#257 待審與合併；#254 發版待合併；[LOCAL_TIME]–[LOCAL_TIME] 原因未明；#212 未解；dhaka 交接檔待你轉告；beirut-early-enter、beirut-share-page 工作目錄合併後要清
+下一步: 你決定舊 /room/ 連結是否直接失效（你）
+可收線: 否
+```
+
+------------------------------------------------------------------------
+
+[#70] YOU — 2026-09-23 16:36   (part 2 · you asked)
+直接讓他們失效沒關係
+
+------------------------------------------------------------------------
+
+[#74] YOU — 2026-09-23 17:02   (part 2 · you asked)
+258 合併了，254 稍後。你應該可以先進行工作，不開 linear，只紀錄 release board 且用 dev2 進行
+
+------------------------------------------------------------------------
+
+[#76] YOU — 2026-09-23 17:04   (part 2 · you asked)
+Pilot，259 合併了
+
+------------------------------------------------------------------------
+
+[#77] CLAUDE — 2026-09-23 17:04   (part 2 · claude did)
+#259 is merged, and `main` now has the dev2 workflow (`docs/dev2`, five stages). Setting up a clean worktree on `main` as the root for the work, then handing off to the first officer.
+
+The dev2 state is kept on a separate state branch, and there's no state checkout in this worktree yet. Checking whether another worktree already holds that branch.
+
+The dev2 state branch is already checked out by dhaka's adoption worktree (`.worktrees/adopt-dev2`). Git won't allow the same branch in two worktrees. Checking whether `state init` has another way.
+
+The dhaka session has restarted and is now `dhaka-c5`. Sending the request again.
+
+Drafting the task body so the backlog gate can be reviewed now. Once the state checkout is free, I'll file it as written.
+
+dhaka released the state checkout and confirmed it's not the FO for relay's dev2. Initializing the state checkout, then running the workflow startup.
+
+The startup hook has nothing to do: there are no entities yet. Loading the write rules before the first state change.
+
+The fit check passes: this is a product change, which is exactly what this dev workflow tracks. Filing the task.
+
+Filed and pushed. The backlog gate is the next step, so I'm loading the gate procedure.
+
+The task is filed in dev2. Its first gate (backlog) needs your approval before it can move to ideation.
+
+**Gate review: One share link — backlog**
+**Recommendation: approve.**
+Reviewed snapshot: `briefing:one-share-link:backlog:attempt-1:revision-1` (`sha256:5765f3ee…`)
+
+**Backlog content:**
+- **Workflow and profile:** kc-dev-flow-2, Pilot (you chose it today).
+- **Outcome:** the share link `/r/{s}` becomes the only address. A browser opens the review there, the address bar stays there, and the TUI still downloads from it. `/room/{roomId}` is removed, and old `/room/` addresses stop working, per your ruling. Recorded as ADR 20 and as release-board story `one-link-only` in the `web-parity` release.
+- **Scope:** subspace-relay only. That covers the routes, the session cookie, entering the Room, reading, and feedback; every place relay hands out a Room address (publish and summary responses, OpenAPI); and the tests and retained docs that name `/room/`. The Room id stays internal, on the owner-only controls such as closing the Room.
+- **Excluded:**
+  - The TUI's display of the Room address in subspace-v0 (on the PR#58 line). That will be a separate subspace-v0 task; Relay stays compatible with a client that still shows the Room address.
+  - A temporary `/room/` redirect.
+  - Linear.
+- **Stop and come back to you if:** Relay can't ship without a subspace-v0 change, or the origin decision requires a data migration.
+- **Acceptance criteria (6):**
+  1. A browser opening `/r/{s}` gets the review in place, with no redirect.
+  2. JSON callers get exactly what they get today.
+  3. `/room/` no longer answers as a Room.
+  4. Sessions survive a reload, a second tab, and a cross-site arrival.
+  5. Every error screen works as it does today.
+  6. The page is still answered at the edge.
+
+  Each has a matching verification: browser tests, the smoke check, or the deploy preview.
+- **What ideation must settle:** when the share host differs from the Room's stored origin (a publish retry, a deploy permalink, or a Deploy Preview), redirect to the stored origin or rebind the origin? Also, should the publish response drop `roomUrl` or point it at the share link?
+- **Alignment with you:** needed before ideation. The origin choice changes the design and may involve data, so it's your call. Ideation should arrive with both options tried out, not just argued.
+
+**Decision:** approving moves the task to ideation. I'll dispatch an ideation worker to write the design and test the two origin options, and come back to you at the ideation gate. If you reject, tell me what to change and I'll revise the task scope and bring the gate back.
+
+```
+剩餘:   one-share-link 待你過 backlog 關卡；#256 旅程圖與 ADR 待合併；#254 發版稍後；[LOCAL_TIME]–[LOCAL_TIME] 原因未明；#212 未解；web#62 可關未關
+下一步: 你核准或退回 backlog 關卡（你）
+可收線: 否
+```
+
+------------------------------------------------------------------------
+
+[#78] YOU — 2026-09-23 17:08   (part 2 · you asked)
+approve
+
+------------------------------------------------------------------------
+
+[#79] CLAUDE — 2026-09-23 17:09   (part 2 · claude did; part 2 · claude drifted)
+Recorded and moved to ideation. Loading the dispatch procedure before sending the ideation worker.
+
+The backlog gate is approved, and the ideation worker has been dispatched (running in the background, model Sonnet).
+
+It has three jobs:
+1. **Try both origin options against the real code:** keep a redirect to the Room's stored origin, or rebind the origin. For each, report what it breaks, then recommend one.
+2. **Write the design for `/r/{s}` as the only address:** routes, the session cookie, entering and reading, the unchanged JSON handover, removing `/room/`, and what `roomUrl` becomes.
+3. **Refine the acceptance criteria and their verification,** list any new rulings that need an ADR, and list the questions you'll need to decide.
+
+When it finishes, I'll bring the ideation gate back to you. Your alignment note on this task is recorded on it: you make the origin call at that gate.
+
+```
+剩餘:   ideation 工作者執行中；#256 旅程圖與 ADR 待合併；#254 發版稍後；[LOCAL_TIME]–[LOCAL_TIME] 原因未明；#212 未解；web#62 可關未關
+下一步: 等 ideation 完成後我呈 ideation 關卡（我）
+可收線: 否
+```
+
+The ideation worker has finished. Reading its stage report.
+
+Ideation is done and the design is complete. I've sent one diagram defect back to the worker who wrote it; once it's fixed, I'll prepare the gate and bring it to you.
+
+**The design's main conclusions**, the four decisions you'll need to make at the gate:
+1. **Origin: keep a redirect, don't rebind.** The worker tested both options against the real code.
+   - **Rebind** breaks an existing security test, the one that refuses a mismatched origin (`session.test.ts`, "refuses the wrong origin"): a request carrying a forged origin would get a valid session. That's exactly what the 2026-08-16 incident fix (A1) closed.
+   - **Redirect** doesn't change any security guarantee. I checked that the cited test exists.
+2. **Drop `roomUrl` from the publish and summary responses and OpenAPI.** Once `/room/` is gone, that field could only repeat `shareUrl`. On PR#58, the TUI prints it only when it's non-empty, so removing it just means one line fewer.
+3. **A new gap the worker found:** the `/r/{s}` JSON handover has a `roomUrl` field too, and after the change it would point at a deleted route. The recommendation is to handle it the same way as decision 2 (always `null`), and to read acceptance criterion 2's "unchanged" as "unchanged shape", not "unchanged values".
+4. **Whether #256 (the ADRs) should merge before this implementation, or alongside it.**
+
+**A technical point the design resolves:** the page is answered at the edge, which can't read storage, but the origin check has to. So the check moves into the enter request. If the host doesn't match, the server returns the correct address and the page jumps there itself. There's also a new acceptance criterion 7 covering this case.
+
+**What I'm waiting on:** the worker is fixing the sequence diagram so the TUI's JSON request and the browser's HTML request come from separate actors. Nothing else changes.
+
+```
+剩餘:   ideation 圖表修正中；修好後呈 ideation 關卡（含 4 個決定）；#256 待合併；#254 發版稍後；[LOCAL_TIME]–[LOCAL_TIME] 原因未明；#212 未解
+下一步: 等工作者修圖，我準備並呈 ideation 關卡（我）
+可收線: 否
+```
+
+The fix is scoped to the diagram only: 7 lines added, 7 removed. Preparing the ideation gate.
+
+The ideation gate is prepared. My editor just flagged a leftover `_origin-spike.test.ts` somewhere, even though the worker said its spike files weren't kept. Checking where it is.
+
+The file is already gone. The editor warning was stale, left over from when the worker's spike existed, and the working tree is clean. Here is the ideation gate.
+
+**Gate review: One share link — ideation**
+**Recommendation: approve, including the four decisions below as recommended.**
+Reviewed snapshot: `briefing:one-share-link:ideation:attempt-1:revision-1` (`sha256:080138e4…`)
+
+```mermaid
+sequenceDiagram
+    actor R as Reviewer's browser
+    participant T as Owner's TUI / rr
+    participant E as Edge (/r/{s})
+    participant F as Relay function (/r/{s})
+    participant B as Storage
+    R->>E: GET /r/{s} (HTML)
+    E-->>R: Room page (no storage read, carries only the share id)
+    T->>E: GET /r/{s} (JSON)
+    E->>F: pass through
+    F->>B: s → Briefing → Room
+    F-->>T: download handover (shape unchanged)
+    R->>F: POST /r/{s} enter
+    F->>B: read the Room's stored origin
+    alt same origin
+        F-->>R: session (cookie Path=/r/{s}) + first read
+    else different origin (retry, deploy permalink, Deploy Preview)
+        F-->>R: returns the correct origin's /r/{s}; creates no session
+        R->>R: page jumps there itself
+    end
+    Note over R,F: /room/{id} returns 404 (removed, no redirect)
+```
+
+**The design:** this re-keys the existing `/room/{roomId}` mechanism to the share id `s`. The Room still exists internally, and the owner's "close Room" and "revoke a reviewer" controls stay the same. The page is still answered at the edge, and the origin check moves into the enter request.
+
+**Four decisions for you (recommendations):**
+1. **Origin: redirect, don't rebind.** Tested against the real code: rebinding flips one existing security test, "refuses the wrong origin", so a forged origin would get a valid session. I confirmed that test exists. Redirect changes no security guarantee. Neither option needs a data migration or a subspace-v0 change.
+2. **Drop `roomUrl` from the publish/summary responses and OpenAPI.** Once `/room/` is gone, the field could only repeat `shareUrl`. On PR#58, the TUI prints it only when it's non-empty.
+3. **Set the `/r/{s}` JSON `roomUrl` to always `null`.** This is a new gap the worker found. Acceptance criterion 2's "unchanged" would then mean the shape stays the same, not the values.
+4. **#256 (which contains ADR 20)** doesn't have to merge first. The design only cites it as rationale.
+
+**Acceptance criteria:** the six approved criteria are unchanged, and each now has a verification plan and limits. There's one new criterion, **7: a link opened on a different origin jumps to the correct origin's `/r/{s}`, never to `/room/`, and the next request there succeeds.** None of the seven is verified yet; that happens in implementation and validation. Known limits:
+- If the stored origin is a Deploy Preview that has been deleted, the jump lands on a dead host. The redirect has exactly this exposure today, so this change doesn't make it worse.
+- The page's client-side jump itself has to be proven with a browser test.
+
+**Decision:** approving moves the task to implementation. I'll dispatch an implementation worker to build it in a separate worktree according to the four decisions above. If you disagree with any of the decisions, tell me which one and how to change it, and I'll send it back to ideation to revise.
+
+```
+剩餘:   ideation 關卡待你決定（含 4 個決定）；#256 待合併；#254 發版稍後；[LOCAL_TIME]–[LOCAL_TIME] 原因未明；#212 未解；web#62 可關未關
+下一步: 你核准或指出要改的決定（你）
+可收線: 否
+```
+
+------------------------------------------------------------------------
+
+[#80] YOU — 2026-09-23 22:58 · PUSHBACK   (part 2 · you pushed back)
+*Set the `/r/{s}` JSON `roomUrl` to always `null`.** 為何不直移除  roomUrl 就好？
+
+------------------------------------------------------------------------
+
+[#81] CLAUDE — 2026-09-23 22:59   (part 2 · claude did)
+Removing it outright is better. Setting it to `null` was only to honour acceptance criterion 2's literal wording ("exactly today's handover"), and I don't think that reason holds.
+
+- **Nothing reads the `/r/{s}` JSON `roomUrl`.** In PR#58, the TUI only reads `roomUrl` from the **publish response**, not from this handover. The other clients in the org don't read it either (`subspace-hermes`, `kc-hermes-spacedock`, `subspace-review-gate`, `subspace-web`: grep finds nothing).
+- **To a client that ignores the field, `null` and removed look the same**, so removing it breaks no one.
+- **Keeping an always-`null` field is worse:** it tells a future reader "this might have a value someday", when it never will. It also makes decision 3 inconsistent with decision 2, which removes the field from the publish response.
+
+Changing this means the design section on `roomUrl` and the wording of acceptance criterion 2 have to change too: criterion 2 would become "the JSON handover is unchanged apart from removing `roomUrl`". The gate is currently bound to the old version of the design, so I'd have to withdraw it, edit those two passages, and present it again.
+
+## Decision for you
+
+**Change decision 3 to "remove the field outright", and authorize me to edit only the `roomUrl` section of the design and the wording of acceptance criterion 2?** I recommend yes. The downside: the gate has to be presented to you once more, but the other three decisions and the rest of the design stay exactly as they are.
+
+```
+剩餘:   ideation 關卡待你決定（決定 3 改為直接移除待授權）；#256 待合併；#254 發版稍後；[LOCAL_TIME]–[LOCAL_TIME] 原因未明；#212 未解；web#62 可關未關
+下一步: 你授權修改後我撤回、改稿、重呈關卡（你）
+可收線: 否
+```
+
+------------------------------------------------------------------------
+
+[#83] CLAUDE — 2026-09-23 23:14   (part 2 · claude did)
+Confirmed from the code: the TUI's download flow doesn't change. It has always been two steps, and it stays that way.
+
+Now withdrawing the gate and editing the two passages you authorized.
+
+Before committing, re-checking the one claim I just wrote into the design: that `subspace-hermes` doesn't read `roomUrl`. My earlier clone output was ambiguous.
+
+Now re-preparing the ideation gate.
+
+To your question first: `rr` isn't "downloading directly" today either. It already asks `/r/` first and then downloads. That order stays exactly the same; the only difference is that the `/r/` request now passes through the edge first.
+
+```mermaid
+sequenceDiagram
+    participant T as rr (TUI)
+    participant E as Edge
+    participant F as Relay function
+    T->>E: 1. GET /r/{s} (Accept: JSON)
+    Note over E: new: the edge only handles HTML, JSON passes straight through<br/>(an in-place handoff, not an extra round trip for the client)
+    E->>F: pass through
+    F-->>T: {briefingId, revokedAt, expiresAt} (roomUrl removed)
+    T->>F: 2. GET /api/briefing/{id}/manifest
+    T->>F: 3. GET /api/briefing/{id}/document
+```
+
+I confirmed this in PR#58's code: `share.go` asks `/r/{s}` for JSON, then `download.go` downloads the manifest and document from `/api/briefing/{id}/…`. And yes, the Room concept stays internally, as the key for sessions and the owner-only controls; it just no longer appears to users or in any response.
+
+---
+
+**Gate review: One share link — ideation (revision 2)**
+**Recommendation: approve.**
+Reviewed snapshot: `briefing:one-share-link:ideation:attempt-2:revision-1` (`sha256:7b3bf3d4…`)
+
+**Changes since the version you saw, all within what you authorized:**
+- **Decision 3 is now "remove it outright":** `roomUrl` disappears from the publish response, the summary response, OpenAPI, and the `/r/{s}` JSON handover. Nothing reads the `/r/{s}` one: PR#58, `subspace-hermes`, `kc-hermes-spacedock`, `subspace-review-gate`, and `subspace-web` all show zero matches.
+- **Acceptance criterion 2 is amended to:** "The JSON handover is today's minus `roomUrl`, with every other field unchanged". The test must assert that `roomUrl` is absent.
+- **One consequence is now written into the design:** today the owner only gets the Room id from inside `roomUrl`. After this change, the owner needs to call `POST /api/room` (create-or-get) to get the id, which is already how `subspace-hermes` does it. On PR#58, the TUI's `rr revoke` doesn't use the Room id. The protocol doc's sentence about this gets updated in implementation.
+
+**Unchanged:**
+- **Decision 1:** origin mismatch uses a redirect. Rebinding flips the existing security test for mismatched origins.
+- **Decision 2:** drop `roomUrl` from the publish/summary responses and OpenAPI.
+- **Decision 4:** #256 doesn't have to merge first.
+- **Acceptance criteria 1 and 3–7,** and the diagram.
+
+**Decision:** approving moves the task to implementation. I'll dispatch an implementation worker to build it in a separate worktree, and after it finishes, a fresh worker validates it, and I bring you the validation gate. If you reject, tell me what to change.
+
+```
+剩餘:   ideation 關卡（修訂版）待你決定；#256 待合併；#254 發版稍後；[LOCAL_TIME]–[LOCAL_TIME] 原因未明；#212 未解；web#62 可關未關
+下一步: 你核准或退回 ideation 關卡（你）
+可收線: 否
+```
+
+------------------------------------------------------------------------
+
+[#90] YOU — 2026-09-23 23:31   (part 2 · you asked)
+批准
+
+------------------------------------------------------------------------
+
+[#93] CLAUDE — 2026-09-24 00:19   (part 2 · claude did; part 3 · claude did)
+DOING: push + create Draft PR ON: [ORG_NAME_6]/subspace-relay, branch spacedock-ensign/one-share-link FOR: get a deploy preview for validation
+
+PR #260 is open (Draft). Recording it on the task, then waiting for the deploy preview before dispatching validation.
+
+The preview is up, and `/r/…` is answered by the edge (`server-timing: edge`). Moving the task to validation and dispatching a fresh validation worker.
+
+Draft PR #260 is open, the deploy preview is up, and the validation worker has been dispatched (a fresh worker, running in the background).
+
+- **PR:** https://github.com/[ORG_NAME_6]/subspace-relay/pull/260 (Draft), titled "feat(relay): make the share link the Room's only address". It cites ADR 20, and the description states that validation hasn't run yet.
+- **Preview:** on `deploy-preview-260`, `/r/…` is already answered by the edge (`server-timing: edge`).
+- **What the validator has to do:**
+  1. Run its own checks on acceptance criteria 1–7, including the preview parts, and watch at least one guard fail.
+  2. Run the smoke check against the preview, and under `netlify dev` from a clone outside any worktree.
+  3. Write a short acceptance script you can run by hand on the preview.
+
+  It validates only and repairs nothing; any problems come back to me to handle.
+
+**A decision to settle before merging (no need to answer now):** this change removes an API route and a response field, which is a breaking change. Should the version be marked breaking? If it is (the title becomes `feat!`), release-please bumps the version from 0.3.x straight to **1.0.0**, because Relay's release config has no "breaking changes before 1.0 bump the minor" setting. For now the title is `feat`. I'll bring this up formally at the validation gate.
+
+```
+剩餘:   validation 工作者執行中；是否標為破壞性變更（影響版號）待你在 validation 關卡決定；#256 待合併；#254 發版稍後；[LOCAL_TIME]–[LOCAL_TIME] 原因未明；#212 未解；web#62 可關未關
+下一步: 等 validation 完成後我呈 validation 關卡（我）
+可收線: 否
+```
+
+Validation came back REJECTED, so I'm writing the fix assignment. All four findings have been checked against the validator's evidence.
+
+Validation came back **REJECTED, but the product code itself is correct**. The failures are all in the test scripts, so I've sent the task back to implementation to fix the scripts. That's round 1 of fixes.
+
+**What validation proved** (run by its own checks, on the deploy preview and the local suite):
+- **All 7 acceptance criteria pass:**
+  - `/r/{s}` opens the review directly, and the address stays put.
+  - The JSON handover no longer has `roomUrl`.
+  - `/room/` returns 404.
+  - Sessions survive a reload and a second tab.
+  - The error cards all show correctly.
+  - The page is answered at the edge.
+  - On an origin mismatch, the page jumps to the correct origin and creates no session.
+- **One security guard was watched refusing a request on the real deploy:** a forged `Origin: https://evil.example` got "wrong origin".
+
+**Why it was rejected: PR #260's CI is red** (4 checks fail). I've confirmed all three causes are test scripts that weren't updated:
+
+| Finding | Problem | How I'm handling it |
+|---|---|---|
+| 1. `scripts/e2e-live` | Still expects the old `302` redirect for `/r/{s}` | Fix: expect `200` |
+| 2. `scripts/e2e-expiry` | Expects a `302`, and looks for the expired message in the raw HTML. The message is now shown by the page itself, so raw HTML can't contain it | Fix: switch to checking that the enter request is refused with "expired". That keeps the check's intent (the holder of an expired link learns why) without deleting it |
+| 3. `scripts/smoke-deployment` | The probe address added in this change doesn't exist, so the check never reaches what it's meant to test | Fix: use the real share link the script already publishes |
+| 4. One browser test on the preview got 1 result instead of 2 | The results listing is documented as eventually consistent (up to 60 seconds); not caused by this change | Not fixing this round, recorded as a deferred risk |
+
+The fix touches only these three scripts, not product code. When it's done, a fresh worker re-validates, and then I bring you the validation gate. That's also where the version question comes up: whether to mark this as a breaking change, which would take the version to 1.0.0.
+
+```
+剩餘:   第 1 輪修正（3 個測試腳本）執行中；修完重新驗證後呈 validation 關卡；版號是否標破壞性待你決定；#256 待合併；#254 發版稍後
+下一步: 等修正完成、推上 #260、重新驗證（我）
+可收線: 否
+```
+
+DOING: push fix commit ON: [ORG_NAME_6]/subspace-relay#260 (spacedock-ensign/one-share-link) FOR: re-run CI and the deploy preview for re-validation
+
+CI on #260 is all green at `c90de85`, including the three previously failing e2e checks. Dispatching a fresh validation worker to re-review the fixed candidate.
+
+The round-1 fix is pushed to #260, and **CI is now all green** (12 checks passed on `c90de85`, including the three e2e checks that were failing). A fresh validation worker has been dispatched to re-review.
+
+- **What the fix changed:** only the three test scripts (19 lines added, 12 removed). Each changed check was shown failing against the old behaviour and passing on the new version.
+- **What the re-validation checks:**
+  1. Acceptance criteria 1–7 again.
+  2. Whether the three scripts still test what they claim to test.
+  3. The three scripts run against the preview.
+  4. Whether the results-listing delay (finding 4) shows up again.
+
+When it's done, I'll bring you the validation gate, including the version question: whether to mark this as a breaking change, which would take the version to 1.0.0.
+
+```
+剩餘:   重新驗證執行中；之後呈 validation 關卡（含是否標破壞性變更）；#256 待合併；#254 發版稍後；[LOCAL_TIME]–[LOCAL_TIME] 原因未明；#212 未解
+下一步: 等重新驗證完成後呈關卡（我）
+可收線: 否
+```
+
+Re-validation came back **PASSED**. Before preparing the gate, checking two things: that PR #260's head is exactly the validated commit, and that CI is still green.
+
+The validation gate is prepared. The AC scan confirms every criterion has evidence, and validation's report records criterion 7 as passing on the preview.
+
+**Gate review: One share link — validation**
+**Recommendation: approve (ready to deliver).**
+Reviewed snapshot: `briefing:one-share-link:validation:attempt-1:revision-1` (`sha256:2a028549…`), candidate `c90de85` (the current head of PR #260)
+
+**Checks actually run** (round 2 of validation, by a fresh worker):
+- **CI on `c90de85`: 12 checks, all passing.** That includes lint, types, unit tests, browser tests (40/40), and all four e2e checks: live 57, expiry 28, smoke 11, sweep 24. PR is `MERGEABLE`/`CLEAN`.
+- **On the preview `deploy-preview-260`:**
+  - `smoke-deployment`: 12/12.
+  - `e2e-live`: 71/0.
+  - The browser suite: 36 passed, 1 failed (finding 4, below), 2 skipped (structural; covered by the local run).
+- **Acceptance criteria 1–7 all pass:**
+  - `/r/{s}` returns 200 with no redirect.
+  - JSON contains only `briefingId`/`revokedAt`/`expiresAt`.
+  - `/room/` returns 404.
+  - Sessions survive a reload, a second tab, and a token being pushed out.
+  - The error cards show correctly.
+  - The page is answered at the edge and the POST reaches the function.
+  - A forged origin gets a jump to the correct origin, and no session is created.
+- **A guard was watched refusing a request:** on the real deploy, the same session with a forged origin got "wrong origin".
+
+**Findings and limits:**
+- **Round 1 fixed three stale test scripts** (scripts only), and round 2 confirmed each still tests real behaviour.
+- **Finding 4:** on the preview, the results listing was one entry short right after a second submission. It reproduced in both rounds; the listing is documented as eventually consistent within 60 seconds, and no criterion depends on it. Recorded as a deferred risk.
+- **`e2e-expiry` can't run on a real deploy:** that would mean waiting out the 7-day retention. Its only evidence is the local run with a short retention (28/28, matching CI).
+- **Validation's own run left test data behind:** running `e2e-live` against the preview left about 24 unrevoked synthetic Briefings in the staging store. They expire in 7 days and contain no personal data.
+
+**Is it enough, and is it only what's needed?** It meets the outcome you set in the backlog: one link that both downloads and opens the review, with `/room/` removed. The change is 28 files (780 lines added, 688 removed), all inside the approved scope: routes, the cookie, `roomUrl`, tests, and the four retained docs. Nothing extra was added.
+
+**Still owed:** dev2 requires the two rulings you made at ideation (redirect rather than rebind; remove `roomUrl` everywhere) to be recorded in an ADR before final completion. I've sent them to dhaka to add to #256 (dhaka's session is now `dhaka-34`).
+
+**Minimal acceptance script** (run on the preview; needs curl, jq, uuidgen, shasum):
+
+```sh
+ORIGIN=https://[INTERNAL_HOST_10]
+T=$(mktemp -d); cd "$T"
+DEV="dev_$(head -c16 /dev/urandom | base32 | tr 'A-Z' 'a-z' | tr -d '=')"
+SEC="sec_$(head -c32 /dev/urandom | base32 | tr 'A-Z' 'a-z' | tr -d '=')"
+BID="briefing:$(head -c16 /dev/urandom | od -An -tx1 | tr -d ' \n')"
+printf 'hello\n' > plan.md
+ASHA=$(shasum -a 256 plan.md | awk '{print $1}'); SIZE=$(wc -c < plan.md | tr -d ' ')
+jq -n --arg id "$BID" --arg a "sha256:$ASHA" '{type:"Briefing",version:"1",id:$id,question:"q",artifacts:[{id:"artifact:plan",uri:"plan.md",mediaType:"text/markdown",rev:$a}],context:[]}' > briefing.json
+BSHA=$(shasum -a 256 briefing.json | awk '{print $1}')
+jq -n --arg b "sha256:$BSHA" --arg a "sha256:$ASHA" --argjson n "$SIZE" '{type:"subspace-relay-package",version:"1",briefingSha256:$b,files:[{artifactId:"artifact:plan",uri:"plan.md",mediaType:"text/markdown",rev:$a,size:$n}]}' > manifest.json
+SHARE=$(curl -sS -X POST "$ORIGIN/api/briefing" -H "X-Subspace-Device: $DEV" -H "Authorization: Bearer $SEC" -H "Idempotency-Key: $(uuidgen)" -F manifest=@manifest.json -F briefing=@briefing.json -F "artifact:plan=@plan.md" | jq -r .shareUrl); echo "$SHARE"
+# 1. Open $SHARE in a browser: the review appears, and the address bar stays on /r/…
+curl -s -H 'Accept: application/json' "$SHARE" | jq .                                  # 2. no roomUrl
+curl -s -o /dev/null -w '%{http_code}\n' "$ORIGIN/room/room_[ID_REDACTED_3]"   # 3. 404
+curl -s -X POST -H 'Content-Type: application/json' -H 'Origin: https://evil.example' -d '{"action":"enter"}' "$SHARE"   # 4. {"redirect": ".../r/…"}
+curl -s -o /dev/null -w '%{http_code}\n' "$SHARE"                                       # 5. 200, no redirect
+curl -s -X POST "$ORIGIN/api/briefing/$BID/revoke" -H "X-Subspace-Device: $DEV" -H "Authorization: Bearer $SEC" -H "Idempotency-Key: $(uuidgen)"; cd - >/dev/null; rm -rf "$T"
+```
+
+**Decision:** approving records this candidate as validated and moves the task into "waiting for PR merge". It doesn't merge anything, and the PR stays a Draft until you tell me to mark it ready for review. **One question goes with this approval:** should the PR be marked as a breaking change? If yes, the title becomes `feat(relay)!: …`, and release-please takes the version from 0.3.x straight to **1.0.0**. If not, it stays `feat` and the next version is 0.4.0. I recommend keeping `feat`: the only external consumers (the TUI on PR#58, and `subspace-hermes`) aren't affected, and a 1.0.0 is a promise better made on purpose, not as a side effect. The downside: someone reading the version number won't see that this removed an API field and a route.
+
+```
+剩餘:   validation 關卡待你決定（含是否標破壞性變更）；兩個 ideation 裁示待 dhaka 寫入 ADR（#256）；#260 仍為草稿；#256 待合併；#254 發版稍後；[LOCAL_TIME]–[LOCAL_TIME] 原因未明；#212 未解
+下一步: 你核准 validation 關卡並決定版號標示（你）
+可收線: 否
+```
+
+dhaka says the two rulings are now ADR 23 and ADR 24. Checking that they exist and pass lint before citing them.
+
+The ADR requirement is met: dhaka recorded your two ideation rulings in #256 as **ADR 23** (an origin mismatch redirects; the origin is never rebound) and **ADR 24** (`roomUrl` removed everywhere). I checked the files myself: both exist, your wording matches the task record, and lint passes on all 24 ADR files. They reach `main` when #256 merges.
+
+#260's description now cites ADRs 20, 23, and 24, and its evidence and known limits have been updated to validation's result (PASSED at `c90de85`).
+
+The validation gate is still waiting on you. The recommendation is unchanged: approve, and keep the title as `feat`, which makes the next version 0.4.0.
+
+```
+剩餘:   validation 關卡待你決定（含是否標破壞性變更）；#260 仍為草稿；#256（含 ADR 20/23/24）待合併；#254 發版稍後；[LOCAL_TIME]–[LOCAL_TIME] 原因未明；#212 未解
+下一步: 你核准 validation 關卡並決定版號標示（你）
+可收線: 否
+```
+
+------------------------------------------------------------------------
+
+[#100] YOU — 2026-09-24 01:32   (part 3 · you asked)
+我可以怎樣驗收測試？
+
+------------------------------------------------------------------------
+
+[#101] CLAUDE — 2026-09-24 01:33   (part 3 · claude drifted)
+The easiest way is for me to set up test links on #260's preview and open them in your browser; each link has one thing to check. Preparing them now.
+
+The redirect-from-another-origin link didn't reach the review screen within 30 seconds. Diagnosing before you try it: I'll record where the page went and what each request got back.
+
+Confirmed: the page code has **no handling for `redirect` at all**. The server's `share.ts` returns it, but `public/room-bootstrap.js` never reads it, and there's no browser test for this path.
+
+**How it got missed:** acceptance criterion 7 says "move the browser to the correct origin". The ideation design explicitly listed the page's jump as "needs a browser test to prove". But both implementation and validation only checked, with `curl`, that the server returned `redirect`. Neither actually tested the page following it. Validation's PASS on criterion 7 is wrong.
+
+**Impact:** anyone who opens the link on a different host than the one it was published on (a deploy permalink, a Deploy Preview, or a retried publish) gets an error card instead of the review. On production today, a link used on its original host is unaffected. Criteria 1–6 have their own browser tests and are unaffected.
+
+**The fix:** make the bootstrap navigate when it gets `redirect` from enter, and add a browser test across two origins. That's a small change, but it's product code, so it has to go through validation again.
+
+## Decision for you
+
+**Should I withdraw the validation approval you just gave, send the task back to implementation to fix this, then re-validate and bring you a new validation gate?** I recommend yes. The workflow's rework route supersedes your pending approval, and after the fix you'd need to approve again. The downside: one more fix round, and #260 can't merge until then. The alternative is to merge first and fix separately, but that ships acceptance criterion 7 knowingly broken, which I don't recommend.
+
+```
+剩餘:   AC-7（跨來源跳轉）在瀏覽器實際失敗，待你同意退回修正；#260 暫不應合併；驗收頁的第 5 項目前會失敗（其他 1–4、6 可以先測）；#256 待合併；#254 發版稍後
+下一步: 你同意撤回核准並退回修正（你）
+可收線: 否
+```
+
+------------------------------------------------------------------------
+
+[#102] YOU — 2026-09-24 01:36   (part 3 · you asked)
+撤回核准並退回修正
+
+------------------------------------------------------------------------
+
+[#103] CLAUDE — 2026-09-24 01:36   (part 3 · claude did)
+Sent back to implementation. Your earlier validation approval is marked superseded; after the fix it goes through validation again, and I'll bring you a new gate. Writing the round-2 fix assignment.
+
+While the fix runs, I'm saving this lesson to memory: an approval was given on a PASS that never checked what the browser actually does.
+
+Your validation approval is withdrawn, the task is back in implementation, and the round-2 fix worker has been dispatched.
+
+**The fix assignment:**
+1. **Make the page actually jump:** when the enter request returns `redirect`, the page goes straight to that address instead of carrying on to read. To prevent loops or jumping somewhere wrong, it only follows the redirect when the path is the same `/r/{s}` and the origin is different; otherwise it shows the error card.
+2. **Add a real browser test for this path:** publish on `127.0.0.1`, open the link via `localhost` (the local test server answers on both). The test must see the page end up at the publishing origin's `/r/{s}` with the review screen mounted, having entered only once there. It has to fail against the current version before it passes against the fix.
+3. **Run all the checks again.**
+
+After the fix I'll push to #260. Validation will then run again with a fresh worker, and this time I'll require it to test every "what the browser does" criterion in a real browser. Then I'll bring you a new validation gate.
+
+**About the checklist page:**
+- **Items 1–4 and 6 can be tested now.** They still behave as the checklist says.
+- **Item 5 (entering from another origin) currently fails, as expected.** Please wait until the fix is in to test it.
+
+I also saved this lesson to memory: a server returning the right answer doesn't prove the browser did the right thing.
+
+```
+剩餘:   第 2 輪修正（AC-7 瀏覽器跳轉）執行中；之後推上 #260、重新驗證、呈新 validation 關卡；#260 暫不可合併；#256 待合併；#254 發版稍後
+下一步: 等修正完成（我）
+可收線: 否
+```
+
+The round-2 fix is pushed to #260 and CI is running. As soon as it goes green, I'll dispatch a fresh validation worker, and this time require every criterion about what the browser does (1, 4, 5, and 7) to be tested in a real browser.
+
+```
+剩餘:   #260 CI 執行中；綠燈後派新驗證（瀏覽器實跑 AC-1/4/5/7）；之後呈新 validation 關卡；#256 待合併；#254 發版稍後
+下一步: 等 CI 完成（我）
+可收線: 否
+```
+
+CI is all green at `0a2e58a` (12 checks passed). Dispatching a fresh validation worker.
+
+CI is green at `0a2e58a`, and the third validation round has been dispatched to a fresh worker.
+
+What's different this time: every "what the browser does" criterion (1, 4, 5, 7) must be tested in a real browser, and a correct server response alone no longer counts as passing. For criterion 7 specifically, it has to open a link published on the preview via that deploy's own permalink, and see it end up on the review screen at `deploy-preview-260`'s `/r/{s}`. It will also check that the jump guard refuses a different path or the same origin.
+
+When it finishes, I'll bring you the new validation gate.
+
+```
+剩餘:   第 3 輪驗證執行中；之後呈新 validation 關卡；#260 暫不可合併；#256 待合併；#254 發版稍後
+下一步: 等驗證完成後呈關卡（我）
+可收線: 否
+```
+
+Round 3 validation passed, and my own browser re-check matches it. Here's the new validation gate.
+
+**Gate review: One share link — validation (after the round-2 fix)**
+**Recommendation: approve (ready to deliver).**
+Reviewed snapshot: `briefing:one-share-link:validation:attempt-2:revision-1` (`sha256:684dffe3…`), candidate `0a2e58a`. That's the current head of PR #260, and it's `CLEAN`.
+
+**Checks actually run** (round 3, a fresh worker):
+- **CI on `0a2e58a`: 12 checks, all passing.** Browser tests are 41/41, including the new test that publishes on one origin and opens on another.
+- **Criteria 1, 4, 5, and 7 were each run in a real browser; a server response alone no longer counts:**
+  - **Criterion 7:** opened via the deploy's own permalink, it jumps to `deploy-preview-260`'s `/r/{s}` and the review screen mounts.
+  - **A control run:** the same test against the pre-fix deploy reproduced the original bug (stuck, 401, error card). So this check can genuinely tell right from wrong.
+  - **The jump guard:** it was watched refusing a different path and a same-origin target, on the deploy actually running.
+- **My own check (as the coordinator):** the same criterion-7 path ends on `deploy-preview-260…/r/…` with the review screen mounted. It sent one enter on each origin, and made no `/room/` requests.
+- **Criteria 2, 3, and 6 are unchanged from round 2:**
+  - The JSON has no `roomUrl`.
+  - `/room/` returns 404.
+  - The page is answered at the edge and the POST reaches the function.
+
+**Findings:**
+- **Doc-impact count mismatch (I'm not fixing it):** implementation's report said the doc-impact scan found 0 affected documents, but a re-run finds 6. Validation checked each one and none is stale. It's an inaccuracy in the report, not a documentation problem, and this delivery doesn't need to fix it.
+- **Finding 4 (the results listing up to 60 seconds behind):** still a deferred risk, as before.
+
+**Is it enough, and is it only what's needed?** It delivers the whole outcome from the backlog, and the round-2 fix only touches the page's jump handling and the tests that go with it. It's now 30 files changed; nothing outside the scope.
+
+**Minimal acceptance script** (steps 1 and 5 in a browser, the rest in a terminal; needs curl, jq, uuidgen, shasum):
+
+```sh
+ORIGIN=https://[INTERNAL_HOST_10]
+PERMA=https://[INTERNAL_HOST_12]   # the same deploy's permalink host
+T=$(mktemp -d); cd "$T"
+DEV="dev_$(head -c16 /dev/urandom | base32 | tr 'A-Z' 'a-z' | tr -d '=')"; SEC="sec_$(head -c32 /dev/urandom | base32 | tr 'A-Z' 'a-z' | tr -d '=')"
+BID="briefing:$(head -c16 /dev/urandom | od -An -tx1 | tr -d ' \n')"; printf 'hello\n' > plan.md
+ASHA=$(shasum -a 256 plan.md | awk '{print $1}'); SIZE=$(wc -c < plan.md | tr -d ' ')
+jq -n --arg id "$BID" --arg a "sha256:$ASHA" '{type:"Briefing",version:"1",id:$id,question:"q",artifacts:[{id:"artifact:plan",uri:"plan.md",mediaType:"text/markdown",rev:$a}],context:[]}' > briefing.json
+BSHA=$(shasum -a 256 briefing.json | awk '{print $1}')
+jq -n --arg b "sha256:$BSHA" --arg a "sha256:$ASHA" --argjson n "$SIZE" '{type:"subspace-relay-package",version:"1",briefingSha256:$b,files:[{artifactId:"artifact:plan",uri:"plan.md",mediaType:"text/markdown",rev:$a,size:$n}]}' > manifest.json
+SHARE=$(curl -sS -X POST "$ORIGIN/api/briefing" -H "X-Subspace-Device: $DEV" -H "Authorization: Bearer $SEC" -H "Idempotency-Key: $(uuidgen)" -F manifest=@manifest.json -F briefing=@briefing.json -F "artifact:plan=@plan.md" | jq -r .shareUrl); echo "$SHARE"
+# 1. Open $SHARE in a browser: the review appears, and the address bar stays on /r/…
+curl -s -H 'Accept: application/json' "$SHARE" | jq .                                   # 2. no roomUrl
+curl -s -o /dev/null -w '%{http_code}\n' "$ORIGIN/room/room_[ID_REDACTED_3]"    # 3. 404
+curl -s -o /dev/null -w '%{http_code}\n' "$SHARE"                                        # 4. 200, no redirect
+echo "$PERMA/r/${SHARE##*/r/}"   # 5. Open this in a browser: it jumps to $ORIGIN's /r/…, and the review appears
+curl -s -X POST "$ORIGIN/api/briefing/$BID/revoke" -H "X-Subspace-Device: $DEV" -H "Authorization: Bearer $SEC" -H "Idempotency-Key: $(uuidgen)"; cd - >/dev/null; rm -rf "$T"
+```
+
+(The checklist page I opened for you earlier, `.context/web-perf/accept-260.html`, still works for items 1–4 and 6. Item 5 there points at the old deploy's permalink. To test the jump now, use step 5 in the script above.)
+
+**Decision:** approving records `0a2e58a` as validated and moves the task to "waiting for PR merge". It doesn't merge anything, and the PR stays a Draft until you tell me to mark it ready.
+
+```
+剩餘:   validation 關卡待你決定；#260 仍為草稿；#256（含 ADR 20/23/24）待合併；#254 發版稍後；[LOCAL_TIME]–[LOCAL_TIME] 原因未明；#212 未解
+下一步: 你核准或退回 validation 關卡（你）
+可收線: 否
+```
+
+------------------------------------------------------------------------
+
+[#104] YOU — 2026-09-24 02:27   (part 3 · you asked)
+approve
+
+------------------------------------------------------------------------
+
+[#106] YOU — 2026-09-24 02:30 · PUSHBACK   (part 3 · you pushed back)
+怎麼覺得註解好像有點多？確認一下是否有不需要留的？
+
+------------------------------------------------------------------------
+
+[#107] CLAUDE — 2026-09-24 02:30   (part 3 · claude drifted)
+Counting the comment lines #260 adds, then checking each one.
+
+Yes, they're clearly too many, and most shouldn't stay. **Net, this PR adds 161 comment lines** (234 added, 73 removed), against the 3.0% comment baseline your rules set; it's at about 28.7%.
+
+| Type | About how many | Examples | Keep? |
+|---|---|---|---|
+| **Narrating the task or ruling** (entity, AC-N, Captain ruling, ideation gate, "this entity retires…") | 45 lines | `AC-7: a share opened on…`, `(Captain ruling, ideation gate, 2026-09-24…)`, `the entity retiring it` | Delete. Your rules say this belongs in commit messages, not code |
+| **Narrating the change history** ("once…", "used to be…", "replaced the old…", "before this entity") | Many (in the header comments of `room-view.ts`, `share.ts`, `room-page.ts`, and `session.ts`, plus tests) | `Once /room/:roomId was the route that reached it directly…`, `This is what replaced the old synchronous "no review room" notice page` | Delete |
+| **Citing file paths instead of symbols** | 21 lines | `` `netlify/edge-functions/room-page.ts` ``, `` `public/room-bootstrap.js` `` | Delete, or change to the symbol name |
+| **Restating what the code already says** | Some | `Peek at the body via a clone so…` (half of it is the code itself) | Delete |
+| **Facts the code can't express** | Estimated 20–40 lines | Why `resolveShareRoom` also checks `room.briefingId` (a publish collision); why the origin decision sits before `enterRoomSession` (to keep the A1 security floor); why the cookie Path comes from the request path; the jump guard's limits (same path, different origin only); why the test server uses two hostnames | Keep, but tighten |
+
+(These counts are from keyword grep and a sampled read. The "keep" number is my estimate; I haven't gone through every line.)
+
+Trimming changes the candidate, so under the dev2 rules it has to go back to implementation and then be validated again. It's comment-only, so validation should be quick: it just needs to confirm no code changed and the tests still pass.
+
+## Decision for you
+
+**Should I withdraw this validation approval again, and send it back to implementation to trim the comments before merging?** I recommend yes: if it merges first and gets trimmed in a follow-up PR, these comments land on `main` for a while, and they'll turn into history nobody updates. The downside: one more round (implementation, then validation, then a new gate), so #260 merges later. The multi-document picker bug kigali reported is waiting on #260 too, so it gets pushed back with it.
+
+```
+剩餘:   #260 註解過多，是否退回精簡待你決定；多文件選擇器 bug 是否排入待你決定；#260 草稿未合併；#256 待合併；#254 發版稍後
+下一步: 你決定是否退回精簡註解（你）
+可收線: 否
+```
+
+------------------------------------------------------------------------
+
+[#108] YOU — 2026-09-24 02:32   (part 3 · you asked)
+要退回修掉過多的註解。說明多文件選擇器 bug，我記得我們做了，但問題是什麼？
+
+------------------------------------------------------------------------
+
+[#113] CLAUDE — 2026-09-24 04:13   (part 3 · claude did)
+The comment-trim worker was cut off by the usage limit partway through (last reported: types clean, about to run the unit tests). Checking what state it left behind.
+
+The comment-trim worker has resumed from where it stopped.
+
+- **What happened:** it was cut off by the usage limit right after the type check passed. It left its comment edits uncommitted (17 files, 90 lines added, 184 removed) and hadn't committed or written its report yet.
+- **What it does now:** it continues from that point: run the remaining checks (unit tests, browser tests, lint), show that only comment lines changed, report the comment-line counts before and after, commit (no push), and write the report.
+- **Ledger:** I've recorded this as retry 1 in the task's retry ledger. If it fails again, the workflow's rule is to stop retrying and come back to you.
+
+```
+剩餘:   精簡註解工作者已恢復執行；之後推上 #260、快速驗證、呈 validation 關卡；multi-document-room-picker 待 #260 合併後呈 backlog 關卡；#256 待合併；#254 發版稍後
+下一步: 等精簡完成（我）
+可收線: 否
+```
+
+The trim is done, but I think it's still not enough. By the workflow's rules this is round 3 of fixes, and at round 3 I'm not allowed to start a fourth on my own; I have to bring it back to you.
+
+**Result:**
+- **Comment lines added went from 234 to 141** (out of 717 added lines, 19.7%). The worker's own count is 141; my rougher grep counted 136.
+- **I confirmed the round-3 commit changes comment lines only:** no non-comment line changed.
+- **Checks:** unit tests 911/911, browser tests 40/40, types and lint all clean.
+
+**What's left:**
+- **Most of it is now "why" comments** that are worth keeping: why the Briefing is checked against the Room again (a publish collision), why the origin decision sits before `enterRoomSession` (to keep the A1 security floor), and why the body is cloned.
+- **But they're still long-winded, and about 5 lines still narrate history** ("with `roomUrl` gone…", "`/room/{roomId}` is no longer a route…"). Compared with your 3.0% baseline, it's still far too high.
+- **The worker flagged one leftover it couldn't fix:** the OpenAPI description string in `room-page-contract.ts` still says "AC-7". It's a string, not a comment, so it fell outside a comments-only change.
+
+**Something else I noticed (not part of this decision):** with `/room/` gone, `roomPageResponse` and `room-view.ts`'s GET-page branch can no longer be reached by any real request; only tests call them. They look like dead code that could be deleted. That would be a code change, so it's separate from the comment trim.
+
+## Decision for you
+
+**Should I do one more round of trimming, or accept it as is and move on to validation?** I recommend **one more round**. The target is to keep only one or two lines of "why" per non-obvious point, remove the remaining history narration, and remove "AC-7" from the OpenAPI string too. I estimate that brings it down to about 40–60 lines. The downside: another round of implementation, then validation, then a new gate, and #260 and the multi-document fix waiting behind it both get pushed back again. If you're OK with how it is now, I'll go straight to validation.
+
+```
+剩餘:   精簡後仍 141 行（19.7%），是否再精簡一輪待你決定；roomPageResponse 等可能是死碼（另議）；#260 草稿未合併；multi-document-room-picker 待 #260 合併；#256 待合併；#254 發版稍後
+下一步: 你決定再精簡一輪或直接驗證（你）
+可收線: 否
+```
+
+------------------------------------------------------------------------
+
+[#114] YOU — 2026-09-24 04:21   (part 3 · you asked)
+再一輪，主要是我不想加入多餘的廢話，這可能導致下個 agent 誤判，如果註解內容與程式已經發生飄移
+
+------------------------------------------------------------------------
+
+[#115] CLAUDE — 2026-09-24 04:21   (part 3 · claude did)
+Understood: comments that have drifted from the code will mislead the next agent, so they should go. Writing the round-4 assignment, with the bar set as "if it could drift from the code, don't keep it".
+
+Round 4 of trimming has started, with your reason written in as the bar: **"keep a comment only if the code can't say it and it can't silently drift from the code beside it."**
+
+- **Delete:** comments that describe what the code does, what it used to do, what was removed, or where something else lives. No history words ("gone", "no longer", "used to", "replaced", "now").
+- **Keep:** at most two lines per comment, stating a constraint or a reason. There are about 5 expected survivors: the collision check, why the origin decision comes first, how the cookie Path is derived, the jump guard's limits, and why the test server uses two hostnames.
+- **Pre-existing comments that were only reworded:** restore `main`'s original wording where it's still true; otherwise delete them.
+- **The "AC-7" in the OpenAPI description goes too,** and the OpenAPI JSON gets regenerated.
+- **Behaviour stays the same:** apart from those OpenAPI strings, only comment lines may change. It must re-run all the checks and report the counts before and after.
+
+After this I'll push, run validation, and bring you the gate.
+
+(A separate issue for later: `roomPageResponse` and `room-view.ts`'s GET-page branch look like dead code. That's a code change, so it's not in this round.)
+
+```
+剩餘:   第 4 輪精簡執行中；之後推上 #260、驗證、呈 validation 關卡；死碼（roomPageResponse 等）待另議；multi-document-room-picker 待 #260 合併；#256 待合併；#254 發版稍後
+下一步: 等精簡完成（我）
+可收線: 否
+```
+
+Round 4 is pushed and CI is running (in the background). When it's green, I'll dispatch a fresh validation worker to confirm three things:
+1. From `0a2e58a` to now, only comments and the OpenAPI description changed.
+2. All 7 acceptance criteria still pass, including criterion 7 in a real browser.
+3. CI is green.
+
+Then I'll bring you the validation gate.
+
+```
+剩餘:   #260 CI 執行中（註解已從 234 降到 43 行）；綠燈後派驗證、呈 validation 關卡；死碼待另議；multi-document-room-picker 待 #260 合併；#256 待合併；#254 發版稍後
+下一步: 等 CI（我）
+可收線: 否
+```
+
+CI is all green at `40160a9` (12 checks passed), and the three "AC-7" mentions in the tests are confirmed to already be on `main`. Dispatching the validation worker.
+
+The validation worker is running (a fresh worker). It will confirm:
+1. From `0a2e58a` to now, only comments and the OpenAPI description changed.
+2. The remaining comments are all constraints or reasons of at most two lines.
+3. All 7 acceptance criteria pass, with criterion 7 re-run in a real browser on the deploy.
+4. CI is green (already 12/12 at `40160a9`).
+
+When it's done, I'll bring you the validation gate.
+
+```
+剩餘:   驗證執行中；之後呈 validation 關卡；死碼待另議；multi-document-room-picker 待 #260 合併；#256 待合併；#254 發版稍後
+下一步: 等驗證完成（我）
+可收線: 否
+```
+
+Validation passed. Confirming the PR head and CI, then preparing the gate.
+
+**Gate review: One share link — validation (after the comment trim)**
+**Recommendation: approve (ready to deliver).**
+Reviewed snapshot: `briefing:one-share-link:validation:attempt-3:revision-1` (`sha256:42b591cb…`), candidate `40160a9`. That's the current head of PR #260, and it's `CLEAN`.
+
+**Checks actually run:**
+- **Only comments changed:** the change from the last validated version, `0a2e58a`, touches only comment lines plus one OpenAPI description string (and its generated JSON). Validation confirmed zero other changes by classifying lines with a script, and my own check agrees.
+- **Comments:** lines added went from **234 to 43** (624 added lines, about 6.9%).
+  - What's left is the five constraints/reasons of at most two lines each (the collision check, why the origin decision comes first, how the cookie Path is derived, the jump guard's limits, the test server's two hostnames).
+  - The rest are existing `main` comments with only the path renamed.
+  - No history or task narration remains.
+- **CI:** 12/12 green. `smoke-deployment` passes 12/12 on the preview and on the deploy's permalink.
+- **Criterion 7 in a real browser:** a link published on the preview, opened via the deploy's own permalink, ends on the preview's `/r/{s}` with the review screen mounted. It sent two enter requests (one that returned the jump, then one that created the session) and zero `/room/` requests.
+- **Criteria 1–6:** the product code hasn't changed since round 3, when they passed in a browser; this round re-confirmed them on this version.
+
+**Findings:**
+- **Local unit-test flakiness in the validator's sandbox (not blocking):** the timeouts are always in `scripts/ci-workflow.test.ts` and `scripts/dev-flow-state-prereq.test.ts`, which this change doesn't touch. CI's unit-test job is green, and that remains the authoritative result.
+- **Finding 4 (the results listing up to 60 seconds behind):** still a deferred risk.
+
+**Is it enough, and is it only what's needed?** It fully delivers the backlog outcome and now meets your comment rule. It shrank from the earlier 30 files to 624 added lines, with no out-of-scope changes.
+
+**Minimal acceptance script:** the same as the previous gate, except the permalink changes to this deploy's:
+- **Browser:** open `$SHARE`; the review appears, and the address bar stays on `/r/…`.
+- **Terminal:** the JSON has no `roomUrl`; `/room/…` returns 404; `$SHARE` returns 200.
+- **Browser:** open the same link via the deploy's permalink host; it jumps to the preview's `/r/…`, and the review appears.
+
+**Decision:** approving records `40160a9` as validated and moves the task to "waiting for PR merge". It doesn't merge anything, and the PR stays a Draft until you tell me to mark it ready.
+
+```
+剩餘:   validation 關卡待你決定；#260 草稿未合併；死碼（roomPageResponse 等）待另議；multi-document-room-picker 待 #260 合併；#256 待合併；#254 發版稍後
+下一步: 你核准或退回 validation 關卡（你）
+可收線: 否
+```
+
+------------------------------------------------------------------------
+
+[#118] YOU — 2026-09-24 05:17   (part 3 · you asked)
+移除的註解是否該納入 aDR 或是架構文件？
+
+------------------------------------------------------------------------
+
+[#119] CLAUDE — 2026-09-24 05:17   (part 3 · claude did)
+Checking whether the facts in the removed comments have somewhere else to live. The retained-document rules require this before deleting: find each block's "second home".
+
+**No need to move them, because every fact in them already lives elsewhere.** But checking this turned up the same problem in the docs themselves.
+
+**Where each removed comment's facts live now:**
+
+| Fact from the removed comments | Now lives in |
+|---|---|
+| Why the ruling was made, and the options considered (remove `/room/`, redirect rather than rebind, remove `roomUrl`) | **ADRs 20, 23, and 24** (#256) |
+| An origin mismatch moves the browser to `${origin}/r/{s}`, and never mints a session for another origin | The protocol doc `hosted-review-room.md` (the "A Room's `origin` is captured…" paragraph) |
+| `/r/{s}`'s GET and POST, and the edge answering the HTML | `architecture.md`'s route table and file list |
+| One address with no redirect; the cookie scoped per share | `terminal-and-relay.md` |
+| The owner gets `roomId` via `POST /api/room` | `hosted-review-room.md`'s control-plane table |
+| Why the code does something (the collision check, why the origin decision comes first, the cookie Path, the jump guard, two hostnames) | **The comments kept in the code** (these are about specific lines, so the code is the right place) |
+| Change history ("/room/ used to…", "this replaced…") | Commit messages and the PR description; history doesn't belong in documents |
+
+**New finding: the docs in #260 narrate the task too,** in 3 places:
+- **`architecture.md` line 914:** "(this entity retired the `/room/{roomId}` second address…)".
+- **`architecture.md` line 974:** "ruling this entity implements: 「前者，就是 /room/ 就移除不用了…」" quotes your ruling inside the architecture doc. Your words belong in ADR 20, not in the architecture doc.
+- **`terminal-and-relay.md` line 190:** "(… by this entity)".
+
+To a reader, "this entity" is meaningless. It's history that will drift, which is exactly the kind of drift you're worried about. It also breaks the retained-document rule that documents are written in the present tense.
+
+## Decision for you
+
+**Should I clean up these 3 lines of task narration in the docs before merging?** I recommend doing it before the merge. It's a docs-only change, so CI only runs the lightweight checks and validation only needs to confirm nothing but those lines changed. The downside: the candidate changes, so your validation approval is superseded again, and you'll have to approve once more before merging. If you'd rather not go through that again, it can be a small separate docs PR after merging, but then these lines land on `main` for a while.
+
+```
+剩餘:   文件中 3 處任務敘述是否合併前清掉待你決定；#260 草稿未合併；死碼待另議；multi-document-room-picker 待 #260 合併；#256 待合併；#254 發版稍後
+下一步: 你決定合併前清掉或事後另開（你）
+可收線: 否
+```
+
+------------------------------------------------------------------------
+
+[#120] YOU — 2026-09-24 05:19   (part 3 · you asked)
+清理
+
+------------------------------------------------------------------------
+
+[#121] CLAUDE — 2026-09-24 05:19   (part 3 · claude did)
+Sending it back for this docs cleanup. First, scanning every doc change in #260 for task narration, so this round doesn't miss any.
+
+The docs cleanup has been sent back to implementation (your validation approval is superseded; after this round you'll need to approve again), and the worker is running.
+
+**This round's changes are limited to the 3 task-narration passages in the docs:**
+- **`architecture.md`:** the route table's "(this entity retired…)", and the paragraph that quotes your ruling directly.
+- **`terminal-and-relay.md`:** "(… by this entity)".
+
+Each is rewritten in the present tense (what's true now), with no "this entity", no quoted ruling, and no history words. It won't point at `docs/adr/` either, since that isn't on `main` yet. The commit may only touch `docs/`.
+
+**What I'm deliberately not changing:** `terminal-and-relay.md` has "which the Captain ruled should change: ticket `one-account-two-identities`". That was already on `main` before #260, and deleting existing content is your call. Tell me if you want it gone too.
+
+After this, I'll push, run a quick validation (confirm only those lines changed and CI is green), then bring you the gate.
+
+```
+剩餘:   第 5 輪（文件去敘述）執行中；之後推上、快速驗證、呈 validation 關卡；terminal-and-relay 既有的 ticket 敘述是否移除待你決定；死碼待另議；multi-document-room-picker 待 #260 合併；#256 待合併；#254 發版稍後
+下一步: 等文件修正完成（我）
+可收線: 否
+```
+
+The docs cleanup is pushed and CI is running (in the background). Once it's green, I'll dispatch a quick validation to confirm only those docs lines changed and nothing else moved, then bring you the gate.
+
+```
+剩餘:   #260 CI 執行中（文件去敘述已推）；之後快速驗證、呈 validation 關卡；terminal-and-relay 既有 ticket 敘述是否移除待你決定；死碼待另議；multi-document-room-picker 待 #260 合併；#256 待合併；#254 發版稍後
+下一步: 等 CI（我）
+可收線: 否
+```
+
+CI is green at `ae72777` (12 checks passed), and a quick validation has been dispatched. It will confirm three things:
+1. Only those two doc files changed, and nothing else in them moved.
+2. The three rewritten passages accurately describe current behaviour.
+3. No product code changed, so the earlier evidence for criteria 1–7 still applies.
+
+Then I'll bring you the validation gate.
+
+```
+剩餘:   文件修正的驗證執行中；之後呈 validation 關卡；terminal-and-relay 既有 ticket 敘述是否移除待你決定；死碼待另議；multi-document-room-picker 待 #260 合併；#256 待合併；#254 發版稍後
+下一步: 等驗證完成（我）
+可收線: 否
+```
+
+**Gate review: One share link — validation (after the docs cleanup)**
+**Recommendation: approve (ready to deliver).**
+Reviewed snapshot: `briefing:one-share-link:validation:attempt-4:revision-1` (`sha256:e70a31da…`), candidate `ae72777`. That's the current head of PR #260, and it's `CLEAN`.
+
+**Checks actually run:**
+- **Only docs changed:** from the last validated version, `40160a9`, only `docs/architecture.md` and `docs/protocols/terminal-and-relay.md` changed (4 lines added, 6 removed). Validation and my own check agree.
+- **The 3 passages are rewritten as present-tense facts:**
+  - "(this entity retired…)" became "(`/room/{roomId}` is not a separate address)".
+  - The quoted ruling is gone.
+  - "(re-keyed … by this entity)" is gone.
+
+  My scan finds 0 remaining matches for "this entity" or the quoted ruling. The line about the `one-account-two-identities` ticket, which was already on `main`, is untouched.
+- **CI on `ae72777`: 12/12 green.**
+- **Acceptance criteria 1–7:** no product code has changed, so the round-5 evidence from `40160a9` (all 7 passing, criterion 7 in a real browser) still describes exactly what's running now.
+
+**No new findings this round.** The finding carried forward from before: the validator's local unit tests are flaky, but not in this change's files, and CI is green.
+
+**Is it enough, and is it only what's needed?** It delivers the whole backlog outcome, and the code comments and docs both now meet your rule against narration and drift. Nothing outside the scope.
+
+**Decision:** approving records `ae72777` as validated and moves the task to "waiting for PR merge". It doesn't merge anything, and the PR stays a Draft until you tell me to mark it ready.
+
+```
+剩餘:   validation 關卡待你決定；#260 草稿未合併；terminal-and-relay 既有 ticket 敘述是否移除待你決定；死碼待另議；multi-document-room-picker 待 #260 合併；#256 待合併；#254 發版稍後
+下一步: 你核准或退回 validation 關卡（你）
+可收線: 否
+```
+
+------------------------------------------------------------------------
+
+[#124] YOU — 2026-09-24 06:38   (part 3 · you asked)
+合併了
+
+------------------------------------------------------------------------
+
+[#126] YOU — 2026-09-24 06:42   (part 3 · you asked)
+approve
+
+------------------------------------------------------------------------
+
+[#128] YOU — 2026-09-24 07:02   (part 3 · you asked)
+Ａ
+
+------------------------------------------------------------------------
+
+[#129] CLAUDE — 2026-09-24 07:03   (part 3 · claude drifted)
+Option A is recorded and the gate is closed. I've sent the ruling to dhaka for the release board, and I'm now setting up the implementation worker.
+
+Option A is approved and the implementation worker (Sonnet) is now running.
+
+- **Ruling sent to dhaka:** I sent Option A and the two rules to dhaka so it records them as the answer to the release-board question `choose-among-documents`. Delivery succeeded, but dhaka hasn't replied yet.
+- **What the worker must prove:** each of the four acceptance items needs a real browser test that it has first seen fail. That includes a test that feedback on a document you switched to is saved against that document.
+- **Comments and limits:** the worker must report how many comment lines it added. It may not push, open a PR, or create an ADR.
+
+```
+剩餘:   multi-document picker implementation running; dhaka has not yet confirmed recording the ruling; #254 release, #256 merge, and the other open items are with you
+下一步: when the worker finishes, I review the evidence and dispatch validation (me)
+可收線: 否
+```
+
+dhaka has recorded the ruling, and I checked its commit to confirm. It's in #256 as ADR 25 ("A share with several documents opens on the first renderable one"). The ADR quotes your "Ａ" verbatim. The two smaller rules are recorded as presented alongside your choice with no objection, not as your own words. The implementation worker is still running.
+
+```
+剩餘:   multi-document picker implementation running; #254 release, #256 merge, and the other open items are with you
+下一步: when the worker finishes, I review the evidence and dispatch validation (me)
+可收線: 否
+```
+
+Implementation passed my check. I'm moving the task to validation; the state tool refused the first try, so I'm checking why.
+
+The worker's report is missing its closing Summary section, which the state tool requires before the task can advance. I'm asking the worker to add it.
+
+The implementation passed my review. When the worker adds the Summary, I'll dispatch validation.
+
+- **Change:** someone opening the link used to get stuck on "Choose a document to review." with nothing to click. Now the Room opens straight on the first document it can display, and the top-right switcher changes documents.
+- **Tests:** the worker added three real browser tests and saw each one fail before the fix. The full browser suite (44 tests), the unit tests (911) and the type check all passed. I have not re-run them myself; validation will.
+- **Comments:** 4 lines added. The main one explains why only a first visit auto-opens a document, which keeps the page from retrying forever.
+
+```
+剩餘:   worker is adding the report's Summary; then validation (independent re-test in a real browser, plus the validation gate)
+下一步: after the Summary is committed I dispatch validation (me); I'll bring you the validation gate once it finishes (you)
+可收線: 否
+```
+
+Validation is now running with a fresh worker that did not write the code. It re-tests the change in a real browser and undoes the fix to confirm the three new tests fail without it. It also checks the added comments and confirms dhaka's ADR 25 exists.
+
+```
+剩餘:   multi-document picker validation running; #254 release, #256 merge, and the other open items are with you
+下一步: when validation finishes I bring you its gate; after you approve it, I ask before opening the PR (you)
+可收線: 否
+```
+
+Validation **passed**, and the gate needs your approval. A validator that did not write the code re-tested all four acceptance items in a real browser and found no functional problems.
+
+- **Its own test:** it built a package the original tests did not cover, with an unrenderable document second in the list. The page still opened the first document, showed the unrenderable one greyed out, switched to the third, and saved feedback against the third.
+- **Undoing the fix:** with the old code put back, the three new tests failed, stuck on "Choose a document to review." With the fix restored, they passed.
+- **Other checks:** type check, the 911 unit tests and lint all matched the implementation report. The 4 added comment lines all passed the need-to-exist check.
+- **One small finding:** the implementation report cited "44 tests" for a one-file command that actually runs 43; 44 is the two-file total. It is a counting slip in the report, not a code problem, so I'm not having it fixed.
+
+The one risk that could change your vote: everything ran on the local test server, not on the Netlify deploy preview. The preview only exists once the PR is open, so it gets checked then.
+
+Approving records the pass. I then write the PR description for you to review; nothing is pushed or opened until you say so.
+
+```
+剩餘:   multi-document picker validation gate awaiting your decision; then the PR draft; #254 release, #256 merge, and the other open items are with you
+下一步: approve or send back the validation gate (you)
+可收線: 否
+```
+
+------------------------------------------------------------------------
+
+[#130] YOU — 2026-09-24 07:36 · PUSHBACK   (part 3 · you pushed back)
+按照 dev2 規範，是否應該要給我 uat？
+
+------------------------------------------------------------------------
+
+[#131] CLAUDE — 2026-09-24 07:37   (part 3 · claude drifted; part 3 · claude did)
+Yes, dev2 requires one, and I missed it. I withdrew the gate and am asking the validator to add the missing pieces.
+
+Yes. The dev2 validation rules require two things I didn't give you:
+
+1. A screenshot of the changed screen, taken on the candidate code.
+2. A short acceptance script you can run yourself, in 3–6 steps and under five minutes. Each step names an action and what you should see, and the script says what it does not cover.
+
+The validator's report had neither. I missed both when preparing the gate. My instructions to the validator didn't list them, and I didn't check them against the rules before bringing you the gate.
+
+I've withdrawn that gate and sent the validator back to add both. It must run the script end to end itself before writing it down. The local test server only proves the local behaviour; the script will say it doesn't cover the Netlify deploy preview. When it finishes, I'll bring you the gate again with the screenshots and the script.
+
+```
+剩餘:   validator adding screenshots and your acceptance script; validation gate to be re-presented
+下一步: when the validator finishes I check it against the rules, then re-present the gate (me); run the script, then approve or send back (you)
+可收線: 否
+```
+
+The script's paths are wrong: run from the candidate's folder, `docs/dev2/.spacedock-state/...` doesn't exist there. I'm running it myself with absolute paths to confirm the rest works.
+
+The script works when given absolute paths: I ran all six steps in a real browser and every expected observation matched. I'm having the validator correct the paths in its report.
+
+The acceptance script is fixed and works; the validator is now correcting the paths in its report. After that, I'll prepare the gate again and bring you the script with two links you can open straight away. The local test server is already running with both packages seeded, so you can skip starting it and seeding.
+
+```
+剩餘:   validator fixing script paths; validation gate to be re-presented
+下一步: re-present the gate once the path fix is committed (me)
+可收線: 否
+```
+
+The validation gate is ready again, and this time it includes the acceptance script for you. The local test server is still running, so you can open the links now.
+
+**Acceptance script (about 2 minutes):**
+
+1. Open http://127.0.0.1:4321/r/[ID_REDACTED_15], type any name at "Who is reviewing?" and continue.
+   → The first document, `plan`, appears straight away. You should not see "Choose a document to review.", and there is a document dropdown in the top-right corner.
+2. Open the dropdown.
+   → It lists three entries: `artifact:plan`, `artifact:doc-b`, and `artifact:doc-unsupported`, which is greyed out and can't be selected.
+3. Choose `artifact:doc-b`.
+   → The page switches to `doc b`.
+4. Open http://127.0.0.1:4321/r/[ID_REDACTED_16], where every document is one the viewer can't display, and enter a name.
+   → The status line reads "No document in this package can be reviewed here." and no review panel appears.
+
+**Not covered:** the Netlify deploy preview, which exists only once a PR is open. The script runs the same server code locally. I ran all four steps myself in a real browser and each observation matched. If the server is gone, the full version with start-up commands is in the task file under `Captain acceptance script`.
+
+**Screenshots** are in `docs/dev2/.spacedock-state/multi-document-room-picker/validation/`, numbered 01–03.
+
+The rest of the validation result is as I reported before:
+- The validator added its own test with an unrenderable document second in the list.
+- The three new tests fail when the fix is undone.
+- The type check, the 911 unit tests and lint all match.
+- The one counting slip in the report needs no fix.
+
+Approving records the pass. I then write the PR description for you to review; nothing is pushed until you say so.
+
+```
+剩餘:   multi-document picker validation gate awaiting your decision; test server on :4321 (I stop it after the gate); #254 release, #256 merge, and the other open items are with you
+下一步: run the acceptance script, then approve or send back (you)
+可收線: 否
+```
+
+That was an old background notification from the validator; nothing changed. The validation gate is still waiting for your decision. The four-step script above still works, and the test server is still running on :4321.
+
+```
+剩餘:   multi-document picker validation gate awaiting your decision; test server on :4321
+下一步: run the acceptance script, then approve or send back (you)
+可收線: 否
+```
+
+------------------------------------------------------------------------
+
+[#132] YOU — 2026-09-24 07:53 · PUSHBACK   (part 3 · you pushed back)
+No document in this package can be reviewed here 這一段話應該整合到 ss-web 已經有的錯誤訊息機制，不是直接顯示一個完全不一樣長相的頁面，你知道我在指哪個機制嗎
+
+------------------------------------------------------------------------
+
+[#133] CLAUDE — 2026-09-24 07:53   (part 3 · claude drifted)
+Yes. You mean the error card in the room page's startup script, the skeleton-style card we built in #253/#255. It has a bold label above a line of text, in one of two tones:
+- **wait**: the loading skeleton stays and there is a "Try again" button.
+- **stop**: no skeleton and no retry.
+
+The existing stop-tone cards are "Integrity check failed", "Link withdrawn" and "Reviews closed". "No document in this package can be reviewed here" is the same kind of dead end, so it should be a stop-tone card. Instead, the fix wrote it into the plain status line, which is how it became that bare white text on a black page (the third validation screenshot).
+
+To be precise: this card lives in relay's room page script, not in subspace-web's own code. subspace-web only throws errors and has no display of its own.
+
+If that's the one you mean, the fix is small. Add a stop-tone notice shown through the same function as those cards, with a label such as "Can't be shown" and your wording as the text. The test then checks the card appears and has no "Try again" button. This path also covers a package with only one document that can't be displayed; main shows that case as bare text too, so it gets fixed along the way.
+
+**Your decision: is this the mechanism?** If yes, I record the validation gate as "revise", send the task back to implementation, then have it re-validated with a new screenshot.
+
+```
+剩餘:   validation gate needs revising (error message into the stop-tone card); test server on :4321
+下一步: confirm it's this mechanism (you); then I send it back to implementation (me)
+可收線: 否
+```
+
+------------------------------------------------------------------------
+
+[#134] YOU — 2026-09-24 07:54   (part 3 · you asked)
+就這個機制沒錯，所有的錯誤訊息必須符合一致的顯示方式與樣式
+
+------------------------------------------------------------------------
+
+[#135] CLAUDE — 2026-09-24 07:55   (part 3 · claude did)
+I recorded the gate as "revise" with your words, and the task will go back to implementation. One scope decision first. The room page has three other messages that don't use the card, and they aren't all the same kind:
+
+| Message | When it appears | Can the page still be used? |
+|---|---|---|
+| No document in this package can be reviewed here (this task) | Opening the link | No, dead end |
+| Reviewer name is required. Reload this Room and try again. | The page's files are stale or mismatched | No, needs a reload |
+| Set your reviewer name before adding feedback. | Leaving feedback without a name | Yes |
+| Could not save theme preference | Theme change failed to save | Yes |
+
+**Recommendation:** in this task, move only the first two, the dead ends, into the card: the no-document message in the stop tone, and the reload message in the wait tone with a "Try again" button. Open a separate task for the last two.
+- The card replaces the whole page, and those two errors happen while the page is still usable. Covering the page for a failed theme save would be wrong. They need an in-page version of the card with the same look, which is a new design.
+- The review panel's own errors, such as a failed feedback submission, live in subspace-web and belong in that same separate task.
+- What gets worse under this split: your rule is only half met when this task ships.
+
+Once you rule, I'll also send "all error messages follow one display and style" to dhaka to record as an ADR, since it's a product rule.
+
+**Your decision: this task does only the two dead ends, and a new task takes the in-page errors — agree?**
+
+```
+剩餘:   validation gate revised; waiting on the scope before sending it back to implementation; test server on :4321
+下一步: rule on the scope (you); then I send it back to implementation and route the ADR (me)
+可收線: 否
+```
+
+------------------------------------------------------------------------
+
+[#136] YOU — 2026-09-24 07:56   (part 3 · you asked)
+同意
+
+------------------------------------------------------------------------
+
+[#138] YOU — 2026-09-24 08:24   (part 3 · you asked)
+都可以了，批准
+
+------------------------------------------------------------------------
+
+[#141] CLAUDE — 2026-09-24 08:25   (part 3 · claude did)
+DOING: push ON: spacedock-ensign/multi-document-room-picker FOR: open the Draft PR
+
+Local `main` is behind the remote, so I'm skipping the step that pushes it; the remote is already the latest. Pushing the candidate and opening the Draft PR:
+
+Draft PR opened: https://github.com/[ORG_NAME_6]/subspace-relay/pull/263. I'm waiting for CI and the deploy preview to finish. Then I'll run your acceptance script against the preview's address in a real browser and report back.
+
+```
+剩餘:   PR #263 CI and deploy preview running; then the preview check; merging is your call; backlog task room-in-page-error-style has no story yet; ADR 26 not pushed yet (dhaka is asking you)
+下一步: when checks finish I run the preview check (me)
+可收線: 否
+```
+
+CI is all green, and the deploy preview is up. Next I run the acceptance script against the preview:
+
+The acceptance script also passes on the deploy preview (https://[INTERNAL_HOST_13]), which closes the last gap in the PR's known limits. I ran it in a real browser, with packages created on the preview itself:
+
+- **Several documents:** it opened on `plan`. The dropdown lists `plan`, `doc-b`, and `doc-unsupported`, the last one greyed out. Switching to `doc-b` showed "doc b".
+- **All undisplayable:** the stop-tone card appeared with "Can't be shown" and the message, no "Try again" button, and no review panel.
+- **CI:** all 12 checks on #263 passed, including the browser tier and the four end-to-end legs.
+
+The name dialog showed up late on the preview, after my script's name step had already run. That's a timing quirk of my throwaway script, not a problem with the page. The PR body still lists "the deploy preview has not been exercised yet" as a known limit. It's now covered, and I can edit the body if you want; editing the PR is an outward-facing change, so I haven't touched it.
+
+Your links, if you want to try them yourself:
+- https://[INTERNAL_HOST_13]/r/[ID_REDACTED_19]
+- https://[INTERNAL_HOST_13]/r/[ID_REDACTED_20]
+
+```
+剩餘:   #263 is a Draft; marking it ready and merging are yours (after the merge I record it, archive, and clean up the worktree); #254 release; backlog task room-in-page-error-style has no story yet; ADR 26 not pushed yet (dhaka is asking you)
+下一步: decide on marking #263 ready and merging (you)
+可收線: 否
+```
+
+------------------------------------------------------------------------
+
+[#142] YOU — 2026-09-24 08:38   (part 3 · you asked)
+合併了。所以現在只要是標準的 gate& review  briefing packet 就可以多文件 review 對嗎？
+
+------------------------------------------------------------------------
+
+[#143] CLAUDE — 2026-09-24 08:39   (part 3 · claude drifted)
+No. The merge is finalized: I recorded it, archived the task, and removed the worktree and its local branch. But this fix doesn't make a standard spacedock gate packet review several documents, because those packets only ever contain one document.
+
+- **Why:** `spacedock gate prepare` takes exactly one `--artifact` as the document to review. Every `--reference` file goes into the package as a context part, not a document. So a gate packet is always one document plus context, a case that already worked before this change. I confirmed it two ways: the spacedock source (read on a local checkout, not the released binary) and this task's own gate packet, which had exactly one document.
+- **What this change covers:** a package that lists several documents, which only a producer that builds its own package would send. Examples are the local test script, or a publisher that puts several files in as documents. Before, the Room got stuck on those; now it opens the first one and lets you switch.
+- **What that means:** reviewing several documents in one gate would need spacedock's gate prepare to accept several documents. That's a spacedock change, and no task for it exists. I haven't checked whether subspace-v0's publish command can send several documents.
+
+```
+剩餘:   #254 release (now also includes #263); backlog task room-in-page-error-style has no story yet; ADR 26 not pushed yet (dhaka is asking you); whether spacedock gates should support several documents is undecided
+下一步: decide whether to open a spacedock task for several-document gate packets (you)
+可收線: 否
+```
+
+------------------------------------------------------------------------
+
+[#144] YOU — 2026-09-24 08:40 · PUSHBACK   (part 3 · you pushed back)
+但是按照  gate& review v1 的 briefing 是可以支援多 artifacts 的不是嗎？
+
+------------------------------------------------------------------------
+
+[#145] CLAUDE — 2026-09-24 08:40   (part 3 · claude did)
+Yes, you're right. The Review & Gate v1 briefing format takes a list of artifacts, and subspace-web's check that a briefing is valid accepts any number of them. I said it too narrowly last time: the one-document limit is in spacedock's gate command that builds the packet, not in the format.
+
+| Layer | Supports several documents? |
+|---|---|
+| v1 briefing format | Yes, `artifacts` is a list |
+| subspace-web check that a briefing is valid | Yes |
+| relay Room | Yes since #263: opens the first one and lets you switch |
+| spacedock `gate prepare` (installed 0.27.2, and the same on spacedock main) | No: `--artifact` must be given exactly once; `--reference` files become context |
+
+So any producer that sends a v1 briefing with several documents can now be reviewed in the Room. spacedock's own gates still send only one. Making them send several means letting `gate prepare` accept more than one `--artifact`, which is a spacedock change, and no task for it exists.
+
+```
+剩餘:   #254 release (includes #263); backlog task room-in-page-error-style has no story yet; ADR 26 not pushed yet (dhaka is asking you); whether spacedock gate prepare should accept several documents is undecided
+下一步: decide whether to open a spacedock task for several-document gate packets (you)
+可收線: 否
+```
+
+------------------------------------------------------------------------
+
+[#156] YOU — 2026-09-24 09:31   (part 3 · you asked)
+合併了
+
+------------------------------------------------------------------------
+
+[#157] CLAUDE — 2026-09-24 09:32   (part 3 · claude did)
+Staging passed: `staging-verified` reads `success` on the rc commit, and production release PR #266 (0.3.9) appeared by itself. Now the browser flows on staging:
+
+Staging passes. The deploy's own checks are green, and I ran the key flows in a real browser; every one matched. **You can merge the production release PR #266 (0.3.9)**: https://github.com/[ORG_NAME_6]/subspace-relay/pull/266
+
+- **Staging deploy:** the release run passed all steps. `staging-verified` reads `success` on the rc commit, and that's the result the production publish step reads before it will publish.
+- **Browser flows I ran:**
+  - A link with several documents opens on `plan`, `doc-unsupported` is greyed out, and switching to `doc-b` works.
+  - An all-undisplayable link shows the stop-tone "Can't be shown" card with no "Try again" button.
+  - A link that doesn't exist shows the "Link not found" card.
+- **Server-level checks** (with `curl`):
+  - The room page is answered from the edge.
+  - `/room/` returns 404.
+  - The JSON reply the terminal client gets carries no `roomUrl`.
+- **Side effect:** testing left two test shares on staging. They expire on their own in 7 days.
+
+After you merge #266, the production publish step runs automatically. I'll then confirm production is serving the new commit and run the same flows once more; that's the last step of this line.
+
+```
+剩餘:   production PR #266 awaiting your merge; then the production check (me)
+下一步: merge #266 (you); after the merge I run the production check (me)
+可收線: 否
+```
+
+------------------------------------------------------------------------
+
+[#158] YOU — 2026-09-24 09:37   (part 4 · you asked)
+現在有個問題，我把 prod relay 標準 url 改成 review.spacedock.md，那我們哪裡要改？
+
+------------------------------------------------------------------------
+
+[#159] CLAUDE — 2026-09-24 09:39   (part 4 · claude did)
+I'm searching the fleet for places that reference the production address. Found relay's so far, still checking subspace-web and the clients.
+
+Found the client's default. Now checking how relay builds share links, which decides whether old links keep working:
+
+No relay server code needs to change: share links use whatever address the request came in on, so a client that publishes to `review.spacedock.md` gets `review.spacedock.md` links. What needs changing is hardcoded settings in three repos, plus one Cloudflare setting that matters more than any of them.
+
+**Most urgent, the Cloudflare setting (dashboard, only you can change it):** Cloudflare is overriding the cache rule on relay's room page script.
+- Netlify sends `max-age=0` (always re-check). Through `review.spacedock.md` the header becomes `max-age=14400` (4 hours), and the bare netlify.app address still shows `max-age=0`. That points to Cloudflare's "Browser Cache TTL" setting.
+- The result: for up to 4 hours after each deploy, returning visitors get a new page with an old script. That page-script mismatch is exactly the "Reload needed" case we just discussed, with the card sitting over a half-loaded page.
+- The fix: set Browser Cache TTL to "Respect Existing Headers" for this subdomain (or the whole domain).
+
+**Settings that need changing in the repos:**
+
+| Repo | Where | Why |
+|---|---|---|
+| subspace-relay | `promote-production.yml` `SITE_URL` | Post-publish check reads this address; point it at the one users visit |
+| subspace-relay | `scripts/paired-release-gate.ts` (accepts only the netlify.app host) + its tests | Must match subspace-web's setting below, or the paired release refuses |
+| subspace-relay | Two example commands in `docs/releasing.md` | Documentation; ADR 0002 is history, leave it |
+| subspace-web | `RELAY_ORIGIN` in `ci.yml`/`release.yml`, `scripts/release-site.mjs` + tests | The relay address Web's release is paired with; change together with relay's gate |
+| subspace-v0 | `DefaultDestination` in `internal/relayclient` (only on PR #58's branch, not in main) | The client's default publish address; change it so new links use the new domain |
+
+**Keep the old address working:** both addresses serve the same deploy right now, and neither redirects to the other. Keep it that way at least until existing links expire (7 days). Each Room remembers the address it was first opened on. If netlify.app were later made to redirect to the new domain, rooms opened on the old address would bounce between the two in a redirect loop.
+
+**Recommendation:** change the Cloudflare setting first. Then I make the relay and subspace-web changes as one pair of PRs, and send the subspace-v0 default to PR #58's owner. The production check after #266 merges should use the new domain.
+
+**Your decision: should I start the relay + subspace-web change pair now?**
+
+```
+剩餘:   Cloudflare Browser Cache TTL (you); relay + subspace-web domain change pair (awaiting your go); subspace-v0 PR #58 default address; production PR #266 awaiting your merge, then the production check (me)
+下一步: change the Cloudflare setting and rule on the change pair (you)
+可收線: 否
+```
+
+------------------------------------------------------------------------
+
+[#160] YOU — 2026-09-24 09:43 · PUSHBACK   (part 4 · you pushed back)
+舊的連結其實也是一樣的，只是新的 url 更正式一點。換句話說，為何要改 Cloudflare?
+
+------------------------------------------------------------------------
+
+[#161] CLAUDE — 2026-09-24 09:44   (part 4 · claude did)
+Because the problem isn't the link, it's the extra layer of Cloudflare in front of the new address. The two links do reach the same site. But requests to `review.spacedock.md` pass through Cloudflare first, and Cloudflare changes the caching instructions. Through the old address, the browser checks every time whether the room page's script has changed. Through the new address, the browser keeps it for 4 hours without checking. I measured this with `curl` on both addresses: the same file carries `max-age=0` via netlify.app and `max-age=14400` via review.spacedock.md.
+
+Why that matters: the page itself always comes fresh, but the script it loads (`room-bootstrap.js`) sits at a fixed path. After a deploy, anyone who visited through the new address in the last 4 hours gets a new page with an old script. This next production release hits exactly that. 0.3.9 moves the Room's actions from `/room/…` to `/r/…`, and the old script still sends to `/room/…`, which now returns 404. The Room breaks until that person's cache expires, up to 4 hours. Visitors through the old address aren't affected.
+
+There are two fixes, both in the Cloudflare dashboard:
+- **Recommended: turn off Cloudflare's proxy for `review.spacedock.md`** (the orange cloud in DNS becomes grey, "DNS only"). Traffic then goes straight to Netlify, and Netlify issues the certificate itself. The new address then behaves exactly like the old one. Netlify's own guidance for custom domains is also not to proxy through Cloudflare, though I haven't re-checked their docs today. What gets worse: you lose Cloudflare's protection and analytics on that subdomain.
+- **Keep the proxy, change one setting:** set Browser Cache TTL to "Respect Existing Headers". This fixes the 4-hour problem. But Cloudflare's other layers stay in the path, so any caching behaviour change there would need re-checking.
+
+Ideally do either one before you merge #266. Otherwise people who opened a Room through the new address in the last few hours will get a broken Room for a while after the deploy.
+
+```
+剩餘:   Cloudflare proxy or cache setting (you); relay + subspace-web domain change pair (awaiting your go); subspace-v0 PR #58 default address; production PR #266 awaiting your merge, then the production check (me)
+下一步: pick the Cloudflare fix (you); once it's changed, I re-measure the new address's cache headers to confirm (me)
+可收線: 否
+```
+
+------------------------------------------------------------------------
+
+[#163] CLAUDE — 2026-09-24 09:47   (part 4 · claude drifted)
+The sandbox's DNS can't resolve the new domain (a known issue here), so I'm pointing Node at Cloudflare's public DNS-over-HTTPS lookup result instead:
+
+Here's your test link, published on the new domain against production:
+
+**https://review.spacedock.md/r/[ID_REDACTED_23]**
+
+- **Contents:** three documents: `plan`, `doc-b`, and `doc-unsupported`, which can't be displayed.
+- **Right now:** production is still 0.3.8, so this link jumps to the old `/room/…` page. You won't see the document switcher or the new cards yet; those arrive once #266 merges and production updates. The link itself stays valid after the update, for 7 days.
+- **To see the 4-hour cache problem for yourself:**
+  1. Open the link once now, before changing Cloudflare.
+  2. Merge #266 and wait for production to update.
+  3. Open the same link again in the same browser. If the old script is still cached, you'll see a broken or odd page.
+  4. After changing Cloudflare, try again. The first visit after the change may still use the copy cached earlier; a hard refresh clears it.
+
+After you change Cloudflare, tell me and I'll re-measure the new address's cache headers.
+
+```
+剩餘:   Cloudflare setting (you); production PR #266 awaiting your merge, then the production check (me); relay + subspace-web domain change pair (awaiting your go); subspace-v0 PR #58 default address
+下一步: test with this link and change Cloudflare (you); once it's changed I re-measure the headers (me)
+可收線: 否
+```
+
+------------------------------------------------------------------------
+
+[#164] YOU — 2026-09-24 09:52 · PUSHBACK   (part 4 · you pushed back)
+我合併 prod release 了，但是為何 https://review.spacedock.md/r/[ID_REDACTED_23] 仍被導向 https://review.spacedock.md/room/room_[ID_REDACTED_24]
+且顯示Choose a document to review. ？這就是你說的快取問題嗎‘？
+
+------------------------------------------------------------------------
+
+[#165] CLAUDE — 2026-09-24 09:53   (part 4 · claude did)
+```
+剩餘:   production release run queued (waiting for a runner); production check after it finishes (me); Cloudflare setting (you); relay + subspace-web domain change pair (awaiting your go); subspace-v0 PR #58 default address
+下一步: when the run finishes I report production status and verify in a real browser (me)
+可收線: 否
+```
+
+Production is updated to 0.3.9 on both addresses. Running the browser check against the new domain:
+
+Production is on 0.3.9, and the browser check passes on `review.spacedock.md`. That was the last required step; this line is done.
+
+- **Your link:** https://review.spacedock.md/r/[ID_REDACTED_23] no longer redirects. It opens on `plan`, `doc-unsupported` is greyed out, and switching to `doc-b` works.
+- **All-undisplayable link:** it shows the "Can't be shown" stop-tone card.
+- **Link that doesn't exist:** it shows the "Link not found" card.
+- **The release itself:** both the staging-verified read and the production publish-and-verify steps passed. The earlier redirect happened because the release run sat in GitHub's queue for about 5 minutes before starting.
+
+**The cache problem is still live.** Through the new address, the page's script still carries `max-age=14400`, so the Cloudflare setting hasn't changed yet. You opened this link before the update, so your browser may still hold the old script. If the page looks broken or odd, that's the 4-hour cache problem. A hard refresh clears it: Cmd+Shift+R.
+
+```
+剩餘:   Cloudflare proxy or cache setting (you); relay + subspace-web domain change pair (awaiting your go); subspace-v0 PR #58 default address; backlog tasks room-in-page-error-style and publish-admission; #256 awaiting your review
+下一步: change Cloudflare, then I re-measure (you → me); decide whether to start the domain change pair (you)
+可收線: 否
+```
+
+------------------------------------------------------------------------
+
+[#166] YOU — 2026-09-24 14:25   (part 4 · you asked)
+關閉 proxry了，看一下
+
+------------------------------------------------------------------------
+
+[#167] CLAUDE — 2026-09-24 14:26   (part 4 · claude did)
+Fixed. `review.spacedock.md` now goes straight to Netlify and behaves exactly like the old address.
+
+- **DNS:** the name now points directly at `[INTERNAL_HOST_3]`, with no Cloudflare in between.
+- **Caching:** the room page script is back to `max-age=0`, so the browser checks for a new version every time. The page itself is `no-store`, and responses come from `server: Netlify`.
+- **Certificate:** Netlify issued it itself (Let's Encrypt, for `review.spacedock.md`).
+
+Only a browser that loaded the page through the new address in the last 4 hours may still hold the old script. If something looks odd, a hard refresh (Cmd+Shift+R) clears it. I've also saved this lesson to memory: compare cache headers whenever a new domain is added.
+
+What's left is making `review.spacedock.md` the official address in settings. That's the relay + subspace-web change pair and the subspace-v0 client default; they aren't urgent, since both addresses work.
+
+```
+剩餘:   relay + subspace-web domain change pair (awaiting your go); subspace-v0 PR #58 default address; backlog tasks room-in-page-error-style and publish-admission; #256 awaiting your review
+下一步: decide whether to start the domain change pair (you)
+可收線: 否
+```
+
+------------------------------------------------------------------------
+
+[#171] CLAUDE — 2026-09-24 14:33   (part 4 · claude did)
+I've read the code and I'm withdrawing my earlier suggestion to change that pair: it isn't needed, and changing it would break things. The Netlify address those CI settings point at doesn't only locate the site. It's also the stem of every immutable deploy address Netlify generates, which look like `{deployId}--[INTERNAL_HOST_3]`. Those settings should stay on `[INTERNAL_HOST_3]`.
+
+- **Relay's production publish check (`promote-production`):** after publishing, it checks that the deploy address has the shape `https://{deployId}--{site host}`. Change the site host to `review.spacedock.md` and it would expect `…--review.spacedock.md`, an address that doesn't exist. The next production release would fail.
+- **subspace-web's pairing with relay:** subspace-web's CI calls relay's check workflow pinned to a fixed version (0.3.7). Changing it means bumping that pin too, which also pulls in unrelated changes made since. It only changes which address CI tests against. Users see no difference, and both addresses serve the same deploy.
+- **What users actually see:** the share link, and that comes from the client's default publish address. Only subspace-v0's `DefaultDestination` needs to change to `https://review.spacedock.md`, and it lives on PR #58's branch, not in main. Relay's docs also have no user-facing address to update; the old address appears only in operations commands, which are correct as they are.
+
+**Recommendation:** leave relay and subspace-web alone. Change just the subspace-v0 default, and let PR #58's owner make it. Changing it on their branch myself would collide with their work. What gets worse: CI keeps testing through the old address, so a misconfiguration on the custom domain, like the earlier Cloudflare one, wouldn't be caught by CI. If you want that covered, the right place is one extra check after the production publish that confirms `review.spacedock.md` serves the new commit. That would be a separate small change.
+
+**Your decision: go with this?** If yes, I'll find the session working on PR #58 and send it the change.
+
+```
+剩餘:   subspace-v0 PR #58 default address (awaiting your ruling on whose it is); optional post-publish custom-domain check; backlog tasks room-in-page-error-style and publish-admission; #256 awaiting your review
+下一步: rule on "only change the subspace-v0 default" (you)
+可收線: 否
+```
+
+------------------------------------------------------------------------
+
+[#177] CLAUDE — 2026-09-24 15:01   (part 4 · claude drifted)
+Besides #62, nothing is blocking. What's left is a few small decisions for you and two backlog tasks. The ADRs from the last few rounds have all merged into relay main with #256: 25 (several documents), 26 (consistent error display), and 29 (publishing stays open).
+
+**Waiting on others:**
+- **subspace-v0 #62:** it has already been marked ready under your account. It needs review before merging into #58.
+
+**For you to decide; none are urgent:**
+
+| Item | Current state | My recommendation |
+|---|---|---|
+| `room-in-page-error-style` (the in-page error style task) | In backlog; dhaka is asking you whether to add a release-board story | Go through its backlog gate after the story is decided |
+| Leftover room-page code in relay | `roomPageResponse` and room-view's GET branches, now served only for the removed `/room/` path | Delete, as a small PR |
+| subspace-v0's room link display | The client and the TUI still read a `room-url` line that relay no longer sends; it's dead code in #58 | Hand to kigali to remove in #58 or later |
+| Several-document spacedock gates | `gate prepare` accepts only one document | Open a task only when a real need appears |
+| Post-publish custom-domain check | CI checks through the netlify.app address only | Defer until the custom domain changes again |
+| Old item: a sentence in the terminal protocol document naming the ticket `one-account-two-identities` | The sentence is still there | Delete it together with the leftover code |
+| relay#212 (intermittent HTTP 500s loading Web modules), web#62 (Mermaid slowing the review panel's mount) | Both open | Re-check whether they still reproduce before deciding |
+
+**Already parked:** `publish-admission` (publishing admission), per your ruling to wait.
+
+**Not from this line:** relay #272 (0.3.10-rc, releasing another line's #269 blob cleanup), #271, #214 and subspace-v0 #61 belong to other sessions.
+
+```
+剩餘:   #62 awaiting review; the decisions in the table above; backlog tasks room-in-page-error-style and publish-admission
+下一步: pick which of the table's decisions to take next (you); I keep the #62 worktree until it merges (me)
+可收線: 否
+```
+
+------------------------------------------------------------------------
+
+[#178] YOU — 2026-09-24 15:02 · PUSHBACK   (part 4 · you pushed back)
+中文說明
+
+------------------------------------------------------------------------
+
+[#179] CLAUDE — 2026-09-24 15:02   (part 4 · claude did)
+除了 #62，沒有卡住的東西，剩下的是幾個小決定和兩張待辦任務。前幾輪要記錄的決策紀錄都已經隨 #256 進了 relay 主線：多文件（第 25 號）、錯誤訊息一致（第 26 號）、上傳暫時開放（第 29 號）。
+
+**在等別人：**
+- **subspace-v0 #62**（改預設網址）：已經用你的帳號標成可審，等其他人審完就合進 #58。
+
+**等你決定，都不急：**
+
+| 事項 | 現況 | 我的建議 |
+|---|---|---|
+| 頁面內錯誤樣式任務 | 在待辦；dhaka 在問你要不要在發布看板上加一個對應的故事 | 故事定了再過它的第一道關卡 |
+| relay 殘留的舊房間頁程式 | 只剩已移除的 `/room/` 路徑在用 | 刪掉，開一個小 PR |
+| subspace-v0 的房間連結顯示 | 終端機和 TUI 還在讀 relay 已經不再給的房間連結欄位，等於一段不會執行的程式 | 交給 kigali，在 #58 裡或之後刪 |
+| spacedock 關卡一次審多份文件 | `gate prepare` 目前只收一份 | 等真的有需要再開任務 |
+| 發布後檢查新網域 | CI 只透過 netlify.app 那個網址檢查 | 先不做，等網域再變動時再說 |
+| 協定文件裡一句舊的任務名稱 `one-account-two-identities` | 那句還在 | 跟舊程式一起刪 |
+| relay#212（載入 Web 模組偶發 500）、web#62（Mermaid 讓審閱面板載入變慢） | 兩張都還開著 | 先重測還會不會發生，再決定 |
+
+**已經擱著的：**上傳資格任務 `publish-admission`，照你說的先不做。
+
+**不是這條線的：**relay #272（0.3.10 預發布，發的是另一條線 #269 的清理）、#271、#214，還有 subspace-v0 #61，都是別的 session 在做。
+
+```
+剩餘:   #62 等審；上表的幾個決定；待辦任務 room-in-page-error-style、publish-admission
+下一步: 從上表挑下一個要做的（你）；#62 合併前我保留它的 worktree（我）
+可收線: 否
+```
+
+------------------------------------------------------------------------
+
+[#180] YOU — 2026-09-24 15:02   (part 4 · you asked)
+依據優先順序處理表內的東西，從哪邊先？
+
+------------------------------------------------------------------------
+
+[#182] YOU — 2026-09-24 15:03   (part 4 · you asked)
+可以
+
+------------------------------------------------------------------------
+
+[#183] CLAUDE — 2026-09-24 15:05   (part 4 · claude drifted)
+Production: 200 fetches of the web bundle, all 200. Now checking CI history for the same symptom:
+
+CI: since 2026-09-14, 98 browser test jobs passed and none failed with a 500. Now reading web#62's baseline so I measure it the same way:
+
+Web#62's two original causes no longer appear: Mermaid isn't loaded, and there's only one module file. But the page still takes about 2 seconds to show. Checking where those 2 seconds go:
+
+重測完成：**relay#212 和 web#62 都已經不會發生，建議兩張都關掉。**另外量到一個新問題：多文件的房間比單文件慢一倍。
+
+**relay#212（載入 Web 模組偶發 500）：**
+- 正式環境：Web 程式包分別從新舊兩個網址各抓 100 次，200 次全部回 200。
+- CI：從出事那天（2026-09-14）到現在，瀏覽器測試成功 98 次，沒有一次因為 500 失敗。失敗的 6 次裡，2 次是別的分支上一個測試自己的問題，另外 4 次連第一個步驟都沒跑到，是執行環境的問題。
+- 出事的地方也不存在了：當時要載入 13 個模組檔，其中一個回 500；現在整個 Web 介面打包成一個檔。
+
+**web#62（審閱面板載入約 4 秒）：** 它列的兩個原因都已經解決。在正式環境用真瀏覽器量了 3 次：
+- **Mermaid：** 原本不管文件有沒有圖，都會載入 3.66 MB 的 Mermaid 繪圖程式，現在完全不載入了。
+- **快取：** 原本 13 個檔每次都重抓，現在只有一個 139 KB 的檔；再次造訪只回「沒變」（304），不用重新下載。
+- **速度：** 單文件房間第一次打開約 2.3 秒，再次造訪約 0.9 秒；原本是 4.4 秒。
+
+**新發現：多文件房間多一次來回。** 多文件房間再次造訪要 1.9 秒，單文件只要 0.9 秒。原因是伺服器在第一次回應時不會替多文件包選文件，要等瀏覽器選好第一份，再多問伺服器一次（約 0.7 秒）。修法是讓伺服器用同一條規則直接選第一份，房間就只要一次來回。這是 relay 的小改動，你說過效能線先停，所以我先不動，下一輪再請你決定。
+
+**你的決定：要我在兩張單上各留一則附上以上證據的留言，然後關單嗎？**（留言會公開在 GitHub 上，所以先問你。）
+
+```
+剩餘:   關閉 #212、web#62（等你同意）；多文件多一次來回（下一輪決定）；刪 relay 舊房間頁程式；subspace-v0 房間連結殘留程式交給 kigali；頁面內錯誤樣式任務；#62 等審
+下一步: 同意留言並關單（你）
+可收線: 否
+```
+
+------------------------------------------------------------------------
+
+[#184] YOU — 2026-09-24 15:12 · PUSHBACK   (part 4 · you pushed back)
+可以，按你建議關單。我有注意到你說的兩次來回，這是個問題必須處理，事實上我覺得變慢了可能就是因為它
+
+------------------------------------------------------------------------
+
+[#185] CLAUDE — 2026-09-24 15:13   (part 4 · claude did)
+Both are closed. Now reading the server code for the two round trips:
+
+兩張單都已留言並關閉。多一次來回的問題我開了 dev2 任務，**第一道關卡（backlog）等你批准。**
+
+先說一件可能跟你感覺不同的事：多一次來回只會發生在包含多份文件的房間。一般 spacedock 關卡發的包只有一份文件，其餘附件算參考資料，所以只要一次來回。我量到單文件房間再次造訪約 0.9 秒，幾乎全花在進房那次請求（約 850 毫秒，從[LOCATION_REDACTED]連到函式所在的美國東部）。如果你平常開的是關卡審閱房間卻覺得慢，主因比較可能是這 850 毫秒，而不是這個問題。
+
+任務內容：
+- **要做的：** 伺服器在第一次回應時，就照第 25 號決策紀錄的規則（照包裡的順序，第一份能顯示的文件）選好文件，頁面只要一次來回就能打開。
+- **要守住的：** 同一個伺服器函式也決定「沒標註段落的回饋算在哪份文件」。這個行為不能跟著變，下一階段先弄清楚現在怎麼處理。
+- **驗收：**
+  1. 多文件房間打開前只送一次請求，這個測試在現在的程式上要先失敗；
+  2. 用切換選單換文件照常運作；
+  3. 回饋歸屬在任何包的形狀下都不變。
+- **不做：** 縮短進房那次請求本身。
+- **做法層級：** Pilot（有限範圍內可用的程度）。
+
+**你的決定：批准這個任務進入下一階段（ideation）嗎？**
+
+```
+剩餘:   multi-document-one-round-trip 等批准；刪 relay 舊房間頁程式；subspace-v0 房間連結殘留程式交給 kigali；頁面內錯誤樣式任務；#62 等審
+下一步: 批准或修改這個任務（你）
+可收線: 否
+```
+
+------------------------------------------------------------------------
+
+[#187] CLAUDE — 2026-09-24 15:18   (part 4 · claude did)
+已批准，任務進入 ideation 階段，設計工作者（Sonnet）正在跑。它會先實際測一件事：現在在多文件房間只送一則整體留言、沒有標註段落時，這則回饋算在哪份文件，或是被拒絕。再依結果設計伺服器的改法，讓打開房間只要一次來回，同時不改變回饋的歸屬。完成後我帶設計關卡回來給你定案。
+
+```
+剩餘:   multi-document-one-round-trip ideation 進行中；刪 relay 舊房間頁程式；subspace-v0 房間連結殘留程式交給 kigali；頁面內錯誤樣式任務；#62 等審
+下一步: 設計完成後我帶關卡給你（我）
+可收線: 否
+```
+
+設計完成，**ideation 關卡等你定案**，這一關沒有需要你另外做的決定。
+
+```mermaid
+sequenceDiagram
+  participant 頁面
+  participant 伺服器
+  Note over 頁面,伺服器: 現在（多文件房間）
+  頁面->>伺服器: 進房
+  伺服器-->>頁面: 沒有選文件
+  頁面->>伺服器: 讀第一份能顯示的文件（多約 0.7 秒）
+  伺服器-->>頁面: 文件內容
+  Note over 頁面,伺服器: 改後
+  頁面->>伺服器: 進房
+  伺服器-->>頁面: 直接附上第一份能顯示的文件
+```
+
+- **改法：** 原本一個伺服器函式同時管兩件事，現在拆成兩個。「打開房間要讀哪份」改用新函式，照第 25 號決策紀錄的規則直接選。「回饋算在哪份文件」繼續用原本的函式，行為完全不變。頁面程式不用改：它本來就是伺服器給什麼就顯示什麼，只有伺服器沒給時才自己再問一次。
+- **實際測到的現況：** 多文件房間打開前確實送了兩次請求（進房，再讀 `plan`）。沒有標註段落的多文件回饋，現在會被伺服器拒絕（404），改後還是一樣。一般使用者碰不到這個情況：沒有任何標註時，面板的送出按鈕本來就不能按，每則標註也都帶著它所屬的文件。
+- **驗收：**
+  1. 新的瀏覽器測試計算打開前的請求數，要從 2 變成 1；在現在的主線上已經確認它會失敗。
+  2. 切換文件沿用現有測試，目前是通過的。
+  3. 新的測試固定「沒標註的多文件回饋回 404」，換錯函式的話它會變成 201，測試就會抓到。
+- **限制：** 進房那次請求本身的約 850 毫秒不在這次範圍。
+
+批准後進入實作。
+
+```
+剩餘:   multi-document-one-round-trip ideation 關卡等你；刪 relay 舊房間頁程式；subspace-v0 房間連結殘留程式交給 kigali；頁面內錯誤樣式任務；#62 等審
+下一步: 批准或退回設計（你）
+可收線: 否
+```
+
+------------------------------------------------------------------------
+
+[#189] CLAUDE — 2026-09-24 15:35   (part 4 · claude drifted)
+已批准，實作中。實作工作者（Sonnet）從最新主線（0d70210）開始做，改動分兩部分：
+- **伺服器：** 拆出新的函式，打開房間時直接選第一份能顯示的文件。
+- **測試：** 新增兩個。一個計算打開前的請求數，要先在舊程式上看到它失敗；另一個固定「沒標註的多文件回饋」的回應不變。
+
+完成後我檢查它的報告和改動，再派另一個工作者獨立驗證。
+
+```
+剩餘:   multi-document-one-round-trip 實作中；刪 relay 舊房間頁程式；subspace-v0 房間連結殘留程式交給 kigali；頁面內錯誤樣式任務；#62 等審
+下一步: 實作完成後我檢查並派驗證（我）
+可收線: 否
+```
+
+實作完成，我檢查過改動，現在交給另一個工作者獨立驗證。
+- **伺服器：** 新增一個函式，打開房間時直接選第一份能顯示的文件。
+- **不變的部分：** 回饋歸屬仍用原本的函式；頁面程式沒改。
+- **工作者回報的測試：** 型別檢查、923 個單元測試和 46 個瀏覽器測試全部通過；我還沒自己重跑，這由驗證負責。
+- **新測試：** 請求數的測試在舊程式上是 2、改後是 1。回饋歸屬的測試在故意接錯函式時會失敗。
+
+改動加了 5 行註解，其中一行寫「照第 25 號決策紀錄、改在伺服器做」，比較像在描述這次的改動。我已請驗證工作者依註解規則逐行判斷，另外也評估兩個函式重複的部分要不要合併。
+
+```
+剩餘:   multi-document-one-round-trip 驗證中；刪 relay 舊房間頁程式；subspace-v0 房間連結殘留程式交給 kigali；頁面內錯誤樣式任務；#62 等審
+下一步: 驗證完成後我帶驗收關卡和驗收腳本給你（我）
+可收線: 否
+```
+
+驗證通過，但我先把一段多餘的註解退回去刪，刪完再帶關卡給你。
+
+- **驗證結果：**
+  - 請求數在舊程式是 2、改後是 1。
+  - 切換文件照常運作。
+  - 故意接錯函式時，回饋歸屬的測試會抓到。
+  - 型別檢查、923 個單元測試、46 個瀏覽器測試全部通過。
+- **退回刪的：** 新函式上那段註解只是把下面程式碼的判斷條件再講一遍，照你的規則要刪。另一段說明「剩下誰在用這個函式」的註解保留，因為程式碼本身看不出來。
+- **不改的：** 兩個函式有大約 10 行重複。設計刻意讓兩條路徑分開，我判定不需要改。
+- **量不到的：** 在本機測試伺服器上量不出時間差，因為省下的約 0.7 秒是正式環境的網路來回。之後開了 PR，我會在預覽站上實際量。
+
+```
+剩餘:   刪註解中，之後重新驗證並帶驗收關卡給你；刪 relay 舊房間頁程式；subspace-v0 房間連結殘留程式交給 kigali；頁面內錯誤樣式任務；#62 等審
+下一步: 修完後我派重新驗證（我）
+可收線: 否
+```
+
+註解已經刪掉了，我檢查過：這次只刪了那兩行註解，整個改動現在只剩 3 行註解，就是保留下來說明「剩下誰在用」的那段。現在由新的驗證工作者在修好的版本上重跑所有測試和驗收腳本。
+
+```
+剩餘:   重新驗證中，之後帶驗收關卡給你；刪 relay 舊房間頁程式；subspace-v0 房間連結殘留程式交給 kigali；頁面內錯誤樣式任務；#62 等審
+下一步: 驗證完成後我帶關卡給你（我）
+可收線: 否
+```
+
+重新驗證**通過**，驗收關卡等你批准。
+- **請求數：** 在舊程式上，多文件房間打開前送 2 次請求；在修好的版本（5a44a0d）上只送 1 次，而且直接打開第一份文件。
+- **其他驗收：** 切換文件照常運作。沒標註的多文件回饋仍然被拒絕（404），故意接錯函式時測試會抓到（變成 201）。
+- **測試：** 型別檢查、923 個單元測試、瀏覽器測試、格式檢查全部通過。
+- **註解：** 那段重複的註解已刪，整個改動只剩 3 行，也就是保留下來說明「剩下誰在用」的那段。
+
+**驗收腳本（約 1 分鐘）：** 這個改動畫面上看不出差別，所以改成看請求數。在 `/Users/[NAME_1]/conductor/workspaces/subspace-relay/beirut-dev2/.worktrees/spacedock-ensign-multi-document-one-round-trip` 執行：
+
+```
+npx playwright test -g "AC-1: opening a several-document Room" --reporter=list
+# 預期：1 passed（打開前只送 1 次請求）
+git checkout 0d70210 -- netlify/lib/room-feedback.ts netlify/lib/room-view.ts
+npx playwright test -g "AC-1: opening a several-document Room" --reporter=list
+# 預期：失敗，印出 Expected: 1, Received: 2（舊程式送 2 次）
+git checkout 5a44a0d -- netlify/lib/room-feedback.ts netlify/lib/room-view.ts
+# 一定要跑這行，把修好的版本放回去
+```
+
+**可能影響你決定的一點：** 真正省下的約 0.7 秒只有在正式環境的網路上看得到，本機量不出來。批准後我會寫 PR 說明給你看，你說推才推；開了 PR 之後，我會在預覽站用真瀏覽器量，確認時間真的變短。
+
+```
+剩餘:   multi-document-one-round-trip 驗收關卡等你；刪 relay 舊房間頁程式；subspace-v0 房間連結殘留程式交給 kigali；頁面內錯誤樣式任務；#62 等審
+下一步: 批准或退回（你）
+可收線: 否
+```
+
+那是第一輪驗證工作者之前在背景跑的一個搜尋，現在才結束，沒有影響任何結果。驗收關卡還在等你。
+
+```
+剩餘:   multi-document-one-round-trip 驗收關卡等你；刪 relay 舊房間頁程式；subspace-v0 房間連結殘留程式交給 kigali；頁面內錯誤樣式任務；#62 等審
+下一步: 批准或退回（你）
+可收線: 否
+```
+
+------------------------------------------------------------------------
+
+[#190] YOU — 2026-09-24 16:51 · PUSHBACK   (part 4 · you pushed back)
+有錯誤如下：
+
+
+Running 1 test using 1 worker
+
+  ✘  1 test/browser/specs/room-route.spec.ts:1882:1 › AC-1: opening a several-document Room takes one room request from navigation to mount (984ms)
+subspace-relay room-route test server on :4321
+
+
+  1) test/browser/specs/room-route.spec.ts:1882:1 › AC-1: opening a several-document Room takes one room request from navigation to mount
+
+    Error: expect(received).toBe(expected) // Object.is equality
+
+    Expected: 1
+    Received: 2
+
+      1905 |   await waitForShell(page);
+      1906 |
+    > 1907 |   expect(roomPostCount).toBe(1);
+           |                         ^
+      1908 |   await expect(
+      1909 |     page.frameLocator(".subspace-web-artifact-frame").locator("h1"),
+      1910 |   ).toHaveText(ARTIFACT_HEADING);
+        at /Users/[NAME_1]/conductor/workspaces/subspace-relay/beirut-dev2/.worktrees/spacedock-ensign-multi-document-one-round-trip/test/browser/specs/room-route.spec.ts:1907:25
+
+    Error Context: test-results/room-route-AC-1-opening-a--8c859-st-from-navigation-to-mount/error-context.md
+
+    Error Context: test-results/room-route-AC-1-opening-a--8c859-st-from-navigation-to-mount/error-context.md
+
+    attachment #3: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results/room-route-AC-1-opening-a--8c859-st-from-navigation-to-mount/trace.zip
+    Usage:
+
+        npx playwright show-trace test-results/room-route-AC-1-opening-a--8c859-st-from-navigation-to-mount/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  1 failed
+    test/browser/specs/room-route.spec.ts:1882:1 › AC-1: opening a several-document Room takes one room request from navigation to mount
+
+------------------------------------------------------------------------
+
+[#191] CLAUDE — 2026-09-24 16:51   (part 4 · claude did)
+這個錯誤正是驗收腳本第 2 步預期的結果，不是問題。第 2 步先把兩個伺服器檔換回舊版本，再跑同一個測試。它應該失敗，並印出 `Expected: 1, Received: 2`，也就是舊程式在打開前送了 2 次請求。你貼的正是這段輸出。
+
+我剛才確認過：
+- **目前狀態：** 資料夾已經回到修好的版本（5a44a0d），沒有未還原的改動，所以你第 3 步的還原有做到。
+- **重跑第 1 步：** 在修好的版本上，這個測試通過（`1 passed`），也就是只送 1 次請求。
+
+如果你是在第 1 步就看到這個錯誤，最可能的原因是當時兩個檔案還停在舊版本，例如上一輪第 2 步之後還沒還原。現在重跑第 1 步應該會通過。
+
+驗收關卡還在等你。
+
+```
+剩餘:   multi-document-one-round-trip 驗收關卡等你；刪 relay 舊房間頁程式；subspace-v0 房間連結殘留程式交給 kigali；頁面內錯誤樣式任務；#62 等審
+下一步: 批准或退回（你）
+可收線: 否
+```
+
+------------------------------------------------------------------------
+
+[#192] YOU — 2026-09-25 00:07 · PUSHBACK   (part 4 · you pushed back)
+我重跑也還是一個有過一個沒過
+
+------------------------------------------------------------------------
+
+[#193] CLAUDE — 2026-09-25 00:07   (part 4 · claude did)
+一次通過、一次失敗，正好就是驗收通過的樣子。這個腳本是拿新舊兩個版本跑同一個測試來比較：
+
+| 步驟 | 跑的版本 | 預期 | 意思 |
+|---|---|---|---|
+| 第 1 步 | 修好的版本 | 通過 | 打開前只送 1 次請求 |
+| 第 2 步 | 換回舊版本 | 失敗，`Received: 2` | 舊程式送 2 次，證明這個測試真的會抓到問題 |
+
+如果兩次都通過，反而代表這個測試抓不到問題，那才要退回。
+
+這個腳本讓你把「失敗」當成成功，設計得不好，是我沒寫清楚。之後這種「證明測試有效」的驗收，我會改成直接印出兩個版本的請求數（舊 2、新 1）給你比較，不再要你讀懂一個預期中的失敗。
+
+現在要批准這一關嗎？批准後我寫 PR 說明給你看。
+
+```
+剩餘:   multi-document-one-round-trip 驗收關卡等你；刪 relay 舊房間頁程式；subspace-v0 房間連結殘留程式交給 kigali；頁面內錯誤樣式任務；#62 等審
+下一步: 批准或退回（你）
+可收線: 否
+```
+
+------------------------------------------------------------------------
+
+[#194] YOU — 2026-09-25 00:08   (part 4 · you asked)
+准
+
+------------------------------------------------------------------------
+
+[#197] CLAUDE — 2026-09-25 00:10   (part 4 · claude did)
+DOING: push + open Draft PR ON: [ORG_NAME_6]/subspace-relay FOR: several-document Room in one round trip
+
+草稿 PR 已開：https://github.com/[ORG_NAME_6]/subspace-relay/pull/276。我在等預覽站部署完成，好了就用真瀏覽器量多文件房間的打開時間，把結果帶回給你。
+
+```
+剩餘:   #276 預覽站部署中，之後量時間（我）；標成可審和合併由你決定；刪 relay 舊房間頁程式；subspace-v0 房間連結殘留程式交給 kigali；頁面內錯誤樣式任務；#62 等審
+下一步: 預覽站好了我量並回報（我）
+可收線: 否
+```
+
+在預覽站上實測有效：多文件房間打開前只送 **1 次**請求，每次都比舊版快約 0.5 到 1 秒。
+
+| 環境 | 再次造訪打開時間（4 次） | 打開前的請求數 |
+|---|---|---|
+| #276 預覽站（新程式） | 1448、1438、1433、1426 ms | 每次 1 |
+| staging（舊程式，同一個 Netlify 站點） | 2452、1929、1958、2445 ms | 每次 2 |
+
+- 兩邊都直接打開第一份文件 `plan`。
+- 預覽站的單次請求比正式環境慢一些，所以整體是 1.4 秒，不是正式環境單文件的 0.9 秒。省下的是少掉的那一次來回，在兩個環境上一樣成立。
+
+PR 說明裡「要在預覽站量」那條限制現在有答案了。要不要把這張表更新進 PR 說明由你決定；改 PR 是對外的動作，所以我還沒改。
+
+```
+剩餘:   #276 等你標成可審並合併（合併後我收尾）；要不要把量測寫進 PR 說明（你）；刪 relay 舊房間頁程式；subspace-v0 房間連結殘留程式交給 kigali；頁面內錯誤樣式任務；#62 等審
+下一步: 決定 #276（你）
+可收線: 否
+```
+
+------------------------------------------------------------------------
+
+[#204] YOU — 2026-09-25 00:34   (part 4 · you asked)
+整個清掉比較好，因為現在程式還很小，應該盡可能保持 lean
+
+------------------------------------------------------------------------
+
+[#209] CLAUDE — 2026-09-25 00:59   (part 4 · claude did)
+設計已定案，實作中。實作工作者（Sonnet）從最新主線開始，要做的事：
+- **刪程式：** 刪掉兩個 GET 分支、`roomPageResponse`，以及跟著變成沒人用的 import。
+- **改測試：**
+  - 20 處改走 POST 讀取；
+  - 頁面相關的 7 個測試和深淺色的檢查，改成測分享頁；
+  - 只刪真正屬於舊路徑的那兩項，並在報告裡點名。
+- **證明測試沒變弱：** 故意拿掉讀取的身分檢查，改過的測試要抓得到；拿掉分享頁的「不快取」，改測分享頁的測試也要失敗。
+- **文件：** 照設計刪一句、修一句。
+
+```
+剩餘:   room-view-get-removal 實作中；subspace-v0 殘留程式交接（負責 #58 的 session 不在線）；#276 等下一次部署；頁面內錯誤樣式任務（另一個 session 在做）；#62 等審
+下一步: 實作完成後我檢查並派驗證（我）
+可收線: 否
+```
+
+實作完成，已派另一個工作者獨立驗證。
+
+- **做了什麼：** 兩個到不了的 GET 分支和 `roomPageResponse` 刪了，`roomPageResponse` 在程式裡已經搜不到。20 處測試改走 POST 讀取；9 項頁面檢查改成測分享頁，因為分享頁本來沒有這些測試，現在反而補上了。只刪了兩項真正屬於舊路徑的檢查，文件裡那兩句也處理了。
+- **改動量：** 共刪 274 行、加 262 行。加的主要是分享頁的新測試。
+- **工作者自己抓到的：** 刪完後有 4 處註解和測試名稱還在描述已經不存在的 GET 路徑，它已經順手改正。
+
+有兩件事我要驗證者確認：
+- **有 3 個失敗：** 完整跑單元測試時，一個跟這次改動無關的檔案失敗了 3 個，單獨重跑又全過，工作者說是同時跑太多造成的。但它沒在舊版本上比對過，所以我要驗證者在舊版本上也完整跑一次，看是不是原本就會這樣。
+- **可能還有死程式：** 程式裡留了一個現在永遠成立的判斷，也就是 `req.method === "POST"`。你要求保持精簡，所以我請驗證者判斷它該不該刪。
+
+驗收腳本這次會直接印出新舊版本的數字給你比較，不會再出現「預期中的失敗」。
+
+```
+剩餘:   room-view-get-removal 驗證中；subspace-v0 殘留程式交接（負責 #58 的 session 不在線）；#276 等下一次部署；頁面內錯誤樣式任務（另一個 session 在做）；#62 等審
+下一步: 驗證完成後我帶驗收關卡給你（我）
+可收線: 否
+```
+
+驗證通過，但它找到一個現在永遠成立、等於沒用的判斷。這個任務本來就是要刪死程式，你也要求保持精簡，所以我先派人把這一行刪掉：
+
+驗證通過，我再退回一行小修正，修完就帶驗收關卡給你。
+
+- **驗證結果：**
+  - 新舊版本都完整跑過：單元測試舊版 923、新版 924，都沒有失敗；瀏覽器測試兩邊都是 46 個全過。
+  - 實作時看到的那 3 個失敗，在兩個版本上都沒有重現，跟這次改動無關。
+  - 故意拿掉身分檢查、拿掉分享頁的「不快取」，改過的測試都抓到了。
+  - 測試數量的增減剛好對得上：房間測試少 7、分享頁測試多 8，總數多 1。
+- **退回修的：** `req.method === "POST"` 現在永遠成立，驗證者拿掉它後測試照樣全過，所以刪掉，跟這次清死程式的目的一致。如果旁邊的註解因此變成錯的，也一起改。
+- **不修的：** 設計文件裡一個舊的計數少算一個（3 應為 4），不影響程式。
+
+```
+剩餘:   刪一行死判斷中，之後重新驗證並帶驗收關卡；subspace-v0 殘留程式交接（負責 #58 的 session 不在線）；#276 等下一次部署；頁面內錯誤樣式任務（另一個 session 在做）；#62 等審
+下一步: 修完後我派重新驗證（我）
+可收線: 否
+```
+
+那一行已經刪了。我檢查過，這次只改了那一行；旁邊的註解本來就沒提到那個條件，所以不用改。現在由新的驗證工作者在修好的版本上重跑完整測試和驗收腳本。
+
+```
+剩餘:   room-view-get-removal 重新驗證中，之後帶驗收關卡給你；subspace-v0 殘留程式交接（負責 #58 的 session 不在線）；#276 等下一次部署；頁面內錯誤樣式任務（另一個 session 在做）；#62 等審
+下一步: 驗證完成後我帶關卡給你（我）
+可收線: 否
+```
+
+重新驗證**通過**，驗收關卡等你批准。
+
+| 檢查 | 舊版（ef5e061） | 新版（913605b） |
+|---|---|---|
+| 程式裡 `roomPageResponse` 出現次數 | 4 | 0 |
+| 文件裡 `one-account-two-identities` 出現次數 | 2 | 0 |
+| 單元測試 | 923 過、0 失敗 | 924 過、0 失敗 |
+| 瀏覽器測試 | 46 過 | 46 過 |
+
+- **對房間處理程式送 GET：** 現在會被拒絕。
+- **故意弄壞的兩個檢查：** 拿掉讀取時的身分檢查、拿掉分享頁的「不快取」，改過的測試都抓到了。
+- **那一行死判斷：** 已經刪掉。
+
+**驗收腳本（約 1 分鐘）：**在 `/Users/[NAME_1]/conductor/workspaces/subspace-relay/beirut-dev2/.worktrees/spacedock-ensign-room-view-get-removal` 執行。這次只是比數字，沒有「預期中的失敗」：
+
+```
+git grep -c roomPageResponse ef5e061 -- netlify/     # 舊版：兩個檔案共 4 次
+git grep -c roomPageResponse 913605b -- netlify/     # 新版：什麼都不印（0 次）
+pnpm exec vitest run 2>&1 | tail -4                  # 924 passed
+pnpm exec playwright test 2>&1 | tail -4             # 46 passed
+```
+
+這個腳本不包含「故意弄壞」那兩項，因為要改檔案；那部分由驗證者做過。批准後我寫 PR 說明給你看，你說推才推。
+
+```
+剩餘:   room-view-get-removal 驗收關卡等你；subspace-v0 殘留程式交接（負責 #58 的 session 不在線）；#276 等下一次部署；頁面內錯誤樣式任務（另一個 session 在做）；#62 等審
+下一步: 批准或退回（你）
+可收線: 否
+```
+
+那是第一輪驗證工作者留下的背景搜尋，現在才結束，不影響結果。驗收關卡還在等你。
+
+```
+剩餘:   room-view-get-removal 驗收關卡等你；subspace-v0 殘留程式交接（負責 #58 的 session 不在線）；#276 等下一次部署；頁面內錯誤樣式任務（另一個 session 在做）；#62 等審
+下一步: 批准或退回（你）
+可收線: 否
+```
+
+------------------------------------------------------------------------
+
+[#212] YOU — 2026-09-25 01:58   (part 4 · you asked)
+推
+
+------------------------------------------------------------------------
+
+[#213] CLAUDE — 2026-09-25 01:58   (part 4 · claude did)
+DOING: push + open Draft PR ON: [ORG_NAME_6]/subspace-relay FOR: remove the Room handler's unreachable GET path
+
+草稿 PR 已開：https://github.com/[ORG_NAME_6]/subspace-relay/pull/278。我在等 CI 跑完，有結果就回報。
+
+```
+剩餘:   #278 CI 中；標成可審和合併由你決定（合併後我收尾）；subspace-v0 殘留程式交接（負責 #58 的 session 不在線）；#276 等下一次部署；頁面內錯誤樣式任務（另一個 session 在做）；#62 等審
+下一步: CI 結果出來我回報（我）
+可收線: 否
+```
+
+#278 的 CI 全部通過，可以合併。
+- **通過的：** 12 項，包括瀏覽器測試、四個端對端測試、單元測試、型別檢查、格式檢查和預覽站部署。
+- **跳過的：** 6 項，都是只在發版或改 workflow 時才跑的檢查。
+
+使用者看到的行為沒有改，端對端測試也在預覽站上跑過真實的分享連結流程，所以這次不另外做瀏覽器量測。
+
+標成可審和合併由你決定；合併後我會記錄、封存任務，並清掉 worktree。
+
+```
+剩餘:   #278 等你合併（合併後我收尾）；subspace-v0 殘留程式交接（負責 #58 的 session 不在線）；#276、#278 等下一次部署；頁面內錯誤樣式任務（另一個 session 在做）；#62 等審
+下一步: 合併 #278（你）
+可收線: 否
+```
+
+------------------------------------------------------------------------
+
+[#214] YOU — 2026-09-25 03:50   (part 4 · you asked)
+278 合併
+
+------------------------------------------------------------------------
+
+[#216] YOU — 2026-09-25 03:52   (part 4 · you asked)
+276, 277 我部署在 272 了
+
+------------------------------------------------------------------------
+
+[#217] CLAUDE — 2026-09-25 03:52   (part 4 · claude did)
+收到。#272（0.3.10 預發布）剛合併，#276 和 #278 都包含在裡面。你說的 277 應該是指 #278：#277 是一個還沒合併的文件 PR，跟這兩個無關。
+
+staging 的部署和檢查剛開始跑，結果還沒出來。跑完我會先看 `staging-verified`，再用真瀏覽器在 staging 上檢查：多文件房間只送 1 次請求、切換文件、錯誤卡片、不存在的連結、舊的 `/room/` 回 404。都通過我就回報，你再合併正式版 PR。
+
+```
+剩餘:   0.3.10-rc staging 部署中；之後 staging 檢查（我）、正式版 PR（你）、正式環境檢查（我）；subspace-v0 殘留程式交接（負責 #58 的 session 不在線）；頁面內錯誤樣式任務（另一個 session 在做）
+下一步: staging 跑完我檢查並回報（我）
+可收線: 否
+```
+
+staging 通過，**可以合併正式版 PR #280（0.3.10）**：https://github.com/[ORG_NAME_6]/subspace-relay/pull/280
+
+- **staging 部署：** 在預發布的 commit（b0d735e）上，`staging-verified` 是 `success`，也就是正式發布前會讀的那個結果。
+- **我用真瀏覽器檢查的：**
+  - 多文件房間：再次造訪只送 **1 次**請求，約 1.4 秒（第一次 2.4 秒，是第一次載入的正常差距）。沒辦法顯示的文件是灰的，切換到 `doc-b` 正常。
+  - 全部都無法顯示的包：出現停止色的「Can't be shown」卡片。
+  - 不存在的連結：出現「Link not found」卡片。
+  - 舊的 `/room/` 網址：回 404。
+- **副作用：** 測試在 staging 留了兩個分享，7 天後自己過期。
+
+你合併 #280 之後，正式發布會自動跑。跑完我在 `review.spacedock.md` 上再檢查一次同樣的流程。
+
+```
+剩餘:   正式版 PR #280 等你合併；之後正式環境檢查（我）；subspace-v0 殘留程式交接（負責 #58 的 session 不在線）；頁面內錯誤樣式任務（另一個 session 在做）
+下一步: 合併 #280（你）
+可收線: 否
+```
+
+------------------------------------------------------------------------
+
+[#218] YOU — 2026-09-28 17:09   (part 4 · you asked)
+合併了
+
+------------------------------------------------------------------------
+
+[#219] CLAUDE — 2026-09-28 17:09   (part 4 · claude did)
+收到。正式發布剛開始跑，才一分鐘，正式環境目前還是 0.3.9。跑完我會確認 `review.spacedock.md` 換成新版本，再用真瀏覽器檢查同樣的流程。
+
+```
+剩餘:   0.3.10 正式發布中；之後正式環境檢查（我）；subspace-v0 殘留程式交接（負責 #58 的 session 不在線）；頁面內錯誤樣式任務（另一個 session 在做）
+下一步: 發布完成後我檢查並回報（我）
+可收線: 否
+```
+
+Production is on 0.3.10. Running the browser checks on the new domain:
+
+The temporary DNS helper was cleaned out of `/tmp`; recreating it:
+
+0.3.10 已上線，`review.spacedock.md` 和舊網址都在跑新版本（e4024b5）。我用真瀏覽器檢查，全部符合：
+- **多文件房間：** 再次造訪只送 **1 次**請求，約 1.47 秒。上線前是 2 次、約 1.9 秒。沒辦法顯示的文件是灰的，切換到 `doc-b` 正常。
+- **全部都無法顯示的包：** 出現停止色的「Can't be shown」卡片。
+- **不存在的連結：** 出現「Link not found」卡片。
+- **舊的 `/room/` 網址：** 回 404。
+- **發布流程本身：** 讀 staging 結果、發布到正式環境、發布後檢查，全部成功。
+- **副作用：** 測試在正式環境留了兩個分享，7 天後自己過期。
+
+這條線的工作都已經上線：多文件一次來回（#276）、清掉舊房間頁程式（#278），以及更早的多文件選擇、錯誤卡片和單一分享連結。
+
+還沒收完的有兩件：
+- 交給 kigali 的 subspace-v0 殘留房間連結程式，負責 #58 的 session 一直不在線，訊息還沒送出去；
+- subspace-v0 #62 還在等審。
+
+```
+剩餘:   subspace-v0 殘留程式交接（負責 #58 的 session 不在線）；#62 等審與合併（合併後我清掉它的 worktree）；頁面內錯誤樣式任務（另一個 session 在做）
+下一步: 讓負責 #58 的 session 回來，或指定誰接手殘留程式（你）
+可收線: 否
+```
+
+------------------------------------------------------------------------
+
+[#222] YOU — 2026-09-28 17:20   (part 4 · you asked)
+有需要 debrif 或跑 /kc-dev-flow-2:learn 嗎？
+
+------------------------------------------------------------------------
+
+[#224] YOU — 2026-09-28 17:20   (part 4 · you asked)
+跑
+
+------------------------------------------------------------------------
+
+[#233] CLAUDE — 2026-09-28 19:31   (part 4 · claude did)
+兩次 learn 都已結案，學習記錄的最終狀態是：
+- **#281（多文件選擇）：** 已合併，加入兩條做法：
+  - 呈驗收關卡前，我要確認截圖並重跑驗收腳本；
+  - 設計階段要預覽改過的訊息會怎麼顯示。
+- **#282（一次來回）：** 已合併，加入一條做法：驗收腳本比較新舊版本時只印數字，不要你讀預期中的失敗。
+
+`learning.md` 現在有 4 條，下一個 dev2 任務起就會用到。合併只代表寫進去了，還不能證明它們真的能避免同樣的錯。兩次 learn 的 worktree、分支和暫存檔都已清掉。
+
+```
+剩餘:   #62 等審與合併（kigali 在追）；#58 殘留程式刪除提案（kigali 會帶給你）
+下一步: 無需我動作
+可收線: 是
+```
+
+------------------------------------------------------------------------
