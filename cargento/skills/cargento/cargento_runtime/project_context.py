@@ -56,6 +56,7 @@ _SERVER_ONLY_FIELDS = frozenset(
         records.GOAL_SOURCE_CUT_FIELD,
         "request_source_digest",
         "request_source_stamp",
+        "request_words_digest",
     }
 )
 # The harnesses whose top-level assistant text this module reads as the agent's messages.
@@ -4718,6 +4719,17 @@ def _remember_request(
     return True
 
 
+def _complete_request_digest(source: DirectionText) -> str:
+    """Only a complete, redacted request can prove these exact words were asked."""
+    if source.cut or not source.text.strip():
+        return ""
+    masked = records.mask_prose(source.text)
+    normalised = records.safe_text(masked, len(masked) + 1)
+    return hashlib.sha256(
+        json.dumps(normalised, ensure_ascii=True, separators=(",", ":")).encode()
+    ).hexdigest()
+
+
 def _transcript_user_scan(
     config: RuntimeConfig, raw: bytes, harness: str, sid: str, *, goal_choices: bool = False
 ) -> list[dict[str, Any]]:
@@ -4739,11 +4751,12 @@ def _transcript_user_scan(
         ):
             continue
         fact["request_source_digest"] = hashlib.sha256(line).hexdigest()
+        source_words = _direction_words(config, record, harness)
+        fact["request_words_digest"] = _complete_request_digest(source_words)
         if goal_choices:
             fact_id = str(fact["fact_id"])
             # The returned list stays bounded, but a later conflicting source
             # inside the byte budget must still invalidate an offered identity.
-            source_words = _direction_words(config, record, harness)
             previous = goal_sources.get(fact_id)
             if previous is not None and previous != source_words:
                 ambiguous.add(fact_id)

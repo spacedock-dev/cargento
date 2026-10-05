@@ -824,6 +824,34 @@ class DirectionReReadTest(_ClaudeSession):
 class DirectionRouteTest(_ClaudeSession):
     """`POST /api/direction` and the `add_direction` arm over a real socket."""
 
+    def test_an_unedited_complete_direction_keeps_its_actual_request_time(self) -> None:
+        text = "Keep every test."
+        self.session.prompt(text)
+        self.session.save(self.path)
+        source = max(
+            (fact for fact in self.facts() if fact.get("type") == "user_message"),
+            key=lambda fact: float(fact["at"]),
+        )
+        with self._serving() as port:
+            status, body = self._post(
+                port,
+                "/api/annotate",
+                {
+                    "harness": "claude",
+                    "sid": SHORT,
+                    "add_direction": source["fact_id"],
+                    "text": text,
+                    "expected_revision": 0,
+                    "adopt": "first-prompt",
+                    "expected_prompt": FIRST,
+                    "expected_prompt_at": FIRST_AT,
+                },
+            )
+        self.assertEqual((200, "stored"), (status, body["outcome"]))
+        line = annotation_store.load(self.config)[0]["revisions"][-1]["lines"][0]
+        self.assertEqual(text, line["text"])
+        self.assertEqual(float(source["at"]), line["request"]["at"])
+
     def _app(self, **row: Any) -> Any:
         def collect(
             config: Any, state: Any, now: float, window_hours: float, show_all: bool
@@ -955,7 +983,7 @@ class DirectionRouteTest(_ClaudeSession):
             {"text": edited, "source": "entry", "source_id": fact_id},
             {key: lines[5][key] for key in ("text", "source", "source_id")},
         )
-        self.assertEqual(float(self.direction()["at"]), lines[5]["request"]["at"])
+        self.assertNotIn("request", lines[5])
         self.assertNotIn(opened["text"], json.dumps(annotation_store.load(self.config)))
 
     def test_a_settled_direction_that_is_not_the_latest_prompt_is_added_from_its_entry(
@@ -1024,8 +1052,7 @@ class DirectionRouteTest(_ClaudeSession):
             },
             {key: revision["lines"][1][key] for key in ("text", "source", "source_id")},
         )
-        source = next(fact for fact in self.facts() if fact.get("fact_id") == fact_id)
-        self.assertEqual(float(source["at"]), revision["lines"][1]["request"]["at"])
+        self.assertNotIn("request", revision["lines"][1])
 
     def test_add_over_the_draft_adopts_it_in_the_same_request(self) -> None:
         fact_id = str(self.direction()["fact_id"])

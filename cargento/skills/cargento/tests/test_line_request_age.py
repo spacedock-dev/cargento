@@ -31,6 +31,7 @@ def _request(**over: Any) -> dict[str, Any]:
         "summary": "Write the result as JSON",
         "evidence": {"source": "transcript", "confidence": "exact"},
         "request_source_digest": "a" * 64,
+        "request_words_digest": reading._request_digest("Write the result as JSON"),
         **over,
     }
 
@@ -60,6 +61,34 @@ def _revision(line: dict[str, Any] | None = None) -> dict[str, Any]:
 
 
 class ALineNeedsItsActualParentRequest(unittest.TestCase):
+    def test_initial_add_edits_and_incomplete_sources_cannot_inherit_request_time(self) -> None:
+        self.assertIsNotNone(_binding())
+        for facts, text in (
+            ([_request()], "Write XML instead"),
+            ([_request(request_words_digest="")], "Write the result as JSON"),
+            (
+                [
+                    _request(
+                        request_words_digest=reading._request_digest(
+                            "Write the result as JSON and then run all tests"
+                        )
+                    )
+                ],
+                "Write the result as JSON",
+            ),
+        ):
+            with self.subTest(facts=facts, text=text):
+                self.assertIsNone(
+                    reading.line_request_binding(
+                        facts,
+                        source_id="request-1",
+                        text=text,
+                        harness="claude",
+                        sid="parent",
+                        now=SAVE_AT,
+                    )
+                )
+
     def test_source_proof_does_not_bypass_the_listed_parent_identity(self) -> None:
         self.assertEqual([], reading.listed_request_sources([], [_request()]))
         self.assertEqual([], reading.listed_request_sources([_request(at=121.0)], [_request()]))
@@ -403,14 +432,27 @@ class AProducedReadingUsesItsVerifiedLineRequest(unittest.TestCase):
                         lookup.assert_called_once_with()
             self.assertEqual(1, len(set(prompts)))
             self.assertNotIn("a" * 64, prompts[0])
+            self.assertNotIn(_request()["request_words_digest"], prompts[0])
 
 
 class SourceContinuityIncludesWordsOutsideTheVisibleClip(unittest.TestCase):
+    def test_an_incomplete_extraction_never_certifies_a_complete_line(self) -> None:
+        self.assertEqual(
+            "",
+            project_context._complete_request_digest(
+                project_context.DirectionText("Write JSON", True)
+            ),
+        )
+        self.assertEqual(
+            reading._request_digest("Write JSON"),
+            project_context._complete_request_digest(project_context.DirectionText("Write JSON")),
+        )
+
     def test_one_cached_source_read_serves_page_and_level_then_invalidates_on_change(self) -> None:
         with tempfile.TemporaryDirectory() as home:
             config, state = make_runtime(state_home=home, state_dir=Path(home))
             path = Path(home) / "parent.jsonl"
-            path.write_bytes(self._raw("A"))
+            path.write_bytes(self._short_raw("A"))
             sources = project_context.transcript_user_facts(
                 config, state, str(path), "claude", "parent"
             )
@@ -454,7 +496,7 @@ class SourceContinuityIncludesWordsOutsideTheVisibleClip(unittest.TestCase):
                 verified = http_api._request_sources(app, PARENT, listed, entry)
                 self.assertTrue(http_api._line_requests(entry, verified, PARENT))
                 self.assertEqual(0, reads.call_count)
-                path.write_bytes(self._raw("B"))
+                path.write_bytes(self._short_raw("B"))
                 changed = http_api._request_sources(app, PARENT, listed, entry)
                 self.assertEqual([], http_api._line_requests(entry, changed, PARENT))
                 self.assertEqual(1, reads.call_count)
@@ -464,7 +506,7 @@ class SourceContinuityIncludesWordsOutsideTheVisibleClip(unittest.TestCase):
             config, state = make_runtime(state_home=home, state_dir=Path(home))
             config = replace(config, annotations_enabled=True)
             path = Path(home) / "parent.jsonl"
-            path.write_bytes(self._raw("A"))
+            path.write_bytes(self._short_raw("A"))
             sources = project_context.transcript_user_facts(
                 config, state, str(path), "claude", "parent"
             )
@@ -576,6 +618,12 @@ class SourceContinuityIncludesWordsOutsideTheVisibleClip(unittest.TestCase):
             self.assertEqual(2, len(facts))
             self.assertEqual("", facts[0]["request_source_digest"])
 
+    def _short_raw(self, ending: str) -> bytes:
+        record = json.loads(self._raw(ending))
+        record["message"]["content"] = "Write JSON"
+        record["source_marker"] = "x" * 1200 + ending
+        return (json.dumps(record) + "\n").encode()
+
     def _raw(self, ending: str) -> bytes:
         return (
             json.dumps(
@@ -588,7 +636,7 @@ class SourceContinuityIncludesWordsOutsideTheVisibleClip(unittest.TestCase):
             + "\n"
         ).encode()
 
-    def test_changed_long_source_is_unknown_even_when_its_summary_and_clip_match(self) -> None:
+    def test_long_source_cannot_prove_a_shortened_line_even_when_its_clip_matches(self) -> None:
         with tempfile.TemporaryDirectory() as home:
             config, state = make_runtime(state_home=home, state_dir=Path(home))
             path = Path(home) / "parent.jsonl"
@@ -620,6 +668,7 @@ class SourceContinuityIncludesWordsOutsideTheVisibleClip(unittest.TestCase):
                     now=at + 10,
                 ),
             }
+            self.assertIsNone(line["request"])
             self.assertIsNone(
                 reading.line_request_at(line, second, "claude", "parent", until=at + 10)
             )
@@ -650,6 +699,7 @@ class SourceContinuityIncludesWordsOutsideTheVisibleClip(unittest.TestCase):
         fact = published["semantic"]["facts"][0]
         self.assertNotIn("request_source_digest", fact)
         self.assertNotIn("request_source_stamp", fact)
+        self.assertNotIn("request_words_digest", fact)
 
 
 class ACorrectionUsesActionTimeForTheLine(unittest.TestCase):

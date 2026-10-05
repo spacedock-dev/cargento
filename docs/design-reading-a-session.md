@@ -2574,6 +2574,11 @@ words. Unchanged and reordered lines keep the binding once; a newly typed duplic
 does not inherit it. A request at the save time, a future or copied request, duplicate source
 identity or ambiguous same-time parent messages supplies no binding.
 
+An edit made while first adding the entry also keeps unknown age. Only exact equality with the
+complete authoritative request words, redacted and normalised as a saved line, can bind those
+words to that earlier time. A shortened request, changed requirement or incomplete extraction
+still saves the reviewed line and its source handle; none inherits the source's request age.
+
 Loading a malformed, cross-session or after-save binding removes only that binding. The person's
 words stay. Before a binding can affect a reading, it is checked again against the actual current
 parent fact and the line's words. A missing or changed source leaves age unknown. A downgraded
@@ -2583,7 +2588,8 @@ older lines.
 Source proof comes from the existing bounded transcript prefix, not from historical summaries.
 Each operation reuses one source lookup; the bounded cache checks device, inode, size and
 modification time before reuse. A record beyond the byte or fact bound supplies no proof. The
-transient raw-record digest and source version never reach the page, model prompt or history.
+transient raw-record and complete-word digests and source version never reach the page, model
+prompt or history.
 
 For a verified line, a citation can judge work against that request only if its action or call was
 recorded strictly after the request. A call made earlier does not become later work when its

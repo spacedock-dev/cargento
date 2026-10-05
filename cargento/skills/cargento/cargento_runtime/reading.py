@@ -1365,6 +1365,7 @@ def line_request_binding(
         or not str(fact.get("summary") or "").strip()
         or not isinstance(fact.get("request_source_digest"), str)
         or re.fullmatch(r"[0-9a-f]{64}", str(fact.get("request_source_digest") or "")) is None
+        or fact.get("request_words_digest") != _request_digest(text)
         or sum(
             item.get("type") == "user_message"
             and item.get("source_session") == wanted
