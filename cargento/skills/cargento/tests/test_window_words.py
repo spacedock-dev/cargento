@@ -70,6 +70,15 @@ class ThePressRecoversOnlyListedWindowWords(unittest.TestCase):
         self.write([self.source, other])
         self.assertEqual([], self.lookup())
 
+    def test_different_raw_values_are_ambiguous_even_when_the_parser_masks_them_equal(self) -> None:
+        rows = []
+        for value in ("alpha-placeholder", "beta-placeholder"):
+            source = copy.deepcopy(self.source)
+            source["message"]["content"] += f" password: {value}\nRead every fixture."
+            rows.append(source)
+        self.write(rows)
+        self.assertEqual([], self.lookup())
+
     def test_a_changed_or_replaced_source_is_not_recovered(self) -> None:
         before = project_context.transcript_stamp(str(self.path))
         self.write([self.source, {"padding": "changed"}])
@@ -185,6 +194,48 @@ class ThePressRecoversOnlyListedWindowWords(unittest.TestCase):
         self.assertEqual(2, len(prompts))
         self.assertEqual(prompts[0], prompts[1])
         self.assertIn("Read all its fixtures.", prompts[0])
+
+    def test_other_harnesses_keep_their_existing_pressed_message_words(self) -> None:
+        for harness in ("pi", "antigravity"):
+            with self.subTest(harness=harness):
+                prompts: list[str] = []
+                fact = _person("inside", 100, "PRESERVE FULL INSTRUCTION")
+                fact["source_session"]["harness"] = harness
+
+                def model(
+                    prompt: str, prompt_sink: list[str] = prompts, **_kwargs: Any
+                ) -> tuple[str, str]:
+                    prompt_sink.append(prompt)
+                    return "{}", "ok"
+
+                handler = SimpleNamespace(
+                    server=SimpleNamespace(
+                        application=SimpleNamespace(
+                            config=self.config, state=self.state, clock=lambda: 200
+                        )
+                    ),
+                    _reading_arguments=lambda *_args: {
+                        "model": model,
+                        "stamp_text": "synthetic",
+                        "now": 200,
+                    },
+                )
+                with (
+                    mock.patch.object(
+                        http_api, "_session_context", return_value={"semantic": {"facts": [fact]}}
+                    ),
+                    mock.patch.object(observer, "resolve_transcript", return_value=str(self.path)),
+                ):
+                    compose: Any = http_api._RequestHandler._compose_reading
+                    compose(
+                        handler,
+                        {"harness": harness, "sid": "s1", "state": "working"},
+                        {"revisions": [{"n": 1, "at": 50, "goal": "Check queue"}]},
+                        {},
+                        SimpleNamespace(phase=None),
+                    )
+                self.assertEqual(1, len(prompts))
+                self.assertIn("PRESERVE FULL INSTRUCTION", prompts[0])
 
 
 class OnlyThePressedWindowReachesSourceRecovery(unittest.TestCase):

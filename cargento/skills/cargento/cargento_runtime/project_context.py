@@ -4593,15 +4593,26 @@ def transcript_window_words(
             if message is None:
                 continue
             text = message["text"]
+            # The eligibility parser has already redacted values. Compare a
+            # bounded raw-content fingerprint before accepting this identity;
+            # equal redacted words cannot vouch for equal source records.
+            content = (
+                records.as_dict(record.get("payload")).get("content")
+                if record is not None and record.get("type") == "response_item"
+                else records.message_dict(record).get("content")
+            )
+            signature = hashlib.sha256(
+                json.dumps(content, sort_keys=True, ensure_ascii=False).encode("utf-8", "replace")
+            ).hexdigest()
             masked = records.mask_prose(text)
             command = transcripts.command_direction(config, masked) if harness == "claude" else None
             previous = found.get(key)
-            if previous is not None and previous[0] != text:
+            if previous is not None and previous[0] != signature:
                 ambiguous.add(key)
             fact[READER_WORDS_FIELD] = records.safe_text(
                 " ".join((command or masked).split()), READER_WORDS_CAP_CHARS
             )
-            found[key] = (text, fact)
+            found[key] = (signature, fact)
     except OSError:
         return []
     if transcript_stamp(path) != before:
