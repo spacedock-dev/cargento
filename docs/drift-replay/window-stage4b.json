@@ -1,0 +1,403 @@
+{
+  "v": 1,
+  "markers": "agents",
+  "runtime_commit": "382aec1550e53d0c8e606551c6a0d546bc7a242f",
+  "gate": "failed-per-session-per-arm-lower-bound",
+  "gate_interpretation": "Arms compare different requests; test each separately. Pooled failure is not claimed.",
+  "changed_reads": {
+    "planned": 196,
+    "usable": 168,
+    "not_run": 28
+  },
+  "unchanged_controls": {
+    "v": 1,
+    "markers": "agents",
+    "calls": 2,
+    "unchanged_prompts": 2,
+    "frozen_commit": "05cfbbfe563a43b1da420cce61dbfcf929cd5937",
+    "controls": [
+      {
+        "id": "1bd415ec674714b3",
+        "arm": "current",
+        "prompt_digest": "bd350795854740d787ee68829d67c441aad01b9220721780f9a2e04cc97b91e1",
+        "control_results": {
+          "claims": "not shown by the record",
+          "goal": "consistent with the evidence read",
+          "line_1": "consistent with the evidence read",
+          "line_2": "consistent with the evidence read"
+        },
+        "pilot_results": {
+          "claims": {
+            "not shown by the record": 5
+          },
+          "goal": {
+            "consistent with the evidence read": 3,
+            "not verifiable from available evidence": 2
+          },
+          "line_1": {
+            "consistent with the evidence read": 3,
+            "not verifiable from available evidence": 2
+          },
+          "line_2": {
+            "consistent with the evidence read": 4,
+            "not verifiable from available evidence": 1
+          }
+        }
+      },
+      {
+        "id": "d133d4d6c88383d6",
+        "arm": "current",
+        "prompt_digest": "f934deb5c8a0fb51aae6cde45eee542e5a7260be46c5ba9ee264a2c62e374bac",
+        "control_results": {
+          "claims": "not verifiable from available evidence",
+          "goal": "not verifiable from available evidence",
+          "line_1": "not verifiable from available evidence"
+        },
+        "pilot_results": {
+          "claims": {
+            "not verifiable from available evidence": 3,
+            "not shown by the record": 2
+          },
+          "goal": {
+            "consistent with the evidence read": 4,
+            "not verifiable from available evidence": 1
+          },
+          "line_1": {
+            "consistent with the evidence read": 4,
+            "not verifiable from available evidence": 1
+          }
+        }
+      }
+    ],
+    "limits": "Drift-marked unchanged controls preserve all no-drift arms for changed reads. Read agreement does not establish detector accuracy."
+  },
+  "no_drift": {
+    "planned_cut_arms": 142,
+    "observed_cut_arms": 122,
+    "not_run": 20,
+    "arms": {
+      "adopted": {
+        "full_baseline_cut_arms": 71,
+        "full_baseline_intent_departures": 29,
+        "baseline_page_unavailable": 0,
+        "observed_new_cut_arms": 61,
+        "observed_new_intent_departures": 23,
+        "matched_baseline_intent_departures": 23
+      },
+      "current": {
+        "full_baseline_cut_arms": 71,
+        "full_baseline_intent_departures": 29,
+        "baseline_page_unavailable": 1,
+        "observed_new_cut_arms": 61,
+        "observed_new_intent_departures": 16,
+        "matched_baseline_intent_departures": 24
+      }
+    },
+    "salted_sessions": {
+      "409be19710b10f3f": {
+        "adopted": {
+          "full_baseline_cut_arms": 22,
+          "full_baseline_intent_departures": 7,
+          "baseline_page_unavailable": 0,
+          "observed_new_cut_arms": 18,
+          "observed_new_intent_departures": 6,
+          "matched_baseline_intent_departures": 5
+        },
+        "current": {
+          "full_baseline_cut_arms": 22,
+          "full_baseline_intent_departures": 1,
+          "baseline_page_unavailable": 1,
+          "observed_new_cut_arms": 18,
+          "observed_new_intent_departures": 2,
+          "matched_baseline_intent_departures": 1
+        }
+      },
+      "96d6a6100dbdd6ac": {
+        "adopted": {
+          "full_baseline_cut_arms": 19,
+          "full_baseline_intent_departures": 6,
+          "baseline_page_unavailable": 0,
+          "observed_new_cut_arms": 18,
+          "observed_new_intent_departures": 9,
+          "matched_baseline_intent_departures": 6
+        },
+        "current": {
+          "full_baseline_cut_arms": 19,
+          "full_baseline_intent_departures": 7,
+          "baseline_page_unavailable": 0,
+          "observed_new_cut_arms": 18,
+          "observed_new_intent_departures": 2,
+          "matched_baseline_intent_departures": 6
+        }
+      },
+      "c0c9717c7b0127eb": {
+        "adopted": {
+          "full_baseline_cut_arms": 16,
+          "full_baseline_intent_departures": 10,
+          "baseline_page_unavailable": 0,
+          "observed_new_cut_arms": 13,
+          "observed_new_intent_departures": 8,
+          "matched_baseline_intent_departures": 7
+        },
+        "current": {
+          "full_baseline_cut_arms": 16,
+          "full_baseline_intent_departures": 9,
+          "baseline_page_unavailable": 0,
+          "observed_new_cut_arms": 13,
+          "observed_new_intent_departures": 5,
+          "matched_baseline_intent_departures": 7
+        }
+      },
+      "d23b5f52f9275e66": {
+        "adopted": {
+          "full_baseline_cut_arms": 14,
+          "full_baseline_intent_departures": 6,
+          "baseline_page_unavailable": 0,
+          "observed_new_cut_arms": 12,
+          "observed_new_intent_departures": 0,
+          "matched_baseline_intent_departures": 5
+        },
+        "current": {
+          "full_baseline_cut_arms": 14,
+          "full_baseline_intent_departures": 12,
+          "baseline_page_unavailable": 0,
+          "observed_new_cut_arms": 12,
+          "observed_new_intent_departures": 7,
+          "matched_baseline_intent_departures": 10
+        }
+      }
+    },
+    "irreversible_increases": [
+      {
+        "session": "409be19710b10f3f",
+        "arm": "current",
+        "full_baseline": 1,
+        "observed_lower_bound": 2
+      },
+      {
+        "session": "96d6a6100dbdd6ac",
+        "arm": "adopted",
+        "full_baseline": 6,
+        "observed_lower_bound": 9
+      }
+    ],
+    "pooled_session_gate": "not-determined",
+    "full_total_fall": "not-determined"
+  },
+  "excluded_final_unclear_cases": 4,
+  "matched_drift_cut_arms": 40,
+  "lost_drift_intent_flags_on_matched_reads": [
+    {
+      "id": "135a52750097cb30",
+      "arm": "current",
+      "formerly_departed": [
+        "line_2"
+      ]
+    },
+    {
+      "id": "0803136266e6ca26",
+      "arm": "adopted",
+      "formerly_departed": [
+        "goal"
+      ]
+    },
+    {
+      "id": "912e9c2f57d77a68",
+      "arm": "adopted",
+      "formerly_departed": [
+        "goal"
+      ]
+    },
+    {
+      "id": "56f82b3cd71a41d8",
+      "arm": "adopted",
+      "formerly_departed": [
+        "goal"
+      ]
+    },
+    {
+      "id": "1bd415ec674714b3",
+      "arm": "adopted",
+      "formerly_departed": [
+        "goal"
+      ]
+    },
+    {
+      "id": "391d8c45fb26047b",
+      "arm": "current",
+      "formerly_departed": [
+        "line_2"
+      ]
+    },
+    {
+      "id": "0532b3943a51127c",
+      "arm": "current",
+      "formerly_departed": [
+        "goal"
+      ]
+    },
+    {
+      "id": "615b5511325ab371",
+      "arm": "adopted",
+      "formerly_departed": [
+        "goal"
+      ]
+    },
+    {
+      "id": "77a94e811eb818ed",
+      "arm": "adopted",
+      "formerly_departed": [
+        "goal"
+      ]
+    },
+    {
+      "id": "559e308f6ed28c2d",
+      "arm": "adopted",
+      "formerly_departed": [
+        "goal"
+      ]
+    }
+  ],
+  "lost_drift_offers_on_matched_reads": [
+    {
+      "id": "ac3d733d0009e8b6",
+      "arm": "current",
+      "old": "steer-secondary",
+      "new": "nothing"
+    },
+    {
+      "id": "135a52750097cb30",
+      "arm": "current",
+      "old": "steer-primary",
+      "new": "nothing"
+    },
+    {
+      "id": "0803136266e6ca26",
+      "arm": "adopted",
+      "old": "steer-primary",
+      "new": "nothing"
+    },
+    {
+      "id": "912e9c2f57d77a68",
+      "arm": "adopted",
+      "old": "steer-primary",
+      "new": "nothing"
+    },
+    {
+      "id": "56f82b3cd71a41d8",
+      "arm": "adopted",
+      "old": "steer-primary",
+      "new": "nothing"
+    },
+    {
+      "id": "2364224b5c468311",
+      "arm": "current",
+      "old": "steer-secondary",
+      "new": "nothing"
+    },
+    {
+      "id": "0532b3943a51127c",
+      "arm": "current",
+      "old": "steer-primary",
+      "new": "nothing"
+    },
+    {
+      "id": "c41e322982d5a6e4",
+      "arm": "adopted",
+      "old": "steer-secondary",
+      "new": "nothing"
+    },
+    {
+      "id": "615b5511325ab371",
+      "arm": "adopted",
+      "old": "steer-primary",
+      "new": "nothing"
+    }
+  ],
+  "lost_marked_right_claim_rows_on_matched_reads": [
+    {
+      "id": "135a52750097cb30",
+      "arm": "current",
+      "claim": "50150691f85259d0"
+    },
+    {
+      "id": "d14a54185ba17616",
+      "arm": "current",
+      "claim": "516de9087304bfc1"
+    },
+    {
+      "id": "96b0a775f8003a3b",
+      "arm": "current",
+      "claim": "948c0348f5f7e1fa"
+    },
+    {
+      "id": "c41e322982d5a6e4",
+      "arm": "adopted",
+      "claim": "4d8fab5522b4341f"
+    }
+  ],
+  "changed_marked_right_claim_citations_missing_old_fact_id_on_matched_reads": [
+    {
+      "id": "98ad50f9d055ad30",
+      "arm": "current",
+      "claim": "78eb32d7431ecc67"
+    },
+    {
+      "id": "391d8c45fb26047b",
+      "arm": "adopted",
+      "claim": "032b696100f555ba"
+    }
+  ],
+  "unretained_marked_right_claim_record_citations_on_matched_reads": [
+    {
+      "id": "98ad50f9d055ad30",
+      "arm": "current",
+      "claim": "78eb32d7431ecc67"
+    },
+    {
+      "id": "391d8c45fb26047b",
+      "arm": "adopted",
+      "claim": "032b696100f555ba"
+    }
+  ],
+  "marked_right_claim_units": {
+    "matched_visible_cut_arm_rows": 10,
+    "unique_claim_items": 9,
+    "lost_cut_arm_rows": 4,
+    "claim_items_without_any_remaining_formerly_drawn_row": 3,
+    "surviving_rows_with_changed_citation_sets": 4,
+    "surviving_rows_without_old_marked_record_time": 2
+  },
+  "private_input_sha256": {
+    "cases.json": "e420e253e2ff6539414a63e469ce2f823040f8fc0d46f4f8c98253c99bb2c3fa",
+    "marks.json": "a09c2dd823dad1e1da1827a1fe5dc4f3a60891c54b02f34db28c84e755ea78f3",
+    "read.json": "2bc94985272dc3af58e7d44e58fb147ee0db8ea994bc537ed8f9cd9840e3ac7f",
+    "read-window-read.json": "e6d0c916e80c7e63d68d212397d1a72db723228fc7ca2ba9416dbed77b6c974c",
+    "page-window-base.json": "81f1794c698fd653d2b3cfcd21ba2ba7d00ca744034ee550996c700b792384ee",
+    "page-window-read.json": "78beaeaffa9ed8b7bfc930511f9ccf9ff3b1ecf7b55f9809327b4e010f41c516",
+    "claim-marks.json": "0768f0bd8185503f2d020476df0aaba2c44ac026972850da7fdfe2a58082311b"
+  },
+  "calls": {
+    "verified_new": 199,
+    "ledger": 631,
+    "cap": 870,
+    "remaining": 239,
+    "conservative_unverified_test_reservations": 5
+  },
+  "blocked": [
+    "remaining-window-reads",
+    "stage4d-model-measurement",
+    "decision9-proof-gate",
+    "decision8b-dependency"
+  ],
+  "limits": [
+    "Historical adopted reads used a clipped goal; neither source recovery nor prompt changes are isolated.",
+    "Old tail-v1 and new history-v2 evidence availability differ.",
+    "A missing or refused page is disclosed separately, not treated as a finding of no gap.",
+    "Further unread cases cannot remove an observed flag from the frozen count.",
+    "Partial totals and pooled sessions do not establish a full-cohort decrease.",
+    "Lost-row lists cover only matched measured reads; unrun reads are not losses.",
+    "Model variance, marks by agents, and the development sample prevent an accuracy or causal claim.",
+    "No quota-failure stop fired. Further spend stopped at the failed measurement gate."
+  ]
+}
