@@ -1688,6 +1688,39 @@ What is sent does not change in kind: the reader's own messages already go whole
 characters ([the 2026-10-01 amendment](#amended-2026-10-01-a-reading-sees-the-readers-whole-message)),
 and the adopted prompt is one of them.
 
+### Amended 2026-10-04 (owner): recover listed messages inside the window
+
+At a reader's press on Claude Code or Codex, the producer now verifies each already-listed person message
+inside the reading window, through its observed stop. A bounded reverse lookup reads at most the
+latest 32 MiB of the parent transcript. Matching requires the same fact id and timestamp; meta,
+sidechain and copied-correction records retain their existing author rules. Conflicting raw
+sources (compared by a raw-content fingerprint), a missing file, or a file changed since collection
+supply no words. The row keeps its
+listed title rather than falling back to unverified words. A message outside the byte bound also
+keeps its title. No new entry enters the citable list, and the history and listing limits still
+apply. This recovers words a history row omitted; it does not turn the bounded ledger into a full
+transcript.
+
+The recovered words stay in memory, up to 1,000 characters each, and replace titles only within
+the reader's existing share. Credentials are masked before whitespace is folded, including before
+slash-command arguments are rendered. This press-only scan is uncached. The adopted Goal still
+uses its separate prefix lookup; the press uses its uncached raw-masking arm. Default callers keep
+the existing lookup cache and prompt. Nothing new is stored or published, and an unasked reading
+does not run this recovery. Other harnesses retain their existing in-tail words.
+
+### Amended 2026-10-04 (owner): disclose reply crops and use remaining room
+
+Each complete bounded agent text record now supplies the length of its full masked, folded text.
+When the prompt sends a cropped reply, its trusted row labels the excerpt "first 1,000 of N
+characters", using the actual excerpt length when it is shorter. A legacy record with no measured
+total makes no length claim. The count and words stay off the page and both history stores.
+
+Entries are still selected by title first. The reader's half is offered before the agent's quarter;
+after those passes, additional selected agent excerpts may use the remaining prompt room, newest
+first. No entry is removed to fit words, the adopted Goal keeps its priority, and the 16 KiB cap
+still includes the header and every row. This changes the amount of content already disclosed,
+so the consent content version stays at 2. Sending a new class of content requires a new version.
+
 ## DEC-23: a Claude Code session's record of its checks may show the work
 
 Decided 2026-09-24 (DRC-4674). DRC-4676 builds the record and keeps it off every model prompt.

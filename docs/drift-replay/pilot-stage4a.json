@@ -1,0 +1,482 @@
+{
+  "v": 1,
+  "frozen_commit": "05cfbbfe563a43b1da420cce61dbfcf929cd5937",
+  "marks_by": "agents",
+  "source": "fixtures",
+  "facts_version": "tail-v1",
+  "calls": 29,
+  "ledger_start": 432,
+  "ledger_end": 461,
+  "cases": [
+    {
+      "id": "d133d4d6c88383d6",
+      "arm": "current",
+      "repeats": 5,
+      "prompt_digest": "f934deb5c8a0fb51aae6cde45eee542e5a7260be46c5ba9ee264a2c62e374bac",
+      "questions": {
+        "claims": {
+          "resolved_results": {
+            "not verifiable from available evidence": 3,
+            "not shown by the record": 2
+          },
+          "raw_tokens": {
+            "consistent": 3,
+            "unsupported": 2
+          },
+          "resolved_matching_pairs": 4,
+          "raw_matching_pairs": 4,
+          "pairs": 10,
+          "mean_citation_jaccard": 0.5666666666666667
+        },
+        "goal": {
+          "resolved_results": {
+            "consistent with the evidence read": 4,
+            "not verifiable from available evidence": 1
+          },
+          "raw_tokens": {
+            "consistent": 4,
+            "unverifiable": 1
+          },
+          "resolved_matching_pairs": 6,
+          "raw_matching_pairs": 6,
+          "pairs": 10,
+          "mean_citation_jaccard": 0.5833333333333333
+        },
+        "line_1": {
+          "resolved_results": {
+            "consistent with the evidence read": 4,
+            "not verifiable from available evidence": 1
+          },
+          "raw_tokens": {
+            "consistent": 4,
+            "unverifiable": 1
+          },
+          "resolved_matching_pairs": 6,
+          "raw_matching_pairs": 6,
+          "pairs": 10,
+          "mean_citation_jaccard": 0.6333333333333333
+        }
+      }
+    },
+    {
+      "id": "98ad50f9d055ad30",
+      "arm": "current",
+      "repeats": 5,
+      "prompt_digest": "8a16649b52aeccd5e13b0682779b392ca2c3a11c0e4c76992c6753f55485055c",
+      "questions": {
+        "claims": {
+          "resolved_results": {
+            "not shown by the record": 4,
+            "not verifiable from available evidence": 1
+          },
+          "raw_tokens": {
+            "unsupported": 4,
+            "consistent": 1
+          },
+          "resolved_matching_pairs": 6,
+          "raw_matching_pairs": 6,
+          "pairs": 10,
+          "mean_citation_jaccard": 0.6
+        },
+        "goal": {
+          "resolved_results": {
+            "not verifiable from available evidence": 1,
+            "consistent with the evidence read": 4
+          },
+          "raw_tokens": {
+            "unverifiable": 1,
+            "consistent": 4
+          },
+          "resolved_matching_pairs": 6,
+          "raw_matching_pairs": 6,
+          "pairs": 10,
+          "mean_citation_jaccard": 0.55
+        },
+        "line_1": {
+          "resolved_results": {
+            "not verifiable from available evidence": 5
+          },
+          "raw_tokens": {
+            "consistent": 5
+          },
+          "resolved_matching_pairs": 10,
+          "raw_matching_pairs": 10,
+          "pairs": 10,
+          "mean_citation_jaccard": 1.0
+        },
+        "line_2": {
+          "resolved_results": {
+            "consistent with the evidence read": 5
+          },
+          "raw_tokens": {
+            "consistent": 5
+          },
+          "resolved_matching_pairs": 10,
+          "raw_matching_pairs": 10,
+          "pairs": 10,
+          "mean_citation_jaccard": 1.0
+        },
+        "line_3": {
+          "resolved_results": {
+            "not verifiable from available evidence": 2,
+            "consistent with the evidence read": 3
+          },
+          "raw_tokens": {
+            "unverifiable": 2,
+            "consistent": 3
+          },
+          "resolved_matching_pairs": 4,
+          "raw_matching_pairs": 4,
+          "pairs": 10,
+          "mean_citation_jaccard": 0.55
+        }
+      }
+    },
+    {
+      "id": "1bd415ec674714b3",
+      "arm": "current",
+      "repeats": 5,
+      "prompt_digest": "bd350795854740d787ee68829d67c441aad01b9220721780f9a2e04cc97b91e1",
+      "questions": {
+        "claims": {
+          "resolved_results": {
+            "not shown by the record": 5
+          },
+          "raw_tokens": {
+            "unsupported": 5
+          },
+          "resolved_matching_pairs": 10,
+          "raw_matching_pairs": 10,
+          "pairs": 10,
+          "mean_citation_jaccard": 1.0
+        },
+        "goal": {
+          "resolved_results": {
+            "consistent with the evidence read": 3,
+            "not verifiable from available evidence": 2
+          },
+          "raw_tokens": {
+            "consistent": 3,
+            "unverifiable": 2
+          },
+          "resolved_matching_pairs": 4,
+          "raw_matching_pairs": 4,
+          "pairs": 10,
+          "mean_citation_jaccard": 0.6166666666666667
+        },
+        "line_1": {
+          "resolved_results": {
+            "consistent with the evidence read": 3,
+            "not verifiable from available evidence": 2
+          },
+          "raw_tokens": {
+            "consistent": 3,
+            "unverifiable": 2
+          },
+          "resolved_matching_pairs": 4,
+          "raw_matching_pairs": 4,
+          "pairs": 10,
+          "mean_citation_jaccard": 1.0
+        },
+        "line_2": {
+          "resolved_results": {
+            "consistent with the evidence read": 4,
+            "not verifiable from available evidence": 1
+          },
+          "raw_tokens": {
+            "consistent": 4,
+            "unverifiable": 1
+          },
+          "resolved_matching_pairs": 6,
+          "raw_matching_pairs": 6,
+          "pairs": 10,
+          "mean_citation_jaccard": 0.7
+        }
+      }
+    },
+    {
+      "id": "96b0a775f8003a3b",
+      "arm": "current",
+      "repeats": 5,
+      "prompt_digest": "f107fd76bff1e11eeaf9cac425e56c1c7307eb2408809306ed07257517834344",
+      "questions": {
+        "claims": {
+          "resolved_results": {
+            "departure": 2,
+            "not verifiable from available evidence": 3
+          },
+          "raw_tokens": {
+            "departure": 5
+          },
+          "resolved_matching_pairs": 4,
+          "raw_matching_pairs": 10,
+          "pairs": 10,
+          "mean_citation_jaccard": 0.26666666666666666
+        },
+        "goal": {
+          "resolved_results": {
+            "consistent with the evidence read": 4,
+            "not verifiable from available evidence": 1
+          },
+          "raw_tokens": {
+            "consistent": 5
+          },
+          "resolved_matching_pairs": 6,
+          "raw_matching_pairs": 10,
+          "pairs": 10,
+          "mean_citation_jaccard": 0.13
+        },
+        "line_1": {
+          "resolved_results": {
+            "not verifiable from available evidence": 5
+          },
+          "raw_tokens": {
+            "unverifiable": 5
+          },
+          "resolved_matching_pairs": 10,
+          "raw_matching_pairs": 10,
+          "pairs": 10,
+          "mean_citation_jaccard": 0.36666666666666664
+        },
+        "line_2": {
+          "resolved_results": {
+            "not verifiable from available evidence": 5
+          },
+          "raw_tokens": {
+            "unverifiable": 5
+          },
+          "resolved_matching_pairs": 10,
+          "raw_matching_pairs": 10,
+          "pairs": 10,
+          "mean_citation_jaccard": 0.4
+        },
+        "line_3": {
+          "resolved_results": {
+            "not verifiable from available evidence": 5
+          },
+          "raw_tokens": {
+            "unverifiable": 5
+          },
+          "resolved_matching_pairs": 10,
+          "raw_matching_pairs": 10,
+          "pairs": 10,
+          "mean_citation_jaccard": 0.6
+        }
+      }
+    },
+    {
+      "id": "0532b3943a51127c",
+      "arm": "current",
+      "repeats": 3,
+      "prompt_digest": "a663c92827661ad0b3497cb76d936f1c50d40ff3c820e8f1a9bd8d123443e930",
+      "questions": {
+        "claims": {
+          "resolved_results": {
+            "not shown by the record": 1,
+            "not verifiable from available evidence": 2
+          },
+          "raw_tokens": {
+            "unsupported": 1,
+            "departure": 1,
+            "consistent": 1
+          },
+          "resolved_matching_pairs": 1,
+          "raw_matching_pairs": 0,
+          "pairs": 3,
+          "mean_citation_jaccard": 0.3333333333333333
+        },
+        "goal": {
+          "resolved_results": {
+            "departure": 3
+          },
+          "raw_tokens": {
+            "departure": 3
+          },
+          "resolved_matching_pairs": 3,
+          "raw_matching_pairs": 3,
+          "pairs": 3,
+          "mean_citation_jaccard": 0.6666666666666666
+        },
+        "line_1": {
+          "resolved_results": {
+            "consistent with the evidence read": 3
+          },
+          "raw_tokens": {
+            "consistent": 3
+          },
+          "resolved_matching_pairs": 3,
+          "raw_matching_pairs": 3,
+          "pairs": 3,
+          "mean_citation_jaccard": 0.6666666666666666
+        },
+        "line_2": {
+          "resolved_results": {
+            "departure": 2,
+            "not verifiable from available evidence": 1
+          },
+          "raw_tokens": {
+            "departure": 3
+          },
+          "resolved_matching_pairs": 1,
+          "raw_matching_pairs": 3,
+          "pairs": 3,
+          "mean_citation_jaccard": 0.6666666666666666
+        },
+        "line_3": {
+          "resolved_results": {
+            "consistent with the evidence read": 3
+          },
+          "raw_tokens": {
+            "consistent": 3
+          },
+          "resolved_matching_pairs": 3,
+          "raw_matching_pairs": 3,
+          "pairs": 3,
+          "mean_citation_jaccard": 0.47222222222222215
+        }
+      }
+    },
+    {
+      "id": "135a52750097cb30",
+      "arm": "current",
+      "repeats": 3,
+      "prompt_digest": "0a85e03ab06d933d6ad8025b57ec2ff03d324c47e47bce8c1bb2ccef13545492",
+      "questions": {
+        "claims": {
+          "resolved_results": {
+            "not verifiable from available evidence": 3
+          },
+          "raw_tokens": {
+            "unverifiable": 3
+          },
+          "resolved_matching_pairs": 3,
+          "raw_matching_pairs": 3,
+          "pairs": 3,
+          "mean_citation_jaccard": 1.0
+        },
+        "goal": {
+          "resolved_results": {
+            "not verifiable from available evidence": 2,
+            "departure": 1
+          },
+          "raw_tokens": {
+            "unverifiable": 2,
+            "departure": 1
+          },
+          "resolved_matching_pairs": 1,
+          "raw_matching_pairs": 1,
+          "pairs": 3,
+          "mean_citation_jaccard": 0.7777777777777777
+        },
+        "line_1": {
+          "resolved_results": {
+            "consistent with the evidence read": 3
+          },
+          "raw_tokens": {
+            "consistent": 3
+          },
+          "resolved_matching_pairs": 3,
+          "raw_matching_pairs": 3,
+          "pairs": 3,
+          "mean_citation_jaccard": 1.0
+        },
+        "line_2": {
+          "resolved_results": {
+            "not verifiable from available evidence": 2,
+            "departure": 1
+          },
+          "raw_tokens": {
+            "unverifiable": 2,
+            "departure": 1
+          },
+          "resolved_matching_pairs": 1,
+          "raw_matching_pairs": 1,
+          "pairs": 3,
+          "mean_citation_jaccard": 0.6666666666666666
+        },
+        "line_3": {
+          "resolved_results": {
+            "not verifiable from available evidence": 3
+          },
+          "raw_tokens": {
+            "unverifiable": 3
+          },
+          "resolved_matching_pairs": 3,
+          "raw_matching_pairs": 3,
+          "pairs": 3,
+          "mean_citation_jaccard": 0.5
+        }
+      }
+    },
+    {
+      "id": "62e622939db159b5",
+      "arm": "current",
+      "repeats": 3,
+      "prompt_digest": "7eff505000843275b765cecc7d101c8e2ce65ca57667e795ecb25920ce7e81f6",
+      "questions": {
+        "claims": {
+          "resolved_results": {
+            "not verifiable from available evidence": 3
+          },
+          "raw_tokens": {
+            "departure": 2,
+            "consistent": 1
+          },
+          "resolved_matching_pairs": 3,
+          "raw_matching_pairs": 1,
+          "pairs": 3,
+          "mean_citation_jaccard": 0.3333333333333333
+        },
+        "goal": {
+          "resolved_results": {
+            "not verifiable from available evidence": 1,
+            "consistent with the evidence read": 2
+          },
+          "raw_tokens": {
+            "unverifiable": 1,
+            "consistent": 2
+          },
+          "resolved_matching_pairs": 1,
+          "raw_matching_pairs": 1,
+          "pairs": 3,
+          "mean_citation_jaccard": 1.0
+        },
+        "line_1": {
+          "resolved_results": {
+            "not verifiable from available evidence": 1,
+            "departure": 1,
+            "consistent with the evidence read": 1
+          },
+          "raw_tokens": {
+            "unverifiable": 1,
+            "departure": 1,
+            "consistent": 1
+          },
+          "resolved_matching_pairs": 0,
+          "raw_matching_pairs": 0,
+          "pairs": 3,
+          "mean_citation_jaccard": 0.4444444444444444
+        },
+        "line_2": {
+          "resolved_results": {
+            "not verifiable from available evidence": 1,
+            "consistent with the evidence read": 2
+          },
+          "raw_tokens": {
+            "unverifiable": 1,
+            "consistent": 2
+          },
+          "resolved_matching_pairs": 1,
+          "raw_matching_pairs": 1,
+          "pairs": 3,
+          "mean_citation_jaccard": 1.0
+        }
+      }
+    }
+  ],
+  "questions": 31,
+  "resolved_unanimous_questions": 13,
+  "raw_unanimous_questions": 15,
+  "empty_citation_pair_jaccard": 1.0,
+  "limits": "Seven frozen development-set prompts, one arm; agent marks. Agreement measures these repeated reads, not a detector rate or person outcome."
+}

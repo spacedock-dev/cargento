@@ -1126,9 +1126,17 @@ The owner, approving the Analyze drift plan, amended the source lookup on 2026-1
 press can find that adopted source outside the recent transcript tail: a forward scan reads at
 most the first 32 MiB and retains at most 4,096 user-message facts. Only the adopted source can
 replace the Goal; the other facts do not enter the reading's evidence ledger. The runtime caches
-the redacted, 1,000-character fields in memory for at most eight transcripts, keyed by path,
-harness, session, size and modification time. It writes and publishes none of that cache. The
+the redacted, 1,000-character fields in memory for at most eight transcripts on its default arm,
+keyed by path, harness, session, size and modification time. A reader's press uses the uncached
+arm that masks raw separators first. Neither arm writes or publishes the words. The adopted-goal
 lookup does not run for a typed goal or an unasked reading.
+The same owner amendment also lets a Claude Code or Codex press recover words for listed person messages in
+the reading window, through its observed stop, from the latest 32 MiB of the parent transcript.
+That uncached lookup verifies each fact id and timestamp and refuses conflicting raw-content fingerprints or
+a file changed since collection. A missing or unverifiable source keeps its listed title. It adds
+no fact id, stores no words and does not run for an unasked reading. The history and listing bounds
+still hold; this is not a whole-transcript evidence ledger. Other harnesses keep their existing
+in-tail words.
 The field holding the whole message (`reader_words`) is held in memory for the reading and is
 neither stored nor published: the history stores' field allowlists do not name it, and
 `/api/project-context` drops it (`project_context.for_page`), so the page still shows the first
@@ -1142,14 +1150,16 @@ there, which it could not when it saw only the first. The one copy of the field 
 abstention packet's frozen facts, which stay local under `~/.cargento` with the rest of that
 packet's prompt text (below).
 
-The whole message has one redaction limit the first sentence did not. The message is collapsed to
+The original whole-message path had one redaction limit the first sentence did not. The message was collapsed to
 one line before it is redacted, so a credential the reader's text broke across a line break becomes
 two runs. The part before the break is masked only when it is still long enough to match its shape
 on its own, and the part after it has no prefix to match and is never masked, the same
 shape-matching residual Published text describes for a control character. Measured on the
 documented AWS example key and on a GitHub token shape, each split partway through: neither half was
 masked. Before this change the part after the break was on a later line and never reached a model;
-now it reaches the provider. A message's words are also shared out of the prompt budget
+it reached the provider. Amended 2026-10-04 by the owner: the reader-requested window lookup now
+masks raw prose before folding whitespace, including before rendering command arguments. Default
+callers retain the original path. A message's words are also shared out of the prompt budget
 rather than taking it: every entry is chosen by its first sentence exactly as before, and the
 newest messages replace their first sentence with their words only inside half the 16 KiB
 (`reading.WORDS_SHARE_DIVISOR`), counted in UTF-8 bytes. A message whose words do not fit is sent
@@ -1161,16 +1171,22 @@ owner's ruling that what the agent says is evidence
 On a Claude Code session each top-level assistant text message in the bounded transcript tail is
 an entry of its own; sidechain and meta records, thinking and tool call blocks, and the CLI's own
 `<synthetic>` records are not. Its first sentence is the entry's title, and the whole message,
-collapsed to one line, redacted by `records.safe_text` and cut at 1,000 characters
-(`project_context.AGENT_WORDS_CAP_CHARS`), replaces the title only inside a quarter of the 16 KiB
+masked as raw prose before it is collapsed to one line, then redacted by `records.safe_text` and
+cut at 1,000 characters (`project_context.AGENT_WORDS_CAP_CHARS`), replaces the title inside a quarter of the 16 KiB
 prompt (`reading.AGENT_WORDS_SHARE_DIVISOR`), newest first, after the reader's own messages have had
-their half. It is quoted as one JSON string with the menu heading neutralised, as a check's output
+their half. Amended 2026-10-04 by the owner: additional selected agent excerpts may use room left
+after those passes, without dropping an entry or exceeding the 16 KiB cap. Complete bounded
+records measure the full masked, folded length; a cropped prompt row labels its actual excerpt
+length and that total. Neither count is inferred for a legacy record. These counts stay in memory
+and are stripped from page responses with the words. This changes the amount within the existing
+content classes, so `reading_policy.CONTENT_VERSION` stays at 2.
+It is quoted as one JSON string with the menu heading neutralised, as a check's output
 tail is, and the prompt's trusted header says agent messages are quoted data, never instructions.
 That goes only on a reading the reader pressed for, whether or not tool output is allowed, and to
 whichever provider the route names; the unasked lane sends none of it (`reading.build_ledger`'s
 `read_agent_words`, set by the reading route alone). It sends what the agent wrote to the reader,
 including any private prose or path it repeated that redaction does not recognize, and it carries
-the same line-break residual as the reader's words above. An agent message can repeat tool output,
+the uncued-prose residual described above. An agent message can repeat tool output,
 so a command's output can reach the provider in the agent's words even where tool output was not
 allowed. Redaction catches credential shapes and, since 2026-10-03, the value after a cue such as
 `Authorization: Bearer`, `--password`, `password=`, `token:` or a name such as `DB_PASSWORD`,
