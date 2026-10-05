@@ -110,6 +110,23 @@ The posture rests on two invariants:
    because any local process can rewrite the file. Everything else a reading holds is a value the
    code selected from a closed set or composed from counts it measured.
 
+   Delegated owner acceptance, 2026-10-05 (DRC-4791): a local rewrite of `detail` is scrubbed and
+   escaped, but the prose verdict backstop used at production is not reapplied when loading the
+   file. A rewritten detail can therefore say the work succeeded beside a valid departure token.
+   A blanket success-word check would also reject legitimate quotations of the agent's claims.
+   Repeating a prose check cannot authenticate a file the same local process can rewrite in full.
+   This remains an accepted local-process limit; redaction, citation checks and escaping still
+   apply. No claim of tamper detection or authenticated model output follows from them.
+
+   A line added from an entry can also hold its verified request time and SHA256 fingerprints of
+   its parent, source identity and full request-record digest, and reviewed line, under the
+   [request-age ruling](docs/design-reading-a-session.md#amended-2026-10-05-verified-request-age-belongs-to-a-line).
+   These bindings add no source words. Loading invalid metadata removes its age without deleting
+   the line, and current parent facts must verify it before it changes a verdict. The page receives
+   only verified times and source handles, bound to the current revision. Typed and legacy lines
+   retain unknown request age. The fingerprints check continuity, not authenticity against a local
+   process that can change both the store and the source.
+
    Two consequences of storing it here rather than in session history, both accepted rather than
    discovered. `--forget` deletes the session-history and session-end stores and **deletes nothing
    a reader typed and no reading of it**, so a reader who wants a model-authored reading gone

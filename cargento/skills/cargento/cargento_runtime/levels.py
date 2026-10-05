@@ -440,7 +440,14 @@ class _LineTally:
     cites: list[str] = field(default_factory=list)
     shown: list[str] = field(default_factory=list)
 
-    def read(self, row: Mapping[str, Any], *, name: str, line_text: str = "") -> None:
+    def read(
+        self,
+        row: Mapping[str, Any],
+        *,
+        name: str,
+        line_text: str = "",
+        requested_at: float | None = None,
+    ) -> None:
         result, why = row.get("result"), row.get("why") or ""
         window = self.window or 0.0
         cited = [
@@ -469,6 +476,7 @@ class _LineTally:
             window_start=window,
             line_text=line_text or str(row.get("clause") or ""),
             scope=self.scope,
+            requested_at=requested_at,
         )
         if name == reading.CONSTRAINT_CLAIMS:
             # Its own two flags, never `departed`: a claim is not the intent.
@@ -573,6 +581,7 @@ def analysis_level(
     *,
     outcome_lines: int,
     lines: Sequence[str] = (),
+    line_requests: Mapping[str, float] | None = None,
 ) -> Level:
     """The analysis level, derived from a stored reading's per-line results.
 
@@ -620,7 +629,12 @@ def analysis_level(
     if texts:
         by_name[reading.CONSTRAINT_OUTPUT] = texts[0]
     for name, row in rows.items():
-        tally.read(row, name=name, line_text=by_name.get(name, ""))
+        tally.read(
+            row,
+            name=name,
+            line_text=by_name.get(name, ""),
+            requested_at=(line_requests or {}).get(name) if reading.is_outcome_line(name) else None,
+        )
 
     failed = [f for f in _checks(evidence) if f.get("result") == reading.RESULT_FAILED]
     in_window = reading.failed_checks_after_person(

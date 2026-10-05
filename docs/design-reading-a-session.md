@@ -2560,6 +2560,45 @@ the later-direction floor (item 9).
     notification. Elsewhere than Claude Code the panel states the harness limit ("Cargento can't
     read work from this harness"). "Stop session" is not offered (DEC-16, SECURITY.md).
 
+### Amended 2026-10-05: verified request age belongs to a line
+
+Delegated owner acceptance, 2026-10-05 (DRC-4783), narrows item 3 without changing item 13's
+goal window. A typed checklist may describe work the reader wants to evaluate retrospectively.
+Saving it does not prove when the agent received that requirement. Typed and legacy lines therefore
+keep unknown request age; a line's save time is never substituted for its request time.
+
+Add can bind a line to its actual parent-person request. The server verifies the source fact's
+identity, parent session and time, and stores that time with fingerprints of the parent, source
+identity and full request record, and reviewed line. These are local binding data, not additional copies of the request's
+words. Unchanged and reordered lines keep the binding once; a newly typed duplicate or an edit
+does not inherit it. A request at the save time, a future or copied request, duplicate source
+identity or ambiguous same-time parent messages supplies no binding.
+
+Loading a malformed, cross-session or after-save binding removes only that binding. The person's
+words stay. Before a binding can affect a reading, it is checked again against the actual current
+parent fact and the line's words. A missing or changed source leaves age unknown. A downgraded
+build may discard this optional binding, which also leaves age unknown. No time is guessed for
+older lines.
+
+Source proof comes from the existing bounded transcript prefix, not from historical summaries.
+Each operation reuses one source lookup; the bounded cache checks device, inode, size and
+modification time before reuse. A record beyond the byte or fact bound supplies no proof. The
+transient raw-record digest and source version never reach the page, model prompt or history.
+
+For a verified line, a citation can judge work against that request only if its action or call was
+recorded strictly after the request. A call made earlier does not become later work when its
+result arrives afterward. Same-time work is not ordered by the clock. The existing goal-window
+check still uses result arrival for checks, and the global failure and visibility signals are not
+weakened. Removing an earlier citation can only withdraw a verdict; it never creates reassurance
+or a neutral unfinished-work result.
+
+The focused page context carries only revalidated request times and source handles, tied to the
+current intent revision. Binding fingerprints stay in the annotation store. The producer,
+analysis level, page and correction apply the same action-time boundary. A historical reading
+whose revision differs from the current intent carries no request-age exemption. Existing replay intents
+have typed or legacy lines and retain unknown request age. No new class of words reaches the
+model, so this changes neither the permission disclosure nor its content version.
+
 ### What the last-turn build decided, 2026-09-24
 
 DRC-4679 built item 13. These are the calls the ruling left open, each made by the orchestrator

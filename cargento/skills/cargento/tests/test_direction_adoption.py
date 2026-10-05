@@ -951,7 +951,11 @@ class DirectionRouteTest(_ClaudeSession):
         self.assertEqual("stored", stored["outcome"])
         lines = annotation_store.load(self.config)[0]["revisions"][-1]["lines"]
         self.assertEqual(6, len(lines))
-        self.assertEqual({"text": edited, "source": "entry", "source_id": fact_id}, lines[5])
+        self.assertEqual(
+            {"text": edited, "source": "entry", "source_id": fact_id},
+            {key: lines[5][key] for key in ("text", "source", "source_id")},
+        )
+        self.assertEqual(float(self.direction()["at"]), lines[5]["request"]["at"])
         self.assertNotIn(opened["text"], json.dumps(annotation_store.load(self.config)))
 
     def test_a_settled_direction_that_is_not_the_latest_prompt_is_added_from_its_entry(
@@ -1018,8 +1022,10 @@ class DirectionRouteTest(_ClaudeSession):
                 "source": "entry",
                 "source_id": fact_id,
             },
-            revision["lines"][1],
+            {key: revision["lines"][1][key] for key in ("text", "source", "source_id")},
         )
+        source = next(fact for fact in self.facts() if fact.get("fact_id") == fact_id)
+        self.assertEqual(float(source["at"]), revision["lines"][1]["request"]["at"])
 
     def test_add_over_the_draft_adopts_it_in_the_same_request(self) -> None:
         fact_id = str(self.direction()["fact_id"])

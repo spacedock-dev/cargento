@@ -47,7 +47,7 @@ from cargento_runtime import stream as runtime_stream
 _WEBSOCKET_GUID = b"258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping
+    from collections.abc import Mapping, Sequence
 
     from cargento_runtime.aggregate import Application
     from cargento_runtime.interaction_prototype import InteractionPrototype
@@ -400,7 +400,11 @@ def _with_levels(
     sources: dict[str, Any] = raw_sources if isinstance(raw_sources, dict) else {}
     raw_work = sources.get("work")
     work: dict[str, Any] = dict(raw_work) if isinstance(raw_work, dict) else {}
-    work["analysis_levels"] = _analysis_levels(application, context, row, entry, floor)
+    request_sources = _request_sources(application, row, _facts_of(context), entry) if entry else []
+    work["line_requests"] = _line_requests(entry, request_sources, row)
+    work["analysis_levels"] = _analysis_levels(
+        application, context, row, entry, floor, request_sources=request_sources
+    )
     transcript = runtime_observer.resolve_transcript(config, application.state, harness, sid)
     if transcript:
         live = live_estimate.for_session(
@@ -410,12 +414,33 @@ def _with_levels(
     return {**context, "sources": {**sources, "work": work}}
 
 
+def _line_requests(
+    entry: annotation_store.Annotation | None, facts: list[Any], row: Mapping[str, Any]
+) -> list[dict[str, Any]]:
+    """The page receives verified times, never untrusted stored binding digests."""
+    if not entry or not entry["revisions"]:
+        return []
+    latest = entry["revisions"][-1]
+    harness, sid = str(row.get("harness") or ""), str(row.get("sid") or "")
+    own = [fact for fact in facts if isinstance(fact, dict)]
+    floors = runtime_reading.line_request_floors(latest, own, harness, sid)
+    lines = {
+        name: {"at": at, "source_id": latest["lines"][int(name.split("_")[1]) - 1]["source_id"]}
+        for name, at in floors.items()
+    }
+    return (
+        [{"harness": harness, "sid": sid, "revision": latest["n"], "lines": lines}] if lines else []
+    )
+
+
 def _analysis_levels(
     application: Any,
     context: dict[str, Any],
     row: dict[str, Any],
     entry: annotation_store.Annotation | None,
     floor: float | None,
+    *,
+    request_sources: Sequence[Mapping[str, Any]] = (),
 ) -> list[dict[str, Any]]:
     """The analysis-derived level of the stored reading, recomputed now and never stored.
 
@@ -455,6 +480,9 @@ def _analysis_levels(
         evidence,
         outcome_lines=len(read["lines"]),
         lines=runtime_reading.outcome_lines(read),
+        line_requests=runtime_reading.line_request_floors(read, request_sources, harness, sid)
+        if read["n"] == entry["revisions"][-1]["n"]
+        else {},
     )
     return [
         {
@@ -468,6 +496,31 @@ def _analysis_levels(
             "cites": list(level.cites),
         }
     ]
+
+
+def _request_sources(
+    application: Any,
+    row: Mapping[str, Any],
+    facts: list[Any],
+    entry: annotation_store.Annotation | None = None,
+) -> list[Mapping[str, Any]]:
+    """One version-checked bounded prefix read, shared by this operation's consumers."""
+    if entry is not None and (
+        not entry["revisions"] or not runtime_reading.has_line_requests(entry["revisions"][-1])
+    ):
+        return []
+    harness, sid = str(row.get("harness") or ""), str(row.get("sid") or "")
+    path = runtime_observer.resolve_transcript(application.config, application.state, harness, sid)
+    recovered = (
+        runtime_project_context.transcript_user_facts(
+            application.config, application.state, path, harness, sid
+        )
+        if path
+        else []
+    )
+    return runtime_reading.listed_request_sources(
+        [fact for fact in facts if isinstance(fact, dict)], recovered
+    )
 
 
 def _prompt_facts(
@@ -2389,6 +2442,7 @@ class _RequestHandler(BaseHTTPRequestHandler):
             expected_prompt_at=payload.get("expected_prompt_at"),
             window_start=self._typed_window_start(harness, sid, now),
             diagnostic_sink=application.diagnostic_sink,
+            source_facts=_request_sources(application, row, self._session_facts(row)),
         )
 
     def _direction(self) -> None:
@@ -2502,11 +2556,22 @@ class _RequestHandler(BaseHTTPRequestHandler):
             )
             route = runtime_reading_route.resolve(str(harness), config=config)
             context = _session_context(self.server.application, row)
+            latest = entry["revisions"][-1] if entry and entry["revisions"] else None
+            request_sources = (
+                _request_sources(application, row, _facts_of(context), entry)
+                if latest and latest["n"] == row.get("annotation_revision")
+                else []
+            )
             answer = correction.compose(
                 row,
                 _facts_of(context),
                 person_at=_scan_of(context, str(harness), str(sid)).get("last_user_at"),
                 floor=annotation_store.direction_floor(entry, row),
+                line_requests=runtime_reading.line_request_floors(
+                    latest, request_sources, str(harness), str(sid)
+                )
+                if latest
+                else {},
                 # The agent's messages carry a line verdict where no check can be sent
                 # (owner ruling, 2026-10-03), as the page's `nextReadingOutputLimit` says.
                 lines_judged=bool(

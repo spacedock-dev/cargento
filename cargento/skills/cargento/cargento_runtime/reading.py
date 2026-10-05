@@ -41,6 +41,7 @@ See
 
 from __future__ import annotations
 
+import hashlib
 import json
 import math
 import os
@@ -1285,6 +1286,201 @@ def evidence_at(entry: Mapping[str, Any]) -> float | None:
     """
     result_at = _number(entry.get("result_at"))
     return result_at if result_at is not None and result_at > 0 else _number(entry.get("at"))
+
+
+class LineRequest(TypedDict):
+    """A source binding, revalidated before it can constrain a reading."""
+
+    at: float
+    session_digest: str
+    source_digest: str
+    line_digest: str
+
+
+def _request_digest(value: Any) -> str:
+    encoded = json.dumps(value, ensure_ascii=True, separators=(",", ":")).encode()
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def valid_line_request(
+    value: Any, text: str, *, session: tuple[str, str] | None = None, saved_at: Any = None
+) -> LineRequest | None:
+    """Malformed lineage loses its age, never the reader's line."""
+    keys = {"at", "session_digest", "source_digest", "line_digest"}
+    if not isinstance(value, dict) or set(value) != keys:
+        return None
+    at = valid_prompt_time(value.get("at"))
+    digests = {key: value.get(key) for key in keys - {"at"}}
+    if at is None or any(
+        not isinstance(digest, str) or re.fullmatch(r"[0-9a-f]{64}", digest) is None
+        for digest in digests.values()
+    ):
+        return None
+    if value["line_digest"] != _request_digest(text):
+        return None
+    if session is not None and (
+        value["session_digest"] != _request_digest(list(session))
+        or (stamp := valid_prompt_time(saved_at)) is None
+        or at >= stamp
+    ):
+        return None
+    return {
+        "at": at,
+        "session_digest": value["session_digest"],
+        "source_digest": value["source_digest"],
+        "line_digest": value["line_digest"],
+    }
+
+
+def line_request_binding(
+    facts: Sequence[Mapping[str, Any]],
+    *,
+    source_id: str,
+    text: str,
+    harness: str,
+    sid: str,
+    now: float,
+) -> LineRequest | None:
+    """Bind a reviewed line to one earlier, genuine parent-person request.
+
+    [DEC-24](docs/design-reading-a-session.md#amended-2026-10-05-verified-request-age-belongs-to-a-line)
+    keeps typed and legacy request ages unknown. Save time is not request time.
+    """
+    wanted = {"harness": harness, "sid": sid}
+    matches = [fact for fact in facts if fact.get("fact_id") == source_id]
+    if len(matches) != 1 or not text.strip():
+        return None
+    fact = matches[0]
+    at = valid_prompt_time(fact.get("at"))
+    stamp = valid_prompt_time(now)
+    if (
+        fact.get("type") != "user_message"
+        or fact.get("source_session") != wanted
+        or author_of(fact) != AUTHOR_PERSON
+        or fact.get(COPIED_FLAG) is True
+        or at is None
+        or stamp is None
+        or at >= stamp
+        or not isinstance(fact.get("summary"), str)
+        or not str(fact.get("summary") or "").strip()
+        or not isinstance(fact.get("request_source_digest"), str)
+        or re.fullmatch(r"[0-9a-f]{64}", str(fact.get("request_source_digest") or "")) is None
+        or sum(
+            item.get("type") == "user_message"
+            and item.get("source_session") == wanted
+            and valid_prompt_time(item.get("at")) == at
+            for item in facts
+        )
+        != 1
+    ):
+        return None
+    return {
+        "at": at,
+        "session_digest": _request_digest([harness, sid]),
+        "source_digest": _request_digest(
+            [source_id, harness, sid, at, fact["summary"], fact["request_source_digest"]]
+        ),
+        "line_digest": _request_digest(text),
+    }
+
+
+def _request_identity(fact: Mapping[str, Any]) -> tuple[str, str, float] | None:
+    source = fact.get("source_session")
+    at = valid_prompt_time(fact.get("at"))
+    if (
+        fact.get("type") != "user_message"
+        or not isinstance(source, dict)
+        or not isinstance(source.get("harness"), str)
+        or not isinstance(source.get("sid"), str)
+        or at is None
+    ):
+        return None
+    return source["harness"], source["sid"], at
+
+
+def listed_request_sources(
+    facts: Sequence[Mapping[str, Any]], recovered: Sequence[Mapping[str, Any]]
+) -> list[Mapping[str, Any]]:
+    """Fresh source proof must still name exactly one listed parent-person record."""
+    by_id: dict[str, list[Mapping[str, Any]]] = {}
+    times: dict[tuple[str, str, float] | None, int] = {}
+    for fact in facts:
+        by_id.setdefault(str(fact.get("fact_id") or ""), []).append(fact)
+    for source in recovered:
+        identity = _request_identity(source)
+        times[identity] = times.get(identity, 0) + 1
+    sources: list[Mapping[str, Any]] = []
+    for source in recovered:
+        matches = by_id.get(str(source.get("fact_id") or ""), [])
+        if len(matches) != 1:
+            continue
+        listed = matches[0]
+        if (
+            listed.get("type") == source.get("type") == "user_message"
+            and listed.get("source_session") == source.get("source_session")
+            and valid_prompt_time(listed.get("at")) == valid_prompt_time(source.get("at"))
+            and author_of(listed) == AUTHOR_PERSON
+            and listed.get(COPIED_FLAG) is not True
+            and _request_identity(source) is not None
+            and times.get(_request_identity(source)) == 1
+        ):
+            sources.append(source)
+    return sources
+
+
+def has_line_requests(revision: Mapping[str, Any]) -> bool:
+    """Avoid a bounded source lookup when no line has lineage to revalidate."""
+    lines = revision.get("lines")
+    return isinstance(lines, (list, tuple)) and any(
+        isinstance(line, dict) and "request" in line for line in lines[:MAX_OUTCOME_LINES]
+    )
+
+
+def line_request_at(
+    line: Mapping[str, Any],
+    facts: Sequence[Mapping[str, Any]],
+    harness: str,
+    sid: str,
+    *,
+    until: Any,
+) -> float | None:
+    """Re-read the binding against current parent facts; unknown means no exemption."""
+    text, source_id = line.get("text"), line.get("source_id")
+    if line.get("source") != "entry" or not isinstance(text, str) or not isinstance(source_id, str):
+        return None
+    binding = valid_line_request(line.get("request"), text)
+    stamp = valid_prompt_time(until)
+    if binding is None or stamp is None:
+        return None
+    current = line_request_binding(
+        facts, source_id=source_id, text=text, harness=harness, sid=sid, now=stamp
+    )
+    return binding["at"] if current == binding else None
+
+
+def line_request_floors(
+    revision: Mapping[str, Any], facts: Sequence[Mapping[str, Any]], harness: str, sid: str
+) -> dict[str, float]:
+    """Only verified lines carry a request age; absent and typed lines carry none."""
+    raw = revision.get("lines")
+    if not isinstance(raw, (list, tuple)):
+        return {}
+    floors: dict[str, float] = {}
+    for k, line in enumerate(raw[:MAX_OUTCOME_LINES], 1):
+        if (
+            isinstance(line, dict)
+            and (at := line_request_at(line, facts, harness, sid, until=revision.get("at")))
+            is not None
+        ):
+            floors[outcome_line(k)] = at
+    return floors
+
+
+def after_line_request(entry: Mapping[str, Any], requested_at: Any) -> bool:
+    """An action must follow the request; a delayed result does not move its call."""
+    requested = valid_prompt_time(requested_at)
+    at = valid_prompt_time(entry.get("at"))
+    return requested is None or (at is not None and at > requested)
 
 
 def _before_window(entry: Mapping[str, Any], window_start: float) -> bool:
@@ -3044,6 +3240,7 @@ def _resolve_one(  # noqa: PLR0913 - each is one fact the evidence rules read
     latest_check_at: float = 0.0,
     checks_unread: bool = False,
     scope: str = SCOPE_LAST_TURN,
+    requested_at: float | None = None,
 ) -> Criterion:
     """One constraint's criterion, with every server-side rule applied.
 
@@ -3076,7 +3273,9 @@ def _resolve_one(  # noqa: PLR0913 - each is one fact the evidence rules read
     cited = [
         by_index[value]
         for value in wanted[:MAX_CITES]
-        if _citable(by_index[value]) and not _before_window(by_index[value], window_start)
+        if _citable(by_index[value])
+        and not _before_window(by_index[value], window_start)
+        and after_line_request(by_index[value], requested_at)
     ]
     if (
         result in (RESULT_DEPARTURE, RESULT_CONSISTENT, RESULT_UNSUPPORTED, RESULT_NOT_REACHED)
@@ -3172,6 +3371,7 @@ def resolve(
     detail_cap_chars: int,
     window_start: float = 0.0,
     scope: str = SCOPE_LAST_TURN,
+    line_requests: Mapping[str, float] | None = None,
 ) -> dict[str, Criterion]:
     """The model's tokens and indices, turned into what the page may render.
 
@@ -3251,6 +3451,7 @@ def resolve(
             or bool(selection.unread_checks)
             or bool(selection.unlisted),
             scope=scope,
+            requested_at=(line_requests or {}).get(name) if is_outcome_line(name) else None,
         )
     return out
 
@@ -3411,11 +3612,13 @@ def produce(  # noqa: PLR0913
     adopted = latest.get("goal_source") in PROMPT_SOURCES and asks_goal(goal)
     if person_source_lookup is not None:
         ledger = _restored_person_words(ledger, person_source_lookup(ledger), harness, sid)
-    source_facts = (
-        _goal_source_candidates(row, facts, goal_source_lookup())
-        if adopted and goal_source_lookup is not None
-        else facts
+    recovered_sources = (
+        goal_source_lookup()
+        if goal_source_lookup is not None and (adopted or has_line_requests(latest))
+        else []
     )
+    source_facts = _goal_source_candidates(row, facts, recovered_sources) if adopted else facts
+    request_sources = listed_request_sources(facts, recovered_sources)
     source = adopted_prompt(latest, source_facts, harness, sid) if adopted else None
     prompt, selected = build_prompt(
         ledger,
@@ -3477,6 +3680,7 @@ def produce(  # noqa: PLR0913
         detail_cap_chars=config.annotation_text_cap_chars,
         window_start=window_start(latest),
         scope=scope,
+        line_requests=line_request_floors(latest, request_sources, harness, sid),
     )
     cutoff = cutoff_text(
         selected.entries,

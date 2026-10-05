@@ -49,7 +49,14 @@ AGENT_WORDS_FIELD = "agent_words"
 AGENT_WORDS_TOTAL_FIELD = "agent_words_total"
 # Every server-side-only words field, which no page route may publish.
 _SERVER_ONLY_FIELDS = frozenset(
-    {READER_WORDS_FIELD, AGENT_WORDS_FIELD, AGENT_WORDS_TOTAL_FIELD, records.GOAL_SOURCE_CUT_FIELD}
+    {
+        READER_WORDS_FIELD,
+        AGENT_WORDS_FIELD,
+        AGENT_WORDS_TOTAL_FIELD,
+        records.GOAL_SOURCE_CUT_FIELD,
+        "request_source_digest",
+        "request_source_stamp",
+    }
 )
 # The harnesses whose top-level assistant text this module reads as the agent's messages.
 # Claude Code only for now; Codex's final answers are a follow-up.
@@ -4644,12 +4651,14 @@ def transcript_user_facts(
         stamp = os.stat(path)
         if not stat.S_ISREG(stamp.st_mode):
             return []
+        source_version = (stamp.st_dev, stamp.st_ino, stamp.st_size, stamp.st_mtime_ns)
         with state.cache_lock:
             cached = state.transcript_user_cache.get(key)
             if (
                 not goal_choices
                 and cached is not None
                 and cached[:2] == (stamp.st_size, stamp.st_mtime_ns)
+                and all(fact.get("request_source_stamp") == source_version for fact in cached[2])
             ):
                 return copy.deepcopy(cached[2])
         raw = runtime_io.read_prefix_bytes(path, max_bytes=SEMANTIC_BACKFILL_MAX_BYTES)
@@ -4657,10 +4666,10 @@ def transcript_user_facts(
             raw = raw.rsplit(b"\n", 1)[0] if b"\n" in raw else b""
         facts = _transcript_user_scan(config, raw, harness, sid, goal_choices=goal_choices)
         after = os.stat(path)
-        if (after.st_size, after.st_mtime_ns) != (stamp.st_size, stamp.st_mtime_ns) or (
-            goal_choices and (after.st_dev, after.st_ino) != (stamp.st_dev, stamp.st_ino)
-        ):
+        if (after.st_dev, after.st_ino, after.st_size, after.st_mtime_ns) != source_version:
             return []
+        for fact in facts:
+            fact["request_source_stamp"] = source_version
     except OSError:
         return []
     if not goal_choices:
@@ -4674,6 +4683,41 @@ def transcript_user_facts(
     return copy.deepcopy(facts)
 
 
+def _instruction_facts(
+    config: RuntimeConfig, raw: bytes, harness: str, sid: str
+) -> Iterable[tuple[dict[str, Any], dict[str, Any], bytes]]:
+    """The same bounded records used by the words and their private source proof."""
+    for line in raw.splitlines():
+        try:
+            record = json.loads(line)
+        except (ValueError, RecursionError):
+            continue
+        event = _instruction_event(config, record, harness, sid)
+        if event is not None:
+            yield record, _semantic_fact_from_event(event, "steer", "user_message", ""), line
+
+
+def _remember_request(
+    fact: dict[str, Any],
+    *,
+    full: bool,
+    seen: set[str],
+    times: dict[str, set[str]],
+    ambiguous: set[str],
+) -> bool:
+    """Check ambiguity after the fact cap while keeping proof memory bounded."""
+    fact_id, at = str(fact["fact_id"]), str(fact.get("at"))
+    previous = times.get(at, set())
+    ambiguous.update(previous)
+    if full and fact_id not in seen:
+        return False
+    if previous or fact_id in seen:
+        ambiguous.add(fact_id)
+    seen.add(fact_id)
+    times.setdefault(at, set()).add(fact_id)
+    return True
+
+
 def _transcript_user_scan(
     config: RuntimeConfig, raw: bytes, harness: str, sid: str, *, goal_choices: bool = False
 ) -> list[dict[str, Any]]:
@@ -4681,21 +4725,24 @@ def _transcript_user_scan(
     seen: set[tuple[str, str]] = set()
     goal_sources: dict[str, DirectionText] = {}
     ambiguous: set[str] = set()
-    for line in raw.splitlines():
-        try:
-            record = json.loads(line)
-        except (ValueError, RecursionError):
+    request_seen: set[str] = set()
+    request_times: dict[str, set[str]] = {}
+    request_ambiguous: set[str] = set()
+    for record, fact, line in _instruction_facts(config, raw, harness, sid):
+        fact_id = str(fact["fact_id"])
+        if not _remember_request(
+            fact,
+            full=len(facts) >= TRANSCRIPT_USER_FACTS_MAX,
+            seen=request_seen,
+            times=request_times,
+            ambiguous=request_ambiguous,
+        ):
             continue
-        event = _instruction_event(config, record, harness, sid)
-        if event is None:
-            continue
-        fact = _semantic_fact_from_event(event, "steer", "user_message", "")
+        fact["request_source_digest"] = hashlib.sha256(line).hexdigest()
         if goal_choices:
             fact_id = str(fact["fact_id"])
             # The returned list stays bounded, but a later conflicting source
             # inside the byte budget must still invalidate an offered identity.
-            if len(facts) >= TRANSCRIPT_USER_FACTS_MAX and fact_id not in goal_sources:
-                continue
             source_words = _direction_words(config, record, harness)
             previous = goal_sources.get(fact_id)
             if previous is not None and previous != source_words:
@@ -4713,10 +4760,11 @@ def _transcript_user_scan(
         seen.add(key)
         if len(facts) < TRANSCRIPT_USER_FACTS_MAX:
             facts.append(fact)
-        if not goal_choices and len(facts) >= TRANSCRIPT_USER_FACTS_MAX:
-            break
     # Keep an empty, verified source match for an ambiguous identity, so a
     # menu caller cannot fall back to its already-folded published words.
+    for fact in facts:
+        if str(fact["fact_id"]) in request_ambiguous:
+            fact["request_source_digest"] = ""
     return [
         {**fact, READER_WORDS_FIELD: ""} if str(fact["fact_id"]) in ambiguous else fact
         for fact in facts

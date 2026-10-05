@@ -379,6 +379,7 @@ class OutcomeLine(TypedDict):
     text: str
     source: str
     source_id: NotRequired[str]
+    request: NotRequired[reading.LineRequest]
 
 
 class Revision(TypedDict):
@@ -672,6 +673,9 @@ def _line(value: Any, cap: int) -> OutcomeLine | None:
         if not fact:
             return None
         line["source_id"] = fact
+        request = reading.valid_line_request(value.get("request"), line["text"])
+        if request is not None:
+            line["request"] = request
     return line
 
 
@@ -954,6 +958,7 @@ def _entry(value: Any, *, text_cap: int, revision_cap: int) -> Annotation | None
         # authorize the unasked lane against a baseline we no longer know.
         return None
     parsed = [rev for rev in (_revision(item, text_cap) for item in raw) if rev is not None]
+    _drop_unbound_request_ages(parsed, harness, sid)
     kept = tuple(sorted(parsed, key=lambda rev: rev["n"])[-revision_cap:]) if revision_cap else ()
     if not kept:
         return _discard_record(value, harness, sid)
@@ -983,6 +988,21 @@ def _entry(value: Any, *, text_cap: int, revision_cap: int) -> Annotation | None
     if value.get("not_accurate") is True and ("assessment" in entry or entry.get("refused")):
         entry["not_accurate"] = True
     return _counters(entry, value)
+
+
+def _drop_unbound_request_ages(revisions: list[Revision], harness: str, sid: str) -> None:
+    for revision in revisions:
+        for line in revision["lines"]:
+            if (
+                reading.valid_line_request(
+                    line.get("request"),
+                    line["text"],
+                    session=(harness, sid),
+                    saved_at=revision["at"],
+                )
+                is None
+            ):
+                line.pop("request", None)
 
 
 def _counters(entry: Annotation, value: dict[str, Any]) -> Annotation:
@@ -2837,6 +2857,7 @@ def add_direction(  # noqa: PLR0913
     expected_prompt_at: Any = None,
     window_start: Any = None,
     diagnostic_sink: Callable[[str], None] = print,
+    source_facts: Sequence[Mapping[str, Any]] = (),
 ) -> str:
     """Add a later direction as an outcome line. Returns an `OUTCOMES` token.
 
@@ -2878,6 +2899,17 @@ def add_direction(  # noqa: PLR0913
     at = reading.valid_prompt_time(entry_at)
     if at is None or at > now:
         return OUTCOME_REFUSED
+    line: OutcomeLine = {"text": texts[0], "source": LINE_ENTRY, "source_id": fact}
+    request = reading.line_request_binding(
+        source_facts,
+        source_id=fact,
+        text=texts[0],
+        harness=str(row.get("harness") or ""),
+        sid=str(row.get("sid") or ""),
+        now=now,
+    )
+    if request is not None and request["at"] == at:
+        line["request"] = request
     return _annotate(
         config,
         state,
@@ -2889,7 +2921,7 @@ def add_direction(  # noqa: PLR0913
         adoption={
             **options,
             "expected_revision": expected_revision,
-            "entry_line": {"text": texts[0], "source": LINE_ENTRY, "source_id": fact},
+            "entry_line": line,
             "replace": replace,
             "row": row,
             "direction_at": at,
