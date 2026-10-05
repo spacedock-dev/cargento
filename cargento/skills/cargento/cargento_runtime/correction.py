@@ -164,6 +164,7 @@ class _Rows:
         criteria = assessment.get("criteria")
         self.criteria: Mapping[str, Any] = criteria if isinstance(criteria, dict) else {}
         self.window = _reading_window(assessment)
+        self.scope = assessment.get("scope")
         self.by_id = {str(f["fact_id"]): _as_evidence(f, harness) for f in facts}
         self.facts = {str(f["fact_id"]): f for f in facts}
         self.harness = harness
@@ -183,11 +184,15 @@ class _Rows:
             or not isinstance(row, dict)
             or set(row) - set(reading.CRITERION_KEYS)
             or (why and (not isinstance(why, str) or why not in reading.WHY_TOKENS))
+            or row.get("result")
+            not in {
+                reading.RESULT_DEPARTURE,
+                reading.RESULT_CONSISTENT,
+                reading.RESULT_NOT_REACHED,
+            }
         ):
             return _NOT_SHOWN, None
-        result = row.get("result")
-        if result not in {reading.RESULT_DEPARTURE, reading.RESULT_CONSISTENT}:
-            return _NOT_SHOWN, None
+        result = str(row.get("result") or "")
         raw = row.get("cites")
         cites = [
             self.by_id[c]
@@ -206,6 +211,18 @@ class _Rows:
         if line and not self.lines_judged:
             return _NOT_SHOWN, None
         timed = [f for f in cites if reading.valid_prompt_time(f.get("at")) is not None]
+        if result == reading.RESULT_NOT_REACHED:
+            standing = [
+                f
+                for f in timed
+                if reading.check_supports(f, result, self.window)
+                and (not line or reading.bears_on_output(f))
+            ]
+            return (
+                (reading.RESULT_NOT_REACHED, standing[0])
+                if reading.result_in_scope(result, self.scope) and standing
+                else (_NOT_SHOWN, None)
+            )
         if result == reading.RESULT_DEPARTURE:
             # On a line a departure stands on work or on one of the agent's own messages,
             # which are evidence of what it said (owner ruling, 2026-10-03), as the page's
@@ -373,6 +390,8 @@ def _body(
                 ", as the tool reported",
             ]
             body.append((state, said))
+        elif state == reading.RESULT_NOT_REACHED:
+            body.append((state, [f"- {text}: not reached at this stop"]))
         elif state == _SAID:
             body.append(
                 (_SAID, [f"- {text}: the session says this is done; not confirmed by a tool"])

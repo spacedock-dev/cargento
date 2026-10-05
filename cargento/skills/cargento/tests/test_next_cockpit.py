@@ -7963,6 +7963,7 @@ console.log(JSON.stringify({
                 "consistent with the evidence read",
                 unverifiable,
                 "not shown by the record",
+                "not reached at this stop",
             ],
             out["closed"],
         )

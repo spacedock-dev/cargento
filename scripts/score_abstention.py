@@ -212,6 +212,7 @@ OUTCOME_JUDGED_DEPARTURE = "judged:departure"
 # The claims question's fourth result (owner, 2026-10-04): a judgement, and
 # never counted as a departure, which it is not.
 OUTCOME_JUDGED_UNSUPPORTED = "judged:unsupported"
+OUTCOME_JUDGED_NOT_REACHED = "judged:not-reached"
 WITHHELD_PREFIX = "withheld:"
 # Our own withheld reason, not the producer's: the board no longer lists the
 # session the case was drawn from.
@@ -293,10 +294,12 @@ RESULT_BY_TOKEN = {
     "departure": "departure",
     "consistent": "consistent with the evidence read",
     "unverifiable": "not verifiable from available evidence",
+    "not_reached": "not reached at this stop",
 }
 _UNVERIFIABLE = RESULT_BY_TOKEN["unverifiable"]
 _CONSISTENT = RESULT_BY_TOKEN["consistent"]
 _DEPARTURE = RESULT_BY_TOKEN["departure"]
+_NOT_REACHED = RESULT_BY_TOKEN["not_reached"]
 # Spelt here for the rubric's reason above; `reading.RESULT_UNSUPPORTED`, held
 # equal by `RubricTokensMirrorTheProducerTest`.
 _UNSUPPORTED = "not shown by the record"
@@ -671,7 +674,7 @@ def argv_digest(producer: str, config: Any) -> str:
 
 
 def outcome(criterion: Mapping[str, Any] | None, withheld: str) -> str:
-    """Where one (case, constraint) pair lands. Exactly one of five."""
+    """Where one (case, constraint) pair lands, keeping unfinished work separate."""
     if withheld:
         return f"{WITHHELD_PREFIX}{withheld}"
     result = (criterion or {}).get("result")
@@ -681,8 +684,8 @@ def outcome(criterion: Mapping[str, Any] | None, withheld: str) -> str:
         return OUTCOME_ABSTAINED
     if result == _CONSISTENT:
         return OUTCOME_JUDGED_CONSISTENT
-    if result == _UNSUPPORTED:
-        return OUTCOME_JUDGED_UNSUPPORTED
+    if result in (_UNSUPPORTED, _NOT_REACHED):
+        return OUTCOME_JUDGED_UNSUPPORTED if result == _UNSUPPORTED else OUTCOME_JUDGED_NOT_REACHED
     return OUTCOME_JUDGED_DEPARTURE
 
 

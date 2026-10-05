@@ -105,7 +105,7 @@ The posture rests on two invariants:
    failed -- and turned off entirely by `--no-annotations`. It is the only store holding
    prose you composed rather than anything a harness published, and since 2026-09-10 it also holds
    a **reading**: a model's account of that session against those words. A reading carries one
-   model-authored string, a departure's `detail`, and it goes through the same
+   model-authored string, `detail` under a cited departure or unfinished-work result, and it goes through the same
    redact-before-clip scrub the two prose fields do, on the way in and again on the way out,
    because any local process can rewrite the file. Everything else a reading holds is a value the
    code selected from a closed set or composed from counts it measured.
@@ -1144,11 +1144,19 @@ sentence and `/api/data` never carried it. One bounded copy is the exception, by
 of 2026-10-01: the focused project context's `prompt_choices` offers up to five of the reader's own
 messages for adoption as the goal, each the field clipped to the goal's 240 characters, and the
 rest of the field past that cap is not published (Prompt-derived text, below). What the model writes back is a different matter. A
-departure's `detail` is the model's own sentence, and it is stored with the reading and published
+reading's `detail` is the model's own sentence under a cited departure or unfinished-work result,
+and it is stored with the reading and published
 on the page, as it was before; the model can now paraphrase or quote a later sentence of a message
 there, which it could not when it saw only the first. The one copy of the field on disk is an
 abstention packet's frozen facts, which stay local under `~/.cargento` with the rest of that
 packet's prompt text (below).
+
+Amended 2026-10-04 by the owner, approving the Analyze drift plan: "Not reached at this stop"
+retains a cited unfinished-work explanation at non-final scope. It uses the existing detail field
+and its scrub and bound; it adds no transcript carrier, source class or model destination.
+Final readings and claims cannot carry it. The correction copies a fixed unfinished-work sentence,
+never this model prose. The [shape contract](docs/design-reading-a-session.md#amended-2026-10-04-unfinished-work)
+owns what the result may say.
 
 The original whole-message path had one redaction limit the first sentence did not. The message was collapsed to
 one line before it is redacted, so a credential the reader's text broke across a line break becomes

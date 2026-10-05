@@ -1,0 +1,23 @@
+{
+  "phase": "blind-before-schema",
+  "marks_kind": "agents",
+  "questions": 58,
+  "categories": {
+    "not-reached-in-flight": 24,
+    "stall-on-person": 9,
+    "consistent": 8,
+    "work-instead": 12,
+    "unkept-promise": 2,
+    "unclear": 1,
+    "failed-check": 2
+  },
+  "departures": {
+    "no": 32,
+    "yes": 25,
+    "unclear": 1
+  },
+  "neutral_safe": 24,
+  "marks_digest": "11090da4412b29af7a704f3d4cf6dfe2c86e123e67bb8f9dd76f71bedf3fb3c7",
+  "runtime_schema": "not_reached for intent at mid-flight or last-turn only",
+  "measurement": "pre-schema blind agent sort; no new Analyze result or accuracy gain measured"
+}

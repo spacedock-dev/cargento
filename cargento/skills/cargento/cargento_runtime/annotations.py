@@ -792,7 +792,11 @@ def _assessment(value: Any, cap: int) -> reading.Assessment | None:
         return None
     criteria = _criteria(value.get("criteria"), cap)
     coverage = reading.validate_coverage(value["coverage"]) if "coverage" in value else None
-    if criteria is None or (value.get("coverage") is not None and coverage is None):
+    if (
+        criteria is None
+        or (value.get("coverage") is not None and coverage is None)
+        or any(not reading.result_in_scope(row.get("result"), scope) for row in criteria.values())
+    ):
         return None
     ended = value.get("ended_at_read")
     provenance = _provenance({**value, "at": value.get("revision_read_at")})
@@ -862,6 +866,8 @@ def _criteria(value: Any, cap: int) -> dict[str, reading.Criterion] | None:
     # result alone, so a Goal or a line carrying it is refused whole
     # (owner, 2026-10-04).
     claims = parsed.pop(reading.CONSTRAINT_CLAIMS, None)
+    if claims is not None and claims.get("result") == reading.RESULT_NOT_REACHED:
+        return None
     if any(row.get("result") == reading.RESULT_UNSUPPORTED for row in parsed.values()):
         return None
     if set(parsed) == {reading.CONSTRAINT_GOAL, reading.CONSTRAINT_OUTPUT}:

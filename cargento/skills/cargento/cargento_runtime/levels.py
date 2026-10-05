@@ -71,6 +71,7 @@ REASON_NO_READING = "no-reading"
 REASON_NO_OUTCOME_LINE = "no-outcome-line"
 REASON_DEPARTURE = "departure"
 REASON_LINE_NOT_SHOWN = "line-not-shown-by-a-check"
+REASON_OUTCOME_NOT_REACHED = "outcome-not-reached"
 REASON_READING_MALFORMED = "reading-malformed"
 REASON_SCAN_INCOMPLETE = "scan-incomplete"
 # What the agent claimed, read by the analysis (owner, 2026-10-04): a claim the
@@ -98,6 +99,7 @@ REASONS = (
     REASON_NO_OUTCOME_LINE,
     REASON_DEPARTURE,
     REASON_LINE_NOT_SHOWN,
+    REASON_OUTCOME_NOT_REACHED,
     REASON_READING_MALFORMED,
     REASON_SCAN_INCOMPLETE,
     REASON_CLAIM_CONTRADICTED,
@@ -428,9 +430,11 @@ class _LineTally:
 
     by_id: Mapping[str, reading.LedgerEntry]
     window: float | None = None
+    scope: str = ""
     departed: bool = False
     aged: bool = False
     not_shown: int = 0
+    not_reached: bool = False
     claim_contradicted: bool = False
     claim_unshown: bool = False
     cites: list[str] = field(default_factory=list)
@@ -464,6 +468,7 @@ class _LineTally:
             detail_cap_chars=0,
             window_start=window,
             line_text=line_text or str(row.get("clause") or ""),
+            scope=self.scope,
         )
         if name == reading.CONSTRAINT_CLAIMS:
             # Its own two flags, never `departed`: a claim is not the intent.
@@ -481,6 +486,9 @@ class _LineTally:
         if resolved.get("result") == reading.RESULT_DEPARTURE:
             self.departed = True
             self.cites.extend(resolved["cites"])
+            return
+        if resolved.get("result") == reading.RESULT_NOT_REACHED:
+            self.not_reached = True
             return
         if not reading.is_outcome_line(name):
             # The Goal may rest on the session's own account (the ruling's item 1).
@@ -533,7 +541,7 @@ def _analysis_entries(facts: Sequence[Mapping[str, Any]]) -> dict[str, reading.L
     return entries
 
 
-def _well_formed(criteria: Any, outcome_lines: int) -> bool:
+def _well_formed(criteria: Any, outcome_lines: int, scope: str = "") -> bool:
     """Every row an object, every key a constraint of this intent, no line missing (L4).
 
     A reading the page would refuse whole is refused here too, rather than
@@ -551,7 +559,9 @@ def _well_formed(criteria: Any, outcome_lines: int) -> bool:
         "result" not in row
         or (
             row["result"] in reading.RESULTS
+            and reading.result_in_scope(row["result"], scope)
             and (row["result"] != reading.RESULT_UNSUPPORTED or name == reading.CONSTRAINT_CLAIMS)
+            and (row["result"] != reading.RESULT_NOT_REACHED or name != reading.CONSTRAINT_CLAIMS)
         )
         for name, row in criteria.items()
     )
@@ -596,13 +606,15 @@ def analysis_level(
             NOT_ENOUGH, SOURCE_ANALYSIS, (REASON_NO_OUTCOME_LINE,), computed_at=computed_at
         )
     criteria = reading_row.get("criteria")
-    if not _well_formed(criteria, outcome_lines):
+    if not _well_formed(criteria, outcome_lines, str(reading_row.get("scope") or "")):
         return Level(
             NOT_ENOUGH, SOURCE_ANALYSIS, (REASON_READING_MALFORMED,), computed_at=computed_at
         )
     rows: Mapping[str, Mapping[str, Any]] = criteria if isinstance(criteria, dict) else {}
     window = _number(reading_row.get("window_start"))
-    tally = _LineTally(_analysis_entries(evidence.facts), window)
+    tally = _LineTally(
+        _analysis_entries(evidence.facts), window, str(reading_row.get("scope") or "")
+    )
     texts = [line for line in lines if line.strip()]
     by_name = dict(zip(reading.constraints_for(texts)[1:], texts, strict=True))
     if texts:
@@ -641,6 +653,7 @@ def analysis_level(
             for reason, holds in (
                 (REASON_SCAN_INCOMPLETE, not scan_complete(evidence.scan)),
                 (REASON_LINE_NOT_SHOWN, tally.not_shown),
+                (REASON_OUTCOME_NOT_REACHED, tally.not_reached),
                 (REASON_CLAIM_NOT_SHOWN, tally.claim_unshown),
                 (REASON_LATER_DIRECTION, evidence.unsettled_directions > 0),
             )
