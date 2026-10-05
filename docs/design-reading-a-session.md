@@ -1813,7 +1813,8 @@ privacy and consent review, independent of the prospective 8b accuracy study. Ne
 qualifies the failed original 4b or DEC-17 for accuracy. A fresh campaign binds its actual
 requested model and matched conditions, with exact predicates, repeats, blind marks and stop
 rules frozen before output. Old outputs are not that campaign's baseline; model labels describe
-routing, not qualification or a provider snapshot receipt.
+routing, not qualification or a provider snapshot receipt. At this amendment the fresh
+campaign is not runnable: its exact protocol and aggregate transport guards still need review.
 
 What qualifies: A reply is final only when its own record says so: the top-level assistant
 text record of the parent session carries `message.stop_reason` equal to `end_turn`, a UUID, a
@@ -1846,7 +1847,10 @@ are silent when no final qualifies. Nothing is cached, spooled, logged, put in
 history or published; the lookup answers an outcome token, the row's own fact id and time, and
 the words. The drift replay passes the same lookup under its cut file's stamp.
 
-Whether it fits: The reader's words allocate first. The reply is normalised to one line,
+Whether it fits: The reader's words allocate first. Before prose masking, the lookup refuses
+raw message text above 16,384 characters; a long single token otherwise spends seconds being
+masked only to be rejected. Every duplicate still has its raw finality signature compared, but
+its identity and whole words are recovered only once in the scan. The reply is normalised to one line,
 masked as every excerpt is, quoted as one JSON string with the menu heading neutralised, and
 admitted only as the complete row: its serialized UTF-8 size must fit the agent's quarter
 (4,096 bytes at the 16,384-byte cap) and its growth over the summary row the room left. A reply

@@ -4677,7 +4677,7 @@ def _agent_whole_words(record: dict[str, Any], size: int) -> str | None:
     could carry, so a reply that long is never copied.
     """
     full = observer.parse_message_record(record, cap=size)
-    if full is None or len(full["text"]) > FINAL_WORDS_MAX_CHARS * 2:
+    if full is None or len(full["text"]) > FINAL_WORDS_MAX_CHARS:
         return None
     words = records.safe_text(
         " ".join(records.mask_prose(full["text"]).split()), FINAL_WORDS_MAX_CHARS + 1
@@ -4770,8 +4770,14 @@ def transcript_newest_final_words(  # noqa: C901, PLR0911, PLR0912, PLR0915 - on
             uuid = record.get("uuid")
             signature = _final_signature(record)
             if isinstance(uuid, str) and uuid:
-                if signatures.setdefault(uuid, signature) != signature:
-                    conflicted.add(uuid)
+                previous = signatures.get(uuid)
+                if previous is not None:
+                    if previous != signature:
+                        conflicted.add(uuid)
+                    # Compare every duplicate for source conflicts, but recover its
+                    # identity and words only once during this memory-only scan.
+                    continue
+                signatures[uuid] = signature
                 if len(signatures) > FINAL_WORDS_UUIDS_MAX:
                     return {"outcome": "scan-limit"}
             # Identity needs only the existing bounded title/time/UUID; full words

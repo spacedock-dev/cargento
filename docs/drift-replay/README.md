@@ -100,7 +100,9 @@ keeps the failed result and a narrower rollback option.
 That ruling removes the retired proposal as a prerequisite for prospective newest-final work.
 Independent source, privacy and consent checks still gate that work. No new Analyze measurement
 qualifies newest-final or turn-scope accuracy. A later preregistered campaign must bind fresh
-matched conditions and its actual model; it cannot convert this campaign into a pass.
+matched conditions and its actual model; it cannot convert this campaign into a pass. At the
+2026-10-05 amendment it is not runnable until its exact protocol and aggregate transport guards
+are built and reviewed.
 
 The ledger ends at 631 of 870, with 239 left: 199 verified calls in this run, plus five
 conservative reservations for earlier test calls whose execution could not be proved. The

@@ -189,7 +189,18 @@ class TheNewestSelectedFinalIsReadWhole(_Source):
 
     def test_an_exact_duplicate_is_one_source(self) -> None:
         self.write([record("u1", 1, long_text()), record("u1", 1, long_text())])
-        self.assertEqual("whole", self.look(self.ledger()[:1])["outcome"])
+        wanted = self.ledger()[:1]
+        with mock.patch.object(
+            project_context, "_agent_whole_words", wraps=project_context._agent_whole_words
+        ) as recover:
+            self.assertEqual("whole", self.look(wanted)["outcome"])
+        self.assertEqual(1, recover.call_count)
+
+    def test_raw_text_above_the_whole_limit_is_refused_before_prose_masking(self) -> None:
+        row = record("u1", 1, "Finished. " + "x" * 32_000)
+        with mock.patch.object(project_context.records, "mask_prose") as mask:
+            self.assertIsNone(project_context._agent_whole_words(row, len(json.dumps(row))))
+        mask.assert_not_called()
 
     def test_a_later_copy_of_the_same_uuid_refuses_the_reply(self) -> None:
         # The copy is past the selected row in time, so no selection could have kept it,

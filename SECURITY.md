@@ -1264,6 +1264,11 @@ and the source version the press read. A mismatch supplies no new words. Recover
 in memory, adds no citable fact, enters no history or page response, and is not read by the
 unasked lane. The newest-final path requires renewed disclosure and consent.
 
+The [closed-proof ruling](docs/design-reading-a-session.md#amended-2026-10-05-the-original-closed-proof-proposal-is-retired)
+retires that proposal as infeasible, with no verified clearances, and removes it as a prerequisite
+for newest-final source recovery. The fresh measurement campaign remains unavailable at this
+amendment until its exact protocol and aggregate transport guards are built and reviewed.
+
 This acceptance retains source-fidelity behavior while the expanded-input accuracy gate remains
 failed and unqualified. Sanitizing, quoting, provenance checks and CI do not establish truth or
 improve model accuracy. A local process may rewrite stored assessment prose: sanitization and
@@ -1398,6 +1403,10 @@ of accuracy. Haiku has no admitted tier; a larger Haiku version number does not 
 meets the Sonnet floor. Floating aliases, unknown families, lower generations and malformed IDs
 are refused before launch. A canonical ID whose model is unavailable fails normally; naming it
 does not prove that an account has access.
+
+A stored Allow binds the provider, receiver and disclosed content version, not a model ID.
+Changing an admitted selection does not renew that Allow; every actual press still names and
+binds its selected model before it can send.
 
 The selected ID is named in the before-press disclosure and reaches the same restricted call and
 its stamp. Tagged replay plans bind the
