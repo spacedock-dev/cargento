@@ -1322,24 +1322,44 @@ def live(
 def _study_mode(args: argparse.Namespace) -> int:
     """Keep all private study writes behind this model-free replay entry point."""
     try:
-        if args.study_import:
-            result = study.import_study(Path(HOME), Path(_ROOT), args.tag, Path(args.study_import))
+        if args.study_import is not None:
+            result = study.import_study(
+                Path(HOME), Path(_ROOT), args.tag, _study_source(args.study_import)
+            )
         elif args.study_live:
-            return live(home=HOME, study_tag=args.tag, include_history=args.include_history)
-        elif args.codex_study:
+            return live(
+                home=HOME,
+                study_tag=args.tag,
+                include_history=args.include_history,
+                source=args.source,
+                counterfactual_read=args.counterfactual_read,
+            )
+        elif args.codex_study is not None:
             _runtime()
             from cargento_runtime.records import mask_prose  # noqa: PLC0415 - after runtime loader
 
             result = study.import_codex(
-                Path(HOME), Path(_ROOT), args.tag, Path(args.codex_study), mask_prose
+                Path(HOME), Path(_ROOT), args.tag, _study_source(args.codex_study), mask_prose
             )
         else:
             result = study.score_study(Path(HOME), Path(_ROOT), args.tag)
     except (ValueError, OSError) as error:
         print(f"Refused: {error}.")
         return 1
-    print(json.dumps(result, sort_keys=True))
+    print(
+        json.dumps(
+            {key: value for key, value in result.items() if key not in ("items", "episodes")},
+            sort_keys=True,
+        )
+    )
     return 0
+
+
+def _study_source(value: str) -> Path:
+    if not value:
+        msg = "Study import requires a source path"
+        raise ValueError(msg)
+    return Path(value)
 
 
 def _live_refusal(
@@ -2841,10 +2861,10 @@ def main(argv: list[str] | None = None) -> int:  # noqa: C901, PLR0911 - one bra
     group.add_argument("--claims-export", action="store_true")
     group.add_argument("--claims-mark", action="store_true")
     group.add_argument("--claims-import", default="")
-    group.add_argument("--study-import", default="")
+    group.add_argument("--study-import", default=None)
     group.add_argument("--study-live", action="store_true")
     group.add_argument("--study-score", action="store_true")
-    group.add_argument("--codex-study", default="")
+    group.add_argument("--codex-study", default=None)
     parser.add_argument("--source", choices=("fixtures", "original"), default=None)
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--arm", action="append", choices=ARMS)
@@ -2860,7 +2880,12 @@ def main(argv: list[str] | None = None) -> int:  # noqa: C901, PLR0911 - one bra
     if refusal:
         print(refusal)
         return 1
-    if args.study_import or args.study_live or args.study_score or args.codex_study:
+    if (
+        args.study_import is not None
+        or args.study_live
+        or args.study_score
+        or args.codex_study is not None
+    ):
         return _study_mode(args)
     if args.live:
         return live(

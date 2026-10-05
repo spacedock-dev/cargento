@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import datetime as dt
 import json
 import sys
 import tempfile
@@ -103,6 +104,26 @@ class APositiveGapMarkNeedsLaterRecordedProof(unittest.TestCase):
 
 
 class CodexStudyReadsOnlyActualParentMessages(unittest.TestCase):
+    def test_worker_notifications_and_invisible_wrappers_cannot_be_person_turns(self) -> None:
+        wrappers = [
+            "<subagent_notification>done",
+            "<skill>context",
+            "<recommended_plugins>context",
+            "<user_shell_command>pwd",
+            "<turn_aborted>context",
+            "<task-notification>done",
+            "[Request interrupted by user for tool use]",
+            "[external_agent_tool_result] done",
+            "\ufeff# AGENTS.md instructions",
+            "\u200b<environment_context>context",
+            "<permissions>context",
+        ]
+        got = self.load(
+            {"source": "cli", "thread_source": "user"}, [*wrappers, "Build the importer"]
+        )
+        self.assertEqual(1, len(got["messages"]))
+        self.assertEqual(len(wrappers), got["injected_excluded"])
+
     def load(self, meta: Mapping[str, object], texts: list[str]) -> dict[str, Any]:
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "source.jsonl"
@@ -137,7 +158,7 @@ class CodexStudyReadsOnlyActualParentMessages(unittest.TestCase):
             [
                 "# AGENTS.md instructions for placeholder",
                 "<environment_context>meta",
-                "<skill_instructions>meta",
+                "<skills_instructions>meta",
                 "Base directory for this skill: /placeholder",
                 "Build the placeholder importer",
                 "Why did you omit the requested output?",
@@ -153,6 +174,85 @@ class CodexStudyReadsOnlyActualParentMessages(unittest.TestCase):
 
 
 class AStudyClosesMarksBeforeProducingOutputs(unittest.TestCase):
+    def test_cli_import_writes_only_a_separate_cohort_and_count_digest(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = root / "source.json"
+            source.write_text(json.dumps(self.bundle()), encoding="utf-8")
+            with (
+                mock.patch.object(replay, "HOME", str(root / "private")),
+                mock.patch.object(replay, "_ROOT", str(root / "repo")),
+                mock.patch.object(replay, "_home_refusal", return_value=""),
+                mock.patch.object(replay, "mark", return_value=1) as mark,
+            ):
+                self.assertEqual(0, replay.main(["--study-import", str(source), "--tag", "closed"]))
+                mark.assert_not_called()
+            paths = study.study_paths(root / "private", root / "repo", "closed")
+            public = json.loads(paths["digest"].read_text(encoding="utf-8"))
+            self.assertEqual(1, public["cases"])
+            self.assertNotIn("placeholder", json.dumps(public))
+            self.assertFalse((root / "private/drift-replay/cases.json").exists())
+
+    def test_malformed_cohorts_refuse_before_writing_outputs(self) -> None:
+        for fault in (
+            "outside-mark",
+            "missing-sid",
+            "bad-before",
+            "future-before",
+            "duplicate-stop",
+            "message-times",
+            "proof",
+        ):
+            with tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                body: Any = self.bundle()
+                body["cases"][0]["roles"] = ["outside-span"]
+                body["cases"].append(
+                    {
+                        "id": "c" * 16,
+                        "sid": "placeholder",
+                        "cut": 150,
+                        "roles": ["in-drift"],
+                        "session_key": "b" * 16,
+                    }
+                )
+                body["marks"]["c" * 16] = {
+                    "gap": "yes",
+                    "class": "defect",
+                    "message_times": [140],
+                    "proof": [],
+                }
+                episode = {
+                    "id": "d" * 16,
+                    "sid": "placeholder",
+                    "start": 110,
+                    "push": 200,
+                    "before": 100,
+                    "window_stops": [150],
+                    "active_events": [110, 150, 200],
+                }
+                body["episodes"] = [episode]
+                if fault == "outside-mark":
+                    body["marks"]["a" * 16] = {}
+                elif fault == "missing-sid":
+                    episode.pop("sid")
+                    episode["before"] = None
+                    episode["window_stops"] = []
+                elif fault == "bad-before":
+                    episode["before"] = "x"
+                elif fault == "future-before":
+                    episode["before"] = 150
+                elif fault == "duplicate-stop":
+                    episode["window_stops"] = [150, 150]
+                elif fault == "message-times":
+                    body["marks"]["a" * 16]["message_times"] = 42
+                elif fault == "proof":
+                    body["marks"]["c" * 16]["proof"] = 42
+                source = root / "source.json"
+                source.write_text(json.dumps(body), encoding="utf-8")
+                with self.subTest(fault=fault), self.assertRaises(ValueError):
+                    study.import_study(root / "home", root, "closed", source)
+
     def bundle(self) -> dict[str, object]:
         return {
             "kind": "in-drift",
@@ -239,6 +339,75 @@ class AStudyClosesMarksBeforeProducingOutputs(unittest.TestCase):
 
 
 class StudyOutputsUseTheirOwnFrozenCohort(unittest.TestCase):
+    def test_empty_import_does_not_open_the_historical_marker(self) -> None:
+        for flag in ("--study-import", "--codex-study"):
+            with (
+                mock.patch.object(replay, "_home_refusal", return_value=""),
+                mock.patch.object(replay, "HOME", "/placeholder-home"),
+                mock.patch.object(replay, "mark") as mark,
+            ):
+                self.assertEqual(1, replay.main([flag, "", "--tag", "study"]))
+                mark.assert_not_called()
+
+    def test_cli_forwards_the_selectors_that_live_must_refuse(self) -> None:
+        with (
+            mock.patch.object(replay, "_home_refusal", return_value=""),
+            mock.patch.object(replay, "live", return_value=1) as live,
+        ):
+            self.assertEqual(
+                1,
+                replay.main(
+                    [
+                        "--study-live",
+                        "--tag",
+                        "study",
+                        "--source",
+                        "original",
+                        "--counterfactual-read",
+                        "base",
+                    ]
+                ),
+            )
+            self.assertEqual("original", live.call_args.kwargs["source"])
+            self.assertEqual("base", live.call_args.kwargs["counterfactual_read"])
+
+    def test_a_refused_stop_does_not_erase_a_measured_baseline(self) -> None:
+        body = {
+            "cases": [
+                {
+                    "id": "a" * 16,
+                    "sid": "private",
+                    "cut": 50,
+                    "session_key": "b" * 16,
+                    "roles": ["outside-span"],
+                },
+                {
+                    "id": "c" * 16,
+                    "sid": "private",
+                    "cut": 200,
+                    "session_key": "b" * 16,
+                    "roles": ["in-drift"],
+                },
+            ],
+            "marks": {},
+            "episodes": [
+                {
+                    "id": "d" * 16,
+                    "sid": "private",
+                    "start": 100,
+                    "push": 300,
+                    "before": 50,
+                    "window_stops": [200],
+                    "active_events": [],
+                }
+            ],
+        }
+        got = study.score_in_drift(
+            body, {"a" * 16: {"arms": {"realistic": {"level": "low", "cause_at": None}}}}
+        )
+        self.assertTrue(got["episodes"][0]["baseline_measured"])
+        self.assertFalse(got["episodes"][0]["window_measured"])
+
     def test_a_positive_early_catch_exports_the_salted_cut_not_its_timestamp(self) -> None:
         body = {
             "cases": [
@@ -376,6 +545,59 @@ class StudyOutputsUseTheirOwnFrozenCohort(unittest.TestCase):
 
 
 class AStoredCodexStudyNeedsAnActualCorrection(unittest.TestCase):
+    def test_actual_loader_rejects_a_worker_notification_as_the_correction(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            path = root / "parent.jsonl"
+            rows: list[dict[str, Any]] = [
+                {"type": "session_meta", "payload": {"source": "cli", "thread_source": "user"}}
+            ]
+            for minute, role, text in (
+                (1, "user", "Build the importer"),
+                (2, "assistant", "I stopped before writing it"),
+                (3, "user", "<subagent_notification>Why did you stop?</subagent_notification>"),
+            ):
+                rows.append(
+                    {
+                        "type": "response_item",
+                        "timestamp": f"2026-09-01T00:0{minute}:00Z",
+                        "payload": {
+                            "type": "message",
+                            "role": role,
+                            "content": [
+                                {
+                                    "type": "input_text" if role == "user" else "output_text",
+                                    "text": text,
+                                }
+                            ],
+                        },
+                    }
+                )
+            path.write_text("".join(json.dumps(row) + "\n" for row in rows), encoding="utf-8")
+
+            def at(minute: int) -> float:
+                return dt.datetime(2026, 9, 1, 0, minute, tzinfo=dt.UTC).timestamp()
+
+            spec = root / "spec.json"
+            spec.write_text(
+                json.dumps(
+                    {
+                        "source": str(path),
+                        "annotation": {
+                            "id": "a" * 16,
+                            "requested_at": at(1),
+                            "gap_at": at(2),
+                            "correction_at": at(3),
+                            "gap": "yes",
+                            "class": "scope-or-plan",
+                        },
+                    }
+                ),
+                encoding="utf-8",
+            )
+            with self.assertRaises(ValueError):
+                study.import_codex(root / "home", root, "worker", spec, lambda value: value)
+
     def test_injected_correction_cannot_complete_the_episode(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

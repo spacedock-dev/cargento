@@ -1,0 +1,242 @@
+{
+  "blind_gap_classes": {
+    "defect": {
+      "cuts": 59,
+      "flagged": 9
+    },
+    "none": {
+      "cuts": 26,
+      "flagged": 9
+    },
+    "scope-or-plan": {
+      "cuts": 16,
+      "flagged": 3
+    },
+    "status": {
+      "cuts": 3,
+      "flagged": 0
+    }
+  },
+  "early_catches": 0,
+  "episodes": [
+    {
+      "baseline_measured": true,
+      "early_catch": null,
+      "id": "e44c7a47a85cba1b",
+      "stops": 2,
+      "window_measured": true
+    },
+    {
+      "baseline_measured": true,
+      "early_catch": null,
+      "id": "03a2512cdf273f13",
+      "stops": 1,
+      "window_measured": true
+    },
+    {
+      "baseline_measured": true,
+      "early_catch": null,
+      "id": "8b9786260894f118",
+      "stops": 1,
+      "window_measured": true
+    },
+    {
+      "baseline_measured": true,
+      "early_catch": null,
+      "id": "20bb587e840a01d9",
+      "stops": 2,
+      "window_measured": true
+    },
+    {
+      "baseline_measured": true,
+      "early_catch": null,
+      "id": "3aecb22c0b15deaf",
+      "stops": 1,
+      "window_measured": true
+    },
+    {
+      "baseline_measured": true,
+      "early_catch": null,
+      "id": "33ee0629c93a3fc1",
+      "stops": 1,
+      "window_measured": true
+    },
+    {
+      "baseline_measured": true,
+      "early_catch": null,
+      "id": "1ebbda06f268f387",
+      "stops": 7,
+      "window_measured": true
+    },
+    {
+      "baseline_measured": true,
+      "early_catch": null,
+      "id": "3c2d387509b61985",
+      "stops": 5,
+      "window_measured": true
+    },
+    {
+      "baseline_measured": true,
+      "early_catch": null,
+      "id": "9bea7c5cf1a55463",
+      "stops": 1,
+      "window_measured": true
+    },
+    {
+      "baseline_measured": true,
+      "early_catch": null,
+      "id": "2eb95ffd9c975bb3",
+      "stops": 21,
+      "window_measured": true
+    },
+    {
+      "baseline_measured": true,
+      "early_catch": null,
+      "id": "e45ecea45dd66ab4",
+      "stops": 6,
+      "window_measured": true
+    },
+    {
+      "baseline_measured": true,
+      "early_catch": null,
+      "id": "4c47667268d12f03",
+      "stops": 8,
+      "window_measured": true
+    },
+    {
+      "baseline_measured": true,
+      "early_catch": null,
+      "id": "e74bafbc833ccd10",
+      "stops": 3,
+      "window_measured": true
+    },
+    {
+      "baseline_measured": true,
+      "early_catch": null,
+      "id": "ecd14b27ef8ed062",
+      "stops": 1,
+      "window_measured": true
+    },
+    {
+      "baseline_measured": true,
+      "early_catch": null,
+      "id": "652a446848cf7f49",
+      "stops": 29,
+      "window_measured": true
+    },
+    {
+      "baseline_measured": true,
+      "early_catch": null,
+      "id": "2f5ea1f90c7a5468",
+      "stops": 9,
+      "window_measured": true
+    },
+    {
+      "baseline_measured": true,
+      "early_catch": null,
+      "id": "1296dc76a6b70905",
+      "stops": 1,
+      "window_measured": true
+    },
+    {
+      "baseline_measured": true,
+      "early_catch": null,
+      "id": "71d178f026718d46",
+      "stops": 1,
+      "window_measured": true
+    },
+    {
+      "baseline_measured": true,
+      "early_catch": null,
+      "id": "0b499e3631497060",
+      "stops": 5,
+      "window_measured": true
+    },
+    {
+      "baseline_measured": true,
+      "early_catch": null,
+      "id": "53d1ec437f5c1b4b",
+      "stops": 2,
+      "window_measured": true
+    },
+    {
+      "baseline_measured": true,
+      "early_catch": null,
+      "id": "40a8393e34a344f6",
+      "stops": 1,
+      "window_measured": true
+    },
+    {
+      "baseline_measured": true,
+      "early_catch": null,
+      "id": "f59acdd518aadba0",
+      "stops": 1,
+      "window_measured": true
+    },
+    {
+      "baseline_measured": true,
+      "early_catch": null,
+      "id": "1c8c22a80e9df07d",
+      "stops": 1,
+      "window_measured": true
+    },
+    {
+      "baseline_measured": true,
+      "early_catch": null,
+      "id": "1f9cbdf506a0cb9b",
+      "stops": 1,
+      "window_measured": true
+    },
+    {
+      "baseline_measured": true,
+      "early_catch": null,
+      "id": "cf4f774b7051fa33",
+      "stops": 1,
+      "window_measured": true
+    },
+    {
+      "baseline_measured": true,
+      "early_catch": null,
+      "id": "46f4bae538990f8f",
+      "stops": 1,
+      "window_measured": true
+    },
+    {
+      "baseline_measured": true,
+      "early_catch": null,
+      "id": "944057b1bce2e792",
+      "stops": 1,
+      "window_measured": true
+    },
+    {
+      "baseline_measured": true,
+      "early_catch": null,
+      "id": "4f7a7cb821461ccf",
+      "stops": 1,
+      "window_measured": true
+    }
+  ],
+  "kind": "in-drift",
+  "markers": "agents",
+  "marks_digest": "15ac50a3995ca1996b7b7e0031dab1916d2770e7fb50030eb6c43bd6bd729ab2",
+  "outside_annotated_spans": {
+    "409be19710b10f3f": {
+      "cuts": 36,
+      "flagged": 30
+    },
+    "96d6a6100dbdd6ac": {
+      "cuts": 36,
+      "flagged": 9
+    },
+    "c0c9717c7b0127eb": {
+      "cuts": 78,
+      "flagged": 0
+    },
+    "d23b5f52f9275e66": {
+      "cuts": 26,
+      "flagged": 25
+    }
+  },
+  "refused_cuts": 11,
+  "v": 1
+}

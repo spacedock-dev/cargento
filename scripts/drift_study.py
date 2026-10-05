@@ -6,6 +6,7 @@ import datetime as dt
 import json
 import math
 import re
+import sys
 from collections import Counter, defaultdict
 from itertools import pairwise
 from pathlib import Path
@@ -19,18 +20,10 @@ import levels_cases as lc
 ACTIVE_GAP_SECONDS = 1800.0
 PROOF_KINDS = ("person-correction", "failed-check", "retraction", "sibling-result")
 GAP_CLASSES = ("defect", "status", "scope-or-plan", "communication", "none", "unclear")
-INJECTED_PREFIXES = (
-    "Base directory for this skill:",
-    "# AGENTS.md",
-    "<environment_context>",
-    "<skill_instructions>",
-    "<instructions>",
-    "<subagents>",
-    "<team",
-    "<daemon",
-    "<base_instructions>",
-    "Another Claude session sent a message:",
-)
+_RUNTIME = Path(__file__).resolve().parents[1] / "cargento/skills/cargento"
+if str(_RUNTIME) not in sys.path:
+    sys.path.insert(0, str(_RUNTIME))
+from cargento_runtime.records import injected_prompt  # noqa: E402 - load the canonical filter
 
 
 def _number(value: Any) -> float | None:
@@ -123,7 +116,7 @@ def codex_messages(path: Path) -> dict[str, Any]:
                 for block in payload.get("content") or ()
                 if isinstance(block, dict) and block.get("type") in ("input_text", "output_text")
             )
-            if payload["role"] == "user" and text.lstrip().startswith(INJECTED_PREFIXES):
+            if payload["role"] == "user" and injected_prompt(text, "codex"):
                 injected += 1
                 continue
             stamp = str(record.get("timestamp") or "")
@@ -201,17 +194,34 @@ def _valid_bundle(body: Mapping[str, Any]) -> bool:
 
 def _valid_mark(case: Mapping[str, Any], marks: Mapping[str, Any], kind: str) -> bool:
     mark = marks.get(case["id"])
-    required = kind == "gap-truth" or "in-drift" in case.get("roles", ())
+    required = kind == "gap-truth" or "in-drift" in case.get("roles", ()) or case["id"] in marks
     if required and (
         not isinstance(mark, dict)
         or mark.get("gap") not in ("yes", "no", "unclear")
         or mark.get("class") not in GAP_CLASSES
     ):
         return False
-    return not isinstance(mark, dict) or all(
+    if not isinstance(mark, dict):
+        return True
+    if any(
+        not isinstance(mark.get(field, []), list)
+        for field in ("message_times", "relevant_causes", "proof")
+    ):
+        return False
+    return all(
         _number(at) is not None and 0 < at <= case["cut"]
         for field in ("message_times", "relevant_causes")
         for at in mark.get(field) or ()
+    ) and all(_valid_proof(proof, case["cut"]) for proof in mark.get("proof", []))
+
+
+def _valid_proof(proof: Any, cut: float) -> bool:
+    return (
+        isinstance(proof, dict)
+        and proof.get("kind") in PROOF_KINDS
+        and _number(proof.get("at")) is not None
+        and proof["at"] > cut
+        and isinstance(proof.get("points_to_gap"), bool)
     )
 
 
@@ -236,7 +246,12 @@ def _valid_case(case: Any, ids: set[str], kind: str) -> bool:
 
 
 def _valid_episode(episode: Any, cases: list[Any]) -> bool:
-    if not isinstance(episode, dict) or not isinstance(episode.get("id"), str):
+    if (
+        not isinstance(episode, dict)
+        or not isinstance(episode.get("id"), str)
+        or not isinstance(episode.get("sid"), str)
+        or not episode["sid"]
+    ):
         return False
     if not re.fullmatch(r"[0-9a-f]{16}", episode["id"]):
         return False
@@ -247,9 +262,11 @@ def _valid_episode(episode: Any, cases: list[Any]) -> bool:
     if not isinstance(stops, list) or not isinstance(events, list):
         return False
     measured = {case["cut"] for case in cases if case["sid"] == episode.get("sid")}
+    before = episode.get("before")
     return (
-        (_number(episode.get("before")) is None or episode["before"] in measured)
+        (before is None or (_number(before) is not None and before < start and before in measured))
         and all(_number(at) is not None and start <= at < push and at in measured for at in stops)
+        and len(set(stops)) == len(stops)
         and all(_number(at) is not None and start <= at <= push for at in events)
     )
 
@@ -345,7 +362,8 @@ def score_in_drift(body: Mapping[str, Any], live: Mapping[str, Any]) -> dict[str
             {
                 "id": episode["id"],
                 "stops": len(episode["window_stops"]),
-                "baseline_measured": not missing,
+                "baseline_measured": before is not None,
+                "window_measured": all(float(at) in measured for at in episode["window_stops"]),
                 "early_catch": public_catch,
             }
         )
