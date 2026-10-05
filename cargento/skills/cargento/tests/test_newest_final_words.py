@@ -226,7 +226,10 @@ with tempfile.TemporaryDirectory() as temp:
     results = []
     for size in sizes:
         row = record('u1', 1, prefix + 'x' * (size - len(prefix)))
-        path.write_text(json.dumps(row) + '\n', encoding='utf-8')
+        payload = json.dumps(row).encode('utf-8')
+        if size == sizes[-1]:
+            assert len(payload) == limit
+        path.write_bytes(payload + b'\n')
         event = project_context._agent_message_event(config, row, 'claude', 's1')
         fact = project_context._semantic_fact_from_event(event, 'agent_say', 'agent_message', '')
         wanted = reading.build_ledger([fact], 'claude', 's1', read_agent_words=True)
