@@ -4650,6 +4650,8 @@ def _final_signature(record: dict[str, Any]) -> bytes:
     """
     message = records.message_dict(record)
     shape = {
+        "type": record.get("type"),
+        "role": message.get("role"),
         "content": message.get("content"),
         "stop": message.get("stop_reason"),
         "model": message.get("model"),
@@ -4720,7 +4722,8 @@ def transcript_newest_final_words(  # noqa: C901, PLR0911, PLR0912, PLR0915 - on
     unique newest such reply among the selected rows with no newer selected row the source
     cannot prove non-final. The expected stamp is the source version the press read its facts
     from; the file must match it before the scan and still after. The scan is memory-only,
-    newest first, capped at `FINAL_WORDS_SCAN_MAX_BYTES`; nothing is cached or kept.
+    newest first, and only a complete file within `FINAL_WORDS_SCAN_MAX_BYTES` qualifies;
+    nothing is cached or kept. A tail cannot prove an earlier duplicate is absent.
 
     The result names no path, session or source fingerprint: only an outcome token, the
     row's own identity and, on success, the words. Why whole words and why only this one:
@@ -4736,16 +4739,21 @@ def transcript_newest_final_words(  # noqa: C901, PLR0911, PLR0912, PLR0915 - on
     before = transcript_stamp(path)
     if before is None or expected_stamp is None or before != expected_stamp:
         return {"outcome": "source-moved"}
-    oldest_wanted = min((float(at) for _, at in rows if isinstance(at, int | float)), default=0.0)
+    if before[2] > FINAL_WORDS_SCAN_MAX_BYTES:
+        return {"outcome": "scan-limit"}
     # Words are None for a candidate too long for any prompt: still a final, never a copy.
     found: dict[tuple[str, Any], tuple[str, str, str | None]] = {}
     signatures: dict[str, bytes] = {}
     conflicted: set[str] = set()
-    oldest_seen: float | None = None
+    scanned_bytes = 0
     try:
         for raw in runtime_io.reverse_lines(
             config, path, end_pos=before[2], max_bytes=FINAL_WORDS_SCAN_MAX_BYTES
         ):
+            # Every complete line contributes its bytes plus one separator; the final
+            # unterminated (or empty trailing) line contributes the extra one. The walker
+            # can stop silently on a short read or I/O error, so exhaustiveness is checked.
+            scanned_bytes += len(raw) + 1
             # A line that never names the type is not a reply, so most of 32 MiB of tool
             # results is skipped unparsed. An oversized reply is refused, never skipped.
             if b'"assistant"' not in raw:
@@ -4759,11 +4767,6 @@ def transcript_newest_final_words(  # noqa: C901, PLR0911, PLR0912, PLR0915 - on
             record = _json_dict(raw)
             if record is None or record.get("type") != "assistant":
                 continue
-            # Only replies mark how far back the scan got: that is the claim a wanted
-            # reply has no older copy in what was read.
-            at = _record_timestamp(record)
-            if at is not None and (oldest_seen is None or at < oldest_seen):
-                oldest_seen = at
             uuid = record.get("uuid")
             signature = _final_signature(record)
             if isinstance(uuid, str) and uuid:
@@ -4790,16 +4793,19 @@ def transcript_newest_final_words(  # noqa: C901, PLR0911, PLR0912, PLR0915 - on
         return {"outcome": "source-moved"}
     if transcript_stamp(path) != before:
         return {"outcome": "source-moved"}
-    if before[2] > FINAL_WORDS_SCAN_MAX_BYTES and (
-        oldest_seen is None or oldest_seen >= oldest_wanted
-    ):
-        return {"outcome": "scan-limit"}
+    if scanned_bytes != before[2] + 1:
+        return {"outcome": "unproven"}
     finals = {
         key: found[key]
         for key in rows
         if key in found and found[key][0] == "final" and found[key][1] not in conflicted
     }
     if not finals:
+        if any(
+            key not in found or found[key][0] == "refused" or found[key][1] in conflicted
+            for key in rows
+        ):
+            return {"outcome": "unproven"}
         return {"outcome": "not-final"}
     top = max(float(at) for _, at in finals)
     newest = [key for key in finals if float(key[1]) == top]

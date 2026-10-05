@@ -11,6 +11,7 @@ import json
 import os
 import tempfile
 import unittest
+from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -200,6 +201,49 @@ class TheNewestSelectedFinalIsReadWhole(_Source):
         self.assertEqual("too-long", found["outcome"])
         self.assertNotIn("words", found)
 
+    def test_no_final_is_silent_only_when_every_selected_source_is_proven_nonfinal(self) -> None:
+        self.write([record("u1", 1, long_text(), stop="tool_use")])
+        ledger = self.ledger()
+        legacy = _agent("legacy-no-source", epoch(2), "legacy excerpt")
+        wanted = (*ledger, *reading.build_ledger([legacy], "claude", SID, read_agent_words=True))
+        self.assertEqual("unproven", self.look(wanted)["outcome"])
+        self.write([record("u1", 1, long_text(), stop=None)])
+        self.assertEqual("unproven", self.look()["outcome"])
+        self.write([record("u1", 1, long_text(), stop="tool_use")])
+        self.assertEqual("not-final", self.look()["outcome"])
+
+    def test_a_disagreed_record_role_cannot_share_the_final_source_identity(self) -> None:
+        final = record("u1", 1, long_text())
+        other = record("u1", 1, long_text())
+        other["message"]["role"] = "user"
+        self.write([final, other])
+        self.assertEqual("unproven", self.look(self.ledger()[:1])["outcome"])
+
+    def test_conflicting_only_candidates_name_the_unproven_fallback(self) -> None:
+        final = record("u1", 1, long_text())
+        for other in (
+            record("u1", 1, long_text(), stop="tool_use"),
+            record("u1", 1, long_text() + " changed"),
+        ):
+            with self.subTest(other=other["message"]["stop_reason"]):
+                self.write([final, other])
+                self.assertEqual("unproven", self.look(self.ledger()[:1])["outcome"])
+        self.write([record("u1", 1, long_text(), stop="tool_use")])
+        self.assertEqual("not-final", self.look()["outcome"])
+
+    def test_a_tail_crossing_the_oldest_time_cannot_prove_an_off_window_duplicate(self) -> None:
+        self.write(
+            [
+                record("u1", 1, long_text() + " earlier-conflict"),
+                {"padding": "x" * 10_000},
+                record("u0", 0, "older"),
+                record("u1", 1, long_text()),
+            ]
+        )
+        wanted = [row for row in self.ledger() if row["at"] == epoch(1)][-1:]
+        with mock.patch.object(project_context, "FINAL_WORDS_SCAN_MAX_BYTES", 5_000):
+            self.assertEqual("scan-limit", self.look(wanted)["outcome"])
+
     def test_raw_values_that_mask_equal_are_still_conflicting_sources(self) -> None:
         rows = [
             record("u1", 1, long_text() + f" password: {value}") for value in ("alpha-x", "beta-y")
@@ -252,6 +296,50 @@ class TheSourceMustBeTheOneThePressRead(_Source):
         with mock.patch.object(project_context, "FINAL_WORDS_SCAN_MAX_BYTES", 5_000):
             self.assertEqual("", self.words(wanted))
         self.assertEqual("whole", self.look(wanted)["outcome"])
+
+    def test_a_silent_io_error_or_short_read_cannot_hide_an_earlier_conflict(self) -> None:
+        self.config = replace(self.config, reverse_chunk_bytes=4_096)
+        self.write(
+            [
+                record("u1", 1, long_text() + " earlier-conflict"),
+                *({"padding": "x" * 1_000} for _ in range(10)),
+                record("u1", 1, long_text()),
+            ]
+        )
+        wanted = [row for row in self.ledger() if row["at"] == epoch(1)][-1:]
+        real_open = runtime_io._open_binary
+        for failure in ("error", "short read"):
+            with self.subTest(failure=failure):
+
+                def failing_open(*args: Any, failure: str = failure, **kwargs: Any) -> Any:
+                    source = real_open(*args, **kwargs)
+                    wrapper = mock.MagicMock(wraps=source)
+                    wrapper.__enter__.return_value = wrapper
+                    wrapper.__exit__.side_effect = lambda *_args: source.close()
+                    reads = 0
+
+                    def read(size: int) -> bytes:
+                        nonlocal reads
+                        reads += 1
+                        if reads > 1:
+                            if failure == "error":
+                                raise OSError("synthetic read failure")
+                            return b""
+                        return source.read(size)
+
+                    wrapper.read.side_effect = read
+                    return wrapper
+
+                with mock.patch.object(runtime_io, "_open_binary", side_effect=failing_open):
+                    self.assertEqual("unproven", self.look(wanted)["outcome"])
+
+    def test_complete_traversal_accepts_line_endings_and_many_chunks(self) -> None:
+        self.config = replace(self.config, reverse_chunk_bytes=31)
+        final = json.dumps(record("u1", 1, long_text()))
+        for content in (final, final + "\n", "\n" + final + "\n\n"):
+            with self.subTest(trailing=content[-1]):
+                self.path.write_text(content, encoding="utf-8")
+                self.assertEqual("whole", self.look()["outcome"])
 
     def test_nothing_is_cached_or_kept(self) -> None:
         found = self.look(self.wanted)
@@ -588,6 +676,12 @@ class TheProducerHandsTheLookupItsSelectedRowsOnly(_Source):
             final_source_lookup=lookup,
         )
         return assessment, prompts, asked
+
+    def test_duplicate_finality_disagreement_reaches_the_assessment_cutoff(self) -> None:
+        self.write([record("u1", 20, long_text()), record("u1", 20, long_text(), stop="tool_use")])
+        assessment, prompts, _ = self.produce(finished=30, opened=5)
+        self.assertIn("newest final reply", assessment["cutoff"])
+        self.assertNotIn("Evidence sentence number 39", prompts[0])
 
     def test_a_final_after_the_stop_or_before_the_window_is_never_looked_up(self) -> None:
         self.write(

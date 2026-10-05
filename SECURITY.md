@@ -1214,7 +1214,9 @@ not establish it) goes whole in place of its 1,000-character excerpt, but only w
 quoted row fits the 4,096 bytes of the agent's quarter and the room the reader's words left. It is
 chosen among the rows the prompt already selected, so no entry, citation number or older or later
 record is added, and it is read from the same file version the press read its facts from, by a
-memory-only scan of at most the latest 32 MiB. A reply that does not fit, a source that moved, a
+memory-only scan of the complete file, only when it is at most 32 MiB. A larger file cannot
+prove an earlier conflicting duplicate is absent and keeps its excerpt with a cutoff note.
+A reply that does not fit, a source that moved, a
 duplicate or same-time record that disagrees, or a record the source cannot prove final keeps the
 excerpt, and the reading's cutoff says so. The agent's other messages keep their 1,000
 characters, no shell output or tool result is added, the consent tier does not widen, and the

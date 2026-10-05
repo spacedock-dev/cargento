@@ -1835,9 +1835,14 @@ duplicate is one source. A legacy fact with no source keeps its excerpt.
 
 Which file: The press stamps the transcript (device, inode, size, modified time) before it
 reads the session context, and the lookup refuses unless the file still has that stamp before and
-after its scan. The scan is newest first over at most the latest 32 MiB, in memory only, with a
-1 MiB bound on one assistant record, and a file larger than the bound is accepted only when the
-scan reached back past the oldest selected row. Nothing is cached, spooled, logged, put in
+after its scan. The scan is newest first over the complete file, in memory only, with a
+32 MiB file bound and a 1 MiB bound on one assistant record. A larger file keeps the excerpt
+and the cutoff says the whole reply could not be confirmed: a timestamp inside a tail cannot
+prove an earlier conflicting duplicate is absent. Conflicting candidates also say so when none
+can qualify; a missing or refused selected source or an incomplete scan does too. The
+lookup checks the complete yielded byte count so a silent short read or I/O error cannot
+qualify a tail. Only rows each proved non-final
+are silent when no final qualifies. Nothing is cached, spooled, logged, put in
 history or published; the lookup answers an outcome token, the row's own fact id and time, and
 the words. The drift replay passes the same lookup under its cut file's stamp.
 
