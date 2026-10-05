@@ -567,6 +567,33 @@ class StudyOutputsUseTheirOwnFrozenCohort(unittest.TestCase):
 
 
 class AStoredCodexStudyNeedsAnActualCorrection(unittest.TestCase):
+    def test_malformed_specs_refuse_before_loading_or_writing(self) -> None:
+        body: Any
+        for body in (
+            [],
+            {},
+            {"annotation": None},
+            {"annotation": {"id": "a" * 16}},
+            {"annotation": {"id": "a" * 16}, "source": []},
+            {"annotation": {"id": "a" * 16}, "source": ""},
+        ):
+            with tempfile.TemporaryDirectory() as directory, self.subTest(body=body):
+                root = Path(directory)
+                source = root / "spec.json"
+                source.write_text(json.dumps(body), encoding="utf-8")
+                with (
+                    mock.patch.object(replay, "HOME", str(root / "home")),
+                    mock.patch.object(replay, "_ROOT", str(root)),
+                    mock.patch.object(replay, "_home_refusal", return_value=""),
+                    mock.patch.object(study, "codex_messages") as loader,
+                ):
+                    self.assertEqual(
+                        1, replay.main(["--codex-study", str(source), "--tag", "malformed"])
+                    )
+                    loader.assert_not_called()
+                self.assertFalse((root / "home").exists())
+                self.assertFalse((root / "docs").exists())
+
     def test_actual_loader_rejects_a_worker_notification_as_the_correction(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

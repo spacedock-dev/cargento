@@ -433,6 +433,14 @@ def import_codex(
         msg = "Codex study already exists; annotation is closed"
         raise ValueError(msg)
     spec = json.loads(source.read_text(encoding="utf-8"))
+    if (
+        not isinstance(spec, dict)
+        or not isinstance(spec.get("annotation"), dict)
+        or not isinstance(spec.get("source"), str)
+        or not spec["source"]
+    ):
+        msg = "Codex study requires a source path and annotation object"
+        raise ValueError(msg)
     annotation = spec["annotation"]
     key = annotation.get("id")
     if not isinstance(key, str) or not re.fullmatch(r"[0-9a-f]{16}", key):
