@@ -387,7 +387,16 @@ As of the owner's 2026-10-05 amendment, `--read --claude-reading-model <id>` cho
 Claude model under the [Sonnet baseline policy](../../SECURITY.md#amended-2026-10-05-claude-reading-model-baseline).
 The default is `claude-sonnet-5-5`. Give the same selection to the dry run and the spending run:
 the plan and each charged record bind the selected model, admission policy and restricted argv
-digest. A tag with another model, or old records without that binding, requires a fresh tag.
+digest. Every charged attempt, including an unusable reply, also binds its tag to that producer
+in the spend ledger. The ledger records a digest of the tag's output location rather than its raw
+path; it adds no prompt words. Failed cut-arms remain retryable with the same producer, and their
+charges are not refunded. A tag with another model, or old records or a historical plan without
+that binding, requires a fresh tag.
+
+Before spending, the runner rebuilds every pending prompt without a provider and compares its
+digest and byte count with the dry plan. A changed fixture, producer or pending prompt requires
+another dry run. A second comparison at each charge catches a prompt that changes after this
+preflight; completed cut-arms retain their existing results on resume.
 The selected ID does not establish the served snapshot, which remains unknown; historical
 qualification belongs to its recorded model and execution envelope.
 

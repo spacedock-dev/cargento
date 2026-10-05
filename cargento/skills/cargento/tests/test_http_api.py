@@ -3251,6 +3251,8 @@ class ReadingRouteTest(unittest.TestCase):
             "provider": "codex",
         }
         body.update(over)
+        if body["provider"] == "claude":
+            body.setdefault("model", runtime_observer.CLAUDE_READING_MODEL)
         return body
 
     def test_a_reader_pressing_while_the_check_has_not_run_spends_nothing(self) -> None:

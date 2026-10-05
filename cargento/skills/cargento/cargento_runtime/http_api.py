@@ -2188,6 +2188,8 @@ class _RequestHandler(BaseHTTPRequestHandler):
         words go (owner, 2026-10-02): an Allow binds to `words_destination`, so
         one whose disclosure named another, or none where one is named now, is
         refused before it could bind to a destination the reader never saw.
+        The Claude model on every press must also match the selection the page
+        drew; a stale or missing selection records no Allow and spends nothing.
         """
         route = runtime_reading_route.resolve(harness, config=self.server.application.config)
         allow = payload.get("allow") is True
@@ -2204,6 +2206,9 @@ class _RequestHandler(BaseHTTPRequestHandler):
                 payload.get("words_destination", "") != route["words_destination"]
                 or (route["destination"] and payload.get("tool_output") != route["destination"])
             )
+            else (409, "destination-changed")
+            if route["provider"] == runtime_reading_route.CLAUDE
+            and payload.get("model") != route["model"]
             else None
         )
         if refusal is None:
