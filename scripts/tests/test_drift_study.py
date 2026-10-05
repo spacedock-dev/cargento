@@ -15,6 +15,7 @@ if TYPE_CHECKING:
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+import drift_replay as replay
 import drift_study as study
 import levels_cases as lc
 
@@ -150,6 +151,7 @@ class AStudyClosesMarksBeforeProducingOutputs(unittest.TestCase):
                     "id": "a" * 16,
                     "sid": "placeholder",
                     "cut": 100,
+                    "session_key": "b" * 16,
                     "roles": ["in-drift"],
                     "events": [],
                 }
@@ -207,6 +209,197 @@ class AStudyClosesMarksBeforeProducingOutputs(unittest.TestCase):
     def test_a_tag_cannot_escape_the_study_store(self) -> None:
         with self.assertRaises(ValueError):
             study.study_paths(Path("/placeholder"), Path("/placeholder"), "../read")
+
+    def test_public_session_keys_and_future_cause_marks_are_refused(self) -> None:
+        for change in ("session", "future", "extra"):
+            with tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                body: Any = self.bundle()
+                if change == "session":
+                    body["cases"][0]["session_key"] = "private-session-name"
+                elif change == "future":
+                    body["marks"]["a" * 16]["relevant_causes"] = [101]
+                else:
+                    body["marks"]["c" * 16] = body["marks"]["a" * 16]
+                source = root / "source.json"
+                source.write_text(json.dumps(body), encoding="utf-8")
+                with self.subTest(change=change), self.assertRaises(ValueError):
+                    study.import_study(root / "home", root, "closed", source)
+
+
+class StudyOutputsUseTheirOwnFrozenCohort(unittest.TestCase):
+    def test_live_routes_only_the_committed_study_and_refuses_counterfactuals(self) -> None:
+        with mock.patch.object(study, "load_study", side_effect=ValueError("not committed")):
+            self.assertEqual(
+                1, replay.live(home="/placeholder", study_tag="in-drift", say=lambda _: None)
+            )
+        with mock.patch.object(study, "load_study") as load:
+            self.assertEqual(
+                1,
+                replay.live(
+                    home="/placeholder",
+                    study_tag="in-drift",
+                    counterfactual_read="base",
+                    say=lambda _: None,
+                ),
+            )
+            load.assert_not_called()
+
+    def test_outside_span_counts_do_not_claim_false_alarms(self) -> None:
+        body = {
+            "cases": [
+                {
+                    "id": "a" * 16,
+                    "sid": "private",
+                    "cut": 100,
+                    "session_key": "b" * 16,
+                    "roles": ["outside-span"],
+                }
+            ],
+            "marks": {},
+            "episodes": [],
+        }
+        summary = study.score_in_drift(
+            body, {"a" * 16: {"arms": {"realistic": {"level": "high", "cause_at": 50}}}}
+        )
+        self.assertEqual({"cuts": 1, "flagged": 1}, summary["outside_annotated_spans"]["b" * 16])
+        self.assertNotIn("false_alarms", summary)
+        self.assertNotIn("private", json.dumps(summary))
+
+    def test_missing_live_cut_is_a_refusal_not_an_absent_flag(self) -> None:
+        body = {
+            "cases": [
+                {
+                    "id": "a" * 16,
+                    "sid": "private",
+                    "cut": 100,
+                    "session_key": "b" * 16,
+                    "roles": ["outside-span"],
+                }
+            ],
+            "marks": {},
+            "episodes": [],
+        }
+        summary = study.score_in_drift(body, {})
+        self.assertEqual(1, summary["refused_cuts"])
+        self.assertEqual({}, summary["outside_annotated_spans"])
+
+    def test_gap_truth_counts_each_exposure_without_promoting_opinion(self) -> None:
+        key = "a" * 16
+        body = {
+            "cases": [{"id": key, "cut": 100}],
+            "marks": {key: {"gap": "yes", "class": "defect", "proof": []}},
+            "exposures": [{"id": key, "arm": "current"}, {"id": key, "arm": "adopted"}],
+        }
+        got = study.score_gap_truth(body)
+        self.assertEqual(1, got["unique"]["unproved-positive"])
+        self.assertEqual(
+            {"adopted": {"unproved-positive": 1}, "current": {"unproved-positive": 1}}, got["arms"]
+        )
+
+    def test_cli_study_modes_are_exclusive_and_cannot_fall_through_to_marking(self) -> None:
+        with (
+            mock.patch.object(replay, "_home_refusal", return_value=""),
+            mock.patch.object(replay, "_study_mode", return_value=0) as run,
+        ):
+            self.assertEqual(0, replay.main(["--study-score", "--tag", "in-drift"]))
+            run.assert_called_once()
+        with self.assertRaises(SystemExit):
+            replay.main(["--study-score", "--read", "--tag", "in-drift"])
+
+    def test_another_cohort_cannot_supply_the_live_results(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            paths = study.study_paths(root / "home", root, "closed")
+            paths["live"].parent.mkdir(parents=True)
+            paths["live"].write_text(
+                json.dumps({"cases": {}, "study_digest": "another"}), encoding="utf-8"
+            )
+            with (
+                mock.patch.object(study, "load_study", return_value={"kind": "in-drift"}),
+                self.assertRaises(ValueError),
+            ):
+                study.score_study(root / "home", root, "closed")
+
+
+class AStoredCodexStudyNeedsAnActualCorrection(unittest.TestCase):
+    def test_injected_correction_cannot_complete_the_episode(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = root / "spec.json"
+            source.write_text(
+                json.dumps(
+                    {
+                        "source": "placeholder",
+                        "annotation": {
+                            "id": "a" * 16,
+                            "requested_at": 100,
+                            "gap_at": 200,
+                            "correction_at": 300,
+                            "gap": "yes",
+                            "class": "scope-or-plan",
+                        },
+                    }
+                ),
+                encoding="utf-8",
+            )
+            with (
+                mock.patch.object(
+                    study,
+                    "codex_messages",
+                    return_value={
+                        "messages": [{"role": "you", "at": 100}, {"role": "agent", "at": 200}]
+                    },
+                ),
+                self.assertRaises(ValueError),
+            ):
+                study.import_codex(root / "home", root, "codex", source, lambda value: value)
+
+    def test_private_words_are_masked_and_public_output_has_only_counts(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = root / "spec.json"
+            source.write_text(
+                json.dumps(
+                    {
+                        "source": "placeholder",
+                        "annotation": {
+                            "id": "a" * 16,
+                            "requested_at": 100,
+                            "gap_at": 200,
+                            "correction_at": 300,
+                            "gap": "yes",
+                            "class": "scope-or-plan",
+                            "reason": "private-words",
+                        },
+                    }
+                ),
+                encoding="utf-8",
+            )
+            body = {
+                "qualifies_analyze": False,
+                "injected_excluded": 2,
+                "messages": [
+                    {"role": role, "at": at, "text": "private-words"}
+                    for role, at in (("you", 100), ("agent", 200), ("you", 300))
+                ],
+            }
+            with mock.patch.object(study, "codex_messages", return_value=body):
+                result = study.import_codex(
+                    root / "home",
+                    root,
+                    "codex",
+                    source,
+                    lambda value: value.replace("private-words", "[masked]"),
+                )
+            private = study.study_paths(root / "home", root, "codex")["cohort"].read_text(
+                encoding="utf-8"
+            )
+            self.assertNotIn("private-words", private)
+            self.assertNotIn("[masked]", json.dumps(result))
+            self.assertFalse(result["qualifies_analyze"])
+            with self.assertRaises(ValueError):
+                study.import_codex(root / "home", root, "codex", source, lambda value: value)
 
 
 if __name__ == "__main__":
