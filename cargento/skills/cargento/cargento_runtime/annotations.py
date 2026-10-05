@@ -44,7 +44,7 @@ from cargento_runtime import io as runtime_io
 from cargento_runtime import reading, records
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
+    from collections.abc import Callable, Iterable, Iterator, Mapping, MutableMapping, Sequence
 
     from cargento_runtime.config import RuntimeConfig
     from cargento_runtime.state import RuntimeState
@@ -2135,6 +2135,14 @@ def direction_review(raw: str, cap: int, *, cut: bool = False) -> tuple[str, boo
     return text, clipped, not clipped and _typed_lines([text], cap) == [text]
 
 
+def _set_adoption_receipt(receipt: MutableMapping[str, int] | None, revision: int | None) -> None:
+    """Replace an optional server-owned receipt; no failed attempt retains one."""
+    if receipt is not None:
+        receipt.clear()
+        if revision is not None:
+            receipt["saved_revision"] = revision
+
+
 def _annotate(  # noqa: PLR0913
     config: RuntimeConfig,
     state: RuntimeState,
@@ -2144,6 +2152,7 @@ def _annotate(  # noqa: PLR0913
     lines: Any = None,
     now: float | None = None,
     adoption: dict[str, Any] | None = None,
+    receipt: MutableMapping[str, int] | None = None,
     window_start: Any = None,
     diagnostic_sink: Callable[[str], None] = print,
 ) -> str:
@@ -2156,6 +2165,7 @@ def _annotate(  # noqa: PLR0913
     `OUTCOME_STORED`: the words are on disk either way, and only the second
     minted anything, which is the difference the page's cue states.
     """
+    _set_adoption_receipt(receipt, None)
     key = _key(*identity)
     if not config.annotations_enabled or not key[0] or not key[1]:
         return OUTCOME_REFUSED
@@ -2234,6 +2244,7 @@ def _annotate(  # noqa: PLR0913
                 # cache is how this process went on reporting "no goal typed"
                 # for words the other one had already saved.
                 _cache(state, _bounded(current, config.annotation_max_sessions))
+                _set_adoption_receipt(receipt, last["n"])
                 return OUTCOME_UNCHANGED
             revision: Revision = {
                 **source_fields,
@@ -2301,9 +2312,16 @@ def _annotate(  # noqa: PLR0913
         # read the pre-write store, both mint revision n+1, and the later write
         # would erase the earlier one. Holding the lock across the write costs
         # one file write and closes the window in and across processes.
-        return _commit(
+        outcome = _commit(
             config, state, store, key, [*others, updated], diagnostic_sink=diagnostic_sink
         )
+        # The receipt belongs to this write under the lock. A route's later
+        # reread may already show another tab's revision, and a discarded
+        # entry can resume above 1 despite having no published baseline.
+        _set_adoption_receipt(
+            receipt, updated["revisions"][-1]["n"] if outcome == OUTCOME_STORED else None
+        )
+        return outcome
 
 
 def settle(
@@ -2759,6 +2777,7 @@ def adopt(  # noqa: PLR0913
     expected_revision: int | None = None,
     settle_through: Any = None,
     chosen: PromptChoice | None = None,
+    receipt: MutableMapping[str, int] | None = None,
 ) -> str:
     """Adopt a prompt as the goal. Returns an `OUTCOMES` token.
 
@@ -2773,6 +2792,7 @@ def adopt(  # noqa: PLR0913
     adopts over a saved goal holding other words: a press labelled "Keep my
     intent" must not replace the reader's own.
     """
+    _set_adoption_receipt(receipt, None)
     options = _adoption(row, source, expected_text, expected_at, now, chosen=chosen)
     keep = settle_through is not None
     if (
@@ -2790,6 +2810,7 @@ def adopt(  # noqa: PLR0913
         (row.get("harness"), row.get("sid")),
         goal=text,
         now=now,
+        receipt=receipt,
         adoption={
             **options,
             "empty_goal_only": expected_revision is None,

@@ -1770,7 +1770,8 @@ class _RequestHandler(BaseHTTPRequestHandler):
             self._reject(400)
             return
         state = application.state
-        outcome, withdrew = self._annotation_outcome(harness, sid, payload)
+        receipt: dict[str, int] = {}
+        outcome, withdrew = self._annotation_outcome(harness, sid, payload, receipt=receipt)
         # Dropped rather than waited out, for `_dismiss`'s reason: the next GET
         # would otherwise serve the pre-save payload for up to `collect_memo_sec`.
         state.snapshot.clear()
@@ -1783,6 +1784,10 @@ class _RequestHandler(BaseHTTPRequestHandler):
             in (annotation_store.OUTCOME_STORED, annotation_store.OUTCOME_UNCHANGED),
             "outcome": outcome,
             "revision": current["revision"],
+            # Stable adoption result captured under the write lock, not the
+            # potentially newer current revision read above. Other arms owe
+            # no adoption receipt and always answer null.
+            "saved_revision": receipt.get("saved_revision"),
             "revision_count": current["revision_count"],
             # When the discard this session carries a record of happened, or
             # None. Read back through `published` like the two above it, so
@@ -1800,7 +1805,12 @@ class _RequestHandler(BaseHTTPRequestHandler):
         self._send(json.dumps(answer, separators=(",", ":")).encode(), "application/json")
 
     def _annotation_outcome(
-        self, harness: str, sid: str, payload: dict[str, Any]
+        self,
+        harness: str,
+        sid: str,
+        payload: dict[str, Any],
+        *,
+        receipt: dict[str, int] | None = None,
     ) -> tuple[str, bool]:
         application = self.server.application
         config = application.config
@@ -1833,7 +1843,12 @@ class _RequestHandler(BaseHTTPRequestHandler):
             # can start (no reader, or readings off): the draft is adopted and
             # the directions settled in one write, and nothing is read.
             outcome = self._adopt_prompt(
-                harness, sid, payload, standalone=True, settle_through=settle_through
+                harness,
+                sid,
+                payload,
+                standalone=True,
+                settle_through=settle_through,
+                receipt=receipt,
             )
         elif settle_through is not None:
             # A third arm on this route rather than a route of its own: the
@@ -2282,6 +2297,7 @@ class _RequestHandler(BaseHTTPRequestHandler):
         standalone: bool = False,
         settle_through: Any = None,
         now: float | None = None,
+        receipt: dict[str, int] | None = None,
     ) -> str:
         application = self.server.application
         expected = payload.get("expected_revision")
@@ -2310,6 +2326,7 @@ class _RequestHandler(BaseHTTPRequestHandler):
             now=application.clock() if now is None else now,
             expected_revision=expected if guarded else None,
             settle_through=settle_through,
+            receipt=receipt,
             chosen=(
                 self._chosen_prompt(rows[0], payload.get("prompt_fact"))
                 if source == runtime_reading.PROMPT_CHOSEN
