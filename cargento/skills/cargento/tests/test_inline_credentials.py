@@ -11,8 +11,16 @@ import unittest
 from pathlib import Path
 from typing import Any
 
-from cargento_runtime import project_context, reading, records, semantic_history, transcripts
+from cargento_runtime import (
+    claude_data,
+    project_context,
+    reading,
+    records,
+    semantic_history,
+    transcripts,
+)
 from cargento_runtime.config import build_runtime_config
+from cargento_runtime.state import build_runtime_state
 
 from . import test_direction_windows as direction_tests
 from . import test_newest_final_words as final_tests
@@ -68,6 +76,85 @@ class InlineCredentialsStayMasked(unittest.TestCase):
         )
         assert event is not None
         return event
+
+    def collector_title(self, text: str) -> str | None:
+        path = self.root / "owned-collector.jsonl"
+        path.write_text(
+            json.dumps(
+                {
+                    "type": "user",
+                    "timestamp": "2026-10-01T12:00:00Z",
+                    "uuid": "owned-placeholder",
+                    "message": {"role": "user", "content": [{"type": "text", "text": text}]},
+                }
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        state = build_runtime_state(self.config, started=0)
+        return claude_data.session_title(self.config, state, str(path))
+
+    def test_complete_command_cues_keep_arguments_and_do_not_create_a_cut(self) -> None:
+        for cue, expected in (
+            ("DB_KEY=staging", "DB_KEY=…REDACTED"),
+            ("secret=staging", "secret=staging"),
+            ("the token: next", "the token: next"),
+        ):
+            for trailing in ("", " "):
+                with self.subTest(cue=cue, trailing=bool(trailing)):
+                    raw = command("note " + cue + trailing)
+                    wanted = "/review note " + expected
+                    self.assertEqual(wanted, transcripts.prompt_title(self.config, raw, 200))
+                    self.assertEqual(wanted, transcripts.command_direction(self.config, raw))
+
+    def test_the_file_collector_keeps_complete_arguments_and_masks_credentials(self) -> None:
+        for cue, expected in (
+            ("DB_KEY=staging", "DB_KEY=…REDACTED"),
+            ("secret=staging", "secret=staging"),
+            ("the token: next", "the token: next"),
+        ):
+            for wrapped in (False, True):
+                with self.subTest(cue=cue, wrapped=wrapped):
+                    raw = "note " + cue
+                    self.assertEqual(
+                        ("/review " if wrapped else "") + "note " + expected,
+                        self.collector_title(command(raw) if wrapped else raw),
+                    )
+        for split in SPLITS:
+            with self.subTest(split=split):
+                title = self.collector_title(command("rotate " + split + " today"))
+                assert title is not None
+                self.assert_masked(title)
+
+    def test_complete_overbound_markup_withholds_arguments_without_reusing_raw_words(self) -> None:
+        raw = command("note <em>" + "harmless " * 2000 + "</em>")
+        self.assertEqual("/review …REDACTED", transcripts.prompt_title(self.config, raw))
+        self.assertEqual("/review …REDACTED", transcripts.command_direction(self.config, raw))
+
+    def test_a_genuine_cut_and_already_premasked_cut_remain_honestly_cut(self) -> None:
+        raw = command("note secret=staging").removesuffix("</command-args>")
+        self.assertEqual(
+            "/review note secret=staging…", transcripts.command_direction(self.config, raw)
+        )
+        premasked = records.redact_secrets(command("note secret=staging"))
+        self.assertTrue(transcripts.command_cut(premasked))
+        self.assertEqual(
+            "/review note secret=…REDACTED…",
+            transcripts.command_direction(self.config, premasked),
+        )
+
+    def test_command_argument_rendering_still_clips_and_preserves_control_classification(
+        self,
+    ) -> None:
+        raw = command("ordinary words " * 30)
+        title = transcripts.prompt_title(self.config, raw, 30)
+        assert title is not None
+        self.assertLessEqual(len(title), 31)
+        self.assertTrue(title.startswith("/review ordinary words"))
+        self.assertFalse(transcripts.harness_control_prompt(self.config, raw))
+        local = raw.replace("<command-message>review</command-message>\n", "")
+        self.assertTrue(transcripts.harness_control_prompt(self.config, local))
+        self.assertEqual("", transcripts.command_direction(self.config, local))
 
     def test_inline_shapes_are_masked_before_hint_matching_and_clipping(self) -> None:
         for split in SPLITS:

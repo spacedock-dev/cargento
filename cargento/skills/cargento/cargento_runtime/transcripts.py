@@ -227,16 +227,18 @@ def prompt_title(config: RuntimeConfig, text: str, limit: int = 80) -> str | Non
     it, which is what makes a `<teammate-message>` show the instruction instead
     of the envelope.
     """
-    # Mask against the raw formatting before command args replace tags with
-    # spaces, which would otherwise separate a credential into unmatched pieces.
-    text = records.redact_secrets(text)
+    # Capture the original framing first: a cued value next to a closing
+    # wrapper can consume that wrapper when the entire record is redacted.
     name = _COMMAND_NAME_RE.search(text)
     if name and name.group(1):
         args = _COMMAND_ARGS_RE.search(text)
-        command = name.group(1).strip()
-        argument = _PROMPT_TAG_RE.sub(" ", args.group(1)).strip() if args else ""
+        command = records.redact_secrets(name.group(1)).strip()
+        argument = (
+            _PROMPT_TAG_RE.sub(" ", records.redact_secrets(args.group(1))).strip() if args else ""
+        )
         joined = f"{command} {argument}".strip() if argument else command
         return clip(" ".join(shorten_paths(config, joined).split()), limit) or None
+    text = records.redact_secrets(text)
     for line in _PROMPT_TAG_RE.sub("", text).split("\n"):
         collapsed = " ".join(shorten_paths(config, line).split())
         if collapsed:
@@ -291,14 +293,15 @@ def command_direction(config: RuntimeConfig, text: str) -> str | None:
         return None
     if harness_control_prompt(config, text):
         return ""
-    # The cut-args arm below does not call prompt_title; cover it before
-    # its tag-to-space conversion too. Keep structural control detection first.
-    text = records.redact_secrets(text)
+    # Decide whether the original record was cut, before redaction can remove
+    # a wrapper. Mask only the captured arguments before their tags become spaces.
     if command_cut(text):
         name = _COMMAND_NAME_RE.search(text)
-        arrived = _PROMPT_TAG_RE.sub(" ", text.split("<command-args>", 1)[1])
+        arrived = _PROMPT_TAG_RE.sub(
+            " ", records.redact_secrets(text.split("<command-args>", 1)[1])
+        )
         joined = " ".join(shorten_paths(config, arrived).split())
-        command = name.group(1).strip() if name else ""
+        command = records.redact_secrets(name.group(1)).strip() if name else ""
         return f"{command} {joined}".strip() + "\u2026"
     return prompt_title(config, text, limit=len(text)) or ""
 
