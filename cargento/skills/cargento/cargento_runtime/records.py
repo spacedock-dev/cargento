@@ -10,6 +10,7 @@ import os
 import re
 import string
 import unicodedata
+from bisect import bisect_left, bisect_right
 from datetime import UTC, datetime
 from typing import Any, Final
 
@@ -344,6 +345,21 @@ _SECRET_HINTS: Final = (
 # the scheme test comes first.
 _SECRET_MIN_CHARS: Final = 7
 
+# Transparent HTML formatting, rather than arbitrary <user>/<password> envelopes.
+# Quoted attributes may contain >; the disjoint alternatives keep the scan linear.
+_INLINE_MARKUP_START_RE: Final = re.compile(
+    r"</?(?:a|abbr|b|code|del|em|i|ins|kbd|mark|s|samp|small|span|strong|sub|sup|time|u|var)"
+    r"(?=[\s/>])",
+    re.IGNORECASE,
+)
+_INLINE_MARKUP_RE: Final = re.compile(
+    _INLINE_MARKUP_START_RE.pattern + r"(?:[^<>\"']|\"[^\"]*\"|'[^']*')*>",
+    re.IGNORECASE,
+)
+# A second view is bounded independently of the caller's later clipping. An
+# oversized string with formatting is withheld, never returned with an unchecked tail.
+INLINE_MARKUP_MAX_CHARS: Final = 16_384
+
 
 # What a `cued` value is when it names a value rather than holding one: code
 # that reads a credential from somewhere else, or a literal that is not one.
@@ -440,6 +456,59 @@ def _redact_scan(text: str) -> str:
     return "".join(out)
 
 
+def _redact_inline_markup(text: str) -> str:
+    """Map credentials in a formatting-free view back to their original spans.
+
+    Real spaces/newlines stay in the view. Only a credential match changes the
+    source; harmless formatting is retained. The normal raw scan still follows,
+    because a credential in an attribute is absent from this second view.
+    """
+    if "<" not in text:
+        return text
+    if len(text) > INLINE_MARKUP_MAX_CHARS:
+        return _SECRET_MARKER if _INLINE_MARKUP_START_RE.search(text) is not None else text
+    if _INLINE_MARKUP_RE.search(text) is None:
+        return text
+    parts: list[str] = []
+    cuts: list[int] = []
+    removed: list[int] = []
+    cursor = length = 0
+    for tag in _INLINE_MARKUP_RE.finditer(text):
+        part = text[cursor : tag.start()]
+        parts.append(part)
+        length += len(part)
+        cuts.append(length)
+        removed.append(tag.end() - length)
+        cursor = tag.end()
+    parts.append(text[cursor:])
+    plain = "".join(parts)
+    if not _needs_secret_scan(plain):
+        return text
+    out: list[str] = []
+    cursor = pos = 0
+    while (match := _SECRET_RE.search(plain, pos)) is not None:
+        marked = _mark_secret(match)
+        if marked is None:
+            pos = match.start() + 1
+            continue
+        start_cut = bisect_right(cuts, match.start())
+        end_cut = bisect_left(cuts, match.end())
+        start = match.start() + (removed[start_cut - 1] if start_cut else 0)
+        end = match.end() + (removed[end_cut - 1] if end_cut else 0)
+        out.extend((text[cursor:start], marked))
+        cursor = end
+        pos = match.end()
+    out.append(text[cursor:])
+    return "".join(out)
+
+
+def _needs_secret_scan(text: str) -> bool:
+    scheme = text.find("://")
+    if scheme != -1 and ("@" in text or ":" in text[scheme + 3 :]):
+        return True
+    return len(text) >= _SECRET_MIN_CHARS and any(hint in text for hint in _SECRET_HINTS)
+
+
 def redact_secrets(text: str) -> str:
     """Credential-shaped runs replaced by a visible marker, everything else kept.
 
@@ -456,15 +525,9 @@ def redact_secrets(text: str) -> str:
     `aggregate._redact_published_text`, which calls this directly over the
     assembled rows and owns the list of them.
     """
-    scheme = text.find("://")
-    if scheme != -1 and ("@" in text or ":" in text[scheme + 3 :]):
-        return _redact_scan(text)
-    if len(text) < _SECRET_MIN_CHARS:
-        return text
-    for hint in _SECRET_HINTS:
-        if hint in text:
-            return _redact_scan(text)
-    return text
+    # Before hints too: a formatting tag can split the hint itself (AK<em>IA).
+    text = _redact_inline_markup(text)
+    return _redact_scan(text) if _needs_secret_scan(text) else text
 
 
 def redact_clip(text: str, limit: int) -> str:
@@ -612,6 +675,7 @@ def mask_prose(text: str) -> str:
         else ch
         for ch in text
     )
+    text = redact_secrets(text)
     text = _MASK_QUOTED_USERINFO.sub(lambda m: m.group(1) + m.group(2) + _SECRET_MARKER + "@", text)
     lines = [line.split() for line in text.splitlines()]
     # Over the lines with words, so a blank line between the halves is no gap.
