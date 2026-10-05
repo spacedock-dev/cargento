@@ -462,13 +462,13 @@ class ChoosingOverASavedGoalTest(_DraftPage):
         self.assertNotIn("goal", body)
 
     def test_the_lines_after_an_adopted_choice_name_the_revision_it_minted(self) -> None:
-        # A real refresh hands back new row objects, so the lines save must read the revision
-        # off the refreshed row, never the row the click held (INT-2).
+        # The adoption reply captures its saved revision under the annotation lock;
+        # refreshed current state cannot lend a later revision to the frozen lines.
         out = self.drive(
             SERVE_CHOICES + TYPED + '__s.annotation_line_1 = "old line";\n',
             "let __rev = 2;\n"
             '__reply["/api/annotate"] = () => { __rev += 1; return {status:200, body:{ok:true, '
-            'persisted:true, outcome:"stored", revision:__rev}}; };\n'
+            'persisted:true, outcome:"stored", revision:__rev, saved_revision:__rev}}; };\n'
             "const __plain = __fetchImpl;\n"
             "__fetchImpl = async (url, init) => {\n"
             "  const answer = await __plain(url, init);\n"

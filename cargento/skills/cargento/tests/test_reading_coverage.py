@@ -415,6 +415,14 @@ class TheReadingCarriesMeasuredCoverage(producer.AClaudeCodeReadingProducer):
                 at=120.0,
                 source_session={"harness": "claude", "sid": "s1"},
             ),
+            producer.fact(
+                fact_id="said",
+                type="agent_message",
+                by="agent",
+                agent_words="Finished the synthetic task.",
+                at=150.0,
+                source_session={"harness": "claude", "sid": "s1"},
+            ),
         ]
         got, _, _ = reading.produce(
             cast("Any", self.config),
@@ -434,6 +442,8 @@ class TheReadingCarriesMeasuredCoverage(producer.AClaudeCodeReadingProducer):
             stamp_text="read",
             model=self._model(),
             read_lines=True,
+            read_agent_words=True,
+            final_source_lookup=lambda _wanted: {"outcome": "source-moved"},
             record_coverage_lookup=lambda: {"tail_truncated": True, "tail_start": 100.0},
             goal_source_lookup=list,
             tool_output=reading.ToolOutput(
@@ -445,6 +455,7 @@ class TheReadingCarriesMeasuredCoverage(producer.AClaudeCodeReadingProducer):
         self.assertIn("message tail", got["cutoff"])
         self.assertIn(reading.GOAL_SOURCE_GONE.strip(), got["cutoff"])
         self.assertIn("tool output was not allowed", got["cutoff"])
+        self.assertIn(reading._FINAL_NOTES["unavailable"].strip(), got["cutoff"])
 
 
 class CoverageSurvivesTheStoreWithoutNewWords(producer.AClaudeCodeReadingProducer):

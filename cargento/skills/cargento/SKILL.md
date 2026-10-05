@@ -353,9 +353,10 @@ list states the limit under it: demonstrated work results are read on Pi, and on
 Claude Code the record also lists the checks a session ran and the files it wrote, each result as
 the tool reported it and counted from the whole transcript read, and what the agent said, each of
 its messages an entry marked "Agent said". A reading you press for sends the agent's messages as
-evidence of what it said and claimed, each redacted and up to 1,000 characters. The prompt names a
-measured crop's excerpt length and full reply length, and may use remaining room after your messages
-have had their share. Cargento never stores or
+evidence of what it said and claimed, each redacted and up to 1,000 characters, except the newest
+reply the transcript records as ending its turn, which goes whole where it fits 4,096 bytes. The
+prompt names a measured crop's excerpt length and full reply length, and may use remaining room
+after your messages have had their share. Cargento never stores or
 shows more than the first sentence; an unasked reading sends none of them, and an Allow given
 before they were named asks once more. It sends those checks, with
 the last 180 characters each printed and the paths of the files written, only after you allow tool output for the destination named
