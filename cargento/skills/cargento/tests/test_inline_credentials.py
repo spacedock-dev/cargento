@@ -113,6 +113,28 @@ class InlineCredentialsStayMasked(unittest.TestCase):
                 self.assert_masked(title)
                 self.assert_masked(direction)
 
+    def test_cut_command_arguments_mask_seen_credentials_before_tag_spacing(self) -> None:
+        words = f"rotate {SPLITS[0]} today"
+        for raw in (
+            command(words).removesuffix("</command-args>"),
+            command(words + " harmless trailer" * 200),
+        ):
+            with self.subTest(raw_chars=len(raw)):
+                direction = transcripts.command_direction(self.config, raw)
+                assert direction is not None
+                self.assert_masked(direction)
+                self.assert_masked(project_context._message_words(self.config, raw, "claude"))
+                event = self.event(raw)
+                self.assert_masked(event["title"])
+                self.assert_masked(event["reader_words"])
+                fact = project_context._semantic_fact_from_event(event, "steer", "user_message", "")
+                ledger = reading.build_ledger([fact], "claude", "owned-session")
+                prompt, selection = reading.build_prompt(
+                    ledger, goal="Rotate credentials", max_bytes=16384
+                )
+                self.assertEqual(1, len(selection.entries))
+                self.assert_masked(prompt)
+
     def test_a_split_cue_is_masked_and_other_markup_is_preserved(self) -> None:
         value = 'keep <em>retry</em>; DB_PASS<strong>WORD</strong>="fixture-password-9"'
         masked = records.redact_secrets(value)

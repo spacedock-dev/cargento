@@ -291,6 +291,9 @@ def command_direction(config: RuntimeConfig, text: str) -> str | None:
         return None
     if harness_control_prompt(config, text):
         return ""
+    # The cut-args arm below does not call prompt_title; cover it before
+    # its tag-to-space conversion too. Keep structural control detection first.
+    text = records.redact_secrets(text)
     if command_cut(text):
         name = _COMMAND_NAME_RE.search(text)
         arrived = _PROMPT_TAG_RE.sub(" ", text.split("<command-args>", 1)[1])
