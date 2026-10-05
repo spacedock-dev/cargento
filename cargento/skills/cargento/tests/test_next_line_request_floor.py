@@ -11,6 +11,7 @@ from cargento_runtime import reading
 
 from . import test_next_analysis_result as result_page
 from . import test_next_outcome_lines as checklist
+from .visible_text import visible_text
 
 
 @unittest.skipUnless(shutil.which("node"), "node not available")
@@ -123,7 +124,11 @@ console.log(JSON.stringify({floors, rows:shape.criteria.map(row=>[row.key,row.re
         self.assertEqual(reading.RESULT_CONSISTENT, self.resolve(historical=True)["rows"][1][1])
 
     def test_typed_or_edited_lines_cannot_borrow_a_saved_source_age(self) -> None:
-        for changes in ({"line_source": "typed"}, {"source_id": "edited"}):
+        variants: tuple[dict[str, Any], ...] = (
+            {"line_source": "typed"},
+            {"source_id": "edited"},
+        )
+        for changes in variants:
             with self.subTest(changes=changes):
                 self.assertEqual({}, self.resolve(**changes)["floors"])
 
@@ -160,7 +165,7 @@ class TheRenderedResultJoinsTheFocusedRequestAge(result_page._ResultPage):
         )
         extra += (
             f"const __requestRows={json.dumps(rows)};\n"
-            + """
+            """
 const __requestUpstream=__fetchImpl;
 __fetchImpl=async(url,init)=>{
   const got=await __requestUpstream(url,init);
@@ -171,7 +176,9 @@ __fetchImpl=async(url,init)=>{
 };
 """
         )
-        return self.page(value, facts=(fact,), extra=extra)
+        html = self.page(value, facts=(fact,), extra=extra)
+        assert isinstance(html, str)
+        return html
 
     def test_the_real_result_refuses_a_pass_called_before_its_verified_request(self) -> None:
         unbound = result_page.rows_of(self.rendered(bound=False))
@@ -182,5 +189,5 @@ __fetchImpl=async(url,init)=>{
 
     def test_the_global_failed_check_answer_survives_the_line_floor(self) -> None:
         html = self.rendered(bound=True, failed=True)
-        self.assertIn("A check failed", result_page.visible_text(html))
-        self.assertIn("Steer back", result_page.visible_text(html))
+        self.assertIn("A check failed", visible_text(html))
+        self.assertIn("Steer back", visible_text(html))

@@ -10,10 +10,13 @@ import unittest
 from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
-from typing import Any
+from typing import Any, cast
 from unittest import mock
 
-from cargento_runtime import annotations, correction, http_api, levels, project_context, reading
+from cargento_runtime import annotations as annotation_store
+from cargento_runtime import correction, http_api, levels, live_estimate, project_context, reading
+from cargento_runtime import io as runtime_io
+from cargento_runtime import observer as runtime_observer
 
 from .support import make_runtime
 
@@ -204,9 +207,10 @@ class RequestAgeSurvivesOnlyUnchangedStoredWords(unittest.TestCase):
         for sid, at in (("other", SAVE_AT), ("parent", 110.0), ("parent", REQUEST_AT)):
             raw = {"harness": "claude", "sid": sid, "revisions": [{**_revision(), "at": at}]}
             with self.subTest(sid=sid, at=at):
-                entry = annotations._entry(
+                entry = annotation_store._entry(
                     json.loads(json.dumps(raw)), text_cap=240, revision_cap=8
                 )
+                assert entry is not None
                 line = entry["revisions"][-1]["lines"][0]
                 self.assertEqual("Write the result as JSON", line["text"])
                 self.assertNotIn("request", line)
@@ -214,35 +218,39 @@ class RequestAgeSurvivesOnlyUnchangedStoredWords(unittest.TestCase):
     def test_loading_bad_request_metadata_keeps_the_line_words(self) -> None:
         line = _line()
         line["request"]["at"] = True
-        loaded = annotations._line(line, 240)
+        loaded = annotation_store._line(line, 240)
+        assert loaded is not None
         self.assertEqual("Write the result as JSON", loaded["text"])
         self.assertNotIn("request", loaded)
 
     def test_loading_changed_words_discards_their_request_binding(self) -> None:
         line = {**_line(), "text": "Write XML instead"}
-        loaded = annotations._line(line, 240)
+        loaded = annotation_store._line(line, 240)
+        assert loaded is not None
         self.assertEqual("Write XML instead", loaded["text"])
         self.assertNotIn("request", loaded)
 
     def test_unchanged_reordered_and_duplicate_lines_do_not_share_request_age(self) -> None:
-        first = _line()
-        second = {"text": "Another line", "source": "typed"}
-        reordered = annotations._sourced(["Another line", first["text"]], (first, second), (1, 0))
+        first = cast("annotation_store.OutcomeLine", _line())
+        second: annotation_store.OutcomeLine = {"text": "Another line", "source": "typed"}
+        reordered = annotation_store._sourced(
+            ["Another line", first["text"]], (first, second), (1, 0)
+        )
         self.assertEqual(first["request"], reordered[1]["request"])
-        duplicate = annotations._sourced([first["text"], first["text"]], (first,))
+        duplicate = annotation_store._sourced([first["text"], first["text"]], (first,))
         self.assertIn("request", duplicate[0])
         self.assertNotIn("request", duplicate[1])
-        edited = annotations._sourced(["Write XML instead"], (first,))
+        edited = annotation_store._sourced(["Write XML instead"], (first,))
         self.assertEqual("typed", edited[0]["source"])
         self.assertNotIn("request", edited[0])
 
     def test_actual_save_and_reload_keeps_only_server_verified_binding(self) -> None:
         with tempfile.TemporaryDirectory() as home:
             config, state = make_runtime(state_home=home, state_dir=Path(home))
-            annotations.annotate(
+            annotation_store.annotate(
                 config, state, "claude", "parent", goal="Make the export", now=100.0
             )
-            outcome = annotations.add_direction(
+            outcome = annotation_store.add_direction(
                 config,
                 state,
                 PARENT,
@@ -253,8 +261,9 @@ class RequestAgeSurvivesOnlyUnchangedStoredWords(unittest.TestCase):
                 expected_revision=1,
                 now=SAVE_AT,
             )
-            self.assertEqual(annotations.OUTCOME_STORED, outcome)
-            entry = annotations.find(annotations.load(config), "claude", "parent")
+            self.assertEqual(annotation_store.OUTCOME_STORED, outcome)
+            entry = annotation_store.find(annotation_store.load(config), "claude", "parent")
+            assert entry is not None
             self.assertEqual(
                 {"line_1": REQUEST_AT},
                 reading.line_request_floors(
@@ -279,7 +288,13 @@ class EarlierWorkCannotAnswerALaterLine(unittest.TestCase):
         }
         if result_at is not None:
             fact.update(
-                type="tool_report", subject="check", result="failed", result_at=result_at, work=True
+                {
+                    "type": "tool_report",
+                    "subject": "check",
+                    "result": "failed",
+                    "result_at": result_at,
+                    "work": True,
+                }
             )
         selection = reading.Selection(
             (fact,), lines=("Write the result as JSON",), asked_output=True
@@ -318,7 +333,7 @@ class EarlierWorkCannotAnswerALaterLine(unittest.TestCase):
 
 class TheCurrentPageReceivesOnlyVerifiedRequestAges(unittest.TestCase):
     def test_context_map_is_bound_to_the_current_revision_and_parent_request(self) -> None:
-        entry = {**PARENT, "revisions": [_revision()]}
+        entry = cast("annotation_store.Annotation", {**PARENT, "revisions": [_revision()]})
         self.assertEqual(
             [
                 {
@@ -427,6 +442,7 @@ class AProducedReadingUsesItsVerifiedLineRequest(unittest.TestCase):
                     )
                     self.assertEqual("", why)
                     self.assertTrue(spent)
+                    assert assessment is not None
                     self.assertEqual(expected, assessment["criteria"]["line_1"]["result"])
                     if lookup is not None:
                         lookup.assert_called_once_with()
@@ -471,10 +487,13 @@ class SourceContinuityIncludesWordsOutsideTheVisibleClip(unittest.TestCase):
                     now=saved_at,
                 ),
             }
-            entry = {
-                **PARENT,
-                "revisions": [{"n": 1, "at": saved_at, "goal": "Export", "lines": [line]}],
-            }
+            entry = cast(
+                "annotation_store.Annotation",
+                {
+                    **PARENT,
+                    "revisions": [{"n": 1, "at": saved_at, "goal": "Export", "lines": [line]}],
+                },
+            )
             listed = [
                 {
                     key: value
@@ -484,13 +503,11 @@ class SourceContinuityIncludesWordsOutsideTheVisibleClip(unittest.TestCase):
             ]
             app = SimpleNamespace(config=config, state=state)
             with (
+                mock.patch.object(runtime_observer, "resolve_transcript", return_value=str(path)),
                 mock.patch.object(
-                    http_api.runtime_observer, "resolve_transcript", return_value=str(path)
-                ),
-                mock.patch.object(
-                    project_context.runtime_io,
+                    runtime_io,
                     "read_prefix_bytes",
-                    wraps=project_context.runtime_io.read_prefix_bytes,
+                    wraps=runtime_io.read_prefix_bytes,
                 ) as reads,
             ):
                 verified = http_api._request_sources(app, PARENT, listed, entry)
@@ -540,11 +557,14 @@ class SourceContinuityIncludesWordsOutsideTheVisibleClip(unittest.TestCase):
                     }
                 },
             }
-            entry = {
-                **PARENT,
-                "revisions": [{"n": 1, "at": saved_at, "goal": "Export", "lines": [line]}],
-                "assessment": assessment,
-            }
+            entry = cast(
+                "annotation_store.Annotation",
+                {
+                    **PARENT,
+                    "revisions": [{"n": 1, "at": saved_at, "goal": "Export", "lines": [line]}],
+                    "assessment": assessment,
+                },
+            )
             listed = {
                 key: value for key, value in source.items() if not key.startswith("request_source_")
             }
@@ -560,12 +580,10 @@ class SourceContinuityIncludesWordsOutsideTheVisibleClip(unittest.TestCase):
             row = {**PARENT, "project": "billing"}
             app = SimpleNamespace(config=config, state=state, clock=lambda: saved_at + 20)
             with (
-                mock.patch.object(http_api.annotation_store, "active", return_value=[]),
-                mock.patch.object(http_api.annotation_store, "find", return_value=entry),
-                mock.patch.object(
-                    http_api.runtime_observer, "resolve_transcript", return_value=str(path)
-                ),
-                mock.patch.object(http_api.live_estimate, "for_session", return_value={}),
+                mock.patch.object(annotation_store, "active", return_value=[]),
+                mock.patch.object(annotation_store, "find", return_value=entry),
+                mock.patch.object(runtime_observer, "resolve_transcript", return_value=str(path)),
+                mock.patch.object(live_estimate, "for_session", return_value={}),
                 mock.patch.object(
                     http_api, "_request_sources", wraps=http_api._request_sources
                 ) as lookup,
@@ -577,13 +595,16 @@ class SourceContinuityIncludesWordsOutsideTheVisibleClip(unittest.TestCase):
             self.assertEqual(requested_at, work["line_requests"][0]["lines"]["line_1"]["at"])
             self.assertEqual(levels.NOT_ENOUGH, work["analysis_levels"][0]["level"])
             lookup.assert_called_once()
-            entry["revisions"].append(
-                {
-                    "n": 2,
-                    "at": saved_at + 30,
-                    "goal": "Export",
-                    "lines": [{"text": "Use XML", "source": "typed"}],
-                }
+            cast("list[annotation_store.Revision]", entry["revisions"]).append(
+                cast(
+                    "annotation_store.Revision",
+                    {
+                        "n": 2,
+                        "at": saved_at + 30,
+                        "goal": "Export",
+                        "lines": [{"text": "Use XML", "source": "typed"}],
+                    },
+                )
             )
             self.assertEqual([], http_api._line_requests(entry, sources, row))
             historical = http_api._analysis_levels(

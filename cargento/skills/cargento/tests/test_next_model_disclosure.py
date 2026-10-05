@@ -8,7 +8,8 @@ import shutil
 import unittest
 from unittest import mock
 
-from cargento_runtime import annotations, reading_route
+from cargento_runtime import annotations as annotation_store
+from cargento_runtime import reading_route
 
 from . import test_next_analyze_flow as flow
 from . import test_next_drift_panel as panel
@@ -38,7 +39,7 @@ class ThePageDisclosesItsSelectedClaudeModel(panel.PanelPage):
                 with (
                     self.subTest(model=model, harness=harness),
                     mock.patch.object(
-                        annotations, "provider_enabled", lambda name: name == "claude"
+                        annotation_store, "provider_enabled", lambda name: name == "claude"
                     ),
                 ):
                     routed = reading_route.resolve_all(
