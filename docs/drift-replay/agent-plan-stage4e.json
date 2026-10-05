@@ -1,0 +1,19 @@
+{
+  "accepted_plan": false,
+  "cases": 1,
+  "cut_id": "d9bf4da2f6a6d278",
+  "later_person_messages": 6,
+  "later_person_redirect_minutes_after_message": 3.276,
+  "later_person_redirect_minutes_after_record": 2.023,
+  "listed_agent_messages": 12,
+  "markers": "agents",
+  "model_calls": 0,
+  "no_model_clearance_or_plan_detector_claimed": true,
+  "person_directed_detour": true,
+  "plan_before_cut_bytes": 2055393,
+  "plan_in_listing": false,
+  "plan_message_before_cut_minutes": 243.539,
+  "plan_record_before_cut_minutes": 242.285,
+  "tail_bytes": 400000,
+  "v": 1
+}

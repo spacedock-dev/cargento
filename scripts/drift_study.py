@@ -20,6 +20,7 @@ ACTIVE_GAP_SECONDS = 1800.0
 PROOF_KINDS = ("person-correction", "failed-check", "retraction", "sibling-result")
 GAP_CLASSES = ("defect", "status", "scope-or-plan", "communication", "none", "unclear")
 INJECTED_PREFIXES = (
+    "Base directory for this skill:",
     "# AGENTS.md",
     "<environment_context>",
     "<skill_instructions>",
@@ -327,12 +328,25 @@ def score_in_drift(body: Mapping[str, Any], live: Mapping[str, Any]) -> dict[str
                 relevant=relevance[str(episode["sid"])],
             )
         )
+        public_catch = (
+            None
+            if caught is None
+            else {
+                "case": next(
+                    case["id"]
+                    for case in body["cases"]
+                    if case["sid"] == episode["sid"] and case["cut"] == caught["cut"]
+                ),
+                "stops_before_pushback": caught["stops_before_pushback"],
+                "active_minutes": caught["active_minutes"],
+            }
+        )
         episodes.append(
             {
                 "id": episode["id"],
                 "stops": len(episode["window_stops"]),
                 "baseline_measured": not missing,
-                "early_catch": caught,
+                "early_catch": public_catch,
             }
         )
     return {

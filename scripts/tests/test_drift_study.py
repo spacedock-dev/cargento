@@ -46,6 +46,16 @@ class EarlyWarningNeedsANewRelevantCause(unittest.TestCase):
             )
         )
 
+    def test_a_failure_between_baseline_and_episode_is_still_too_early(self) -> None:
+        self.assertIsNone(
+            study.early_catch(
+                self.episode(),
+                {200: {"level": "high", "cause_at": 75}},
+                baseline=50,
+                relevant={200: [75]},
+            )
+        )
+
     def test_a_new_relevant_failure_counts_only_when_the_level_is_flagged(self) -> None:
         rows: dict[float, dict[str, Any]] = {
             200: {"level": "not_enough", "cause_at": 150},
@@ -128,12 +138,13 @@ class CodexStudyReadsOnlyActualParentMessages(unittest.TestCase):
                 "# AGENTS.md instructions for placeholder",
                 "<environment_context>meta",
                 "<skill_instructions>meta",
+                "Base directory for this skill: /placeholder",
                 "Build the placeholder importer",
                 "Why did you omit the requested output?",
             ],
         )
         self.assertEqual(2, len(got["messages"]))
-        self.assertEqual(3, got["injected_excluded"])
+        self.assertEqual(4, got["injected_excluded"])
 
     def test_policy_is_not_widened_by_loading_study_messages(self) -> None:
         got = self.load({"source": "vscode", "thread_source": "user"}, ["Build the importer"])
@@ -228,6 +239,48 @@ class AStudyClosesMarksBeforeProducingOutputs(unittest.TestCase):
 
 
 class StudyOutputsUseTheirOwnFrozenCohort(unittest.TestCase):
+    def test_a_positive_early_catch_exports_the_salted_cut_not_its_timestamp(self) -> None:
+        body = {
+            "cases": [
+                {
+                    "id": "a" * 16,
+                    "sid": "private",
+                    "cut": 50,
+                    "session_key": "b" * 16,
+                    "roles": ["outside-span"],
+                },
+                {
+                    "id": "c" * 16,
+                    "sid": "private",
+                    "cut": 200,
+                    "session_key": "b" * 16,
+                    "roles": ["in-drift"],
+                },
+            ],
+            "marks": {"c" * 16: {"gap": "yes", "class": "defect", "relevant_causes": [150]}},
+            "episodes": [
+                {
+                    "id": "d" * 16,
+                    "sid": "private",
+                    "start": 100,
+                    "push": 300,
+                    "before": 50,
+                    "window_stops": [200],
+                    "active_events": [100, 200, 300],
+                }
+            ],
+        }
+        live = {
+            "a" * 16: {"arms": {"realistic": {"level": "low", "cause_at": None}}},
+            "c" * 16: {"arms": {"realistic": {"level": "high", "cause_at": 150}}},
+        }
+        got = study.score_in_drift(body, live)
+        self.assertEqual(
+            {"case": "c" * 16, "stops_before_pushback": 0, "active_minutes": 100 / 60},
+            got["episodes"][0]["early_catch"],
+        )
+        self.assertNotIn("cut", got["episodes"][0]["early_catch"])
+
     def test_live_routes_only_the_committed_study_and_refuses_counterfactuals(self) -> None:
         with mock.patch.object(study, "load_study", side_effect=ValueError("not committed")):
             self.assertEqual(

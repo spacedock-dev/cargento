@@ -1,0 +1,11 @@
+{
+  "annotation_digest": "44271c1c5e559fc17f3c2842653cfb52464137ee97ec62b610567d46eb063621",
+  "cases": 1,
+  "id": "236b26c8996222b4",
+  "injected_excluded": 2,
+  "kind": "codex-annotation",
+  "markers": "agents",
+  "messages": 356,
+  "qualifies_analyze": false,
+  "v": 1
+}
