@@ -5899,7 +5899,8 @@ async function nextCockpitKeepIntent(session, model){
       headers: {"Content-Type": "application/json"},
       body: JSON.stringify({harness: session.harness, sid: session.sid, provider,
         press: true, observer_model: 1, ...adoption, settle_through: through,
-        expected_revision: expected})}, press.signal);
+        expected_revision: expected,
+        ...(provider === "claude" ? {model:String(route.model || "")} : {})})}, press.signal);
     const answer = response && typeof response.json === "function"
       ? await response.json().catch(() => null) : null;
     if(!answer) throw new Error("not confirmed");
@@ -6673,6 +6674,7 @@ async function nextCockpitAskForReading(session, model, allow = false){
       headers: {"Content-Type": "application/json"},
       body: JSON.stringify({harness: session.harness, sid: session.sid, provider,
         press: true, observer_model: 1, ...adoption, expected_revision: expected,
+        ...(provider === "claude" ? {model:String(route.model || "")} : {}),
         ...(allow ? {allow:true, words_destination:wordsTo,
           ...(destination ? {tool_output:destination} : {})} : {})}),
     }, press.signal);
@@ -9264,7 +9266,7 @@ function nextDirectionSelected(session, pending){
 function nextDirectionSelect(session, pending, numbers){
   if(pending.length < 2) return "";
   const chosen = nextDirectionSelected(session, pending);
-  return '<label>Direction <select data-next-direction-select ' +
+  return '<label class="next-direction-select">Direction <select data-next-direction-select ' +
     `data-next-focus="direction-pick:${esc(sessKey(session))}">` +
     pending.map(entry => `<option value="${esc(entry.id)}"${entry === chosen ? " selected" : ""}>` +
       `${esc(`${numbers.has(entry.id) ? `#${numbers.get(entry.id)}` : nextSessionClock(entry.at)} · ${entry.summary || "Your direction"}`)}</option>`).join("") +
@@ -9669,13 +9671,14 @@ async function nextAdoptPrompt(session, source, signal = null, minted = null){
       return false;
     }
     if(!response.ok || !answer.persisted) throw new Error("adoption not saved");
-    /* The handler rereads after the store lock, so its current revision may belong to a
-       later save. A guarded stored adoption mints exactly n+1; an unchanged one keeps n.
-       Only that matching answer may base the chained lines write (DRC-4784). */
-    const ownRevision = answer.outcome === "stored" ? expected + 1
-      : answer.outcome === "unchanged" ? expected : null;
-    if(minted) minted.revision = ownRevision > 0 && answer.revision === ownRevision
-      ? ownRevision : 0;
+    /* The store captures this receipt under its lock. A discarded session can mint
+       above n+1, while the handler's current revision may belong to a later writer.
+       An unchanged goal only confirms the frozen checklist baseline, never a newer one. */
+    const ownRevision = answer.saved_revision;
+    const ownsBaseline = answer.outcome === "stored" ||
+      (answer.outcome === "unchanged" && ownRevision === expected);
+    if(minted) minted.revision = Number.isSafeInteger(ownRevision) && ownRevision > 0 &&
+      ownsBaseline && answer.revision === ownRevision ? ownRevision : 0;
     /* Only what this press adopted goes, and only while it is still what the box holds: the
        reply can arrive after the reader typed other words or picked another prompt, and the
        adoption's words are then the saved goal beneath a newer edit that is still theirs

@@ -52,7 +52,7 @@ LANDS = (
     " annotation_goal_source_at: body.expected_prompt_at, annotation_revision:body.expected_revision + 1,"
     " annotation_revision_count:body.expected_revision + 1, annotation_at:105});"
     ' return {status:200, body:{ok:true, persisted:true, outcome:"stored", revision:body.expected_revision + 1,'
-    " revision_count:body.expected_revision + 1}}; };\n"
+    " revision_count:body.expected_revision + 1, saved_revision:body.adopt ? body.expected_revision + 1 : null}}; };\n"
 )
 NOT_ON_DISK = (
     '__reply["/api/annotate"] = () => ({status:200, body:{ok:true, persisted:false,'
@@ -66,7 +66,7 @@ CONCURRENT = (
     "    Object.assign(__s, {annotation_goal: body.expected_prompt, annotation_goal_why:'',\n"
     "      annotation_goal_source: body.adopt, annotation_goal_source_at: body.expected_prompt_at,\n"
     "      annotation_at:105});\n"
-    '    const answer = {ok:true, persisted:true, outcome:"stored", revision:1, revision_count:1};\n'
+    '    const answer = {ok:true, persisted:true, outcome:"stored", revision:1, revision_count:1, saved_revision:1};\n'
     "    Object.assign(__s, {annotation_revision:2, annotation_revision_count:2});\n"
     "    return {status:200, body:answer};\n"
     "  }\n"
@@ -280,6 +280,25 @@ class ALateAdoptionResponseTest(_DraftPage):
         out = self.late(first=PICK_LATEST + PRESSED, reply=reread)
         self.assertEqual(1, len(out["posts"]), "no lines write may name somebody else's revision")
         self.assertEqual(2, out["revision"])
+        self.assertEqual(["Pressed line"], out["drafts"][LINES_KEY])
+        self.assertIn("Not saved. The server refused the write", out["html"])
+
+    def test_discarded_rebirth_uses_the_actual_locked_revision(self) -> None:
+        reborn = LANDS.replace("body.expected_revision + 1", "4")
+        out = self.late(first=PICK_LATEST + PRESSED, reply=reborn)
+        self.assertEqual(2, len(out["posts"]))
+        self.assertEqual(4, out["posts"][1]["expected_revision"])
+        self.assertNotIn(LINES_KEY, out["drafts"])
+
+    def test_unchanged_goal_cannot_upgrade_the_frozen_checklist_revision(self) -> None:
+        upgraded = (
+            '__reply["/api/annotate"] = body => { Object.assign(__s, {annotation_revision:2,'
+            ' annotation_goal:body.expected_prompt, annotation_goal_why:""});'
+            ' return {status:200, body:{ok:true, persisted:true, outcome:"unchanged",'
+            ' revision:2, saved_revision:2}}; };\n'
+        )
+        out = self.late(first=PICK_LATEST + PRESSED, reply=upgraded)
+        self.assertEqual(1, len(out["posts"]))
         self.assertEqual(["Pressed line"], out["drafts"][LINES_KEY])
         self.assertIn("Not saved. The server refused the write", out["html"])
 

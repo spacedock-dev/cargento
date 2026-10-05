@@ -18,6 +18,20 @@ from .visible_text import visible_text
 
 @unittest.skipUnless(shutil.which("node"), "node not available")
 class ThePageDisclosesItsSelectedClaudeModel(panel.PanelPage):
+    def test_an_allow_posts_the_claude_selection_the_card_disclosed(self) -> None:
+        routed = panel.routes(installed=("claude",), enabled=("claude",))
+        out = self.page(
+            "claude",
+            flow.CONSENT_NEEDED,
+            routed=routed,
+            after=flow.FIRST_PRESS
+            + "await nextCockpitAskForReading(__dashboard.sessions[0], null, true);\n"
+            + "await __settle();\n"
+            + '__els.app.innerHTML = `<i data-sent-model="${posts[0]?.model}"></i>` '
+            + "+ __els.app.innerHTML;\n",
+        )
+        self.assertIn('<i data-sent-model="claude-sonnet-5-5"></i>', out)
+
     def test_own_and_fallback_routes_name_the_selection_before_allow(self) -> None:
         for model in ("claude-sonnet-5-5", "claude-sonnet-5", "claude-opus-6"):
             for harness in ("claude", "codex"):
