@@ -12,9 +12,11 @@ python3 scripts/ordinary_turn_driver.py --revision <full-final-revision> \
   --manifest-out <new-private-manifest-path>
 ```
 
-The destination must not exist. The output has mode 0600 and four blocked run
+The destination must not exist. The output has mode 0600 on POSIX and four blocked run
 records. It binds the proposed revision, expected consent and model-call
 behavior, and the artifacts still needed. Preparation is not capture readiness.
+Python's Windows mode bits do not certify a private ACL; no Windows native
+execution is admitted by this helper.
 The root operator fills the private bindings and reviews unreachable surfaces;
 the helper does not invent a session, a network export, or a Copy readback.
 
@@ -83,8 +85,8 @@ neither the exception nor a visible completion proves a durable hold or completi
 The concrete POSIX subprocess guard passes the exact argv, workspace,
 environment and prompt without a shell. It bounds wall time at 900 seconds and
 aggregate captured stdout plus stderr at 4 MiB. It drains both streams, closes
-stdin, refuses nonzero exit, and cleans up its owned group on interruption or a
-limit. Group cleanup is corroboration only: reaped numeric group IDs are not
+stdin, refuses nonzero exit, and attempts owned group cleanup on interruption or a
+limit while its leader remains unreaped. Group cleanup is corroboration only: reaped numeric group IDs are not
 signaled again, and the external observer must prove exact remaining-descendant
 cleanup. Windows native execution refuses; no Windows readiness is claimed.
 

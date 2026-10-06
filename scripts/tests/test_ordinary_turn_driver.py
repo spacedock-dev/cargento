@@ -336,7 +336,8 @@ class OrdinaryControls(ControlFixture):
         self.assertEqual(["admit-before-launch", "launch", "cleanup", "close"], self.events)
         self.assertEqual("synthetic-joined", result["status"])
         self.assertFalse(result["real_turn_proof"])
-        self.assertEqual(0o600, self.budget.stat().st_mode & 0o777)
+        if os.name == "posix":
+            self.assertEqual(0o600, self.budget.stat().st_mode & 0o777)
 
     def test_failed_launch_never_refunds_and_always_cleans_and_closes(self) -> None:
         self.launch_error = RuntimeError("synthetic native error")
@@ -605,7 +606,8 @@ class OrdinaryControls(ControlFixture):
                 0, driver.main(["--revision", "a" * 40, "--manifest-out", str(destination)])
             )
         self.assertFalse(json.loads(destination.read_text())["real_readiness"])
-        self.assertEqual(0o600, destination.stat().st_mode & 0o777)
+        if os.name == "posix":
+            self.assertEqual(0o600, destination.stat().st_mode & 0o777)
         self.assertEqual(before, self.budget.read_bytes())
 
     def test_preparation_cannot_overwrite_an_existing_budget_or_receipt(self) -> None:
@@ -665,6 +667,45 @@ class StubCompleteObserver:
 @unittest.skipUnless(os.name == "posix", "native guard is POSIX-only; no Windows readiness claimed")
 class StubNativeProcess(ControlFixture):
     """Only local Python fixture processes; no real native provider is invoked."""
+
+    def test_an_exited_parent_is_reaped_before_its_group_can_be_signalled(self) -> None:
+        process = driver.NativeProcess(StubGate())
+        child = mock.Mock(spec=subprocess.Popen)
+        child.pid = 12345
+        child.returncode = None
+        child.poll.return_value = 0
+        process.process = child
+        with mock.patch.object(os, "killpg") as signal_group:
+            self.assertTrue(process.cleanup())
+        child.poll.assert_called_once_with()
+        signal_group.assert_not_called()
+        child.wait.assert_not_called()
+
+    def test_exit_racing_a_group_signal_error_is_reaped_without_another_signal(self) -> None:
+        process = driver.NativeProcess(StubGate())
+        child = mock.Mock(spec=subprocess.Popen)
+        child.pid = 12345
+        child.returncode = None
+        child.poll.side_effect = (None, 0)
+        process.process = child
+        with mock.patch.object(os, "killpg", side_effect=PermissionError) as signal_group:
+            self.assertTrue(process.cleanup())
+            self.assertTrue(process.cleanup())
+        self.assertEqual(2, child.poll.call_count)
+        signal_group.assert_called_once()
+        child.wait.assert_not_called()
+
+    def test_a_live_parent_with_a_group_signal_error_is_not_reported_cleaned(self) -> None:
+        process = driver.NativeProcess(StubGate())
+        child = mock.Mock(spec=subprocess.Popen)
+        child.pid = 12345
+        child.returncode = None
+        child.poll.return_value = None
+        process.process = child
+        with mock.patch.object(os, "killpg", side_effect=PermissionError):
+            self.assertFalse(process.cleanup())
+        self.assertFalse(process.cleaned)
+        child.wait.assert_not_called()
 
     def stub(self, body: str) -> driver.Plan:
         script = self.root / "stub_cli.py"

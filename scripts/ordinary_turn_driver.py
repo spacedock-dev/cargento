@@ -404,7 +404,7 @@ class NativeProcess:
             return True
         # A reaped parent's numeric PGID could be reused. Do not signal it;
         # the independent observer owns exact remaining-descendant cleanup.
-        if process.returncode is not None:
+        if process.poll() is not None:
             self.cleaned = True
             return True
         # This owned PGID cannot prove escapes/PID reuse. The external scope
@@ -414,7 +414,11 @@ class NativeProcess:
         except ProcessLookupError:
             pass
         except OSError:
-            return False
+            # macOS may reject a signal to a group whose last member exited
+            # before it was reaped. Reap only this owned child; a live child
+            # still means cleanup failed, and no group is signalled again here.
+            self.cleaned = process.poll() is not None
+            return self.cleaned
         try:
             process.wait(timeout=2)
         except subprocess.TimeoutExpired:
