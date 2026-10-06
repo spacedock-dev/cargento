@@ -14,12 +14,14 @@ import json
 import re
 import shutil
 import unittest
+from html import unescape
 
 from cargento_runtime import levels, reading
 
 from . import test_next_analysis_result as result_tests
 from . import test_next_cockpit as cockpit_tests
 from . import test_next_drift_panel as panel
+from . import test_next_intent_draft as draft
 from .next_harness import NEXT_STYLES, storage_prelude
 from .test_next_drift_panel import FIXTURE, JOB, PanelPage, drift_of, routes
 from .visible_text import visible_text
@@ -48,7 +50,7 @@ def eligibility(token: str | None, *, until: float | None = None) -> str:
     return f"__dashboard.sessions[0].reading_eligibility = {json.dumps(value)};\n"
 
 
-CLAUDE_UNRECORDED = "This session's last turn isn't recorded as finished."
+CLAUDE_UNRECORDED = "Last turn isn't recorded as finished. Run another turn to open Analyze."
 WHILE_IT_RUNS = "Analyze opens while this session runs."
 
 
@@ -85,6 +87,37 @@ class AnInertPressSaysWhyBesideTheButtonTest(PanelPage):
         self.assertIn(sentence, drift)
         self.assertIn("Why it can't read", text)
         self.assertNotIn(sentence, visible_text(drift))
+
+    def test_a_saved_goal_with_an_unrecorded_claude_turn_names_one_next_step_and_opens_while_working(
+        self,
+    ) -> None:
+        idle = {"harness": "claude", "state": "idle", "acquisition": "event"}
+        working = {**idle, "state": "working", "active": True}
+        for row in (idle, working):
+            eligibility = reading.press_eligibility(
+                row, [{"at": 100, "goal": "saved goal"}], now=200, settle_sec=8
+            )
+            with self.subTest(state=row["state"]):
+                html = self.page(
+                    setup=f"Object.assign(__dashboard.sessions[0], {json.dumps(row)});\n"
+                    f"__dashboard.sessions[0].reading_eligibility = {json.dumps(eligibility)};\n"
+                )
+                drift = drift_of(html)
+                button = ASK.search(drift)
+                assert button is not None
+                if row["state"] == "idle":
+                    self.assertIn('aria-disabled="true"', button.group(0))
+                    self.assertTrue(
+                        after_button(drift).startswith(
+                            "Last turn isn't recorded as finished. Run another turn to open Analyze."
+                        )
+                    )
+                    self.assertIn(eligibility["sentence"], unescape(drift))
+                    self.assertNotIn("once a turn finishes", visible_text(drift))
+                else:
+                    self.assertTrue(eligibility["ok"])
+                    self.assertNotIn('aria-disabled="true"', button.group(0))
+                    self.assertNotIn("Run another turn to open Analyze", visible_text(drift))
 
     def test_pressing_an_inert_analyze_posts_nothing_and_draws_no_box(self) -> None:
         html = self.page(
@@ -178,6 +211,40 @@ class AnInertPressSaysWhyBesideTheButtonTest(PanelPage):
         assert button is not None
         self.assertNotIn("aria-disabled", button.group(0))
         self.assertIn("next-action--primary", button.group(0))
+
+
+@unittest.skipUnless(shutil.which("node"), "node not available")
+class AnalysisExplainsTheWordsAlreadySaved(PanelPage):
+    def about(self, html: str) -> str:
+        block = re.search(r"<details[^>]*next-session-drift-about[^>]*>([\s\S]*?)</details>", html)
+        assert block is not None
+        return visible_text(block.group(1))
+
+    def test_analysis_uses_the_saved_goal_instead_of_telling_the_reader_to_choose_one(self) -> None:
+        html = self.page(setup=eligibility(reading.WITHHELD_IDLE_UNKNOWN))
+        self.assertIn("Saved", visible_text(html))
+        self.assertIn(
+            "Cargento lists where this session departed from your saved goal.", self.about(html)
+        )
+        self.assertNotIn("Choose a goal or use your prompt", self.about(html))
+        self.assertIn(
+            "It never writes into the session, so steering stays yours.", self.about(html)
+        )
+
+    def test_an_unsaved_prompt_draft_is_not_described_as_a_saved_goal(self) -> None:
+        html = self.page(setup=draft.DRAFT + eligibility(None))
+        self.assertIn("from your prompt", visible_text(html))
+        self.assertNotIn("Saved", visible_text(html))
+        self.assertNotIn("your saved goal", html)
+        self.assertNotIn("What analysis does", html)
+
+    def test_a_legacy_row_without_annotation_fields_does_not_claim_a_saved_goal(self) -> None:
+        html = self.page(
+            setup="for(const key of Object.keys(__dashboard.sessions[0])) { if(key.startsWith('annotation_')) delete __dashboard.sessions[0][key]; }\n"
+            + eligibility(None)
+        )
+        self.assertNotIn("your saved goal", self.about(html))
+        self.assertIn("Choose a goal or use your prompt", self.about(html))
 
 
 @unittest.skipUnless(shutil.which("node"), "node not available")

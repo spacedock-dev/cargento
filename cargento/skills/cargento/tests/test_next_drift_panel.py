@@ -484,8 +484,8 @@ class ThePanelKeepsAnalyzeOnTheFirstScreenTest(PanelPage):
 
     def test_saved_intent_introduction_does_not_push_the_action_below_the_fold(self) -> None:
         introduction = (
-            "Choose a goal or use your prompt, then analyze drift: Cargento lists where this "
-            "session departed from it. It never writes into the session, so steering stays yours."
+            "When you analyze drift, Cargento lists where this session departed from your saved goal. "
+            "It never writes into the session, so steering stays yours."
         )
         for html, action in (
             (self.page(setup=THREE_LINES), "reading-ask"),

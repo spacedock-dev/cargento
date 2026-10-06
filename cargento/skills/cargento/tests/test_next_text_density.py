@@ -3,8 +3,10 @@
 The owner's walk: "so much text it is unclear where to look". The plan's critic gave that a
 number, measured with the shared visibility helper: an idle-drafted aside (a Claude Code session,
 consent given, the goal drafted from the first prompt) shows no more than about 90 words outside
-the field values, and an aside under a stored reading no more than about 175, including the
-unknown-coverage clause approved on 2026-10-04. Measured partial coverage adds its needed limits.
+the field values, and the unchanged nondeparture examples no more than about 175, including the
+unknown-coverage clause approved on 2026-10-04. The owner's 2026-10-06 amendment permits 215
+for the canonical departure and 295 for its partial-coverage variant, keeping the assessment
+and every recorded support time visible. These limits apply to those examples only.
 Every sentence
 moved to meet it stays in the DOM behind a worded `<details>`
 ([NUI-19](docs/design-next-ui.md#nui-19-a-caveat-has-three-tiers)), so each test below also
@@ -62,6 +64,11 @@ __dashboard.sessions[0].departures = [{
 # reaches the plan's ceiling.
 IDLE_BUDGET = 85
 STORED_BUDGET = 175
+# The owner's 2026-10-06 request keeps the assessment and recorded times in view.
+# These ceilings cover the two canonical departure fixtures below only: they are
+# neither runtime limits nor a ceiling on valid readings with more citations.
+CANONICAL_DEPARTURE_BUDGET = 215
+CANONICAL_PARTIAL_DEPARTURE_BUDGET = 295
 
 # What the popover says under the server's list, which already says what a reading is (ui4 V2).
 SCOPE = "What it reads is the evidence on this page"
@@ -70,7 +77,7 @@ LATER_NONE = (
     "this session."
 )
 STEER = "Nothing here decides whether it changes what you are asking for."
-LEDE = "Choose a goal or use your prompt, then analyze drift"
+LEDE = "Cargento lists where this session departed from your saved goal"
 NOBODY_WATCHES = "Nothing watches for a departure on its own."
 
 
@@ -104,7 +111,7 @@ class ALeveledReadingHoldsToTheStoredBudgetTest(_ResultPage):
     headline, the checklist and where the work went. STORED above draws none of those, so the
     budget is measured here as well (DRC-4758 fix round)."""
 
-    def test_each_leveled_state_shows_no_more_than_about_one_hundred_seventy(self) -> None:
+    def test_canonical_departure_and_unchanged_nondeparture_have_their_scoped_budgets(self) -> None:
         for name, value, level, facts in (
             ("mixed, high", MIXED, levels.HIGH, FACTS),
             ("all consistent, none or low", ALL_CONSISTENT, levels.NONE_OR_LOW, NO_FAILURE),
@@ -116,7 +123,8 @@ class ALeveledReadingHoldsToTheStoredBudgetTest(_ResultPage):
                 aside = aside_of(html)
                 count = words(aside)
                 print(f"\nstored reading, {name}: {count} visible words outside field values")
-                self.assertLessEqual(count, STORED_BUDGET, visible_text(outside_fields(aside)))
+                ceiling = CANONICAL_DEPARTURE_BUDGET if name == "mixed, high" else STORED_BUDGET
+                self.assertLessEqual(count, ceiling, visible_text(outside_fields(aside)))
 
     def test_a_partial_read_keeps_its_needed_coverage_in_view(self) -> None:
         value = {
@@ -134,7 +142,7 @@ class ALeveledReadingHoldsToTheStoredBudgetTest(_ResultPage):
         text = visible_text(outside_fields(aside))
         count = words(aside)
         print(f"\npartial reading: {count} visible words outside field values")
-        self.assertLessEqual(count, 270, text)
+        self.assertLessEqual(count, CANONICAL_PARTIAL_DEPARTURE_BUDGET, text)
         self.assertIn("Message tail starts", text)
         self.assertIn("saved excerpt", text)
         self.assertEqual(3, text.count("may be in the part not read"))

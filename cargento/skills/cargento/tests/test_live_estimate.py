@@ -694,6 +694,39 @@ class TheRouteTest(_Replay):
         )
         self.assertEqual(annotation_store.OUTCOME_STORED, outcome)
 
+    def test_failed_check_citations_reach_only_the_focused_route_and_resolve_to_native_facts(
+        self,
+    ) -> None:
+        self.save_goal()
+        self.session.bash("pytest tests/parser", "1 failed", is_error=True)
+        self.session.save(self.path)
+        with self.serving() as port:
+            focused = self.get(port, f"/api/project-context?project=billing&session=claude:{SHORT}")
+            project = self.get(port, "/api/project-context?project=billing")
+            board = self.get(port, "/api/data")
+        found = focused["sources"]["work"]["live_levels"][0]
+        failed = [f for f in focused["semantic"]["facts"] if f.get("result") == "failed"]
+        self.assertIn("cites", found)
+        self.assertEqual([f["fact_id"] for f in failed], found["cites"])
+        self.assertNotEqual(failed[0]["at"], failed[0]["result_at"])
+        self.assertNotIn("live_levels", project["sources"]["work"])
+        self.assertNotIn("live_levels", json.dumps(board))
+
+    def test_all_computed_signal_citations_survive_not_just_the_rise_entry(self) -> None:
+        self.save_goal()
+        self.session.write(self.session.cwd + "/src/synthetic.py")
+        self.session.bash("pytest tests/parser", "1 failed", is_error=True)
+        self.session.save(self.path)
+        with self.serving() as port:
+            focused = self.get(port, f"/api/project-context?project=billing&session=claude:{SHORT}")
+        found = focused["sources"]["work"]["live_levels"][0]
+        facts = focused["semantic"]["facts"]
+        # pass-then-write cites the preceding passing check; the later write is counted
+        # by the replay, rather than added to that signal's existing citation contract.
+        relevant = [f for f in facts if f.get("subject") == "check"]
+        self.assertEqual({f["fact_id"] for f in relevant}, set(found["cites"]))
+        self.assertEqual(2, len(found["cites"]))
+
     def test_the_focused_context_publishes_the_live_level_and_nothing_else_does(self) -> None:
         self.save_goal()
         self.session.bash("pytest", "1 failed", is_error=True)
@@ -736,6 +769,7 @@ class TheRouteTest(_Replay):
         self.assertEqual(1, len(failures))
         self.assertEqual(levels.HIGH, live["level"])
         self.assertEqual(failures[0]["fact_id"], live["rose_at"])
+        self.assertIn(failures[0]["fact_id"], live["cites"])
 
     def test_the_entry_it_rose_at_is_one_the_page_holds(self) -> None:
         self.save_goal()
