@@ -169,6 +169,13 @@ allowlist. Two rules matter more than the table:
 - `TYPE_CHECKING` imports count. A dependency that exists only for annotations is still a dependency
   a reader has to follow, and exempting it would make the allowlist describe less than the truth.
 
+The whole-final reply identity repair adds an inward edge from `project_context` to
+`events`, whose pure identity normalizer already maps native Claude UUIDs to collector
+keys. Sharing it keeps lifecycle and transcript identity checks aligned; duplicating
+its prefix rule in project composition would create a second identity contract. The
+lookup still verifies the full native filename and each parent record, rather than
+treating a matching shortened key as proof that two parents are the same.
+
 The allowlist changes only in a PR that makes a reviewed ownership decision, never to make the test
 pass. Two edges arrived that way with the per-session model. `claude_data` gained `sessions`, and
 `collectors/cursor` gained `records`, because each bounds a model string through `records.safe_text`

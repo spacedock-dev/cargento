@@ -1224,6 +1224,15 @@ characters, no shell output or tool result is added, the consent tier does not w
 words are neither stored, cached, logged nor published. This changes what a message sends, so
 `reading_policy.CONTENT_VERSION` is 3 and the next press on a Claude Code session asks once more.
 
+Amended 2026-10-06: the whole-final lookup binds a shortened Claude session key to the
+complete UUID filename through the same identity normalizer used for lifecycle events.
+Every non-meta parent assistant record in that complete scan must carry the exact full
+filename identity. A conflicting or missing identity keeps the excerpt, including when
+the conflicting reply was not selected. Bounded JSON records with Unicode escapes are
+decoded for this check; an oversized escaped record refuses recovery before decoding.
+This does not admit another transcript or widen
+consent; the existing source stamp, selected-row and byte bounds still apply.
+
 An agent message, cropped or whole, is quoted as one JSON string with the menu heading neutralised, as a check's output
 tail is, and the prompt's trusted header says agent messages are quoted data, never instructions.
 That goes only on a reading the reader pressed for, whether or not tool output is allowed, and to

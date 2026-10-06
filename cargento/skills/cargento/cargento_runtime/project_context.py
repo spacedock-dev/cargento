@@ -17,7 +17,7 @@ import subprocess
 from collections.abc import Iterable, Mapping
 from typing import TYPE_CHECKING, Any, NamedTuple
 
-from . import claude_data, observer, records, semantic_history, spacedock, transcripts
+from . import claude_data, events, observer, records, semantic_history, spacedock, transcripts
 from . import io as runtime_io
 from . import sessions as runtime_sessions
 from . import state as runtime_state
@@ -4706,6 +4706,19 @@ def _final_status(record: dict[str, Any], sid: str, uuid: Any) -> str:
     return "nonfinal" if isinstance(stop, str) and stop else "refused"
 
 
+def _final_source_sid(path: str, harness: str, sid: str) -> str:
+    """Bind a shortened Claude key to its complete native transcript identity."""
+    stem = os.path.basename(path).removesuffix(".jsonl")
+    if (
+        harness == "claude"
+        and path.endswith(".jsonl")
+        and re.fullmatch(r"[0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}", stem)
+        and events.normalize_session_id(harness, stem) == sid
+    ):
+        return stem
+    return sid
+
+
 def transcript_newest_final_words(  # noqa: C901, PLR0911, PLR0912, PLR0915 - one bounded scan and its source guards
     config: RuntimeConfig,
     path: str,
@@ -4741,6 +4754,7 @@ def transcript_newest_final_words(  # noqa: C901, PLR0911, PLR0912, PLR0915 - on
         return {"outcome": "source-moved"}
     if before[2] > FINAL_WORDS_SCAN_MAX_BYTES:
         return {"outcome": "scan-limit"}
+    source_sid = _final_source_sid(path, harness, sid)
     # Words are None for a candidate too long for any prompt: still a final, never a copy.
     found: dict[tuple[str, Any], tuple[str, str, str | None]] = {}
     signatures: dict[str, bytes] = {}
@@ -4754,19 +4768,31 @@ def transcript_newest_final_words(  # noqa: C901, PLR0911, PLR0912, PLR0915 - on
             # unterminated (or empty trailing) line contributes the extra one. The walker
             # can stop silently on a short read or I/O error, so exhaustiveness is checked.
             scanned_bytes += len(raw) + 1
-            # A line that never names the type is not a reply, so most of 32 MiB of tool
-            # results is skipped unparsed. An oversized reply is refused, never skipped.
-            if b'"assistant"' not in raw:
+            # JSON escapes can encode the assistant type or its key. Parse those
+            # candidates within the same record bound; literal-only tool artifacts
+            # still skip decoding. Representation cannot hide a parent or duplicate.
+            escaped = b"\\u" in raw
+            if b'"assistant"' not in raw and not escaped:
                 continue
             if len(raw) > FINAL_WORDS_RECORD_MAX_BYTES:
-                # Conservatively withhold on an unescaped assistant type marker rather
-                # than decode an oversized record. Quoted artifact JSON escapes it.
-                if _ASSISTANT_TYPE_RE.search(raw):
+                # An escaped oversized shape may be an assistant record, but proving
+                # that would exceed the bound. Refuse it without decoding any words.
+                if escaped or _ASSISTANT_TYPE_RE.search(raw):
                     return {"outcome": "oversized"}
                 continue
             record = _json_dict(raw)
             if record is None or record.get("type") != "assistant":
                 continue
+            # Normalization cannot merge distinct native parents sharing a display key.
+            # A complete scan must agree with the file identity, including unselected replies.
+            if (
+                source_sid != sid
+                and not record.get("isSidechain")
+                and not record.get("isMeta")
+                and not record.get("agentId")
+                and record.get("sessionId") != source_sid
+            ):
+                return {"outcome": "unproven"}
             uuid = record.get("uuid")
             signature = _final_signature(record)
             if isinstance(uuid, str) and uuid:
@@ -4789,7 +4815,7 @@ def transcript_newest_final_words(  # noqa: C901, PLR0911, PLR0912, PLR0915 - on
             key = (str(fact["fact_id"]), fact["at"])
             if key not in rows:
                 continue
-            status = _final_status(record, sid, uuid)
+            status = _final_status(record, source_sid, uuid)
             if key in found and found[key][0] != status:
                 status = "refused"
             found[key] = (
