@@ -90,7 +90,7 @@ class ReviewedExportIntakeTest(unittest.TestCase):
         }
 
     def write_source(self) -> None:
-        self.path.write_text("".join(json.dumps(row) + "\n" for row in self.rows))
+        self.path.write_bytes("".join(json.dumps(row) + "\n" for row in self.rows).encode("utf-8"))
         self.receipt: dict[str, Any] = {
             "v": 1,
             "review": {"approved": True, "by": "synthetic-reviewer", "at": self.start},
@@ -107,6 +107,22 @@ class ReviewedExportIntakeTest(unittest.TestCase):
     def write_manifest(self) -> None:
         self.manifest.write_text(json.dumps(self.receipt))
         self.digest = hashlib.sha256(self.manifest.read_bytes()).hexdigest()
+
+    def test_fixture_jsonl_has_exact_lf_bytes_even_with_windows_text_translation(self) -> None:
+        actual_write_text = Path.write_text
+
+        def translated(path: Path, text: str, *args: Any, **kwargs: Any) -> int:
+            if path == self.path:
+                path.write_bytes(text.encode().replace(b"\n", b"\r\n"))
+                return len(text)
+            return actual_write_text(path, text, *args, **kwargs)
+
+        with mock.patch.object(Path, "write_text", autospec=True, side_effect=translated):
+            self.write_source()
+        self.assertEqual(
+            "".join(json.dumps(row) + "\n" for row in self.rows).encode(),
+            self.path.read_bytes(),
+        )
 
     def resolver(self) -> marking.ReviewedExports:
         constructor = getattr(marking, "ReviewedExports", None)
@@ -359,7 +375,9 @@ class ReviewedExportIntakeTest(unittest.TestCase):
     def test_bare_cr_between_native_json_records_refuses(self) -> None:
         source = self.path.read_bytes()
         marker = (json.dumps(self.rows[1]) + "\n").encode()
-        self.path.write_bytes(source.replace(marker, marker[:-1] + b"\r", 1))
+        changed = source.replace(marker, marker[:-1] + b"\r", 1)
+        self.assertNotEqual(source, changed)
+        self.path.write_bytes(changed)
         self.receipt["exports"][0]["sha256"] = hashlib.sha256(self.path.read_bytes()).hexdigest()
         self.write_manifest()
         with self.assertRaises(marking.FreezeError):
@@ -381,7 +399,9 @@ class ReviewedExportIntakeTest(unittest.TestCase):
                 line = (json.dumps(self.rows[index]) + "\n").encode()
                 changed = line.replace(b",", b",\r", 1)
                 self.assertEqual(self.rows[index], json.loads(changed))
-                self.path.write_bytes(original.replace(line, changed, 1))
+                mutated = original.replace(line, changed, 1)
+                self.assertNotEqual(original, mutated)
+                self.path.write_bytes(mutated)
                 self.receipt["exports"][0]["sha256"] = hashlib.sha256(
                     self.path.read_bytes()
                 ).hexdigest()
@@ -392,7 +412,11 @@ class ReviewedExportIntakeTest(unittest.TestCase):
     def test_crlf_terminators_and_escaped_json_carriage_return_are_admitted(self) -> None:
         self.rows[0]["message"]["content"][0]["text"] = "Keep\rkeyboard focus."
         self.write_source()
-        self.path.write_bytes(self.path.read_bytes().replace(b"\n", b"\r\n"))
+        original = self.path.read_bytes()
+        self.assertNotIn(b"\r\n", original)
+        changed = original.replace(b"\n", b"\r\n")
+        self.assertNotEqual(original, changed)
+        self.path.write_bytes(changed)
         self.receipt["exports"][0]["sha256"] = hashlib.sha256(self.path.read_bytes()).hexdigest()
         self.write_manifest()
         resolver = self.resolver()
@@ -777,6 +801,7 @@ class ReviewedExportIntakeTest(unittest.TestCase):
         ):
             self.resolver()
 
+    @unittest.skipIf(os.name == "nt", "Windows holds an opened file against atomic replacement")
     def test_actual_source_replacement_during_read_is_refused(self) -> None:
         original_open = os.fdopen
         replaced = False
@@ -806,6 +831,34 @@ class ReviewedExportIntakeTest(unittest.TestCase):
         ):
             self.resolver()
         self.assertTrue(replaced)
+
+    def test_actual_source_replacement_after_close_before_path_stat_is_refused(self) -> None:
+        actual_stat = os.stat
+        before = self.path.stat()
+        replaced = False
+        moved_inode: int | None = None
+
+        def raced(path: Any, *args: Any, **kwargs: Any) -> Any:
+            nonlocal replaced, moved_inode
+            if (
+                str(path) == str(self.path)
+                and kwargs.get("follow_symlinks") is False
+                and not replaced
+            ):
+                replacement = self.root / "replacement-after-close"
+                replacement.write_bytes(self.path.read_bytes())
+                replacement.replace(self.path)
+                replaced = True
+                moved_inode = actual_stat(path).st_ino
+            return actual_stat(path, *args, **kwargs)
+
+        with (
+            mock.patch.object(os, "stat", side_effect=raced),
+            self.assertRaisesRegex(marking.FreezeError, "source-moved"),
+        ):
+            self.resolver()
+        self.assertTrue(replaced)
+        self.assertNotEqual(before.st_ino, moved_inode)
 
     def test_default_vouch_threads_trusted_context_without_relabeling_existing_case(self) -> None:
         resolver = self.resolver()
