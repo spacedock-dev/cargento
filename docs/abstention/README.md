@@ -452,6 +452,16 @@ Machine vouch establishes provenance, not semantic coverage. Missing source evid
 qualification even when allowance remains. No grant or passing result is supplied by this
 conditional implementation, and the earlier failed results remain unchanged.
 
+The owner authorized a fresh 31-attempt continuation after the fourth grant's run failed at
+30 cumulative native charges. The
+[successor security contract](../../SECURITY.md#charge-preserving-qualification-successor-2026-10-06)
+admits a separately bound fifth grant with a 61-call ceiling for its new key, preserving earlier
+28/59 ceilings, every failure and every charge. A fresh shared epoch needs its own source,
+prompt, asked-question, marks, model and acceptance bindings; the stopped run supplies no
+opening-batch acceptance. Its unused 29 attempts are not additional allowance. The three-pass
+ten-case qualification and charged retry rules remain unchanged. This software supplies no
+fifth packet, activation or passing result.
+
 The failed `docs/abstention/claude-results.json` remains fixed. A continuation writes its summary
 only to `docs/abstention/claude-results-continuation.json` and its local results to
 `abstention-claude-continuation-results.json` in the fresh packet home. Under grant k the packet

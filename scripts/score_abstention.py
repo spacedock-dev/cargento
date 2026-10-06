@@ -2175,16 +2175,18 @@ def _scoring_ledger(
     max_calls: int,
 ) -> abstention_ledger.Ledger | None:
     grant = abstention_ledger.continuation() if ledger_path else None
-    closure = (grant or {}).get("closure_allowance")
+    closure = abstention_ledger.closure_allowance(grant)
     campaign = None
     model_binding = ""
     if closure:
         from analyze_campaign import (  # noqa: PLC0415 - optional reviewed closure admission
-            Campaign,
+            active_campaign,
         )
 
         try:
-            campaign = Campaign()
+            campaign = active_campaign()
+            if campaign is None:
+                raise abstention_ledger.LedgerError("the bound campaign authority is absent")  # noqa: TRY301 - report admission refusal
             _runtime()
             from analyze_campaign import (  # noqa: PLC0415 - optional closure source binding
                 runtime_source_digest,
@@ -2867,8 +2869,8 @@ def _argument_refusal(args: argparse.Namespace) -> str:  # noqa: C901, PLR0911 -
             grant = abstention_ledger.continuation()
         except abstention_ledger.LedgerError:
             grant = None
-        if grant and grant["phase"] == "sealed" and grant.get("closure_allowance"):
-            ceiling = abstention_ledger.CLOSURE_CAP
+        if grant:
+            ceiling = abstention_ledger.allowance_cap(grant)
     if not 1 <= args.max_calls <= ceiling:
         return f"--max-calls must be between 1 and {ceiling}, the authorized spend."
     if args.resume and not args.score:

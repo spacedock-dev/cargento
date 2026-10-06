@@ -2,6 +2,8 @@
 
 Only salted slots, request digests and closed statuses reach this account ledger.
 The fixed repository manifest admits 190/31/18 attempts, never 239+31+18.
+A reviewed successor preserves the stopped original two calls and admits a fresh
+31 qualification attempts, with 190 replay and 18 live held: 241 cumulatively.
 Every charge has an immutable receipt; missing state cannot refund its attempts.
 This is an operator evaluation guard, not provider authentication or a token cap.
 """
@@ -18,11 +20,13 @@ import re
 import time
 import uuid
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import abstention_ledger as authority
 
 MANIFEST_PATH = str(Path(__file__).resolve().parents[1] / "docs/drift-replay/closure-campaign.json")
+SUCCESSOR_MANIFEST_PATH = str(Path(MANIFEST_PATH).with_name("closure-campaign-successor.json"))
+SUCCESSOR_HANDOFF_PATH = str(Path(MANIFEST_PATH).with_name("closure-successor-handoff.json"))
 LEDGER_PATH = authority.canonical_path(".cargento", "analyze-closure-spend.json")
 REPLAY_PATH = authority.canonical_path(".cargento", "drift-replay", "spend.json")
 QUALIFICATION_PATH = authority.LEDGER_PATH
@@ -48,6 +52,12 @@ class AwaitingReviewError(authority.LedgerError):
 
 def active_campaign() -> Campaign | None:
     """An existing fixed manifest or account receipt cannot be bypassed by removing one."""
+    if (
+        os.path.lexists(SUCCESSOR_MANIFEST_PATH)
+        or os.path.lexists(SUCCESSOR_HANDOFF_PATH)
+        or (LEDGER_PATH and os.path.lexists(LEDGER_PATH + ".epochs"))
+    ):
+        return SuccessorCampaign()
     if os.path.lexists(MANIFEST_PATH) or (
         LEDGER_PATH
         and (os.path.lexists(LEDGER_PATH) or os.path.lexists(LEDGER_PATH + ".reservations"))
@@ -152,8 +162,8 @@ def _read(path: str | None, label: str) -> Any:
     return authority._review_json(path, label, cap=2 * 1024 * 1024)  # noqa: SLF001 - shared bounded ledger reader
 
 
-def _manifest() -> tuple[dict[str, Any], str]:  # noqa: C901, PLR0912 - each authority field fails closed independently
-    body = _read(MANIFEST_PATH, "closure campaign manifest")
+def _manifest(path: str | None = None) -> tuple[dict[str, Any], str]:  # noqa: C901, PLR0912 - each authority field fails closed independently
+    body = _read(path or MANIFEST_PATH, "closure campaign manifest")
     if (
         not isinstance(body, dict)
         or type(body.get("v")) is not int
@@ -360,13 +370,22 @@ class Campaign:
         self.path = LEDGER_PATH
         self.receipts = Path(self.path + ".reservations")
 
+    def _current_manifest(self) -> tuple[dict[str, Any], str]:
+        return _manifest()
+
+    def _read_state(self) -> dict[str, Any]:
+        return cast("dict[str, Any]", _read(self.path, "closure campaign ledger"))
+
+    def _persist(self, body: dict[str, Any]) -> None:
+        authority._write(self.path, body)  # noqa: SLF001 - atomic canonical ledger writer
+
     def initialize(self) -> str:
         """Create a zero-charge genesis for review; activation requires its public digest.
 
         No activated or existing campaign is initialized again. No provider runs.
         """
         with authority.locked(self.path):
-            current, key = _manifest()
+            current, key = self._current_manifest()
             if current != self.manifest or key != self.binding:
                 raise authority.LedgerError("the preparation changed before genesis initialization")
             if (
@@ -383,7 +402,7 @@ class Campaign:
                 "calls": [],
                 "genesis_nonce": uuid.uuid4().hex,
             }
-            authority._write(self.path, body)  # noqa: SLF001 - canonical zero-charge genesis
+            self._persist(body)
             return authority.digest(body)
 
     def _state(self) -> dict[str, Any]:  # noqa: C901, PLR0912, PLR0915 - validate the append-only receipt chain before mutation
@@ -399,7 +418,7 @@ class Campaign:
             raise authority.LedgerError(
                 "the initialized campaign ledger is missing; no automatic genesis is allowed"
             )
-        body = _read(self.path, "closure campaign ledger")
+        body = self._read_state()
         _prefixes(self.manifest)
         if (
             not isinstance(body, dict)
@@ -565,7 +584,7 @@ class Campaign:
                 handle.flush()
                 os.fsync(handle.fileno())
             body.setdefault("accepted", {})[lane] = authority.digest(proof)
-            authority._write(self.path, body)  # noqa: SLF001 - shared atomic ledger writer
+            self._persist(body)
 
     def accept_batch(self, lane: str, batch: int, proof: dict[str, Any]) -> None:
         """Seal measured batch predicates and review before the next registered batch."""
@@ -593,7 +612,7 @@ class Campaign:
                 handle.flush()
                 os.fsync(handle.fileno())
             body.setdefault("accepted_batches", {})[key] = authority.digest(proof)
-            authority._write(self.path, body)  # noqa: SLF001 - shared atomic ledger writer
+            self._persist(body)
 
     @staticmethod
     def _stop(calls: list[dict[str, Any]]) -> None:
@@ -639,7 +658,7 @@ class Campaign:
         """Charge before launching; successful, pending and unregistered slots cannot repeat."""
         with authority.locked(self.path):
             # Re-read authority inside the same charge lock, never trusting constructor time.
-            current, key = _manifest()
+            current, key = self._current_manifest()
             if current["phase"] != "sealed":
                 raise authority.LedgerError(
                     "the campaign genesis has not been reviewed and activated"
@@ -712,7 +731,7 @@ class Campaign:
                 handle.flush()
                 os.fsync(handle.fileno())
             calls.append(call)
-            authority._write(self.path, body)  # noqa: SLF001 - shared atomic ledger writer
+            self._persist(body)
             return str(call["id"])
 
     def settle(self, charge_id: str, status: str) -> None:
@@ -738,7 +757,7 @@ class Campaign:
                 handle.flush()
                 os.fsync(handle.fileno())
             found["status"] = status
-            authority._write(self.path, body)  # noqa: SLF001 - shared atomic ledger writer
+            self._persist(body)
 
     def stop(self, reason: str) -> None:
         """Latch an eligibility/coverage failure even when no model could be launched."""
@@ -756,4 +775,251 @@ class Campaign:
                 handle.flush()
                 os.fsync(handle.fileno())
             body["stop"] = reason
-            authority._write(self.path, body)  # noqa: SLF001 - shared atomic ledger writer
+            self._persist(body)
+
+
+class SuccessorCampaign(Campaign):
+    """One reviewed fresh epoch; the stopped original remains independently inspectable."""
+
+    def __init__(self) -> None:
+        self.parent = Campaign()
+        self.path = self.parent.path
+        self.manifest, self.binding = self._current_manifest()
+        self.epoch_dir = Path(self.path + ".epochs") / "1"
+        self.receipts = self.epoch_dir / "reservations"
+        self.handoff = _read(SUCCESSOR_HANDOFF_PATH, "successor handoff")
+        if (
+            not isinstance(self.handoff, dict)
+            or set(self.handoff)
+            != {"v", "verdict", "prepared_by", "reviewed_by", "parent", "successor"}
+            or type(self.handoff["v"]) is not int
+            or self.handoff["v"] != 1
+            or self.handoff["verdict"] != "GO"
+            or any(
+                not isinstance(self.handoff[k], str) or not self.handoff[k].strip()
+                for k in ("prepared_by", "reviewed_by")
+            )
+            or self.handoff["prepared_by"] == self.handoff["reviewed_by"]
+        ):
+            raise authority.LedgerError("the successor requires a bound independent handoff")
+        self.handoff_digest = authority.digest(self.handoff)
+        self._parent_state()
+
+    def _current_manifest(self) -> tuple[dict[str, Any], str]:
+        body, key = _manifest(SUCCESSOR_MANIFEST_PATH)
+        if (
+            body["order"] != ["qualification", "replay", "live"]
+            or body.get("deferred_slots", {}).get("qualification") != []
+            or any(
+                body.get("deferred_slots", {}).get(lane) != body["slots"][lane]
+                for lane in ("replay", "live")
+            )
+        ):
+            raise authority.LedgerError(
+                "the successor admits only qualification with later lanes held"
+            )
+        return body, key
+
+    def _parent_state(self) -> dict[str, Any]:
+        """Validate every ancestor field and the actual native prefix, before any epoch access."""
+        if _manifest() != (
+            self.parent.manifest,
+            self.parent.binding,
+        ) or self._current_manifest() != (self.manifest, self.binding):
+            raise authority.LedgerError("the parent or successor manifest changed")
+        if (
+            authority.digest(_read(SUCCESSOR_HANDOFF_PATH, "successor handoff"))
+            != self.handoff_digest
+        ):
+            raise authority.LedgerError("the successor handoff changed")
+        parent = self.parent._state()  # noqa: SLF001 - validate the original receipts unchanged
+        projection = {k: v for k, v in parent.items() if k != "epochs"}
+        native = authority.read(QUALIFICATION_PATH)["calls"]
+        grant = authority.continuation()
+        if (
+            not grant
+            or grant["generation"] != 5
+            or grant["phase"] != "sealed"
+            or not grant.get("successor_allowance")
+            or len(native) < 30
+            or len(native) > 61
+            or any(c["status"] == "charged" for c in native[:30])
+            or not authority.begins_with(QUALIFICATION_PATH, grant["previous"]["ledger_chain"])
+            or not authority.follows(
+                native, grant, (grant["next"]["marks_digest"], grant["next"]["inputs_digest"])
+            )
+            or len(parent["calls"]) != 2
+            or parent.get("stop") not in (None, "semantic-failed")
+            or parent["calls"][-1]["status"] != "semantic-failed"
+            or self.manifest["historical"] != self.parent.manifest["historical"]
+            or any(
+                native_call.get("campaign_charge") != shared_call["id"]
+                or shared_call["slot"] != f"{native_call['case']}:r{native_call.get('repeat')}"
+                or native_call.get("retry") is not shared_call["retry"]
+                or native_call["status"] != "ok"
+                for native_call, shared_call in zip(native[28:30], parent["calls"], strict=True)
+            )
+        ):
+            raise authority.LedgerError("the stopped parent or native thirty-call prefix changed")
+        prefix = native[:30]
+        expected_parent = {
+            "manifest_digest": self.parent.binding,
+            "activation_anchor": self.parent.manifest["activation_anchor"],
+            "state_digest": authority.digest(projection),
+            "calls": 2,
+            "calls_digest": authority.digest(parent["calls"]),
+            "stop_proof": {
+                "kind": "semantic-failed",
+                "classification_digest": authority.digest(
+                    _read(
+                        str(self.parent.receipts / (parent["calls"][-1]["id"] + "-SETTLED.json")),
+                        "parent failed classification",
+                    )
+                ),
+                "explicit_stop_digest": authority.digest(
+                    _read(str(self.parent.receipts / "STOP.json"), "parent stop")
+                )
+                if parent.get("stop")
+                else None,
+            },
+            "failed_result_digest": authority.digest(
+                _read(authority.result_path(4), "failed fourth result")
+            ),
+            "native_calls": 30,
+            "native_calls_digest": authority.digest(prefix),
+            "native_chain": {
+                "first": prefix[0]["id"],
+                "calls": 30,
+                "head": authority.chain(prefix),
+            },
+        }
+        expected_successor = {
+            "manifest_digest": self.binding,
+            "grant_digest": authority.digest(_read(authority.CONTINUATION_PATHS[4], "fifth grant")),
+            "evidence": self.manifest["evidence"]["qualification"],
+            "cases_digest": grant["next"]["cases_digest"],
+            "inputs_digest": grant["next"]["inputs_digest"],
+            "model_binding": grant["successor_allowance"]["model_binding"],
+            "additional_calls": 31,
+            "shared_total": 241,
+            "native_total": 61,
+        }
+        if (
+            self.handoff["parent"] != expected_parent
+            or self.handoff["successor"] != expected_successor
+            or grant["successor_allowance"]["campaign_binding"] != self.binding
+        ):
+            raise authority.LedgerError(
+                "the successor's reviewed source, failure or allowance binding changed"
+            )
+        return parent
+
+    def initialize(self) -> str:
+        raise authority.LedgerError(
+            "a successor needs explicit initialize_successor, never a fresh root"
+        )
+
+    def initialize_successor(self) -> str:
+        """Append a zero-charge epoch once under the original canonical ledger lock."""
+        with authority.locked(self.path):
+            current, binding = self._current_manifest()
+            parent = self._parent_state()
+            if (
+                current != self.manifest
+                or binding != self.binding
+                or self.manifest["phase"] != "prepared"
+                or self.manifest.get("activation_anchor")
+                or "epochs" in parent
+                or os.path.lexists(self.epoch_dir.parent)
+                or len(authority.read(QUALIFICATION_PATH)["calls"]) != 30
+            ):
+                raise authority.LedgerError("the successor epoch cannot be initialized again")
+            state = {
+                "v": 1,
+                "manifest_digest": self.binding,
+                "calls": [],
+                "genesis_nonce": uuid.uuid4().hex,
+            }
+            epoch = {"id": 1, "handoff_digest": self.handoff_digest, "state": state}
+            self.epoch_dir.mkdir(mode=0o700, parents=True)
+            self._transition(epoch)
+            parent["epochs"] = [epoch]
+            authority._write(self.path, parent)  # noqa: SLF001 - append under the canonical root lock
+            return authority.digest(state)
+
+    def _transition(self, epoch: dict[str, Any]) -> None:
+        descriptor = os.open(
+            self.epoch_dir / "TRANSITION.json", os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600
+        )
+        with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+            json.dump(epoch, handle, sort_keys=True)
+            handle.flush()
+            os.fsync(handle.fileno())
+
+    def _epoch(self, parent: dict[str, Any]) -> dict[str, Any]:
+        epochs = parent.get("epochs")
+        if (
+            not isinstance(epochs, list)
+            or len(epochs) != 1
+            or not isinstance(epochs[0], dict)
+            or set(epochs[0]) != {"id", "handoff_digest", "state"}
+            or type(epochs[0]["id"]) is not int
+            or epochs[0]["id"] != 1
+            or epochs[0]["handoff_digest"] != self.handoff_digest
+            or not isinstance(epochs[0]["state"], dict)
+            or self.epoch_dir.parent.is_symlink()
+            or self.epoch_dir.is_symlink()
+            or not self._bounded_entries(self.epoch_dir.parent, {"1"})
+            or not self._bounded_entries(self.epoch_dir, {"TRANSITION.json", "reservations"})
+        ):
+            raise authority.LedgerError("the successor epoch or its receipts changed")
+        epoch = epochs[0]
+        state = epoch["state"]
+        if set(state) - {
+            "v",
+            "manifest_digest",
+            "calls",
+            "genesis_nonce",
+            "stop",
+            "accepted",
+            "accepted_batches",
+        }:
+            raise authority.LedgerError("the successor state has unregistered fields")
+        genesis = {
+            "v": 1,
+            "manifest_digest": self.binding,
+            "calls": [],
+            "genesis_nonce": state.get("genesis_nonce"),
+        }
+        if _read(str(self.epoch_dir / "TRANSITION.json"), "successor transition") != {
+            "id": 1,
+            "handoff_digest": self.handoff_digest,
+            "state": genesis,
+        }:
+            raise authority.LedgerError("the successor transition changed")
+        return epoch
+
+    @staticmethod
+    def _bounded_entries(folder: Path, allowed: set[str]) -> bool:
+        try:
+            names = {p.name for p in itertools.islice(folder.iterdir(), len(allowed) + 1)}
+        except OSError:
+            return False
+        return not names - allowed
+
+    def _read_state(self) -> dict[str, Any]:
+        return cast("dict[str, Any]", self._epoch(self._parent_state())["state"])
+
+    def _state(self) -> dict[str, Any]:
+        state = super()._state()
+        calls = state["calls"]
+        if len(calls) > 31 or any(c["lane"] != "qualification" for c in calls):
+            raise authority.LedgerError(
+                "the fresh qualification epoch exceeds its thirty-one allowance"
+            )
+        return state
+
+    def _persist(self, body: dict[str, Any]) -> None:
+        parent = self._parent_state()
+        self._epoch(parent)["state"] = body
+        authority._write(self.path, parent)  # noqa: SLF001 - persist only the admitted epoch under the root lock
