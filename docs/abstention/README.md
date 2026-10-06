@@ -87,7 +87,7 @@ every earlier failure in place. So the second is `claude-continuation-2.json`, w
   report refuses PASS if either changed. The inputs themselves stay local.
 - `marks`, the captain's answer key: one sixteen-character hash of `(harness, sid)` per case, and
   `judge` or `abstain` for each constraint: `goal` and `output` in the older formats, `goal` and
-  `line_1` to `line_k` in format 5. Copied from the scored records as closed tokens, never from the
+  `line_1` to `line_k` in format 5, plus `claims` when asked. Copied from the scored records as closed tokens, never from the
   marks file, which is hand-editable.
 - `cases`, per case id: the harness, the marks, the outcome the producer landed in for each
   constraint, whether the case reached the model at all, and `asks_output`: whether the Expected
@@ -283,7 +283,7 @@ are outside this initial protocol, and machine vouch supplies no model accuracy 
 The 2026-10-05 source preflight vouched five recorded cases and preserved five synthetic
 adversaries, with 31 native questions. Independent review of that five-case recorded packet found
 no established matching-intent-incorrect-execution or misleading-completion case. All five recorded newest-final
-lookups were unproven. Qualification remains blocked before spending: it needs genuine source
+lookups were unproven. That draft remains blocked before spending: it needs genuine source
 proof for those kinds, fresh independent marks and rubric review. Mechanical recovery tests
 do not establish complete-final empirical coverage or turn an earlier failure into a pass.
 
@@ -300,6 +300,22 @@ qualification.
 Other supplied corpus recordings may establish those genuine kinds. They still need reviewed
 source admission and fresh independent marks; absence from the earlier packet does not mean
 absence from the corpus.
+
+### Fresh fourth qualification packet, 2026-10-06
+
+The [fourth grant](claude-continuation-4.json) binds a new ten-case packet: five recorded cases
+covering the five kinds, and five independently verified synthetic passing-check adversaries.
+Fresh agent marks and rubric expectations cover all 34 questions before any producer output.
+The cases, expectations and marker disagreements remain private. The earlier failed results
+and their 28 charges remain unchanged.
+
+The [shared campaign](../drift-replay/closure-campaign.json) runs qualification first with replay
+and live slots held and unbound. It permits three ten-case passes and one registered retry,
+31 additional attempts within the existing shared allowance. The native scorer ceiling is 59,
+including the earlier 28. Each batch needs measured independent acceptance before the next;
+a semantic or coverage failure stops the campaign. Preparation and activation establish no
+producer PASS. The [shared guard](../drift-replay/README.md#the-shared-closure-guard) owns the
+batch and stop contract.
 
 ### Explicit reviewed exports, 2026-10-06
 
@@ -485,7 +501,8 @@ the packet as it will be scored.
 
 A case id is `sha256("<harness>|<sid>")[:16]`. Whoever holds the cases file can resolve it; nobody
 else can, which is the point. The outcome per constraint is one of `withheld:<reason>`, `unparsed`,
-`abstained`, `judged:consistent` or `judged:departure`. `withheld` means the producer refused before
+`abstained`, `judged:consistent`, `judged:departure`, `judged:unsupported` or
+`judged:not-reached`. `withheld` means the producer refused before
 the model ran, so the case says nothing about the model, and it is counted for neither side.
 
 The verdict is `failed` when a case marked should-abstain judged or the rubric records a false
@@ -545,9 +562,12 @@ the agent left the stated scope on its own
 ([DEC-17, amended 2026-09-27](../design-reading-a-session.md#amended-2026-09-27-the-floor-is-judged-per-producer)).
 Its departure may rest on the reader's own correction rather than a failed check
 ([amended 2026-10-01](../design-reading-a-session.md#amended-2026-10-01-a-readers-correction-and-a-transcript-stop)).
-`result` is one of `departure`, `consistent` and `unverifiable`, the producer's own three tokens. A
-`recorded` entry names a case in the cases file by id and carries no body, and against a format 5
-case its `expect` is keyed `goal` and `line_1` onwards. Every asked constraint of a rubric case is
+Intent `result` is one of `departure`, `consistent`, `unverifiable` and `not_reached`.
+The `claims` constraint uses the first three plus `unsupported`; it cannot use `not_reached`.
+`unsupported` is refused for a goal, outcome line or legacy output constraint. The scorer checks
+the result against its own constraint's closed set rather than sharing the intent token table.
+A `recorded` entry names a case in the cases file by id and carries no body, and against a format 5
+case its `expect` is keyed `goal`, `line_1` onwards and `claims` when asked. Every asked constraint of a rubric case is
 required: the goal, and each outcome line when the case's record shows work. A required constraint
 with no expectation lands as `unscored:missing-expectation`, and an expectation under a key the
 case does not have is counted as `unscored:unknown-constraint` without its key being copied. Any
@@ -563,7 +583,7 @@ other way (`synthesized` and `Synthesised` included), or a synthesised `harness`
 `codex` and `pi` lands in the summary as not admitted with a reason token, and the value that
 earned it is not written. A `recorded` entry's harness comes from the recorded case, never from the
 entry: the coverage floor is what stands between an all-Claude corpus and PASS. An `expect` whose
-`result` is not one of the three tokens is not scored either; that constraint is counted as
+`result` is outside that constraint's closed set is not scored either; that constraint is counted as
 `unscored:bad-expectation` rather than read as an abstention expectation nobody wrote.
 
 A synthesised `row` has to be one the producer will read. It goes through the same eligibility

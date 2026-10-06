@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING, Any
 from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+import analyze_campaign as campaign_guard
 import drift_replay as dr
 import levels_cases as lc
 
@@ -20,6 +21,10 @@ else:
 
 
 class AReplayTagKeepsEveryChargedProducer(unittest.TestCase):
+    def setUp(self) -> None:
+        """legacy_no_campaign: these fixtures exercise the original replay allowance."""
+        self.enterContext(mock.patch.object(campaign_guard, "active_campaign", return_value=None))
+
     def test_a_charged_failure_still_binds_the_tag_but_remains_retryable(self) -> None:
         with (
             _Session() as session,
@@ -103,6 +108,10 @@ class AReplayTagKeepsEveryChargedProducer(unittest.TestCase):
 
 
 class ADryPlanActuallyBindsThePrompt(unittest.TestCase):
+    def setUp(self) -> None:
+        """legacy_no_campaign: these fixtures exercise the original replay allowance."""
+        self.enterContext(mock.patch.object(campaign_guard, "active_campaign", return_value=None))
+
     def test_changed_plan_prompt_refuses_before_verification_or_charge(self) -> None:
         for change in ("digest", "fixture"):
             with self.subTest(change=change):

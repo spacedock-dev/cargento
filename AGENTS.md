@@ -396,6 +396,16 @@ blocking on. Four promotions on that run cost about an hour.
 spend a day. Say what the work costs at full rigor and at calibrated rigor, and let the person
 choose. Nobody asked for twelve hours; they asked for the work.
 
+### Models for qualification review and marking
+
+AGY reviewers and blind markers may use Gemini 3.8 Flash at Medium or higher. Select an explicit
+model from the current AGY catalog; the approved Medium and High variants are
+`gemini-3.8-flash-medium` and `gemini-3.8-flash-high`. Keep each review or marking receipt bound
+to its selected model and effort.
+
+The scored producer qualification binds its own model separately. The current Claude Code target
+is Sonnet 5.5. Reviewer acceptance and scored producer results retain their separate model identities.
+
 ## Quality Gate
 
 Every PR must pass the `quality-gate` required check (`.github/workflows/quality-gate.yml`): ruff with `select = ALL` (curated ignores documented in `pyproject.toml`), `ruff format --check`, `mypy --strict`, the HTML/CSS/JS frontend source linter (`scripts/lint_embedded.py`), a direct-launch smoke test on the Python 3.11 runtime floor followed by the whole suite there, the same suite under `coverage` on 3.12 with the `fail_under` threshold from `pyproject.toml` enforced once, and `platform-tests` — the same unit suite re-run natively on macOS and Windows (Ubuntu is already covered by the two jobs before it). Every job runs the suite through `scripts/run_tests.py`, one worker per core. The threshold only ratchets up — never lower it in a PR. A PR that must merge below threshold needs the `coverage-exception` label, which is visible in the PR timeline.

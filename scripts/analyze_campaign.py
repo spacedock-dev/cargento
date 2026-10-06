@@ -170,7 +170,8 @@ def _manifest() -> tuple[dict[str, Any], str]:  # noqa: C901, PLR0912 - each aut
         not isinstance(body.get("order"), list)
         or len(body["order"]) != 3
         or any(not isinstance(lane, str) for lane in body["order"])
-        or body["order"] != ["replay", "qualification", "live"]
+        or body["order"]
+        not in (["replay", "qualification", "live"], ["qualification", "replay", "live"])
     ):
         raise authority.LedgerError("the reviewed study order is missing")
     if any(
@@ -200,23 +201,9 @@ def _manifest() -> tuple[dict[str, Any], str]:  # noqa: C901, PLR0912 - each aut
     held = body.get("deferred_slots", {lane: [] for lane in LANES})
     if not isinstance(held, dict) or set(held) != set(LANES):
         raise authority.LedgerError("the explicitly deferred campaign slots are malformed")
+    qualification_first = body["order"] == ["qualification", "replay", "live"]
     for lane in LANES:
-        evidence = body["evidence"].get(lane)
-        if (
-            not isinstance(evidence, dict)
-            or set(evidence) != {"scorer", "source", "marks"}
-            or any(
-                not isinstance(value, str) or not _DIGEST.fullmatch(value)
-                for value in evidence.values()
-            )
-            or not isinstance(body["protocols"].get(lane), str)
-            or not _SLOT.fullmatch(body["protocols"][lane])
-        ):
-            raise authority.LedgerError("the reviewed measurement protocol is unbound")
-        binding = (body.get("bindings") or {}).get(lane)
         slots = (body.get("slots") or {}).get(lane)
-        if not isinstance(binding, str) or not _DIGEST.fullmatch(binding):
-            raise authority.LedgerError("the closure request binding is missing")
         if (
             not isinstance(slots, list)
             or len(slots) != SLOTS[lane]
@@ -240,6 +227,36 @@ def _manifest() -> tuple[dict[str, Any], str]:  # noqa: C901, PLR0912 - each aut
             )
         ):
             raise authority.LedgerError("the actual campaign requests are unbound")
+        if qualification_first:
+            if lane == "qualification":
+                if held[lane]:
+                    raise authority.LedgerError(
+                        "qualification-first requires every qualification slot"
+                    )
+            else:
+                if set(held[lane]) != set(slots) or any(
+                    lane not in body[field] or body[field][lane] is not None
+                    for field in ("bindings", "protocols", "evidence")
+                ):
+                    raise authority.LedgerError(
+                        "qualification-first requires completely held and unbound later lanes"
+                    )
+                continue
+        evidence = body["evidence"].get(lane)
+        if (
+            not isinstance(evidence, dict)
+            or set(evidence) != {"scorer", "source", "marks"}
+            or any(
+                not isinstance(value, str) or not _DIGEST.fullmatch(value)
+                for value in evidence.values()
+            )
+            or not isinstance(body["protocols"].get(lane), str)
+            or not _SLOT.fullmatch(body["protocols"][lane])
+        ):
+            raise authority.LedgerError("the reviewed measurement protocol is unbound")
+        binding = body["bindings"].get(lane)
+        if not isinstance(binding, str) or not _DIGEST.fullmatch(binding):
+            raise authority.LedgerError("the closure request binding is missing")
     batches = body.get("batches")
     if not isinstance(batches, dict) or set(batches) != set(LANES):
         raise authority.LedgerError("the registered batch boundaries are missing")

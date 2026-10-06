@@ -12,6 +12,7 @@ from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+import analyze_campaign as campaign_guard
 import drift_replay as dr
 
 if TYPE_CHECKING:
@@ -25,6 +26,10 @@ else:
 
 
 class TheReplayKeepsItsBaselineAndText(unittest.TestCase):
+    def setUp(self) -> None:
+        """legacy_no_campaign: these fixtures exercise the original replay allowance."""
+        self.enterContext(mock.patch.object(campaign_guard, "active_campaign", return_value=None))
+
     def test_a_time_match_is_named_flag_after_start(self) -> None:
         self.assertEqual(
             "flag-after-start",

@@ -175,6 +175,210 @@ class CampaignReservations(unittest.TestCase):
         with self.assertRaises(ledger.LedgerError):
             self.campaign()
 
+    def qualification_first(self) -> None:
+        self.body["order"] = ["qualification", "replay", "live"]
+        self.body["deferred_slots"] = {
+            "qualification": [],
+            "replay": self.slots["replay"].copy(),
+            "live": self.slots["live"].copy(),
+        }
+        for lane in ("replay", "live"):
+            self.body["requests"][lane] = {}
+            for field in ("bindings", "protocols", "evidence"):
+                self.body[field][lane] = None
+
+    def activate_qualification_first(self) -> None:
+        self.qualification_first()
+        try:
+            self.activate()
+        except ledger.LedgerError as error:
+            self.fail(f"reviewed qualification-first preparation refused: {error}")
+
+    def test_qualification_first_reserves_without_replay_acceptance(self) -> None:
+        self.activate_qualification_first()
+        campaign = self.campaign()
+        charge = campaign.reserve("qualification", self.slots["qualification"][0], "a" * 64)
+        calls = campaign._state()["calls"]
+        self.assertEqual(["qualification"], [call["lane"] for call in calls])
+        self.assertEqual(charge, calls[0]["id"])
+        self.assertEqual({}, campaign._state().get("accepted", {}))
+
+    def test_qualification_first_held_lanes_cannot_launch_or_accept(self) -> None:
+        self.activate_qualification_first()
+        campaign = self.campaign()
+        originals = (self.replay.read_bytes(), self.qualification.read_bytes())
+        for lane in ("replay", "live"):
+            with self.subTest(lane=lane):
+                with self.assertRaises(ledger.LedgerError):
+                    campaign.request_slot(lane, "a" * 64)
+                with self.assertRaises(ledger.LedgerError):
+                    campaign.reserve(lane, self.slots[lane][0], "a" * 64)
+                with self.assertRaises(ledger.LedgerError):
+                    campaign.accept(lane, acceptance(campaign, lane))
+                with self.assertRaises(ledger.LedgerError):
+                    campaign.accept_batch(lane, 0, acceptance(campaign, lane, 0))
+        body = campaign._state()
+        self.assertEqual([], body["calls"])
+        self.assertEqual({}, body.get("accepted", {}))
+        self.assertEqual({}, body.get("accepted_batches", {}))
+        self.assertFalse(campaign.receipts.exists())
+        self.assertEqual(originals, (self.replay.read_bytes(), self.qualification.read_bytes()))
+
+    def test_qualification_first_requires_whole_holds_and_explicit_absence(self) -> None:
+        self.qualification_first()
+        valid = json.loads(json.dumps(self.body))
+        for lane in ("replay", "live"):
+            with self.subTest(lane=lane, malformed="partial-hold"):
+                self.body = json.loads(json.dumps(valid))
+                freed = self.body["deferred_slots"][lane].pop()
+                self.body["requests"][lane][freed] = "a" * 64
+                self.manifest.write_text(json.dumps(self.body))
+                with self.assertRaises(ledger.LedgerError):
+                    self.campaign()
+            for field in ("bindings", "protocols", "evidence"):
+                for mutation in ("missing", "populated"):
+                    with self.subTest(lane=lane, field=field, mutation=mutation):
+                        self.body = json.loads(json.dumps(valid))
+                        if mutation == "missing":
+                            del self.body[field][lane]
+                        else:
+                            self.body[field][lane] = valid[field]["qualification"]
+                        self.manifest.write_text(json.dumps(self.body))
+                        with self.assertRaises(ledger.LedgerError):
+                            self.campaign()
+
+    def test_qualification_first_requires_all_actual_qualification_bindings(self) -> None:
+        self.qualification_first()
+        valid = json.loads(json.dumps(self.body))
+        for field in ("bindings", "protocols", "evidence", "requests"):
+            for mutation in ("missing", "null"):
+                with self.subTest(field=field, mutation=mutation):
+                    self.body = json.loads(json.dumps(valid))
+                    if mutation == "missing":
+                        del self.body[field]["qualification"]
+                    else:
+                        self.body[field]["qualification"] = None
+                    self.manifest.write_text(json.dumps(self.body))
+                    with self.assertRaises(ledger.LedgerError):
+                        self.campaign()
+        self.body = json.loads(json.dumps(valid))
+        first = self.slots["qualification"][0]
+        self.body["deferred_slots"]["qualification"] = [first]
+        del self.body["requests"]["qualification"][first]
+        self.manifest.write_text(json.dumps(self.body))
+        with self.assertRaises(ledger.LedgerError):
+            self.campaign()
+
+    def test_qualification_first_authority_change_refuses_before_charge(self) -> None:
+        self.activate_qualification_first()
+        campaign = self.campaign()
+        self.body["evidence"]["qualification"]["source"] = "f" * 64
+        self.manifest.write_text(json.dumps(self.body))
+        with self.assertRaises(ledger.LedgerError):
+            campaign.reserve("qualification", self.slots["qualification"][0], "a" * 64)
+        self.assertEqual([], json.loads(self.state.read_text())["calls"])
+
+    def test_qualification_first_pending_and_failed_attempts_still_stop_launches(self) -> None:
+        self.activate_qualification_first()
+        campaign = self.campaign()
+        first = campaign.reserve("qualification", self.slots["qualification"][0], "a" * 64)
+        with self.assertRaises(ledger.LedgerError):
+            campaign.reserve("qualification", self.slots["qualification"][1], "a" * 64)
+        campaign.settle(first, "semantic-failed")
+        campaign.stop("semantic-failed")
+        with self.assertRaises(ledger.LedgerError):
+            campaign.reserve("qualification", self.slots["qualification"][1], "a" * 64)
+        self.assertEqual(1, len(campaign._state()["calls"]))
+        self.assertEqual("semantic-failed", campaign._state()["stop"])
+
+    def test_qualification_first_native_chain_stops_at_31_additional_attempts(self) -> None:  # noqa: PLR0915 - preserve the joined native/shared charging lifecycle
+        with mock.patch.object(sys, "path", [str(Path(__file__).parent), *sys.path]):
+            fixture = importlib.import_module("test_closure_qualification").GrantFourAllowance()
+        self.addCleanup(fixture.doCleanups)
+        fixture.setUp()
+        old_calls = json.loads(fixture.prefix)["calls"]
+        self.assertEqual(28, len(old_calls))
+        ids = [f"{n:016x}" for n in range(1, 11)]
+        slots = [f"{cid}:r{repeat}" for repeat in (1, 2, 3) for cid in ids]
+        self.slots["qualification"] = slots
+        self.body["requests"]["qualification"] = dict.fromkeys(slots, "a" * 64)
+        self.body["batches"]["qualification"] = [
+            slots[:1],
+            *[slots[n : n + 10] for n in range(1, len(slots), 10)],
+        ]
+        self.body["historical"]["qualification"] = {
+            "calls": 28,
+            "sha256": self.sha(fixture.ledger_path),
+            "calls_digest": ledger.digest(old_calls),
+        }
+        patch = mock.patch.object(self.module, "QUALIFICATION_PATH", str(fixture.ledger_path))
+        patch.start()
+        self.addCleanup(patch.stop)
+        scoring = importlib.import_module("score_abstention")
+        scoring._runtime()
+        from cargento_runtime import observer  # noqa: PLC0415 - admitted synthetic delegate seam
+
+        prompt = "owned synthetic qualification input"
+        opening_binding = self.module.request_digest(
+            prompt,
+            dict.fromkeys(scoring.BINDING_KEYS),
+            self.module.runtime_source_digest(Path(observer.__file__).parent),
+            1024,
+        )
+        self.body["requests"]["qualification"][slots[0]] = opening_binding
+        self.activate_qualification_first()
+        campaign = self.campaign()
+        fixture.campaign_key = campaign.binding
+        fixture.closure_grant()
+        native = fixture.fifth()
+        native.campaign = campaign
+        delegated: list[str] = []
+
+        def delegate(words: str, *, output_cap_bytes: int) -> tuple[str, str]:
+            self.assertEqual(prompt, words)
+            self.assertEqual(1024, output_cap_bytes)
+            calls = ledger.read(str(fixture.ledger_path))["calls"]
+            shared = campaign._state()["calls"]
+            self.assertEqual(29, len(calls))
+            self.assertEqual(1, len(shared))
+            self.assertEqual(shared[0]["id"], calls[-1]["campaign_charge"])
+            self.assertEqual({}, campaign._state().get("accepted", {}))
+            delegated.append(words)
+            return "", "failed"
+
+        charged_model = scoring._Charged(native, ids[0], delegate)
+        self.assertEqual(("", "failed"), charged_model(prompt, output_cap_bytes=1024))
+        retry = native.charge(ids[0], retry=True, request_binding=opening_binding)
+        native.settle(retry, "ok")
+        native.finish_exposure(retry, "usable")
+        campaign.accept_batch("qualification", 0, acceptance(campaign, "qualification", 0))
+        for batch, group in enumerate(self.body["batches"]["qualification"][1:], 1):
+            for slot in group:
+                cid, repeat = slot.split(":r")
+                charged = native.charge(cid, repeat=int(repeat), request_binding="a" * 64)
+                native.settle(charged, "ok")
+                native.finish_exposure(charged, "usable")
+            campaign.accept_batch(
+                "qualification", batch, acceptance(campaign, "qualification", batch)
+            )
+        before = fixture.ledger_path.read_bytes()
+        with self.assertRaises(ledger.SpendCapError):
+            native.charge(ids[-1], repeat=3, request_binding="a" * 64)
+        with self.assertRaises(ledger.SpendCapError):
+            scoring._Charged(native, ids[-1], delegate, repeat=3)(prompt, output_cap_bytes=1024)
+        self.assertEqual([prompt], delegated)
+        self.assertEqual(before, fixture.ledger_path.read_bytes())
+        calls = ledger.read(str(fixture.ledger_path))["calls"]
+        shared = campaign._state()["calls"]
+        self.assertEqual(59, len(calls))
+        self.assertEqual(old_calls, calls[:28])
+        self.assertEqual(31, len(shared))
+        self.assertEqual({"qualification"}, {call["lane"] for call in shared})
+        self.assertEqual(
+            {call["id"] for call in shared},
+            {call["campaign_charge"] for call in calls[28:]},
+        )
+
     def test_a_later_slot_cannot_skip_the_next_fresh_or_unusable_slot(self) -> None:
         campaign = self.campaign()
         campaign.settle(self.charge("replay", self.slots["replay"][0]), "usable")
