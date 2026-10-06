@@ -120,11 +120,13 @@ class ProductionTransport(unittest.TestCase):
         def activate(self) -> None: ...
 
         def fill_lane(self, lane: str, *, accept: bool = True) -> None: ...
+
+        def campaign(self) -> analyze_campaign.Campaign: ...
     else:
         activate = campaign_cases.CampaignReservations.activate
         fill_lane = campaign_cases.CampaignReservations.fill_lane
+        campaign = campaign_cases.CampaignReservations.campaign
     sha = staticmethod(campaign_cases.CampaignReservations.sha)
-    campaign = campaign_cases.CampaignReservations.campaign
     charge = campaign_cases.CampaignReservations.charge
 
     def live(
@@ -163,8 +165,8 @@ class ProductionTransport(unittest.TestCase):
         )
         self.body["requests"]["live"][self.slots["live"][0]] = request
         self.activate()
-        self.fill_lane("replay")
-        self.fill_lane("qualification")
+        campaign_cases.seed_predecessor(self.campaign(), "replay")
+        campaign_cases.seed_predecessor(self.campaign(), "qualification")
         wrapper = live_analyze_campaign.LiveTransport(observer, verified=self.verified)
         observer.claude_exec = wrapper
         return observer, wrapper

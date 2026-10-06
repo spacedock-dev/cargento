@@ -24,14 +24,14 @@ if TYPE_CHECKING:
         _reply,
     )
     from tests.test_abstention_continuation import _TwoFailedResults
-    from tests.test_analyze_campaign import acceptance
+    from tests.test_analyze_campaign import acceptance, seed_predecessor
 
     from tests import test_abstention_continuation as continuation_cases
 else:
     import test_abstention_continuation as continuation_cases
     from test_abstention_claude import BINDING, _claude_case, _Config, _Model, _reply
     from test_abstention_continuation import _TwoFailedResults
-    from test_analyze_campaign import acceptance
+    from test_analyze_campaign import acceptance, seed_predecessor
 
 
 class GrantFourAllowance(_TwoFailedResults):
@@ -405,12 +405,7 @@ class RepeatedQualification(GrantFourAllowance):
         manifest.write_text(json.dumps(authority))
         campaign = analyze_campaign.Campaign()
 
-        for n, group in enumerate(authority["batches"]["replay"]):
-            for slot in group:
-                campaign.settle(campaign.reserve("replay", slot, "a" * 64), "usable")
-            campaign.accept_batch("replay", n, acceptance(campaign, "replay", n))
-
-        campaign.accept("replay", acceptance(campaign, "replay"))
+        seed_predecessor(campaign, "replay")
         self.campaign_key = campaign.binding
         self.closure_grant()
         self.safe_reply = _reply(

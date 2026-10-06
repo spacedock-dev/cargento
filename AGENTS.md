@@ -294,6 +294,13 @@ before believing it. Report both results rather than the convenient one. A load 
 worktree's suite running beside it oversubscribes the machine at once: give each `-j` a share of the
 cores rather than both the default.
 
+**Build only the phase a test is exercising.** The study-guard tests added on 2026-10-06 took
+Windows script tests from 97 seconds to 1,007 seconds. Rebuilding a 190-call predecessor ledger
+for each later-lane test reread 76,362 reservation and settlement receipts per setup. Use a
+test-only predecessor fixture checked by the real ledger validator for those setups, and retain
+an end-to-end test of every reservation, settlement and the full 239-call ceiling. Do not cache
+production receipt validation or relax durability to make a test faster.
+
 **Frontend byte pins are the conflict you will get.** `tests/test_next_page.py` holds per-part sizes
 and digests plus the assembled page, and it is not the only file that pins it: `tests/test_next_flag.py`
 holds the assembled length and digest in separate tests, and `tests/test_focus.py` holds a digest
