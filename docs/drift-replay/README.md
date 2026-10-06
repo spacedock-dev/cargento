@@ -125,6 +125,22 @@ and fake transports do not qualify the model. Each batch needs native semantic m
 and independent review before acceptance. A passing transport cannot supply that acceptance.
 The first failed semantic, coverage or protection guard stops the entire follow-up.
 
+The default lane order remains replay, qualification, live. An owner-authorized prospective
+qualification-first campaign may instead use qualification, replay, live within the unchanged
+239-attempt total. Qualification keeps all 30 bound request slots and its 31-attempt ceiling,
+including one retry. Replay's 190 and live's 14 planned slots must all be deferred; their request
+maps are empty and their protocol, binding and evidence fields are explicitly `null`. Planned
+slot identities and batch partitions are retained without invented requests or evidence.
+Partially held later lanes, held qualification slots and any other order refuse.
+
+The [dated security ruling](../../SECURITY.md#qualification-first-priority-2026-10-06)
+lets this qualification lane launch without replay acceptance. Native source admission,
+sealed grant and actual model/packet/request bindings, independent batch review, the original
+631/28 charges and whole-campaign stop conditions remain required. Held lanes cannot reserve
+or pass acceptance, and their allowances cannot be transferred. The authority has no unholding
+or reset API; a later release needs a separate reviewed design that preserves charges.
+Source preparation and blind marking can proceed before any lane spends.
+
 `scripts/drift_study_controls.py` isolates experimental reading modules for matched conditions;
 the native replay accepts one through its explicit `reading_override` argument. Scope pairs
 reserve common room under the longer trusted header and retain equal numbered evidence.

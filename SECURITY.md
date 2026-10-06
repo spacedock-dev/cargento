@@ -2142,7 +2142,7 @@ genesis digest is required for activation; an activated campaign never creates r
 state automatically. This guards accidental reset, not an account holder who rewrites both the
 repository authority and every private receipt.
 
-The lanes run in replay, qualification, live order. Each registered batch needs measured,
+By default, the lanes run in replay, qualification, live order. Each registered batch needs measured,
 independently reviewed acceptance before the next batch. Transport usability is insufficient.
 A semantic, coverage or protection failure stops every lane, as do two consecutive unusable
 charged attempts. Pending or orphaned attempts block another launch. Batches charge at most
@@ -2160,7 +2160,7 @@ Every registration requires an exact positive integer repeat and a unique
 Every declared critical group requires three static registrations with distinct integer
 repeats 1, 2 and 3 before charge. The ten historical protected rows must have distinct
 `(case, arm, claim)` identities; missing or unknown independent admission refuses before
-the first model charge. Unsupported semantic conditions refuse rather than pass unread.
+the first replay model charge. Unsupported semantic conditions refuse rather than pass unread.
 When neither observed arm draws a required protected claim, unresolved comparison adds
 a coverage failure and blocks acceptance. Future pairs with no outputs remain pending;
 the comparison does not require a favorable legacy result. The production pilot forwards
@@ -2171,6 +2171,31 @@ prospective translation before activation; translation alone grants no source ad
 No campaign is activated by installing this machinery, and no earlier failed qualification
 becomes a pass. The [replay documentation](docs/drift-replay/README.md#the-shared-closure-guard)
 owns the preparation and measurement boundary.
+
+##### Qualification-first priority, 2026-10-06
+
+The owner may authorize a prospective qualification-first campaign within the same 239-attempt
+allowance. Its only alternate order is qualification, replay, live. All 30 qualification slots
+must have actual request bindings; the 31-attempt limit includes its one registered retry.
+Every replay and live slot must be explicitly deferred. Their fixed planned slot identities
+and batch partitions remain, but their request maps are empty and their protocol, binding and
+evidence fields are explicitly `null`. Those fields express absent admission, not placeholder
+hashes or an exemption from a source requirement. A partially held later lane or held qualification
+slot refuses this profile.
+
+Qualification can then reserve without replay acceptance. Its sealed fourth grant, actual native
+source and prompt checks, model and packet bindings, independent batch reviews, historical
+631/28 prefixes, shared ledger and activation guards still apply. The 190 replay and 18 live
+allowances cannot be borrowed. Held lanes cannot reserve or pass either batch or lane acceptance.
+A failure still stops the whole campaign. Replay's original protection obligations remain pending
+behind its hold; qualification must independently meet its own typed native source and five-kind
+floor. This profile does not depend on completing separate observer, ordinary-session, cold-study
+or native-window measurements.
+
+This is a new reviewed prospective authority, not a migration of an activated campaign.
+Its manifest remains immutable: there is no automatic unholding, replacement genesis or reset.
+Releasing the held lanes later requires a separate reviewed design that preserves charged
+attempts. Installing the guard or preparing cases does not activate it or supply blind marks.
 
 #### Prospective qualification source cuts, 2026-10-05
 

@@ -967,6 +967,87 @@ class RubricTokensMirrorTheProducerTest(unittest.TestCase):
 
         self.assertEqual(reading.RESULT_BY_TOKEN, score_abstention.RESULT_BY_TOKEN)
 
+    def test_claims_tokens_match_the_native_closed_set(self) -> None:
+        sys.path.insert(0, str(SKILL))
+        from cargento_runtime import reading  # noqa: PLC0415
+
+        self.assertEqual(
+            reading.CLAIMS_RESULT_BY_TOKEN,
+            getattr(score_abstention, "CLAIMS_RESULT_BY_TOKEN", {}),
+        )
+
+
+class ClaimsRubricKeepsTheChargedRepeatScorable(unittest.TestCase):
+    """A valid unsupported claim must not become unscored after its charge."""
+
+    @staticmethod
+    def graded(
+        expected: str, got: str, *, criterion: str = "claims"
+    ) -> tuple[dict[str, Any], dict[str, Any]]:
+        record: dict[str, Any] = {
+            "id": "1" * 16,
+            "harness": "claude",
+            "reached_model": True,
+            "withheld": "",
+            "constraints": (criterion,),
+            "marks": {criterion: "judge"},
+            "criteria": {criterion: {"result": got, "cites": ("f1",)}},
+            "outcomes": {criterion: score_abstention.outcome({"result": got}, "")},
+        }
+        entry = {
+            "kind": "insufficient-evidence",
+            "harness": "claude",
+            "origin": "recorded",
+            "expect": {criterion: {"result": expected, "cites": ["f1"]}},
+        }
+        return record, score_abstention.rubric_case(entry, record, record["id"])
+
+    def test_supported_unsupported_expectation_keeps_the_repeat_usable(self) -> None:
+        record, judged = self.graded("unsupported", "not shown by the record")
+        self.assertEqual("correct", judged["judgement"]["claims"])
+        self.assertEqual({"hit": 1, "miss": 0, "extra": 0}, judged["extraction"]["claims"])
+        self.assertEqual(
+            "usable", score_abstention._repeat_classification(record, judged, "charge")
+        )
+
+    def test_reassuring_an_unsupported_claim_stops_as_semantic_failure(self) -> None:
+        record, judged = self.graded("unsupported", "consistent with the evidence read")
+        self.assertEqual("false-reassurance", judged["judgement"]["claims"])
+        self.assertEqual(
+            "semantic-failed", score_abstention._repeat_classification(record, judged, "charge")
+        )
+
+    def test_claims_cannot_expect_the_intent_only_unfinished_token(self) -> None:
+        record, judged = self.graded("not_reached", "not reached at this stop")
+        self.assertEqual("unscored:bad-expectation", judged["judgement"]["claims"])
+        self.assertEqual(
+            "coverage-failed", score_abstention._repeat_classification(record, judged, "charge")
+        )
+
+    def test_unsupported_stays_outside_goal_line_and_legacy_expectations(self) -> None:
+        for name in ("goal", "line_1", "output"):
+            with self.subTest(criterion=name):
+                record, judged = self.graded(
+                    "unsupported", "not shown by the record", criterion=name
+                )
+                self.assertEqual("unscored:bad-expectation", judged["judgement"][name])
+                self.assertEqual(
+                    "coverage-failed",
+                    score_abstention._repeat_classification(record, judged, "charge"),
+                )
+        self.assertEqual(
+            "unscored:bad-expectation",
+            score_abstention.rubric_outcome("unsupported", "not shown by the record"),
+        )
+        for name in ("goal", "line_1", "output", "CLAIMS", "other"):
+            with self.subTest(criterion=name):
+                self.assertEqual(
+                    "unscored:bad-expectation",
+                    score_abstention.rubric_outcome(
+                        "unsupported", "not shown by the record", criterion=name
+                    ),
+                )
+
 
 class TheCollectorDocstringDescribesTheScorerThatExists(unittest.TestCase):
     def test_the_yardstick_is_a_synthetic_revision_not_a_store_write(self) -> None:

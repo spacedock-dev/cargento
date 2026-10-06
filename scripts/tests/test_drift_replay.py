@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import datetime as dt
 import hashlib
+import importlib
 import json
 import multiprocessing as mp
 import os
@@ -20,6 +21,7 @@ from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+import analyze_campaign as campaign_guard
 import drift_replay as dr
 import levels_cases as lc
 
@@ -357,6 +359,10 @@ def _charge_many(path: str, times: int) -> int:
 
 
 class TheSpendIsBoundedAndADryRunCostsNothing(unittest.TestCase):
+    def setUp(self) -> None:
+        """legacy_no_campaign: these fixtures exercise the original replay allowance."""
+        self.enterContext(mock.patch.object(campaign_guard, "active_campaign", return_value=None))
+
     def test_the_ledger_stops_at_its_cap(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             ledger = dr.Ledger(os.path.join(tmp, "spend.json"), cap=2)
@@ -407,6 +413,31 @@ class TheSpendIsBoundedAndADryRunCostsNothing(unittest.TestCase):
             model = dr._Charged(_Recorder(sent, "ok"), ledger, "k")
             self.assertEqual(model("p", output_cap_bytes=10), ("", "cancelled"))
         self.assertEqual(sent, [])
+
+
+class AnExplicitCampaignStillOwnsItsNativeLedger(unittest.TestCase):
+    def test_foreign_replay_ledger_refuses_before_any_charge_or_delegate(self) -> None:
+        with mock.patch.object(sys, "path", [str(Path(__file__).parent), *sys.path]):
+            fixture = importlib.import_module("test_analyze_campaign").CampaignReservations()
+        self.addCleanup(fixture.doCleanups)
+        fixture.setUp()
+        campaign = fixture.campaign()
+        owner_before = fixture.replay.read_bytes()
+        shared_before = fixture.state.read_bytes()
+        foreign = fixture.root / "foreign-replay.json"
+        sent: list[str] = []
+        model = dr._Charged(_Recorder(sent, "ok"), dr.Ledger(str(foreign)), "foreign")
+        self.assertIsNotNone(model.campaign)
+        assert model.campaign is not None
+        self.assertEqual(campaign.binding, model.campaign.binding)
+        with self.assertRaisesRegex(dr.LedgerError, "different native replay ledger"):
+            model("owned synthetic input", output_cap_bytes=1024)
+        self.assertEqual([], sent)
+        self.assertFalse(model.charged)
+        self.assertFalse(foreign.exists())
+        self.assertEqual(owner_before, fixture.replay.read_bytes())
+        self.assertEqual(shared_before, fixture.state.read_bytes())
+        self.assertEqual([], campaign._state()["calls"])
 
 
 class OutcomesKeepRelevanceApart(unittest.TestCase):
@@ -583,6 +614,10 @@ class _Home:
 
 
 class UnusableCallsStopTheReplay(unittest.TestCase):
+    def setUp(self) -> None:
+        """legacy_no_campaign: these fixtures exercise the original replay allowance."""
+        self.enterContext(mock.patch.object(campaign_guard, "active_campaign", return_value=None))
+
     def run_batch(
         self, replies: list[tuple[str, str]], *, dry_run: bool = False, runtime_config: Any = None
     ) -> tuple[int, int, dict[str, Any], list[str]]:

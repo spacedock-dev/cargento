@@ -310,6 +310,10 @@ _NOT_REACHED = RESULT_BY_TOKEN["not_reached"]
 # Spelt here for the rubric's reason above; `reading.RESULT_UNSUPPORTED`, held
 # equal by `RubricTokensMirrorTheProducerTest`.
 _UNSUPPORTED = "not shown by the record"
+CLAIMS_RESULT_BY_TOKEN = {
+    **{key: result for key, result in RESULT_BY_TOKEN.items() if key != "not_reached"},
+    "unsupported": _UNSUPPORTED,
+}
 
 
 @dataclasses.dataclass(frozen=True)
@@ -727,7 +731,7 @@ def outcome(criterion: Mapping[str, Any] | None, withheld: str) -> str:
     return OUTCOME_JUDGED_DEPARTURE
 
 
-def rubric_outcome(expected_token: str, got: str | None) -> str:
+def rubric_outcome(expected_token: str, got: str | None, *, criterion: str = "") -> str:
     """One of five, and the three failure classes are never one class.
 
     `got` is the producer's published sentence, or None where rule 2 left no
@@ -741,7 +745,8 @@ def rubric_outcome(expected_token: str, got: str | None) -> str:
     them in the producer's own reply, so the rubric is not stricter than the
     thing it grades.
     """
-    expected = RESULT_BY_TOKEN.get(expected_token.strip().casefold())
+    tokens = CLAIMS_RESULT_BY_TOKEN if criterion == "claims" else RESULT_BY_TOKEN
+    expected = tokens.get(expected_token.strip().casefold())
     if expected is None:
         return RUBRIC_UNSCORED
     result = got or _UNVERIFIABLE
@@ -1136,7 +1141,9 @@ def rubric_case(
                 judgement[name] = RUBRIC_UNSCORED_MISSING
             continue
         got = criteria.get(name) or {}
-        judgement[name] = rubric_outcome(str(wanted.get("result") or ""), got.get("result"))
+        judgement[name] = rubric_outcome(
+            str(wanted.get("result") or ""), got.get("result"), criterion=name
+        )
         cites[name] = extraction(wanted.get("cites") or (), got.get("cites") or ())
     unknown = sum(1 for key in expect if key not in _names(record)) if reached else 0
     kind = str(entry.get("kind") or "")

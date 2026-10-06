@@ -1,0 +1,26 @@
+{
+  "v": 1,
+  "phase": "sealed",
+  "previous": {
+    "ledger_chain": {
+      "calls": 28,
+      "first": "92c26ee2b2b24750a1e2870aec5beb43",
+      "head": "7d3990843d17476399e81dc9c84b1efe54c8a670b626520d3250207e67f4fece"
+    },
+    "marks_digest": "ca026ceaff5f7ec47a3f5e6c7d9446cc11227db56ee44734184a27d378d1806a",
+    "inputs_digest": "4719084703e80d79dc42393cc8b75f187f1067b0798a8397f6a49ff95ff7a480"
+  },
+  "next": {
+    "cases_digest": "3c2e84e2d62242beaec46114c0434668fe2bbd362c313105bdc69ce00e3b9469",
+    "marks_digest": "b1b6f86ae035e57baf351c4baeca2ab5aca35c85bce58231822bb2191aa02f61",
+    "inputs_digest": "4057b40644fa64b9c69b2afb7c9480816fe87fd147131fc633a9c42f7efd8eae"
+  },
+  "closure_allowance": {
+    "additional_calls": 31,
+    "previous_calls": 28,
+    "repeats": 3,
+    "retry_calls": 1,
+    "model_binding": "fb94ac991b54d5c92a9632c0e89c0e7df44a1c71760ea9a79535e36951c2edd9",
+    "campaign_binding": "3abcc286303652b402e37453147945bcad5a1ae798f09b4afff914785309b7a1"
+  }
+}
