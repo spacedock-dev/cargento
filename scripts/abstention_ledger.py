@@ -49,6 +49,8 @@ from typing import IO, TYPE_CHECKING, Any
 if TYPE_CHECKING:
     from collections.abc import Iterator, Mapping
 
+    from analyze_campaign import Campaign
+
 
 def real_home() -> str:
     """The account's home directory, which no environment variable can move.
@@ -118,6 +120,8 @@ CONTINUATION_SUMMARY_PATHS = tuple(
 # authorized one more five-case run past the DRC-4758 ceiling of 23, beside 31
 # Claude CLI invocations overall, those five and the browser walk among them.
 MAX_CALLS = 28
+CLOSURE_CALLS = 31
+CLOSURE_CAP = MAX_CALLS + CLOSURE_CALLS
 STATUSES = ("charged", "ok", "failed", "unavailable")
 _DIGEST = re.compile(r"^[0-9a-f]{64}$")
 _CASE = re.compile(r"^[0-9a-f]{16}$")
@@ -236,6 +240,29 @@ def continuation() -> dict[str, Any] | None:
             } != {key: grant["previous"][key] for key in ("marks_digest", "inputs_digest")}:
                 raise LedgerError(f"continuation grant {k} does not follow grant {k - 1}")
             segments = [*active["segments"], *segments]
+        allowance = grant.get("closure_allowance")
+        if allowance is not None:
+            valid = (
+                k == 4
+                and isinstance(allowance, dict)
+                and grant["previous"]["ledger_chain"]["calls"] == MAX_CALLS
+                and all(
+                    type(allowance.get(key)) is int and allowance[key] == value
+                    for key, value in (
+                        ("additional_calls", CLOSURE_CALLS),
+                        ("previous_calls", MAX_CALLS),
+                        ("repeats", 3),
+                        ("retry_calls", 1),
+                    )
+                )
+                and all(
+                    isinstance(allowance.get(key), str) and _DIGEST.fullmatch(allowance[key])
+                    for key in ("model_binding", "campaign_binding")
+                )
+            )
+            if not valid:
+                raise LedgerError("the closure allowance is not a bound fourth grant")
+        grant["generation"] = k
         grant["segments"] = segments
         active = grant
     return active
@@ -443,15 +470,40 @@ class Ledger:
         inputs_digest: str,
         producer: str,
         cases_digest: str = "",
+        model_binding: str = "",
+        campaign: Campaign | None = None,
     ) -> None:
         if path is None:
             raise LedgerError("the account's canonical home is unavailable")
         self.path = path
-        self.cap = min(cap, MAX_CALLS)
+        self.requested_cap = min(cap, CLOSURE_CAP)
+        self.model_binding = model_binding
+        self.campaign = campaign
         self.marks_digest = marks_digest
         self.inputs_digest = inputs_digest
         self.producer = producer
         self.cases_digest = cases_digest
+
+    @property
+    def cap(self) -> int:
+        """Legacy keys retain 28; only the new sealed model-bound key admits 59."""
+        try:
+            grant = continuation()
+        except LedgerError:
+            return min(self.requested_cap, MAX_CALLS)
+        allowance = (grant or {}).get("closure_allowance")
+        if (
+            grant
+            and grant["phase"] == "sealed"
+            and allowance
+            and self.model_binding == allowance["model_binding"]
+            and self.marks_digest == grant["next"].get("marks_digest")
+            and self.inputs_digest == grant["next"].get("inputs_digest")
+            and self.cases_digest == grant["next"].get("cases_digest")
+            and self.producer == "claude"
+        ):
+            return self.requested_cap
+        return min(self.requested_cap, MAX_CALLS)
 
     def _refuse_other(self, body: Mapping[str, Any]) -> None:
         grant = continuation()
@@ -461,6 +513,11 @@ class Ledger:
                 raise OtherPacketError("the spend ledger lost the failed result's chain")
             if grant["phase"] != "sealed":
                 raise OtherPacketError("the new packet's marks and rubric are not sealed")
+            allowance = grant.get("closure_allowance")
+            if allowance and (
+                self.producer != "claude" or self.model_binding != allowance["model_binding"]
+            ):
+                raise OtherPacketError("the model differs from the closure allowance")
             next_packet = grant["next"]
             if (self.marks_digest, self.inputs_digest) != (
                 next_packet["marks_digest"],
@@ -492,13 +549,40 @@ class Ledger:
     def used(self) -> int:
         return len(read(self.path)["calls"])
 
-    def charge(self, case_id: str) -> str:
+    def charge(
+        self,
+        case_id: str,
+        *,
+        repeat: int = 1,
+        retry: bool = False,
+        request_binding: str = "",
+    ) -> str:
         """Charge one call before it runs, or raise. Returns the charge's id."""
         with locked(self.path):
             body = read(self.path)
             self._refuse_other(body)
             if len(body["calls"]) >= self.cap:
                 raise SpendCapError
+            grant = continuation()
+            allowance = (grant or {}).get("closure_allowance")
+            extra: dict[str, Any] = {}
+            if allowance:
+                if (
+                    not self.campaign
+                    or self.campaign.binding != allowance["campaign_binding"]
+                    or type(repeat) is not int
+                    or not 1 <= repeat <= 3
+                    or not isinstance(case_id, str)
+                    or not _CASE.fullmatch(case_id)
+                    or not isinstance(request_binding, str)
+                    or not _DIGEST.fullmatch(request_binding)
+                ):
+                    raise LedgerError("the closure call has no bound campaign exposure")
+                slot = f"{case_id}:r{repeat}"
+                reserved = self.campaign.reserve(
+                    "qualification", slot, request_binding, retry=retry
+                )
+                extra = {"repeat": repeat, "retry": retry, "campaign_charge": reserved}
             charge_id = uuid.uuid4().hex
             body["calls"].append(
                 {
@@ -509,6 +593,7 @@ class Ledger:
                     "status": "charged",
                     "marks_digest": self.marks_digest,
                     "inputs_digest": self.inputs_digest,
+                    **extra,
                 }
             )
             _write(self.path, body)
@@ -516,12 +601,29 @@ class Ledger:
 
     def settle(self, charge_id: str, status: str) -> None:
         """Record how a charged call ended, re-reading under the lock first."""
+        reserved = ""
         with locked(self.path):
             body = read(self.path)
             for call in body["calls"]:
                 if call["id"] == charge_id:
+                    if call.get("campaign_charge") and call["status"] != "charged":
+                        raise LedgerError("the closure transport was already classified")
                     call["status"] = status if status in STATUSES else "failed"
+                    reserved = str(call.get("campaign_charge") or "")
             _write(self.path, body)
+        if reserved and status != "ok":
+            if not self.campaign:
+                raise LedgerError("the closure transport lost its campaign")
+            self.campaign.settle(reserved, "unusable")
+
+    def finish_exposure(self, charge_id: str, status: str) -> None:
+        """Classify parsed/rubric evidence before the next campaign subprocess."""
+        body = read(self.path)
+        call = next((c for c in body["calls"] if c["id"] == charge_id), None)
+        if not call or not call.get("campaign_charge") or not self.campaign:
+            raise LedgerError("the closure exposure is not a charged campaign call")
+        if call["status"] == "ok":
+            self.campaign.settle(call["campaign_charge"], status)
 
     def record_run(self, records_digest: str) -> None:
         """What a finished run wrote, so a resume can prove its records are that run's."""

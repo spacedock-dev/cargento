@@ -270,6 +270,33 @@ is marked before any reading runs. A Claude Code result is written only from a f
 `--producer codex` may report but not score, because no Codex spend is authorized for this
 qualification.
 
+### Prospective production source inputs
+
+The explicit `--production-reading` option on `--freeze` prepares a new typed-Claude packet
+with parent-agent excerpts and exact production person and newest-final source bindings.
+It leaves existing packets alone. The [source-cut exception](../../SECURITY.md#prospective-qualification-source-cuts-2026-10-05)
+permits a temporary raw historical input copy; recovered whole reply fields remain in memory.
+Packets and marker output retain metadata and bounded excerpts, rather than restored complete
+replies. Source, selection or prompt changes refuse. Adopted goals and sourced outcome lines
+are outside this initial protocol, and machine vouch supplies no model accuracy result.
+
+The 2026-10-05 source preflight vouched five recorded cases and preserved five synthetic
+adversaries, with 31 native questions. Independent review found no established recorded
+matching-intent-incorrect-execution or misleading-completion case. All five recorded newest-final
+lookups were unproven. Qualification remains blocked before spending: it needs genuine source
+proof for those kinds, fresh independent marks and rubric review. Mechanical recovery tests
+do not establish complete-final empirical coverage or turn an earlier failure into a pass.
+
+A model-free audit after the [source identity repair](https://github.com/spacedock-dev/cargento/pull/504)
+on 2026-10-06 recovered all five newest selected final replies from the exact bounded historical
+cuts using their canonical filenames. All 53 selected identity and time joins matched. Four
+prompts stayed unchanged because their excerpts were already whole; one restored a
+2,479-character reply within the existing shares and cap. These checks establish source recovery
+and allocation, not five changed prompts or model interventions. The earlier unproven report
+and failed results remain historical records. They supply no semantic-kind admission or
+accuracy result; genuine coverage, fresh marks and rubric review are still required before
+qualification.
+
 ### The spend ledger
 
 Every model call is charged, before it runs, to one ledger at a fixed path,
@@ -324,6 +351,17 @@ packet's charges must then carry that packet's own key, in ledger order, and a c
 under the last grant's sealed key.
 A grant does not authorize sending real session evidence to a provider or
 raising that cap. Those require separate owner authorization.
+
+The authorized closure follow-up has a separate, conditional allowance of 31 new qualification
+attempts, included in the [shared 239-attempt allowance](../../SECURITY.md#shared-closure-allowance-2026-10-05).
+Only a reviewed fourth continuation grant with a sealed fresh packet, actual model binding and
+shared campaign binding can admit the resulting 59-call ceiling. Older packet keys retain the
+28-call ceiling. The new packet requires ten distinct cases: five independently vouched
+recorded kinds and five separately verified passing-check adversaries. Three complete native
+repetitions must pass; one registered availability retry remains visible and charged.
+Machine vouch establishes provenance, not semantic coverage. Missing source evidence blocks
+qualification even when allowance remains. No grant or passing result is supplied by this
+conditional implementation, and the earlier failed results remain unchanged.
 
 The failed `docs/abstention/claude-results.json` remains fixed. A continuation writes its summary
 only to `docs/abstention/claude-results-continuation.json` and its local results to

@@ -53,6 +53,8 @@ _ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if os.path.join(_ROOT, "scripts") not in sys.path:
     sys.path.insert(0, os.path.join(_ROOT, "scripts"))
 
+import abstention_ledger as campaign_authority  # noqa: E402 - operator scripts path
+import analyze_campaign as campaign_guard  # noqa: E402 - same operator scripts path
 import drift_study as study  # noqa: E402 - scripts/ is put on the path just above
 import levels_cases as lc  # noqa: E402 - scripts/ is put on the path just above
 
@@ -1513,6 +1515,10 @@ class _Charged:
         key: str,
         *,
         expected_prompt: Mapping[str, Any] | None = None,
+        study_shim_digest: str = "",
+        study_contract_digest: str = "",
+        transport_binding: Mapping[str, Any] | None = None,
+        pinned_binary: Any = None,
     ) -> None:
         self.unavailable_reason = str(getattr(inner, "unavailable_reason", "model-unavailable"))
         self.inner = inner
@@ -1526,11 +1532,17 @@ class _Charged:
         self.prompt_digest = ""
         self.prompt_bytes = 0
         self.expected_prompt = expected_prompt
+        self.campaign = campaign_guard.active_campaign() if ledger is not None else None
+        self.campaign_charge = ""
+        self.study_shim_digest = study_shim_digest
+        self.study_contract_digest = study_contract_digest
+        self.transport_binding = transport_binding
+        self.pinned_binary = pinned_binary
 
     def available(self) -> bool:
         return bool(getattr(self.inner, "available", lambda: True)())
 
-    def __call__(self, prompt: str, *, output_cap_bytes: int) -> tuple[str, str]:
+    def __call__(self, prompt: str, *, output_cap_bytes: int) -> tuple[str, str]:  # noqa: C901 - charge and authority checks precede the sole transport seam
         if self.expected_prompt is not None and (
             self.expected_prompt.get("digest") != hashlib.sha256(prompt.encode("utf-8")).hexdigest()
             or self.expected_prompt.get("bytes") != len(prompt.encode("utf-8"))
@@ -1539,7 +1551,45 @@ class _Charged:
         if self.ledger is None:
             # A dry run: measured by the stub, never charged.
             return self._send(prompt, output_cap_bytes)
-        if not self.ledger.charge(self.key):
+        if not self.campaign and self.ledger.used() >= 631:
+            raise LedgerError("remaining calls require the reviewed shared closure campaign")
+        if self.campaign:
+            if not campaign_guard.REPLAY_PATH or os.path.realpath(
+                self.ledger.path
+            ) != os.path.realpath(campaign_guard.REPLAY_PATH):
+                raise LedgerError("the campaign cannot use a different native replay ledger")
+            from cargento_runtime import observer  # noqa: PLC0415 - runtime after replay admission
+
+            try:
+                campaign_guard.validate_transport_binding(self.transport_binding)
+            except campaign_authority.LedgerError as error:
+                raise LedgerError(str(error)) from error
+            if self.pinned_binary is None or not self.pinned_binary("claude"):
+                raise LedgerError("the verified binary changed before campaign reservation")
+            producer = self.transport_binding
+            source = campaign_guard.runtime_source_digest(Path(observer.__file__).parent)
+            request = campaign_guard.request_digest(
+                prompt,
+                producer,
+                source,
+                output_cap_bytes,
+                shim_digest=self.study_shim_digest,
+                contract_digest=self.study_contract_digest,
+            )
+            try:
+                slot = self.campaign.request_slot("replay", request)
+                self.campaign_charge = self.campaign.reserve("replay", slot, request)
+            except campaign_authority.LedgerError as error:
+                raise LedgerError(str(error)) from error
+        try:
+            admitted = self.ledger.charge(self.key)
+        except LedgerError:
+            if self.campaign and self.campaign_charge:
+                self.campaign.settle(self.campaign_charge, "unusable")
+            raise
+        if not admitted:
+            if self.campaign and self.campaign_charge:
+                self.campaign.settle(self.campaign_charge, "unusable")
             self.capped = True
             return "", "cancelled"
         self.charged = True
@@ -1605,6 +1655,9 @@ class _ReadBatch:
             return True
         if self.dry_run:
             return False
+        if model.campaign and model.campaign_charge:
+            failed = model.status != "ok" or self._failed(model, entry)
+            model.campaign.settle(model.campaign_charge, "unusable" if failed else "usable")
         if model.charged and self._failed(model, entry):
             self.unusable += 1
             if self.unusable >= 2:
@@ -1728,6 +1781,7 @@ def _read_plan_refusal(  # noqa: PLR0913 - one plan's admission inputs, before a
     config: Any,
     producer: Mapping[str, Any],
     dry_run: bool,
+    reading_override: Any = None,
 ) -> str:
     """Rebuild all pending prompts without a provider before accepting a paid plan."""
     if dry_run:
@@ -1769,6 +1823,7 @@ def _read_plan_refusal(  # noqa: PLR0913 - one plan's admission inputs, before a
             include_history=include_history,
             prompt_measurements=current_prompts,
             runtime_config=config,
+            reading_override=reading_override,
         )
     finally:
         _remove_tree(os.path.join(paths["dir"], "scratch-read"))
@@ -1782,7 +1837,7 @@ def _read_plan_refusal(  # noqa: PLR0913 - one plan's admission inputs, before a
     return ""
 
 
-def read(  # noqa: C901, PLR0911, PLR0913, PLR0915 - admission refusals precede any charge
+def read(  # noqa: C901, PLR0911, PLR0912, PLR0913, PLR0915 - explicit isolated-study admission before any charge
     *,
     home: str,
     source: str | None = None,
@@ -1793,6 +1848,7 @@ def read(  # noqa: C901, PLR0911, PLR0913, PLR0915 - admission refusals precede 
     cases: tuple[str, ...] = (),
     include_history: bool = False,
     claude_model: str | None = None,
+    reading_override: Any = None,
 ) -> int:
     """Tier 3: one Analyze reading per cut and arm, through the verified Claude Code CLI.
 
@@ -1811,6 +1867,8 @@ def read(  # noqa: C901, PLR0911, PLR0913, PLR0915 - admission refusals precede 
         return 1
     read_path, plan_path = _tagged(paths, tag)
     config, _project_context, _live, _correction, reading = _runtime()
+    if reading_override is not None:
+        reading = reading_override
     import score_abstention  # noqa: PLC0415 - the verified, pinned CLI the qualification uses
     from cargento_runtime import observer, reading_route  # noqa: PLC0415
 
@@ -1866,6 +1924,7 @@ def read(  # noqa: C901, PLR0911, PLR0913, PLR0915 - admission refusals precede 
         config=config,
         producer=producer,
         dry_run=dry_run,
+        reading_override=reading_override,
     )
     if refusal:
         say(refusal)
@@ -1896,7 +1955,16 @@ def read(  # noqa: C901, PLR0911, PLR0913, PLR0915 - admission refusals precede 
                 include_history=include_history,
                 prompt_measurements=prompt_measurements,
                 runtime_config=config,
+                reading_override=reading_override,
                 expected_prompts=plan.get("prompts") if not dry_run else None,
+                transport_binding=campaign_guard.verified_transport_binding(
+                    config, verified, observer
+                )
+                if verified is not None
+                else None,
+                pinned_binary=score_abstention.PinnedClaude(verified.path, verified.identity)
+                if verified is not None
+                else None,
             )
         except LedgerError as error:
             say(f"Refused: {error}. No further call was made.")
@@ -1941,7 +2009,7 @@ def _goal_source(
     return facts, 1, int(found)
 
 
-def _read_cases(  # noqa: PLR0913 - every input of one pass, named
+def _read_cases(  # noqa: C901, PLR0913 - native pipeline with explicit isolated reading-module override
     body: Mapping[str, Any],
     paths: Mapping[str, str],
     inner: Any,
@@ -1957,12 +2025,17 @@ def _read_cases(  # noqa: PLR0913 - every input of one pass, named
     prompt_measurements: dict[str, Any] | None = None,
     runtime_config: Any = None,
     expected_prompts: Mapping[str, Any] | None = None,
+    reading_override: Any = None,
+    transport_binding: Mapping[str, Any] | None = None,
+    pinned_binary: Any = None,
 ) -> int:
     """One reading per cut and arm; the number of calls, negative when the cap stopped the pass.
 
     A non-empty `selection` of `id:arm` pairs reads only those.
     """
     config, project_context, _live, _correction, reading = _runtime()
+    if reading_override is not None:
+        reading = reading_override
     from cargento_runtime import observer, reading_route  # noqa: PLC0415
     from cargento_runtime.state import build_runtime_state  # noqa: PLC0415
 
@@ -2027,6 +2100,10 @@ def _read_cases(  # noqa: PLR0913 - every input of one pass, named
                 expected_prompt=expected_prompts.get(f"{case['id']}:{intent.arm}", {})
                 if expected_prompts is not None
                 else None,
+                study_shim_digest=str(getattr(reading, "CLOSURE_STUDY_SHIM_DIGEST", "")),
+                study_contract_digest=str(getattr(reading, "CLOSURE_STUDY_CONTRACT_DIGEST", "")),
+                transport_binding=transport_binding,
+                pinned_binary=pinned_binary,
             )
             source_facts, total, found = _goal_source(
                 config, source_state, project_context, reading, path, sid, intent, facts

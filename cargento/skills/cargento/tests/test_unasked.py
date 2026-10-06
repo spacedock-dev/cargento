@@ -1387,6 +1387,11 @@ class OnlyTheReaderRequestedRouteKnowsTheClaudeCodeProducerTest(unittest.TestCas
                 # `argv_digest` only: it hands the exec a runner that raises
                 # before any process starts.
                 self.SCORER,
+                # Signature binding calls the scorer's non-spawning argv probe.
+                "scripts/analyze_campaign.py",
+                # The authorized foreground study wraps the unchanged consent
+                # route's executor; it builds no alternate Claude model.
+                "scripts/live_analyze_campaign.py",
             },
             self._users("claude_exec"),
         )

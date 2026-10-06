@@ -12,6 +12,14 @@ a separate act.
     mark_abstention.py              mark the unmarked ones, one call each
     mark_abstention.py --report     progress, and the spread of what is marked
     mark_abstention.py --freeze F   freeze a format 5 packet from the spec in F
+    mark_abstention.py --freeze F --production-reading
+                                   prospectively freeze typed Claude production inputs
+
+The prospective flag admits parent agent excerpts and binds the exact production
+selection against a stamped historical source prefix. Whole final replies remain
+in memory: packets store digests, and scoring rereads and checks the source.
+Adopted goals and request-aged lines refuse this v1 scope. Existing packets are
+never upgraded, and this source freeze establishes no accuracy verdict.
 
 ## What a case has to put on screen, and why two versions of this failed
 
@@ -72,6 +80,7 @@ from __future__ import annotations
 
 import argparse
 import ast
+import contextlib
 import hashlib
 import json
 import os
@@ -81,9 +90,13 @@ import tempfile
 import urllib.error
 import urllib.parse
 import urllib.request
-from typing import Any, TypeGuard
+from typing import TYPE_CHECKING, Any, TypeGuard
 
 import abstention_ledger
+
+if TYPE_CHECKING:
+    from collections.abc import Callable, Iterator, Sequence
+    from typing import BinaryIO
 
 _SKILL = os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "cargento", "skills", "cargento"
@@ -291,6 +304,14 @@ def case_lines(case: dict[str, Any]) -> tuple[str, ...]:
 def case_constraints(body: dict[str, Any], case: dict[str, Any]) -> tuple[str, ...]:
     """What is marked and scored for this case: goal and output, or goal and each line."""
     if is_intent_packet(body):
+        source = case.get("production_reading")
+        if isinstance(source, dict):
+            constraints = source.get("constraints")
+            if not isinstance(constraints, list) or not all(
+                isinstance(c, str) for c in constraints
+            ):
+                raise FreezeError("production-constraints-invalid")
+            return tuple(constraints)
         return tuple(_reading().constraints_for(case_lines(case)))
     return ("goal", "output")
 
@@ -339,8 +360,246 @@ def case_ledger(body: dict[str, Any], case: dict[str, Any]) -> tuple[Any, ...]:
             tool_output=tails,
             changed_after=changed,
             read_incomplete=incomplete,
+            read_agent_words="production_reading" in case,
         )
     )
+
+
+def _source_digest(value: Any) -> str:
+    return hashlib.sha256(
+        json.dumps(value, sort_keys=True, separators=(",", ":")).encode()
+    ).hexdigest()
+
+
+def _wanted(rows: Sequence[Any], kind: str) -> list[dict[str, Any]]:
+    return [
+        {key: row[key] for key in ("id", "type", "author", "at")}
+        for row in rows
+        if row.get("type") == kind
+    ]
+
+
+def _final_metadata(result: dict[str, Any] | None) -> dict[str, Any] | None:
+    if result is None:
+        return None
+    return {
+        **{key: value for key, value in result.items() if key != "words"},
+        **({"words_digest": _source_digest(result["words"])} if "words" in result else {}),
+    }
+
+
+def _bounded_source_cut(handle: BinaryIO, captured: float, max_bytes: int) -> int:
+    """Find the cut on the opened source, with one bounded future-record lookahead."""
+    from cargento_runtime import project_context  # noqa: PLC0415 - see `_reading`
+
+    offset = 0
+    while raw := handle.readline(project_context.FINAL_WORDS_RECORD_MAX_BYTES + 1):
+        if len(raw) > project_context.FINAL_WORDS_RECORD_MAX_BYTES:
+            raise FreezeError("production-source-record-too-large")
+        try:
+            record = json.loads(raw)
+        except (ValueError, RecursionError):
+            record = None
+        at = (
+            project_context._record_timestamp(record)  # noqa: SLF001
+            if isinstance(record, dict)
+            else None
+        )
+        if at is not None and at > captured:
+            return offset
+        offset += len(raw)
+        if offset > max_bytes:
+            raise FreezeError("production-source-too-large")
+    return offset
+
+
+@contextlib.contextmanager
+def _historical_source(case: dict[str, Any], transcript: str) -> Iterator[tuple[str, str]]:
+    """An owned bounded capture prefix; raw/full words never enter the packet."""
+    from cargento_runtime import project_context  # noqa: PLC0415 - see `_reading`
+
+    size = case.get("transcript_bytes")
+    if type(size) is not int or size < 0 or size > project_context.FINAL_WORDS_SCAN_MAX_BYTES:
+        raise FreezeError("production-source-too-large")
+    stamp = project_context.transcript_stamp(transcript)
+    if stamp is None:
+        raise FreezeError("production-source-differs")
+    descriptor = os.open(transcript, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
+    with os.fdopen(descriptor, "rb") as handle:
+        opened = os.fstat(handle.fileno())
+        if (opened.st_dev, opened.st_ino, opened.st_size, opened.st_mtime_ns) != stamp:
+            raise FreezeError("production-source-moved")
+        if (
+            _bounded_source_cut(
+                handle, float(case["captured_at"]), project_context.FINAL_WORDS_SCAN_MAX_BYTES
+            )
+            != size
+        ):
+            raise FreezeError("production-source-differs")
+        handle.seek(0)
+        prefix = handle.read(size)
+    if len(prefix) != size or project_context.transcript_stamp(transcript) != stamp:
+        raise FreezeError("production-source-moved")
+    digest = hashlib.sha256(prefix).hexdigest()
+    frozen = case.get("production_reading")
+    if isinstance(frozen, dict) and frozen.get("prefix_digest") != digest:
+        raise FreezeError("production-source-differs")
+    with tempfile.TemporaryDirectory(prefix="cargento-native-source-") as folder:
+        path = os.path.join(folder, os.path.basename(transcript))
+        descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        with os.fdopen(descriptor, "wb") as handle:
+            handle.write(prefix)
+        yield path, digest
+
+
+def _production_capture(config: Any, case: dict[str, Any], transcript: str) -> dict[str, Any]:
+    """Capture the actual production selection using a model-free prompt sink."""
+    reading = _reading()
+    from cargento_runtime import project_context  # noqa: PLC0415 - see `_reading`
+
+    revision = case_revision(case)
+    if (
+        case.get("harness") != "claude"
+        or revision.get("goal_source") in reading.PROMPT_SOURCES
+        or reading.has_line_requests(revision)
+    ):
+        raise FreezeError("production-intent-source-unsupported")
+    frozen: dict[str, Any] = {"v": 1, "final_wanted": [], "newest_final": None}
+    with _historical_source(case, transcript) as (path, digest):
+        frozen["prefix_digest"] = digest
+        stamp = project_context.transcript_stamp(path)
+
+        def person(rows: Sequence[Any]) -> list[dict[str, Any]]:
+            frozen["person_wanted"] = _wanted(rows, "user_message")
+            words = project_context.transcript_window_words(
+                config,
+                path,
+                "claude",
+                str(case["sid"]),
+                rows,
+                expected_stamp=stamp,
+            )
+            frozen["person_words_digest"] = _source_digest(words)
+            return words
+
+        def final(rows: Sequence[Any]) -> dict[str, Any]:
+            frozen["final_wanted"] = _wanted(rows, reading.AGENT_MESSAGE_TYPE)
+            result = project_context.transcript_newest_final_words(
+                config,
+                path,
+                "claude",
+                str(case["sid"]),
+                rows,
+                expected_stamp=stamp,
+            )
+            frozen["newest_final"] = _final_metadata(result)
+            return result
+
+        prompts: list[str] = []
+
+        def sink(prompt: str, **_kwargs: Any) -> tuple[str, str]:
+            prompts.append(prompt)
+            return "{}", "ok"
+
+        tails, changed, incomplete = case_checks({"v": FORMAT_INTENT}, case)
+        assessment, _why, _spent = reading.produce(
+            config,
+            case["row_snapshot"],
+            [revision],
+            case["producer_facts"],
+            now=float(case["captured_at"]),
+            stamp_text="native source freeze",
+            model=sink,
+            read_lines=True,
+            read_agent_words=True,
+            admit_turn_stop=True,
+            tool_output=reading.ToolOutput(
+                destination="native-dry",
+                label="native dry",
+                tails=tails or {},
+                changed_after=changed,
+                read_incomplete=incomplete,
+            ),
+            person_source_lookup=person,
+            final_source_lookup=final,
+        )
+    if len(prompts) != 1 or "person_wanted" not in frozen:
+        raise FreezeError("production-prompt-unavailable")
+    if assessment is None:
+        raise FreezeError("production-prompt-unavailable")
+    frozen["constraints"] = list(assessment["criteria"])
+    frozen["prompt_digest"] = hashlib.sha256(prompts[0].encode()).hexdigest()
+    return frozen
+
+
+def _native_source_lookup(
+    case: dict[str, Any],
+    kind: str,
+    *,
+    config: Any = None,
+    index: dict[str, str] | None = None,
+) -> Callable[[Sequence[Any]], Any] | None:
+    if "production_reading" not in case:
+        return None
+    frozen = case["production_reading"]
+    if not isinstance(frozen, dict) or frozen.get("v") != 1:
+        raise FreezeError("production-source-invalid")
+    reading = _reading()
+    from cargento_runtime import project_context  # noqa: PLC0415 - see `_reading`
+
+    actual_config = config if config is not None else _runtime_config()
+    sources = index if index is not None else _transcript_index()
+    path = sources.get(str(case.get("sid") or "")[:8], "")
+    if not path:
+        raise FreezeError("no-transcript")
+
+    def lookup(rows: Sequence[Any]) -> Any:
+        final = kind == reading.AGENT_MESSAGE_TYPE
+        key = "final_wanted" if final else "person_wanted"
+        if _wanted(rows, kind) != frozen.get(key):
+            raise FreezeError("production-selection-differs")
+        with _historical_source(case, path) as (source, _digest):
+            stamp = project_context.transcript_stamp(source)
+            result: Any
+            if final:
+                result = project_context.transcript_newest_final_words(
+                    actual_config,
+                    source,
+                    "claude",
+                    str(case["sid"]),
+                    rows,
+                    expected_stamp=stamp,
+                )
+                matches = _final_metadata(result) == frozen.get("newest_final")
+            else:
+                result = project_context.transcript_window_words(
+                    actual_config,
+                    source,
+                    "claude",
+                    str(case["sid"]),
+                    rows,
+                    expected_stamp=stamp,
+                )
+                matches = _source_digest(result) == frozen.get("person_words_digest")
+        if not matches:
+            raise FreezeError("production-source-differs")
+        return result
+
+    return lookup
+
+
+def native_case_person_lookup(
+    case: dict[str, Any], **kwargs: Any
+) -> Callable[[Sequence[Any]], Any] | None:
+    """Restore only the frozen selected reader words, from source in memory."""
+    return _native_source_lookup(case, "user_message", **kwargs)
+
+
+def native_case_final_lookup(
+    case: dict[str, Any], **kwargs: Any
+) -> Callable[[Sequence[Any]], Any] | None:
+    """Recover the bound newest final in memory; the packet retains only its digest."""
+    return _native_source_lookup(case, _reading().AGENT_MESSAGE_TYPE, **kwargs)
 
 
 def _get(url: str, timeout: int = 30) -> Any:
@@ -929,7 +1188,7 @@ def _stop(snapshot: dict[str, Any]) -> float | None:
 
 # Keep the ordered provenance refusals together: the parser-stamp check must
 # precede any transcript read, and an unreachable check cutoff has its own reason.
-def content_refusal(config: Any, case: dict[str, Any], transcript: str) -> list[str]:  # noqa: C901
+def content_refusal(config: Any, case: dict[str, Any], transcript: str) -> list[str]:  # noqa: C901, PLR0912, PLR0915 - ordered source refusals
     """Why a Claude Code case's contents are not what its transcript holds (DRC-4711).
 
     Rebuilt as the freeze built them, at the case's own `captured_at`, so turns
@@ -966,6 +1225,9 @@ def content_refusal(config: Any, case: dict[str, Any], transcript: str) -> list[
     from cargento_runtime import project_context  # noqa: PLC0415 - see `_reading`
 
     stop = _stop(case.get("row_snapshot") or {})
+    production = "production_reading" in case
+    agents: list[dict[str, Any]] = []
+    agent_tail: list[dict[str, Any]] = []
     try:
         checks, press = project_context.frozen_claude_checks(
             config, transcript, sid, until=captured
@@ -973,6 +1235,10 @@ def content_refusal(config: Any, case: dict[str, Any], transcript: str) -> list[
         held, tail = project_context.frozen_claude_user_messages(
             config, transcript, sid, until=captured, size=size
         )
+        if production:
+            agents, agent_tail = project_context.frozen_claude_agent_messages(
+                config, transcript, sid, until=captured, size=size
+            )
         moved = stop is not None and project_context.claude_activity_between(
             transcript, stop, captured
         )
@@ -1006,16 +1272,40 @@ def content_refusal(config: Any, case: dict[str, Any], transcript: str) -> list[
                 tool_output=tails,
                 changed_after=press.changed_after,
                 read_incomplete=press.read_incomplete,
+                read_agent_words=production,
             )
         )
 
     if rows([f for f in facts if f.get("type") == tool], tails) != rows(checks, tails):
         reasons.append("checks-differ")
-    mine = rows([f for f in facts if f.get("type") != tool], None)
+    mine = rows(
+        [
+            f
+            for f in facts
+            if f.get("type") != tool
+            and (not production or f.get("type") != reading.AGENT_MESSAGE_TYPE)
+        ],
+        None,
+    )
     whole = rows(held, None)
     newest = whole[len(whole) - len(mine) :] if mine else []
-    if mine != newest or len(mine) < len(rows(tail, None)):
+    if (
+        mine != newest
+        or len(mine) < len(rows(tail, None))
+        or (production and mine != rows(tail, None))
+    ):
         reasons.append("facts-unconfirmed")
+    if production:
+        mine_agents = rows([f for f in facts if f.get("type") == reading.AGENT_MESSAGE_TYPE], None)
+        whole_agents = rows(agents, None)
+        newest_agents = whole_agents[len(whole_agents) - len(mine_agents) :] if mine_agents else []
+        if mine_agents != newest_agents or mine_agents != rows(agent_tail, None):
+            reasons.append("agent-facts-unconfirmed")
+        try:
+            if _production_capture(config, case, transcript) != case["production_reading"]:
+                reasons.append("production-source-differs")
+        except (FreezeError, OSError, KeyError, TypeError, ValueError):
+            reasons.append("production-source-differs")
     return reasons
 
 
@@ -1100,13 +1390,14 @@ def machine_vouch(store_home: str | None) -> Any:
     )
 
 
-def freeze_case(
+def freeze_case(  # noqa: C901 - retain legacy provenance order with opt-in source capture
     config: Any,
     entry: dict[str, Any],
     facts: list[dict[str, Any]],
     *,
     observations: Any = (),
     ends: Any = (),
+    production_reading: bool = False,
 ) -> dict[str, Any]:
     """One recorded case, frozen as the session stood at `captured_at`.
 
@@ -1192,7 +1483,16 @@ def freeze_case(
         kept = [*said, *checks]
         case["transcript_cut"] = "capture"
         case["parser"] = parser_digest()
+        if production_reading:
+            from cargento_runtime import project_context  # noqa: PLC0415 - see `_reading`
+
+            _whole, agents = project_context.frozen_claude_agent_messages(
+                config, transcript, sid, until=captured, size=case["transcript_bytes"]
+            )
+            kept = [*said, *agents, *checks]
     case["producer_facts"] = kept
+    if production_reading:
+        case["production_reading"] = _production_capture(config, case, transcript)
     case["unconfirmed"] = unconfirmed
     if unconfirmed:
         case["origin"] = ORIGIN_SYNTHETIC
@@ -1216,7 +1516,14 @@ def _observed_stores(store_home: str | None) -> tuple[Any, Any]:
     return history.load(config)[0], ends.load(config)
 
 
-def freeze(port: int, spec_path: str, *, force: bool = False, store_home: str = "") -> int:
+def freeze(
+    port: int,
+    spec_path: str,
+    *,
+    force: bool = False,
+    store_home: str = "",
+    production_reading: bool = False,
+) -> int:
     """Write a format 5 packet from a spec of recorded moments. Spends nothing.
 
     The spec is local and hand-written: per case the harness, sid, project,
@@ -1246,7 +1553,16 @@ def freeze(port: int, spec_path: str, *, force: bool = False, store_home: str = 
             print(f"Case {index}: the board on port {port} did not answer for it")
             return 1
         try:
-            cases.append(freeze_case(config, entry, facts, observations=observations, ends=ends))
+            cases.append(
+                freeze_case(
+                    config,
+                    entry,
+                    facts,
+                    observations=observations,
+                    ends=ends,
+                    production_reading=production_reading,
+                )
+            )
         except FreezeError as error:
             print(f"Case {index}: {error}")
             return 1
@@ -1434,6 +1750,16 @@ def _show_intent_case(body: dict[str, Any], case: dict[str, Any], position: str)
         print(f"    {entry['id']} | {entry['type']} | {entry['source']} | {entry['summary']}{more}")
         if entry.get("tail"):
             print(f"        output tail: {entry['tail']}")
+        if "production_reading" in case and entry.get("agent_words"):
+            print(f"        agent excerpt: {entry['agent_words']}")
+    if "production_reading" in case:
+        result = case["production_reading"].get("newest_final")
+        if isinstance(result, dict):
+            print(f"  NEWEST FINAL SOURCE: {result.get('outcome')}")
+            print(
+                f"    {result.get('fact_id')} | {result.get('at')} | "
+                f"word digest {result.get('words_digest')}"
+            )
     if not any(_reading().demonstrates_work(entry) for entry in ledger):
         print("    no check or written file in this record")
 
@@ -1464,6 +1790,8 @@ def _mark_question(body: dict[str, Any], case: dict[str, Any], constraint: str) 
         revision = case_revision(case)
         if constraint == "goal":
             what = f"this goal: {revision['goal']}"
+        elif constraint == "claims":
+            what = "the agent's claims against the recorded work"
         else:
             k = int(constraint.rsplit("_", 1)[1])
             what = f"outcome line {k}: {case_lines(case)[k - 1]}"
@@ -1682,7 +2010,7 @@ def report() -> int:
     return 0
 
 
-def main(argv: list[str] | None = None) -> int:  # noqa: PLR0911 - one exit per mode
+def main(argv: list[str] | None = None) -> int:  # noqa: C901, PLR0911 - one exit per mode
     parser = argparse.ArgumentParser(description="Collect the abstention answer key.")
     parser.add_argument("--build", action="store_true", help="assemble cases from the live board")
     parser.add_argument("--port", type=int, default=4553, help="the dashboard port to read")
@@ -1696,9 +2024,17 @@ def main(argv: list[str] | None = None) -> int:  # noqa: PLR0911 - one exit per 
     )
     parser.add_argument("--freeze", metavar="SPEC", help="freeze a format 5 packet from a spec")
     parser.add_argument(
+        "--production-reading",
+        action="store_true",
+        help="freeze typed Claude Intent with production agent/source evidence",
+    )
+    parser.add_argument(
         "--store-home", default=STORE_HOME, help="where the dashboard's history and ends live"
     )
     args = parser.parse_args(argv)
+    if args.production_reading and not args.freeze:
+        print("--production-reading requires --freeze; existing packets are never upgraded.")
+        return 2
     if (
         abstention_ledger.LEDGER_PATH is None
         or CLAUDE_PROJECTS_ROOT is None
@@ -1711,7 +2047,13 @@ def main(argv: list[str] | None = None) -> int:  # noqa: PLR0911 - one exit per 
         print("--continue-mark only marks; it cannot build, reset, freeze or report.")
         return 2
     if args.freeze:
-        return freeze(args.port, args.freeze, force=args.force, store_home=args.store_home)
+        return freeze(
+            args.port,
+            args.freeze,
+            force=args.force,
+            store_home=args.store_home,
+            production_reading=args.production_reading,
+        )
     if args.build and args.reset:
         print("--build and --reset together are ambiguous. Run them one at a time.")
         return 2
