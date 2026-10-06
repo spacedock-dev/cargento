@@ -235,7 +235,7 @@ __semantic.facts.push({fact_id:"write-outside",at:104.6,type:"tool_report",subje
         )
         text = visible_text(drift_of(html))
         self.assertIn("Recorded signals", text)
-        self.assertIn("A check failed", text)
+        self.assertIn("pytest failed", text)
         self.assertIn("outside the folders", text)
         self.assertIn("Call recorded at", text)
         self.assertIn("1970-01-01 00:01:44 UTC", text)
