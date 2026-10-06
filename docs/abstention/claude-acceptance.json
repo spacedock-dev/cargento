@@ -60,13 +60,27 @@
         "charged": 28
       },
       "verdict": "failed"
+    },
+    {
+      "cases": 2,
+      "correct": 3,
+      "dec17_failed_cases": 1,
+      "inputs_digest": "4057b40644fa64b9c69b2afb7c9480816fe87fd147131fc633a9c42f7efd8eae",
+      "marks_digest": "b1b6f86ae035e57baf351c4baeca2ab5aca35c85bce58231822bb2191aa02f61",
+      "result": "claude-results-continuation-4.json",
+      "scored_constraints": 7,
+      "spend": {
+        "charged": 30,
+        "cap": 59
+      },
+      "verdict": "failed"
     }
   ],
-  "scored_runs": 4,
+  "scored_runs": 5,
   "spend": {
-    "cap": 28,
-    "charged": 28
+    "charged": 30,
+    "cap": 59
   },
-  "statement": "Every scored Claude Code run below failed DEC-17's abstention check. The owner accepted the Claude Code producer anyway on 2026-10-02, knowing that, so Claude Code reads a Claude Code session when the claude CLI is on PATH. This is an acceptance, not a pass. The results, their grants and the spend ledger are unchanged.",
+  "statement": "Every scored Claude Code run listed here failed DEC-17's abstention check. On 2026-10-02 the owner accepted the Claude Code producer despite the earlier failures, so Claude Code can read a Claude Code session when the claude CLI is on PATH. That operational acceptance is separate from later qualification results and does not make a failed result a pass. Earlier results and every charge remain preserved.",
   "v": 1
 }

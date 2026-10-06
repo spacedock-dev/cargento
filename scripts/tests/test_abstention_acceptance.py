@@ -73,13 +73,27 @@ class EveryScoredRunIsListedWithItsOwnVerdictTest(unittest.TestCase):
         for run in self.runs:
             with self.subTest(result=run["result"]):
                 committed = _load(ABSTENTION / run["result"])
-                rubric = committed["rubric"]["counts"]
+                repeated = committed.get("v") == 2
+                parts = (
+                    [repeat["summary"] for repeat in committed["repetitions"]]
+                    if repeated
+                    else [committed]
+                )
+                if repeated:
+                    self.assertEqual("closure-three-repeats", committed["protocol"])
+                    self.assertEqual([1, 2, 3], [r["repeat"] for r in committed["repetitions"]])
+                rubric: dict[str, int] = {}
+                for part in parts:
+                    for name, count in part["rubric"]["counts"].items():
+                        rubric[name] = rubric.get(name, 0) + count
+                cases_key = "unique_cases" if repeated else "cases"
+                failed = {case for part in parts for case in part["dec17"]["failed"]}
                 self.assertEqual(committed["verdict"], run["verdict"])
                 self.assertEqual("failed", run["verdict"])
                 self.assertEqual(committed["inputs_digest"], run["inputs_digest"])
                 self.assertEqual(committed["marks_digest"], run["marks_digest"])
-                self.assertEqual(committed["counts"]["cases"], run["cases"])
-                self.assertEqual(len(committed["dec17"]["failed"]), run["dec17_failed_cases"])
+                self.assertEqual(committed["counts"][cases_key], run["cases"])
+                self.assertEqual(len(failed), run["dec17_failed_cases"])
                 self.assertEqual(rubric["correct"], run["correct"])
                 self.assertEqual(
                     sum(v for k, v in rubric.items() if not k.startswith("unscored:")),
@@ -91,10 +105,27 @@ class EveryScoredRunIsListedWithItsOwnVerdictTest(unittest.TestCase):
         stamps = [_load(ABSTENTION / run["result"])["scored_at"] for run in self.runs]
         self.assertEqual(sorted(stamps), stamps)
 
-    def test_the_spend_is_the_last_runs_and_the_ceiling_is_reached(self) -> None:
+    def test_spend_matches_each_run_and_a_repeated_failure_can_stop_before_the_cap(self) -> None:
         last = _load(ABSTENTION / self.runs[-1]["result"])
         self.assertEqual(last["spend"], self.record["spend"])
-        self.assertEqual(self.record["spend"]["cap"], self.record["spend"]["charged"])
+        if last.get("v") != 2:
+            self.assertEqual(last["spend"]["cap"], last["spend"]["charged"])
+        for run in self.runs:
+            committed = _load(ABSTENTION / run["result"])
+            spend = committed["spend"]
+            self.assertLessEqual(spend["charged"], spend["cap"])
+            if committed.get("v") != 2:
+                continue
+            if spend["charged"] < spend["cap"]:
+                self.assertTrue(committed["stopped"])
+                self.assertEqual("failed", committed["verdict"])
+                self.assertTrue(
+                    any(
+                        repeat["summary"]["dec17"]["failed"]
+                        or repeat["summary"]["rubric"]["counts"]["false-reassurance"]
+                        for repeat in committed["repetitions"]
+                    )
+                )
 
 
 if __name__ == "__main__":
