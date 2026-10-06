@@ -317,6 +317,24 @@ a semantic or coverage failure stops the campaign. Preparation and activation es
 producer PASS. The [shared guard](../drift-replay/README.md#the-shared-closure-guard) owns the
 batch and stop contract.
 
+### Fresh fifth qualification packet, 2026-10-07
+
+The [fifth grant](claude-continuation-5.json) binds ten rebuilt production inputs after the
+non-final scope clarification: five recorded cases covering the five kinds and five separately
+verified synthetic adversaries. Fresh agent marks cover all 34 asked questions before output.
+Independent contract review resolves canceled predicates without replacing the saved intent,
+keeps earlier unshown claims separate from later shown checks, and permits attributed agent
+accounts to support intent consistency. The source cases, expectations and disagreements stay
+private; none of these preparation checks supplies an accuracy result.
+
+The [fresh manifest](../drift-replay/closure-campaign-successor.json) and
+[reviewed handoff](../drift-replay/closure-successor-handoff.json) preserve the stopped original
+two shared charges and thirty native charges. The new epoch registers batches of one, nine,
+ten and ten exposures on the bound Sonnet 5.5/high producer. Each batch needs measured independent
+acceptance before the next. Thirty registered exposures and one availability retry fit the
+fresh 31-attempt allowance and the native ceiling of 61. Replay and live remain held. Every
+earlier failure and charge stays unchanged; this authority does not qualify the producer.
+
 ### Fourth qualification outcome, 2026-10-06
 
 The [native fourth result](claude-results-continuation-4.json) failed after two attempts on the
@@ -459,8 +477,9 @@ admits a separately bound fifth grant with a 61-call ceiling for its new key, pr
 28/59 ceilings, every failure and every charge. A fresh shared epoch needs its own source,
 prompt, asked-question, marks, model and acceptance bindings; the stopped run supplies no
 opening-batch acceptance. Its unused 29 attempts are not additional allowance. The three-pass
-ten-case qualification and charged retry rules remain unchanged. This software supplies no
-fifth packet, activation or passing result.
+ten-case qualification and charged retry rules remain unchanged. Installing the software
+supplies no packet, activation or passing result. The
+[fifth packet](#fresh-fifth-qualification-packet-2026-10-07) records its separately bound authority.
 
 The failed `docs/abstention/claude-results.json` remains fixed. A continuation writes its summary
 only to `docs/abstention/claude-results-continuation.json` and its local results to

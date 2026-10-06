@@ -150,6 +150,14 @@ qualification cap is 31; replay and live remain held, with no allowance transfer
 opening acceptance. Fresh prompts, selections, asked questions and marks must be frozen before
 calls. Installing the guard does not activate this continuation or qualify the producer.
 
+The [fresh qualification manifest](closure-campaign-successor.json) and
+[independent handoff](closure-successor-handoff.json) bind that continuation to the rebuilt
+ten-case packet and its 34 prospectively marked questions. The original manifest and failed
+result remain unchanged. This epoch registers only qualification requests; replay and live
+remain wholly deferred. Its first batch is one exposure, followed by batches of nine, ten
+and ten after measured independent acceptance. An authority or activation receipt establishes
+no accuracy result.
+
 `scripts/drift_study_controls.py` isolates experimental reading modules for matched conditions;
 the native replay accepts one through its explicit `reading_override` argument. Scope pairs
 reserve common room under the longer trusted header and retain equal numbered evidence.
