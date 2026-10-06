@@ -2126,6 +2126,74 @@ through only the redaction a press applies, not the fixtures' redaction. It neve
 annotation store and never posts to the reading route. The
 [drift replay documentation](docs/drift-replay/README.md) owns its format.
 
+#### Shared closure allowance, 2026-10-05
+
+The authorized follow-up has at most 239 additional Analyze attempts across all three routes:
+190 replay, 31 qualification and 18 live. The qualification and live allowances are included in
+239. They cannot be added to it or transferred to another route. The existing 631 replay charges
+and 28 qualification charges stay intact, along with their failed results and grants.
+
+`scripts/analyze_campaign.py` reads a reviewed repository manifest and a fixed account ledger,
+`~/.cargento/analyze-closure-spend.json`. Actual final prompt, model, runtime and output-cap
+digests bind each reservation; experimental replay also binds its study code and condition.
+Reservations precede transport, and failures remain charged. Immutable reservation,
+classification and acceptance receipts detect missing or rewritten state. A reviewed zero-charge
+genesis digest is required for activation; an activated campaign never creates replacement
+state automatically. This guards accidental reset, not an account holder who rewrites both the
+repository authority and every private receipt.
+
+The lanes run in replay, qualification, live order. Each registered batch needs measured,
+independently reviewed acceptance before the next batch. Transport usability is insufficient.
+A semantic, coverage or protection failure stops every lane, as do two consecutive unusable
+charged attempts. Pending or orphaned attempts block another launch. Batches charge at most
+25 attempts including retries, and each lane opens with one availability attempt. Only an
+explicit same-slot retry under its registered allowance can follow an unusable opening.
+
+Future inputs may be explicitly held without invented request hashes. Held slots cannot spend,
+be skipped or pass acceptance, and the authority has no unholding or reset API. A live wrapper
+in `scripts/live_analyze_campaign.py` reserves at the unchanged production executor seam after
+the native consent route and refuses unmetered Codex execution for that foreground process.
+Its instrumentation supplies no complete process or network trace. Native replay
+preflight binds its fixed ten-file implementation inventory and actual checkout.
+Every registration requires an exact positive integer repeat and a unique
+`(phase, case, arm, condition, repeat)` identity; extra metadata cannot shadow a pair.
+Every declared critical group requires three static registrations with distinct integer
+repeats 1, 2 and 3 before charge. The ten historical protected rows must have distinct
+`(case, arm, claim)` identities; missing or unknown independent admission refuses before
+the first model charge. Unsupported semantic conditions refuse rather than pass unread.
+When neither observed arm draws a required protected claim, unresolved comparison adds
+a coverage failure and blocks acceptance. Future pairs with no outputs remain pending;
+the comparison does not require a favorable legacy result. The production pilot forwards
+the supplied stamp-bound final lookup like the shipped reading prompt builder; matched
+scope and first-1000 controls remain explicit comparisons.
+Historical protocols remain unchanged and need separate, independently reviewed
+prospective translation before activation; translation alone grants no source admission.
+No campaign is activated by installing this machinery, and no earlier failed qualification
+becomes a pass. The [replay documentation](docs/drift-replay/README.md#the-shared-closure-guard)
+owns the preparation and measurement boundary.
+
+#### Prospective qualification source cuts, 2026-10-05
+
+The opt-in typed-Claude qualification freezer may make an owned transient copy of the raw
+historical source prefix, as the replay already makes a cut transcript. This is a study-input
+exception to the runtime's memory-only source recovery rule, not permission to cache recovered
+replies. The source-cut helper admits a prefix no larger than 32 MiB and uses bounded lookahead
+to prove the capture boundary, refusing records over 1 MiB. The existing freeze and vouch
+provenance scans retain their separate limits. The source is opened without following a symlink
+where supported; its
+descriptor identity and source stamp must agree before and after the read. A 0700 temporary
+directory and a 0600 file hold that raw input only while the stamped production reader runs.
+Normal completion, refusal and exceptions remove the cut. Abrupt process termination may leave
+an owner-only temporary copy, which the operator must remove; the code does not promise secure
+erasure or protection from another process under the same account.
+
+The frozen packet retains existing bounded agent excerpts and exact selected identities,
+prefix, word and prompt digests. Recovered complete replies remain in memory and enter no new
+packet field, marker output, cache or history. Later source appends may be ignored beyond the
+bound capture prefix, but a changed prefix or selection refuses before transport. Existing
+packets are never upgraded. This first prospective protocol refuses adopted goals and sourced
+outcome lines; it establishes neither their qualification nor model accuracy.
+
 The model-free studies use separate tagged cohorts under that same private directory. Their
 initial blind marks stay private before later proof is opened. The exact imported cohort,
 including the later proof key where used, is bound by committed counts and a digest before

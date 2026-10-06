@@ -111,6 +111,90 @@ The ledger ends at 631 of 870, with 239 left: 199 verified calls in this run, pl
 conservative reservations for earlier test calls whose execution could not be proved. The
 two-unusable-call budget stop did not fire. Spend stopped at the failed measurement guard.
 
+## The shared closure guard
+
+The follow-up allowance is 239 additional Analyze attempts in total: 190 replay, 31 qualification
+and 18 live. The original failed campaign, its charges, marks and results stay unchanged.
+The [security contract](../../SECURITY.md#shared-closure-allowance-2026-10-05) owns the fixed
+account ledger, immutable receipts and activation rule.
+
+`scripts/analyze_campaign.py` requires a reviewed manifest at
+`docs/drift-replay/closure-campaign.json` before spending. The manifest binds actual final
+requests, source code, blind marks, batch boundaries and lane order. Source-only preparation
+and fake transports do not qualify the model. Each batch needs native semantic measurements
+and independent review before acceptance. A passing transport cannot supply that acceptance.
+The first failed semantic, coverage or protection guard stops the entire follow-up.
+
+`scripts/drift_study_controls.py` isolates experimental reading modules for matched conditions;
+the native replay accepts one through its explicit `reading_override` argument. Scope pairs
+reserve common room under the longer trusted header and retain equal numbered evidence.
+They compare a bundled header and token contract, rather than estimating a pure sentence
+effect or reconstructing an old runtime. The production pilot forwards the supplied,
+stamp-bound final lookup to the native prompt builder, as the shipped reading press does.
+The `newest-final-whole` condition does likewise; `reply-first1000` and both matched scope
+controls retain their explicit comparison behavior. Complete newest-final restoration may
+reallocate other agent excerpts within the unchanged cap. These conditions need fresh actual-model
+measurements; they inherit no historical accuracy claim.
+
+The model-free `scripts/drift_closure_operator.py` owns serial native replay execution.
+It binds the checkout and a fixed inventory of ten native implementation files, plus
+actual frozen sources, controls and shipped page projection, before a reservation.
+Every registration requires an exact positive integer repeat and a unique
+`(phase, case, arm, condition, repeat)` identity. Boolean repeats and extra row metadata
+cannot alias or shadow another pair.
+Every critical predicate must name its requested criterion and source clause, even
+when it has no raw-token condition. Every declared case, arm, phase and condition group
+needs exactly three static registrations with distinct integer repeats 1, 2 and 3
+before preparation can pass. Missing groups refuse before a charge; a complete plan
+may still have future outputs pending. The ten original protected rows must have
+distinct `(case, arm, claim)` identities, retain nine claim keys and four recorded
+withdrawals, and have independent source admission before the first pilot. Missing or
+unknown admission refuses without a model charge.
+
+If neither observed arm draws a required protected claim, the grader reports that
+comparison as unresolved and adds a coverage failure. The measured report stays short
+and cannot be accepted, including when every registered output is present. A partial
+plan with no outputs yet defers future comparisons. A new arm that draws the claim does
+not require a favorable legacy result; a claim drawn by the legacy arm and withdrawn by
+the new arm remains a protection failure. These checks change no original marks, ten-row
+denominator, nine claim keys or four recorded losses.
+
+Semantic conditions use two explicit values. `required_page_state` accepts only
+`drawn-grounded-departure`: the exact requested criterion must resolve to departure,
+remain drawn on the page, and cite every independently admitted joint support member
+in raw, native and page citations. Those support identities must be registered before
+output even when there is no raw-token condition. `legacy_scope_baseline` accepts only
+`report-all-repeats`: each declared case and arm needs three scope/legacy-scope
+registrations with integer repeats 1, 2 and 3. The final report records all three actual
+criterion results in repeat order, without requiring a favorable legacy result. Missing
+or invalid baseline observations leave final coverage short. The same predicate cannot
+also declare that report-only legacy condition as a critical-result group; preparation
+refuses the overlap rather than dropping a declared obligation.
+
+Arbitrary or prose values in those semantic fields refuse. `failure`, `reporting` and
+`rationale` are nonempty descriptive notes, not additional executable conditions.
+Historical protocols with unsupported prose conditions remain unchanged and cannot
+execute as prospective registrations. A separate new registration must translate their
+approved obligations into the supported fields under independent review before
+activation. Translation alone admits no source or mark and repairs no historical failure.
+
+The operator then uses the native tagged dry/read route with a distinct charge for each
+repeat. Its private journal holds metadata, not recovered reply text. Raw-token predicates
+also require every admitted joint support member in raw, native and page citations. The
+grader checks all declared critical groups against actual observations before final acceptance.
+
+Each batch waits for an independent review outside the operator artifact directory, bound
+to the actual report and attempts. Acceptance hashes the same bounded review bytes it
+parsed and refuses a changed file. Restart regrades interrupted durable results; charged
+failures remain charged, while a source refusal before any reservation is not a measured
+failure. This helper activates no authority and admits no unsupported source or blind mark.
+The live launcher refuses alternate unmetered Codex execution during the Claude study.
+
+Unknown future live requests remain explicitly held and unbound. Neither an agent walkthrough
+nor this guard satisfies the original cold protocol with two real participants. Complete
+subprocess and outbound attribution is also a separate measurement. No registered campaign,
+qualification grant or measured result is implied by the guard's source checks.
+
 ## Model-free gap studies, 2026-10-05
 
 These studies keep the original 99 cases and their reads intact. Two agents mark the evidence

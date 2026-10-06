@@ -135,6 +135,8 @@ max-args = 8
 "scripts/abstention_ledger.py" = ["INP001"]
 # Model-free study helpers are imported by drift_replay, without a separate CLI.
 "scripts/drift_study.py" = ["INP001"]
+# Matched model-free control library is imported by private replay preflight.
+"scripts/drift_study_controls.py" = ["INP001"]
 # Tests: assert usage, subprocess invocations of node, and long fixture lines.
 "**/tests/*.py" = ["S101", "S603", "S108", "S311", "E501", "SLF001", "INP001", "S104"]
 

@@ -157,6 +157,13 @@ PRODUCERS = ("claude", "codex")
 # The owner's ceiling, 28 real readings across every packet since 2026-10-01
 # (DRC-4666). `abstention_ledger` owns the cap and the one ledger.
 MAX_CALLS = abstention_ledger.MAX_CALLS
+PASSING_CHECK_ADVERSARIES = (
+    "goal-unrelated",
+    "outcome-unrelated",
+    "browser-unrelated",
+    "stale-before-write",
+    "partial-check",
+)
 # Where the native installer puts each Claude Code version, one file per version
 # named for it. A `claude` resolving anywhere else is refused: a PATH stub
 # answered as `claude-sonnet-5` in review, and nothing in the result showed it.
@@ -347,7 +354,15 @@ class _Charged:
         ledger: abstention_ledger.Ledger,
         case_id: str,
         model: Callable[..., tuple[str, str]],
+        *,
+        repeat: int = 1,
+        retry: bool = False,
+        binding: Mapping[str, str] | None = None,
     ) -> None:
+        self.repeat = repeat
+        self.retry = retry
+        self.binding = binding
+        self.charge_id: str | None = None
         self.ledger = ledger
         self.case_id = case_id
         self.model = model
@@ -372,7 +387,26 @@ class _Charged:
         )
         try:
             with context as prepared:
-                charge = self.ledger.charge(self.case_id)
+                request_binding = ""
+                if self.ledger.campaign is not None:
+                    from analyze_campaign import (  # noqa: PLC0415 - only the new closure grant binds actual prompts
+                        request_digest,
+                        runtime_source_digest,
+                    )
+
+                    request_binding = request_digest(
+                        prompt,
+                        {k: (self.binding or {}).get(k) for k in BINDING_KEYS},
+                        runtime_source_digest(pathlib.Path(observer.__file__).parent),
+                        output_cap_bytes,
+                    )
+                charge = self.ledger.charge(
+                    self.case_id,
+                    repeat=self.repeat,
+                    retry=self.retry,
+                    request_binding=request_binding,
+                )
+                self.charge_id = charge
                 raw, status = prepared(prompt, output_cap_bytes=output_cap_bytes)
                 self.ledger.settle(charge, status)
                 return raw, status
@@ -631,7 +665,7 @@ class _ArgvCapturedError(Exception):
     pass
 
 
-def argv_digest(producer: str, config: Any) -> str:
+def argv_digest(producer: str, config: Any, *, claude_executor: Any = None) -> str:
     """sha256 of the argv the producer's exec would run, read without running it.
 
     The exec is handed a runner that records its command and raises, so no
@@ -648,7 +682,11 @@ def argv_digest(producer: str, config: Any) -> str:
         seen.append([str(part) for part in command])
         raise _ArgvCapturedError
 
-    run = observer.claude_exec if producer == "claude" else observer.codex_exec
+    run = (
+        (claude_executor if claude_executor is not None else observer.claude_exec)
+        if producer == "claude"
+        else observer.codex_exec
+    )
     with tempfile.TemporaryDirectory() as state:
         scratch = dataclasses.replace(config, state_dir=pathlib.Path(state))
         with contextlib.suppress(_ArgvCapturedError):
@@ -788,6 +826,107 @@ def basis(criterion: Mapping[str, Any] | None, ledger: Sequence[Mapping[str, Any
     return BASIS_DERIVED if authors else ""
 
 
+def _production_source(case: Mapping[str, Any]) -> Mapping[str, Any]:  # noqa: C901, PLR0912 - closed prospective source schema
+    """Require the typed Claude protocol; presence alone never proves source parity."""
+    frozen = case.get("production_reading")
+    fields = {
+        "v",
+        "prefix_digest",
+        "person_wanted",
+        "person_words_digest",
+        "final_wanted",
+        "newest_final",
+        "prompt_digest",
+        "constraints",
+    }
+    if (
+        not isinstance(frozen, dict)
+        or set(frozen) != fields
+        or type(frozen.get("v")) is not int
+        or frozen["v"] != 1
+    ):
+        raise mark_abstention.FreezeError("production-source-invalid")
+    reading = _runtime()[1]
+    revision = mark_abstention.case_revision(dict(case))
+    if (
+        case.get("harness") != "claude"
+        or revision.get("goal_source") in reading.PROMPT_SOURCES
+        or reading.has_line_requests(revision)
+    ):
+        raise mark_abstention.FreezeError("production-intent-source-unsupported")
+    for key in ("prefix_digest", "person_words_digest", "prompt_digest"):
+        if not isinstance(frozen[key], str) or re.fullmatch(r"[0-9a-f]{64}", frozen[key]) is None:
+            raise mark_abstention.FreezeError("production-source-invalid")
+    for key, kind in (
+        ("person_wanted", "user_message"),
+        ("final_wanted", reading.AGENT_MESSAGE_TYPE),
+    ):
+        rows = frozen[key]
+        if not isinstance(rows, list) or any(
+            not isinstance(row, dict)
+            or set(row) != {"id", "type", "author", "at"}
+            or row.get("type") != kind
+            or not all(isinstance(row.get(name), str) and row[name] for name in ("id", "author"))
+            or type(row.get("at")) not in (int, float)
+            or not math.isfinite(row["at"])
+            for row in rows
+        ):
+            raise mark_abstention.FreezeError("production-selection-invalid")
+    names = list(reading.constraints_for(reading.outcome_lines(revision)))
+    if frozen["constraints"] not in (names, [*names, reading.CONSTRAINT_CLAIMS]):
+        raise mark_abstention.FreezeError("production-constraints-invalid")
+    final = frozen["newest_final"]
+    if final is not None:
+        if not isinstance(final, dict) or final.get("outcome") not in {
+            "none",
+            "source-moved",
+            "scan-limit",
+            "oversized",
+            "unproven",
+            "not-final",
+            "ambiguous",
+            "too-long",
+            "whole",
+        }:
+            raise mark_abstention.FreezeError("production-final-invalid")
+        expected = {"outcome"}
+        if final["outcome"] in ("too-long", "whole"):
+            expected |= {"fact_id", "at"}
+            if (
+                not isinstance(final.get("fact_id"), str)
+                or not final["fact_id"]
+                or (type(final.get("at")) not in (int, float) or not math.isfinite(final["at"]))
+            ):
+                raise mark_abstention.FreezeError("production-final-invalid")
+        if final["outcome"] == "whole":
+            expected.add("words_digest")
+            if (
+                not isinstance(final.get("words_digest"), str)
+                or re.fullmatch(r"[0-9a-f]{64}", final["words_digest"]) is None
+            ):
+                raise mark_abstention.FreezeError("production-final-invalid")
+        if set(final) != expected:
+            raise mark_abstention.FreezeError("production-final-invalid")
+    return frozen
+
+
+class _SourcePinnedModel:
+    """Validate the frozen actual source prompt before any charging wrapper."""
+
+    def __init__(self, inner: Any, expected: str) -> None:
+        self.inner = inner
+        self.expected = expected
+        self.unavailable_reason = getattr(inner, "unavailable_reason", "model-unavailable")
+
+    def available(self) -> bool:
+        return bool(getattr(self.inner, "available", lambda: True)())
+
+    def __call__(self, prompt: str, **kwargs: Any) -> tuple[str, str]:
+        if hashlib.sha256(prompt.encode()).hexdigest() != self.expected:
+            raise mark_abstention.FreezeError("production-prompt-differs")
+        return self.inner(prompt, **kwargs)  # type: ignore[no-any-return]
+
+
 def score_case(  # noqa: PLR0913 - one keyword per thing a case decides
     config: Any,
     case: Mapping[str, Any],
@@ -801,6 +940,7 @@ def score_case(  # noqa: PLR0913 - one keyword per thing a case decides
     revision: Mapping[str, Any] | None = None,
     tool_output: Any = None,
     withhold: str = "",
+    read_agent_words: bool = False,
 ) -> dict[str, Any]:
     """One producer call, classified. The only place the model is reached.
 
@@ -818,6 +958,20 @@ def score_case(  # noqa: PLR0913 - one keyword per thing a case decides
         assessment, why, spent = None, withhold or WITHHELD_ROW_ABSENT, False
     else:
         try:
+            source_kwargs: dict[str, Any] = {}
+            if "production_reading" in case:
+                frozen = _production_source(case)
+                names = tuple(frozen["constraints"])
+                source_kwargs = {
+                    "person_source_lookup": mark_abstention.native_case_person_lookup(
+                        dict(case), config=config
+                    ),
+                    "final_source_lookup": mark_abstention.native_case_final_lookup(
+                        dict(case), config=config
+                    ),
+                }
+                model = _SourcePinnedModel(model, str(frozen["prompt_digest"]))
+                read_agent_words = True
             assessment, why, spent = reading.produce(
                 config,
                 row,
@@ -830,20 +984,22 @@ def score_case(  # noqa: PLR0913 - one keyword per thing a case decides
                 # The outcome lines are asked as the reading route asks them;
                 # the yardstick's one output line comes back as `line_1`.
                 read_lines=True,
+                read_agent_words=read_agent_words,
                 # As the route passes it: a reader's press on a harness that
                 # may be read at a turn stop, and nowhere else.
                 admit_turn_stop=harness in reading.TURN_STOP_HARNESSES,
+                **source_kwargs,
             )
         except abstention_ledger.SpendCapError:
             assessment, why, spent = None, WITHHELD_SPEND_CAP, False
         except abstention_ledger.LedgerError:
             assessment, why, spent = None, WITHHELD_LEDGER, False
+        except mark_abstention.FreezeError:
+            assessment, why, spent = None, "production-source-refused", False
     stored = assessment["criteria"] if assessment else {}
-    # The claims question is the producer's to pose, only where the press read
-    # the agent's messages, which this scorer does not send (`produce`'s
-    # default), so it joins the list only where a reading answered it and is
-    # never marked by the captain yet (owner, 2026-10-04).
-    if reading.CONSTRAINT_CLAIMS in stored:
+    # Legacy packets retain their old questions. Prospective source freezes
+    # bind the actual claims question before output and replay the same source.
+    if reading.CONSTRAINT_CLAIMS in stored and reading.CONSTRAINT_CLAIMS not in names:
         names = (*names, reading.CONSTRAINT_CLAIMS)
     marks = {name: str(mark.get(name) or "") for name in names}
     criteria = {name: stored[_stored_name(name)] for name in names if _stored_name(name) in stored}
@@ -1295,6 +1451,16 @@ def _render_rubric(summary: Mapping[str, Any]) -> list[str]:
 
 def render(summary: Mapping[str, Any]) -> list[str]:
     """The report. Counts and names, never one figure for the whole."""
+    if summary.get("v") == 2 and summary.get("protocol") == "closure-three-repeats":
+        counts = summary["counts"]
+        return [
+            (
+                f"Closure qualification: 3 repetitions; {counts['unique_cases']} unique cases, "
+                f"{counts['registered_exposures']} exposures; {counts['attempts']} charged."
+            ),
+            *[f"  repeat {r['repeat']}: {r['summary']['verdict']}" for r in summary["repetitions"]],
+            f"Verdict: {summary['verdict']}; original failed studies remain unchanged.",
+        ]
     counts = summary["counts"]
     stamp = time.strftime("%Y-%m-%d %H:%M", time.localtime(summary["scored_at"]))
     lines = [
@@ -1966,7 +2132,62 @@ def _may_score(
     return resume is None or _resume_matches(resume, corpus, binding, ledger)
 
 
-def score(  # noqa: PLR0913 - one keyword per thing a run is bound to
+def _scoring_ledger(
+    ledger_path: str | None,
+    corpus: Corpus,
+    binding: Mapping[str, str] | None,
+    max_calls: int,
+) -> abstention_ledger.Ledger | None:
+    grant = abstention_ledger.continuation() if ledger_path else None
+    closure = (grant or {}).get("closure_allowance")
+    campaign = None
+    model_binding = ""
+    if closure:
+        from analyze_campaign import (  # noqa: PLC0415 - optional reviewed closure admission
+            Campaign,
+        )
+
+        try:
+            campaign = Campaign()
+            _runtime()
+            from analyze_campaign import (  # noqa: PLC0415 - optional closure source binding
+                runtime_source_digest,
+            )
+            from cargento_runtime import (  # noqa: PLC0415 - runtime installed by prior admission
+                observer,
+            )
+
+            evidence = campaign.manifest["evidence"]["qualification"]
+            actual = {
+                "source": runtime_source_digest(pathlib.Path(observer.__file__).parent),
+                "scorer": hashlib.sha256(pathlib.Path(__file__).read_bytes()).hexdigest(),
+                "marks": marks_digest(corpus),
+            }
+            if evidence != actual:
+                raise abstention_ledger.LedgerError(  # noqa: TRY301 - one reported closure admission refusal
+                    "the qualification source, scorer or blind marks changed"
+                )
+        except abstention_ledger.LedgerError as error:
+            print(f"Refused: {error}.")
+            raise
+        model_binding = abstention_ledger.digest({k: (binding or {}).get(k) for k in BINDING_KEYS})
+    return (
+        abstention_ledger.Ledger(
+            ledger_path,
+            cap=max_calls,
+            marks_digest=marks_digest(corpus),
+            inputs_digest=_inputs_digest(corpus),
+            producer=str((binding or {}).get("producer") or ""),
+            cases_digest=mark_abstention.cases_digest(dict(corpus.cases)),
+            model_binding=model_binding,
+            campaign=campaign,
+        )
+        if ledger_path
+        else None
+    )
+
+
+def score(  # noqa: C901, PLR0913 - legacy route plus isolated closure admission
     port: int,
     corpus: Corpus,
     *,
@@ -1996,18 +2217,11 @@ def score(  # noqa: PLR0913 - one keyword per thing a run is bound to
     local half of the last run, whose records are kept except where the model
     failed.
     """
-    ledger = (
-        abstention_ledger.Ledger(
-            ledger_path,
-            cap=max_calls,
-            marks_digest=marks_digest(corpus),
-            inputs_digest=_inputs_digest(corpus),
-            producer=str((binding or {}).get("producer") or ""),
-            cases_digest=mark_abstention.cases_digest(dict(corpus.cases)),
-        )
-        if ledger_path
-        else None
-    )
+    try:
+        ledger = _scoring_ledger(ledger_path, corpus, binding, max_calls)
+    except abstention_ledger.LedgerError:
+        return 2
+    closure = ledger is not None and ledger.campaign is not None
     replay = _is_replay(corpus)
     if (
         not _may_score(corpus, tool_destination, resume, binding, ledger)
@@ -2025,6 +2239,20 @@ def score(  # noqa: PLR0913 - one keyword per thing a run is bound to
         if isinstance(c, dict) and c.get("id")
     }
     marks = mark_abstention._marks(dict(corpus.marks))  # noqa: SLF001 - the collector's own reader
+    if closure and ledger:
+        return _score_repeated(
+            corpus,
+            cases,
+            ledger,
+            config=config,
+            model=model,
+            results_path=results_path,
+            summary_path=summary_path,
+            now=now,
+            binding=binding,
+            tool_destination=tool_destination,
+            resume=resume,
+        )
     words = (str(corpus.cases.get("goal") or ""), str(corpus.cases.get("output") or ""))
     rows = {} if replay else _board_rows(port)
     if rows is None:
@@ -2106,6 +2334,239 @@ def score(  # noqa: PLR0913 - one keyword per thing a run is bound to
     if any(r["withheld"] == WITHHELD_SPEND_CAP for r in records.values()):
         print(f"STOPPED at the spend ledger's cap of {ledger.cap if ledger else MAX_CALLS} calls.")
     return exit_code(summary)
+
+
+def _repeat_classification(
+    record: Mapping[str, Any], judged: Mapping[str, Any], charge_id: str | None
+) -> str:
+    if not charge_id:
+        return "coverage-failed"
+    if record["withheld"] or any(
+        value == OUTCOME_UNPARSED for value in record["outcomes"].values()
+    ):
+        return "unusable"
+    if _dec17([dict(record)])["failed"] or RUBRIC_FALSE_REASSURANCE in judged["judgement"].values():
+        return "semantic-failed"
+    if any(value.startswith("unscored:") for value in judged["judgement"].values()):
+        return "coverage-failed"
+    return "usable"
+
+
+def _repetition_summaries(
+    corpus: Corpus, attempts: list[dict[str, Any]], now: float, binding: Mapping[str, str] | None
+) -> tuple[list[dict[str, Any]], str]:
+    marks = mark_abstention._marks(dict(corpus.marks))  # noqa: SLF001 - native mark reader
+    repetitions: list[dict[str, Any]] = []
+    for repeat in (1, 2, 3):
+        latest = {a["id"]: a for a in attempts if a["repeat"] == repeat}
+        native = summarize(
+            list(latest.values()),
+            marks=marks,
+            marks_bytes=corpus.marks_bytes,
+            now=now,
+            rubric_records=[a["rubric"] for a in latest.values()],
+            binding=binding,
+        )
+        if (
+            len(latest) != 10 or any(a["classification"] != "usable" for a in latest.values())
+        ) and native["verdict"] != VERDICT_FAILED:
+            native["verdict"] = VERDICT_BLOCKED
+        repetitions.append({"repeat": repeat, "summary": native})
+    verdicts = [r["summary"]["verdict"] for r in repetitions]
+    verdict = (
+        VERDICT_FAILED
+        if VERDICT_FAILED in verdicts
+        else VERDICT_PASSED
+        if all(v == VERDICT_PASSED for v in verdicts)
+        else VERDICT_BLOCKED
+    )
+    return repetitions, verdict
+
+
+def _score_repeated(  # noqa: C901, PLR0912, PLR0913, PLR0915 - explicit charge/classify/checkpoint/stop state machine
+    corpus: Corpus,
+    cases: Mapping[str, Any],
+    ledger: abstention_ledger.Ledger,
+    *,
+    config: Any,
+    model: Callable[..., tuple[str, str]],
+    results_path: str,
+    summary_path: str,
+    now: float,
+    binding: Mapping[str, str] | None,
+    tool_destination: str | None,
+    resume: Mapping[str, Any] | None,
+) -> int:
+    """Three registered native passes; preserve every attempt and stop before the next call."""
+    marks = mark_abstention._marks(dict(corpus.marks))  # noqa: SLF001
+    rubric = _rubric_entries(corpus.rubric)
+    campaign = ledger.campaign
+    ordered = [f"{cid}:r{repeat}" for repeat in (1, 2, 3) for cid in marks]
+    if (
+        corpus.cases.get("v") != mark_abstention.FORMAT_INTENT
+        or len(cases) != 10
+        or set(cases) != set(marks)
+        or set(rubric) != set(cases)
+        or campaign is None
+        or campaign.manifest["slots"]["qualification"] != ordered
+    ):
+        print("Refused: the ten-case, three-repeat packet is not the registered campaign.")
+        return 2
+    recorded_kinds = {
+        rubric[cid].get("kind")
+        for cid, case in cases.items()
+        if case.get("origin") == ORIGIN_RECORDED
+        and not case.get("demoted")
+        and _evidence_bearing(case, replay=True, body=corpus.cases)
+        and rubric_harness(rubric[cid], None) == "claude"
+        and not rubric_refusal(rubric[cid], "claude")
+    }
+    roles = corpus.cases.get("closure_kinds")
+    if (
+        not isinstance(roles, dict)
+        or set(roles) != set(cases)
+        or sorted(roles.values()) != sorted((*KINDS, *PASSING_CHECK_ADVERSARIES))
+        or campaign.manifest.get("qualification_kinds") != roles
+        or any(
+            roles[cid] in KINDS
+            and (
+                case.get("origin") != ORIGIN_RECORDED
+                or case.get("demoted")
+                or rubric[cid].get("kind") != roles[cid]
+            )
+            for cid, case in cases.items()
+        )
+    ):
+        print("Refused: core kinds and five distinct passing-check adversaries are not frozen.")
+        return 2
+    if recorded_kinds != set(KINDS):
+        print("Refused: recorded five-kind coverage is missing before any model call.")
+        return 2
+    try:
+        for case in cases.values():
+            _production_source(case)
+    except mark_abstention.FreezeError:
+        print("Refused: every closure case needs the complete typed-Claude production source seal.")
+        return 2
+    if resume is not None and (
+        resume.get("v") != 2
+        or not isinstance(resume.get("records"), dict)
+        or not isinstance(resume["records"].get("attempts"), list)
+    ):
+        print("Refused: legacy successful records cannot skip registered repetitions.")
+        return 2
+    attempts: list[dict[str, Any]] = list((resume or {}).get("records", {}).get("attempts", []))
+    stopped = any(
+        a.get("classification") in ("semantic-failed", "coverage-failed") for a in attempts
+    )
+    label = reading_label(str((binding or {}).get("producer") or ""))
+    for repeat in (1, 2, 3):
+        for cid, mark in marks.items():
+            if stopped:
+                break
+            prior = [a for a in attempts if a["id"] == cid and a["repeat"] == repeat]
+            if prior and prior[-1]["classification"] == "usable":
+                continue
+            if campaign.review_pending("qualification", f"{cid}:r{repeat}"):
+                print("Paused before the next registered batch: measured review is required.")
+                stopped = True
+                break
+            case = cases[cid]
+            retry = bool(prior)
+            while True:
+                charged = _Charged(ledger, cid, model, repeat=repeat, retry=retry, binding=binding)
+                record = score_case(
+                    config,
+                    case,
+                    case["row_snapshot"],
+                    case["producer_facts"],
+                    mark,
+                    model=charged,
+                    now=case["captured_at"],
+                    revision=mark_abstention.case_revision(dict(case)),
+                    tool_output=_tool_output(case, tool_destination, label, corpus.cases),
+                    read_agent_words=True,
+                )
+                judged = rubric_case(rubric[cid], record, cid, case_origin=case.get("origin"))
+                classification = _repeat_classification(record, judged, charged.charge_id)
+                record.update(
+                    repeat=repeat,
+                    retry=retry,
+                    charge_id=charged.charge_id,
+                    classification=classification,
+                    rubric=judged,
+                )
+                attempts.append(record)
+                if not charged.charge_id:
+                    campaign.stop("coverage-failed")
+                if charged.charge_id:
+                    try:
+                        ledger.finish_exposure(charged.charge_id, classification)
+                    except abstention_ledger.LedgerError:
+                        stopped = True
+                if classification.endswith("-failed"):
+                    stopped = True
+                checkpoint = {
+                    **{k: str((binding or {})[k]) for k in BINDING_KEYS if k in (binding or {})},
+                    "v": 2,
+                    "protocol": "closure-three-repeats",
+                    "marks_digest": marks_digest(corpus),
+                    "inputs_digest": _inputs_digest(corpus),
+                    "ledger_chain": abstention_ledger.chain_of(ledger.path),
+                    "verdict": VERDICT_BLOCKED,
+                }
+                records = {"attempts": attempts}
+                ledger.record_run(_run_digest(records, binding))
+                mark_abstention._write(  # noqa: SLF001 - native atomic writer
+                    results_path,
+                    {"v": 2, "summary": checkpoint, "attempts": attempts, "records": records},
+                )
+                # A single registered retry cannot hide the failed attempt. The campaign
+                # lock refuses a second retry or a pending/orphan charge across processes.
+                if (
+                    classification == "unusable"
+                    and charged.charge_id
+                    and not retry
+                    and f"{cid}:r{repeat}" != campaign.manifest["batches"]["qualification"][0][0]
+                ):
+                    retry = True
+                    continue
+                if classification != "usable":
+                    stopped = True
+                break
+        if stopped:
+            break
+    repetitions, verdict = _repetition_summaries(corpus, attempts, now, binding)
+    summary: dict[str, Any] = {
+        **{k: str((binding or {})[k]) for k in BINDING_KEYS if k in (binding or {})},
+        "v": 2,
+        "protocol": "closure-three-repeats",
+        "scored_at": now,
+        "marks_digest": marks_digest(corpus),
+        "inputs_digest": _inputs_digest(corpus),
+        "ledger_chain": abstention_ledger.chain_of(ledger.path),
+        "spend": {"charged": ledger.used(), "cap": ledger.cap},
+        "counts": {
+            "unique_cases": len({a["id"] for a in attempts}),
+            "registered_exposures": len({(a["id"], a["repeat"]) for a in attempts}),
+            "attempts": sum(bool(a["charge_id"]) for a in attempts),
+            "unusable_attempts": sum(a["classification"] == "unusable" for a in attempts),
+        },
+        "repetitions": repetitions,
+        "verdict": verdict,
+        "stopped": stopped,
+    }
+    local: dict[str, Any] = {
+        "v": 2,
+        "summary": summary,
+        "attempts": attempts,
+        "records": {"attempts": attempts},
+    }
+    ledger.record_run(_run_digest(local["records"], binding))
+    mark_abstention._write(results_path, local)  # noqa: SLF001 - same native atomic writer
+    mark_abstention._write(summary_path, summary)  # noqa: SLF001 - same native atomic writer
+    print(f"Repeated qualification: {summary['counts']['attempts']} attempts; {verdict}.")
+    return 0 if verdict == VERDICT_PASSED else 1 if verdict == VERDICT_FAILED else 2
 
 
 def _score_rubric(
@@ -2339,7 +2800,7 @@ def summary_path_for(producer: str | None, out: str | None) -> str:
     return abstention_ledger.result_path(generation) if generation else CLAUDE_SUMMARY_PATH
 
 
-def _argument_refusal(args: argparse.Namespace) -> str:  # noqa: PLR0911 - one per line
+def _argument_refusal(args: argparse.Namespace) -> str:  # noqa: C901, PLR0911 - cold admission precedes data reads; one refusal per guard
     if (
         abstention_ledger.LEDGER_PATH is None
         or mark_abstention.CLAUDE_PROJECTS_ROOT is None
@@ -2359,8 +2820,16 @@ def _argument_refusal(args: argparse.Namespace) -> str:  # noqa: PLR0911 - one p
     if args.score and args.producer == "codex":
         # No Codex spend is authorized for this qualification (2026-09-24).
         return "--producer codex may report but not score: no Codex spend is authorized."
-    if not 1 <= args.max_calls <= MAX_CALLS:
-        return f"--max-calls must be between 1 and {MAX_CALLS}, the authorized spend."
+    ceiling = MAX_CALLS
+    if args.max_calls > MAX_CALLS:
+        try:
+            grant = abstention_ledger.continuation()
+        except abstention_ledger.LedgerError:
+            grant = None
+        if grant and grant["phase"] == "sealed" and grant.get("closure_allowance"):
+            ceiling = abstention_ledger.CLOSURE_CAP
+    if not 1 <= args.max_calls <= ceiling:
+        return f"--max-calls must be between 1 and {ceiling}, the authorized spend."
     if args.resume and not args.score:
         return "--resume continues a scoring run; pass --score with it."
     return ""
