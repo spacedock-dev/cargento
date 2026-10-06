@@ -335,6 +335,21 @@ acceptance before the next. Thirty registered exposures and one availability ret
 fresh 31-attempt allowance and the native ceiling of 61. Replay and live remain held. Every
 earlier failure and charge stays unchanged; this authority does not qualify the producer.
 
+### Fifth qualification outcome, 2026-10-07
+
+The [fifth result](claude-results-continuation-5.json) is blocked after its opening attempt and
+one explicit availability retry both returned `model-failed`. Both attempts remain charged.
+Neither produced a parsed answer: all three questions at that opening were withheld in both
+attempts. This supplies no accuracy judgement, and the recorded failure does not identify quota,
+authentication or model availability as its cause. The restricted transport discards stderr.
+
+The two consecutive unusable attempts stop the successor campaign before any later case.
+The fresh allowance has spent two of 31 attempts, with 29 held and the sole retry exhausted.
+The native ledger preserves 32 charges, including its earlier thirty. The original stopped shared
+epoch keeps its two charges, and the successor keeps its separate two. No opening batch has been
+accepted; replay and live remain held. Resuming requires a diagnosed transport and separately
+authorized, reviewed continuation authority. No failed attempt or frozen answer key is rewritten.
+
 ### Fourth qualification outcome, 2026-10-06
 
 The [native fourth result](claude-results-continuation-4.json) failed after two attempts on the

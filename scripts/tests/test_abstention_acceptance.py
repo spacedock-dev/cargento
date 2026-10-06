@@ -89,7 +89,7 @@ class EveryScoredRunIsListedWithItsOwnVerdictTest(unittest.TestCase):
                 cases_key = "unique_cases" if repeated else "cases"
                 failed = {case for part in parts for case in part["dec17"]["failed"]}
                 self.assertEqual(committed["verdict"], run["verdict"])
-                self.assertEqual("failed", run["verdict"])
+                self.assertIn(run["verdict"], {"failed", "blocked"})
                 self.assertEqual(committed["inputs_digest"], run["inputs_digest"])
                 self.assertEqual(committed["marks_digest"], run["marks_digest"])
                 self.assertEqual(committed["counts"][cases_key], run["cases"])
@@ -100,6 +100,55 @@ class EveryScoredRunIsListedWithItsOwnVerdictTest(unittest.TestCase):
                     run["scored_constraints"],
                 )
                 self.assertEqual(committed["spend"], run["spend"])
+
+    def test_the_blocked_opening_records_two_unusable_attempts_and_no_accuracy(self) -> None:
+        by_result = {run["result"]: run for run in self.runs}
+        name = "claude-results-continuation-5.json"
+        self.assertIn(name, by_result)
+        run = by_result[name]
+        committed = _load(ABSTENTION / name)
+        self.assertEqual("blocked", run["verdict"])
+        self.assertEqual(1, run["cases"])
+        self.assertEqual(0, run["correct"])
+        self.assertEqual(0, run["scored_constraints"])
+        self.assertEqual(0, run["dec17_failed_cases"])
+        self.assertEqual({"charged": 32, "cap": 61}, run["spend"])
+        self.assertEqual(
+            {"unique_cases": 1, "registered_exposures": 1, "attempts": 2, "unusable_attempts": 2},
+            committed["counts"],
+        )
+        self.assertTrue(committed["stopped"])
+        for repetition in committed["repetitions"]:
+            part = repetition["summary"]
+            self.assertEqual(0, part["counts"]["reached_model"])
+            self.assertEqual([], part["dec17"]["failed"])
+            self.assertTrue(all(count == 0 for count in part["rubric"]["counts"].values()))
+        self.assertIn("blocked", self.record["statement"])
+        self.assertIn("no accuracy", self.record["statement"])
+
+    def test_new_blocked_run_preserves_five_failures_and_the_original_owner_decision(self) -> None:
+        self.assertEqual(6, self.record["scored_runs"])
+        expected = {
+            "claude-results.json": "failed",
+            "claude-results-continuation.json": "failed",
+            **{f"claude-results-continuation-{n}.json": "failed" for n in (2, 3, 4)},
+            "claude-results-continuation-5.json": "blocked",
+        }
+        self.assertEqual(expected, {run["result"]: run["verdict"] for run in self.runs})
+        self.assertEqual(
+            {
+                "accepted_by": "owner",
+                "accepted_on": "2026-10-02",
+                "decision": "accepted",
+                "producer": "claude",
+                "qualification": "failed",
+            },
+            {
+                key: self.record[key]
+                for key in ("accepted_by", "accepted_on", "decision", "producer", "qualification")
+            },
+        )
+        self.assertEqual({"charged": 32, "cap": 61}, self.record["spend"])
 
     def test_the_runs_are_in_the_order_they_were_scored(self) -> None:
         stamps = [_load(ABSTENTION / run["result"])["scored_at"] for run in self.runs]
@@ -118,14 +167,25 @@ class EveryScoredRunIsListedWithItsOwnVerdictTest(unittest.TestCase):
                 continue
             if spend["charged"] < spend["cap"]:
                 self.assertTrue(committed["stopped"])
-                self.assertEqual("failed", committed["verdict"])
-                self.assertTrue(
-                    any(
-                        repeat["summary"]["dec17"]["failed"]
-                        or repeat["summary"]["rubric"]["counts"]["false-reassurance"]
-                        for repeat in committed["repetitions"]
+                if committed["verdict"] == "blocked":
+                    self.assertEqual(2, committed["counts"]["attempts"])
+                    self.assertEqual(2, committed["counts"]["unusable_attempts"])
+                    self.assertTrue(
+                        all(
+                            not repeat["summary"]["dec17"]["failed"]
+                            and not any(repeat["summary"]["rubric"]["counts"].values())
+                            for repeat in committed["repetitions"]
+                        )
                     )
-                )
+                else:
+                    self.assertEqual("failed", committed["verdict"])
+                    self.assertTrue(
+                        any(
+                            repeat["summary"]["dec17"]["failed"]
+                            or repeat["summary"]["rubric"]["counts"]["false-reassurance"]
+                            for repeat in committed["repetitions"]
+                        )
+                    )
 
 
 if __name__ == "__main__":

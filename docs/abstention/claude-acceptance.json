@@ -74,13 +74,27 @@
         "cap": 59
       },
       "verdict": "failed"
+    },
+    {
+      "cases": 1,
+      "correct": 0,
+      "dec17_failed_cases": 0,
+      "inputs_digest": "dc6d7ace9cb4c697715ee17592a5510664d2d7161864de3eef3f48febb694b43",
+      "marks_digest": "a70e0ad3f4464f9a849041d19933d7352d283eb247f7a33bd1b17a284e71ed9d",
+      "result": "claude-results-continuation-5.json",
+      "scored_constraints": 0,
+      "spend": {
+        "charged": 32,
+        "cap": 61
+      },
+      "verdict": "blocked"
     }
   ],
-  "scored_runs": 5,
+  "scored_runs": 6,
   "spend": {
-    "charged": 30,
-    "cap": 59
+    "charged": 32,
+    "cap": 61
   },
-  "statement": "Every scored Claude Code run listed here failed DEC-17's abstention check. On 2026-10-02 the owner accepted the Claude Code producer despite the earlier failures, so Claude Code can read a Claude Code session when the claude CLI is on PATH. That operational acceptance is separate from later qualification results and does not make a failed result a pass. Earlier results and every charge remain preserved.",
+  "statement": "The first five Claude Code runs listed here failed DEC-17's abstention check. The fifth continuation is blocked after two unusable transport attempts and supplies no accuracy judgement. On 2026-10-02 the owner accepted the Claude Code producer despite the earlier failures, so Claude Code can read a Claude Code session when the claude CLI is on PATH. That operational acceptance is separate from later qualification results and does not make a failed or blocked result a pass. Earlier results and every charge remain preserved.",
   "v": 1
 }
