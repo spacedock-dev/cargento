@@ -544,6 +544,41 @@ class RepeatedQualification(GrantFourAllowance):
         self.assertEqual(3, len(summary["repetitions"]))
         self.assertEqual(58, len(ledger.read(str(self.ledger_path))["calls"]))
 
+    def test_explicit_export_context_reaches_actual_repeated_score_case(self) -> None:
+        # This is transport-context wiring over the existing synthetic campaign,
+        # not source admission. Real receipt/native-source checks live in test_reviewed_exports.
+        resolver = mock.Mock()
+        bad = _reply(
+            goal=("unverifiable", ()), line_1=("consistent", (2,)), line_2=("unverifiable", ())
+        )
+        model = self.model_class((bad, "ok"))
+        with (
+            mock.patch.object(
+                self.score_module, "score_case", wraps=self.score_module.score_case
+            ) as case,
+            mock.patch("builtins.print"),
+        ):
+            self.assertEqual(
+                1,
+                self.score_module.score(
+                    1,
+                    self.corpus,
+                    config=self.config,
+                    model=model,
+                    results_path=str(self.local),
+                    summary_path=str(self.output),
+                    now=1000.0,
+                    binding=self.binding,
+                    tool_destination="Anthropic",
+                    ledger_path=str(self.ledger_path),
+                    max_calls=59,
+                    vouch=lambda _case: [],
+                    reviewed_exports=resolver,
+                ),
+            )
+        self.assertEqual(1, len(model.prompts))
+        self.assertIs(resolver, case.call_args.kwargs["reviewed_exports"])
+
     def test_first_semantic_failure_stops_before_second_provider_attempt(self) -> None:
         bad = _reply(
             goal=("unverifiable", ()), line_1=("consistent", (2,)), line_2=("unverifiable", ())

@@ -2203,6 +2203,51 @@ runtime's measured injection filter and masks words before private storage. Its 
 holds one salted case id, counts and a digest. It calls no model, adds no runtime fact and grants
 no Analyze eligibility. The historical replay cases and reads are not overwritten.
 
+#### Reviewed native export intake, 2026-10-06
+
+The owner-approved qualification source work also admits explicitly reviewed Claude Code
+exports outside the canonical projects directory. The marker's export freezer and the scorer's
+reporting and scoring modes require the paired
+`--reviewed-exports` manifest path and `--reviewed-exports-sha256` digest. The manifest has a
+closed schema, at most 32 distinct full session UUIDs, canonical absolute regular-file paths
+whose basenames match those UUIDs, and complete-file SHA256 digests. Its review fields record
+the caller's review; they do not authenticate a reviewer or confer trust on a case-supplied
+path. The caller must independently choose the manifest and pin its digest. A process able to
+rewrite all local inputs remains inside the accepted same-account trust boundary.
+Claude case specs under this explicit resolver use eight lowercase hexadecimal identity characters.
+Malformed ids and full-UUID aliases refuse before board, history or canonical-source fallback;
+the manifest still binds the full UUID. The default path without this opt-in is unchanged.
+
+This initial import admits only idle captures with an exact native Stop timestamp, the configured
+settle interval, and no conversation continuation through the capture cut. The Stop must name
+the preceding top-level, non-meta, non-sidechain assistant `end_turn`, with a valid earlier
+human ancestor in physically prior UUID ancestry. Native metadata clocks may be skewed; parent
+wall-clock ordering is not required. The final and human ancestor must yield their native text
+events, which excludes thinking-only, synthetic-agent and injected-only records. This does not
+require the ancestor to survive prompt selection or guarantee whole final-word allocation.
+Missing `hookLabel` means `Stop`; another explicit label refuses. This route
+currently supports only `preventedContinuation: false`. A true value is unsupported here, not
+proof of continuation; the canonical collector and its existing Stop semantics are unchanged.
+The first physically future record ends the prefix even if a later-written record is backdated.
+
+The manifest is limited to 64 KiB, each complete source to 32 MiB, and each native record to
+1 MiB, counted on the native newline-only record boundaries. Literal carriage returns inside a
+record or between JSON objects on one line refuse; CRLF terminators and escaped JSON carriage
+returns remain valid. Nonregular files and symlinks refuse; opened descriptor and path stamps must agree
+through the bounded read. The existing 8 MiB check scan and 400,000-byte tail remain unchanged.
+An admitted export is rebuilt directly through the native freeze helpers without a live board
+read. Source lookup, machine vouch and the scorer use the same explicit resolver. Immediately
+before the charging delegate, the scorer rechecks the manifest, complete source, native cut,
+case and production selection, plus the current intake scripts and runtime parser stamp.
+Changing even source bytes beyond the prefix requires a new reviewed manifest and packet.
+
+The source-cut exception above still governs transient raw input and cleanup. Receipt metadata
+is separate from the production-reading seal; it adds no complete reply cache or new evidence
+class. Existing cases without a receipt retain their canonical provenance rules and are never
+upgraded by a matching UUID. Import establishes source and lifecycle eligibility only. It does
+not supply semantic blind marks, a genuine-kind verdict, accuracy, a grant, campaign activation
+or permission to bypass a spend guard.
+
 A violation here is a committed file under `docs/abstention/`, `docs/drift-levels/` or
 `docs/drift-replay/` carrying a session id, prompt text, a recorded command or path, or model prose,
 or a scoring run that reaches the annotation store or the reading route.
