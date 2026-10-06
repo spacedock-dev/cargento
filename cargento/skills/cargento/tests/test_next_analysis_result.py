@@ -284,7 +284,7 @@ class TheLevelTest(_ResultPage):
         # The source names itself alone; its time is said once, in the ruled line (DRC-4758 C).
         self.assertIn(SOURCE, html)
         self.assertIn(SOURCE_LINE.format(time=clock(READ_AT)), drift)
-        self.assertEqual(1, drift.count(clock(READ_AT)))
+        self.assertEqual(1, drift.count("Analysis at " + clock(READ_AT)))
         self.assertIn("data-next-drift-level", html)
         # The header pill too, with the live monitor off: the switch hides the live level only.
         self.assertIn("Drift: High", visible_text(html[: html.index("<aside")]))

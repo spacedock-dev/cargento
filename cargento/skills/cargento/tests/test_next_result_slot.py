@@ -80,7 +80,7 @@ class TheResultTakesTheButtonsPlaceTest(_ResultPage):
 
     def test_the_time_is_said_once(self) -> None:
         drift = visible_text(drift_of(self.page(MIXED, levels.HIGH)))
-        self.assertEqual(1, drift.count(clock(READ_AT)), drift)
+        self.assertEqual(1, drift.count("Analysis at " + clock(READ_AT)), drift)
         self.assertNotIn("Analysis ·", drift)
 
     def test_a_reading_of_one_entry_names_it_alone(self) -> None:
