@@ -765,7 +765,7 @@ def _redacted_message_content(value: Any, depth: int = 0) -> Any:
     if depth > 4:
         return None
     if isinstance(value, str):
-        return records.redact_secrets(value)
+        return transcripts.redact_command_framing(value)
     if isinstance(value, list):
         return [_redacted_message_content(item, depth + 1) for item in value]
     if isinstance(value, dict):
@@ -1039,18 +1039,23 @@ def _derive_goal_deterministic(
         # Assistant work exists but no concrete directive was found: the
         # goal is unknown, not fabricated.
         return NO_GOAL, None
-    # `prompt_title` rather than `split("\n")[0]`, and the reason is the one
+    # Shared command rendering rather than `split("\n")[0]`, for the one
     # shape `records.injected_prompt` deliberately admits. A slash command is
     # the operator's intent spelled in the harness's markup, so it is not
     # rejected as machinery (the harness's own controls are, but by
     # `records.harness_control` above, on the rendered name) — but published raw
     # it reads as `<command-message>…`, which was 60 of 400 Claude sessions and
-    # 5 of 457 Codex rollouts. `prompt_title`
-    # already owns that rendering (`/review 1287 — with fresh eyes`), and
+    # 5 of 457 Codex rollouts. `command_direction` preserves a source cut,
+    # and `prompt_title` owns ordinary rendering (`/review 1287 — with fresh eyes`), and
     # strips the wrapper tags off everything else. It also collapses a long
     # absolute path to its basename (`transcripts.shorten_paths`), so a goal
     # naming a temp file reads as the file rather than as the path to it.
-    goal = transcripts.prompt_title(config, directives[-1], limit=config.observer_goal_cap_chars)
+    command = transcripts.command_direction(config, directives[-1])
+    goal = (
+        transcripts.clip(command, config.observer_goal_cap_chars)
+        if command is not None
+        else transcripts.prompt_title(config, directives[-1], limit=config.observer_goal_cap_chars)
+    )
     if not goal:
         return NO_GOAL, None
     # Cap plus one, for the reason `records.instruction_line` carries the same
@@ -1152,6 +1157,19 @@ def _derive_block(
     return ""
 
 
+def _model_context(config: RuntimeConfig, messages: list[dict[str, str]]) -> str:
+    """Render captured command framing before the model packet's final scrub and cap."""
+    texts = []
+    for message in messages[-_MODEL_CONTEXT_MESSAGES:]:
+        text = message["text"]
+        if message["role"] == "user":
+            command = transcripts.command_direction(config, text)
+            if command is not None:
+                text = command or transcripts.prompt_title(config, text, limit=None) or ""
+        texts.append(text)
+    return records.safe_text(" ".join(texts), config.observer_model_context_chars)
+
+
 def analyze(
     config: RuntimeConfig,
     state: RuntimeState,
@@ -1194,12 +1212,11 @@ def analyze(
     # The short-circuit bypasses the model entirely: a no-goal session must
     # never produce a fabricated goal, regardless of what the model says.
     if goal != NO_GOAL and model is not None:
-        recent = " ".join(msg["text"] for msg in messages[-_MODEL_CONTEXT_MESSAGES:])
         # Bounded like every other string that crosses this boundary. The rest
         # of the module caps what it *publishes*; this caps what it hands out,
         # because a transcript tail is the one unbounded value here and the
         # callable is not this module's code.
-        recent = records.safe_text(recent, config.observer_model_context_chars)
+        recent = _model_context(config, messages)
         try:
             enhanced = model(recent, stage)
         except Exception:  # noqa: BLE001 — a model failure degrades, never crashes
@@ -1243,8 +1260,7 @@ def derive_child_assignment(
     messages.reverse()
     if not any(message["role"] == "assistant" for message in messages):
         return NO_GOAL
-    recent = " ".join(message["text"] for message in messages[-_MODEL_CONTEXT_MESSAGES:])
-    recent = records.safe_text(recent, config.observer_model_context_chars)
+    recent = _model_context(config, messages)
     try:
         enhanced = model(recent, "")
     except Exception:  # noqa: BLE001 — a model failure degrades, never crashes

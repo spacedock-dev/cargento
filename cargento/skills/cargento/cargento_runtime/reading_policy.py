@@ -72,7 +72,11 @@ DESTINATION_MOVED = "destination-changed"
 # `WORDS_CONTENT_VERSION`, so an Allow from before the bump still covers them
 # (final review, 2026-10-03). The version is stored with the destination it
 # was given for, and covers only while that is still the bound destination.
-CONTENT_VERSION = 3
+#
+# 4 repairs a version-3 Allow written from a narrower harness disclosure. Those
+# rows cannot prove which tier was shown, so the next Claude Code press asks
+# again. New Allows record the route's actual tier; words-only presses stay at 1.
+CONTENT_VERSION = 4
 WORDS_CONTENT_VERSION = 1
 CONTENT_CHANGED = "What a reading sends has changed since you allowed this, so allow it again."
 
@@ -339,17 +343,29 @@ def _transaction(
             raise ValueError("Invalid spend timestamp")
         current = dict(today or {})
         if operation == "allow" and provider in allowed:
+            where = current.get(provider, "")
+            previous = _disclosed(db).get(provider)
+            version = content
+            if (
+                allowed[provider]
+                and _bound(db).get(provider) == where
+                and previous is not None
+                and previous[1] == where
+                and previous[0] <= CONTENT_VERSION
+            ):
+                # A narrower disclosure cannot widen consent, or erase an
+                # earlier wider Allow that still covers this destination.
+                version = max(content, previous[0])
             _write(db, provider, True)
             allowed[provider] = True
             # Bound to the destination the Allow's disclosure named, which
             # the press has checked is today's (`http_api._reading_route`).
-            where = current.get(provider, "")
             db.execute(
                 "INSERT OR REPLACE INTO permission_destination VALUES (?, ?)", (provider, where)
             )
             db.execute(
                 "INSERT OR REPLACE INTO permission_disclosure VALUES (?, ?, ?)",
-                (provider, CONTENT_VERSION, where),
+                (provider, version, where),
             )
             if tool_output:
                 db.execute(
@@ -459,9 +475,9 @@ def set_consent(
     Allow covers presses only while they still go there. `tool_output` is the
     destination it named for tool output. Only an Allow that carried one
     grants tool output, and only to that destination. `destinations` is as
-    `status` takes it, for the other providers in the answer returned. An
-    Allow is always written under `CONTENT_VERSION`, the disclosure this build
-    shows; `content` is only what the answer returned is read for.
+    `status` takes it, for the other providers in the answer returned. `content`
+    is the tier the server's route disclosed, never a client-supplied version.
+    A narrower Allow retains an earlier wider one only at the same destination.
     """
     today = {**(destinations or {}), provider: destination}
     operation = "allow" if allowed else "off"

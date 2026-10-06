@@ -419,7 +419,7 @@ def _scan(
             line = records.instruction_line(
                 "asked", transcripts.prompt_title(config, text.strip(), cap), 1.0
             )
-            first = transcripts.prompt_title(config, records.redact_secrets(text), cap)
+            first = transcripts.prompt_title(config, text, cap)
             out.append(
                 _Message(
                     here,
