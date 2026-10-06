@@ -2976,8 +2976,10 @@ throughout (arbiter spec, `ui3`).
   A lost request comes back with the control's existing sentence, so nothing stays busy forever.
 - An inert Analyze says something true and actionable. No line says Analyze opens "once this
   session finishes a turn", which was false of a turn that had finished where Cargento could not
-  see it. Beside an idle row with no end: a Claude Code session reads "This session's last turn
-  isn't recorded as finished.", Codex keeps its own line, another harness reads "Analyze opens
+  see it. Amended 2026-10-06: beside an idle row with no end, a Claude Code session reads "Last turn
+  isn't recorded as finished. Run another turn to open Analyze." This names the working-turn
+  path that `press_eligibility` admits, without promising a recorded finish. Codex keeps its own
+  line, another harness reads "Analyze opens
   while this session runs." (or "…or once it ends." where its events reach the board), and a
   scan-only one reads "This harness sends no events, so Analyze opens only while it runs." The
   Why under it is `reading.withheld_sentence`, per harness, which names the How to use section
@@ -3427,9 +3429,12 @@ at most 174 words (175 ceiling), the idle fixture 82 (85 ceiling), and the parti
   the provider disclosure, while no reading is stored; where no disclosure is published it sits
   behind "What a reading reads". The READING section is drawn only for a stored reading this build
   could not read, and that sentence stays in view. A malformed reading keeps the section.
-- The saved introduction ("Choose a goal or use your prompt, then analyze drift...") sits behind
-  "What analysis does". Amended 2026-10-02 (NU-10): under a stored reading it is not drawn, because
-  the step it explains is done.
+- The introduction sits behind "What analysis does". Amended 2026-10-06: a saved goal gets
+  "When you analyze drift, Cargento lists where this session departed from your saved goal."
+  A row without a saved goal
+  keeps "Choose a goal or use your prompt, then analyze drift..."; an unsaved prompt draft is
+  not described as saved. Amended 2026-10-02 (NU-10): under a stored reading the introduction is
+  not drawn, because the step it explains is done.
 - The later-direction block is one summary naming its state: "Later directions: none since your
   save", "Later directions: settled 5m ago", or "Later directions: unknown (record unread)". The
   unread state is in the summary, so it is never a silent all-clear
@@ -4356,3 +4361,45 @@ The background-run blocker in [DEC-26](#dec-26-four-drift-levels-and-a-live-esti
 now reads unpaired launches rather than the cumulative launch count. This does
 not raise a drift level. The thirty-minute quiet observation belongs to Attention,
 with the same distinction between a server and a job left explicit.
+
+
+### Amended 2026-10-06 (owner): assessment explanations and recorded signals
+
+The Drift result shows each surviving departure's read criterion and retained explanation under
+Model assessment, followed by every citation that still resolves after the page's evidence rules.
+What the agent claimed keeps its separate explanation and citations. An absent explanation is
+named; a withdrawn verdict supplies neither departure prose nor evidence. The existing warnings
+for a changed intent, newer work and a reading marked not accurate remain beside the historical
+result. The not-accurate warning precedes the promoted account. A running analysis keeps its
+existing control slot and hides the old explanation.
+
+Each cited entry shows its activity number when this view has one, its short type, published
+harness and worker kind, and recorded event time. A Claude tool-report check's structural call time and paired result time
+have separate labels. Other harnesses retain the generic evidence-time label. Dates and UTC make
+older evidence unambiguous; an absent time stays unknown. Collector descriptions remain
+under Source. Its disclosure key includes the criterion or live-signal scope as well as the cited
+entry, following the [reader-state inventory](design-reader-state.md#the-inventory); two accounts
+citing the same entry keep their open state and summary focus independently. Reader clauses and
+native entry summaries stay upright; retained model detail keeps its own register. These times
+locate evidence; they do not date the onset of a departure, and the analysis timestamp remains
+the time the reading ran. A departure status now says "Departs; evidence #n".
+
+The live estimate exposes its existing computed citation IDs only in the focused context's
+`sources.work.live_levels`. This is not a new session field and does not enter the board, the
+reading route or the unasked lane. Its Recorded signals show the known reasons and cited event
+times, alongside the existing disclosure that it reads checks and file paths rather than intent
+meaning. Before any stored reading or attempt, it explicitly says no model assessment exists
+yet. A missing entry is still named as unlisted, and a missing reader suppresses the Analyze
+nudge. This presentation adds no model call and does not establish that the live estimate
+detects semantic drift.
+
+
+The owner's 2026-10-06 request for plain explanations and evidence times supersedes the earlier
+175-word ceiling for the canonical stored-departure fixture only: its measured limit is now
+215 words outside field values. The canonical partial-departure fixture keeps its coverage
+limits visible and has a 295-word ceiling, replacing its earlier 270. The unchanged
+nondeparture fixtures retain 175, and idle retains 85. The historical ceilings above record
+what was agreed then; this amendment does not rewrite them. These are regression ceilings for
+those two canonical examples, not universal reading budgets or runtime citation limits. A
+valid reading with two or more citations keeps every surviving support and its recorded times,
+even when its explanation needs more words than the one-citation example.

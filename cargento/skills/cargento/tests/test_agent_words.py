@@ -633,7 +633,7 @@ console.log(JSON.stringify(shape.criteria.map(row =>
             (reading.RESULT_CONSISTENT, "Consistent with what the agent said at #3; not a check"),
             rows["line_1"],
         )
-        self.assertEqual((reading.RESULT_DEPARTURE, "Departs at #3"), rows["line_2"])
+        self.assertEqual((reading.RESULT_DEPARTURE, "Departs; evidence #3"), rows["line_2"])
 
     def test_the_agent_beside_a_check_its_result_contradicts_is_withdrawn_on_the_page(
         self,

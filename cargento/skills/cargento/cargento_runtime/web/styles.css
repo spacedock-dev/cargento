@@ -1590,6 +1590,11 @@ details.next-cockpit-held-stamp[open]>span{display:block}
 .next-cockpit-result-count{color:var(--ink2);font:500 var(--fs-body)/1.45 var(--sans)}
 .next-cockpit-result-line{margin:0;color:var(--ink);font:600 var(--fs-body)/1.5 var(--sans);max-width:var(--measure)}
 .next-cockpit-result-answer .next-cockpit-reading-detail{margin:0;max-width:var(--measure)}
+.next-cockpit-assessment-account,.next-cockpit-recorded-signals{display:flex;flex-direction:column;gap:4px;min-width:0}
+.next-cockpit-assessment-account h3,.next-cockpit-recorded-signals h3{margin:0;color:var(--ink);font:600 var(--fs-body)/1.45 var(--sans)}
+.next-cockpit-assessment-evidence{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px}
+.next-cockpit-assessment-evidence li{display:flex;flex-direction:column;gap:2px;min-width:0;overflow-wrap:anywhere}
+.next-cockpit-assessment-clause,.next-cockpit-assessment-entry{margin:0;color:var(--ink);font:var(--fs-body)/1.5 var(--sans);font-style:normal;overflow-wrap:anywhere}
 .next-cockpit-result-stale{display:flex;flex-direction:column;gap:6px;padding:10px 12px;border:1px solid var(--amber);border-radius:var(--r-control)}
 .next-cockpit-result-stale-head{margin:0;color:var(--ink);font:600 var(--fs-body)/1.5 var(--sans)}
 .next-cockpit-result-work{display:flex;flex-direction:column;gap:4px}

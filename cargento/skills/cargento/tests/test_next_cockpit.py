@@ -6553,7 +6553,7 @@ console.log(JSON.stringify({
         self.assertEqual(1, out["stamps"])
         self.assertEqual("observer model · consented at 13:36", out["stamp"])
         # Item 6's words, with the list's number (DRC-4695).
-        self.assertEqual("Departs at #3", out["result"])
+        self.assertEqual("Departs; evidence #3", out["result"])
         # Said once, in the result: no departures section repeats the reading (owner Q9), and
         # the cutoff moved with it into "What it read".
         self.assertFalse(out["departures"])
@@ -8180,7 +8180,7 @@ console.log(JSON.stringify({
         self.assertEqual(
             [
                 "Can&#39;t tell",
-                "Departs at #1",
+                "Departs; evidence #1",
                 "Consistent with what the session said at #2; not a check",
             ],
             out["resultStrings"],
@@ -8501,7 +8501,7 @@ console.log(JSON.stringify({has: __els.app.innerHTML.includes('class="next-cockp
         # drift verdict DRC-4511 forbids.
         # Item 6's words (DRC-4695), escaped as the page writes them.
         self.assertEqual("Can&#39;t tell", open_case["result"])
-        self.assertRegex(settled["result"], r"^Departs at #\d+$")
+        self.assertRegex(settled["result"], r"^Departs; evidence #\d+$")
 
     def test_a_settled_baseline_says_when_and_against_which_revision(self) -> None:
         out = self.held(
@@ -9077,7 +9077,7 @@ console.log(JSON.stringify({
     "the analysis cites. 4 are counted and not listed."),
   // And it is still drawn, at its own number and flagged, so the reader can reach it
   // (DRC-4694). It was asserted absent before, against a summary no fact carried.
-  citedRow: (html.split('<div class="next-cockpit-work-row"').find(row =>
+  citedRow: (html.split('<div class="next-cockpit-work-row"').slice(1).find(row =>
     row.includes("Do not change the board")) || ""),
 }));
 """,

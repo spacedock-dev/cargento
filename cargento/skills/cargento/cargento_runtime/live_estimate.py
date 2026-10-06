@@ -376,7 +376,11 @@ def _found_from_steps(
 ) -> dict[str, Any]:
     window = [steps[p] for p in range(first - 1, len(calls))]
     rose = levels.rose_from(window)
-    found: dict[str, Any] = {"level": current.level, "reasons": list(current.reasons)}
+    found: dict[str, Any] = {
+        "level": current.level,
+        "reasons": list(current.reasons),
+        "cites": list(current.cites),
+    }
     if rose is not None:
         call = calls[first - 1 + rose[1]]
         # A call id can collide across streams, and a Bash call can publish

@@ -6,7 +6,7 @@ Items 6, 10 and 14 of
 and items 1 and 2 of
 [DEC-26](docs/design-reading-a-session.md#dec-26-four-drift-levels-and-a-live-estimate-after-every-turn).
 The level is the server's `levels.analysis_level` over the stored reading, drawn in the Drift
-section's level slot and the header pill; each line reads "Departs at #<n>", "Consistent with #<n>,
+section's level slot and the header pill; each line reads "Departs; evidence #<n>", "Consistent with #<n>,
 as the tool reported; not inspected", "Consistent with what the session said at #<n>; not a check"
 or "Can't tell"; a headline and short account render only under a departure; "Where the work went"
 groups written paths by folder; a stale result says why, with "Analyze again"; and "Not accurate?"
@@ -284,7 +284,7 @@ class TheLevelTest(_ResultPage):
         # The source names itself alone; its time is said once, in the ruled line (DRC-4758 C).
         self.assertIn(SOURCE, html)
         self.assertIn(SOURCE_LINE.format(time=clock(READ_AT)), drift)
-        self.assertEqual(1, drift.count(clock(READ_AT)))
+        self.assertEqual(1, drift.count("Analysis at " + clock(READ_AT)))
         self.assertIn("data-next-drift-level", html)
         # The header pill too, with the live monitor off: the switch hides the live level only.
         self.assertIn("Drift: High", visible_text(html[: html.index("<aside")]))
@@ -390,7 +390,7 @@ class TheRowsTest(_ResultPage):
         rows = rows_of(result_of(html))
         departing = [r for r in rows if "LINE 1" in r]
         self.assertEqual(1, len(departing))
-        self.assertIn(f"Departs at #{NUMBER['c-fail']}", departing[0])
+        self.assertIn(f"Departs; evidence #{NUMBER['c-fail']}", departing[0])
         # The same number is the activity list's, and the entry is flagged Cited there.
         entry = re.search(
             r'<div class="next-cockpit-work-row"[^>]*data-next-entry-id="c-fail"', html
@@ -456,7 +456,8 @@ class TheAnswerTest(_ResultPage):
         answer = self.answer_of(html)
         self.assertIn("Departs from your intent", answer)
         self.assertIn("1 departure", answer)
-        self.assertIn(f"The lexer tests fail after the change. (#{NUMBER['c-fail']})", answer)
+        self.assertIn("The lexer tests fail after the change.", answer)
+        self.assertIn(f"#{NUMBER['c-fail']} · pytest tests/lexer", answer)
 
     def test_a_failed_check_in_the_window_outranks_cant_tell(self) -> None:
         answer = self.answer_of(self.page(ALL_CANT_TELL, levels.HIGH))

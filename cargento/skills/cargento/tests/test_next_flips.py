@@ -33,7 +33,7 @@ OPEN_RUNNING = "Analyze is open again: the session is running."
 OPEN_LAST_TURN = "Analyze is open: the session's last turn finished."
 CLOSED = "Analyze closed: the session went quiet."
 CLOSED_UNANSWERED = "Analyze closed before you answered, so nothing was sent."
-IDLE_LINE = "This session's last turn isn't recorded as finished."
+IDLE_LINE = "Last turn isn't recorded as finished. Run another turn to open Analyze."
 
 # Every poll hands the page a new payload object, as the server does; the fixture's own stub
 # hands back the same one, which no payload-counting rule could tell apart.

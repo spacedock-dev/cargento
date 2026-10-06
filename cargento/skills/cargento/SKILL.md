@@ -489,7 +489,7 @@ message tail, unlisted passes or writes, checks that did not fit and an adopted-
 An older reading says coverage was not recorded. A tail starting inside the intent window tags
 every intent row "may be in the part not read"; claims stay independent. General scope and the
 count-by-kind cutoff remain under What it read. Coverage holds only counts, time and closed state
-tokens and changes no verdict. Each line reads "Departs at #n", "Consistent with
+tokens and changes no verdict. Each line reads "Departs; evidence #n", "Consistent with
 #n, as the tool reported; not inspected", "Consistent with what the agent said at #n; not a
 check" where it rests on the agent's messages alone, "Consistent with what the session said at #n;
 not a check", "Not reached at this stop" or "Can't tell", never "Done". Unfinished work in flight

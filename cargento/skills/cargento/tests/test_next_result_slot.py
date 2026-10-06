@@ -66,7 +66,7 @@ class TheResultTakesTheButtonsPlaceTest(_ResultPage):
             "#1 to #8",
             "Departs from your intent",
             "Against expected outcome",
-            f"Departs at #{NUMBER['c-fail']}",
+            f"Departs; evidence #{NUMBER['c-fail']}",
             "Where the work went",
             "Steer back",
             "Analyze again",
@@ -80,7 +80,7 @@ class TheResultTakesTheButtonsPlaceTest(_ResultPage):
 
     def test_the_time_is_said_once(self) -> None:
         drift = visible_text(drift_of(self.page(MIXED, levels.HIGH)))
-        self.assertEqual(1, drift.count(clock(READ_AT)), drift)
+        self.assertEqual(1, drift.count("Analysis at " + clock(READ_AT)), drift)
         self.assertNotIn("Analysis ·", drift)
 
     def test_a_reading_of_one_entry_names_it_alone(self) -> None:
@@ -124,7 +124,10 @@ class TheResultTakesTheButtonsPlaceTest(_ResultPage):
         assert button is not None
         self.assertIn('aria-disabled="true"', button.group(0))
         self.assertNotIn("next-action--primary", button.group(0))
-        self.assertIn("This session's last turn isn't recorded as finished.", visible_text(html))
+        self.assertIn(
+            "Last turn isn't recorded as finished. Run another turn to open Analyze.",
+            visible_text(html),
+        )
 
     def test_analyze_again_is_never_the_stages_primary(self) -> None:
         html = drift_of(self.page(ALL_CONSISTENT, levels.NONE_OR_LOW, facts=NO_FAILURE))

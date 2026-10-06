@@ -3986,6 +3986,30 @@ class ReadingRouteTest(unittest.TestCase):
         "acquisition": "event",
     }
 
+    def test_a_saved_claude_goal_with_no_recorded_turn_stop_stays_withheld_without_a_job_or_charge(
+        self,
+    ) -> None:
+        config, state = self._runtime()
+        with (
+            self._counting_model(("codex",), harness="claude") as calls,
+            self._serving(self._app(config, state, "claude", row=self.IDLE_UNKNOWN)) as port,
+        ):
+            before = self._published_row(port, "claude")
+            status, body = self._post(port, self._claude_press(allow=True, words_destination=""))
+            after = self._published_row(port, "claude")
+        answer = json.loads(body)
+        self.assertEqual("ship the parser", before["annotation_goal"])
+        self.assertFalse(before["reading_eligibility"]["ok"])
+        self.assertEqual(200, status, answer)
+        self.assertEqual(runtime_reading.WITHHELD_IDLE_UNKNOWN, answer["withheld"])
+        self.assertEqual(before["reading_eligibility"], after["reading_eligibility"])
+        self.assertEqual(before["reading_eligibility"]["sentence"], answer["sentence"])
+        self.assertFalse(answer["produced"])
+        self.assertEqual([], calls)
+        self.assertEqual([], self.outcomes)
+        self.assertEqual({}, runtime_reading.published_jobs(config))
+        self.assertEqual(0, reading_policy.status(config, now=1_700_000_100.0)["used"])
+
     def test_a_press_the_board_says_cannot_read_starts_no_job_and_counts_no_attempt(
         self,
     ) -> None:

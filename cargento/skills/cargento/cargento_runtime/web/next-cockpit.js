@@ -2074,6 +2074,8 @@ function nextCockpitWorkEntries(session, semantic){
         summary: String(fact.summary || "No summary published"),
         at: fact.at,
         resultAt: fact.result_at,
+        sourceSession: fact.source_session,
+        workerKind: String(fact.worker_kind || ""),
         actorClaim: String(fact.actor_claim || ""),
         modelDerived: String(fact.actor_claim || "").startsWith("model-derived"),
         subject: String(fact.subject || ""),
@@ -3427,7 +3429,7 @@ function nextCockpitResultStatus(row, numbers, byId, short = false){
   if(row.result === NEXT_READING_NOT_REACHED) return "Not reached at this stop";
   if(row.result === NEXT_READING_DEPARTURE){
     const where = nextCockpitResultWhere(byId.get(String((row.citedIds || [])[0] || "")), numbers);
-    return where ? `Departs at ${where}` : "Departs";
+    return where ? `Departs; evidence ${where}` : "Departs";
   }
   if(row.result === NEXT_READING_CONSISTENT && row.restsOn){
     const where = nextCockpitResultWhere(row.restsOnEntry, numbers);
@@ -3512,9 +3514,59 @@ function nextCockpitResultItem(row, numbers, byId, tag = "li"){
     '<span class="next-cockpit-result-glyph" aria-hidden="true"></span>' +
     '<span class="next-cockpit-result-body">' + nextCockpitReadingClauseCell(row) +
     `<em class="next-cockpit-reading-result">${esc(status)}</em>` +
+    (row.key === NEXT_READING_CLAIMS && row.result === NEXT_READING_DEPARTURE
+      ? nextCockpitAssessmentAccount(row, numbers, byId, false) : "") +
     (row.coverage ? `<span class="next-cockpit-reading-why">${esc(row.coverage)}</span>` : "") +
     `<details class="next-cockpit-why"${nextCockpitDisclosureAttr(`result-evidence:${row.key}`)}>` +
     `<summary>Evidence</summary>${evidence}</details></span></${tag}>`;
+}
+
+/* These are recorded event times, never the reading's time or a claim about
+   when intent changed. A date and UTC keep older evidence unambiguous. */
+function nextDriftRecordedTime(at){
+  const epoch = nextNumber(at);
+  if(epoch == null || epoch <= 0) return "time not recorded";
+  const date = new Date(epoch * 1000);
+  return Number.isFinite(date.getTime())
+    ? date.toISOString().slice(0, 19).replace("T", " ") + " UTC" : "time not recorded";
+}
+
+function nextDriftEvidenceRows(ids, numbers, byId, scope){
+  const held = [...new Set((Array.isArray(ids) ? ids : []).map(String))]
+    .map(id => byId.get(id)).filter(Boolean);
+  if(!held.length) return "";
+  return '<ul class="next-cockpit-assessment-evidence">' + held.map(entry => {
+    const n = numbers.get(String(entry.id || ""));
+    const label = [n == null ? "Entry not numbered in this view" : `#${n}`,
+      String(entry.summary || "Recorded entry")].join(" · ");
+    const kind = entry.subject === "check" ? `${entry.result || "Recorded"} check`
+      : entry.subject === "write" ? "File write"
+      : nextReadingAgentMessage(entry) ? "Agent message" : String(entry.type || "Recorded entry");
+    const who = [entry.sourceSession && entry.sourceSession.harness || "Harness not recorded",
+      entry.workerKind].filter(Boolean).join(" · ");
+    const source = String(entry.source || "Source not recorded");
+    const eventLabel = entry.type === "tool_report" && entry.subject === "check" &&
+      entry.sourceSession && entry.sourceSession.harness === "claude" ? "Call recorded at" : "Evidence recorded at";
+    const result = entry.subject === "check"
+      ? `<span class="next-cockpit-reading-evidence">Result recorded at ${esc(nextDriftRecordedTime(entry.resultAt))}</span>`
+      : "";
+    return `<li><p class="next-cockpit-assessment-entry">${esc(label)}</p>` +
+      `<span class="next-cockpit-reading-evidence">${esc(kind)} · ${esc(who)}</span>` +
+      `<span class="next-cockpit-reading-evidence">${eventLabel} ${esc(nextDriftRecordedTime(entry.at))}</span>` +
+      result + `<details class="next-cockpit-why"${nextCockpitDisclosureAttr(`assessment-source:${scope}:${entry.id}`)}>` +
+      `<summary>Source</summary><p class="next-cockpit-reading-evidence">${esc(source)}</p></details></li>`;
+  }).join("") + '</ul>';
+}
+
+/* Only the post-rule row supplies prose and citations. A withdrawn verdict
+   has already lost both; raw model text is never used as a fallback. */
+function nextCockpitAssessmentAccount(row, numbers, byId, showClause = true){
+  const clause = showClause && String(row.clause || "").trim();
+  const detail = String(row.detail || "").trim();
+  return '<div class="next-cockpit-assessment-account"><h3>Model assessment</h3>' +
+    (clause ? `<p class="next-cockpit-assessment-clause">Read intent: ${esc(clause)}</p>` : "") +
+    `<p class="next-cockpit-reading-detail">${esc(detail || "No explanation was retained for this assessment.")}</p>` +
+    nextDriftEvidenceRows(row.citedIds, numbers, byId, row.key) + '</div>';
 }
 
 /* Item 14's answer reducer, over the rows after every page rule. Any valid
@@ -3572,13 +3624,8 @@ function nextCockpitResultAnswer(answer, numbers, byId, midFlight = false){
   const lead = midFlight ? '<span class="next-cockpit-result-scope">So far:</span> ' : "";
   if(answer.kind === "departs"){
     const count = `${answer.count} departure${answer.count === 1 ? "" : "s"}`;
-    const account = answer.departures.map(row => {
-      const where = nextCockpitResultWhere(byId.get(String((row.citedIds || [])[0] || "")), numbers);
-      const detail = String(row.detail || "").trim();
-      return detail
-        ? `<p class="next-cockpit-reading-detail">${esc(detail)}${where ? ` (${esc(where)})` : ""}</p>`
-        : "";
-    }).join("");
+    const account = answer.departures.map(row =>
+      nextCockpitAssessmentAccount(row, numbers, byId)).join("");
     return open + `<p class="next-cockpit-result-headline">${lead}` +
       `<span>${NEXT_RESULT_DEPARTS}</span>` +
       `<span class="next-cockpit-result-count">${esc(count)}</span></p>${account}</div>`;
@@ -3691,7 +3738,6 @@ function nextCockpitResultFoot(session, annotation, raw){
     `data-arg="${esc(String(readAt))}" aria-pressed="${marked ? "true" : "false"}" ` +
     `data-next-focus="not-accurate:${esc(key)}"${nextPendingAttrs(`not-accurate:${key}`)}>` +
     `${nextPendingLabel(`not-accurate:${key}`, NEXT_RESULT_NOT_ACCURATE)}</button>` +
-    (marked ? `<span class="next-cockpit-result-marked">${NEXT_RESULT_MARKED}</span>` : "") +
     (nextCockpitNotAccurateUnsaved.has(key)
       ? `<p class="next-cockpit-reading-why" role="status">${NEXT_RESULT_MARK_UNSAVED}</p>` : "") +
     '</div>';
@@ -4138,7 +4184,7 @@ const NEXT_READING_PRESS_LINES = {
 const NEXT_READING_PRESS_CODEX = "Codex sessions can be analyzed only while a turn is running.";
 /* Claude Code records a finished turn itself, so an idle row without one is a
    turn not recorded as finished, and the Why says the four reasons it may be. */
-const NEXT_READING_PRESS_CLAUDE = "This session's last turn isn't recorded as finished.";
+const NEXT_READING_PRESS_CLAUDE = "Last turn isn't recorded as finished. Run another turn to open Analyze.";
 const NEXT_READING_PRESS_EVENTS = "Analyze opens while this session runs or once it ends.";
 
 /* Whether a press could read this row now, as the board published it, or as
@@ -4582,7 +4628,7 @@ function nextCockpitSteerTrigger(offer, shape, session, entries, numbers, scan =
   const at = nextReadingEvidenceAt(fact);
   const n = numbers.get(String(fact.id || ""));
   const age = at > 0 ? `${fmtDur(Math.max(0,(nextData && nextData.generated || 0)-at))} ago` : "time not recorded";
-  const trigger = offer.departed ? "Departure" : offer.claimed ? "Claim to check" : "Check failed";
+  const trigger = offer.departed ? "Departure evidence" : offer.claimed ? "Claim to check" : "Check failed";
   return `<p class="next-cockpit-reading-why">${esc(`${trigger}${n != null ? ` at #${n}` : ""} · ${age}`)}</p>`;
 }
 
@@ -5482,7 +5528,9 @@ function nextCockpitReadingParts(session, annotation, entries, model, observed, 
   const foot = staleState ? steers : press;
   const result = job ? control
     : '<div class="next-session-drift-check next-cockpit-result" data-next-result>' +
-      question + stale + answer + coverageLine + checklist + work +
+      question + stale + (annotation.not_accurate === true
+        ? `<p class="next-cockpit-result-marked">${NEXT_RESULT_MARKED}</p>` : "") +
+      answer + coverageLine + checklist + work +
       (foot ? `<div class="next-cockpit-result-press">${foot}</div>` : "") +
       nextCockpitResultFoot(session, annotation, raw) +
       nextCockpitReadingBaseline(shape, read) + '</div>';
@@ -6136,6 +6184,7 @@ function nextDriftEstimate(group, session){
   return {level, label, source: at != null ? `Live estimate · ${nextSessionClock(at)}` : "Live estimate",
     rose: from && n != null && row.rose_from !== "not_enough" ? `Rose from ${from} at #${n}.` : "",
     anchored: nextDriftSignalAnchored(row,work),
+    signals: nextDriftRecordedSignals(row, work, numbers),
     reasons: nextDriftReasons(level, row.reasons, row.cites, work.all || work.entries || [],
       numbers, new Set())};
 }
@@ -6223,8 +6272,7 @@ function nextDriftRange(entries, numbers, start, through){
    through this field. */
 const NEXT_DRIFT_REASON_LINES = {
   "failed-check": n => n ? `A check failed at ${n}.` : "A check failed.",
-  "departure": n => n ? `The session departed from your intent at ${n}.`
-    : "The session departed from your intent.",
+  "departure": n => n ? `Departure evidence: ${n}.` : "The model assessed a departure from your intent.",
   "pass-then-write": () => "A check passed, then files were written after it.",
   "claim-contradicted": n => n ? `The record contradicts what the agent said at ${n}.`
     : "The record contradicts what the agent said.",
@@ -6250,6 +6298,22 @@ const NEXT_DRIFT_BLOCKER_LINES = {
   "reading-malformed": "Part of the stored analysis could not be read.",
 };
 const NEXT_DRIFT_REASON_SILENT = new Set(["floor-met", "no-reading", "draft-unsaved"]);
+
+function nextDriftRecordedSignals(row, work, numbers){
+  const entries = work.all || work.entries || [];
+  const byId = new Map(entries.map(entry => [String(entry.id || ""), entry]));
+  const tokens = [...new Set((Array.isArray(row.reasons) ? row.reasons : []).map(String))];
+  const lines = tokens.map(token => token === "failed-check" &&
+      !(Array.isArray(row.cites) ? row.cites : []).some(id => byId.get(String(id)) &&
+        byId.get(String(id)).subject === "check" && byId.get(String(id)).result === "failed")
+    ? "A failed check is counted but its entry is not listed."
+    : NEXT_DRIFT_REASON_LINES[token] ? NEXT_DRIFT_REASON_LINES[token]("")
+    : NEXT_DRIFT_BLOCKER_LINES[token] || "").filter(Boolean);
+  if(!lines.length) return "";
+  return '<div class="next-cockpit-recorded-signals"><h3>Recorded signals</h3>' +
+    lines.map(line => `<p class="next-session-drift-reason">${esc(line)}</p>`).join("") +
+    nextDriftEvidenceRows(row.cites, numbers, byId, "signals") + '</div>';
+}
 
 function nextDriftReasons(level, tokens, cites, entries, numbers, departing){
   const said = Array.isArray(tokens) ? tokens.map(String) : [];
@@ -6397,12 +6461,16 @@ function nextDriftLevel(session, annotation = null, group = null, estimate = und
       (found.level ? `<p class="next-session-drift-meter" aria-hidden="true"${running ? " data-dim" : ""}>` +
         `${nextDriftMeter(found.level)}</p>${nextDriftScale(found.level)}` : "") +
       (detail ? `<p class="next-session-drift-detail">${esc(detail)}</p>` : "") +
+      (!running && !found.analysis && !nextDriftReadingStored(annotation)
+        ? '<p class="next-session-drift-detail">No model assessment for this intent yet.</p>' : "") +
       (found.range && !running ? `<p class="next-session-drift-range">${esc(found.range)}</p>` : "") +
-      (reasons.first ? `<p class="next-session-drift-reason">${esc(reasons.first)}</p>` : "") +
+      (!found.signals && reasons.first ? `<p class="next-session-drift-reason">${esc(reasons.first)}</p>` : "") +
+      (!running && found.signals ? found.signals : "") +
       blockers + '</div>' +
       /* The design's C2 callout, placed definitely: directly under the live
          level at High or Extreme, before the control it points at. */
-      (high && found.anchored === true && !found.analysis && !running && !nextIntentUnsaved(session, annotation)
+      (high && found.anchored === true && !found.analysis && !running &&
+        !nextReadingRouteRefusal(session) && !nextIntentUnsaved(session, annotation)
         ? `<p class="next-session-drift-nudge">${esc(NEXT_DRIFT_NUDGE)}</p>` : "");
   }
   return `<p class="next-session-drift-limit" data-next-drift-limit>${esc(NEXT_DRIFT_HARNESS_LIMIT)}</p>`;
@@ -6509,12 +6577,15 @@ function nextCockpitDriftBlock(group, session, primary){
      footer's hint under both fields now (owner Q6), so it is said once
      whether or not the goal is drafted. */
   const drafted = nextIntentDrafted(session, annotation);
+  const goalExplanation = String(annotation && annotation.goal || "").trim()
+    ? "When you analyze drift, Cargento lists where this session departed from your saved goal. "
+    : "Choose a goal or use your prompt, then analyze drift: " +
+      "Cargento lists where this session departed from it. ";
   /* Tier 2 under its summary (DRC-4758 slice E): it says what the press does,
      which the button and its result already show. */
   const lede = '<details class="next-cockpit-why next-session-drift-about"' +
     `${nextCockpitDisclosureAttr("held-lede")}><summary>What analysis does</summary>` +
-    '<p class="next-cockpit-held-lede">Choose a goal or use your prompt, then analyze drift: ' +
-    'Cargento lists where this session departed from it. It never writes into the session, ' +
+    '<p class="next-cockpit-held-lede">' + goalExplanation + 'It never writes into the session, ' +
     'so steering stays yours.</p></details>';
   /* In the lede's slot, so it costs the fold no row a draft would not. */
   const why = drafted ? "" : nextIntentNoDraftWhy(session, annotation);
