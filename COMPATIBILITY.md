@@ -143,8 +143,8 @@ claude plugin validate ./cargento --strict
 agy plugin validate ./cargento
 ```
 
-<!-- docs-synced-through: 5988426c (2026-09-29) -->
-<!-- Reconciled be8cc12..5988426c: the merged feature passes and their combined Intent and
-     drift contracts, per-press reading consent, failed Claude qualification, counts-only
-     nudges and shared ink roles. This main-based pass aligns the live estimate, analysis
-     result and subagent evidence promise copies. Final real-session walks remain open. -->
+<!-- docs-synced-through: 8ea4d2a (2026-10-06) -->
+<!-- Reconciled 5988426c..8ea4d2a: standalone commands, reading source and consent bounds,
+     ordinary-driver preparation, conditional study guards and live-estimate disclosures.
+     Source-only study machinery grants no activation, source admission or qualification;
+     independent source review, cold participants and complete outbound attribution remain open. -->

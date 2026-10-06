@@ -13,7 +13,7 @@ diff-and-reconcile pass, not a rewrite.
 
 - **Never touch a version field.** The plugin version appears in
   `cargento/.claude-plugin/plugin.json` (the source of truth), `cargento/.codex-plugin/plugin.json`
-  and `cargento/gemini-extension.json`, and is owned by the tag-driven Release workflow. The
+  and `cargento-gemini/gemini-extension.json`, and is owned by the tag-driven Release workflow. The
   `version-guard` check fails any PR that changes one. Never write a version literal into Markdown
   either — it would drift permanently and unwatched. Illustrative tags (`git tag v0.2.0`) are fine.
 - **Never change the plugin description casually.** It must stay byte-identical across five
@@ -421,7 +421,7 @@ minutes, a Python version. Stale counts are this repository's most common drift.
 
    # b. No version field moved anywhere on this branch. `version-guard` compares the PR head
    #    against the MERGE BASE, so an already-committed bump is invisible to `git diff HEAD` and
-   #    passes `bump_version.py --current` (which only checks five-way parity, not immutability).
+   #    passes `bump_version.py --current` (which only checks three-field parity, not immutability).
    git diff "$(git merge-base origin/main HEAD)"..HEAD \
      -- '*plugin.json' '*marketplace.json' '*gemini-extension.json' | grep -E '^[+-].*"version"'
 
