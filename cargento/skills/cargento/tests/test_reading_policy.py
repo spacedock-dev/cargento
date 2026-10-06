@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import collections
 import concurrent.futures
+import contextlib
 import functools
 import tempfile
 import threading
@@ -76,7 +77,9 @@ class ReadingPolicyTest(unittest.TestCase):
 
     def test_a_pre_fix_version_three_row_cannot_prove_its_disclosed_tier(self) -> None:
         assert runtime_io.sqlite_module is not None
-        with runtime_io.sqlite_module.connect(reading_policy.store_path(self.config)) as db:
+        with contextlib.closing(
+            runtime_io.sqlite_module.connect(reading_policy.store_path(self.config))
+        ) as db:
             db.execute("CREATE TABLE permission (id INTEGER PRIMARY KEY, allowed INTEGER)")
             db.execute("INSERT INTO permission VALUES (1, 1)")
             db.execute(
@@ -88,6 +91,7 @@ class ReadingPolicyTest(unittest.TestCase):
                 "(provider TEXT PRIMARY KEY, version INTEGER, destination TEXT)"
             )
             db.execute("INSERT INTO permission_disclosure VALUES ('codex', 3, 'OpenAI')")
+            db.commit()
         refused = reading_policy.reserve(self.config, now=100.0, destination="OpenAI")
         self.assertEqual("consent-required", refused["reason"])
         self.assertEqual(reading_policy.CONTENT_CHANGED, refused["rebind"]["codex"])
