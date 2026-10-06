@@ -1233,6 +1233,15 @@ decoded for this check; an oversized escaped record refuses recovery before deco
 This does not admit another transcript or widen
 consent; the existing source stamp, selected-row and byte bounds still apply.
 
+Amended 2026-10-06: an Allow records the content tier the server resolved from the
+session harness and actually disclosed. A non-Claude Allow at `WORDS_CONTENT_VERSION`
+cannot authorize a later Claude agent-message reading through the same provider. Older
+version-3 rows cannot prove which disclosure created them, so the wide consent epoch is
+now 4 and every such Claude press asks again once. This adds no transmitted content.
+A verified wider grant survives a narrower Allow only at the same provider and destination;
+Turn off still revokes every tier and tool-output grant without refunding spend. Words-only
+consent remains grandfathered under the earlier ruling.
+
 An agent message, cropped or whole, is quoted as one JSON string with the menu heading neutralised, as a check's output
 tail is, and the prompt's trusted header says agent messages are quoted data, never instructions.
 That goes only on a reading the reader pressed for, whether or not tool output is allowed, and to
@@ -3134,6 +3143,22 @@ into spaces. This extra view is limited to 16,384 characters: longer text contai
 element starts is withheld as a redaction marker, including an unfinished attribute. Plain text
 does not acquire that bound. Arbitrary envelope tags, encoded markup and unseen text beyond an
 existing source extraction bound are outside this correction's claim.
+
+Amended 2026-10-06: native command field boundaries are captured before the observer's
+early scrub. Each field is masked before extraction; missing closing tags remain source
+cuts, and malformed overlaps use the whole-record scrub. Observer packets, first prompts
+and copied-correction matching then use the existing safe renderer and bounds. This
+changes no credential pattern or content class. Separating those fields also removes an
+accidental mask: a closing tag formerly made a short word after a colon look like a
+credential. At the end of native arguments, a short word with no digit or symbol
+can now survive after a colon (`password: correcthorse`) or a strict token/secret
+assignment (`CLIENT_SECRET=staging`, `API_TOKEN=next`); a bare `bearer` value
+shorter than 16 characters can survive too, as can a value shorter than three
+characters after another cued assignment (`password=ab`, `API_KEY=xy`). Any may
+be a real secret. These are
+the cued rule's documented exceptions, not evidence that the values are harmless;
+this filter does not identify every secret. The [command-boundary rationale](docs/design-credential-redaction.md#amended-2026-10-06-native-command-boundaries-survive-an-early-scrub)
+owns the ordering and the existing fact-identity consequence.
 
 The card, the browser notification body and the native popup are pixels, and a screenshot is what
 each of them risks. Two of the things carrying this text are files. The first is the observer

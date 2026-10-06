@@ -44,6 +44,97 @@ class ReadingPolicyTest(unittest.TestCase):
         self.assertTrue(reading_policy.forget(self.config, now=103.0))
         self.assertEqual(1, reading_policy.status(self.config, now=103.0)["used"])
 
+    def test_a_narrow_allow_retains_a_wider_allow_only_at_the_same_destination(self) -> None:
+        reading_policy.set_consent(
+            self.config, True, now=100.0, provider="codex", destination="OpenAI"
+        )
+        reading_policy.set_consent(
+            self.config,
+            True,
+            now=101.0,
+            provider="codex",
+            destination="OpenAI",
+            content=reading_policy.WORDS_CONTENT_VERSION,
+        )
+        self.assertTrue(
+            reading_policy.status(self.config, now=101.0, destinations={"codex": "OpenAI"})[
+                "consent"
+            ]
+        )
+        reading_policy.set_consent(
+            self.config,
+            True,
+            now=102.0,
+            provider="codex",
+            destination="changed.example",
+            content=reading_policy.WORDS_CONTENT_VERSION,
+        )
+        refused = reading_policy.reserve(self.config, now=103.0, destination="changed.example")
+        self.assertEqual("consent-required", refused["reason"])
+        self.assertEqual(reading_policy.CONTENT_CHANGED, refused["rebind"]["codex"])
+        self.assertEqual(0, refused["used"])
+
+    def test_a_pre_fix_version_three_row_cannot_prove_its_disclosed_tier(self) -> None:
+        assert runtime_io.sqlite_module is not None
+        with runtime_io.sqlite_module.connect(reading_policy.store_path(self.config)) as db:
+            db.execute("CREATE TABLE permission (id INTEGER PRIMARY KEY, allowed INTEGER)")
+            db.execute("INSERT INTO permission VALUES (1, 1)")
+            db.execute(
+                "CREATE TABLE permission_destination (provider TEXT PRIMARY KEY, destination TEXT)"
+            )
+            db.execute("INSERT INTO permission_destination VALUES ('codex', 'OpenAI')")
+            db.execute(
+                "CREATE TABLE permission_disclosure "
+                "(provider TEXT PRIMARY KEY, version INTEGER, destination TEXT)"
+            )
+            db.execute("INSERT INTO permission_disclosure VALUES ('codex', 3, 'OpenAI')")
+        refused = reading_policy.reserve(self.config, now=100.0, destination="OpenAI")
+        self.assertEqual("consent-required", refused["reason"])
+        self.assertEqual(reading_policy.CONTENT_CHANGED, refused["rebind"]["codex"])
+        self.assertEqual(0, refused["used"])
+        self.assertTrue(refused["words"]["codex"])
+        reading_policy.set_consent(
+            self.config, True, now=101.0, provider="codex", destination="OpenAI"
+        )
+        self.assertEqual(
+            "", reading_policy.reserve(self.config, now=102.0, destination="OpenAI")["reason"]
+        )
+
+    def test_turn_off_clears_every_content_tier_and_tool_output_grant(self) -> None:
+        reading_policy.set_consent(
+            self.config,
+            True,
+            now=100.0,
+            provider="codex",
+            destination="OpenAI",
+            content=reading_policy.WORDS_CONTENT_VERSION,
+        )
+        reading_policy.set_consent(
+            self.config,
+            True,
+            now=100.0,
+            provider="claude",
+            destination="Anthropic",
+            tool_output="Anthropic",
+        )
+        reading_policy.reserve(self.config, now=100.0, provider="claude", destination="Anthropic")
+        reading_policy.set_consent(self.config, False, now=101.0)
+        for provider, destination, content in (
+            ("codex", "OpenAI", reading_policy.WORDS_CONTENT_VERSION),
+            ("claude", "Anthropic", reading_policy.CONTENT_VERSION),
+        ):
+            with self.subTest(provider=provider):
+                refused = reading_policy.reserve(
+                    self.config,
+                    now=102.0,
+                    provider=provider,
+                    destination=destination,
+                    content=content,
+                )
+                self.assertEqual("consent-required", refused["reason"])
+                self.assertEqual(1, refused["used"])
+                self.assertEqual({}, refused["tool_output"])
+
     def test_rolling_cap_expires_at_the_oldest_spend_not_midnight(self) -> None:
         reading_policy.set_consent(self.config, True, now=100.0)
         for offset in range(12):

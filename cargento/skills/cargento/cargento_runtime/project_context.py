@@ -4566,6 +4566,18 @@ def transcript_tail_coverage(
     }
 
 
+def _masked_window_words(config: RuntimeConfig, text: str, harness: str) -> str:
+    """Mask raw person words without letting a cue consume native closing tags."""
+    command = transcripts.command_direction(config, text) if harness == "claude" else None
+    if command is None:
+        return records.mask_prose(text)
+    # Keep raw line breaks for split credentials: rendering first would fold
+    # them before masking. Whitespace separates the original field delimiters
+    # from their values; it adds no closing tag to a genuinely cut record.
+    framed = records.mask_prose(text.replace("</command-", " </command-"))
+    return transcripts.command_direction(config, framed) or ""
+
+
 def transcript_window_words(
     config: RuntimeConfig,
     path: str,
@@ -4625,13 +4637,12 @@ def transcript_window_words(
             signature = hashlib.sha256(
                 json.dumps(content, sort_keys=True, ensure_ascii=False).encode("utf-8", "replace")
             ).hexdigest()
-            masked = records.mask_prose(text)
-            command = transcripts.command_direction(config, masked) if harness == "claude" else None
+            masked = _masked_window_words(config, text, harness)
             previous = found.get(key)
             if previous is not None and previous[0] != signature:
                 ambiguous.add(key)
             fact[READER_WORDS_FIELD] = records.safe_text(
-                " ".join((command or masked).split()), READER_WORDS_CAP_CHARS
+                " ".join(masked.split()), READER_WORDS_CAP_CHARS
             )
             found[key] = (signature, fact)
     except OSError:

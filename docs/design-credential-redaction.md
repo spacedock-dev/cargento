@@ -446,3 +446,35 @@ redacting every 40-character base64 run in every diff.
 
 The rule outside the software is unchanged. Do not paste a credential into a prompt, and rotate one
 that was.
+
+
+## Amended 2026-10-06: native command boundaries survive an early scrub
+
+Observer extraction used to scrub the whole native command wrapper before parsing it.
+A credential cue could consume a closing field tag, losing ordinary arguments or
+creating a false source cut. The transcript owner now finds the native field boundaries
+first with a linear scan, masks each captured field before extraction, and preserves the
+original closing tags. Overlapping malformed fields use the whole-record scrub instead.
+Missing tags remain missing, so a genuinely cut direction keeps its ellipsis.
+
+Restoring a person's words from a source window also recognizes the raw command
+first. It separates the original closing delimiters before masking, then renders
+the direction. Rendering before masking was tried and rejected: it folded a
+line break inside a recognized AWS credential and let that credential survive.
+The retained order preserves the raw-line mask and adds no missing delimiter.
+
+Observer model packets render those commands before their final scrub and byte bound.
+First-prompt and copied-correction projections use the existing safe prompt renderer
+without a redundant earlier scrub. Recognized credential rules, controls and publication
+bounds are unchanged. Effective coverage changes where a closing tag previously
+made an ordinary word match the cued rule accidentally. This affects the final
+value before the closing argument tag: a short word with no digit or symbol after
+a colon (`password: correcthorse`) or a strict token/secret assignment
+(`CLIENT_SECRET=staging`, `API_TOKEN=next`), and a bare `bearer` value shorter
+than 16 characters, or a value shorter than three characters after another
+cued assignment (`password=ab`, `API_KEY=xy`). Each can now survive within a
+native command and may still be a real secret. These are documented cued-rule exceptions, not proof that the
+values are harmless. The filter cannot identify every secret.
+
+Corrected titles may receive new fact identities under the existing redaction
+identity rule; no history migration or spend reset is performed.

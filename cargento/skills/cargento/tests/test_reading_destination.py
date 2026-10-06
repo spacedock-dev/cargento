@@ -117,6 +117,7 @@ class ThePressTheJobAndThePageAgree(NextPageJsHarness):
                 model,
                 lambda: 1_700_000_100.0,
                 provider="claude",
+                content=reading_policy.WORDS_CONTENT_VERSION,
                 destination=route["words_destination"],
                 # As the HTTP job asks it again at the reservation (consent F4).
                 resolve_destination=lambda: reading_route.destination("claude"),
@@ -167,7 +168,8 @@ class ThePressTheJobAndThePageAgree(NextPageJsHarness):
                 seen = self._today(config, state, today)
                 self.assertEqual(today, seen["route"]["words_destination"])
                 published = seen["board"]["reading"]
-                self.assertIs(covered, published["providers"]["claude"])
+                self.assertIs(covered, published["words"]["claude"])
+                self.assertFalse(published["providers"]["claude"], "narrow Allow widened the grant")
                 # The press check.
                 self.assertEqual(202 if covered else 403, seen["press"])
                 self.assertEqual(1 if covered else 0, seen["pressed"], "sent before an Allow")
@@ -246,7 +248,8 @@ class ThePressTheJobAndThePageAgree(NextPageJsHarness):
             state.snapshot.clear()
             _revision, body = self.route._app(config, state).collect_json(show_all=False)
         drawn = json.loads(body)
-        self.assertTrue(drawn["reading"]["providers"]["claude"])
+        self.assertTrue(drawn["reading"]["words"]["claude"])
+        self.assertFalse(drawn["reading"]["providers"]["claude"], "narrow Allow widened the grant")
         stack, calls = self._on("gw.corp.example")
         with stack, self.route._serving(self.route._app(config, state)) as port:
             status, raw = self.route._post(port, self.route._press(provider="claude"))

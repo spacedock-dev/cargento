@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import itertools
 import json
 import os
 import re
@@ -261,6 +262,41 @@ def prompt_title(config: RuntimeConfig, text: str, limit: int | None = 80) -> st
 # the signal and they are the evidence for it.
 _LOCAL_COMMAND_RE = re.compile(r"^\s*<command-name>")
 _PROMPT_COMMAND_RE = re.compile(r"^\s*<command-message>")
+
+
+def redact_command_framing(text: str) -> str:
+    """Mask raw command fields before extraction, preserving their actual delimiters.
+
+    A cue's value must end at the captured native field, not at its closing tag.
+    Ordinary strings use the usual scrub. Missing closing tags remain missing;
+    malformed overlapping fields fall back to the usual whole-record scrub.
+    """
+    if not (_LOCAL_COMMAND_RE.match(text) or _PROMPT_COMMAND_RE.match(text)):
+        return records.redact_secrets(text)
+    # This scrub runs before extraction's cap, so boundary discovery must be
+    # linear even when a large malformed field ends in whitespace without a tag.
+    spans = []
+    for field in ("message", "name", "args"):
+        opening = f"<command-{field}>"
+        start = text.find(opening)
+        if start < 0:
+            continue
+        start += len(opening)
+        end = text.find(f"</command-{field}>", start)
+        if end >= 0:
+            spans.append((start, end))
+    spans.sort()
+    if any(left[1] > right[0] for left, right in itertools.pairwise(spans)):
+        return records.redact_secrets(text)
+    pieces: list[str] = []
+    position = 0
+    for start, end in spans:
+        pieces.extend(
+            (records.redact_secrets(text[position:start]), records.redact_secrets(text[start:end]))
+        )
+        position = end
+    pieces.append(records.redact_secrets(text[position:]))
+    return "".join(pieces)
 
 
 def harness_control_prompt(config: RuntimeConfig, text: str) -> bool:
@@ -1353,9 +1389,7 @@ def first_prompt(
                 if candidate is None:
                     continue
                 body, at = candidate
-                rendered = prompt_title(
-                    config, records.redact_secrets(body), records.INSTRUCTION_CAP_CHARS
-                )
+                rendered = prompt_title(config, body, records.INSTRUCTION_CAP_CHARS)
                 result = {
                     "first_prompt": records.safe_text(rendered, records.INSTRUCTION_CAP_CHARS + 1),
                     "first_prompt_at": at if at > 0 else None,

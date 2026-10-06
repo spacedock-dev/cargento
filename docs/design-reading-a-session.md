@@ -1883,6 +1883,23 @@ changes neither selected rows nor consent nor byte bounds. It corrects source re
 it supplies no evidence that a model assessment is accurate and does not qualify the
 failed study. A fresh measurement must bind the repaired source bytes before output.
 
+### Amended 2026-10-06: consent binds the disclosure shown by this route
+
+A non-Claude press discloses words-only content, even when the same provider can later
+read a Claude session with agent messages and its newest final reply. Writing the build
+epoch for every Allow let the narrower disclosure cover that later content. The policy
+now stores the tier derived by the server from the actual session harness. Client-supplied
+version fields are ignored. An already verified wider Allow is retained on a later narrow
+press only while both destination bindings and the provider still match.
+
+Existing version-3 grants have no harness-origin record, so a valid wider grant cannot be
+distinguished from a mislabeled narrower one. The wide epoch moves to 4: the next Claude
+press renews once, then current consent is reused. A prospective-only repair was rejected
+because it left ambiguous stored grants valid. Adding a column was also avoided so an
+older build can still write its original three-field schema; its version-3 writes cannot
+authorize this build at 4. The words-only tier stays 1, including the 2026-10-03
+grandfathering ruling. This repair adds no content class and establishes no model accuracy.
+
 ## DEC-23: a Claude Code session's record of its checks may show the work
 
 Decided 2026-09-24 (DRC-4674). DRC-4676 builds the record and keeps it off every model prompt.

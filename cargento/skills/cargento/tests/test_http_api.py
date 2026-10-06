@@ -3763,6 +3763,92 @@ class ReadingRouteTest(unittest.TestCase):
         assert entry is not None
         return str(entry.get("assessment", {}).get("stamp", ""))
 
+    def test_a_non_claude_allow_cannot_authorize_a_claude_sessions_agent_words(self) -> None:
+        config, state = self._runtime()
+        reading_policy.set_consent(config, False, now=1_700_000_100.0)
+        with self._counting_model(harness="pi") as calls:
+            with self._serving(self._app(config, state, "pi")) as port:
+                status, body = self._post(
+                    port,
+                    self._press(
+                        allow=True,
+                        words_destination="",
+                        content=999,
+                        content_version=999,
+                    ),
+                )
+                self.assertEqual(202, status, body)
+            self.assertEqual(1, len(calls))
+            route = runtime_reading_route.resolve("pi", config=config)
+            self.assertNotIn("the agent's messages", route["disclosure"])
+            self.assertNotIn("newest final reply", route["disclosure"])
+
+        _, state = make_runtime(state_home=config.state_home, state_dir=config.state_dir)
+        with (
+            self._counting_model(harness="claude") as calls,
+            self._serving(self._app(config, state, "claude")) as port,
+        ):
+            status, body = self._post(port, self._claude_press())
+            self.assertEqual(403, status, body)
+            answer = json.loads(body)
+            self.assertEqual("consent-required", answer["reading"]["reason"])
+            self.assertEqual(reading_policy.CONTENT_CHANGED, answer["reading"]["rebind"]["codex"])
+            self.assertIn("the agent's messages", answer["route"]["disclosure"])
+            self.assertIn("newest final reply", answer["route"]["disclosure"])
+            self.assertEqual([], calls)
+            self.assertEqual(1, answer["reading"]["used"])
+            status, body = self._post(
+                port,
+                self._claude_press(allow=True, words_destination=""),
+            )
+            self.assertEqual(202, status, body)
+            self.assertEqual(1, len(calls))
+            status, body = self._post(port, self._claude_press())
+            self.assertEqual(202, status, body)
+            self.assertEqual(2, len(calls))
+
+    def test_prior_claude_content_versions_ask_again_without_charging(self) -> None:
+        for version in (2, 3):
+            with self.subTest(version=version):
+                config, state = self._runtime()
+                reading_policy.set_consent(
+                    config,
+                    True,
+                    now=1_700_000_100.0,
+                    provider="codex",
+                    destination="OpenAI",
+                    tool_output="OpenAI",
+                )
+                assert runtime_io.sqlite_module is not None
+                with contextlib.closing(
+                    runtime_io.sqlite_module.connect(reading_policy.store_path(config))
+                ) as db:
+                    db.execute("UPDATE permission_disclosure SET version = ?", (version,))
+                    db.commit()
+                with (
+                    self._counting_model(harness="claude", destination="OpenAI") as calls,
+                    self._serving(self._app(config, state, "claude")) as port,
+                ):
+                    status, body = self._post(port, self._claude_press())
+                    self.assertEqual(403, status, body)
+                    answer = json.loads(body)
+                    self.assertEqual(
+                        reading_policy.CONTENT_CHANGED, answer["reading"]["rebind"]["codex"]
+                    )
+                    self.assertEqual(0, answer["reading"]["used"])
+                    self.assertEqual([], calls)
+                    status, body = self._post(
+                        port,
+                        self._claude_press(
+                            allow=True, words_destination="OpenAI", tool_output="OpenAI"
+                        ),
+                    )
+                    self.assertEqual(202, status, body)
+                    self.assertEqual(1, len(calls))
+                    status, body = self._post(port, self._claude_press())
+                    self.assertEqual(202, status, body)
+                    self.assertEqual(2, len(calls))
+
     def test_a_claude_code_session_on_this_build_is_read_by_claude_code_when_it_is_installed(
         self,
     ) -> None:
@@ -3943,8 +4029,9 @@ class ReadingRouteTest(unittest.TestCase):
         assert entry is not None
         self.assertEqual(0, entry.get("readings", 0), "an attempt was counted")
         self.assertEqual(0, reading_policy.status(config, now=1_700_000_100.0)["used"])
-        # The Allow the press carried is still the reader's answer.
-        self.assertTrue(self._consents(config)["codex"])
+        # The narrow Allow carried by the press remains the reader's answer.
+        self.assertTrue(reading_policy.status(config, now=1_700_000_100.0)["words"]["codex"])
+        self.assertFalse(self._consents(config)["codex"], "narrow Allow widened the grant")
 
     def _published_row(self, port: int, harness: str) -> dict[str, Any]:
         conn = http.client.HTTPConnection("127.0.0.1", port, timeout=5)
