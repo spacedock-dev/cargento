@@ -7,6 +7,7 @@ import copy
 import hashlib
 import importlib
 import json
+import platform
 import sys
 import unittest
 from pathlib import Path
@@ -42,8 +43,8 @@ class NativeOperator(unittest.TestCase):
         self.assertIsNotNone(self.operator, "native closure operator is missing")
         # Only temporary account paths are activated by the existing test fixture.
         self.account = campaign_cases.CampaignReservations()
-        self.account.setUp()
         self.addCleanup(self.account.doCleanups)
+        self.account.setUp()
         self.session = replay_cases._Session()
         self.session.__enter__()
         self.addCleanup(self.session.__exit__)
@@ -62,7 +63,13 @@ class NativeOperator(unittest.TestCase):
             patch.start()
             self.addCleanup(patch.stop)
         config, _, _, _, self.reading = replay._runtime()
-        from cargento_runtime import observer  # noqa: PLC0415 - native runtime loaded above
+        from cargento_runtime import (  # noqa: PLC0415 - native runtime loaded above
+            observer,
+            reading_route,
+        )
+
+        # The synthetic executor is admitted independently of native OS routing.
+        self.enterContext(mock.patch.object(reading_route, "destination", return_value="Anthropic"))
 
         self.observer = observer
         self.actual_exec = observer.claude_exec
@@ -786,6 +793,41 @@ class NativeOperator(unittest.TestCase):
         self.assertEqual(631, len(json.loads(self.ledger.read_text())["calls"]))
         self.assertNotIn("pending", json.loads(op.journal_path.read_text()))
         self.assertEqual("passed", self.execute(self.prepare())["verdict"])
+
+
+class SyntheticFixtureIsolation(unittest.TestCase):
+    def test_fake_native_fixture_runs_on_windows_without_admitting_the_native_route(self) -> None:
+        from cargento_runtime import reading_route  # noqa: PLC0415 - native refusal outside fixture
+
+        with mock.patch.object(platform, "system", return_value="Windows"):
+            self.assertEqual("", reading_route.destination("claude"))
+            fixture = NativeOperator("test_source_change_refuses_before_charge")
+            result = unittest.TestResult()
+            fixture.run(result)
+            self.assertEqual([], result.errors)
+            self.assertEqual([], result.failures)
+            self.assertEqual("", reading_route.destination("claude"))
+
+    def test_failed_borrowed_account_setup_restores_its_paths(self) -> None:
+        fixture = NativeOperator("test_source_change_refuses_before_charge")
+
+        def cleanup() -> None:
+            if hasattr(fixture, "account"):
+                fixture.account.doCleanups()
+
+        self.addCleanup(cleanup)
+        keys = ("MANIFEST_PATH", "LEDGER_PATH", "REPLAY_PATH", "QUALIFICATION_PATH")
+        before = {key: getattr(campaigns, key) for key in keys}
+        with mock.patch.object(
+            campaign_cases.CampaignReservations,
+            "activate",
+            side_effect=RuntimeError("synthetic setup failure"),
+        ):
+            result = unittest.TestResult()
+            fixture.run(result)
+        self.assertEqual(1, len(result.errors))
+        self.assertIn("synthetic setup failure", result.errors[0][1])
+        self.assertEqual(before, {key: getattr(campaigns, key) for key in keys})
 
 
 if __name__ == "__main__":

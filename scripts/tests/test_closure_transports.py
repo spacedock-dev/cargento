@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import platform
 import sys
 import types
 import unittest
@@ -31,6 +32,72 @@ else:
     import test_mark_full_production as source_cases
 
 
+class SyntheticDestinationIsolation(unittest.TestCase):
+    def test_native_windows_live_wrapper_never_reserves_or_calls_the_executor(self) -> None:
+        from cargento_runtime import reading_route  # noqa: PLC0415 - actual native route
+
+        inner = mock.Mock(return_value=("synthetic reply", "ok"))
+        observer = types.SimpleNamespace(
+            __file__="synthetic-observer.py",
+            claude_exec=inner,
+            claude_reading_provenance=mock.Mock(return_value={"model": "declared-model"}),
+        )
+        campaign = mock.Mock()
+        verified = types.SimpleNamespace(path="synthetic-cli", identity=("synthetic", "a" * 64))
+        with (
+            mock.patch.object(platform, "system", return_value="Windows"),
+            mock.patch.object(analyze_campaign, "Campaign", return_value=campaign),
+            mock.patch.object(score_abstention, "PinnedClaude", return_value=lambda _: True),
+            self.assertRaises(abstention_ledger.LedgerError),
+        ):
+            self.assertEqual("", reading_route.destination("claude"))
+            wrapper = live_analyze_campaign.LiveTransport(observer, verified=verified)
+            observer.claude_exec = wrapper
+            wrapper("declared-model", "synthetic prompt", output_cap_bytes=1024)
+        campaign.reserve.assert_not_called()
+        campaign.request_slot.assert_not_called()
+        observer.claude_reading_provenance.assert_not_called()
+        inner.assert_not_called()
+
+    def test_native_windows_destination_refuses_before_provenance_or_reservation(self) -> None:
+        from cargento_runtime import reading_route  # noqa: PLC0415 - actual native route
+
+        observer = mock.Mock()
+        observer.claude_reading_provenance.return_value = {"model": "declared-model"}
+        verified = types.SimpleNamespace(
+            shown="synthetic-cli",
+            identity=("synthetic", "a" * 64),
+            version="synthetic-version",
+            signature="synthetic-signature",
+        )
+        with (
+            mock.patch.object(platform, "system", return_value="Windows"),
+            mock.patch.object(analyze_campaign, "Campaign") as campaign,
+            mock.patch.object(score_abstention, "argv_digest", return_value="a" * 64) as argv,
+            self.assertRaises(abstention_ledger.LedgerError),
+        ):
+            self.assertEqual("", reading_route.destination("claude"))
+            analyze_campaign.verified_transport_binding("declared-model", verified, observer)
+        observer.claude_reading_provenance.assert_not_called()
+        observer.claude_exec.assert_not_called()
+        argv.assert_not_called()
+        campaign.assert_not_called()
+
+    def test_fake_transport_runs_on_windows_without_admitting_the_native_route(self) -> None:
+        from cargento_runtime import reading_route  # noqa: PLC0415 - native refusal outside fixture
+
+        with mock.patch.object(platform, "system", return_value="Windows"):
+            self.assertEqual("", reading_route.destination("claude"))
+            fixture = ProductionTransport(
+                "test_actual_executor_is_charged_first_and_pending_until_native_review"
+            )
+            result = unittest.TestResult()
+            fixture.run(result)
+            self.assertEqual([], result.errors)
+            self.assertEqual([], result.failures)
+            self.assertEqual("", reading_route.destination("claude"))
+
+
 class ProductionTransport(unittest.TestCase):
     module: Any
     root: Path
@@ -41,7 +108,13 @@ class ProductionTransport(unittest.TestCase):
     slots: dict[str, list[str]]
     body: dict[str, Any]
 
-    setUp = campaign_cases.CampaignReservations.setUp
+    def setUp(self) -> None:
+        # This fixture owns a fake Anthropic executor, not native OS admission.
+        self.enterContext(
+            mock.patch("cargento_runtime.reading_route.destination", return_value="Anthropic")
+        )
+        campaign_cases.CampaignReservations.setUp(cast("campaign_cases.CampaignReservations", self))
+
     if TYPE_CHECKING:
         # Runtime borrows helpers over the explicitly declared fixture attributes.
         def activate(self) -> None: ...

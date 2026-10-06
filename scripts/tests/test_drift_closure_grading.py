@@ -9,6 +9,7 @@ import sys
 import unittest
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
+from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import drift_closure_grading as grading
@@ -1133,8 +1134,8 @@ class ExecutableCriticalObligations(unittest.TestCase):
 class FrozenPrechargeObligations(unittest.TestCase):
     def setUp(self) -> None:
         self.fixture = operator_cases.NativeOperator()
-        self.fixture.setUp()
         self.addCleanup(self.fixture.doCleanups)
+        self.fixture.setUp()
 
     def test_missing_static_critical_group_refuses_real_preparation_without_charge(self) -> None:
         f = self.fixture
@@ -1254,6 +1255,33 @@ class NoncriticalIdentityAndComparisonCoverage(unittest.TestCase):
         report = self.report(regs, protected, outputs, final=True)
         self.assertEqual("passed", report["verdict"])
         self.assertEqual(0, report["paired_unresolved_protected_observations"])
+
+
+class BorrowedPreparationIsolation(unittest.TestCase):
+    def test_failed_borrowed_native_setup_restores_campaign_and_replay_paths(self) -> None:
+        fixture = FrozenPrechargeObligations(
+            "test_missing_static_critical_group_refuses_real_preparation_without_charge"
+        )
+
+        def cleanup() -> None:
+            if hasattr(fixture, "fixture"):
+                fixture.fixture.doCleanups()
+
+        self.addCleanup(cleanup)
+        keys = ("MANIFEST_PATH", "LEDGER_PATH", "REPLAY_PATH", "QUALIFICATION_PATH")
+        before = {key: getattr(campaigns, key) for key in keys}
+        replay_path = drift_replay.LEDGER_PATH
+        with mock.patch.object(
+            campaigns,
+            "verified_transport_binding",
+            side_effect=RuntimeError("synthetic setup failure"),
+        ):
+            result = unittest.TestResult()
+            fixture.run(result)
+        self.assertEqual(1, len(result.errors))
+        self.assertIn("synthetic setup failure", result.errors[0][1])
+        self.assertEqual(before, {key: getattr(campaigns, key) for key in keys})
+        self.assertEqual(replay_path, drift_replay.LEDGER_PATH)
 
 
 if __name__ == "__main__":
