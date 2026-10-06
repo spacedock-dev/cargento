@@ -12,6 +12,9 @@ redacted copy under `tests/raw_sessions/<sid>/`, which is gitignored and made by
 
 ## What lives here
 
+- [Ordinary persisted-turn preparation](ordinary-driver-preparation.md) describes the model-free
+  four-run preparation and required external admission. It records no native walk or drift-replay result.
+
 - `marks-digest.json`, written each time marks are saved. It holds the sha256 of
   `~/.cargento/drift-replay/marks.json`, the digest of the case set the marks belong to, and counts.
   It is committed before any run, and every run reads it from `HEAD`, never from the working copy.
