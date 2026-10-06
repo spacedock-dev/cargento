@@ -281,8 +281,8 @@ replies. Source, selection or prompt changes refuse. Adopted goals and sourced o
 are outside this initial protocol, and machine vouch supplies no model accuracy result.
 
 The 2026-10-05 source preflight vouched five recorded cases and preserved five synthetic
-adversaries, with 31 native questions. Independent review found no established recorded
-matching-intent-incorrect-execution or misleading-completion case. All five recorded newest-final
+adversaries, with 31 native questions. Independent review of that five-case recorded packet found
+no established matching-intent-incorrect-execution or misleading-completion case. All five recorded newest-final
 lookups were unproven. Qualification remains blocked before spending: it needs genuine source
 proof for those kinds, fresh independent marks and rubric review. Mechanical recovery tests
 do not establish complete-final empirical coverage or turn an earlier failure into a pass.
@@ -296,6 +296,58 @@ and allocation, not five changed prompts or model interventions. The earlier unp
 and failed results remain historical records. They supply no semantic-kind admission or
 accuracy result; genuine coverage, fresh marks and rubric review are still required before
 qualification.
+
+Other supplied corpus recordings may establish those genuine kinds. They still need reviewed
+source admission and fresh independent marks; absence from the earlier packet does not mean
+absence from the corpus.
+
+### Explicit reviewed exports, 2026-10-06
+
+An owner-reviewed Claude Code export can be frozen outside the canonical projects directory
+with `--freeze SPEC --production-reading --reviewed-exports MANIFEST
+--reviewed-exports-sha256 SHA256`. Scoring and reporting need that same explicit pair. A case's
+receipt cannot supply its own source path or approval. The [reviewed export contract](../../SECURITY.md#reviewed-native-export-intake-2026-10-06)
+owns the trust boundary and accepted local-owner exposure.
+
+The private manifest is a JSON object with exactly `v`, `review` and `exports`. `v` is `1`;
+`review` has exactly `approved: true`, a nonempty `by` of at most 128 characters and a positive
+epoch `at`. These record a review rather than authenticate one. `exports` holds one to 32
+objects, each with exactly `path`, `sid` and `sha256`: a canonical absolute regular-file path,
+its full lowercase UUID, and its complete-file SHA256. The basename is that UUID plus `.jsonl`.
+Duplicate paths or eight-character identity collisions refuse. The separately supplied manifest
+SHA256 binds its exact bytes; neither flag may be supplied alone.
+Claude case specs use the existing eight-character lowercase hexadecimal `sid`. A full-UUID
+alias or malformed id refuses before any board, history or canonical fallback, even in a mixed
+spec. The manifest binds the full UUID; the importer does not silently normalize a case alias.
+
+The fresh spec uses the existing typed intent and capture fields, with an idle row whose
+`finished_at` exactly equals a native Stop timestamp. The configured settle interval must have
+elapsed. The native Stop must join the preceding top-level assistant `end_turn` to an earlier
+human request in physically prior UUID ancestry, with no intervening continuation through the
+captured prefix. Metadata timestamp skew is allowed; each parent must precede its child in the
+file, rather than on the wall clock. Both the final and human ancestor must yield native text
+events. Native eligibility does not force the ancestor into the selected prompt or guarantee
+whole final-word allocation. The native newline-only parser refuses literal carriage returns
+inside a record or between JSON objects on one line. CRLF terminators and escaped JSON carriage
+returns remain valid. This initial route
+accepts a missing hook label as `Stop`, refuses other labels, and supports only a false
+`preventedContinuation` value. True is an unsupported variant, not a claim that continuation
+occurred. Existing canonical Stop handling is unchanged.
+
+The freezer rebuilds admitted export facts using the native helpers and does not ask the live
+board for them. It stores `reviewed_export` metadata outside `production_reading`, including the
+manifest, source, prefix, case and code digests and exact native joins. Freezing, native source
+callbacks, scorer reporting and scoring reverify the same resolver; the final precharge check also rechecks the
+current marking and scoring scripts. Complete-file changes, including later appends, refuse.
+Interactive blind marking reads the frozen packet and has no resolver flags or source reselection.
+All existing source, check, tail, word-share and prompt caps still apply. No new stdout fact or
+complete reply field is introduced. An old case without this receipt keeps its original
+provenance and does not become recorded merely because its short id matches the manifest.
+
+An eligible import still needs independent genuine-kind review, blind marks, rubric admission
+and the registered campaign's guards before scoring. Source eligibility does not establish
+that the facts needed to judge the case survived native publication, citation, selection and
+the final prompt. Historical failures and packets remain unchanged.
 
 ### The spend ledger
 

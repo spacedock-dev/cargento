@@ -913,10 +913,21 @@ def _production_source(case: Mapping[str, Any]) -> Mapping[str, Any]:  # noqa: C
 class _SourcePinnedModel:
     """Validate the frozen actual source prompt before any charging wrapper."""
 
-    def __init__(self, inner: Any, expected: str) -> None:
+    def __init__(
+        self,
+        inner: Any,
+        expected: str,
+        *,
+        reviewed_exports: mark_abstention.ReviewedExports | None = None,
+        case: Mapping[str, Any] | None = None,
+        config: Any = None,
+    ) -> None:
         self.inner = inner
         self.expected = expected
         self.unavailable_reason = getattr(inner, "unavailable_reason", "model-unavailable")
+        self.reviewed_exports = reviewed_exports
+        self.case = case
+        self.config = config
 
     def available(self) -> bool:
         return bool(getattr(self.inner, "available", lambda: True)())
@@ -924,6 +935,10 @@ class _SourcePinnedModel:
     def __call__(self, prompt: str, **kwargs: Any) -> tuple[str, str]:
         if hashlib.sha256(prompt.encode()).hexdigest() != self.expected:
             raise mark_abstention.FreezeError("production-prompt-differs")
+        if self.case is not None and "reviewed_export" in self.case:
+            mark_abstention.revalidate_reviewed_export(
+                dict(self.case), self.reviewed_exports, self.config
+            )
         return self.inner(prompt, **kwargs)  # type: ignore[no-any-return]
 
 
@@ -941,6 +956,7 @@ def score_case(  # noqa: PLR0913 - one keyword per thing a case decides
     tool_output: Any = None,
     withhold: str = "",
     read_agent_words: bool = False,
+    reviewed_exports: mark_abstention.ReviewedExports | None = None,
 ) -> dict[str, Any]:
     """One producer call, classified. The only place the model is reached.
 
@@ -958,19 +974,26 @@ def score_case(  # noqa: PLR0913 - one keyword per thing a case decides
         assessment, why, spent = None, withhold or WITHHELD_ROW_ABSENT, False
     else:
         try:
+            mark_abstention.revalidate_reviewed_export(dict(case), reviewed_exports, config)
             source_kwargs: dict[str, Any] = {}
             if "production_reading" in case:
                 frozen = _production_source(case)
                 names = tuple(frozen["constraints"])
                 source_kwargs = {
                     "person_source_lookup": mark_abstention.native_case_person_lookup(
-                        dict(case), config=config
+                        dict(case), config=config, reviewed_exports=reviewed_exports
                     ),
                     "final_source_lookup": mark_abstention.native_case_final_lookup(
-                        dict(case), config=config
+                        dict(case), config=config, reviewed_exports=reviewed_exports
                     ),
                 }
-                model = _SourcePinnedModel(model, str(frozen["prompt_digest"]))
+                model = _SourcePinnedModel(
+                    model,
+                    str(frozen["prompt_digest"]),
+                    reviewed_exports=reviewed_exports,
+                    case=case,
+                    config=config,
+                )
                 read_agent_words = True
             assessment, why, spent = reading.produce(
                 config,
@@ -2018,10 +2041,16 @@ def _overwrites(
 
 
 def _default_vouch(
-    vouch: Callable[[Mapping[str, Any]], list[str]] | None, binding: Mapping[str, str] | None
+    vouch: Callable[[Mapping[str, Any]], list[str]] | None,
+    binding: Mapping[str, str] | None,
+    reviewed_exports: mark_abstention.ReviewedExports | None = None,
 ) -> Callable[[Mapping[str, Any]], list[str]] | None:
     if vouch is None and (binding or {}).get("producer") == "claude":
-        return mark_abstention.machine_vouch(mark_abstention.STORE_HOME)  # type: ignore[no-any-return]
+        native: Callable[[Mapping[str, Any]], list[str]] = mark_abstention.machine_vouch(
+            mark_abstention.STORE_HOME,
+            **({"reviewed_exports": reviewed_exports} if reviewed_exports is not None else {}),
+        )
+        return native
     return vouch
 
 
@@ -2202,6 +2231,7 @@ def score(  # noqa: C901, PLR0913 - legacy route plus isolated closure admission
     max_calls: int = MAX_CALLS,
     resume: Mapping[str, Any] | None = None,
     vouch: Callable[[Mapping[str, Any]], list[str]] | None = None,
+    reviewed_exports: mark_abstention.ReviewedExports | None = None,
 ) -> int:
     """Run the producer once per case, write both halves, print the report.
 
@@ -2232,7 +2262,7 @@ def score(  # noqa: C901, PLR0913 - legacy route plus isolated closure admission
     intents = corpus.cases.get("v") == mark_abstention.FORMAT_INTENT
     body = dict(corpus.cases)
     kept = dict((resume or {}).get("records") or {})
-    vouch = _default_vouch(vouch, binding)
+    vouch = _default_vouch(vouch, binding, reviewed_exports)
     cases = {
         str(c["id"]): _vouched(c, vouch) if intents else c
         for c in corpus.cases.get("cases") or ()
@@ -2252,6 +2282,7 @@ def score(  # noqa: C901, PLR0913 - legacy route plus isolated closure admission
             binding=binding,
             tool_destination=tool_destination,
             resume=resume,
+            reviewed_exports=reviewed_exports,
         )
     words = (str(corpus.cases.get("goal") or ""), str(corpus.cases.get("output") or ""))
     rows = {} if replay else _board_rows(port)
@@ -2300,6 +2331,7 @@ def score(  # noqa: C901, PLR0913 - legacy route plus isolated closure admission
             tool_output=_tool_output(case, tool_destination, label, body) if intents else None,
             model=charged(case_id),
             now=case["captured_at"] if replay else now,
+            reviewed_exports=reviewed_exports,
         )
         print(case_line(records[case_id]))
     rubric_records = _score_rubric(
@@ -2396,6 +2428,7 @@ def _score_repeated(  # noqa: C901, PLR0912, PLR0913, PLR0915 - explicit charge/
     binding: Mapping[str, str] | None,
     tool_destination: str | None,
     resume: Mapping[str, Any] | None,
+    reviewed_exports: mark_abstention.ReviewedExports | None = None,
 ) -> int:
     """Three registered native passes; preserve every attempt and stop before the next call."""
     marks = mark_abstention._marks(dict(corpus.marks))  # noqa: SLF001
@@ -2486,6 +2519,7 @@ def _score_repeated(  # noqa: C901, PLR0912, PLR0913, PLR0915 - explicit charge/
                     revision=mark_abstention.case_revision(dict(case)),
                     tool_output=_tool_output(case, tool_destination, label, corpus.cases),
                     read_agent_words=True,
+                    reviewed_exports=reviewed_exports,
                 )
                 judged = rubric_case(rubric[cid], record, cid, case_origin=case.get("origin"))
                 classification = _repeat_classification(record, judged, charged.charge_id)
@@ -3147,7 +3181,7 @@ def _claude_model_arg(value: str) -> str:
     return cli.claude_reading_model_arg(value)
 
 
-def main(argv: list[str] | None = None) -> int:  # noqa: PLR0911 - one refusal per line
+def main(argv: list[str] | None = None) -> int:  # noqa: C901, PLR0911, PLR0915 - explicit CLI gates
     parser = argparse.ArgumentParser(description="Score the reading producer against the marks.")
     parser.add_argument("--score", action="store_true", help="run the producer; spends")
     parser.add_argument("--report", action="store_true", help="where things stand; spends nothing")
@@ -3163,7 +3197,20 @@ def main(argv: list[str] | None = None) -> int:  # noqa: PLR0911 - one refusal p
     parser.add_argument("--port", type=int, default=4553, help="the dashboard port to read")
     parser.add_argument("--rubric", default=RUBRIC_PATH, help="the DEC-15 expectation file")
     parser.add_argument("--out", default=None, help="where the committable summary goes")
+    parser.add_argument(
+        "--reviewed-exports", metavar="MANIFEST", help="explicit finite reviewed export manifest"
+    )
+    parser.add_argument(
+        "--reviewed-exports-sha256", metavar="SHA256", help="independently pinned manifest digest"
+    )
     args = parser.parse_args(argv)
+    try:
+        reviewed_exports = mark_abstention.load_reviewed_exports(
+            args.reviewed_exports, args.reviewed_exports_sha256
+        )
+    except mark_abstention.FreezeError as error:
+        print(f"Refused: {error}.")
+        return 2
     refusal = _argument_refusal(args)
     if refusal:
         print(refusal)
@@ -3198,7 +3245,10 @@ def main(argv: list[str] | None = None) -> int:  # noqa: PLR0911 - one refusal p
     if not args.score:
         summary = mark_abstention._load(out) if os.path.exists(out) else None  # noqa: SLF001
         vouch = (
-            mark_abstention.machine_vouch(mark_abstention.STORE_HOME)
+            mark_abstention.machine_vouch(
+                mark_abstention.STORE_HOME,
+                **({"reviewed_exports": reviewed_exports} if reviewed_exports is not None else {}),
+            )
             if corpus.cases.get("v") == mark_abstention.FORMAT_INTENT
             else None
         )
@@ -3247,7 +3297,11 @@ def main(argv: list[str] | None = None) -> int:  # noqa: PLR0911 - one refusal p
             ledger_path=abstention_ledger.LEDGER_PATH,
             max_calls=args.max_calls,
             resume=resume,
-            vouch=mark_abstention.machine_vouch(mark_abstention.STORE_HOME),
+            vouch=mark_abstention.machine_vouch(
+                mark_abstention.STORE_HOME,
+                **({"reviewed_exports": reviewed_exports} if reviewed_exports is not None else {}),
+            ),
+            reviewed_exports=reviewed_exports,
         )
 
 

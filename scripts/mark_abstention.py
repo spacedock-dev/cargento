@@ -82,15 +82,19 @@ import argparse
 import ast
 import contextlib
 import hashlib
+import io
 import json
 import os
 import pathlib
+import re
+import stat
 import sys
 import tempfile
 import urllib.error
 import urllib.parse
 import urllib.request
-from typing import TYPE_CHECKING, Any, TypeGuard
+from types import MappingProxyType
+from typing import TYPE_CHECKING, Any, TypeGuard, cast
 
 import abstention_ledger
 
@@ -538,6 +542,7 @@ def _native_source_lookup(
     *,
     config: Any = None,
     index: dict[str, str] | None = None,
+    reviewed_exports: ReviewedExports | None = None,
 ) -> Callable[[Sequence[Any]], Any] | None:
     if "production_reading" not in case:
         return None
@@ -548,17 +553,29 @@ def _native_source_lookup(
     from cargento_runtime import project_context  # noqa: PLC0415 - see `_reading`
 
     actual_config = config if config is not None else _runtime_config()
-    sources = index if index is not None else _transcript_index()
-    path = sources.get(str(case.get("sid") or "")[:8], "")
-    if not path:
-        raise FreezeError("no-transcript")
+    exported = "reviewed_export" in case
+    if exported:
+        if reviewed_exports is None:
+            raise FreezeError("reviewed-export-opt-in-required")
+        reviewed_exports.validate(case, actual_config)
+        path = ""
+    else:
+        sources = index if index is not None else _transcript_index()
+        path = sources.get(str(case.get("sid") or "")[:8], "")
+        if not path:
+            raise FreezeError("no-transcript")
 
     def lookup(rows: Sequence[Any]) -> Any:
         final = kind == reading.AGENT_MESSAGE_TYPE
         key = "final_wanted" if final else "person_wanted"
         if _wanted(rows, kind) != frozen.get(key):
             raise FreezeError("production-selection-differs")
-        with _historical_source(case, path) as (source, _digest):
+        source_context = (
+            reviewed_exports.source(case, actual_config)
+            if exported and reviewed_exports is not None
+            else _historical_source(case, path)
+        )
+        with source_context as (source, _digest):
             stamp = project_context.transcript_stamp(source)
             result: Any
             if final:
@@ -919,6 +936,436 @@ def _session_facts(port: int, project: str, harness: str, sid: str) -> list[dict
 
 class FreezeError(ValueError):
     """Why a spec entry cannot become a recorded case. Closed words, no session text."""
+
+
+def intake_code_digest() -> str:
+    """Bind the two intake scripts in addition to the existing runtime parser stamp."""
+    return _source_digest(
+        {
+            name: hashlib.sha256(pathlib.Path(__file__).with_name(name).read_bytes()).hexdigest()
+            for name in ("mark_abstention.py", "score_abstention.py")
+        }
+    )
+
+
+def _export_require(condition: bool, reason: str) -> None:
+    if not condition:
+        raise FreezeError(reason)
+
+
+def _export_bytes(path: str, cap: int) -> bytes:
+    """Read one canonical regular file from a stable opened descriptor, never a link."""
+    try:
+        selected = pathlib.Path(path)
+        _export_require(
+            selected.is_absolute() and str(selected.resolve(strict=True)) == path,
+            "reviewed-export-path-invalid",
+        )
+        fd = os.open(
+            path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0)
+        )
+        with os.fdopen(fd, "rb") as handle:
+            before = os.fstat(handle.fileno())
+            _export_require(
+                stat.S_ISREG(before.st_mode) and before.st_size <= cap,
+                "reviewed-export-size-or-type-invalid",
+            )
+            data = handle.read(cap + 1)
+            after = os.fstat(handle.fileno())
+        current = os.stat(path, follow_symlinks=False)
+
+        def signature(value: os.stat_result) -> tuple[int, int, int, int]:
+            return value.st_dev, value.st_ino, value.st_size, value.st_mtime_ns
+
+        _export_require(
+            len(data) == before.st_size
+            and signature(before) == signature(after) == signature(current)
+            and str(selected.resolve(strict=True)) == path,
+            "reviewed-export-source-moved",
+        )
+    except (OSError, RuntimeError) as error:
+        raise FreezeError("reviewed-export-source-unavailable") from error
+    return data
+
+
+def _export_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    result: dict[str, Any] = {}
+    for key, value in pairs:
+        _export_require(key not in result, "reviewed-export-duplicate-field")
+        result[key] = value
+    return result
+
+
+class ReviewedExports:
+    """Explicit caller-reviewed finite source receipt, not authentication or model authority.
+
+    Every use rechecks the manifest, complete file and actual settled native Stop.
+    Cases retain metadata only; their own paths cannot choose or approve a source.
+    """
+
+    def __init__(self, path: str, expected_sha256: str) -> None:
+        self.path = path
+        self.digest = expected_sha256
+        raw = _export_bytes(path, 65_536)
+        _export_require(
+            re.fullmatch(r"[0-9a-f]{64}", expected_sha256) is not None
+            and hashlib.sha256(raw).hexdigest() == expected_sha256,
+            "reviewed-export-manifest-differs",
+        )
+        try:
+            body = json.loads(raw.decode("utf-8"), object_pairs_hook=_export_object)
+        except (UnicodeError, ValueError, RecursionError) as error:
+            raise FreezeError("reviewed-export-manifest-invalid") from error
+        _export_require(
+            isinstance(body, dict)
+            and set(body) == {"v", "review", "exports"}
+            and type(body["v"]) is int
+            and body["v"] == 1,
+            "reviewed-export-manifest-invalid",
+        )
+        review = body["review"]
+        _export_require(
+            isinstance(review, dict)
+            and set(review) == {"approved", "by", "at"}
+            and review["approved"] is True
+            and isinstance(review["by"], str)
+            and 0 < len(review["by"].strip()) <= 128
+            and _epoch(review["at"]),
+            "reviewed-export-review-invalid",
+        )
+        entries = body["exports"]
+        _export_require(
+            isinstance(entries, list) and 0 < len(entries) <= 32, "reviewed-export-manifest-invalid"
+        )
+        entries_by_sid: dict[str, Any] = {}
+        paths: set[str] = set()
+        for entry in entries:
+            _export_require(
+                isinstance(entry, dict)
+                and set(entry) == {"path", "sid", "sha256"}
+                and all(isinstance(value, str) for value in entry.values()),
+                "reviewed-export-entry-invalid",
+            )
+            sid = entry["sid"]
+            _export_require(
+                re.fullmatch(r"[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}", sid) is not None
+                and pathlib.Path(entry["path"]).name == sid + ".jsonl"
+                and sid[:8] not in entries_by_sid
+                and entry["path"] not in paths
+                and re.fullmatch(r"[0-9a-f]{64}", entry["sha256"]) is not None,
+                "reviewed-export-entry-invalid",
+            )
+            source = _export_bytes(entry["path"], 32 * 1024 * 1024)
+            _export_require(
+                hashlib.sha256(source).hexdigest() == entry["sha256"],
+                "reviewed-export-source-differs",
+            )
+            entries_by_sid[sid[:8]] = MappingProxyType(dict(entry))
+            paths.add(entry["path"])
+        self.entries = MappingProxyType(entries_by_sid)
+
+    def includes(self, entry: dict[str, Any]) -> bool:
+        if entry.get("harness") != "claude":
+            return False
+        sid = entry.get("sid")
+        _export_require(
+            isinstance(sid, str) and re.fullmatch(r"[0-9a-f]{8}", sid) is not None,
+            "reviewed-export-case-identity-invalid",
+        )
+        return sid in self.entries
+
+    def _source(  # noqa: C901, PLR0915 - independent bounded identity/lifecycle guards
+        self, case: dict[str, Any], config: Any, *, frozen: bool
+    ) -> tuple[str, bytes, dict[str, Any]]:
+        from cargento_runtime import project_context  # noqa: PLC0415 - same native source boundary
+
+        _export_require(
+            hashlib.sha256(_export_bytes(self.path, 65_536)).hexdigest() == self.digest,
+            "reviewed-export-manifest-differs",
+        )
+        _export_require(self.includes(case), "reviewed-export-entry-missing")
+        entry = self.entries[str(case["sid"])]
+        _export_require(
+            frozen or not case.get("transcript") or case["transcript"] == entry["path"],
+            "reviewed-export-entry-differs",
+        )
+        raw = _export_bytes(entry["path"], project_context.FINAL_WORDS_SCAN_MAX_BYTES)
+        _export_require(
+            hashlib.sha256(raw).hexdigest() == entry["sha256"], "reviewed-export-source-differs"
+        )
+        capture = case.get("captured_at")
+        snapshot = case.get("row_snapshot") if frozen else case.get("row")
+        _export_require(
+            _epoch(capture)
+            and isinstance(snapshot, dict)
+            and snapshot.get("state") == "idle"
+            and snapshot.get("ended_at") is None
+            and _epoch(snapshot.get("finished_at"))
+            and float(capture) >= float(snapshot["finished_at"]) + float(config.reading_settle_sec),
+            "reviewed-export-lifecycle-invalid",
+        )
+        snapshot = cast("dict[str, Any]", snapshot)
+        capture = cast("float", capture)
+        _export_require(
+            not frozen
+            or (
+                snapshot.get("harness") == "claude"
+                and snapshot.get("sid") == case["sid"]
+                and case.get("id") == _case_id("claude", str(case["sid"]))
+            ),
+            "reviewed-export-case-identity-invalid",
+        )
+        stop_at = snapshot["finished_at"]
+        prefix = bytearray()
+        native: list[dict[str, Any]] = []
+        future = False
+        for line in io.BytesIO(raw):
+            _export_require(
+                len(line) <= project_context.FINAL_WORDS_RECORD_MAX_BYTES,
+                "reviewed-export-record-too-large",
+            )
+            _export_require(
+                b"\r" not in line.removesuffix(b"\n").removesuffix(b"\r"),
+                "reviewed-export-record-invalid",
+            )
+            try:
+                record = json.loads(line.decode("utf-8"), object_pairs_hook=_export_object)
+            except (UnicodeError, ValueError, RecursionError) as error:
+                raise FreezeError("reviewed-export-record-invalid") from error
+            _export_require(isinstance(record, dict), "reviewed-export-record-invalid")
+            named = record.get("sessionId")
+            _export_require(
+                named is None or named == entry["sid"], "reviewed-export-full-identity-differs"
+            )
+            at = project_context._record_timestamp(record)  # noqa: SLF001 - native timestamp contract
+            future = future or (at is not None and at > float(capture))
+            if not future:
+                prefix.extend(line)
+                native.append(record)
+        by_id: dict[str, dict[str, Any]] = {}
+        positions: dict[str, int] = {}
+        latest: dict[str, Any] | None = None
+        stop: dict[str, Any] | None = None
+        for position, record in enumerate(native):
+            uuid = record.get("uuid")
+            if uuid is not None:
+                _export_require(
+                    isinstance(uuid, str) and bool(uuid) and len(uuid) <= 128 and uuid not in by_id,
+                    "reviewed-export-native-uuid-invalid",
+                )
+                by_id[uuid] = record
+                positions[uuid] = position
+            kind = record.get("type")
+            at = project_context._record_timestamp(record)  # noqa: SLF001
+            if kind in {"user", "assistant"}:
+                message = record.get("message")
+                _export_require(
+                    record.get("sessionId") == entry["sid"]
+                    and _epoch(at)
+                    and isinstance(uuid, str)
+                    and isinstance(message, dict)
+                    and message.get("role") == kind,
+                    "reviewed-export-conversation-invalid",
+                )
+                at = cast("float", at)
+                _export_require(
+                    stop is None and float(at) <= float(stop_at), "reviewed-export-continued"
+                )
+                latest = record
+            if kind == "system" and record.get("subtype") == "stop_hook_summary" and at == stop_at:
+                _export_require(
+                    stop is None
+                    and isinstance(uuid, str)
+                    and record.get("sessionId") == entry["sid"]
+                    and record.get("isSidechain") is False
+                    and record.get("preventedContinuation") is False
+                    and record.get("hookLabel", "Stop") == "Stop",
+                    "reviewed-export-stop-invalid",
+                )
+                message = (latest or {}).get("message")
+                _export_require(
+                    isinstance(message, dict)
+                    and latest is not None
+                    and latest.get("type") == "assistant"
+                    and message.get("role") == "assistant"
+                    and message.get("stop_reason") == "end_turn"
+                    and latest.get("isMeta") is not True
+                    and latest.get("isSidechain") is False
+                    and not latest.get("agentId")
+                    and record.get("parentUuid") == latest.get("uuid")
+                    and project_context._agent_message_event(  # noqa: SLF001 - same native eligibility, not selection
+                        config, latest, "claude", str(case["sid"])
+                    )
+                    is not None,
+                    "reviewed-export-final-invalid",
+                )
+                stop = record
+        _export_require(stop is not None and latest is not None, "reviewed-export-stop-missing")
+        stop = cast("dict[str, Any]", stop)
+        latest = cast("dict[str, Any]", latest)
+        cursor: dict[str, Any] | None = latest
+        visited: set[str] = set()
+        person = False
+        while cursor is not None:
+            uuid = str(cursor.get("uuid") or "")
+            _export_require(uuid not in visited, "reviewed-export-parent-invalid")
+            visited.add(uuid)
+            message = cursor.get("message")
+            if (
+                cursor.get("type") == "user"
+                and cursor.get("isMeta") is not True
+                and cursor.get("isSidechain") is False
+            ):
+                content = message.get("content") if isinstance(message, dict) else None
+                if (
+                    (isinstance(content, str) and content.strip())
+                    or (
+                        isinstance(content, list)
+                        and any(
+                            isinstance(block, dict)
+                            and block.get("type") == "text"
+                            and isinstance(block.get("text"), str)
+                            and block["text"].strip()
+                            for block in content
+                        )
+                    )
+                ) and project_context._instruction_event(  # noqa: SLF001 - same native person event parser
+                    config, cursor, "claude", str(case["sid"])
+                ) is not None:
+                    person = True
+                    break
+            parent = cursor.get("parentUuid")
+            _export_require(
+                parent is None or (isinstance(parent, str) and parent in by_id),
+                "reviewed-export-parent-invalid",
+            )
+            if parent:
+                _export_require(
+                    positions[parent] < positions[uuid],
+                    "reviewed-export-parent-invalid",
+                )
+            cursor = by_id.get(parent) if parent else None
+        _export_require(person, "reviewed-export-parent-invalid")
+        proof = {
+            "v": 1,
+            "manifest_sha256": self.digest,
+            "entry_sha256": _source_digest(dict(entry)),
+            "full_sid": entry["sid"],
+            "source_sha256": entry["sha256"],
+            "prefix_bytes": len(prefix),
+            "prefix_sha256": hashlib.sha256(prefix).hexdigest(),
+            "stop_uuid": stop["uuid"],
+            "final_uuid": latest["uuid"],
+            "stop_at": stop_at,
+            "capture_at": capture,
+            "parser_sha256": parser_digest(),
+            "intake_code_sha256": intake_code_digest(),
+        }
+        return entry["path"], bytes(prefix), proof
+
+    def receipt(self, case: dict[str, Any], proof: dict[str, Any]) -> dict[str, Any]:
+        return {
+            **proof,
+            "case_sha256": _source_digest(
+                {
+                    key: value
+                    for key, value in case.items()
+                    if key not in {"reviewed_export", "stop_vouched_by", "demoted"}
+                }
+            ),
+        }
+
+    @contextlib.contextmanager
+    def source(
+        self, case: dict[str, Any], config: Any, *, frozen: bool = True
+    ) -> Iterator[tuple[str, dict[str, Any]]]:
+        path, prefix, proof = self._source(case, config, frozen=frozen)
+        if frozen:
+            _export_require(
+                case.get("reviewed_export") == self.receipt(case, proof),
+                "reviewed-export-receipt-differs",
+            )
+        with tempfile.TemporaryDirectory(prefix="cargento-reviewed-export-") as folder:
+            owned = os.path.join(folder, os.path.basename(path))
+            descriptor = os.open(owned, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+            with os.fdopen(descriptor, "wb") as handle:
+                handle.write(prefix)
+            yield owned, proof
+        self._source(case, config, frozen=frozen)
+
+    def validate(self, case: dict[str, Any], config: Any) -> None:
+        with self.source(case, config) as (path, _proof):
+            _export_require(
+                not content_refusal(config, case, path), "reviewed-export-content-differs"
+            )
+
+    def freeze(self, config: Any, entry: dict[str, Any]) -> dict[str, Any]:
+        from cargento_runtime import project_context  # noqa: PLC0415 - native source reconstruction
+
+        _export_require(
+            isinstance(entry.get("intent"), dict) and bool(case_lines(entry)), "no-outcome-line"
+        )
+        with self.source(entry, config, frozen=False) as (path, proof):
+            captured, sid = float(entry["captured_at"]), str(entry["sid"])
+            checks, press = project_context.frozen_claude_checks(config, path, sid, until=captured)
+            size = capture_prefix(path, captured)
+            _, people = project_context.frozen_claude_user_messages(
+                config, path, sid, until=captured, size=size
+            )
+            _, agents = project_context.frozen_claude_agent_messages(
+                config, path, sid, until=captured, size=size
+            )
+            case = {
+                "id": _case_id("claude", sid),
+                "harness": "claude",
+                "sid": sid,
+                "origin": "recorded",
+                "project": entry.get("project"),
+                "title": entry.get("title"),
+                "captured_at": captured,
+                "row_snapshot": {
+                    "harness": "claude",
+                    "sid": sid,
+                    "state": "idle",
+                    "finished_at": entry["row"]["finished_at"],
+                    "ended_at": None,
+                },
+                "intent": entry["intent"],
+                "lifecycle_from": "reviewed-export",
+                "unconfirmed": [],
+                "transcript_bytes": size,
+                "transcript_cut": "capture",
+                "parser": parser_digest(),
+                "tool_output": {
+                    "tails": dict(press.tails),
+                    "changed_after": sorted(map(list, press.changed_after)),
+                    "read_incomplete": sorted(map(list, press.read_incomplete)),
+                },
+                "producer_facts": [*people, *agents, *checks],
+            }
+            case["production_reading"] = _production_capture(config, case, path)
+            case["reviewed_export"] = self.receipt(case, proof)
+        return case
+
+
+def load_reviewed_exports(path: str | None, expected_sha256: str | None) -> ReviewedExports | None:
+    """Only paired explicit controller inputs create the trusted export context."""
+    if not path and not expected_sha256:
+        return None
+    if not path or not expected_sha256:
+        raise FreezeError("reviewed-export-path-and-digest-required")
+    return ReviewedExports(path, expected_sha256)
+
+
+def revalidate_reviewed_export(
+    case: dict[str, Any], resolver: ReviewedExports | None, config: Any
+) -> None:
+    """A receipt has no admission or source-serving power without the explicit context."""
+    if "reviewed_export" not in case:
+        return
+    if resolver is None:
+        raise FreezeError("reviewed-export-opt-in-required")
+    resolver.validate(case, config)
 
 
 def _inside(path: str, root: str | None) -> bool:
@@ -1309,13 +1756,14 @@ def content_refusal(config: Any, case: dict[str, Any], transcript: str) -> list[
     return reasons
 
 
-def provenance(
+def provenance(  # noqa: C901, PLR0912 - export exception precedes unchanged canonical guards
     case: dict[str, Any],
     *,
     observations: Any,
     ends: Any,
     index: dict[str, str],
     config: Any = None,
+    reviewed_exports: ReviewedExports | None = None,
 ) -> list[str]:
     """Why a frozen case cannot be called recorded, from the machine's own records.
 
@@ -1326,6 +1774,14 @@ def provenance(
     case's contents are rebuilt from that transcript too (`content_refusal`),
     under `config`, the runtime config the freeze would build when none is given.
     """
+    if "reviewed_export" in case:
+        if reviewed_exports is None:
+            return ["reviewed-export-opt-in-required"]
+        try:
+            reviewed_exports.validate(case, config if config is not None else _runtime_config())
+        except (FreezeError, OSError, ValueError, KeyError, TypeError):
+            return ["reviewed-export-unconfirmed"]
+        return []
     snapshot = case.get("row_snapshot")
     captured = case.get("captured_at")
     if not isinstance(snapshot, dict) or not _epoch(captured):
@@ -1361,16 +1817,30 @@ def provenance(
     return reasons
 
 
-def make_vouch(*, observations: Any, ends: Any, index: dict[str, str], config: Any = None) -> Any:
+def make_vouch(
+    *,
+    observations: Any,
+    ends: Any,
+    index: dict[str, str],
+    config: Any = None,
+    reviewed_exports: ReviewedExports | None = None,
+) -> Any:
     """`provenance` bound to one set of records, for the scorer to call per case."""
 
     def vouch(case: Any) -> list[str]:
         return provenance(
-            dict(case), observations=observations, ends=ends, index=index, config=config
+            dict(case),
+            observations=observations,
+            ends=ends,
+            index=index,
+            config=config,
+            reviewed_exports=reviewed_exports,
         )
 
     def lifecycle(case: Any) -> str | None:
         """Which record vouched for the case's lifecycle, derived here, never read from it."""
+        if "reviewed_export" in case:
+            return "reviewed-export" if reviewed_exports is not None and not vouch(case) else None
         snapshot, captured = case.get("row_snapshot"), case.get("captured_at")
         if not isinstance(snapshot, dict) or not _epoch(captured):
             return None
@@ -1382,11 +1852,41 @@ def make_vouch(*, observations: Any, ends: Any, index: dict[str, str], config: A
     return vouch
 
 
-def machine_vouch(store_home: str | None) -> Any:
+def machine_vouch(
+    store_home: str | None, *, reviewed_exports: ReviewedExports | None = None
+) -> Any:
     """`make_vouch` over this machine's history, ends and Claude Code transcripts."""
+    if reviewed_exports is not None:
+        exported = make_vouch(
+            observations=(),
+            ends=(),
+            index={},
+            config=_runtime_config(),
+            reviewed_exports=reviewed_exports,
+        )
+        canonical: Any = None
+
+        def selected(case: dict[str, Any]) -> Any:
+            nonlocal canonical
+            if "reviewed_export" in case:
+                return exported
+            if canonical is None:
+                canonical = machine_vouch(store_home)
+            return canonical
+
+        def vouch(case: dict[str, Any]) -> list[str]:
+            result: list[str] = selected(case)(case)
+            return result
+
+        vouch.lifecycle = lambda case: selected(case).lifecycle(case)  # type: ignore[attr-defined]
+        return vouch
     observations, ends = _observed_stores(store_home)
     return make_vouch(
-        observations=observations, ends=ends, index=_transcript_index(), config=_runtime_config()
+        observations=observations,
+        ends=ends,
+        index=_transcript_index(),
+        config=_runtime_config(),
+        reviewed_exports=reviewed_exports,
     )
 
 
@@ -1398,6 +1898,7 @@ def freeze_case(  # noqa: C901 - retain legacy provenance order with opt-in sour
     observations: Any = (),
     ends: Any = (),
     production_reading: bool = False,
+    reviewed_exports: ReviewedExports | None = None,
 ) -> dict[str, Any]:
     """One recorded case, frozen as the session stood at `captured_at`.
 
@@ -1419,6 +1920,10 @@ def freeze_case(  # noqa: C901 - retain legacy provenance order with opt-in sour
     Codex case exists at all: Codex has no session-end hook and is never read
     at a turn stop (DRC-4666, decisions of 2026-09-24).
     """
+    if reviewed_exports is not None and reviewed_exports.includes(entry):
+        if not production_reading:
+            raise FreezeError("reviewed-export-production-required")
+        return reviewed_exports.freeze(config, entry)
     harness, sid = str(entry.get("harness") or ""), str(entry.get("sid") or "")
     at = entry.get("captured_at")
     if not harness or not sid:
@@ -1516,13 +2021,14 @@ def _observed_stores(store_home: str | None) -> tuple[Any, Any]:
     return history.load(config)[0], ends.load(config)
 
 
-def freeze(
+def freeze(  # noqa: PLR0911 - refuse each distinct source/identity preparation failure
     port: int,
     spec_path: str,
     *,
     force: bool = False,
     store_home: str = "",
     production_reading: bool = False,
+    reviewed_exports: ReviewedExports | None = None,
 ) -> int:
     """Write a format 5 packet from a spec of recorded moments. Spends nothing.
 
@@ -1540,14 +2046,33 @@ def freeze(
         print("Use a fresh CARGENTO_HOME, or --force to write the packet anyway.")
         return 1
     config = _runtime_config()
-    observations, ends = _observed_stores(store_home or STORE_HOME)
+    try:
+        exported_entries = [
+            reviewed_exports is not None
+            and isinstance(entry, dict)
+            and reviewed_exports.includes(entry)
+            for entry in entries
+        ]
+    except FreezeError as error:
+        print(f"Refused: {error}. Nothing was written.")
+        return 1
+    all_exported = reviewed_exports is not None and all(exported_entries)
+    observations, ends = ((), ()) if all_exported else _observed_stores(store_home or STORE_HOME)
     cases: list[dict[str, Any]] = []
     for index, entry in enumerate(entries, 1):
         if not isinstance(entry, dict):
             print(f"Case {index}: not an object")
             return 1
-        facts = _session_facts(
-            port, str(entry.get("project") or ""), str(entry.get("harness")), str(entry.get("sid"))
+        exported = exported_entries[index - 1]
+        facts = (
+            []
+            if exported
+            else _session_facts(
+                port,
+                str(entry.get("project") or ""),
+                str(entry.get("harness")),
+                str(entry.get("sid")),
+            )
         )
         if facts is None:
             print(f"Case {index}: the board on port {port} did not answer for it")
@@ -1561,11 +2086,15 @@ def freeze(
                     observations=observations,
                     ends=ends,
                     production_reading=production_reading,
+                    reviewed_exports=reviewed_exports,
                 )
             )
         except FreezeError as error:
             print(f"Case {index}: {error}")
             return 1
+    if reviewed_exports is not None and len({case["id"] for case in cases}) != len(cases):
+        print("Duplicate case identities in reviewed-export freeze. Nothing was written.")
+        return 1
     _write(CASES_PATH, {"v": FORMAT_INTENT, "cases": cases})
     synthetic = sum(1 for case in cases if case["origin"] == ORIGIN_SYNTHETIC)
     print(f"Froze {len(cases)} cases into {CASES_PATH} (stays on this machine).")
@@ -2010,7 +2539,7 @@ def report() -> int:
     return 0
 
 
-def main(argv: list[str] | None = None) -> int:  # noqa: C901, PLR0911 - one exit per mode
+def main(argv: list[str] | None = None) -> int:  # noqa: C901, PLR0911, PLR0912 - one refusal per mode
     parser = argparse.ArgumentParser(description="Collect the abstention answer key.")
     parser.add_argument("--build", action="store_true", help="assemble cases from the live board")
     parser.add_argument("--port", type=int, default=4553, help="the dashboard port to read")
@@ -2031,7 +2560,25 @@ def main(argv: list[str] | None = None) -> int:  # noqa: C901, PLR0911 - one exi
     parser.add_argument(
         "--store-home", default=STORE_HOME, help="where the dashboard's history and ends live"
     )
+    parser.add_argument(
+        "--reviewed-exports", metavar="MANIFEST", help="explicit finite reviewed export manifest"
+    )
+    parser.add_argument(
+        "--reviewed-exports-sha256", metavar="SHA256", help="independently pinned manifest digest"
+    )
     args = parser.parse_args(argv)
+    try:
+        reviewed_exports = load_reviewed_exports(
+            args.reviewed_exports, args.reviewed_exports_sha256
+        )
+    except FreezeError as error:
+        print(f"Refused: {error}.")
+        return 2
+    if reviewed_exports is not None and not (args.freeze and args.production_reading):
+        print(
+            "Reviewed exports require --freeze and --production-reading; old cases stay unchanged."
+        )
+        return 2
     if args.production_reading and not args.freeze:
         print("--production-reading requires --freeze; existing packets are never upgraded.")
         return 2
@@ -2053,6 +2600,7 @@ def main(argv: list[str] | None = None) -> int:  # noqa: C901, PLR0911 - one exi
             force=args.force,
             store_home=args.store_home,
             production_reading=args.production_reading,
+            reviewed_exports=reviewed_exports,
         )
     if args.build and args.reset:
         print("--build and --reset together are ambiguous. Run them one at a time.")
