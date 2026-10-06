@@ -229,6 +229,13 @@ on 2026-10-06; no cold-study pass is claimed. Complete subprocess and outbound a
 remains a separate measurement. No registered campaign, qualification grant or measured
 result is implied by the guard's source checks.
 
+The [fifth qualification result](../abstention/claude-results-continuation-5.json) stopped after
+its opening and one availability retry both returned `model-failed`, with no parsed answers.
+Both fresh attempts remain charged; 29 of the 31 fresh attempts are held, and the single retry is
+exhausted. The native total is 32, with the original thirty preserved. The original shared epoch
+retains its two charges beside the successor's separate two. No opening acceptance or accuracy
+verdict was earned. Replay and live stay held; the replay ledger remains at 631 of 870.
+
 ## Model-free gap studies, 2026-10-05
 
 These studies keep the original 99 cases and their reads intact. Two agents mark the evidence
