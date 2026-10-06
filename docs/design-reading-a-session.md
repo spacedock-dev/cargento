@@ -4386,12 +4386,22 @@ the time the reading ran. A departure status now says "Departs; evidence #n".
 
 The live estimate exposes its existing computed citation IDs only in the focused context's
 `sources.work.live_levels`. This is not a new session field and does not enter the board, the
-reading route or the unasked lane. Its Recorded signals show the known reasons and cited event
+reading route or the unasked lane. Its Recorded signals show native check and path reasons and cited event
 times, alongside the existing disclosure that it reads checks and file paths rather than intent
 meaning. Before any stored reading or attempt, it explicitly says no model assessment exists
 yet. A missing entry is still named as unlisted, and a missing reader suppresses the Analyze
 nudge. This presentation adds no model call and does not establish that the live estimate
 detects semantic drift.
+
+Live reasons admit only the thirteen native check, path and coverage tokens the live producer
+can emit. Model-assessment reasons and blockers, including an absent outcome line, and unknown
+tokens supply no live explanation. Limits of this estimate separates coverage gaps from recorded events.
+At Not enough recorded yet, every known reason stays once in the existing closed Why not
+None or low disclosure, except the visible limit that the intent names no folder. Cited entries
+remain visible even when no event sentence is needed. An unresolved citation stays unlisted,
+never replaced with another entry. A named failed check retains its age and whether files
+changed after it. Recorded UTC times retain the complete date and seconds; an absent check
+result time says "Result time not recorded."
 
 
 The owner's 2026-10-06 request for plain explanations and evidence times supersedes the earlier

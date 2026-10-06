@@ -3528,7 +3528,7 @@ function nextDriftRecordedTime(at){
   if(epoch == null || epoch <= 0) return "time not recorded";
   const date = new Date(epoch * 1000);
   return Number.isFinite(date.getTime())
-    ? date.toISOString().slice(0, 19).replace("T", " ") + " UTC" : "time not recorded";
+    ? date.toISOString().replace(/\.\d{3}Z$/, "").replace("T", " ") + " UTC" : "time not recorded";
 }
 
 function nextDriftEvidenceRows(ids, numbers, byId, scope){
@@ -3548,7 +3548,8 @@ function nextDriftEvidenceRows(ids, numbers, byId, scope){
     const eventLabel = entry.type === "tool_report" && entry.subject === "check" &&
       entry.sourceSession && entry.sourceSession.harness === "claude" ? "Call recorded at" : "Evidence recorded at";
     const result = entry.subject === "check"
-      ? `<span class="next-cockpit-reading-evidence">Result recorded at ${esc(nextDriftRecordedTime(entry.resultAt))}</span>`
+      ? `<span class="next-cockpit-reading-evidence">${nextDriftRecordedTime(entry.resultAt) === "time not recorded"
+        ? "Result time not recorded." : `Result recorded at ${esc(nextDriftRecordedTime(entry.resultAt))}`}</span>`
       : "";
     return `<li><p class="next-cockpit-assessment-entry">${esc(label)}</p>` +
       `<span class="next-cockpit-reading-evidence">${esc(kind)} · ${esc(who)}</span>` +
@@ -6185,7 +6186,7 @@ function nextDriftEstimate(group, session){
     rose: from && n != null && row.rose_from !== "not_enough" ? `Rose from ${from} at #${n}.` : "",
     anchored: nextDriftSignalAnchored(row,work),
     signals: nextDriftRecordedSignals(row, work, numbers),
-    reasons: nextDriftReasons(level, row.reasons, row.cites, work.all || work.entries || [],
+    reasons: nextDriftReasons(level, nextDriftLiveTokens(row.reasons), row.cites, work.all || work.entries || [],
       numbers, new Set())};
 }
 
@@ -6299,20 +6300,33 @@ const NEXT_DRIFT_BLOCKER_LINES = {
 };
 const NEXT_DRIFT_REASON_SILENT = new Set(["floor-met", "no-reading", "draft-unsaved"]);
 
+function nextDriftLiveTokens(tokens){
+  return [...new Set((Array.isArray(tokens) ? tokens : []).map(String))].filter(token =>
+    ["failed-check", "pass-then-write", "writes-outside-folders", "most-writes-outside-folders",
+      "scan-incomplete", "no-passing-check", "check-not-recorded", "background-run",
+      "command-after-pass", "pass-older-than-read", "later-direction", "entries-not-listed",
+      "intent-names-no-folder"].includes(token));
+}
+
 function nextDriftRecordedSignals(row, work, numbers){
   const entries = work.all || work.entries || [];
   const byId = new Map(entries.map(entry => [String(entry.id || ""), entry]));
-  const tokens = [...new Set((Array.isArray(row.reasons) ? row.reasons : []).map(String))];
-  const lines = tokens.map(token => token === "failed-check" &&
-      !(Array.isArray(row.cites) ? row.cites : []).some(id => byId.get(String(id)) &&
-        byId.get(String(id)).subject === "check" && byId.get(String(id)).result === "failed")
-    ? "A failed check is counted but its entry is not listed."
-    : NEXT_DRIFT_REASON_LINES[token] ? NEXT_DRIFT_REASON_LINES[token]("")
-    : NEXT_DRIFT_BLOCKER_LINES[token] || "").filter(Boolean);
-  if(!lines.length) return "";
-  return '<div class="next-cockpit-recorded-signals"><h3>Recorded signals</h3>' +
-    lines.map(line => `<p class="next-session-drift-reason">${esc(line)}</p>`).join("") +
-    nextDriftEvidenceRows(row.cites, numbers, byId, "signals") + '</div>';
+  const tokens = nextDriftLiveTokens(row.reasons);
+  const lines = row.level === "not_enough" ? [] : tokens.filter(token => NEXT_DRIFT_REASON_LINES[token])
+    .map(token => token === "failed-check"
+      ? nextDriftReasons(row.level, [token], row.cites, entries, numbers, new Set()).first
+      : NEXT_DRIFT_REASON_LINES[token](""));
+  const limits = tokens.filter(token => NEXT_DRIFT_BLOCKER_LINES[token] &&
+    (row.level !== "not_enough" || token === "intent-names-no-folder")).map(token => NEXT_DRIFT_BLOCKER_LINES[token]);
+  if((Array.isArray(row.cites) ? row.cites : []).some(id => !byId.has(String(id)))){
+    limits.push("Some cited entries are not listed.");
+  }
+  const evidence = nextDriftEvidenceRows(row.cites, numbers, byId, "signals");
+  const paragraphs = held => held.map(line => `<p class="next-session-drift-reason">${esc(line)}</p>`).join("");
+  if(!lines.length && !evidence && !limits.length) return "";
+  return '<div class="next-cockpit-recorded-signals">' +
+    (lines.length || evidence ? '<h3>Recorded signals</h3>' + paragraphs(lines) + evidence : "") +
+    (limits.length ? '<h3>Limits of this estimate</h3>' + paragraphs(limits) : "") + '</div>';
 }
 
 function nextDriftReasons(level, tokens, cites, entries, numbers, departing){

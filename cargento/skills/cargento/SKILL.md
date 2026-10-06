@@ -456,7 +456,10 @@ worked out after every turn from the recorded checks and written paths against y
 with no model call. It says where it last rose ("Rose from Medium at #12"), recomputed each time and
 never stored, adds a nudge to analyze only for a cited High signal after your last message, and shows the level in the page header beside the
 entry count. An older failure blocks None or low and keeps its name and age; a failure followed
-by file writes reads Medium at most until a re-run. A broader explicit passing run can retire a
+by file writes reads Medium at most until a re-run. Recorded signals show the cited entries and
+their event times; Limits of this estimate names gaps such as an intent that names no folder.
+At Not enough recorded yet, the reasons sit once under Why not None or low, while that folder
+limit stays visible. A broader explicit passing run can retire a
 covered failure in the same directory and execution context. A folder counts only when it exists
 in the session's known working directory or holds a recorded write. Over an unsaved draft it reads "Save your intent to see a live estimate" and there is no
 pill. It never appears on a Sessions row, raises no notification, and never feeds the unasked lane.
