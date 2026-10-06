@@ -107,6 +107,54 @@ def seed_predecessor(campaign: Campaign, lane: str, *, accept: bool = True) -> N
         campaign.accept(lane, acceptance(campaign, lane))
 
 
+class CampaignFixtureIsolation(unittest.TestCase):
+    def test_original_fixture_cannot_discover_published_successor_files(self) -> None:
+        module = importlib.import_module("analyze_campaign")
+        for field in ("SUCCESSOR_MANIFEST_PATH", "SUCCESSOR_HANDOFF_PATH"):
+            with self.subTest(published=field), tempfile.TemporaryDirectory() as outside:
+                published = Path(outside) / "published-successor.json"
+                published.write_text("{}")
+                with mock.patch.object(module, field, str(published)):
+                    fixture = CampaignReservations()
+                    try:
+                        fixture.setUp()
+                        try:
+                            active = module.active_campaign()
+                        except ledger.LedgerError as error:
+                            self.fail(
+                                f"the owned original fixture discovered external authority: {error}"
+                            )
+                        self.assertIs(type(active), module.Campaign)
+                        self.assertEqual(str(fixture.state), active.path)
+                        self.assertEqual([], active._state()["calls"])
+                        self.assertEqual("{}", published.read_text())
+                    finally:
+                        fixture.doCleanups()
+
+    def test_repeated_fixture_cannot_discover_published_successor_files(self) -> None:
+        module = importlib.import_module("analyze_campaign")
+        repeated = importlib.import_module("test_closure_qualification")
+        for field in ("SUCCESSOR_MANIFEST_PATH", "SUCCESSOR_HANDOFF_PATH"):
+            with self.subTest(published=field), tempfile.TemporaryDirectory() as outside:
+                published = Path(outside) / "published-successor.json"
+                published.write_text("{}")
+                with mock.patch.object(module, field, str(published)):
+                    fixture = repeated.RepeatedQualification()
+                    try:
+                        fixture.setUp()
+                        try:
+                            active = module.active_campaign()
+                        except ledger.LedgerError as error:
+                            self.fail(
+                                f"the repeated fixture discovered external authority: {error}"
+                            )
+                        self.assertIs(type(active), module.Campaign)
+                        self.assertTrue(Path(active.path).is_relative_to(fixture.root))
+                        self.assertEqual("{}", published.read_text())
+                    finally:
+                        fixture.doCleanups()
+
+
 class CampaignReservations(unittest.TestCase):
     def setUp(self) -> None:
         try:
@@ -173,6 +221,9 @@ class CampaignReservations(unittest.TestCase):
             ("LEDGER_PATH", self.state),
             ("REPLAY_PATH", self.replay),
             ("QUALIFICATION_PATH", self.qualification),
+            # Published successor authority must never select a real account in this fixture.
+            ("SUCCESSOR_MANIFEST_PATH", self.root / "successor.json"),
+            ("SUCCESSOR_HANDOFF_PATH", self.root / "handoff.json"),
         ):
             patch = mock.patch.object(self.module, key, str(value))
             patch.start()
