@@ -1,5 +1,18 @@
 # Observer protocol for the cold usability walks
 
+## Archived on 2026-10-06
+
+The owner instructed: "remove this requirement, we will not be doing a cold study".
+DRC-4722 is cancelled, and the cold study no longer blocks milestone acceptance. No participant
+recruitment or study execution is requested. No cold-study pass or human testimony is claimed.
+Optional exploratory feedback uses the [current evidence guide](README.md); its consent,
+capture review and redaction requirements still apply. Application walks and producer accuracy
+qualification remain required. Historical run records are unchanged.
+
+## Former procedure (inactive)
+
+The instructions below preserve the original protocol for audit. They are not current work orders.
+
 Give this file to the observer agent or human facilitator without showing it to the participant. The participant sees only [the kickoff and consent note](PARTICIPANT_KICKOFF.md) before the task sentence. If they read this protocol, the [sidecar prompt](PROMPT.md), or another control walkthrough, their run is exploratory rather than one of [DRC-4722](https://linear.app/recce/issue/DRC-4722)'s two cold walks.
 
 1. Check readiness before recruiting either participant. DRC-4717 and DRC-4683 must be Done, their verdicts must apply to the target build, and any fixes must be merged to `main`. Record the full `origin/main` SHA. If these conditions are not met, use the exploratory sidecar prompt with other volunteers and reserve the two cold participants. A panel change after a cold walk may require a new participant for the fixed step, as DRC-4722 says.
