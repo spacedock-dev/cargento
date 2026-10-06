@@ -690,6 +690,23 @@ Both evidence and claims instructions were shortened in this change. The worst 2
 four-byte Goal and six lines, with a tool note and claims question, occupy 9,151 bytes at non-final
 scope, within the intent's 9,216-byte share. No line is clipped to make room for the new rule.
 
+#### Clarified 2026-10-06: unknown conditions and work in flight
+
+The non-final scope instruction distinguishes an unknown clause condition, which calls for
+`unverifiable`, from known work in flight, which may support `not_reached`. An already shown,
+still unkept stalled promise remains a departure while recovery proceeds. A fulfilled promise,
+an old stall outside the selected window or work following a legitimate new direction is not
+automatically a departure. The existing whole-clause evidence and independent-answer rules
+still govern each question. The final-session instruction, resolver and scoring rules are
+unchanged.
+
+The clarified maximum non-final header occupies 9,189 of the same 9,216 bytes. Its additional
+38 bytes can change which evidence rows fit at the total prompt limit; no cap is raised or
+selected line clipped. A prospective qualification must therefore rebuild and freeze the
+actual selection, asked questions and prompt for every case. A required claims case must not
+silently lose its claims question. Assembly and authored-reply tests establish these
+software boundaries, not improved model accuracy. Earlier failed results remain failed.
+
 ### The two typed fields are one line each, and that is a security decision
 
 Recorded here because it had no durable home. The goal and the expected output are collapsed to a

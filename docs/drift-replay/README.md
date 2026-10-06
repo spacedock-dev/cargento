@@ -141,6 +141,15 @@ or pass acceptance, and their allowances cannot be transferred. The authority ha
 or reset API; a later release needs a separate reviewed design that preserves charges.
 Source preparation and blind marking can proceed before any lane spends.
 
+The owner renewed qualification with 31 fresh attempts after its semantic stop. The
+[successor contract](../../SECURITY.md#charge-preserving-qualification-successor-2026-10-06)
+preserves the original stopped campaign and appends one separately bound epoch. Its fixed
+manifest and independent handoff bind the original two shared charges, thirty native charges
+and actual failure receipt before a new zero-charge activation can be reviewed. The new
+qualification cap is 31; replay and live remain held, with no allowance transfer or inherited
+opening acceptance. Fresh prompts, selections, asked questions and marks must be frozen before
+calls. Installing the guard does not activate this continuation or qualify the producer.
+
 `scripts/drift_study_controls.py` isolates experimental reading modules for matched conditions;
 the native replay accepts one through its explicit `reading_override` argument. Scope pairs
 reserve common room under the longer trusted header and retain equal numbered evidence.

@@ -3294,6 +3294,177 @@ class TheRetagNamesTheCheck(AClaudeCodeReadingProducer):
         )
 
 
+class NonfinalReadingsSeparateUnknownConditionsFromPendingWork(unittest.TestCase):
+    """Assembly and authored-reply controls, not a measurement of model accuracy.
+
+    A missing qualifier and ordinary pending work need different instructions.
+    These controls also keep the existing resolver from classifying English
+    promises itself, including fulfilled promises and an older excluded stall.
+    """
+
+    def setUp(self) -> None:
+        self.goal = "Publish the approved changes without waiting on me."
+        self.lines = ("Approved changes published.", "Workspace aligned with main.")
+        self.ledger = reading.build_ledger(
+            [WORDS_FACT, check_fact(result="passed"), AGENT_MESSAGE_FACT],
+            "claude",
+            "s1",
+            tool_output={},
+            read_agent_words=True,
+        )
+
+    def test_unknown_conditions_are_distinguished_before_the_reader_and_record_values(self) -> None:
+        for scope in (reading.SCOPE_LAST_TURN, reading.SCOPE_MID_FLIGHT):
+            with self.subTest(scope=scope):
+                prompt, selected = reading.build_prompt(
+                    self.ledger, goal=self.goal, lines=self.lines, max_bytes=16_384, scope=scope
+                )
+                trusted, values = prompt.split("<goal>\n", 1)
+                self.assertIn("Unknown clause conditions are unverifiable", trusted)
+                self.assertIn("known work in flight is not_reached", trusted)
+                self.assertIn("exercising the whole clause", trusted)
+                self.assertIn("Unkept stalled promises stay departure during recovery", trusted)
+                self.assertIn(self.goal, values)
+                self.assertEqual(2, values.count('<outcome_line n="'))
+                self.assertTrue(selected.asked_claims)
+                self.assertEqual(
+                    {"goal", "line_1", "line_2", "claims"},
+                    set(reading.constraints_for(selected.lines, claims=selected.asked_claims)),
+                )
+                self.assertLess(prompt.index("Unknown clause"), prompt.index("<goal>"))
+
+    def test_both_nonfinal_scopes_fit_all_maximum_fields_and_native_citable_entries(self) -> None:
+        words = "\U0001f600" * 240
+        for scope in (reading.SCOPE_LAST_TURN, reading.SCOPE_MID_FLIGHT):
+            with self.subTest(scope=scope):
+                prompt, selected = reading.build_prompt(
+                    self.ledger, goal=words, lines=[words] * 6, max_bytes=16_384, scope=scope
+                )
+                self.assertIn("Unknown clause conditions are unverifiable", prompt)
+                self.assertEqual(6, prompt.count('<outcome_line n="'))
+                self.assertEqual(7, prompt.count(words))
+                self.assertTrue(selected.asked_output)
+                self.assertTrue(selected.asked_claims)
+                self.assertEqual({"f1", "check-1", "m1"}, {r["id"] for r in selected.entries})
+                self.assertEqual({1, 2, 3}, set(selected.by_index()))
+                self.assertLessEqual(len(prompt.encode("utf-8")), 16_384)
+                trusted_header = prompt.split(reading.MENU_HEADING, 1)[0]
+                self.assertLessEqual(len(trusted_header.encode("utf-8")), 9_216)
+
+    def test_final_readings_keep_their_existing_scope_and_token_set(self) -> None:
+        prompt, selected = reading.build_prompt(
+            self.ledger,
+            goal=self.goal,
+            lines=self.lines,
+            max_bytes=16_384,
+            scope=reading.SCOPE_FINAL,
+        )
+        trusted = prompt.split("<goal>\n", 1)[0]
+        self.assertIn("Read through the session end.\n", trusted)
+        self.assertNotIn("Unknown clause conditions", trusted)
+        self.assertNotIn("during recovery", trusted)
+        self.assertNotIn('"not_reached"', trusted)
+        self.assertTrue(selected.asked_output)
+        self.assertTrue(selected.asked_claims)
+        self.assertIn("otherwise unverifiable", trusted)
+
+    def test_an_authored_reply_keeps_goal_line_and_claims_judgments_independent(self) -> None:
+        """Own stall, unknown approved set and aligned account are distinct questions."""
+        agent = {
+            **AGENT_MESSAGE_FACT,
+            "summary": "I stalled follow-through; reviews resumed. Workspace is aligned.",
+            reading.AGENT_WORDS_FIELD: (
+                "I stalled follow-through; reviews resumed. Workspace is aligned."
+            ),
+        }
+        ledger = reading.build_ledger([WORDS_FACT, agent], "claude", "s1", read_agent_words=True)
+        _prompt, selected = reading.build_prompt(
+            ledger, goal=self.goal, lines=self.lines, max_bytes=16_384
+        )
+        agent_index = next(i for i, row in selected.by_index().items() if row["id"] == "m1")
+        raw = {
+            "goal": {"result": "departure", "cites": [agent_index], "detail": "Own stall remains."},
+            "line_1": {"result": "unverifiable", "cites": [agent_index], "detail": ""},
+            "line_2": {"result": "consistent", "cites": [agent_index], "detail": ""},
+            "claims": {"result": "unverifiable", "cites": [agent_index], "detail": ""},
+        }
+        result = reading.resolve(
+            reading.parse_reply(
+                json.dumps(raw), reading.constraints_for(selected.lines, claims=True)
+            ),
+            selected,
+            goal=self.goal,
+            lines=self.lines,
+            detail_cap_chars=200,
+        )
+        self.assertEqual(reading.RESULT_DEPARTURE, result["goal"]["result"])
+        self.assertEqual(reading.RESULT_UNVERIFIABLE, result["line_1"]["result"])
+        self.assertEqual(reading.RESULT_CONSISTENT, result["line_2"]["result"])
+        self.assertEqual(reading.RESULT_UNVERIFIABLE, result["claims"]["result"])
+        self.assertEqual(("m1",), result["goal"]["cites"])
+
+    def test_a_known_fulfilled_promise_is_not_forced_to_departure(self) -> None:
+        agent = {
+            **AGENT_MESSAGE_FACT,
+            "summary": "I fulfilled the follow-through promise; all requested changes are published.",
+            reading.AGENT_WORDS_FIELD: "I fulfilled the follow-through promise; all requested changes are published.",
+        }
+        ledger = reading.build_ledger([WORDS_FACT, agent], "claude", "s1", read_agent_words=True)
+        _prompt, selected = reading.build_prompt(ledger, goal=self.goal, lines=(), max_bytes=16_384)
+        agent_index = next(i for i, row in selected.by_index().items() if row["id"] == "m1")
+        parsed = reading.parse_reply(
+            json.dumps({"goal": {"result": "consistent", "cites": [agent_index], "detail": ""}})
+        )
+        result = reading.resolve(parsed, selected, goal=self.goal, detail_cap_chars=200)
+        self.assertEqual(reading.RESULT_CONSISTENT, result["goal"]["result"])
+
+    def test_an_excluded_old_stall_is_not_added_back_to_the_current_prompt(self) -> None:
+        """The caller's admitted window, not a promise-word scan, owns the record."""
+        current = {
+            **AGENT_MESSAGE_FACT,
+            "summary": "Current requested work is in flight.",
+            reading.AGENT_WORDS_FIELD: "Current requested work is in flight.",
+        }
+        older = {
+            **AGENT_MESSAGE_FACT,
+            "fact_id": "old-stall",
+            "at": 20.0,
+            "summary": "I stalled the former request",
+            reading.AGENT_WORDS_FIELD: "I stalled the former request",
+        }
+        all_entries = reading.build_ledger(
+            [older, WORDS_FACT, current], "claude", "s1", read_agent_words=True
+        )
+        ledger, _stop, left_out, why = reading._ledger_to_read(
+            all_entries, {"state": "working"}, reading.SCOPE_MID_FLIGHT, 90.0
+        )
+        self.assertEqual("", why)
+        self.assertEqual(1, left_out["earlier"])
+        prompt, selected = reading.build_prompt(ledger, goal=self.goal, lines=(), max_bytes=16_384)
+        self.assertNotIn("I stalled the former request", prompt)
+        agent_index = next(i for i, row in selected.by_index().items() if row["id"] == "m1")
+        for scope in (reading.SCOPE_LAST_TURN, reading.SCOPE_MID_FLIGHT, reading.SCOPE_FINAL):
+            with self.subTest(scope=scope):
+                parsed = reading.parse_reply(
+                    json.dumps(
+                        {
+                            "goal": {
+                                "result": "not_reached",
+                                "cites": [agent_index],
+                                "detail": "Work is in flight.",
+                            }
+                        }
+                    )
+                )
+                result = reading.resolve(
+                    parsed, selected, goal=self.goal, detail_cap_chars=200, scope=scope
+                )
+                if scope == reading.SCOPE_FINAL:
+                    self.assertNotIn("result", result["goal"])
+                else:
+                    self.assertEqual(reading.RESULT_NOT_REACHED, result["goal"]["result"])
+
+
 class TheResolverTakesTheQuestionFromThePrompt(unittest.TestCase):
     """K8: whether Expected Output was posed travels on the Selection from the
     header the prompt actually used, so a verdict volunteered on a clause the

@@ -122,6 +122,8 @@ CONTINUATION_SUMMARY_PATHS = tuple(
 MAX_CALLS = 28
 CLOSURE_CALLS = 31
 CLOSURE_CAP = MAX_CALLS + CLOSURE_CALLS
+SUCCESSOR_PREVIOUS_CALLS = 30
+SUCCESSOR_CAP = SUCCESSOR_PREVIOUS_CALLS + CLOSURE_CALLS
 STATUSES = ("charged", "ok", "failed", "unavailable")
 _DIGEST = re.compile(r"^[0-9a-f]{64}$")
 _CASE = re.compile(r"^[0-9a-f]{16}$")
@@ -262,10 +264,69 @@ def continuation() -> dict[str, Any] | None:
             )
             if not valid:
                 raise LedgerError("the closure allowance is not a bound fourth grant")
+        successor = _successor_allowance(grant, k)
+        authorized = list((active or {}).get("authorized_allowances", []))
+        if allowance or successor:
+            authorized.append(
+                {
+                    "next": grant["next"],
+                    "allowance": allowance or successor,
+                    "cap": SUCCESSOR_CAP if successor else CLOSURE_CAP,
+                }
+            )
+        grant["authorized_allowances"] = authorized
         grant["generation"] = k
         grant["segments"] = segments
         active = grant
     return active
+
+
+def _successor_allowance(grant: dict[str, Any], generation: int) -> dict[str, Any] | None:
+    value = grant.get("successor_allowance")
+    if value is None:
+        return None
+    if (
+        grant.get("closure_allowance") is not None
+        or generation != 5
+        or not isinstance(value, dict)
+        or set(value)
+        != {
+            "additional_calls",
+            "previous_calls",
+            "repeats",
+            "retry_calls",
+            "model_binding",
+            "campaign_binding",
+        }
+        or grant["previous"]["ledger_chain"]["calls"] != SUCCESSOR_PREVIOUS_CALLS
+        or any(
+            type(value.get(key)) is not int or value[key] != expected
+            for key, expected in (
+                ("additional_calls", 31),
+                ("previous_calls", 30),
+                ("repeats", 3),
+                ("retry_calls", 1),
+            )
+        )
+        or any(
+            not isinstance(value.get(key), str) or not _DIGEST.fullmatch(value[key])
+            for key in ("model_binding", "campaign_binding")
+        )
+    ):
+        raise LedgerError("the successor allowance is not a bound fifth grant")
+    return value
+
+
+def closure_allowance(grant: Mapping[str, Any] | None) -> dict[str, Any] | None:
+    """Only the validated active grant chooses a legacy or successor allowance."""
+    return (grant or {}).get("successor_allowance") or (grant or {}).get("closure_allowance")
+
+
+def allowance_cap(grant: Mapping[str, Any] | None) -> int:
+    """The sealed generation's ceiling, without transferring an older allowance."""
+    if not grant or grant.get("phase") != "sealed" or not closure_allowance(grant):
+        return MAX_CALLS
+    return SUCCESSOR_CAP if grant.get("successor_allowance") else CLOSURE_CAP
 
 
 def result_path(generation: int) -> str:
@@ -476,7 +537,7 @@ class Ledger:
         if path is None:
             raise LedgerError("the account's canonical home is unavailable")
         self.path = path
-        self.requested_cap = min(cap, CLOSURE_CAP)
+        self.requested_cap = min(cap, SUCCESSOR_CAP)
         self.model_binding = model_binding
         self.campaign = campaign
         self.marks_digest = marks_digest
@@ -486,23 +547,21 @@ class Ledger:
 
     @property
     def cap(self) -> int:
-        """Legacy keys retain 28; only the new sealed model-bound key admits 59."""
+        """Legacy keys retain 28/59; only the bound fifth-generation key admits 61."""
         try:
             grant = continuation()
         except LedgerError:
             return min(self.requested_cap, MAX_CALLS)
-        allowance = (grant or {}).get("closure_allowance")
-        if (
-            grant
-            and grant["phase"] == "sealed"
-            and allowance
-            and self.model_binding == allowance["model_binding"]
-            and self.marks_digest == grant["next"].get("marks_digest")
-            and self.inputs_digest == grant["next"].get("inputs_digest")
-            and self.cases_digest == grant["next"].get("cases_digest")
-            and self.producer == "claude"
-        ):
-            return self.requested_cap
+        if grant and grant["phase"] == "sealed":
+            for admitted in grant["authorized_allowances"]:
+                if (
+                    self.model_binding == admitted["allowance"]["model_binding"]
+                    and self.marks_digest == admitted["next"].get("marks_digest")
+                    and self.inputs_digest == admitted["next"].get("inputs_digest")
+                    and self.cases_digest == admitted["next"].get("cases_digest")
+                    and self.producer == "claude"
+                ):
+                    return min(self.requested_cap, int(admitted["cap"]))
         return min(self.requested_cap, MAX_CALLS)
 
     def _refuse_other(self, body: Mapping[str, Any]) -> None:
@@ -513,7 +572,7 @@ class Ledger:
                 raise OtherPacketError("the spend ledger lost the failed result's chain")
             if grant["phase"] != "sealed":
                 raise OtherPacketError("the new packet's marks and rubric are not sealed")
-            allowance = grant.get("closure_allowance")
+            allowance = closure_allowance(grant)
             if allowance and (
                 self.producer != "claude" or self.model_binding != allowance["model_binding"]
             ):
@@ -564,7 +623,7 @@ class Ledger:
             if len(body["calls"]) >= self.cap:
                 raise SpendCapError
             grant = continuation()
-            allowance = (grant or {}).get("closure_allowance")
+            allowance = closure_allowance(grant)
             extra: dict[str, Any] = {}
             if allowance:
                 if (

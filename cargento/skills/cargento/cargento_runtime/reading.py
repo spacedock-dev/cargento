@@ -124,7 +124,7 @@ _OUTCOME_LINE = re.compile(r"line_([1-9][0-9]*)")
 # Two of the figures item 3 left to this layer, and they are written there. The
 # intent's share of `observer.OBSERVER_MODEL_MAX_PROMPT_BYTES`: the worst goal
 # and six lines at four bytes a character, with the claims question, measure
-# 9,151 bytes with the non-final scope, so this leaves at least 7,168 for the record.
+# 9,189 bytes with the non-final scope, so this leaves at least 7,168 for the record.
 # The reply cap: eight answers with twelve four-digit citations and a
 # 240-character detail each measure 4,751 bytes compact and 5,664 indented in
 # raw two-byte UTF-8, and a
@@ -2295,8 +2295,8 @@ def _header(
         )
         + EVIDENCE_RULES
         + (
-            "Read work so far. Only unfinished in-flight work is not_reached; never excuse "
-            "a stalled continuation/finish promise.\n"
+            "Read work so far. Unknown clause conditions are unverifiable; known work in "
+            "flight is not_reached. Unkept stalled promises stay departure during recovery.\n"
             if scope in (SCOPE_LAST_TURN, SCOPE_MID_FLIGHT)
             else "Read through the session end.\n"
         )

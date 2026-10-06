@@ -2197,6 +2197,35 @@ Its manifest remains immutable: there is no automatic unholding, replacement gen
 Releasing the held lanes later requires a separate reviewed design that preserves charged
 attempts. Installing the guard or preparing cases does not activate it or supply blind marks.
 
+##### Charge-preserving qualification successor, 2026-10-06
+
+The owner authorized 31 fresh qualification attempts after the stopped run reached 30 native
+qualification charges and two shared charges. This replaces the stopped lane's 29 unused
+attempts; those cannot be added again. The fifth grant's bound key has a cumulative native
+ceiling of 61. Earlier keys retain their 28 or 59 ceilings. With 190 replay and 18 live attempts
+still held, the cumulative shared allocation is 241: two spent, 31 fresh and 208 held. No held
+allowance can be transferred to qualification.
+
+The fixed successor manifest and independently reviewed handoff bind the original manifest,
+activation anchor, complete two-call shared state, thirty-call native prefix, failed fourth
+result and actual native/shared attempt joins. The old semantic stop is established by its
+settled failure receipt; an explicit stop receipt is bound only if it already exists. The
+successor never creates a stop file for the old run or rewrites its failure.
+
+An explicit one-time initialization appends one epoch to the same account ledger under its
+existing lock. The original state projection, excluding only the new `epochs` field, and its
+receipts remain bound. New transition and reservation receipts live in the separate
+`.epochs/1/` tree. The new epoch has its own reviewed zero-charge activation anchor and fresh
+batch acceptance; it cannot inherit the old opening batch's acceptance. The original campaign
+remains stopped and inspectable. Missing or changed ancestor, transition, handoff, source or
+grant bindings refuse further launches.
+
+The fifth grant and handoff require newly frozen case, marks, rubric, model and actual request
+bindings. Qualification alone may spend up to 31 attempts, including its opening exposure and
+one registered availability retry. Replay and live remain held. The existing failure, orphan,
+batch review and source guards apply to the new epoch. Installing this software neither
+initializes an account nor supplies a grant, source admission or accuracy result.
+
 #### Prospective qualification source cuts, 2026-10-05
 
 The opt-in typed-Claude qualification freezer may make an owned transient copy of the raw
