@@ -1864,6 +1864,25 @@ from an excerpt, `reading_policy.CONTENT_VERSION` moves from 2 to 3 (`WORDS_CONT
 1), and the route's "What is sent" list names the newest final reply and the 4,096-byte bound.
 SECURITY.md's [Claude Code reading calls](../SECURITY.md#claude-code-reading-calls) says the same.
 
+### Amended 2026-10-06: a whole final reply binds the native parent identity
+
+The Claude collector publishes a shortened session key, while native assistant records
+carry the full session UUID. Comparing those two strings verbatim refused real parent
+replies even when their selected fact and timestamp matched. The lookup now uses the
+canonical lifecycle identity normalizer to bind the shortened key to the complete UUID
+filename, then compares each parent assistant record with that full identity. Meta and
+child records stay excluded. Any missing or conflicting parent identity in the complete
+scan refuses recovery, including an unselected reply from another full identity with the
+same shortened key. The scan includes bounded JSON records that encode an assistant
+type with Unicode escapes; an oversized escaped shape conservatively refuses recovery
+before parsing. Exact session keys retain their existing path.
+
+A prefix comparison alone was rejected: two native sessions can share a display key.
+The file identity, complete scan and existing fact/time joins must agree. This repair
+changes neither selected rows nor consent nor byte bounds. It corrects source recovery;
+it supplies no evidence that a model assessment is accurate and does not qualify the
+failed study. A fresh measurement must bind the repaired source bytes before output.
+
 ## DEC-23: a Claude Code session's record of its checks may show the work
 
 Decided 2026-09-24 (DRC-4674). DRC-4676 builds the record and keeps it off every model prompt.

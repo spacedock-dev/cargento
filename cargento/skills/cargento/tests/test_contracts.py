@@ -1885,6 +1885,8 @@ class RuntimeImportGraphTest(unittest.TestCase):
         # Spacedock, and record readers. The HTTP route is its only caller.
         "cargento_runtime.project_context": {
             "cargento_runtime.claude_data",
+            # Exact parent-source binding shares the canonical collector-key normalizer.
+            "cargento_runtime.events",
             "cargento_runtime.config",
             "cargento_runtime.io",
             "cargento_runtime.observer",

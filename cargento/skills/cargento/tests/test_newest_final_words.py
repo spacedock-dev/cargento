@@ -29,11 +29,14 @@ from cargento_runtime import (
     records,
 )
 from cargento_runtime import io as runtime_io
+from cargento_runtime.collectors import claude as claude_collector
 
 from .support import make_runtime
 from .test_agent_words import BUDGET, _agent, _check, _person
 
 SID = "s1"
+NATIVE_SID = "12345678-1234-4234-8234-123456789abc"
+COLLECTOR_SID = "12345678"
 
 
 def record(
@@ -409,6 +412,254 @@ class TheSourceMustBeTheOneThePressRead(_Source):
             self.assertNotIn(private, rest)
 
 
+class TheClaudeCollectorKeyBindsTheWholeSource(_Source):
+    def setUp(self) -> None:
+        super().setUp()
+        self.path = self.dir / f"{NATIVE_SID}.jsonl"
+
+    def ledger(self) -> tuple[Any, ...]:
+        events = project_context.agent_message_events(
+            self.config, str(self.path), "claude", COLLECTOR_SID
+        )
+        facts = [
+            project_context._semantic_fact_from_event(e, "agent_say", "agent_message", "")
+            for e in events
+        ]
+        return reading.build_ledger(facts, "claude", COLLECTOR_SID, read_agent_words=True)
+
+    def look(self, wanted: Any = None, **kwargs: Any) -> dict[str, Any]:
+        kwargs.setdefault("expected_stamp", project_context.transcript_stamp(str(self.path)))
+        return project_context.transcript_newest_final_words(
+            self.config,
+            str(self.path),
+            "claude",
+            COLLECTOR_SID,
+            self.ledger() if wanted is None else wanted,
+            **kwargs,
+        )
+
+    def test_a_full_native_id_in_its_own_file_qualifies_the_collector_key(self) -> None:
+        self.write([record("u1", 1, long_text(), session=NATIVE_SID)])
+        self.assertEqual("whole", self.look()["outcome"])
+        self.assertIn("Evidence sentence number 39", self.words())
+
+    def test_a_prefix_impostor_or_missing_identity_never_qualifies(self) -> None:
+        for sid in (
+            "12345678-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+            COLLECTOR_SID,
+            None,
+        ):
+            with self.subTest(sid=sid):
+                self.write([record("u1", 1, long_text(), session=sid)])
+                self.assertEqual("unproven", self.look()["outcome"])
+
+    def test_a_full_native_id_without_its_filename_binding_is_refused(self) -> None:
+        for name in ("synthetic.jsonl", f"{COLLECTOR_SID}.jsonl", f"{NATIVE_SID}x.jsonl"):
+            with self.subTest(name=name):
+                self.path = self.dir / name
+                self.write([record("u1", 1, long_text(), session=NATIVE_SID)])
+                self.assertEqual("unproven", self.look()["outcome"])
+
+    def test_the_full_filename_cannot_bind_a_different_collector_key(self) -> None:
+        self.write([record("u1", 1, long_text(), session=NATIVE_SID)])
+        wrong_sid = "87654321"
+        events = project_context.agent_message_events(
+            self.config, str(self.path), "claude", wrong_sid
+        )
+        facts = [
+            project_context._semantic_fact_from_event(e, "agent_say", "agent_message", "")
+            for e in events
+        ]
+        wanted = reading.build_ledger(facts, "claude", wrong_sid, read_agent_words=True)
+        found = project_context.transcript_newest_final_words(
+            self.config,
+            str(self.path),
+            "claude",
+            wrong_sid,
+            wanted,
+            expected_stamp=project_context.transcript_stamp(str(self.path)),
+        )
+        self.assertEqual("unproven", found["outcome"])
+
+    def test_an_unselected_parent_with_another_native_identity_refuses_the_file(self) -> None:
+        final = record("u1", 2, long_text(), session=NATIVE_SID)
+        for other in (
+            "12345678-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+            "87654321-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        ):
+            with self.subTest(sid=other):
+                self.write([final])
+                wanted = self.ledger()
+                self.write([record("older-other", 1, "foreign", session=other), final])
+                self.assertEqual("unproven", self.look(wanted)["outcome"])
+
+    def test_excluded_child_records_do_not_impersonate_parent_identity(self) -> None:
+        for marker in ({"isSidechain": True}, {"isMeta": True}, {"agentId": "child"}):
+            with self.subTest(marker=marker):
+                self.write(
+                    [
+                        record("child", 1, "child", session="other", **marker),
+                        record("u1", 2, long_text(), session=NATIVE_SID),
+                    ]
+                )
+                self.assertEqual("whole", self.look(self.ledger()[-1:])["outcome"])
+
+    def test_normalization_keeps_newer_unproven_and_uuid_conflict_guards(self) -> None:
+        final = record("u1", 1, long_text(), session=NATIVE_SID)
+        self.write([final])
+        wanted = self.ledger()
+        newer = _agent("missing-source", epoch(2), "unproven newer reply")
+        newer["source_session"]["sid"] = COLLECTOR_SID
+        selected = (
+            *wanted,
+            *reading.build_ledger([newer], "claude", COLLECTOR_SID, read_agent_words=True),
+        )
+        self.assertEqual(2, len(selected))
+        self.assertEqual(
+            "unproven",
+            self.look(selected)["outcome"],
+        )
+        self.write([final, record("u1", 1, "changed", session=NATIVE_SID)])
+        self.assertEqual("unproven", self.look(wanted)["outcome"])
+
+    def test_a_second_file_sharing_the_collector_key_is_not_resolved(self) -> None:
+        project = self.dir / "projects" / "encoded-project"
+        project.mkdir(parents=True)
+        self.path = project / f"{NATIVE_SID}.jsonl"
+        self.write([record("u1", 1, long_text(), session=NATIVE_SID)])
+        self.config = replace(self.config, store_roots={"claude.projects": (str(project.parent),)})
+        self.assertEqual(
+            str(self.path),
+            observer.resolve_transcript(self.config, self.state, "claude", COLLECTOR_SID),
+        )
+        (project / "12345678-aaaa-4aaa-8aaa-aaaaaaaaaaaa.jsonl").write_text("", encoding="utf-8")
+        self.assertIsNone(
+            observer.resolve_transcript(self.config, self.state, "claude", COLLECTOR_SID)
+        )
+
+    def test_normalization_still_requires_a_parent_recorded_final_with_a_uuid(self) -> None:
+        cases: tuple[dict[str, Any], ...] = (
+            {"stop": None},
+            {"stop": "tool_use"},
+            {"isSidechain": True},
+            {"isMeta": True},
+            {"agentId": "child"},
+            {"model": "<synthetic>"},
+            {"uuid": None},
+        )
+        for overrides in cases:
+            with self.subTest(overrides=overrides):
+                self.write(
+                    [
+                        record(
+                            second=1,
+                            text=long_text(),
+                            session=NATIVE_SID,
+                            **{"uuid": "u1", **overrides},
+                        )
+                    ]
+                )
+                self.assertNotIn("words", self.look())
+
+    def test_normalized_source_still_selects_only_the_newest_selected_final(self) -> None:
+        self.write(
+            [
+                record("u1", 1, long_text(30), session=NATIVE_SID),
+                record("u2", 2, long_text(31), session=NATIVE_SID),
+            ]
+        )
+        wanted = sorted(self.ledger(), key=lambda row: row["at"])
+        self.assertEqual(wanted[1]["id"], self.look(wanted)["fact_id"])
+        self.assertEqual(wanted[0]["id"], self.look(wanted[:1])["fact_id"])
+        stamp = project_context.transcript_stamp(str(self.path))
+        self.write([record("u3", 3, long_text(), session=NATIVE_SID)])
+        self.assertEqual("source-moved", self.look(wanted, expected_stamp=stamp)["outcome"])
+        with mock.patch.object(project_context, "FINAL_WORDS_SCAN_MAX_BYTES", 64):
+            self.assertEqual("scan-limit", self.look()["outcome"])
+
+    def test_a_json_escaped_assistant_type_still_binds_the_native_source(self) -> None:
+        native = record("u1", 2, long_text(), session=NATIVE_SID)
+        self.write([native])
+        wanted = self.ledger()
+        encoded = json.dumps(native).replace('"assistant"', '"\\u0061ssistant"')
+        self.path.write_text(encoded + "\n", encoding="utf-8")
+        self.assertEqual("whole", self.look(wanted)["outcome"])
+
+    def test_json_escaped_foreign_or_missing_parent_identity_refuses_the_complete_file(
+        self,
+    ) -> None:
+        native = record("u1", 2, long_text(), session=NATIVE_SID)
+        for sid in ("12345678-aaaa-4aaa-8aaa-aaaaaaaaaaaa", None):
+            with self.subTest(session=sid):
+                self.write([native])
+                wanted = self.ledger()
+                foreign = record("foreign", 1, "Synthetic parent text.", session=sid)
+                encoded = json.dumps(foreign).replace('"assistant"', '"\\u0061ssistant"')
+                self.path.write_text(encoded + "\n" + json.dumps(native) + "\n", encoding="utf-8")
+                self.assertEqual("unproven", self.look(wanted)["outcome"])
+
+    def test_json_escaped_duplicate_finality_conflicts_cannot_be_skipped(self) -> None:
+        native = record("u1", 1, long_text(), session=NATIVE_SID)
+        for stop, second in (("tool_use", 1), ("end_turn", 2)):
+            with self.subTest(stop=stop, second=second):
+                self.write([native])
+                wanted = self.ledger()
+                changed = record("u1", second, long_text(), session=NATIVE_SID, stop=stop)
+                encoded = json.dumps(changed).replace('"assistant"', '"\\u0061ssistant"')
+                self.path.write_text(json.dumps(native) + "\n" + encoded + "\n", encoding="utf-8")
+                self.assertEqual("unproven", self.look(wanted)["outcome"])
+
+    def test_a_json_escaped_newer_nonfinal_is_proven_without_displacing_the_final(self) -> None:
+        native = record("u1", 1, long_text(), session=NATIVE_SID)
+        newer = record("u2", 2, "Still using a tool.", session=NATIVE_SID, stop="tool_use")
+        self.write([native, newer])
+        wanted = self.ledger()
+        encoded = json.dumps(newer).replace('"assistant"', '"\\u0061ssistant"')
+        self.path.write_text(json.dumps(native) + "\n" + encoded + "\n", encoding="utf-8")
+        self.assertEqual("whole", self.look(wanted)["outcome"])
+        self.assertEqual(wanted[0]["id"], self.look(wanted)["fact_id"])
+
+    def test_oversized_json_escaped_identity_is_refused_without_decoding(self) -> None:
+        native = record("u1", 2, long_text(), session=NATIVE_SID)
+        self.write([native])
+        wanted = self.ledger()
+        limit = project_context.FINAL_WORDS_RECORD_MAX_BYTES
+        oversized = record("foreign", 1, "x" * limit, session="other")
+        candidates = (
+            json.dumps(oversized).replace('"assistant"', '"\\u0061ssistant"'),
+            json.dumps(oversized).replace('"type"', '"t\\u0079pe"'),
+        )
+        decode = project_context._json_dict
+
+        def bounded_decode(raw: bytes) -> Any:
+            if len(raw) > limit:
+                raise AssertionError("An oversized record reached JSON decoding")
+            return decode(raw)
+
+        for encoded in candidates:
+            with self.subTest(escaped_type_key="t\\u0079pe" in encoded):
+                self.path.write_text(encoded + "\n" + json.dumps(native) + "\n", encoding="utf-8")
+                with mock.patch.object(project_context, "_json_dict", side_effect=bounded_decode):
+                    self.assertEqual("oversized", self.look(wanted)["outcome"])
+
+    def test_an_ordinary_oversized_tool_artifact_still_needs_no_json_decode(self) -> None:
+        native = record("u1", 2, long_text(), session=NATIVE_SID)
+        self.write([native])
+        wanted = self.ledger()
+        limit = project_context.FINAL_WORDS_RECORD_MAX_BYTES
+        artifact = json.dumps({"type": "tool_result", "content": "x" * limit})
+        self.path.write_text(artifact + "\n" + json.dumps(native) + "\n", encoding="utf-8")
+        decode = project_context._json_dict
+
+        def bounded_decode(raw: bytes) -> Any:
+            if len(raw) > limit:
+                raise AssertionError("An ordinary oversized artifact reached JSON decoding")
+            return decode(raw)
+
+        with mock.patch.object(project_context, "_json_dict", side_effect=bounded_decode):
+            self.assertEqual("whole", self.look(wanted)["outcome"])
+
+
 class _Prompt(unittest.TestCase):
     def build(self, rows: list[dict[str, Any]], lookup: Any, max_bytes: int = BUDGET) -> Any:
         # `tool_output={}` lists the check rows, as a pressed reading with a destination does.
@@ -691,6 +942,53 @@ class OnlyTheRequestedPressReadsIt(unittest.TestCase):
         self.assertEqual(2, len(prompts))
         self.assertEqual(prompts[0], prompts[1])
         self.assertIn("Evidence sentence number 39", prompts[0])
+
+    def test_the_http_press_reads_a_real_collectors_full_uuid_transcript(self) -> None:
+        temp = tempfile.TemporaryDirectory()
+        self.addCleanup(temp.cleanup)
+        root = Path(temp.name)
+        project = root / "projects" / "encoded-project"
+        project.mkdir(parents=True)
+        path = project / f"{NATIVE_SID}.jsonl"
+        source = record("u1", 20, long_text(), session=NATIVE_SID, cwd=str(root))
+        person = {
+            "type": "user",
+            "uuid": "person-1",
+            "timestamp": "2026-10-04T10:00:10Z",
+            "sessionId": NATIVE_SID,
+            "cwd": str(root),
+            "message": {"role": "user", "content": "Fix the queue."},
+        }
+        path.write_text("".join(json.dumps(r) + "\n" for r in [person, source]), encoding="utf-8")
+        config, state = make_runtime(
+            state_home=temp.name,
+            state_dir=root,
+            store_roots={"claude.projects": (str(project.parent),)},
+            spacedock_enabled=False,
+        )
+        now = epoch(21)
+        os.utime(path, (now, now))
+        (row,) = claude_collector.collect(config, state, now, 24, True)
+        self.assertEqual(COLLECTOR_SID, row["sid"])
+        self.assertEqual(NATIVE_SID, row["resume_id"])
+        arguments = {"model": self.model, "stamp_text": "synthetic", "now": now}
+        handler = SimpleNamespace(
+            server=SimpleNamespace(
+                application=SimpleNamespace(config=config, state=state, clock=lambda: now)
+            ),
+            _reading_arguments=lambda *_args: arguments,
+        )
+        compose: Any = http_api._RequestHandler._compose_reading
+        assessment, why, _ = compose(
+            handler,
+            row,
+            {"revisions": [{"n": 1, "at": epoch(5), "goal": "Fix the queue"}]},
+            {},
+            SimpleNamespace(phase=None),
+        )
+        self.assertEqual(1, len(self.prompts), why)
+        self.assertIn("Evidence sentence number 39", self.prompts[0])
+        self.assertNotIn("Evidence sentence number 39", json.dumps(assessment))
 
 
 def epoch(second: int) -> float:
