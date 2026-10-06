@@ -317,6 +317,27 @@ a semantic or coverage failure stops the campaign. Preparation and activation es
 producer PASS. The [shared guard](../drift-replay/README.md#the-shared-closure-guard) owns the
 batch and stop contract.
 
+### Fourth qualification outcome, 2026-10-06
+
+The [native fourth result](claude-results-continuation-4.json) failed after two attempts on the
+bound Sonnet 5.5 producer. The one-call opening batch passed independent review. The next batch
+stopped on its first case: a question marked should-abstain returned `judged:not-reached`.
+That is a judged should-abstain failure under the existing check, even though the rubric calls
+it over-abstention. It is not a false `consistent` reassurance.
+
+Seven questions were scored across two recorded cases. The rubric reports three correct results,
+one missed departure and three over-abstentions, with no false reassurance or unscored question.
+Eight cases in the first pass and both later passes were never attempted. The source packet had
+already admitted all five recorded kinds; incomplete scored coverage does not mean the supplied
+corpus lacked those kinds.
+
+The native ledger now holds 30 charges, including the unchanged earlier 28. The shared campaign
+holds two new charges and persistently refuses another launch. Its 29 remaining qualification
+attempts and the other lane allowances stay held. No retry, mark revision, batch acceptance or
+new campaign was used to turn this failure into a pass. A fresh qualification needs a separately
+reviewed continuation that preserves every charge and failure; the remaining 29 cannot fund
+another complete three-pass, ten-case run.
+
 ### Explicit reviewed exports, 2026-10-06
 
 An owner-reviewed Claude Code export can be frozen outside the canonical projects directory
