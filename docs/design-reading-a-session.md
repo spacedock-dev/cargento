@@ -1821,6 +1821,17 @@ protocol questions and approve the exact captures and destination. Agents cannot
 testimony. Historical delegated-work attribution remains unknown where original structural
 parent links are absent; a new capture cannot establish them retroactively.
 
+### Amended 2026-10-06 (owner): the cold-study requirement is retired
+
+The owner removed the requirement for two uncoached participants and instructed that no cold
+study will be run. DRC-4722 is cancelled and is no longer a prerequisite for final milestone
+acceptance. This supersedes only the cold-study requirement in the preceding amendment. It
+supplies no human usability verdict or producer accuracy qualification. Agent-operated
+application acceptance remains allowed; the retained application, privacy and accuracy checks
+still need their own evidence. Optional exploratory feedback retains participant consent,
+capture review and redaction requirements. The former protocol and prior run records remain
+available as historical evidence.
+
 ### Amended 2026-10-05 (owner): the newest recorded final reply is read whole
 
 The owner asked that the agent's final answer reach the reading whole where it fits, because its

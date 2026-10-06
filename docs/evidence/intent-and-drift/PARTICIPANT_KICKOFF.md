@@ -1,6 +1,6 @@
 # Participant kickoff and consent
 
-This note is for a developer who has not built or seen the Intent and drift panel. It gives no instructions for using the panel. Please do not open the observer's protocol or the exploratory sidecar prompt before your walk. If you have already read either or watched the panel, tell the observer; your feedback is still useful, but the run will be labeled exploratory.
+This note is for a developer choosing to offer exploratory feedback on the Intent and drift panel. Familiarity with the panel is allowed; the report identifies human-operated and agent-operated steps. The owner removed the cold-study requirement on 2026-10-06. Participation is optional, and this feedback does not qualify the reading producer's accuracy.
 
 Cargento will run locally and scan available session stores for its supported coding agents, so its local dashboard may display titles and prompts from more than the session you choose. Your observer agent will shortlist only the three freshest Claude Code sessions in this project, and after you choose one, it may read that session to support the study. The agent's own model provider may receive the selected material it reads. If the dashboard offers a separate model reading, its browser disclosure will name the provider and you decide whether to allow it. The observer will not make that choice for you.
 

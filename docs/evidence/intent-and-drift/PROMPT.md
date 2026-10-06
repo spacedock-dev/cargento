@@ -1,6 +1,6 @@
 # Exploratory sidecar prompt for a teammate's agent
 
-This prompt is safe to read and share, but it names the panel's controls. A developer who reads it or watches this pass is not one of the two cold participants. Use [the separate cold-study path](README.md) for them.
+This prompt supports optional exploratory feedback and names the panel's controls. The owner removed the cold-study requirement on 2026-10-06; no cold participants need to be reserved. [The evidence guide](README.md) describes the current scope.
 
 ---
 

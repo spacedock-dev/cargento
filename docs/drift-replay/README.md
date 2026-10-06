@@ -215,10 +215,11 @@ failures remain charged, while a source refusal before any reservation is not a 
 failure. This helper activates no authority and admits no unsupported source or blind mark.
 The live launcher refuses alternate unmetered Codex execution during the Claude study.
 
-Unknown future live requests remain explicitly held and unbound. Neither an agent walkthrough
-nor this guard satisfies the original cold protocol with two real participants. Complete
-subprocess and outbound attribution is also a separate measurement. No registered campaign,
-qualification grant or measured result is implied by the guard's source checks.
+Unknown future live requests remain explicitly held and unbound. The owner
+[retired the cold-study requirement](../design-reading-a-session.md#amended-2026-10-06-owner-the-cold-study-requirement-is-retired)
+on 2026-10-06; no cold-study pass is claimed. Complete subprocess and outbound attribution
+remains a separate measurement. No registered campaign, qualification grant or measured
+result is implied by the guard's source checks.
 
 ## Model-free gap studies, 2026-10-05
 
@@ -267,8 +268,10 @@ before the cut, outside the 400,000-byte tail and absent from its 12 listed agen
 person directed the later detour and had not accepted that plan. This is one agent-marked case,
 not a plan detector or evidence that rereading it would improve a verdict. It spent no model call.
 
-No study here replaces the required cold walk with two real participants. Consent and readiness
-remain prerequisites; agent browser checks supply no participant outcome.
+The cold walk with two real participants is no longer required under the owner's
+[2026-10-06 amendment](../design-reading-a-session.md#amended-2026-10-06-owner-the-cold-study-requirement-is-retired).
+Consent and capture review still apply to optional exploratory feedback. Agent browser checks
+supply no human participant outcome or producer accuracy qualification.
 
 ## The order: cases, blind marks, digest, runs, score
 
