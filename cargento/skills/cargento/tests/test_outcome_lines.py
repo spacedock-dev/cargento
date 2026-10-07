@@ -1314,7 +1314,8 @@ class EachLineIsAskedOnItsOwnTest(_ProducerCase):
             with self.subTest(line=k):
                 self.assertIn(f'<outcome_line n="{k}">\n{text}\n</outcome_line>', prompt)
                 self.assertIn(f'"line_{k}": A', prompt)
-        self.assertIn("Answer each line on its own", prompt)
+        self.assertIn("Each clause: own evidence", prompt)
+        self.assertIn("never copy Goal's or another line's verdict.", prompt)
         self.assertNotIn("<expected_output>", prompt)
 
     def test_six_lines_come_back_as_six_criteria_beside_the_goal(self) -> None:

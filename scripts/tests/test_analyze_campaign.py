@@ -118,6 +118,8 @@ class CampaignFixtureIsolation(unittest.TestCase):
             "CLAUSE_CONTINUATION_MANIFEST_PATH",
             "CLAUSE_CONTINUATION_HANDOFF_PATH",
             "CLAUSE_ZERO_RESEAL_PATH",
+            "CLAUSE_ISOLATION_MANIFEST_PATH",
+            "CLAUSE_ISOLATION_HANDOFF_PATH",
         ):
             with self.subTest(published=field), tempfile.TemporaryDirectory() as outside:
                 published = Path(outside) / "published-successor.json"
@@ -150,6 +152,8 @@ class CampaignFixtureIsolation(unittest.TestCase):
             "CLAUSE_CONTINUATION_MANIFEST_PATH",
             "CLAUSE_CONTINUATION_HANDOFF_PATH",
             "CLAUSE_ZERO_RESEAL_PATH",
+            "CLAUSE_ISOLATION_MANIFEST_PATH",
+            "CLAUSE_ISOLATION_HANDOFF_PATH",
         ):
             with self.subTest(published=field), tempfile.TemporaryDirectory() as outside:
                 published = Path(outside) / "published-successor.json"
@@ -245,6 +249,8 @@ class CampaignReservations(unittest.TestCase):
             ("CLAUSE_CONTINUATION_MANIFEST_PATH", self.root / "clause-continuation.json"),
             ("CLAUSE_CONTINUATION_HANDOFF_PATH", self.root / "clause-handoff.json"),
             ("CLAUSE_ZERO_RESEAL_PATH", self.root / "zero-reseal.json"),
+            ("CLAUSE_ISOLATION_MANIFEST_PATH", self.root / "clause-isolation.json"),
+            ("CLAUSE_ISOLATION_HANDOFF_PATH", self.root / "clause-isolation-handoff.json"),
         ):
             patch = mock.patch.object(self.module, key, str(value))
             patch.start()

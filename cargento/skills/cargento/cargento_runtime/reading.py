@@ -2288,16 +2288,20 @@ def _header(
         "Every <int> is an entry number from the list below; never cite a number that "
         "is not listed, and never name an entry any other way.\n"
         + (
-            "Answer each line on its own. Never combine lines, and never let one line's "
-            "answer stand for another's.\n"
+            (
+                "Each clause: own evidence; never copy Goal's or another line's verdict.\n"
+                if scope in (SCOPE_LAST_TURN, SCOPE_MID_FLIGHT)
+                else "Answer each line on its own. Never combine lines, and never let one line's "
+                "answer stand for another's.\n"
+            )
             if line_texts
             else ""
         )
         + EVIDENCE_RULES
         + (
-            "Read work so far; per clause: shown departure stays in recovery "
+            "Read work so far; per whole clause: shown departure stays in recovery "
             "(e.g. unkept stalled promise); else unknown scope/conditions: unverifiable; "
-            "else pending: not_reached. Repairs apart.\n"
+            "else pending: not_reached. Supported repair may be consistent.\n"
             if scope in (SCOPE_LAST_TURN, SCOPE_MID_FLIGHT)
             else "Read through the session end.\n"
         )

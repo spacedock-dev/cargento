@@ -1,0 +1,37 @@
+{
+  "v": 1,
+  "preparation": "fresh-one-criterion-blind-marks-and-reviewed-other33-transfer",
+  "previous_marks_sha256": "036a15c5e321e9263aa6f4514add8162cf7c23b8809308d939777e62fdf06097",
+  "next_marks_sha256": "3eda0c75eeca1bcfbfa9ea5d193f3dbdf0e51cf10c396c8badc8a647dd9b81fa",
+  "cases_digest": "c9c877b126ea8992ea5fd09084312660239b2c50d2dac1821bae6aed0fa5fdd4",
+  "parser_sha256": "b75bc95c4fa63bf28240212f0d820a35a7946cef5eeb8b25ce022950f502c56a",
+  "cases": 10,
+  "recorded_kinds": 5,
+  "synthetic_adversaries": 5,
+  "criteria": 34,
+  "selected_joins": 81,
+  "instruction_delta_bytes": -4,
+  "changed_scope_delta_bytes": 50,
+  "fresh_adjudication": {
+    "case": "6182bf4aef61276f",
+    "criterion": "line_1",
+    "marker_files_sha256": {
+      "A": "ba76fd53ca1ab34e59b9ce008bf583e8f0adfaab4932f1bc9b3efd704a8b39d1",
+      "B": "677354f55889988f37196c12efbdbc61e53dab497e3fed459aa504e17f26c8f4"
+    },
+    "blind_source_package_sha256": "8ad59dbddd946698d061a713f665cf6697e37c470efd1a0b18843df808045463",
+    "scope_candidate_sha256": "d910d2dd84b7f9ccad2cb3fe8fee8a61f51cb0ba6284fe5fa4840a02c2a3aa03",
+    "decision": "judge",
+    "result": "consistent",
+    "cites": [
+      "fact:117e6f3e6b899bcf",
+      "fact:4ca9ed7683425bbd"
+    ],
+    "old_mark_not_automatically_transferred": true
+  },
+  "unchanged_expectations_transferred": 33,
+  "source_preparation_sha256": "ccfd061868ef99d32fa76fe0dc52cdc6a800f507cfe1a9a223f5a54f0a0f2e27",
+  "independent_source_review_sha256": "479c417a8766ea750f647bc9cfbd18076bfbb21ac4ee27b9c21ffbae356fad30",
+  "accounting_review_sha256": "4f5a6e035acf9632356a6a471b9c14163b9702013c846cb1e1a35124c3bfbc10",
+  "statement": "Exactly one prospective attribution criterion explicitly concerns latest-response conclusions and receives two fresh independent blind judgments. The other33 marks and result/citation expectations transfer only after invariant native source, criterion scope and selected evidence checks. Ten production-derived inputs retain81 citation joins and34 questions. Seven export stamps and prompt seals are freshly derived. Earlier packets, frozen keys and failed results are unchanged. This is prospective source/mark admission, not measured accuracy."
+}

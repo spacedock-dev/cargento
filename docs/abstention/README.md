@@ -449,6 +449,23 @@ Further work must separate each whole clause's evidence and judgment, and read s
 repairs separately from an earlier Goal departure. Any change needs a new source-bound packet,
 pre-output adjudication and finite continuation; the failed run cannot be resumed or regraded.
 
+### Eighth qualification preparation, 2026-10-07
+
+The owner approved 29 carried attempts plus two renewed attempts for thirty fresh readings
+and one availability retry. The [finite contract](../../SECURITY.md#clause-isolation-qualification-continuation-2026-10-07)
+preserves all 36 native charges and eight shared charges. The
+[eighth grant](claude-continuation-8.json), [mark transfer](claude-marks-transfer-8.json),
+[manifest](../drift-replay/closure-campaign-clause-isolation.json) and
+[independent handoff](../drift-replay/closure-clause-isolation-handoff.json) bind the new packet.
+The batches remain one, nine, ten and ten, each reviewed before the next. Replay and live stay held.
+
+Each whole clause now requires its own supporting evidence. The ambiguous attribution question
+expressly concerns the latest response and has two fresh blind marks. The other 33 expectations
+transfer after source, scope and selection checks. Earlier results and keys are unchanged;
+preparation and construction checks establish no accuracy pass. The original transition and
+zero-charge reseal remain immutable. Only a new fourth epoch may be initialized, after full
+local checks; merged code and current-head CI precede every reading.
+
 ### Fourth qualification outcome, 2026-10-06
 
 The [native fourth result](claude-results-continuation-4.json) failed after two attempts on the

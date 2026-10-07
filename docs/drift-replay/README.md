@@ -696,3 +696,13 @@ possibly in the part not read. Claims remain independent. Long and short fixture
 truncated tail from a complete file after a silence; a changing file is unknown. Coverage changes
 no model prompt or verdict and spends no model calls. The owner marks and new-prompt checks
 remain pending.
+
+The owner approved one further qualification continuation after the seventh result: 29 carried
+attempts plus two renewed attempts, with no refund of the eight shared or 36 native charges.
+The [clause-isolation contract](../../SECURITY.md#clause-isolation-qualification-continuation-2026-10-07),
+[fixed manifest](closure-campaign-clause-isolation.json) and
+[independent handoff](closure-clause-isolation-handoff.json) keep replay's 190 and live's 18
+attempts held. Thirty fresh readings and one availability retry fit the new 31-attempt
+allowance. The new cumulative ceilings are 247 shared and 67 native charges; older keys retain
+their ceilings. Fresh scope adjudication and checked transfer bind expectations before output.
+This preparation does not qualify the producer or resume the stopped seventh run.
