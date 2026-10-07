@@ -3,8 +3,10 @@ from __future__ import annotations
 import dataclasses
 import hashlib
 import http.client
+import importlib.util
 import io
 import json
+import os
 import shutil
 import socket
 import subprocess
@@ -227,6 +229,65 @@ class ReactFrontendTest(unittest.TestCase):
 
 class InstalledFrontendTest(unittest.TestCase):
     @staticmethod
+    def child_environment(root: Path) -> dict[str, str]:
+        env = {
+            "PATH": str(root / "no-node"),
+            "HOME": str(root / "home"),
+            "USERPROFILE": str(root / "home"),
+            "CARGENTO_HOME": str(root / "state"),
+            "PYTHONNOUSERSITE": "1",
+        }
+        if os.name == "nt":
+            env.update(
+                {
+                    key: value
+                    for key, value in os.environ.items()
+                    if key.upper() in {"SYSTEMROOT", "WINDIR"}
+                }
+            )
+        return env
+
+    def test_windows_loader_environment_survives_without_host_data_or_executables(self) -> None:
+        helper = Path(__file__).resolve().parents[4] / "frontend/test/installed_backend.py"
+        spec = importlib.util.spec_from_file_location("installed_backend_environment", helper)
+        assert spec is not None and spec.loader is not None
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        self.assertTrue(
+            callable(getattr(module, "isolated_environment", None)),
+            "OS loader environment isolation is missing",
+        )
+        scratch = Path("/owned-fixture")
+        hostile = {
+            "SystemRoot": "C:\\Windows",
+            "windir": "C:\\Windows",
+            "HOME": "/real-user",
+            "USERPROFILE": "/real-user",
+            "PATH": "/real-node-bin",
+            "APPDATA": "/real-agent-data",
+            "LOCALAPPDATA": "/real-agent-data",
+            "CODEX_HOME": "/real-codex",
+            "CLAUDE_CONFIG_DIR": "/real-claude",
+            "PI_CODING_AGENT_DIR": "/real-pi",
+            "XDG_DATA_HOME": "/real-data",
+            "OPENAI_API_KEY": "synthetic-secret",
+            "NODE_AUTH_TOKEN": "synthetic-secret",
+        }
+        expected = {
+            "HOME": str(scratch),
+            "USERPROFILE": str(scratch),
+            "CARGENTO_HOME": str(scratch / "state"),
+            "PATH": str(scratch / "no-executables"),
+            "SYSTEMROOT": "C:\\Windows",
+            "WINDIR": "C:\\Windows",
+        }
+        self.assertEqual(expected, module.isolated_environment(scratch, hostile, os_name="nt"))
+        self.assertEqual(
+            {k: v for k, v in expected.items() if k not in {"SYSTEMROOT", "WINDIR"}},
+            module.isolated_environment(scratch, hostile, os_name="posix"),
+        )
+
+    @staticmethod
     def close_owned_process(proc: subprocess.Popen[str]) -> None:
         if proc.poll() is None:
             proc.kill()
@@ -276,13 +337,7 @@ class InstalledFrontendTest(unittest.TestCase):
             shutil.copytree(
                 repo / "cargento", plugin, ignore=shutil.ignore_patterns("tests", "__pycache__")
             )
-            env = {
-                "PATH": str(root / "no-node"),
-                "HOME": str(root / "home"),
-                "USERPROFILE": str(root / "home"),
-                "CARGENTO_HOME": str(root / "state"),
-                "PYTHONNOUSERSITE": "1",
-            }
+            env = self.child_environment(root)
             launcher = plugin / "skills/cargento/server.py"
             web = plugin / "skills/cargento/cargento_runtime/web"
             # Hold the candidate port ourselves: a startup that reaches bind
@@ -342,12 +397,7 @@ class InstalledFrontendTest(unittest.TestCase):
             shutil.copytree(
                 repo / "cargento", plugin, ignore=shutil.ignore_patterns("tests", "__pycache__")
             )
-            env = {
-                "PATH": str(root / "no-node"),
-                "HOME": str(root / "home"),
-                "USERPROFILE": str(root / "home"),
-                "PYTHONNOUSERSITE": "1",
-            }
+            env = self.child_environment(root)
             for mode in ("legacy", "react"):
                 with self.subTest(mode=mode):
                     focus_args = (

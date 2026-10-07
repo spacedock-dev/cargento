@@ -113,6 +113,23 @@ class SyntheticTerminal:
             self.renewal.join(2)
 
 
+def isolated_environment(scratch: Path, environ: dict[str, str], *, os_name: str) -> dict[str, str]:
+    """Keep only Windows loader inputs and this smoke's owned locations."""
+    result = {
+        "HOME": str(scratch),
+        "USERPROFILE": str(scratch),
+        "CARGENTO_HOME": str(scratch / "state"),
+        "PATH": str(scratch / "no-executables"),
+    }
+    if os_name == "nt":
+        # Winsock/side-by-side loading needs the actual OS directory. This is
+        # not a harness root or executable search path; do not guess C:\\Windows.
+        for name, value in environ.items():
+            if name.upper() in {"SYSTEMROOT", "WINDIR"}:
+                result[name.upper()] = value
+    return result
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--plugin-root", type=Path, required=True)
@@ -161,15 +178,9 @@ def main() -> int:
         scratch = Path(temporary)
         # The child environment and explicit runtime config independently refuse
         # host stores. No Node executable is visible to runtime subprocesses.
+        isolated = isolated_environment(scratch, dict(os.environ), os_name=os.name)
         os.environ.clear()
-        os.environ.update(
-            {
-                "HOME": str(scratch),
-                "USERPROFILE": str(scratch),
-                "CARGENTO_HOME": str(scratch / "state"),
-                "PATH": str(scratch / "no-executables"),
-            }
-        )
+        os.environ.update(isolated)
         config = modules["config"].build_runtime_config(
             environ=dict(os.environ),
             platform_name=sys.platform,
