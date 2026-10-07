@@ -4,6 +4,8 @@ Only salted slots, request digests and closed statuses reach this account ledger
 The fixed repository manifest admits 190/31/18 attempts, never 239+31+18.
 A reviewed successor preserves the stopped original two calls and admits a fresh
 31 qualification attempts, with 190 replay and 18 live held: 241 cumulatively.
+One finite login recovery preserves those four spent calls and admits 31
+available qualification attempts (29 carried and two renewed): 243 cumulatively.
 Every charge has an immutable receipt; missing state cannot refund its attempts.
 This is an operator evaluation guard, not provider authentication or a token cap.
 """
@@ -27,6 +29,10 @@ import abstention_ledger as authority
 MANIFEST_PATH = str(Path(__file__).resolve().parents[1] / "docs/drift-replay/closure-campaign.json")
 SUCCESSOR_MANIFEST_PATH = str(Path(MANIFEST_PATH).with_name("closure-campaign-successor.json"))
 SUCCESSOR_HANDOFF_PATH = str(Path(MANIFEST_PATH).with_name("closure-successor-handoff.json"))
+LOGIN_RESUME_MANIFEST_PATH = str(
+    Path(MANIFEST_PATH).with_name("closure-campaign-login-resume.json")
+)
+LOGIN_RESUME_HANDOFF_PATH = str(Path(MANIFEST_PATH).with_name("closure-login-resume-handoff.json"))
 LEDGER_PATH = authority.canonical_path(".cargento", "analyze-closure-spend.json")
 REPLAY_PATH = authority.canonical_path(".cargento", "drift-replay", "spend.json")
 QUALIFICATION_PATH = authority.LEDGER_PATH
@@ -52,6 +58,12 @@ class AwaitingReviewError(authority.LedgerError):
 
 def active_campaign() -> Campaign | None:
     """An existing fixed manifest or account receipt cannot be bypassed by removing one."""
+    if (
+        os.path.lexists(LOGIN_RESUME_MANIFEST_PATH)
+        or os.path.lexists(LOGIN_RESUME_HANDOFF_PATH)
+        or (LEDGER_PATH and os.path.lexists(LEDGER_PATH + ".epochs/2"))
+    ):
+        return LoginResumeCampaign()
     if (
         os.path.lexists(SUCCESSOR_MANIFEST_PATH)
         or os.path.lexists(SUCCESSOR_HANDOFF_PATH)
@@ -781,6 +793,8 @@ class Campaign:
 class SuccessorCampaign(Campaign):
     """One reviewed fresh epoch; the stopped original remains independently inspectable."""
 
+    epoch_id = 1
+
     def __init__(self) -> None:
         self.parent = Campaign()
         self.path = self.parent.path
@@ -835,18 +849,25 @@ class SuccessorCampaign(Campaign):
         parent = self.parent._state()  # noqa: SLF001 - validate the original receipts unchanged
         projection = {k: v for k, v in parent.items() if k != "epochs"}
         native = authority.read(QUALIFICATION_PATH)["calls"]
-        grant = authority.continuation()
+        active = authority.continuation()
+        grant = authority.continuation(generation=5)
+        resumed = bool(
+            active and active["generation"] == 6 and active.get("login_resume_allowance")
+        )
+        bounded_native = native[:32] if resumed else native
         if (
             not grant
             or grant["generation"] != 5
             or grant["phase"] != "sealed"
             or not grant.get("successor_allowance")
             or len(native) < 30
-            or len(native) > 61
+            or len(native) > (63 if resumed else 61)
             or any(c["status"] == "charged" for c in native[:30])
             or not authority.begins_with(QUALIFICATION_PATH, grant["previous"]["ledger_chain"])
             or not authority.follows(
-                native, grant, (grant["next"]["marks_digest"], grant["next"]["inputs_digest"])
+                bounded_native,
+                grant,
+                (grant["next"]["marks_digest"], grant["next"]["inputs_digest"]),
             )
             or len(parent["calls"]) != 2
             or parent.get("stop") not in (None, "semantic-failed")
@@ -958,22 +979,27 @@ class SuccessorCampaign(Campaign):
 
     def _epoch(self, parent: dict[str, Any]) -> dict[str, Any]:
         epochs = parent.get("epochs")
+        active = authority.continuation()
+        resumed = bool(
+            active and active["generation"] == 6 and active.get("login_resume_allowance")
+        )
         if (
             not isinstance(epochs, list)
-            or len(epochs) != 1
-            or not isinstance(epochs[0], dict)
-            or set(epochs[0]) != {"id", "handoff_digest", "state"}
-            or type(epochs[0]["id"]) is not int
-            or epochs[0]["id"] != 1
-            or epochs[0]["handoff_digest"] != self.handoff_digest
-            or not isinstance(epochs[0]["state"], dict)
+            or len(epochs) not in ((1, 2) if resumed else (1,))
+            or len(epochs) < self.epoch_id
+            or not isinstance(epochs[self.epoch_id - 1], dict)
+            or set(epochs[self.epoch_id - 1]) != {"id", "handoff_digest", "state"}
+            or type(epochs[self.epoch_id - 1]["id"]) is not int
+            or epochs[self.epoch_id - 1]["id"] != self.epoch_id
+            or epochs[self.epoch_id - 1]["handoff_digest"] != self.handoff_digest
+            or not isinstance(epochs[self.epoch_id - 1]["state"], dict)
             or self.epoch_dir.parent.is_symlink()
             or self.epoch_dir.is_symlink()
-            or not self._bounded_entries(self.epoch_dir.parent, {"1"})
+            or not self._bounded_entries(self.epoch_dir.parent, {"1", "2"} if resumed else {"1"})
             or not self._bounded_entries(self.epoch_dir, {"TRANSITION.json", "reservations"})
         ):
             raise authority.LedgerError("the successor epoch or its receipts changed")
-        epoch = epochs[0]
+        epoch = epochs[self.epoch_id - 1]
         state = epoch["state"]
         if set(state) - {
             "v",
@@ -992,12 +1018,12 @@ class SuccessorCampaign(Campaign):
             "genesis_nonce": state.get("genesis_nonce"),
         }
         if _read(str(self.epoch_dir / "TRANSITION.json"), "successor transition") != {
-            "id": 1,
+            "id": self.epoch_id,
             "handoff_digest": self.handoff_digest,
             "state": genesis,
         }:
             raise authority.LedgerError("the successor transition changed")
-        return epoch
+        return cast("dict[str, Any]", epoch)
 
     @staticmethod
     def _bounded_entries(folder: Path, allowed: set[str]) -> bool:
@@ -1023,3 +1049,165 @@ class SuccessorCampaign(Campaign):
         parent = self._parent_state()
         self._epoch(parent)["state"] = body
         authority._write(self.path, parent)  # noqa: SLF001 - persist only the admitted epoch under the root lock
+
+
+def login_resume_parent_binding(previous: SuccessorCampaign) -> dict[str, Any]:
+    """Derive the review's ancestor proof from validated state, never caller counts."""
+    state = previous._state()  # noqa: SLF001 - preserve the settled predecessor's validated receipts
+    root = previous.parent._state()  # noqa: SLF001 - independently validated original campaign
+    native = authority.read(QUALIFICATION_PATH)["calls"][:32]
+    return {
+        "manifest_digest": previous.binding,
+        "activation_anchor": previous.manifest["activation_anchor"],
+        "handoff_digest": previous.handoff_digest,
+        "state_digest": authority.digest(state),
+        "original_digest": authority.digest({k: v for k, v in root.items() if k != "epochs"}),
+        "calls": 2,
+        "calls_digest": authority.digest(state["calls"]),
+        "stop_proof": {
+            "kind": "two-consecutive-unusable",
+            "settlements_digest": authority.digest(
+                [
+                    _read(
+                        str(previous.receipts / (c["id"] + "-SETTLED.json")),
+                        "prior unusable classification",
+                    )
+                    for c in state["calls"]
+                ]
+            ),
+        },
+        "failed_result_digest": authority.digest(
+            _read(authority.result_path(5), "blocked fifth result")
+        ),
+        "native_calls": 32,
+        "native_calls_digest": authority.digest(native),
+        "native_chain": {"first": native[0]["id"], "calls": 32, "head": authority.chain(native)},
+    }
+
+
+class LoginResumeCampaign(SuccessorCampaign):
+    """The one reviewed login recovery carries 29 held calls forward and adds two."""
+
+    epoch_id = 2
+
+    def __init__(self) -> None:
+        self.parent = SuccessorCampaign()
+        self.path = self.parent.path
+        self.manifest, self.binding = self._current_manifest()
+        self.epoch_dir = Path(self.path + ".epochs") / "2"
+        self.receipts = self.epoch_dir / "reservations"
+        self.handoff = _read(LOGIN_RESUME_HANDOFF_PATH, "login recovery handoff")
+        if (
+            not isinstance(self.handoff, dict)
+            or set(self.handoff)
+            != {"v", "verdict", "prepared_by", "reviewed_by", "parent", "successor"}
+            or type(self.handoff["v"]) is not int
+            or self.handoff["v"] != 1
+            or self.handoff["verdict"] != "GO"
+            or any(
+                not isinstance(self.handoff[k], str) or not self.handoff[k].strip()
+                for k in ("prepared_by", "reviewed_by")
+            )
+            or self.handoff["prepared_by"] == self.handoff["reviewed_by"]
+        ):
+            raise authority.LedgerError("login recovery needs an independent bound handoff")
+        self.handoff_digest = authority.digest(self.handoff)
+        self._parent_state()
+
+    def _current_manifest(self) -> tuple[dict[str, Any], str]:
+        body, key = _manifest(LOGIN_RESUME_MANIFEST_PATH)
+        if body["order"] != ["qualification", "replay", "live"]:
+            raise authority.LedgerError(
+                "login recovery admits only qualification; later lanes stay held"
+            )
+        return body, key
+
+    def _parent_state(self) -> dict[str, Any]:
+        if (
+            self._current_manifest() != (self.manifest, self.binding)
+            or authority.digest(_read(LOGIN_RESUME_HANDOFF_PATH, "login recovery handoff"))
+            != self.handoff_digest
+        ):
+            raise authority.LedgerError("the login recovery manifest or handoff changed")
+        previous_campaign = cast("SuccessorCampaign", self.parent)
+        previous = previous_campaign._state()  # noqa: SLF001 - validate every receipt of the stopped epoch
+        root = previous_campaign.parent._state()  # noqa: SLF001 - append only to the original canonical ledger
+        native = authority.read(QUALIFICATION_PATH)["calls"]
+        grant = authority.continuation()
+        calls = previous["calls"]
+        if (
+            not grant
+            or grant["generation"] != 6
+            or grant["phase"] != "sealed"
+            or not grant.get("login_resume_allowance")
+            or len(calls) != 2
+            or any(c["status"] != "unusable" for c in calls)
+            or calls[0]["slot"] != calls[1]["slot"]
+            or calls[0]["retry"]
+            or not calls[1]["retry"]
+            or previous.get("stop") is not None
+            or previous.get("accepted")
+            or previous.get("accepted_batches")
+            or not 32 <= len(native) <= 63
+            or any(c["status"] == "charged" for c in native[:32])
+            or not authority.begins_with(QUALIFICATION_PATH, grant["previous"]["ledger_chain"])
+            or not authority.follows(
+                native, grant, (grant["next"]["marks_digest"], grant["next"]["inputs_digest"])
+            )
+            or self.manifest["historical"] != self.parent.manifest["historical"]
+            or any(
+                n.get("campaign_charge") != c["id"]
+                or c["slot"] != f"{n['case']}:r{n.get('repeat')}"
+                or n.get("retry") is not c["retry"]
+                or n["status"] not in ("failed", "unavailable")
+                for n, c in zip(native[30:32], calls, strict=True)
+            )
+        ):
+            raise authority.LedgerError(
+                "login recovery lost the stopped second epoch or native 32-call prefix"
+            )
+        expected = {
+            "manifest_digest": self.binding,
+            "grant_digest": authority.digest(_read(authority.CONTINUATION_PATHS[5], "sixth grant")),
+            "evidence": self.manifest["evidence"]["qualification"],
+            "cases_digest": grant["next"]["cases_digest"],
+            "inputs_digest": grant["next"]["inputs_digest"],
+            "model_binding": grant["login_resume_allowance"]["model_binding"],
+            "additional_calls": 31,
+            "carried_calls": 29,
+            "renewed_calls": 2,
+            "shared_total": 243,
+            "native_total": 63,
+        }
+        if (
+            self.handoff["parent"] != login_resume_parent_binding(previous_campaign)
+            or self.handoff["successor"] != expected
+            or grant["login_resume_allowance"]["campaign_binding"] != self.binding
+        ):
+            raise authority.LedgerError("the reviewed login recovery ancestry or allowance changed")
+        return root
+
+    def initialize_successor(self) -> str:
+        """Append exactly epoch two once, preserving epoch one and its failed calls."""
+        with authority.locked(self.path):
+            root = self._parent_state()
+            if (
+                self.manifest["phase"] != "prepared"
+                or self.manifest.get("activation_anchor")
+                or len(root.get("epochs", [])) != 1
+                or os.path.lexists(self.epoch_dir)
+                or len(authority.read(QUALIFICATION_PATH)["calls"]) != 32
+            ):
+                raise authority.LedgerError("login recovery cannot be initialized again")
+            state = {
+                "v": 1,
+                "manifest_digest": self.binding,
+                "calls": [],
+                "genesis_nonce": uuid.uuid4().hex,
+            }
+            epoch = {"id": 2, "handoff_digest": self.handoff_digest, "state": state}
+            self.epoch_dir.mkdir(mode=0o700)
+            self._transition(epoch)
+            root["epochs"].append(epoch)
+            authority._write(self.path, root)  # noqa: SLF001 - append under the existing canonical lock
+            return authority.digest(state)

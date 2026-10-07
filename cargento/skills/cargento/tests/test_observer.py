@@ -4,18 +4,20 @@ from __future__ import annotations
 
 import dataclasses
 import http.client
+import inspect
 import json
 import os
 import shutil
 import subprocess
 import tempfile
 import threading
+import time
 import unittest
 from pathlib import Path
 from typing import Any
 from unittest import mock
 
-from cargento_runtime import cli, observer, project_context, records
+from cargento_runtime import cli, observer, project_context, records, supervise
 from cargento_runtime import io as runtime_io
 
 from .support import (
@@ -2589,3 +2591,233 @@ class SupervisedModelCallTest(unittest.TestCase):
         while process_alive(grandchild) and time.monotonic() < deadline:
             time.sleep(0.05)
         self.assertFalse(process_alive(grandchild), "the CLI's grandchild outlived the timeout")
+
+
+class ClaudeDiagnosticTest(unittest.TestCase):
+    """Closed failure receipts without retaining a CLI error or private answer."""
+
+    def _run(
+        self,
+        *,
+        stdout: bytes = b"",
+        stderr: bytes = b"",
+        code: int = 1,
+        raises: BaseException | None = None,
+    ) -> tuple[str, str, dict[str, Any]]:
+        self.assertIn("on_diagnostic", inspect.signature(observer.claude_exec).parameters)
+        events: list[dict[str, Any]] = []
+        with tempfile.TemporaryDirectory() as root:
+            config = dataclasses.replace(make_config(), state_dir=Path(root))
+
+            def runner(command: list[str], **kwargs: Any) -> Any:
+                kwargs["stdout"].write(stdout)
+                kwargs["stderr"].write(stderr)
+                if os.name != "nt":
+                    self.assertEqual(0o600, os.fstat(kwargs["stderr"].fileno()).st_mode & 0o777)
+                if raises is not None:
+                    raise raises
+                return subprocess.CompletedProcess(command, code)
+
+            with mock.patch.object(time, "monotonic", side_effect=[10.0, 10.125]):
+                text, status = observer.claude_exec(
+                    config,
+                    "PRIVATE PROMPT",
+                    output_cap_bytes=32,
+                    runner=runner,
+                    binary_resolver=lambda _name: "/usr/local/bin/claude",
+                    on_diagnostic=events.append,
+                )
+            self.assertEqual(
+                [], list(Path(root).iterdir()), "private output files survived cleanup"
+            )
+        self.assertEqual(1, len(events))
+        self.assertEqual(125, events[0]["elapsed_ms"])
+        encoded = json.dumps(events)
+        for private in ("PRIVATE", "token-secret", "/Users/alice", "@example"):
+            self.assertNotIn(private, encoded)
+        return text, status, events[0]
+
+    def test_login_error_on_stderr_keeps_actual_exit_code_without_private_text(self) -> None:
+        text, status, event = self._run(
+            stderr=b"Not logged in. Please run /login. token-secret /Users/alice alice@example.com",
+            code=7,
+        )
+        self.assertEqual(("", "failed"), (text, status))
+        self.assertEqual(7, event["returncode"])
+        self.assertEqual("login-required", event["reason"])
+        self.assertEqual("stderr", event["reason_source"])
+        self.assertIsNone(event["exception_kind"])
+
+    def test_nonzero_stdout_login_error_is_classified_without_returning_it(self) -> None:
+        text, status, event = self._run(stdout=b"Please run /login. PRIVATE")
+        self.assertEqual(("", "failed"), (text, status))
+        self.assertEqual("login-required", event["reason"])
+        self.assertEqual("stdout", event["reason_source"])
+
+    def test_success_does_not_treat_answer_or_stderr_as_an_error(self) -> None:
+        text, status, event = self._run(
+            stdout=b"answer mentions not logged in", stderr=b"Please run /login PRIVATE", code=0
+        )
+        self.assertEqual(("answer mentions not logged in", "ok"), (text, status))
+        self.assertEqual("none", event["reason"])
+        self.assertEqual("none", event["reason_source"])
+        self.assertEqual(0, event["returncode"])
+
+    def test_classifier_reads_only_a_bounded_prefix(self) -> None:
+        _, _, event = self._run(stderr=b"x" * 8192 + b"Please run /login PRIVATE")
+        self.assertEqual("unknown", event["reason"])
+        self.assertEqual(8192, event["diagnostic_prefix_bytes"])
+
+    def test_timeout_is_distinct_from_nonzero_exit_and_keeps_no_exception_text(self) -> None:
+        _, status, event = self._run(
+            raises=subprocess.TimeoutExpired("PRIVATE", 180, stderr=b"token-secret")
+        )
+        self.assertEqual("failed", status)
+        self.assertEqual("timeout", event["exception_kind"])
+        self.assertIsNone(event["returncode"])
+
+    def test_os_error_is_distinct_and_never_serializes_the_exception(self) -> None:
+        _, status, event = self._run(raises=OSError("token-secret PRIVATE /Users/alice"))
+        self.assertEqual("failed", status)
+        self.assertEqual("os-error", event["exception_kind"])
+        self.assertEqual("unknown", event["reason"])
+
+    def test_error_labels_are_closed_matches_not_copied_cli_messages(self) -> None:
+        for message, reason in (
+            (b"Invalid API key. PRIVATE", "authentication-rejected"),
+            (b"Rate limit exceeded. PRIVATE", "rate-limited"),
+            (b"Unknown model: PRIVATE", "model-unavailable"),
+            (b"Connection failed: ECONNREFUSED PRIVATE", "network-error"),
+            (b"error: unknown option --PRIVATE", "cli-option-error"),
+            (b"unrecognized arbitrary error PRIVATE", "unknown"),
+        ):
+            with self.subTest(reason=reason):
+                _, _, event = self._run(stderr=message)
+                self.assertEqual(reason, event["reason"])
+
+    def test_supervisor_exception_categories_are_closed(self) -> None:
+        for error, status, category in (
+            (supervise.UnstoppedError(123), "unstopped", "unstopped"),
+            (supervise.OversizedError(123), "oversized", "output-limit"),
+            (supervise.ClosedError("PRIVATE"), "failed", "closed"),
+            (subprocess.SubprocessError("PRIVATE"), "failed", "subprocess-error"),
+        ):
+            with self.subTest(category=category):
+                _, actual, event = self._run(raises=error)
+                self.assertEqual(status, actual)
+                self.assertEqual(category, event["exception_kind"])
+                self.assertIsNone(event["returncode"])
+
+    def test_callback_error_aborts_delivery_and_still_removes_private_files(self) -> None:
+        with tempfile.TemporaryDirectory() as root:
+            config = dataclasses.replace(make_config(), state_dir=Path(root))
+            events: list[dict[str, Any]] = []
+
+            def runner(command: list[str], **kwargs: Any) -> Any:
+                kwargs["stdout"].write(b"{}")
+                kwargs["stderr"].write(b"PRIVATE")
+                return subprocess.CompletedProcess(command, 0)
+
+            def sink(event: dict[str, Any]) -> None:
+                events.append(event)
+                raise OSError("private receipt write failed")
+
+            with self.assertRaisesRegex(OSError, "receipt write failed"):
+                observer.claude_exec(
+                    config,
+                    "PRIVATE",
+                    output_cap_bytes=32,
+                    runner=runner,
+                    binary_resolver=lambda _name: "/usr/local/bin/claude",
+                    on_diagnostic=sink,
+                )
+            self.assertEqual("ok", events[0]["status"])
+            self.assertEqual([], list(Path(root).iterdir()))
+
+    @unittest.skipIf(
+        os.name == "nt", "POSIX executable fixture; Windows supervision tested separately"
+    )
+    def test_real_supervisor_stops_stderr_without_changing_the_stdout_stream(self) -> None:
+        with tempfile.TemporaryDirectory() as root:
+            base = Path(root)
+            binary = base / "local-error-fixture"
+            binary.write_text(
+                "#!/usr/bin/env python3\nimport os\nos.write(2, bytes([120]) * 8192)\n"
+            )
+            binary.chmod(0o700)
+            state = base / "state"
+            config = dataclasses.replace(make_config(), state_dir=state)
+            events: list[dict[str, Any]] = []
+            with mock.patch.object(observer, "OUTPUT_FILE_LIMIT_BYTES", 4096):
+                text, status = observer.claude_exec(
+                    config,
+                    "PRIVATE",
+                    output_cap_bytes=32,
+                    binary_resolver=lambda _name: str(binary),
+                    on_diagnostic=events.append,
+                )
+            self.assertEqual(("", "oversized"), (text, status))
+            self.assertEqual("output-limit", events[0]["exception_kind"])
+            self.assertEqual([], list(state.iterdir()))
+
+    def test_local_output_read_failure_does_not_classify_successful_answer_as_cli_error(
+        self,
+    ) -> None:
+        read = runtime_io.read_prefix_bytes
+
+        def fail_answer_read(path: str, *, max_bytes: int) -> bytes:
+            if max_bytes == 32:
+                raise OSError("PRIVATE")
+            return read(path, max_bytes=max_bytes)
+
+        with mock.patch.object(runtime_io, "read_prefix_bytes", side_effect=fail_answer_read):
+            _, status, event = self._run(stdout=b"Please run /login PRIVATE", code=0)
+        self.assertEqual("failed", status)
+        self.assertEqual("os-error", event["exception_kind"])
+        self.assertEqual("unknown", event["reason"])
+
+    def test_interrupted_prepared_call_still_removes_both_private_streams(self) -> None:
+        with tempfile.TemporaryDirectory() as root:
+            config = dataclasses.replace(make_config(), state_dir=Path(root))
+            events: list[dict[str, Any]] = []
+            with (
+                self.assertRaises(KeyboardInterrupt),
+                observer.prepare_claude_exec(
+                    config,
+                    on_diagnostic=events.append,
+                    binary_resolver=lambda _name: "/usr/local/bin/claude",
+                ) as prepared,
+            ):
+                paths = [prepared.output_path, prepared.error_path, prepared.workdir]
+                raise KeyboardInterrupt
+            self.assertEqual([], events)
+            self.assertTrue(all(not Path(path).exists() for path in paths))
+
+    def test_stderr_allocation_failure_never_starts_the_runner(self) -> None:
+        with tempfile.TemporaryDirectory() as root:
+            config = dataclasses.replace(make_config(), state_dir=Path(root))
+            runner = mock.Mock()
+            real_mkstemp = tempfile.mkstemp
+            calls = 0
+
+            def allocator(**kwargs: Any) -> tuple[int, str]:
+                nonlocal calls
+                calls += 1
+                if calls == 2:
+                    raise OSError("PRIVATE")
+                return real_mkstemp(**kwargs)
+
+            with mock.patch.object(tempfile, "mkstemp", side_effect=allocator):
+                self.assertEqual(
+                    ("", "failed"),
+                    observer.claude_exec(
+                        config,
+                        "PRIVATE",
+                        output_cap_bytes=32,
+                        runner=runner,
+                        on_diagnostic=lambda _event: None,
+                        binary_resolver=lambda _name: "/usr/local/bin/claude",
+                    ),
+                )
+            runner.assert_not_called()
+            self.assertEqual([], list(Path(root).iterdir()))

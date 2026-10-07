@@ -1,0 +1,19 @@
+{
+  "v": 1,
+  "method": "unchanged-input-transfer-of-pre-output-blind-agent-marks",
+  "previous_cases_digest": "e2ef09ff065147f534002088c9bc5bb69d8da23ca869c6d1598fc5e8c77be94d",
+  "new_cases_digest": "169648838a8334666bb90867ff618e3aab31b0781608b660101b32ee91c7eea6",
+  "previous_marks_digest": "a70e0ad3f4464f9a849041d19933d7352d283eb247f7a33bd1b17a284e71ed9d",
+  "new_marks_digest": "c57e889c6813ff940f5fd25142fa324dadec08d5c63ba0225c976d968d962cdf",
+  "unchanged_mark_rows_digest": "3d2c79d8cf26919170380b4a4dd6250785c636b7079ec2d28c932b14c678e7dd",
+  "unchanged_rubric_digest": "7f0dac089690e860e1153b764b5b1b4a2195ebd4b9c500e7dc652c93c73ab568",
+  "exact_prompt_count": 10,
+  "asked_questions": 34,
+  "native_selected_citation_joins": 81,
+  "rebound_intake_receipts": 7,
+  "recorded_case_kinds": 5,
+  "synthetic_adversaries": 5,
+  "source_review_digest": "1587fe22d6cf349026fd786b21bc339119eb4320d24595dc0da8427927183d38",
+  "arbiter_review_digest": "3ad5220b2da0b514489fdec18cd012c1c0bb24a5f48fac89655460f4e4b9bae2",
+  "accuracy_result": null
+}

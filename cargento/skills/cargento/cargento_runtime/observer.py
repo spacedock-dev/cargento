@@ -26,6 +26,7 @@ import shutil
 import subprocess
 import tempfile
 import threading
+import time
 from typing import TYPE_CHECKING, Any, Protocol
 
 from . import config as runtime_config
@@ -56,6 +57,7 @@ OBSERVER_READING_TIMEOUT_SEC = 180
 # writes. 128 times the reading's read cap, and never near it on purpose: a
 # reply past the read cap is salvaged as cut, not failed.
 OUTPUT_FILE_LIMIT_BYTES = 1 << 20
+_CLAUDE_DIAGNOSTIC_PREFIX_BYTES = 8192
 OBSERVER_MODEL_MAX_PROMPT_BYTES = 16_384
 _MODEL_FLIGHT_LOCK = threading.Lock()
 _MODEL_IN_FLIGHT: set[tuple[str, str]] = set()
@@ -423,6 +425,7 @@ def claude_exec(
     runner: Any = supervise.run,
     binary_resolver: Any = shutil.which,
     on_spawn: Callable[[supervise.Group], None] | None = None,
+    on_diagnostic: Callable[[dict[str, Any]], None] | None = None,
 ) -> tuple[str, str]:
     """One bounded, non-persistent Claude Code call. Returns the output and a status.
 
@@ -452,7 +455,11 @@ def claude_exec(
     """
     try:
         with prepare_claude_exec(
-            config, runner=runner, binary_resolver=binary_resolver, on_spawn=on_spawn
+            config,
+            runner=runner,
+            binary_resolver=binary_resolver,
+            on_spawn=on_spawn,
+            on_diagnostic=on_diagnostic,
         ) as prepared:
             return prepared(prompt, output_cap_bytes=output_cap_bytes)
     except ClaudePreparationError as error:
@@ -470,7 +477,7 @@ class ClaudePreparationError(Exception):
 class PreparedClaude:
     """A single call whose private files already exist; the context owns cleanup."""
 
-    def __init__(
+    def __init__(  # noqa: PLR0913 - prepared execution handles and optional diagnostic sink
         self,
         binary: str,
         workdir: str,
@@ -479,6 +486,10 @@ class PreparedClaude:
         runner: Any,
         on_spawn: Callable[[supervise.Group], None] | None,
         model: str,
+        *,
+        error_path: str = "",
+        error_output: Any = subprocess.DEVNULL,
+        on_diagnostic: Callable[[dict[str, Any]], None] | None = None,
     ) -> None:
         self.binary = binary
         self.workdir = workdir
@@ -487,37 +498,112 @@ class PreparedClaude:
         self.runner = runner
         self.on_spawn = on_spawn
         self.model = model
+        self.error_path = error_path
+        self.error_output = error_output
+        self.on_diagnostic = on_diagnostic
 
     def __call__(self, prompt: str, *, output_cap_bytes: int) -> tuple[str, str]:
         command = [self.binary, *_claude_reading_argv(self.model)]
+        started = time.monotonic()
+        status = "failed"
+        returncode: int | None = None
+        exception_kind: str | None = None
         try:
+            options = _spawn_hook(self.on_spawn, self.runner, self.output_path)
+            if self.runner is supervise.run and self.error_path:
+                options["output_limits"] = ((self.error_path, OUTPUT_FILE_LIMIT_BYTES),)
             result = self.runner(
                 command,
                 input=prompt,
                 cwd=self.workdir,
                 stdout=self.output,
-                stderr=subprocess.DEVNULL,
+                stderr=self.error_output,
                 env=claude_environment(os.environ),
                 text=True,
                 encoding="utf-8",
                 timeout=OBSERVER_READING_TIMEOUT_SEC,
                 check=False,
-                **_spawn_hook(self.on_spawn, self.runner, self.output_path),
+                **options,
             )
+            returncode = int(result.returncode)
             self.output.flush()
-            if result.returncode != 0:
+            if returncode != 0:
                 return "", "failed"
+            status = "ok"
             return (
                 runtime_io.read_prefix_bytes(self.output_path, max_bytes=output_cap_bytes)
                 .decode("utf-8", "replace")
                 .strip()
             ), "ok"
-        except supervise.UnstoppedError:
-            return "", "unstopped"
-        except supervise.OversizedError:
-            return "", "oversized"
-        except (OSError, subprocess.SubprocessError):
-            return "", "failed"
+        except (OSError, subprocess.SubprocessError) as error:
+            status, exception_kind = _claude_exception_category(error)
+            return "", status
+        finally:
+            if self.on_diagnostic is not None:
+                self.on_diagnostic(self._diagnostic(started, status, returncode, exception_kind))
+
+    def _diagnostic(
+        self, started: float, status: str, returncode: int | None, exception_kind: str | None
+    ) -> dict[str, Any]:
+        elapsed_ms = max(0, round((time.monotonic() - started) * 1000))
+        reason, source = ("none", "none") if status == "ok" else ("unknown", "none")
+        if status == "failed" and returncode is not None and returncode != 0:
+            with contextlib.suppress(OSError, ValueError):
+                self.output.flush()
+                self.error_output.flush()
+            for path, candidate in ((self.error_path, "stderr"), (self.output_path, "stdout")):
+                reason = _claude_failure_reason(path)
+                if reason != "unknown":
+                    source = candidate
+                    break
+        return {
+            "schema": 1,
+            "status": status,
+            "reason": reason,
+            "reason_source": source,
+            "returncode": returncode,
+            "elapsed_ms": elapsed_ms,
+            "exception_kind": exception_kind,
+            "diagnostic_prefix_bytes": _CLAUDE_DIAGNOSTIC_PREFIX_BYTES,
+        }
+
+
+def _claude_exception_category(error: BaseException) -> tuple[str, str]:
+    for exception, status, category in (
+        (supervise.UnstoppedError, "unstopped", "unstopped"),
+        (supervise.OversizedError, "oversized", "output-limit"),
+        (subprocess.TimeoutExpired, "failed", "timeout"),
+        (supervise.ClosedError, "failed", "closed"),
+        (OSError, "failed", "os-error"),
+    ):
+        if isinstance(error, exception):
+            return status, category
+    return "failed", "subprocess-error"
+
+
+def _claude_failure_reason(path: str) -> str:
+    """A closed label from a bounded CLI error prefix, never its original words.
+
+    A text match is a hint reported by the CLI, not proof of remote causality.
+    Only nonzero exits are inspected: successful model answers are untrusted
+    session content and must never turn into a supposed authentication error.
+    """
+    try:
+        prefix = runtime_io.read_prefix_bytes(path, max_bytes=_CLAUDE_DIAGNOSTIC_PREFIX_BYTES)
+    except OSError:
+        return "unknown"
+    lowered = prefix.decode("utf-8", "replace").casefold()
+    for reason, fragments in (
+        ("login-required", ("not logged in", "please run /login", "please log in")),
+        ("authentication-rejected", ("invalid api key", "authentication failed")),
+        ("rate-limited", ("rate limit exceeded", "usage limit reached", "quota exceeded")),
+        ("model-unavailable", ("unknown model", "model not found", "model unavailable")),
+        ("network-error", ("econnrefused", "enotfound", "connection timed out")),
+        ("cli-option-error", ("unknown option", "unrecognized option")),
+    ):
+        if any(fragment in lowered for fragment in fragments):
+            return reason
+    return "unknown"
 
 
 def _claude_reading_argv(model: str) -> list[str]:
@@ -571,6 +657,7 @@ def prepare_claude_exec(
     runner: Any = supervise.run,
     binary_resolver: Any = shutil.which,
     on_spawn: Callable[[supervise.Group], None] | None = None,
+    on_diagnostic: Callable[[dict[str, Any]], None] | None = None,
 ) -> Iterator[PreparedClaude]:
     """Prepare the private cwd and output before qualification spends a call.
 
@@ -582,6 +669,9 @@ def prepare_claude_exec(
     output_path = ""
     descriptor = -1
     output: BinaryIO | None = None
+    error_path = ""
+    error_descriptor = -1
+    error_output: BinaryIO | None = None
     try:
         try:
             selected_model = runtime_config.validate_claude_reading_model(
@@ -602,24 +692,49 @@ def prepare_claude_exec(
                 prefix="reading-claude-", suffix=".txt", dir=config.state_dir
             )
             output = os.fdopen(descriptor, "wb")
+            if on_diagnostic is not None:
+                error_descriptor, error_path = tempfile.mkstemp(
+                    prefix="reading-claude-error-", suffix=".txt", dir=config.state_dir
+                )
+                error_output = os.fdopen(error_descriptor, "wb")
         except (KeyError, OSError) as error:
             raise ClaudePreparationError("failed") from error
-        yield PreparedClaude(binary, workdir, output_path, output, runner, on_spawn, selected_model)
+        yield PreparedClaude(
+            binary,
+            workdir,
+            output_path,
+            output,
+            runner,
+            on_spawn,
+            selected_model,
+            error_path=error_path,
+            error_output=error_output if error_output is not None else subprocess.DEVNULL,
+            on_diagnostic=on_diagnostic,
+        )
     finally:
         # Ownership starts at allocation, before a stream or yielded context
         # exists. Cancellation keeps its exception and cannot strand the cwd.
         try:
-            if output is not None:
-                output.close()
-            elif descriptor >= 0:
-                with contextlib.suppress(OSError):
-                    os.close(descriptor)
+            _cleanup_claude_output(error_output, error_descriptor, error_path)
         finally:
-            if output_path:
-                with contextlib.suppress(OSError):
-                    os.unlink(output_path)
-            if workdir:
-                shutil.rmtree(workdir, ignore_errors=True)
+            try:
+                _cleanup_claude_output(output, descriptor, output_path)
+            finally:
+                if workdir:
+                    shutil.rmtree(workdir, ignore_errors=True)
+
+
+def _cleanup_claude_output(output: BinaryIO | None, descriptor: int, path: str) -> None:
+    try:
+        if output is not None:
+            output.close()
+        elif descriptor >= 0:
+            with contextlib.suppress(OSError):
+                os.close(descriptor)
+    finally:
+        if path:
+            with contextlib.suppress(OSError):
+                os.unlink(path)
 
 
 class CodexGoalModel:

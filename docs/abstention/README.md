@@ -341,7 +341,7 @@ The [fifth result](claude-results-continuation-5.json) is blocked after its open
 one explicit availability retry both returned `model-failed`. Both attempts remain charged.
 Neither produced a parsed answer: all three questions at that opening were withheld in both
 attempts. This supplies no accuracy judgement, and the recorded failure does not identify quota,
-authentication or model availability as its cause. The restricted transport discards stderr.
+authentication or model availability as its cause. The runner used for those attempts discarded stderr.
 
 The two consecutive unusable attempts stop the successor campaign before any later case.
 The fresh allowance has spent two of 31 attempts, with 29 held and the sole retry exhausted.
@@ -349,6 +349,29 @@ The native ledger preserves 32 charges, including its earlier thirty. The origin
 epoch keeps its two charges, and the successor keeps its separate two. No opening batch has been
 accepted; replay and live remain held. Resuming requires a diagnosed transport and separately
 authorized, reviewed continuation authority. No failed attempt or frozen answer key is rewritten.
+
+### Login-repaired qualification continuation, 2026-10-07
+
+The owner reported that Claude Code had been logged out and that sign-in was repaired. They
+approved another bounded qualification using the 29 unused attempts plus two additional
+attempts. The [login recovery contract](../../SECURITY.md#login-repaired-qualification-continuation-2026-10-07)
+preserves all earlier failures and charges. Its 31 available attempts cover thirty registered
+readings and one retry; the opening diagnostic is the first registered reading, not an extra
+call. The native ceiling is 63. Replay and live stay held.
+
+The [sixth grant](claude-continuation-6.json),
+[manifest](../drift-replay/closure-campaign-login-resume.json) and
+[independent handoff](../drift-replay/closure-login-resume-handoff.json) bind the continuation.
+The [mark transfer](claude-marks-transfer-6.json) records ten byte-identical prompts, 34 unchanged
+blind expectations and 81 unchanged citation joins. Seven source receipts rebind only the
+intake-code digest. Both earlier stopped epochs and all source material remain unchanged.
+
+Qualification now retains private execution diagnostics tied to each charged attempt. They
+identify a nonzero exit, timeout or other closed failure category without retaining raw error
+text. A bounded CLI-text match supplies a hint, not a proven cause. These receipts do not
+supply an accuracy verdict. Reusing blind marks requires independently verified identical
+reading material, an explicit transfer binding and fresh source/scorer admission; earlier
+packets and keys remain unchanged.
 
 ### Fourth qualification outcome, 2026-10-06
 

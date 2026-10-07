@@ -243,6 +243,7 @@ class Group:
         self._cancelled = threading.Event()
         # The output file and its bound, and whether the bound was passed.
         self._limit: tuple[str, int] | None = None
+        self._limits: tuple[tuple[str, int], ...] = ()
         self._oversized = False
         self._reap_by: float | None = None
 
@@ -289,7 +290,7 @@ class Group:
             remaining = deadline - time.monotonic()
             if remaining <= 0:
                 return False
-            time.sleep(min(_LIMIT_POLL_SEC if self._limit else 0.02, remaining))
+            time.sleep(min(_LIMIT_POLL_SEC if self._limit or self._limits else 0.02, remaining))
 
     def kill(self) -> bool:
         """Kill the group. Safe from any thread and more than once; False if it failed."""
@@ -317,7 +318,7 @@ class Group:
         return self._cancelled.is_set()
 
     def _poll_step(self) -> float:
-        return _LIMIT_POLL_SEC if self._limit is not None else _CANCEL_POLL_SEC
+        return _LIMIT_POLL_SEC if self._limit is not None or self._limits else _CANCEL_POLL_SEC
 
     def _over_limit(self) -> bool:
         """Whether the output file passed its bound, cancelling the call the first time.
@@ -325,18 +326,19 @@ class Group:
         Through `cancel`, so the kill, the bounded reap and an unconfirmed kill
         are exactly a Cancel's; only the answer the call raises differs.
         """
-        if self._limit is None or self._oversized:
+        if self._oversized:
             return self._oversized
-        path, max_bytes = self._limit
-        try:
-            size = os.stat(path).st_size
-        except OSError:
-            return False
-        if size <= max_bytes:
-            return False
-        self._oversized = True
-        self.cancel()
-        return True
+        limits = ((self._limit,) if self._limit is not None else ()) + self._limits
+        for path, max_bytes in limits:
+            try:
+                size = os.stat(path).st_size
+            except OSError:
+                continue
+            if size > max_bytes:
+                self._oversized = True
+                self.cancel()
+                return True
+        return False
 
     def _kill(self) -> bool:
         if sys.platform == "win32":
@@ -527,6 +529,7 @@ def run(  # noqa: PLR0913 (subprocess.run's keywords, one each)
     check: bool = False,
     on_spawn: Callable[[Group], None] | None = None,
     output_limit: tuple[str, int] | None = None,
+    output_limits: tuple[tuple[str, int], ...] = (),
 ) -> subprocess.CompletedProcess[Any]:
     """`subprocess.run`, with the CLI's whole group killed on a timeout or an error.
 
@@ -534,7 +537,8 @@ def run(  # noqa: PLR0913 (subprocess.run's keywords, one each)
     removes a temporary file never races a writer that is still alive. Raises
     `ClosedError` after a shutdown, `UnstoppedError` when a killed child
     would not exit, and `OversizedError` when the file `output_limit` names
-    passed its size in bytes.
+    passed its size in bytes. Additional files in `output_limits` are watched
+    independently, including stderr; they never replace `output_limit`.
     """
     if subprocess.PIPE in (stdout, stderr):
         raise ValueError("supervise.run writes output to a file or nowhere, never a pipe")
@@ -553,6 +557,7 @@ def run(  # noqa: PLR0913 (subprocess.run's keywords, one each)
         )
         _LIVE.add(group)
     group._limit = output_limit  # noqa: SLF001 (set before any wait reads it)
+    group._limits = output_limits  # noqa: SLF001 (set before any wait reads it)
     try:
         if sys.platform == "win32":
             try:
