@@ -1,0 +1,18 @@
+{
+  "v": 1,
+  "preparation": "reviewed-transfer-not-new-blind-marks",
+  "previous_marks_sha256": "c57e889c6813ff940f5fd25142fa324dadec08d5c63ba0225c976d968d962cdf",
+  "next_marks_sha256": "036a15c5e321e9263aa6f4514add8162cf7c23b8809308d939777e62fdf06097",
+  "cases_digest": "fee0020c45b66ba5cbfcf4a095e1f05cc31d32e7982fe050d131468f761bfc27",
+  "parser_sha256": "e94591fa8d99c2a3fdc29c3f03b1b4d697e31efc41231c54cbfa0730816d90a5",
+  "cases": 10,
+  "recorded_kinds": 5,
+  "synthetic_adversaries": 5,
+  "criteria": 34,
+  "selected_joins": 81,
+  "instruction_delta_bytes": 27,
+  "source_preparation_sha256": "99d8d26a37457f914aaaba5f27020917ee319c53fd5e081128f96e286a934760",
+  "independent_source_review_sha256": "f80e65a4680fd939b31b604975017b53f2abcc7bd038f6733795b6f8406dac9f",
+  "accounting_review_sha256": "c6b07d7ba06f770d1a7555ef4a37779695a15a0f51c9dfa4c4a8c4eb68354890",
+  "statement": "All material source records, facts, intent clauses, scope, cut, origins, selected evidence and thirty-four pre-output judge/abstain marks and result/citation expectations are unchanged. Only derived parser, prompt and seven export stamp seals change. Each actual prompt differs solely by the reviewed instruction. Rubric bytes are preserved. This is independently reviewed transfer, not fresh blind marking or measured accuracy."
+}

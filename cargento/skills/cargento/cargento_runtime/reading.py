@@ -2295,8 +2295,9 @@ def _header(
         )
         + EVIDENCE_RULES
         + (
-            "Read work so far. Unknown clause conditions are unverifiable; known work in "
-            "flight is not_reached. Unkept stalled promises stay departure during recovery.\n"
+            "Read work so far; per clause: shown departure stays in recovery "
+            "(e.g. unkept stalled promise); else unknown scope/conditions: unverifiable; "
+            "else pending: not_reached. Repairs apart.\n"
             if scope in (SCOPE_LAST_TURN, SCOPE_MID_FLIGHT)
             else "Read through the session end.\n"
         )

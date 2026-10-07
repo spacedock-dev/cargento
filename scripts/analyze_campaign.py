@@ -33,6 +33,13 @@ LOGIN_RESUME_MANIFEST_PATH = str(
     Path(MANIFEST_PATH).with_name("closure-campaign-login-resume.json")
 )
 LOGIN_RESUME_HANDOFF_PATH = str(Path(MANIFEST_PATH).with_name("closure-login-resume-handoff.json"))
+CLAUSE_CONTINUATION_MANIFEST_PATH = str(
+    Path(MANIFEST_PATH).with_name("closure-campaign-clause-continuation.json")
+)
+CLAUSE_CONTINUATION_HANDOFF_PATH = str(
+    Path(MANIFEST_PATH).with_name("closure-clause-continuation-handoff.json")
+)
+CLAUSE_ZERO_RESEAL_PATH = str(Path(MANIFEST_PATH).with_name("closure-clause-zero-reseal.json"))
 LEDGER_PATH = authority.canonical_path(".cargento", "analyze-closure-spend.json")
 REPLAY_PATH = authority.canonical_path(".cargento", "drift-replay", "spend.json")
 QUALIFICATION_PATH = authority.LEDGER_PATH
@@ -58,6 +65,13 @@ class AwaitingReviewError(authority.LedgerError):
 
 def active_campaign() -> Campaign | None:
     """An existing fixed manifest or account receipt cannot be bypassed by removing one."""
+    if (
+        os.path.lexists(CLAUSE_CONTINUATION_MANIFEST_PATH)
+        or os.path.lexists(CLAUSE_CONTINUATION_HANDOFF_PATH)
+        or os.path.lexists(CLAUSE_ZERO_RESEAL_PATH)
+        or (LEDGER_PATH and os.path.lexists(LEDGER_PATH + ".epochs/3"))
+    ):
+        return ClauseContinuationCampaign()
     if (
         os.path.lexists(LOGIN_RESUME_MANIFEST_PATH)
         or os.path.lexists(LOGIN_RESUME_HANDOFF_PATH)
@@ -852,7 +866,11 @@ class SuccessorCampaign(Campaign):
         active = authority.continuation()
         grant = authority.continuation(generation=5)
         resumed = bool(
-            active and active["generation"] == 6 and active.get("login_resume_allowance")
+            active
+            and (
+                (active["generation"] == 6 and active.get("login_resume_allowance"))
+                or (active["generation"] == 7 and active.get("clause_continuation_allowance"))
+            )
         )
         bounded_native = native[:32] if resumed else native
         if (
@@ -861,7 +879,7 @@ class SuccessorCampaign(Campaign):
             or grant["phase"] != "sealed"
             or not grant.get("successor_allowance")
             or len(native) < 30
-            or len(native) > (63 if resumed else 61)
+            or len(native) > (65 if active and active["generation"] == 7 else 63 if resumed else 61)
             or any(c["status"] == "charged" for c in native[:30])
             or not authority.begins_with(QUALIFICATION_PATH, grant["previous"]["ledger_chain"])
             or not authority.follows(
@@ -981,11 +999,18 @@ class SuccessorCampaign(Campaign):
         epochs = parent.get("epochs")
         active = authority.continuation()
         resumed = bool(
-            active and active["generation"] == 6 and active.get("login_resume_allowance")
+            active
+            and (
+                (active["generation"] == 6 and active.get("login_resume_allowance"))
+                or (active["generation"] == 7 and active.get("clause_continuation_allowance"))
+            )
         )
         if (
             not isinstance(epochs, list)
-            or len(epochs) not in ((1, 2) if resumed else (1,))
+            or len(epochs)
+            not in (
+                (1, 2, 3) if active and active["generation"] == 7 else (1, 2) if resumed else (1,)
+            )
             or len(epochs) < self.epoch_id
             or not isinstance(epochs[self.epoch_id - 1], dict)
             or set(epochs[self.epoch_id - 1]) != {"id", "handoff_digest", "state"}
@@ -995,8 +1020,15 @@ class SuccessorCampaign(Campaign):
             or not isinstance(epochs[self.epoch_id - 1]["state"], dict)
             or self.epoch_dir.parent.is_symlink()
             or self.epoch_dir.is_symlink()
-            or not self._bounded_entries(self.epoch_dir.parent, {"1", "2"} if resumed else {"1"})
-            or not self._bounded_entries(self.epoch_dir, {"TRANSITION.json", "reservations"})
+            or not self._bounded_entries(
+                self.epoch_dir.parent,
+                {"1", "2", "3"}
+                if active and active["generation"] == 7
+                else {"1", "2"}
+                if resumed
+                else {"1"},
+            )
+            or not self._bounded_entries(self.epoch_dir, self._epoch_entries())
         ):
             raise authority.LedgerError("the successor epoch or its receipts changed")
         epoch = epochs[self.epoch_id - 1]
@@ -1017,13 +1049,19 @@ class SuccessorCampaign(Campaign):
             "calls": [],
             "genesis_nonce": state.get("genesis_nonce"),
         }
-        if _read(str(self.epoch_dir / "TRANSITION.json"), "successor transition") != {
+        if self._read_transition() != {
             "id": self.epoch_id,
             "handoff_digest": self.handoff_digest,
             "state": genesis,
         }:
             raise authority.LedgerError("the successor transition changed")
         return cast("dict[str, Any]", epoch)
+
+    def _epoch_entries(self) -> set[str]:
+        return {"TRANSITION.json", "reservations"}
+
+    def _read_transition(self) -> Any:
+        return _read(str(self.epoch_dir / "TRANSITION.json"), "successor transition")
 
     @staticmethod
     def _bounded_entries(folder: Path, allowed: set[str]) -> bool:
@@ -1133,7 +1171,11 @@ class LoginResumeCampaign(SuccessorCampaign):
         previous = previous_campaign._state()  # noqa: SLF001 - validate every receipt of the stopped epoch
         root = previous_campaign.parent._state()  # noqa: SLF001 - append only to the original canonical ledger
         native = authority.read(QUALIFICATION_PATH)["calls"]
-        grant = authority.continuation()
+        active = authority.continuation()
+        extended = bool(
+            active and active["generation"] == 7 and active.get("clause_continuation_allowance")
+        )
+        grant = authority.continuation(generation=6)
         calls = previous["calls"]
         if (
             not grant
@@ -1148,11 +1190,13 @@ class LoginResumeCampaign(SuccessorCampaign):
             or previous.get("stop") is not None
             or previous.get("accepted")
             or previous.get("accepted_batches")
-            or not 32 <= len(native) <= 63
+            or not 32 <= len(native) <= (65 if extended else 63)
             or any(c["status"] == "charged" for c in native[:32])
             or not authority.begins_with(QUALIFICATION_PATH, grant["previous"]["ledger_chain"])
             or not authority.follows(
-                native, grant, (grant["next"]["marks_digest"], grant["next"]["inputs_digest"])
+                native[:34] if extended else native,
+                grant,
+                (grant["next"]["marks_digest"], grant["next"]["inputs_digest"]),
             )
             or self.manifest["historical"] != self.parent.manifest["historical"]
             or any(
@@ -1206,6 +1250,339 @@ class LoginResumeCampaign(SuccessorCampaign):
                 "genesis_nonce": uuid.uuid4().hex,
             }
             epoch = {"id": 2, "handoff_digest": self.handoff_digest, "state": state}
+            self.epoch_dir.mkdir(mode=0o700)
+            self._transition(epoch)
+            root["epochs"].append(epoch)
+            authority._write(self.path, root)  # noqa: SLF001 - append under the existing canonical lock
+            return authority.digest(state)
+
+
+def clause_continuation_parent_binding(previous: LoginResumeCampaign) -> dict[str, Any]:
+    """Bind the real stopped semantic predecessor, including its retained accepted opening."""
+    state = previous._state()  # noqa: SLF001 - every receipt and review is validated first
+    root = cast("SuccessorCampaign", previous.parent).parent._state()  # noqa: SLF001 - independently validated original account
+    native = authority.read(QUALIFICATION_PATH)["calls"][:34]
+    return {
+        "manifest_digest": previous.binding,
+        "activation_anchor": previous.manifest["activation_anchor"],
+        "handoff_digest": previous.handoff_digest,
+        "state_digest": authority.digest(state),
+        "original_digest": authority.digest({k: v for k, v in root.items() if k != "epochs"}),
+        "first_epoch_digest": authority.digest(previous.parent._state()),  # noqa: SLF001 - stopped first successor
+        "calls": 2,
+        "calls_digest": authority.digest(state["calls"]),
+        "stop_proof": {
+            "kind": "semantic-failed",
+            "classification_digest": authority.digest(
+                _read(
+                    str(previous.receipts / (state["calls"][-1]["id"] + "-SETTLED.json")),
+                    "prior semantic classification",
+                )
+            ),
+            "explicit_stop_digest": authority.digest(
+                _read(str(previous.receipts / "STOP.json"), "prior stop")
+            )
+            if state.get("stop")
+            else None,
+        },
+        "failed_result_digest": authority.digest(
+            _read(authority.result_path(6), "failed sixth result")
+        ),
+        "native_calls": 34,
+        "native_calls_digest": authority.digest(native),
+        "native_chain": {"first": native[0]["id"], "calls": 34, "head": authority.chain(native)},
+    }
+
+
+class ClauseContinuationCampaign(LoginResumeCampaign):
+    """The one reviewed clause correction preserves six spent calls and adds two."""
+
+    epoch_id = 3
+
+    def _epoch_entries(self) -> set[str]:
+        if os.path.lexists(CLAUSE_ZERO_RESEAL_PATH) or os.path.lexists(
+            self.epoch_dir / "RESEAL.json"
+        ):
+            return super()._epoch_entries() | {"RESEAL.json"}
+        return super()._epoch_entries()
+
+    @staticmethod
+    def _zero_epoch(value: Any) -> bool:
+        if (
+            not isinstance(value, dict)
+            or set(value) != {"id", "handoff_digest", "state"}
+            or type(value["id"]) is not int
+            or value["id"] != 3
+            or not isinstance(value["handoff_digest"], str)
+            or not _DIGEST.fullmatch(value["handoff_digest"])
+        ):
+            return False
+        state = value["state"]
+        return (
+            isinstance(state, dict)
+            and set(state) == {"v", "manifest_digest", "calls", "genesis_nonce"}
+            and type(state["v"]) is int
+            and state["v"] == 1
+            and state["calls"] == []
+            and isinstance(state["manifest_digest"], str)
+            and bool(_DIGEST.fullmatch(state["manifest_digest"]))
+            and isinstance(state["genesis_nonce"], str)
+            and bool(re.fullmatch(r"[0-9a-f]{32}", state["genesis_nonce"]))
+        )
+
+    def _zero_reseal_review(self) -> dict[str, Any]:
+        record = _read(CLAUSE_ZERO_RESEAL_PATH, "reviewed zero-charge reseal")
+        if (
+            not isinstance(record, dict)
+            or set(record)
+            != {"v", "verdict", "prepared_by", "reviewed_by", "parent", "before", "after"}
+            or type(record["v"]) is not int
+            or record["v"] != 1
+            or record["verdict"] != "GO"
+            or any(
+                not isinstance(record[k], str) or not record[k].strip()
+                for k in ("prepared_by", "reviewed_by")
+            )
+            or record["prepared_by"].strip() == record["reviewed_by"].strip()
+            or record["parent"] != self.handoff["parent"]
+        ):
+            raise authority.LedgerError("zero-charge reseal needs independent bound review")
+        for label in ("before", "after"):
+            part = record[label]
+            fields = {
+                "manifest_digest",
+                "grant_digest",
+                "handoff_digest",
+                "activation_anchor",
+                "epoch",
+            }
+            if label == "before":
+                fields.add("transition_sha256")
+            if (
+                not isinstance(part, dict)
+                or set(part) != fields
+                or any(
+                    not isinstance(part[k], str) or not _DIGEST.fullmatch(part[k])
+                    for k in fields - {"epoch"}
+                )
+                or not self._zero_epoch(part["epoch"])
+                or part["epoch"]["handoff_digest"] != part["handoff_digest"]
+                or part["epoch"]["state"]["manifest_digest"] != part["manifest_digest"]
+                or authority.digest(part["epoch"]["state"]) != part["activation_anchor"]
+            ):
+                raise authority.LedgerError("the reviewed zero-charge genesis is invalid")
+        before, after = record["before"], record["after"]
+        if (
+            before["manifest_digest"] == after["manifest_digest"]
+            or after["manifest_digest"] != self.binding
+            or after["handoff_digest"] != self.handoff_digest
+            or after["grant_digest"]
+            != authority.digest(_read(authority.CONTINUATION_PATHS[6], "seventh grant"))
+            or super()._read_transition() != before["epoch"]
+        ):
+            raise authority.LedgerError("zero-charge reseal lost original or corrected authority")
+        try:
+            with (self.epoch_dir / "TRANSITION.json").open("rb") as handle:
+                original = handle.read(2 * 1024 * 1024 + 1)
+        except OSError as error:
+            raise authority.LedgerError(
+                "the original zero-charge transition cannot be read"
+            ) from error
+        if (
+            len(original) > 2 * 1024 * 1024
+            or hashlib.sha256(original).hexdigest() != before["transition_sha256"]
+        ):
+            raise authority.LedgerError("the original zero-charge transition bytes changed")
+        return record
+
+    def _read_transition(self) -> Any:
+        if not os.path.lexists(CLAUSE_ZERO_RESEAL_PATH) and not os.path.lexists(
+            self.epoch_dir / "RESEAL.json"
+        ):
+            return super()._read_transition()
+        record = self._zero_reseal_review()
+        receipt = _read(str(self.epoch_dir / "RESEAL.json"), "zero-charge reseal receipt")
+        expected = {
+            "v": 1,
+            "review_digest": authority.digest(record),
+            "before": record["before"],
+            "after": record["after"],
+        }
+        if (
+            not isinstance(receipt, dict)
+            or type(receipt.get("v")) is not int
+            or receipt != expected
+        ):
+            raise authority.LedgerError("the immutable zero-charge reseal receipt changed")
+        return record["after"]["epoch"]
+
+    def reseal_zero_charge(self) -> str:
+        """Reseal only reviewed epoch three before any attempt; preserve its first transition."""
+        with authority.locked(self.path):
+            root = self._parent_state()
+            record = self._zero_reseal_review()
+            epochs = root.get("epochs")
+            if (
+                self.manifest["phase"] != "prepared"
+                or self.manifest.get("activation_anchor")
+                or not isinstance(epochs, list)
+                or len(epochs) != 3
+                or epochs[2] != record["before"]["epoch"]
+                or len(authority.read(QUALIFICATION_PATH)["calls"]) != 34
+                or os.path.lexists(self.epoch_dir / "RESEAL.json")
+                or self.epoch_dir.parent.is_symlink()
+                or self.epoch_dir.is_symlink()
+                or not self._bounded_entries(self.epoch_dir, {"TRANSITION.json", "reservations"})
+                or (
+                    os.path.lexists(self.receipts)
+                    and (
+                        self.receipts.is_symlink()
+                        or not self.receipts.is_dir()
+                        or not self._bounded_entries(self.receipts, set())
+                    )
+                )
+            ):
+                raise authority.LedgerError(
+                    "only the original strictly zero-charge epoch may be resealed once"
+                )
+            descriptor = os.open(
+                self.epoch_dir / "RESEAL.json", os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600
+            )
+            receipt = {
+                "v": 1,
+                "review_digest": authority.digest(record),
+                "before": record["before"],
+                "after": record["after"],
+            }
+            with os.fdopen(descriptor, "w") as handle:
+                json.dump(receipt, handle, sort_keys=True)
+                handle.flush()
+                os.fsync(handle.fileno())
+            epochs[2] = record["after"]["epoch"]
+            authority._write(self.path, root)  # noqa: SLF001 - original account lock, zero epoch only, receipt persists first
+            return str(record["after"]["activation_anchor"])
+
+    def __init__(self) -> None:
+        self.parent = LoginResumeCampaign()
+        self.path = self.parent.path
+        self.manifest, self.binding = self._current_manifest()
+        self.epoch_dir = Path(self.path + ".epochs") / "3"
+        self.receipts = self.epoch_dir / "reservations"
+        self.handoff = _read(CLAUSE_CONTINUATION_HANDOFF_PATH, "clause continuation handoff")
+        if (
+            not isinstance(self.handoff, dict)
+            or set(self.handoff)
+            != {"v", "verdict", "prepared_by", "reviewed_by", "parent", "successor"}
+            or type(self.handoff["v"]) is not int
+            or self.handoff["v"] != 1
+            or self.handoff["verdict"] != "GO"
+            or any(
+                not isinstance(self.handoff[k], str) or not self.handoff[k].strip()
+                for k in ("prepared_by", "reviewed_by")
+            )
+            or self.handoff["prepared_by"] == self.handoff["reviewed_by"]
+        ):
+            raise authority.LedgerError("clause continuation needs an independent bound handoff")
+        self.handoff_digest = authority.digest(self.handoff)
+        self._parent_state()
+
+    def _current_manifest(self) -> tuple[dict[str, Any], str]:
+        body, key = _manifest(CLAUSE_CONTINUATION_MANIFEST_PATH)
+        if body["order"] != ["qualification", "replay", "live"]:
+            raise authority.LedgerError(
+                "clause continuation admits only qualification; later lanes stay held"
+            )
+        return body, key
+
+    def _parent_state(self) -> dict[str, Any]:
+        if (
+            self._current_manifest() != (self.manifest, self.binding)
+            or authority.digest(
+                _read(CLAUSE_CONTINUATION_HANDOFF_PATH, "clause continuation handoff")
+            )
+            != self.handoff_digest
+        ):
+            raise authority.LedgerError("the clause continuation manifest or handoff changed")
+        previous_campaign = cast("LoginResumeCampaign", self.parent)
+        previous = previous_campaign._state()  # noqa: SLF001 - validate every receipt of the stopped epoch
+        root = cast("SuccessorCampaign", previous_campaign.parent).parent._state()  # noqa: SLF001 - append only to the original canonical ledger
+        native = authority.read(QUALIFICATION_PATH)["calls"]
+        grant = authority.continuation()
+        calls = previous["calls"]
+        if (
+            not grant
+            or grant["generation"] != 7
+            or grant["phase"] != "sealed"
+            or not grant.get("clause_continuation_allowance")
+            or len(calls) != 2
+            or [c["status"] for c in calls] != ["usable", "semantic-failed"]
+            or [c["slot"] for c in calls] != self.parent.manifest["slots"]["qualification"][:2]
+            or any(c["retry"] for c in calls)
+            or previous.get("stop") not in (None, "semantic-failed")
+            or previous.get("accepted")
+            or set(previous.get("accepted_batches", {})) != {"qualification:0"}
+            or not 34 <= len(native) <= 65
+            or any(c["status"] == "charged" for c in native[:34])
+            or not authority.begins_with(QUALIFICATION_PATH, grant["previous"]["ledger_chain"])
+            or not authority.follows(
+                native, grant, (grant["next"]["marks_digest"], grant["next"]["inputs_digest"])
+            )
+            or self.manifest["historical"] != self.parent.manifest["historical"]
+            or any(
+                n.get("campaign_charge") != c["id"]
+                or c["slot"] != f"{n['case']}:r{n.get('repeat')}"
+                or n.get("retry") is not c["retry"]
+                or n["status"] != "ok"
+                for n, c in zip(native[32:34], calls, strict=True)
+            )
+        ):
+            raise authority.LedgerError(
+                "clause continuation lost the stopped login epoch or native 34-call prefix"
+            )
+        expected = {
+            "manifest_digest": self.binding,
+            "grant_digest": authority.digest(
+                _read(authority.CONTINUATION_PATHS[6], "seventh grant")
+            ),
+            "evidence": self.manifest["evidence"]["qualification"],
+            "cases_digest": grant["next"]["cases_digest"],
+            "inputs_digest": grant["next"]["inputs_digest"],
+            "model_binding": grant["clause_continuation_allowance"]["model_binding"],
+            "additional_calls": 31,
+            "carried_calls": 29,
+            "renewed_calls": 2,
+            "shared_total": 245,
+            "native_total": 65,
+        }
+        if (
+            self.handoff["parent"] != clause_continuation_parent_binding(previous_campaign)
+            or self.handoff["successor"] != expected
+            or grant["clause_continuation_allowance"]["campaign_binding"] != self.binding
+        ):
+            raise authority.LedgerError(
+                "the reviewed clause continuation ancestry or allowance changed"
+            )
+        return root
+
+    def initialize_successor(self) -> str:
+        """Append exactly epoch three once, preserving all earlier stops and charges."""
+        with authority.locked(self.path):
+            root = self._parent_state()
+            if (
+                self.manifest["phase"] != "prepared"
+                or self.manifest.get("activation_anchor")
+                or len(root.get("epochs", [])) != 2
+                or os.path.lexists(self.epoch_dir)
+                or len(authority.read(QUALIFICATION_PATH)["calls"]) != 34
+            ):
+                raise authority.LedgerError("clause continuation cannot be initialized again")
+            state = {
+                "v": 1,
+                "manifest_digest": self.binding,
+                "calls": [],
+                "genesis_nonce": uuid.uuid4().hex,
+            }
+            epoch = {"id": 3, "handoff_digest": self.handoff_digest, "state": state}
             self.epoch_dir.mkdir(mode=0o700)
             self._transition(epoch)
             root["epochs"].append(epoch)

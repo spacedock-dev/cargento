@@ -2253,6 +2253,35 @@ owner-only packet directory (0700, files 0600), never public results or dashboar
 Unwritable or non-private diagnostic storage refuses before charging; a later write failure
 cannot refund a charged attempt or authorize another call.
 
+##### Per-clause qualification continuation, 2026-10-07
+
+After the sixth run stopped on an accuracy failure, the owner authorized a corrected producer
+and a fresh qualification. The seventh grant carries its 29 held attempts forward and adds two,
+for 31 available attempts: thirty readings and at most one availability retry. All 34 native
+charges and six shared charges remain spent. The cumulative ceilings are 65 native charges and
+245 shared attempts, including the unchanged 190 replay and 18 live attempts held. No earlier
+key receives the new ceiling, and a semantic stop cannot be retried.
+
+The fixed per-clause manifest and independent handoff bind the failed sixth result, its accepted
+opening batch, every earlier stopped epoch and immutable reservation, and the exact native
+34-call prefix. New source, scorer, packet, marks, model and request bindings precede execution.
+Initialization appends only epoch three under the existing lock. Missing, changed or unfinished
+ancestry refuses execution; older epochs are never reset or resumed. Installing the software
+does not initialize an account, admit a packet or supply a passing score.
+
+The full pre-execution suite caught a scope omission after the zero-charge preparation was
+activated. A fixed, independently reviewed zero-charge reseal record binds both preparations,
+their handoffs and the exact original transition bytes. It permits one replacement of epoch
+three's strictly empty genesis, before any reservation or charge. An exclusive immutable reseal
+receipt is written before the account update; the original transition and every charged ancestor
+remain intact. Missing or mismatched records, a partial update, a second reseal, or any attempted
+reading refuse execution. This correction adds no allowance and cannot repair a scored failure.
+
+The opening is the first registered exposure, followed by batches of nine, ten and ten with
+independent review between them. No old acceptance carries forward. Existing source, diagnostic,
+charge, retry and stop guards remain required. This is one finite continuation, not permission
+to reopen arbitrary stopped runs or borrow held replay and live allowance.
+
 #### Prospective qualification source cuts, 2026-10-05
 
 The opt-in typed-Claude qualification freezer may make an owned transient copy of the raw
