@@ -28,7 +28,8 @@
   "include": [
     "frontend/**/*.ts",
     "frontend/**/*.tsx",
-    "vitest.config.ts",
+    "frontend/**/*.mts",
+    "vitest.config.mts",
     "playwright.config.ts"
   ]
 }

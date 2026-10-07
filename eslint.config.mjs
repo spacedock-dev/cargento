@@ -8,16 +8,16 @@ import reactRefresh from 'eslint-plugin-react-refresh';
 export default defineConfig([
   globalIgnores(['node_modules/**', '.frontend-build/**', 'test-results/**', 'playwright-report/**']),
   {
-    files: ['frontend/**/*.{ts,tsx}', 'vitest.config.ts', 'playwright.config.ts'],
+    files: ['frontend/**/*.{ts,tsx,mts}', 'vitest.config.mts', 'playwright.config.ts'],
     extends: [js.configs.recommended, tseslint.configs.strict],
     languageOptions: { globals: { ...globals.browser, ...globals.node } },
   },
   {
-    files: ['frontend/**/*.{ts,tsx}'],
+    files: ['frontend/**/*.{ts,tsx,mts}'],
     extends: [reactHooks.configs.flat.recommended, reactRefresh.configs.vite],
   },
   {
-    files: ['eslint.config.js'],
+    files: ['eslint.config.mjs'],
     extends: [js.configs.recommended],
     languageOptions: { globals: globals.node },
   },

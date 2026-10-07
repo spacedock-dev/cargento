@@ -2,17 +2,16 @@
   "name": "cargento-frontend",
   "version": "0.0.0",
   "private": true,
-  "type": "module",
   "packageManager": "pnpm@12.9.1",
   "engines": {
     "node": ">=26.10.0 <27",
     "pnpm": "12.9.1"
   },
   "scripts": {
-    "dev": "vite --config frontend/vite.config.ts",
-    "build": "vite build --config frontend/vite.config.ts",
-    "preview": "vite preview --config frontend/vite.config.ts",
-    "lint": "eslint frontend eslint.config.js vitest.config.ts playwright.config.ts --max-warnings 0",
+    "dev": "vite --config frontend/vite.config.mts",
+    "build": "vite build --config frontend/vite.config.mts",
+    "preview": "vite preview --config frontend/vite.config.mts",
+    "lint": "eslint frontend eslint.config.mjs vitest.config.mts playwright.config.ts --max-warnings 0",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
