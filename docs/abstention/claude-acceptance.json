@@ -70,8 +70,8 @@
       "result": "claude-results-continuation-4.json",
       "scored_constraints": 7,
       "spend": {
-        "charged": 30,
-        "cap": 59
+        "cap": 59,
+        "charged": 30
       },
       "verdict": "failed"
     },
@@ -84,8 +84,8 @@
       "result": "claude-results-continuation-5.json",
       "scored_constraints": 0,
       "spend": {
-        "charged": 32,
-        "cap": 61
+        "cap": 61,
+        "charged": 32
       },
       "verdict": "blocked"
     },
@@ -98,8 +98,8 @@
       "result": "claude-results-continuation-6.json",
       "scored_constraints": 7,
       "spend": {
-        "charged": 34,
-        "cap": 63
+        "cap": 63,
+        "charged": 34
       },
       "verdict": "failed"
     },
@@ -112,17 +112,31 @@
       "result": "claude-results-continuation-7.json",
       "scored_constraints": 7,
       "spend": {
-        "charged": 36,
-        "cap": 65
+        "cap": 65,
+        "charged": 36
+      },
+      "verdict": "failed"
+    },
+    {
+      "cases": 2,
+      "correct": 4,
+      "dec17_failed_cases": 1,
+      "inputs_digest": "59d770fa5a67c0f3efcb2d2cfe2578a1be8db79ac2b46a4f72c16c5b8313f800",
+      "marks_digest": "3eda0c75eeca1bcfbfa9ea5d193f3dbdf0e51cf10c396c8badc8a647dd9b81fa",
+      "result": "claude-results-continuation-8.json",
+      "scored_constraints": 7,
+      "spend": {
+        "cap": 67,
+        "charged": 38
       },
       "verdict": "failed"
     }
   ],
-  "scored_runs": 8,
+  "scored_runs": 9,
   "spend": {
-    "charged": 36,
-    "cap": 65
+    "cap": 67,
+    "charged": 38
   },
-  "statement": "The first five Claude Code runs listed here failed the abstention check. The fifth continuation is blocked after two unusable transport attempts and supplies no accuracy judgement. The sixth continuation failed after two parsed answers. The seventh continuation also failed after two parsed answers: the frozen rubric counts three of seven questions correct, two false alarms and two over-abstentions, with no false reassurance. Both Goal departures were identified, but an outcome marked should-abstain was judged departure. The first attribution line has a scope ambiguity between a latest report and a persisted artifact; its frozen rubric count is retained, not regraded. The separate approval-qualified line independently triggers the semantic stop. Twenty-nine unused attempts remain held. On 2026-10-02 the owner accepted the Claude Code producer despite the earlier failures, so Claude Code can read a Claude Code session when the claude CLI is on PATH. That operational acceptance is separate from qualification and does not turn a failed or blocked result into a pass. Every earlier result, charge and frozen key remains preserved.",
+  "statement": "Operational Claude reading was accepted by the owner on 2026-10-02; accuracy qualification remains failed. All earlier failed results and charges are preserved, including the blocked fifth continuation that established no accuracy. The eighth continuation stopped after two parsed readings when an approval-qualified outcome was judged despite unknown scope. No full-packet or repeatability pass is established.",
   "v": 1
 }

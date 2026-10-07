@@ -466,6 +466,29 @@ preparation and construction checks establish no accuracy pass. The original tra
 zero-charge reseal remain immutable. Only a new fourth epoch may be initialized, after full
 local checks; merged code and current-head CI precede every reading.
 
+### Eighth qualification outcome, 2026-10-07
+
+The [eighth result](claude-results-continuation-8.json) failed after two parsed Sonnet 5.5/high
+readings. The opening identified the Goal departure and judged the freshly scoped latest
+response consistent; claims over-abstention remains reported. Independent review accepted
+that opening under the existing safety rule. The next nine-call batch stopped after its first
+reading: an approval-qualified outcome was judged departure without evidence establishing
+that approval scope. Both CLI calls succeeded. This is an assessment error, not a sign-in or
+availability failure.
+
+Across seven questions, four were correct, one was a false alarm and two over-abstained.
+There was no false reassurance or missed departure. Both Goal departures were identified;
+the conditional outcome still failed the abstention guard. No subsequent call or retry ran.
+Eight first-pass cases and all twenty repeated readings remain unattempted. Only two of the
+five admitted recorded kinds reached the model; this is no full-packet or repeatability pass.
+
+Two of 31 fresh attempts are spent and 29 remain held. The unused availability retry cannot
+cross the semantic stop. The native ledger preserves 38 charges and the shared ledger ten;
+every earlier packet, key, result, stop and the accepted opening remains intact. Replay stays
+at 631 of 870, with replay and live allowances held. The producer remains unqualified, and the
+Claude-only browser verification cannot be armed. A further correction needs new source-bound
+expectations and finite measurement authority; this failed run cannot resume or be regraded.
+
 ### Fourth qualification outcome, 2026-10-06
 
 The [native fourth result](claude-results-continuation-4.json) failed after two attempts on the

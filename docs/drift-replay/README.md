@@ -113,6 +113,13 @@ two-unusable-call budget stop did not fire. Spend stopped at the failed measurem
 
 ## The shared closure guard
 
+The latest [Claude qualification](../abstention/claude-results-continuation-8.json) failed after
+two parsed readings. An approval-qualified outcome was judged without established scope,
+triggering the persistent safety stop. All ten shared and 38 native charges remain spent;
+29 qualification attempts stay held, alongside 190 replay and 18 live attempts. No availability
+retry, remaining first pass, repeated reading or browser verification followed. A working
+transport and a correctly answered opening do not qualify the producer.
+
 The follow-up allowance is 239 additional Analyze attempts in total: 190 replay, 31 qualification
 and 18 live. The original failed campaign, its charges, marks and results stay unchanged.
 The [security contract](../../SECURITY.md#shared-closure-allowance-2026-10-05) owns the fixed
