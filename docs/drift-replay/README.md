@@ -113,17 +113,24 @@ two-unusable-call budget stop did not fire. Spend stopped at the failed measurem
 
 ## The shared closure guard
 
-The latest [Claude qualification](../abstention/claude-results-continuation-8.json) failed after
+The previous [eighth Claude qualification](../abstention/claude-results-continuation-8.json) failed after
 two parsed readings. An approval-qualified outcome was judged without established scope,
-triggering the persistent safety stop. All ten shared and 38 native charges remain spent;
-29 qualification attempts stay held, alongside 190 replay and 18 live attempts. No availability
+triggering the persistent safety stop. All ten shared and 38 native charges remained spent;
+29 qualification attempts stayed held, alongside 190 replay and 18 live attempts. No availability
 retry, remaining first pass, repeated reading or browser verification followed. A working
 transport and a correctly answered opening do not qualify the producer.
 
-The owner has authorized a fresh 31-attempt conditional-priority measurement and removed
-its first-failing-semantic-batch stop. Every wrong answer stays scored; the thirty registered
-readings may complete after semantic failures. Technical guards and the finite cap remain.
-An independently reviewed batch is measured, not qualified. Only a full passing result and
+The [ninth Claude result](../abstention/claude-results-continuation-9.json) completed all thirty
+registered readings on ten cases repeated three times. Its verdict is `failed`; the owner
+removed its first-failing-semantic-batch stop, so `stopped: false` records completed
+measurement rather than success. All wrong answers remain scored. Native charges are
+68 of 69 and shared charges are 40. The unused availability retry stays held, alongside
+190 replay and 18 live attempts. The
+[outcome record](../abstention/README.md#ninth-qualification-outcome-2026-10-07) owns the
+counts and interpretation. Earlier stopped runs and the operational acceptance are unchanged.
+
+Technical guards and the finite cap remain. An independently reviewed batch is measured,
+not qualified. Only a full passing result and
 qualification acceptance may arm the separately guarded Claude-only browser reading. Its
 one attempt comes from the existing live allowance, leaving 17 live and 190 replay held.
 The [dated security amendment](../../SECURITY.md#conditional-priority-qualification-measurement-2026-10-07)

@@ -514,6 +514,41 @@ Only a new ordinary fifth epoch may be initialized after the complete local chec
 Merged software and passing current-head CI precede model calls. A Claude-only browser
 reading requires an actual full passing qualification and separate bound route admission.
 
+### Ninth qualification outcome, 2026-10-07
+
+The [ninth result](claude-results-continuation-9.json) completed all thirty registered
+Sonnet 5.5/high readings: ten cases read three times, with all five recorded kinds
+represented in each repeat. Twenty-three readings were usable and seven failed the
+semantic check. No attempt was unusable and no availability retry ran. The run continued
+after wrong answers as authorized; its final verdict is `failed`, with `stopped: false`.
+Completing measurement does not qualify the producer.
+
+Across 102 scored questions, 73 were correct, four were false reassurances, one was a
+false alarm, one missed a departure and 23 over-abstained. No question was unscored.
+The repeat counts remain separate in the result:
+
+| Repeat | Correct | False reassurance | False alarm | Missed departure | Over-abstention |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| 1 | 25 | 1 | 0 | 0 | 8 |
+| 2 | 24 | 2 | 1 | 0 | 7 |
+| 3 | 24 | 1 | 0 | 1 | 8 |
+
+The conditional approval outcome was judged without established approval scope in all
+three repeats, and a compound check requirement received false reassurance in all three.
+One unrelated-outcome control also failed in the second repeat. A `not_reached` answer
+on a should-abstain mark remains a judged failure even when the rubric calls it
+over-abstention. These observations establish errors on this frozen packet, not their
+cause or a general accuracy gain. No expectation was changed after output.
+
+Thirty of the 31 available attempts are spent. The native ledger preserves 68 charges
+under its 69-call ceiling, and the shared account preserves 40 across the original and
+five successor epochs. The unused availability retry remains held; it cannot rerun a
+semantic failure or fund another lane. Replay remains at 631 of 870, and the 190 replay
+and 18 live attempts remain held. Every earlier packet, key, result, stop and accepted
+opening stays intact, as does the owner's separate 2026-10-02 operational acceptance.
+There is no passing qualification or qualification acceptance, and the guarded
+Claude-only browser reading cannot be armed.
+
 ### Fourth qualification outcome, 2026-10-06
 
 The [native fourth result](claude-results-continuation-4.json) failed after two attempts on the

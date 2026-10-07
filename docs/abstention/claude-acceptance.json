@@ -130,13 +130,27 @@
         "charged": 38
       },
       "verdict": "failed"
+    },
+    {
+      "cases": 10,
+      "correct": 73,
+      "dec17_failed_cases": 3,
+      "inputs_digest": "a911216dde128241880a6d74aa4183c5382017141a00945e8984e8e925b53d52",
+      "marks_digest": "9c9abf7e927be9d3ce9edd4aa8a7b1f2b6e4a88b8b8e654529216dd6eef6ea54",
+      "result": "claude-results-continuation-9.json",
+      "scored_constraints": 102,
+      "spend": {
+        "cap": 69,
+        "charged": 68
+      },
+      "verdict": "failed"
     }
   ],
-  "scored_runs": 9,
+  "scored_runs": 10,
   "spend": {
-    "cap": 67,
-    "charged": 38
+    "cap": 69,
+    "charged": 68
   },
-  "statement": "Operational Claude reading was accepted by the owner on 2026-10-02; accuracy qualification remains failed. All earlier failed results and charges are preserved, including the blocked fifth continuation that established no accuracy. The eighth continuation stopped after two parsed readings when an approval-qualified outcome was judged despite unknown scope. No full-packet or repeatability pass is established.",
+  "statement": "Operational Claude reading was accepted by the owner on 2026-10-02; accuracy qualification remains failed. All earlier failed results and charges are preserved, including the blocked fifth continuation that established no accuracy. The eighth continuation stopped after two parsed readings when an approval-qualified outcome was judged despite unknown scope. No full-packet or repeatability pass is established. The ninth continuation completed all thirty registered readings without an early semantic stop, retaining seven failed assessments and a failed aggregate. The unused availability retry remains held; completion does not qualify the producer.",
   "v": 1
 }
