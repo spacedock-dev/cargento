@@ -224,6 +224,13 @@ python3 scripts/bump_version.py --current   # version-field parity across all ow
 # `*marketplace.json` pathspec: the one marketplace file left carries no `version` key at all.
 git diff "$(git merge-base origin/main HEAD)"..HEAD \
   -- '*plugin.json' '*gemini-extension.json' | grep -E '^[+-].*"version"'
+pnpm install --frozen-lockfile   # exact Node from .node-version; pnpm from package.json
+pnpm lint
+pnpm typecheck
+pnpm test
+pnpm build
+pnpm exec playwright install chromium   # lockfile-pinned browser, once per installation
+pnpm test:browser
 coverage erase
 python3 scripts/run_tests.py --coverage -s cargento/skills/cargento/tests -t .
 python3 scripts/run_tests.py --coverage -s scripts/tests -t scripts/tests

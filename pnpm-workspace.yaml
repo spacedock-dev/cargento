@@ -1,0 +1,18 @@
+# Only the root package is a workspace member. pnpm 12 owns these settings here.
+engineStrict: true
+pmOnFail: error
+runtimeOnFail: error
+strictPeerDependencies: true
+autoInstallPeers: false
+saveExact: true
+frozenLockfile: true
+verifyStoreIntegrity: true
+strictStorePkgContentCheck: true
+strictSsl: true
+verifyDepsBeforeRun: error
+# Install scripts have no approvals. Explicit project run commands remain available.
+ignoreScripts: true
+strictDepBuilds: true
+allowBuilds: {}
+dangerouslyAllowAllBuilds: false
+sideEffectsCache: false

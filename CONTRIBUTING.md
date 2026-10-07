@@ -13,8 +13,8 @@ If you are looking for what to work on rather than how, [docs/visibility-2x2](do
 ## Development setup
 
 Prerequisites: Python 3.11+ (`runtime-floor` runs the shipped entry point and the suite on 3.11,
-while lint, types and the coverage threshold run on 3.12), `git`, Node (only for `scripts/lint_embedded.py`, which checks the frontend JS;
-pass `--allow-missing-node` to skip that half), and optionally the Claude Code / AGY CLIs for native
+while lint, types and the coverage threshold run on 3.12), `git`, the Node 26 version in
+`.node-version`, the pnpm version in `package.json`, and optionally the Claude Code / AGY CLIs for native
 validation. See [COMPATIBILITY.md](COMPATIBILITY.md) for why 3.11 is the floor.
 
 ```bash
@@ -22,6 +22,7 @@ git clone https://github.com/spacedock-dev/cargento.git
 cd cargento
 # PyYAML for the contract validator; ruff, mypy and coverage for the quality gate.
 python3 -m pip install -r requirements-validation.txt -r requirements-dev.txt
+pnpm install --frozen-lockfile
 ```
 
 Repository development skills use Git symlinks so Claude Code and Codex load one canonical body.
@@ -36,6 +37,31 @@ Run the dashboard locally without installing any plugin:
 python3 cargento/skills/cargento/server.py --port 4553
 python3 -m webbrowser -t http://127.0.0.1:4553/
 ```
+
+### Frontend development
+
+The root package builds React source in `frontend/`. Install the exact Node and pnpm versions
+declared above using verified distributions; Node does not provide pnpm through bundled Corepack.
+Dependency install scripts are denied, and no dependency currently has a build approval.
+The lockfile fixes package versions and integrity hashes. Installs check engine and peer
+compatibility; project commands refuse stale installs.
+
+```bash
+pnpm dev
+```
+
+This opens a loopback-only Vite development server at `http://127.0.0.1:4577/`. It is currently an
+unavailable-view preview, without backend session data. Continue using the Python dashboard for
+sessions. `pnpm build` writes `.frontend-build/`; `pnpm preview` serves that build at
+`http://127.0.0.1:4578/`. Both ports are fixed and a collision fails instead of moving to another
+port. Backend-connected hot refresh and packaged React assets are subsequent migration work.
+
+`pnpm exec playwright install chromium` installs the browser pinned by the lockfile. See
+[AGENTS.md](AGENTS.md#pre-pr-checks) for the frontend checks. TypeScript checks source and dependency
+types, ESLint checks JavaScript and React rules, Vitest with Testing Library checks visible behavior,
+and Playwright checks the built page in Chromium. Vite and its React plugin own the build and hot
+refresh; no router, state library or UI kit is installed. Node and pnpm are build tools: the shipped
+Python dashboard still requires neither.
 
 ## Before you open a PR
 
