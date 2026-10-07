@@ -1149,6 +1149,16 @@ def login_resume_parent_binding(previous: SuccessorCampaign) -> dict[str, Any]:
     state = previous._state()  # noqa: SLF001 - preserve the settled predecessor's validated receipts
     root = previous.parent._state()  # noqa: SLF001 - independently validated original campaign
     native = authority.read(QUALIFICATION_PATH)["calls"][:32]
+    return _login_resume_parent_binding(previous, state, root, native)
+
+
+def _login_resume_parent_binding(
+    previous: SuccessorCampaign,
+    state: dict[str, Any],
+    root: dict[str, Any],
+    native: list[dict[str, Any]],
+) -> dict[str, Any]:
+    """Assemble only from the callers freshly validated same-call snapshots."""
     return {
         "manifest_digest": previous.binding,
         "activation_anchor": previous.manifest["activation_anchor"],
@@ -1294,7 +1304,8 @@ class LoginResumeCampaign(SuccessorCampaign):
             "native_total": 63,
         }
         if (
-            self.handoff["parent"] != login_resume_parent_binding(previous_campaign)
+            self.handoff["parent"]
+            != _login_resume_parent_binding(previous_campaign, previous, root, native[:32])
             or self.handoff["successor"] != expected
             or grant["login_resume_allowance"]["campaign_binding"] != self.binding
         ):
@@ -1332,13 +1343,23 @@ def clause_continuation_parent_binding(previous: LoginResumeCampaign) -> dict[st
     state = previous._state()  # noqa: SLF001 - every receipt and review is validated first
     root = cast("SuccessorCampaign", previous.parent).parent._state()  # noqa: SLF001 - independently validated original account
     native = authority.read(QUALIFICATION_PATH)["calls"][:34]
+    return _clause_continuation_parent_binding(previous, state, root, native)
+
+
+def _clause_continuation_parent_binding(
+    previous: LoginResumeCampaign,
+    state: dict[str, Any],
+    root: dict[str, Any],
+    native: list[dict[str, Any]],
+) -> dict[str, Any]:
+    """Assemble only from the callers freshly validated same-call snapshots."""
     return {
         "manifest_digest": previous.binding,
         "activation_anchor": previous.manifest["activation_anchor"],
         "handoff_digest": previous.handoff_digest,
         "state_digest": authority.digest(state),
         "original_digest": authority.digest({k: v for k, v in root.items() if k != "epochs"}),
-        "first_epoch_digest": authority.digest(previous.parent._state()),  # noqa: SLF001 - stopped first successor
+        "first_epoch_digest": authority.digest(root["epochs"][0]["state"]),
         "calls": 2,
         "calls_digest": authority.digest(state["calls"]),
         "stop_proof": {
@@ -1637,7 +1658,8 @@ class ClauseContinuationCampaign(LoginResumeCampaign):
             "native_total": 65,
         }
         if (
-            self.handoff["parent"] != clause_continuation_parent_binding(previous_campaign)
+            self.handoff["parent"]
+            != _clause_continuation_parent_binding(previous_campaign, previous, root, native[:34])
             or self.handoff["successor"] != expected
             or grant["clause_continuation_allowance"]["campaign_binding"] != self.binding
         ):
@@ -1677,16 +1699,24 @@ def clause_isolation_parent_binding(previous: ClauseContinuationCampaign) -> dic
     state = previous._state()  # noqa: SLF001 - independently validated settled predecessor
     root = previous._parent_state()  # noqa: SLF001 - original canonical account and every ancestor
     native = authority.read(QUALIFICATION_PATH)["calls"][:36]
+    return _clause_isolation_parent_binding(previous, state, root, native)
+
+
+def _clause_isolation_parent_binding(
+    previous: ClauseContinuationCampaign,
+    state: dict[str, Any],
+    root: dict[str, Any],
+    native: list[dict[str, Any]],
+) -> dict[str, Any]:
+    """Assemble only from the callers freshly validated same-call snapshots."""
     return {
         "manifest_digest": previous.binding,
         "activation_anchor": previous.manifest["activation_anchor"],
         "handoff_digest": previous.handoff_digest,
         "state_digest": authority.digest(state),
         "original_digest": authority.digest({k: v for k, v in root.items() if k != "epochs"}),
-        "first_epoch_digest": authority.digest(
-            cast("LoginResumeCampaign", previous.parent).parent._state()  # noqa: SLF001 - first stopped successor
-        ),
-        "second_epoch_digest": authority.digest(previous.parent._state()),  # noqa: SLF001 - stopped login epoch
+        "first_epoch_digest": authority.digest(root["epochs"][0]["state"]),
+        "second_epoch_digest": authority.digest(root["epochs"][1]["state"]),
         "transition_digest": authority.digest(
             _read(str(previous.epoch_dir / "TRANSITION.json"), "original clause transition")
         ),
@@ -1820,7 +1850,8 @@ class ClauseIsolationCampaign(SuccessorCampaign):
             "native_total": 67,
         }
         if (
-            self.handoff["parent"] != clause_isolation_parent_binding(previous_campaign)
+            self.handoff["parent"]
+            != _clause_isolation_parent_binding(previous_campaign, previous, root, native[:36])
             or self.handoff["successor"] != expected
             or grant["clause_isolation_allowance"]["campaign_binding"] != self.binding
         ):

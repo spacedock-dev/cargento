@@ -2142,6 +2142,9 @@ genesis digest is required for activation; an activated campaign never creates r
 state automatically. This guards accidental reset, not an account holder who rewrites both the
 repository authority and every private receipt.
 
+Every admission validates the current ledger and each ancestor. Proof assembly may use the
+snapshots validated during that admission; it cannot cache them for a later request.
+
 By default, the lanes run in replay, qualification, live order. Each registered batch needs measured,
 independently reviewed acceptance before the next batch. Transport usability is insufficient.
 A semantic, coverage or protection failure stops every lane, as do two consecutive unusable
