@@ -2226,6 +2226,33 @@ one registered availability retry. Replay and live remain held. The existing fai
 batch review and source guards apply to the new epoch. Installing this software neither
 initializes an account nor supplies a grant, source admission or accuracy result.
 
+##### Login-repaired qualification continuation, 2026-10-07
+
+After the owner reported repairing Claude Code sign-in, they authorized carrying the fifth
+run's 29 unused attempts forward and adding two. The sixth grant admits 31 available attempts,
+including the first diagnostic exposure and one retry. All 32 native charges and four shared
+charges remain spent. The cumulative native ceiling is 63 and shared allocation is 243,
+including the unchanged 190 replay and 18 live attempts held. Earlier keys keep their earlier
+ceilings. This is one finite continuation, not permission to reopen arbitrary stopped runs.
+
+The fixed login-resume manifest and independent handoff bind the stopped fifth result, all
+ancestor manifests, transitions and reservation receipts, the exact native 32-call prefix,
+and the new source, scorer, packet, marks, model and request digests. Initialization appends
+only epoch two under the existing account lock; both earlier epochs remain unchanged and
+inspectable. No earlier batch acceptance carries forward. Missing or changed ancestry refuses
+execution. The original three-repeat protocol and batch stops remain required.
+
+Only qualification opts into execution diagnostics. Its raw stdout and stderr stay in private
+transient files and are deleted at cleanup; neither is added to a diagnostic receipt. Both
+streams retain independent supervised file-size limits. The receipt holds the charged attempt
+identity, request/model digests, actual return code when available, monotonic elapsed time,
+closed exception category and a closed reason label from at most the first 8 KiB of each error
+stream. A text match is a CLI-reported hint, not proof of provider causality. Successful answer
+text is never used to classify an authentication problem. Diagnostic receipts stay in the
+owner-only packet directory (0700, files 0600), never public results or dashboard data.
+Unwritable or non-private diagnostic storage refuses before charging; a later write failure
+cannot refund a charged attempt or authorize another call.
+
 #### Prospective qualification source cuts, 2026-10-05
 
 The opt-in typed-Claude qualification freezer may make an owned transient copy of the raw

@@ -396,6 +396,8 @@ class RepeatedQualification(GrantFourAllowance):
             ("QUALIFICATION_PATH", self.ledger_path),
             ("SUCCESSOR_MANIFEST_PATH", self.root / "successor.json"),
             ("SUCCESSOR_HANDOFF_PATH", self.root / "handoff.json"),
+            ("LOGIN_RESUME_MANIFEST_PATH", self.root / "login-resume.json"),
+            ("LOGIN_RESUME_HANDOFF_PATH", self.root / "login-handoff.json"),
         ):
             patch = mock.patch.object(analyze_campaign, key, str(value))
             patch.start()

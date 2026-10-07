@@ -110,7 +110,12 @@ def seed_predecessor(campaign: Campaign, lane: str, *, accept: bool = True) -> N
 class CampaignFixtureIsolation(unittest.TestCase):
     def test_original_fixture_cannot_discover_published_successor_files(self) -> None:
         module = importlib.import_module("analyze_campaign")
-        for field in ("SUCCESSOR_MANIFEST_PATH", "SUCCESSOR_HANDOFF_PATH"):
+        for field in (
+            "SUCCESSOR_MANIFEST_PATH",
+            "SUCCESSOR_HANDOFF_PATH",
+            "LOGIN_RESUME_MANIFEST_PATH",
+            "LOGIN_RESUME_HANDOFF_PATH",
+        ):
             with self.subTest(published=field), tempfile.TemporaryDirectory() as outside:
                 published = Path(outside) / "published-successor.json"
                 published.write_text("{}")
@@ -134,7 +139,12 @@ class CampaignFixtureIsolation(unittest.TestCase):
     def test_repeated_fixture_cannot_discover_published_successor_files(self) -> None:
         module = importlib.import_module("analyze_campaign")
         repeated = importlib.import_module("test_closure_qualification")
-        for field in ("SUCCESSOR_MANIFEST_PATH", "SUCCESSOR_HANDOFF_PATH"):
+        for field in (
+            "SUCCESSOR_MANIFEST_PATH",
+            "SUCCESSOR_HANDOFF_PATH",
+            "LOGIN_RESUME_MANIFEST_PATH",
+            "LOGIN_RESUME_HANDOFF_PATH",
+        ):
             with self.subTest(published=field), tempfile.TemporaryDirectory() as outside:
                 published = Path(outside) / "published-successor.json"
                 published.write_text("{}")
@@ -224,6 +234,8 @@ class CampaignReservations(unittest.TestCase):
             # Published successor authority must never select a real account in this fixture.
             ("SUCCESSOR_MANIFEST_PATH", self.root / "successor.json"),
             ("SUCCESSOR_HANDOFF_PATH", self.root / "handoff.json"),
+            ("LOGIN_RESUME_MANIFEST_PATH", self.root / "login-resume.json"),
+            ("LOGIN_RESUME_HANDOFF_PATH", self.root / "login-handoff.json"),
         ):
             patch = mock.patch.object(self.module, key, str(value))
             patch.start()

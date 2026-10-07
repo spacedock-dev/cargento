@@ -236,6 +236,16 @@ exhausted. The native total is 32, with the original thirty preserved. The origi
 retains its two charges beside the successor's separate two. No opening acceptance or accuracy
 verdict was earned. Replay and live stay held; the replay ledger remains at 631 of 870.
 
+After the owner reported repairing Claude Code sign-in, the
+[login recovery contract](../../SECURITY.md#login-repaired-qualification-continuation-2026-10-07)
+authorizes carrying forward the 29 unused qualification attempts plus two additional attempts.
+The new allowance is 31, including its opening diagnostic reading and one retry. Earlier four
+shared charges and 32 native charges remain spent; no replay or live allowance is transferred.
+The [fixed manifest](closure-campaign-login-resume.json) and
+[independent handoff](closure-login-resume-handoff.json) bind that finite continuation.
+Private execution diagnostics now retain closed failure categories without raw error text.
+Preparation and login repair alone do not supply a qualification result.
+
 ## Model-free gap studies, 2026-10-05
 
 These studies keep the original 99 cases and their reads intact. Two agents mark the evidence

@@ -40,10 +40,15 @@ class LiveTransport:
         on_spawn: Any = None,
         runner: Any = None,
         binary_resolver: Any = None,
+        on_diagnostic: Any = None,
     ) -> tuple[str, str]:
         from cargento_runtime import supervise  # noqa: PLC0415 - exact production default seam
 
-        if runner not in (None, supervise.run) or binary_resolver not in (None, shutil.which):
+        if (
+            runner not in (None, supervise.run)
+            or binary_resolver not in (None, shutil.which)
+            or on_diagnostic is not None
+        ):
             raise abstention_ledger.LedgerError("the live wrapper refuses a substituted executor")
         if self.observer.claude_exec is not self:
             raise abstention_ledger.LedgerError(

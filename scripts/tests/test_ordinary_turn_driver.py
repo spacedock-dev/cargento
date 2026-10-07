@@ -695,17 +695,37 @@ class StubNativeProcess(ControlFixture):
         signal_group.assert_called_once()
         child.wait.assert_not_called()
 
+    def test_an_exiting_owned_parent_is_reaped_after_a_signal_error(self) -> None:
+        process = driver.NativeProcess(StubGate())
+        child = mock.Mock(spec=subprocess.Popen)
+        child.pid = 12345
+        child.returncode = None
+        child.poll.return_value = None
+
+        def exit_during_wait(*_args: Any, **_kwargs: Any) -> int:
+            child.returncode = 0
+            return 0
+
+        child.wait.side_effect = exit_during_wait
+        process.process = child
+        with mock.patch.object(os, "killpg", side_effect=PermissionError) as signal_group:
+            self.assertTrue(process.cleanup())
+            self.assertTrue(process.cleanup())
+        signal_group.assert_called_once()
+        child.wait.assert_called_once_with(timeout=2)
+
     def test_a_live_parent_with_a_group_signal_error_is_not_reported_cleaned(self) -> None:
         process = driver.NativeProcess(StubGate())
         child = mock.Mock(spec=subprocess.Popen)
         child.pid = 12345
         child.returncode = None
         child.poll.return_value = None
+        child.wait.side_effect = subprocess.TimeoutExpired("owned fixture", 2)
         process.process = child
         with mock.patch.object(os, "killpg", side_effect=PermissionError):
             self.assertFalse(process.cleanup())
         self.assertFalse(process.cleaned)
-        child.wait.assert_not_called()
+        child.wait.assert_called_once_with(timeout=2)
 
     def stub(self, body: str) -> driver.Plan:
         script = self.root / "stub_cli.py"

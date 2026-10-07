@@ -1,0 +1,44 @@
+{
+  "v": 1,
+  "verdict": "GO",
+  "prepared_by": "/root",
+  "reviewed_by": "/root/login_accounting_and_source_critic",
+  "parent": {
+    "manifest_digest": "e060d2c4dd261e5eccbffd25b7fda20d473cea554a2f923dbae57e31002948ba",
+    "activation_anchor": "5199dfe8ded66226af6c628fcb79d511ce04e57aee5d0091c0c243605b95c44d",
+    "handoff_digest": "fd66a6d430436667618ffdaee2ab73a0e5f66a7c0ec0d618095d6e2a7812936b",
+    "state_digest": "5d1272ae396cc1735563d5d7ba5f82e0890f102cf098e71ee3eedea8effd7064",
+    "original_digest": "8f06ffb031666f7eaf4db3414f710a8ba771e214a77fd7863312e4965004d143",
+    "calls": 2,
+    "calls_digest": "c56a4e7a027d1b043be043cd68aa69e89f02c222234ab7692466e915a0fd00df",
+    "stop_proof": {
+      "kind": "two-consecutive-unusable",
+      "settlements_digest": "f441812ec76326935000e53cd77e9ee416d4a8cf80b3d140c20c2e3e0a9f4cfa"
+    },
+    "failed_result_digest": "4653ad11ad48942e5dbe961912ed201f423b10ebc796156d7303b02322a9c03e",
+    "native_calls": 32,
+    "native_calls_digest": "00ad85df69f5f2081f2fd378a070ee613a2344434aa5247eba7dd5017f4e1ce3",
+    "native_chain": {
+      "first": "92c26ee2b2b24750a1e2870aec5beb43",
+      "calls": 32,
+      "head": "37584bf70e3d92950307f554a69d397ea06c045213ad7c6b222c52b964bc8ab4"
+    }
+  },
+  "successor": {
+    "manifest_digest": "1581743789dd58315fac472f1ad1c5067fb128fafd0c9ba9385fb27bee528ff1",
+    "grant_digest": "b6d98376636996630d9b3bf3979b92629acb55ed3950f36901998b6d886aaf71",
+    "evidence": {
+      "source": "54c2cba4aa4dc9250e4120e6aea9ba0ab3e6259c5d4f51188413956296a0ac5c",
+      "scorer": "2acae0d7b96ad86ea6f96974129f70a0c8427dfa1b9048d944078e0b69e41419",
+      "marks": "c57e889c6813ff940f5fd25142fa324dadec08d5c63ba0225c976d968d962cdf"
+    },
+    "cases_digest": "169648838a8334666bb90867ff618e3aab31b0781608b660101b32ee91c7eea6",
+    "inputs_digest": "49b82bc8bbf0e260c02edea2e1ebce7a89315c5a474381ea677c2502ea4ef018",
+    "model_binding": "fb94ac991b54d5c92a9632c0e89c0e7df44a1c71760ea9a79535e36951c2edd9",
+    "additional_calls": 31,
+    "carried_calls": 29,
+    "renewed_calls": 2,
+    "shared_total": 243,
+    "native_total": 63
+  }
+}

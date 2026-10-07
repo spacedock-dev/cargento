@@ -124,6 +124,8 @@ CLOSURE_CALLS = 31
 CLOSURE_CAP = MAX_CALLS + CLOSURE_CALLS
 SUCCESSOR_PREVIOUS_CALLS = 30
 SUCCESSOR_CAP = SUCCESSOR_PREVIOUS_CALLS + CLOSURE_CALLS
+LOGIN_RESUME_PREVIOUS_CALLS = 32
+LOGIN_RESUME_CAP = LOGIN_RESUME_PREVIOUS_CALLS + CLOSURE_CALLS
 STATUSES = ("charged", "ok", "failed", "unavailable")
 _DIGEST = re.compile(r"^[0-9a-f]{64}$")
 _CASE = re.compile(r"^[0-9a-f]{16}$")
@@ -205,7 +207,7 @@ def read(path: str | None) -> dict[str, Any]:
     return body
 
 
-def continuation() -> dict[str, Any] | None:
+def continuation(*, generation: int | None = None) -> dict[str, Any] | None:  # noqa: C901 - validate the entire chain before selecting a historical ancestor
     """The active reviewed handoff, bound to every committed failed result before it.
 
     The `marking` phase names only the new case digest. Once the owner has
@@ -218,6 +220,8 @@ def continuation() -> dict[str, Any] | None:
     and on with no gap. A grant whose predecessor is missing is an error, as is
     one numbered past `MAX_GRANTS`. The returned grant carries `segments`: each
     earlier packet's last call count and its key, in ledger order.
+    A historical selection still validates all later grants; it is for ancestor
+    inspection and does not change the active packet used by native charging.
     """
     stray = _stray_grant()
     if stray:
@@ -226,6 +230,11 @@ def continuation() -> dict[str, Any] | None:
             f"then claude-continuation-2.json up to -{MAX_GRANTS}.json"
         )
         raise LedgerError(msg)
+    if generation is not None and (
+        type(generation) is not int or not 1 <= generation <= MAX_GRANTS
+    ):
+        raise LedgerError("the requested continuation generation is invalid")
+    selected: dict[str, Any] | None = None
     active: dict[str, Any] | None = None
     for k, path in enumerate(CONTINUATION_PATHS, start=1):
         grant = _grant(path, result_path(k - 1))
@@ -265,20 +274,27 @@ def continuation() -> dict[str, Any] | None:
             if not valid:
                 raise LedgerError("the closure allowance is not a bound fourth grant")
         successor = _successor_allowance(grant, k)
+        login_resume = _login_resume_allowance(grant, k)
         authorized = list((active or {}).get("authorized_allowances", []))
-        if allowance or successor:
+        if allowance or successor or login_resume:
             authorized.append(
                 {
                     "next": grant["next"],
-                    "allowance": allowance or successor,
-                    "cap": SUCCESSOR_CAP if successor else CLOSURE_CAP,
+                    "allowance": allowance or successor or login_resume,
+                    "cap": LOGIN_RESUME_CAP
+                    if login_resume
+                    else SUCCESSOR_CAP
+                    if successor
+                    else CLOSURE_CAP,
                 }
             )
         grant["authorized_allowances"] = authorized
         grant["generation"] = k
         grant["segments"] = segments
         active = grant
-    return active
+        if generation == k:
+            selected = grant
+    return active if generation is None else selected
 
 
 def _successor_allowance(grant: dict[str, Any], generation: int) -> dict[str, Any] | None:
@@ -317,15 +333,62 @@ def _successor_allowance(grant: dict[str, Any], generation: int) -> dict[str, An
     return value
 
 
+def _login_resume_allowance(grant: dict[str, Any], generation: int) -> dict[str, Any] | None:
+    value = grant.get("login_resume_allowance")
+    if value is None:
+        return None
+    if (
+        generation != 6
+        or grant.get("closure_allowance") is not None
+        or grant.get("successor_allowance") is not None
+        or not isinstance(value, dict)
+        or set(value)
+        != {
+            "additional_calls",
+            "previous_calls",
+            "carried_calls",
+            "renewed_calls",
+            "repeats",
+            "retry_calls",
+            "model_binding",
+            "campaign_binding",
+        }
+        or grant["previous"]["ledger_chain"]["calls"] != LOGIN_RESUME_PREVIOUS_CALLS
+        or any(
+            type(value.get(k)) is not int or value[k] != expected
+            for k, expected in (
+                ("additional_calls", 31),
+                ("previous_calls", 32),
+                ("carried_calls", 29),
+                ("renewed_calls", 2),
+                ("repeats", 3),
+                ("retry_calls", 1),
+            )
+        )
+        or any(
+            not isinstance(value.get(k), str) or not _DIGEST.fullmatch(value[k])
+            for k in ("model_binding", "campaign_binding")
+        )
+    ):
+        raise LedgerError("the login recovery allowance is not a bound sixth grant")
+    return value
+
+
 def closure_allowance(grant: Mapping[str, Any] | None) -> dict[str, Any] | None:
     """Only the validated active grant chooses a legacy or successor allowance."""
-    return (grant or {}).get("successor_allowance") or (grant or {}).get("closure_allowance")
+    return (
+        (grant or {}).get("login_resume_allowance")
+        or (grant or {}).get("successor_allowance")
+        or (grant or {}).get("closure_allowance")
+    )
 
 
 def allowance_cap(grant: Mapping[str, Any] | None) -> int:
     """The sealed generation's ceiling, without transferring an older allowance."""
     if not grant or grant.get("phase") != "sealed" or not closure_allowance(grant):
         return MAX_CALLS
+    if grant.get("login_resume_allowance"):
+        return LOGIN_RESUME_CAP
     return SUCCESSOR_CAP if grant.get("successor_allowance") else CLOSURE_CAP
 
 
@@ -412,7 +475,20 @@ def _grant(path: str, failed_path: str) -> dict[str, Any] | None:
     summary = _review_json(failed_path, "prior committed result", cap=2 * 1024 * 1024)
     if (
         not isinstance(summary, dict)
-        or summary.get("verdict") != "failed"
+        or not (
+            (summary.get("verdict") == "failed" and grant.get("login_resume_allowance") is None)
+            or (
+                path == CONTINUATION_PATHS[5]
+                and grant.get("login_resume_allowance") is not None
+                and summary.get("verdict") == "blocked"
+                and summary.get("stopped") is True
+                and isinstance(summary.get("counts"), dict)
+                and type(summary["counts"].get("attempts")) is int
+                and summary["counts"]["attempts"] == 2
+                and type(summary["counts"].get("unusable_attempts")) is int
+                and summary["counts"]["unusable_attempts"] == 2
+            )
+        )
         or summary.get("producer") != "claude"
         or any(summary.get(key) != previous.get(key) for key in ("marks_digest", "inputs_digest"))
         or summary.get("ledger_chain") != previous["ledger_chain"]
@@ -537,7 +613,7 @@ class Ledger:
         if path is None:
             raise LedgerError("the account's canonical home is unavailable")
         self.path = path
-        self.requested_cap = min(cap, SUCCESSOR_CAP)
+        self.requested_cap = min(cap, LOGIN_RESUME_CAP)
         self.model_binding = model_binding
         self.campaign = campaign
         self.marks_digest = marks_digest
@@ -547,19 +623,26 @@ class Ledger:
 
     @property
     def cap(self) -> int:
-        """Legacy keys retain 28/59; only the bound fifth-generation key admits 61."""
+        """Legacy keys retain 28/59/61; only the bound sixth-generation key admits 63."""
         try:
             grant = continuation()
         except LedgerError:
             return min(self.requested_cap, MAX_CALLS)
         if grant and grant["phase"] == "sealed":
-            for admitted in grant["authorized_allowances"]:
+            for admitted in reversed(grant["authorized_allowances"]):
                 if (
                     self.model_binding == admitted["allowance"]["model_binding"]
                     and self.marks_digest == admitted["next"].get("marks_digest")
                     and self.inputs_digest == admitted["next"].get("inputs_digest")
                     and self.cases_digest == admitted["next"].get("cases_digest")
                     and self.producer == "claude"
+                    and (
+                        admitted["cap"] != LOGIN_RESUME_CAP
+                        or (
+                            self.campaign is not None
+                            and self.campaign.binding == admitted["allowance"]["campaign_binding"]
+                        )
+                    )
                 ):
                     return min(self.requested_cap, int(admitted["cap"]))
         return min(self.requested_cap, MAX_CALLS)

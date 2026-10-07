@@ -913,6 +913,42 @@ class AnOutputFileHasABoundTest(unittest.TestCase):
         patcher.start()
         self.addCleanup(patcher.stop)
 
+    def test_stderr_is_bounded_independently_after_an_immediate_exit(self) -> None:
+        out, error = self.home / "reply.txt", self.home / "error.txt"
+        with (
+            out.open("wb") as stdout,
+            error.open("wb") as stderr,
+            self.assertRaises(supervise.OversizedError),
+        ):
+            supervise.run(
+                [sys.executable, "-c", "import os; os.write(2, bytes([120]) * 8192)"],
+                stdout=stdout,
+                stderr=stderr,
+                timeout=3,
+                output_limit=(str(out), 1 << 20),
+                output_limits=((str(error), 4096),),
+            )
+        self.assertEqual(0, out.stat().st_size)
+        self.assertGreater(error.stat().st_size, 4096)
+
+    def test_extra_limit_preserves_the_original_stdout_bound(self) -> None:
+        out, error = self.home / "reply.txt", self.home / "error.txt"
+        with (
+            out.open("wb") as stdout,
+            error.open("wb") as stderr,
+            self.assertRaises(supervise.OversizedError),
+        ):
+            supervise.run(
+                [sys.executable, "-c", "import os; os.write(1, bytes([120]) * 8192)"],
+                stdout=stdout,
+                stderr=stderr,
+                timeout=3,
+                output_limit=(str(out), 4096),
+                output_limits=((str(error), 1 << 20),),
+            )
+        self.assertGreater(out.stat().st_size, 4096)
+        self.assertEqual(0, error.stat().st_size)
+
     def test_a_cli_that_floods_its_output_file_is_killed_soon_after_the_bound(self) -> None:
         """Time to the kill, not size: an unpaused writer's overshoot is the disk's speed."""
         out, pid_file = self.home / "reply.txt", self.home / "helper.pid"

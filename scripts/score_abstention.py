@@ -362,7 +362,10 @@ class _Charged:
         repeat: int = 1,
         retry: bool = False,
         binding: Mapping[str, str] | None = None,
+        diagnostics_path: str | None = None,
     ) -> None:
+        self.diagnostics_path = diagnostics_path
+        self.diagnostic: dict[str, Any] | None = None
         self.repeat = repeat
         self.retry = retry
         self.binding = binding
@@ -385,12 +388,15 @@ class _Charged:
                 self.model.config,
                 runner=self.model.runner,
                 binary_resolver=self.model.binary_resolver,
+                on_diagnostic=self._diagnostic if self.diagnostics_path else None,
             )
             if isinstance(self.model, reading.ClaudeReadingModel)
             else contextlib.nullcontext(self.model)
         )
         try:
             with context as prepared:
+                if self.diagnostics_path and isinstance(self.model, reading.ClaudeReadingModel):
+                    self._diagnostic_directory()
                 request_binding = ""
                 if self.ledger.campaign is not None:
                     from analyze_campaign import (  # noqa: PLC0415 - only the new closure grant binds actual prompts
@@ -413,9 +419,62 @@ class _Charged:
                 self.charge_id = charge
                 raw, status = prepared(prompt, output_cap_bytes=output_cap_bytes)
                 self.ledger.settle(charge, status)
+                if self.diagnostics_path and self.diagnostic is not None:
+                    self._write_diagnostic(charge, request_binding)
                 return raw, status
         except observer.ClaudePreparationError as error:
             return "", error.status
+
+    def _diagnostic(self, event: dict[str, Any]) -> None:
+        self.diagnostic = event
+
+    def _diagnostic_directory(self) -> pathlib.Path:
+        if self.diagnostics_path is None:
+            raise abstention_ledger.LedgerError("the diagnostic directory was not requested")
+        folder = pathlib.Path(self.diagnostics_path)
+        try:
+            folder.mkdir(mode=0o700, exist_ok=True)
+            info = folder.lstat()
+            if not stat.S_ISDIR(info.st_mode) or (
+                os.name != "nt" and stat.S_IMODE(info.st_mode) != 0o700
+            ):
+                raise OSError("diagnostic directory is not private")  # noqa: TRY301 - one closed local refusal
+            fd, probe = tempfile.mkstemp(prefix=".diagnostic-write-", dir=folder)
+            try:
+                os.close(fd)
+            finally:
+                os.unlink(probe)
+        except OSError as error:
+            raise abstention_ledger.LedgerError(
+                "the private diagnostic directory is unavailable"
+            ) from error
+        return folder
+
+    def _write_diagnostic(self, charge: str, request_binding: str) -> None:
+        """A failed executor must not erase the reason or refund its attempt."""
+        folder = self._diagnostic_directory()
+        try:
+            body = {
+                "v": 1,
+                "charge_id": charge,
+                "case_id": self.case_id,
+                "repeat": self.repeat,
+                "retry": self.retry,
+                "request_binding": request_binding,
+                "model_binding": abstention_ledger.digest(
+                    {k: (self.binding or {}).get(k) for k in BINDING_KEYS}
+                ),
+                "diagnostic": self.diagnostic,
+            }
+            fd = os.open(folder / (charge + ".json"), os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+            with os.fdopen(fd, "w", encoding="utf-8") as stream:
+                json.dump(body, stream, sort_keys=True)
+                stream.flush()
+                os.fsync(stream.fileno())
+        except OSError as error:
+            raise abstention_ledger.LedgerError(
+                "the charged call's private diagnostic could not be saved"
+            ) from error
 
 
 class BinaryError(Exception):
@@ -2516,7 +2575,15 @@ def _score_repeated(  # noqa: C901, PLR0912, PLR0913, PLR0915 - explicit charge/
             case = cases[cid]
             retry = bool(prior)
             while True:
-                charged = _Charged(ledger, cid, model, repeat=repeat, retry=retry, binding=binding)
+                charged = _Charged(
+                    ledger,
+                    cid,
+                    model,
+                    repeat=repeat,
+                    retry=retry,
+                    binding=binding,
+                    diagnostics_path=results_path + ".diagnostics",
+                )
                 record = score_case(
                     config,
                     case,
@@ -2539,6 +2606,8 @@ def _score_repeated(  # noqa: C901, PLR0912, PLR0913, PLR0915 - explicit charge/
                     classification=classification,
                     rubric=judged,
                 )
+                if charged.diagnostic is not None:
+                    record["transport_diagnostic"] = charged.diagnostic
                 attempts.append(record)
                 if not charged.charge_id:
                     campaign.stop("coverage-failed")
