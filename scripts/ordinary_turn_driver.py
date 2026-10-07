@@ -414,11 +414,12 @@ class NativeProcess:
         except ProcessLookupError:
             pass
         except OSError:
-            # macOS may reject a signal to a group whose last member exited
-            # before it was reaped. Reap only this owned child; a live child
-            # still means cleanup failed, and no group is signalled again here.
-            self.cleaned = process.poll() is not None
-            return self.cleaned
+            # A rejected group signal can race the owned parent's exit.
+            # Reap it within the existing bound, without signalling a numeric
+            # group again. A child still alive at that bound remains uncleaned.
+            if process.poll() is not None:
+                self.cleaned = True
+                return True
         try:
             process.wait(timeout=2)
         except subprocess.TimeoutExpired:
