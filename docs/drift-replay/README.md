@@ -244,7 +244,22 @@ shared charges and 32 native charges remain spent; no replay or live allowance i
 The [fixed manifest](closure-campaign-login-resume.json) and
 [independent handoff](closure-login-resume-handoff.json) bind that finite continuation.
 Private execution diagnostics now retain closed failure categories without raw error text.
-Preparation and login repair alone do not supply a qualification result.
+The [sixth qualification result](../abstention/claude-results-continuation-6.json) now records
+two parsed readings: both Claude Code calls exited successfully, with no unusable attempt or
+retry. Only the opening batch was accepted. The next case failed the frozen abstention check
+and stopped the campaign. Across seven questions there were four correct judgements, no false
+reassurance, one missed departure and two over-abstentions against the rubric. Goal missed an
+earlier stall; one outcome line judged an unverifiable condition `not-reached`, and another
+abstained instead of the expected `consistent`.
+
+All five recorded case kinds were admitted before spending, but only two reached the model.
+The other eight first-pass cases and all second and third readings were not attempted. The
+new allowance has spent two of 31 attempts; 29 unused attempts remain held. Native charges are
+34 of 63. The shared ledger preserves the original two charges and two in each successor, six
+in total. Replay and live remain held; the replay ledger is unchanged at 631 of 870. No
+allowance is borrowed, refunded or reset. The result is failed, not a completed qualification.
+Investigating non-final conditions and earlier stalls is the next producer task; any change
+must fit the 9,216-byte instruction limit and earn its own measured result.
 
 ## Model-free gap studies, 2026-10-05
 
