@@ -706,3 +706,13 @@ attempts held. Thirty fresh readings and one availability retry fit the new 31-a
 allowance. The new cumulative ceilings are 247 shared and 67 native charges; older keys retain
 their ceilings. Fresh scope adjudication and checked transfer bind expectations before output.
 This preparation does not qualify the producer or resume the stopped seventh run.
+
+The repository-only [Claude route verifier](../../scripts/claude_route_verification.py) allows
+one genuine browser reading only after the eighth qualification is completely accepted.
+It consumes one existing held live attempt, preserves the other 17 and all 190 held replay
+attempts, and refuses Codex. A separately reviewed source/app profile and immutable activation
+receipt are required. A successful CLI exit alone cannot establish browser acceptance; the
+stored reading, visible result and reload persistence require independent review.
+The [route contract](../../SECURITY.md#one-claude-only-browser-route-after-qualification-2026-10-07)
+keeps this narrow check separate from the wider privacy study. No browser measurement is
+supplied by installing the verifier.

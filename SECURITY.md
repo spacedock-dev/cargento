@@ -2310,6 +2310,40 @@ ten and ten. The existing semantic, coverage, charge and availability guards rem
 cannot cross a semantic stop. This is one finite continuation, not authority to reopen arbitrary
 runs, increase an older ceiling or borrow replay and live allowance.
 
+##### One Claude-only browser route after qualification, 2026-10-07
+
+The repository-only [route verifier](scripts/claude_route_verification.py) permits one browser
+reading after the eighth qualification has actually passed all three repetitions and every
+batch and final review is accepted. Current runtime and scorer bytes must match the qualified
+source. The final acceptance binds the actual scored summary, not just a successful CLI exit.
+
+The owner authorized one of the 18 held live attempts for this route check. The other 17 live
+attempts and 190 replay attempts remain held. No qualification retry is transferred. The shared
+ceiling stays 247: eight earlier shared charges, thirty or thirty-one fresh qualification charges,
+and at most one route charge. An unused qualification retry remains held after acceptance.
+Any later study admission must account for the consumed route attempt.
+
+A separately reviewed profile binds the qualified model request and native binary, the wrapper,
+application configuration, source files, selected session, saved intent, consent and exact
+prompt. The wrapper runs the real application in the foreground on loopback, disables background
+model lanes, refuses Codex, and charges before forwarding to the captured protected Claude
+executor. It preserves that executor's runner, resolver and launch callback. No fake collector,
+HTTP reading or model result is admitted as the browser evidence.
+
+Initialization first writes the exclusive immutable `claude-route-live00.ACTIVATED.json` under
+the canonical account home, outside the route account, receipt and context directories. The
+account genesis follows, and the public profile and handoff are sealed against its anchor.
+Deleting history, rolling the public profile back to preparation, or leaving a partial activation
+cannot mint a second allowance. Reservations and acceptance require the complete current
+admission. A registered non-success transport outcome may settle an already-paid immutable
+charge after its source has changed; it preserves `unstopped` and `oversized` warnings instead
+of replacing them with a generic failure. Stale success and unknown statuses refuse.
+
+Transport success alone is insufficient. Acceptance needs the genuine completed job, stored
+reading, visible result, reload persistence and an independent review, with the provider shown
+before the press. This narrow route check does not certify the separate complete-process privacy
+study, native zoom measurement or broader harness matrix.
+
 #### Prospective qualification source cuts, 2026-10-05
 
 The opt-in typed-Claude qualification freezer may make an owned transient copy of the raw
