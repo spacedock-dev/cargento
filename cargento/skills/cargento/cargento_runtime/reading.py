@@ -2219,6 +2219,16 @@ CLAIMS_RULE = (
     "a showing check/write; otherwise unverifiable.\n"
 )
 
+# Non-final qualifications exposed an invented work-state claim on a neutral
+# record pointer. This restates the same closed claim/citation contract without
+# changing the final-scope instruction or adding English classifiers.
+NONFINAL_CLAIMS_RULE = (
+    '"claims": only assertions of running/done/merged/pushed/deployed/passing/fixed/sent/filed, '
+    "not neutral pointers. departure: claim+contradiction no earlier; "
+    "consistent: claim+showing check; unsupported only passing/fixed/written "
+    "without showing check/write; else unverifiable.\n"
+)
+
 
 def _priority(entry: LedgerEntry) -> int:
     """Which entries the byte bound reserves first (lower is earlier)."""
@@ -2299,13 +2309,18 @@ def _header(
         )
         + EVIDENCE_RULES
         + (
-            "Read work so far. Unknown scope/conditions: unverifiable unless a counterexample "
-            "has each condition shown. Known departure stays in recovery (e.g. unkept stalled "
-            "promise); pending: not_reached. Supported repair may be consistent.\n"
+            "Read work so far. Unknown scope/conditions: unverifiable even unfinished, unless a "
+            "counterexample shows each condition. Known departure stays in recovery "
+            "(e.g. unkept stalled promise). not_reached needs known applicability. "
+            "Repairs may be consistent.\n"
             if scope in (SCOPE_LAST_TURN, SCOPE_MID_FLIGHT)
             else "Read through the session end.\n"
         )
-        + (CLAIMS_RULE if claims else "")
+        + (
+            (NONFINAL_CLAIMS_RULE if scope in (SCOPE_LAST_TURN, SCOPE_MID_FLIGHT) else CLAIMS_RULE)
+            if claims
+            else ""
+        )
         + "`detail`: one plain sentence explaining departure or unfinished work; empty otherwise. "
         "Never declare work met, complete, delivered or verified.\n\n"
     )
