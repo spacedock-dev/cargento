@@ -1,0 +1,48 @@
+{
+  "v": 1,
+  "verdict": "GO",
+  "prepared_by": "/root",
+  "reviewed_by": "/root/conditional_priority_semantic",
+  "parent": {
+    "manifest_digest": "5c334e2096d34fdd20af4c8c1801980216ec249a92ad738cba803df28ce30268",
+    "activation_anchor": "6aba9a5b1adba432245266beb6186ce3406d27151ddd219faa5191fc4b0db139",
+    "handoff_digest": "c0aa10ea457be099e3a1e2c6a6fb7862b8389002fc712cc1d58c1faac101efe9",
+    "state_digest": "eb3445853a369f9a4a7d6190fb34e845bebef56d8032526d3505c661a08f7c63",
+    "original_digest": "8f06ffb031666f7eaf4db3414f710a8ba771e214a77fd7863312e4965004d143",
+    "ancestor_epochs_digest": "f4a65cfb66bba345881fc123184e517562c75673f2c57fce2e24c132d9349baa",
+    "transition_digest": "7819cf43f87b49b61df4425e8d9a73db681e7244495a1a6fd354e2a76ecb0ecd",
+    "zero_reseal_digest": "5a999c20f35346e23724b0e3293ae3c95b6124bbdce4f6fb515535a3bec0c2a4",
+    "calls": 2,
+    "calls_digest": "2fe1ddec94f3ab52d64a47a29a9bc0f369ef410fc658cbe82688a4bf97e23570",
+    "stop_proof": {
+      "kind": "semantic-failed",
+      "classification_digest": "0483da1a85f141f2244d1654ad08a7104ee54456e13a6375440dd2c0eaff8b08",
+      "explicit_stop_digest": null
+    },
+    "failed_result_digest": "1d58cc23a6a22166c9e804ffb5dbf167d9660ef9ccaa6217312782909b735a69",
+    "native_calls": 38,
+    "native_calls_digest": "e39fa76bb4996fa57a871894721413d6a188c61ba9ee33c8a55aa8685f08b180",
+    "native_chain": {
+      "first": "92c26ee2b2b24750a1e2870aec5beb43",
+      "calls": 38,
+      "head": "290b451f71347bdd001225abd807ff1a418896401b3a5b06191a1a27f8759497"
+    }
+  },
+  "successor": {
+    "manifest_digest": "d64960a061bd5f1a17cf2df79dfd6e1814cdc2b822919ee13f5ece9a68a5b89f",
+    "grant_digest": "cf5f5fea612fe56dc42a470a6559cedaa0b9e6c8aef9663a3369c17e66f3e7a9",
+    "evidence": {
+      "source": "96202e69f1d4ce6695c4161ad9b489e2a69b5ae34b946da5b6ef1da7fa597588",
+      "scorer": "62a5d333149f5d9eceaf6e43d4c10c2036be34e64f7877dc132cede502230684",
+      "marks": "9c9abf7e927be9d3ce9edd4aa8a7b1f2b6e4a88b8b8e654529216dd6eef6ea54"
+    },
+    "cases_digest": "0228c81f8697df83be320370b00352ee2848c863e7b163d15164d02fbeacd85f",
+    "inputs_digest": "a911216dde128241880a6d74aa4183c5382017141a00945e8984e8e925b53d52",
+    "model_binding": "fb94ac991b54d5c92a9632c0e89c0e7df44a1c71760ea9a79535e36951c2edd9",
+    "additional_calls": 31,
+    "carried_calls": 29,
+    "renewed_calls": 2,
+    "shared_total": 249,
+    "native_total": 69
+  }
+}

@@ -2142,10 +2142,14 @@ genesis digest is required for activation; an activated campaign never creates r
 state automatically. This guards accidental reset, not an account holder who rewrites both the
 repository authority and every private receipt.
 
+Every admission validates the current ledger and each ancestor. Proof assembly may use the
+snapshots validated during that admission; it cannot cache them for a later request.
+
 By default, the lanes run in replay, qualification, live order. Each registered batch needs measured,
 independently reviewed acceptance before the next batch. Transport usability is insufficient.
 A semantic, coverage or protection failure stops every lane, as do two consecutive unusable
-charged attempts. Pending or orphaned attempts block another launch. Batches charge at most
+charged attempts, except for the finite semantic-measurement amendment below. Pending or
+orphaned attempts block another launch. Batches charge at most
 25 attempts including retries, and each lane opens with one availability attempt. Only an
 explicit same-slot retry under its registered allowance can follow an unusable opening.
 
@@ -2309,6 +2313,65 @@ The first exposure is the one-call opening, followed by independently reviewed b
 ten and ten. The existing semantic, coverage, charge and availability guards remain; one retry
 cannot cross a semantic stop. This is one finite continuation, not authority to reopen arbitrary
 runs, increase an older ceiling or borrow replay and live allowance.
+
+##### Conditional-priority qualification measurement, 2026-10-07
+
+The eighth run stopped after two parsed answers because an approval-qualified outcome was
+judged without established approval. The owner approved carrying its 29 unused attempts
+forward and adding two, giving 31 available attempts for a fresh thirty-reading measurement
+and at most one availability retry. All 38 native and ten shared charges remain spent.
+The new cumulative ceilings are 69 native and 249 shared attempts; replay's 190 and live's
+18 attempts remain held. Older grants and their stops retain their original limits.
+
+The owner also removed the requirement to stop measurement at its first failing semantic
+batch. Only the ninth-generation campaign may continue to the next registered exposure after
+a semantic failure. Every wrong answer, grade and charge remains recorded. Such an exposure
+is terminal measurement evidence, never a retry slot. Batches of one, nine, ten and ten still
+require independent measured review. A measured review records the actual failures and cannot
+stand for qualification acceptance. A failed aggregate remains failed and cannot arm another
+lane or the qualified browser-verification route.
+
+Coverage, protection, orphan and source-binding failures still block launches. An unstopped
+process or oversized response latches a protection stop without retry. The existing limit
+on consecutive unusable attempts and the single registered availability retry remain. No
+option or arbitrary manifest field can remove these checks or increase the finite allowance.
+
+The fixed ninth grant and reviewed handoff bind the complete paid predecessor, including
+its accepted opening, every earlier failed result and immutable receipt, and both original
+transition and reseal in epoch three. Ordinary initialization appends only epoch five;
+it resets no earlier state and carries no prior batch or lane acceptance. Missing or changed
+history refuses execution. Source admission and the complete local checks precede activation;
+merged software and current-head passing CI precede spending.
+
+Fresh source-derived inputs bind the corrected producer and scorer before output. Unchanged
+expectations may transfer only after their scope, material, selected entries and citation
+menus are independently checked. A changed producer cannot reuse earlier answers or regrade
+an old packet. This amendment permits completing one finite measurement, not reporting a
+failure as a pass or reopening an earlier stopped run.
+
+##### One qualified Claude-only browser reading, 2026-10-07
+
+After the ninth-generation qualification passes, a separately reviewed profile may allocate
+one of the existing 18 held live attempts to a foreground browser reading. The other 17 live
+and 190 replay attempts remain held; this adds no attempt to the 249 shared ceiling. The
+profile binds the actual qualifying result, all thirty usable exposures, full qualification
+acceptance, current runtime and scorer, model request and independently reviewed browser
+context. Measured batch reviews cannot supply that acceptance. An explicit technical stop
+refuses the route even when an earlier qualifying result passed.
+
+The wrapper starts the genuine application and preserves its consent, provider selection,
+collector, resolver and native executor. Its private PATH excludes Codex; background reading
+is disabled. Before the press, disclose Claude Code and Anthropic and bind the selected
+session, saved intent, consent, startup identity and exact prompt. Only this registered
+foreground request may launch the model. Construction and mocks establish no browser pass.
+
+The route account and context use a separate fixed conditional-priority namespace. Its
+exclusive activation marker remains outside that namespace, at
+`~/.cargento/claude-route-live00.ACTIVATED.json`, so deleting an account or restoring a prepared
+profile cannot mint a second allocation. Every reservation stays charged, and settled
+failures are immutable. A late source change cannot hide an already charged native warning
+or prevent its durable closed settlement. Missing state, orphaned calls, unknown statuses
+and source or admission changes refuse another launch; no retry is allocated to this route.
 
 #### Prospective qualification source cuts, 2026-10-05
 

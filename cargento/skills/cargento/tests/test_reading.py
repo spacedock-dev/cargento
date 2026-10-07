@@ -3321,25 +3321,26 @@ class NonfinalReadingsSeparateUnknownConditionsFromPendingWork(unittest.TestCase
                     self.ledger, goal=self.goal, lines=self.lines, max_bytes=16_384, scope=scope
                 )
                 trusted, values = prompt.split("<goal>\n", 1)
-                self.assertIn("Read work so far; per whole clause:", trusted)
+                self.assertIn("Read work so far. Unknown scope/conditions:", trusted)
                 for phrase in (
-                    "shown departure stays in recovery (e.g. unkept stalled promise)",
-                    "else unknown scope/conditions: unverifiable",
-                    "else pending: not_reached",
+                    "counterexample has each condition shown",
+                    "Known departure stays in recovery (e.g. unkept stalled promise)",
+                    "Unknown scope/conditions: unverifiable unless",
+                    "pending: not_reached",
                 ):
                     self.assertIn(phrase, trusted)
-                priority = trusted.index("per whole clause:")
+                unknown = trusted.index("Unknown scope/conditions: unverifiable unless")
+                qualified = trusted.index("counterexample has each condition shown")
                 shown = trusted.index(
-                    "shown departure stays in recovery (e.g. unkept stalled promise)"
+                    "Known departure stays in recovery (e.g. unkept stalled promise)"
                 )
-                unknown = trusted.index("else unknown scope/conditions: unverifiable")
-                unfinished = trusted.index("else pending: not_reached")
-                self.assertLess(priority, shown)
-                self.assertLess(shown, unknown)
+                unfinished = trusted.index("pending: not_reached")
+                self.assertLess(unknown, qualified)
+                self.assertLess(qualified, shown)
                 self.assertLess(unknown, unfinished)
                 self.assertIn("Supported repair may be consistent", trusted)
                 self.assertIn(
-                    "Each clause: own evidence; never copy Goal's or another line's verdict.",
+                    "Per clause: own evidence, no copied Goal/line verdict.",
                     trusted,
                 )
                 self.assertIn("exercising the whole clause", trusted)
@@ -3393,12 +3394,10 @@ class NonfinalReadingsSeparateUnknownConditionsFromPendingWork(unittest.TestCase
                                 finals.append(header)
                                 self.assertNotIn("Supported repair may be consistent", header)
                             else:
-                                self.assertIn("per whole clause:", header)
+                                self.assertIn("counterexample has each condition shown", header)
                                 self.assertIn("Supported repair may be consistent", header)
                                 if count:
-                                    self.assertIn(
-                                        "never copy Goal's or another line's verdict", header
-                                    )
+                                    self.assertIn("no copied Goal/line verdict", header)
         self.assertEqual(168, len(measured))
         self.assertEqual(56, len(finals))
         self.assertEqual(
@@ -3415,7 +3414,7 @@ class NonfinalReadingsSeparateUnknownConditionsFromPendingWork(unittest.TestCase
                 prompt, selected = reading.build_prompt(
                     self.ledger, goal=words, lines=[words] * 6, max_bytes=16_384, scope=scope
                 )
-                self.assertIn("else unknown scope/conditions: unverifiable", prompt)
+                self.assertIn("Unknown scope/conditions: unverifiable unless", prompt)
                 self.assertEqual(6, prompt.count('<outcome_line n="'))
                 self.assertEqual(7, prompt.count(words))
                 self.assertTrue(selected.asked_output)
@@ -3513,6 +3512,50 @@ class NonfinalReadingsSeparateUnknownConditionsFromPendingWork(unittest.TestCase
         self.assertEqual(reading.RESULT_UNVERIFIABLE, result["line_1"]["result"])
         self.assertEqual((), result["line_1"]["cites"])
         self.assertEqual(reading.RESULT_UNVERIFIABLE, result["line_2"]["result"])
+
+    def test_authored_qualified_counterexample_needs_no_enumeration_of_remaining_set(self) -> None:
+        """Construction/transport control only: a known negative witness is not a full set."""
+        agent = {
+            **AGENT_MESSAGE_FACT,
+            "summary": "One approved item remains undone; the remaining set is not recorded.",
+            reading.AGENT_WORDS_FIELD: (
+                "The person approved item A after its required review. Item A is still unmerged. "
+                "The remaining approved set is unknown. I stalled my follow-through promise; "
+                "work resumed. The independent workspace repair is now complete."
+            ),
+        }
+        ledger = reading.build_ledger([WORDS_FACT, agent], "claude", "s1", read_agent_words=True)
+        prompt, selected = reading.build_prompt(
+            ledger, goal=self.goal, lines=self.lines, max_bytes=16_384
+        )
+        self.assertIn("unless a counterexample has each condition shown", prompt)
+        agent_index = next(i for i, row in selected.by_index().items() if row["id"] == "m1")
+        raw = {
+            "goal": {
+                "result": "departure",
+                "cites": [agent_index],
+                "detail": "Own stalled promise.",
+            },
+            "line_1": {
+                "result": "departure",
+                "cites": [agent_index],
+                "detail": "The approved item is unmerged.",
+            },
+            "line_2": {"result": "consistent", "cites": [agent_index], "detail": ""},
+            "claims": {"result": "unverifiable", "cites": [], "detail": ""},
+        }
+        result = reading.resolve(
+            reading.parse_reply(
+                json.dumps(raw), reading.constraints_for(selected.lines, claims=True)
+            ),
+            selected,
+            goal=self.goal,
+            lines=self.lines,
+            detail_cap_chars=200,
+        )
+        self.assertEqual(reading.RESULT_DEPARTURE, result["goal"]["result"])
+        self.assertEqual(reading.RESULT_DEPARTURE, result["line_1"]["result"])
+        self.assertEqual(reading.RESULT_CONSISTENT, result["line_2"]["result"])
 
     def test_a_known_fulfilled_promise_is_not_forced_to_departure(self) -> None:
         agent = {

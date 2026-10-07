@@ -1392,6 +1392,9 @@ class OnlyTheReaderRequestedRouteKnowsTheClaudeCodeProducerTest(unittest.TestCas
                 # The authorized foreground study wraps the unchanged consent
                 # route's executor; it builds no alternate Claude model.
                 "scripts/live_analyze_campaign.py",
+                # One qualified foreground browser reading, bound to its held
+                # live allocation; it constructs no alternate Claude model.
+                "scripts/claude_route_verification.py",
             },
             self._users("claude_exec"),
         )

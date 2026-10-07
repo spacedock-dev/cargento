@@ -130,6 +130,8 @@ CLAUSE_CONTINUATION_PREVIOUS_CALLS = 34
 CLAUSE_CONTINUATION_CAP = CLAUSE_CONTINUATION_PREVIOUS_CALLS + CLOSURE_CALLS
 CLAUSE_ISOLATION_PREVIOUS_CALLS = 36
 CLAUSE_ISOLATION_CAP = CLAUSE_ISOLATION_PREVIOUS_CALLS + CLOSURE_CALLS
+CONDITIONAL_PRIORITY_PREVIOUS_CALLS = 38
+CONDITIONAL_PRIORITY_CAP = CONDITIONAL_PRIORITY_PREVIOUS_CALLS + CLOSURE_CALLS
 STATUSES = ("charged", "ok", "failed", "unavailable")
 _DIGEST = re.compile(r"^[0-9a-f]{64}$")
 _CASE = re.compile(r"^[0-9a-f]{16}$")
@@ -281,8 +283,16 @@ def continuation(*, generation: int | None = None) -> dict[str, Any] | None:  # 
         login_resume = _login_resume_allowance(grant, k)
         clause_continuation = _clause_continuation_allowance(grant, k)
         clause_isolation = _clause_isolation_allowance(grant, k)
+        conditional_priority = _conditional_priority_allowance(grant, k)
         authorized = list((active or {}).get("authorized_allowances", []))
-        if allowance or successor or login_resume or clause_continuation or clause_isolation:
+        if (
+            allowance
+            or successor
+            or login_resume
+            or clause_continuation
+            or clause_isolation
+            or conditional_priority
+        ):
             authorized.append(
                 {
                     "next": grant["next"],
@@ -290,8 +300,11 @@ def continuation(*, generation: int | None = None) -> dict[str, Any] | None:  # 
                     or successor
                     or login_resume
                     or clause_continuation
-                    or clause_isolation,
-                    "cap": CLAUSE_ISOLATION_CAP
+                    or clause_isolation
+                    or conditional_priority,
+                    "cap": CONDITIONAL_PRIORITY_CAP
+                    if conditional_priority
+                    else CLAUSE_ISOLATION_CAP
                     if clause_isolation
                     else CLAUSE_CONTINUATION_CAP
                     if clause_continuation
@@ -437,6 +450,7 @@ def _clause_isolation_allowance(grant: dict[str, Any], generation: int) -> dict[
         return None
     if (
         generation != 8
+        or grant.get("conditional_priority_allowance") is not None
         or grant.get("closure_allowance") is not None
         or grant.get("successor_allowance") is not None
         or grant.get("login_resume_allowance") is not None
@@ -474,10 +488,57 @@ def _clause_isolation_allowance(grant: dict[str, Any], generation: int) -> dict[
     return value
 
 
+def _conditional_priority_allowance(
+    grant: dict[str, Any], generation: int
+) -> dict[str, Any] | None:
+    value = grant.get("conditional_priority_allowance")
+    if value is None:
+        return None
+    if (
+        generation != 9
+        or grant.get("closure_allowance") is not None
+        or grant.get("successor_allowance") is not None
+        or grant.get("login_resume_allowance") is not None
+        or grant.get("clause_continuation_allowance") is not None
+        or grant.get("clause_isolation_allowance") is not None
+        or not isinstance(value, dict)
+        or set(value)
+        != {
+            "additional_calls",
+            "previous_calls",
+            "carried_calls",
+            "renewed_calls",
+            "repeats",
+            "retry_calls",
+            "model_binding",
+            "campaign_binding",
+        }
+        or grant["previous"]["ledger_chain"]["calls"] != CONDITIONAL_PRIORITY_PREVIOUS_CALLS
+        or any(
+            type(value.get(k)) is not int or value[k] != expected
+            for k, expected in (
+                ("additional_calls", 31),
+                ("previous_calls", 38),
+                ("carried_calls", 29),
+                ("renewed_calls", 2),
+                ("repeats", 3),
+                ("retry_calls", 1),
+            )
+        )
+        or any(
+            not isinstance(value.get(k), str) or not _DIGEST.fullmatch(value[k])
+            for k in ("model_binding", "campaign_binding")
+        )
+    ):
+        raise LedgerError("the conditional priority allowance is not a bound ninth grant")
+    return value
+
+
 def closure_allowance(grant: Mapping[str, Any] | None) -> dict[str, Any] | None:
     """Only the validated active grant chooses a legacy or successor allowance."""
     return (
-        (grant or {}).get("clause_isolation_allowance")
+        (grant or {}).get("conditional_priority_allowance")
+        or (grant or {}).get("clause_isolation_allowance")
         or (grant or {}).get("clause_continuation_allowance")
         or (grant or {}).get("login_resume_allowance")
         or (grant or {}).get("successor_allowance")
@@ -489,6 +550,8 @@ def allowance_cap(grant: Mapping[str, Any] | None) -> int:
     """The sealed generation's ceiling, without transferring an older allowance."""
     if not grant or grant.get("phase") != "sealed" or not closure_allowance(grant):
         return MAX_CALLS
+    if grant.get("conditional_priority_allowance"):
+        return CONDITIONAL_PRIORITY_CAP
     if grant.get("clause_isolation_allowance"):
         return CLAUSE_ISOLATION_CAP
     if grant.get("clause_continuation_allowance"):
@@ -587,6 +650,7 @@ def _grant(path: str, failed_path: str) -> dict[str, Any] | None:
                 and grant.get("login_resume_allowance") is None
                 and grant.get("clause_continuation_allowance") is None
                 and grant.get("clause_isolation_allowance") is None
+                and grant.get("conditional_priority_allowance") is None
             )
             or (
                 path == CONTINUATION_PATHS[5]
@@ -613,6 +677,17 @@ def _grant(path: str, failed_path: str) -> dict[str, Any] | None:
             or (
                 path == CONTINUATION_PATHS[7]
                 and grant.get("clause_isolation_allowance") is not None
+                and summary.get("verdict") == "failed"
+                and summary.get("stopped") is True
+                and isinstance(summary.get("counts"), dict)
+                and type(summary["counts"].get("attempts")) is int
+                and summary["counts"]["attempts"] == 2
+                and type(summary["counts"].get("unusable_attempts")) is int
+                and summary["counts"]["unusable_attempts"] == 0
+            )
+            or (
+                path == CONTINUATION_PATHS[8]
+                and grant.get("conditional_priority_allowance") is not None
                 and summary.get("verdict") == "failed"
                 and summary.get("stopped") is True
                 and isinstance(summary.get("counts"), dict)
@@ -746,7 +821,7 @@ class Ledger:
         if path is None:
             raise LedgerError("the account's canonical home is unavailable")
         self.path = path
-        self.requested_cap = min(cap, CLAUSE_ISOLATION_CAP)
+        self.requested_cap = min(cap, CONDITIONAL_PRIORITY_CAP)
         self.model_binding = model_binding
         self.campaign = campaign
         self.marks_digest = marks_digest
@@ -756,7 +831,7 @@ class Ledger:
 
     @property
     def cap(self) -> int:
-        """Legacy keys retain their own cap; only the bound eighth-generation key admits 67."""
+        """Legacy keys retain their own cap; only the bound ninth-generation key admits 69."""
         try:
             grant = continuation()
         except LedgerError:
@@ -771,7 +846,12 @@ class Ledger:
                     and self.producer == "claude"
                     and (
                         admitted["cap"]
-                        not in (LOGIN_RESUME_CAP, CLAUSE_CONTINUATION_CAP, CLAUSE_ISOLATION_CAP)
+                        not in (
+                            LOGIN_RESUME_CAP,
+                            CLAUSE_CONTINUATION_CAP,
+                            CLAUSE_ISOLATION_CAP,
+                            CONDITIONAL_PRIORITY_CAP,
+                        )
                         or (
                             self.campaign is not None
                             and self.campaign.binding == admitted["allowance"]["campaign_binding"]

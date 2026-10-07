@@ -489,6 +489,31 @@ at 631 of 870, with replay and live allowances held. The producer remains unqual
 Claude-only browser verification cannot be armed. A further correction needs new source-bound
 expectations and finite measurement authority; this failed run cannot resume or be regraded.
 
+### Ninth qualification measurement preparation, 2026-10-07
+
+The owner authorized carrying 29 unused attempts and adding two, giving 31 available
+for thirty fresh readings and at most one availability retry. The owner also removed
+the requirement to stop at the first failing semantic batch. This generation records
+wrong answers and continues its registered measurement. Independent batch reviews say
+`measured`, with their actual failure counts. They cannot qualify a failed result.
+Technical protection, source, coverage and account failures still block launches.
+
+The corrected framing checks unknown prerequisites before carrying a departure judgment
+forward. All 34 criterion scopes and expectations remain unchanged from the eighth packet.
+Independent source reconstruction verifies ten cases, 81 citation joins and seven freshly
+derived export receipts. Each actual input adds four framing bytes; its source records,
+selected evidence and question inventory stay unchanged. These are construction and
+admission checks, not evidence of improved model accuracy.
+
+The [ninth grant](claude-continuation-9.json), [expectation transfer](claude-marks-transfer-9.json),
+[fixed manifest](../drift-replay/closure-campaign-conditional-priority.json) and
+[independent handoff](../drift-replay/closure-conditional-priority-handoff.json) bind the new
+source and the complete paid history. Native and shared ceilings are 69 and 249, with
+38 native and ten shared charges retained. Replay's 190 and live's 18 attempts remain held.
+Only a new ordinary fifth epoch may be initialized after the complete local checks.
+Merged software and passing current-head CI precede model calls. A Claude-only browser
+reading requires an actual full passing qualification and separate bound route admission.
+
 ### Fourth qualification outcome, 2026-10-06
 
 The [native fourth result](claude-results-continuation-4.json) failed after two attempts on the
