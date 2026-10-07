@@ -260,6 +260,9 @@ allowlist changes only in a PR that makes a reviewed ownership decision.
   cockpit sits beside them in `project.js` under its own `cargento.project*` keys; do not infer a
   second frontend from either set of internal names. [docs/design-next-ui.md](docs/design-next-ui.md) owns
   the promotion decision and route grammar.
+  The [frontend migration contract](docs/design-frontend-migration.md) and its machine-readable
+  inventory define what replacements must preserve, including browser-only checks that the Node
+  VM suite cannot establish.
 - Keep stylesheet edits inside the region owned by the surface you are changing, including its
   media queries. [The stylesheet contract](docs/design-next-ui.md#nui-2-one-stylesheet-owns-the-interface)
   names all nine regions, the dark-only palette and the type floor. Board sentences use
