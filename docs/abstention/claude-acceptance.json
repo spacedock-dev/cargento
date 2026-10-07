@@ -88,13 +88,27 @@
         "cap": 61
       },
       "verdict": "blocked"
+    },
+    {
+      "cases": 2,
+      "correct": 4,
+      "dec17_failed_cases": 1,
+      "inputs_digest": "49b82bc8bbf0e260c02edea2e1ebce7a89315c5a474381ea677c2502ea4ef018",
+      "marks_digest": "c57e889c6813ff940f5fd25142fa324dadec08d5c63ba0225c976d968d962cdf",
+      "result": "claude-results-continuation-6.json",
+      "scored_constraints": 7,
+      "spend": {
+        "charged": 34,
+        "cap": 63
+      },
+      "verdict": "failed"
     }
   ],
-  "scored_runs": 6,
+  "scored_runs": 7,
   "spend": {
-    "charged": 32,
-    "cap": 61
+    "charged": 34,
+    "cap": 63
   },
-  "statement": "The first five Claude Code runs listed here failed DEC-17's abstention check. The fifth continuation is blocked after two unusable transport attempts and supplies no accuracy judgement. On 2026-10-02 the owner accepted the Claude Code producer despite the earlier failures, so Claude Code can read a Claude Code session when the claude CLI is on PATH. That operational acceptance is separate from later qualification results and does not make a failed or blocked result a pass. Earlier results and every charge remain preserved.",
+  "statement": "The first five Claude Code runs listed here failed DEC-17's abstention check. The fifth continuation is blocked after two unusable transport attempts and supplies no accuracy judgement. The sixth continuation returned two parsed answers after login repair, but failed at its first later batch: four of seven questions were correct, one missed a departure and two over-abstained against the frozen rubric. It stopped after two charged attempts; twenty-nine unused attempts remain held. On 2026-10-02 the owner accepted the Claude Code producer despite the earlier failures, so Claude Code can read a Claude Code session when the claude CLI is on PATH. That operational acceptance is separate from later qualification results and does not make a failed or blocked result a pass. Earlier results and every charge remain preserved.",
   "v": 1
 }

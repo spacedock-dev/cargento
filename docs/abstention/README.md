@@ -373,6 +373,32 @@ supply an accuracy verdict. Reusing blind marks requires independently verified 
 reading material, an explicit transfer binding and fresh source/scorer admission; earlier
 packets and keys remain unchanged.
 
+### Sixth qualification outcome, 2026-10-07
+
+The [sixth result](claude-results-continuation-6.json) contains two parsed readings. Both Claude
+Code calls exited successfully after login repair; no attempt was unusable and no retry was
+used. The opening batch was independently accepted. The next case failed the frozen abstention
+check, so the campaign stopped before another call.
+
+Across seven scored questions, four were correct, none falsely reassured, one missed a departure
+and two over-abstained against the rubric. On the failed case, Goal did not identify an earlier
+stalled promise. The first outcome line was judged `not-reached` although its condition was
+unverifiable; the second line abstained although the frozen expectation was `consistent`. The
+rubric counts both line errors as over-abstention. These are different from the previous run's
+execution failures: the answers arrived, but qualification failed.
+
+Only two recorded case kinds reached the model. All five recorded kinds were admitted before
+the run, but the other eight first-pass cases and every second and third reading remain
+unattempted. This partial result establishes no full-packet accuracy or repeatability claim.
+
+The new allowance spent two of 31 attempts, with 29 unused and held. The native ledger retains
+34 of 63 charges; the shared ledger retains the original two charges, the first successor's
+two and this continuation's two, six in total. Replay and live remain held. No earlier failure,
+charge or blind mark was changed. The owner's operational acceptance remains separate from this
+failed qualification. Further work must investigate how non-final readings handle unknown
+conditions and earlier stalls within the 9,216-byte instruction limit; this result supplies no
+measured improvement from a future fix.
+
 ### Fourth qualification outcome, 2026-10-06
 
 The [native fourth result](claude-results-continuation-4.json) failed after two attempts on the
