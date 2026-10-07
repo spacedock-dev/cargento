@@ -16,6 +16,8 @@ from typing import TYPE_CHECKING, Any, Final
 if TYPE_CHECKING:
     from collections.abc import Mapping
 
+    from .frontend_dev import DevelopmentFrontend
+
 STORE_ENV_VARS = (
     "CLAUDE_CONFIG_DIR",
     "CODEX_HOME",
@@ -87,6 +89,7 @@ class RuntimeConfig:
     host: str
     port: int
     frontend: str
+    frontend_dev: DevelopmentFrontend | None
     window_hours: float
     spacedock_enabled: bool
     tripwires_enabled: bool
@@ -693,6 +696,7 @@ def build_runtime_config(
         host=host,
         port=port,
         frontend=frontend,
+        frontend_dev=None,
         window_hours=window_hours,
         spacedock_enabled=spacedock_enabled,
         tripwires_enabled=tripwires_enabled,

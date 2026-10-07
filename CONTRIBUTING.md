@@ -50,11 +50,20 @@ compatibility; project commands refuse stale installs.
 pnpm dev
 ```
 
-This starts a loopback-only Vite development server at `http://127.0.0.1:4577/`. It is currently an
-unavailable-view preview, without backend session data. Continue using the Python dashboard for
-sessions. `pnpm build:preview` writes `.frontend-build/`; `pnpm preview` serves that build at
-`http://127.0.0.1:4578/`. Both ports are fixed and a collision fails instead of moving to another
-port. Backend-connected hot refresh is subsequent migration work.
+This starts the real Python backend at `http://127.0.0.1:4581/` and its owned Vite module server
+at `http://127.0.0.1:4582/`. Open the Python URL. React edits refresh through Vite; type `r` in
+the terminal to restart Python, then reload the page for its new instance. Ctrl+C stops both.
+The command uses isolated fixture locations and disables model calls, quota fetching and native
+actions. It reads no personal harness transcripts. Session views are still unavailable in the
+React preview; use the default dashboard for your sessions.
+
+Use `--python` with an absolute Python executable and `--port`/`--vite-port` with distinct ports
+when the defaults are occupied. Both servers bind to IPv4 loopback and refuse a collision rather
+than moving to another port. Missing tools give an error; startup never installs them.
+
+`pnpm dev:preview` retains the standalone view preview at `http://127.0.0.1:4577/`, without the
+Python backend. `pnpm build:preview` writes `.frontend-build/`; `pnpm preview` serves that build
+at `http://127.0.0.1:4578/`. These preview ports are fixed too.
 
 `pnpm build` writes the tracked self-contained React page, integrity metadata and bundled licenses
 inside the plugin. `pnpm build:check` rebuilds without writing and refuses stale output. Linux is
@@ -99,8 +108,9 @@ same directories through the relative symlinks under `.agents/skills/`.
   pull request carries the `windows-ci` label (paused on other pull requests during the frontend migration). Ubuntu is covered by the
   coverage job and the runtime floor, which both run the whole suite there.
 - The frontend matrix, with exact Node and pnpm pins, lint, strict types, unit tests and clean
-  preview builds on Linux and macOS, and on Windows under the same condition. Linux compares the canonical build with tracked
-  assets. Every platform runs browser checks against an installed Python-only copy.
+  preview builds on Linux and macOS, and on Windows under the same condition. Linux compares the
+  canonical build with tracked assets. Every platform runs browser checks against an installed
+  Python-only copy, plus owned development lifecycle and real Python/Vite hot-refresh checks.
 
 Those checks run when the diff contains something they can measure. A change to prose
 documentation alone skips them, because none of them reads it. The `quality-gate` check itself

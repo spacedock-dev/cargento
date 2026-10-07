@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import contextlib
+import dataclasses
 import ipaddress
 import json
 import math
@@ -16,8 +17,10 @@ from typing import TYPE_CHECKING
 from cargento_runtime import (
     aggregate,
     copied_corrections,
+    deliveries,
     diagnostics,
     ends,
+    frontend_dev,
     history,
     http_api,
     lifecycle,
@@ -204,6 +207,11 @@ def build_parser() -> argparse.ArgumentParser:
         choices=("legacy", "react"),
         default="legacy",
         help="dashboard renderer for this process (default legacy)",
+    )
+    parser.add_argument(
+        "--frontend-dev-manifest",
+        type=Path,
+        help="owned contributor Vite startup ticket; requires foreground React on loopback",
     )
     parser.add_argument(
         "--host",
@@ -523,12 +531,18 @@ def build_application(
     ruling being
     [DEC-18](docs/design-reading-a-session.md#dec-18-an-unasked-reading-is-permitted-and-gated-on-delivery-first).
     """
-    popup_notifier = bound_popup_notifier(config, diagnostic_sink)
+    popup_notifier = (
+        (lambda _title, _message: deliveries.OUTCOME_NO_LANE)
+        if config.frontend_dev is not None
+        else bound_popup_notifier(config, diagnostic_sink)
+    )
     application = aggregate.Application(
         config,
         state,
         aggregate.default_harnesses(usage_fetch_enabled=config.usage_fetch_enabled),
-        native_notifier=notifications.native_notifier,
+        native_notifier=(lambda _: "")
+        if config.frontend_dev is not None
+        else notifications.native_notifier,
         popup_notifier=popup_notifier,
         diagnostic_sink=diagnostic_sink,
         clock=clock,
@@ -580,6 +594,48 @@ def validate_interaction_args(parser: argparse.ArgumentParser, args: argparse.Na
             "--interaction-origin-session and --interaction-origin-registration-file "
             "must be used together"
         )
+
+
+def validate_frontend_args(parser: argparse.ArgumentParser, args: argparse.Namespace) -> None:
+    if args.frontend_dev_manifest is None:
+        return
+    if (
+        args.frontend != "react"
+        or args.host != "127.0.0.1"
+        or args.daemon
+        or args.diagnose
+        or args.forget
+    ):
+        parser.error(
+            "development frontend requires foreground React on 127.0.0.1; "
+            "diagnose/forget are not development commands"
+        )
+    for name in (
+        "no_observer_model",
+        "no_usage",
+        "no_git",
+        "no_focus",
+        "no_events",
+        "no_spacedock",
+        "no_tripwires",
+        "no_reach",
+        "no_ask",
+        "no_history",
+    ):
+        setattr(args, name, True)
+
+
+def prepare_frontend(
+    config: RuntimeConfig, args: argparse.Namespace
+) -> tuple[RuntimeConfig, bytes | None]:
+    if args.frontend_dev_manifest is None:
+        return config, load_frontend_page(config.frontend)
+    try:
+        dev = frontend_dev.admit(args.frontend_dev_manifest, config)
+        return dataclasses.replace(config, frontend_dev=dev), frontend_dev.load_page(dev)
+    except RuntimeError as exc:
+        print(f"Cargento: cannot admit development frontend ({exc}).", file=sys.stderr)
+        return config, None
 
 
 FOCUS_META_NAME = "cargento-focus"
@@ -772,6 +828,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         # Accepting it silently would teach that it had been honored.
         parser.error("--daemon cannot be combined with --diagnose, --stop, --status or --forget")
     validate_interaction_args(parser, args)
+    validate_frontend_args(parser, args)
     config, state = build_runtime(args, started=started)
 
     one_shot = run_one_shot(args, config, state)
@@ -788,7 +845,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         )
     # After the recovery commands above, so --status and --stop still work on an
     # installation whose assets are missing, and while stderr is still attached.
-    page_bytes = load_frontend_page(config.frontend)
+    config, page_bytes = prepare_frontend(config, args)
+    state.config = config
     if page_bytes is None:
         return 1
     lifecycle.sweep_stale_states(config)
