@@ -267,13 +267,29 @@ It preserves 34 native and six shared charges, carrying 29 held attempts and add
 31 available. The new native ceiling is 65 and the cumulative shared allocation is 245;
 replay and live remain held. Source-derived inputs, pre-output expectations, exact model and
 request bindings, and an independent charge-preserving handoff must precede execution. The
-instruction correction has no measured accuracy result yet, and the sixth run remains failed.
+instruction correction was subsequently measured, and the sixth run remains failed.
 The [fixed manifest](closure-campaign-clause-continuation.json) and
 [independent handoff](closure-clause-continuation-handoff.json) preserve every stopped ancestor
 and bind the new requests before spending.
 The [one-time zero-charge reseal](closure-clause-zero-reseal.json) records the scope omission
 caught by the full suite and the corrected binding. It preserves the original activation and
 changes no charge or allowance.
+
+The [seventh result](../abstention/claude-results-continuation-7.json) failed after two parsed
+readings. Both Goal departures were identified, but an approval-qualified outcome marked
+should-abstain was judged `departure`, triggering the persistent stop. The frozen rubric counts
+three of seven questions correct, two false alarms and two over-abstentions. One attribution
+criterion has a latest-report versus persisted-artifact ambiguity; its original count remains
+unchanged, and the separate approval-qualified line independently fails the check.
+
+The fresh allowance spent two of 31 attempts, with 29 held and the retry unused. Native charges
+are 36 of 65; the shared account preserves all eight charges across its original and successor
+epochs. Replay remains 631 of 870, and the held replay and live allowances are untouched.
+Only two recorded kinds reached the model; every later case and repeat was unattempted.
+The [outcome record](../abstention/README.md#seventh-qualification-outcome-2026-10-07) owns the
+full interpretation. Neither this failure nor the earlier operational acceptance qualifies
+the producer. A new packet needs clause scope clarified before output and a separately bound
+finite continuation; no failed run, key or charge is reset.
 
 ## Model-free gap studies, 2026-10-05
 

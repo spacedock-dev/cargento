@@ -102,13 +102,27 @@
         "cap": 63
       },
       "verdict": "failed"
+    },
+    {
+      "cases": 2,
+      "correct": 3,
+      "dec17_failed_cases": 1,
+      "inputs_digest": "8177c56fb2ee61c32a4486426305fa98e6375cf6a988c1da33cac39511c6651f",
+      "marks_digest": "036a15c5e321e9263aa6f4514add8162cf7c23b8809308d939777e62fdf06097",
+      "result": "claude-results-continuation-7.json",
+      "scored_constraints": 7,
+      "spend": {
+        "charged": 36,
+        "cap": 65
+      },
+      "verdict": "failed"
     }
   ],
-  "scored_runs": 7,
+  "scored_runs": 8,
   "spend": {
-    "charged": 34,
-    "cap": 63
+    "charged": 36,
+    "cap": 65
   },
-  "statement": "The first five Claude Code runs listed here failed DEC-17's abstention check. The fifth continuation is blocked after two unusable transport attempts and supplies no accuracy judgement. The sixth continuation returned two parsed answers after login repair, but failed at its first later batch: four of seven questions were correct, one missed a departure and two over-abstained against the frozen rubric. It stopped after two charged attempts; twenty-nine unused attempts remain held. On 2026-10-02 the owner accepted the Claude Code producer despite the earlier failures, so Claude Code can read a Claude Code session when the claude CLI is on PATH. That operational acceptance is separate from later qualification results and does not make a failed or blocked result a pass. Earlier results and every charge remain preserved.",
+  "statement": "The first five Claude Code runs listed here failed the abstention check. The fifth continuation is blocked after two unusable transport attempts and supplies no accuracy judgement. The sixth continuation failed after two parsed answers. The seventh continuation also failed after two parsed answers: the frozen rubric counts three of seven questions correct, two false alarms and two over-abstentions, with no false reassurance. Both Goal departures were identified, but an outcome marked should-abstain was judged departure. The first attribution line has a scope ambiguity between a latest report and a persisted artifact; its frozen rubric count is retained, not regraded. The separate approval-qualified line independently triggers the semantic stop. Twenty-nine unused attempts remain held. On 2026-10-02 the owner accepted the Claude Code producer despite the earlier failures, so Claude Code can read a Claude Code session when the claude CLI is on PATH. That operational acceptance is separate from qualification and does not turn a failed or blocked result into a pass. Every earlier result, charge and frozen key remains preserved.",
   "v": 1
 }
