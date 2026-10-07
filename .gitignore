@@ -55,3 +55,11 @@ tests/raw_sessions/**/*.jsonl
 tests/annotated_sessions/**/*.jsonl
 # The drift replay check's local files, should CARGENTO_HOME ever point at the repository root.
 /drift-replay/
+
+# Frontend dependency, build and browser-test artifacts (source stays tracked).
+node_modules/
+/.frontend-build/
+/test-results/
+/playwright-report/
+/.pnpm-store/
+*.tsbuildinfo
