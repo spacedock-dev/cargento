@@ -678,10 +678,15 @@ class RouteSidecarGuards(unittest.TestCase):
             clock=lambda: 100.0,
             collect_json=lambda **_kwargs: (None, json.dumps({"sessions": [row]}).encode()),
         )
-        with mock.patch.object(
-            self.route.shutil,
-            "which",
-            side_effect=lambda name: str(self.root / "native-cli") if name == "claude" else None,
+        with (
+            mock.patch.object(
+                self.route.shutil,
+                "which",
+                side_effect=lambda name: (
+                    str(self.root / "native-cli") if name == "claude" else None
+                ),
+            ),
+            mock.patch.object(_route.platform, "system", return_value="Linux"),
         ):
             with self.assertRaises(self.route.RefusalError):
                 self.route.app_binding(app, self.context["selected"])
@@ -695,6 +700,12 @@ class RouteSidecarGuards(unittest.TestCase):
             )
             original = self.route.app_binding(app, self.context["selected"])
             self.assertRegex(original, r"^[0-9a-f]{64}$")
+            with mock.patch.object(_route.platform, "system", return_value="Windows"):
+                self.assertEqual("", _route.destination("claude"))
+                with self.assertRaisesRegex(
+                    self.route.RefusalError, "provider, model or privatePATH"
+                ):
+                    self.route.app_binding(app, self.context["selected"])
             source.write_text(
                 source.read_text()
                 + json.dumps(
