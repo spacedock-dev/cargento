@@ -9,13 +9,18 @@
   },
   "scripts": {
     "dev": "vite --config frontend/vite.config.mts",
-    "build": "vite build --config frontend/vite.config.mts",
+    "build": "node frontend/build/package.mjs",
     "preview": "vite preview --config frontend/vite.config.mts",
     "lint": "eslint frontend eslint.config.mjs vitest.config.mts playwright.config.ts --max-warnings 0",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run",
+    "test": "vitest run && node --test frontend/build/package.test.mjs",
     "test:watch": "vitest",
-    "test:browser": "playwright test"
+    "test:browser": "playwright test",
+    "build:preview": "vite build --config frontend/vite.config.mts",
+    "build:check": "node frontend/build/package.mjs --check",
+    "test:build": "node --test frontend/build/package.test.mjs",
+    "test:parser": "node --test frontend/e2e/parser.test.mjs",
+    "test:installed": "node frontend/e2e/installed.mjs"
   },
   "dependencies": {
     "react": "19.3.0",

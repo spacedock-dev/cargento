@@ -99,7 +99,7 @@ quoting before anything is matched or masked, and the bounded `spacedock status 
 | `http_api.py` | The loopback server, request dispatch, project-context model-consent gate, optional vendored-asset routes, and network helpers. It reads the departure store directly on one route, `/api/annotations`, because the Intent log serves sessions that have left the board and the polled payload holds only the ones still on it. |
 | `lifecycle.py` | State file, port probes, status, stop, and daemon detach. The Windows respawn argv forwards every `--no-*` switch the parser put in the namespace, derived rather than listed ([D-2](design-daemon.md#d-2-windows-re-spawns-instead-of-forking-and-waits-to-be-sure)). `serve` also records what a stopped dashboard left spent (`reading_jobs.recover`) before serving, and kills every supervised group (`supervise.kill_all`) first on the way out. |
 | `cli.py` | Argument parsing, runtime assembly, and the three serve branches. |
-| `web/page.py` | Package-relative asset loading, ordered `APP_PARTS`, embedded-font validation, byte-preserving assembly of the canonical page, and `build_id`, the digest of that page `aggregate` publishes as the board's `build`. |
+| `web/page.py` | Package-relative asset loading, ordered `APP_PARTS`, embedded-font validation, byte-preserving legacy assembly, selected React artifact/integrity/license verification, and renderer-specific content identity. Startup passes verified pre-capability bytes into `Application`, which publishes their digest as the board's `build`. |
 
 `aggregate` also imports `observer` for its bounded, read-only cached-goal projection. One
 `read_sidecar` call per published board row admits scrubbed `deterministic_goal`, or `goal` with
@@ -123,8 +123,9 @@ mass rename; they do not indicate a second bundle.
 
 | Frontend file | Owns |
 |---|---|
-| `web/page.py` | Package-relative asset loading, ordered `APP_PARTS`, validation and data-URL embedding of packaged fonts, byte-preserving assembly of the one canonical page, and `build_id`, its digest, which the board publishes so an open tab can tell it is running another page (regressions major 1, ui5). |
+| `web/page.py` | Package-relative loading, ordered legacy `APP_PARTS`, embedded-font validation, unchanged legacy assembly and strict selected React artifact verification. Renderer-specific identity lets an open tab recognize another build. |
 | `web/index.html` | The two-slot shell for canonical styles and script. |
+| `web/react.html`, `web/react.integrity.json`, `web/react-licenses.txt` | Tracked self-contained candidate page, its deterministic integrity/provenance bindings and full bundled-code/font notices. Repository-only `frontend/build/package.mjs` builds these with pinned Vite; installed Python verifies and serves fixed bytes. |
 | `web/styles.css` | The single dark palette, responsive layout, live-dot pulse, and reduced-motion override, in nine owned regions; [the stylesheet contract](design-next-ui.md#nui-2-one-stylesheet-owns-the-interface) names all nine boundaries, including `COCKPIT` and `SUBSTRATE` after `SESSION`. |
 | `web/next-boot.js` | Query reads, escaping, shared payload and time helpers, session metrics, project groups, the fragment route grammar, the three row controls (copy the session id, copy the re-entry command, raise the terminal), and the expiring map that lets a control's state outlive the render that replaces it. It is first in `APP_PARTS`. |
 | `web/next-observed.js` | The v2 session collection, lanes, counts, project groups, coverage and presentation reasons; wraps the shipped workstream and delegation measurements. |
@@ -229,9 +230,10 @@ Three objects, with deliberately different lifetimes:
   popup notifier, the diagnostic sink, and the clock. It owns the registry and the per-harness
   failure boundary, so one broken store cannot take the dashboard down.
 
-`CargentoHTTPServer` stores exactly one `Application` and one mandatory assembled page. Its handler
-reads both off the server instance, and `cli.main` is the only place that assembles them. Any
-frontend load failure is fatal before bind; there is no optional preview failure boundary.
+`CargentoHTTPServer` stores exactly one `Application` and one mandatory page. Its handler reads
+both off the server instance. `cli.main` loads the renderer selected by frozen configuration and
+passes its verified pre-capability bytes into the application. A selected load failure is fatal
+before bind, with no substitution or build-tool launch. The process keeps that page and identity.
 
 The payoff is testability of the awkward cases. Platform decisions take their environment as an
 argument (see D-4 in [design-cross-platform.md](design-cross-platform.md)), so one runner exercises

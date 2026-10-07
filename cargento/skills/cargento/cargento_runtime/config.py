@@ -86,6 +86,7 @@ class RuntimeConfig:
     launcher_path: Path
     host: str
     port: int
+    frontend: str
     window_hours: float
     spacedock_enabled: bool
     tripwires_enabled: bool
@@ -630,6 +631,7 @@ def build_runtime_config(
     store_root_overrides: Mapping[str, str] | None = None,
     host: str = "127.0.0.1",
     port: int = 4553,
+    frontend: str = "legacy",
     window_hours: float = 24.0,
     spacedock_enabled: bool = True,
     tripwires_enabled: bool = True,
@@ -655,6 +657,8 @@ def build_runtime_config(
 ) -> RuntimeConfig:
     """Construct runtime configuration solely from explicit inputs."""
     selected_claude_model = validate_claude_reading_model(claude_reading_model)
+    if frontend not in {"legacy", "react"}:
+        raise ValueError("frontend must be legacy or react")
     windows = platform_name == "win32"
     join = ntpath.join if windows else posixpath.join
     home_key = "USERPROFILE" if windows else "HOME"
@@ -688,6 +692,7 @@ def build_runtime_config(
         launcher_path=launcher_path,
         host=host,
         port=port,
+        frontend=frontend,
         window_hours=window_hours,
         spacedock_enabled=spacedock_enabled,
         tripwires_enabled=tripwires_enabled,

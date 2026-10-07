@@ -200,6 +200,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=DESCRIPTION)
     parser.add_argument("--port", type=lifecycle.tcp_port, default=4553)
     parser.add_argument(
+        "--frontend",
+        choices=("legacy", "react"),
+        default="legacy",
+        help="dashboard renderer for this process (default legacy)",
+    )
+    parser.add_argument(
         "--host",
         type=bind_host,
         default="127.0.0.1",
@@ -448,6 +454,7 @@ def build_runtime(
         launcher_path=launcher_path,
         host=args.host,
         port=args.port,
+        frontend=args.frontend,
         window_hours=args.window_hours,
         spacedock_enabled=not args.no_spacedock,
         tripwires_enabled=not args.no_tripwires,
@@ -500,6 +507,7 @@ def build_application(
     diagnostic_sink: Callable[[str], None] = print,
     clock: Callable[[], float] = time.time,
     record_history: bool = True,
+    frontend_page_bytes: bytes | None = None,
 ) -> aggregate.Application:
     """One application over one config and state, with every service injected.
 
@@ -524,6 +532,7 @@ def build_application(
         popup_notifier=popup_notifier,
         diagnostic_sink=diagnostic_sink,
         clock=clock,
+        frontend_page_bytes=frontend_page_bytes,
     )
     if record_history:
         # Attached here rather than reached through the overlay source, which is
@@ -552,10 +561,10 @@ def build_application(
     return application
 
 
-def load_frontend_page() -> bytes | None:
+def load_frontend_page(mode: str = "legacy") -> bytes | None:
     """Assemble the required dashboard page."""
     try:
-        return frontend_page.load_page()
+        return frontend_page.load_frontend_page(mode)
     except (OSError, UnicodeError, RuntimeError) as exc:
         print(
             f"Cargento: cannot load frontend assets ({type(exc).__name__}: {exc}).",
@@ -779,7 +788,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         )
     # After the recovery commands above, so --status and --stop still work on an
     # installation whose assets are missing, and while stderr is still attached.
-    page_bytes = load_frontend_page()
+    page_bytes = load_frontend_page(config.frontend)
     if page_bytes is None:
         return 1
     lifecycle.sweep_stale_states(config)
@@ -810,7 +819,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     # send that message to a log file nobody has been told about yet, and
     # report success.
     try:
-        application = build_application(config, state)
+        application = build_application(config, state, frontend_page_bytes=page_bytes)
         # Constructed inert and attached both ways: the coordinator reads the
         # application to collect, and the application reads the coordinator for
         # overlays. Nothing has started a thread yet, which is what lets the

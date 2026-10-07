@@ -50,11 +50,17 @@ compatibility; project commands refuse stale installs.
 pnpm dev
 ```
 
-This opens a loopback-only Vite development server at `http://127.0.0.1:4577/`. It is currently an
+This starts a loopback-only Vite development server at `http://127.0.0.1:4577/`. It is currently an
 unavailable-view preview, without backend session data. Continue using the Python dashboard for
-sessions. `pnpm build` writes `.frontend-build/`; `pnpm preview` serves that build at
+sessions. `pnpm build:preview` writes `.frontend-build/`; `pnpm preview` serves that build at
 `http://127.0.0.1:4578/`. Both ports are fixed and a collision fails instead of moving to another
-port. Backend-connected hot refresh and packaged React assets are subsequent migration work.
+port. Backend-connected hot refresh is subsequent migration work.
+
+`pnpm build` writes the tracked self-contained React page, integrity metadata and bundled licenses
+inside the plugin. `pnpm build:check` rebuilds without writing and refuses stale output. Linux is
+the canonical builder; native platforms test the same tracked artifact. API origins and optional
+terminal assets remain local. The packaging boundaries are in the
+[migration contract](docs/design-frontend-migration.md#candidate-packaging).
 
 `pnpm exec playwright install chromium` installs the browser pinned by the lockfile. See
 [AGENTS.md](AGENTS.md#pre-pr-checks) for the frontend checks. TypeScript checks source and dependency
@@ -91,18 +97,20 @@ same directories through the relative symlinks under `.agents/skills/`.
   label, which is visible in the PR timeline.
 - `platform-tests`, the unit suite re-run natively on macOS and Windows. Ubuntu is covered by the
   coverage job and the runtime floor, which both run the whole suite there.
+- The frontend matrix, with exact Node and pnpm pins, lint, strict types, unit tests and clean
+  preview builds on Linux, macOS and Windows. Linux compares the canonical build with tracked
+  assets. Every platform runs browser checks against an installed Python-only copy.
 
-Those checks run in five jobs, and they run when the diff contains something they can measure. A change to prose
+Those checks run when the diff contains something they can measure. A change to prose
 documentation alone skips them, because none of them reads it. The `quality-gate` check itself
 always runs and always reports, so a prose-only PR is never left waiting on a check that never
 arrives. `SKILL.md`, `SECURITY.md`, `README.md` and any file under `docs/` that a test opens by
 name count as code here, not as prose, because `test_documentation.py` reads every one of them.
 `validate` runs on every PR regardless. It resolves the Markdown links and heading anchors, and it
 also runs the dashboard suite, which on a PR the detector called prose is the only place that suite
-runs. Do not delete that step as a duplicate of the gate's copy. Among the workflow files only
-`quality-gate.yml` itself
-counts as code, since the others cannot change what those jobs measure and each already
-reports its own status.
+runs. Do not delete that step as a duplicate of the gate's copy. Frontend and script tests also
+contribute document dependencies before the prose allowlist. The quality gate, release and
+frontend build workflows count as code; unrelated workflow prose retains the short path.
 
 `scripts/bench_collect.py` is not part of the gate. It measures what a collection costs, in total and
 per harness, against your own stores: `python3 scripts/bench_collect.py --repeat 7` prints a median,
@@ -269,7 +277,7 @@ allowlist changes only in a PR that makes a reviewed ownership decision.
 - Read nothing inside a project except what `SECURITY.md` § Project reads permits. Today that is
   Spacedock workflow and entity-state frontmatter, from absolute paths the session itself recorded.
   Never derive a project path by guessing, scanning or walking.
-- The frontend rebuilds `#app` from scratch on every refresh. What triggers one moved in
+- The default legacy frontend rebuilds `#app` from scratch on every refresh. What triggers one moved in
   Phase 1c:
   the leader tab holds an `EventSource` on `/api/stream` and refetches when the server announces a
   new revision, with a 20-second safety net behind it, and only a browser without `EventSource`
@@ -280,7 +288,7 @@ allowlist changes only in a PR that makes a reviewed ownership decision.
   `esc()`, because the page builds HTML by concatenation and session titles come from files a
   project can write. And never sort rows on a value that ticks: order on the state, then on a fixed
   timestamp, then on the session id, or rows move under the reader between refreshes.
-- The frontend is one assembled scope under `web/`. The retired `next` query is rejected at the
+- The default legacy frontend is one assembled scope under `web/`. The retired `next` query is rejected at the
   page boundary, not routed to another assembly path. The promoted files retain their `next-*` names and
   `cargento.next.*` browser keys so old bookmarks and stored leases stay harmless, and the imported
   cockpit sits beside them in `project.js` under its own `cargento.project*` keys; do not infer a
@@ -317,13 +325,14 @@ allowlist changes only in a PR that makes a reviewed ownership decision.
   Each check runs in a fresh `vm` context inside the shared worker described above, so it still gets
   a clean set of globals, but it is no longer a clean process: anything a check leaves on a timer
   outlives it. Isolate through the stubs rather than by assuming the interpreter restarts.
-- Load the required default frontend before creating the daemon log, binding the socket, forking, or
+- Load and verify the selected frontend before creating the daemon log, binding the socket, forking, or
   spawning a Windows child. Then acquire the log file and listening socket before forking (or, on Windows,
   before waiting on the re-spawned child). After the fork there is nowhere for a failure to go.
   Reporting one means pointing the user at the very log that could not be opened. Note that
   `os.makedirs(exist_ok=True)` is not this check: it succeeds for a directory that already exists
   whatever its mode, which is the likeliest bad state of all.
-  There is no optional preview boundary: every canonical asset is required before bind.
+  Every asset required by the selected renderer must load before bind. A broken selected React
+  build refuses; it never silently substitutes the legacy dashboard or starts a Node build.
 - Never use `os.kill`, including `os.kill(pid, 0)` for liveness. CPython implements it on Windows
   through `TerminateProcess`, so a liveness check would kill the process it was asked to inspect.
   Probe `/api/health` instead.

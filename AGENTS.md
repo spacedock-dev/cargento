@@ -187,8 +187,8 @@ not rely on CI to surface failures:
 **One documented short path.** If the diff touches *only* prose — `HOW_TO_USE.md`, `AGENTS.md`,
 `CLAUDE.md`, `CONTRIBUTING.md`, `COMPATIBILITY.md`, `CODE_OF_CONDUCT.md`,
 `.github/PULL_REQUEST_TEMPLATE.md`, or a file under `docs/` outside the effective deny list below —
-then the five measurable quality-gate jobs skip. CI applies the same rule (see Quality Gate), so
-the two agree by construction rather than by memory. Five skipped runners is all the short path
+then the measurable quality-gate jobs skip. CI applies the same rule (see Quality Gate), so
+the two agree by construction rather than by memory. Skipping those jobs is all the short path
 buys: **run the suite locally anyway**, because `validate.yml` is unfiltered by design and runs the
 same `unittest discover` on every PR. `validate_plugins.py` is not what catches a prose edit that
 breaks an assertion — measured, one stranded row in `docs/captures/README.md`, which the detector
@@ -205,10 +205,15 @@ target and requires the exact fragment, so renaming a heading in any of those do
 that introduced the checker, which is the same misclassification one layer up, so a hand-maintained
 copy would have gone stale on the very change that created it.
 
+Frontend and script-test sources also contribute quoted document paths and heading citations.
+These measured dependencies are checked before the root prose allowlist, so a contributor doc
+read by a frontend test cannot skip that test's job. Relevant frontend and release workflows are
+code too. Composed reads still need a reviewed exception; a literal scan is not dependency analysis.
+
 The literal scan is still not dependency analysis, and the first two sources do not discover every
 way a test can read a document. Review new document dependencies against the list, and review the
 root-document prose allowlist by hand. The unfiltered validate suite remains the backstop for
-misclassification; the detector's job is to request all five measurable jobs with `code=true` for
+misclassification; the detector's job is to request all measurable jobs with `code=true` for
 these dependencies.
 
 ```bash
@@ -229,8 +234,11 @@ pnpm lint
 pnpm typecheck
 pnpm test
 pnpm build
+pnpm build:check
 pnpm exec playwright install chromium   # lockfile-pinned browser, once per installation
 pnpm test:browser
+pnpm test:parser
+pnpm test:installed
 coverage erase
 python3 scripts/run_tests.py --coverage -s cargento/skills/cargento/tests -t .
 python3 scripts/run_tests.py --coverage -s scripts/tests -t scripts/tests
@@ -423,10 +431,10 @@ is Sonnet 5.5. Reviewer acceptance and scored producer results retain their sepa
 
 ## Quality Gate
 
-Every PR must pass the `quality-gate` required check (`.github/workflows/quality-gate.yml`): ruff with `select = ALL` (curated ignores documented in `pyproject.toml`), `ruff format --check`, `mypy --strict`, the HTML/CSS/JS frontend source linter (`scripts/lint_embedded.py`), a direct-launch smoke test on the Python 3.11 runtime floor followed by the whole suite there, the same suite under `coverage` on 3.12 with the `fail_under` threshold from `pyproject.toml` enforced once, and `platform-tests` — the same unit suite re-run natively on macOS and Windows (Ubuntu is already covered by the two jobs before it). Every job runs the suite through `scripts/run_tests.py`, one worker per core. The threshold only ratchets up — never lower it in a PR. A PR that must merge below threshold needs the `coverage-exception` label, which is visible in the PR timeline.
+Every PR must pass the `quality-gate` required check (`.github/workflows/quality-gate.yml`): ruff with `select = ALL` (curated ignores documented in `pyproject.toml`), `ruff format --check`, `mypy --strict`, the HTML/CSS/JS frontend source linter (`scripts/lint_embedded.py`), a direct-launch smoke test on the Python 3.11 runtime floor followed by the whole suite there, the same suite under `coverage` on 3.12 with the `fail_under` threshold from `pyproject.toml` enforced once, and `platform-tests` — the same unit suite re-run natively on macOS and Windows (Ubuntu is already covered by the two jobs before it). Python suite jobs use `scripts/run_tests.py`, one worker per core. The threshold only ratchets up — never lower it in a PR. A PR that must merge below threshold needs the `coverage-exception` label, which is visible in the PR timeline.
 
 **The required context always reports; its constituent jobs may not run.** A `changes` job decides
-whether the diff contains anything the gate can measure, and the five measurable jobs are gated on
+whether the diff contains anything the gate can measure, and the measurable jobs are gated on
 it. The `quality-gate` job itself always runs and always reports, so branch protection is never
 left waiting — which is the failure mode that made a naive `paths:` filter unusable here: a
 required check a filter excludes never reports, and GitHub reads a missing context as pending
@@ -439,6 +447,13 @@ heading anchor, and it runs the dashboard suite. That second step is **not** a d
 gate's copy — it is the only run of the suite on a PR the detector called prose, so deleting it as
 redundant would let a prose edit that breaks a test merge green. `validate.yml` says the same thing
 at the step itself.
+
+The required frontend matrix uses pinned Node and pnpm on Linux, macOS and Windows. It runs
+frontend lint, strict types, unit tests and a clean preview build on each platform. Linux checks
+the canonical tracked build; every platform checks hostile HTML literals and an installed Python
+3.11 copy in pinned Chromium, with Node hidden from the backend and external asset requests refused.
+The Python jobs retain their existing discovery and coverage gate. Native harness canary Node
+requirements remain independent of this build toolchain.
 
 ## Measured Invariants
 
