@@ -18,7 +18,7 @@ BASH = shutil.which("bash")
 
 @unittest.skipUnless(BASH, "the Actions detector needs bash")
 class QualityGateDetectorTest(unittest.TestCase):
-    def detect(self, changed: str) -> str:
+    def detect(self, changed: str, *, root: Path = ROOT) -> str:
         workflow = yaml.safe_load((ROOT / ".github/workflows/quality-gate.yml").read_text())
         script = next(
             step["run"]
@@ -40,7 +40,7 @@ git() {
             output = Path(tmp) / "output"
             result = subprocess.run(
                 [BASH or "bash", "-c", git + script],
-                cwd=ROOT,
+                cwd=root,
                 env={
                     **os.environ,
                     "EVENT": "pull_request",

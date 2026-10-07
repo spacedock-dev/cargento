@@ -689,7 +689,7 @@ class Application:
     interpreter without sharing configuration, caches, notifications or a clock.
     """
 
-    def __init__(
+    def __init__(  # noqa: PLR0913 — served bytes bind identity before capability injection
         self,
         config: RuntimeConfig,
         state: RuntimeState,
@@ -700,8 +700,15 @@ class Application:
         diagnostic_sink: Callable[[str], None],
         clock: Callable[[], float] = time.time,
         overlays: OverlaySource | None = None,
+        frontend_page_bytes: bytes | None = None,
     ) -> None:
         self.config = config
+        self.frontend_build = (
+            ("react-" if config.frontend == "react" else "")
+            + hashlib.sha256(frontend_page_bytes).hexdigest()[:16]
+            if frontend_page_bytes is not None
+            else frontend_page.build_id(config.frontend)
+        )
         self.state = state
         self.harnesses = harnesses
         self.native_notifier = native_notifier
@@ -996,7 +1003,8 @@ class Application:
                 **history_fields,
                 # Which page this process serves, so a tab left open across an
                 # upgrade says to reload (regressions major 1, ui5).
-                "build": frontend_page.build_id(),
+                "build": self.frontend_build,
+                "frontend": config.frontend,
             }
         )
         if usage_supported:

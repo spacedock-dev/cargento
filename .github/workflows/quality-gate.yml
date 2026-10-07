@@ -35,6 +35,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           fetch-depth: 0
+          persist-credentials: false
       - name: Decide whether the measurable jobs need to run
         id: detect
         env:
@@ -57,7 +58,7 @@ jobs:
           FILES=$(git diff --name-only "$BASE" "$HEAD_SHA" 2>/dev/null || true)
           [ -n "$FILES" ] || emit true
 
-          # Effective deny list, from three sources. The literal scan is not
+          # Effective deny list, from the sources below. The literal scan is not
           # dependency analysis, so review new reads (and the root allowlist) by
           # hand. validate.yml's unfiltered suite remains the backstop.
           # 1. Whole double-quoted docs paths in the tests.
@@ -77,6 +78,31 @@ jobs:
                     cargento/skills/cargento/cargento_runtime/ 2>/dev/null \
                   | sed 's/^(//; s/#$//' | sort -u || true)
           ASSERTED=$(printf '%s\n%s\n' "$ASSERTED" "$CITED" | grep . | sort -u)
+          # Frontend/script tests can also read docs, including root prose.
+          # This remains a literal scan, not dependency analysis: composed
+          # paths still need an explicit reviewed exception like captures above.
+          DOC_PYTHON=$(command -v python || command -v python3 || true)
+          [ -n "$DOC_PYTHON" ] || emit true
+          FRONTEND_ASSERTED=$("$DOC_PYTHON" - <<'PY'
+          import pathlib
+          import re
+
+          quotes = chr(34) + chr(39)
+          literal = re.compile("[" + quotes + r"]((?:docs/[^" + quotes + r"\r\n]+|[\w.-]+)\.md)[" + quotes + "]")
+          citation = re.compile(r"\((docs/[^)]+\.md)#")
+          found = set()
+          for root in (pathlib.Path("frontend"), pathlib.Path("scripts/tests")):
+              if not root.exists():
+                  continue
+              for path in root.rglob("*"):
+                  if path.is_file() and path.suffix in {".py", ".ts", ".tsx", ".js", ".jsx", ".mts", ".mjs"}:
+                      source = path.read_text(encoding="utf-8")
+                      found.update(literal.findall(source))
+                      found.update(citation.findall(source))
+          print("\n".join(sorted(found)))
+          PY
+          ) || emit true
+          ASSERTED=$(printf '%s\n%s\n' "$ASSERTED" "$FRONTEND_ASSERTED" | grep . | sort -u)
           printf 'Effective docs deny list:\n%s\n' "$ASSERTED"
 
           # `case` globs match `/`, unlike pathname expansion, so `docs/*.md`
@@ -92,22 +118,23 @@ jobs:
           # SECURITY.md's scope count). Listing any of them here wrongly skips
           # the measurable jobs; validate.yml still runs that module unfiltered.
           is_prose() {
+            # Check measured dependencies before any prose allowlist, including
+            # root docs a frontend setup test actually reads.
+            while IFS= read -r asserted; do
+              [ -n "$asserted" ] || continue
+              [ "$1" = "$asserted" ] && return 1
+            done <<< "$ASSERTED"
             case "$1" in
               HOW_TO_USE.md|AGENTS.md|CLAUDE.md|CONTRIBUTING.md) return 0 ;;
               COMPATIBILITY.md|CODE_OF_CONDUCT.md) return 0 ;;
               .github/PULL_REQUEST_TEMPLATE.md|.github/ISSUE_TEMPLATE/*) return 0 ;;
-              # THIS file is code: it is the gate, and the only honest way to
-              # know the gate still works is to run it. Every other workflow is
-              # not — it cannot change what the five jobs below measure, and it
-              # already has its own trigger and its own status. Adding a comment
-              # to version-guard.yml used to re-run three OS matrices.
-              .github/workflows/quality-gate.yml) return 1 ;;
+              # Frontend/release build wiring is measured by the required gate.
+              # Unrelated workflow prose retains its existing short path.
+              .github/workflows/quality-gate.yml|.github/workflows/release.yml) return 1 ;;
+              .github/workflows/release.yaml) return 1 ;;
+              .github/workflows/frontend*.yml|.github/workflows/frontend*.yaml) return 1 ;;
               .github/workflows/*) return 0 ;;
               docs/*.md)
-                while IFS= read -r asserted; do
-                  [ -n "$asserted" ] || continue
-                  [ "$1" = "$asserted" ] && return 1
-                done <<< "$ASSERTED"
                 return 0 ;;
               *) return 1 ;;
             esac
@@ -379,11 +406,77 @@ jobs:
       - name: Run script unit tests
         run: python scripts/run_tests.py --slowest 10 -s scripts/tests -t scripts/tests
 
+  frontend:
+    name: Frontend (${{ matrix.os }})
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      # actions/setup-node@v7.0.0 — exact verified release commit.
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version-file: .node-version
+          check-latest: false
+          package-manager-cache: false
+      # pnpm/setup@v3.0.0 verifies its native pnpm download's signature/checksum.
+      # Keep Node authoritative above, and run the script-denied install explicitly.
+      - uses: pnpm/setup@fbda4c85fc2e1e08721cd8763afea8f48d60f024
+        with:
+          version: 12.9.1
+          install: false
+          node-version-file: false
+          cache: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        id: python
+        with:
+          python-version: "3.11"
+      - name: Verify effective builder versions
+        timeout-minutes: 1
+        run: node -e "const fs=require('node:fs');const wanted=fs.readFileSync('.node-version','utf8').trim();if(process.versions.node!==wanted)throw Error('Unexpected Node '+process.versions.node);console.log('Node '+process.versions.node)"
+      - name: Frozen install with dependency scripts denied
+        timeout-minutes: 5
+        run: pnpm install --frozen-lockfile --ignore-scripts
+      - name: Frontend lint
+        timeout-minutes: 2
+        run: pnpm lint
+      - name: Strict frontend types
+        timeout-minutes: 2
+        run: pnpm typecheck
+      - name: Frontend behavioral unit tests
+        timeout-minutes: 3
+        run: pnpm test
+      - name: Clean native preview build (not the shipping artifact)
+        timeout-minutes: 3
+        run: pnpm build:preview
+      - name: Canonical rebuild and tracked artifact comparison
+        if: matrix.os == 'ubuntu-latest'
+        timeout-minutes: 3
+        run: pnpm build:check
+      - name: Install pinned Chromium and its host dependencies
+        timeout-minutes: 5
+        run: pnpm exec playwright install --with-deps chromium
+      - name: Hostile inline artifact parser browser proof
+        timeout-minutes: 3
+        run: pnpm test:parser
+      - name: Installed Python-only artifact browser proof
+        timeout-minutes: 3
+        env:
+          CARGENTO_TEST_PYTHON: ${{ steps.python.outputs.python-path }}
+        run: pnpm test:installed
+
   # The single required status check. Branch protection requires this job, so
   # every job above must succeed (a skip or failure anywhere fails the gate).
   quality-gate:
     name: quality-gate
-    needs: [changes, lint, typecheck, runtime-floor, test, platform-tests]
+    needs: [changes, lint, typecheck, runtime-floor, test, platform-tests, frontend]
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -397,6 +490,7 @@ jobs:
           R_FLOOR: ${{ needs.runtime-floor.result }}
           R_TEST: ${{ needs.test.result }}
           R_PLATFORM: ${{ needs.platform-tests.result }}
+          R_FRONTEND: ${{ needs.frontend.result }}
         run: |
           set -euo pipefail
           echo "changes:        $R_CHANGES (code=$CODE)"
@@ -405,9 +499,10 @@ jobs:
           echo "runtime-floor:  $R_FLOOR"
           echo "test:           $R_TEST"
           echo "platform-tests: $R_PLATFORM"
+          echo "frontend:       $R_FRONTEND"
 
           # The detector itself is never allowed to skip or fail. If it did, we
-          # do not know whether the five below were skipped on purpose or lost,
+          # do not know whether the measurable jobs were skipped on purpose or lost,
           # and "we do not know" must not read as green on a required check.
           if [ "$R_CHANGES" != "success" ]; then
             echo "::error::The change detector did not succeed; refusing to report a gate result."
@@ -418,7 +513,7 @@ jobs:
           # job could measure. Anything else skipped means a dependency failed
           # upstream and GitHub cascaded it, which is a failure, not a pass.
           for pair in "lint:$R_LINT" "typecheck:$R_TYPECHECK" "runtime-floor:$R_FLOOR" \
-                      "test:$R_TEST" "platform-tests:$R_PLATFORM"; do
+                      "test:$R_TEST" "platform-tests:$R_PLATFORM" "frontend:$R_FRONTEND"; do
             job=${pair%%:*}
             res=${pair#*:}
             if [ "$res" = "success" ]; then

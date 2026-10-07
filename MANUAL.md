@@ -55,6 +55,7 @@ then `--forget`, then `--stop`, then `--status`; it does not execute a sequence 
 |---|---|
 | `-h`, `--help` | Print the launcher's current option list and exit. |
 | `--port PORT` | TCP port, an integer from 1 through 65535. Default: `4553`. Also selects the instance addressed by status, stop and forget. |
+| `--frontend MODE` | Select `legacy` (default) or `react` once for the process, including a detached child. The React migration preview currently has no session views; use the default dashboard for sessions. A URL cannot change the renderer. Selected missing or corrupt assets fail before serving; no Node installation or build runs at launch. |
 | `--host ADDRESS` | Accepts only `127.0.0.1` (default) or `0.0.0.0`. The latter exposes the dashboard on every IPv4 interface without authentication. Other addresses and IPv6 are rejected. Read [remote-access risks](SECURITY.md#known-and-accepted) before changing it; prefer an SSH tunnel. |
 | `--daemon` | Detach and keep serving after the starting shell exits. Reports the URL, process ID and log path. Without it, serving stays in the foreground. On Windows the launcher starts a detached child; see [platform notes](#platform-notes). |
 | `--status` | Report whether Cargento answers on the selected port, then exit. Distinguishes a running dashboard, no dashboard, stale state and a port held by another process. |

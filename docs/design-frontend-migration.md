@@ -48,6 +48,41 @@ an owned-child handshake and exact origin checks prevent accidentally loading a 
 process. Production exposes no HMR path. Build plugins and dependency scripts never receive
 release push credentials; publication verifies the exact fresh or resumed target tree.
 
+## Candidate packaging
+
+The core page embeds compiled JavaScript and CSS as base64 data resources. These are packaged
+bytes, not HTTP asset downloads. Encoding adds roughly a third to their size, which counts against
+the HTML budget. It preserves comparison operators, regular expressions and tagged raw templates
+without allowing their text to change the HTML parser's state. A global replacement of `<` would
+break operators; replacing only script end tags would miss HTML comment and script parser states.
+The browser tests must execute hostile literals, rather than infer safety from a string check.
+
+A data module has its own `import.meta.url`. The build must therefore refuse residual imports,
+chunk-relative resource construction and unexpected emitted assets instead of silently resolving
+them against that URL. API requests must use the document's Python origin; the typed client layer
+must prove that boundary on the served page. Packaging smoke proves the embedded core and served
+build identity, while the unavailable preview has no API client yet. The existing framing policy
+remains in force.
+
+The fifteen packaged font faces and their ranges come from the existing canonical descriptors and
+WOFF2 payloads. Their licenses and source records remain packaged. Bundled JavaScript has its own
+full license inventory derived from actual compiler module ownership, not the list of development
+dependencies. Missing ownership or licenses refuse packaging. Build provenance uses relative paths
+and content hashes; release versions, machine paths, timestamps and per-run capabilities do not
+enter the artifact.
+
+The optional terminal remains a lazy same-origin exception. Its JavaScript and CSS total 495,775
+raw bytes before embedding overhead, which every reader would otherwise download at first open.
+There is no measured startup benefit to bundling it. Installed checks distinguish the React core's
+offline launch from the existing terminal renderer's local asset and read-only stream checks;
+they do not imply the unavailable React preview already has terminal parity.
+
+Python verifies the selected document and license payload against packaged integrity metadata.
+That detects missing, corrupt or stale build output. It does not authenticate a local actor who
+replaces the artifact and its metadata together. A selected bad build fails before binding;
+recovery commands remain available. The default legacy page keeps its original bytes throughout
+the migration.
+
 ## Reader state and storage
 
 Each reader-state row specifies stable identity, stored state, retained deferral or a mechanism
