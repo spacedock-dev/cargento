@@ -2282,6 +2282,34 @@ independent review between them. No old acceptance carries forward. Existing sou
 charge, retry and stop guards remain required. This is one finite continuation, not permission
 to reopen arbitrary stopped runs or borrow held replay and live allowance.
 
+##### Clause-isolation qualification continuation, 2026-10-07
+
+The seventh run identified both sampled Goal departures but judged an approval-qualified
+outcome whose scope was unknown. It stopped after two charged readings. The owner approved
+carrying its 29 unused attempts forward and adding two, giving one new 31-attempt allowance
+for thirty fresh readings and at most one availability retry. All 36 native charges and eight
+shared charges remain spent. The new cumulative ceilings are 67 native charges and 247 shared
+attempts, including the unchanged 190 replay and 18 live attempts held. Earlier grants retain
+their own ceilings, and the current semantic stop cannot be retried.
+
+The fixed eighth grant, manifest and independently reviewed handoff bind the stopped seventh
+result, every charged ancestor and immutable receipt, the seventh run's opening acceptance,
+and its original zero-charge transition and reseal. Initialization appends only epoch four;
+no earlier state, stop or acceptance is reset or carried forward. Missing or changed ancestry
+refuses execution. Admission and the complete local checks precede zero-charge activation;
+merged software and passing CI precede every model call.
+
+Source-derived inputs bind the corrected producer, parser, scorer, exact native model request
+and binary before output. A changed attribution criterion must declare its scope and receive
+fresh independent pre-output marks and rubric adjudication. Unchanged expectations may transfer
+only after their material, scope and selection are independently checked. No result is regraded
+and no answer from a changed producer counts toward the new run.
+
+The first exposure is the one-call opening, followed by independently reviewed batches of nine,
+ten and ten. The existing semantic, coverage, charge and availability guards remain; one retry
+cannot cross a semantic stop. This is one finite continuation, not authority to reopen arbitrary
+runs, increase an older ceiling or borrow replay and live allowance.
+
 #### Prospective qualification source cuts, 2026-10-05
 
 The opt-in typed-Claude qualification freezer may make an owned transient copy of the raw

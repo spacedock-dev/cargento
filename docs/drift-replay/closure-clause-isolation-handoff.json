@@ -1,0 +1,49 @@
+{
+  "parent": {
+    "activation_anchor": "77cfed9588d702d073643383787db568dd55c972c2a7e5636e97934b22131961",
+    "calls": 2,
+    "calls_digest": "0a1dedf6b830be536d921a361c138b6b5a7cdad2e6306618344a795f32a560a6",
+    "failed_result_digest": "75fbcf7b5ad740baa02d1dbe053e5348b56bd22a804775cba9fa104f3142b100",
+    "first_epoch_digest": "5d1272ae396cc1735563d5d7ba5f82e0890f102cf098e71ee3eedea8effd7064",
+    "handoff_digest": "ddf6e76a77040cbf2f205231cb5fde87d39e61271196af8a57c209acdd453f0b",
+    "manifest_digest": "2a00e028e1f6650cacb47642a066441d2ce0dcb503d152926b8e91a48a004998",
+    "native_calls": 36,
+    "native_calls_digest": "6c7d9634f628886200e0fbbf8ab766990dd7af6e2a68c94577daba9a40c9cb28",
+    "native_chain": {
+      "calls": 36,
+      "first": "92c26ee2b2b24750a1e2870aec5beb43",
+      "head": "d252d18ee90caf587382015b02e0d83b21c537527407f582ab9de466a35eae5f"
+    },
+    "original_digest": "8f06ffb031666f7eaf4db3414f710a8ba771e214a77fd7863312e4965004d143",
+    "second_epoch_digest": "4d577f46a45ec84e7b58d472d8a2cebc3a5e918b4af78ae7f0393c7759d3387a",
+    "state_digest": "a3a669d695ad28ce1362a5376081427db0911235181ba03ef2a556ae97e5f114",
+    "stop_proof": {
+      "classification_digest": "a40ecf12da7aa8faf0c9ef4575de0fd1877698899f051b5102a19af1495d72fc",
+      "explicit_stop_digest": null,
+      "kind": "semantic-failed"
+    },
+    "transition_digest": "7819cf43f87b49b61df4425e8d9a73db681e7244495a1a6fd354e2a76ecb0ecd",
+    "zero_reseal_digest": "5a999c20f35346e23724b0e3293ae3c95b6124bbdce4f6fb515535a3bec0c2a4"
+  },
+  "prepared_by": "/root",
+  "reviewed_by": "/root/login_final_arbiter",
+  "successor": {
+    "additional_calls": 31,
+    "carried_calls": 29,
+    "cases_digest": "c9c877b126ea8992ea5fd09084312660239b2c50d2dac1821bae6aed0fa5fdd4",
+    "evidence": {
+      "marks": "3eda0c75eeca1bcfbfa9ea5d193f3dbdf0e51cf10c396c8badc8a647dd9b81fa",
+      "scorer": "2acae0d7b96ad86ea6f96974129f70a0c8427dfa1b9048d944078e0b69e41419",
+      "source": "7c883e6e4404ba3f7c105fbcd0a80cf19b86d7103faefd6c71a443b5c970f9f2"
+    },
+    "grant_digest": "c8d0117938f05080f65be9d6f8c2a48abe763a23bf5ccf372c778645fa88c72f",
+    "inputs_digest": "59d770fa5a67c0f3efcb2d2cfe2578a1be8db79ac2b46a4f72c16c5b8313f800",
+    "manifest_digest": "5c334e2096d34fdd20af4c8c1801980216ec249a92ad738cba803df28ce30268",
+    "model_binding": "fb94ac991b54d5c92a9632c0e89c0e7df44a1c71760ea9a79535e36951c2edd9",
+    "native_total": 67,
+    "renewed_calls": 2,
+    "shared_total": 247
+  },
+  "v": 1,
+  "verdict": "GO"
+}

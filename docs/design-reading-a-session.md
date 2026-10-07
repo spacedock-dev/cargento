@@ -724,6 +724,24 @@ qualification inputs, but that is not universal selection parity or measured mod
 A changed producer still needs source-derived inputs and bound pre-output expectations before
 qualification. Earlier failed readings and their marks remain unchanged.
 
+#### Clarified 2026-10-07: independent clause judgments
+
+Each clause uses evidence that supports that clause. Never copy Goal's judgment to an outcome
+line, or one line's judgment to another. The same recorded fact may support several clauses
+when it actually establishes each; independence does not require disjoint citations. A shown
+Goal departure cannot settle an outcome whose whole scope or conditions are unknown. A
+supported repair of another clause may be consistent while the earlier departure remains.
+The existing missing-evidence and partial-coverage fallback remains `unverifiable`.
+
+Only non-final framing changes. Shared evidence, security, claims and resolver rules remain
+unchanged, and final-session headers retain their bytes. The maximum non-final header is now
+9,212 bytes within the unchanged 9,216-byte share. Headers with outcome lines shrink by four
+bytes; headers without lines grow by 27 and still fit. Ten source-derived qualification inputs
+retain their 81 citation joins and 34 questions, but this is construction evidence, not universal
+selection parity or measured accuracy. An ambiguous attribution criterion also needs its
+latest-report versus persisted-artifact scope declared and adjudicated in a prospective packet.
+No earlier failed result or frozen key is regraded.
+
 ### The two typed fields are one line each, and that is a security decision
 
 Recorded here because it had no durable home. The goal and the expected output are collapsed to a

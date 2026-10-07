@@ -401,6 +401,8 @@ class RepeatedQualification(GrantFourAllowance):
             ("CLAUSE_CONTINUATION_MANIFEST_PATH", self.root / "clause-continuation.json"),
             ("CLAUSE_CONTINUATION_HANDOFF_PATH", self.root / "clause-handoff.json"),
             ("CLAUSE_ZERO_RESEAL_PATH", self.root / "zero-reseal.json"),
+            ("CLAUSE_ISOLATION_MANIFEST_PATH", self.root / "clause-isolation.json"),
+            ("CLAUSE_ISOLATION_HANDOFF_PATH", self.root / "clause-isolation-handoff.json"),
         ):
             patch = mock.patch.object(analyze_campaign, key, str(value))
             patch.start()
