@@ -9,12 +9,14 @@ writes to `docs/abstention/`.
 
 from __future__ import annotations
 
+import copy
 import hashlib
 import json
 import sys
 import unittest
 from pathlib import Path
 from typing import Any
+from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[2]
 ABSTENTION = ROOT / "docs" / "abstention"
@@ -170,6 +172,144 @@ class EveryScoredRunIsListedWithItsOwnVerdictTest(unittest.TestCase):
             hashlib.sha256(original).hexdigest(),
         )
 
+    def test_complete_measurement_preserves_all_nine_prior_inventory_entries(self) -> None:
+        original = json.dumps(self.runs[:9], sort_keys=True, separators=(",", ":")).encode()
+        self.assertEqual(
+            "cf455ffcd8eb9d8cf2361078dc5e5197847f5fcc47ef435c75ea3a1576619a95",
+            hashlib.sha256(original).hexdigest(),
+        )
+        self.assertEqual(10, self.record["scored_runs"])
+        self.assertEqual("claude-results-continuation-9.json", self.runs[-1]["result"])
+
+    def test_complete_failed_measurement_is_not_an_early_stop_or_passing_qualification(
+        self,
+    ) -> None:
+        result = _load(ABSTENTION / "claude-results-continuation-9.json")
+        self.assertEqual("failed", result["verdict"])
+        self.assertIs(False, result["stopped"])
+        self.assertEqual({"charged": 68, "cap": 69}, result["spend"])
+        self.assertEqual(30, result["counts"]["attempts"])
+        self.assertEqual(0, result["counts"]["unusable_attempts"])
+        self.assertEqual("failed", self.record["qualification"])
+        self.test_spend_matches_each_run_and_a_repeated_failure_can_stop_before_the_cap()
+
+    def test_completed_measurement_refuses_partial_or_erased_failure(self) -> None:
+        name = "claude-results-continuation-9.json"
+        original = _load(ABSTENTION / name)
+        variants = []
+        for field, value in (
+            ("unique_cases", 9),
+            ("registered_exposures", 29),
+            ("attempts", 29),
+            ("unusable_attempts", 1),
+        ):
+            changed = copy.deepcopy(original)
+            changed["counts"][field] = value
+            variants.append((field, changed))
+        changed = copy.deepcopy(original)
+        changed["repetitions"][1]["repeat"] = 1
+        variants.append(("duplicate-repeat", changed))
+        changed = copy.deepcopy(original)
+        changed["repetitions"][2]["summary"]["counts"]["reached_model"] = 9
+        variants.append(("missing-exposure", changed))
+        changed = copy.deepcopy(original)
+        for repetition in changed["repetitions"]:
+            repetition["summary"]["cases"].pop(next(iter(repetition["summary"]["cases"])))
+        variants.append(("missing-case-in-all-repeats", changed))
+        changed = copy.deepcopy(original)
+        changed["repetitions"][2]["summary"]["coverage"]["claude"]["kinds"] = 4
+        variants.append(("missing-kind", changed))
+        changed = copy.deepcopy(original)
+        changed["repetitions"][1]["summary"]["rubric"]["counts"]["unscored:missing-expectation"] = 1
+        variants.append(("unscored-question", changed))
+        changed = copy.deepcopy(original)
+        for repetition in changed["repetitions"]:
+            repetition["summary"]["dec17"]["failed"] = []
+        variants.append(("erased-failure", changed))
+        changed = copy.deepcopy(original)
+        changed["verdict"] = "passed"
+        for repetition in changed["repetitions"]:
+            repetition["summary"]["verdict"] = "passed"
+        variants.append(("promoted-failure-to-pass", changed))
+        changed = copy.deepcopy(original)
+        changed["spend"]["charged"] = 69
+        variants.append(("retry-spend-without-attempt", changed))
+        real_load = _load
+        for label, changed in variants:
+            with (
+                self.subTest(mutation=label),
+                mock.patch(
+                    __name__ + "._load",
+                    side_effect=lambda path, body=changed: (
+                        body if path.name == name else real_load(path)
+                    ),
+                ),
+                self.assertRaises(AssertionError),
+            ):
+                self.test_spend_matches_each_run_and_a_repeated_failure_can_stop_before_the_cap()
+
+    def test_complete_measurement_exception_never_changes_an_older_stop_requirement(self) -> None:
+        name = "claude-results-continuation-8.json"
+        changed = copy.deepcopy(_load(ABSTENTION / name))
+        changed["stopped"] = False
+        real_load = _load
+        with (
+            mock.patch(
+                __name__ + "._load",
+                side_effect=lambda path: changed if path.name == name else real_load(path),
+            ),
+            self.assertRaises(AssertionError),
+        ):
+            self.test_spend_matches_each_run_and_a_repeated_failure_can_stop_before_the_cap()
+
+    def _assert_complete_failed_measurement(self, committed: dict[str, Any]) -> None:
+        self.assertEqual(2, committed["v"])
+        self.assertEqual("closure-three-repeats", committed["protocol"])
+        self.assertEqual("failed", committed["verdict"])
+        self.assertIs(False, committed["stopped"])
+        self.assertEqual({"charged": 68, "cap": 69}, committed["spend"])
+        self.assertEqual(
+            {
+                "unique_cases": 10,
+                "registered_exposures": 30,
+                "attempts": 30,
+                "unusable_attempts": 0,
+            },
+            committed["counts"],
+        )
+        self.assertEqual([1, 2, 3], [row["repeat"] for row in committed["repetitions"]])
+        failed_exposures = 0
+        first_cases = set(committed["repetitions"][0]["summary"]["cases"])
+        self.assertEqual(10, len(first_cases))
+        for repetition in committed["repetitions"]:
+            part = repetition["summary"]
+            self.assertEqual("failed", part["verdict"])
+            self.assertEqual(first_cases, set(part["cases"]))
+            self.assertEqual(10, part["counts"]["cases"])
+            self.assertEqual(10, part["counts"]["reached_model"])
+            self.assertEqual(0, part["counts"]["withheld"])
+            self.assertTrue(all(case["reached_model"] for case in part["cases"].values()))
+            self.assertEqual(34, sum(len(case["marks"]) for case in part["cases"].values()))
+            self.assertEqual(first_cases, set(part["rubric"]["cases"]))
+            self.assertTrue(
+                all(
+                    case["admitted"] and case["scored"] and case["reached_model"]
+                    for case in part["rubric"]["cases"].values()
+                )
+            )
+            self.assertEqual(
+                {"kinds": 5, "role": "scored", "missing": [], "not_produced": []},
+                part["coverage"]["claude"],
+            )
+            counts = part["rubric"]["counts"]
+            self.assertEqual(34, sum(counts.values()))
+            self.assertTrue(
+                all(count == 0 for key, count in counts.items() if key.startswith("unscored:"))
+            )
+            self.assertTrue(part["dec17"]["failed"])
+            failed_exposures += len(part["dec17"]["failed"])
+        self.assertEqual(7, failed_exposures)
+
     def test_login_repair_records_usable_answers_but_failed_qualification(self) -> None:
         by_result = {run["result"]: run for run in self.runs}
         name = "claude-results-continuation-6.json"
@@ -210,6 +350,8 @@ class EveryScoredRunIsListedWithItsOwnVerdictTest(unittest.TestCase):
             self.assertEqual(last["spend"]["cap"], last["spend"]["charged"])
         for run in self.runs:
             committed = _load(ABSTENTION / run["result"])
+            if run["result"] == "claude-results-continuation-9.json":
+                self._assert_complete_failed_measurement(committed)
             spend = committed["spend"]
             self.assertLessEqual(spend["charged"], spend["cap"])
             if committed.get("v") != 2:
@@ -227,7 +369,8 @@ class EveryScoredRunIsListedWithItsOwnVerdictTest(unittest.TestCase):
                         )
                     )
                 elif committed["verdict"] == "failed":
-                    self.assertTrue(committed["stopped"])
+                    if run["result"] != "claude-results-continuation-9.json":
+                        self.assertTrue(committed["stopped"])
                     self.assertTrue(
                         any(
                             repeat["summary"]["dec17"]["failed"]
