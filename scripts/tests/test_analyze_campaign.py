@@ -115,6 +115,9 @@ class CampaignFixtureIsolation(unittest.TestCase):
             "SUCCESSOR_HANDOFF_PATH",
             "LOGIN_RESUME_MANIFEST_PATH",
             "LOGIN_RESUME_HANDOFF_PATH",
+            "CLAUSE_CONTINUATION_MANIFEST_PATH",
+            "CLAUSE_CONTINUATION_HANDOFF_PATH",
+            "CLAUSE_ZERO_RESEAL_PATH",
         ):
             with self.subTest(published=field), tempfile.TemporaryDirectory() as outside:
                 published = Path(outside) / "published-successor.json"
@@ -144,6 +147,9 @@ class CampaignFixtureIsolation(unittest.TestCase):
             "SUCCESSOR_HANDOFF_PATH",
             "LOGIN_RESUME_MANIFEST_PATH",
             "LOGIN_RESUME_HANDOFF_PATH",
+            "CLAUSE_CONTINUATION_MANIFEST_PATH",
+            "CLAUSE_CONTINUATION_HANDOFF_PATH",
+            "CLAUSE_ZERO_RESEAL_PATH",
         ):
             with self.subTest(published=field), tempfile.TemporaryDirectory() as outside:
                 published = Path(outside) / "published-successor.json"
@@ -236,6 +242,9 @@ class CampaignReservations(unittest.TestCase):
             ("SUCCESSOR_HANDOFF_PATH", self.root / "handoff.json"),
             ("LOGIN_RESUME_MANIFEST_PATH", self.root / "login-resume.json"),
             ("LOGIN_RESUME_HANDOFF_PATH", self.root / "login-handoff.json"),
+            ("CLAUSE_CONTINUATION_MANIFEST_PATH", self.root / "clause-continuation.json"),
+            ("CLAUSE_CONTINUATION_HANDOFF_PATH", self.root / "clause-handoff.json"),
+            ("CLAUSE_ZERO_RESEAL_PATH", self.root / "zero-reseal.json"),
         ):
             patch = mock.patch.object(self.module, key, str(value))
             patch.start()

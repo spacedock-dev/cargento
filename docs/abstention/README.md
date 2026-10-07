@@ -399,6 +399,29 @@ failed qualification. Further work must investigate how non-final readings handl
 conditions and earlier stalls within the 9,216-byte instruction limit; this result supplies no
 measured improvement from a future fix.
 
+### Seventh qualification preparation, 2026-10-07
+
+The owner authorized measuring the corrected per-clause instruction after the sixth result
+failed. The [finite continuation contract](../../SECURITY.md#per-clause-qualification-continuation-2026-10-07)
+keeps all 34 native charges and six shared charges, carries 29 held attempts and adds two.
+Thirty registered readings and one availability retry fit its 31-attempt allowance. Earlier
+stops remain intact, and a semantic failure cannot use the retry.
+The [seventh grant](claude-continuation-7.json),
+[reviewed mark transfer](claude-marks-transfer-7.json),
+[manifest](../drift-replay/closure-campaign-clause-continuation.json) and
+[independent handoff](../drift-replay/closure-clause-continuation-handoff.json) bind the new
+packet and zero-charge activation. Preparation is not a qualification result.
+The [zero-charge scope correction](../drift-replay/closure-clause-zero-reseal.json) preserves
+the initial preparation and binds its corrected replacement before any reading. Both have zero
+new charges; the allowance stays the same.
+
+The correction preserves all existing departure grounds before considering unknown scope or
+conditions and unfinished work. It neither changes the final-session instruction nor supplies
+an accuracy result. Every input must be rebuilt from the final source and frozen before output.
+Unchanged evidence, criteria and reading scope may carry their independently reviewed blind
+expectations forward through an explicit transfer; changed material needs fresh adjudication.
+Replay and live remain held, with no refund or borrowed allowance.
+
 ### Fourth qualification outcome, 2026-10-06
 
 The [native fourth result](claude-results-continuation-4.json) failed after two attempts on the

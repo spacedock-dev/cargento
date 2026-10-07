@@ -261,6 +261,20 @@ allowance is borrowed, refunded or reset. The result is failed, not a completed 
 Investigating non-final conditions and earlier stalls is the next producer task; any change
 must fit the 9,216-byte instruction limit and earn its own measured result.
 
+The owner has authorized a corrected per-clause producer and one fresh qualification under the
+[seventh continuation contract](../../SECURITY.md#per-clause-qualification-continuation-2026-10-07).
+It preserves 34 native and six shared charges, carrying 29 held attempts and adding two for
+31 available. The new native ceiling is 65 and the cumulative shared allocation is 245;
+replay and live remain held. Source-derived inputs, pre-output expectations, exact model and
+request bindings, and an independent charge-preserving handoff must precede execution. The
+instruction correction has no measured accuracy result yet, and the sixth run remains failed.
+The [fixed manifest](closure-campaign-clause-continuation.json) and
+[independent handoff](closure-clause-continuation-handoff.json) preserve every stopped ancestor
+and bind the new requests before spending.
+The [one-time zero-charge reseal](closure-clause-zero-reseal.json) records the scope omission
+caught by the full suite and the corrected binding. It preserves the original activation and
+changes no charge or allowance.
+
 ## Model-free gap studies, 2026-10-05
 
 These studies keep the original 99 cases and their reads intact. Two agents mark the evidence

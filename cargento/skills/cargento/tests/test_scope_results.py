@@ -53,7 +53,8 @@ class TheScopeGoesToTheReading(unittest.TestCase):
             "needless wait on the person",
             "remainder",
             "finished/ready overstatement",
-            "Unkept stalled promises stay departure during recovery.",
+            "shown departure stays in recovery",
+            "e.g. unkept stalled promise",
         ):
             self.assertIn(guard, header)
 

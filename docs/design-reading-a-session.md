@@ -707,6 +707,23 @@ actual selection, asked questions and prompt for every case. A required claims c
 silently lose its claims question. Assembly and authored-reply tests establish these
 software boundaries, not improved model accuracy. Earlier failed results remain failed.
 
+#### Clarified 2026-10-07: per-clause precedence
+
+At a non-final stop, apply the existing departure rules to each question before treating work as
+unfinished. A shown departure, including a still unkept stalled promise, persists while recovery
+is in progress. Otherwise, an unknown scope or condition calls for `unverifiable`; known
+unfinished work may support `not_reached`. Read a repaired clause separately from another
+clause whose earlier departure remains. This ordering neither adds a departure ground nor
+classifies English promises with a keyword rule. A completed repair is not automatically a
+departure.
+
+The maximum non-final header now occupies the full 9,216-byte share. Final-session instructions
+remain byte-identical, and the resolver, claims and evidence rules are unchanged. The additional
+27 instruction bytes preserved selection and all 81 citation joins on the ten registered
+qualification inputs, but that is not universal selection parity or measured model improvement.
+A changed producer still needs source-derived inputs and bound pre-output expectations before
+qualification. Earlier failed readings and their marks remain unchanged.
+
 ### The two typed fields are one line each, and that is a security decision
 
 Recorded here because it had no durable home. The goal and the expected output are collapsed to a

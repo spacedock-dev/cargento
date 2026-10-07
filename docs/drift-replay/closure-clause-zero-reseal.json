@@ -1,0 +1,62 @@
+{
+  "v": 1,
+  "verdict": "GO",
+  "prepared_by": "/root",
+  "reviewed_by": "/root/login_final_arbiter",
+  "parent": {
+    "manifest_digest": "1581743789dd58315fac472f1ad1c5067fb128fafd0c9ba9385fb27bee528ff1",
+    "activation_anchor": "1d62dbe549d9f291af445f6f30ee9e6863b4493fe0c2876cdfcfa90f5e97ca2a",
+    "handoff_digest": "a4e20db30db8ddac0ad17e8d9916ced1b715564727c7eb5d293bc4150d76901b",
+    "state_digest": "4d577f46a45ec84e7b58d472d8a2cebc3a5e918b4af78ae7f0393c7759d3387a",
+    "original_digest": "8f06ffb031666f7eaf4db3414f710a8ba771e214a77fd7863312e4965004d143",
+    "first_epoch_digest": "5d1272ae396cc1735563d5d7ba5f82e0890f102cf098e71ee3eedea8effd7064",
+    "calls": 2,
+    "calls_digest": "77977345217289dfd6bbc71cdcb909a77ff77f2390ae6c83180d54a5af14d142",
+    "stop_proof": {
+      "kind": "semantic-failed",
+      "classification_digest": "b60c720375b2e794fbc1f100a58555fab5fb9f2aa01395ab72db798b2d95250c",
+      "explicit_stop_digest": null
+    },
+    "failed_result_digest": "239ae49d7b611685294d5d529b7b8ed808c2f34501e65cafff3cec646b02a1ca",
+    "native_calls": 34,
+    "native_calls_digest": "4d3c36812c0f5020b10af5d4464c938434bf48b0e32609a38a2424af639c441d",
+    "native_chain": {
+      "first": "92c26ee2b2b24750a1e2870aec5beb43",
+      "calls": 34,
+      "head": "db16139d14b97177445aaa9c806cab4f1eb55c5c38ac4cca44e2b9fdad1bb8b8"
+    }
+  },
+  "before": {
+    "manifest_digest": "95840e273c2c1f2bd0bbd24571a02eb7f675ddb2ba9cc723f0925655996161e7",
+    "grant_digest": "ed4d179f50698135ba5d78d1f776475f536d70b6a973dc6d8f29b2e11685cfc0",
+    "handoff_digest": "bcd3c7687a12019882fa8be0f7c721d6a508e54853b75dd10cf30c5747a18fba",
+    "activation_anchor": "64c007e7a88ecd951d780e43e3edc6e8067622aa67fd1b9dea6bfeecd240a2cb",
+    "transition_sha256": "ee05f00dfca213a07d017e0e215eee46ea113f95e73c4a5ec1faebe923a974ef",
+    "epoch": {
+      "id": 3,
+      "handoff_digest": "bcd3c7687a12019882fa8be0f7c721d6a508e54853b75dd10cf30c5747a18fba",
+      "state": {
+        "v": 1,
+        "manifest_digest": "95840e273c2c1f2bd0bbd24571a02eb7f675ddb2ba9cc723f0925655996161e7",
+        "calls": [],
+        "genesis_nonce": "54f20c452e1b4f66938e2ccf410546a9"
+      }
+    }
+  },
+  "after": {
+    "manifest_digest": "2a00e028e1f6650cacb47642a066441d2ce0dcb503d152926b8e91a48a004998",
+    "grant_digest": "409964e05888568ff591669d9bb801e6d8c772642acfc1f1e97ab5e403316dc5",
+    "handoff_digest": "ddf6e76a77040cbf2f205231cb5fde87d39e61271196af8a57c209acdd453f0b",
+    "activation_anchor": "77cfed9588d702d073643383787db568dd55c972c2a7e5636e97934b22131961",
+    "epoch": {
+      "id": 3,
+      "handoff_digest": "ddf6e76a77040cbf2f205231cb5fde87d39e61271196af8a57c209acdd453f0b",
+      "state": {
+        "v": 1,
+        "manifest_digest": "2a00e028e1f6650cacb47642a066441d2ce0dcb503d152926b8e91a48a004998",
+        "calls": [],
+        "genesis_nonce": "7f8d15e1862841c0b029edf05a296d28"
+      }
+    }
+  }
+}

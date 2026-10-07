@@ -12,6 +12,7 @@ in the source would be the very trick under test, unreadable in review.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import math
 import pathlib
@@ -3320,10 +3321,35 @@ class NonfinalReadingsSeparateUnknownConditionsFromPendingWork(unittest.TestCase
                     self.ledger, goal=self.goal, lines=self.lines, max_bytes=16_384, scope=scope
                 )
                 trusted, values = prompt.split("<goal>\n", 1)
-                self.assertIn("Unknown clause conditions are unverifiable", trusted)
-                self.assertIn("known work in flight is not_reached", trusted)
+                self.assertIn("Read work so far; per clause:", trusted)
+                for phrase in (
+                    "shown departure stays in recovery (e.g. unkept stalled promise)",
+                    "else unknown scope/conditions: unverifiable",
+                    "else pending: not_reached",
+                ):
+                    self.assertIn(phrase, trusted)
+                priority = trusted.index("per clause:")
+                shown = trusted.index(
+                    "shown departure stays in recovery (e.g. unkept stalled promise)"
+                )
+                unknown = trusted.index("else unknown scope/conditions: unverifiable")
+                unfinished = trusted.index("else pending: not_reached")
+                self.assertLess(priority, shown)
+                self.assertLess(shown, unknown)
+                self.assertLess(unknown, unfinished)
+                self.assertIn("Repairs apart", trusted)
                 self.assertIn("exercising the whole clause", trusted)
-                self.assertIn("Unkept stalled promises stay departure during recovery", trusted)
+                # The priority refers to every departure the shared rule admits,
+                # rather than giving unfinished work an exemption from other grounds.
+                for ground in (
+                    "failed supports departure",
+                    "work instead of the ask",
+                    "finished/ready overstatement",
+                    "needless wait on the person",
+                    "a stated remainder of the asked-for set is departure",
+                ):
+                    self.assertIn(ground, trusted)
+                self.assertIn("stays in recovery", trusted)
                 self.assertIn(self.goal, values)
                 self.assertEqual(2, values.count('<outcome_line n="'))
                 self.assertTrue(selected.asked_claims)
@@ -3331,7 +3357,7 @@ class NonfinalReadingsSeparateUnknownConditionsFromPendingWork(unittest.TestCase
                     {"goal", "line_1", "line_2", "claims"},
                     set(reading.constraints_for(selected.lines, claims=selected.asked_claims)),
                 )
-                self.assertLess(prompt.index("Unknown clause"), prompt.index("<goal>"))
+                self.assertLess(unfinished, prompt.index("<goal>"))
 
     def test_both_nonfinal_scopes_fit_all_maximum_fields_and_native_citable_entries(self) -> None:
         words = "\U0001f600" * 240
@@ -3340,7 +3366,7 @@ class NonfinalReadingsSeparateUnknownConditionsFromPendingWork(unittest.TestCase
                 prompt, selected = reading.build_prompt(
                     self.ledger, goal=words, lines=[words] * 6, max_bytes=16_384, scope=scope
                 )
-                self.assertIn("Unknown clause conditions are unverifiable", prompt)
+                self.assertIn("else unknown scope/conditions: unverifiable", prompt)
                 self.assertEqual(6, prompt.count('<outcome_line n="'))
                 self.assertEqual(7, prompt.count(words))
                 self.assertTrue(selected.asked_output)
@@ -3350,6 +3376,10 @@ class NonfinalReadingsSeparateUnknownConditionsFromPendingWork(unittest.TestCase
                 self.assertLessEqual(len(prompt.encode("utf-8")), 16_384)
                 trusted_header = prompt.split(reading.MENU_HEADING, 1)[0]
                 self.assertLessEqual(len(trusted_header.encode("utf-8")), 9_216)
+                full_header = reading._header(
+                    words, [words] * 6, tool_note=True, claims=True, scope=scope
+                )
+                self.assertLessEqual(len(full_header.encode("utf-8")), 9_216)
 
     def test_final_readings_keep_their_existing_scope_and_token_set(self) -> None:
         prompt, selected = reading.build_prompt(
@@ -3361,12 +3391,19 @@ class NonfinalReadingsSeparateUnknownConditionsFromPendingWork(unittest.TestCase
         )
         trusted = prompt.split("<goal>\n", 1)[0]
         self.assertIn("Read through the session end.\n", trusted)
-        self.assertNotIn("Unknown clause conditions", trusted)
+        self.assertNotIn("per clause:", trusted)
         self.assertNotIn("during recovery", trusted)
         self.assertNotIn('"not_reached"', trusted)
         self.assertTrue(selected.asked_output)
         self.assertTrue(selected.asked_claims)
         self.assertIn("otherwise unverifiable", trusted)
+        header = reading._header(
+            self.goal, self.lines, tool_note=True, claims=True, scope=reading.SCOPE_FINAL
+        )
+        self.assertEqual(
+            "4633789558cbda57c7fe90765b0a2e5a09430804b3a7a5aabc8fda3cfa444a9b",
+            hashlib.sha256(header.encode()).hexdigest(),
+        )
 
     def test_an_authored_reply_keeps_goal_line_and_claims_judgments_independent(self) -> None:
         """Own stall, unknown approved set and aligned account are distinct questions."""
