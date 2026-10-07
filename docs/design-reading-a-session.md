@@ -742,6 +742,27 @@ selection parity or measured accuracy. An ambiguous attribution criterion also n
 latest-report versus persisted-artifact scope declared and adjudicated in a prospective packet.
 No earlier failed result or frozen key is regraded.
 
+#### Clarified 2026-10-07: unknown conditions precede a departure judgment
+
+Read an unknown scope or prerequisite as `unverifiable` before carrying a departure
+judgment forward. A counterexample may still establish departure if its membership and
+every relevant condition are shown. One approved, unfinished member can refute an outcome
+about all approved work without enumerating the remaining set. An unfinished item whose
+approval is unknown cannot supply that counterexample, and Goal evidence cannot fill the
+missing approval for another clause.
+
+A known departure stays visible during recovery. Known pending work may be `not_reached`,
+and a separately supported repair may be consistent. These instructions add no keyword
+classifier or deterministic proof of English conditions. The model must apply them to the
+recorded evidence.
+
+The non-final header fits the unchanged 9,216-byte share, including its largest variant.
+Final-session headers, shared evidence rules, claims and the resolver retain their bytes.
+Ten source-derived inputs add four framing bytes each and preserve their 81 selected joins
+and 34 questions. This construction check establishes neither universal selection parity
+nor model accuracy. All earlier failed results and marks remain unchanged; a changed
+producer still needs a fresh source-bound packet and qualification run.
+
 ### The two typed fields are one line each, and that is a security decision
 
 Recorded here because it had no durable home. The goal and the expected output are collapsed to a

@@ -1,0 +1,20 @@
+{
+  "v": 1,
+  "preparation": "reviewed-invariant-all34-expectation-transfer",
+  "previous_marks_sha256": "3eda0c75eeca1bcfbfa9ea5d193f3dbdf0e51cf10c396c8badc8a647dd9b81fa",
+  "next_marks_sha256": "9c9abf7e927be9d3ce9edd4aa8a7b1f2b6e4a88b8b8e654529216dd6eef6ea54",
+  "cases_digest": "0228c81f8697df83be320370b00352ee2848c863e7b163d15164d02fbeacd85f",
+  "parser_sha256": "7c09d0bd1b9663edd59518140f9e89d14da20e90a93773a67a5ea31152c1607e",
+  "cases": 10,
+  "recorded_kinds": 5,
+  "synthetic_adversaries": 5,
+  "criteria": 34,
+  "selected_joins": 81,
+  "instruction_delta_bytes": 4,
+  "changed_scope_delta_bytes": 0,
+  "unchanged_expectations_transferred": 34,
+  "source_preparation_sha256": "1a71f4a3bd82e1792f227b8b2c5ba6cd60dab0c8ee30588e8dd205ed2e369d19",
+  "independent_source_review_sha256": "d1afce6f4cc75383145f855628517eeb13ae8c6a92d256f3eec28de075258d02",
+  "accounting_review_sha256": "25b536f36ea2db3391a1e0f77f16bf775470f696793a861ac3c29799a31e66c6",
+  "statement": "All34 pre-output expectations transfer only after independently checked native source, criterion scope, facts, windows, selected entries and citation menus. Ten inputs add four nonfinal framing bytes each, preserving81 joins and34 questions. Seven export stamps and prompt seals are freshly derived. Earlier packets, marks and failed results remain unchanged. This is prospective source admission, not measured accuracy."
+}

@@ -47,6 +47,12 @@ CLAUSE_ISOLATION_MANIFEST_PATH = str(
 CLAUSE_ISOLATION_HANDOFF_PATH = str(
     Path(MANIFEST_PATH).with_name("closure-clause-isolation-handoff.json")
 )
+CONDITIONAL_PRIORITY_MANIFEST_PATH = str(
+    Path(MANIFEST_PATH).with_name("closure-campaign-conditional-priority.json")
+)
+CONDITIONAL_PRIORITY_HANDOFF_PATH = str(
+    Path(MANIFEST_PATH).with_name("closure-conditional-priority-handoff.json")
+)
 CLAUSE_ZERO_RESEAL_PATH = str(Path(MANIFEST_PATH).with_name("closure-clause-zero-reseal.json"))
 LEDGER_PATH = authority.canonical_path(".cargento", "analyze-closure-spend.json")
 REPLAY_PATH = authority.canonical_path(".cargento", "drift-replay", "spend.json")
@@ -71,8 +77,14 @@ class AwaitingReviewError(authority.LedgerError):
     """A completed batch awaits review; no provider attempt failed."""
 
 
-def active_campaign() -> Campaign | None:
+def active_campaign() -> Campaign | None:  # noqa: PLR0911 - fixed finite generation surfaces refuse independently
     """An existing fixed manifest or account receipt cannot be bypassed by removing one."""
+    if (
+        os.path.lexists(CONDITIONAL_PRIORITY_MANIFEST_PATH)
+        or os.path.lexists(CONDITIONAL_PRIORITY_HANDOFF_PATH)
+        or (LEDGER_PATH and os.path.lexists(LEDGER_PATH + ".epochs/5"))
+    ):
+        return ConditionalPriorityCampaign()
     if (
         os.path.lexists(CLAUSE_ISOLATION_MANIFEST_PATH)
         or os.path.lexists(CLAUSE_ISOLATION_HANDOFF_PATH)
@@ -402,6 +414,8 @@ def _valid_call(call: Any, manifest: dict[str, Any]) -> bool:
 
 class Campaign:
     """One immutable manifest and one account-wide, serial, persistent charge stream."""
+
+    stop_on_semantic_failure = True
 
     def __init__(self) -> None:
         self.manifest, self.binding = _manifest()
@@ -885,6 +899,7 @@ class SuccessorCampaign(Campaign):
                 (active["generation"] == 6 and active.get("login_resume_allowance"))
                 or (active["generation"] == 7 and active.get("clause_continuation_allowance"))
                 or (active["generation"] == 8 and active.get("clause_isolation_allowance"))
+                or (active["generation"] == 9 and active.get("conditional_priority_allowance"))
             )
         )
         bounded_native = native[:32] if resumed else native
@@ -896,7 +911,9 @@ class SuccessorCampaign(Campaign):
             or len(native) < 30
             or len(native)
             > (
-                67
+                69
+                if active and active["generation"] == 9
+                else 67
                 if active and active["generation"] == 8
                 else 65
                 if active and active["generation"] == 7
@@ -1028,13 +1045,16 @@ class SuccessorCampaign(Campaign):
                 (active["generation"] == 6 and active.get("login_resume_allowance"))
                 or (active["generation"] == 7 and active.get("clause_continuation_allowance"))
                 or (active["generation"] == 8 and active.get("clause_isolation_allowance"))
+                or (active["generation"] == 9 and active.get("conditional_priority_allowance"))
             )
         )
         if (
             not isinstance(epochs, list)
             or len(epochs)
             not in (
-                (1, 2, 3, 4)
+                (1, 2, 3, 4, 5)
+                if active and active["generation"] == 9
+                else (1, 2, 3, 4)
                 if active and active["generation"] == 8
                 else (1, 2, 3)
                 if active and active["generation"] == 7
@@ -1053,7 +1073,9 @@ class SuccessorCampaign(Campaign):
             or self.epoch_dir.is_symlink()
             or not self._bounded_entries(
                 self.epoch_dir.parent,
-                {"1", "2", "3", "4"}
+                {"1", "2", "3", "4", "5"}
+                if active and active["generation"] == 9
+                else {"1", "2", "3", "4"}
                 if active and active["generation"] == 8
                 else {"1", "2", "3"}
                 if active and active["generation"] == 7
@@ -1210,6 +1232,7 @@ class LoginResumeCampaign(SuccessorCampaign):
             and (
                 (active["generation"] == 7 and active.get("clause_continuation_allowance"))
                 or (active["generation"] == 8 and active.get("clause_isolation_allowance"))
+                or (active["generation"] == 9 and active.get("conditional_priority_allowance"))
             )
         )
         grant = authority.continuation(generation=6)
@@ -1229,7 +1252,15 @@ class LoginResumeCampaign(SuccessorCampaign):
             or previous.get("accepted_batches")
             or not 32
             <= len(native)
-            <= (67 if active and active["generation"] == 8 else 65 if extended else 63)
+            <= (
+                69
+                if active and active["generation"] == 9
+                else 67
+                if active and active["generation"] == 8
+                else 65
+                if extended
+                else 63
+            )
             or any(c["status"] == "charged" for c in native[:32])
             or not authority.begins_with(QUALIFICATION_PATH, grant["previous"]["ledger_chain"])
             or not authority.follows(
@@ -1548,7 +1579,11 @@ class ClauseContinuationCampaign(LoginResumeCampaign):
         native = authority.read(QUALIFICATION_PATH)["calls"]
         active = authority.continuation()
         extended = bool(
-            active and active["generation"] == 8 and active.get("clause_isolation_allowance")
+            active
+            and (
+                (active["generation"] == 8 and active.get("clause_isolation_allowance"))
+                or (active["generation"] == 9 and active.get("conditional_priority_allowance"))
+            )
         )
         grant = authority.continuation(generation=7)
         calls = previous["calls"]
@@ -1564,7 +1599,9 @@ class ClauseContinuationCampaign(LoginResumeCampaign):
             or previous.get("stop") not in (None, "semantic-failed")
             or previous.get("accepted")
             or set(previous.get("accepted_batches", {})) != {"qualification:0"}
-            or not 34 <= len(native) <= (67 if extended else 65)
+            or not 34
+            <= len(native)
+            <= (69 if active and active["generation"] == 9 else 67 if extended else 65)
             or any(c["status"] == "charged" for c in native[:34])
             or not authority.begins_with(QUALIFICATION_PATH, grant["previous"]["ledger_chain"])
             or not authority.follows(
@@ -1729,7 +1766,11 @@ class ClauseIsolationCampaign(SuccessorCampaign):
         previous = previous_campaign._state()  # noqa: SLF001 - validate every receipt of the stopped epoch
         root = previous_campaign._parent_state()  # noqa: SLF001 - append only to the original canonical ledger
         native = authority.read(QUALIFICATION_PATH)["calls"]
-        grant = authority.continuation()
+        active = authority.continuation()
+        extended = bool(
+            active and active["generation"] == 9 and active.get("conditional_priority_allowance")
+        )
+        grant = authority.continuation(generation=8)
         calls = previous["calls"]
         if (
             not grant
@@ -1743,11 +1784,13 @@ class ClauseIsolationCampaign(SuccessorCampaign):
             or previous.get("stop") not in (None, "semantic-failed")
             or previous.get("accepted")
             or set(previous.get("accepted_batches", {})) != {"qualification:0"}
-            or not 36 <= len(native) <= 67
+            or not 36 <= len(native) <= (69 if extended else 67)
             or any(c["status"] == "charged" for c in native[:36])
             or not authority.begins_with(QUALIFICATION_PATH, grant["previous"]["ledger_chain"])
             or not authority.follows(
-                native, grant, (grant["next"]["marks_digest"], grant["next"]["inputs_digest"])
+                native[:38] if extended else native,
+                grant,
+                (grant["next"]["marks_digest"], grant["next"]["inputs_digest"]),
             )
             or self.manifest["historical"] != self.parent.manifest["historical"]
             or any(
@@ -1805,6 +1848,264 @@ class ClauseIsolationCampaign(SuccessorCampaign):
                 "genesis_nonce": uuid.uuid4().hex,
             }
             epoch = {"id": 4, "handoff_digest": self.handoff_digest, "state": state}
+            self.epoch_dir.mkdir(mode=0o700)
+            self._transition(epoch)
+            root["epochs"].append(epoch)
+            authority._write(self.path, root)  # noqa: SLF001 - append under the existing canonical lock
+            return authority.digest(state)
+
+
+def conditional_priority_parent_binding(previous: ClauseIsolationCampaign) -> dict[str, Any]:
+    """Bind actual G8 paid STOP, all earlier epochs, native38 and original reseal."""
+    state = previous._state()  # noqa: SLF001 - independently validated stopped predecessor
+    root = previous._parent_state()  # noqa: SLF001 - every ancestor and receipt is preserved
+    native = authority.read(QUALIFICATION_PATH)["calls"][:38]
+    return _conditional_parent_binding(previous, state, root, native)
+
+
+def _conditional_parent_binding(
+    previous: ClauseIsolationCampaign,
+    state: dict[str, Any],
+    root: dict[str, Any],
+    native: list[dict[str, Any]],
+) -> dict[str, Any]:
+    """Pure assembly from this admission's freshly validated snapshots; never cached."""
+    old_reseal = previous.epoch_dir.parent / "3"
+    return {
+        "manifest_digest": previous.binding,
+        "activation_anchor": previous.manifest["activation_anchor"],
+        "handoff_digest": previous.handoff_digest,
+        "state_digest": authority.digest(state),
+        "original_digest": authority.digest({k: v for k, v in root.items() if k != "epochs"}),
+        "ancestor_epochs_digest": authority.digest(root["epochs"][:3]),
+        "transition_digest": authority.digest(
+            _read(str(old_reseal / "TRANSITION.json"), "original clause transition")
+        ),
+        "zero_reseal_digest": authority.digest(
+            _read(str(old_reseal / "RESEAL.json"), "immutable clause reseal")
+        ),
+        "calls": 2,
+        "calls_digest": authority.digest(state["calls"]),
+        "stop_proof": {
+            "kind": "semantic-failed",
+            "classification_digest": authority.digest(
+                _read(
+                    str(previous.receipts / (state["calls"][-1]["id"] + "-SETTLED.json")),
+                    "prior semantic classification",
+                )
+            ),
+            "explicit_stop_digest": authority.digest(
+                _read(str(previous.receipts / "STOP.json"), "prior stop")
+            )
+            if state.get("stop")
+            else None,
+        },
+        "failed_result_digest": authority.digest(
+            _read(authority.result_path(8), "failed eighth result")
+        ),
+        "native_calls": 38,
+        "native_calls_digest": authority.digest(native),
+        "native_chain": {"first": native[0]["id"], "calls": 38, "head": authority.chain(native)},
+    }
+
+
+class ConditionalPriorityCampaign(SuccessorCampaign):
+    """Fixed fifth epoch: preserve ten spent attempts and carry29+renew2."""
+
+    epoch_id = 5
+
+    stop_on_semantic_failure = False
+
+    @staticmethod
+    def _stop(calls: list[dict[str, Any]]) -> None:
+        # Preserve technical/protection/orphan stops and two unusable attempts.
+        if any(c["status"] in ("coverage-failed", "protection-failed") for c in calls):
+            raise authority.LedgerError("a coverage or protection failure stopped the campaign")
+        if any(c["status"] == "charged" for c in calls):
+            raise authority.LedgerError("an unclassified or orphan campaign call blocks launch")
+        if len(calls) >= 2 and all(c["status"] == "unusable" for c in calls[-2:]):
+            raise authority.LedgerError("two consecutive unusable calls stopped the campaign")
+
+    def _next_slot(self, lane: str, calls: list[dict[str, Any]]) -> str | None:
+        latest = {c["slot"]: c["status"] for c in calls if c["lane"] == lane}
+        return next(
+            (
+                slot
+                for slot in self.manifest["slots"][lane]
+                if latest.get(slot) not in ("usable", "semantic-failed")
+            ),
+            None,
+        )
+
+    def _validate_acceptance(
+        self, lane: str, proof: Any, calls: list[dict[str, Any]], *, batch: int | None = None
+    ) -> None:
+        if batch is None:
+            super()._validate_acceptance(lane, proof, calls, batch=None)
+            return
+        slots = self.manifest["batches"][lane][batch]
+        own = [c for c in calls if c["lane"] == lane and c["slot"] in slots]
+        latest = {c["slot"]: c["status"] for c in own}
+        expected = {
+            "v": 1,
+            "lane": lane,
+            "batch": batch,
+            "manifest_digest": self.binding,
+            "protocol": self.manifest["protocols"][lane],
+            "binding": self.manifest["bindings"][lane],
+            "evidence": self.manifest["evidence"][lane],
+            "slots_digest": authority.digest(slots),
+            "attempts_digest": authority.digest(own),
+            "charged_attempts": len(own),
+            "expected_slots": len(slots),
+            "measured_slots": len(slots),
+            "usable_slots": sum(latest.get(slot) == "usable" for slot in slots),
+            "semantic_failures": sum(c["status"] == "semantic-failed" for c in own),
+            "coverage_failures": 0,
+            "protection_failures": 0,
+            "verdict": "measured",
+        }
+        if (
+            lane != "qualification"
+            or not isinstance(proof, dict)
+            or set(proof) != set(expected) | {"output_digest", "review_digest"}
+            or any(
+                proof.get(key) != value or type(proof.get(key)) is not type(value)
+                for key, value in expected.items()
+            )
+            or any(
+                not isinstance(proof.get(key), str) or not _DIGEST.fullmatch(proof[key])
+                for key in ("output_digest", "review_digest")
+            )
+            or any(latest.get(slot) not in ("usable", "semantic-failed") for slot in slots)
+            or any(c["status"] in ("charged", "coverage-failed", "protection-failed") for c in own)
+        ):
+            raise authority.LedgerError("the measured and reviewed batch is incomplete")
+
+    def review_batch(self, lane: str, batch: int, proof: dict[str, Any]) -> None:
+        """Accept a bound measurement review, never qualification of failed answers."""
+        super().accept_batch(lane, batch, proof)
+
+    def __init__(self) -> None:
+        self.parent = ClauseIsolationCampaign()
+        self.path = self.parent.path
+        self.manifest, self.binding = self._current_manifest()
+        self.epoch_dir = Path(self.path + ".epochs") / "5"
+        self.receipts = self.epoch_dir / "reservations"
+        self.handoff = _read(CONDITIONAL_PRIORITY_HANDOFF_PATH, "conditional priority handoff")
+        if (
+            not isinstance(self.handoff, dict)
+            or set(self.handoff)
+            != {"v", "verdict", "prepared_by", "reviewed_by", "parent", "successor"}
+            or type(self.handoff["v"]) is not int
+            or self.handoff["v"] != 1
+            or self.handoff["verdict"] != "GO"
+            or any(
+                not isinstance(self.handoff[k], str) or not self.handoff[k].strip()
+                for k in ("prepared_by", "reviewed_by")
+            )
+            or self.handoff["prepared_by"] == self.handoff["reviewed_by"]
+        ):
+            raise authority.LedgerError("conditional priority needs an independent bound handoff")
+        self.handoff_digest = authority.digest(self.handoff)
+        self._parent_state()
+
+    def _current_manifest(self) -> tuple[dict[str, Any], str]:
+        body, key = _manifest(CONDITIONAL_PRIORITY_MANIFEST_PATH)
+        if body["order"] != ["qualification", "replay", "live"]:
+            raise authority.LedgerError(
+                "conditional priority admits only qualification; later lanes stay held"
+            )
+        return body, key
+
+    def _parent_state(self) -> dict[str, Any]:
+        if (
+            self._current_manifest() != (self.manifest, self.binding)
+            or authority.digest(
+                _read(CONDITIONAL_PRIORITY_HANDOFF_PATH, "conditional priority handoff")
+            )
+            != self.handoff_digest
+        ):
+            raise authority.LedgerError("the conditional priority manifest or handoff changed")
+        previous_campaign = cast("ClauseIsolationCampaign", self.parent)
+        previous = previous_campaign._state()  # noqa: SLF001 - validate every receipt of the stopped epoch
+        root = previous_campaign._parent_state()  # noqa: SLF001 - append only to the original canonical ledger
+        native = authority.read(QUALIFICATION_PATH)["calls"]
+        grant = authority.continuation()
+        calls = previous["calls"]
+        if (
+            not grant
+            or grant["generation"] != 9
+            or grant["phase"] != "sealed"
+            or not grant.get("conditional_priority_allowance")
+            or len(calls) != 2
+            or [c["status"] for c in calls] != ["usable", "semantic-failed"]
+            or [c["slot"] for c in calls] != self.parent.manifest["slots"]["qualification"][:2]
+            or any(c["retry"] for c in calls)
+            or previous.get("stop") not in (None, "semantic-failed")
+            or previous.get("accepted")
+            or set(previous.get("accepted_batches", {})) != {"qualification:0"}
+            or not 38 <= len(native) <= 69
+            or any(c["status"] == "charged" for c in native[:38])
+            or not authority.begins_with(QUALIFICATION_PATH, grant["previous"]["ledger_chain"])
+            or not authority.follows(
+                native, grant, (grant["next"]["marks_digest"], grant["next"]["inputs_digest"])
+            )
+            or self.manifest["historical"] != self.parent.manifest["historical"]
+            or any(
+                n.get("campaign_charge") != c["id"]
+                or c["slot"] != f"{n['case']}:r{n.get('repeat')}"
+                or n.get("retry") is not c["retry"]
+                or n["status"] != "ok"
+                for n, c in zip(native[36:38], calls, strict=True)
+            )
+        ):
+            raise authority.LedgerError(
+                "conditional priority lost the stopped clause epoch or native 38-call prefix"
+            )
+        expected = {
+            "manifest_digest": self.binding,
+            "grant_digest": authority.digest(_read(authority.CONTINUATION_PATHS[8], "ninth grant")),
+            "evidence": self.manifest["evidence"]["qualification"],
+            "cases_digest": grant["next"]["cases_digest"],
+            "inputs_digest": grant["next"]["inputs_digest"],
+            "model_binding": grant["conditional_priority_allowance"]["model_binding"],
+            "additional_calls": 31,
+            "carried_calls": 29,
+            "renewed_calls": 2,
+            "shared_total": 249,
+            "native_total": 69,
+        }
+        if (
+            self.handoff["parent"]
+            != _conditional_parent_binding(previous_campaign, previous, root, native[:38])
+            or self.handoff["successor"] != expected
+            or grant["conditional_priority_allowance"]["campaign_binding"] != self.binding
+        ):
+            raise authority.LedgerError(
+                "the reviewed conditional priority ancestry or allowance changed"
+            )
+        return root
+
+    def initialize_successor(self) -> str:
+        """Append exactly epoch five once, preserving all earlier stops and charges."""
+        with authority.locked(self.path):
+            root = self._parent_state()
+            if (
+                self.manifest["phase"] != "prepared"
+                or self.manifest.get("activation_anchor")
+                or len(root.get("epochs", [])) != 4
+                or os.path.lexists(self.epoch_dir)
+                or len(authority.read(QUALIFICATION_PATH)["calls"]) != 38
+            ):
+                raise authority.LedgerError("conditional priority cannot be initialized again")
+            state = {
+                "v": 1,
+                "manifest_digest": self.binding,
+                "calls": [],
+                "genesis_nonce": uuid.uuid4().hex,
+            }
+            epoch = {"id": 5, "handoff_digest": self.handoff_digest, "state": state}
             self.epoch_dir.mkdir(mode=0o700)
             self._transition(epoch)
             root["epochs"].append(epoch)

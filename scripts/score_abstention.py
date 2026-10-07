@@ -2498,7 +2498,7 @@ def _score_repeated(  # noqa: C901, PLR0912, PLR0913, PLR0915 - explicit charge/
     resume: Mapping[str, Any] | None,
     reviewed_exports: mark_abstention.ReviewedExports | None = None,
 ) -> int:
-    """Three registered native passes; preserve every attempt and stop before the next call."""
+    """Three registered native passes; preserve every attempt and campaign stop policy."""
     marks = mark_abstention._marks(dict(corpus.marks))  # noqa: SLF001
     rubric = _rubric_entries(corpus.rubric)
     campaign = ledger.campaign
@@ -2557,8 +2557,12 @@ def _score_repeated(  # noqa: C901, PLR0912, PLR0913, PLR0915 - explicit charge/
         print("Refused: legacy successful records cannot skip registered repetitions.")
         return 2
     attempts: list[dict[str, Any]] = list((resume or {}).get("records", {}).get("attempts", []))
+    stop_on_semantic_failure = campaign.stop_on_semantic_failure
+    _config, reading, _records = _runtime()
     stopped = any(
-        a.get("classification") in ("semantic-failed", "coverage-failed") for a in attempts
+        str(a.get("classification") or "").endswith("-failed")
+        and (stop_on_semantic_failure or a.get("classification") != "semantic-failed")
+        for a in attempts
     )
     label = reading_label(str((binding or {}).get("producer") or ""))
     for repeat in (1, 2, 3):
@@ -2566,7 +2570,14 @@ def _score_repeated(  # noqa: C901, PLR0912, PLR0913, PLR0915 - explicit charge/
             if stopped:
                 break
             prior = [a for a in attempts if a["id"] == cid and a["repeat"] == repeat]
-            if prior and prior[-1]["classification"] == "usable":
+            # A measured semantic failure is terminal evidence, never a retry slot.
+            if prior and (
+                prior[-1]["classification"] == "usable"
+                or (
+                    not stop_on_semantic_failure
+                    and prior[-1]["classification"] == "semantic-failed"
+                )
+            ):
                 continue
             if campaign.review_pending("qualification", f"{cid}:r{repeat}"):
                 print("Paused before the next registered batch: measured review is required.")
@@ -2599,6 +2610,11 @@ def _score_repeated(  # noqa: C901, PLR0912, PLR0913, PLR0915 - explicit charge/
                 )
                 judged = rubric_case(rubric[cid], record, cid, case_origin=case.get("origin"))
                 classification = _repeat_classification(record, judged, charged.charge_id)
+                if not stop_on_semantic_failure and record["withheld"] in (
+                    reading.WITHHELD_UNSTOPPED,
+                    reading.WITHHELD_OVERSIZED,
+                ):
+                    classification = "protection-failed"
                 record.update(
                     repeat=repeat,
                     retry=retry,
@@ -2614,9 +2630,13 @@ def _score_repeated(  # noqa: C901, PLR0912, PLR0913, PLR0915 - explicit charge/
                 if charged.charge_id:
                     try:
                         ledger.finish_exposure(charged.charge_id, classification)
+                        if classification == "protection-failed":
+                            campaign.stop("protection-failed")
                     except abstention_ledger.LedgerError:
                         stopped = True
-                if classification.endswith("-failed"):
+                if classification.endswith("-failed") and (
+                    stop_on_semantic_failure or classification != "semantic-failed"
+                ):
                     stopped = True
                 checkpoint = {
                     **{k: str((binding or {})[k]) for k in BINDING_KEYS if k in (binding or {})},
@@ -2643,7 +2663,9 @@ def _score_repeated(  # noqa: C901, PLR0912, PLR0913, PLR0915 - explicit charge/
                 ):
                     retry = True
                     continue
-                if classification != "usable":
+                if classification not in ("usable", "semantic-failed") or (
+                    stop_on_semantic_failure and classification == "semantic-failed"
+                ):
                     stopped = True
                 break
         if stopped:

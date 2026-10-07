@@ -2289,7 +2289,7 @@ def _header(
         "is not listed, and never name an entry any other way.\n"
         + (
             (
-                "Each clause: own evidence; never copy Goal's or another line's verdict.\n"
+                "Per clause: own evidence, no copied Goal/line verdict.\n"
                 if scope in (SCOPE_LAST_TURN, SCOPE_MID_FLIGHT)
                 else "Answer each line on its own. Never combine lines, and never let one line's "
                 "answer stand for another's.\n"
@@ -2299,9 +2299,9 @@ def _header(
         )
         + EVIDENCE_RULES
         + (
-            "Read work so far; per whole clause: shown departure stays in recovery "
-            "(e.g. unkept stalled promise); else unknown scope/conditions: unverifiable; "
-            "else pending: not_reached. Supported repair may be consistent.\n"
+            "Read work so far. Unknown scope/conditions: unverifiable unless a counterexample "
+            "has each condition shown. Known departure stays in recovery (e.g. unkept stalled "
+            "promise); pending: not_reached. Supported repair may be consistent.\n"
             if scope in (SCOPE_LAST_TURN, SCOPE_MID_FLIGHT)
             else "Read through the session end.\n"
         )
