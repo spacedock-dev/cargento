@@ -154,6 +154,10 @@ It rejects the retired `next` query with 404 instead of preserving a second page
 decision, retained browser namespace, and route grammar live in
 [design-next-ui.md](design-next-ui.md).
 
+The [frontend migration contract](design-frontend-migration.md) owns replacement boundaries,
+the preserved behavior inventory and browser measurements. It describes the migration constraints;
+the table above remains the shipped module map until each replacement lands.
+
 ## R-2: Dependencies run inward, and the test enforces it
 
 Lower layers never import higher ones. `config` imports no runtime module at all; `cli` may import

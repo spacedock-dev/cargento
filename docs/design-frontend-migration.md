@@ -1,0 +1,113 @@
+# Frontend migration contract
+
+This record owns the React migration boundaries and measurement method. The
+[runtime architecture](design-runtime-architecture.md) owns the module map; the
+[reader-state inventory](design-reader-state.md#the-inventory) owns what a redraw must keep.
+The migration preserves the [existing promises](promise-map.md), including their limits.
+
+## Ownership before replacement
+
+[The machine-readable inventory](../scripts/frontend-migration.json) maps each legacy script
+part, visible surface, route, reader-state row and persisted browser key to its migration owner
+and existing behavioral oracles. One row has one owner. A shared helper is migrated before its
+callers, rather than copied into each view. The shell owns the revision/value helpers that
+Intent currently reads from the project renderer.
+
+`python3 scripts/frontend_inventory.py` checks the map without importing the dashboard or reading
+local session stores. New script parts, reader-state rows and quoted storage namespaces require
+inventory entries. Duplicate rows, missing owners and missing or escaping oracle paths refuse
+the map. Surface and route rows are a reviewed enumeration, not proof that a static scanner can
+discover every workflow. Existing Node VM tests protect semantic contracts; they cannot certify
+native undo, composition, open option lists or browser layout.
+
+## Separate pages during migration
+
+The legacy renderer replaces all of `#app`. Mounting React inside that tree would destroy its
+root on the next refresh. The migration therefore uses two whole pages, selected once when the
+Python process starts. A request or URL never selects the renderer. Legacy remains the default
+until the candidate passes the complete parity and measurement gates. Unported routes in the
+gated React build state that they are unavailable.
+
+The served page and published build identity must refer to the same renderer. Identity is derived
+from deterministic content, independent of release versions and per-run capabilities. The focus
+capability is injected at startup at an unambiguous template position; it is never built into the
+tracked artifact.
+
+## Build and development boundaries
+
+React/TypeScript source lives outside the plugin. Pinned Node 26 and pnpm build a tracked Vite
+artifact, so repository, tag, stable and source-archive installs work without Node. Core HTML is
+self-contained and offline. Packaging decides whether the existing optional xterm assets remain
+lazy same-origin files or become part of that HTML, with their size/startup cost measured. Fonts
+and bundled modules retain their licenses and provenance. Canonical builds use Linux unless a
+cross-platform probe establishes byte equality.
+
+In development Python owns the document and API origin. The explicitly enabled page imports
+Vite modules and the React-refresh preamble from a validated loopback child. Strict ports,
+an owned-child handshake and exact origin checks prevent accidentally loading a different local
+process. Production exposes no HMR path. Build plugins and dependency scripts never receive
+release push credentials; publication verifies the exact fresh or resumed target tree.
+
+## Reader state and storage
+
+Each reader-state row specifies stable identity, stored state, retained deferral or a mechanism
+that can be retired only after a browser proves it unnecessary. Unmanaged text selection remains
+an explicit limit, not an invented guarantee. Native editors may require uncontrolled elements
+and refs: replacing a textarea or writing its value can erase undo even when its text looks right.
+Open selects, composition, disclosure motion and pointer dispatch retain their tested behavior.
+
+Browser storage remains readable in both directions while the legacy rollback exists. Preserve
+key formats, value types, scope, TTLs and bounds, including dormant keys until their retirement is
+justified. Unsaved Intent and correction text remains in memory rather than browser storage.
+Actions run only after explicit reader presses; mounting, StrictMode and HMR cannot start readings,
+clipboard writes, saves or credential-backed usage fetches.
+
+## Fluidity measurements
+
+Measure the assembled production page against controlled small, median and large session cohorts.
+Record fixture sizes, page digest/bytes, browser version, platform and sampling method. Use repeated
+new-document loads and actual background polls to measure first render, poll-to-paint and long tasks.
+Count removed nodes and whether edited/open nodes keep identity. Track listener, timer and socket
+counts over repeated navigation, without calling an unobserved metric zero.
+
+Before cutover, compare the same fixtures, browser and method. Set timing budgets from measured
+baseline medians with a documented noise margin; bundle growth has its own explicit allowance.
+Edited or open nodes must not be replaced by unrelated updates. Resource counts must settle rather
+than grow with navigation. A fast component test is not a browser performance measurement.
+
+[The pre-React receipt](frontend-baseline.json) records three complete runs: three first-render
+observations and nine poll observations per cohort. The 5/50/250 cohorts are controlled scenarios,
+not a measured distribution of real users. Each run starts a fresh browser profile; later cohorts
+share that profile and may reuse browser/font caches. Update samples invoke the actual
+`nextRefreshPoll` path, not a manual refresh that bypasses its open-select hold. The metric ends
+two animation frames after the title marker appears, so it is a frame-boundary proxy rather than
+proof of compositor presentation.
+
+The receipt binds the runtime page and both measurement scripts by digest. On the same recorded
+machine/browser/method, the timing budget is the baseline median multiplied by 1.5 plus 50 ms.
+Core HTML allows 25% growth; packaging accounts separately for the optional terminal. These are
+comparison budgets, not cross-platform CI deadlines. Native goal typing kept words, caret and
+focus in every run, while its node was replaced. Correction undo and composition remain separate
+browser obligations. TCP, EventSource resource counts and retained detached nodes were not measured.
+
+To repeat it, run this command three times with distinct output filenames, after setting
+`CARGENTO_BASELINE_CHROME` to the Chrome executable:
+
+```bash
+node scripts/frontend_baseline.mjs --output /tmp/cargento-baseline-1.json --samples 3 --navigations 5
+```
+
+The probe owns its headless browser/profile and synthetic Python backend. It refuses a busy backend
+port, reads no real session stores and disables models, usage and native focus. Compare the complete
+reports and their source bindings; an incomplete report or unsupported metric is not a zero.
+
+## Cutover and final verification
+
+Complete candidate parity, native editor checks, degraded states and measured budgets before the
+default flip. Retain an explicit process-level rollback through cleanup, then remove legacy code
+only after equivalent coverage exists. Hold releases until the final same-main-build browser,
+Python-only install and backend-connected development checks pass.
+
+The Intent and drift study remains paused. Controlled reading fixtures prove frontend parity,
+not model accuracy. Earlier failed measurements stay failed. A future study resume must bind the
+final runtime again rather than reuse a pre-migration source binding.
