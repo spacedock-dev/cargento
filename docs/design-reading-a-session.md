@@ -763,6 +763,33 @@ and 34 questions. This construction check establishes neither universal selectio
 nor model accuracy. All earlier failed results and marks remain unchanged; a changed
 producer still needs a fresh source-bound packet and qualification run.
 
+#### Clarified 2026-10-07: known applicability and an actual claim
+
+`not_reached` is a judgment, not an abstention. Unknown scope or conditions still require
+`unverifiable` when work is unfinished; a pending item whose applicability is unknown cannot
+establish this result. A counterexample may establish departure when every relevant condition
+is shown, without enumerating an entire unknown set. Known departures, including still unkept
+stalled promises, remain visible during recovery, and supported repairs are judged separately.
+
+The claims question compares actual assertions of the closed work states against the record.
+A neutral pointer to recorded output is not a work-state assertion. A genuine passing check
+can support a relevant assertion; it cannot invent one. Non-final claims framing makes this
+distinction explicit. The claim, contradiction and showing-check citation requirements and
+the limited use of `unsupported` remain unchanged. No English keyword classifier is added.
+
+Only non-final framing changes. Final-session headers retain their exact bytes, and shared
+evidence rules, parser and resolver remain unchanged. The maximum non-final header is 9,214
+bytes within the same 9,216-byte share. Ten source-derived inputs shrink by two bytes each
+and preserve all 81 selected citation joins and 34 questions. Individually checked expectation
+transfer is prospective preparation requiring independent source admission, not a qualification
+pass or measured model improvement. Earlier failed results and marks remain unchanged.
+
+The run-once question also retains its original scope and expectation. A latest-only check
+does not establish execution cardinality across the saved interval. Changing that question
+to a latest-direction interval requires the interval to be declared before outputs, complete
+recorded execution evidence for it and fresh source-only adjudication. No global intent window
+is moved to select a favorable check.
+
 ### The two typed fields are one line each, and that is a security decision
 
 Recorded here because it had no durable home. The goal and the expected output are collapsed to a

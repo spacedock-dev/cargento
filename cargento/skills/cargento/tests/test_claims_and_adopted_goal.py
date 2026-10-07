@@ -343,7 +343,7 @@ class TheClaimsQuestionIsAskedOnlyWithTheAgentsWordsTest(_Producer):
         answer = json.dumps({"claims": {"result": "unsupported", "cites": [2]}})
         assessment, _, _ = self.produce(facts, answer=answer)
         self.assertIn('"claims": A', self.prompts[0])
-        self.assertIn(reading.CLAIMS_RULE.strip(), self.prompts[0])
+        self.assertIn(reading.NONFINAL_CLAIMS_RULE.strip(), self.prompts[0])
         self.assertEqual("claims", list(assessment["criteria"])[-1])
         row = assessment["criteria"]["claims"]
         self.assertEqual(reading.RESULT_UNSUPPORTED, row["result"])

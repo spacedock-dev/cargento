@@ -3323,22 +3323,22 @@ class NonfinalReadingsSeparateUnknownConditionsFromPendingWork(unittest.TestCase
                 trusted, values = prompt.split("<goal>\n", 1)
                 self.assertIn("Read work so far. Unknown scope/conditions:", trusted)
                 for phrase in (
-                    "counterexample has each condition shown",
+                    "counterexample shows each condition",
                     "Known departure stays in recovery (e.g. unkept stalled promise)",
-                    "Unknown scope/conditions: unverifiable unless",
-                    "pending: not_reached",
+                    "Unknown scope/conditions: unverifiable even unfinished",
+                    "not_reached needs known applicability",
                 ):
                     self.assertIn(phrase, trusted)
-                unknown = trusted.index("Unknown scope/conditions: unverifiable unless")
-                qualified = trusted.index("counterexample has each condition shown")
+                unknown = trusted.index("Unknown scope/conditions: unverifiable even unfinished")
+                qualified = trusted.index("counterexample shows each condition")
                 shown = trusted.index(
                     "Known departure stays in recovery (e.g. unkept stalled promise)"
                 )
-                unfinished = trusted.index("pending: not_reached")
+                unfinished = trusted.index("not_reached needs known applicability")
                 self.assertLess(unknown, qualified)
                 self.assertLess(qualified, shown)
                 self.assertLess(unknown, unfinished)
-                self.assertIn("Supported repair may be consistent", trusted)
+                self.assertIn("Repairs may be consistent", trusted)
                 self.assertIn(
                     "Per clause: own evidence, no copied Goal/line verdict.",
                     trusted,
@@ -3369,6 +3369,46 @@ class NonfinalReadingsSeparateUnknownConditionsFromPendingWork(unittest.TestCase
                 )
                 self.assertLess(unfinished, prompt.index("<goal>"))
 
+    def test_nonfinal_claims_require_an_assertion_without_inventing_one_from_a_pointer(
+        self,
+    ) -> None:
+        for scope in (reading.SCOPE_LAST_TURN, reading.SCOPE_MID_FLIGHT):
+            with self.subTest(scope=scope):
+                prompt, selected = reading.build_prompt(
+                    self.ledger, goal=self.goal, lines=self.lines, max_bytes=16_384, scope=scope
+                )
+                trusted = prompt.split("<goal>\n", 1)[0]
+                self.assertIn('"claims": only assertions of ', trusted)
+                self.assertIn("not neutral pointers", trusted)
+                for states in (
+                    "running/done/merged/pushed/deployed/passing/fixed/sent/filed",
+                    "departure: claim+contradiction no earlier",
+                    "consistent: claim+showing check",
+                    "unsupported only passing/fixed/written without showing check/write",
+                    "else unverifiable",
+                ):
+                    self.assertIn(states, trusted)
+                self.assertTrue(selected.asked_claims)
+                self.assertEqual({"f1", "check-1", "m1"}, {row["id"] for row in selected.entries})
+
+    def test_nonfinal_claims_rule_is_omitted_when_claims_are_not_asked(self) -> None:
+        header = reading._header(
+            self.goal, self.lines, tool_note=True, claims=False, scope=reading.SCOPE_LAST_TURN
+        )
+        self.assertNotIn('"claims":', header)
+        self.assertNotIn("not neutral pointers", header)
+        self.assertIn("not_reached needs known applicability", header)
+
+    def test_final_claims_keep_the_original_rule_and_no_prospective_pointer_instruction(
+        self,
+    ) -> None:
+        header = reading._header(
+            self.goal, self.lines, tool_note=True, claims=True, scope=reading.SCOPE_FINAL
+        )
+        self.assertIn(reading.CLAIMS_RULE, header)
+        self.assertNotIn("not neutral pointers", header)
+        self.assertNotIn("not_reached needs known applicability", header)
+
     def test_all_header_variants_keep_fields_security_and_final_bytes(self) -> None:
         words = "\U0001f600" * 240
         finals = []
@@ -3394,8 +3434,8 @@ class NonfinalReadingsSeparateUnknownConditionsFromPendingWork(unittest.TestCase
                                 finals.append(header)
                                 self.assertNotIn("Supported repair may be consistent", header)
                             else:
-                                self.assertIn("counterexample has each condition shown", header)
-                                self.assertIn("Supported repair may be consistent", header)
+                                self.assertIn("counterexample shows each condition", header)
+                                self.assertIn("Repairs may be consistent", header)
                                 if count:
                                     self.assertIn("no copied Goal/line verdict", header)
         self.assertEqual(168, len(measured))
@@ -3414,7 +3454,7 @@ class NonfinalReadingsSeparateUnknownConditionsFromPendingWork(unittest.TestCase
                 prompt, selected = reading.build_prompt(
                     self.ledger, goal=words, lines=[words] * 6, max_bytes=16_384, scope=scope
                 )
-                self.assertIn("Unknown scope/conditions: unverifiable unless", prompt)
+                self.assertIn("Unknown scope/conditions: unverifiable even unfinished", prompt)
                 self.assertEqual(6, prompt.count('<outcome_line n="'))
                 self.assertEqual(7, prompt.count(words))
                 self.assertTrue(selected.asked_output)
@@ -3528,7 +3568,7 @@ class NonfinalReadingsSeparateUnknownConditionsFromPendingWork(unittest.TestCase
         prompt, selected = reading.build_prompt(
             ledger, goal=self.goal, lines=self.lines, max_bytes=16_384
         )
-        self.assertIn("unless a counterexample has each condition shown", prompt)
+        self.assertIn("unless a counterexample shows each condition", prompt)
         agent_index = next(i for i, row in selected.by_index().items() if row["id"] == "m1")
         raw = {
             "goal": {
