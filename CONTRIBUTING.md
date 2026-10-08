@@ -427,12 +427,15 @@ git push origin v0.2.0
 
 The [Release workflow](.github/workflows/release.yml) refuses the tag unless it is on main, is
 strict semver, and is strictly greater than every existing release tag. Semver only moves forward,
-and back-tagging is impossible. It then runs the contract validator plus the validator, bump-version
-and behavior-focused dashboard test modules on the main tip, rather than the whole quality gate,
-which already ran on every commit that reached main. From there it writes one bump commit updating
-all owned version
-fields, moves the tag onto the released commit, advances the `stable` branch to it, and publishes a
-GitHub Release with generated notes. `stable` is what the shared
+and back-tagging is impossible. It then fixes one commit to release and verifies exactly that commit
+in jobs that hold no credentials: the frontend is rebuilt and compared with the tracked bundle, and
+the contract validator plus the validator, bump-version and dashboard test modules run on it, rather
+than the whole quality gate, which already ran on every commit that reached main. Only the final
+job holds the deploy key, and it runs no Node or frontend dependency code. It refuses to continue
+if main moved while the verifiers ran (re-run the failed jobs and the new tip is verified), writes
+one bump commit updating all owned version fields, proves the archive of that exact commit with
+Python only, then moves the tag onto the released commit, advances the `stable` branch to it, and
+publishes a GitHub Release with generated notes. `stable` is what the shared
 [spacedock-dev/marketplace](https://github.com/spacedock-dev/marketplace) listing tracks, so a
 release that did not move it would leave the marketplace serving an older Cargento.
 The bump is skipped when the manifests already carry the tagged version, which is also how you

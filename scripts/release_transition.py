@@ -50,7 +50,7 @@ if TYPE_CHECKING:
 
 SEMVER = bump_version.SEMVER_RE
 FULL_SHA = re.compile(r"^[0-9a-f]{40}$")
-TRUTH_MANIFEST = "cargento/.claude-plugin/plugin.json"
+TRUTH_MANIFEST = bump_version.TRUTH.relative_to(bump_version.ROOT).as_posix()
 TAG_GLOBS = ("v[0-9]*.[0-9]*.[0-9]*", "[0-9]*.[0-9]*.[0-9]*")
 BOT_NAME = "github-actions[bot]"
 BOT_EMAIL = "41898282+github-actions[bot]@users.noreply.github.com"

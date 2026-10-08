@@ -78,7 +78,7 @@ class ArchiveProofTest(unittest.TestCase):
         final = rt.commit_bump(self.fx.work, "v0.2.0")
         with self.assertRaises(vra.ArchiveError) as caught:
             vra.verify_archive(self.fx.work, final, tampered, "0.2.0")
-        self.assertIn("integrity", str(caught.exception))
+        self.assertIn("react page failed its integrity check", str(caught.exception))
 
     def test_a_wrong_version_is_refused(self) -> None:
         final = self.bumped("0.2.0")
@@ -109,6 +109,37 @@ class ArchiveProofTest(unittest.TestCase):
         git(self.fx.work, "add", "-A")
         git(self.fx.work, "commit", "-q", "-m", "chore(release): v0.2.0")
         self.rejected(git(self.fx.work, "rev-parse", "HEAD"), "README.md")
+
+    def test_an_archive_that_differs_from_the_commit_is_refused(self) -> None:
+        # export-subst rewrites a blob on the way into the archive, which is the one
+        # way `git archive` can ship bytes that the commit's own diff does not show.
+        licenses = f"{WEB}/react-licenses.txt"
+        (self.fx.work / ".gitattributes").write_text(f"{licenses} export-subst\n", encoding="utf-8")
+        body = (self.fx.work / licenses).read_text(encoding="utf-8")
+        (self.fx.work / licenses).write_text(body + "$Format:%H$\n", encoding="utf-8")
+        git(self.fx.work, "add", "-A")
+        git(self.fx.work, "commit", "-q", "-m", "fix: a placeholder")
+        verified = git(self.fx.work, "rev-parse", "HEAD")
+        rt.bump(self.fx.work, "0.2.0")
+        final = rt.commit_bump(self.fx.work, "v0.2.0")
+        with self.assertRaises(vra.ArchiveError) as caught:
+            vra.verify_archive(self.fx.work, final, verified, "0.2.0")
+        self.assertIn("changed after verification", str(caught.exception))
+
+    def test_a_launcher_that_cannot_start_is_refused(self) -> None:
+        launcher = "cargento/skills/cargento/server.py"
+        self.fx.commit("fix: broken launcher", files={launcher: "raise SystemExit(3)\n"})
+        broken = git(self.fx.work, "rev-parse", "HEAD")
+        rt.bump(self.fx.work, "0.2.0")
+        final = rt.commit_bump(self.fx.work, "v0.2.0")
+        with self.assertRaises(vra.ArchiveError) as caught:
+            vra.verify_archive(self.fx.work, final, broken, "0.2.0")
+        self.assertIn("launcher", str(caught.exception))
+
+    def test_a_release_commit_two_steps_from_the_verified_one_is_refused(self) -> None:
+        git(self.fx.work, "commit", "-q", "--allow-empty", "-m", "an unverified commit")
+        final = self.bumped()
+        self.rejected(final, "direct child")
 
     def test_a_scratch_directory_never_outlives_the_proof(self) -> None:
         final = self.bumped()

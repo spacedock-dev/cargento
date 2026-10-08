@@ -66,9 +66,10 @@ accepts, so a stray tag cannot become the baseline either.
   idempotent and resumable, so the fix is usually to re-push the existing tag, not to cut a new
   number.
 - **`main`'s head is green.** The Release workflow runs the contract validator, its own tests, the
-  bump-version tests and the whole dashboard suite, but not the quality gate — no ruff, no mypy, no
-  frontend linter, no coverage threshold, no platform matrix — because the gate already ran on every
-  commit that reached `main`. That only holds if it actually did:
+  bump-version tests and the whole dashboard suite, and rebuilds and tests the frontend, all on the
+  exact commit it resolved, but not the quality gate — no ruff, no mypy, no coverage threshold, no
+  platform matrix — because the gate already ran on every commit that reached `main`. That only
+  holds if it actually did:
 
   ```bash
   gh run list --branch main --commit "$(git rev-parse origin/main)" \
@@ -195,8 +196,10 @@ The proposal carries:
    git tag -l "v$VERSION"                       # must print nothing
    gh release view "v$VERSION"                  # must fail with "release not found"
    ```
-6. What pushing the tag will do, in one line each: validate the tag, run the release checks, write
-   one `chore(release)` bump commit, move the tag onto it, advance `stable`, publish the Release.
+6. What pushing the tag will do, in one line each: validate the tag and fix the commit to release,
+   verify the frontend and the tree on exactly that commit without credentials, write one
+   `chore(release)` bump commit, prove its `git archive` with Python only, then move the tag onto
+   it, advance `stable`, publish the Release.
 7. The question: cut it, and separately, do you want release notes posted to Slack afterwards?
 
 Prepare the complete public note before asking, including any generated changelog to be retained.
@@ -276,7 +279,21 @@ parity check is what makes it unconditional on every normal release.
 
 
 If the run failed part way, re-push the same tag rather than picking a new number. Every step is
-idempotent and the workflow detects its own resume.
+idempotent and the workflow detects its own resume. Read which job failed first:
+
+- **`verify-frontend` or `verify-tree` failed.** Nothing was pushed, tagged or published; the tree
+  that was verified is not releasable. Fix it on `main` through a PR, then re-push the tag or
+  re-run the workflow. A re-run resolves the new main tip and verifies that.
+- **`release` failed at "Refuse to publish anything but the verified tree" with "main moved".** A
+  commit landed while the verifiers ran. Nothing was published. Re-run the failed jobs (or the whole
+  run): `resolve` takes the new tip and both verifiers cover it. This is the safe outcome, not a
+  defect to work around.
+- **`release` failed at the archive proof.** The release commit exists only on the runner, so
+  nothing was pushed, tagged or moved. Read the failing check in the log (versions, changes,
+  bundle, inventory, page, launch); `changes` and `bundle` mean the bump commit shipped something
+  other than what was verified, which should never happen and needs an owner before any re-run.
+- **A later step failed (push, tag, `stable`, publish).** Re-run: the workflow finds this tag's
+  release commit on `main`, verifies that commit, and publishes it, never a newer `main`.
 
 ## 6.5 Write the release note for a person
 

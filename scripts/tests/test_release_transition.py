@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import re
+import subprocess
 import sys
 import unittest
 from pathlib import Path
@@ -26,6 +27,7 @@ else:
     from release_fixture import MANIFESTS, WEB, Fixture, git
 
 SHA = re.compile(r"^[0-9a-f]{40}$")
+SCRIPT = Path(__file__).resolve().parents[1] / "release_transition.py"
 
 
 class TagFormTest(unittest.TestCase):
@@ -72,10 +74,10 @@ class MonotonicTest(unittest.TestCase):
 
 class ReleaseCommitLookupTest(unittest.TestCase):
     LOG = (
+        "ddd\tchore(release): v0.2.0-extra\n"
         "ccc\tfeat: later work\n"
         "bbb\tchore(release): v0.2.0\n"
-        "aaa\tchore(release): v0.2.0\n"
-        "999\tchore(release): v0.2.0-extra"
+        "aaa\tchore(release): v0.2.0"
     )
 
     def test_the_newest_exact_subject_wins(self) -> None:
@@ -353,6 +355,85 @@ class FinalCommitTest(unittest.TestCase):
         self.assertEqual("f" * 40, rt.final_commit(fx.work, "resume", "f" * 40))
         with self.assertRaises(rt.ReleaseError):
             rt.final_commit(fx.work, "resume", "main")
+
+
+class CommandLineTest(unittest.TestCase):
+    """The subcommands the workflow actually calls, through their real entry point."""
+
+    def setUp(self) -> None:
+        self.fx = Fixture(self)
+        self.tip = self.fx.commit("feat: work")
+        self.fx.tag("v0.2.0")
+        self.fx.fetch()
+
+    def cli(self, *args: str) -> subprocess.CompletedProcess[str]:
+        return subprocess.run(
+            [sys.executable, str(SCRIPT), "--repo", str(self.fx.work), *args],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=60,
+        )
+
+    def test_resolve_prints_and_writes_the_three_job_outputs(self) -> None:
+        output = self.fx.root / "github-output"
+        result = self.cli("resolve", "--tag", "v0.2.0", "--github-output", str(output))
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertEqual(
+            f"mode=fresh\nversion=0.2.0\ntarget={self.tip}\n", output.read_text(encoding="utf-8")
+        )
+
+    def test_a_hostile_tag_is_refused_before_it_reaches_any_command(self) -> None:
+        marker = self.fx.root / "pwned"
+        for tag in (f"v1.0.0; touch {marker}", f"$(touch {marker})", "v1.0.0\nmode=resume"):
+            with self.subTest(tag=tag):
+                result = self.cli("resolve", "--tag", tag)
+                self.assertEqual(1, result.returncode)
+                self.assertIn("::error::", result.stdout)
+        self.assertFalse(marker.exists())
+
+    def test_assert_checkout_exits_nonzero_with_an_annotation_when_main_moved(self) -> None:
+        self.fx.commit("feat: landed during verification")
+        self.fx.fetch()
+        git(self.fx.work, "checkout", "-q", "--detach", "origin/main")
+        result = self.cli(
+            "assert-checkout",
+            "--mode",
+            "fresh",
+            "--target",
+            self.tip,
+            "--tag",
+            "v0.2.0",
+            "--verified",
+            self.tip,
+            "--verified",
+            self.tip,
+        )
+        self.assertEqual(1, result.returncode)
+        self.assertIn("::error::main moved", result.stdout)
+
+    def test_every_verifier_must_have_seen_the_target(self) -> None:
+        git(self.fx.work, "checkout", "-q", "--detach", self.tip)
+        result = self.cli(
+            "assert-checkout",
+            "--mode",
+            "fresh",
+            "--target",
+            self.tip,
+            "--tag",
+            "v0.2.0",
+            "--verified",
+            self.tip,
+            "--verified",
+            "0" * 40,
+        )
+        self.assertEqual(1, result.returncode)
+
+    def test_the_rehearsal_driver_refuses_a_remote_that_is_not_a_local_path(self) -> None:
+        git(self.fx.work, "remote", "set-url", "origin", "https://example.invalid/cargento.git")
+        result = self.cli("rehearse", "--tag", "v0.2.0")
+        self.assertEqual(1, result.returncode)
+        self.assertIn("not a local path", result.stdout)
 
 
 class RehearsalTest(unittest.TestCase):
