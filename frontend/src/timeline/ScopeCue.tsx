@@ -5,10 +5,23 @@ import type { Scope } from './semantic';
 const LABEL = { project: 'PROJECT', session: 'SESSION', unknown: 'SCOPE UNKNOWN' } as const;
 const MARKER = { project: 'square', session: 'round', unknown: 'unknown' } as const;
 
-export function ScopeCue({ scope, detail }: { readonly scope: Scope; readonly detail?: string | undefined }) {
+export function ScopeCue({
+  scope,
+  detail,
+}: {
+  readonly scope: Scope;
+  readonly detail?: string | undefined;
+}) {
   return (
-    <span className={`next-scope-cue next-scope-cue--${scope.kind}`} data-scope-kind={scope.kind} data-scope-owner={scope.owner}>
-      <i className={`next-scope-marker next-scope-marker--${MARKER[scope.kind]}`} aria-hidden="true" />
+    <span
+      className={`next-scope-cue next-scope-cue--${scope.kind}`}
+      data-scope-kind={scope.kind}
+      data-scope-owner={scope.owner}
+    >
+      <i
+        className={`next-scope-marker next-scope-marker--${MARKER[scope.kind]}`}
+        aria-hidden="true"
+      />
       <strong>{LABEL[scope.kind]}</strong>
       {detail ? <span>{detail}</span> : null}
     </span>

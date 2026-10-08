@@ -3,7 +3,11 @@ import type { PayloadData } from '../api/types';
 import { createBoardStore } from './board';
 
 const row = (harness: string, sid: string) => ({ harness, sid });
-const data = (build: string, ...sessions: ReturnType<typeof row>[]): PayloadData => ({ generated: 10, build, sessions });
+const data = (build: string, ...sessions: ReturnType<typeof row>[]): PayloadData => ({
+  generated: 10,
+  build,
+  sessions,
+});
 
 function store() {
   let now = 5_000;
@@ -82,7 +86,10 @@ describe('listener isolation', () => {
   it('reports a new error after a burst once the minute window has passed', () => {
     let clock = 1;
     const errors: unknown[] = [];
-    const board = createBoardStore({ now: () => clock, reportError: (error) => errors.push(error) });
+    const board = createBoardStore({
+      now: () => clock,
+      reportError: (error) => errors.push(error),
+    });
     board.subscribe(() => {
       throw new Error('subscriber bug');
     });

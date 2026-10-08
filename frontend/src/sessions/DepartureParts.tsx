@@ -19,12 +19,18 @@ export function DepartureReentry({ session }: { readonly session: Row }) {
   const harness = String(session['harness'] || '');
   const sid = String(session['sid'] || '');
   const command = resumeCommand(harness, String(session['resume_id'] || ''));
-  const raisable = session['focusable'] === true && Boolean(sid.trim()) && Boolean(String(session['harness'] == null ? '' : session['harness']).trim()) && controls.focus !== null;
+  const raisable =
+    session['focusable'] === true &&
+    Boolean(sid.trim()) &&
+    Boolean(String(session['harness'] == null ? '' : session['harness']).trim()) &&
+    controls.focus !== null;
   if (!command && !raisable) return null;
   return (
     <div className="next-departure-reentry" data-next-departure-reentry>
       {command ? <CopyControl kind="command" harness={harness} sid={sid} value={command} /> : null}
-      {raisable ? <RaiseControl harness={String(session['harness']).trim()} sid={sid.trim()} focusable /> : null}
+      {raisable ? (
+        <RaiseControl harness={String(session['harness']).trim()} sid={sid.trim()} focusable />
+      ) : null}
     </div>
   );
 }
@@ -69,13 +75,23 @@ export function UnaskedDepartureBody({ session }: { readonly session: Row }) {
    own launches, and an unread child is never a completed job. Drawn only where a launch was recorded or its
    time was, so a session that never delegated says nothing; the check beneath it appears only when the
    silence has lasted half an hour with a launch unpaired. */
-export function DelegatedWorkLine({ session, now }: { readonly session: Row; readonly now: number | null }) {
+export function DelegatedWorkLine({
+  session,
+  now,
+}: {
+  readonly session: Row;
+  readonly now: number | null;
+}) {
   const work = delegatedWork(session, now);
   if (!work.draw) return null;
   return (
     <>
       <p data-next-delegated-work>{work.text}</p>
-      {work.risky ? <p data-next-delegated-check>Is the work this session launched still running? Show its process and latest output.</p> : null}
+      {work.risky ? (
+        <p data-next-delegated-check>
+          Is the work this session launched still running? Show its process and latest output.
+        </p>
+      ) : null}
     </>
   );
 }

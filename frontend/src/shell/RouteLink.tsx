@@ -14,7 +14,15 @@ export interface RouteLinkProps {
 export function RouteLink({ route, className, children }: RouteLinkProps) {
   const navigate = useNavigate();
   const onClick = (event: MouseEvent<HTMLAnchorElement>) => {
-    if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+    if (
+      event.defaultPrevented ||
+      event.button !== 0 ||
+      event.metaKey ||
+      event.ctrlKey ||
+      event.shiftKey ||
+      event.altKey
+    )
+      return;
     event.preventDefault();
     navigate(route);
   };

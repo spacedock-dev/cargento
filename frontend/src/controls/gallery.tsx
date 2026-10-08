@@ -20,7 +20,8 @@ export interface GalleryHandle {
 /* Read from `?strict=0` so a browser test can compare StrictMode with a plain mount. */
 export function mountGallery(root: HTMLElement): GalleryHandle {
   // The shell owns the page ground; the gallery paints the released one so the controls are legible.
-  document.body.style.cssText = 'margin:0;padding:0 1rem;background:#14140f;color:#f6f3ea;font-family:system-ui,sans-serif;overflow-wrap:anywhere';
+  document.body.style.cssText =
+    'margin:0;padding:0 1rem;background:#14140f;color:#f6f3ea;font-family:system-ui,sans-serif;overflow-wrap:anywhere';
   const hooks: Hooks = { announced: [], copied: [] };
   const region = document.createElement('div');
   region.id = 'gallery-live';
@@ -36,7 +37,12 @@ export function mountGallery(root: HTMLElement): GalleryHandle {
   );
   const strict = new URLSearchParams(location.search).get('strict') !== '0';
   createRoot(root).render(strict ? <StrictMode>{page}</StrictMode> : page);
-  const handle: GalleryHandle = { runtime: world.runtime, gate: world.gate, controls: world.controls, hooks };
+  const handle: GalleryHandle = {
+    runtime: world.runtime,
+    gate: world.gate,
+    controls: world.controls,
+    hooks,
+  };
   Object.assign(window, { __gallery: handle });
   return handle;
 }

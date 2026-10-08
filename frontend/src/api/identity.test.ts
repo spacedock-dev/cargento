@@ -1,10 +1,18 @@
 import { describe, expect, it } from 'vitest';
-import { compatSessKey, contextKey, exactIdentity, splitSessKey, stableProjectKey } from './identity';
+import {
+  compatSessKey,
+  contextKey,
+  exactIdentity,
+  splitSessKey,
+  stableProjectKey,
+} from './identity';
 
 describe('session identity', () => {
   it('keys a session by the exact harness and sid pair', () => {
     expect(compatSessKey({ harness: 'claude', sid: 'abc-123' })).toBe('claude:abc-123');
-    expect(compatSessKey({ harness: 'codex', sid: 'abc-123' })).not.toBe(compatSessKey({ harness: 'claude', sid: 'abc-123' }));
+    expect(compatSessKey({ harness: 'codex', sid: 'abc-123' })).not.toBe(
+      compatSessKey({ harness: 'claude', sid: 'abc-123' }),
+    );
   });
 
   it('falls back to the display id only inside the compatibility key, never for an action identity', () => {
@@ -30,7 +38,9 @@ describe('session identity', () => {
 
   it('uses the shared project key when all rows agree and the label otherwise', () => {
     const rows = (...keys: string[]) => keys.map((project_key) => ({ project_key }));
-    expect(stableProjectKey({ label: 'app', sessions: rows('/repo/a', '/repo/a') })).toBe('/repo/a');
+    expect(stableProjectKey({ label: 'app', sessions: rows('/repo/a', '/repo/a') })).toBe(
+      '/repo/a',
+    );
     expect(stableProjectKey({ label: 'app', sessions: rows('/repo/a', '/repo/b') })).toBe('app');
     expect(stableProjectKey({ label: 'app', sessions: rows('', '') })).toBe('app');
   });

@@ -8,8 +8,10 @@ function globals(options: { hidden?: boolean; withEventSource?: boolean } = {}) 
   const windowListeners = new Map<string, Set<() => void>>();
   const documentListeners = new Map<string, Set<() => void>>();
   const track = (map: Map<string, Set<() => void>>) => ({
-    addEventListener: (type: string, listener: () => void) => void (map.get(type) ?? map.set(type, new Set()).get(type))?.add(listener),
-    removeEventListener: (type: string, listener: () => void) => void map.get(type)?.delete(listener),
+    addEventListener: (type: string, listener: () => void) =>
+      void (map.get(type) ?? map.set(type, new Set()).get(type))?.add(listener),
+    removeEventListener: (type: string, listener: () => void) =>
+      void map.get(type)?.delete(listener),
   });
   const opened: string[] = [];
   class FakeSource {
@@ -26,14 +28,23 @@ function globals(options: { hidden?: boolean; withEventSource?: boolean } = {}) 
   }
   const state = { hidden: options.hidden ?? false };
   const g: BrowserGlobals = {
-    window: { ...track(windowListeners), setTimeout: vi.fn(), clearTimeout: vi.fn(), setInterval: vi.fn(), clearInterval: vi.fn() },
+    window: {
+      ...track(windowListeners),
+      setTimeout: vi.fn(),
+      clearTimeout: vi.fn(),
+      setInterval: vi.fn(),
+      clearInterval: vi.fn(),
+    },
     document: {
       ...track(documentListeners),
       get hidden() {
         return state.hidden;
       },
     },
-    EventSource: options.withEventSource === false ? undefined : (FakeSource as unknown as BrowserGlobals['EventSource']),
+    EventSource:
+      options.withEventSource === false
+        ? undefined
+        : (FakeSource as unknown as BrowserGlobals['EventSource']),
     now: () => 4242,
   };
   const count = (map: Map<string, Set<() => void>>, type: string) => map.get(type)?.size ?? 0;
@@ -62,7 +73,9 @@ describe('browser environment', () => {
     expect(env.streamSupported).toBe(true);
     env.openStream();
     expect(supported.opened).toEqual(['/api/stream']);
-    expect(createBrowserEnvironment(globals({ withEventSource: false }).g).streamSupported).toBe(false);
+    expect(createBrowserEnvironment(globals({ withEventSource: false }).g).streamSupported).toBe(
+      false,
+    );
   });
 
   it('adds and removes its pagehide listener', () => {
@@ -164,7 +177,10 @@ describe('the browser runtime hands the shell its announce, forget and paint hoo
     const paint = vi.fn(() => Promise.resolve());
     const runtime = createBrowserRuntime({
       env: createFakeEnvironment({ clock }),
-      fetch: () => Promise.resolve(new Response(JSON.stringify({ generated: 1, sessions: [] }), { status: 200 })),
+      fetch: () =>
+        Promise.resolve(
+          new Response(JSON.stringify({ generated: 1, sessions: [] }), { status: 200 }),
+        ),
       provider: () => blockedBackend(),
       events: { addEventListener: () => undefined, removeEventListener: () => undefined },
       search: '',

@@ -29,7 +29,11 @@ function controls(extra: ReactElement | null = null) {
   return (
     <div>
       <CopyControl kind="id" {...ID} value="s-1" />
-      <CopyControl kind="link" {...ID} value="http://127.0.0.1:4580/?all=1#n=session:p:claude:s-1" />
+      <CopyControl
+        kind="link"
+        {...ID}
+        value="http://127.0.0.1:4580/?all=1#n=session:p:claude:s-1"
+      />
       <CopyControl kind="command" {...ID} value="claude --resume s-1" />
       {extra}
     </div>
@@ -39,9 +43,17 @@ function controls(extra: ReactElement | null = null) {
 describe('copy controls: ID, absolute link and resume command', () => {
   it('names each control for what it copies and carries the payload as the no-clipboard fallback title', () => {
     const { view } = mount(controls());
-    expect(view.getByRole('button', { name: 'Copy session ID s-1' }).getAttribute('title')).toBe('s-1');
-    expect(view.getByRole('button', { name: 'Copy a link to this session' }).getAttribute('title')).toContain('#n=session:p:claude:s-1');
-    expect(view.getByRole('button', { name: 'Copy re-entry command claude --resume s-1' }).getAttribute('title')).toBe('claude --resume s-1');
+    expect(view.getByRole('button', { name: 'Copy session ID s-1' }).getAttribute('title')).toBe(
+      's-1',
+    );
+    expect(
+      view.getByRole('button', { name: 'Copy a link to this session' }).getAttribute('title'),
+    ).toContain('#n=session:p:claude:s-1');
+    expect(
+      view
+        .getByRole('button', { name: 'Copy re-entry command claude --resume s-1' })
+        .getAttribute('title'),
+    ).toBe('claude --resume s-1');
   });
 
   it('writes nothing to the clipboard and announces nothing on mount, re-render or StrictMode double effects', async () => {
@@ -53,7 +65,7 @@ describe('copy controls: ID, absolute link and resume command', () => {
     expect(kit.announced).toEqual([]);
   });
 
-  it('copies exactly the control\'s own value once per press and announces it once, under a key for that press', async () => {
+  it("copies exactly the control's own value once per press and announces it once, under a key for that press", async () => {
     const { kit, view } = mount(controls());
     fireEvent.click(view.getByRole('button', { name: 'Copy session ID s-1' }));
     await flush();
@@ -71,9 +83,17 @@ describe('copy controls: ID, absolute link and resume command', () => {
     const { kit, view } = mount(controls());
     fireEvent.click(view.getByRole('button', { name: 'Copy session ID s-1' }));
     await flush();
-    expect(view.getByRole('button', { name: 'Copy session ID s-1' }).getAttribute('data-copy-state')).toBe('copied');
-    expect(view.getByRole('button', { name: 'Copy a link to this session' }).hasAttribute('data-copy-state')).toBe(false);
-    expect(view.getByRole('button', { name: /Copy re-entry command/ }).hasAttribute('data-copy-state')).toBe(false);
+    expect(
+      view.getByRole('button', { name: 'Copy session ID s-1' }).getAttribute('data-copy-state'),
+    ).toBe('copied');
+    expect(
+      view
+        .getByRole('button', { name: 'Copy a link to this session' })
+        .hasAttribute('data-copy-state'),
+    ).toBe(false);
+    expect(
+      view.getByRole('button', { name: /Copy re-entry command/ }).hasAttribute('data-copy-state'),
+    ).toBe(false);
     expect(kit.controls.cues.read(laneKey('copy', 'claude', 's-1'))).toBe('copied');
     expect(kit.controls.cues.read(laneKey('link', 'claude', 's-1'))).toBeUndefined();
     expect(kit.controls.cues.read(laneKey('command', 'claude', 's-1'))).toBeUndefined();
@@ -83,15 +103,24 @@ describe('copy controls: ID, absolute link and resume command', () => {
     const { kit, view } = mount(controls());
     fireEvent.click(view.getByRole('button', { name: 'Copy a link to this session' }));
     await flush();
-    expect(view.getByRole('button', { name: 'Copy a link to this session' }).getAttribute('data-copy-state')).toBe('copied');
-    expect(view.getByRole('button', { name: /Copy re-entry command/ }).hasAttribute('data-copy-state')).toBe(false);
+    expect(
+      view
+        .getByRole('button', { name: 'Copy a link to this session' })
+        .getAttribute('data-copy-state'),
+    ).toBe('copied');
+    expect(
+      view.getByRole('button', { name: /Copy re-entry command/ }).hasAttribute('data-copy-state'),
+    ).toBe(false);
     expect(kit.controls.cues.read(laneKey('link', 'claude', 's-1'))).toBe('copied');
     expect(kit.controls.cues.read(laneKey('command', 'claude', 's-1'))).toBeUndefined();
     fireEvent.click(view.getByRole('button', { name: /Copy re-entry command/ }));
     await flush();
     expect(kit.controls.cues.read(laneKey('command', 'claude', 's-1'))).toBe('copied');
     expect(kit.controls.cues.read(laneKey('copy', 'claude', 's-1'))).toBeUndefined();
-    expect(kit.announced.map((entry) => entry.text)).toEqual(['Copied a link to this session', 'Copied claude --resume s-1']);
+    expect(kit.announced.map((entry) => entry.text)).toEqual([
+      'Copied a link to this session',
+      'Copied claude --resume s-1',
+    ]);
   });
 
   it('keeps the cue on a node that is replaced, then lets it lapse after thirty seconds', async () => {
@@ -134,15 +163,25 @@ describe('copy controls: ID, absolute link and resume command', () => {
     const { kit, view } = mount(controls(), { clipboard: 'rejects' });
     fireEvent.click(view.getByRole('button', { name: 'Copy a link to this session' }));
     await flush();
-    expect(kit.announced.map((entry) => entry.text)).toEqual(['The link to this session could not be copied']);
-    expect(view.getByRole('button', { name: 'Copy a link to this session' }).getAttribute('data-copy-state')).toBe('failed');
+    expect(kit.announced.map((entry) => entry.text)).toEqual([
+      'The link to this session could not be copied',
+    ]);
+    expect(
+      view
+        .getByRole('button', { name: 'Copy a link to this session' })
+        .getAttribute('data-copy-state'),
+    ).toBe('failed');
   });
 
   it('reports a context with no clipboard as a failure rather than pretending', async () => {
     const { kit, view } = mount(controls(), { clipboard: 'missing' });
-    fireEvent.click(view.getByRole('button', { name: 'Copy re-entry command claude --resume s-1' }));
+    fireEvent.click(
+      view.getByRole('button', { name: 'Copy re-entry command claude --resume s-1' }),
+    );
     await flush();
-    expect(kit.announced.map((entry) => entry.text)).toEqual(['Re-entry command could not be copied']);
+    expect(kit.announced.map((entry) => entry.text)).toEqual([
+      'Re-entry command could not be copied',
+    ]);
     expect(kit.written).toEqual([]);
   });
 
@@ -221,7 +260,9 @@ describe('terminal raise', () => {
   it('is named for the act, not the target, and reports an unraised terminal honestly', async () => {
     const harness = raiseHarness('sent');
     const { view, kit } = mount(ui, { focus: harness.focus });
-    const [first] = view.getAllByRole('button', { name: 'Raise the terminal this session is running in' });
+    const [first] = view.getAllByRole('button', {
+      name: 'Raise the terminal this session is running in',
+    });
     fireEvent.click(first as HTMLElement);
     await flush();
     expect(harness.calls).toEqual([{ harness: 'claude', sid: 's-1' }]);
@@ -239,7 +280,9 @@ describe('terminal raise', () => {
     ['failed', 'Raise could not be sent'],
   ] as const)('maps the %s outcome to its own sentence and cue', async (outcome, sentence) => {
     const harness = raiseHarness(outcome);
-    const { view, kit } = mount(<RaiseControl harness="claude" sid="s-1" focusable />, { focus: harness.focus });
+    const { view, kit } = mount(<RaiseControl harness="claude" sid="s-1" focusable />, {
+      focus: harness.focus,
+    });
     fireEvent.click(view.getByRole('button'));
     await flush();
     expect(kit.announced.at(-1)?.text).toBe(sentence);
@@ -248,7 +291,9 @@ describe('terminal raise', () => {
 
   it('says nothing and leaves no cue when the runtime reports the feature unavailable', async () => {
     const harness = raiseHarness('unavailable');
-    const { view, kit } = mount(<RaiseControl harness="claude" sid="s-1" focusable />, { focus: harness.focus });
+    const { view, kit } = mount(<RaiseControl harness="claude" sid="s-1" focusable />, {
+      focus: harness.focus,
+    });
     fireEvent.click(view.getByRole('button'));
     await flush();
     expect(view.getByRole('button').hasAttribute('data-raise-state')).toBe(false);
@@ -275,7 +320,9 @@ describe('terminal raise', () => {
     await flush();
     expect(harness.calls).toHaveLength(1);
     expect(second?.getAttribute('data-raise-state')).toBe('throttled');
-    expect(kit.announced.at(-1)?.text).toBe('Raise refused: another raise was too recent. Try again in a moment.');
+    expect(kit.announced.at(-1)?.text).toBe(
+      'Raise refused: another raise was too recent. Try again in a moment.',
+    );
     await act(async () => {
       settle('sent');
       await Promise.resolve();
@@ -293,7 +340,9 @@ describe('terminal raise', () => {
           settle = resolve;
         }),
     );
-    const { view } = mount(<RaiseControl harness="claude" sid="s-1" focusable />, { focus: harness.focus });
+    const { view } = mount(<RaiseControl harness="claude" sid="s-1" focusable />, {
+      focus: harness.focus,
+    });
     const button = view.getByRole('button');
     button.focus();
     fireEvent.click(button);
@@ -308,7 +357,9 @@ describe('terminal raise', () => {
 
   it('refuses an identity with an empty harness or sid before any request', async () => {
     const harness = raiseHarness('sent');
-    const { view } = mount(<RaiseControl harness="" sid="s-1" focusable />, { focus: harness.focus });
+    const { view } = mount(<RaiseControl harness="" sid="s-1" focusable />, {
+      focus: harness.focus,
+    });
     expect(view.queryByRole('button')).toBeNull();
     expect(harness.calls).toEqual([]);
   });
@@ -330,9 +381,13 @@ describe('terminal raise', () => {
     fireEvent.click(view.getByRole('button', { name: /Raise the terminal/ }));
     await flush();
     act(() => view.getByRole('button', { name: 'redraw' }).click());
-    expect(view.getByRole('button', { name: /Raise the terminal/ }).getAttribute('data-raise-state')).toBe('sent');
+    expect(
+      view.getByRole('button', { name: /Raise the terminal/ }).getAttribute('data-raise-state'),
+    ).toBe('sent');
     act(() => kit.clock.advance(CUE_TTL_MS));
-    expect(view.getByRole('button', { name: /Raise the terminal/ }).hasAttribute('data-raise-state')).toBe(false);
+    expect(
+      view.getByRole('button', { name: /Raise the terminal/ }).hasAttribute('data-raise-state'),
+    ).toBe(false);
   });
 
   it('draws the primary variant for a session waiting on the reader', () => {

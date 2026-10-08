@@ -4,12 +4,39 @@ import { CUE_TTL_MS } from '../controls';
 import { mountSessions, type AnswerScript } from './testing';
 
 const NOW = 5000;
-const ASK = { id: 'ask-1', harness: 'claude', session_id: 'one', project: 'p', question: 'Approve the plan?', options: ['Yes', 'No', 'Later'], age_sec: 90 };
-const board = (sessions: unknown[], extra: Record<string, unknown> = {}) => ({ generated: NOW, sessions, ...extra });
-const ONE = { harness: 'claude', sid: 'one', project: 'p', title: 'Retry queue', state: 'needs_input', blocked_since: NOW - 120 };
+const ASK = {
+  id: 'ask-1',
+  harness: 'claude',
+  session_id: 'one',
+  project: 'p',
+  question: 'Approve the plan?',
+  options: ['Yes', 'No', 'Later'],
+  age_sec: 90,
+};
+const board = (sessions: unknown[], extra: Record<string, unknown> = {}) => ({
+  generated: NOW,
+  sessions,
+  ...extra,
+});
+const ONE = {
+  harness: 'claude',
+  sid: 'one',
+  project: 'p',
+  title: 'Retry queue',
+  state: 'needs_input',
+  blocked_since: NOW - 120,
+};
 const ROUTE = '#n=session:p:claude:one';
 
-async function open(data: unknown, options: { answer?: AnswerScript; hash?: string; strict?: boolean; focusCapability?: string } = {}) {
+async function open(
+  data: unknown,
+  options: {
+    answer?: AnswerScript;
+    hash?: string;
+    strict?: boolean;
+    focusCapability?: string;
+  } = {},
+) {
   const page = mountSessions({ hash: options.hash ?? ROUTE, data, ...options });
   await page.settle();
   return page;
@@ -21,11 +48,30 @@ describe('answering a held request', () => {
   const asked = () => board([ONE], { ask: true, asks: [ASK] });
 
   it('shows every exact request in payload order, each with its options in order', async () => {
-    await open(board([ONE], { ask: true, asks: [ASK, { ...ASK, id: 'ask-2', question: 'Second?', options: ['A', 'B'] }] }));
+    await open(
+      board([ONE], {
+        ask: true,
+        asks: [ASK, { ...ASK, id: 'ask-2', question: 'Second?', options: ['A', 'B'] }],
+      }),
+    );
     const cards = [...document.querySelectorAll('[data-next-session-ask]')];
-    expect(cards.map((card) => card.getAttribute('data-next-session-ask'))).toEqual(['ask-1', 'ask-2']);
-    expect(cards.map((card) => within(card as HTMLElement).getAllByRole('button').map((button) => button.textContent))).toEqual([['Yes', 'No', 'Later'], ['A', 'B']]);
-    expect(cards.map((card) => card.querySelector('.next-session-ask-question')?.textContent)).toEqual(['Approve the plan?', 'Second?']);
+    expect(cards.map((card) => card.getAttribute('data-next-session-ask'))).toEqual([
+      'ask-1',
+      'ask-2',
+    ]);
+    expect(
+      cards.map((card) =>
+        within(card as HTMLElement)
+          .getAllByRole('button')
+          .map((button) => button.textContent),
+      ),
+    ).toEqual([
+      ['Yes', 'No', 'Later'],
+      ['A', 'B'],
+    ]);
+    expect(
+      cards.map((card) => card.querySelector('.next-session-ask-question')?.textContent),
+    ).toEqual(['Approve the plan?', 'Second?']);
   });
 
   it('posts one numeric option index, never the option, and exactly once per press', async () => {
@@ -34,7 +80,11 @@ describe('answering a held request', () => {
     await page.settle();
     const posts = page.posts();
     expect(posts).toHaveLength(1);
-    expect(posts[0]).toMatchObject({ method: 'POST', url: '/api/answer', body: { id: 'ask-1', index: 1 } });
+    expect(posts[0]).toMatchObject({
+      method: 'POST',
+      url: '/api/answer',
+      body: { id: 'ask-1', index: 1 },
+    });
     expect(Object.keys(posts[0]?.body as object).sort()).toEqual(['id', 'index']);
     expect(typeof (posts[0]?.body as { index: unknown }).index).toBe('number');
   });
@@ -72,7 +122,9 @@ describe('answering a held request', () => {
     await page.settle();
     expect(page.posts()).toHaveLength(1);
     // The server confirmed, but the board that drops the question has not arrived: the card is still on screen.
-    expect(document.querySelector('[data-next-answer-index="0"]')?.getAttribute('aria-busy')).toBe('true');
+    expect(document.querySelector('[data-next-answer-index="0"]')?.getAttribute('aria-busy')).toBe(
+      'true',
+    );
     fireEvent.click(document.querySelector('[data-next-answer-index="1"]') as Element);
     await page.settle();
     expect(page.posts()).toHaveLength(1);
@@ -82,11 +134,18 @@ describe('answering a held request', () => {
   });
 
   it('keeps the question when the server did not confirm, and says so', async () => {
-    for (const answer of [{ kind: 'refuse' }, { kind: 'status', status: 500 }, { kind: 'not-json' }, { kind: 'offline' }] as const) {
+    for (const answer of [
+      { kind: 'refuse' },
+      { kind: 'status', status: 500 },
+      { kind: 'not-json' },
+      { kind: 'offline' },
+    ] as const) {
       const page = await open(asked(), { answer });
       fireEvent.click(screen.getByRole('button', { name: 'Yes' }));
       await page.settle();
-      expect(failure()?.textContent).toBe('no confirmation came back — it may already have been answered');
+      expect(failure()?.textContent).toBe(
+        'no confirmation came back — it may already have been answered',
+      );
       expect(document.querySelector('[data-next-session-ask="ask-1"]')).not.toBeNull();
       page.unmount();
     }
@@ -146,7 +205,9 @@ describe('answering a held request', () => {
     document.body.innerHTML = '';
     await open(board([{ ...ONE, state: 'working', ended_at: NOW - 30 }]));
     expect(document.querySelector('.next-session-state')?.textContent).toBe('State: ended');
-    expect(document.querySelector('.next-session-detail-meta')?.textContent).toContain('ended 30s ago');
+    expect(document.querySelector('.next-session-detail-meta')?.textContent).toContain(
+      'ended 30s ago',
+    );
   });
 });
 
@@ -168,7 +229,9 @@ describe('a session that is not in the payload', () => {
 
 describe('what the page says about what it could not see', () => {
   it('says why a fact is unmeasured instead of leaving a blank', async () => {
-    await open(board([{ harness: 'cursor', sid: 'x', project: 'p', state: 'working' }]), { hash: '#n=session:p:cursor:x' });
+    await open(board([{ harness: 'cursor', sid: 'x', project: 'p', state: 'working' }]), {
+      hash: '#n=session:p:cursor:x',
+    });
     const text = document.body.textContent ?? '';
     expect(text).toContain('Title not published');
     expect(text).toContain('Harness does not report blocks');
@@ -184,19 +247,52 @@ describe('what the page says about what it could not see', () => {
   });
 
   it('lists a command report whose time is not a date without its time, where the page it ports would fail to draw at all', async () => {
-    await open(board([{ ...ONE, command_reports: [{ label: 'rm -rf build', tool_name: 'Bash', timestamp: 'later' }, { label: 'ls', tool_name: 'Bash', timestamp: 1700000000 }] }], { irreversible_enabled: true }));
-    const items = [...document.querySelectorAll('[data-next-command-reports] li')].map((item) => item.textContent);
-    expect(items).toEqual(['Command shape reported: rm -rf buildBash', 'Command shape reported: lsBash · 2023-11-14T22:13:20.000Z']);
+    await open(
+      board(
+        [
+          {
+            ...ONE,
+            command_reports: [
+              { label: 'rm -rf build', tool_name: 'Bash', timestamp: 'later' },
+              { label: 'ls', tool_name: 'Bash', timestamp: 1700000000 },
+            ],
+          },
+        ],
+        { irreversible_enabled: true },
+      ),
+    );
+    const items = [...document.querySelectorAll('[data-next-command-reports] li')].map(
+      (item) => item.textContent,
+    );
+    expect(items).toEqual([
+      'Command shape reported: rm -rf buildBash',
+      'Command shape reported: lsBash · 2023-11-14T22:13:20.000Z',
+    ]);
   });
 
   it('lists workers with their own state, counts only direct children in the heading, and says how many older ones were left out', async () => {
     await open(
-      board([{ ...ONE, state: 'working', subagents: [{ name: 'lead' }, { name: 'idle one', active: false }, { name: 'child', parent: 'lead' }], subagents_omitted: 2 }]),
+      board([
+        {
+          ...ONE,
+          state: 'working',
+          subagents: [
+            { name: 'lead' },
+            { name: 'idle one', active: false },
+            { name: 'child', parent: 'lead' },
+          ],
+          subagents_omitted: 2,
+        },
+      ]),
     );
     const block = document.querySelector('[data-next-session-subagents]');
-    expect(block?.querySelector('span')?.textContent).toBe('1 RUNNING SUBAGENT · 1 WORKER RUNNING BENEATH');
+    expect(block?.querySelector('span')?.textContent).toBe(
+      '1 RUNNING SUBAGENT · 1 WORKER RUNNING BENEATH',
+    );
     expect(block?.querySelectorAll('.next-session-subagent')).toHaveLength(3);
-    expect(block?.querySelector('.next-session-subagents-omitted')?.textContent).toBe('+2 older finished workers omitted');
+    expect(block?.querySelector('.next-session-subagents-omitted')?.textContent).toBe(
+      '+2 older finished workers omitted',
+    );
   });
 });
 
@@ -209,7 +305,10 @@ describe('a row control’s confirmation belongs to the exact session and lasts 
 
   it('marks the pressed session’s copy control, keeps the cue across a poll, and clears it at thirty seconds', async () => {
     const page = await open(rows(), { hash: '#n=sessions' });
-    const copy = (harness: string) => document.querySelector<HTMLButtonElement>(`article[data-next-harness="${harness}"] button[data-copy-kind="id"]`);
+    const copy = (harness: string) =>
+      document.querySelector<HTMLButtonElement>(
+        `article[data-next-harness="${harness}"] button[data-copy-kind="id"]`,
+      );
     await act(async () => {
       fireEvent.click(copy('claude') as Element);
     });
@@ -234,7 +333,9 @@ describe('the raise control', () => {
   it('draws only with a minted capability and a terminal the session reported, and as the primary control while a request waits', async () => {
     await open(data);
     expect(document.querySelector('.ctl-raise')).toBeNull();
-    expect(document.querySelector('.next-session-reentry-clause')?.textContent).toContain('Terminal raise off');
+    expect(document.querySelector('.next-session-reentry-clause')?.textContent).toContain(
+      'Terminal raise off',
+    );
     document.body.innerHTML = '';
     await open(data, { focusCapability: 'minted' });
     const raise = document.querySelector('.ctl-raise');
@@ -243,7 +344,9 @@ describe('the raise control', () => {
     document.body.innerHTML = '';
     await open(board([{ ...ONE, focusable: false }]), { focusCapability: 'minted' });
     expect(document.querySelector('.ctl-raise')).toBeNull();
-    expect(document.querySelector('.next-session-reentry-clause')?.textContent).toContain('No terminal to raise');
+    expect(document.querySelector('.next-session-reentry-clause')?.textContent).toContain(
+      'No terminal to raise',
+    );
   });
 
   it('is not drawn for a session that is not waiting, where the header offers copy controls alone', async () => {
@@ -253,14 +356,21 @@ describe('the raise control', () => {
 });
 
 describe('the checks run while the reader was away, when that lane is off', () => {
-  const departed = { ...ONE, departures: [{ at: NOW - 600, revision: 1, constraint: 'goal', reading: 'The change widened the goal.' }] };
+  const departed = {
+    ...ONE,
+    departures: [
+      { at: NOW - 600, revision: 1, constraint: 'goal', reading: 'The change widened the goal.' },
+    ],
+  };
   const label = 'FROM THE CHECKS RUN WHILE YOU WERE AWAY';
   const part = () => document.querySelector('.next-cockpit-departure-part') as HTMLElement;
 
   it('prints the limit beside the rows it qualifies, as the legacy page does, so the label never reads as checks that ran', async () => {
     await open(board([departed], { unasked: false }));
     expect(part().textContent).toContain(label);
-    const sentences = [...part().querySelectorAll('[data-absence="run-config"]')].map((node) => node.textContent);
+    const sentences = [...part().querySelectorAll('[data-absence="run-config"]')].map(
+      (node) => node.textContent,
+    );
     expect(sentences).toEqual([
       'Nothing watches for a departure on its own. Start with --unasked-readings to have Cargento check a session against what you asked for while you are away.',
       'The checks that run while you were away are off for this run, so nothing new is being checked. What was already raised is still on record.',
@@ -271,7 +381,9 @@ describe('the checks run while the reader was away, when that lane is off', () =
   it('names the model off switch when that is why the lane is off', async () => {
     await open(board([departed], { unasked: false, unasked_off_reason: 'run-disabled' }));
     const first = part().querySelector('[data-absence="run-config"]')?.textContent ?? '';
-    expect(first).toBe('The model off switch refuses unasked checks. Restart with --unasked-readings and without either --no-harness-usage or --no-observer-model to enable them.');
+    expect(first).toBe(
+      'The model off switch refuses unasked checks. Restart with --unasked-readings and without either --no-harness-usage or --no-observer-model to enable them.',
+    );
   });
 
   it('adds no off-switch sentence when the lane is on', async () => {

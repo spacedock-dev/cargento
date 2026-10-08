@@ -18,6 +18,8 @@ export const BOARD_WHY =
 export const GOAL_SOURCES_ON =
   'Your first prompt, or your latest where the first is not published, comes from Claude Code or Codex; other harnesses show only your typed words. A goal marked from your prompt was adopted by you; showing a prompt alone adopts nothing, and Drift names a recorded departure.';
 
-export const GOAL_SOURCES_OFF = 'Annotations are off, so goals cannot be typed and Drift marks are not shown.';
+export const GOAL_SOURCES_OFF =
+  'Annotations are off, so goals cannot be typed and Drift marks are not shown.';
 
-export const RECENT_WHY = 'Recently observed is not proof the harness process is still open or closed; rows marked ENDED reported their own end.';
+export const RECENT_WHY =
+  'Recently observed is not proof the harness process is still open or closed; rows marked ENDED reported their own end.';

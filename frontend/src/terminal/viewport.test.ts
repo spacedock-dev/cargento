@@ -23,7 +23,10 @@ function container(scrollHeight: number, clientHeight: number, scrollTop = 0): V
       return state.top;
     },
     set scrollTop(value: number) {
-      state.top = Math.max(0, Math.min(value, Math.max(0, state.scrollHeight - state.clientHeight)));
+      state.top = Math.max(
+        0,
+        Math.min(value, Math.max(0, state.scrollHeight - state.clientHeight)),
+      );
     },
   };
 }

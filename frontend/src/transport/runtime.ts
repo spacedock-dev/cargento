@@ -180,9 +180,11 @@ export function createBoardRuntime(options: RuntimeOptions) {
       };
     },
 
-    refresh: (flags: { readonly manual?: boolean } = {}): Promise<void> => owned?.refresh.refresh(flags) ?? Promise.resolve(),
+    refresh: (flags: { readonly manual?: boolean } = {}): Promise<void> =>
+      owned?.refresh.refresh(flags) ?? Promise.resolve(),
     loadContext: (scope: ContextScope): void => owned?.context.load(scope),
-    requestObserverSummary: (scope: ContextScope): Promise<void> => owned?.context.requestObserverSummary(scope) ?? Promise.resolve(),
+    requestObserverSummary: (scope: ContextScope): Promise<void> =>
+      owned?.context.requestObserverSummary(scope) ?? Promise.resolve(),
 
     /* One explicit attempt at a time, as the legacy raise control was: a press
        while one is in flight is answered locally as throttled and sends
@@ -212,7 +214,10 @@ const SLOT = Symbol.for('cargento.board.runtime');
    changes nothing. */
 export function replaceRuntime(
   next: BoardRuntime,
-  holder: Record<symbol, BoardRuntime | undefined> = globalThis as unknown as Record<symbol, BoardRuntime | undefined>,
+  holder: Record<symbol, BoardRuntime | undefined> = globalThis as unknown as Record<
+    symbol,
+    BoardRuntime | undefined
+  >,
 ): BoardRuntime {
   if (holder[SLOT] === next) return next;
   holder[SLOT]?.dispose();

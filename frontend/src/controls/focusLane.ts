@@ -12,7 +12,12 @@ function offscreen(element: HTMLElement): boolean {
   const view = element.ownerDocument.defaultView;
   if (!view) return false;
   const rect = element.getBoundingClientRect();
-  return rect.bottom <= 0 || rect.top >= view.innerHeight || rect.right <= 0 || rect.left >= view.innerWidth;
+  return (
+    rect.bottom <= 0 ||
+    rect.top >= view.innerHeight ||
+    rect.right <= 0 ||
+    rect.left >= view.innerWidth
+  );
 }
 
 /* A persistent React node keeps its own focus, so most of the legacy focus lane

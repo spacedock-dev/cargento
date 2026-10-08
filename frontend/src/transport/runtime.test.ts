@@ -3,7 +3,13 @@ import type { FetchLike } from '../api/client';
 import type { PayloadData } from '../api/types';
 import { selectDataStatus, selectSessions } from '../store/selectors';
 import { createBoardRuntime, replaceRuntime, type BoardRuntime } from './runtime';
-import { createFakeClock, createFakeEnvironment, createFakeStorageHub, type FakeClock, type FakeStorageHub } from './testing';
+import {
+  createFakeClock,
+  createFakeEnvironment,
+  createFakeStorageHub,
+  type FakeClock,
+  type FakeStorageHub,
+} from './testing';
 
 const flush = async () => {
   for (let turn = 0; turn < 12; turn += 1) await Promise.resolve();
@@ -27,24 +33,43 @@ function backend(): Backend {
     revision: '5.1',
     respond: () =>
       new Response(
-        JSON.stringify({ generated: state.generated, build: 'b1', sessions: [{ harness: 'claude', sid: `s${String(state.generated)}` }] }),
+        JSON.stringify({
+          generated: state.generated,
+          build: 'b1',
+          sessions: [{ harness: 'claude', sid: `s${String(state.generated)}` }],
+        }),
         { status: 200, headers: { 'X-Cargento-Revision': state.revision } },
       ),
     fetch: (url, init) => {
       requests.push({ method: init?.method ?? 'GET', url });
       return Promise.resolve(state.respond(url));
     },
-    gets: (prefix = '/api/data') => requests.filter((request) => request.method === 'GET' && request.url.startsWith(prefix)).length,
+    gets: (prefix = '/api/data') =>
+      requests.filter((request) => request.method === 'GET' && request.url.startsWith(prefix))
+        .length,
     posts: () => requests.filter((request) => request.method === 'POST').length,
   };
   return state;
 }
 
-function runtimeFor(options: { api?: Backend; clock?: FakeClock; hub?: FakeStorageHub; tabId?: string; search?: string; streamSupported?: boolean } = {}) {
+function runtimeFor(
+  options: {
+    api?: Backend;
+    clock?: FakeClock;
+    hub?: FakeStorageHub;
+    tabId?: string;
+    search?: string;
+    streamSupported?: boolean;
+  } = {},
+) {
   const api = options.api ?? backend();
   const clock = options.clock ?? createFakeClock();
   const hub = options.hub ?? createFakeStorageHub();
-  const env = createFakeEnvironment({ clock, tabId: options.tabId ?? 'tab-a', streamSupported: options.streamSupported ?? true });
+  const env = createFakeEnvironment({
+    clock,
+    tabId: options.tabId ?? 'tab-a',
+    streamSupported: options.streamSupported ?? true,
+  });
   const storage = hub.forTab();
   const runtime = createBoardRuntime({
     fetch: api.fetch,
@@ -132,7 +157,13 @@ describe('start and dispose', () => {
     };
     const clock = createFakeClock();
     const env = createFakeEnvironment({ clock });
-    const runtime = createBoardRuntime({ fetch: held, storage: createFakeStorageHub().forTab(), env, search: '', doc: null });
+    const runtime = createBoardRuntime({
+      fetch: held,
+      storage: createFakeStorageHub().forTab(),
+      env,
+      search: '',
+      doc: null,
+    });
     runtime.start();
     runtime.dispose();
     release(api.respond('/api/data'));
@@ -297,7 +328,8 @@ describe('failure states', () => {
     expect(snapshot.failures).toBe(1);
     expect(snapshot.lastFailure).toEqual({ kind: 'http-error', status: 403 });
     expect(selectDataStatus(snapshot)).toBe('stale');
-    api.respond = () => new Response(JSON.stringify({ generated: 3, sessions: [] }), { status: 200 });
+    api.respond = () =>
+      new Response(JSON.stringify({ generated: 3, sessions: [] }), { status: 200 });
     clock.advance(20_000);
     await flush();
     expect(runtime.store.getSnapshot().failures).toBe(0);
@@ -329,7 +361,10 @@ describe('failure states', () => {
     const second = runtimeFor({ api: bad });
     second.runtime.start();
     await flush();
-    expect(second.runtime.store.getSnapshot().lastFailure).toEqual({ kind: 'malformed', status: 200 });
+    expect(second.runtime.store.getSnapshot().lastFailure).toEqual({
+      kind: 'malformed',
+      status: 200,
+    });
     second.runtime.dispose();
   });
 
@@ -347,7 +382,8 @@ describe('failure states', () => {
     const { api, clock, runtime } = runtimeFor();
     runtime.start();
     await flush();
-    api.respond = () => new Response(JSON.stringify({ generated: 2, build: 'b2', sessions: [] }), { status: 200 });
+    api.respond = () =>
+      new Response(JSON.stringify({ generated: 2, build: 'b2', sessions: [] }), { status: 200 });
     clock.advance(20_000);
     await flush();
     const snapshot = runtime.store.getSnapshot();
@@ -383,7 +419,11 @@ describe('request shape', () => {
     clock.advance(20_000);
     await flush();
     expect(hub.usage).toBe('granted');
-    expect(api.requests.map((request) => request.url)).toEqual(['/api/data', '/api/data', '/api/data?usage=1']);
+    expect(api.requests.map((request) => request.url)).toEqual([
+      '/api/data',
+      '/api/data',
+      '/api/data?usage=1',
+    ]);
     runtime.dispose();
   });
 });
@@ -406,7 +446,9 @@ describe('actions are explicit', () => {
   it('sends a focus request only when called and only with a capability', async () => {
     const api = backend();
     api.respond = (url) =>
-      url === '/api/focus' ? new Response(JSON.stringify({ focused: true }), { status: 200 }) : backend().respond(url);
+      url === '/api/focus'
+        ? new Response(JSON.stringify({ focused: true }), { status: 200 })
+        : backend().respond(url);
     const clock = createFakeClock();
     const env = createFakeEnvironment({ clock });
     const withCapability = createBoardRuntime({
@@ -459,7 +501,11 @@ describe('pending work', () => {
 describe('typed payload shape', () => {
   it('keeps fields the types do not name', async () => {
     const api = backend();
-    const extra: PayloadData & { future_field?: number } = { generated: 1, sessions: [], future_field: 7 };
+    const extra: PayloadData & { future_field?: number } = {
+      generated: 1,
+      sessions: [],
+      future_field: 7,
+    };
     api.respond = () => new Response(JSON.stringify(extra), { status: 200 });
     const { runtime } = runtimeFor({ api });
     runtime.start();
@@ -479,7 +525,11 @@ function documentWithFocus(content: string): Pick<Document, 'querySelector'> {
 }
 
 function heldFetch(api: Backend) {
-  const held: { url: string; init: RequestInit | undefined; release: (response: Response) => void }[] = [];
+  const held: {
+    url: string;
+    init: RequestInit | undefined;
+    release: (response: Response) => void;
+  }[] = [];
   const fetch: FetchLike = (url, init) => {
     api.requests.push({ method: init?.method ?? 'GET', url });
     if (url.startsWith('/api/data')) return Promise.resolve(api.respond(url));
@@ -488,11 +538,20 @@ function heldFetch(api: Backend) {
   return { held, fetch };
 }
 
-function runtimeWith(fetch: FetchLike, options: { doc?: Pick<Document, 'querySelector'> | null; hub?: FakeStorageHub } = {}) {
+function runtimeWith(
+  fetch: FetchLike,
+  options: { doc?: Pick<Document, 'querySelector'> | null; hub?: FakeStorageHub } = {},
+) {
   const clock = createFakeClock();
   const hub = options.hub ?? createFakeStorageHub();
   const env = createFakeEnvironment({ clock });
-  const runtime = createBoardRuntime({ fetch, storage: hub.forTab(), env, search: '', doc: options.doc ?? null });
+  const runtime = createBoardRuntime({
+    fetch,
+    storage: hub.forTab(),
+    env,
+    search: '',
+    doc: options.doc ?? null,
+  });
   return { clock, hub, env, runtime };
 }
 

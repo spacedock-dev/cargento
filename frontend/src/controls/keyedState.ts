@@ -13,7 +13,11 @@ export const CUE_TTL_MS = 30_000;
 export const CUE_LIMIT = 32;
 
 /** The legacy key shape: the lane, then the exact harness and sid, NUL-joined so no value can forge another's key. */
-export function laneKey(lane: string, harness: string | undefined, sid: string | undefined): string {
+export function laneKey(
+  lane: string,
+  harness: string | undefined,
+  sid: string | undefined,
+): string {
   return `${lane}\u0000${harness ?? ''}\u0000${sid ?? ''}`;
 }
 

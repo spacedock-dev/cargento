@@ -42,10 +42,14 @@ export function mountShell(options: TestShellOptions = {}) {
   };
   const fetch: FetchLike = (url, init) => {
     backend.requests.push({ method: init?.method ?? 'GET', url });
-    if (backend.failing || backend.data === undefined || backend.data === null) return Promise.reject(new Error('offline'));
+    if (backend.failing || backend.data === undefined || backend.data === null)
+      return Promise.reject(new Error('offline'));
     backend.revision += 1;
     return Promise.resolve(
-      new Response(JSON.stringify(backend.data), { status: 200, headers: { 'X-Cargento-Revision': `7.${String(backend.revision)}` } }),
+      new Response(JSON.stringify(backend.data), {
+        status: 200,
+        headers: { 'X-Cargento-Revision': `7.${String(backend.revision)}` },
+      }),
     );
   };
   const reload = vi.fn();
@@ -57,16 +61,22 @@ export function mountShell(options: TestShellOptions = {}) {
     events: { addEventListener: () => undefined, removeEventListener: () => undefined },
     search: options.search ?? '',
     doc: options.focusCapability
-      ? { querySelector: () => ({ getAttribute: () => options.focusCapability ?? null }) as unknown as Element }
+      ? {
+          querySelector: () =>
+            ({ getAttribute: () => options.focusCapability ?? null }) as unknown as Element,
+        }
       : null,
     host: { reload, streamSupported: options.streamSupported ?? true },
     reducedMotion: () => false,
   });
-  const tree = options.strict === false ? <App shell={shell} /> : (
-    <StrictMode>
+  const tree =
+    options.strict === false ? (
       <App shell={shell} />
-    </StrictMode>
-  );
+    ) : (
+      <StrictMode>
+        <App shell={shell} />
+      </StrictMode>
+    );
   const view = render(tree);
   return {
     ...view,
@@ -77,7 +87,8 @@ export function mountShell(options: TestShellOptions = {}) {
     backend,
     reload,
     router,
-    gets: (prefix = '/api/data') => backend.requests.filter((r) => r.method === 'GET' && r.url.startsWith(prefix)).length,
+    gets: (prefix = '/api/data') =>
+      backend.requests.filter((r) => r.method === 'GET' && r.url.startsWith(prefix)).length,
     posts: () => backend.requests.filter((r) => r.method !== 'GET').length,
     /** Lets the boot read settle and paints it. */
     settle: () => act(async () => void (await flush())),
@@ -104,10 +115,43 @@ export function mountShell(options: TestShellOptions = {}) {
 export const BOARD = {
   generated: 1000,
   sessions: [
-    { harness: 'claude', sid: 'shared-sid', project: 'alpha/app', title: 'Alpha shared claude', state: 'working', active: true, subagents: [{}, {}] },
-    { harness: 'codex', sid: 'shared-sid', project: 'alpha/app', title: 'Alpha shared codex', state: 'idle' },
-    { harness: 'claude', sid: 'colon:sid', project: 'beta/api', state: 'needs_input', subagents: [{}] },
-    { harness: 'codex', sid: 'bare-project-sid', project: '', title: 'No project label', state: 'idle' },
-    { harness: 'codex', sid: 'beta-working', project: 'beta/api', title: 'Beta working', state: 'working', active: true },
+    {
+      harness: 'claude',
+      sid: 'shared-sid',
+      project: 'alpha/app',
+      title: 'Alpha shared claude',
+      state: 'working',
+      active: true,
+      subagents: [{}, {}],
+    },
+    {
+      harness: 'codex',
+      sid: 'shared-sid',
+      project: 'alpha/app',
+      title: 'Alpha shared codex',
+      state: 'idle',
+    },
+    {
+      harness: 'claude',
+      sid: 'colon:sid',
+      project: 'beta/api',
+      state: 'needs_input',
+      subagents: [{}],
+    },
+    {
+      harness: 'codex',
+      sid: 'bare-project-sid',
+      project: '',
+      title: 'No project label',
+      state: 'idle',
+    },
+    {
+      harness: 'codex',
+      sid: 'beta-working',
+      project: 'beta/api',
+      title: 'Beta working',
+      state: 'working',
+      active: true,
+    },
   ],
 };

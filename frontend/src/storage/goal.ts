@@ -34,7 +34,8 @@ export function createGoalStore(access: StorageAccess): GoalStore {
     save(label, value) {
       const text = String(value).trim();
       if (!text) return 'empty';
-      if (!access.attempt((backend) => backend.setItem(goalKey(label), text)).ok) return 'unavailable';
+      if (!access.attempt((backend) => backend.setItem(goalKey(label), text)).ok)
+        return 'unavailable';
       drafts.set(label, text);
       return 'saved';
     },

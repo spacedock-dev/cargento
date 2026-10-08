@@ -60,7 +60,9 @@ describe('loading the local terminal renderer', () => {
     const t = setup();
     const loading = t.loader.load();
     t.link()?.onerror?.(new Event('error'));
-    await expect(loading).rejects.toThrow('Console cannot open because the local terminal stylesheet did not load.');
+    await expect(loading).rejects.toThrow(
+      'Console cannot open because the local terminal stylesheet did not load.',
+    );
     expect(t.link()).toBeNull();
     const again = t.loader.load();
     expect(again).not.toBe(loading);
@@ -86,7 +88,9 @@ describe('loading the local terminal renderer', () => {
     const loading = t.loader.load();
     t.link()?.onload?.(new Event('load'));
     t.scripts()[0]?.onerror?.(new Event('error'));
-    await expect(loading).rejects.toThrow('Console cannot open because the local terminal script did not load.');
+    await expect(loading).rejects.toThrow(
+      'Console cannot open because the local terminal script did not load.',
+    );
     expect(t.scripts()).toHaveLength(0);
   });
 
@@ -95,7 +99,9 @@ describe('loading the local terminal renderer', () => {
     const loading = t.loader.load();
     t.link()?.onload?.(new Event('load'));
     t.scripts()[0]?.onload?.(new Event('load'));
-    await expect(loading).rejects.toThrow('Console cannot open because the local terminal script did not load.');
+    await expect(loading).rejects.toThrow(
+      'Console cannot open because the local terminal script did not load.',
+    );
     expect(t.scripts()).toHaveLength(0);
   });
 });

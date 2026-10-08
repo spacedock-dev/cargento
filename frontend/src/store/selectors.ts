@@ -35,8 +35,15 @@ export function selectAsks(snapshot: BoardSnapshot): RowCollection<PayloadAsk> {
 }
 
 /* The pair, not the sid alone: two harnesses can hold the same sid. */
-export function selectSession(snapshot: BoardSnapshot, identity: SessionIdentity): PayloadSession | null {
-  return selectSessions(snapshot).rows.find((row) => row.harness === identity.harness && row.sid === identity.sid) ?? null;
+export function selectSession(
+  snapshot: BoardSnapshot,
+  identity: SessionIdentity,
+): PayloadSession | null {
+  return (
+    selectSessions(snapshot).rows.find(
+      (row) => row.harness === identity.harness && row.sid === identity.sid,
+    ) ?? null
+  );
 }
 
 export type DataStatus = 'unread' | 'ready' | 'stale' | 'unavailable';
@@ -107,7 +114,11 @@ export interface ContextRead {
   readonly shows: boolean;
 }
 
-export function selectContextRead(snapshot: BoardSnapshot, projectKey: string, focus: SessionIdentity | null): ContextRead {
+export function selectContextRead(
+  snapshot: BoardSnapshot,
+  projectKey: string,
+  focus: SessionIdentity | null,
+): ContextRead {
   const entry = snapshot.contexts.get(contextKey(projectKey, focus));
   const projectEntry = focus ? snapshot.contexts.get(contextKey(projectKey, null)) : entry;
   const states = [contextEntryState(entry)];
@@ -120,10 +131,15 @@ export function selectObserverRequest(
   snapshot: BoardSnapshot,
   key: string,
 ): { readonly pending: boolean; readonly state: 'ready' | 'error' | null } {
-  return { pending: snapshot.observer.requests.includes(key), state: snapshot.observer.states.get(key) ?? null };
+  return {
+    pending: snapshot.observer.requests.includes(key),
+    state: snapshot.observer.states.get(key) ?? null,
+  };
 }
 
-export function selectObserverModel(entry: ContextEntry | undefined): ProjectContext['observer_model'] | null {
+export function selectObserverModel(
+  entry: ContextEntry | undefined,
+): ProjectContext['observer_model'] | null {
   return entry?.data?.observer_model ?? null;
 }
 

@@ -2,10 +2,16 @@ import { describe, expect, it, vi } from 'vitest';
 import { createApiClient, fetchBounded, type FetchLike } from './client';
 
 function json(body: unknown, init: ResponseInit = {}): Response {
-  return new Response(JSON.stringify(body), { status: 200, headers: { 'Content-Type': 'application/json' }, ...init });
+  return new Response(JSON.stringify(body), {
+    status: 200,
+    headers: { 'Content-Type': 'application/json' },
+    ...init,
+  });
 }
 
-function recorder(respond: (url: string, init: RequestInit | undefined) => Response | Promise<Response>) {
+function recorder(
+  respond: (url: string, init: RequestInit | undefined) => Response | Promise<Response>,
+) {
   const calls: { url: string; init: RequestInit | undefined }[] = [];
   const fetch: FetchLike = (url, init) => {
     calls.push({ url, init });
@@ -16,26 +22,41 @@ function recorder(respond: (url: string, init: RequestInit | undefined) => Respo
 
 describe('GET /api/data', () => {
   it('returns the body with the revision header it carried', async () => {
-    const { fetch, calls } = recorder(() => json({ generated: 1, sessions: [] }, { headers: { 'X-Cargento-Revision': '9.4' } }));
+    const { fetch, calls } = recorder(() =>
+      json({ generated: 1, sessions: [] }, { headers: { 'X-Cargento-Revision': '9.4' } }),
+    );
     const result = await createApiClient({ fetch }).getData({ showAll: true, usage: true });
     expect(calls.map((call) => call.url)).toEqual(['/api/data?all=1&usage=1']);
-    expect(result).toEqual({ kind: 'ok', status: 200, body: { generated: 1, sessions: [] }, revision: '9.4' });
+    expect(result).toEqual({
+      kind: 'ok',
+      status: 200,
+      body: { generated: 1, sessions: [] },
+      revision: '9.4',
+    });
   });
 
   it('reports a missing revision header as empty rather than guessing', async () => {
     const { fetch } = recorder(() => json({}));
-    expect(await createApiClient({ fetch }).getData({ showAll: false, usage: false })).toMatchObject({ kind: 'ok', revision: '' });
+    expect(
+      await createApiClient({ fetch }).getData({ showAll: false, usage: false }),
+    ).toMatchObject({ kind: 'ok', revision: '' });
   });
 
   it('keeps the status of a refusal apart from its body, including an HTML body', async () => {
-    const html = recorder(() => new Response('<h1>403</h1>', { status: 403, headers: { 'Content-Type': 'text/html' } }));
-    expect(await createApiClient({ fetch: html.fetch }).getData({ showAll: false, usage: false })).toEqual({
+    const html = recorder(
+      () => new Response('<h1>403</h1>', { status: 403, headers: { 'Content-Type': 'text/html' } }),
+    );
+    expect(
+      await createApiClient({ fetch: html.fetch }).getData({ showAll: false, usage: false }),
+    ).toEqual({
       kind: 'http-error',
       status: 403,
       body: '<h1>403</h1>',
     });
     const jsonBody = recorder(() => json({ error: 'busy' }, { status: 503 }));
-    expect(await createApiClient({ fetch: jsonBody.fetch }).getData({ showAll: false, usage: false })).toEqual({
+    expect(
+      await createApiClient({ fetch: jsonBody.fetch }).getData({ showAll: false, usage: false }),
+    ).toEqual({
       kind: 'http-error',
       status: 503,
       body: { error: 'busy' },
@@ -46,13 +67,20 @@ describe('GET /api/data', () => {
     const down = recorder(() => {
       throw new TypeError('network down');
     });
-    const result = await createApiClient({ fetch: down.fetch }).getData({ showAll: false, usage: false });
+    const result = await createApiClient({ fetch: down.fetch }).getData({
+      showAll: false,
+      usage: false,
+    });
     expect(result.kind).toBe('network-error');
     expect(result).not.toHaveProperty('body');
     const bad = recorder(() => new Response('not json', { status: 200 }));
-    expect(await createApiClient({ fetch: bad.fetch }).getData({ showAll: false, usage: false })).toEqual({ kind: 'malformed', status: 200 });
+    expect(
+      await createApiClient({ fetch: bad.fetch }).getData({ showAll: false, usage: false }),
+    ).toEqual({ kind: 'malformed', status: 200 });
     const array = recorder(() => json([1, 2]));
-    expect(await createApiClient({ fetch: array.fetch }).getData({ showAll: false, usage: false })).toEqual({ kind: 'malformed', status: 200 });
+    expect(
+      await createApiClient({ fetch: array.fetch }).getData({ showAll: false, usage: false }),
+    ).toEqual({ kind: 'malformed', status: 200 });
   });
 
   it('reports an aborted request as aborted, not as a network failure', async () => {
@@ -61,7 +89,15 @@ describe('GET /api/data', () => {
       controller.abort();
       throw init?.signal?.reason ?? new Error('aborted');
     });
-    expect((await createApiClient({ fetch }).getData({ showAll: false, usage: false, signal: controller.signal })).kind).toBe('aborted');
+    expect(
+      (
+        await createApiClient({ fetch }).getData({
+          showAll: false,
+          usage: false,
+          signal: controller.signal,
+        })
+      ).kind,
+    ).toBe('aborted');
   });
 });
 
@@ -69,7 +105,10 @@ describe('only GET /api/data reads the revision header', () => {
   it('leaves the revision empty on every other route', async () => {
     const { fetch } = recorder(() => json({}, { headers: { 'X-Cargento-Revision': '1.1' } }));
     const client = createApiClient({ fetch });
-    expect(await client.getProjectContext({ project: 'p' })).toMatchObject({ kind: 'ok', revision: '' });
+    expect(await client.getProjectContext({ project: 'p' })).toMatchObject({
+      kind: 'ok',
+      revision: '',
+    });
     expect(await client.getAnnotations({})).toMatchObject({ kind: 'ok', revision: '' });
   });
 });
@@ -80,7 +119,12 @@ describe('GET /api/project-context', () => {
     const client = createApiClient({ fetch });
     await client.getProjectContext({ project: '/repo/a b', session: 'claude:s:1' });
     await client.getProjectContext({ project: 'p' });
-    await client.getProjectContext({ project: 'p', session: 'codex:z', refresh: true, observerModel: true });
+    await client.getProjectContext({
+      project: 'p',
+      session: 'codex:z',
+      refresh: true,
+      observerModel: true,
+    });
     await client.getProjectContext({ project: 'p', session: 'codex:z', prompts: true });
     expect(calls.map((call) => call.url)).toEqual([
       '/api/project-context?project=%2Frepo%2Fa%20b&session=claude%3As%3A1',
@@ -97,11 +141,24 @@ describe('POST adapters', () => {
       throw new TypeError('network down');
     });
     const client = createApiClient({ fetch: failing.fetch });
-    const result = await client.postAnnotate({ harness: 'claude', sid: 's', expected_revision: 2, add_direction: 'f1' });
+    const result = await client.postAnnotate({
+      harness: 'claude',
+      sid: 's',
+      expected_revision: 2,
+      add_direction: 'f1',
+    });
     expect(result.kind).toBe('network-error');
     expect(failing.calls).toHaveLength(1);
-    expect(failing.calls[0]?.init).toMatchObject({ method: 'POST', headers: { 'Content-Type': 'application/json' } });
-    expect(JSON.parse(String(failing.calls[0]?.init?.body))).toEqual({ harness: 'claude', sid: 's', expected_revision: 2, add_direction: 'f1' });
+    expect(failing.calls[0]?.init).toMatchObject({
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+    });
+    expect(JSON.parse(String(failing.calls[0]?.init?.body))).toEqual({
+      harness: 'claude',
+      sid: 's',
+      expected_revision: 2,
+      add_direction: 'f1',
+    });
   });
 
   it('addresses each route at its own path', async () => {
@@ -131,7 +188,15 @@ describe('POST adapters', () => {
 
   it('keeps a 409 and a 422 as http errors with their JSON bodies', async () => {
     const { fetch } = recorder(() => json({ ok: false, reason: 'not-running' }, { status: 409 }));
-    expect(await createApiClient({ fetch }).postReadingCancel({ harness: 'a', sid: 'b', job: 'j', press: true, observer_model: 1 })).toEqual({
+    expect(
+      await createApiClient({ fetch }).postReadingCancel({
+        harness: 'a',
+        sid: 'b',
+        job: 'j',
+        press: true,
+        observer_model: 1,
+      }),
+    ).toEqual({
       kind: 'http-error',
       status: 409,
       body: { ok: false, reason: 'not-running' },
@@ -158,7 +223,9 @@ describe('POST /api/focus', () => {
   it('sends the pair and the capability header and reads the closed outcomes', async () => {
     const sent = await outcome(() => json({ focused: true }));
     expect(sent.result).toBe('sent');
-    expect(sent.calls[0]?.init).toMatchObject({ headers: { 'Content-Type': 'application/json', 'X-Cargento-Capability': 'cap' } });
+    expect(sent.calls[0]?.init).toMatchObject({
+      headers: { 'Content-Type': 'application/json', 'X-Cargento-Capability': 'cap' },
+    });
     expect(JSON.parse(String(sent.calls[0]?.init?.body))).toEqual(identity);
     expect((await outcome(() => json({ focused: false }))).result).toBe('declined');
     expect((await outcome(() => json({}, { status: 429 }))).result).toBe('throttled');
@@ -171,7 +238,9 @@ describe('POST /api/focus', () => {
     const down = recorder(() => {
       throw new TypeError('down');
     });
-    expect(await createApiClient({ fetch: down.fetch }).focus({ identity, capability: 'cap' })).toBe('failed');
+    expect(
+      await createApiClient({ fetch: down.fetch }).focus({ identity, capability: 'cap' }),
+    ).toBe('failed');
     expect(down.calls).toHaveLength(1);
   });
 });
@@ -198,7 +267,9 @@ describe('fetchBounded', () => {
     const add = vi.spyOn(controller.signal, 'addEventListener');
     const remove = vi.spyOn(controller.signal, 'removeEventListener');
     await fetchBounded(() => Promise.resolve(json({})), '/api/x', {}, controller.signal);
-    await expect(fetchBounded(() => Promise.reject(new TypeError('x')), '/api/x', {}, controller.signal)).rejects.toThrow('x');
+    await expect(
+      fetchBounded(() => Promise.reject(new TypeError('x')), '/api/x', {}, controller.signal),
+    ).rejects.toThrow('x');
     expect(add).toHaveBeenCalledTimes(2);
     expect(remove).toHaveBeenCalledTimes(2);
   });
@@ -218,31 +289,38 @@ describe('fetchBounded', () => {
 
 describe('no adapter ever retries an action', () => {
   const identity = { harness: 'claude', sid: 's' };
-  const adapters: Record<string, (client: ReturnType<typeof createApiClient>) => Promise<unknown>> = {
-    postAnnotate: (c) => c.postAnnotate(identity),
-    postDirection: (c) => c.postDirection({ ...identity, fact_id: 'f' }),
-    postReading: (c) => c.postReading({ ...identity, provider: 'claude', press: true, observer_model: 1 }),
-    postReadingCancel: (c) => c.postReadingCancel({ ...identity, job: 'j', press: true, observer_model: 1 }),
-    postCorrection: (c) => c.postCorrection(identity),
-    postCorrectionCopied: (c) => c.postCorrectionCopied({ ...identity, text: 't' }),
-    postTripwire: (c) => c.postTripwire({ action: 'save', id: 'r', stage: 's', expected_revision: '' }),
-    postLane: (c) => c.postLane({ supported: true, permission: 'granted' }),
-    postAnswer: (c) => c.postAnswer({ id: 'a', index: 0 }),
-    postDismiss: (c) => c.postDismiss(identity),
-    postNotify: (c) => c.postNotify({ message: 'm', session_id: 's' }),
-    focus: (c) => c.focus({ identity, capability: 'cap' }),
-  };
+  const adapters: Record<string, (client: ReturnType<typeof createApiClient>) => Promise<unknown>> =
+    {
+      postAnnotate: (c) => c.postAnnotate(identity),
+      postDirection: (c) => c.postDirection({ ...identity, fact_id: 'f' }),
+      postReading: (c) =>
+        c.postReading({ ...identity, provider: 'claude', press: true, observer_model: 1 }),
+      postReadingCancel: (c) =>
+        c.postReadingCancel({ ...identity, job: 'j', press: true, observer_model: 1 }),
+      postCorrection: (c) => c.postCorrection(identity),
+      postCorrectionCopied: (c) => c.postCorrectionCopied({ ...identity, text: 't' }),
+      postTripwire: (c) =>
+        c.postTripwire({ action: 'save', id: 'r', stage: 's', expected_revision: '' }),
+      postLane: (c) => c.postLane({ supported: true, permission: 'granted' }),
+      postAnswer: (c) => c.postAnswer({ id: 'a', index: 0 }),
+      postDismiss: (c) => c.postDismiss(identity),
+      postNotify: (c) => c.postNotify({ message: 'm', session_id: 's' }),
+      focus: (c) => c.focus({ identity, capability: 'cap' }),
+    };
 
   it('covers every POST adapter the client exposes', () => {
-    const exposed = Object.keys(createApiClient({ fetch: () => Promise.reject(new Error('x')) })).filter(
-      (name) => name.startsWith('post') || name === 'focus',
-    );
+    const exposed = Object.keys(
+      createApiClient({ fetch: () => Promise.reject(new Error('x')) }),
+    ).filter((name) => name.startsWith('post') || name === 'focus');
     expect(Object.keys(adapters).sort()).toEqual(exposed.sort());
   });
 
   for (const [name, call] of Object.entries(adapters)) {
     it(`${name} makes exactly one fetch on a network failure and on an HTTP failure`, async () => {
-      for (const failure of [() => Promise.reject(new TypeError('offline')), () => Promise.resolve(new Response('', { status: 503 }))]) {
+      for (const failure of [
+        () => Promise.reject(new TypeError('offline')),
+        () => Promise.resolve(new Response('', { status: 503 })),
+      ]) {
         const fetch = vi.fn<FetchLike>(failure);
         await call(createApiClient({ fetch }));
         expect(fetch).toHaveBeenCalledTimes(1);
@@ -262,6 +340,8 @@ describe('settling', () => {
       },
     });
     const client = createApiClient({ fetch: () => Promise.resolve(response) });
-    expect((await client.getData({ showAll: false, usage: false, signal: controller.signal })).kind).toBe('aborted');
+    expect(
+      (await client.getData({ showAll: false, usage: false, signal: controller.signal })).kind,
+    ).toBe('aborted');
   });
 });

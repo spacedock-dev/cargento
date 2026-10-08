@@ -44,7 +44,11 @@ describe('page bootstrap', () => {
     expect(readBootstrap('', documentWithFocus(null)).focusCapability).toBe('');
     expect(readBootstrap('', documentWithFocus('   ')).focusCapability).toBe('');
     expect(readBootstrap('', null).focusCapability).toBe('');
-    const throwing = { querySelector: () => { throw new Error('bad selector'); } } as unknown as Pick<Document, 'querySelector'>;
+    const throwing = {
+      querySelector: () => {
+        throw new Error('bad selector');
+      },
+    } as unknown as Pick<Document, 'querySelector'>;
     expect(readBootstrap('', throwing).focusCapability).toBe('');
   });
 });
@@ -53,7 +57,8 @@ describe('number helpers stay distinct', () => {
   it('nextNumber accepts only finite numbers and returns null otherwise', () => {
     expect(nextNumber(3)).toBe(3);
     expect(nextNumber(0)).toBe(0);
-    for (const value of [undefined, null, '3', NaN, Infinity, {}, []]) expect(nextNumber(value)).toBeNull();
+    for (const value of [undefined, null, '3', NaN, Infinity, {}, []])
+      expect(nextNumber(value)).toBeNull();
   });
 
   it('nextFiniteNumber coerces and falls back to zero, so it never proves a measurement', () => {
@@ -66,7 +71,10 @@ describe('number helpers stay distinct', () => {
 
 describe('payload collections', () => {
   it('keeps only object rows and distinguishes a missing collection from an empty one', () => {
-    expect(payloadSessions({ sessions: [{ sid: 'a' }, null, 4, [], 'x'] })).toEqual({ present: true, rows: [{ sid: 'a' }] });
+    expect(payloadSessions({ sessions: [{ sid: 'a' }, null, 4, [], 'x'] })).toEqual({
+      present: true,
+      rows: [{ sid: 'a' }],
+    });
     expect(payloadSessions({ sessions: [] })).toEqual({ present: true, rows: [] });
     expect(payloadSessions({})).toEqual({ present: false, rows: [] });
     expect(payloadSessions({ sessions: 'nope' })).toEqual({ present: false, rows: [] });

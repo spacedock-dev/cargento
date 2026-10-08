@@ -16,7 +16,11 @@ export interface DisclosureProps {
   readonly children: ReactNode;
 }
 
-const CLASS = { accordion: 'ctl-disclosure', popover: 'ctl-disclosure ctl-disclosure--pop', menu: 'ctl-menu' } as const;
+const CLASS = {
+  accordion: 'ctl-disclosure',
+  popover: 'ctl-disclosure ctl-disclosure--pop',
+  menu: 'ctl-menu',
+} as const;
 
 export function Disclosure(props: DisclosureProps) {
   return <DisclosureNode key={props.disclosureKey} {...props} />;
@@ -30,7 +34,15 @@ export function Disclosure(props: DisclosureProps) {
    unrelated update cannot shut or reopen the node. What the reader does is
    recorded from the browser's own `toggle` event and read back by the next
    mount. */
-function DisclosureNode({ disclosureKey, summary, variant = 'accordion', className, summaryLabel, focusKey, children }: DisclosureProps) {
+function DisclosureNode({
+  disclosureKey,
+  summary,
+  variant = 'accordion',
+  className,
+  summaryLabel,
+  focusKey,
+  children,
+}: DisclosureProps) {
   const controls = useControls();
   const [initiallyOpen] = useState(() => controls.disclosures.isOpen(disclosureKey));
   const summaryRef = useFocusKey<HTMLElement>(controls.focusLane, focusKey ?? null);
@@ -52,7 +64,9 @@ function DisclosureNode({ disclosureKey, summary, variant = 'accordion', classNa
     requestAnimationFrame(() =>
       requestAnimationFrame(() => {
         if (!details.open) return;
-        details.querySelector('.ctl-disclosure-body')?.scrollIntoView({ block: 'nearest', behavior: reduce ? 'auto' : 'smooth' });
+        details
+          .querySelector('.ctl-disclosure-body')
+          ?.scrollIntoView({ block: 'nearest', behavior: reduce ? 'auto' : 'smooth' });
       }),
     );
   };
@@ -64,7 +78,11 @@ function DisclosureNode({ disclosureKey, summary, variant = 'accordion', classNa
       onToggle={onToggle}
       {...(popover ? { 'data-ctl-popover': '' } : {})}
     >
-      <summary ref={summaryRef} onClick={onSummaryClick} {...(summaryLabel ? { 'aria-label': summaryLabel } : {})}>
+      <summary
+        ref={summaryRef}
+        onClick={onSummaryClick}
+        {...(summaryLabel ? { 'aria-label': summaryLabel } : {})}
+      >
         {summary}
       </summary>
       {popover ? <div className="ctl-disclosure-body">{children}</div> : children}

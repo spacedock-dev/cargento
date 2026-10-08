@@ -49,4 +49,3 @@ export function createWorld(hooks: Hooks) {
 }
 
 export type World = ReturnType<typeof createWorld>;
-

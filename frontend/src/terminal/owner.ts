@@ -74,7 +74,11 @@ export function createTerminalOwner(deps: TerminalOwnerDeps) {
     const terminal = live?.terminal;
     const screen = terminal?.element?.querySelector('.xterm-screen');
     if (!terminal?.buffer || !screen) return null;
-    return { rows: terminal.rows, cursorY: terminal.buffer.active.cursorY, screenHeight: screen.getBoundingClientRect().height };
+    return {
+      rows: terminal.rows,
+      cursorY: terminal.buffer.active.cursorY,
+      screenHeight: screen.getBoundingClientRect().height,
+    };
   }
 
   /* The host takes the size of the rendered screen, so the viewport scrolls the real thing and short

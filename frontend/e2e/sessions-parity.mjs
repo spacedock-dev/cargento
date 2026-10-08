@@ -21,19 +21,30 @@ import { mkdir } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { chromium } from '@playwright/test';
 import { openPage } from './support/browser.mjs';
-import { instrumentResources, recordClipboard, resources, startSessionsBoard } from './sessions-board.mjs';
+import {
+  instrumentResources,
+  recordClipboard,
+  resources,
+  startSessionsBoard,
+} from './sessions-board.mjs';
 
 /* Every fixed wait here means "give the page time to react". A hosted runner has a few shared cores and delivers
    events and frames later than a desktop, so each wait is tripled there; only a pass gets slower. */
-const patience = ms => (process.env.CI ? ms * 3 : ms);
+const patience = (ms) => (process.env.CI ? ms * 3 : ms);
 
 // The generator is TypeScript the unit tests also use; Node 26 strips the types as it imports it.
 process.removeAllListeners('warning');
 const { genPayload } = await import('../src/observed/generate.test.helper.ts');
 
 // Captures land in the main checkout's gitignored docs/screenshots/ even when run from a worktree of it.
-const checkout = fileURLToPath(new URL('../../', import.meta.url)).replace(/\/\.claude\/worktrees\/[^/]+\/?$/, '/');
-const SHOTS = (process.env.CARGENTO_SCREENSHOTS || `${checkout}docs/screenshots`).replace(/\/?$/, '/');
+const checkout = fileURLToPath(new URL('../../', import.meta.url)).replace(
+  /\/\.claude\/worktrees\/[^/]+\/?$/,
+  '/',
+);
+const SHOTS = (process.env.CARGENTO_SCREENSHOTS || `${checkout}docs/screenshots`).replace(
+  /\/?$/,
+  '/',
+);
 const SEEDS = Number(process.env.SESSIONS_E2E_SEEDS || 10);
 const E = encodeURIComponent;
 const receipts = {};
@@ -53,28 +64,35 @@ async function step(name, run) {
 
 /* ---- what a reader can read, reduced to data. These run IN the page, so they are self-contained. ---- */
 const summarizeList = () => {
-  const norm = node => (node ? node.textContent.replace(/\s+/g, ' ').trim() : '');
+  const norm = (node) => (node ? node.textContent.replace(/\s+/g, ' ').trim() : '');
   const { document } = globalThis;
   const root = document.querySelector('[data-next-view-body="sessions"]');
   if (!root) return { missing: true, text: norm(document.body).slice(0, 200) };
   return {
     header: norm(root.querySelector('.next-operations-header')),
-    fleet: [...root.querySelectorAll('[data-next-fleet-fact]')].map(node => [node.dataset.nextFleetFact, norm(node)]),
-    groups: [...root.querySelectorAll('[data-next-operation-group]')].map(group => ({
+    fleet: [...root.querySelectorAll('[data-next-fleet-fact]')].map((node) => [
+      node.dataset.nextFleetFact,
+      norm(node),
+    ]),
+    groups: [...root.querySelectorAll('[data-next-operation-group]')].map((group) => ({
       kind: group.dataset.nextOperationGroup,
       header: norm(group.querySelector(':scope > header')),
-      empty: group.querySelector('.next-sessions-empty') ? norm(group.querySelector('.next-sessions-empty')) : null,
-      rows: [...group.querySelectorAll('article.next-operation-row')].map(row => {
+      empty: group.querySelector('.next-sessions-empty')
+        ? norm(group.querySelector('.next-sessions-empty'))
+        : null,
+      rows: [...group.querySelectorAll('article.next-operation-row')].map((row) => {
         const route = row.querySelector('a.next-operation-route');
         return {
           harness: row.dataset.nextHarness,
           sid: row.dataset.nextSession,
           history: row.dataset.nextOperationHistory === 'true',
-          tone: [...row.classList].find(name => name.startsWith('next-operation-row--')) || '',
+          tone: [...row.classList].find((name) => name.startsWith('next-operation-row--')) || '',
           href: route ? route.getAttribute('href') : null,
           aria: route ? route.getAttribute('aria-label') : null,
           text: norm(row),
-          buttons: [...row.querySelectorAll('button')].map(button => button.getAttribute('aria-label')),
+          buttons: [...row.querySelectorAll('button')].map((button) =>
+            button.getAttribute('aria-label'),
+          ),
         };
       }),
     })),
@@ -82,46 +100,84 @@ const summarizeList = () => {
 };
 
 const summarizeDetail = () => {
-  const norm = node => (node ? node.textContent.replace(/\s+/g, ' ').trim() : '');
+  const norm = (node) => (node ? node.textContent.replace(/\s+/g, ' ').trim() : '');
   const { document } = globalThis;
   const empty = document.querySelector('.next-session-detail-empty');
   const article = document.querySelector('article.next-session-detail');
   if (!article) {
-    return { empty: empty ? { state: empty.getAttribute('data-next-session-state'), text: norm(empty), links: [...empty.querySelectorAll('a')].map(a => a.getAttribute('href')) } : { missing: true } };
+    return {
+      empty: empty
+        ? {
+            state: empty.getAttribute('data-next-session-state'),
+            text: norm(empty),
+            links: [...empty.querySelectorAll('a')].map((a) => a.getAttribute('href')),
+          }
+        : { missing: true },
+    };
   }
   const clone = article.cloneNode(true);
   // The Intent panel and its pill are the Intent step's, and a stated slot on the React page.
   clone.querySelector('.next-session-panel')?.remove();
-  clone.querySelectorAll('[data-next-drift-pill]').forEach(node => node.remove());
+  clone.querySelectorAll('[data-next-drift-pill]').forEach((node) => node.remove());
   // The activity column, child by child, for the parts this step owns. The activity list the panel feeds is not one.
-  const own = ['.next-session-activity-heading', '.next-session-command-surface', '[data-next-session-subagents]', 'dl.next-session-facts', 'details.next-session-facts-more',
-    '.next-session-evidence', '.next-session-health', '[data-next-session-section="tasks"]', '[data-next-command-reports]', '.next-session-delivery', '.next-cockpit-landed', '.next-cockpit-departures-kept'];
-  const parts = [...clone.querySelector('.next-session-activity').children].map(child => {
-    const hit = own.find(selector => child.matches(selector));
-    return hit ? [hit, norm(child)] : null;
-  }).filter(Boolean);
+  const own = [
+    '.next-session-activity-heading',
+    '.next-session-command-surface',
+    '[data-next-session-subagents]',
+    'dl.next-session-facts',
+    'details.next-session-facts-more',
+    '.next-session-evidence',
+    '.next-session-health',
+    '[data-next-session-section="tasks"]',
+    '[data-next-command-reports]',
+    '.next-session-delivery',
+    '.next-cockpit-landed',
+    '.next-cockpit-departures-kept',
+  ];
+  const parts = [...clone.querySelector('.next-session-activity').children]
+    .map((child) => {
+      const hit = own.find((selector) => child.matches(selector));
+      return hit ? [hit, norm(child)] : null;
+    })
+    .filter(Boolean);
   const header = clone.querySelector('.next-session-detail-header');
   // The legacy measured line ends in the activity list's own count, which the list that is not drawn here carries.
   const meta = header.querySelector('.next-session-detail-meta');
   if (meta) meta.textContent = meta.textContent.replace(/ · \d+ entr(?:y|ies)\b/, '');
   const ask = clone.querySelector('[data-next-session-section="ask"]');
   return {
-    attrs: [article.getAttribute('data-next-session-detail'), article.getAttribute('data-next-session-state'), article.getAttribute('data-tone'), article.classList.contains('next-session-detail--blocked')],
+    attrs: [
+      article.getAttribute('data-next-session-detail'),
+      article.getAttribute('data-next-session-state'),
+      article.getAttribute('data-tone'),
+      article.classList.contains('next-session-detail--blocked'),
+    ],
     header: norm(header),
-    headerLinks: [...header.querySelectorAll('a')].map(a => a.getAttribute('href')),
-    headerButtons: [...header.querySelectorAll('button')].map(button => button.getAttribute('aria-label')),
+    headerLinks: [...header.querySelectorAll('a')].map((a) => a.getAttribute('href')),
+    headerButtons: [...header.querySelectorAll('button')].map((button) =>
+      button.getAttribute('aria-label'),
+    ),
     ask: ask ? norm(ask) : null,
-    answers: [...clone.querySelectorAll('[data-next-answer]')].map(button => `${button.getAttribute('data-next-answer')}#${button.getAttribute('data-next-answer-index')}:${norm(button)}`),
+    answers: [...clone.querySelectorAll('[data-next-answer]')].map(
+      (button) =>
+        `${button.getAttribute('data-next-answer')}#${button.getAttribute('data-next-answer-index')}:${norm(button)}`,
+    ),
     parts,
     footer: norm(clone.querySelector('.next-session-footer')),
   };
 };
 
 /* ---- pages ---- */
-const legacyReady = page => page.waitForFunction('typeof nextData !== "undefined" && nextData !== null');
-const reactReady = page => page.waitForFunction(() =>
-  globalThis.document.querySelector('nav[aria-label="Primary"]') &&
-  !/Waiting for the first board|first payload has not arrived/.test(globalThis.document.body.innerText));
+const legacyReady = (page) =>
+  page.waitForFunction('typeof nextData !== "undefined" && nextData !== null');
+const reactReady = (page) =>
+  page.waitForFunction(
+    () =>
+      globalThis.document.querySelector('nav[aria-label="Primary"]') &&
+      !/Waiting for the first board|first payload has not arrived/.test(
+        globalThis.document.body.innerText,
+      ),
+  );
 
 async function load(opened, origin, kind, fragment = '') {
   await opened.page.goto('about:blank');
@@ -133,12 +189,26 @@ async function load(opened, origin, kind, fragment = '') {
 /* One payload for both pages, so they share one clock: every read of /api/data answers it, and the stream is
    refused so nothing else moves. */
 async function freeze(opened, holder) {
-  await opened.page.route('**/api/data*', route => route.fulfill({ status: 200, contentType: 'application/json', headers: { 'X-Cargento-Revision': '7.1' }, body: JSON.stringify(holder.body) }));
-  await opened.page.route('**/api/stream', route => route.abort('failed'));
+  await opened.page.route('**/api/data*', (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      headers: { 'X-Cargento-Revision': '7.1' },
+      body: JSON.stringify(holder.body),
+    }),
+  );
+  await opened.page.route('**/api/stream', (route) => route.abort('failed'));
 }
 
-const sessionFragment = row => `#n=session:${E(row.project ?? '')}:${E(row.harness)}:${E(row.sid)}`;
-const routable = row => row && typeof row === 'object' && typeof row.harness === 'string' && row.harness && typeof row.sid === 'string' && row.sid;
+const sessionFragment = (row) =>
+  `#n=session:${E(row.project ?? '')}:${E(row.harness)}:${E(row.sid)}`;
+const routable = (row) =>
+  row &&
+  typeof row === 'object' &&
+  typeof row.harness === 'string' &&
+  row.harness &&
+  typeof row.sid === 'string' &&
+  row.sid;
 
 function firstDifference(left, right, path = '$') {
   if (JSON.stringify(left) === JSON.stringify(right)) return null;
@@ -160,7 +230,11 @@ const reactOrigins = [board.react.origin, board.react.viteOrigin];
 const shots = [];
 const opened = [];
 async function newPage(kind, options = {}) {
-  const page = await openPage(browser, kind === 'legacy' ? board.legacy.origin : reactOrigins, options);
+  const page = await openPage(
+    browser,
+    kind === 'legacy' ? board.legacy.origin : reactOrigins,
+    options,
+  );
   await recordClipboard(page.context);
   await instrumentResources(page.context);
   opened.push(page);
@@ -177,306 +251,517 @@ try {
   await freeze(react, holder);
 
   /* ===================== DIFFERENTIAL: the real board ===================== */
-  await step('differential: the real board reads the same on both pages, group by group and row by row', async () => {
-    await load(legacy, board.legacy.origin, 'legacy', '#n=sessions');
-    await load(react, board.react.origin, 'react', '#n=sessions');
-    const [old, mine] = [await legacy.page.evaluate(summarizeList), await react.page.evaluate(summarizeList)];
-    assert.ok(old.groups?.length === 2 && mine.groups?.length === 2, 'both pages draw both groups');
-    const rowCount = mine.groups.reduce((sum, group) => sum + group.rows.length, 0);
-    assert.ok(rowCount >= 12, `the real board carries its sessions (${rowCount})`);
-    assert.equal(firstDifference(old, mine), null);
-    return { rows: rowCount, active: mine.groups[0].rows.map(row => `${row.harness}/${row.sid}`), history: mine.groups[1].rows.length };
-  });
-
-  await step('differential: every session of the real board has the same page, reached by its one-step link', async () => {
-    const rows = real.sessions.filter(routable);
-    const compared = [];
-    for (const row of rows) {
-      const fragment = sessionFragment(row);
-      await load(legacy, board.legacy.origin, 'legacy', fragment);
-      await load(react, board.react.origin, 'react', fragment);
-      const [old, mine] = [await legacy.page.evaluate(summarizeDetail), await react.page.evaluate(summarizeDetail)];
-      const found = firstDifference(old, mine);
-      assert.equal(found, null, `${row.harness}/${row.sid}: ${found}`);
-      compared.push(`${row.harness}/${row.sid}`);
-    }
-    return { compared: compared.length };
-  });
-
-  await step('differential: a row’s link opens its exact session, with the origin stamped, on both pages', async () => {
-    const hashes = {};
-    for (const [name, origin, kind, opened_] of [['legacy', board.legacy.origin, 'legacy', legacy], ['react', board.react.origin, 'react', react]]) {
-      await load(opened_, origin, kind, '#n=sessions');
-      const link = opened_.page.locator('article.next-operation-row[data-next-harness="codex"][data-next-session="colon:sid"] a.next-operation-route');
-      await link.click();
-      await opened_.page.waitForFunction(() => globalThis.location.hash.includes('session:'));
-      hashes[name] = await opened_.page.evaluate(() => globalThis.location.hash);
-    }
-    assert.equal(hashes.react, hashes.legacy);
-    assert.equal(hashes.react, `#n=session:${E('beta/api')}:codex:${E('colon:sid')}&from=sessions`);
-    return hashes.react;
-  });
-
-  /* ===================== DIFFERENTIAL: generated payloads ===================== */
-  await step(`differential: ${SEEDS} generated payloads read the same, lists and pages`, async () => {
-    let lists = 0;
-    let pages = 0;
-    for (let seed = 1; seed <= SEEDS; seed += 1) {
-      holder.body = genPayload(seed, { wellFormed: true });
+  await step(
+    'differential: the real board reads the same on both pages, group by group and row by row',
+    async () => {
       await load(legacy, board.legacy.origin, 'legacy', '#n=sessions');
       await load(react, board.react.origin, 'react', '#n=sessions');
-      const [old, mine] = [await legacy.page.evaluate(summarizeList), await react.page.evaluate(summarizeList)];
-      const found = firstDifference(old, mine);
-      if (found && !DEVIATIONS.some(d => d.seed === seed && d.scope === 'list')) assert.fail(`seed ${seed} list: ${found}`);
-      lists += 1;
-      const rows = (Array.isArray(holder.body.sessions) ? holder.body.sessions : []).filter(routable).slice(0, 2);
+      const [old, mine] = [
+        await legacy.page.evaluate(summarizeList),
+        await react.page.evaluate(summarizeList),
+      ];
+      assert.ok(
+        old.groups?.length === 2 && mine.groups?.length === 2,
+        'both pages draw both groups',
+      );
+      const rowCount = mine.groups.reduce((sum, group) => sum + group.rows.length, 0);
+      assert.ok(rowCount >= 12, `the real board carries its sessions (${rowCount})`);
+      assert.equal(firstDifference(old, mine), null);
+      return {
+        rows: rowCount,
+        active: mine.groups[0].rows.map((row) => `${row.harness}/${row.sid}`),
+        history: mine.groups[1].rows.length,
+      };
+    },
+  );
+
+  await step(
+    'differential: every session of the real board has the same page, reached by its one-step link',
+    async () => {
+      const rows = real.sessions.filter(routable);
+      const compared = [];
       for (const row of rows) {
         const fragment = sessionFragment(row);
         await load(legacy, board.legacy.origin, 'legacy', fragment);
         await load(react, board.react.origin, 'react', fragment);
-        const [oldPage, minePage] = [await legacy.page.evaluate(summarizeDetail), await react.page.evaluate(summarizeDetail)];
-        const detail = firstDifference(oldPage, minePage);
-        if (detail && !DEVIATIONS.some(d => d.seed === seed && d.scope === 'detail')) assert.fail(`seed ${seed} ${row.harness}/${row.sid}: ${detail}`);
-        pages += 1;
+        const [old, mine] = [
+          await legacy.page.evaluate(summarizeDetail),
+          await react.page.evaluate(summarizeDetail),
+        ];
+        const found = firstDifference(old, mine);
+        assert.equal(found, null, `${row.harness}/${row.sid}: ${found}`);
+        compared.push(`${row.harness}/${row.sid}`);
       }
-    }
-    holder.body = real;
-    return { lists, pages };
-  });
+      return { compared: compared.length };
+    },
+  );
 
-  await step('differential: hostile text is text on both pages, and draws no element, selector or script', async () => {
-    // A NUL is left out of the comparison on purpose: the legacy page builds HTML text, whose parser turns it into
-    // U+FFFD, where this page sets the attribute and keeps the exact identity. Checked on its own below.
-    const hostile = ['"]\'><img src=x onerror=globalThis.__hit=1>', '<script>globalThis.__hit=1</script>', '`${1+1}`', '\u202eRTL'];
-    const body = {
-      generated: real.generated,
-      sessions: hostile.map((text, index) => ({ harness: 'claude', sid: `s${index}:${text}`, project: text, title: text, state: 'working', active: true, last_prompt: text, state_detail: text })),
-    };
-    holder.body = body;
-    await load(legacy, board.legacy.origin, 'legacy', '#n=sessions');
-    await load(react, board.react.origin, 'react', '#n=sessions');
-    const [old, mine] = [await legacy.page.evaluate(summarizeList), await react.page.evaluate(summarizeList)];
-    assert.equal(firstDifference(old, mine), null);
-    assert.equal(await react.page.evaluate(() => globalThis.__hit), undefined, 'no handler ran');
-    assert.equal(await react.page.locator('main img, main script').count(), 0, 'no element was injected');
-    const first = body.sessions[0];
-    await load(react, board.react.origin, 'react', sessionFragment(first));
-    assert.ok(await react.page.locator('article.next-session-detail').count(), 'a session with hostile characters in its id still opens');
-    holder.body = { generated: real.generated, sessions: [{ harness: 'claude', sid: 'a\u0000b', project: 'p', title: 'NUL', state: 'idle' }] };
-    await load(react, board.react.origin, 'react', '#n=sessions');
-    assert.equal(await react.page.locator('article.next-operation-row').first().getAttribute('data-next-session'), 'a\u0000b', 'the identity is kept exactly');
-    holder.body = real;
-  });
+  await step(
+    'differential: a row’s link opens its exact session, with the origin stamped, on both pages',
+    async () => {
+      const hashes = {};
+      for (const [name, origin, kind, opened_] of [
+        ['legacy', board.legacy.origin, 'legacy', legacy],
+        ['react', board.react.origin, 'react', react],
+      ]) {
+        await load(opened_, origin, kind, '#n=sessions');
+        const link = opened_.page.locator(
+          'article.next-operation-row[data-next-harness="codex"][data-next-session="colon:sid"] a.next-operation-route',
+        );
+        await link.click();
+        await opened_.page.waitForFunction(() => globalThis.location.hash.includes('session:'));
+        hashes[name] = await opened_.page.evaluate(() => globalThis.location.hash);
+      }
+      assert.equal(hashes.react, hashes.legacy);
+      assert.equal(
+        hashes.react,
+        `#n=session:${E('beta/api')}:codex:${E('colon:sid')}&from=sessions`,
+      );
+      return hashes.react;
+    },
+  );
+
+  /* ===================== DIFFERENTIAL: generated payloads ===================== */
+  await step(
+    `differential: ${SEEDS} generated payloads read the same, lists and pages`,
+    async () => {
+      let lists = 0;
+      let pages = 0;
+      for (let seed = 1; seed <= SEEDS; seed += 1) {
+        holder.body = genPayload(seed, { wellFormed: true });
+        await load(legacy, board.legacy.origin, 'legacy', '#n=sessions');
+        await load(react, board.react.origin, 'react', '#n=sessions');
+        const [old, mine] = [
+          await legacy.page.evaluate(summarizeList),
+          await react.page.evaluate(summarizeList),
+        ];
+        const found = firstDifference(old, mine);
+        if (found && !DEVIATIONS.some((d) => d.seed === seed && d.scope === 'list'))
+          assert.fail(`seed ${seed} list: ${found}`);
+        lists += 1;
+        const rows = (Array.isArray(holder.body.sessions) ? holder.body.sessions : [])
+          .filter(routable)
+          .slice(0, 2);
+        for (const row of rows) {
+          const fragment = sessionFragment(row);
+          await load(legacy, board.legacy.origin, 'legacy', fragment);
+          await load(react, board.react.origin, 'react', fragment);
+          const [oldPage, minePage] = [
+            await legacy.page.evaluate(summarizeDetail),
+            await react.page.evaluate(summarizeDetail),
+          ];
+          const detail = firstDifference(oldPage, minePage);
+          if (detail && !DEVIATIONS.some((d) => d.seed === seed && d.scope === 'detail'))
+            assert.fail(`seed ${seed} ${row.harness}/${row.sid}: ${detail}`);
+          pages += 1;
+        }
+      }
+      holder.body = real;
+      return { lists, pages };
+    },
+  );
+
+  await step(
+    'differential: hostile text is text on both pages, and draws no element, selector or script',
+    async () => {
+      // A NUL is left out of the comparison on purpose: the legacy page builds HTML text, whose parser turns it into
+      // U+FFFD, where this page sets the attribute and keeps the exact identity. Checked on its own below.
+      const hostile = [
+        '"]\'><img src=x onerror=globalThis.__hit=1>',
+        '<script>globalThis.__hit=1</script>',
+        '`${1+1}`',
+        '\u202eRTL',
+      ];
+      const body = {
+        generated: real.generated,
+        sessions: hostile.map((text, index) => ({
+          harness: 'claude',
+          sid: `s${index}:${text}`,
+          project: text,
+          title: text,
+          state: 'working',
+          active: true,
+          last_prompt: text,
+          state_detail: text,
+        })),
+      };
+      holder.body = body;
+      await load(legacy, board.legacy.origin, 'legacy', '#n=sessions');
+      await load(react, board.react.origin, 'react', '#n=sessions');
+      const [old, mine] = [
+        await legacy.page.evaluate(summarizeList),
+        await react.page.evaluate(summarizeList),
+      ];
+      assert.equal(firstDifference(old, mine), null);
+      assert.equal(await react.page.evaluate(() => globalThis.__hit), undefined, 'no handler ran');
+      assert.equal(
+        await react.page.locator('main img, main script').count(),
+        0,
+        'no element was injected',
+      );
+      const first = body.sessions[0];
+      await load(react, board.react.origin, 'react', sessionFragment(first));
+      assert.ok(
+        await react.page.locator('article.next-session-detail').count(),
+        'a session with hostile characters in its id still opens',
+      );
+      holder.body = {
+        generated: real.generated,
+        sessions: [
+          { harness: 'claude', sid: 'a\u0000b', project: 'p', title: 'NUL', state: 'idle' },
+        ],
+      };
+      await load(react, board.react.origin, 'react', '#n=sessions');
+      assert.equal(
+        await react.page
+          .locator('article.next-operation-row')
+          .first()
+          .getAttribute('data-next-session'),
+        'a\u0000b',
+        'the identity is kept exactly',
+      );
+      holder.body = real;
+    },
+  );
 
   /* ===================== BEHAVIOUR: resources and StrictMode ===================== */
-  await step('resources: a page load opens one stream and reads once, under StrictMode, and navigation adds nothing', async () => {
-    const live = await newPage('react');
-    try {
-      await live.page.goto(board.react.origin + '/#n=sessions');
-      await reactReady(live.page);
-      await live.page.waitForTimeout(patience(500));
-      const first = { counts: live.counts(), res: await resources(live.page) };
-      // The boot read, plus the stream's first announcement when it lands inside the wait: both are the page's own.
-      assert.ok(first.counts.data >= 1 && first.counts.data <= 2, `boot read, saw ${first.counts.data}`);
-      assert.equal(first.counts.stream, 1, 'one stream');
-      assert.equal(first.counts.nonGet, 0, 'nothing but reads');
-      assert.deepEqual([first.res.opened, first.res.closed, first.res.sources], [1, 0, 1], 'one EventSource opened, none closed');
-      for (let round = 0; round < 6; round += 1) {
-        await live.page.locator('article.next-operation-row a.next-operation-route').first().click();
-        await live.page.waitForSelector('article.next-session-detail');
-        await live.page.goBack();
-        await live.page.waitForSelector('[data-next-view-body="sessions"]');
+  await step(
+    'resources: a page load opens one stream and reads once, under StrictMode, and navigation adds nothing',
+    async () => {
+      const live = await newPage('react');
+      try {
+        await live.page.goto(board.react.origin + '/#n=sessions');
+        await reactReady(live.page);
+        await live.page.waitForTimeout(patience(500));
+        const first = { counts: live.counts(), res: await resources(live.page) };
+        // The boot read, plus the stream's first announcement when it lands inside the wait: both are the page's own.
+        assert.ok(
+          first.counts.data >= 1 && first.counts.data <= 2,
+          `boot read, saw ${first.counts.data}`,
+        );
+        assert.equal(first.counts.stream, 1, 'one stream');
+        assert.equal(first.counts.nonGet, 0, 'nothing but reads');
+        assert.deepEqual(
+          [first.res.opened, first.res.closed, first.res.sources],
+          [1, 0, 1],
+          'one EventSource opened, none closed',
+        );
+        for (let round = 0; round < 6; round += 1) {
+          await live.page
+            .locator('article.next-operation-row a.next-operation-route')
+            .first()
+            .click();
+          await live.page.waitForSelector('article.next-session-detail');
+          await live.page.goBack();
+          await live.page.waitForSelector('[data-next-view-body="sessions"]');
+        }
+        await live.page.waitForTimeout(patience(400));
+        const after = { counts: live.counts(), res: await resources(live.page) };
+        assert.equal(after.counts.stream, 1, 'navigation opened no second stream');
+        // Twelve view changes that each read would add twelve; one late announcement can still arrive on a slow runner.
+        assert.ok(
+          after.counts.data <= first.counts.data + 1,
+          `navigation read ${after.counts.data - first.counts.data} more times`,
+        );
+        assert.equal(after.counts.nonGet, 0);
+        assert.deepEqual([after.res.opened, after.res.closed, after.res.sources], [1, 0, 1]);
+        assert.ok(
+          after.res.intervals <= first.res.intervals,
+          `intervals settled (${first.res.intervals} -> ${after.res.intervals})`,
+        );
+        assert.deepEqual(live.log.consoleErrors, []);
+        assert.deepEqual(live.log.pageErrors, []);
+        assert.deepEqual(live.log.externalRequests, []);
+        return {
+          first: { ...first.counts, ...first.res },
+          after: { ...after.counts, ...after.res },
+        };
+      } finally {
+        await live.close();
       }
-      await live.page.waitForTimeout(patience(400));
-      const after = { counts: live.counts(), res: await resources(live.page) };
-      assert.equal(after.counts.stream, 1, 'navigation opened no second stream');
-      // Twelve view changes that each read would add twelve; one late announcement can still arrive on a slow runner.
-      assert.ok(after.counts.data <= first.counts.data + 1, `navigation read ${after.counts.data - first.counts.data} more times`);
-      assert.equal(after.counts.nonGet, 0);
-      assert.deepEqual([after.res.opened, after.res.closed, after.res.sources], [1, 0, 1]);
-      assert.ok(after.res.intervals <= first.res.intervals, `intervals settled (${first.res.intervals} -> ${after.res.intervals})`);
-      assert.deepEqual(live.log.consoleErrors, []);
-      assert.deepEqual(live.log.pageErrors, []);
-      assert.deepEqual(live.log.externalRequests, []);
-      return { first: { ...first.counts, ...first.res }, after: { ...after.counts, ...after.res } };
-    } finally { await live.close(); }
-  });
+    },
+  );
 
   /* ===================== BEHAVIOUR: answering a held request ===================== */
-  await step('answer: one numeric index goes to the real route by keyboard, the request leaves the board, and no model is called', async () => {
-    const live = await newPage('react');
-    try {
-      const gate = real.sessions.find(row => row.sid === 'gate-open');
-      await live.page.goto(board.react.origin + '/' + sessionFragment(gate));
-      await reactReady(live.page);
-      await live.page.waitForSelector('[data-next-answer]');
-      const options = await live.page.locator('[data-next-answer]').allInnerTexts();
-      assert.deepEqual(options, ['Yes, run it', 'No, stop', 'Ask me later'], 'every option, in order');
-      assert.equal(live.counts().nonGet, 0, 'nothing posted before a press');
-      await live.page.locator('[data-next-answer-index="1"]').focus();
-      const posted = live.page.waitForRequest(request => request.url().endsWith('/api/answer'));
-      await live.page.keyboard.press('Enter');
-      const request = await posted;
-      const body = JSON.parse(request.postData());
-      assert.deepEqual(Object.keys(body).sort(), ['id', 'index']);
-      assert.equal(body.index, 1);
-      assert.equal(typeof body.index, 'number');
-      assert.equal(body.id, real.asks.find(ask => ask.session_id === 'gate-open').id);
-      await live.page.waitForSelector('[data-next-session-ask]', { state: 'detached', timeout: 8000 });
-      const after = await live.page.locator('article.next-session-detail').innerText();
-      assert.ok(!after.includes('ASKED YOU'), 'the question left with the next board');
-      assert.deepEqual(live.log.nonGet, [{ method: 'POST', path: '/api/answer' }], 'one answer and nothing else');
-      return { index: body.index, sent: Object.keys(body) };
-    } finally { await live.close(); }
-  });
+  await step(
+    'answer: one numeric index goes to the real route by keyboard, the request leaves the board, and no model is called',
+    async () => {
+      const live = await newPage('react');
+      try {
+        const gate = real.sessions.find((row) => row.sid === 'gate-open');
+        await live.page.goto(board.react.origin + '/' + sessionFragment(gate));
+        await reactReady(live.page);
+        await live.page.waitForSelector('[data-next-answer]');
+        const options = await live.page.locator('[data-next-answer]').allInnerTexts();
+        assert.deepEqual(
+          options,
+          ['Yes, run it', 'No, stop', 'Ask me later'],
+          'every option, in order',
+        );
+        assert.equal(live.counts().nonGet, 0, 'nothing posted before a press');
+        await live.page.locator('[data-next-answer-index="1"]').focus();
+        const posted = live.page.waitForRequest((request) => request.url().endsWith('/api/answer'));
+        await live.page.keyboard.press('Enter');
+        const request = await posted;
+        const body = JSON.parse(request.postData());
+        assert.deepEqual(Object.keys(body).sort(), ['id', 'index']);
+        assert.equal(body.index, 1);
+        assert.equal(typeof body.index, 'number');
+        assert.equal(body.id, real.asks.find((ask) => ask.session_id === 'gate-open').id);
+        await live.page.waitForSelector('[data-next-session-ask]', {
+          state: 'detached',
+          timeout: 8000,
+        });
+        const after = await live.page.locator('article.next-session-detail').innerText();
+        assert.ok(!after.includes('ASKED YOU'), 'the question left with the next board');
+        assert.deepEqual(
+          live.log.nonGet,
+          [{ method: 'POST', path: '/api/answer' }],
+          'one answer and nothing else',
+        );
+        return { index: body.index, sent: Object.keys(body) };
+      } finally {
+        await live.close();
+      }
+    },
+  );
 
-  await step('answer: a card another tab already answered says no confirmation came back, and keeps the question', async () => {
-    const live = await newPage('react');
-    try {
-      const asked = real.sessions.find(row => row.sid === 'spacedock-asked');
-      const ask = real.asks.find(item => item.session_id === 'spacedock-asked');
-      await live.page.goto(board.react.origin + '/' + sessionFragment(asked));
-      await reactReady(live.page);
-      await live.page.waitForSelector('[data-next-answer]');
-      // The answer another tab gave, straight to the route.
-      const other = await fetch(board.react.origin + '/api/answer', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: ask.id, index: 0 }) });
-      assert.equal((await other.json()).answered, true);
-      // This tab still holds the card: the stream is refused for it so it cannot learn otherwise before the press.
-      await live.page.route('**/api/data*', route => route.abort('failed'));
-      await live.page.locator('[data-next-answer-index="1"]').click();
-      await live.page.waitForSelector('.next-session-answer-failure');
-      assert.equal(await live.page.locator('.next-session-answer-failure').innerText(), 'no confirmation came back — it may already have been answered');
-      assert.ok(await live.page.locator('[data-next-session-ask]').count(), 'the question stays until the board says otherwise');
-      assert.equal(await live.page.locator('[data-next-pending]').count(), 0, 'the control is no longer busy');
-    } finally { await live.close(); }
-  });
+  await step(
+    'answer: a card another tab already answered says no confirmation came back, and keeps the question',
+    async () => {
+      const live = await newPage('react');
+      try {
+        const asked = real.sessions.find((row) => row.sid === 'spacedock-asked');
+        const ask = real.asks.find((item) => item.session_id === 'spacedock-asked');
+        await live.page.goto(board.react.origin + '/' + sessionFragment(asked));
+        await reactReady(live.page);
+        await live.page.waitForSelector('[data-next-answer]');
+        // The answer another tab gave, straight to the route.
+        const other = await fetch(board.react.origin + '/api/answer', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id: ask.id, index: 0 }),
+        });
+        assert.equal((await other.json()).answered, true);
+        // This tab still holds the card: the stream is refused for it so it cannot learn otherwise before the press.
+        await live.page.route('**/api/data*', (route) => route.abort('failed'));
+        await live.page.locator('[data-next-answer-index="1"]').click();
+        await live.page.waitForSelector('.next-session-answer-failure');
+        assert.equal(
+          await live.page.locator('.next-session-answer-failure').innerText(),
+          'no confirmation came back — it may already have been answered',
+        );
+        assert.ok(
+          await live.page.locator('[data-next-session-ask]').count(),
+          'the question stays until the board says otherwise',
+        );
+        assert.equal(
+          await live.page.locator('[data-next-pending]').count(),
+          0,
+          'the control is no longer busy',
+        );
+      } finally {
+        await live.close();
+      }
+    },
+  );
 
   /* ===================== BEHAVIOUR: a redraw leaves the reader's place alone ===================== */
   async function clocked(fragment) {
     const o = await newPage('react');
     const state = { body: real };
     await o.page.clock.install({ time: Date.now() });
-    await o.page.route('**/api/data*', route => route.fulfill({ status: 200, contentType: 'application/json', headers: { 'X-Cargento-Revision': '7.1' }, body: JSON.stringify(state.body) }));
-    await o.page.route('**/api/stream', route => route.abort('failed'));
+    await o.page.route('**/api/data*', (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        headers: { 'X-Cargento-Revision': '7.1' },
+        body: JSON.stringify(state.body),
+      }),
+    );
+    await o.page.route('**/api/stream', (route) => route.abort('failed'));
     await o.page.goto(board.react.origin + '/' + fragment);
     await reactReady(o.page);
     await o.page.waitForTimeout(patience(300));
     o.state = state;
-    o.poll = async () => { await o.page.clock.fastForward(20_000); await o.page.waitForTimeout(patience(300)); };
+    o.poll = async () => {
+      await o.page.clock.fastForward(20_000);
+      await o.page.waitForTimeout(patience(300));
+    };
     return o;
   }
 
-  await step('continuity: nodes, an open caveat, focus and scroll survive a poll that changes the rows', async () => {
-    const o = await clocked('#n=sessions');
-    try {
-      await o.page.addStyleTag({ content: '#app{min-height:3200px}' });
-      await o.page.getByText('How rows are split').click();
-      await o.page.evaluate(() => {
-        const row = globalThis.document.querySelector('article[data-next-session="live-work"]');
-        row.__mark = 'kept';
-        const link = globalThis.document.querySelector('article[data-next-session="live-work"] a.next-operation-route');
-        link.focus();
-        globalThis.scrollTo(0, 420);
-        globalThis.__linkTop = Math.round(link.getBoundingClientRect().top);
-      });
-      o.state.body = { ...real, generated: real.generated + 25, sessions: real.sessions.map(row => (row.sid === 'live-work' ? { ...row, tasks: [{ id: '2', subject: 'A different step', status: 'in_progress' }] } : row)) };
-      await o.poll();
-      const kept = await o.page.evaluate(() => ({
-        mark: globalThis.document.querySelector('article[data-next-session="live-work"]').__mark,
-        focus: globalThis.document.activeElement?.closest('article')?.dataset.nextSession,
-        linkTop: Math.round(globalThis.document.querySelector('article[data-next-session="live-work"] a.next-operation-route').getBoundingClientRect().top),
-        before: globalThis.__linkTop,
-        open: [...globalThis.document.querySelectorAll('details[open] > summary')].map(summary => summary.textContent),
-        text: globalThis.document.querySelector('article[data-next-session="live-work"]').textContent.includes('A different step'),
-      }));
-      assert.equal(kept.text, true, 'the change reached the row');
-      assert.equal(kept.mark, 'kept', 'the row node was updated, not replaced');
-      assert.equal(kept.focus, 'live-work', 'focus stayed on the link');
-      // The browser's own scroll anchoring may move the scroll offset to keep what the reader is looking at where it
-      // was when a row above it changes height; what must hold is that the focused link did not move on screen.
-      assert.equal(kept.linkTop, kept.before, 'the focused link stayed where it was on screen');
-      assert.deepEqual(kept.open, ['How rows are split'], 'the caveat stayed open');
-      return kept;
-    } finally { await o.close(); }
-  });
+  await step(
+    'continuity: nodes, an open caveat, focus and scroll survive a poll that changes the rows',
+    async () => {
+      const o = await clocked('#n=sessions');
+      try {
+        await o.page.addStyleTag({ content: '#app{min-height:3200px}' });
+        await o.page.getByText('How rows are split').click();
+        await o.page.evaluate(() => {
+          const row = globalThis.document.querySelector('article[data-next-session="live-work"]');
+          row.__mark = 'kept';
+          const link = globalThis.document.querySelector(
+            'article[data-next-session="live-work"] a.next-operation-route',
+          );
+          link.focus();
+          globalThis.scrollTo(0, 420);
+          globalThis.__linkTop = Math.round(link.getBoundingClientRect().top);
+        });
+        o.state.body = {
+          ...real,
+          generated: real.generated + 25,
+          sessions: real.sessions.map((row) =>
+            row.sid === 'live-work'
+              ? { ...row, tasks: [{ id: '2', subject: 'A different step', status: 'in_progress' }] }
+              : row,
+          ),
+        };
+        await o.poll();
+        const kept = await o.page.evaluate(() => ({
+          mark: globalThis.document.querySelector('article[data-next-session="live-work"]').__mark,
+          focus: globalThis.document.activeElement?.closest('article')?.dataset.nextSession,
+          linkTop: Math.round(
+            globalThis.document
+              .querySelector('article[data-next-session="live-work"] a.next-operation-route')
+              .getBoundingClientRect().top,
+          ),
+          before: globalThis.__linkTop,
+          open: [...globalThis.document.querySelectorAll('details[open] > summary')].map(
+            (summary) => summary.textContent,
+          ),
+          text: globalThis.document
+            .querySelector('article[data-next-session="live-work"]')
+            .textContent.includes('A different step'),
+        }));
+        assert.equal(kept.text, true, 'the change reached the row');
+        assert.equal(kept.mark, 'kept', 'the row node was updated, not replaced');
+        assert.equal(kept.focus, 'live-work', 'focus stayed on the link');
+        // The browser's own scroll anchoring may move the scroll offset to keep what the reader is looking at where it
+        // was when a row above it changes height; what must hold is that the focused link did not move on screen.
+        assert.equal(kept.linkTop, kept.before, 'the focused link stayed where it was on screen');
+        assert.deepEqual(kept.open, ['How rows are split'], 'the caveat stayed open');
+        return kept;
+      } finally {
+        await o.close();
+      }
+    },
+  );
 
-  await step('continuity: an open popover caveat stays open across a poll, and closes on Escape and on focus leaving', async () => {
-    const o = await clocked('#n=sessions');
-    try {
-      await o.page.getByText('What recent means').click();
-      const open = () => o.page.evaluate(() => [...globalThis.document.querySelectorAll('details[open] > summary')].map(summary => summary.textContent));
-      assert.deepEqual(await open(), ['What recent means']);
-      o.state.body = { ...real, generated: real.generated + 25 };
-      await o.poll();
-      assert.deepEqual(await open(), ['What recent means'], 'a poll did not close it');
-      await o.page.keyboard.press('Escape');
-      assert.deepEqual(await open(), [], 'Escape closed it');
-      await o.page.getByText('What recent means').click();
-      await o.page.locator('article.next-operation-row a.next-operation-route').first().focus();
-      assert.deepEqual(await open(), [], 'focus leaving closed it');
-    } finally { await o.close(); }
-  });
+  await step(
+    'continuity: an open popover caveat stays open across a poll, and closes on Escape and on focus leaving',
+    async () => {
+      const o = await clocked('#n=sessions');
+      try {
+        await o.page.getByText('What recent means').click();
+        const open = () =>
+          o.page.evaluate(() =>
+            [...globalThis.document.querySelectorAll('details[open] > summary')].map(
+              (summary) => summary.textContent,
+            ),
+          );
+        assert.deepEqual(await open(), ['What recent means']);
+        o.state.body = { ...real, generated: real.generated + 25 };
+        await o.poll();
+        assert.deepEqual(await open(), ['What recent means'], 'a poll did not close it');
+        await o.page.keyboard.press('Escape');
+        assert.deepEqual(await open(), [], 'Escape closed it');
+        await o.page.getByText('What recent means').click();
+        await o.page.locator('article.next-operation-row a.next-operation-route').first().focus();
+        assert.deepEqual(await open(), [], 'focus leaving closed it');
+      } finally {
+        await o.close();
+      }
+    },
+  );
 
-  await step('continuity: a selection inside a row, and a session page’s open facts disclosure, survive a poll', async () => {
-    const o = await clocked(`#n=session:${E('alpha/app')}:claude:live-work`);
-    try {
-      await o.page.locator('details.next-session-facts-more > summary').click();
-      await o.page.evaluate(() => {
-        const range = globalThis.document.createRange();
-        const target = globalThis.document.querySelector('.next-session-current > strong');
-        range.selectNodeContents(target);
-        const selection = globalThis.getSelection();
-        selection.removeAllRanges();
-        selection.addRange(range);
-        globalThis.__selected = selection.toString();
-      });
-      o.state.body = { ...real, generated: real.generated + 25 };
-      await o.poll();
-      const after = await o.page.evaluate(() => ({
-        selected: globalThis.getSelection().toString(),
-        open: globalThis.document.querySelector('details.next-session-facts-more').open,
-        before: globalThis.__selected,
-      }));
-      assert.equal(after.open, true, 'the facts disclosure stayed open');
-      // An unrelated update keeps the node whose text did not change, so the selection holds. Where the text
-      // itself changed the selection is the reader's to lose, and the receipt says which it was.
-      return { selectionHeld: after.selected === after.before };
-    } finally { await o.close(); }
-  });
+  await step(
+    'continuity: a selection inside a row, and a session page’s open facts disclosure, survive a poll',
+    async () => {
+      const o = await clocked(`#n=session:${E('alpha/app')}:claude:live-work`);
+      try {
+        await o.page.locator('details.next-session-facts-more > summary').click();
+        await o.page.evaluate(() => {
+          const range = globalThis.document.createRange();
+          const target = globalThis.document.querySelector('.next-session-current > strong');
+          range.selectNodeContents(target);
+          const selection = globalThis.getSelection();
+          selection.removeAllRanges();
+          selection.addRange(range);
+          globalThis.__selected = selection.toString();
+        });
+        o.state.body = { ...real, generated: real.generated + 25 };
+        await o.poll();
+        const after = await o.page.evaluate(() => ({
+          selected: globalThis.getSelection().toString(),
+          open: globalThis.document.querySelector('details.next-session-facts-more').open,
+          before: globalThis.__selected,
+        }));
+        assert.equal(after.open, true, 'the facts disclosure stayed open');
+        // An unrelated update keeps the node whose text did not change, so the selection holds. Where the text
+        // itself changed the selection is the reader's to lose, and the receipt says which it was.
+        return { selectionHeld: after.selected === after.before };
+      } finally {
+        await o.close();
+      }
+    },
+  );
 
   /* ===================== BEHAVIOUR: keyboard ===================== */
-  await step('keyboard: Tab reaches a row’s link, Enter opens the session, Escape returns, on both pages', async () => {
-    const results = {};
-    for (const [name, origin, kind, opened_] of [['legacy', board.legacy.origin, 'legacy', legacy], ['react', board.react.origin, 'react', react]]) {
-      await load(opened_, origin, kind, '#n=sessions');
-      await opened_.page.evaluate(() => { globalThis.document.activeElement?.blur(); });
-      let stops = 0;
-      for (; stops < 40; stops += 1) {
-        await opened_.page.keyboard.press('Tab');
-        const onRoute = await opened_.page.evaluate(() => globalThis.document.activeElement?.matches('a.next-operation-route') === true);
-        if (onRoute) break;
+  await step(
+    'keyboard: Tab reaches a row’s link, Enter opens the session, Escape returns, on both pages',
+    async () => {
+      const results = {};
+      for (const [name, origin, kind, opened_] of [
+        ['legacy', board.legacy.origin, 'legacy', legacy],
+        ['react', board.react.origin, 'react', react],
+      ]) {
+        await load(opened_, origin, kind, '#n=sessions');
+        await opened_.page.evaluate(() => {
+          globalThis.document.activeElement?.blur();
+        });
+        let stops = 0;
+        for (; stops < 40; stops += 1) {
+          await opened_.page.keyboard.press('Tab');
+          const onRoute = await opened_.page.evaluate(
+            () => globalThis.document.activeElement?.matches('a.next-operation-route') === true,
+          );
+          if (onRoute) break;
+        }
+        assert.ok(stops < 40, `${name}: a row link is reachable by Tab`);
+        await opened_.page.keyboard.press('Enter');
+        await opened_.page.waitForFunction(() => globalThis.location.hash.includes('session:'));
+        const opens = await opened_.page.evaluate(() => globalThis.location.hash);
+        await opened_.page.keyboard.press('Escape');
+        await opened_.page.waitForFunction(() => !globalThis.location.hash.includes('session:'));
+        results[name] = {
+          opens,
+          returns: await opened_.page.evaluate(() => globalThis.location.hash),
+        };
       }
-      assert.ok(stops < 40, `${name}: a row link is reachable by Tab`);
-      await opened_.page.keyboard.press('Enter');
-      await opened_.page.waitForFunction(() => globalThis.location.hash.includes('session:'));
-      const opens = await opened_.page.evaluate(() => globalThis.location.hash);
-      await opened_.page.keyboard.press('Escape');
-      await opened_.page.waitForFunction(() => !globalThis.location.hash.includes('session:'));
-      results[name] = { opens, returns: await opened_.page.evaluate(() => globalThis.location.hash) };
-    }
-    assert.deepEqual(results.react, results.legacy);
-    return results.react;
-  });
+      assert.deepEqual(results.react, results.legacy);
+      return results.react;
+    },
+  );
 
-  await step('keyboard: a caveat opens and closes with Enter and Space, and the page reports its state', async () => {
-    await load(react, board.react.origin, 'react', '#n=sessions');
-    const summary = react.page.getByText('How rows are split');
-    await summary.focus();
-    await react.page.keyboard.press('Enter');
-    assert.equal(await react.page.evaluate(() => globalThis.document.activeElement.closest('details').open), true);
-    await react.page.keyboard.press('Space');
-    assert.equal(await react.page.evaluate(() => globalThis.document.activeElement.closest('details').open), false);
-  });
+  await step(
+    'keyboard: a caveat opens and closes with Enter and Space, and the page reports its state',
+    async () => {
+      await load(react, board.react.origin, 'react', '#n=sessions');
+      const summary = react.page.getByText('How rows are split');
+      await summary.focus();
+      await react.page.keyboard.press('Enter');
+      assert.equal(
+        await react.page.evaluate(() => globalThis.document.activeElement.closest('details').open),
+        true,
+      );
+      await react.page.keyboard.press('Space');
+      assert.equal(
+        await react.page.evaluate(() => globalThis.document.activeElement.closest('details').open),
+        false,
+      );
+    },
+  );
 
   /* ===================== BEHAVIOUR: layout ===================== */
   const SHAPES = [
@@ -485,104 +770,189 @@ try {
     { width: 640, height: 800, name: '640', zoom: true },
     { width: 1280, height: 900, name: '1280' },
   ];
-  const overflow = page => page.evaluate(() => ({
-    scroll: globalThis.document.documentElement.scrollWidth,
-    client: globalThis.document.documentElement.clientWidth,
-    wide: [...globalThis.document.querySelectorAll('main *')].filter(node => node.getBoundingClientRect().right > globalThis.document.documentElement.clientWidth + 1 && globalThis.getComputedStyle(node).position !== 'absolute').slice(0, 4).map(node => `${node.tagName}.${node.className}`),
-  }));
+  const overflow = (page) =>
+    page.evaluate(() => ({
+      scroll: globalThis.document.documentElement.scrollWidth,
+      client: globalThis.document.documentElement.clientWidth,
+      wide: [...globalThis.document.querySelectorAll('main *')]
+        .filter(
+          (node) =>
+            node.getBoundingClientRect().right >
+              globalThis.document.documentElement.clientWidth + 1 &&
+            globalThis.getComputedStyle(node).position !== 'absolute',
+        )
+        .slice(0, 4)
+        .map((node) => `${node.tagName}.${node.className}`),
+    }));
 
-  await step('layout: the screen and four session pages wrap at 320, 375, 200% zoom and 1280 with no horizontal page scroll', async () => {
-    const report = {};
-    const fragments = {
-      list: '#n=sessions',
-      'live work': sessionFragment(real.sessions.find(row => row.sid === 'live-work')),
-      'held request': sessionFragment(real.sessions.find(row => row.sid === 'gate-open')),
-      'long turn': sessionFragment(real.sessions.find(row => row.sid === 'long-turn')),
-      delegated: sessionFragment(real.sessions.find(row => row.sid === 'delegated')),
-    };
-    const wide = [];
-    for (const shape of SHAPES) {
-      const context = { viewport: { width: shape.width, height: shape.height } };
-      const pair = {};
-      for (const kind of ['legacy', 'react']) {
-        const o = await newPage(kind, context);
-        pair[kind] = o;
-        await freeze(o, holder);
-      }
-      try {
-        for (const [label, fragment] of Object.entries(fragments)) {
-          for (const kind of ['legacy', 'react']) {
-            await load(pair[kind], kind === 'legacy' ? board.legacy.origin : board.react.origin, kind, fragment);
-            const measured = await overflow(pair[kind].page);
-            const height = await pair[kind].page.evaluate(() => globalThis.document.documentElement.scrollHeight);
-            report[`${shape.name} ${label} ${kind}`] = { ...measured, height };
-            if (kind === 'react' && measured.scroll > measured.client) wide.push(`${shape.name} ${label}: ${JSON.stringify(measured)}`);
-          }
-        }
+  await step(
+    'layout: the screen and four session pages wrap at 320, 375, 200% zoom and 1280 with no horizontal page scroll',
+    async () => {
+      const report = {};
+      const fragments = {
+        list: '#n=sessions',
+        'live work': sessionFragment(real.sessions.find((row) => row.sid === 'live-work')),
+        'held request': sessionFragment(real.sessions.find((row) => row.sid === 'gate-open')),
+        'long turn': sessionFragment(real.sessions.find((row) => row.sid === 'long-turn')),
+        delegated: sessionFragment(real.sessions.find((row) => row.sid === 'delegated')),
+      };
+      const wide = [];
+      for (const shape of SHAPES) {
+        const context = { viewport: { width: shape.width, height: shape.height } };
+        const pair = {};
         for (const kind of ['legacy', 'react']) {
-          await load(pair[kind], kind === 'legacy' ? board.legacy.origin : board.react.origin, kind, '#n=sessions');
-          const name = `sessions-${kind}-${shape.name}.png`;
-          await pair[kind].page.screenshot({ path: SHOTS + name, fullPage: false });
-          shots.push(name);
-          if (shape.name === '375' || shape.name === '1280') {
-            await load(pair[kind], kind === 'legacy' ? board.legacy.origin : board.react.origin, kind, fragments['held request']);
-            const detail = `session-detail-${kind}-${shape.name}.png`;
-            await pair[kind].page.screenshot({ path: SHOTS + detail, fullPage: shape.name === '375' });
-            shots.push(detail);
-          }
+          const o = await newPage(kind, context);
+          pair[kind] = o;
+          await freeze(o, holder);
         }
-      } finally { for (const kind of ['legacy', 'react']) await pair[kind].close(); }
-    }
-    assert.deepEqual(wide, [], 'horizontal page overflow on the React page: ' + wide.join(' | '));
-    return report;
-  });
+        try {
+          for (const [label, fragment] of Object.entries(fragments)) {
+            for (const kind of ['legacy', 'react']) {
+              await load(
+                pair[kind],
+                kind === 'legacy' ? board.legacy.origin : board.react.origin,
+                kind,
+                fragment,
+              );
+              const measured = await overflow(pair[kind].page);
+              const height = await pair[kind].page.evaluate(
+                () => globalThis.document.documentElement.scrollHeight,
+              );
+              report[`${shape.name} ${label} ${kind}`] = { ...measured, height };
+              if (kind === 'react' && measured.scroll > measured.client)
+                wide.push(`${shape.name} ${label}: ${JSON.stringify(measured)}`);
+            }
+          }
+          for (const kind of ['legacy', 'react']) {
+            await load(
+              pair[kind],
+              kind === 'legacy' ? board.legacy.origin : board.react.origin,
+              kind,
+              '#n=sessions',
+            );
+            const name = `sessions-${kind}-${shape.name}.png`;
+            await pair[kind].page.screenshot({ path: SHOTS + name, fullPage: false });
+            shots.push(name);
+            if (shape.name === '375' || shape.name === '1280') {
+              await load(
+                pair[kind],
+                kind === 'legacy' ? board.legacy.origin : board.react.origin,
+                kind,
+                fragments['held request'],
+              );
+              const detail = `session-detail-${kind}-${shape.name}.png`;
+              await pair[kind].page.screenshot({
+                path: SHOTS + detail,
+                fullPage: shape.name === '375',
+              });
+              shots.push(detail);
+            }
+          }
+        } finally {
+          for (const kind of ['legacy', 'react']) await pair[kind].close();
+        }
+      }
+      assert.deepEqual(wide, [], 'horizontal page overflow on the React page: ' + wide.join(' | '));
+      return report;
+    },
+  );
 
-  await step('layout: the React screen is not taller than the legacy one by more than a wrapped line per row', async () => {
-    const heights = {};
-    for (const kind of ['legacy', 'react']) {
-      await load(kind === 'legacy' ? legacy : react, kind === 'legacy' ? board.legacy.origin : board.react.origin, kind, '#n=sessions');
-      heights[kind] = await (kind === 'legacy' ? legacy : react).page.evaluate(() => globalThis.document.documentElement.scrollHeight);
-    }
-    assert.ok(Math.abs(heights.react - heights.legacy) <= 0.12 * heights.legacy, JSON.stringify(heights));
-    return heights;
-  });
+  await step(
+    'layout: the React screen is not taller than the legacy one by more than a wrapped line per row',
+    async () => {
+      const heights = {};
+      for (const kind of ['legacy', 'react']) {
+        await load(
+          kind === 'legacy' ? legacy : react,
+          kind === 'legacy' ? board.legacy.origin : board.react.origin,
+          kind,
+          '#n=sessions',
+        );
+        heights[kind] = await (kind === 'legacy' ? legacy : react).page.evaluate(
+          () => globalThis.document.documentElement.scrollHeight,
+        );
+      }
+      assert.ok(
+        Math.abs(heights.react - heights.legacy) <= 0.12 * heights.legacy,
+        JSON.stringify(heights),
+      );
+      return heights;
+    },
+  );
 
   await step('motion: a running worker’s dot pulses, and stops under reduced motion', async () => {
-    const animation = async reducedMotion => {
+    const animation = async (reducedMotion) => {
       const o = await newPage('react', { reducedMotion });
       try {
-        await o.page.goto(board.react.origin + '/' + sessionFragment(real.sessions.find(row => row.sid === 'live-work')));
+        await o.page.goto(
+          board.react.origin +
+            '/' +
+            sessionFragment(real.sessions.find((row) => row.sid === 'live-work')),
+        );
         await reactReady(o.page);
         await o.page.waitForSelector('.next-session-subagent.next-live');
-        return await o.page.evaluate(() => globalThis.globalThis.getComputedStyle(globalThis.document.querySelector('.next-session-subagent.next-live .next-status-dot')).animationName);
-      } finally { await o.close(); }
+        return await o.page.evaluate(
+          () =>
+            globalThis.globalThis.getComputedStyle(
+              globalThis.document.querySelector(
+                '.next-session-subagent.next-live .next-status-dot',
+              ),
+            ).animationName,
+        );
+      } finally {
+        await o.close();
+      }
     };
     const [on, off] = [await animation('no-preference'), await animation('reduce')];
     assert.notEqual(on, 'none');
     assert.equal(off, 'none');
   });
 
-  await step('copy: a press is recorded, the cue stays on that session’s control across a poll, and the clipboard is the recorder', async () => {
-    const o = await clocked('#n=sessions');
-    try {
-      const button = o.page.locator('article[data-next-harness="claude"][data-next-session="shared-sid"] button[data-copy-kind="id"]');
-      await button.click();
-      await o.page.waitForTimeout(patience(100));
-      assert.deepEqual(await o.page.evaluate(() => globalThis.__copied), ['shared-sid']);
-      assert.equal(await button.getAttribute('data-copy-state'), 'copied');
-      assert.equal(await o.page.locator('article[data-next-harness="codex"][data-next-session="shared-sid"] button[data-copy-kind="id"]').getAttribute('data-copy-state'), null, 'the sid under the other harness is not marked');
-      o.state.body = { ...real, generated: real.generated + 25 };
-      await o.poll();
-      assert.equal(await button.getAttribute('data-copy-state'), 'copied', 'the cue outlived a poll');
-      await o.page.clock.fastForward(31_000);
-      await o.page.waitForTimeout(patience(200));
-      assert.equal(await button.getAttribute('data-copy-state'), null, 'and lapsed at thirty seconds');
-    } finally { await o.close(); }
-  });
+  await step(
+    'copy: a press is recorded, the cue stays on that session’s control across a poll, and the clipboard is the recorder',
+    async () => {
+      const o = await clocked('#n=sessions');
+      try {
+        const button = o.page.locator(
+          'article[data-next-harness="claude"][data-next-session="shared-sid"] button[data-copy-kind="id"]',
+        );
+        await button.click();
+        await o.page.waitForTimeout(patience(100));
+        assert.deepEqual(await o.page.evaluate(() => globalThis.__copied), ['shared-sid']);
+        assert.equal(await button.getAttribute('data-copy-state'), 'copied');
+        assert.equal(
+          await o.page
+            .locator(
+              'article[data-next-harness="codex"][data-next-session="shared-sid"] button[data-copy-kind="id"]',
+            )
+            .getAttribute('data-copy-state'),
+          null,
+          'the sid under the other harness is not marked',
+        );
+        o.state.body = { ...real, generated: real.generated + 25 };
+        await o.poll();
+        assert.equal(
+          await button.getAttribute('data-copy-state'),
+          'copied',
+          'the cue outlived a poll',
+        );
+        await o.page.clock.fastForward(31_000);
+        await o.page.waitForTimeout(patience(200));
+        assert.equal(
+          await button.getAttribute('data-copy-state'),
+          null,
+          'and lapsed at thirty seconds',
+        );
+      } finally {
+        await o.close();
+      }
+    },
+  );
 
   for (const page of opened) {
     // Every page this run opened stayed inside the board's own origins.
-    if (page.log.externalRequests.length) failures.push({ name: 'externals', message: JSON.stringify(page.log.externalRequests) });
+    if (page.log.externalRequests.length)
+      failures.push({ name: 'externals', message: JSON.stringify(page.log.externalRequests) });
   }
 } finally {
   for (const page of opened) await page.close().catch(() => undefined);
@@ -590,7 +960,9 @@ try {
   await board.close();
 }
 
-console.log(JSON.stringify({ sessions: receipts, deviations: DEVIATIONS, screenshots: shots }, null, 2));
+console.log(
+  JSON.stringify({ sessions: receipts, deviations: DEVIATIONS, screenshots: shots }, null, 2),
+);
 if (failures.length) {
   console.error(JSON.stringify({ failures }, null, 2));
   process.exitCode = 1;

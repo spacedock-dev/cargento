@@ -9,7 +9,13 @@ import { ActivityFilter } from './ActivityFilter';
 import { EventRow } from './EventRow';
 import { useTimelineMode } from './modes';
 import { timelineDisclosureKey, timelineFocusKey, type RowScope } from './scope';
-import { eventsForMode, historyEmptyText, type Delegation, type GraphMode, type TimelineEvent } from './semantic';
+import {
+  eventsForMode,
+  historyEmptyText,
+  type Delegation,
+  type GraphMode,
+  type TimelineEvent,
+} from './semantic';
 import { deriveView } from './view';
 import './timeline.css';
 
@@ -62,7 +68,16 @@ function Rows({
     // A repeated fact id is still two rows, and React needs two keys; the disclosure state stays by id.
     const seen = seenIds.get(event.eventId) ?? 0;
     seenIds.set(event.eventId, seen + 1);
-    return <EventRow key={`${event.eventId}#${String(seen)}`} event={event} scope={scope} first={first} generated={generated} harnessLabels={harnessLabels} />;
+    return (
+      <EventRow
+        key={`${event.eventId}#${String(seen)}`}
+        event={event}
+        scope={scope}
+        first={first}
+        generated={generated}
+        harnessLabels={harnessLabels}
+      />
+    );
   });
   const earlier = rows.slice(splitAt);
   return (
@@ -82,7 +97,14 @@ function Rows({
   );
 }
 
-export function Timeline({ project, projectKey, focus, sessions, delegations, defaultMode }: TimelineProps) {
+export function Timeline({
+  project,
+  projectKey,
+  focus,
+  sessions,
+  delegations,
+  defaultMode,
+}: TimelineProps) {
   const { runtime } = useShell();
   const snapshot = useDisplayed((current) => current);
   const exact = focus ? exactIdentity(focus) : null;
@@ -94,15 +116,28 @@ export function Timeline({ project, projectKey, focus, sessions, delegations, de
 
   /* Passive reads, and the only thing this component starts. The runtime makes a repeat for a revision it has
      already settled a no-op, which is what keeps StrictMode and a remount from reading twice. */
+  // biome-ignore lint/correctness/useExhaustiveDependencies: revision is the refetch trigger, not a value the body reads.
   useEffect(() => {
     runtime.loadContext({ projectKey, focus: null });
-    if (focusHarness !== null && focusSid !== null) runtime.loadContext({ projectKey, focus: { harness: focusHarness, sid: focusSid } });
+    if (focusHarness !== null && focusSid !== null)
+      runtime.loadContext({ projectKey, focus: { harness: focusHarness, sid: focusSid } });
   }, [runtime, projectKey, focusHarness, focusSid, revision]);
 
-  const [mode, setMode] = useTimelineMode({ project, session, ...(defaultMode ? { defaultMode } : {}) });
+  const [mode, setMode] = useTimelineMode({
+    project,
+    session,
+    ...(defaultMode ? { defaultMode } : {}),
+  });
   const scope: RowScope = useMemo(() => ({ project, session }), [project, session]);
   const read = useMemo(
-    () => selectContextRead(snapshot, projectKey, focusHarness !== null && focusSid !== null ? { harness: focusHarness, sid: focusSid } : null),
+    () =>
+      selectContextRead(
+        snapshot,
+        projectKey,
+        focusHarness !== null && focusSid !== null
+          ? { harness: focusHarness, sid: focusSid }
+          : null,
+      ),
     [snapshot, projectKey, focusHarness, focusSid],
   );
   const entry = read.entry;
@@ -112,13 +147,25 @@ export function Timeline({ project, projectKey, focus, sessions, delegations, de
   const projectData = projectEntry?.data ?? null;
   const focusState = focus?.state ?? null;
   const view = useMemo(
-    () => (entryData ? deriveView({ data: entryData, projectData, focusHarness, focusSid, focusState, sessions, delegations }) : null),
+    () =>
+      entryData
+        ? deriveView({
+            data: entryData,
+            projectData,
+            focusHarness,
+            focusSid,
+            focusState,
+            sessions,
+            delegations,
+          })
+        : null,
     [entryData, projectData, focusHarness, focusSid, focusState, sessions, delegations],
   );
 
   const harnessLabels = useMemo(() => {
     const labels = new Map<string, string>();
-    for (const harness of selectHarnessSources(snapshot).rows) if (harness.key && harness.label) labels.set(harness.key, harness.label);
+    for (const harness of selectHarnessSources(snapshot).rows)
+      if (harness.key && harness.label) labels.set(harness.key, harness.label);
     return labels;
   }, [snapshot]);
 
@@ -127,7 +174,11 @@ export function Timeline({ project, projectKey, focus, sessions, delegations, de
     return (
       <section className="next-cockpit-semantic" data-next-cockpit-semantic>
         <h2>SEMANTIC TIMELINE</h2>
-        <p className="next-cockpit-empty">{read.state === 'unavailable' ? 'Semantic context unavailable.' : 'Loading semantic context…'}</p>
+        <p className="next-cockpit-empty">
+          {read.state === 'unavailable'
+            ? 'Semantic context unavailable.'
+            : 'Loading semantic context…'}
+        </p>
       </section>
     );
   }
@@ -142,10 +193,22 @@ export function Timeline({ project, projectKey, focus, sessions, delegations, de
         </p>
       ) : null}
       <h2>{heading}</h2>
-      <section className="pc-semantic-timeline" data-order="newest-first" data-model="fact-projection" data-graph-mode={mode}>
+      <section
+        className="pc-semantic-timeline"
+        data-order="newest-first"
+        data-model="fact-projection"
+        data-graph-mode={mode}
+      >
         <ActivityFilter mode={mode} onChoose={setMode} />
         {events.length ? (
-          <Rows events={events} scope={scope} generated={typeof generated === 'number' && Number.isFinite(generated) ? generated : null} harnessLabels={harnessLabels} />
+          <Rows
+            events={events}
+            scope={scope}
+            generated={
+              typeof generated === 'number' && Number.isFinite(generated) ? generated : null
+            }
+            harnessLabels={harnessLabels}
+          />
         ) : (
           <p className="pc-substrate-empty">{historyEmptyText(view.model, mode)}</p>
         )}

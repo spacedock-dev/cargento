@@ -17,10 +17,40 @@ const FOCUS = { harness: 'codex', sid: 'focus-1' };
 
 const SEMANTIC = {
   facts: [
-    { fact_id: 'fo-a', at: 104, type: 'user_message', summary: 'Newest direction', source_session: FOCUS, evidence: { source: 'root transcript', confidence: 'exact' } },
-    { fact_id: 'task-a', at: 103, type: 'prepared_dispatch', summary: 'Dispatch cockpit', source_session: FOCUS, work_item_id: TASK, evidence: { source: 'dispatch artifact', confidence: 'exact' } },
-    { fact_id: 'fo-b', at: 102, type: 'user_message', summary: 'Correct the lane order', source_session: FOCUS, evidence: { source: 'root transcript', confidence: 'exact' } },
-    { fact_id: 'task-b', at: 101, type: 'stage_transition', stage: 'shaping', summary: 'Shaping cockpit', work_item_id: TASK, evidence: { source: 'workflow state', confidence: 'exact' } },
+    {
+      fact_id: 'fo-a',
+      at: 104,
+      type: 'user_message',
+      summary: 'Newest direction',
+      source_session: FOCUS,
+      evidence: { source: 'root transcript', confidence: 'exact' },
+    },
+    {
+      fact_id: 'task-a',
+      at: 103,
+      type: 'prepared_dispatch',
+      summary: 'Dispatch cockpit',
+      source_session: FOCUS,
+      work_item_id: TASK,
+      evidence: { source: 'dispatch artifact', confidence: 'exact' },
+    },
+    {
+      fact_id: 'fo-b',
+      at: 102,
+      type: 'user_message',
+      summary: 'Correct the lane order',
+      source_session: FOCUS,
+      evidence: { source: 'root transcript', confidence: 'exact' },
+    },
+    {
+      fact_id: 'task-b',
+      at: 101,
+      type: 'stage_transition',
+      stage: 'shaping',
+      summary: 'Shaping cockpit',
+      work_item_id: TASK,
+      evidence: { source: 'workflow state', confidence: 'exact' },
+    },
     {
       fact_id: 'gate-a',
       at: 100,
@@ -38,14 +68,34 @@ const SEMANTIC = {
     },
   ],
   work_items: [{ work_item_id: TASK, label: 'project-cockpit', kind: 'workflow_item' }],
-  relations: [{ type: 'dispatches_to', from: 'fo:codex:focus-1', to: `task:${TASK}`, evidence_ref: 'task-a', confidence: 'exact' }],
+  relations: [
+    {
+      type: 'dispatches_to',
+      from: 'fo:codex:focus-1',
+      to: `task:${TASK}`,
+      evidence_ref: 'task-a',
+      confidence: 'exact',
+    },
+  ],
   projections: {
     operator_intents: [
       { projection_id: 'intent-a', at: 104, summary: 'Newest direction', derived_from: 'fo-a' },
-      { projection_id: 'intent-b', at: 102, summary: 'Correct the lane order', derived_from: 'fo-b' },
+      {
+        projection_id: 'intent-b',
+        at: 102,
+        summary: 'Correct the lane order',
+        derived_from: 'fo-b',
+      },
     ],
     steering_episodes: [],
-    trail_heads: [{ work_item_id: TASK, status: 'current stage', stage: 'shaping', latest_meaningful_event: 'task-b' }],
+    trail_heads: [
+      {
+        work_item_id: TASK,
+        status: 'current stage',
+        stage: 'shaping',
+        latest_meaningful_event: 'task-b',
+      },
+    ],
     activity: { nodes: [{ kind: 'work', at: 103, work_item_ids: [TASK] }] },
   },
   history: { window_sec: 86400, events: [] },
@@ -66,11 +116,25 @@ function world(options: { backend?: FakeBackend; script?: Partial<Script> } = {}
   const fetch: FetchLike = (url, init) => {
     requests.push({ method: init?.method ?? 'GET', url });
     if (url.startsWith('/api/data')) {
-      return Promise.resolve(new Response(JSON.stringify({ generated: script.generated, sessions: [], harnesses: [{ key: 'codex', label: 'Codex' }] }), { status: 200, headers: { 'X-Cargento-Revision': `r${String(script.generated)}` } }));
+      return Promise.resolve(
+        new Response(
+          JSON.stringify({
+            generated: script.generated,
+            sessions: [],
+            harnesses: [{ key: 'codex', label: 'Codex' }],
+          }),
+          { status: 200, headers: { 'X-Cargento-Revision': `r${String(script.generated)}` } },
+        ),
+      );
     }
     if (url.startsWith('/api/project-context')) {
       if (script.failing) return Promise.resolve(new Response('{}', { status: 500 }));
-      return Promise.resolve(new Response(JSON.stringify({ semantic: script.semantic, observers: [], child_assignments: [] }), { status: 200 }));
+      return Promise.resolve(
+        new Response(
+          JSON.stringify({ semantic: script.semantic, observers: [], child_assignments: [] }),
+          { status: 200 },
+        ),
+      );
     }
     return Promise.reject(new Error('offline'));
   };
@@ -107,7 +171,17 @@ function mount(w: ReturnType<typeof world>, props: MountProps = {}) {
         <button type="button" onClick={() => setShown((value) => !value)}>
           toggle view
         </button>
-        {shown ? <Timeline project={project} projectKey={`${project}-key`} focus={focus} sessions={[FOCUS]} {...(props.defaultMode ? { defaultMode: props.defaultMode } : {})} /> : <p>another view</p>}
+        {shown ? (
+          <Timeline
+            project={project}
+            projectKey={`${project}-key`}
+            focus={focus}
+            sessions={[FOCUS]}
+            {...(props.defaultMode ? { defaultMode: props.defaultMode } : {})}
+          />
+        ) : (
+          <p>another view</p>
+        )}
       </>
     );
   };
@@ -128,7 +202,10 @@ const refresh = (w: ReturnType<typeof world>) =>
     await w.shell.runtime.refresh({ manual: true });
   });
 
-const ids = (container: HTMLElement) => [...container.querySelectorAll('article[data-event-id]')].map((row) => row.getAttribute('data-event-id'));
+const ids = (container: HTMLElement) =>
+  [...container.querySelectorAll('article[data-event-id]')].map((row) =>
+    row.getAttribute('data-event-id'),
+  );
 
 beforeEach(() => {
   vi.stubGlobal('requestAnimationFrame', (run: () => void) => setTimeout(run, 0));
@@ -148,7 +225,10 @@ describe('reading the semantic context', () => {
     const reads = w.requests.filter((request) => request.url.startsWith('/api/project-context'));
     expect(reads.map((request) => request.method)).toEqual(['GET', 'GET']);
     expect(reads.map((request) => request.url).sort()).toEqual(
-      ['/api/project-context?project=alpha%2Fapp-key', '/api/project-context?project=alpha%2Fapp-key&session=codex%3Afocus-1'].sort(),
+      [
+        '/api/project-context?project=alpha%2Fapp-key',
+        '/api/project-context?project=alpha%2Fapp-key&session=codex%3Afocus-1',
+      ].sort(),
     );
     expect(w.requests.filter((request) => request.method !== 'GET')).toEqual([]);
     w.release();
@@ -173,12 +253,24 @@ describe('reading the semantic context', () => {
     await refresh(w);
     expect(ids(view.container)).toEqual(before);
     const notice = view.container.querySelector('[data-next-cockpit-stale-read]');
-    expect(notice?.textContent).toMatch(/^Last read \d\d:\d\d\. Refresh has failed since; these are the rows from that read\.$/);
+    expect(notice?.textContent).toMatch(
+      /^Last read \d\d:\d\d\. Refresh has failed since; these are the rows from that read\.$/,
+    );
     w.release();
   });
 
   it('states the empty window the payload published, and not a count it did not measure', async () => {
-    const w = world({ script: { semantic: { facts: [], work_items: [], relations: [], projections: {}, history: { window_sec: 7200, events: [] } } } });
+    const w = world({
+      script: {
+        semantic: {
+          facts: [],
+          work_items: [],
+          relations: [],
+          projections: {},
+          history: { window_sec: 7200, events: [] },
+        },
+      },
+    });
     const view = mount(w, { defaultMode: 'decisions' });
     await settle();
     expect(view.getByText('No decisions observed in the last 2 hours.')).toBeInTheDocument();
@@ -189,7 +281,11 @@ describe('reading the semantic context', () => {
     const w = world({ script: { semantic: { facts: [], projections: {} } } });
     const view = mount(w);
     await settle();
-    expect(view.getByText('No semantic events for active work available. The semantic history window was not published.')).toBeInTheDocument();
+    expect(
+      view.getByText(
+        'No semantic events for active work available. The semantic history window was not published.',
+      ),
+    ).toBeInTheDocument();
     w.release();
   });
 });
@@ -200,14 +296,20 @@ describe('the activity filter', () => {
     const decisions = mount(w, { defaultMode: 'decisions' });
     await settle();
     expect(decisions.getByRole('heading', { name: 'RECORDED DECISIONS' })).toBeInTheDocument();
-    expect(decisions.getByRole('button', { name: 'Decisions' }).getAttribute('aria-pressed')).toBe('true');
-    expect(decisions.getByRole('button', { name: 'Active' }).getAttribute('aria-pressed')).toBe('false');
+    expect(decisions.getByRole('button', { name: 'Decisions' }).getAttribute('aria-pressed')).toBe(
+      'true',
+    );
+    expect(decisions.getByRole('button', { name: 'Active' }).getAttribute('aria-pressed')).toBe(
+      'false',
+    );
     expect(ids(decisions.container)).toEqual(['gate-a']);
     decisions.unmount();
     const active = mount(w);
     await settle();
     expect(active.getByRole('heading', { name: 'SEMANTIC TIMELINE' })).toBeInTheDocument();
-    expect(active.getByRole('button', { name: 'Active' }).getAttribute('aria-pressed')).toBe('true');
+    expect(active.getByRole('button', { name: 'Active' }).getAttribute('aria-pressed')).toBe(
+      'true',
+    );
     expect(active.getByRole('group', { name: 'Work activity filter' })).toBeInTheDocument();
     w.release();
   });
@@ -220,10 +322,16 @@ describe('the activity filter', () => {
     fireEvent.click(view.getByRole('button', { name: 'All events' }));
     const all = ids(view.container);
     expect(all.length).toBeGreaterThanOrEqual(active.length);
-    expect(view.getByRole('button', { name: 'All events' }).getAttribute('aria-pressed')).toBe('true');
+    expect(view.getByRole('button', { name: 'All events' }).getAttribute('aria-pressed')).toBe(
+      'true',
+    );
     // The runtime's own leader lease is not this panel's; the panel's one write is the filter map.
-    expect(w.backend.writes.filter((key) => key !== 'cargento.next.leader')).toEqual(['cargento.next.graph.mode']);
-    expect(w.backend.data.get('cargento.next.graph.mode')).toBe('{"alpha/app\\u0000codex:focus-1":"all"}');
+    expect(w.backend.writes.filter((key) => key !== 'cargento.next.leader')).toEqual([
+      'cargento.next.graph.mode',
+    ]);
+    expect(w.backend.data.get('cargento.next.graph.mode')).toBe(
+      '{"alpha/app\\u0000codex:focus-1":"all"}',
+    );
     w.release();
   });
 
@@ -247,24 +355,32 @@ describe('the activity filter', () => {
     fireEvent.click(view.getByRole('button', { name: 'Decisions' }));
     fireEvent.click(view.getByRole('button', { name: 'toggle view' }));
     fireEvent.click(view.getByRole('button', { name: 'toggle view' }));
-    expect(view.getByRole('button', { name: 'Decisions' }).getAttribute('aria-pressed')).toBe('true');
+    expect(view.getByRole('button', { name: 'Decisions' }).getAttribute('aria-pressed')).toBe(
+      'true',
+    );
     view.unmount();
     // A sibling project, same session identity: untouched.
     const sibling = mount(first, { project: 'beta/api' });
     await settle();
-    expect(sibling.getByRole('button', { name: 'Active' }).getAttribute('aria-pressed')).toBe('true');
+    expect(sibling.getByRole('button', { name: 'Active' }).getAttribute('aria-pressed')).toBe(
+      'true',
+    );
     sibling.unmount();
     // The same project at project scope, with no session focused: its own choice.
     const projectScope = mount(first, { project: 'alpha/app', focus: false });
     await settle();
-    expect(projectScope.getByRole('button', { name: 'Active' }).getAttribute('aria-pressed')).toBe('true');
+    expect(projectScope.getByRole('button', { name: 'Active' }).getAttribute('aria-pressed')).toBe(
+      'true',
+    );
     projectScope.unmount();
     first.release();
     // A reload: a new shell over the same browser storage.
     const second = world({ backend });
     const reloaded = mount(second, { project: 'alpha/app' });
     await settle();
-    expect(reloaded.getByRole('button', { name: 'Decisions' }).getAttribute('aria-pressed')).toBe('true');
+    expect(reloaded.getByRole('button', { name: 'Decisions' }).getAttribute('aria-pressed')).toBe(
+      'true',
+    );
     second.release();
   });
 });
@@ -286,7 +402,9 @@ describe('disclosures', () => {
     await open(details);
     w.script.generated = 2000;
     await refresh(w);
-    const after = view.container.querySelector('article[data-event-id="fo-a"] details') as HTMLDetailsElement;
+    const after = view.container.querySelector(
+      'article[data-event-id="fo-a"] details',
+    ) as HTMLDetailsElement;
     expect(after).toBe(details);
     expect(after.open).toBe(true);
     w.release();
@@ -296,16 +414,27 @@ describe('disclosures', () => {
     const w = world();
     const view = mount(w, { project: 'alpha/app' });
     await settle();
-    await open(view.container.querySelector('article[data-event-id="fo-a"] details') as HTMLDetailsElement);
+    await open(
+      view.container.querySelector('article[data-event-id="fo-a"] details') as HTMLDetailsElement,
+    );
     fireEvent.click(view.getByRole('button', { name: 'toggle view' }));
     fireEvent.click(view.getByRole('button', { name: 'toggle view' }));
-    expect((view.container.querySelector('article[data-event-id="fo-a"] details') as HTMLDetailsElement).open).toBe(true);
+    expect(
+      (view.container.querySelector('article[data-event-id="fo-a"] details') as HTMLDetailsElement)
+        .open,
+    ).toBe(true);
     // Only that event: another in the same list did not open with it.
-    expect((view.container.querySelector('article[data-event-id="fo-b"] details') as HTMLDetailsElement).open).toBe(false);
+    expect(
+      (view.container.querySelector('article[data-event-id="fo-b"] details') as HTMLDetailsElement)
+        .open,
+    ).toBe(false);
     view.unmount();
     const other = mount(w, { project: 'beta/api' });
     await settle();
-    expect((other.container.querySelector('article[data-event-id="fo-a"] details') as HTMLDetailsElement).open).toBe(false);
+    expect(
+      (other.container.querySelector('article[data-event-id="fo-a"] details') as HTMLDetailsElement)
+        .open,
+    ).toBe(false);
     w.release();
   });
 
@@ -313,11 +442,21 @@ describe('disclosures', () => {
     const w = world();
     const focused = mount(w, { project: 'alpha/app' });
     await settle();
-    await open(focused.container.querySelector('article[data-event-id="fo-a"] details') as HTMLDetailsElement);
+    await open(
+      focused.container.querySelector(
+        'article[data-event-id="fo-a"] details',
+      ) as HTMLDetailsElement,
+    );
     focused.unmount();
     const projectScope = mount(w, { project: 'alpha/app', focus: false });
     await settle();
-    expect((projectScope.container.querySelector('article[data-event-id="fo-a"] details') as HTMLDetailsElement).open).toBe(false);
+    expect(
+      (
+        projectScope.container.querySelector(
+          'article[data-event-id="fo-a"] details',
+        ) as HTMLDetailsElement
+      ).open,
+    ).toBe(false);
     w.release();
   });
 
@@ -340,7 +479,28 @@ describe('disclosures', () => {
   });
 
   it('shows the evidence behind an event, naming what was not published rather than leaving it blank', async () => {
-    const semantic = { ...SEMANTIC, facts: [{ fact_id: 'bare', at: 'x', type: 'user_message', summary: 'A direction with no evidence', source_session: FOCUS }], projections: { operator_intents: [{ projection_id: 'i', at: 1, summary: 'A direction with no evidence', derived_from: 'bare' }] } };
+    const semantic = {
+      ...SEMANTIC,
+      facts: [
+        {
+          fact_id: 'bare',
+          at: 'x',
+          type: 'user_message',
+          summary: 'A direction with no evidence',
+          source_session: FOCUS,
+        },
+      ],
+      projections: {
+        operator_intents: [
+          {
+            projection_id: 'i',
+            at: 1,
+            summary: 'A direction with no evidence',
+            derived_from: 'bare',
+          },
+        ],
+      },
+    };
     const w = world({ script: { semantic } });
     const view = mount(w);
     await settle();
@@ -362,7 +522,14 @@ describe('disclosures', () => {
     const semantic = {
       facts,
       work_items: [],
-      projections: { operator_intents: facts.map((fact, index) => ({ projection_id: `i${String(index)}`, at: fact.at, summary: fact.summary, derived_from: fact.fact_id })) },
+      projections: {
+        operator_intents: facts.map((fact, index) => ({
+          projection_id: `i${String(index)}`,
+          at: fact.at,
+          summary: fact.summary,
+          derived_from: fact.fact_id,
+        })),
+      },
     };
     const w = world({ script: { semantic } });
     const view = mount(w);

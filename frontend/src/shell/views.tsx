@@ -1,6 +1,12 @@
 import { payloadSessions } from '../api/bootstrap';
 import { compatSessKey } from '../api/identity';
-import { fragmentForRoute, type ProjectRoute, type Route, type SessionRoute, type TopLevelRoute } from '../router/grammar';
+import {
+  fragmentForRoute,
+  type ProjectRoute,
+  type Route,
+  type SessionRoute,
+  type TopLevelRoute,
+} from '../router/grammar';
 import type { BoardSnapshot } from '../store/board';
 import { selectDataStatus } from '../store/selectors';
 import { findSession, windowHours } from './derive';
@@ -24,7 +30,13 @@ const HEADINGS: Readonly<Record<TopLevelRoute['view'], string>> = {
   intent: 'Intent log',
 };
 
-function Placeholder({ view, name }: { readonly view: keyof typeof OWNERS; readonly name: string }) {
+function Placeholder({
+  view,
+  name,
+}: {
+  readonly view: keyof typeof OWNERS;
+  readonly name: string;
+}) {
   const { step, what } = OWNERS[view];
   return (
     <p className="next-placeholder" data-next-placeholder={view} data-next-owner={step}>
@@ -36,8 +48,10 @@ function Placeholder({ view, name }: { readonly view: keyof typeof OWNERS; reado
 /* Unread is not unavailable, and neither is an empty board: a view says which of the three it is. */
 function BoardStatus({ snapshot }: { readonly snapshot: BoardSnapshot }) {
   const status = selectDataStatus(snapshot);
-  if (status === 'unread') return <p className="next-absence">The first payload has not arrived yet.</p>;
-  if (status === 'unavailable') return <p className="next-absence">No data has been received in this tab.</p>;
+  if (status === 'unread')
+    return <p className="next-absence">The first payload has not arrived yet.</p>;
+  if (status === 'unavailable')
+    return <p className="next-absence">No data has been received in this tab.</p>;
   return null;
 }
 
@@ -56,7 +70,11 @@ function SessionsBranch() {
   }
   if (!payloadSessions(snapshot.data).present) {
     return (
-      <section className="next-view" data-next-view-body="sessions" data-next-sessions-state="no-collection">
+      <section
+        className="next-view"
+        data-next-view-body="sessions"
+        data-next-sessions-state="no-collection"
+      >
         <h1>{HEADINGS.sessions}</h1>
         <p className="next-absence">The board published no session collection.</p>
       </section>
@@ -83,7 +101,11 @@ function SessionView({ route }: { readonly route: SessionRoute }) {
      claim about a payload nobody has read. */
   if (!data) {
     return (
-      <section className="next-session-detail-empty" data-next-view-body="session" data-next-session-state="unread">
+      <section
+        className="next-session-detail-empty"
+        data-next-view-body="session"
+        data-next-session-state="unread"
+      >
         <p className="next-absence">The first payload has not arrived yet.</p>
       </section>
     );
@@ -96,11 +118,19 @@ function SessionView({ route }: { readonly route: SessionRoute }) {
     const who = [route.harness, route.session].filter(Boolean).join(' · ');
     const hours = windowHours(data);
     return (
-      <section className="next-session-detail-empty" data-next-view-body="session" data-next-session-state="outside-payload">
+      <section
+        className="next-session-detail-empty"
+        data-next-view-body="session"
+        data-next-session-state="outside-payload"
+      >
         <p className="next-absence">This session is not in the current payload.</p>
         {who ? <p className="next-session-identity">{who}</p> : null}
-        {hours !== null && hours > 0 ? <p>{`The board holds sessions observed in the last ${String(hours)} ${hours === 1 ? 'hour' : 'hours'}.`}</p> : null}
-        <RouteLink route={{ view: 'sessions', project: null, session: null }}>View all sessions</RouteLink>
+        {hours !== null && hours > 0 ? (
+          <p>{`The board holds sessions observed in the last ${String(hours)} ${hours === 1 ? 'hour' : 'hours'}.`}</p>
+        ) : null}
+        <RouteLink route={{ view: 'sessions', project: null, session: null }}>
+          View all sessions
+        </RouteLink>
       </section>
     );
   }
@@ -112,14 +142,22 @@ function ProjectView({ route }: { readonly route: ProjectRoute }) {
   const collection = payloadSessions(data);
   if (!data) {
     return (
-      <section className="next-project-detail-empty" data-next-view-body="project" data-next-project-state="unread">
+      <section
+        className="next-project-detail-empty"
+        data-next-view-body="project"
+        data-next-project-state="unread"
+      >
         <p className="next-absence">The first payload has not arrived yet.</p>
       </section>
     );
   }
   if (!collection.present) {
     return (
-      <section className="next-project-detail-empty" data-next-view-body="project" data-next-project-state="no-collection">
+      <section
+        className="next-project-detail-empty"
+        data-next-view-body="project"
+        data-next-project-state="no-collection"
+      >
         <p className="next-absence">The board published no session collection.</p>
       </section>
     );
@@ -127,9 +165,15 @@ function ProjectView({ route }: { readonly route: ProjectRoute }) {
   const members = collection.rows.filter((row) => String(row.project ?? '') === route.project);
   if (members.length === 0) {
     return (
-      <section className="next-project-detail-empty" data-next-view-body="project" data-next-project-state="outside-payload">
+      <section
+        className="next-project-detail-empty"
+        data-next-view-body="project"
+        data-next-project-state="outside-payload"
+      >
         <p className="next-absence">Not present in the current payload.</p>
-        <RouteLink route={{ view: 'projects', project: null, session: null }}>View all projects</RouteLink>
+        <RouteLink route={{ view: 'projects', project: null, session: null }}>
+          View all projects
+        </RouteLink>
       </section>
     );
   }
@@ -137,16 +181,32 @@ function ProjectView({ route }: { readonly route: ProjectRoute }) {
      is stated, with the way back to the project root, rather than silently showing the whole project. */
   if (route.focus && !members.some((row) => compatSessKey(row) === route.focus)) {
     return (
-      <section className="next-cockpit-stale-session" data-next-view-body="project" data-next-cockpit-stale-session>
+      <section
+        className="next-cockpit-stale-session"
+        data-next-view-body="project"
+        data-next-cockpit-stale-session
+      >
         <span>SESSION FILTER</span>
         <h1>Session filter is outside this payload window</h1>
         <p>{route.focus}</p>
-        <a href={fragmentForRoute({ view: 'project', project: route.project, tab: route.tab ?? 'now' })}>View project root</a>
+        <a
+          href={fragmentForRoute({
+            view: 'project',
+            project: route.project,
+            tab: route.tab ?? 'now',
+          })}
+        >
+          View project root
+        </a>
       </section>
     );
   }
   return (
-    <section className="next-view" data-next-view-body="project" data-next-project-detail={route.project}>
+    <section
+      className="next-view"
+      data-next-view-body="project"
+      data-next-project-detail={route.project}
+    >
       <h1>{route.project}</h1>
       <ProjectTabs route={route}>
         {(tab) => <Placeholder view="project" name={`The ${tab} view`} />}

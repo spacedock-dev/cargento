@@ -23,7 +23,7 @@ import '../src/styles/shell.css';
 import '../src/styles/controls.css';
 
 // A test entry module that mounts itself and exports nothing, so fast refresh has no component to track.
-// eslint-disable-next-line react-refresh/only-export-components
+// biome-ignore lint/style/useComponentExportOnlyModules: nothing is exported, as the note above says.
 function Hosted() {
   const shell = useShell();
   useBoardRuntime(shell.runtime);
@@ -33,7 +33,10 @@ function Hosted() {
   /* The timeline wants a stable list, so a poll that changes nothing about the project's sessions does not
      rebuild its model. */
   const members = useMemo(
-    () => payloadSessions(data).rows.filter((row) => String(row.project ?? '') === project).flatMap((row) => (row.harness && row.sid ? [{ harness: row.harness, sid: row.sid }] : [])),
+    () =>
+      payloadSessions(data)
+        .rows.filter((row) => String(row.project ?? '') === project)
+        .flatMap((row) => (row.harness && row.sid ? [{ harness: row.harness, sid: row.sid }] : [])),
     [data, project],
   );
   if (route.view !== 'project') {
@@ -46,8 +49,18 @@ function Hosted() {
   const identity = route.focus ? splitSessKey(route.focus) : null;
   return (
     <div id="hosted" data-project={route.project} data-focus={route.focus ?? ''}>
-      <Timeline project={route.project} projectKey={route.project} focus={identity} sessions={members} defaultMode="decisions" />
-      {identity ? <TerminalSurface project={route.project} identity={identity} /> : <p id="no-focus">No session is focused.</p>}
+      <Timeline
+        project={route.project}
+        projectKey={route.project}
+        focus={identity}
+        sessions={members}
+        defaultMode="decisions"
+      />
+      {identity ? (
+        <TerminalSurface project={route.project} identity={identity} />
+      ) : (
+        <p id="no-focus">No session is focused.</p>
+      )}
     </div>
   );
 }

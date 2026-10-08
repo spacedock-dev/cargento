@@ -93,7 +93,8 @@ export function canonical(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(canonical);
   if (typeof value === 'object' && value !== null) {
     const out: Record<string, unknown> = {};
-    for (const key of Object.keys(value).sort()) out[key] = canonical((value as Record<string, unknown>)[key]);
+    for (const key of Object.keys(value).sort())
+      out[key] = canonical((value as Record<string, unknown>)[key]);
     return out;
   }
   return value;
@@ -104,20 +105,30 @@ export function canonical(value: unknown): unknown {
 export function firstDifference(left: unknown, right: unknown, path = '$'): string | null {
   if (Object.is(left, right)) return null;
   if (Array.isArray(left) && Array.isArray(right)) {
-    if (left.length !== right.length) return `${path}.length ${String(left.length)} != ${String(right.length)}`;
+    if (left.length !== right.length)
+      return `${path}.length ${String(left.length)} != ${String(right.length)}`;
     for (let index = 0; index < left.length; index += 1) {
       const found = firstDifference(left[index], right[index], `${path}[${String(index)}]`);
       if (found) return found;
     }
     return null;
   }
-  if (typeof left === 'object' && left !== null && typeof right === 'object' && right !== null && !Array.isArray(left) && !Array.isArray(right)) {
+  if (
+    typeof left === 'object' &&
+    left !== null &&
+    typeof right === 'object' &&
+    right !== null &&
+    !Array.isArray(left) &&
+    !Array.isArray(right)
+  ) {
     const keys = new Set([...Object.keys(left), ...Object.keys(right)]);
     for (const key of [...keys].sort()) {
       const a = (left as Record<string, unknown>)[key];
       const b = (right as Record<string, unknown>)[key];
-      if (!(key in left)) return `${path}.${key} missing on the left, right has ${JSON.stringify(b)?.slice(0, 80) ?? 'undefined'}`;
-      if (!(key in right)) return `${path}.${key} missing on the right, left has ${JSON.stringify(a)?.slice(0, 80) ?? 'undefined'}`;
+      if (!(key in left))
+        return `${path}.${key} missing on the left, right has ${JSON.stringify(b)?.slice(0, 80) ?? 'undefined'}`;
+      if (!(key in right))
+        return `${path}.${key} missing on the right, left has ${JSON.stringify(a)?.slice(0, 80) ?? 'undefined'}`;
       const found = firstDifference(a, b, `${path}.${key}`);
       if (found) return found;
     }
@@ -154,14 +165,18 @@ export interface LegacyViews extends LegacySessions {
   /** `nextSessionsView()` for `payload`. */
   sessionsHtml(payload: unknown): string;
   /** `nextSessionView(project, harness, sid)` for `payload`, the page being on that session's route. */
-  sessionHtml(payload: unknown, route: { project: string; harness?: string; session: string; from?: string }): string;
+  sessionHtml(
+    payload: unknown,
+    route: { project: string; harness?: string; session: string; from?: string },
+  ): string;
 }
 
 export function loadLegacyViews(): LegacyViews {
   const base = loadLegacySessions();
   const { sandbox } = base;
   let capability = '';
-  (sandbox['document'] as Record<string, unknown>)['querySelector'] = () => (capability ? { getAttribute: () => capability } : null);
+  (sandbox['document'] as Record<string, unknown>)['querySelector'] = () =>
+    capability ? { getAttribute: () => capability } : null;
   vm.runInContext(
     [
       'let nextRenderObserved = null;',
@@ -186,7 +201,12 @@ export function loadLegacyViews(): LegacyViews {
     sandbox,
   );
   const lifted = [
-    liftSource('next-chrome.js', ['nextRows', 'nextCurrentObserved', 'nextRouteToken', 'nextSessionHome']),
+    liftSource('next-chrome.js', [
+      'nextRows',
+      'nextCurrentObserved',
+      'nextRouteToken',
+      'nextSessionHome',
+    ]),
     liftSource('next-controls.js', ['nextPendingHas', 'nextPendingAttrs', 'nextPendingLabel']),
     liftSource('next-project.js', ['NEXT_OUTCOME_LINES_MAX']),
     liftSource('next-cockpit.js', [
@@ -210,7 +230,11 @@ export function loadLegacyViews(): LegacyViews {
     ]),
   ].join('\n');
   // `nextCockpitContexts` is the project step's cache; an empty one is "no context loaded yet".
-  vm.runInContext(`const nextCockpitContexts = new Map(); const nextIntentPromptLists = new Map();\n${lifted}`, sandbox, { filename: 'lifted-helpers.js' });
+  vm.runInContext(
+    `const nextCockpitContexts = new Map(); const nextIntentPromptLists = new Map();\n${lifted}`,
+    sandbox,
+    { filename: 'lifted-helpers.js' },
+  );
   return {
     ...base,
     setFocusCapability(value) {
@@ -223,7 +247,10 @@ export function loadLegacyViews(): LegacyViews {
     sessionHtml(payload, route) {
       base.setData(payload);
       sandbox['__route'] = route;
-      vm.runInContext('nextRoute = Object.assign({view: "session", project: "", session: ""}, __route);', sandbox);
+      vm.runInContext(
+        'nextRoute = Object.assign({view: "session", project: "", session: ""}, __route);',
+        sandbox,
+      );
       return base.call<string>('nextSessionView', route.project, route.harness, route.session);
     },
   };

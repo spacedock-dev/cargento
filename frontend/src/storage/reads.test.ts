@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import { fakeBackend } from '../../test/storage_backends';
-import { createLegacyStorage, goalKey, graphModeScope, guardrailKey, liveEstimateKey, memoKey } from '.';
+import {
+  createLegacyStorage,
+  goalKey,
+  graphModeScope,
+  guardrailKey,
+  liveEstimateKey,
+  memoKey,
+} from '.';
 
 const session = { harness: 'claude', sid: 'sid:1' };
 
@@ -11,9 +18,20 @@ const session = { harness: 'claude', sid: 'sid:1' };
  */
 function preloaded() {
   return fakeBackend({
-    'cargento.projectUsage.v1': JSON.stringify(Object.fromEntries(Array.from({ length: 201 }, (_, i) => [`k${i}`, i + 1]))),
-    [guardrailKey('p')]: JSON.stringify([null, 'plain', { text: '  padded  ', enabled: 0 }, ...Array.from({ length: 60 }, (_, i) => `r${i}`)]),
-    'cargento.next.graph.mode': JSON.stringify({ '': 'all', 'p\u0000': 'decisions', 'x\u0000y\u0000z': 'all' }),
+    'cargento.projectUsage.v1': JSON.stringify(
+      Object.fromEntries(Array.from({ length: 201 }, (_, i) => [`k${i}`, i + 1])),
+    ),
+    [guardrailKey('p')]: JSON.stringify([
+      null,
+      'plain',
+      { text: '  padded  ', enabled: 0 },
+      ...Array.from({ length: 60 }, (_, i) => `r${i}`),
+    ]),
+    'cargento.next.graph.mode': JSON.stringify({
+      '': 'all',
+      'p\u0000': 'decisions',
+      'x\u0000y\u0000z': 'all',
+    }),
     [memoKey('p', null, 'outcome')]: 'm'.repeat(700),
     [goalKey('p')]: '  untrimmed goal  ' + 'g'.repeat(800),
     'cargento.next.leader': '{"id":"someone","ts":"1"}',
@@ -59,7 +77,9 @@ describe('reading storage', () => {
     expect(Object.keys(storage.usage.counts())).toHaveLength(200);
     expect(storage.guardrails.rules('p')).toHaveLength(50);
     expect(storage.memo.read(memoKey('p', null, 'outcome'))).toHaveLength(500);
-    expect(Object.keys(JSON.parse(backend.data.get('cargento.projectUsage.v1') ?? '{}') as object)).toHaveLength(201);
+    expect(
+      Object.keys(JSON.parse(backend.data.get('cargento.projectUsage.v1') ?? '{}') as object),
+    ).toHaveLength(201);
     expect(backend.data.get(memoKey('p', null, 'outcome'))).toHaveLength(700);
   });
 });

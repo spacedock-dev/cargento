@@ -1,5 +1,10 @@
 import type { FetchLike } from '../api/client';
-import { createLegacyStorage, createTabId, type BackendProvider, type LegacyStorage } from '../storage';
+import {
+  createLegacyStorage,
+  createTabId,
+  type BackendProvider,
+  type LegacyStorage,
+} from '../storage';
 import { createTransportStorage, type StorageEventTarget } from './legacyStorage';
 import type { Environment, EventSourceLike, TimerHandle } from './ports';
 import { createBoardRuntime, type BoardRuntime, type RuntimeOptions } from './runtime';
@@ -25,7 +30,11 @@ export interface BrowserGlobals {
 }
 
 export function createBrowserEnvironment(g: BrowserGlobals): Environment {
-  const listen = (target: Pick<BrowserGlobals['window'], 'addEventListener' | 'removeEventListener'>, type: string, listener: () => void) => {
+  const listen = (
+    target: Pick<BrowserGlobals['window'], 'addEventListener' | 'removeEventListener'>,
+    type: string,
+    listener: () => void,
+  ) => {
     target.addEventListener(type, listener);
     return () => target.removeEventListener(type, listener);
   };
@@ -80,7 +89,12 @@ export function createBrowserRuntime(options: BrowserRuntimeOptions = {}): Brows
   const globals: BrowserGlobals = {
     window,
     document,
-    EventSource: typeof EventSource === 'undefined' ? undefined : (EventSource as unknown as new (url: string) => EventSourceLike),
+    EventSource:
+      typeof EventSource === 'undefined'
+        ? undefined
+        : (EventSource as unknown as new (
+            url: string,
+          ) => EventSourceLike),
     now: () => Date.now(),
   };
   const legacy = options.provider ? createLegacyStorage(options.provider) : createLegacyStorage();

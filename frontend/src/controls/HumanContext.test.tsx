@@ -12,9 +12,19 @@ const FOCUS_KEY = memoKey('alpha/app', null, 'focus');
 
 function field(kind: 'outcome' | 'focus' = 'outcome'): ReactElement {
   return kind === 'outcome' ? (
-    <HumanContextField memoKey={KEY} kind="outcome" label="OUTCOME" placeholder="What result should this scope achieve?" />
+    <HumanContextField
+      memoKey={KEY}
+      kind="outcome"
+      label="OUTCOME"
+      placeholder="What result should this scope achieve?"
+    />
   ) : (
-    <HumanContextField memoKey={FOCUS_KEY} kind="focus" label="FOCUS" placeholder="What are you concentrating on now?" />
+    <HumanContextField
+      memoKey={FOCUS_KEY}
+      kind="focus"
+      label="FOCUS"
+      placeholder="What are you concentrating on now?"
+    />
   );
 }
 
@@ -127,7 +137,11 @@ describe('human context: a note kept in this browser, saved on every input', () 
     edit(view);
     type(view.getByRole('textbox'), 'again');
     const done = view.getByRole('button', { name: 'Done' });
-    const fromDone = new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true });
+    const fromDone = new KeyboardEvent('keydown', {
+      key: 'Escape',
+      bubbles: true,
+      cancelable: true,
+    });
     act(() => {
       done.dispatchEvent(fromDone);
     });
@@ -135,13 +149,15 @@ describe('human context: a note kept in this browser, saved on every input', () 
     expect(view.queryByRole('textbox')).toBeNull();
   });
 
-  it('keeps Escape inside the editor from reaching the page\'s own Escape handler', () => {
+  it("keeps Escape inside the editor from reaching the page's own Escape handler", () => {
     const { view } = mount(field());
     const textarea = edit(view);
     const seen = vi.fn();
     document.addEventListener('keydown', seen);
     act(() => {
-      textarea.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+      textarea.dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }),
+      );
     });
     document.removeEventListener('keydown', seen);
     expect(seen).not.toHaveBeenCalled();
@@ -185,7 +201,7 @@ describe('human context: a note kept in this browser, saved on every input', () 
     expect(kit.controls.memoEditing.get()?.key).toBe(KEY);
   });
 
-  it('edits one field at a time and keeps the other\'s words apart', () => {
+  it("edits one field at a time and keeps the other's words apart", () => {
     const { view, kit } = mount(
       <>
         {field('outcome')}

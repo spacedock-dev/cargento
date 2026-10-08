@@ -29,7 +29,12 @@ export type ObservedProject = {
 } & Pair<'scope'> &
   Pair<'goal'>;
 
-export function observeProject(key: string, sessions: readonly ObservedSession[], sources: readonly Row[], risky: readonly ObservedSession[]): ObservedProject {
+export function observeProject(
+  key: string,
+  sessions: readonly ObservedSession[],
+  sources: readonly Row[],
+  risky: readonly ObservedSession[],
+): ObservedProject {
   const needs = sessions.filter((session) => session.isNeeds || session.askKnown);
   const nativeNeeds = sessions.filter((session) => session.isNeeds).length;
   const working = sessions.filter((session) => session.isWorking);
@@ -48,7 +53,11 @@ export function observeProject(key: string, sessions: readonly ObservedSession[]
   });
   /* The most recently active session's goal stands for the project; a tie falls to the session key, so
      the choice is the same on every render. */
-  goals.sort((a, b) => (nextNumber(b.source['last_activity']) ?? 0) - (nextNumber(a.source['last_activity']) ?? 0) || compare(sessionKey(a.source), sessionKey(b.source)));
+  goals.sort(
+    (a, b) =>
+      (nextNumber(b.source['last_activity']) ?? 0) - (nextNumber(a.source['last_activity']) ?? 0) ||
+      compare(sessionKey(a.source), sessionKey(b.source)),
+  );
   const goal = goals[0]?.goal ?? false;
   const first = sessions[0];
   return {
@@ -71,13 +80,27 @@ export function observeProject(key: string, sessions: readonly ObservedSession[]
     ended,
     risky,
     history: null,
-    tone: needs.length || sessions.some((session) => session.askKnown) ? 'want' : risky.some((session) => session.tone === 'bad') ? 'bad' : risky.length ? 'want' : sessions.some((session) => session.tone === 'ok') ? 'ok' : 'unknown',
+    tone:
+      needs.length || sessions.some((session) => session.askKnown)
+        ? 'want'
+        : risky.some((session) => session.tone === 'bad')
+          ? 'bad'
+          : risky.length
+            ? 'want'
+            : sessions.some((session) => session.tone === 'ok')
+              ? 'ok'
+              : 'unknown',
   } as ObservedProject;
 }
 
 /* A risk carried by one session: its identity is the label and the sid as published, and its "now" is
    the sentence that put it here. The risk never owns the session's identity beyond those strings. */
-export function sessionRisk(session: ObservedSession, kind: string, title: string, text: string): BoardRisk {
+export function sessionRisk(
+  session: ObservedSession,
+  kind: string,
+  title: string,
+  text: string,
+): BoardRisk {
   return {
     scope: 'session',
     kind,

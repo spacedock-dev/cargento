@@ -14,13 +14,26 @@ function board(options: { data?: unknown; failures?: number; at?: number; build?
   const store = createBoardStore({ now: () => clock });
   if (options.data !== undefined) {
     const data = body(options.data);
-    store.acceptData(options.build === undefined ? data : body({ ...(data as object), build: options.build }), '1.1');
+    store.acceptData(
+      options.build === undefined ? data : body({ ...(data as object), build: options.build }),
+      '1.1',
+    );
   }
-  for (let index = 0; index < (options.failures ?? 0); index += 1) store.recordFailure({ kind: 'network-error' });
-  return { store, snapshot: (): BoardSnapshot => store.getSnapshot(), setClock: (value: number) => void (clock = value) };
+  for (let index = 0; index < (options.failures ?? 0); index += 1)
+    store.recordFailure({ kind: 'network-error' });
+  return {
+    store,
+    snapshot: (): BoardSnapshot => store.getSnapshot(),
+    setClock: (value: number) => {
+      clock = value;
+    },
+  };
 }
 
-function show(snapshot: BoardSnapshot, extra: { now?: number; retryMs?: number; onRetry?: () => void; onReload?: () => void } = {}) {
+function show(
+  snapshot: BoardSnapshot,
+  extra: { now?: number; retryMs?: number; onRetry?: () => void; onReload?: () => void } = {},
+) {
   const { controls } = testControls();
   const props = {
     snapshot,
@@ -52,8 +65,12 @@ describe('a failed live refresh', () => {
     const notice = screen.getByRole('status');
     expect(notice.getAttribute('data-next-state')).toBe('stalled');
     expect(within(notice).getByText('Live refresh failed twice in a row.')).toBeInTheDocument();
-    expect(notice.textContent).toContain('Displayed data may be stale. Last updated 40s ago. Retrying automatically every 5s.');
-    expect((within(notice).getByRole('button', { name: 'Retry now' }) as HTMLButtonElement).disabled).toBe(false);
+    expect(notice.textContent).toContain(
+      'Displayed data may be stale. Last updated 40s ago. Retrying automatically every 5s.',
+    );
+    expect(
+      (within(notice).getByRole('button', { name: 'Retry now' }) as HTMLButtonElement).disabled,
+    ).toBe(false);
   });
 
   it('counts further failures in words, and names the interval the stream-less poll uses', () => {
@@ -118,7 +135,8 @@ describe('a failed live refresh', () => {
 });
 
 describe('a reset history', () => {
-  const reset = (reason: unknown) => show(board({ data: { sessions: [], history_reset: reason } }).snapshot());
+  const reset = (reason: unknown) =>
+    show(board({ data: { sessions: [], history_reset: reason } }).snapshot());
 
   it('tells which reset it was, so a corruption reset and a version reset do not read alike', () => {
     const unreadable = reset('unreadable');
@@ -162,7 +180,9 @@ describe('a server restarted into a newer build', () => {
     expect(notice.getAttribute('data-next-state')).toBe('build-changed');
     expect(within(notice).getByText('Reload to use the new version.')).toBeInTheDocument();
     expect(within(notice).getByText('Why reload')).toBeInTheDocument();
-    expect(notice.textContent).toContain('Cargento was restarted with a different version after this page loaded');
+    expect(notice.textContent).toContain(
+      'Cargento was restarted with a different version after this page loaded',
+    );
     expect(onReload).not.toHaveBeenCalled();
     fireEvent.click(within(notice).getByRole('button', { name: 'Reload' }));
     expect(onReload).toHaveBeenCalledTimes(1);
@@ -171,12 +191,21 @@ describe('a server restarted into a newer build', () => {
 
 describe('the notices stand in a fixed order and stay distinct', () => {
   it('draws the stalled notice, then the history reset, then the build notice, never merged', () => {
-    const everything = board({ data: { sessions: [], history_reset: 'version' }, build: 'b1', failures: 2 });
-    everything.store.acceptData(body({ sessions: [], history_reset: 'version', build: 'b2' }), '1.2');
+    const everything = board({
+      data: { sessions: [], history_reset: 'version' },
+      build: 'b1',
+      failures: 2,
+    });
+    everything.store.acceptData(
+      body({ sessions: [], history_reset: 'version', build: 'b2' }),
+      '1.2',
+    );
     everything.store.recordFailure({ kind: 'network-error' });
     everything.store.recordFailure({ kind: 'network-error' });
     show(everything.snapshot());
-    const states = screen.getAllByRole('status').map((node) => node.getAttribute('data-next-state'));
+    const states = screen
+      .getAllByRole('status')
+      .map((node) => node.getAttribute('data-next-state'));
     expect(states).toEqual(['stalled', 'history-reset', 'build-changed']);
   });
 });

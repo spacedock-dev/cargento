@@ -35,7 +35,7 @@ class FrontendDetectorControlsTest(unittest.TestCase):
             ".node-version",
             ".npmrc",
             "package.json",
-            "eslint.config.mjs",
+            "biome.json",
             "frontend/vite.config.mts",
             "scripts/build_frontend.mjs",
             "cargento/skills/cargento/cargento_runtime/web/react.html",

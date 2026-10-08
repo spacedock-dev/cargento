@@ -28,10 +28,14 @@ describe('a view this step does not own says so, and names the step that does', 
   it('draws the Sessions screen and the session page themselves, with only the Intent panel left as a stated slot', async () => {
     await open('#n=sessions');
     expect(document.querySelector('[data-next-placeholder]')).toBeNull();
-    expect(document.querySelectorAll('article.next-operation-row')).toHaveLength(BOARD.sessions.length);
+    expect(document.querySelectorAll('article.next-operation-row')).toHaveLength(
+      BOARD.sessions.length,
+    );
     await open('#n=session:alpha%2Fapp:claude:shared-sid');
     expect(document.querySelector('article.next-session-detail')).not.toBeNull();
-    expect(document.querySelector('[data-next-placeholder]')?.getAttribute('data-next-owner')).toBe('intent');
+    expect(document.querySelector('[data-next-placeholder]')?.getAttribute('data-next-owner')).toBe(
+      'intent',
+    );
   });
 
   it('keeps one owner per view in a table the later steps read', () => {
@@ -42,7 +46,11 @@ describe('a view this step does not own says so, and names the step that does', 
 describe('an absent source is stated as absent', () => {
   it('says the first payload has not arrived, on every route, before one has', () => {
     // Read straight after mounting, before the boot read has answered either way.
-    for (const fragment of ['#n=sessions', '#n=project:alpha%2Fapp', '#n=session:alpha%2Fapp:claude:shared-sid']) {
+    for (const fragment of [
+      '#n=sessions',
+      '#n=project:alpha%2Fapp',
+      '#n=session:alpha%2Fapp:claude:shared-sid',
+    ]) {
       const page = mountShell({ hash: fragment, data: BOARD });
       expect(screen.getByText('The first payload has not arrived yet.')).toBeInTheDocument();
       expect(document.body.textContent).not.toContain('Not present in the current payload');
@@ -77,7 +85,9 @@ describe('a project route', () => {
     const page = await open('#n=project:alpha%2Fapp:claude%3Agone:course');
     expect(screen.getByText('Session filter is outside this payload window')).toBeInTheDocument();
     expect(screen.getByText('claude:gone')).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'View project root' }).getAttribute('href')).toBe('#n=project:alpha%2Fapp:course');
+    expect(screen.getByRole('link', { name: 'View project root' }).getAttribute('href')).toBe(
+      '#n=project:alpha%2Fapp:course',
+    );
     fireEvent.click(screen.getByRole('link', { name: 'View project root' }));
     await page.settle();
     expect(page.router.getRoute()).toMatchObject({ view: 'project', project: 'alpha/app' });
@@ -102,13 +112,19 @@ describe('a session route', () => {
     await open('#n=session:alpha%2Fapp:claude:gone', { ...BOARD, window_hours: 24 });
     expect(screen.getByText('This session is not in the current payload.')).toBeInTheDocument();
     expect(screen.getByText('claude · gone')).toBeInTheDocument();
-    expect(screen.getByText('The board holds sessions observed in the last 24 hours.')).toBeInTheDocument();
-    expect(document.querySelector('[data-next-session-state]')?.getAttribute('data-next-session-state')).toBe('outside-payload');
+    expect(
+      screen.getByText('The board holds sessions observed in the last 24 hours.'),
+    ).toBeInTheDocument();
+    expect(
+      document.querySelector('[data-next-session-state]')?.getAttribute('data-next-session-state'),
+    ).toBe('outside-payload');
   });
 
   it('says one hour in the singular and nothing about a window the board did not state', async () => {
     const one = await open('#n=session:alpha%2Fapp:claude:gone', { ...BOARD, window_hours: 1 });
-    expect(screen.getByText('The board holds sessions observed in the last 1 hour.')).toBeInTheDocument();
+    expect(
+      screen.getByText('The board holds sessions observed in the last 1 hour.'),
+    ).toBeInTheDocument();
     one.unmount();
     await open('#n=session:alpha%2Fapp:claude:gone');
     expect(document.body.textContent).not.toContain('The board holds sessions');

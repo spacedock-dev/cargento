@@ -8,14 +8,19 @@ import { testControls } from './testControls';
 
 function Host({ field, which }: { field: string; which: 'a' | 'b' | 'none' }) {
   return which === 'none' ? null : (
-    <DraftTextarea memoryKey={`field:${field}:${which}`} defaultValue="one two three four five" aria-label="draft" />
+    <DraftTextarea
+      memoryKey={`field:${field}:${which}`}
+      defaultValue="one two three four five"
+      aria-label="draft"
+    />
   );
 }
 
 function mount(node: React.ReactElement) {
   const kit = testControls();
   const view = render(<ControlsProvider controls={kit.controls}>{node}</ControlsProvider>);
-  const rerender = (next: React.ReactElement) => view.rerender(<ControlsProvider controls={kit.controls}>{next}</ControlsProvider>);
+  const rerender = (next: React.ReactElement) =>
+    view.rerender(<ControlsProvider controls={kit.controls}>{next}</ControlsProvider>);
   return { kit, view, rerender };
 }
 
@@ -41,7 +46,7 @@ describe('a draft field keeps its caret, inner scroll and size by exact key', ()
     expect(document.activeElement).not.toBe(second);
   });
 
-  it('never carries one key\'s state to another session\'s field', () => {
+  it("never carries one key's state to another session's field", () => {
     const { view, rerender } = mount(<Host field="s1" which="a" />);
     const first = view.getByLabelText('draft') as HTMLTextAreaElement;
     first.setSelectionRange(2, 2);

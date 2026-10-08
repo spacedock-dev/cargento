@@ -41,12 +41,19 @@ function Tab({
    the default and is not printed), and the arrow keys wrap over the list the strip drew, because a wrap
    over a list the nav did not render would move focus to a tab that is not on the reader's screen. The
    panel's body belongs to the views that fill it. */
-export function ProjectTabs({ route, children }: { readonly route: ProjectRoute; readonly children: (tab: ProjectTab) => ReactNode }) {
+export function ProjectTabs({
+  route,
+  children,
+}: {
+  readonly route: ProjectRoute;
+  readonly children: (tab: ProjectTab) => ReactNode;
+}) {
   const navigate = useNavigate();
   const { controls } = useShell();
   const tabs = cockpitTabs(route.focus);
   const selected = route.tab && tabs.includes(route.tab) ? route.tab : 'now';
-  const open = (tab: ProjectTab) => navigate({ view: 'project', project: route.project, focus: route.focus ?? null, tab });
+  const open = (tab: ProjectTab) =>
+    navigate({ view: 'project', project: route.project, focus: route.focus ?? null, tab });
 
   const onKeyDown = (current: ProjectTab) => (event: KeyboardEvent<HTMLButtonElement>) => {
     if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
@@ -54,7 +61,11 @@ export function ProjectTabs({ route, children }: { readonly route: ProjectRoute;
     if (event.altKey || event.ctrlKey || event.metaKey) return;
     const index = Math.max(0, tabs.indexOf(current));
     const next =
-      event.key === 'Home' ? 0 : event.key === 'End' ? tabs.length - 1 : (index + (event.key === 'ArrowRight' ? 1 : -1) + tabs.length) % tabs.length;
+      event.key === 'Home'
+        ? 0
+        : event.key === 'End'
+          ? tabs.length - 1
+          : (index + (event.key === 'ArrowRight' ? 1 : -1) + tabs.length) % tabs.length;
     const target = tabs[next];
     if (!target) return;
     event.preventDefault();
@@ -66,10 +77,20 @@ export function ProjectTabs({ route, children }: { readonly route: ProjectRoute;
     <>
       <nav className="next-cockpit-tabs" role="tablist" aria-label="Project cockpit views">
         {tabs.map((tab) => (
-          <Tab key={tab} tab={tab} selected={tab === selected} onSelect={() => open(tab)} onKeyDown={onKeyDown(tab)} />
+          <Tab
+            key={tab}
+            tab={tab}
+            selected={tab === selected}
+            onSelect={() => open(tab)}
+            onKeyDown={onKeyDown(tab)}
+          />
         ))}
       </nav>
-      <div role="tabpanel" id={`next-cockpit-panel-${selected}`} aria-labelledby={`next-cockpit-tab-${selected}`}>
+      <div
+        role="tabpanel"
+        id={`next-cockpit-panel-${selected}`}
+        aria-labelledby={`next-cockpit-tab-${selected}`}
+      >
         {children(selected)}
       </div>
     </>

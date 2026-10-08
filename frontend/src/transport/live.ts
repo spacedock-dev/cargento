@@ -66,7 +66,10 @@ export function createLiveTransport(deps: LiveDeps) {
 
   function elect(): void {
     const lease = storage.readLease();
-    if (electionDecision({ lease, tabId: env.tabId, isLeader: leader, now: env.clock.now() }) === 'yield') {
+    if (
+      electionDecision({ lease, tabId: env.tabId, isLeader: leader, now: env.clock.now() }) ===
+      'yield'
+    ) {
       if (leader) closeStream();
       leader = false;
       return;
@@ -96,7 +99,10 @@ export function createLiveTransport(deps: LiveDeps) {
       elect();
       const timers: TimerHandle[] = [
         env.clock.setInterval(elect, LEASE_RENEW_MS),
-        env.clock.setInterval(deps.onPoll, env.streamSupported ? FALLBACK_POLL_MS : UNCOORDINATED_POLL_MS),
+        env.clock.setInterval(
+          deps.onPoll,
+          env.streamSupported ? FALLBACK_POLL_MS : UNCOORDINATED_POLL_MS,
+        ),
       ];
       teardown.push(() => {
         for (const timer of timers) env.clock.clearInterval(timer);

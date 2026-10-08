@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { canonical, firstDifference, loadLegacySessions, PROJECT_HISTORY_KEYS } from './legacy.test.helper';
+import {
+  canonical,
+  firstDifference,
+  loadLegacySessions,
+  PROJECT_HISTORY_KEYS,
+} from './legacy.test.helper';
 import { genPayload } from './generate.test.helper';
 import { delegatedWork, observe, readHint, sessionDot, sessionStop } from './index';
 
@@ -14,11 +19,22 @@ const SEEDS = 600;
 
 function withoutHistory(model: Record<string, unknown>): Record<string, unknown> {
   const projects = (model['projects'] as Record<string, unknown>[]).map((project) => {
-    return Object.fromEntries(Object.entries(project).filter(([key]) => !(PROJECT_HISTORY_KEYS as readonly string[]).includes(key)));
+    return Object.fromEntries(
+      Object.entries(project).filter(
+        ([key]) => !(PROJECT_HISTORY_KEYS as readonly string[]).includes(key),
+      ),
+    );
   });
   const grouped = (rows: unknown) =>
-    (rows as Record<string, unknown>[]).map((project) => projects.find((candidate) => candidate['key'] === project['key']));
-  return { ...model, projects, activeProjects: grouped(model['activeProjects']), restProjects: grouped(model['restProjects']) };
+    (rows as Record<string, unknown>[]).map((project) =>
+      projects.find((candidate) => candidate['key'] === project['key']),
+    );
+  return {
+    ...model,
+    projects,
+    activeProjects: grouped(model['activeProjects']),
+    restProjects: grouped(model['restProjects']),
+  };
 }
 
 describe('nextObserved and observe agree over generated payloads', () => {
@@ -36,7 +52,17 @@ describe('nextObserved and observe agree over generated payloads', () => {
   });
 
   it('agrees on the empty and non-object payloads the page can hold before a board arrives', () => {
-    for (const payload of [null, undefined, {}, [], 'x', 7, { sessions: [] }, { sessions: 'x' }, { sessions: [null] }]) {
+    for (const payload of [
+      null,
+      undefined,
+      {},
+      [],
+      'x',
+      7,
+      { sessions: [] },
+      { sessions: 'x' },
+      { sessions: [null] },
+    ]) {
       const old = withoutHistory(legacy.call<Record<string, unknown>>('nextObserved', payload, {}));
       const mine = withoutHistory(observe(payload) as unknown as Record<string, unknown>);
       expect(firstDifference(canonical(old), canonical(mine))).toBeNull();
@@ -49,7 +75,9 @@ describe('the helpers a view calls agree with their legacy twins', () => {
   for (let seed = 1; seed <= 200; seed += 1) {
     const payload = genPayload(seed);
     if (Array.isArray(payload['sessions'])) {
-      for (const row of payload['sessions'] as unknown[]) if (typeof row === 'object' && row !== null && !Array.isArray(row)) rows.push(row as Record<string, unknown>);
+      for (const row of payload['sessions'] as unknown[])
+        if (typeof row === 'object' && row !== null && !Array.isArray(row))
+          rows.push(row as Record<string, unknown>);
     }
   }
 
@@ -64,7 +92,12 @@ describe('the helpers a view calls agree with their legacy twins', () => {
 
   it('reads the turn stop a row rests on, and the sentence that says what an analysis will read', () => {
     for (const row of rows) {
-      expect(firstDifference(canonical(legacy.call('nextSessionStop', row)), canonical(sessionStop(row)))).toBeNull();
+      expect(
+        firstDifference(
+          canonical(legacy.call('nextSessionStop', row)),
+          canonical(sessionStop(row)),
+        ),
+      ).toBeNull();
       expect(readHint(row)).toBe(legacy.call('nextObservedReadHint', row));
     }
   });
@@ -78,7 +111,13 @@ describe('the helpers a view calls agree with their legacy twins', () => {
         const dot = sessionDot(mine.sessions[index] as never);
         const match = /class="([^"]*)" role="img" aria-label="([^"]*)"/.exec(html);
         expect(match, html).not.toBeNull();
-        const decode = (value: string) => value.replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&');
+        const decode = (value: string) =>
+          value
+            .replace(/&quot;/g, '"')
+            .replace(/&#39;/g, "'")
+            .replace(/&lt;/g, '<')
+            .replace(/&gt;/g, '>')
+            .replace(/&amp;/g, '&');
         expect(dot.className).toBe(decode(match?.[1] ?? ''));
         expect(dot.label).toBe(decode(match?.[2] ?? ''));
       });
@@ -92,14 +131,35 @@ describe('the helpers a view calls agree with their legacy twins', () => {
 describe('the generated payloads reach every state the model distinguishes', () => {
   it('meets each of them, many times, in the seed range the differential runs', () => {
     const seen = {
-      rows: 0, ended: 0, endedWithoutStamp: 0, needs: 0, asked: 0, shared: 0, working: 0, quiet: 0, scanOnly: 0,
-      gaps: 0, unownedAsk: 0, collision: 0, unicode: 0, sameSidTwoHarnesses: 0, missingHarness: 0, risky: 0, capacity: 0, goal: 0,
+      rows: 0,
+      ended: 0,
+      endedWithoutStamp: 0,
+      needs: 0,
+      asked: 0,
+      shared: 0,
+      working: 0,
+      quiet: 0,
+      scanOnly: 0,
+      gaps: 0,
+      unownedAsk: 0,
+      collision: 0,
+      unicode: 0,
+      sameSidTwoHarnesses: 0,
+      missingHarness: 0,
+      risky: 0,
+      capacity: 0,
+      goal: 0,
     };
     for (let seed = 1; seed <= SEEDS; seed += 1) {
       const payload = genPayload(seed);
       const model = observe(payload);
       const sids = new Map<string, Set<string>>();
-      const raw = (Array.isArray(payload['sessions']) ? (payload['sessions'] as unknown[]) : []).filter((row) => typeof row === 'object' && row !== null && !Array.isArray(row)) as Record<string, unknown>[];
+      const raw = (
+        Array.isArray(payload['sessions']) ? (payload['sessions'] as unknown[]) : []
+      ).filter((row) => typeof row === 'object' && row !== null && !Array.isArray(row)) as Record<
+        string,
+        unknown
+      >[];
       model.sessions.forEach((row, index) => {
         // An end field that is present and is not an end: zero, negative, text.
         if ('ended_at' in (raw[index] ?? {}) && !row.isEnded) seen.endedWithoutStamp += 1;
@@ -117,8 +177,16 @@ describe('the generated payloads reach every state the model distinguishes', () 
         sids.set(row.sid, (sids.get(row.sid) ?? new Set()).add(row.harness));
       });
       for (const harnesses of sids.values()) if (harnesses.size > 1) seen.sameSidTwoHarnesses += 1;
-      for (const row of Array.isArray(payload['sessions']) ? (payload['sessions'] as unknown[]) : []) {
-        if (typeof row === 'object' && row !== null && Array.isArray((row as Record<string, unknown>)['source_gaps']) && ((row as Record<string, unknown>)['source_gaps'] as unknown[]).length) seen.gaps += 1;
+      for (const row of Array.isArray(payload['sessions'])
+        ? (payload['sessions'] as unknown[])
+        : []) {
+        if (
+          typeof row === 'object' &&
+          row !== null &&
+          Array.isArray((row as Record<string, unknown>)['source_gaps']) &&
+          ((row as Record<string, unknown>)['source_gaps'] as unknown[]).length
+        )
+          seen.gaps += 1;
       }
       seen.unownedAsk += model.boardRisks.filter((risk) => risk.kind === 'ask').length;
       seen.collision += model.boardRisks.filter((risk) => risk.kind === 'collision').length;
@@ -132,7 +200,11 @@ describe('the generated payloads reach every state the model distinguishes', () 
 function richSeed(): number {
   for (let seed = 1; seed <= SEEDS; seed += 1) {
     const sessions = genPayload(seed)['sessions'];
-    if (Array.isArray(sessions) && sessions.filter((row) => typeof row === 'object' && row !== null).length >= 3) return seed;
+    if (
+      Array.isArray(sessions) &&
+      sessions.filter((row) => typeof row === 'object' && row !== null).length >= 3
+    )
+      return seed;
   }
   throw new Error('no seed carries three sessions');
 }
@@ -145,8 +217,13 @@ function firstSession(model: Record<string, unknown>): Record<string, unknown> {
 
 describe('the harness can fail: a perturbed answer is reported at the path that changed', () => {
   const payload = genPayload(richSeed());
-  const old = canonical(withoutHistory(legacy.call<Record<string, unknown>>('nextObserved', payload, {})));
-  const mine = () => JSON.parse(JSON.stringify(withoutHistory(observe(payload) as unknown as Record<string, unknown>))) as Record<string, unknown>;
+  const old = canonical(
+    withoutHistory(legacy.call<Record<string, unknown>>('nextObserved', payload, {})),
+  );
+  const mine = () =>
+    JSON.parse(
+      JSON.stringify(withoutHistory(observe(payload) as unknown as Record<string, unknown>)),
+    ) as Record<string, unknown>;
 
   it('sees one count moved by one', () => {
     const copy = mine();
@@ -158,7 +235,7 @@ describe('the harness can fail: a perturbed answer is reported at the path that 
   it('sees two rows swapped', () => {
     const copy = mine();
     const sessions = copy['sessions'] as unknown[];
-        [sessions[0], sessions[1]] = [sessions[1], sessions[0]];
+    [sessions[0], sessions[1]] = [sessions[1], sessions[0]];
     expect(firstDifference(old, canonical(copy))).toContain('sessions[0]');
   });
 

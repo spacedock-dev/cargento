@@ -8,7 +8,11 @@ function setup(options: { reduced?: boolean } = {}) {
   const clock = createFakeClock();
   const held = { choice: false, reduced: options.reduced === true };
   const store = createBoardStore({ now: clock.now });
-  const gate = createDisplayGate({ clock, reducedMotion: () => held.reduced, isChoiceOpen: () => held.choice });
+  const gate = createDisplayGate({
+    clock,
+    reducedMotion: () => held.reduced,
+    isChoiceOpen: () => held.choice,
+  });
   const detach = gate.attach(store);
   let generation = 0;
   /* The runtime's own order: the store accepts at once, then asks the consumer to paint. */
@@ -17,10 +21,18 @@ function setup(options: { reduced?: boolean } = {}) {
     store.acceptData({ generated: generation }, `1.${String(generation)}`);
     return gate.paint({ manual: flags.manual === true, accepted: true });
   };
-  return { clock, held, store, gate, detach, arrive, shown: () => gate.getSnapshot().data?.generated ?? 0 };
+  return {
+    clock,
+    held,
+    store,
+    gate,
+    detach,
+    arrive,
+    shown: () => gate.getSnapshot().data?.generated ?? 0,
+  };
 }
 
-describe('the display gate: acceptance is immediate, paint is the reader\'s to hold', () => {
+describe("the display gate: acceptance is immediate, paint is the reader's to hold", () => {
   it('shows what the store held at attach, and nothing newer until a paint', async () => {
     const { shown, arrive, store } = setup();
     expect(shown()).toBe(0);
@@ -82,7 +94,7 @@ describe('the display gate: acceptance is immediate, paint is the reader\'s to h
     expect(gate.releaseChoice()).toBe(false);
   });
 
-  it('holds a background paint behind the reader\'s own toggle and coalesces to the newest', async () => {
+  it("holds a background paint behind the reader's own toggle and coalesces to the newest", async () => {
     const { clock, arrive, shown, gate } = setup();
     gate.noteToggle();
     const first = arrive();
@@ -131,7 +143,7 @@ describe('the display gate: acceptance is immediate, paint is the reader\'s to h
     expect(gate.getSnapshot().contexts.has('k2')).toBe(true);
   });
 
-  it('shows a reader\'s own action state (pending, manual refreshing) at once while an old board is held', async () => {
+  it("shows a reader's own action state (pending, manual refreshing) at once while an old board is held", async () => {
     const { held, store, arrive, shown, gate } = setup();
     held.choice = true;
     await arrive();

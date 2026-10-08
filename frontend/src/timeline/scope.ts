@@ -17,4 +17,3 @@ export function timelineDisclosureKey(scope: RowScope, name: string): string {
 export function timelineFocusKey(scope: RowScope, name: string): string {
   return `substrate:${scope.session ?? `project:${scope.project}`}\n${name}`;
 }
-

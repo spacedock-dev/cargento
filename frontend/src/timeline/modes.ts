@@ -72,15 +72,28 @@ export function modesOver(store: GraphModeStore): TimelineModes {
 
 /* The mode and its setter for one scope. The mode is a string, so a subscriber that has not changed its
    answer is not redrawn, and an unrelated project's choice does not reach this one. */
-export function useTimelineModeIn(modes: TimelineModes, options: ResolveOptions): readonly [GraphMode, (mode: GraphMode) => boolean] {
+export function useTimelineModeIn(
+  modes: TimelineModes,
+  options: ResolveOptions,
+): readonly [GraphMode, (mode: GraphMode) => boolean] {
   const { project, session, mode: pinned, defaultMode } = options;
   const mode = useSyncExternalStore(modes.subscribe, () =>
-    modes.resolve({ project, session, ...(pinned ? { mode: pinned } : {}), ...(defaultMode ? { defaultMode } : {}) }),
+    modes.resolve({
+      project,
+      session,
+      ...(pinned ? { mode: pinned } : {}),
+      ...(defaultMode ? { defaultMode } : {}),
+    }),
   );
-  const set = useCallback((next: GraphMode) => modes.set({ project, session }, next), [modes, project, session]);
+  const set = useCallback(
+    (next: GraphMode) => modes.set({ project, session }, next),
+    [modes, project, session],
+  );
   return [mode, set];
 }
 
-export function useTimelineMode(options: ResolveOptions): readonly [GraphMode, (mode: GraphMode) => boolean] {
+export function useTimelineMode(
+  options: ResolveOptions,
+): readonly [GraphMode, (mode: GraphMode) => boolean] {
   return useTimelineModeIn(modesOver(useShell().runtime.storage.graphMode), options);
 }

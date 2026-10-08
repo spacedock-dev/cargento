@@ -1,7 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import { genCase } from './generate.test.helper';
 import { legacyEmptyText, legacyRows, loadLegacyTimeline } from './legacy.test.helper';
-import { buildRegistry, eventsForMode, historyEmptyText, readSemantic, type Delegation, type GraphMode } from './semantic';
+import {
+  buildRegistry,
+  eventsForMode,
+  historyEmptyText,
+  readSemantic,
+  type Delegation,
+  type GraphMode,
+} from './semantic';
 
 /* Which events each mode keeps is what the reader's choice means, so it is held to the legacy file that
    decides it. Generated semantic payloads run through the real `projectSemanticTimeline` and through the
@@ -36,7 +43,14 @@ function mine(seed: number, mode: GraphMode) {
 function theirs(seed: number, mode: GraphMode) {
   const generated = genCase(seed);
   legacy.setScope('alpha', generated.fallbackSession || null);
-  const html = legacy.timeline({ generated: 1000 }, generated.semantic, generated.delegations, generated.focus, generated.origins, { mode, controls: false });
+  const html = legacy.timeline(
+    { generated: 1000 },
+    generated.semantic,
+    generated.delegations,
+    generated.focus,
+    generated.origins,
+    { mode, controls: false },
+  );
   return { html, rows: legacyRows(html) };
 }
 
@@ -48,11 +62,14 @@ describe('the events each activity mode keeps', () => {
         const old = theirs(seed, mode);
         const port = mine(seed, mode);
         if (JSON.stringify(old.rows) !== JSON.stringify(port.rows)) {
-          failures.push(`seed ${String(seed)}\n legacy ${JSON.stringify(old.rows)}\n port   ${JSON.stringify(port.rows)}`);
+          failures.push(
+            `seed ${String(seed)}\n legacy ${JSON.stringify(old.rows)}\n port   ${JSON.stringify(port.rows)}`,
+          );
         } else if (old.rows.length === 0) {
           const said = legacyEmptyText(old.html);
           const own = historyEmptyText(port.model, mode);
-          if (said !== own.replace(/&/g, '&amp;')) failures.push(`seed ${String(seed)} empty text: ${String(said)} vs ${own}`);
+          if (said !== own.replace(/&/g, '&amp;'))
+            failures.push(`seed ${String(seed)} empty text: ${String(said)} vs ${own}`);
         }
         if (failures.length >= 3) break;
       }
@@ -80,7 +97,13 @@ describe('the events each activity mode keeps', () => {
 
 describe('the activity filter agrees with the legacy filter', () => {
   it('resolves and stores per scope exactly as the legacy page does, including after a reload', () => {
-    const scopes: [string, string | null][] = [['alpha', null], ['alpha', 'claude:s1'], ['beta', null], ['', null], ['beta', 'codex:s2']];
+    const scopes: [string, string | null][] = [
+      ['alpha', null],
+      ['alpha', 'claude:s1'],
+      ['beta', null],
+      ['', null],
+      ['beta', 'codex:s2'],
+    ];
     legacy.storage.clear();
     legacy.reload();
     for (const [project, session] of scopes) {
@@ -93,7 +116,9 @@ describe('the activity filter agrees with the legacy filter', () => {
     expect(legacy.setGraphMode('all')).toBe(true);
     legacy.setScope('beta', 'codex:s2');
     expect(legacy.setGraphMode('everything')).toBe(false);
-    expect([...legacy.storage.entries()]).toEqual([['cargento.next.graph.mode', '{"alpha\\u0000claude:s1":"decisions","beta\\u0000":"all"}']]);
+    expect([...legacy.storage.entries()]).toEqual([
+      ['cargento.next.graph.mode', '{"alpha\\u0000claude:s1":"decisions","beta\\u0000":"all"}'],
+    ]);
     legacy.reload();
     const after = scopes.map(([project, session]) => {
       legacy.setScope(project, session);

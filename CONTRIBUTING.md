@@ -74,8 +74,10 @@ terminal assets remain local. The packaging boundaries are in the
 
 `pnpm exec playwright install chromium` installs the browser pinned by the lockfile. See
 [AGENTS.md](AGENTS.md#pre-pr-checks) for the frontend checks. TypeScript checks source and dependency
-types, ESLint checks JavaScript and React rules, Vitest with Testing Library checks visible behavior,
-and Playwright checks the built page in Chromium. Vite and its React plugin own the build and hot
+types, Biome lints (JavaScript, TypeScript and React rules) and checks formatting through one
+`pnpm lint`, with `pnpm format` rewriting what it reports, Vitest with Testing Library checks visible
+behavior, and Playwright checks the built page in Chromium. The rule set and what it deliberately
+does not cover are in the [migration contract](docs/design-frontend-migration.md#lint-and-format). Vite and its React plugin own the build and hot
 refresh; no router, state library or UI kit is installed. Node and pnpm are build tools: the shipped
 Python dashboard still requires neither.
 

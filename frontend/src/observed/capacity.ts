@@ -68,11 +68,19 @@ export function observeCapacity(payload: Row): {
       const length = nextNumber(window['windowSec']);
       const reset = nextNumber(window['resetAt']);
       const remaining = generated !== null && reset !== null ? reset - generated : null;
-      const elapsed = length !== null && length > 0 && remaining !== null && remaining > 0 ? Math.max(0, Math.min(1, (length - remaining) / length)) : null;
+      const elapsed =
+        length !== null && length > 0 && remaining !== null && remaining > 0
+          ? Math.max(0, Math.min(1, (length - remaining) / length))
+          : null;
       const pace = elapsed !== null && elapsed > 0 ? pct / (100 * elapsed) : null;
-      const minutes = pace !== null && pace > 0 && elapsed !== null && length !== null ? ((Math.max(0, 100 - pct) / pct) * elapsed * length) / 60 : null;
-      const tone: CapacityWindow['tone'] = pace === null ? 'unknown' : pace >= 1.5 ? 'bad' : pace >= 1 ? 'want' : 'ok';
-      const recent: Row = window['recent'] && typeof window['recent'] === 'object' ? (window['recent'] as Row) : {};
+      const minutes =
+        pace !== null && pace > 0 && elapsed !== null && length !== null
+          ? ((Math.max(0, 100 - pct) / pct) * elapsed * length) / 60
+          : null;
+      const tone: CapacityWindow['tone'] =
+        pace === null ? 'unknown' : pace >= 1.5 ? 'bad' : pace >= 1 ? 'want' : 'ok';
+      const recent: Row =
+        window['recent'] && typeof window['recent'] === 'object' ? (window['recent'] as Row) : {};
       const recentRate = nextNumber(recent['pctPerMin']);
       const recentSpan = nextNumber(recent['spanSec']);
       const samples = recent['samples'];
@@ -85,7 +93,9 @@ export function observeCapacity(payload: Row): {
         (samples as number) >= 2 &&
         remaining !== null &&
         remaining > 0;
-      const recentBasis = recentKnown ? `across ${String(formatDuration(recentSpan))} and ${String(samples)} readings` : '';
+      const recentBasis = recentKnown
+        ? `across ${String(formatDuration(recentSpan))} and ${String(samples)} readings`
+        : '';
       const recentText = !recentKnown
         ? ''
         : recentRate === 0
@@ -101,26 +111,44 @@ export function observeCapacity(payload: Row): {
         ...pair('pace', pace === null ? '' : `${pace.toFixed(1)}×`, 'Window pace not reported'),
         ...pair(
           'ends',
-          pct >= 100 ? 'Already spent' : minutes === null ? '' : `In ${String(formatDuration(minutes * 60))} at this window's average pace`,
+          pct >= 100
+            ? 'Already spent'
+            : minutes === null
+              ? ''
+              : `In ${String(formatDuration(minutes * 60))} at this window's average pace`,
           'Budget end not projected',
         ),
         ...pair(
           'resets',
           remaining !== null && remaining > 0 ? formatDuration(remaining) : '',
-          remaining !== null && remaining <= 0 ? 'Published reset has passed' : 'Reset time not published',
+          remaining !== null && remaining <= 0
+            ? 'Published reset has passed'
+            : 'Reset time not published',
         ),
-        ...pair('clock', elapsed === null ? '' : `${String(Math.round(elapsed * 100))}% of window elapsed`, 'Window clock not published'),
+        ...pair(
+          'clock',
+          elapsed === null ? '' : `${String(Math.round(elapsed * 100))}% of window elapsed`,
+          'Window clock not published',
+        ),
         ...pair('recent', recentText, 'Recent quota pace not measured for a current window'),
         ...pair(
           'basis',
-          elapsed !== null && elapsed < 0.1 ? 'Less than a tenth of this window has elapsed; the projection rests on a short observation.' : '',
+          elapsed !== null && elapsed < 0.1
+            ? 'Less than a tenth of this window has elapsed; the projection rests on a short observation.'
+            : '',
           'No short-window qualification published',
         ),
         tone,
       } as CapacityWindow;
       windows.push(row);
       const pressure =
-        pct >= 70 || ((elapsed ?? 0) >= 0.1 && pct >= 10 && minutes !== null && remaining !== null && remaining > 0 && minutes * 60 < remaining);
+        pct >= 70 ||
+        ((elapsed ?? 0) >= 0.1 &&
+          pct >= 10 &&
+          minutes !== null &&
+          remaining !== null &&
+          remaining > 0 &&
+          minutes * 60 < remaining);
       if (pressure) {
         risks.push({
           scope: 'board',
@@ -142,7 +170,11 @@ export function observeCapacity(payload: Row): {
         within: `${vendor} · weekly`,
         label: model['label'],
         used: model['pct'] as number,
-        ...pair('note', '', 'Per-model sub-limits publish no clock, so no pace and no projected end.'),
+        ...pair(
+          'note',
+          '',
+          'Per-model sub-limits publish no clock, so no pace and no projected end.',
+        ),
       });
     }
   }

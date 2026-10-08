@@ -50,8 +50,10 @@ function PrimaryNavigation({ route }: { readonly route: Route }) {
    when the board carried no session collection, nothing is known, so nothing is claimed: no zero, and no
    "live" dot, which would say the board is being watched when there is no board. */
 function RunningCounts({ counts }: { readonly counts: HeaderCounts }) {
-  if (counts.state === 'unread') return <span className="next-running">Waiting for the first board.</span>;
-  if (counts.state === 'absent') return <span className="next-running">Session data not published.</span>;
+  if (counts.state === 'unread')
+    return <span className="next-running">Waiting for the first board.</span>;
+  if (counts.state === 'absent')
+    return <span className="next-running">Session data not published.</span>;
   return (
     <span className="next-running next-live">
       <span className="next-status-dot" aria-label="live">
@@ -62,11 +64,19 @@ function RunningCounts({ counts }: { readonly counts: HeaderCounts }) {
   );
 }
 
-function ProjectMore({ route, counts }: { readonly route: Extract<Route, { view: 'project' }>; readonly counts: HeaderCounts }) {
+function ProjectMore({
+  route,
+  counts,
+}: {
+  readonly route: Extract<Route, { view: 'project' }>;
+  readonly counts: HeaderCounts;
+}) {
   const data = useDisplayed((snapshot) => snapshot.data);
   const briefing = useProjectBriefing(route);
   if (counts.state !== 'measured') return null;
-  const rows = payloadSessions(data).rows.filter((row) => String(row.project ?? '') === route.project);
+  const rows = payloadSessions(data).rows.filter(
+    (row) => String(row.project ?? '') === route.project,
+  );
   const projectKey = stableProjectKey({ label: route.project, sessions: rows });
   return (
     <MoreMenu

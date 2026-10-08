@@ -20,7 +20,10 @@ function target() {
 
 function adapter(backend = fakeBackend()) {
   const events = target();
-  const storage = createTransportStorage(createLegacyStorage(() => backend), events.events);
+  const storage = createTransportStorage(
+    createLegacyStorage(() => backend),
+    events.events,
+  );
   return { backend, storage, events };
 }
 
@@ -32,7 +35,9 @@ describe('lease over the legacy keys', () => {
   });
 
   it('reads a lease the legacy page wrote and releases only the lease key', () => {
-    const { backend, storage } = adapter(fakeBackend({ [STORAGE_KEYS.leader]: '{"id":"old-page","ts":99}', other: 'kept' }));
+    const { backend, storage } = adapter(
+      fakeBackend({ [STORAGE_KEYS.leader]: '{"id":"old-page","ts":99}', other: 'kept' }),
+    );
     expect(storage.readLease()).toEqual({ id: 'old-page', ts: 99 });
     storage.removeLease();
     expect(backend.data.has(STORAGE_KEYS.leader)).toBe(false);

@@ -36,16 +36,21 @@ interface Summary {
   }[];
 }
 
-const norm = (node: Element | null): string => (node ? (node.textContent ?? '').replace(/\s+/g, ' ').trim() : '');
+const norm = (node: Element | null): string =>
+  node ? (node.textContent ?? '').replace(/\s+/g, ' ').trim() : '';
 
 function summarize(root: ParentNode): Summary {
   return {
     header: norm(root.querySelector('.next-operations-header')),
-    fleet: [...root.querySelectorAll('[data-next-fleet-fact]')].map((node) => [(node as HTMLElement).dataset['nextFleetFact'] ?? '', norm(node)] as const),
+    fleet: [...root.querySelectorAll('[data-next-fleet-fact]')].map(
+      (node) => [(node as HTMLElement).dataset['nextFleetFact'] ?? '', norm(node)] as const,
+    ),
     groups: [...root.querySelectorAll('[data-next-operation-group]')].map((group) => ({
       kind: (group as HTMLElement).dataset['nextOperationGroup'] ?? '',
       header: norm(group.querySelector(':scope > header')),
-      empty: group.querySelector('.next-sessions-empty') ? norm(group.querySelector('.next-sessions-empty')) : null,
+      empty: group.querySelector('.next-sessions-empty')
+        ? norm(group.querySelector('.next-sessions-empty'))
+        : null,
       rows: [...group.querySelectorAll('article.next-operation-row')].map((row) => {
         const route = row.querySelector('a.next-operation-route');
         const data = (row as HTMLElement).dataset;
@@ -57,7 +62,9 @@ function summarize(root: ParentNode): Summary {
           href: route?.getAttribute('href') ?? null,
           aria: route?.getAttribute('aria-label') ?? null,
           text: norm(row),
-          copyLabels: [...row.querySelectorAll('button')].map((button) => button.getAttribute('aria-label')),
+          copyLabels: [...row.querySelectorAll('button')].map((button) =>
+            button.getAttribute('aria-label'),
+          ),
         };
       }),
     })),
@@ -81,7 +88,11 @@ async function reactSummary(payload: unknown): Promise<Summary> {
 }
 
 /* Named differences, each with its reason. Empty today: every compared field agrees. */
-const DEVIATIONS: readonly { readonly seed: number; readonly path: string; readonly reason: string }[] = [];
+const DEVIATIONS: readonly {
+  readonly seed: number;
+  readonly path: string;
+  readonly reason: string;
+}[] = [];
 
 describe('the Sessions screen reads as the legacy screen does, over generated payloads', () => {
   const SEEDS = Number(process.env['SESSIONS_SEEDS'] ?? 60);
@@ -93,16 +104,24 @@ describe('the Sessions screen reads as the legacy screen does, over generated pa
       const mine = await reactSummary(payload);
       for (const [index, group] of old.groups.entries()) {
         const other = mine.groups[index];
-        if (JSON.stringify(group.rows.map((row) => [row.harness, row.sid, row.history])) !== JSON.stringify(other?.rows.map((row) => [row.harness, row.sid, row.history]))) {
+        if (
+          JSON.stringify(group.rows.map((row) => [row.harness, row.sid, row.history])) !==
+          JSON.stringify(other?.rows.map((row) => [row.harness, row.sid, row.history]))
+        ) {
           failures.push(`seed ${String(seed)} ${group.kind}: membership or order differs`);
         }
       }
-      if (JSON.stringify(old) !== JSON.stringify(mine) && !DEVIATIONS.some((d) => d.seed === seed)) {
+      if (
+        JSON.stringify(old) !== JSON.stringify(mine) &&
+        !DEVIATIONS.some((d) => d.seed === seed)
+      ) {
         const left = JSON.stringify(old);
         const right = JSON.stringify(mine);
         let at = 0;
         while (left[at] === right[at]) at += 1;
-        failures.push(`seed ${String(seed)}: differs near ${JSON.stringify(left.slice(Math.max(0, at - 90), at + 160))} vs ${JSON.stringify(right.slice(Math.max(0, at - 90), at + 160))}`);
+        failures.push(
+          `seed ${String(seed)}: differs near ${JSON.stringify(left.slice(Math.max(0, at - 90), at + 160))} vs ${JSON.stringify(right.slice(Math.max(0, at - 90), at + 160))}`,
+        );
       }
       if (failures.length >= 3) break;
     }
@@ -110,7 +129,16 @@ describe('the Sessions screen reads as the legacy screen does, over generated pa
   }, 120_000);
 
   it('reaches both groups, ended rows, held requests, drift marks and shared labels, so agreement means something', async () => {
-    const seen = { active: 0, history: 0, ended: 0, asked: 0, drift: 0, shared: 0, goalTyped: 0, annotationsOff: 0 };
+    const seen = {
+      active: 0,
+      history: 0,
+      ended: 0,
+      asked: 0,
+      drift: 0,
+      shared: 0,
+      goalTyped: 0,
+      annotationsOff: 0,
+    };
     for (let seed = 1; seed <= SEEDS; seed += 1) {
       const text = JSON.stringify(legacySummary(genPayload(seed, { wellFormed: true })));
       seen.active += (text.match(/"kind":"active"/g) ?? []).length;

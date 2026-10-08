@@ -2,8 +2,14 @@ import { revisionFromStorageEvent, type LegacyStorage } from '../storage';
 import type { TransportStorage } from './ports';
 
 export interface StorageEventTarget {
-  addEventListener(type: 'storage', listener: (event: { readonly key: string | null; readonly newValue: string | null }) => void): void;
-  removeEventListener(type: 'storage', listener: (event: { readonly key: string | null; readonly newValue: string | null }) => void): void;
+  addEventListener(
+    type: 'storage',
+    listener: (event: { readonly key: string | null; readonly newValue: string | null }) => void,
+  ): void;
+  removeEventListener(
+    type: 'storage',
+    listener: (event: { readonly key: string | null; readonly newValue: string | null }) => void,
+  ): void;
 }
 
 /* The transport's storage port over the families `../storage` owns. Keys,
@@ -23,7 +29,10 @@ export function createTransportStorage(
       legacy.revision.write(revision);
     },
     subscribeRevision(listener) {
-      const onStorage = (event: { readonly key: string | null; readonly newValue: string | null }) => {
+      const onStorage = (event: {
+        readonly key: string | null;
+        readonly newValue: string | null;
+      }) => {
         const revision = revisionFromStorageEvent(event);
         if (revision !== null) listener(revision);
       };

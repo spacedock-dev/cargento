@@ -1,5 +1,16 @@
 import { nextNumber } from '../api/bootstrap';
-import { clock, endedAt, isScanOnly, pair, promptCopied, isRecord, records, trimmed, type Pair, type Row } from './values';
+import {
+  clock,
+  endedAt,
+  isScanOnly,
+  pair,
+  promptCopied,
+  isRecord,
+  records,
+  trimmed,
+  type Pair,
+  type Row,
+} from './values';
 
 /* Counts concern recorded launches; unpaired and activity concern this parent's own launches. An unread
    child is never a completed job. */
@@ -20,7 +31,11 @@ export function delegatedWork(session: Row | null | undefined, now: number | nul
   const count = session?.['delegated_launches'];
   const unpaired = session?.['delegated_unpaired'];
   const visibility = String(session?.['delegated_visibility'] || 'not-recorded');
-  const measured = Number.isInteger(count) && (count as number) >= 0 && Number.isInteger(unpaired) && (unpaired as number) >= 0;
+  const measured =
+    Number.isInteger(count) &&
+    (count as number) >= 0 &&
+    Number.isInteger(unpaired) &&
+    (unpaired as number) >= 0;
   if (!measured) {
     return {
       draw: (nextNumber(session?.['delegated_latest_launch_at']) ?? 0) > 0,
@@ -35,9 +50,16 @@ export function delegatedWork(session: Row | null | undefined, now: number | nul
   const quiet = nextNumber(session?.['delegated_quiet_since']) ?? 0;
   const age = quiet > 0 && quiet <= (now ?? 0) ? (now ?? 0) - quiet : null;
   const risky = open > 0 && age !== null && age >= QUIET_AFTER_SECONDS;
-  const limit = ['partial', 'unattributed', 'not-recorded'].includes(visibility) ? ' Cargento cannot see all work this session started.' : '';
-  const times = (latest > 0 ? ` Latest launch ${clock(latest)}.` : '') + (activity > 0 ? ` Last recorded activity ${clock(activity)}.` : '');
-  const quietText = risky && age !== null ? ` Nothing recorded for ${String(Math.floor(age / 60))} minutes. A server left running can also show here.` : '';
+  const limit = ['partial', 'unattributed', 'not-recorded'].includes(visibility)
+    ? ' Cargento cannot see all work this session started.'
+    : '';
+  const times =
+    (latest > 0 ? ` Latest launch ${clock(latest)}.` : '') +
+    (activity > 0 ? ` Last recorded activity ${clock(activity)}.` : '');
+  const quietText =
+    risky && age !== null
+      ? ` Nothing recorded for ${String(Math.floor(age / 60))} minutes. A server left running can also show here.`
+      : '';
   return {
     draw: launches > 0,
     risky,
@@ -63,7 +85,11 @@ export function sessionStop(source: Row | null | undefined): SessionStop | null 
   const hook = nextNumber(source?.['finished_at']);
   if (hook !== null && hook > 0) return { at: hook, kind: 'hook' };
   const recorded = nextNumber(source?.['turn_end_at']);
-  if (READING_TURN_STOP_HARNESSES.includes(String(source?.['harness'] || '')) && recorded !== null && recorded > 0) {
+  if (
+    READING_TURN_STOP_HARNESSES.includes(String(source?.['harness'] || '')) &&
+    recorded !== null &&
+    recorded > 0
+  ) {
     return { at: recorded, kind: 'transcript' };
   }
   return null;
@@ -87,9 +113,21 @@ export type Landing = {
 
 /* `stopped` is `sessionStop`'s answer, or any truthy value for a hook stop. A transcript stop is named
    as the transcript's: Cargento read it from Claude Code's own record rather than observing it. */
-export function landingOf(source: Row, ended: boolean, stopped: SessionStop | boolean | null): Landing {
+export function landingOf(
+  source: Row,
+  ended: boolean,
+  stopped: SessionStop | boolean | null,
+): Landing {
   const idle = source['state'] === 'idle';
-  const endKind: EndKind = ended ? 'session-end' : stopped && idle ? 'turn-stop' : !idle ? 'running' : isScanOnly(source) ? 'unobservable' : 'idle-unknown';
+  const endKind: EndKind = ended
+    ? 'session-end'
+    : stopped && idle
+      ? 'turn-stop'
+      : !idle
+        ? 'running'
+        : isScanOnly(source)
+          ? 'unobservable'
+          : 'idle-unknown';
   const recorded = typeof stopped === 'object' && stopped !== null && stopped.kind === 'transcript';
   const endText =
     endKind === 'session-end'
@@ -106,7 +144,10 @@ export function landingOf(source: Row, ended: boolean, stopped: SessionStop | bo
         ? 'No event from this harness can reach this row, so no stop or end can be observed'
         : 'No stop or end observed while the session is running';
   const claimed = ended || Boolean(stopped);
-  const changed = Number.isInteger(source['changed']) && (source['changed'] as number) >= 0 ? (source['changed'] as number) : null;
+  const changed =
+    Number.isInteger(source['changed']) && (source['changed'] as number) >= 0
+      ? (source['changed'] as number)
+      : null;
   const independent =
     source['dirty'] === true
       ? `${changed === null ? 'Uncommitted work was' : `${String(changed)} changed ${changed === 1 ? 'entry was' : 'entries were'}`} observed, ` +
@@ -118,7 +159,11 @@ export function landingOf(source: Row, ended: boolean, stopped: SessionStop | bo
     endKind,
     ...pair('end', endText, endWhy),
     claimKind: claimed ? 'agent' : 'none',
-    ...pair('claim', claimed ? 'The agent reported it finished' : '', 'Nothing has claimed this session finished'),
+    ...pair(
+      'claim',
+      claimed ? 'The agent reported it finished' : '',
+      'Nothing has claimed this session finished',
+    ),
     // Deliberately never known. The true arm arrives with a source that sees a deliverable without the
     // session's account; until then the reader is told why, rather than shown a blank.
     ...pair('independent', '', independent),
@@ -135,7 +180,13 @@ export function readHint(source: Row): string {
   const kind = landingOf(source, ended, stopped).endKind;
   if (kind === 'running') return 'Reads the work so far; the session is still running.';
   const cutoff =
-    kind === 'session-end' ? 'its end' : kind === 'turn-stop' ? (READING_TURN_STOP_HARNESSES.includes(String(source['harness'] || '')) ? 'its last turn' : '') : '';
+    kind === 'session-end'
+      ? 'its end'
+      : kind === 'turn-stop'
+        ? READING_TURN_STOP_HARNESSES.includes(String(source['harness'] || ''))
+          ? 'its last turn'
+          : ''
+        : '';
   return cutoff ? `Reads the session up to ${cutoff} against your intent.` : '';
 }
 
@@ -151,13 +202,28 @@ export interface Goal {
    workflows. `false` is none, which the model words as an absence. */
 export function goalOf(source: Row): Goal | false {
   const instruction = source['instruction'];
-  if (isRecord(instruction) && instruction['label'] === 'asked' && trimmed(instruction['text']) && !promptCopied(source, 'instruction')) {
-    return { text: instruction['text'] as string, src: `${String(source['harness'])} · latest assignment`, at: nextNumber(instruction['at']) };
+  if (
+    isRecord(instruction) &&
+    instruction['label'] === 'asked' &&
+    trimmed(instruction['text']) &&
+    !promptCopied(source, 'instruction')
+  ) {
+    return {
+      text: instruction['text'] as string,
+      src: `${String(source['harness'])} · latest assignment`,
+      at: nextNumber(instruction['at']),
+    };
   }
   const spacedock = source['spacedock'];
   const workflows = records(isRecord(spacedock) ? spacedock['workflows'] : undefined);
   const goals = workflows.filter((workflow) => trimmed(workflow['goal']));
-  return goals.length ? { text: goals.map((workflow) => String(workflow['goal'])).join('\n'), src: 'Spacedock · workflow goal', at: null } : false;
+  return goals.length
+    ? {
+        text: goals.map((workflow) => String(workflow['goal'])).join('\n'),
+        src: 'Spacedock · workflow goal',
+        at: null,
+      }
+    : false;
 }
 
 export interface SessionDot {
@@ -180,8 +246,17 @@ export function sessionDot(session: {
   readonly tone: string;
   readonly state: string;
 }): SessionDot {
-  const shape = session.isEnded ? 'ended' : session.isQuiet && !session.askKnown ? 'quiet' : 'filled';
-  const shapeClass = shape === 'ended' ? ' next-project-dot--ended' : shape === 'quiet' ? ' next-project-dot--quiet' : ' next-project-dot--filled';
+  const shape = session.isEnded
+    ? 'ended'
+    : session.isQuiet && !session.askKnown
+      ? 'quiet'
+      : 'filled';
+  const shapeClass =
+    shape === 'ended'
+      ? ' next-project-dot--ended'
+      : shape === 'quiet'
+        ? ' next-project-dot--quiet'
+        : ' next-project-dot--filled';
   const pulse = session.isLive ? ' next-project-dot--working' : '';
   return {
     className: `next-project-dot next-project-tone--${session.tone}${shapeClass}${pulse}`,

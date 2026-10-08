@@ -16,7 +16,9 @@ describe('live estimate family (cargento.next.live-estimate:)', () => {
     expect(liveEstimateKey(row)).toBe('cargento.next.live-estimate:claude:abcd1234');
     expect(sessionKey(row)).toBe(compatSessKey(row));
     expect(memoKey('p', row, 'focus')).toBe('cargento.cockpit.memo.v2:p:claude%3Aabcd1234:focus');
-    expect(liveEstimateKey({ harness: 'claude', sid: '' })).toBe('cargento.next.live-estimate:claude:');
+    expect(liveEstimateKey({ harness: 'claude', sid: '' })).toBe(
+      'cargento.next.live-estimate:claude:',
+    );
   });
 
   it('is on only for the raw word 1, and off removes the key', () => {
@@ -32,7 +34,9 @@ describe('live estimate family (cargento.next.live-estimate:)', () => {
       const other = createLegacyStorage(() => fakeBackend({ [key]: raw }));
       expect(other.liveEstimate.on(session)).toBe(false);
     }
-    expect(createLegacyStorage(() => fakeBackend({ [key]: '1' })).liveEstimate.on(session)).toBe(true);
+    expect(createLegacyStorage(() => fakeBackend({ [key]: '1' })).liveEstimate.on(session)).toBe(
+      true,
+    );
   });
 
   it('lets the in-tab choice win over what storage later says', () => {
@@ -57,8 +61,15 @@ describe('workstream collapse family (cargento.next.workstream.collapsed)', () =
 
   it('is collapsed only for the raw word 1', () => {
     expect(Object.values(STORAGE_KEYS)).toContain(key);
-    for (const [raw, expected] of [['1', true], ['0', false], ['true', false], ['', false]] as const) {
-      expect(createLegacyStorage(() => fakeBackend({ [key]: raw })).workstream.collapsed()).toBe(expected);
+    for (const [raw, expected] of [
+      ['1', true],
+      ['0', false],
+      ['true', false],
+      ['', false],
+    ] as const) {
+      expect(createLegacyStorage(() => fakeBackend({ [key]: raw })).workstream.collapsed()).toBe(
+        expected,
+      );
     }
     expect(createLegacyStorage(() => fakeBackend()).workstream.collapsed()).toBe(false);
     expect(createLegacyStorage(() => blockedBackend()).workstream.collapsed()).toBe(false);

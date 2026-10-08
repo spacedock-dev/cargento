@@ -4,7 +4,11 @@ import { CUE_LIMIT, CUE_TTL_MS, createKeyedState, laneKey } from './keyedState';
 
 function cues() {
   const clock = createFakeClock();
-  const store = createKeyedState<'copied' | 'failed'>({ clock, ttlMs: CUE_TTL_MS, limit: CUE_LIMIT });
+  const store = createKeyedState<'copied' | 'failed'>({
+    clock,
+    ttlMs: CUE_TTL_MS,
+    limit: CUE_LIMIT,
+  });
   return { clock, store };
 }
 
@@ -60,7 +64,8 @@ describe('a keyed cue that outlives the node that drew it', () => {
 
   it('keeps the newest thirty-two and evicts the oldest first', () => {
     const { store } = cues();
-    for (let index = 0; index < CUE_LIMIT + 3; index += 1) store.remember(`k${String(index)}`, 'copied');
+    for (let index = 0; index < CUE_LIMIT + 3; index += 1)
+      store.remember(`k${String(index)}`, 'copied');
     expect(store.size()).toBe(CUE_LIMIT);
     expect(store.read('k0')).toBeUndefined();
     expect(store.read('k2')).toBeUndefined();

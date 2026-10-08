@@ -87,4 +87,3 @@ export function viewportElement(scrollHeight = 492, clientHeight = 340): HTMLDiv
   });
   return element;
 }
-

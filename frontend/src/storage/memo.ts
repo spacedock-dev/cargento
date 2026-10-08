@@ -41,7 +41,9 @@ export function createMemoStore(access: StorageAccess): MemoStore {
     write(key, value) {
       const bounded = boundMemo(value);
       drafts.set(key, bounded);
-      const state: MemoState = access.attempt((backend) => backend.setItem(key, bounded)).ok ? 'saved' : 'error';
+      const state: MemoState = access.attempt((backend) => backend.setItem(key, bounded)).ok
+        ? 'saved'
+        : 'error';
       states.set(key, state);
       return state;
     },

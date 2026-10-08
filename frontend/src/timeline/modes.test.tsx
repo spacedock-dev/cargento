@@ -19,8 +19,12 @@ describe('resolving the activity filter', () => {
     expect(modes.resolve({ project: 'alpha', session: null, mode: 'decisions' })).toBe('decisions');
     expect(modes.resolve({ project: 'alpha', session: null })).toBe('all');
     // The reader's own choice outranks the caller's default.
-    expect(modes.resolve({ project: 'alpha', session: null, defaultMode: 'decisions' })).toBe('all');
-    expect(modes.resolve({ project: 'beta', session: null, defaultMode: 'decisions' })).toBe('decisions');
+    expect(modes.resolve({ project: 'alpha', session: null, defaultMode: 'decisions' })).toBe(
+      'all',
+    );
+    expect(modes.resolve({ project: 'beta', session: null, defaultMode: 'decisions' })).toBe(
+      'decisions',
+    );
     expect(modes.resolve({ project: 'beta', session: null })).toBe('active');
   });
 
@@ -51,7 +55,9 @@ describe('resolving the activity filter', () => {
     const written = first.backend.data.get(KEY);
     expect(written).toBe('{"alpha/app\\u0000claude:s1":"decisions","beta/api\\u0000":"all"}');
     const reloaded = modesOver({ [KEY]: written ?? '' });
-    expect(reloaded.modes.resolve({ project: 'alpha/app', session: 'claude:s1' })).toBe('decisions');
+    expect(reloaded.modes.resolve({ project: 'alpha/app', session: 'claude:s1' })).toBe(
+      'decisions',
+    );
     expect(reloaded.modes.resolve({ project: 'beta/api', session: null })).toBe('all');
     expect(reloaded.modes.resolve({ project: 'alpha/app', session: null })).toBe('active');
   });
@@ -68,7 +74,12 @@ describe('resolving the activity filter', () => {
     const { backend, modes } = modesOver();
     const listener = vi.fn();
     modes.subscribe(listener);
-    expect((modes.set as (scope: { project: string; session: null }, mode: string) => boolean)({ project: 'alpha', session: null }, 'everything')).toBe(false);
+    expect(
+      (modes.set as (scope: { project: string; session: null }, mode: string) => boolean)(
+        { project: 'alpha', session: null },
+        'everything',
+      ),
+    ).toBe(false);
     expect(backend.writes).toEqual([]);
     expect(listener).not.toHaveBeenCalled();
   });
@@ -106,8 +117,22 @@ describe('resolving the activity filter', () => {
 });
 
 describe('the hook', () => {
-  function Probe({ modes, project, session, defaultMode }: { modes: TimelineModes; project: string; session: string | null; defaultMode?: 'decisions' }) {
-    const [mode, setMode] = useTimelineModeIn(modes, { project, session, ...(defaultMode ? { defaultMode } : {}) });
+  function Probe({
+    modes,
+    project,
+    session,
+    defaultMode,
+  }: {
+    modes: TimelineModes;
+    project: string;
+    session: string | null;
+    defaultMode?: 'decisions';
+  }) {
+    const [mode, setMode] = useTimelineModeIn(modes, {
+      project,
+      session,
+      ...(defaultMode ? { defaultMode } : {}),
+    });
     return (
       <div data-testid={`${project}|${session ?? ''}`}>
         <output>{mode}</output>
@@ -127,7 +152,8 @@ describe('the hook', () => {
         <Probe modes={modes} project="beta" session={null} defaultMode="decisions" />
       </StrictMode>,
     );
-    const outputs = () => [...view.container.querySelectorAll('output')].map((node) => node.textContent);
+    const outputs = () =>
+      [...view.container.querySelectorAll('output')].map((node) => node.textContent);
     expect(outputs()).toEqual(['active', 'active', 'decisions']);
     act(() => {
       view.container.querySelector('button')?.click();

@@ -12,7 +12,14 @@ const FOCUS = { harness: 'claude', sid: 's-1' };
 
 function menu(props: Partial<MoreMenuProps> = {}): ReactElement {
   return (
-    <MoreMenu projectKey="alpha/app" focus={null} running={3} subagents={1} briefingText={() => 'BRIEFING TEXT'} {...props} />
+    <MoreMenu
+      projectKey="alpha/app"
+      focus={null}
+      running={3}
+      subagents={1}
+      briefingText={() => 'BRIEFING TEXT'}
+      {...props}
+    />
   );
 }
 
@@ -80,11 +87,19 @@ describe('the project More menu', () => {
   });
 
   it('says the briefing is not available yet, rather than blaming the clipboard, when no builder exists', async () => {
-    const unbuilt = mount(menu({ briefingText: () => { throw new BriefingUnavailable('not migrated'); } }));
+    const unbuilt = mount(
+      menu({
+        briefingText: () => {
+          throw new BriefingUnavailable('not migrated');
+        },
+      }),
+    );
     fireEvent.click(unbuilt.view.getByRole('button', { name: 'Copy briefing' }));
     await flush();
     expect(unbuilt.view.getByRole('button', { name: 'Copy unavailable' })).toBeInTheDocument();
-    expect(unbuilt.kit.announced.map((entry) => entry.text)).toEqual(['The project briefing is not available in the React interface yet']);
+    expect(unbuilt.kit.announced.map((entry) => entry.text)).toEqual([
+      'The project briefing is not available in the React interface yet',
+    ]);
   });
 
   it('reads Copy unavailable for a rejected clipboard and for none at all', async () => {
@@ -126,7 +141,9 @@ describe('the project More menu', () => {
     expect(document.activeElement).toBe(summary);
     rerender(<p>another view</p>);
     rerender(<Page />);
-    expect((view.getByText('···').closest('details') as HTMLDetailsElement).hasAttribute('open')).toBe(true);
+    expect(
+      (view.getByText('···').closest('details') as HTMLDetailsElement).hasAttribute('open'),
+    ).toBe(true);
   });
 
   it('keeps its summary keyboard operable and a menu is not dismissed by Escape as a popover is', async () => {

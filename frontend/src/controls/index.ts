@@ -8,7 +8,12 @@ export { CopyControl, type CopyControlProps, type CopyKind } from './CopyControl
 export { DraftInput, DraftTextarea } from './DraftField';
 export { Disclosure, type DisclosureProps } from './Disclosure';
 export { disclosureKey } from './disclosureStore';
-export { choiceOpenIn, createDisplayGate, installChoiceRelease, type DisplayGate } from './displayGate';
+export {
+  choiceOpenIn,
+  createDisplayGate,
+  installChoiceRelease,
+  type DisplayGate,
+} from './displayGate';
 export { createFieldMemory, FIELD_MEMORY_LIMIT } from './fieldMemory';
 export { createFocusLane, type FocusLane } from './focusLane';
 export { HumanContextField, type HumanContextFieldProps } from './HumanContextField';

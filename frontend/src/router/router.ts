@@ -1,4 +1,11 @@
-import { fragmentForRoute, parseFragment, routeIdentity, routeOrigin, type Route, type RouteInput } from './grammar';
+import {
+  fragmentForRoute,
+  parseFragment,
+  routeIdentity,
+  routeOrigin,
+  type Route,
+  type RouteInput,
+} from './grammar';
 
 /* The browser surface the router reads and writes, as interfaces it owns so a test can run a
    history without a window. `setHash` is `location.hash = ...`, which pushes an entry and later

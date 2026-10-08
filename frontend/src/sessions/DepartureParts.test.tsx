@@ -14,15 +14,20 @@ import { DelegatedWorkLine, UnaskedDepartureBody } from './DepartureParts';
    miss. */
 
 const legacy = loadLegacyViews();
-const norm = (node: Element | null): string => (node ? (node.textContent ?? '').replace(/\s+/g, ' ').trim() : '');
+const norm = (node: Element | null): string =>
+  node ? (node.textContent ?? '').replace(/\s+/g, ' ').trim() : '';
 
 function sessionsOf(seed: number): Row[] {
   const payload = genPayload(seed, { wellFormed: true });
-  return (Array.isArray(payload['sessions']) ? (payload['sessions'] as Row[]) : []).filter((row) => typeof row['sid'] === 'string' || typeof row['sid'] === 'number');
+  return (Array.isArray(payload['sessions']) ? (payload['sessions'] as Row[]) : []).filter(
+    (row) => typeof row['sid'] === 'string' || typeof row['sid'] === 'number',
+  );
 }
 
 function labels(root: ParentNode): string[] {
-  return [...root.querySelectorAll('button')].map((button) => button.getAttribute('aria-label') ?? '');
+  return [...root.querySelectorAll('button')].map(
+    (button) => button.getAttribute('aria-label') ?? '',
+  );
 }
 
 describe('the departure rows read as the legacy rows do', () => {
@@ -48,9 +53,16 @@ describe('the departure rows read as the legacy rows do', () => {
             </StrictMode>,
           );
           const root = view.container.querySelector('[data-root]') as Element;
-          expect({ seed, sid: session['sid'], text: norm(root) }).toEqual({ seed, sid: session['sid'], text: norm(template.content as unknown as Element) });
+          expect({ seed, sid: session['sid'], text: norm(root) }).toEqual({
+            seed,
+            sid: session['sid'],
+            text: norm(template.content as unknown as Element),
+          });
           // `norm` of a fragment is its text; the controls are compared by what they are called.
-          expect({ seed, controls: labels(root) }).toEqual({ seed, controls: labels(template.content) });
+          expect({ seed, controls: labels(root) }).toEqual({
+            seed,
+            controls: labels(template.content),
+          });
           compared += 1;
           if (html) withRows += 1;
           view.unmount();
@@ -78,7 +90,15 @@ describe('the departure rows read as the legacy rows do', () => {
     render(
       <StrictMode>
         <ControlsProvider controls={kit.controls}>
-          <UnaskedDepartureBody session={{ harness: 'claude', sid: 's', resume_id: 'abc-1', focusable: true, departures: [{ at: 100, revision: 1, constraint: 'goal', reading: 'r' }] }} />
+          <UnaskedDepartureBody
+            session={{
+              harness: 'claude',
+              sid: 's',
+              resume_id: 'abc-1',
+              focusable: true,
+              departures: [{ at: 100, revision: 1, constraint: 'goal', reading: 'r' }],
+            }}
+          />
         </ControlsProvider>
       </StrictMode>,
     );
@@ -93,10 +113,23 @@ describe('the delegated-work line reads as the legacy line does', () => {
     for (let seed = 1; seed <= 150; seed += 1) {
       for (const session of sessionsOf(seed)) {
         for (const now of [1000, 5000, 1e7]) {
-          const work = legacy.call<{ draw: boolean; risky: boolean; text: string }>('nextDelegatedWork', session, now);
+          const work = legacy.call<{ draw: boolean; risky: boolean; text: string }>(
+            'nextDelegatedWork',
+            session,
+            now,
+          );
           const view = render(<DelegatedWorkLine session={session} now={now} />);
           const lines = [...view.container.querySelectorAll('p')].map((node) => node.textContent);
-          expect(lines).toEqual(work.draw ? (work.risky ? [work.text, 'Is the work this session launched still running? Show its process and latest output.'] : [work.text]) : []);
+          expect(lines).toEqual(
+            work.draw
+              ? work.risky
+                ? [
+                    work.text,
+                    'Is the work this session launched still running? Show its process and latest output.',
+                  ]
+                : [work.text]
+              : [],
+          );
           view.unmount();
         }
       }

@@ -11,7 +11,12 @@ export function fakeRouterEnvironment(initial: string) {
   let queued = 0;
   /* `assigned` is every `location.hash = ...` the router made, whether or not the browser would have pushed an
      entry for it: a router that assigns a hash it already shows relies on the browser to ignore it. */
-  const calls = { push: [] as string[], replace: [] as string[], assigned: [] as string[], scroll: 0 };
+  const calls = {
+    push: [] as string[],
+    replace: [] as string[],
+    assigned: [] as string[],
+    scroll: 0,
+  };
   const env: RouterEnvironment = {
     getHash: () => entries[cursor] ?? '',
     setHash(fragment) {
@@ -65,4 +70,3 @@ export function fakeRouterEnvironment(initial: string) {
     },
   };
 }
-

@@ -1,5 +1,12 @@
 import { useMemo, type ReactNode } from 'react';
-import { CopyControl, Disclosure, RaiseControl, disclosureKey, resumeCommand, useFocusKey } from '../controls';
+import {
+  CopyControl,
+  Disclosure,
+  RaiseControl,
+  disclosureKey,
+  resumeCommand,
+  useFocusKey,
+} from '../controls';
 import { endedAt, type ObservedSession, type Row } from '../observed';
 import { selectObserved } from '../observed/select';
 import { sessionHome, type SessionRoute } from '../router/grammar';
@@ -10,7 +17,17 @@ import { AnswerBlock } from './AnswerBlock';
 import { usePruneAnswerNotes } from './usePruneAnswerNotes';
 import { DelegatedWorkLine, UnaskedDepartureBody } from './DepartureParts';
 import { DriftSlot } from './DriftSlot';
-import { CommandReportsView, DeliveryView, DeparturesKept, FactsView, HealthView, InstructionLine, LandedView, SubagentsView, TasksView } from './DetailParts';
+import {
+  CommandReportsView,
+  DeliveryView,
+  DeparturesKept,
+  FactsView,
+  HealthView,
+  InstructionLine,
+  LandedView,
+  SubagentsView,
+  TasksView,
+} from './DetailParts';
 import {
   askingTitle,
   commandReports,
@@ -38,7 +55,17 @@ import './sessions.css';
    pressed. The legacy `next-session.js` is the oracle for every sentence; the Intent and drift panel that
    sits beside the activity column belongs to the Intent step and is a stated slot here. */
 
-function Controls({ session, observed, route, labels }: { readonly session: Row; readonly observed: ObservedSession; readonly route: SessionRoute; readonly labels: ReadonlyMap<string, string> }) {
+function Controls({
+  session,
+  observed,
+  route,
+  labels,
+}: {
+  readonly session: Row;
+  readonly observed: ObservedSession;
+  readonly route: SessionRoute;
+  readonly labels: ReadonlyMap<string, string>;
+}) {
   const shell = useShell();
   const rawHarness = String(session['harness'] == null ? '' : session['harness']);
   const harness = String(session['harness'] || '');
@@ -49,7 +76,11 @@ function Controls({ session, observed, route, labels }: { readonly session: Row;
   const trimmedSid = rawSid.trim();
   const command = resumeCommand(harness, String(session['resume_id'] || ''));
   const focusCapability = shell.controls.focus !== null;
-  const raisable = session['focusable'] === true && Boolean(trimmedSid) && Boolean(rawHarness.trim()) && focusCapability;
+  const raisable =
+    session['focusable'] === true &&
+    Boolean(trimmedSid) &&
+    Boolean(rawHarness.trim()) &&
+    focusCapability;
   const limit = reentryLimit({
     label: labels.get(harness) || humanLabel(harness),
     hasCommand: Boolean(command),
@@ -57,20 +88,53 @@ function Controls({ session, observed, route, labels }: { readonly session: Row;
     canRaise: raisable,
     focusCapability,
   });
-  const missing = [limit.resume ? 'No resume command' : '', !raisable ? (focusCapability ? 'No terminal to raise' : 'Terminal raise off') : ''].filter(Boolean);
+  const missing = [
+    limit.resume ? 'No resume command' : '',
+    !raisable ? (focusCapability ? 'No terminal to raise' : 'Terminal raise off') : '',
+  ].filter(Boolean);
   return (
     <>
       <div className="next-session-controls">
-        {trimmedSid ? <CopyControl kind="id" harness={harness} sid={trimmedSid} value={trimmedSid} /> : null}
-        {rawSid ? <CopyControl kind="link" harness={harness} sid={rawSid} value={sessionLink(window.location.href, { project: observed.project, harness, sid: rawSid })} /> : null}
-        {command ? <CopyControl kind="command" harness={harness} sid={rawSid} value={command} /> : null}
-        {observed.isNeeds ? <RaiseControl harness={rawHarness.trim()} sid={trimmedSid} focusable={session['focusable'] === true} primary /> : null}
+        {trimmedSid ? (
+          <CopyControl kind="id" harness={harness} sid={trimmedSid} value={trimmedSid} />
+        ) : null}
+        {rawSid ? (
+          <CopyControl
+            kind="link"
+            harness={harness}
+            sid={rawSid}
+            value={sessionLink(window.location.href, {
+              project: observed.project,
+              harness,
+              sid: rawSid,
+            })}
+          />
+        ) : null}
+        {command ? (
+          <CopyControl kind="command" harness={harness} sid={rawSid} value={command} />
+        ) : null}
+        {observed.isNeeds ? (
+          <RaiseControl
+            harness={rawHarness.trim()}
+            sid={trimmedSid}
+            focusable={session['focusable'] === true}
+            primary
+          />
+        ) : null}
       </div>
       {missing.length ? (
         <div className="next-session-reentry-none">
           <span className="next-session-reentry-clause">{missing.join(' · ')}</span>
           {/* A popover: this row is a flex row ending at the controls, and an in-flow body widened the item to its paragraphs and dragged "Why" 492px left. */}
-          <Disclosure disclosureKey={disclosureKey({ project: route.project, scope: `${route.harness ?? ''}:${route.session}`, name: 'reentry-why' })} summary="Why" variant="popover">
+          <Disclosure
+            disclosureKey={disclosureKey({
+              project: route.project,
+              scope: `${route.harness ?? ''}:${route.session}`,
+              name: 'reentry-why',
+            })}
+            summary="Why"
+            variant="popover"
+          >
             {limit.resume ? <ReentryLine text={limit.resume} /> : null}
             {!raisable ? <ReentryLine text={limit.raise} /> : null}
           </Disclosure>
@@ -82,7 +146,15 @@ function Controls({ session, observed, route, labels }: { readonly session: Row;
 
 /* The departures raised to the reader and the way back beside them, drawn under the label the legacy page
    gives them until the Intent step's panel composes them itself. */
-function DepartureEvidence({ session, laneOn, offReason }: { readonly session: Row; readonly laneOn: boolean; readonly offReason: unknown }) {
+function DepartureEvidence({
+  session,
+  laneOn,
+  offReason,
+}: {
+  readonly session: Row;
+  readonly laneOn: boolean;
+  readonly offReason: unknown;
+}) {
   const body = unaskedDepartures(session);
   if (!body) return null;
   return (
@@ -106,7 +178,9 @@ function DepartureEvidence({ session, laneOn, offReason }: { readonly session: R
 }
 
 function humanLabel(value: string): string {
-  const words = String(value || 'work').replace(/[-_]+/g, ' ').trim();
+  const words = String(value || 'work')
+    .replace(/[-_]+/g, ' ')
+    .trim();
   return words ? (words[0] ?? '').toUpperCase() + words.slice(1) : 'Work';
 }
 
@@ -118,21 +192,53 @@ function ReentryLine({ text }: { readonly text: string }) {
   );
 }
 
-function CommandSurface({ session, observed, generated }: { readonly session: Row; readonly observed: ObservedSession; readonly generated: number | null }) {
+function CommandSurface({
+  session,
+  observed,
+  generated,
+}: {
+  readonly session: Row;
+  readonly observed: ObservedSession;
+  readonly generated: number | null;
+}) {
   const context = sessionInstruction(session, 'agent') ?? sessionInstruction(session, 'earlier');
-  const state = observed.isNeeds ? 'waiting on you' : observed.isEnded ? 'session ended' : observed.state;
+  const state = observed.isNeeds
+    ? 'waiting on you'
+    : observed.isEnded
+      ? 'session ended'
+      : observed.state;
   return (
     <div className="next-session-command-surface" aria-label="Session command surface">
       <section className="next-session-current" data-next-session-command="activity">
         <span className="next-session-current-label">CURRENT ACTIVITY</span>
-        <strong {...(observed.nowKnown ? {} : { className: 'next-session-absent' })}>{`${state} · ${observed.nowText}`}</strong>
-        {context ? <InstructionLine session={session} generated={generated} className="next-session-command-context" /> : null}
+        <strong
+          {...(observed.nowKnown ? {} : { className: 'next-session-absent' })}
+        >{`${state} · ${observed.nowText}`}</strong>
+        {context ? (
+          <InstructionLine
+            session={session}
+            generated={generated}
+            className="next-session-command-context"
+          />
+        ) : null}
       </section>
     </div>
   );
 }
 
-function Header({ session, observed, route, labels, generated }: { readonly session: Row; readonly observed: ObservedSession; readonly route: SessionRoute; readonly labels: ReadonlyMap<string, string>; readonly generated: number | null }) {
+function Header({
+  session,
+  observed,
+  route,
+  labels,
+  generated,
+}: {
+  readonly session: Row;
+  readonly observed: ObservedSession;
+  readonly route: SessionRoute;
+  readonly labels: ReadonlyMap<string, string>;
+  readonly generated: number | null;
+}) {
   const shell = useShell();
   const titleRef = useFocusKey<HTMLHeadingElement>(shell.controls.focusLane, 'session-title');
   const state = detailState(session['state']);
@@ -153,7 +259,11 @@ function Header({ session, observed, route, labels, generated }: { readonly sess
             {word}
           </span>
         ) : null}
-        <h1 ref={titleRef} tabIndex={-1} {...(observed.titleKnown ? {} : { className: 'next-session-absent' })}>
+        <h1
+          ref={titleRef}
+          tabIndex={-1}
+          {...(observed.titleKnown ? {} : { className: 'next-session-absent' })}
+        >
           {observed.titleText}
         </h1>
         <p className="next-session-identity">
@@ -185,11 +295,20 @@ export function SessionDetail({ route, data, session }: SessionDetailProps): Rea
   const payload = data as unknown as Row;
   const model = useDisplayed(selectObserved);
   const observed = useMemo(
-    () => model.sessions.find((row) => row.harness === String(session['harness'] ?? '') && row.sid === String(session['sid'] ?? '') && row.project === String(session['project'] ?? '')) ?? null,
+    () =>
+      model.sessions.find(
+        (row) =>
+          row.harness === String(session['harness'] ?? '') &&
+          row.sid === String(session['sid'] ?? '') &&
+          row.project === String(session['project'] ?? ''),
+      ) ?? null,
     [model, session],
   );
   const labels = useMemo(() => harnessLabels(payload), [payload]);
-  const generated = typeof payload['generated'] === 'number' && Number.isFinite(payload['generated']) ? payload['generated'] : null;
+  const generated =
+    typeof payload['generated'] === 'number' && Number.isFinite(payload['generated'])
+      ? payload['generated']
+      : null;
   const asks = useMemo(() => sessionAsks(payload, session), [payload, session]);
   usePruneAnswerNotes(payload);
   const scope = `${route.harness ?? ''}:${route.session}`;
@@ -206,13 +325,35 @@ export function SessionDetail({ route, data, session }: SessionDetailProps): Rea
   const asked = sessionInstruction(session, 'asked');
   const factKey = (name: string) => disclosureKey({ project: route.project, scope, name });
   return (
-    <article className={`next-session-detail${blocked}`} data-next-session-detail={String(session['sid'] ?? '')} {...(state ? { 'data-next-session-state': state.token } : {})} data-tone={observed.tone}>
-      <Header session={session} observed={observed} route={route} labels={labels} generated={generated} />
-      {observed.askKnown ? <AnswerBlock payload={payload} observed={observed} asks={asks} title={askingTitle(labels, session)} /> : null}
+    <article
+      className={`next-session-detail${blocked}`}
+      data-next-session-detail={String(session['sid'] ?? '')}
+      {...(state ? { 'data-next-session-state': state.token } : {})}
+      data-tone={observed.tone}
+    >
+      <Header
+        session={session}
+        observed={observed}
+        route={route}
+        labels={labels}
+        generated={generated}
+      />
+      {observed.askKnown ? (
+        <AnswerBlock
+          payload={payload}
+          observed={observed}
+          asks={asks}
+          title={askingTitle(labels, session)}
+        />
+      ) : null}
       <div className="next-session-columns">
         <DriftSlot harness={observed.harness} sid={observed.sid}>
           <DelegatedWorkLine session={session} now={generated} />
-          <DepartureEvidence session={session} laneOn={payload['unasked'] === true} offReason={payload['unasked_off_reason']} />
+          <DepartureEvidence
+            session={session}
+            laneOn={payload['unasked'] === true}
+            offReason={payload['unasked_off_reason']}
+          />
         </DriftSlot>
         <div className="next-session-activity" data-next-session-activity>
           <h2 className="next-session-activity-heading">Session activity</h2>
@@ -223,7 +364,11 @@ export function SessionDetail({ route, data, session }: SessionDetailProps): Rea
             {asked ? (
               <section data-next-session-command-fact="assignment">
                 <h2>ASSIGNMENT</h2>
-                <InstructionLine session={session} generated={generated} className="next-session-command-context" />
+                <InstructionLine
+                  session={session}
+                  generated={generated}
+                  className="next-session-command-context"
+                />
               </section>
             ) : null}
           </div>
@@ -249,4 +394,3 @@ export function SessionDetail({ route, data, session }: SessionDetailProps): Rea
     </article>
   );
 }
-

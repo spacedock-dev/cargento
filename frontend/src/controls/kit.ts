@@ -14,7 +14,14 @@ export interface ClipboardLike {
   writeText(text: string): Promise<void>;
 }
 
-export type CueState = 'copied' | 'failed' | 'sending' | 'sent' | 'declined' | 'throttled' | 'stale';
+export type CueState =
+  | 'copied'
+  | 'failed'
+  | 'sending'
+  | 'sent'
+  | 'declined'
+  | 'throttled'
+  | 'stale';
 export type BriefingState = 'copied' | 'error';
 
 export interface ControlsDeps {
@@ -40,7 +47,10 @@ function browserClipboard(): ClipboardLike | null {
 }
 
 function browserReducedMotion(): boolean {
-  return typeof globalThis.matchMedia === 'function' && globalThis.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  return (
+    typeof globalThis.matchMedia === 'function' &&
+    globalThis.matchMedia('(prefers-reduced-motion: reduce)').matches
+  );
 }
 
 function createValueStore<T>(initial: T) {
@@ -75,11 +85,23 @@ export function createControls(deps: ControlsDeps) {
   /* One field edits at a time, as in the legacy page, and the editor outlives its node:
      the key, the words the field held when editing began and whether it has taken
      focus yet. Held here because the More menu opens it from outside the field. */
-  const memoEditing = createValueStore<{ readonly key: string; readonly original: string; readonly fresh: boolean } | null>(null);
-  const cues: KeyedState<CueState> = createKeyedState<CueState>({ clock: deps.clock, ttlMs: CUE_TTL_MS, limit: CUE_LIMIT });
+  const memoEditing = createValueStore<{
+    readonly key: string;
+    readonly original: string;
+    readonly fresh: boolean;
+  } | null>(null);
+  const cues: KeyedState<CueState> = createKeyedState<CueState>({
+    clock: deps.clock,
+    ttlMs: CUE_TTL_MS,
+    limit: CUE_LIMIT,
+  });
   /* No expiry and no cap: the briefing result reads until the project or session
      scope changes, which `contextKey` makes a different key rather than a reset. */
-  const briefing: KeyedState<BriefingState> = createKeyedState<BriefingState>({ clock: deps.clock, ttlMs: null, limit: null });
+  const briefing: KeyedState<BriefingState> = createKeyedState<BriefingState>({
+    clock: deps.clock,
+    ttlMs: null,
+    limit: null,
+  });
   return {
     clock: deps.clock,
     announce: deps.announce,

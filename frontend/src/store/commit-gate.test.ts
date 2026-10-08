@@ -1,6 +1,11 @@
 import { describe, expect, it, vi } from 'vitest';
 import { createFakeClock } from '../transport/testing';
-import { MAX_DEFERRED_COMMITS, MOTION_HOLD_MS, createCommitGate, createMotionHold } from './commit-gate';
+import {
+  MAX_DEFERRED_COMMITS,
+  MOTION_HOLD_MS,
+  createCommitGate,
+  createMotionHold,
+} from './commit-gate';
 
 function gateWith(held: { value: boolean }) {
   const commit = vi.fn<(payload: string) => void>();
@@ -47,7 +52,8 @@ describe('commit gate for an open native choice', () => {
     gate.release();
     expect(commit).toHaveBeenCalledExactlyOnceWith('p5');
     expect(gate.deferredCount()).toBe(0);
-    for (let attempt = 1; attempt <= 12; attempt += 1) expect(gate.submit(`q${attempt}`)).toBe('deferred');
+    for (let attempt = 1; attempt <= 12; attempt += 1)
+      expect(gate.submit(`q${attempt}`)).toBe('deferred');
   });
 
   it('does nothing on release when nothing was deferred', () => {

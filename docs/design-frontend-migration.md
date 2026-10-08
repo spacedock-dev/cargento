@@ -49,6 +49,47 @@ an owned-child handshake and exact origin checks prevent accidentally loading a 
 process. Production exposes no HMR path. Build plugins and dependency scripts never receive
 release push credentials; publication verifies the exact fresh or resumed target tree.
 
+## Lint and format
+
+Biome, pinned exactly, lints and formats `frontend/**/*.{ts,tsx,mts,mjs}`, the two root tool configs
+and `biome.json`. `pnpm lint` runs `biome check` with warnings as errors, so one command covers rules
+and formatting; `pnpm format` rewrites. CSS, HTML and the captured JSON fixtures are outside the file
+set: the fixtures are byte-exact Python captures, and the previous linter never read the CSS or HTML.
+Line width is 100, the same as ruff's.
+
+`biome.json` starts from no preset and enables, rule by rule, what the ESLint configuration it
+replaced enforced: the JavaScript recommended set, typescript-eslint strict without type
+information, the react-hooks rules and react-refresh. Biome's own recommended preset adds
+accessibility and style policy that configuration never carried, so it stays off. Import organizing
+is off for the same reason, and because CSS side-effect imports are order-sensitive.
+
+After a Biome upgrade, probe one defect per rule class and confirm `pnpm lint` fails on it. The
+React Compiler checks (set-state-in-effect, purity, refs, immutability, globals, static components,
+error boundaries, `useMemo` returns, set-state-in-render) come from `nursery/useReactCompiler`,
+which is experimental and can change between releases without a deprecation. The compiler reports
+only on functions that look like components or hooks and return JSX.
+
+Three kinds of difference were weighed and settled:
+
+- **Stricter in Biome, so relaxed.** `noShadowRestrictedNames` rejects any global name, where ESLint
+  rejects only a handful; `noUnsafeOptionalChaining` rejects a cast over an optional read, which a
+  test uses on purpose; `useComponentExportOnlyModules` rejects unexported helper components, which
+  react-refresh skips in `*.test.*` files. Each is off for test files only. `useErrorCause` does not
+  require a catch parameter, matching ESLint's default.
+- **No equivalent, accepted.** `no-dynamic-delete` (Biome's `noDelete` flags static keys instead,
+  the opposite rule), `ban-ts-comment` for `@ts-nocheck` and undescribed `@ts-expect-error`
+  (`@ts-ignore` is covered, and none is used), `triple-slash-reference`, `no-invalid-regexp` for
+  string-built patterns, `no-useless-assignment`, empty or constructor-only classes, and unused
+  trailing parameters in the `.mjs` scripts (`tsc` covers them in TypeScript). Biome also has one
+  global set, so a browser-only global in a Node script is not rejected.
+- **Not applicable.** The compiler's `config`, `gating`, `unsupported-syntax` and
+  `incompatible-library` diagnostics: no compiler configuration is in use, and the build does not
+  run the compiler.
+
+A suppression carries its reason in the `biome-ignore` comment. Three exist: the timeline's context
+read re-runs on the board revision without reading it, the terminal test harness exports nothing,
+and one `hasOwnProperty.call` stays because `Object.hasOwn` would change the shipped page.
+
 ## Candidate packaging
 
 The core page embeds compiled JavaScript and CSS as base64 data resources. These are packaged

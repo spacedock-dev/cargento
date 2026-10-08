@@ -1,6 +1,8 @@
 import { expect, test } from '@playwright/test';
 
-test('the built preview says which views the React interface does not have yet', async ({ page }) => {
+test('the built preview says which views the React interface does not have yet', async ({
+  page,
+}) => {
   const failures: string[] = [];
   page.on('pageerror', (error) => failures.push(error.message));
 

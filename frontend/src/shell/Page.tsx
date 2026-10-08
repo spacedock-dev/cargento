@@ -55,9 +55,12 @@ export function Page() {
   }, [title]);
 
   const retryMs = host.streamSupported ? FALLBACK_POLL_MS : UNCOORDINATED_POLL_MS;
-  const scope = route.view === 'project' ? { project: route.project, scope: route.focus ?? null } : route.view === 'session'
-    ? { project: route.project, scope: `${route.harness ?? ''}:${route.session}` }
-    : { project: null, scope: null };
+  const scope =
+    route.view === 'project'
+      ? { project: route.project, scope: route.focus ?? null }
+      : route.view === 'session'
+        ? { project: route.project, scope: `${route.harness ?? ''}:${route.session}` }
+        : { project: null, scope: null };
 
   return (
     <main id="app">
