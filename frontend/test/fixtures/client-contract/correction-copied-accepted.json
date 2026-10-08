@@ -1,0 +1,30 @@
+{
+  "format": 1,
+  "name": "correction-copied-accepted",
+  "notes": "Registering a copy answers one body whatever the session is.",
+  "request": {
+    "body": {
+      "harness": "claude",
+      "sid": "a1b2c3d4",
+      "text": "Please keep the diff small."
+    },
+    "headers": {
+      "Origin": "{origin}"
+    },
+    "method": "POST",
+    "path": "/api/correction/copied",
+    "query": ""
+  },
+  "response": {
+    "body": {
+      "ok": true
+    },
+    "headers": {
+      "Cache-Control": "no-store",
+      "Content-Length": "11",
+      "Content-Security-Policy": "frame-ancestors 'none'",
+      "Content-Type": "application/json"
+    },
+    "status": 200
+  }
+}

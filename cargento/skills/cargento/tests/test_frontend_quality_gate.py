@@ -208,7 +208,7 @@ class FrontendWiringControlsTest(unittest.TestCase):
 
     def test_integrated_development_runs_on_every_native_frontend_runner(self) -> None:
         steps = jobs()["frontend"]["steps"]
-        for command in ("pnpm test:dev", "pnpm test:dev:browser"):
+        for command in ("pnpm test:dev", "pnpm test:dev:browser", "pnpm test:storage:browser"):
             with self.subTest(command=command):
                 matches = [step for step in steps if step.get("run") == command]
                 self.assertEqual(1, len(matches), "development proof must run exactly once")
@@ -224,6 +224,10 @@ class FrontendWiringControlsTest(unittest.TestCase):
         self.assertLess(
             commands.index("pnpm exec playwright install --with-deps chromium"),
             commands.index("pnpm test:dev:browser"),
+        )
+        self.assertLess(
+            commands.index("pnpm exec playwright install --with-deps chromium"),
+            commands.index("pnpm test:storage:browser"),
         )
 
     def test_native_build_is_separate_from_canonical_check_and_installed_smoke(self) -> None:

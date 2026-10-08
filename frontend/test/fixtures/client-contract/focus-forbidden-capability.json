@@ -1,0 +1,31 @@
+{
+  "format": 1,
+  "name": "focus-forbidden-capability",
+  "notes": "A capability from a previous run is 403: reload for a new page.",
+  "request": {
+    "body": {
+      "harness": "claude",
+      "sid": "a1b2c3d4"
+    },
+    "headers": {
+      "Origin": "{origin}",
+      "X-Cargento-Capability": "stale-capability"
+    },
+    "method": "POST",
+    "path": "/api/focus",
+    "query": ""
+  },
+  "response": {
+    "error_page": {
+      "contains": [
+        "Error code: 403",
+        "Error response"
+      ],
+      "kind": "python-http-server"
+    },
+    "headers": {
+      "Content-Type": "text/html;charset=utf-8"
+    },
+    "status": 403
+  }
+}

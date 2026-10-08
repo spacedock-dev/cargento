@@ -1,0 +1,30 @@
+{
+  "format": 1,
+  "name": "focus-focused",
+  "notes": "An observed terminal and an inert runner: the answer is one boolean, true. It says the command exited zero, not that a window came forward.",
+  "request": {
+    "body": {
+      "harness": "claude",
+      "sid": "a1b2c3d4"
+    },
+    "headers": {
+      "Origin": "{origin}",
+      "X-Cargento-Capability": "{capability}"
+    },
+    "method": "POST",
+    "path": "/api/focus",
+    "query": ""
+  },
+  "response": {
+    "body": {
+      "focused": true
+    },
+    "headers": {
+      "Cache-Control": "no-store",
+      "Content-Length": "16",
+      "Content-Security-Policy": "frame-ancestors 'none'",
+      "Content-Type": "application/json"
+    },
+    "status": 200
+  }
+}

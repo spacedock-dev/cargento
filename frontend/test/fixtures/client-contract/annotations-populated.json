@@ -1,0 +1,72 @@
+{
+  "format": 1,
+  "name": "annotations-populated",
+  "notes": "One annotated session with two revisions and the published binding and departure fields.",
+  "request": {
+    "body": null,
+    "headers": {},
+    "method": "GET",
+    "path": "/api/annotations",
+    "query": ""
+  },
+  "response": {
+    "body": {
+      "annotations": [
+        {
+          "assessment": null,
+          "at": 1900000000.0,
+          "binding_why": "Bound by an eight-character identity prefix, which is all this harness publishes as the session id. Another session sharing it would share these words.",
+          "departure_why": "Cargento has not checked this session against what you asked for. Nothing here says whether it would have found anything.",
+          "departures": [],
+          "discarded_at": null,
+          "discarded_why": "",
+          "goal": "Ship the parser",
+          "goal_saved_at": 1900000000.0,
+          "goal_source": "typed",
+          "goal_source_at": null,
+          "goal_why": "",
+          "harness": "claude",
+          "line_1": "Docs build",
+          "line_1_source": "typed",
+          "line_1_source_id": "",
+          "line_2": "",
+          "line_2_source": null,
+          "line_2_source_id": "",
+          "line_3": "",
+          "line_3_source": null,
+          "line_3_source_id": "",
+          "line_4": "",
+          "line_4_source": null,
+          "line_4_source_id": "",
+          "line_5": "",
+          "line_5_source": null,
+          "line_5_source_id": "",
+          "line_6": "",
+          "line_6_source": null,
+          "line_6_source_id": "",
+          "lines_why": "",
+          "not_accurate": false,
+          "reading_count": 0,
+          "reading_refused": false,
+          "reading_withheld": "",
+          "reading_withheld_at": null,
+          "revision": 2,
+          "revision_count": 2,
+          "settled_at": null,
+          "settled_revision": null,
+          "settled_through": null,
+          "sid": "a1b2c3d4",
+          "window_start": 1900000000.0
+        }
+      ],
+      "intent_revision": "7909ef2875e98ba1fd70e4014fdca30fbbc48e49b82909e7658778e40c390f62"
+    },
+    "headers": {
+      "Cache-Control": "no-store",
+      "Content-Length": "1246",
+      "Content-Security-Policy": "frame-ancestors 'none'",
+      "Content-Type": "application/json"
+    },
+    "status": 200
+  }
+}

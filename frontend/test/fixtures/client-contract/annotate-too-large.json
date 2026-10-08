@@ -1,0 +1,28 @@
+{
+  "format": 1,
+  "name": "annotate-too-large",
+  "notes": "A body over the 12288-byte annotation cap is refused 413 before it is read.",
+  "request": {
+    "body": null,
+    "body_padding_bytes": 12289,
+    "headers": {
+      "Origin": "{origin}"
+    },
+    "method": "POST",
+    "path": "/api/annotate",
+    "query": ""
+  },
+  "response": {
+    "error_page": {
+      "contains": [
+        "Error code: 413",
+        "Error response"
+      ],
+      "kind": "python-http-server"
+    },
+    "headers": {
+      "Content-Type": "text/html;charset=utf-8"
+    },
+    "status": 413
+  }
+}

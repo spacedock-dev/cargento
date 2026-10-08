@@ -1,0 +1,23 @@
+{
+  "format": 1,
+  "name": "stream-heartbeat",
+  "notes": "Before anything is published the stream carries only the comment heartbeat, which an EventSource never delivers as an event.",
+  "request": {
+    "body": null,
+    "headers": {
+      "Sec-Fetch-Site": "same-origin"
+    },
+    "method": "GET",
+    "path": "/api/stream",
+    "query": ""
+  },
+  "response": {
+    "headers": {
+      "Cache-Control": "no-store",
+      "Content-Type": "text/event-stream",
+      "X-Accel-Buffering": "no"
+    },
+    "status": 200,
+    "text": ": keepalive\n\n"
+  }
+}

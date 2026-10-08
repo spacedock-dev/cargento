@@ -1,0 +1,29 @@
+{
+  "format": 1,
+  "name": "focus-too-large",
+  "notes": "A body over the 1024-byte focus cap is refused 413.",
+  "request": {
+    "body": null,
+    "body_padding_bytes": 1025,
+    "headers": {
+      "Origin": "{origin}",
+      "X-Cargento-Capability": "{capability}"
+    },
+    "method": "POST",
+    "path": "/api/focus",
+    "query": ""
+  },
+  "response": {
+    "error_page": {
+      "contains": [
+        "Error code: 413",
+        "Error response"
+      ],
+      "kind": "python-http-server"
+    },
+    "headers": {
+      "Content-Type": "text/html;charset=utf-8"
+    },
+    "status": 413
+  }
+}

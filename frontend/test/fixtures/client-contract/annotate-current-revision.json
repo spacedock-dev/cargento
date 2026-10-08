@@ -1,0 +1,41 @@
+{
+  "format": 1,
+  "name": "annotate-current-revision",
+  "notes": "The same replacement naming the stored revision is stored as revision 2.",
+  "request": {
+    "body": {
+      "expected_revision": 1,
+      "goal": "Ship the parser",
+      "harness": "claude",
+      "lines": [
+        "Docs build"
+      ],
+      "sid": "a1b2c3d4"
+    },
+    "headers": {
+      "Origin": "{origin}"
+    },
+    "method": "POST",
+    "path": "/api/annotate",
+    "query": ""
+  },
+  "response": {
+    "body": {
+      "discarded": null,
+      "ok": true,
+      "outcome": "stored",
+      "persisted": true,
+      "revision": 2,
+      "revision_count": 2,
+      "saved_revision": null,
+      "withdrew": true
+    },
+    "headers": {
+      "Cache-Control": "no-store",
+      "Content-Length": "134",
+      "Content-Security-Policy": "frame-ancestors 'none'",
+      "Content-Type": "application/json"
+    },
+    "status": 200
+  }
+}

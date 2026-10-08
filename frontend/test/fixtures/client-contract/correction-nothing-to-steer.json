@@ -1,0 +1,30 @@
+{
+  "format": 1,
+  "name": "correction-nothing-to-steer",
+  "notes": "A session with nothing to steer from answers one 200 body, which is also what an unknown session answers.",
+  "request": {
+    "body": {
+      "harness": "claude",
+      "sid": "a1b2c3d4"
+    },
+    "headers": {
+      "Origin": "{origin}"
+    },
+    "method": "POST",
+    "path": "/api/correction",
+    "query": ""
+  },
+  "response": {
+    "body": {
+      "ok": false,
+      "reason": "nothing"
+    },
+    "headers": {
+      "Cache-Control": "no-store",
+      "Content-Length": "31",
+      "Content-Security-Policy": "frame-ancestors 'none'",
+      "Content-Type": "application/json"
+    },
+    "status": 200
+  }
+}

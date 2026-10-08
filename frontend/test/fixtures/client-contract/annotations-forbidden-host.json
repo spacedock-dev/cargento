@@ -1,0 +1,27 @@
+{
+  "format": 1,
+  "name": "annotations-forbidden-host",
+  "notes": "The annotation log is strict-origin.",
+  "request": {
+    "body": null,
+    "headers": {
+      "Host": "evil.example"
+    },
+    "method": "GET",
+    "path": "/api/annotations",
+    "query": ""
+  },
+  "response": {
+    "error_page": {
+      "contains": [
+        "Error code: 403",
+        "Error response"
+      ],
+      "kind": "python-http-server"
+    },
+    "headers": {
+      "Content-Type": "text/html;charset=utf-8"
+    },
+    "status": 403
+  }
+}

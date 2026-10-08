@@ -1,0 +1,28 @@
+{
+  "format": 1,
+  "name": "notify-too-large",
+  "notes": "An oversized hook body is refused 413.",
+  "request": {
+    "body": null,
+    "body_padding_bytes": 70000,
+    "headers": {
+      "Origin": "{origin}"
+    },
+    "method": "POST",
+    "path": "/api/notify",
+    "query": ""
+  },
+  "response": {
+    "error_page": {
+      "contains": [
+        "Error code: 413",
+        "Error response"
+      ],
+      "kind": "python-http-server"
+    },
+    "headers": {
+      "Content-Type": "text/html;charset=utf-8"
+    },
+    "status": 413
+  }
+}

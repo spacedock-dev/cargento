@@ -1,0 +1,30 @@
+{
+  "format": 1,
+  "name": "lane-reported",
+  "notes": "A tab reporting a working notification lane.",
+  "request": {
+    "body": {
+      "permission": "granted",
+      "supported": true
+    },
+    "headers": {
+      "Origin": "{origin}"
+    },
+    "method": "POST",
+    "path": "/api/lane",
+    "query": ""
+  },
+  "response": {
+    "body": {
+      "ok": true,
+      "reported": true
+    },
+    "headers": {
+      "Cache-Control": "no-store",
+      "Content-Length": "27",
+      "Content-Security-Policy": "frame-ancestors 'none'",
+      "Content-Type": "application/json"
+    },
+    "status": 200
+  }
+}

@@ -1,0 +1,40 @@
+{
+  "format": 1,
+  "name": "annotate-stale-lines",
+  "notes": "Replacing a stored outcome list without naming the revision it was drafted against is refused, so a stale tab cannot overwrite a newer one.",
+  "request": {
+    "body": {
+      "goal": "Ship the parser",
+      "harness": "claude",
+      "lines": [
+        "Docs build"
+      ],
+      "sid": "a1b2c3d4"
+    },
+    "headers": {
+      "Origin": "{origin}"
+    },
+    "method": "POST",
+    "path": "/api/annotate",
+    "query": ""
+  },
+  "response": {
+    "body": {
+      "discarded": null,
+      "ok": true,
+      "outcome": "refused",
+      "persisted": false,
+      "revision": 1,
+      "revision_count": 1,
+      "saved_revision": null,
+      "withdrew": true
+    },
+    "headers": {
+      "Cache-Control": "no-store",
+      "Content-Length": "136",
+      "Content-Security-Policy": "frame-ancestors 'none'",
+      "Content-Type": "application/json"
+    },
+    "status": 200
+  }
+}

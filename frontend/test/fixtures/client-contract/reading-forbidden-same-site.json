@@ -1,0 +1,33 @@
+{
+  "format": 1,
+  "name": "reading-forbidden-same-site",
+  "notes": "A same-site fetch from another local port is refused: a reading spends the reader's own capacity.",
+  "request": {
+    "body": {
+      "harness": "claude",
+      "observer_model": 1,
+      "press": true,
+      "sid": "a1b2c3d4"
+    },
+    "headers": {
+      "Origin": "{origin}",
+      "Sec-Fetch-Site": "same-site"
+    },
+    "method": "POST",
+    "path": "/api/reading",
+    "query": ""
+  },
+  "response": {
+    "error_page": {
+      "contains": [
+        "Error code: 403",
+        "Error response"
+      ],
+      "kind": "python-http-server"
+    },
+    "headers": {
+      "Content-Type": "text/html;charset=utf-8"
+    },
+    "status": 403
+  }
+}

@@ -1,0 +1,33 @@
+{
+  "format": 1,
+  "name": "tripwire-stale-revision",
+  "notes": "A condition that changed since the page read it is a 409; nothing is saved.",
+  "request": {
+    "body": {
+      "action": "remove",
+      "expected_revision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "id": "0000000000000000000000000000000000000000000000000000000000000001",
+      "stage": "review"
+    },
+    "headers": {
+      "Origin": "{origin}"
+    },
+    "method": "POST",
+    "path": "/api/tripwire",
+    "query": ""
+  },
+  "response": {
+    "body": {
+      "error": "This condition changed; refresh before saving.",
+      "ok": false,
+      "status": 409
+    },
+    "headers": {
+      "Cache-Control": "no-store",
+      "Content-Length": "87",
+      "Content-Security-Policy": "frame-ancestors 'none'",
+      "Content-Type": "application/json"
+    },
+    "status": 409
+  }
+}

@@ -1,0 +1,27 @@
+{
+  "format": 1,
+  "name": "data-forbidden-host",
+  "notes": "A Host that is not a loopback literal is refused before anything is read.",
+  "request": {
+    "body": null,
+    "headers": {
+      "Host": "evil.example"
+    },
+    "method": "GET",
+    "path": "/api/data",
+    "query": ""
+  },
+  "response": {
+    "error_page": {
+      "contains": [
+        "Error code: 403",
+        "Error response"
+      ],
+      "kind": "python-http-server"
+    },
+    "headers": {
+      "Content-Type": "text/html;charset=utf-8"
+    },
+    "status": 403
+  }
+}

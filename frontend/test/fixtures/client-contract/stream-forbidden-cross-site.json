@@ -1,0 +1,29 @@
+{
+  "format": 1,
+  "name": "stream-forbidden-cross-site",
+  "notes": "A cross-site fetch of the stream is refused; the navigation exception does not apply.",
+  "request": {
+    "body": null,
+    "headers": {
+      "Sec-Fetch-Dest": "empty",
+      "Sec-Fetch-Mode": "cors",
+      "Sec-Fetch-Site": "cross-site"
+    },
+    "method": "GET",
+    "path": "/api/stream",
+    "query": ""
+  },
+  "response": {
+    "error_page": {
+      "contains": [
+        "Error code: 403",
+        "Error response"
+      ],
+      "kind": "python-http-server"
+    },
+    "headers": {
+      "Content-Type": "text/html;charset=utf-8"
+    },
+    "status": 403
+  }
+}

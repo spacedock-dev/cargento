@@ -1,0 +1,40 @@
+{
+  "format": 1,
+  "name": "annotate-adopted",
+  "notes": "Adopting the first prompt as the goal: stored, and saved_revision names the revision this adoption wrote.",
+  "request": {
+    "body": {
+      "adopt": "first-prompt",
+      "expected_prompt": "Add retry with backoff to the webhook handler.",
+      "expected_prompt_at": 1899996400.0,
+      "expected_revision": 0,
+      "harness": "claude",
+      "sid": "a1b2c3d4"
+    },
+    "headers": {
+      "Origin": "{origin}"
+    },
+    "method": "POST",
+    "path": "/api/annotate",
+    "query": ""
+  },
+  "response": {
+    "body": {
+      "discarded": null,
+      "ok": true,
+      "outcome": "stored",
+      "persisted": true,
+      "revision": 1,
+      "revision_count": 1,
+      "saved_revision": 1,
+      "withdrew": true
+    },
+    "headers": {
+      "Cache-Control": "no-store",
+      "Content-Length": "131",
+      "Content-Security-Policy": "frame-ancestors 'none'",
+      "Content-Type": "application/json"
+    },
+    "status": 200
+  }
+}

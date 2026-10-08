@@ -1,0 +1,30 @@
+{
+  "format": 1,
+  "name": "dismiss-disabled",
+  "notes": "Dismissals off: 503.",
+  "request": {
+    "body": {
+      "harness": "claude",
+      "sid": "a1b2c3d4"
+    },
+    "headers": {
+      "Origin": "{origin}"
+    },
+    "method": "POST",
+    "path": "/api/dismiss",
+    "query": ""
+  },
+  "response": {
+    "error_page": {
+      "contains": [
+        "Error code: 503",
+        "Error response"
+      ],
+      "kind": "python-http-server"
+    },
+    "headers": {
+      "Content-Type": "text/html;charset=utf-8"
+    },
+    "status": 503
+  }
+}

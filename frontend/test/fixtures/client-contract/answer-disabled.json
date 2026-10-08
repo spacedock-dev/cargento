@@ -1,0 +1,30 @@
+{
+  "format": 1,
+  "name": "answer-disabled",
+  "notes": "Question answering off for this run: 503, with no hint about which asks exist.",
+  "request": {
+    "body": {
+      "id": "no-such-ask",
+      "index": 0
+    },
+    "headers": {
+      "Origin": "{origin}"
+    },
+    "method": "POST",
+    "path": "/api/answer",
+    "query": ""
+  },
+  "response": {
+    "error_page": {
+      "contains": [
+        "Error code: 503",
+        "Error response"
+      ],
+      "kind": "python-http-server"
+    },
+    "headers": {
+      "Content-Type": "text/html;charset=utf-8"
+    },
+    "status": 503
+  }
+}

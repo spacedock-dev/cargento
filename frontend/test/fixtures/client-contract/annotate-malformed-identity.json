@@ -1,0 +1,33 @@
+{
+  "format": 1,
+  "name": "annotate-malformed-identity",
+  "notes": "A harness that is not a string is a 400, never stored under its repr.",
+  "request": {
+    "body": {
+      "goal": "x",
+      "harness": [
+        "claude"
+      ],
+      "sid": "a1b2c3d4"
+    },
+    "headers": {
+      "Origin": "{origin}"
+    },
+    "method": "POST",
+    "path": "/api/annotate",
+    "query": ""
+  },
+  "response": {
+    "error_page": {
+      "contains": [
+        "Error code: 400",
+        "Error response"
+      ],
+      "kind": "python-http-server"
+    },
+    "headers": {
+      "Content-Type": "text/html;charset=utf-8"
+    },
+    "status": 400
+  }
+}

@@ -1,0 +1,31 @@
+{
+  "format": 1,
+  "name": "lane-names-session",
+  "notes": "A body naming a session is refused rather than sanitized.",
+  "request": {
+    "body": {
+      "permission": "granted",
+      "sid": "a1b2c3d4",
+      "supported": true
+    },
+    "headers": {
+      "Origin": "{origin}"
+    },
+    "method": "POST",
+    "path": "/api/lane",
+    "query": ""
+  },
+  "response": {
+    "error_page": {
+      "contains": [
+        "Error code: 400",
+        "Error response"
+      ],
+      "kind": "python-http-server"
+    },
+    "headers": {
+      "Content-Type": "text/html;charset=utf-8"
+    },
+    "status": 400
+  }
+}
