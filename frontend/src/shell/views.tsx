@@ -10,41 +10,18 @@ import {
 import type { BoardSnapshot } from '../store/board';
 import { selectDataStatus } from '../store/selectors';
 import { findSession, windowHours } from './derive';
-import { OWNERS } from './owners';
 import { RouteLink } from './RouteLink';
 import { useDisplayed } from './context';
+import { AttentionView } from '../attention';
 import { IntentLog } from '../intent';
 import { SessionDetail, SessionsView } from '../sessions';
 import { PROJECT_SLOTS, ProjectDetail, ProjectsView } from '../project';
 import type { Row } from '../observed';
 
-/* The views the later steps fill in. Each is a placeholder that says what is missing and which step
-   brings it (`./owners`), because a blank page would read as an empty healthy board, and the page must
-   keep saying "unavailable" for what it does not do. The Python dashboard stays the default and serves
-   all of them. A later step replaces the placeholder it owns and nothing else here: the routes, the
-   chrome and the absence states around it are this step's and stay. */
-
-const HEADINGS: Readonly<Record<TopLevelRoute['view'], string>> = {
+const HEADINGS: Readonly<Record<'sessions' | 'projects', string>> = {
   sessions: 'Session operations',
   projects: 'Projects',
-  attention: 'Attention',
-  intent: 'Intent log',
 };
-
-function Placeholder({
-  view,
-  name,
-}: {
-  readonly view: keyof typeof OWNERS;
-  readonly name: string;
-}) {
-  const { step, what } = OWNERS[view];
-  return (
-    <p className="next-placeholder" data-next-placeholder={view} data-next-owner={step}>
-      {`${name} is not available in the React interface yet. It arrives with a later migration step (${what}); the Python dashboard still serves it.`}
-    </p>
-  );
-}
 
 /* Unread is not unavailable, and neither is an empty board: a view says which of the three it is. */
 function BoardStatus({ snapshot }: { readonly snapshot: BoardSnapshot }) {
@@ -112,19 +89,14 @@ function ProjectsBranch() {
 }
 
 function TopLevelView({ route }: { readonly route: TopLevelRoute }) {
-  const snapshot = useDisplayed((current) => current);
   if (route.view === 'sessions') return <SessionsBranch />;
   if (route.view === 'projects') return <ProjectsBranch />;
   /* The Intent log states its own absences (annotations off, store unreadable, still reading), so it
      draws before the first payload as well: it names what it is waiting for rather than a blank. */
   if (route.view === 'intent') return <IntentLog />;
-  return (
-    <section className="next-view" data-next-view-body={route.view}>
-      <h1>{HEADINGS[route.view]}</h1>
-      <BoardStatus snapshot={snapshot} />
-      <Placeholder view={route.view} name={HEADINGS[route.view]} />
-    </section>
-  );
+  /* Attention states its own absences as well: before the first board it names what it waits for, and a
+     board that published no session collection says that rather than drawing a queue of zeros. */
+  return <AttentionView />;
 }
 
 function SessionView({ route }: { readonly route: SessionRoute }) {

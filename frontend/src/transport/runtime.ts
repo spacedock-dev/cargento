@@ -182,6 +182,9 @@ export function createBoardRuntime(options: RuntimeOptions) {
 
     refresh: (flags: { readonly manual?: boolean } = {}): Promise<void> =>
       owned?.refresh.refresh(flags) ?? Promise.resolve(),
+    /* Whether this tab holds the live stream: the one tab that raises a stage banner, so two open tabs do not
+       both. False before the runtime is owned. */
+    isLeader: (): boolean => owned?.live.isLeader() ?? false,
     loadContext: (scope: ContextScope): void => owned?.context.load(scope),
     requestObserverSummary: (scope: ContextScope): Promise<void> =>
       owned?.context.requestObserverSummary(scope) ?? Promise.resolve(),

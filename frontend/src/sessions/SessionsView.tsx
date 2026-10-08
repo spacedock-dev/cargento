@@ -1,4 +1,5 @@
 import { useMemo, type MouseEvent, type ReactNode } from 'react';
+import { CapacityStrip } from '../capacity';
 import { Disclosure, disclosureKey, CopyControl } from '../controls';
 import { gapNames, isScanOnly, type Row } from '../observed';
 import { fragmentForRoute, type RouteInput } from '../router/grammar';
@@ -468,6 +469,7 @@ export function SessionsView({ chosenFor }: SessionsViewProps = {}) {
         empty="No recent-history rows in this payload."
         caveat={{ summary: 'What recent means', body: RECENT_WHY }}
       />
+      <CapacityStrip />
     </section>
   );
 }

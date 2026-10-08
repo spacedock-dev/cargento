@@ -95,6 +95,16 @@ describe('start and dispose', () => {
     runtime.dispose();
   });
 
+  it('says whether this tab holds the live stream: not before it starts, yes while it does, not after', async () => {
+    const { runtime } = runtimeFor();
+    expect(runtime.isLeader()).toBe(false);
+    runtime.start();
+    await flush();
+    expect(runtime.isLeader()).toBe(true);
+    runtime.dispose();
+    expect(runtime.isLeader()).toBe(false);
+  });
+
   it('is idempotent: a second start is a no-op and a second dispose too', async () => {
     const { api, env, clock, runtime } = runtimeFor();
     runtime.start();
