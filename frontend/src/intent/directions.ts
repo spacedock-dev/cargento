@@ -3,6 +3,7 @@ import { compatSessKey } from '../api/identity';
 import type { SessionIdentity } from '../api/types';
 import type { Row } from '../observed';
 import { annotationOf, heldCap, scrub } from './annotation';
+import { markAndSay } from './cues';
 import {
   announce,
   answered,
@@ -271,7 +272,7 @@ export async function saveDirection(ctx: Ctx, row: Row): Promise<void> {
         ctx.held.lines.delete(linesFor);
         ctx.held.origins.delete(linesFor);
       } else if (lines && kind === 'saved') typed = true;
-      ctx.held.mark(linesFor, kind);
+      markAndSay(ctx, linesFor, kind);
     } else {
       held.cue = kind;
     }

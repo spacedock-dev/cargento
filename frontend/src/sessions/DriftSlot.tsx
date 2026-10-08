@@ -26,6 +26,9 @@ export function DriftSlot({
 }) {
   return (
     <IntentPanel
+      // Keyed by the exact pair so a move to another session builds new editors: a node reused across sessions
+      // carries the native undo stack with it, and one undo in session B brought session A's words into B's box.
+      key={`${String(session['harness'] ?? '')}\u0000${String(session['sid'] ?? '')}`}
       session={session}
       payload={payload}
       project={project}

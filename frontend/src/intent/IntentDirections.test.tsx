@@ -167,6 +167,8 @@ describe('Add it to my intent', () => {
       expected_revision: 1,
     });
     expect(document.querySelector('[data-next-cockpit-direction-key]')).toBeNull();
+    // The saved line is said once in the polite region, as the legacy page says it.
+    expect(text('#next-cockpit-cue-status')).toBe('Saved as a new revision.');
   });
 
   it('sends a second press to the line already pending and reads nothing again', async () => {
