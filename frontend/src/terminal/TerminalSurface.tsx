@@ -21,7 +21,13 @@ export interface TerminalSurfaceProps {
 /* The recipe is two acts, and written as one paragraph of running prose both flags wrap. It sits behind a
    shared disclosure rather than a bare `<details>`, because the board redraws on live data and a bare one
    snaps shut, losing the reader's place in a command. */
-function RegistrationRecipe({ project, scope }: { readonly project: string; readonly scope: string }) {
+function RegistrationRecipe({
+  project,
+  scope,
+}: {
+  readonly project: string;
+  readonly scope: string;
+}) {
   return (
     <Disclosure
       disclosureKey={disclosureKey({ project, scope, name: 'terminal-registration' })}
@@ -33,14 +39,24 @@ function RegistrationRecipe({ project, scope }: { readonly project: string; read
           Start the dashboard with <code>--interaction-origin-session harness:sid</code> and{' '}
           <code>--interaction-origin-registration-file PATH</code>.
         </li>
-        <li>Run the registration client inside the tmux pane for this exact session with that file.</li>
+        <li>
+          Run the registration client inside the tmux pane for this exact session with that file.
+        </li>
       </ol>
       <p className="pc-substrate-empty">Output is read-only.</p>
     </Disclosure>
   );
 }
 
-function Absence({ lookup, project, scope }: { readonly lookup: OriginLookup | undefined; readonly project: string; readonly scope: string }) {
+function Absence({
+  lookup,
+  project,
+  scope,
+}: {
+  readonly lookup: OriginLookup | undefined;
+  readonly project: string;
+  readonly scope: string;
+}) {
   const absence = absenceOf(lookup);
   if (absence.checking) {
     return (
@@ -62,13 +78,21 @@ function Absence({ lookup, project, scope }: { readonly lookup: OriginLookup | u
   );
 }
 
-function Title({ lookup }: { readonly lookup: Extract<OriginLookup, { state: 'registered' | 'unavailable' }> }) {
+function Title({
+  lookup,
+}: {
+  readonly lookup: Extract<OriginLookup, { state: 'registered' | 'unavailable' }>;
+}) {
   const title = originTitle(lookup.data.origin);
   if (title.complete !== null) return <strong>{title.complete}</strong>;
   return (
     <div className="pc-terminal-identity">
       {title.session ? <strong>{title.session}</strong> : <p>Tmux session name not published.</p>}
-      {title.window !== null ? <code>{`window ${title.window}`}</code> : <p>Window index not published.</p>}
+      {title.window !== null ? (
+        <code>{`window ${title.window}`}</code>
+      ) : (
+        <p>Window index not published.</p>
+      )}
       {title.pane !== null ? <code>{`pane ${title.pane}`}</code> : <p>Pane index not published.</p>}
     </div>
   );
@@ -98,7 +122,13 @@ function OpenTerminal({
       <div className="pc-terminal-bar">
         <Title lookup={lookup} />
         <span>read-only</span>
-        <button type="button" id="pc-terminal-jump" className="quiet" hidden={follow} onClick={() => owner.jump()}>
+        <button
+          type="button"
+          id="pc-terminal-jump"
+          className="quiet"
+          hidden={follow}
+          onClick={() => owner.jump()}
+        >
           Jump to live
         </button>
         <button type="button" className="quiet" onClick={() => owner.close()}>
@@ -118,7 +148,9 @@ export function TerminalSurface({ project, identity }: TerminalSurfaceProps) {
   const owner = useTerminalOwner();
   const { runtime } = useShell();
   const snapshot = useSyncExternalStore(owner.subscribe, owner.getSnapshot);
-  const revision = useBoardSelector(runtime.store, (board) => nextFiniteNumber(board.data?.generated));
+  const revision = useBoardSelector(runtime.store, (board) =>
+    nextFiniteNumber(board.data?.generated),
+  );
   const { harness, sid } = identity;
   const key = compatSessKey({ harness, sid });
 
@@ -134,15 +166,23 @@ export function TerminalSurface({ project, identity }: TerminalSurfaceProps) {
      directory, not how close in time two things happened, not its title. A row without both has no
      identity to match, so it is said so and nothing is asked. */
   if (!exactIdentity({ harness, sid })) {
-    body = <p className="pc-substrate-empty">This session published no exact identity, so no terminal can be matched to it.</p>;
-  } else if (!lookup || lookup.state !== 'registered') body = <Absence lookup={lookup} project={project} scope={key} />;
+    body = (
+      <p className="pc-substrate-empty">
+        This session published no exact identity, so no terminal can be matched to it.
+      </p>
+    );
+  } else if (!lookup || lookup.state !== 'registered')
+    body = <Absence lookup={lookup} project={project} scope={key} />;
   else if (snapshot.openKey !== key) {
     body = (
       <button type="button" className="pc-terminal-open" onClick={() => owner.open(key)}>
         Open terminal
       </button>
     );
-  } else body = <OpenTerminal owner={owner} lookup={lookup} terminalKey={key} follow={snapshot.follow} />;
+  } else
+    body = (
+      <OpenTerminal owner={owner} lookup={lookup} terminalKey={key} follow={snapshot.follow} />
+    );
 
   return (
     <section className="next-cockpit-terminal" data-next-cockpit-terminal>

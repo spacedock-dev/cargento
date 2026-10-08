@@ -16,7 +16,10 @@ interface Memory {
    A different key is a different field, so the element is keyed by it: a node
    re-used for another session would carry the first session's caret, scroll and
    dragged size into the second. */
-export function DraftTextarea({ memoryKey, ...rest }: Memory & ComponentPropsWithoutRef<'textarea'>) {
+export function DraftTextarea({
+  memoryKey,
+  ...rest
+}: Memory & ComponentPropsWithoutRef<'textarea'>) {
   return <DraftTextareaNode key={memoryKey} memoryKey={memoryKey} {...rest} />;
 }
 
@@ -24,12 +27,22 @@ export function DraftInput({ memoryKey, ...rest }: Memory & ComponentPropsWithou
   return <DraftInputNode key={memoryKey} memoryKey={memoryKey} {...rest} />;
 }
 
-function DraftTextareaNode({ memoryKey, focusKey, focusFallback, ...rest }: Memory & ComponentPropsWithoutRef<'textarea'>) {
+function DraftTextareaNode({
+  memoryKey,
+  focusKey,
+  focusFallback,
+  ...rest
+}: Memory & ComponentPropsWithoutRef<'textarea'>) {
   const ref = useFieldMemory<HTMLTextAreaElement>(memoryKey, focusKey ?? null, focusFallback);
   return <textarea ref={ref} {...rest} />;
 }
 
-function DraftInputNode({ memoryKey, focusKey, focusFallback, ...rest }: Memory & ComponentPropsWithoutRef<'input'>) {
+function DraftInputNode({
+  memoryKey,
+  focusKey,
+  focusFallback,
+  ...rest
+}: Memory & ComponentPropsWithoutRef<'input'>) {
   const ref = useFieldMemory<HTMLInputElement>(memoryKey, focusKey ?? null, focusFallback);
   return <input ref={ref} {...rest} />;
 }

@@ -135,7 +135,8 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 const asList = (value: unknown): unknown[] => (Array.isArray(value) ? value : []);
-const text = (value: unknown): string => (typeof value === 'string' ? value : typeof value === 'number' ? String(value) : '');
+const text = (value: unknown): string =>
+  typeof value === 'string' ? value : typeof value === 'number' ? String(value) : '';
 const finite = (value: unknown): number | null => {
   if (value === null || value === undefined || value === '') return null;
   const number = Number(value);
@@ -165,9 +166,11 @@ function readFact(raw: unknown): Fact | null {
     workItemId: text(raw.work_item_id),
     session: harness && sid ? { harness, sid } : null,
     evidenceSource: evidence && text(evidence.source) !== '' ? text(evidence.source) : null,
-    evidenceConfidence: evidence && text(evidence.confidence) !== '' ? text(evidence.confidence) : null,
+    evidenceConfidence:
+      evidence && text(evidence.confidence) !== '' ? text(evidence.confidence) : null,
     currentState: raw.current_state === true,
-    contributorLabel: contributor && text(contributor.label) !== '' ? text(contributor.label) : null,
+    contributorLabel:
+      contributor && text(contributor.label) !== '' ? text(contributor.label) : null,
     contributorVerified: contributor?.verified === true,
     workflowBinding: text(raw.workflow_binding),
     workflowEntity: text(raw.workflow_entity),
@@ -189,7 +192,11 @@ function readItem(raw: unknown): WorkItem | null {
 function readNodes(raw: unknown): ActivityNode[] {
   return asList(raw)
     .filter(isRecord)
-    .map((node) => ({ order: Number(node.at), kind: text(node.kind), workItemIds: asList(node.work_item_ids).map(text) }));
+    .map((node) => ({
+      order: Number(node.at),
+      kind: text(node.kind),
+      workItemIds: asList(node.work_item_ids).map(text),
+    }));
 }
 
 function readIntents(raw: unknown): Intent[] {
@@ -209,8 +216,12 @@ export function readSemantic(raw: unknown): SemanticModel {
   const activity = isRecord(projections.activity) ? projections.activity : {};
   const history = isRecord(model.history) ? model.history : {};
   return {
-    facts: asList(model.facts).map(readFact).filter((fact): fact is Fact => fact !== null),
-    workItems: asList(model.work_items).map(readItem).filter((item): item is WorkItem => item !== null),
+    facts: asList(model.facts)
+      .map(readFact)
+      .filter((fact): fact is Fact => fact !== null),
+    workItems: asList(model.work_items)
+      .map(readItem)
+      .filter((item): item is WorkItem => item !== null),
     relations: asList(model.relations)
       .filter(isRecord)
       .map((relation) => ({
@@ -229,7 +240,9 @@ export function readSemantic(raw: unknown): SemanticModel {
         latestMeaningfulEvent: text(head.latest_meaningful_event),
       })),
     // biome-ignore lint/suspicious/noPrototypeBuiltins: Object.hasOwn would change the shipped page bytes, and this port leaves them alone.
-    nodes: Object.prototype.hasOwnProperty.call(activity, 'nodes') ? readNodes(activity.nodes) : null,
+    nodes: Object.prototype.hasOwnProperty.call(activity, 'nodes')
+      ? readNodes(activity.nodes)
+      : null,
     historyNodes: readNodes(activity.history_nodes),
     steering: readIntents(activity.steering),
     intents: readIntents(projections.operator_intents),
@@ -256,7 +269,10 @@ export function readSemantic(raw: unknown): SemanticModel {
 
 /* The project-wide read is canonical for a work item's label: a focused read can carry a stale one, and the
    same task must not be named two ways on one page. */
-export function withCanonicalLabels(model: SemanticModel, project: SemanticModel | null): SemanticModel {
+export function withCanonicalLabels(
+  model: SemanticModel,
+  project: SemanticModel | null,
+): SemanticModel {
   if (!project) return model;
   const labels = new Map(project.workItems.map((item) => [item.id, item.label]));
   return {
@@ -311,16 +327,21 @@ export interface Registry {
   readonly unboundContributors: readonly Delegation[];
 }
 
-export const compatKey = (ref: { readonly harness?: unknown; readonly sid?: unknown; readonly session?: unknown }): string =>
-  `${text(ref.harness)}:${text(ref.sid) || text(ref.session)}`;
+export const compatKey = (ref: {
+  readonly harness?: unknown;
+  readonly sid?: unknown;
+  readonly session?: unknown;
+}): string => `${text(ref.harness)}:${text(ref.sid) || text(ref.session)}`;
 
 /* Newest first by `Number(at)`, with a missing or non-numeric time as NaN. That is what the legacy sorts do,
    and it is deliberately not "cleaned" to treat a missing time as 0: a comparator that returns NaN leaves
    the engine to order such facts, and only reproducing the NaN reproduces the order a reader of the legacy
    page sees. The two sorts the legacy page does write with `|| 0` use `order || 0` below. */
-const newestFirst = (a: { readonly order: number }, b: { readonly order: number }): number => b.order - a.order;
+const newestFirst = (a: { readonly order: number }, b: { readonly order: number }): number =>
+  b.order - a.order;
 
-const factSessionKey = (fact: Fact): string => (fact.session ? `${fact.session.harness}:${fact.session.sid}` : '');
+const factSessionKey = (fact: Fact): string =>
+  fact.session ? `${fact.session.harness}:${fact.session.sid}` : '';
 
 export function taskTitle(label: string | null | undefined): string {
   const words = (label || 'Task').replace(/-/g, ' ');
@@ -342,20 +363,49 @@ export function eventKind(fact: Fact): string {
 const EXCLUDED_DIRECTION =
   /^(?:interleved events\?|if i click last\.?|do 5 more rounds of mirror reflection\.?|oh now i see it\.?|not sure if this is useful:\s*https?:.*|run it, and continue the loop\.?|id you run the server\?|read\s+[~/].*|look here:\s*https?:.*|and tell me what you find in the mock|continue the rounds\.?|ok let's try this|what is this\?|keep going|let's get that panel review|did you get a review from IA advisor and UX expert\?)$/i;
 
-const IGNORED_TOKENS = new Set(['a', 'again', 'an', 'can', 'could', 'i', 'let', 'please', 'the', 'this', 'us', 'we', 'would', 'you']);
+const IGNORED_TOKENS = new Set([
+  'a',
+  'again',
+  'an',
+  'can',
+  'could',
+  'i',
+  'let',
+  'please',
+  'the',
+  'this',
+  'us',
+  'we',
+  'would',
+  'you',
+]);
 
 function directionTokens(summary: string): string[] {
-  return (summary.toLowerCase().match(/[a-z0-9]+/g) ?? []).filter((token) => !IGNORED_TOKENS.has(token));
+  return (summary.toLowerCase().match(/[a-z0-9]+/g) ?? []).filter(
+    (token) => !IGNORED_TOKENS.has(token),
+  );
 }
 
 export function directionRationale(summary: string): string {
-  if (/(?:can't see|don't see|still weird|kind(?:of|a) works|not readable|long delay|missing a lot|without actual information|without telling me|recovered from crash|great, except)/i.test(summary)) {
+  if (
+    /(?:can't see|don't see|still weird|kind(?:of|a) works|not readable|long delay|missing a lot|without actual information|without telling me|recovered from crash|great, except)/i.test(
+      summary,
+    )
+  ) {
     return 'Changes understanding of an observed outcome or work condition.';
   }
-  if (/(?:should|don't mean|don't care|all prototype|not compact steering|model the data first|fresh context|few words|sparate|derived goals?|active lanes?)/i.test(summary)) {
+  if (
+    /(?:should|don't mean|don't care|all prototype|not compact steering|model the data first|fresh context|few words|sparate|derived goals?|active lanes?)/i.test(
+      summary,
+    )
+  ) {
     return 'Changes understanding of a product or scope decision.';
   }
-  if (/(?:continuously check|sketch first|panel review|review from|try xterm|session within tmux|dev workflow|adjustment between rounds)/i.test(summary)) {
+  if (
+    /(?:continuously check|sketch first|panel review|review from|try xterm|session within tmux|dev workflow|adjustment between rounds)/i.test(
+      summary,
+    )
+  ) {
     return 'Changes understanding of the work or its validation method.';
   }
   return "Changes understanding of the operator's intent.";
@@ -363,35 +413,41 @@ export function directionRationale(summary: string): string {
 
 /* The directions worth a row: not low-signal, not transport, not a near duplicate of a newer one within
    fifteen minutes. Newest first. */
-function meaningfulDirections(intents: readonly Intent[], factById: ReadonlyMap<string, Fact>): Fact[] {
+function meaningfulDirections(
+  intents: readonly Intent[],
+  factById: ReadonlyMap<string, Fact>,
+): Fact[] {
   const lowSignal = /^(?:ok(?:ay)?|alright|thanks?|working|oh\b.*\b(?:see|got it))\W*$/i;
   const transport = /^(?:env\b|pwd\b|ls\b|cd\b|git\s|\/[A-Za-z0-9_.-]|[A-Za-z0-9_.-]+\/)/i;
   const selected: Fact[] = [];
   const clusters: { at: number; tokens: string[] }[] = [];
   const exact = new Set<string>();
-  [...intents]
-    .sort(newestFirst)
-    .forEach((intent) => {
-      const summary = intent.summary.trim();
-      const fact = factById.get(intent.derivedFrom);
-      const normalized = summary
-        .toLowerCase()
-        .replace(/\W+/g, ' ')
-        .trim();
-      if (!fact || summary.length < 4 || lowSignal.test(summary) || transport.test(summary) || EXCLUDED_DIRECTION.test(summary) || exact.has(normalized)) return;
-      const tokens = directionTokens(summary);
-      if (!tokens.length) return;
-      const at = intent.order || fact.order || 0;
-      const duplicate = clusters.some((cluster) => {
-        if (cluster.at - at > 15 * 60 || tokens[0] !== cluster.tokens[0]) return false;
-        const shared = new Set(tokens.filter((token) => cluster.tokens.includes(token))).size;
-        return shared / Math.min(new Set(tokens).size, new Set(cluster.tokens).size) >= 0.8;
-      });
-      if (duplicate) return;
-      clusters.push({ at, tokens });
-      exact.add(normalized);
-      selected.push(fact);
+  [...intents].sort(newestFirst).forEach((intent) => {
+    const summary = intent.summary.trim();
+    const fact = factById.get(intent.derivedFrom);
+    const normalized = summary.toLowerCase().replace(/\W+/g, ' ').trim();
+    if (
+      !fact ||
+      summary.length < 4 ||
+      lowSignal.test(summary) ||
+      transport.test(summary) ||
+      EXCLUDED_DIRECTION.test(summary) ||
+      exact.has(normalized)
+    )
+      return;
+    const tokens = directionTokens(summary);
+    if (!tokens.length) return;
+    const at = intent.order || fact.order || 0;
+    const duplicate = clusters.some((cluster) => {
+      if (cluster.at - at > 15 * 60 || tokens[0] !== cluster.tokens[0]) return false;
+      const shared = new Set(tokens.filter((token) => cluster.tokens.includes(token))).size;
+      return shared / Math.min(new Set(tokens).size, new Set(cluster.tokens).size) >= 0.8;
     });
+    if (duplicate) return;
+    clusters.push({ at, tokens });
+    exact.add(normalized);
+    selected.push(fact);
+  });
   return selected;
 }
 
@@ -399,15 +455,24 @@ function meaningfulDirections(intents: readonly Intent[], factById: ReadonlyMap<
    derived, else the item bound to its workflow entity, else the item an assignment event of its observer
    names. A worker with none is "unbound" and does not bind a lane. */
 function delegationWorkItem(model: SemanticModel, row: Delegation): string {
-  if (row.workItemId && model.workItems.some((item) => item.id === row.workItemId) && !(row.source ?? '').includes('derived')) {
+  if (
+    row.workItemId &&
+    model.workItems.some((item) => item.id === row.workItemId) &&
+    !(row.source ?? '').includes('derived')
+  ) {
     return row.workItemId;
   }
   if (!row.workflowBinding || !row.entity) return '';
   const binding = `${row.workflowBinding}:${row.entity}`;
-  const item = model.workItems.find((candidate) => candidate.bindings.some((source) => source.value === binding));
+  const item = model.workItems.find((candidate) =>
+    candidate.bindings.some((source) => source.value === binding),
+  );
   if (item) return item.id;
   const assignment = model.history.events.find(
-    (event) => event.eventType === 'assignment' && row.observerSid && event.sourceIdentity === `codex:${row.observerSid}`,
+    (event) =>
+      event.eventType === 'assignment' &&
+      row.observerSid &&
+      event.sourceIdentity === `codex:${row.observerSid}`,
   );
   return assignment?.workBinding ?? '';
 }
@@ -434,10 +499,15 @@ export function buildRegistry(input: RegistryInput): Registry {
   if (focus) origins = [focus];
   if (!origins.length) {
     const keys = [...new Set(facts.map(factSessionKey).filter(Boolean))];
-    origins = keys.map((key) => ({ harness: key.split(':')[0] ?? '', sid: key.slice(key.indexOf(':') + 1) }));
+    origins = keys.map((key) => ({
+      harness: key.split(':')[0] ?? '',
+      sid: key.slice(key.indexOf(':') + 1),
+    }));
   }
   if (!origins.length) origins = [{ harness: '', sid: input.fallbackSession || 'focused' }];
-  const originKeys = [...new Set(origins.map((origin) => compatKey(origin) || origin.sid || 'focused'))];
+  const originKeys = [
+    ...new Set(origins.map((origin) => compatKey(origin) || origin.sid || 'focused')),
+  ];
   const foKeys = originKeys.map((key) => `fo:${key}`);
   const foKey = foKeys[0] ?? 'fo:focused';
 
@@ -453,7 +523,10 @@ export function buildRegistry(input: RegistryInput): Registry {
     .filter((item) => item.id.startsWith('workflow-unbound:'))
     .forEach((item) => {
       const matches = items.filter(
-        (candidate) => candidate.kind === 'workflow_item' && !candidate.id.startsWith('workflow-unbound:') && normalizedLabel(candidate) === normalizedLabel(item),
+        (candidate) =>
+          candidate.kind === 'workflow_item' &&
+          !candidate.id.startsWith('workflow-unbound:') &&
+          normalizedLabel(candidate) === normalizedLabel(item),
       );
       const [only] = matches;
       if (matches.length === 1 && only) canonicalByItem.set(item.id, only.id);
@@ -470,10 +543,18 @@ export function buildRegistry(input: RegistryInput): Registry {
   });
 
   const projectedDirections = [...model.intents, ...model.steering];
-  const intentFactById = new Map(projectedDirections.map((intent) => [intent.projectionId, intent.derivedFrom]));
+  const intentFactById = new Map(
+    projectedDirections.map((intent) => [intent.projectionId, intent.derivedFrom]),
+  );
   const meaningful = meaningfulDirections(projectedDirections, factById);
   const meaningfulIds = new Set(meaningful.map((fact) => fact.id));
-  const allDirectionFacts = [...new Map(projectedDirections.map((intent) => [intent.derivedFrom, factById.get(intent.derivedFrom)] as const).filter((entry): entry is readonly [string, Fact] => entry[1] !== undefined)).values()].sort(newestFirst);
+  const allDirectionFacts = [
+    ...new Map(
+      projectedDirections
+        .map((intent) => [intent.derivedFrom, factById.get(intent.derivedFrom)] as const)
+        .filter((entry): entry is readonly [string, Fact] => entry[1] !== undefined),
+    ).values(),
+  ].sort(newestFirst);
   const suppressedDirections = allDirectionFacts.filter((fact) => !meaningfulIds.has(fact.id));
 
   const contributorByTask = new Map<string, Delegation[]>();
@@ -493,18 +574,33 @@ export function buildRegistry(input: RegistryInput): Registry {
     const item = itemById.get(id);
     if (!id || !item || item.kind === 'session_result') return;
     const prior = relevance.get(id) ?? { priority: 0, at: 0 };
-    relevance.set(id, { priority: Math.max(priority || 0, prior.priority), at: Math.max(order || 0, prior.at) });
+    relevance.set(id, {
+      priority: Math.max(priority || 0, prior.priority),
+      at: Math.max(order || 0, prior.at),
+    });
   };
-  contributorByTask.forEach((rows, id) => addTask(id, Math.max(...rows.map((row) => row.at || 0)), 3));
+  contributorByTask.forEach((rows, id) =>
+    addTask(id, Math.max(...rows.map((row) => row.at || 0)), 3),
+  );
   /* Active filters these later. The complete registry keeps every source-backed head so All can restore an
      inactive or unresolved lane without inventing a key at filter time. */
-  heads.forEach((head) => addTask(head.workItemId, factById.get(head.latestMeaningfulEvent)?.order, 1));
+  heads.forEach((head) =>
+    addTask(head.workItemId, factById.get(head.latestMeaningfulEvent)?.order, 1),
+  );
   const nodes =
     model.nodes ??
     heads
       .filter((head) => ['prepared', 'outcome', 'decision'].includes(head.status))
-      .map((head): ActivityNode => ({ order: factById.get(head.latestMeaningfulEvent)?.order ?? Number.NaN, kind: '', workItemIds: [head.workItemId] }));
-  [...nodes, ...model.historyNodes].forEach((node) => node.workItemIds.forEach((id) => addTask(id, node.order, node.kind === 'burst' ? 1 : 2)));
+      .map(
+        (head): ActivityNode => ({
+          order: factById.get(head.latestMeaningfulEvent)?.order ?? Number.NaN,
+          kind: '',
+          workItemIds: [head.workItemId],
+        }),
+      );
+  [...nodes, ...model.historyNodes].forEach((node) =>
+    node.workItemIds.forEach((id) => addTask(id, node.order, node.kind === 'burst' ? 1 : 2)),
+  );
   const taskIds = [...relevance]
     .sort((a, b) => b[1].priority - a[1].priority || b[1].at - a[1].at || a[0].localeCompare(b[0]))
     .map((entry) => entry[0]);
@@ -512,10 +608,19 @@ export function buildRegistry(input: RegistryInput): Registry {
   const allFoEvents = facts
     .filter((fact) => {
       const item = itemById.get(fact.workItemId);
-      if (['final_output', 'result'].includes(fact.type) && focus?.state === 'working') return false;
-      return item?.kind === 'session_result' || (!fact.workItemId && fact.type === 'user_message') || ['final_output', 'observer_snapshot', 'goal_shift'].includes(fact.type);
+      if (['final_output', 'result'].includes(fact.type) && focus?.state === 'working')
+        return false;
+      return (
+        item?.kind === 'session_result' ||
+        (!fact.workItemId && fact.type === 'user_message') ||
+        ['final_output', 'observer_snapshot', 'goal_shift'].includes(fact.type)
+      );
     })
-    .sort((a, b) => Number(a.type === 'observer_snapshot') - Number(b.type === 'observer_snapshot') || newestFirst(a, b));
+    .sort(
+      (a, b) =>
+        Number(a.type === 'observer_snapshot') - Number(b.type === 'observer_snapshot') ||
+        newestFirst(a, b),
+    );
   const episodeByFact = new Map<string, Episode>();
   model.episodes.forEach((episode) => {
     const factId = intentFactById.get(episode.intentId);
@@ -523,7 +628,8 @@ export function buildRegistry(input: RegistryInput): Registry {
   });
 
   const foLanes: FoLane[] = originKeys.map((originKey) => {
-    const matching = (fact: Fact): boolean => factSessionKey(fact) === originKey || (!factSessionKey(fact) && originKeys.length === 1);
+    const matching = (fact: Fact): boolean =>
+      factSessionKey(fact) === originKey || (!factSessionKey(fact) && originKeys.length === 1);
     const harness = originKey.split(':')[0] ?? '';
     return {
       kind: 'fo',
@@ -539,28 +645,67 @@ export function buildRegistry(input: RegistryInput): Registry {
   const supported = (relation: Relation): boolean => !relation.confidence.includes('derived');
   const topologyFor = (workItemId: string) => {
     const taskKey = `task:${workItemId}`;
-    const branches = relations.filter((relation) => relation.type === 'dispatches_to' && foKeys.includes(relation.from) && relation.to === taskKey).filter(supported);
-    const merges = relations.filter((relation) => relation.type === 'returns_to' && relation.from === taskKey && foKeys.includes(relation.to)).filter(supported);
-    const relationAt = (relation: Relation): number => factById.get(relation.evidenceRef)?.order || 0;
+    const branches = relations
+      .filter(
+        (relation) =>
+          relation.type === 'dispatches_to' &&
+          foKeys.includes(relation.from) &&
+          relation.to === taskKey,
+      )
+      .filter(supported);
+    const merges = relations
+      .filter(
+        (relation) =>
+          relation.type === 'returns_to' &&
+          relation.from === taskKey &&
+          foKeys.includes(relation.to),
+      )
+      .filter(supported);
+    const relationAt = (relation: Relation): number =>
+      factById.get(relation.evidenceRef)?.order || 0;
     const latestDispatchAt = Math.max(0, ...branches.map(relationAt));
     const taskResults = facts.filter(
-      (fact) => canonicalItemId(fact.workItemId) === workItemId && ['work_result', 'result'].includes(fact.type) && fact.evidenceConfidence === 'exact',
+      (fact) =>
+        canonicalItemId(fact.workItemId) === workItemId &&
+        ['work_result', 'result'].includes(fact.type) &&
+        fact.evidenceConfidence === 'exact',
     );
-    const latestReturnAt = Math.max(0, ...merges.map(relationAt), ...taskResults.map((fact) => fact.order || 0));
+    const latestReturnAt = Math.max(
+      0,
+      ...merges.map(relationAt),
+      ...taskResults.map((fact) => fact.order || 0),
+    );
     const retryEvidence =
-      relations.some((relation) => ['retries', 'retry_of', 'failed_attempt'].includes(relation.type) && supported(relation) && (relation.from === taskKey || relation.to === taskKey)) ||
-      facts.some((fact) => canonicalItemId(fact.workItemId) === workItemId && ['retry', 'failed_attempt'].includes(fact.sourceKind) && fact.evidenceConfidence === 'exact');
+      relations.some(
+        (relation) =>
+          ['retries', 'retry_of', 'failed_attempt'].includes(relation.type) &&
+          supported(relation) &&
+          (relation.from === taskKey || relation.to === taskKey),
+      ) ||
+      facts.some(
+        (fact) =>
+          canonicalItemId(fact.workItemId) === workItemId &&
+          ['retry', 'failed_attempt'].includes(fact.sourceKind) &&
+          fact.evidenceConfidence === 'exact',
+      );
     return { dispatchCount: branches.length, latestDispatchAt, latestReturnAt, retryEvidence };
   };
 
   const taskLanes: TaskLane[] = taskIds.map((workItemId) => {
-    const taskEvents = facts.filter((fact) => canonicalItemId(fact.workItemId) === workItemId).sort(newestFirst);
-    const contributors = [...(contributorByTask.get(workItemId) ?? [])].sort((a, b) => a.worker.localeCompare(b.worker));
+    const taskEvents = facts
+      .filter((fact) => canonicalItemId(fact.workItemId) === workItemId)
+      .sort(newestFirst);
+    const contributors = [...(contributorByTask.get(workItemId) ?? [])].sort((a, b) =>
+      a.worker.localeCompare(b.worker),
+    );
     const topology = topologyFor(workItemId);
     const head = headByItem.get(workItemId) ?? null;
     const item = itemById.get(workItemId) ?? { id: workItemId, label: '', kind: '', bindings: [] };
-    const working = contributors.length > 0 || taskEvents.some((fact) => fact.currentState && fact.evidenceConfidence === 'exact');
-    const unreturned = topology.dispatchCount > 0 && topology.latestDispatchAt > topology.latestReturnAt;
+    const working =
+      contributors.length > 0 ||
+      taskEvents.some((fact) => fact.currentState && fact.evidenceConfidence === 'exact');
+    const unreturned =
+      topology.dispatchCount > 0 && topology.latestDispatchAt > topology.latestReturnAt;
     const returned = topology.latestReturnAt > 0 && !unreturned;
     return {
       kind: 'task',
@@ -582,7 +727,13 @@ export function buildRegistry(input: RegistryInput): Registry {
   });
 
   const lanes: Lane[] = [...foLanes, ...taskLanes];
-  return { foKey, foKeys, lanes, laneByKey: new Map(lanes.map((lane) => [lane.key, lane])), unboundContributors };
+  return {
+    foKey,
+    foKeys,
+    lanes,
+    laneByKey: new Map(lanes.map((lane) => [lane.key, lane])),
+    unboundContributors,
+  };
 }
 
 /* ------------------------------------------------------------------------------------------------
@@ -604,7 +755,9 @@ export interface TimelineEvent {
 }
 
 function laneFor(registry: Registry, fact: Fact): Lane {
-  const sourceKey = fact.session ? `fo:${fact.session.harness}:${fact.session.sid}` : registry.foKey;
+  const sourceKey = fact.session
+    ? `fo:${fact.session.harness}:${fact.session.sid}`
+    : registry.foKey;
   const lane = registry.laneByKey.get(sourceKey) ?? registry.laneByKey.get(registry.foKey);
   if (!lane) throw new Error('The registry has no First Officer lane.');
   return lane;
@@ -612,7 +765,11 @@ function laneFor(registry: Registry, fact: Fact): Lane {
 
 /* Every meaningful event, newest first. Written out lane by lane exactly as the legacy builder did, because
    the order the sources are consulted in decides which of two events about one fact survives. */
-function globalEvents(model: SemanticModel, registry: Registry, focus: RegistryInput['focus']): TimelineEvent[] {
+function globalEvents(
+  model: SemanticModel,
+  registry: Registry,
+  focus: RegistryInput['focus'],
+): TimelineEvent[] {
   const events: TimelineEvent[] = [];
   const foLanes = registry.lanes.filter((lane): lane is FoLane => lane.kind === 'fo');
 
@@ -667,9 +824,17 @@ function globalEvents(model: SemanticModel, registry: Registry, focus: RegistryI
     }
   });
 
-  const linkedReactionIds = new Set(foLanes.flatMap((lane) => [...lane.episodeByFact.values()]).map((episode) => episode.adaptationFact));
+  const linkedReactionIds = new Set(
+    foLanes
+      .flatMap((lane) => [...lane.episodeByFact.values()])
+      .map((episode) => episode.adaptationFact),
+  );
   model.facts
-    .filter((fact) => linkedReactionIds.has(fact.id) && ['result', 'decision', 'final_output'].includes(fact.type))
+    .filter(
+      (fact) =>
+        linkedReactionIds.has(fact.id) &&
+        ['result', 'decision', 'final_output'].includes(fact.type),
+    )
     .forEach((fact) => {
       if (events.some((event) => event.eventId === fact.id)) return;
       events.push({
@@ -691,10 +856,35 @@ function globalEvents(model: SemanticModel, registry: Registry, focus: RegistryI
       lane.events.forEach((fact) => {
         const kind = eventKind(fact);
         if (!kind) return;
-        const sourceFoKey = fact.session ? `fo:${fact.session.harness}:${fact.session.sid}` : registry.foKey;
-        const branch = kind === 'dispatch' ? model.relations.filter((r) => r.type === 'dispatches_to' && r.from === sourceFoKey && r.to === lane.key && r.evidenceRef === fact.id) : [];
-        const merge = kind === 'result' ? model.relations.filter((r) => r.type === 'returns_to' && r.from === lane.key && r.to === sourceFoKey && r.evidenceRef === fact.id) : [];
-        const meaning = kind === 'progress' && fact.stage ? taskTitle(fact.stage) : kind === 'dispatch' ? fact.summary || 'Dispatched' : fact.summary || taskTitle(kind);
+        const sourceFoKey = fact.session
+          ? `fo:${fact.session.harness}:${fact.session.sid}`
+          : registry.foKey;
+        const branch =
+          kind === 'dispatch'
+            ? model.relations.filter(
+                (r) =>
+                  r.type === 'dispatches_to' &&
+                  r.from === sourceFoKey &&
+                  r.to === lane.key &&
+                  r.evidenceRef === fact.id,
+              )
+            : [];
+        const merge =
+          kind === 'result'
+            ? model.relations.filter(
+                (r) =>
+                  r.type === 'returns_to' &&
+                  r.from === lane.key &&
+                  r.to === sourceFoKey &&
+                  r.evidenceRef === fact.id,
+              )
+            : [];
+        const meaning =
+          kind === 'progress' && fact.stage
+            ? taskTitle(fact.stage)
+            : kind === 'dispatch'
+              ? fact.summary || 'Dispatched'
+              : fact.summary || taskTitle(kind);
         const rationale =
           kind === 'dispatch'
             ? 'Changes understanding of assigned work.'
@@ -703,7 +893,17 @@ function globalEvents(model: SemanticModel, registry: Registry, focus: RegistryI
               : kind === 'decision'
                 ? 'Changes understanding of a recorded decision.'
                 : 'Changes understanding of an observed outcome.';
-        events.push({ eventId: fact.id, at: fact.at, kind, meaning, fact, lane, rationale, relations: [...branch, ...merge], suppressed: [] });
+        events.push({
+          eventId: fact.id,
+          at: fact.at,
+          kind,
+          meaning,
+          fact,
+          lane,
+          rationale,
+          relations: [...branch, ...merge],
+          suppressed: [],
+        });
       });
     });
 
@@ -721,10 +921,20 @@ function globalEvents(model: SemanticModel, registry: Registry, focus: RegistryI
 
 /* Decisions belong by recorded fact identity, independent of author, task binding or steering links. */
 export function decisionFacts(model: SemanticModel): Fact[] {
-  return [...new Map(model.facts.filter((fact) => eventKind(fact) === 'decision').map((fact) => [fact.id || fact, fact] as const)).values()];
+  return [
+    ...new Map(
+      model.facts
+        .filter((fact) => eventKind(fact) === 'decision')
+        .map((fact) => [fact.id || fact, fact] as const),
+    ).values(),
+  ];
 }
 
-function decisionEvents(model: SemanticModel, registry: Registry, focus: RegistryInput['focus']): TimelineEvent[] {
+function decisionEvents(
+  model: SemanticModel,
+  registry: Registry,
+  focus: RegistryInput['focus'],
+): TimelineEvent[] {
   const placed = new Map(globalEvents(model, registry, focus).map((event) => [event.fact, event]));
   return decisionFacts(model)
     .map((fact): TimelineEvent => {
@@ -742,7 +952,9 @@ function decisionEvents(model: SemanticModel, registry: Registry, focus: Registr
         suppressed: [],
       };
     })
-    .sort((a, b) => (b.fact.order || 0) - (a.fact.order || 0) || a.eventId.localeCompare(b.eventId));
+    .sort(
+      (a, b) => (b.fact.order || 0) - (a.fact.order || 0) || a.eventId.localeCompare(b.eventId),
+    );
 }
 
 /* The lanes a mode keeps. First Officer lanes always stay, because a direction is not a task. All keeps
@@ -750,12 +962,23 @@ function decisionEvents(model: SemanticModel, registry: Registry, focus: Registr
 export function visibleLaneKeys(registry: Registry, mode: GraphMode): ReadonlySet<string> {
   return new Set(
     registry.lanes
-      .filter((lane) => lane.kind === 'fo' || mode === 'all' || lane.current || (mode === 'decisions' && lane.events.some((fact) => eventKind(fact) === 'decision')))
+      .filter(
+        (lane) =>
+          lane.kind === 'fo' ||
+          mode === 'all' ||
+          lane.current ||
+          (mode === 'decisions' && lane.events.some((fact) => eventKind(fact) === 'decision')),
+      )
       .map((lane) => lane.key),
   );
 }
 
-export function eventsForMode(model: SemanticModel, registry: Registry, mode: GraphMode, focus: RegistryInput['focus']): TimelineEvent[] {
+export function eventsForMode(
+  model: SemanticModel,
+  registry: Registry,
+  mode: GraphMode,
+  focus: RegistryInput['focus'],
+): TimelineEvent[] {
   if (mode === 'decisions') return decisionEvents(model, registry, focus);
   const visible = visibleLaneKeys(registry, mode);
   return globalEvents(model, registry, focus).filter((event) => visible.has(event.lane.key));
@@ -764,7 +987,14 @@ export function eventsForMode(model: SemanticModel, registry: Registry, mode: Gr
 /* Said when a mode has nothing to show, from what the payload published about its own window. */
 export function historyEmptyText(model: SemanticModel, mode: GraphMode | 'course'): string {
   if (model.history.reason) return model.history.reason;
-  const subject = mode === 'course' ? 'source-backed course changes' : mode === 'decisions' ? 'decisions' : mode === 'active' ? 'semantic events for active work' : 'semantic events';
+  const subject =
+    mode === 'course'
+      ? 'source-backed course changes'
+      : mode === 'decisions'
+        ? 'decisions'
+        : mode === 'active'
+          ? 'semantic events for active work'
+          : 'semantic events';
   const seconds = model.history.windowSec;
   if (seconds === null || seconds <= 0) {
     return `No ${subject} ${mode === 'course' ? 'observed' : 'available'}. The semantic history window was not published.`;
@@ -780,8 +1010,10 @@ export function historyEmptyText(model: SemanticModel, mode: GraphMode | 'course
 export function gateApplicationResult(fact: Fact): string {
   const stage = fact.stage || 'gate';
   const state = fact.applicationState.toLowerCase();
-  if (['applied', 'consumed'].includes(state) && fact.targetStage) return `${stage} → ${fact.targetStage}`;
-  if (['pending', 'unspent'].includes(state)) return `${stage} · decision recorded · pending application`;
+  if (['applied', 'consumed'].includes(state) && fact.targetStage)
+    return `${stage} → ${fact.targetStage}`;
+  if (['pending', 'unspent'].includes(state))
+    return `${stage} · decision recorded · pending application`;
   if (state === 'superseded') return `${stage} · decision superseded`;
   if (!state) return `${stage} · decision recorded · application unknown`;
   return `${stage} · decision recorded · application ${state}`;
@@ -806,7 +1038,9 @@ export interface EventSentence {
 export function eventSentence(event: TimelineEvent): EventSentence {
   const { fact, lane } = event;
   const harness = taskTitle(fact.session?.harness || 'Session');
-  const contributor = fact.contributorVerified ? (fact.contributorLabel ?? `${harness} worker`) : `${harness} worker`;
+  const contributor = fact.contributorVerified
+    ? (fact.contributorLabel ?? `${harness} worker`)
+    : `${harness} worker`;
   const object = lane.kind === 'task' ? taskTitle(lane.label) : lane.label;
   let actor = `${harness} FO`;
   let action = event.kind;
@@ -816,13 +1050,20 @@ export function eventSentence(event: TimelineEvent): EventSentence {
     action = 'directed';
   } else if (event.kind === 'decision') {
     actor = fact.by === 'person:captain' ? 'You' : fact.by || 'Decision author';
-    action = ({ approve: 'approved', revise: 'revised', hold: 'held' } as Record<string, string>)[fact.decision] ?? (fact.decision || 'decided');
+    action =
+      ({ approve: 'approved', revise: 'revised', hold: 'held' } as Record<string, string>)[
+        fact.decision
+      ] ??
+      (fact.decision || 'decided');
     result = gateApplicationResult(fact);
   } else if (event.kind === 'dispatch') {
     const started = ['work_birth', 'task_started', 'child_assignment'].includes(fact.sourceKind);
     actor = started ? contributor : `${harness} FO`;
     action = started ? 'started' : 'dispatched';
-    result = lane.kind === 'task' && lane.unreturned ? 'return not observed' : fact.stage || 'dispatch recorded';
+    result =
+      lane.kind === 'task' && lane.unreturned
+        ? 'return not observed'
+        : fact.stage || 'dispatch recorded';
   } else if (event.kind === 'result') {
     actor = contributor;
     action = 'returned';
@@ -846,9 +1087,12 @@ export function factScope(fact: Fact): Scope {
   const project: Scope = { kind: 'project', owner: 'project' };
   if (fact.scope === 'project') return project;
   if (fact.type === 'gate_decision') {
-    return fact.scope === 'session' && fact.session ? { kind: 'session', owner: `${fact.session.harness}:${fact.session.sid}` } : project;
+    return fact.scope === 'session' && fact.session
+      ? { kind: 'session', owner: `${fact.session.harness}:${fact.session.sid}` }
+      : project;
   }
-  if (fact.session) return { kind: 'session', owner: `${fact.session.harness}:${fact.session.sid}` };
+  if (fact.session)
+    return { kind: 'session', owner: `${fact.session.harness}:${fact.session.sid}` };
   if (['prepared_dispatch', 'stage_transition'].includes(fact.type)) return project;
   return { kind: 'unknown', owner: 'unknown' };
 }

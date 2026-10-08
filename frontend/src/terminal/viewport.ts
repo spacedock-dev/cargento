@@ -25,7 +25,9 @@ export interface TerminalGeometry {
   readonly screenHeight: number;
 }
 
-export function scrollMaximum(viewport: Pick<ViewportLike, 'scrollHeight' | 'clientHeight'>): number {
+export function scrollMaximum(
+  viewport: Pick<ViewportLike, 'scrollHeight' | 'clientHeight'>,
+): number {
   const maximum = Number(viewport.scrollHeight || 0) - Number(viewport.clientHeight || 0);
   return Number.isFinite(maximum) ? Math.max(0, maximum) : 0;
 }

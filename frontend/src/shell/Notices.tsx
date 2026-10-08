@@ -33,17 +33,27 @@ export interface NoticesProps {
   readonly disclosureScope: { readonly project: string | null; readonly scope: string | null };
 }
 
-function StalledNotice({ snapshot, now, retryMs, onRetry }: Pick<NoticesProps, 'snapshot' | 'now' | 'retryMs' | 'onRetry'>) {
+function StalledNotice({
+  snapshot,
+  now,
+  retryMs,
+  onRetry,
+}: Pick<NoticesProps, 'snapshot' | 'now' | 'retryMs' | 'onRetry'>) {
   const controls = useControls();
   /* `aria-disabled` and never `disabled` while a retry is out: a disabled control gives up focus, and the
      notice's own removal on success would then have no focused node to hand back to the fallback. */
-  const retryRef = useFocusKey<HTMLButtonElement>(controls.focusLane, 'retry-refresh', { fallback: 'primary-current' });
+  const retryRef = useFocusKey<HTMLButtonElement>(controls.focusLane, 'retry-refresh', {
+    fallback: 'primary-current',
+  });
   const failures = snapshot.failures;
   if (failures < STALLED_AFTER_FAILURES) return null;
   const times = failures === STALLED_AFTER_FAILURES ? 'twice' : `${failures} times`;
   let state = 'No data has been received in this tab.';
   if (snapshot.data) {
-    const elapsed = snapshot.lastSuccessAt === null ? null : formatDuration(Math.max(0, (now - snapshot.lastSuccessAt) / 1000));
+    const elapsed =
+      snapshot.lastSuccessAt === null
+        ? null
+        : formatDuration(Math.max(0, (now - snapshot.lastSuccessAt) / 1000));
     state = `Displayed data may be stale.${elapsed === null ? '' : ` Last updated ${elapsed} ago.`}`;
   }
   const seconds = Math.max(1, Math.round(retryMs / 1000));
@@ -79,11 +89,19 @@ function HistoryResetNotice({ reason }: { readonly reason: HistoryResetReason })
 
 /* Tier 1 is the instruction, and why sits behind its disclosure, after the two notices above it,
    which say the data itself may be wrong. */
-function BuildNotice({ onReload, disclosureScope }: Pick<NoticesProps, 'onReload' | 'disclosureScope'>) {
+function BuildNotice({
+  onReload,
+  disclosureScope,
+}: Pick<NoticesProps, 'onReload' | 'disclosureScope'>) {
   return (
     <div className="next-stalled" data-next-state="build-changed" role="status">
       <strong>Reload to use the new version.</strong>
-      <button type="button" className="next-action" data-next-action="reload-page" onClick={onReload}>
+      <button
+        type="button"
+        className="next-action"
+        data-next-action="reload-page"
+        onClick={onReload}
+      >
         Reload
       </button>
       <Disclosure
@@ -100,13 +118,22 @@ function BuildNotice({ onReload, disclosureScope }: Pick<NoticesProps, 'onReload
 /* Failed refresh, history reset and a newer server build are three distinct notices that do not
    fabricate a fresh success: none of them says the board is current, and each is derived from the
    snapshot rather than authored. */
-export function Notices({ snapshot, now, retryMs, onRetry, onReload, disclosureScope }: NoticesProps) {
+export function Notices({
+  snapshot,
+  now,
+  retryMs,
+  onRetry,
+  onReload,
+  disclosureScope,
+}: NoticesProps) {
   const reset = historyResetReason(snapshot.data);
   return (
     <>
       <StalledNotice snapshot={snapshot} now={now} retryMs={retryMs} onRetry={onRetry} />
       {reset ? <HistoryResetNotice reason={reset} /> : null}
-      {selectBuildState(snapshot) === 'reload-required' ? <BuildNotice onReload={onReload} disclosureScope={disclosureScope} /> : null}
+      {selectBuildState(snapshot) === 'reload-required' ? (
+        <BuildNotice onReload={onReload} disclosureScope={disclosureScope} />
+      ) : null}
     </>
   );
 }

@@ -1,12 +1,17 @@
 import { createControls, type Announce, type ControlsDeps } from '../controls/kit';
 import { choiceOpenIn, createDisplayGate } from '../controls/displayGate';
 import { createRouter, type Router } from '../router/router';
-import { createBrowserEnvironment, createBrowserRuntime, type BrowserRuntimeOptions } from '../transport/browser';
+import {
+  createBrowserEnvironment,
+  createBrowserRuntime,
+  type BrowserRuntimeOptions,
+} from '../transport/browser';
 import type { Environment, EventSourceLike } from '../transport/ports';
 import { createAnnouncer } from './announcer';
 import type { Shell, ShellHost } from './context';
 
-export interface ShellOptions extends Pick<BrowserRuntimeOptions, 'fetch' | 'provider' | 'events' | 'search' | 'doc'> {
+export interface ShellOptions
+  extends Pick<BrowserRuntimeOptions, 'fetch' | 'provider' | 'events' | 'search' | 'doc'> {
   readonly env?: Environment;
   readonly router?: Router;
   readonly host?: Partial<ShellHost>;
@@ -15,7 +20,10 @@ export interface ShellOptions extends Pick<BrowserRuntimeOptions, 'fetch' | 'pro
 }
 
 function prefersReducedMotion(): boolean {
-  return typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  return (
+    typeof window.matchMedia === 'function' &&
+    window.matchMedia('(prefers-reduced-motion: reduce)').matches
+  );
 }
 
 /* A control announces through one function; the legacy page kept the copy and raise sentences in
@@ -38,7 +46,12 @@ export function createShell(options: ShellOptions = {}): Shell {
     createBrowserEnvironment({
       window,
       document,
-      EventSource: typeof EventSource === 'undefined' ? undefined : (EventSource as unknown as new (url: string) => EventSourceLike),
+      EventSource:
+        typeof EventSource === 'undefined'
+          ? undefined
+          : (EventSource as unknown as new (
+              url: string,
+            ) => EventSourceLike),
       now: () => Date.now(),
     });
   const reducedMotion = options.reducedMotion ?? prefersReducedMotion;
@@ -67,7 +80,9 @@ export function createShell(options: ShellOptions = {}): Shell {
     reducedMotion,
     noteToggle: () => display.noteToggle(),
     // An absent capability is the feature being off for this run, and no raise control draws.
-    ...(runtime.bootstrap.focusCapability ? { focus: (identity: Parameters<typeof runtime.focus>[0]) => runtime.focus(identity) } : {}),
+    ...(runtime.bootstrap.focusCapability
+      ? { focus: (identity: Parameters<typeof runtime.focus>[0]) => runtime.focus(identity) }
+      : {}),
     ...(options.clipboard ? { clipboard: options.clipboard } : {}),
   });
   return {

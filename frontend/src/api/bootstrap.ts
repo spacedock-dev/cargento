@@ -21,8 +21,14 @@ function focusCapability(doc: Pick<Document, 'querySelector'> | null): string {
   }
 }
 
-export function readBootstrap(search: string, doc: Pick<Document, 'querySelector'> | null): Bootstrap {
-  return { showAll: new URLSearchParams(search).get('all') === '1', focusCapability: focusCapability(doc) };
+export function readBootstrap(
+  search: string,
+  doc: Pick<Document, 'querySelector'> | null,
+): Bootstrap {
+  return {
+    showAll: new URLSearchParams(search).get('all') === '1',
+    focusCapability: focusCapability(doc),
+  };
 }
 
 /* `usage=1` is the page's consent to the quota fetch riding along with a poll;

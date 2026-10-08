@@ -50,7 +50,11 @@ export function readingNamesConstraint(key: string): boolean {
 /* The server's verdict, never re-derived here: the first prompt was a harness control, so it is not the
    reader's goal and a row drafts nothing from it. */
 export function openedWithControl(session: Row | null | undefined): boolean {
-  return Boolean(session && ['claude', 'codex'].includes(String(session['harness'])) && session['first_prompt_control'] === true);
+  return Boolean(
+    session &&
+      ['claude', 'codex'].includes(String(session['harness'])) &&
+      session['first_prompt_control'] === true,
+  );
 }
 
 /* The agent's published instruction when it carries `label`, or null. A correction the reader copied
@@ -70,7 +74,10 @@ export interface PromptCandidate {
 
 /* The prompt a source offers: the first prompt as published, or the latest one the harness states as
    work. Null where the harness publishes none or the words were a correction the reader copied. */
-export function promptCandidate(session: Row | null | undefined, source: 'first-prompt' | 'latest-prompt'): PromptCandidate | null {
+export function promptCandidate(
+  session: Row | null | undefined,
+  source: 'first-prompt' | 'latest-prompt',
+): PromptCandidate | null {
   if (!session || !['claude', 'codex'].includes(String(session['harness']))) return null;
   let text = '';
   let at: number | null = null;
@@ -102,7 +109,11 @@ export interface DraftOptions {
    where no first prompt with a time is published, and null where neither can be adopted. Derived from the
    payload and never written. Nothing is drafted over a store this build cannot read, where saving could
    not save, and nothing over a session that opened with a harness control. */
-export function intentDraft(session: Row, options: DraftOptions, chosen?: PromptCandidate | null): PromptCandidate | null {
+export function intentDraft(
+  session: Row,
+  options: DraftOptions,
+  chosen?: PromptCandidate | null,
+): PromptCandidate | null {
   if (!options.annotate || options.unreadable) return null;
   if (chosen) return chosen;
   if (String(session['annotation_goal'] || '').trim()) return null;

@@ -6,16 +6,33 @@ import { REGION_IDS } from './announcer';
 import { BOARD, mountShell } from './testing';
 
 const primary = () => within(screen.getByRole('navigation', { name: 'Primary' }));
-const crumb = () => screen.queryByRole('navigation', { name: 'Breadcrumb' })?.textContent?.replace(/\s+/g, ' ').trim() ?? null;
-const current = () => primary().queryAllByRole('link').find((link) => link.getAttribute('aria-current') === 'page')?.textContent ?? null;
+const crumb = () =>
+  screen
+    .queryByRole('navigation', { name: 'Breadcrumb' })
+    ?.textContent?.replace(/\s+/g, ' ')
+    .trim() ?? null;
+const current = () =>
+  primary()
+    .queryAllByRole('link')
+    .find((link) => link.getAttribute('aria-current') === 'page')?.textContent ?? null;
 
 describe('the primary navigation', () => {
   it('lists the four views in the released order with the released labels, each a real link', async () => {
     const page = mountShell({ data: BOARD });
     await page.settle();
     const links = primary().getAllByRole('link');
-    expect(links.map((link) => link.textContent)).toEqual(['Projects', 'Sessions', 'Attention', 'Intent log']);
-    expect(links.map((link) => link.getAttribute('href'))).toEqual(['#n=projects', '#n=sessions', '#n=attention', '#n=intent']);
+    expect(links.map((link) => link.textContent)).toEqual([
+      'Projects',
+      'Sessions',
+      'Attention',
+      'Intent log',
+    ]);
+    expect(links.map((link) => link.getAttribute('href'))).toEqual([
+      '#n=projects',
+      '#n=sessions',
+      '#n=attention',
+      '#n=intent',
+    ]);
     for (const link of links) expect(link.getAttribute('tabindex')).not.toBe('-1');
   });
 
@@ -36,7 +53,11 @@ describe('the primary navigation', () => {
     const page = mountShell({ hash, data: BOARD });
     await page.settle();
     expect(current()).toBe(label);
-    expect(primary().getAllByRole('link').filter((link) => link.getAttribute('aria-current') === 'page')).toHaveLength(1);
+    expect(
+      primary()
+        .getAllByRole('link')
+        .filter((link) => link.getAttribute('aria-current') === 'page'),
+    ).toHaveLength(1);
   });
 
   it('follows a link from one view to the next and keeps Back honest', async () => {
@@ -63,14 +84,46 @@ describe('the breadcrumb', () => {
 
   it.each([
     ['a project page', '#n=project:alpha%2Fapp', 'Projects › alpha/app'],
-    ['a session opened from nowhere', '#n=session:alpha%2Fapp:claude:shared-sid', 'Sessions › Alpha shared claude'],
-    ['the same sid under the other harness', '#n=session:alpha%2Fapp:codex:shared-sid', 'Sessions › Alpha shared codex'],
-    ['a session with no published title', '#n=session:beta%2Fapi:claude:colon%3Asid', 'Sessions › Title not published'],
-    ['a session opened from Attention', '#n=session:alpha%2Fapp:claude:shared-sid&from=attention', 'Attention › Alpha shared claude'],
-    ['a session opened from the Intent log', '#n=session:alpha%2Fapp:claude:shared-sid&from=intent', 'Intent log › Alpha shared claude'],
-    ['a session opened from a project', '#n=session:alpha%2Fapp:claude:shared-sid&from=project', 'Projects › alpha/app › Alpha shared claude'],
-    ['a project-less session opened from Projects', '#n=session::codex:bare-project-sid&from=projects', 'Projects › No project label'],
-    ['a session the board does not hold', '#n=session:alpha%2Fapp:claude:missing', 'Sessions › Session'],
+    [
+      'a session opened from nowhere',
+      '#n=session:alpha%2Fapp:claude:shared-sid',
+      'Sessions › Alpha shared claude',
+    ],
+    [
+      'the same sid under the other harness',
+      '#n=session:alpha%2Fapp:codex:shared-sid',
+      'Sessions › Alpha shared codex',
+    ],
+    [
+      'a session with no published title',
+      '#n=session:beta%2Fapi:claude:colon%3Asid',
+      'Sessions › Title not published',
+    ],
+    [
+      'a session opened from Attention',
+      '#n=session:alpha%2Fapp:claude:shared-sid&from=attention',
+      'Attention › Alpha shared claude',
+    ],
+    [
+      'a session opened from the Intent log',
+      '#n=session:alpha%2Fapp:claude:shared-sid&from=intent',
+      'Intent log › Alpha shared claude',
+    ],
+    [
+      'a session opened from a project',
+      '#n=session:alpha%2Fapp:claude:shared-sid&from=project',
+      'Projects › alpha/app › Alpha shared claude',
+    ],
+    [
+      'a project-less session opened from Projects',
+      '#n=session::codex:bare-project-sid&from=projects',
+      'Projects › No project label',
+    ],
+    [
+      'a session the board does not hold',
+      '#n=session:alpha%2Fapp:claude:missing',
+      'Sessions › Session',
+    ],
   ])('reads %s', async (_name, hash, text) => {
     const page = mountShell({ hash, data: BOARD });
     await page.settle();
@@ -78,10 +131,15 @@ describe('the breadcrumb', () => {
   });
 
   it('marks the current segment and links every earlier one', async () => {
-    const page = mountShell({ hash: '#n=session:alpha%2Fapp:claude:shared-sid&from=project', data: BOARD });
+    const page = mountShell({
+      hash: '#n=session:alpha%2Fapp:claude:shared-sid&from=project',
+      data: BOARD,
+    });
     await page.settle();
     const nav = within(screen.getByRole('navigation', { name: 'Breadcrumb' }));
-    expect(nav.getAllByRole('link').map((link) => [link.textContent, link.getAttribute('href')])).toEqual([
+    expect(
+      nav.getAllByRole('link').map((link) => [link.textContent, link.getAttribute('href')]),
+    ).toEqual([
       ['Projects', '#n=projects'],
       ['alpha/app', '#n=project:alpha%2Fapp'],
     ]);
@@ -138,25 +196,45 @@ describe('the header counts come from the rows the page was given', () => {
   it('reads running and subagents with the legacy sentence, and a reported-block button when a session is blocked', async () => {
     const page = mountShell({ data: BOARD });
     await page.settle();
-    expect(document.querySelector('.next-running')?.textContent?.replace(/\s+/g, ' ').trim()).toBe('● 2 running · 3 subagents observed');
+    expect(document.querySelector('.next-running')?.textContent?.replace(/\s+/g, ' ').trim()).toBe(
+      '● 2 running · 3 subagents observed',
+    );
     expect(screen.getByRole('button', { name: '1 reported block' })).toBeInTheDocument();
   });
 
   it('uses the singular for one subagent and one block, and the plural for any other count', async () => {
-    const one = { generated: 1, sessions: [{ harness: 'claude', sid: 'a', project: 'p', state: 'needs_input', subagents: [{}] }] };
+    const one = {
+      generated: 1,
+      sessions: [
+        { harness: 'claude', sid: 'a', project: 'p', state: 'needs_input', subagents: [{}] },
+      ],
+    };
     const page = mountShell({ data: one });
     await page.settle();
     expect(document.querySelector('.next-running')?.textContent).toContain('1 subagent observed');
     expect(screen.getByRole('button', { name: '1 reported block' })).toBeInTheDocument();
     page.unmount();
-    const two = { generated: 1, sessions: [1, 2].map((n) => ({ harness: 'claude', sid: `s${String(n)}`, project: 'p', state: 'needs_input' })) };
+    const two = {
+      generated: 1,
+      sessions: [1, 2].map((n) => ({
+        harness: 'claude',
+        sid: `s${String(n)}`,
+        project: 'p',
+        state: 'needs_input',
+      })),
+    };
     const again = mountShell({ data: two });
     await again.settle();
     expect(screen.getByRole('button', { name: '2 reported blocks' })).toBeInTheDocument();
   });
 
   it('draws no block button when nothing reports a block, and the button leads to Attention', async () => {
-    const calm = mountShell({ data: { generated: 1, sessions: [{ harness: 'claude', sid: 'a', project: 'p', state: 'idle' }] } });
+    const calm = mountShell({
+      data: {
+        generated: 1,
+        sessions: [{ harness: 'claude', sid: 'a', project: 'p', state: 'idle' }],
+      },
+    });
     await calm.settle();
     expect(screen.queryByRole('button', { name: /reported block/ })).toBeNull();
     calm.unmount();
@@ -171,21 +249,27 @@ describe('the header counts come from the rows the page was given', () => {
   it('claims no liveness before a board has arrived or when the board carries no session collection', async () => {
     const unread = mountShell({});
     await unread.settle();
-    expect(document.querySelector('.next-running')?.textContent).toBe('Waiting for the first board.');
+    expect(document.querySelector('.next-running')?.textContent).toBe(
+      'Waiting for the first board.',
+    );
     expect(document.querySelector('.next-status-dot')).toBeNull();
     expect(document.body.textContent).not.toContain('0 running');
     unread.unmount();
 
     const absent = mountShell({ data: { generated: 1 } });
     await absent.settle();
-    expect(document.querySelector('.next-running')?.textContent).toBe('Session data not published.');
+    expect(document.querySelector('.next-running')?.textContent).toBe(
+      'Session data not published.',
+    );
     expect(document.body.textContent).not.toContain('0 running');
   });
 
   it('reads an empty collection as measured zeros, which is a different fact from an absent one', async () => {
     const page = mountShell({ data: { generated: 1, sessions: [] } });
     await page.settle();
-    expect(document.querySelector('.next-running')?.textContent?.replace(/\s+/g, ' ').trim()).toBe('● 0 running · 0 subagents observed');
+    expect(document.querySelector('.next-running')?.textContent?.replace(/\s+/g, ' ').trim()).toBe(
+      '● 0 running · 0 subagents observed',
+    );
   });
 
   it('keeps the counts out of a project page, which has its own More menu with the all-project status', async () => {
@@ -209,7 +293,11 @@ describe('a failed refresh', () => {
       await page.shell.runtime.refresh();
     });
     expect(screen.getByText('Live refresh failed twice in a row.')).toBeInTheDocument();
-    expect(screen.getByText(/Displayed data may be stale\. Last updated 0s ago\. Retrying automatically every 20s\./)).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        /Displayed data may be stale\. Last updated 0s ago\. Retrying automatically every 20s\./,
+      ),
+    ).toBeInTheDocument();
     page.backend.failing = false;
     await act(async () => {
       await page.shell.runtime.refresh();
@@ -226,7 +314,9 @@ describe('a failed refresh', () => {
         await page.shell.runtime.refresh();
       });
     }
-    expect(document.querySelector('.next-running')?.textContent?.replace(/\s+/g, ' ').trim()).toBe('● 2 running · 3 subagents observed');
+    expect(document.querySelector('.next-running')?.textContent?.replace(/\s+/g, ' ').trim()).toBe(
+      '● 2 running · 3 subagents observed',
+    );
     expect(screen.getByText('Live refresh failed 3 times in a row.')).toBeInTheDocument();
   });
 
@@ -298,7 +388,9 @@ describe('the keyboard', () => {
   });
 
   it('walks a session back to where it was opened from with Escape, and a project back to Sessions', async () => {
-    expect(await pressed('Escape', '#n=session:alpha%2Fapp:claude:shared-sid&from=attention')).toBe('attention');
+    expect(await pressed('Escape', '#n=session:alpha%2Fapp:claude:shared-sid&from=attention')).toBe(
+      'attention',
+    );
     expect(await pressed('Escape', '#n=project:alpha%2Fapp')).toBe('sessions');
   });
 
@@ -365,9 +457,11 @@ describe('the page is React’s alone and starts nothing on its own', () => {
     for (const directory of ['shell', 'router']) {
       const root = resolve(process.cwd(), 'frontend/src', directory);
       for (const name of readdirSync(root)) {
-        if (!/\.(ts|tsx)$/.test(name) || /\.test\./.test(name) || /testing\.tsx?$/.test(name)) continue;
+        if (!/\.(ts|tsx)$/.test(name) || /\.test\./.test(name) || /testing\.tsx?$/.test(name))
+          continue;
         const text = readFileSync(join(root, name), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
-        if (/getSelection|createRange|addRange|selectAllChildren|setBaseAndExtent/.test(text)) offenders.push(`${directory}/${name}`);
+        if (/getSelection|createRange|addRange|selectAllChildren|setBaseAndExtent/.test(text))
+          offenders.push(`${directory}/${name}`);
       }
     }
     expect(offenders).toEqual([]);
@@ -380,9 +474,18 @@ describe('the page is React’s alone and starts nothing on its own', () => {
       for (const name of readdirSync(directory)) {
         const path = join(directory, name);
         if (statSync(path).isDirectory()) walk(path);
-        else if (/\.(ts|tsx)$/.test(name) && !/\.test\./.test(name) && !/testing\.tsx?$/.test(name)) {
+        else if (
+          /\.(ts|tsx)$/.test(name) &&
+          !/\.test\./.test(name) &&
+          !/testing\.tsx?$/.test(name)
+        ) {
           const text = readFileSync(path, 'utf8');
-          if (/innerHTML|outerHTML|insertAdjacentHTML|dangerouslySetInnerHTML|document\.write/.test(text.replace(/\/\*[\s\S]*?\*\//g, ''))) offenders.push(path);
+          if (
+            /innerHTML|outerHTML|insertAdjacentHTML|dangerouslySetInnerHTML|document\.write/.test(
+              text.replace(/\/\*[\s\S]*?\*\//g, ''),
+            )
+          )
+            offenders.push(path);
         }
       }
     };

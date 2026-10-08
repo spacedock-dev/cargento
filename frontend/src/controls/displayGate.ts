@@ -8,7 +8,13 @@ import type { Clock } from '../transport/ports';
    action state or a project-context read and is not held by an open list. */
 type BoardLayer = Pick<
   BoardSnapshot,
-  'data' | 'revision' | 'acceptedCount' | 'failures' | 'lastFailure' | 'lastSuccessAt' | 'firstBuild'
+  | 'data'
+  | 'revision'
+  | 'acceptedCount'
+  | 'failures'
+  | 'lastFailure'
+  | 'lastSuccessAt'
+  | 'firstBuild'
 >;
 
 function boardLayer(snapshot: BoardSnapshot): BoardLayer {
@@ -187,7 +193,10 @@ export function choiceOpenIn(root: () => Element | null, doc: Document = documen
 /* `change` as well as `blur`, because a keyboard selection commits without the
    list losing focus and the reader should see the board catch up then, not on the
    next poll. Capture, because `blur` does not bubble. */
-export function installChoiceRelease(doc: Document, gate: Pick<DisplayGate, 'releaseChoice'>): () => void {
+export function installChoiceRelease(
+  doc: Document,
+  gate: Pick<DisplayGate, 'releaseChoice'>,
+): () => void {
   const onChange = (event: Event) => {
     if (event.target instanceof HTMLSelectElement) gate.releaseChoice();
   };

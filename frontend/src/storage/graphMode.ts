@@ -32,7 +32,11 @@ export function decodeGraphModes(raw: string | null): Map<string, GraphMode> {
 
 export interface GraphModeStore {
   /** A caller-pinned mode overrides the reader, then the stored choice, then `defaultMode`, then active. */
-  resolve(options: { readonly scope: string; readonly mode?: GraphMode; readonly defaultMode?: GraphMode }): GraphMode;
+  resolve(options: {
+    readonly scope: string;
+    readonly mode?: GraphMode;
+    readonly defaultMode?: GraphMode;
+  }): GraphMode;
   set(scope: string, mode: GraphMode): boolean;
 }
 

@@ -58,7 +58,14 @@ export function CopyControl({ kind, harness, sid, value }: CopyControlProps) {
       return;
     }
     controls.cues.remember(key, 'copied');
-    controls.announce(announceKey, kind === 'id' ? SAID.copied.id(sid) : kind === 'link' ? SAID.copied.link() : SAID.copied.command(value));
+    controls.announce(
+      announceKey,
+      kind === 'id'
+        ? SAID.copied.id(sid)
+        : kind === 'link'
+          ? SAID.copied.link()
+          : SAID.copied.command(value),
+    );
   };
 
   return (

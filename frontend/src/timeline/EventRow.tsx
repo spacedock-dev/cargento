@@ -29,7 +29,8 @@ function Published({ value, reason }: { readonly value: unknown; readonly reason
 
 function EventTime({ at }: { readonly at: number | null }) {
   const date = at === null ? null : new Date(at * 1000);
-  if (!date || !Number.isFinite(date.getTime())) return <span className="pc-substrate-reason">Event time not published.</span>;
+  if (!date || !Number.isFinite(date.getTime()))
+    return <span className="pc-substrate-reason">Event time not published.</span>;
   const iso = date.toISOString();
   return <time dateTime={iso}>{iso}</time>;
 }
@@ -37,8 +38,10 @@ function EventTime({ at }: { readonly at: number | null }) {
 function relationLines(event: TimelineEvent): string[] {
   const { lane } = event;
   return event.relations.map((relation) => {
-    if (relation.type === 'dispatches_to') return `Exact dispatch · First Officer → ${taskTitle(lane.label)}`;
-    if (relation.type === 'returns_to') return `Exact return · ${taskTitle(lane.label)} → First Officer`;
+    if (relation.type === 'dispatches_to')
+      return `Exact dispatch · First Officer → ${taskTitle(lane.label)}`;
+    if (relation.type === 'returns_to')
+      return `Exact return · ${taskTitle(lane.label)} → First Officer`;
     return (relation.type || 'supported relation').replace(/_/g, ' ');
   });
 }
@@ -49,7 +52,11 @@ function Details({ event, scope }: { readonly event: TimelineEvent; readonly sco
   const relations = relationLines(event);
   const matching =
     event.kind === 'dispatch'
-      ? lane.events.filter((candidate) => eventKind(candidate) === 'dispatch' && candidate.summary.trim().toLowerCase() === event.meaning.trim().toLowerCase())
+      ? lane.events.filter(
+          (candidate) =>
+            eventKind(candidate) === 'dispatch' &&
+            candidate.summary.trim().toLowerCase() === event.meaning.trim().toLowerCase(),
+        )
       : [];
   const path = fact.stage && fact.targetStage ? `${fact.stage} → ${fact.targetStage}` : fact.stage;
   const author = fact.by === 'person:captain' ? 'Captain' : fact.by;
@@ -62,10 +69,12 @@ function Details({ event, scope }: { readonly event: TimelineEvent; readonly sco
       {event.kind === 'decision' ? (
         <>
           <div>
-            <b>Decision author</b> · <Published value={author || null} reason="Decision author not published." />
+            <b>Decision author</b> ·{' '}
+            <Published value={author || null} reason="Decision author not published." />
           </div>
           <div {...(path.trim() ? { className: 'pc-source' } : {})}>
-            <b>Decision mechanics</b> · {path.trim() ? path : <Published value={null} reason="Decision stage not published." />}
+            <b>Decision mechanics</b> ·{' '}
+            {path.trim() ? path : <Published value={null} reason="Decision stage not published." />}
             {!fact.stage && fact.targetStage ? (
               <>
                 {' '}
@@ -73,13 +82,22 @@ function Details({ event, scope }: { readonly event: TimelineEvent; readonly sco
               </>
             ) : null}
             {' · '}
-            {fact.applicationState ? disposition : <span className="pc-substrate-reason">{disposition}</span>}
+            {fact.applicationState ? (
+              disposition
+            ) : (
+              <span className="pc-substrate-reason">{disposition}</span>
+            )}
           </div>
         </>
       ) : null}
       <div>
-        <b>Source</b> · <Published value={fact.evidenceSource ?? (fact.sourceKind || null)} reason="Evidence source not published." /> ·{' '}
-        <Published value={fact.evidenceConfidence} reason="Evidence confidence not published." /> · <EventTime at={fact.at} />
+        <b>Source</b> ·{' '}
+        <Published
+          value={fact.evidenceSource ?? (fact.sourceKind || null)}
+          reason="Evidence source not published."
+        />{' '}
+        · <Published value={fact.evidenceConfidence} reason="Evidence confidence not published." />{' '}
+        · <EventTime at={fact.at} />
       </div>
       {relations.length ? (
         <div>
@@ -92,7 +110,8 @@ function Details({ event, scope }: { readonly event: TimelineEvent; readonly sco
           {interleave(
             bindings.map((binding) => (
               <>
-                <Published value={binding.source} reason="Task source not published." /> · <Published value={binding.value} reason="Task binding not published." />
+                <Published value={binding.source} reason="Task source not published." /> ·{' '}
+                <Published value={binding.value} reason="Task binding not published." />
               </>
             )),
           )}
@@ -100,7 +119,8 @@ function Details({ event, scope }: { readonly event: TimelineEvent; readonly sco
       ) : null}
       {matching.length > 1 ? (
         <div>
-          <b>Assignment records</b> · {matching.length} exact records; {matching.length - 1} older matching record{matching.length === 2 ? '' : 's'} folded here.
+          <b>Assignment records</b> · {matching.length} exact records; {matching.length - 1} older
+          matching record{matching.length === 2 ? '' : 's'} folded here.
         </div>
       ) : null}
       {event.suppressed.length ? (
@@ -113,7 +133,8 @@ function Details({ event, scope }: { readonly event: TimelineEvent; readonly sco
           <div className="pc-entry-source-list">
             {event.suppressed.map((row: Fact, index) => (
               <div key={`${row.id}:${String(index)}`}>
-                <EventTime at={row.at} /> · <Published value={row.summary || row.type} reason="Source message not published." />
+                <EventTime at={row.at} /> ·{' '}
+                <Published value={row.summary || row.type} reason="Source message not published." />
               </div>
             ))}
           </div>
@@ -139,8 +160,16 @@ function taskHead(lane: TaskLane, event: TimelineEvent, stage: string) {
     .map((row) => row.worker)
     .filter(Boolean)
     .join(' · ');
-  const meta = lane.working ? ['Working', stage].filter(Boolean).join(' · ') : lane.unreturned ? 'Unresolved' : taskTitle(event.kind);
-  const secondary = lane.working ? workers : lane.unreturned ? 'No active worker · no return observed' : '';
+  const meta = lane.working
+    ? ['Working', stage].filter(Boolean).join(' · ')
+    : lane.unreturned
+      ? 'Unresolved'
+      : taskTitle(event.kind);
+  const secondary = lane.working
+    ? workers
+    : lane.unreturned
+      ? 'No active worker · no return observed'
+      : '';
   const retries = Math.max(0, lane.dispatchCount - 1);
   const attempts =
     lane.dispatchCount === 1
@@ -164,20 +193,29 @@ export interface EventRowProps {
 
 export function EventRow({ event, scope, first, generated, harnessLabels }: EventRowProps) {
   const { fact, lane } = event;
-  const stage = fact.stage || (first && lane.kind === 'task' && lane.head ? lane.head.stage : '') || '';
+  const stage =
+    fact.stage || (first && lane.kind === 'task' && lane.head ? lane.head.stage : '') || '';
   const sentence = eventSentence(event);
   const head = lane.kind === 'task' && first ? taskHead(lane, event, stage) : null;
   const title = lane.kind === 'fo' ? 'First Officer' : taskTitle(lane.label);
-  const sourceResult = event.kind !== 'decision' && ((fact.summary !== '' && sentence.result === fact.summary) || (fact.stage !== '' && sentence.result === fact.stage));
+  const sourceResult =
+    event.kind !== 'decision' &&
+    ((fact.summary !== '' && sentence.result === fact.summary) ||
+      (fact.stage !== '' && sentence.result === fact.stage));
   const hasTime = event.at !== null && Number.isFinite(event.at);
   const age =
     hasTime && generated !== null && event.at !== null ? (
       <time>{`${formatDuration(Math.max(0, generated - event.at)) ?? '0s'} ago`}</time>
     ) : (
-      <span className="pc-substrate-reason pc-graph-time">{hasTime ? 'Observation time not published.' : 'Event time not published.'}</span>
+      <span className="pc-substrate-reason pc-graph-time">
+        {hasTime ? 'Observation time not published.' : 'Event time not published.'}
+      </span>
     );
   const cue = factScope(fact);
-  const detail = cue.kind === 'session' && fact.session ? (harnessLabels.get(fact.session.harness) ?? humanLabel(fact.session.harness)) : undefined;
+  const detail =
+    cue.kind === 'session' && fact.session
+      ? (harnessLabels.get(fact.session.harness) ?? humanLabel(fact.session.harness))
+      : undefined;
   const task = lane.kind === 'task' ? lane : null;
   const binding = task && first ? bindingOf(task, fact) : '';
   const attributes: Record<string, string> = {
@@ -187,21 +225,28 @@ export function EventRow({ event, scope, first, generated, harnessLabels }: Even
   };
   if (!task) {
     if (event.kind === 'direction') {
-      attributes['data-steering-state'] = event.causal && event.causal !== 'none' ? 'paired' : 'unpaired';
+      attributes['data-steering-state'] =
+        event.causal && event.causal !== 'none' ? 'paired' : 'unpaired';
       attributes['data-causal-edge'] = event.causal ?? 'none';
     }
   } else {
     attributes['data-assignment-lane'] = first ? 'task-head' : 'task-event';
     attributes['data-work-item'] = task.workItemId;
     attributes['data-task-current'] = task.current ? 'true' : 'false';
-    if (task.contributors[0]) attributes['data-parent-session'] = task.contributors[0].parentSession ?? '';
+    if (task.contributors[0])
+      attributes['data-parent-session'] = task.contributors[0].parentSession ?? '';
     if (first) attributes['data-trail-head'] = task.head?.status || 'latest';
     if (stage) attributes['data-work-stage'] = stage;
     if (binding) attributes['data-workflow-binding'] = binding;
   }
   const kindClass = event.kind === 'direction' ? 'steering' : 'event';
   return (
-    <article className={`pc-graph-row ${kindClass}`} data-graph-node={kindClass} data-lane-key={lane.key} {...attributes}>
+    <article
+      className={`pc-graph-row ${kindClass}`}
+      data-graph-node={kindClass}
+      data-lane-key={lane.key}
+      {...attributes}
+    >
       {age}
       <div className="pc-trail-body">
         <ScopeCue scope={cue} detail={detail} />
@@ -213,18 +258,33 @@ export function EventRow({ event, scope, first, generated, harnessLabels }: Even
             <>
               <div className="pc-trail-summary">
                 <div className="pc-trail-top">
-                  {first ? <strong className="pc-lane-title">{title}</strong> : <span className="pc-event-kind">{taskTitle(event.kind)}</span>}
+                  {first ? (
+                    <strong className="pc-lane-title">{title}</strong>
+                  ) : (
+                    <span className="pc-event-kind">{taskTitle(event.kind)}</span>
+                  )}
                   {first ? <span>{head ? head.meta : taskTitle(event.kind)}</span> : null}
                 </div>
-                <div className="pc-trail-result" data-actor={sentence.actor} data-action={sentence.action} data-object={sentence.object} data-result={sentence.result}>
+                <div
+                  className="pc-trail-result"
+                  data-actor={sentence.actor}
+                  data-action={sentence.action}
+                  data-object={sentence.object}
+                  data-result={sentence.result}
+                >
                   {event.kind === 'decision' ? (
                     <>
-                      <strong>{taskTitle(sentence.action)}</strong> {sentence.object} · {gateApplicationDisposition(fact)}
+                      <strong>{taskTitle(sentence.action)}</strong> {sentence.object} ·{' '}
+                      {gateApplicationDisposition(fact)}
                     </>
                   ) : (
                     <>
                       <strong>{sentence.actor}</strong> {sentence.action} {sentence.object} ·{' '}
-                      {sourceResult ? <Published value={sentence.result} reason="Event summary not published." /> : sentence.result}
+                      {sourceResult ? (
+                        <Published value={sentence.result} reason="Event summary not published." />
+                      ) : (
+                        sentence.result
+                      )}
                     </>
                   )}
                 </div>

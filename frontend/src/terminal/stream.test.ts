@@ -25,7 +25,11 @@ class FakeSocket implements StreamSocket {
   }
 }
 
-function fakeTerminal(): StreamTerminal & { calls: string[]; written: string[]; done: (() => void)[] } {
+function fakeTerminal(): StreamTerminal & {
+  calls: string[];
+  written: string[];
+  done: (() => void)[];
+} {
   const calls: string[] = [];
   const written: string[] = [];
   const done: (() => void)[] = [];
@@ -59,7 +63,9 @@ function fakeTerminal(): StreamTerminal & { calls: string[]; written: string[]; 
   };
 }
 
-function setup(overrides: { originHint?: string; wanted?: () => boolean; following?: () => boolean } = {}) {
+function setup(
+  overrides: { originHint?: string; wanted?: () => boolean; following?: () => boolean } = {},
+) {
   const clock = createFakeClock();
   const sockets: FakeSocket[] = [];
   const terminal = fakeTerminal();
@@ -86,7 +92,12 @@ function setup(overrides: { originHint?: string; wanted?: () => boolean; followi
   return { clock, sockets, terminal, log, stream };
 }
 
-const chunk = (sequence: number, data: string, cols = 80, rows = 24) => ({ sequence, data, cols, rows });
+const chunk = (sequence: number, data: string, cols = 80, rows = 24) => ({
+  sequence,
+  data,
+  cols,
+  rows,
+});
 const streamed = (chunks: unknown[], extra: Record<string, unknown> = {}) => ({
   state: 'streamed',
   sequence: 1,
@@ -151,7 +162,9 @@ describe('reading frames', () => {
   it('refuses a chunk whose size is not a positive whole number and does not advance past it', () => {
     const { sockets, stream, terminal } = setup();
     stream.connect();
-    sockets[0]?.deliver(streamed([chunk(1, 'a', 0, 24), chunk(2, 'b', 80, 1.5), chunk(3, 'c', 80, 24)]));
+    sockets[0]?.deliver(
+      streamed([chunk(1, 'a', 0, 24), chunk(2, 'b', 80, 1.5), chunk(3, 'c', 80, 24)]),
+    );
     expect(terminal.written).toEqual(['c']);
     expect(stream.sequence()).toBe(3);
   });
@@ -159,7 +172,9 @@ describe('reading frames', () => {
   it('resizes only when the pane size changed, and tells the host to follow the new size', () => {
     const { log, sockets, stream, terminal } = setup();
     stream.connect();
-    sockets[0]?.deliver(streamed([chunk(1, 'a', 80, 24), chunk(2, 'b', 100, 30), chunk(3, 'c', 100, 30)]));
+    sockets[0]?.deliver(
+      streamed([chunk(1, 'a', 80, 24), chunk(2, 'b', 100, 30), chunk(3, 'c', 100, 30)]),
+    );
     expect(terminal.calls.filter((call) => call.startsWith('resize'))).toEqual(['resize 100x30']);
     expect(log.sized).toBe(1);
   });

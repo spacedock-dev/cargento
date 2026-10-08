@@ -3,7 +3,8 @@ import { describe, expect, it } from 'vitest';
 import { REGION_IDS } from './announcer';
 import { BOARD, flush, mountShell } from './testing';
 
-const region = (name: keyof typeof REGION_IDS) => document.getElementById(REGION_IDS[name])?.textContent;
+const region = (name: keyof typeof REGION_IDS) =>
+  document.getElementById(REGION_IDS[name])?.textContent;
 
 describe('the shell wires the runtime, the announcer and the controls to one another', () => {
   it('says a slow pending control’s start sentence in the polite region, once, and again for the next press', async () => {
@@ -66,7 +67,9 @@ describe('the shell wires the runtime, the announcer and the controls to one ano
     expect(page.shell.display.getSnapshot().data).toBeNull();
     await page.settle();
     expect(page.shell.display.getSnapshot().data).not.toBeNull();
-    expect(page.shell.display.getSnapshot().acceptedCount).toBe(page.shell.runtime.store.getSnapshot().acceptedCount);
+    expect(page.shell.display.getSnapshot().acceptedCount).toBe(
+      page.shell.runtime.store.getSnapshot().acceptedCount,
+    );
   });
 
   it('starts exactly one runtime and releases it when the page leaves, whatever StrictMode did meanwhile', async () => {

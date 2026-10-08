@@ -41,7 +41,8 @@ export function terminalOwnerFor(shell: Shell): TerminalOwner {
       terminal: () => (window as unknown as { Terminal?: XtermConstructor }).Terminal,
     }),
     openSocket: browserSocket,
-    streamUrl: () => `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/api/interaction/stream`,
+    streamUrl: () =>
+      `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/api/interaction/stream`,
     document,
   });
   const slot = globalThis as unknown as Record<symbol, TerminalOwner | undefined>;

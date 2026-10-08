@@ -83,7 +83,9 @@ export function createGuardrailStore(access: StorageAccess): GuardrailStore {
       if (!target) return { rules: [...rules], persisted: true };
       return commit(
         project,
-        rules.map((rule, at) => (at === index ? { enabled: !rule.enabled, text: rule.text } : rule)),
+        rules.map((rule, at) =>
+          at === index ? { enabled: !rule.enabled, text: rule.text } : rule,
+        ),
       );
     },
   };

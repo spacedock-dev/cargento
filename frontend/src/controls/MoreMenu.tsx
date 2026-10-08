@@ -29,11 +29,19 @@ const MORE_KEY = disclosureKey({ project: null, scope: null, name: 'more' });
    the scope changes. Unlike the two confirmation cues, nothing deletes it: the
    briefing is a snapshot the reader chose to take, and an expired "Copied" would
    invite a second press to learn what the first did. */
-export function MoreMenu({ projectKey, focus, running, subagents, briefingText, addHumanContext }: MoreMenuProps) {
+export function MoreMenu({
+  projectKey,
+  focus,
+  running,
+  subagents,
+  briefingText,
+  addHumanContext,
+}: MoreMenuProps) {
   const controls = useControls();
   const key = contextKey(projectKey, focus);
   const state = useKeyedValue(controls.briefing, key);
-  const label = state === 'copied' ? 'Copied' : state === 'error' ? 'Copy unavailable' : 'Copy briefing';
+  const label =
+    state === 'copied' ? 'Copied' : state === 'error' ? 'Copy unavailable' : 'Copy briefing';
 
   const copy = async () => {
     const press = controls.press();
@@ -57,7 +65,13 @@ export function MoreMenu({ projectKey, focus, running, subagents, briefingText, 
   };
 
   return (
-    <Disclosure disclosureKey={MORE_KEY} variant="menu" summary="···" summaryLabel="More" focusKey="more">
+    <Disclosure
+      disclosureKey={MORE_KEY}
+      variant="menu"
+      summary="···"
+      summaryLabel="More"
+      focusKey="more"
+    >
       <div className="ctl-menu-items">
         <span className="ctl-menu-status">
           {`All projects · ${String(running)} running · ${String(subagents)} ${subagents === 1 ? 'subagent' : 'subagents'} observed`}

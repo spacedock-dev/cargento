@@ -43,14 +43,20 @@ describe('sessions and asks', () => {
     empty.acceptData({ generated: 1, sessions: [] }, '');
     expect(selectSessions(empty.getSnapshot())).toEqual({ present: true, rows: [] });
     const dirty = board();
-    dirty.acceptData({ sessions: [{ harness: 'claude', sid: 'a' }, null, 3] } as unknown as PayloadData, '');
+    dirty.acceptData(
+      { sessions: [{ harness: 'claude', sid: 'a' }, null, 3] } as unknown as PayloadData,
+      '',
+    );
     expect(selectSessions(dirty.getSnapshot()).rows).toHaveLength(1);
     expect(selectSessions(board().getSnapshot())).toEqual({ present: false, rows: [] });
   });
 
   it('returns the same collection object while the accepted data is unchanged', () => {
     const b = board();
-    b.acceptData({ sessions: [{ harness: 'claude', sid: 'a' }], asks: [] } as unknown as PayloadData, '');
+    b.acceptData(
+      { sessions: [{ harness: 'claude', sid: 'a' }], asks: [] } as unknown as PayloadData,
+      '',
+    );
     const first = selectSessions(b.getSnapshot());
     b.setManualRefreshing(true);
     expect(selectSessions(b.getSnapshot())).toBe(first);
@@ -134,24 +140,33 @@ describe('the five context states', () => {
     b.setContext('unavailable', entry(null, true));
     b.setContext('pending', entry(null, false));
     const snapshot = b.getSnapshot();
-    expect(['missing', 'pending', 'ready', 'stale', 'unavailable'].map((key) => selectContextState(snapshot, key))).toEqual([
-      'absent',
-      'pending',
-      'ready',
-      'stale',
-      'unavailable',
-    ]);
+    expect(
+      ['missing', 'pending', 'ready', 'stale', 'unavailable'].map((key) =>
+        selectContextState(snapshot, key),
+      ),
+    ).toEqual(['absent', 'pending', 'ready', 'stale', 'unavailable']);
   });
 
   it('ranks the worst state of the focused and project entries and says whether rows show', () => {
     const b = board();
     b.setContext('p\n', entry({}, false));
     b.setContext('p\nclaude:s', entry({}, true));
-    expect(selectContextRead(b.getSnapshot(), 'p', { harness: 'claude', sid: 's' })).toMatchObject({ state: 'stale', shows: true });
-    expect(selectContextRead(b.getSnapshot(), 'p', { harness: 'claude', sid: 'other' })).toMatchObject({ state: 'absent', shows: false });
+    expect(selectContextRead(b.getSnapshot(), 'p', { harness: 'claude', sid: 's' })).toMatchObject({
+      state: 'stale',
+      shows: true,
+    });
+    expect(
+      selectContextRead(b.getSnapshot(), 'p', { harness: 'claude', sid: 'other' }),
+    ).toMatchObject({ state: 'absent', shows: false });
     b.setContext('p\ncodex:t', entry(null, true));
-    expect(selectContextRead(b.getSnapshot(), 'p', { harness: 'codex', sid: 't' })).toMatchObject({ state: 'unavailable', shows: false });
-    expect(selectContextRead(b.getSnapshot(), 'p', null)).toMatchObject({ state: 'ready', shows: true });
+    expect(selectContextRead(b.getSnapshot(), 'p', { harness: 'codex', sid: 't' })).toMatchObject({
+      state: 'unavailable',
+      shows: false,
+    });
+    expect(selectContextRead(b.getSnapshot(), 'p', null)).toMatchObject({
+      state: 'ready',
+      shows: true,
+    });
   });
 
   it('keeps one project’s scope from bleeding into another’s', () => {

@@ -1,11 +1,20 @@
 import { render, screen } from '@testing-library/react';
 import { StrictMode, useEffect } from 'react';
 import { describe, expect, it } from 'vitest';
-import { ANNOUNCEMENT_LIMIT, createAnnouncer, REGION_IDS, type Announcer, type RegionName } from './announcer';
+import {
+  ANNOUNCEMENT_LIMIT,
+  createAnnouncer,
+  REGION_IDS,
+  type Announcer,
+  type RegionName,
+} from './announcer';
 import { AnnouncerProvider, LiveRegions } from './LiveRegions';
 import { useAnnouncer } from './announcerContext';
 
-function attached(announcer: Announcer, regions: readonly RegionName[] = ['attention', 'copy', 'raise', 'cue', 'alert']) {
+function attached(
+  announcer: Announcer,
+  regions: readonly RegionName[] = ['attention', 'copy', 'raise', 'cue', 'alert'],
+) {
   const nodes = {} as Record<RegionName, HTMLElement>;
   for (const region of regions) {
     nodes[region] = document.createElement('p');
@@ -63,7 +72,8 @@ describe('a sentence is spoken once per standing key', () => {
     expect(ANNOUNCEMENT_LIMIT).toBe(16);
     const announcer = createAnnouncer();
     const nodes = attached(announcer);
-    for (let index = 0; index < ANNOUNCEMENT_LIMIT + 1; index += 1) announcer.announce(`k${index}`, `Sentence ${index}.`);
+    for (let index = 0; index < ANNOUNCEMENT_LIMIT + 1; index += 1)
+      announcer.announce(`k${index}`, `Sentence ${index}.`);
     nodes.cue.textContent = '';
     announcer.announce('k1', 'Sentence 1.');
     expect(nodes.cue.textContent).toBe('');

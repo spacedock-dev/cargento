@@ -15,7 +15,9 @@ export function useProjectBriefing(route: ProjectRoute): ProjectBriefing {
   void route;
   return {
     briefingText: () => {
-      throw new BriefingUnavailable('The project briefing has not been migrated to the React interface.');
+      throw new BriefingUnavailable(
+        'The project briefing has not been migrated to the React interface.',
+      );
     },
   };
 }

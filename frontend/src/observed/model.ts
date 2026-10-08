@@ -1,5 +1,10 @@
 import { nextNumber } from '../api/bootstrap';
-import { observeCapacity, type BoardRisk, type CapacitySublimit, type CapacityWindow } from './capacity';
+import {
+  observeCapacity,
+  type BoardRisk,
+  type CapacitySublimit,
+  type CapacityWindow,
+} from './capacity';
 import { delegatedWork } from './landing';
 import { observeProject, sessionRisk, type ObservedProject } from './project';
 import { labelOf, observeSession, type ObservedSession } from './session';
@@ -72,20 +77,41 @@ export type Observed = {
 
 /* The order of a project group in the active lane: gates (the server's order), then working sessions
    (a long turn first, then by sid), then idle ones by nearest activity and sid, then anything else. */
-function laneOrder(sources: readonly Row[], sessions: readonly ObservedSession[]): ObservedSession[] {
-  const bySource = new Map<Row, ObservedSession | undefined>(sources.map((source, index) => [source, sessions[index]]));
+function laneOrder(
+  sources: readonly Row[],
+  sessions: readonly ObservedSession[],
+): ObservedSession[] {
+  const bySource = new Map<Row, ObservedSession | undefined>(
+    sources.map((source, index) => [source, sessions[index]]),
+  );
   const gates = sources.filter((source) => source['state'] === 'needs_input');
   const working = workingOrder(sources.filter((source) => source['state'] === 'working'));
   const idle = sources
     .filter((source) => source['state'] === 'idle')
-    .sort((a, b) => (nextNumber(b['last_activity']) ?? 0) - (nextNumber(a['last_activity']) ?? 0) || compare(identityPart(a['sid']), identityPart(b['sid'])));
-  const other = sources.filter((source) => !['needs_input', 'working', 'idle'].includes(String(source['state'] || '')));
-  return [...gates, ...working, ...idle, ...other].map((source) => bySource.get(source) as ObservedSession);
+    .sort(
+      (a, b) =>
+        (nextNumber(b['last_activity']) ?? 0) - (nextNumber(a['last_activity']) ?? 0) ||
+        compare(identityPart(a['sid']), identityPart(b['sid'])),
+    );
+  const other = sources.filter(
+    (source) => !['needs_input', 'working', 'idle'].includes(String(source['state'] || '')),
+  );
+  return [...gates, ...working, ...idle, ...other].map(
+    (source) => bySource.get(source) as ObservedSession,
+  );
 }
 
 const OPEN: Observed['open'] = [
-  ['attention-accounting', 'Attention accounting', 'Delegation share is measured per project, not yet aggregated across the week.'],
-  ['unpushed-commits', 'Ended with unpushed commits', 'The board reports uncommitted work, not commits that never reached a remote.'],
+  [
+    'attention-accounting',
+    'Attention accounting',
+    'Delegation share is measured per project, not yet aggregated across the week.',
+  ],
+  [
+    'unpushed-commits',
+    'Ended with unpushed commits',
+    'The board reports uncommitted work, not commits that never reached a remote.',
+  ],
   [
     'never-read',
     'Finished and never read',
@@ -125,7 +151,13 @@ export function observe(input: unknown): Observed {
   }
   const generated = nextNumber(payload['generated']);
   const sessions = sources.map((source) =>
-    observeSession(source, asks.get(sessionKey(source)) ?? [], byHarness.get(identityPart(source['harness'])), generated, groups.get(labelOf(source))?.length ?? 0),
+    observeSession(
+      source,
+      asks.get(sessionKey(source)) ?? [],
+      byHarness.get(identityPart(source['harness'])),
+      generated,
+      groups.get(labelOf(source))?.length ?? 0,
+    ),
   );
   const risks: BoardRisk[] = [];
   sessions.forEach((session, index) => {
@@ -134,22 +166,42 @@ export function observe(input: unknown): Observed {
     const source = sources[index] as Row;
     const finished = (nextNumber(source['finished_at']) ?? 0) > 0;
     const attributed =
-      !session.isEnded && ((finished && (session.isWorking || source['active'] === true)) || (!finished && (typeof source['dirty'] === 'boolean' || Number.isInteger(source['changed']))));
+      !session.isEnded &&
+      ((finished && (session.isWorking || source['active'] === true)) ||
+        (!finished &&
+          (typeof source['dirty'] === 'boolean' || Number.isInteger(source['changed']))));
     const outcomeKnown = session.outcomeKnown;
     if (outcomeKnown && source['dirty'] === true) {
-      risks.push(sessionRisk(session, session.isEnded ? 'end-dirty' : 'stop-dirty', session.outcomeText, session.gitText));
+      risks.push(
+        sessionRisk(
+          session,
+          session.isEnded ? 'end-dirty' : 'stop-dirty',
+          session.outcomeText,
+          session.gitText,
+        ),
+      );
     } else if (attributed) {
-      risks.push(sessionRisk(session, 'attribution', 'Conflicting completion evidence', 'Published activity and completion or git evidence do not establish the same end'));
+      risks.push(
+        sessionRisk(
+          session,
+          'attribution',
+          'Conflicting completion evidence',
+          'Published activity and completion or git evidence do not establish the same end',
+        ),
+      );
     } else if (session.stuckKnown) {
       risks.push(sessionRisk(session, 'loop', 'Stuck signal', session.stuckText));
     } else if (session.isWorking && isRecord(source['turn']) && source['turn']['long'] === true) {
       risks.push(sessionRisk(session, 'long-turn', 'Long working turn', session.turnText));
     } else {
       const delegated = delegatedWork(source, generated);
-      if (delegated.risky) risks.push(sessionRisk(session, 'quiet-launch', 'Quiet delegated launch', delegated.text));
+      if (delegated.risky)
+        risks.push(sessionRisk(session, 'quiet-launch', 'Quiet delegated launch', delegated.text));
     }
   });
-  const riskKeys = new Set(risks.map((risk) => sessionKey({ harness: risk.harness, sid: risk.sid })));
+  const riskKeys = new Set(
+    risks.map((risk) => sessionKey({ harness: risk.harness, sid: risk.sid })),
+  );
   const projects = [...groups].map(([key, group]) => {
     const members = sessions.filter((session) => session.project === key);
     return observeProject(
@@ -159,7 +211,8 @@ export function observe(input: unknown): Observed {
       members.filter((session) => riskKeys.has(sessionKey(session))),
     );
   });
-  const rank = (project: ObservedProject) => (project.needs.length ? 0 : project.risky.length ? 1 : project.working.length ? 2 : 3);
+  const rank = (project: ObservedProject) =>
+    project.needs.length ? 0 : project.risky.length ? 1 : project.working.length ? 2 : 3;
   projects.sort((a, b) => rank(a) - rank(b) || compare(a.key, b.key));
   const capacity = observeCapacity(payload);
   const boardRisks: BoardRisk[] = [...capacity.risks];
@@ -207,12 +260,15 @@ export function observe(input: unknown): Observed {
   const history = ordered.filter((session) => !session.isActive);
   const needs = sessions.filter((session) => session.isNeeds || session.askKnown);
   const needKeys = new Set(needs.map(sessionKey));
-  const atRisk = sessions.filter((session) => riskKeys.has(sessionKey(session)) && !needKeys.has(sessionKey(session)));
+  const atRisk = sessions.filter(
+    (session) => riskKeys.has(sessionKey(session)) && !needKeys.has(sessionKey(session)),
+  );
   const close = sessions.filter(
     (session, index) =>
       !needKeys.has(sessionKey(session)) &&
       !riskKeys.has(sessionKey(session)) &&
-      (session.isEnded || (session.isQuiet && (nextNumber((sources[index] as Row)['finished_at']) ?? 0) > 0)),
+      (session.isEnded ||
+        (session.isQuiet && (nextNumber((sources[index] as Row)['finished_at']) ?? 0) > 0)),
   );
   const subjectKeys = new Set([...needs, ...atRisk, ...close].map(sessionKey));
   const other = sessions.filter((session) => !subjectKeys.has(sessionKey(session)));
@@ -232,13 +288,12 @@ export function observe(input: unknown): Observed {
     observed:
       `${String(sessions.length - other.length)} of ${String(totals.sessions)} ${sessionsWord(totals.sessions, 'session carries', 'sessions carry')} a subject: ` +
       `${String(needs.length)} waiting on you · ${String(atRisk.length)} at risk · ${String(close.length)} to close the loop.`,
-    quiet:
-      `The other ${String(other.length)}: ${
-        otherWords
-          .filter((word) => word[1])
-          .map((word) => `${String(word[1])} ${word[0]}`)
-          .join(' · ') || 'none'
-      }; of these, ${String(partial)} partially read.`,
+    quiet: `The other ${String(other.length)}: ${
+      otherWords
+        .filter((word) => word[1])
+        .map((word) => `${String(word[1])} ${word[0]}`)
+        .join(' · ') || 'none'
+    }; of these, ${String(partial)} partially read.`,
     gates:
       `${String(totals.reportsBlock)} of ${String(totals.sessions)} ${sessionsWord(totals.sessions, 'session reports', 'sessions report')} block state · ` +
       `${String(totals.sessions - totals.reportsBlock)} unknown · ${payload['ends_observable'] === false ? 'ends unobservable' : `ends observed on ${String(totals.ended)} ${sessionsWord(totals.ended, 'session', 'sessions')}`}`,
@@ -246,19 +301,49 @@ export function observe(input: unknown): Observed {
       key: identityPart(row['key']),
       label: trimmed(row['label']) || String(row['key'] || 'Harness not published'),
       sessions: sessions.filter((session) => session.harness === row['key']).length,
-      ...pair('block', !row['error'] && row['reports_needs_input'] === true ? 'needs-input reporting' + (trimmed(row['reports_needs_input_when']) ? `, ${String(row['reports_needs_input_when'])}` : '') : '', row['error'] ? 'Harness source could not be read' : 'Harness does not report blocks'),
-      ...pair('rate', !row['error'] && row['reports_rate'] === true ? 'token-rate reporting' : '', 'Token rate not reported'),
+      ...pair(
+        'block',
+        !row['error'] && row['reports_needs_input'] === true
+          ? 'needs-input reporting' +
+              (trimmed(row['reports_needs_input_when'])
+                ? `, ${String(row['reports_needs_input_when'])}`
+                : '')
+          : '',
+        row['error'] ? 'Harness source could not be read' : 'Harness does not report blocks',
+      ),
+      ...pair(
+        'rate',
+        !row['error'] && row['reports_rate'] === true ? 'token-rate reporting' : '',
+        'Token rate not reported',
+      ),
     })),
     caveats: [
       'Termination cause not reported.',
       ...new Set(
         Object.keys(sessions[0] ?? {})
-          .filter((key) => key.endsWith('Text') && sessions.every((session) => (session as unknown as Record<string, unknown>)[key.slice(0, -4) + 'Known'] === false))
-          .flatMap((key) => sessions.map((session) => (session as unknown as Record<string, unknown>)[key] as string)),
+          .filter(
+            (key) =>
+              key.endsWith('Text') &&
+              sessions.every(
+                (session) =>
+                  (session as unknown as Record<string, unknown>)[key.slice(0, -4) + 'Known'] ===
+                  false,
+              ),
+          )
+          .flatMap((key) =>
+            sessions.map(
+              (session) => (session as unknown as Record<string, unknown>)[key] as string,
+            ),
+          ),
       ),
     ],
   };
-  const counter = (label: string, value: number, noteText: string): ObservedCounter => ({ label, value, noteText, noteKnown: true });
+  const counter = (label: string, value: number, noteText: string): ObservedCounter => ({
+    label,
+    value,
+    noteText,
+    noteKnown: true,
+  });
   return {
     sessions,
     projects,
@@ -272,9 +357,21 @@ export function observe(input: unknown): Observed {
     boardRisks,
     counters: [
       counter('ACTIVE NOW', active.length, `${String(totals.sessions)} recently observed`),
-      counter('WORKING', sessions.filter((session) => session.isWorking).length, `${String(needs.length)} waiting on you`),
-      counter('EXACT REQUESTS', totals.exactRequests, `${String(totals.exactRequests)} of ${String(totals.sessions)} ${sessionsWord(totals.sessions, 'session carries', 'sessions carry')} an exact request`),
-      counter('REPORTED BLOCKS', totals.reportsBlock, `${String(totals.reportsBlock)} of ${String(totals.sessions)} ${sessionsWord(totals.sessions, 'session reports', 'sessions report')} block state`),
+      counter(
+        'WORKING',
+        sessions.filter((session) => session.isWorking).length,
+        `${String(needs.length)} waiting on you`,
+      ),
+      counter(
+        'EXACT REQUESTS',
+        totals.exactRequests,
+        `${String(totals.exactRequests)} of ${String(totals.sessions)} ${sessionsWord(totals.sessions, 'session carries', 'sessions carry')} an exact request`,
+      ),
+      counter(
+        'REPORTED BLOCKS',
+        totals.reportsBlock,
+        `${String(totals.reportsBlock)} of ${String(totals.sessions)} ${sessionsWord(totals.sessions, 'session reports', 'sessions report')} block state`,
+      ),
     ],
     windows: capacity.windows,
     sublimits: capacity.sublimits,
@@ -287,4 +384,3 @@ export function observe(input: unknown): Observed {
 function payloadHarnessRows(payload: Row): Row[] {
   return Array.isArray(payload['harnesses']) ? payload['harnesses'].filter(isRecord) : [];
 }
-

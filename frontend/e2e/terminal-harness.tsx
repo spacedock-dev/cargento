@@ -33,7 +33,10 @@ function Hosted() {
   /* The timeline wants a stable list, so a poll that changes nothing about the project's sessions does not
      rebuild its model. */
   const members = useMemo(
-    () => payloadSessions(data).rows.filter((row) => String(row.project ?? '') === project).flatMap((row) => (row.harness && row.sid ? [{ harness: row.harness, sid: row.sid }] : [])),
+    () =>
+      payloadSessions(data)
+        .rows.filter((row) => String(row.project ?? '') === project)
+        .flatMap((row) => (row.harness && row.sid ? [{ harness: row.harness, sid: row.sid }] : [])),
     [data, project],
   );
   if (route.view !== 'project') {
@@ -46,8 +49,18 @@ function Hosted() {
   const identity = route.focus ? splitSessKey(route.focus) : null;
   return (
     <div id="hosted" data-project={route.project} data-focus={route.focus ?? ''}>
-      <Timeline project={route.project} projectKey={route.project} focus={identity} sessions={members} defaultMode="decisions" />
-      {identity ? <TerminalSurface project={route.project} identity={identity} /> : <p id="no-focus">No session is focused.</p>}
+      <Timeline
+        project={route.project}
+        projectKey={route.project}
+        focus={identity}
+        sessions={members}
+        defaultMode="decisions"
+      />
+      {identity ? (
+        <TerminalSurface project={route.project} identity={identity} />
+      ) : (
+        <p id="no-focus">No session is focused.</p>
+      )}
     </div>
   );
 }

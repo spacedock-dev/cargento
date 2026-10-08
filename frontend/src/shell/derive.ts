@@ -12,7 +12,9 @@ import type { BoardSnapshot } from '../store/board';
 export const TITLE_NOT_PUBLISHED = 'Title not published';
 
 function record(value: unknown): Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
 }
 
 export type HeaderCounts =
@@ -20,7 +22,12 @@ export type HeaderCounts =
   | { readonly state: 'unread' }
   /** A board arrived and carried no session collection, which is not the same as an empty one. */
   | { readonly state: 'absent' }
-  | { readonly state: 'measured'; readonly gates: number; readonly running: number; readonly subagents: number };
+  | {
+      readonly state: 'measured';
+      readonly gates: number;
+      readonly running: number;
+      readonly subagents: number;
+    };
 
 const countsByBody = new WeakMap<object, HeaderCounts>();
 /* One object, because a selector over an unread board is called on every render and must return what it
@@ -86,7 +93,9 @@ export type HistoryResetReason = (typeof RESET_REASONS)[number];
 
 export function historyResetReason(data: PayloadData | null): HistoryResetReason | null {
   const value = record(data)['history_reset'];
-  return (RESET_REASONS as readonly unknown[]).includes(value) ? (value as HistoryResetReason) : null;
+  return (RESET_REASONS as readonly unknown[]).includes(value)
+    ? (value as HistoryResetReason)
+    : null;
 }
 
 /* The span the board holds, in hours, or null when it did not say. */

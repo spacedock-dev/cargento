@@ -34,10 +34,17 @@ export interface ViewInput {
 export function deriveView(input: ViewInput): TimelineView {
   const raw = (input.data ?? {}) as RawContext;
   const project = (input.projectData ?? null) as RawContext | null;
-  const model = withCanonicalLabels(readSemantic(raw.semantic ?? {}), project?.semantic !== undefined ? readSemantic(project.semantic) : null);
+  const model = withCanonicalLabels(
+    readSemantic(raw.semantic ?? {}),
+    project?.semantic !== undefined ? readSemantic(project.semantic) : null,
+  );
   const focus =
     input.focusHarness !== null && input.focusSid !== null
-      ? { harness: input.focusHarness, sid: input.focusSid, ...(input.focusState ? { state: input.focusState } : {}) }
+      ? {
+          harness: input.focusHarness,
+          sid: input.focusSid,
+          ...(input.focusState ? { state: input.focusState } : {}),
+        }
       : null;
   const registry = buildRegistry({
     model,

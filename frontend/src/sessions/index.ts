@@ -5,6 +5,13 @@ export { AnswerBlock } from './AnswerBlock';
 export { SessionDetail } from './SessionDetail';
 export { SessionsView, RouteAnchor, StatusDot } from './SessionsView';
 export { goalFocusFor, answerNotesFor } from './heldState';
-export { intentDraft, promptCandidate, sessionInstruction, PROMPT_SOURCES, PROMPT_CHOSEN, type PromptCandidate } from './intent';
+export {
+  intentDraft,
+  promptCandidate,
+  sessionInstruction,
+  PROMPT_SOURCES,
+  PROMPT_CHOSEN,
+  type PromptCandidate,
+} from './intent';
 export { departureRow, deliveryAbsence, unaskedDepartures, reentryLimit } from './detail';
 export { DelegatedWorkLine, DepartureReentry, UnaskedDepartureBody } from './DepartureParts';

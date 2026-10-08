@@ -1,7 +1,17 @@
 import { nextNumber } from '../api/bootstrap';
 import { formatDuration } from '../shell/format';
 import { goalOf, landingOf, sessionStop, type Landing } from './landing';
-import { ageSeconds, endedAt, isRecord, pair, records, textOf, trimmed, type Pair, type Row } from './values';
+import {
+  ageSeconds,
+  endedAt,
+  isRecord,
+  pair,
+  records,
+  textOf,
+  trimmed,
+  type Pair,
+  type Row,
+} from './values';
 
 export type ObservedSession = {
   readonly sid: string;
@@ -58,7 +68,13 @@ export function labelOf(session: Row): string {
    `harness` the payload's own row about the harness that published it, and `shared` how many rows carry
    its label. Nothing here reads the DOM, the clock or a store: a figure is derived from the payload it
    arrived in, so the same payload always draws the same page. */
-export function observeSession(source: Row, asks: readonly Row[], harness: Row | undefined, generated: number | null, shared: number): ObservedSession {
+export function observeSession(
+  source: Row,
+  asks: readonly Row[],
+  harness: Row | undefined,
+  generated: number | null,
+  shared: number,
+): ObservedSession {
   const ended = endedAt(source) !== null;
   const state = source['state'];
   const working = !ended && state === 'working';
@@ -72,49 +88,99 @@ export function observeSession(source: Row, asks: readonly Row[], harness: Row |
     .filter(Boolean)
     .join('\n');
   const tasks = records(source['tasks']);
-  const taskWith = (status: string) => tasks.find((row) => row['status'] === status && trimmed(row['subject']));
+  const taskWith = (status: string) =>
+    tasks.find((row) => row['status'] === status && trimmed(row['subject']));
   const doing = taskWith('in_progress');
   const pending = taskWith('pending');
   const gaps = Array.isArray(source['source_gaps']) ? (source['source_gaps'] as unknown[]) : [];
-  const reporter = Boolean(harness && !harness['error'] && harness['reports_needs_input'] === true && !gaps.includes('block state'));
+  const reporter = Boolean(
+    harness &&
+      !harness['error'] &&
+      harness['reports_needs_input'] === true &&
+      !gaps.includes('block state'),
+  );
   const blocked = needs || Boolean(question);
   const blockKnown = Boolean(blocked || reporter);
-  const waitAge = asks.map((ask) => nextNumber(ask['age_sec'])).filter((age): age is number => age !== null && age >= 0);
+  const waitAge = asks
+    .map((ask) => nextNumber(ask['age_sec']))
+    .filter((age): age is number => age !== null && age >= 0);
   const stampAge = ageSeconds(generated, source['blocked_since']);
   const age = waitAge.length ? Math.max(...waitAge) : blocked ? stampAge : null;
   const rate = nextNumber(source['rate_per_min']);
-  const rateKnown = rate !== null && rate >= 0 && Boolean(harness && !harness['error'] && harness['reports_rate'] === true && !gaps.includes('token accounting'));
+  const rateKnown =
+    rate !== null &&
+    rate >= 0 &&
+    Boolean(
+      harness &&
+        !harness['error'] &&
+        harness['reports_rate'] === true &&
+        !gaps.includes('token accounting'),
+    );
   const loop = source['loop'];
   const loopErrors = isRecord(loop) ? loop['errors'] : undefined;
   const loopFailures = isRecord(loop) ? loop['failures'] : undefined;
-  const errors = typeof loopErrors === 'number' && Number.isInteger(loopErrors) && loopErrors > 0 ? loopErrors : 0;
-  const failures = typeof loopFailures === 'number' && Number.isInteger(loopFailures) && loopFailures > errors ? loopFailures : 0;
-  const stuck = errors ? `${String(errors)} tool failures in a row` + (failures ? ` · ${String(failures)} failures this turn` : '') : '';
+  const errors =
+    typeof loopErrors === 'number' && Number.isInteger(loopErrors) && loopErrors > 0
+      ? loopErrors
+      : 0;
+  const failures =
+    typeof loopFailures === 'number' && Number.isInteger(loopFailures) && loopFailures > errors
+      ? loopFailures
+      : 0;
+  const stuck = errors
+    ? `${String(errors)} tool failures in a row` +
+      (failures ? ` · ${String(failures)} failures this turn` : '')
+    : '';
   const stopped = state === 'idle' && (nextNumber(source['finished_at']) ?? 0) > 0;
   /* A stop Claude Code's transcript records is named as the transcript's, here as in HOW IT LANDED beside
      it, so "Session facts" never says no stop was observed next to a card naming one. */
   const recordedStop = state === 'idle' ? sessionStop(source) : null;
   const transcriptStop = !stopped && Boolean(recordedStop && recordedStop.kind === 'transcript');
   const outcomeKnown = ended || stopped || transcriptStop;
-  const outcomePrefix = ended ? 'Session ended' : stopped ? 'Stop observed' : "Turn stop in Claude Code's transcript";
+  const outcomePrefix = ended
+    ? 'Session ended'
+    : stopped
+      ? 'Stop observed'
+      : "Turn stop in Claude Code's transcript";
   const landing = landingOf(source, ended, recordedStop);
   const gitKnown = typeof source['dirty'] === 'boolean';
-  const outcome = outcomeKnown ? outcomePrefix + (source['dirty'] === true ? ' with uncommitted work' : source['dirty'] === false ? '; git state clean' : '; git state not measured') : '';
+  const outcome = outcomeKnown
+    ? outcomePrefix +
+      (source['dirty'] === true
+        ? ' with uncommitted work'
+        : source['dirty'] === false
+          ? '; git state clean'
+          : '; git state not measured')
+    : '';
   let git = '';
   if (gitKnown) {
     git = source['dirty'] ? 'Uncommitted work observed' : 'Git state reported clean';
     const changed = source['changed'];
-    if (source['dirty'] && Number.isInteger(changed) && (changed as number) >= 0) git = `${String(changed)} changed entries`;
+    if (source['dirty'] && Number.isInteger(changed) && (changed as number) >= 0)
+      git = `${String(changed)} changed entries`;
   }
-  const sharedText = shared > 1 ? `${String(shared)} sessions share this display label; shared location is not established` : '';
+  const sharedText =
+    shared > 1
+      ? `${String(shared)} sessions share this display label; shared location is not established`
+      : '';
   const turn: Row = isRecord(source['turn']) ? source['turn'] : {};
   const turnElapsed = trimmed(turn['elapsed_h']);
   const turnEta = trimmed(turn['eta_h']);
-  const turnText = turnElapsed ? `${turnElapsed} into turn` + (turnEta ? ` · ${turnEta} estimated remaining` : '') : '';
+  const turnText = turnElapsed
+    ? `${turnElapsed} into turn` + (turnEta ? ` · ${turnEta} estimated remaining` : '')
+    : '';
   const turnReporter = Boolean(
-    harness && !harness['error'] && (typeof harness['reports_turn_bounds'] === 'boolean' ? harness['reports_turn_bounds'] : harness['key'] !== 'cursor' && source['harness'] !== 'cursor'),
+    harness &&
+      !harness['error'] &&
+      (typeof harness['reports_turn_bounds'] === 'boolean'
+        ? harness['reports_turn_bounds']
+        : harness['key'] !== 'cursor' && source['harness'] !== 'cursor'),
   );
-  const turnReason = turnReporter ? (working ? 'Turn bounds not published' : 'No turn in progress') : 'Harness does not report turn bounds';
+  const turnReason = turnReporter
+    ? working
+      ? 'Turn bounds not published'
+      : 'No turn in progress'
+    : 'Harness does not report turn bounds';
   const goal = goalOf(source);
   const stateDetail = trimmed(source['state_detail']);
   /* A quiet row states how long ago it was last active in place of the collector's "awaiting your
@@ -146,17 +212,37 @@ export function observeSession(source: Row, asks: readonly Row[], harness: Row |
     ...pair('next', pending?.['subject'], 'No pending step published'),
     ...pair('where', '', 'Exact location not published'),
     ...pair('turn', turnText, turnReason),
-    blockText: blocked ? 'Waiting on you' : reporter ? 'No reported block' : gaps.includes('block state') ? 'Block state could not be read' : 'Harness does not report blocks',
+    blockText: blocked
+      ? 'Waiting on you'
+      : reporter
+        ? 'No reported block'
+        : gaps.includes('block state')
+          ? 'Block state could not be read'
+          : 'Harness does not report blocks',
     blockKnown,
     blockNote:
       question ||
-      (needs ? (source['wait_unconfirmed'] ? 'Unconfirmed: no positive observation in 5m; prompt may still be standing' : trimmed(source['state_detail']) || 'Block reported') : ''),
+      (needs
+        ? source['wait_unconfirmed']
+          ? 'Unconfirmed: no positive observation in 5m; prompt may still be standing'
+          : trimmed(source['state_detail']) || 'Block reported'
+        : ''),
     // Stops and ends are published; readership and termination cause are not. Their absence belongs in
     // open and coverage, never in an inferred outcome.
     ...pair('outcome', outcome, 'No stop or end observed'),
-    outcomeGlyph: outcomeKnown ? (source['dirty'] === true ? '△' : source['dirty'] === false ? '✓' : '◦') : '',
+    outcomeGlyph: outcomeKnown
+      ? source['dirty'] === true
+        ? '△'
+        : source['dirty'] === false
+          ? '✓'
+          : '◦'
+      : '',
     ...pair('git', git, 'Git state was not measured'),
-    ...pair('rate', rateKnown ? `${Math.round(rate as number).toLocaleString('en-US')} /m` : '', 'Token rate not reported'),
+    ...pair(
+      'rate',
+      rateKnown ? `${Math.round(rate as number).toLocaleString('en-US')} /m` : '',
+      'Token rate not reported',
+    ),
     ...pair('ask', question, 'No exact request published'),
     waitedText: age === null ? 'Wait duration not published' : (formatDuration(age) ?? ''),
     waitedKnown: age !== null,

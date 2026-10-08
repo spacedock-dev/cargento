@@ -121,7 +121,10 @@ describe('the registration lookup', () => {
     const t = setup();
     await register(t);
     t.owner.lookup(ALPHA, 2);
-    expect(t.owner.getSnapshot().lookups.get(ALPHA_KEY)).toMatchObject({ state: 'registered', loading: true });
+    expect(t.owner.getSnapshot().lookups.get(ALPHA_KEY)).toMatchObject({
+      state: 'registered',
+      loading: true,
+    });
   });
 
   it('sends nothing for an identity that is not exact, and never from a display id', () => {
@@ -221,7 +224,11 @@ describe('opening is an explicit act', () => {
     t.loads[0]?.resolve();
     await t.settle();
     const terminal = instances[0];
-    expect(terminal?.options).toMatchObject({ disableStdin: true, cursorBlink: false, scrollback: 500 });
+    expect(terminal?.options).toMatchObject({
+      disableStdin: true,
+      cursorBlink: false,
+      scrollback: 500,
+    });
     expect(terminal?.options.theme.cursor).toBe(terminal?.options.theme.background);
     expect(terminal?.textarea?.readOnly).toBe(true);
     expect(terminal?.textarea?.getAttribute('aria-label')).toBe('Read-only terminal output');
@@ -457,7 +464,9 @@ describe('letting go', () => {
     t.reads.at(-1)?.resolve({ kind: 'network-error' });
     await t.settle();
     expect(t.owner.getSnapshot().openKey).toBeNull();
-    expect(t.owner.getSnapshot().lookups.get(ALPHA_KEY)).toMatchObject({ data: { reason: 'lookup-failed' } });
+    expect(t.owner.getSnapshot().lookups.get(ALPHA_KEY)).toMatchObject({
+      data: { reason: 'lookup-failed' },
+    });
   });
 
   it('keeps a terminal for a different session open when this session is found unregistered', async () => {
@@ -502,9 +511,13 @@ describe('a renderer that cannot start', () => {
     t.owner.open(ALPHA_KEY);
     const viewport = viewportElement();
     t.owner.attach(viewport, ALPHA_KEY);
-    t.loads[0]?.reject(new Error('Console cannot open because the local terminal script did not load.'));
+    t.loads[0]?.reject(
+      new Error('Console cannot open because the local terminal script did not load.'),
+    );
     await t.settle();
-    expect(viewport.textContent).toBe('Console cannot open because the local terminal script did not load.');
+    expect(viewport.textContent).toBe(
+      'Console cannot open because the local terminal script did not load.',
+    );
     expect(t.sockets).toHaveLength(0);
     // A redraw, a poll or a remount is not a press.
     t.owner.attach(viewport, ALPHA_KEY)();
@@ -526,7 +539,9 @@ describe('a renderer that cannot start', () => {
     t.owner.attach(viewport, ALPHA_KEY);
     t.loads[0]?.reject(new Error(''));
     await t.settle();
-    expect(viewport.textContent).toBe('Console cannot open because the terminal renderer could not start.');
+    expect(viewport.textContent).toBe(
+      'Console cannot open because the terminal renderer could not start.',
+    );
   });
 });
 
@@ -560,15 +575,36 @@ describe('output only', () => {
 describe('what it reports', () => {
   it('counts what it holds, so a test can see a leak', async () => {
     const t = setup();
-    expect(t.owner.stats()).toEqual({ lookups: 0, pendingReads: 0, terminals: 0, sockets: 0, attached: false, openKey: null });
+    expect(t.owner.stats()).toEqual({
+      lookups: 0,
+      pendingReads: 0,
+      terminals: 0,
+      sockets: 0,
+      attached: false,
+      openKey: null,
+    });
     await register(t);
     t.owner.open(ALPHA_KEY);
     t.owner.attach(viewportElement(), ALPHA_KEY);
     t.loads[0]?.resolve();
     await t.settle();
-    expect(t.owner.stats()).toEqual({ lookups: 1, pendingReads: 0, terminals: 1, sockets: 1, attached: true, openKey: ALPHA_KEY });
+    expect(t.owner.stats()).toEqual({
+      lookups: 1,
+      pendingReads: 0,
+      terminals: 1,
+      sockets: 1,
+      attached: true,
+      openKey: ALPHA_KEY,
+    });
     t.owner.close();
-    expect(t.owner.stats()).toEqual({ lookups: 1, pendingReads: 0, terminals: 0, sockets: 0, attached: false, openKey: null });
+    expect(t.owner.stats()).toEqual({
+      lookups: 1,
+      pendingReads: 0,
+      terminals: 0,
+      sockets: 0,
+      attached: false,
+      openKey: null,
+    });
   });
 
   it('notifies subscribers of an open, a close and a lookup, and not of an unrelated scroll', async () => {

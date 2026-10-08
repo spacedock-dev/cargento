@@ -20,15 +20,45 @@ describe('every released fragment parses to its route and prints back canonicall
     readonly route: RouteInput;
     readonly canonical: string;
   }[] = [
-    { name: 'the bare fragment lands on Sessions', fragment: '', route: top('sessions'), canonical: '#n=sessions' },
-    { name: 'a hash with no n token lands on Sessions', fragment: '#', route: top('sessions'), canonical: '#n=sessions' },
-    { name: 'an unknown view lands on Sessions', fragment: '#n=bogus', route: top('sessions'), canonical: '#n=sessions' },
-    { name: 'an empty n token lands on Sessions', fragment: '#n=', route: top('sessions'), canonical: '#n=sessions' },
+    {
+      name: 'the bare fragment lands on Sessions',
+      fragment: '',
+      route: top('sessions'),
+      canonical: '#n=sessions',
+    },
+    {
+      name: 'a hash with no n token lands on Sessions',
+      fragment: '#',
+      route: top('sessions'),
+      canonical: '#n=sessions',
+    },
+    {
+      name: 'an unknown view lands on Sessions',
+      fragment: '#n=bogus',
+      route: top('sessions'),
+      canonical: '#n=sessions',
+    },
+    {
+      name: 'an empty n token lands on Sessions',
+      fragment: '#n=',
+      route: top('sessions'),
+      canonical: '#n=sessions',
+    },
     { name: 'sessions', fragment: '#n=sessions', route: top('sessions'), canonical: '#n=sessions' },
-    { name: 'attention', fragment: '#n=attention', route: top('attention'), canonical: '#n=attention' },
+    {
+      name: 'attention',
+      fragment: '#n=attention',
+      route: top('attention'),
+      canonical: '#n=attention',
+    },
     { name: 'projects', fragment: '#n=projects', route: top('projects'), canonical: '#n=projects' },
     { name: 'intent', fragment: '#n=intent', route: top('intent'), canonical: '#n=intent' },
-    { name: 'a top-level view carries no suffix', fragment: '#n=attention&from=sessions', route: top('attention'), canonical: '#n=attention' },
+    {
+      name: 'a top-level view carries no suffix',
+      fragment: '#n=attention&from=sessions',
+      route: top('attention'),
+      canonical: '#n=attention',
+    },
     {
       name: 'a project root',
       fragment: '#n=project:recce',
@@ -80,7 +110,13 @@ describe('every released fragment parses to its route and prints back canonicall
     {
       name: 'a focused session with a tab',
       fragment: `#n=project:recce:${enc('claude:one')}:console`,
-      route: { view: 'project', project: 'recce', session: null, focus: 'claude:one', tab: 'console' },
+      route: {
+        view: 'project',
+        project: 'recce',
+        session: null,
+        focus: 'claude:one',
+        tab: 'console',
+      },
       canonical: `#n=project:recce:${enc('claude:one')}:console`,
     },
     {
@@ -158,7 +194,13 @@ describe('every released fragment parses to its route and prints back canonicall
     {
       name: 'an origin is kept when it is in the closed set',
       fragment: '#n=session:recce:claude:one&from=attention',
-      route: { view: 'session', project: 'recce', harness: 'claude', session: 'one', from: 'attention' },
+      route: {
+        view: 'session',
+        project: 'recce',
+        harness: 'claude',
+        session: 'one',
+        from: 'attention',
+      },
       canonical: '#n=session:recce:claude:one&from=attention',
     },
     ...['sessions', 'attention', 'intent', 'projects', 'project'].map((from) => ({
@@ -182,7 +224,13 @@ describe('every released fragment parses to its route and prints back canonicall
     {
       name: 'a stray query beside the origin is dropped',
       fragment: '#n=session:recce:claude:one&x=1&from=projects',
-      route: { view: 'session', project: 'recce', harness: 'claude', session: 'one', from: 'projects' },
+      route: {
+        view: 'session',
+        project: 'recce',
+        harness: 'claude',
+        session: 'one',
+        from: 'projects',
+      },
       canonical: '#n=session:recce:claude:one&from=projects',
     },
     {
@@ -248,26 +296,48 @@ describe('every released fragment parses to its route and prints back canonicall
 
 describe('printing a route', () => {
   it('prints a session with no project as the landing view, never an invented one', () => {
-    expect(fragmentForRoute({ view: 'session', project: null, session: 'one' })).toBe('#n=sessions');
+    expect(fragmentForRoute({ view: 'session', project: null, session: 'one' })).toBe(
+      '#n=sessions',
+    );
   });
 
   it('prints a retired held-to tab as the exact session it meant', () => {
     expect(
-      fragmentForRoute({ view: 'project', project: 'recce', session: null, focus: 'claude:one', tab: 'held-to' }),
+      fragmentForRoute({
+        view: 'project',
+        project: 'recce',
+        session: null,
+        focus: 'claude:one',
+        tab: 'held-to',
+      }),
     ).toBe('#n=session:recce:claude:one');
   });
 
   it('keeps the held-to alias distinct from a focus whose sid is empty', () => {
-    expect(fragmentForRoute({ view: 'project', project: 'recce', session: null, focus: 'codex:', tab: 'held-to' })).toBe(
-      '#n=project:recce:codex%3A',
-    );
+    expect(
+      fragmentForRoute({
+        view: 'project',
+        project: 'recce',
+        session: null,
+        focus: 'codex:',
+        tab: 'held-to',
+      }),
+    ).toBe('#n=project:recce:codex%3A');
   });
 
   it('drops a tab the focus does not offer and an origin outside the closed set', () => {
-    expect(fragmentForRoute({ view: 'project', project: 'recce', session: null, tab: 'bogus' })).toBe('#n=project:recce');
-    expect(fragmentForRoute({ view: 'session', project: 'recce', harness: 'claude', session: 'one', from: 'nowhere' })).toBe(
-      '#n=session:recce:claude:one',
-    );
+    expect(
+      fragmentForRoute({ view: 'project', project: 'recce', session: null, tab: 'bogus' }),
+    ).toBe('#n=project:recce');
+    expect(
+      fragmentForRoute({
+        view: 'session',
+        project: 'recce',
+        harness: 'claude',
+        session: 'one',
+        from: 'nowhere',
+      }),
+    ).toBe('#n=session:recce:claude:one');
   });
 
   it('prints an unknown view and a missing route as Sessions', () => {
@@ -277,7 +347,13 @@ describe('printing a route', () => {
 });
 
 describe('where a session was opened from', () => {
-  const session = (from?: string): RouteInput => ({ view: 'session', project: 'p', harness: 'h', session: 's', ...(from ? { from } : {}) });
+  const session = (from?: string): RouteInput => ({
+    view: 'session',
+    project: 'p',
+    harness: 'h',
+    session: 's',
+    ...(from ? { from } : {}),
+  });
 
   it('names the view a reader came from and defaults an absent or unknown origin to Sessions', () => {
     expect(sessionHome(session())).toBe('sessions');
@@ -301,7 +377,9 @@ describe('where a session was opened from', () => {
     const a = parseFragment('#n=project:recce:course');
     const b = parseFragment('#n=project:recce:decisions');
     expect(routeIdentity(a)).toBe(routeIdentity(b));
-    expect(routeIdentity(parseFragment('#n=session:recce:claude:one'))).not.toBe(routeIdentity(parseFragment('#n=session:recce:codex:one')));
+    expect(routeIdentity(parseFragment('#n=session:recce:claude:one'))).not.toBe(
+      routeIdentity(parseFragment('#n=session:recce:codex:one')),
+    );
     expect(routeIdentity(parseFragment('#n=session:recce:claude:one&from=sessions'))).toBe(
       routeIdentity(parseFragment('#n=session:recce:claude:one')),
     );
@@ -319,27 +397,56 @@ describe('the port agrees with the legacy grammar', () => {
   const projects = ['recce', '', 'a:b', 'a/b c', 'é', '%', '&', 'x&from=attention'];
   const sids = ['one', 'x:y', 'colon:', ':lead', 'a b', '%20', ''];
   const harnesses = ['claude', 'codex', '', 'x:y'];
-  const raw = ['', '#', '#n', '#n=', '#n=sessions', '#n=bogus', '#n=attention&from=intent', '#N=sessions', '#n=project:', '#n=project::', '#n=session:::'];
+  const raw = [
+    '',
+    '#',
+    '#n',
+    '#n=',
+    '#n=sessions',
+    '#n=bogus',
+    '#n=attention&from=intent',
+    '#N=sessions',
+    '#n=project:',
+    '#n=project::',
+    '#n=session:::',
+  ];
   const generated: string[] = [...raw];
   for (const project of projects) {
     generated.push(`#n=project:${enc(project)}`);
     for (const sid of sids) {
-      generated.push(`#n=session:${enc(project)}:${enc(sid)}`, `#n=project:${enc(project)}:${enc(sid)}`);
+      generated.push(
+        `#n=session:${enc(project)}:${enc(sid)}`,
+        `#n=project:${enc(project)}:${enc(sid)}`,
+      );
       for (const harness of harnesses) {
         generated.push(`#n=session:${enc(project)}:${enc(harness)}:${enc(sid)}`);
         generated.push(`#n=session:${enc(project)}:${enc(harness)}:${enc(sid)}&from=attention`);
-        generated.push(`#n=session:${enc(project)}:${enc(harness)}:${enc(sid)}&from=nope&from=intent`);
+        generated.push(
+          `#n=session:${enc(project)}:${enc(harness)}:${enc(sid)}&from=nope&from=intent`,
+        );
         generated.push(`#n=project:${enc(project)}:${enc(`${harness}:${sid}`)}:held-to`);
         generated.push(`#n=project:${enc(project)}:${enc(`${harness}:${sid}`)}:console`);
         generated.push(`#n=project:${enc(project)}:${enc(`${harness}:${sid}`)}:bogus`);
       }
     }
-    for (const tab of ['now', 'course', 'decisions', 'console', 'held-to', 'other']) generated.push(`#n=project:${enc(project)}:${tab}`);
+    for (const tab of ['now', 'course', 'decisions', 'console', 'held-to', 'other'])
+      generated.push(`#n=project:${enc(project)}:${tab}`);
   }
   // Malformed escapes in every part position.
   for (const bad of ['%E0%A4%A', '%', '%ZZ', '%C3']) {
-    generated.push(`#n=session:${bad}:claude:one`, `#n=session:p:${bad}:one`, `#n=session:p:claude:${bad}`, `#n=session:${bad}:one`, `#n=session:p:${bad}`);
-    generated.push(`#n=project:${bad}`, `#n=project:p:${bad}`, `#n=project:p:${bad}:console`, `#n=project:p:x:${bad}`);
+    generated.push(
+      `#n=session:${bad}:claude:one`,
+      `#n=session:p:${bad}:one`,
+      `#n=session:p:claude:${bad}`,
+      `#n=session:${bad}:one`,
+      `#n=session:p:${bad}`,
+    );
+    generated.push(
+      `#n=project:${bad}`,
+      `#n=project:p:${bad}`,
+      `#n=project:p:${bad}:console`,
+      `#n=project:p:x:${bad}`,
+    );
   }
 
   it('parses and prints the same for every generated fragment', () => {
@@ -348,7 +455,9 @@ describe('the port agrees with the legacy grammar', () => {
       const legacy = legacyParse(fragment);
       const ported = parseFragment(fragment);
       // The legacy route is a plain object built inside another realm; compare by value.
-      expect(JSON.parse(JSON.stringify(ported)), fragment).toEqual(JSON.parse(JSON.stringify(legacy)));
+      expect(JSON.parse(JSON.stringify(ported)), fragment).toEqual(
+        JSON.parse(JSON.stringify(legacy)),
+      );
       expect(fragmentForRoute(ported), fragment).toBe(legacyPrint(legacy));
     }
   });

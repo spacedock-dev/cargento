@@ -13,7 +13,11 @@
 export const FIELD_MEMORY_LIMIT = 64;
 
 interface FieldState {
-  readonly selection: { readonly start: number; readonly end: number; readonly direction: 'forward' | 'backward' | 'none' } | null;
+  readonly selection: {
+    readonly start: number;
+    readonly end: number;
+    readonly direction: 'forward' | 'backward' | 'none';
+  } | null;
   readonly top: number;
   readonly left: number;
   readonly width: string;
@@ -63,7 +67,11 @@ export function createFieldMemory(limit: number = FIELD_MEMORY_LIMIT) {
         // Clamped, because the words this field holds now may be shorter than the ones it held.
         const length = field.value.length;
         try {
-          field.setSelectionRange(Math.min(state.selection.start, length), Math.min(state.selection.end, length), state.selection.direction);
+          field.setSelectionRange(
+            Math.min(state.selection.start, length),
+            Math.min(state.selection.end, length),
+            state.selection.direction,
+          );
         } catch {
           /* no selection API on this input type */
         }

@@ -49,7 +49,9 @@ function dataOf(body: InteractionOrigin): OriginData {
     ...(origin
       ? {
           origin: {
-            ...(typeof origin.session_name === 'string' ? { session_name: origin.session_name } : {}),
+            ...(typeof origin.session_name === 'string'
+              ? { session_name: origin.session_name }
+              : {}),
             ...(window !== undefined ? { window_index: window } : {}),
             ...(pane !== undefined ? { pane_index: pane } : {}),
           },
@@ -61,13 +63,21 @@ function dataOf(body: InteractionOrigin): OriginData {
 /* The answer to one read. A 404 is the bridge being off on this server, and the rest of the failures are
    a lookup that could not be made, because those two read differently to the person at the keyboard. An
    aborted read is the owner ending its own request and says nothing at all. */
-export function settleLookup(result: ApiResult<InteractionOrigin>, revision: number): Settled | null {
+export function settleLookup(
+  result: ApiResult<InteractionOrigin>,
+  revision: number,
+): Settled | null {
   switch (result.kind) {
     case 'aborted':
       return null;
     case 'ok': {
       const data = dataOf(result.body);
-      return { state: data.state === 'registered' ? 'registered' : 'unavailable', revision, loading: false, data };
+      return {
+        state: data.state === 'registered' ? 'registered' : 'unavailable',
+        revision,
+        loading: false,
+        data,
+      };
     }
     case 'http-error':
       return {
@@ -85,7 +95,10 @@ export function settleLookup(result: ApiResult<InteractionOrigin>, revision: num
    already covers this revision. Both settled answers survive a re-check. Keeping `registered` alone and
    resetting `unavailable` to `loading` made a default bridge-off console flip from "bridge off" to "not read
    yet" on every poll, because the revision advances on every payload. */
-export function beginLookup(current: OriginLookup | undefined, revision: number): OriginLookup | null {
+export function beginLookup(
+  current: OriginLookup | undefined,
+  revision: number,
+): OriginLookup | null {
   if (current && (current.loading || current.revision >= revision)) return null;
   if (current) return { ...current, revision, loading: true };
   return { state: 'loading', revision, loading: true };
@@ -104,7 +117,12 @@ const EXPLANATIONS: Readonly<Record<string, string>> = {
 
 /* Registering is a fix for these four and for no other reason: a disconnected pane or a lookup that failed
    is not cured by running the client again. */
-const RECIPE_REASONS: readonly string[] = ['unregistered-origin', 'bridge-disabled', 'stale-registration', 'session-mismatch'];
+const RECIPE_REASONS: readonly string[] = [
+  'unregistered-origin',
+  'bridge-disabled',
+  'stale-registration',
+  'session-mismatch',
+];
 
 export interface Absence {
   readonly checking: boolean;
@@ -116,11 +134,20 @@ export interface Absence {
 
 export function absenceOf(lookup: OriginLookup | undefined): Absence {
   if (!lookup || lookup.state === 'loading') {
-    return { checking: true, message: 'Checking terminal registration for this exact session.', serverReason: null, recipe: false };
+    return {
+      checking: true,
+      message: 'Checking terminal registration for this exact session.',
+      serverReason: null,
+      recipe: false,
+    };
   }
   const reason = lookup.data.reason ?? '';
   const known = EXPLANATIONS[reason];
-  const message = known ?? (reason ? 'The server refused terminal access.' : 'Terminal registration status was not published by the server.');
+  const message =
+    known ??
+    (reason
+      ? 'The server refused terminal access.'
+      : 'Terminal registration status was not published by the server.');
   return {
     checking: false,
     message,
@@ -133,7 +160,10 @@ export function absenceOf(lookup: OriginLookup | undefined): Absence {
    for one it has not, and "per-session" with no session selected, because the bridge is a per-session
    registration: with nothing focused there is nothing whose bridge could be reported either way. `state`
    decides, never the `loading` flag beside it, which is true on every poll of a working console. */
-export function bridgeReading(hasFocus: boolean, lookup: OriginLookup | undefined): boolean | null | 'per-session' {
+export function bridgeReading(
+  hasFocus: boolean,
+  lookup: OriginLookup | undefined,
+): boolean | null | 'per-session' {
   if (!hasFocus) return 'per-session';
   if (!lookup || lookup.state === 'loading') return null;
   return lookup.state === 'registered';
@@ -155,6 +185,7 @@ export function originTitle(origin: OriginCoordinates | undefined): OriginTitle 
   const session = published(origin?.session_name);
   const window = published(origin?.window_index);
   const pane = published(origin?.pane_index);
-  const complete = session && window !== null && pane !== null ? `${session}:${window}.${pane}` : null;
+  const complete =
+    session && window !== null && pane !== null ? `${session}:${window}.${pane}` : null;
   return { complete, session, window, pane };
 }

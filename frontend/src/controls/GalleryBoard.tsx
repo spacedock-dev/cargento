@@ -32,7 +32,10 @@ export function GalleryBoard({ world }: { world: World }) {
   useChoiceRelease(world.gate);
   const sessions = useDisplayedSelector(world.gate, selectSessions);
   const displayedAccepted = useDisplayedSelector(world.gate, (snapshot) => snapshot.acceptedCount);
-  const displayedGenerated = useDisplayedSelector(world.gate, (snapshot) => snapshot.data?.generated ?? 0);
+  const displayedGenerated = useDisplayedSelector(
+    world.gate,
+    (snapshot) => snapshot.data?.generated ?? 0,
+  );
   const [choice, setChoice] = useState('');
   const [draftShown, setDraftShown] = useState(true);
   // The words belong to the caller (here, this state); the field keeps only caret, scroll and size.
@@ -46,13 +49,19 @@ export function GalleryBoard({ world }: { world: World }) {
     <main id="gallery">
       <h1>Shared controls</h1>
       <p>
-        Displayed board revision <output data-readout="displayed-accepted">{displayedAccepted}</output>, generated{' '}
+        Displayed board revision{' '}
+        <output data-readout="displayed-accepted">{displayedAccepted}</output>, generated{' '}
         <output data-readout="displayed-generated">{displayedGenerated}</output>
       </p>
 
       <section aria-label="Native select">
         <label htmlFor="stage-choice">Stage condition</label>
-        <select id="stage-choice" className="ctl-select" value={choice} onChange={(event) => setChoice(event.target.value)}>
+        <select
+          id="stage-choice"
+          className="ctl-select"
+          value={choice}
+          onChange={(event) => setChoice(event.target.value)}
+        >
           <option value="">Choose a session</option>
           {sessions.rows.map((row) => (
             <option key={`${row.harness}:${row.sid}`} value={`${row.harness}:${row.sid}`}>
@@ -60,15 +69,27 @@ export function GalleryBoard({ world }: { world: World }) {
             </option>
           ))}
         </select>
-        <output className="ctl-wrap" data-readout="choice">{choice}</output>
+        <output className="ctl-wrap" data-readout="choice">
+          {choice}
+        </output>
       </section>
 
       <section aria-label="Session controls">
         {first ? (
           <div>
             <CopyControl kind="id" harness={first.harness} sid={first.sid} value={first.sid} />
-            <CopyControl kind="link" harness={first.harness} sid={first.sid} value={`${location.origin}/#n=session:${first.sid}`} />
-            <CopyControl kind="command" harness={first.harness} sid={first.sid} value={`claude --resume ${first.sid}`} />
+            <CopyControl
+              kind="link"
+              harness={first.harness}
+              sid={first.sid}
+              value={`${location.origin}/#n=session:${first.sid}`}
+            />
+            <CopyControl
+              kind="command"
+              harness={first.harness}
+              sid={first.sid}
+              value={`claude --resume ${first.sid}`}
+            />
             <RaiseControl harness={first.harness} sid={first.sid} focusable />
           </div>
         ) : null}
@@ -86,11 +107,18 @@ export function GalleryBoard({ world }: { world: World }) {
         </button>
         {disclosuresShown ? (
           <>
-            <Disclosure disclosureKey={disclosureKey({ project, scope: null, name: 'plan' })} summary="Project plan">
+            <Disclosure
+              disclosureKey={disclosureKey({ project, scope: null, name: 'plan' })}
+              summary="Project plan"
+            >
               <p data-readout="plan-body">{`Plan as of board ${String(displayedAccepted)}`}</p>
               <button type="button">Inside the plan</button>
             </Disclosure>
-            <Disclosure disclosureKey={disclosureKey({ project, scope: null, name: 'why' })} summary="Why" variant="popover">
+            <Disclosure
+              disclosureKey={disclosureKey({ project, scope: null, name: 'why' })}
+              summary="Why"
+              variant="popover"
+            >
               <p>{`Because of board ${String(displayedAccepted)}`}</p>
             </Disclosure>
           </>

@@ -14,7 +14,15 @@ async function open(fragment: string) {
 describe('the project tab strip', () => {
   it('draws four tabs with Now selected by default and only the selected one in the tab order', async () => {
     await open('#n=project:alpha%2Fapp');
-    expect(screen.getAllByRole('tab').map((node) => [node.textContent, node.getAttribute('aria-selected'), node.getAttribute('tabindex')])).toEqual([
+    expect(
+      screen
+        .getAllByRole('tab')
+        .map((node) => [
+          node.textContent,
+          node.getAttribute('aria-selected'),
+          node.getAttribute('tabindex'),
+        ]),
+    ).toEqual([
       ['Now', 'true', '0'],
       ['Course', 'false', '-1'],
       ['Decisions', 'false', '-1'],

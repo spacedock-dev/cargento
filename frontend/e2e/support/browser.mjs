@@ -42,7 +42,7 @@ export const BOARD = {
 };
 
 function bindable(port) {
-  return new Promise(resolve => {
+  return new Promise((resolve) => {
     const server = createServer();
     server.once('error', () => resolve(false));
     server.listen({ port, host: '127.0.0.1' }, () => server.close(() => resolve(true)));
@@ -63,22 +63,31 @@ export async function freePorts(count, taken = []) {
 }
 
 function resolvePython() {
-  const name = process.env.CARGENTO_TEST_PYTHON || (process.platform === 'win32' ? 'python' : 'python3');
-  return execFileSync(name, ['-I', '-c', 'import sys; print(sys.executable)'], { encoding: 'utf8', timeout: 5000 }).trim();
+  const name =
+    process.env.CARGENTO_TEST_PYTHON || (process.platform === 'win32' ? 'python' : 'python3');
+  return execFileSync(name, ['-I', '-c', 'import sys; print(sys.executable)'], {
+    encoding: 'utf8',
+    timeout: 5000,
+  }).trim();
 }
 
 async function waitForHealth(origin, child, deadlineMs = 15000) {
   const deadline = Date.now() + deadlineMs;
   for (;;) {
-    if (child.exitCode !== null) throw new Error('Legacy fixture backend exited: ' + (child.diagnostic || ''));
+    if (child.exitCode !== null)
+      throw new Error('Legacy fixture backend exited: ' + (child.diagnostic || ''));
     try {
       const response = await fetch(origin + '/api/health', { signal: AbortSignal.timeout(1000) });
       const health = await response.json();
       if (health.ok === true && health.pid === child.pid) return;
       throw new Error('Port belongs to another process.');
     } catch (error) {
-      if (Date.now() > deadline) throw new Error('Legacy fixture backend never became ready: ' + (child.diagnostic || error.message), { cause: error });
-      await new Promise(resolve => setTimeout(resolve, 100));
+      if (Date.now() > deadline)
+        throw new Error(
+          'Legacy fixture backend never became ready: ' + (child.diagnostic || error.message),
+          { cause: error },
+        );
+      await new Promise((resolve) => setTimeout(resolve, 100));
     }
   }
 }
@@ -99,9 +108,15 @@ export async function startBoard({ legacy = false, root = REPOSITORY } = {}) {
   async function close() {
     if (child && child.exitCode === null) {
       child.kill('SIGTERM');
-      await new Promise(resolve => {
-        const timer = setTimeout(() => { child.kill('SIGKILL'); resolve(); }, 3000);
-        child.once('close', () => { clearTimeout(timer); resolve(); });
+      await new Promise((resolve) => {
+        const timer = setTimeout(() => {
+          child.kill('SIGKILL');
+          resolve();
+        }, 3000);
+        child.once('close', () => {
+          clearTimeout(timer);
+          resolve();
+        });
       });
     }
     await dev.close();
@@ -111,11 +126,33 @@ export async function startBoard({ legacy = false, root = REPOSITORY } = {}) {
     try {
       scratch = await mkdtemp(join(tmpdir(), 'cargento-shell-legacy-'));
       await mkdir(join(scratch, 'no-executables'));
-      const args = [helper, '--frontend', 'legacy', '--host', '127.0.0.1', '--port', String(legacyPort),
-        '--no-observer-model', '--no-usage', '--no-git', '--no-focus', '--no-events', '--no-spacedock',
-        '--no-tripwires', '--no-reach', '--no-ask', '--no-history'];
-      child = spawn(resolvePython(), args, { cwd: root, env: isolatedEnvironment(scratch, process.env), stdio: ['ignore', 'pipe', 'pipe'] });
-      child.stderr.on('data', chunk => { child.diagnostic = ((child.diagnostic || '') + chunk).slice(-3000); });
+      const args = [
+        helper,
+        '--frontend',
+        'legacy',
+        '--host',
+        '127.0.0.1',
+        '--port',
+        String(legacyPort),
+        '--no-observer-model',
+        '--no-usage',
+        '--no-git',
+        '--no-focus',
+        '--no-events',
+        '--no-spacedock',
+        '--no-tripwires',
+        '--no-reach',
+        '--no-ask',
+        '--no-history',
+      ];
+      child = spawn(resolvePython(), args, {
+        cwd: root,
+        env: isolatedEnvironment(scratch, process.env),
+        stdio: ['ignore', 'pipe', 'pipe'],
+      });
+      child.stderr.on('data', (chunk) => {
+        child.diagnostic = ((child.diagnostic || '') + chunk).slice(-3000);
+      });
       child.stdout.resume();
       const origin = `http://127.0.0.1:${legacyPort}`;
       await waitForHealth(origin, child);
@@ -136,40 +173,48 @@ export async function openPage(browser, origins, { viewport, reducedMotion, loca
   const allowed = [].concat(origins);
   const context = await browser.newContext({ viewport, reducedMotion, locale });
   const log = { consoleErrors: [], pageErrors: [], externalRequests: [], nonGet: [], requests: [] };
-  const inside = url => url.startsWith('data:') || allowed.some(origin => url.startsWith(origin + '/') || url === origin);
-  await context.route('**/*', route => {
+  const inside = (url) =>
+    url.startsWith('data:') ||
+    allowed.some((origin) => url.startsWith(origin + '/') || url === origin);
+  await context.route('**/*', (route) => {
     const url = route.request().url();
     if (inside(url)) return route.continue();
     log.externalRequests.push(url);
     return route.abort();
   });
-  await context.routeWebSocket('**/*', socket => {
+  await context.routeWebSocket('**/*', (socket) => {
     const target = socket.url().replace(/^ws:/, 'http:');
     if (inside(target)) return socket.connectToServer();
     log.externalRequests.push(socket.url());
     return socket.close({ code: 1008 });
   });
   const page = await context.newPage();
-  page.on('console', message => { if (message.type() === 'error') log.consoleErrors.push(message.text()); });
-  page.on('pageerror', error => log.pageErrors.push(error.message));
-  page.on('request', request => {
+  page.on('console', (message) => {
+    if (message.type() === 'error') log.consoleErrors.push(message.text());
+  });
+  page.on('pageerror', (error) => log.pageErrors.push(error.message));
+  page.on('request', (request) => {
     const url = new URL(request.url());
     if (url.protocol === 'data:') return;
     log.requests.push({ method: request.method(), path: url.pathname + url.search });
-    if (request.method() !== 'GET') log.nonGet.push({ method: request.method(), path: url.pathname });
+    if (request.method() !== 'GET')
+      log.nonGet.push({ method: request.method(), path: url.pathname });
   });
-  const count = predicate => log.requests.filter(predicate).length;
+  const count = (predicate) => log.requests.filter(predicate).length;
   return {
     page,
     context,
     log,
     /** GET /api/data, GET /api/stream and every non-GET since the page was opened (or `reset()`). */
     counts: () => ({
-      data: count(entry => entry.method === 'GET' && entry.path.startsWith('/api/data')),
-      stream: count(entry => entry.path.startsWith('/api/stream')),
+      data: count((entry) => entry.method === 'GET' && entry.path.startsWith('/api/data')),
+      stream: count((entry) => entry.path.startsWith('/api/stream')),
       nonGet: log.nonGet.length,
     }),
-    reset() { log.requests.length = 0; log.nonGet.length = 0; },
+    reset() {
+      log.requests.length = 0;
+      log.nonGet.length = 0;
+    },
     close: () => context.close(),
   };
 }
@@ -184,7 +229,7 @@ export async function openPage(browser, origins, { viewport, reducedMotion, loca
 export async function observeShell(page) {
   let previous = await readShell(page);
   for (let waited = 0; waited < 4000; waited += 80) {
-    await new Promise(resolve => setTimeout(resolve, 80));
+    await new Promise((resolve) => setTimeout(resolve, 80));
     const next = await readShell(page);
     if (JSON.stringify(next) === JSON.stringify(previous)) return next;
     previous = next;
@@ -195,7 +240,7 @@ export async function observeShell(page) {
 function readShell(page) {
   return page.evaluate(() => {
     const { document, location, history } = globalThis;
-    const text = node => (node ? node.textContent.replace(/\s+/g, ' ').trim() : null);
+    const text = (node) => (node ? node.textContent.replace(/\s+/g, ' ').trim() : null);
     const current = document.querySelector('nav[aria-label="Primary"] [aria-current="page"]');
     return {
       hash: location.hash,

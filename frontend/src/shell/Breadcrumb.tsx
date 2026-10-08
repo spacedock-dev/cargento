@@ -66,7 +66,10 @@ export function Breadcrumb({ route }: { readonly route: Route }) {
         <>
           {projects}
           <span aria-hidden="true">{' › '}</span>
-          <a className="next-crumb" href={fragmentForRoute({ view: 'project', project: route.project })}>
+          <a
+            className="next-crumb"
+            href={fragmentForRoute({ view: 'project', project: route.project })}
+          >
             {route.project}
           </a>
           {current}

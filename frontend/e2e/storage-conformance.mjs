@@ -18,8 +18,12 @@ import { chromium } from '@playwright/test';
 import { build } from 'vite';
 
 const root = fileURLToPath(new URL('../../', import.meta.url));
-const pythonName = process.env.CARGENTO_TEST_PYTHON || (process.platform === 'win32' ? 'python' : 'python3');
-const python = execFileSync(pythonName, ['-c', 'import sys; print(sys.executable)'], { encoding: 'utf8', timeout: 5000 }).trim();
+const pythonName =
+  process.env.CARGENTO_TEST_PYTHON || (process.platform === 'win32' ? 'python' : 'python3');
+const python = execFileSync(pythonName, ['-c', 'import sys; print(sys.executable)'], {
+  encoding: 'utf8',
+  timeout: 5000,
+}).trim();
 
 const PROJECT = 'storage-conformance';
 const CLAUDE = { harness: 'claude', sid: 'claude-sid:one' };
@@ -38,7 +42,12 @@ const KEYS = {
   usage: 'cargento.projectUsage.v1',
 };
 
-const receipt = new Map(Object.entries(KEYS).map(([name, key]) => [name, { key, legacyToCodec: new Map(), codecToLegacy: new Map(), codecLevel: [] }]));
+const receipt = new Map(
+  Object.entries(KEYS).map(([name, key]) => [
+    name,
+    { key, legacyToCodec: new Map(), codecToLegacy: new Map(), codecLevel: [] },
+  ]),
+);
 function proved(family, direction, how, what) {
   const entry = receipt.get(family);
   if (direction === 'codec') {
@@ -51,33 +60,63 @@ function proved(family, direction, how, what) {
 }
 
 async function buildBundle(entry, name) {
-  const output = await build({ root, configFile: false, logLevel: 'silent',
-    build: { write: false, minify: false, lib: { entry, name, formats: ['iife'], fileName: name } } });
+  const output = await build({
+    root,
+    configFile: false,
+    logLevel: 'silent',
+    build: { write: false, minify: false, lib: { entry, name, formats: ['iife'], fileName: name } },
+  });
   const bundle = Array.isArray(output) ? output[0] : output;
   // Playwright wraps init scripts, so the IIFE's `var` would not reach the page's global scope.
   return bundle.output[0].code + `\nglobalThis.${name} = ${name};\n`;
 }
 
 async function startBackend() {
-  const child = spawn(python, [fileURLToPath(new URL('../test/storage_backend.py', import.meta.url)),
-    '--plugin-root', fileURLToPath(new URL('../../cargento', import.meta.url)), '--port', '0'],
-  { cwd: root, stdio: ['pipe', 'pipe', 'pipe'] });
+  const child = spawn(
+    python,
+    [
+      fileURLToPath(new URL('../test/storage_backend.py', import.meta.url)),
+      '--plugin-root',
+      fileURLToPath(new URL('../../cargento', import.meta.url)),
+      '--port',
+      '0',
+    ],
+    { cwd: root, stdio: ['pipe', 'pipe', 'pipe'] },
+  );
   let stderr = '';
-  child.stderr.on('data', chunk => { stderr = (stderr + chunk).slice(-4000); });
-  const exit = new Promise(resolve => child.once('exit', (code, signal) => resolve({ code, signal })));
+  child.stderr.on('data', (chunk) => {
+    stderr = (stderr + chunk).slice(-4000);
+  });
+  const exit = new Promise((resolve) =>
+    child.once('exit', (code, signal) => resolve({ code, signal })),
+  );
   const lines = createInterface({ input: child.stdout });
   child.stdin.on('error', () => undefined);
   const ready = await new Promise((resolve, reject) => {
-    const timer = setTimeout(() => reject(Error('Conformance backend readiness deadline: ' + stderr)), 20000);
-    child.once('exit', () => { clearTimeout(timer); reject(Error('Conformance backend exited early: ' + stderr)); });
-    lines.once('line', line => { clearTimeout(timer); resolve(JSON.parse(line)); });
+    const timer = setTimeout(
+      () => reject(Error('Conformance backend readiness deadline: ' + stderr)),
+      20000,
+    );
+    child.once('exit', () => {
+      clearTimeout(timer);
+      reject(Error('Conformance backend exited early: ' + stderr));
+    });
+    lines.once('line', (line) => {
+      clearTimeout(timer);
+      resolve(JSON.parse(line));
+    });
   });
   assert.equal(ready.ready, true);
   const stop = async () => {
     lines.close();
     child.stdin.end();
     let timer;
-    const stopped = await Promise.race([exit, new Promise(resolve => { timer = setTimeout(() => resolve(null), 5000); })]);
+    const stopped = await Promise.race([
+      exit,
+      new Promise((resolve) => {
+        timer = setTimeout(() => resolve(null), 5000);
+      }),
+    ]);
     clearTimeout(timer);
     if (!stopped) {
       child.kill('SIGKILL');
@@ -90,8 +129,11 @@ async function startBackend() {
 }
 
 // The identity helpers are the API layer's own, so the memo and live-estimate keys are derived the way the client derives them.
-const bundle = (await buildBundle(process.env.CARGENTO_STORAGE_ENTRY || 'frontend/src/storage/index.ts', 'CargentoStorage')) +
-  (await buildBundle('frontend/src/api/identity.ts', 'CargentoIdentity'));
+const bundle =
+  (await buildBundle(
+    process.env.CARGENTO_STORAGE_ENTRY || 'frontend/src/storage/index.ts',
+    'CargentoStorage',
+  )) + (await buildBundle('frontend/src/api/identity.ts', 'CargentoIdentity'));
 const backend = await startBackend();
 const origin = `http://127.0.0.1:${backend.ready.port}`;
 const browser = await chromium.launch();
@@ -100,19 +142,23 @@ const observations = [];
 
 async function newContext({ blocked = false } = {}) {
   const context = await browser.newContext({ viewport: { width: 1700, height: 1100 } });
-  await context.route('**/*', route => {
+  await context.route('**/*', (route) => {
     const url = route.request().url();
     if (url.startsWith(origin + '/') || url.startsWith('data:')) return route.continue();
     problems.external.push(url);
     return route.abort();
   });
   // A blank same-origin document: shares the legacy page's storage without loading the legacy page.
-  await context.route(origin + '/__storage-seed', route => route.fulfill({ contentType: 'text/html', body: '<!doctype html><title>seed</title>' }));
+  await context.route(origin + '/__storage-seed', (route) =>
+    route.fulfill({ contentType: 'text/html', body: '<!doctype html><title>seed</title>' }),
+  );
   await context.addInitScript({ content: bundle });
   if (blocked) {
     await context.addInitScript(() => {
       for (const method of ['getItem', 'setItem', 'removeItem']) {
-        Storage.prototype[method] = function blocked() { throw new DOMException('blocked for conformance', 'SecurityError'); };
+        Storage.prototype[method] = function blocked() {
+          throw new DOMException('blocked for conformance', 'SecurityError');
+        };
       }
     });
   }
@@ -121,12 +167,13 @@ async function newContext({ blocked = false } = {}) {
 
 async function track(page, label) {
   const requests = [];
-  page.on('request', request => {
+  page.on('request', (request) => {
     const url = new URL(request.url());
     requests.push({ method: request.method(), path: url.pathname });
-    if (request.method() !== 'GET') problems.unexpectedPosts.push(`${label}: ${request.method()} ${url.pathname}`);
+    if (request.method() !== 'GET')
+      problems.unexpectedPosts.push(`${label}: ${request.method()} ${url.pathname}`);
   });
-  page.on('pageerror', error => problems.pageErrors.push(`${label}: ${error.message}`));
+  page.on('pageerror', (error) => problems.pageErrors.push(`${label}: ${error.message}`));
   return requests;
 }
 
@@ -141,46 +188,58 @@ async function legacyPage(context, fragment = '', label = 'legacy') {
   const page = await context.newPage();
   const requests = await track(page, label);
   await page.goto(origin + '/' + fragment);
-  await page.waitForFunction("typeof renderNext === 'function' && typeof nextData !== 'undefined' && !!nextData");
-  await page.waitForFunction("document.querySelector('#app') && document.querySelector('#app').children.length > 0");
+  await page.waitForFunction(
+    "typeof renderNext === 'function' && typeof nextData !== 'undefined' && !!nextData",
+  );
+  await page.waitForFunction(
+    "document.querySelector('#app') && document.querySelector('#app').children.length > 0",
+  );
   return { page, requests };
 }
 
 /** Run one method of a fresh or persistent codec instance in the page. Maps come back as objects. */
 async function codec(page, path, args = [], { fresh = false } = {}) {
-  return page.evaluate(([where, values, reset]) => {
-    const g = globalThis;
-    if (reset || !g.__storage) g.__storage = g.CargentoStorage.createLegacyStorage();
-    const parts = where.split('.');
-    const name = parts.pop();
-    let target = g.__storage;
-    for (const part of parts) target = target[part];
-    const result = target[name](...values);
-    return result instanceof Map ? Object.fromEntries(result) : result;
-  }, [path, args, fresh]);
+  return page.evaluate(
+    ([where, values, reset]) => {
+      const g = globalThis;
+      if (reset || !g.__storage) g.__storage = g.CargentoStorage.createLegacyStorage();
+      const parts = where.split('.');
+      const name = parts.pop();
+      let target = g.__storage;
+      for (const part of parts) target = target[part];
+      const result = target[name](...values);
+      return result instanceof Map ? Object.fromEntries(result) : result;
+    },
+    [path, args, fresh],
+  );
 }
 
 async function pure(page, name, args = []) {
-  return page.evaluate(([fn, values]) => {
-    const result = globalThis.CargentoStorage[fn](...values);
-    return result instanceof Map ? Object.fromEntries(result) : result;
-  }, [name, args]);
+  return page.evaluate(
+    ([fn, values]) => {
+      const result = globalThis.CargentoStorage[fn](...values);
+      return result instanceof Map ? Object.fromEntries(result) : result;
+    },
+    [name, args],
+  );
 }
 
 async function identity(page, name, args = []) {
   return page.evaluate(([fn, values]) => globalThis.CargentoIdentity[fn](...values), [name, args]);
 }
 
-const raw = (page, key) => page.evaluate(storageKey => localStorage.getItem(storageKey), key);
-const setRaw = (page, key, value) => page.evaluate(([storageKey, text]) => localStorage.setItem(storageKey, text), [key, value]);
+const raw = (page, key) => page.evaluate((storageKey) => localStorage.getItem(storageKey), key);
+const setRaw = (page, key, value) =>
+  page.evaluate(([storageKey, text]) => localStorage.setItem(storageKey, text), [key, value]);
 const legacy = (page, expression) => page.evaluate(expression);
-const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 /** Set a field's value from script and fire `input`, which skips the browser's `maxlength` so the page's own JS bound is what runs. */
-const setValue = (locator, text) => locator.evaluate((element, value) => {
-  element.value = value;
-  element.dispatchEvent(new Event('input', { bubbles: true }));
-}, text);
-const json = value => JSON.stringify(value);
+const setValue = (locator, text) =>
+  locator.evaluate((element, value) => {
+    element.value = value;
+    element.dispatchEvent(new Event('input', { bubbles: true }));
+  }, text);
+const json = (value) => JSON.stringify(value);
 
 async function scenario(name, body) {
   const started = Date.now();
@@ -204,10 +263,19 @@ try {
     await input.fill('Ship the storage layer');
     assert.equal(await raw(page, key), 'Ship the storage layer');
     assert.equal(await codec(page, 'memo.read', [key], { fresh: true }), 'Ship the storage layer');
-    proved('memo', 'legacy->codec', 'browser-legacy-ui', 'typing in the project memo writes the key the codec builds; codec reads the raw string back');
+    proved(
+      'memo',
+      'legacy->codec',
+      'browser-legacy-ui',
+      'typing in the project memo writes the key the codec builds; codec reads the raw string back',
+    );
 
     await input.fill('x'.repeat(600));
-    assert.equal((await raw(page, key)).length, 500, 'the textarea maxlength caps typed text at 500');
+    assert.equal(
+      (await raw(page, key)).length,
+      500,
+      'the textarea maxlength caps typed text at 500',
+    );
     assert.equal((await codec(page, 'memo.read', [key], { fresh: true })).length, 500);
     // Typed text: Chrome's maxlength never splits a surrogate pair, so the cut lands one unit early.
     await input.fill('a'.repeat(499) + '😀');
@@ -220,7 +288,12 @@ try {
     assert.equal(stored.length, 500);
     assert.equal(stored.charCodeAt(499), 0xd83d, 'legacy keeps the lone high surrogate at the cut');
     assert.equal(await codec(page, 'memo.read', [key], { fresh: true }), stored);
-    proved('memo', 'legacy->codec', 'browser-legacy-ui', 'UTF-16 boundary: typed text stops at 499 units before a surrogate pair (browser maxlength); script-set text is cut at 500 by the page, splitting the pair; the codec reads both unchanged');
+    proved(
+      'memo',
+      'legacy->codec',
+      'browser-legacy-ui',
+      'UTF-16 boundary: typed text stops at 499 units before a surrogate pair (browser maxlength); script-set text is cut at 500 by the page, splitting the pair; the codec reads both unchanged',
+    );
 
     for (const [group, focus, kind] of [
       [{ label: 'p/é', sessions: [{ project_key: 'pk 1' }] }, null, 'outcome'],
@@ -229,10 +302,18 @@ try {
       [{ label: 'only-label', sessions: [] }, { harness: 'claude', session: 'abcd1234' }, 'focus'],
     ]) {
       const projectKey = await identity(page, 'stableProjectKey', [group]);
-      const expected = await legacy(page, `nextCockpitMemoKey(${json(group)}, ${json(focus)}, ${json(kind)})`);
+      const expected = await legacy(
+        page,
+        `nextCockpitMemoKey(${json(group)}, ${json(focus)}, ${json(kind)})`,
+      );
       assert.equal(await pure(page, 'memoKey', [projectKey, focus, kind]), expected);
     }
-    proved('memo', 'legacy->codec', 'browser-legacy-function', 'key spelling for project and exact harness:sid scopes, encoded, matches nextCockpitMemoKey, with the project key derived by api/identity.stableProjectKey');
+    proved(
+      'memo',
+      'legacy->codec',
+      'browser-legacy-function',
+      'key spelling for project and exact harness:sid scopes, encoded, matches nextCockpitMemoKey, with the project key derived by api/identity.stableProjectKey',
+    );
     await context.close();
   });
 
@@ -246,13 +327,29 @@ try {
     await seed.close();
     const { page } = await legacyPage(context, `#n=project:${PROJECT}`);
     await page.locator('[data-next-cockpit-memo-field="outcome"] strong').waitFor();
-    assert.equal(await page.locator('[data-next-cockpit-memo-field="outcome"] strong').innerText(), 'Codec outcome');
-    assert.equal(await page.locator('[data-next-cockpit-memo-field="focus"] strong').innerText(), 'Codec focus');
-    proved('memo', 'codec->legacy', 'browser-legacy-ui', 'legacy project page shows the outcome and focus a codec wrote');
+    assert.equal(
+      await page.locator('[data-next-cockpit-memo-field="outcome"] strong').innerText(),
+      'Codec outcome',
+    );
+    assert.equal(
+      await page.locator('[data-next-cockpit-memo-field="focus"] strong').innerText(),
+      'Codec focus',
+    );
+    proved(
+      'memo',
+      'codec->legacy',
+      'browser-legacy-ui',
+      'legacy project page shows the outcome and focus a codec wrote',
+    );
     await setRaw(page, outcome, 'y'.repeat(700));
     assert.equal(await legacy(page, `nextCockpitReadMemo(${json(outcome)}).length`), 500);
     assert.equal((await codec(page, 'memo.read', [outcome], { fresh: true })).length, 500);
-    proved('memo', 'codec->legacy', 'browser-legacy-function', 'a longer raw value reads back bounded to 500 units in both');
+    proved(
+      'memo',
+      'codec->legacy',
+      'browser-legacy-function',
+      'a longer raw value reads back bounded to 500 units in both',
+    );
     await context.close();
   });
 
@@ -263,9 +360,16 @@ try {
     await page.locator('[data-next-cockpit-action="graph-mode"][data-arg="all"]').click();
     const scope = await pure(page, 'graphModeScope', [PROJECT, null]);
     assert.equal(await raw(page, KEYS.graphMode), json({ [scope]: 'all' }));
-    assert.deepEqual(await pure(page, 'decodeGraphModes', [await raw(page, KEYS.graphMode)]), { [scope]: 'all' });
+    assert.deepEqual(await pure(page, 'decodeGraphModes', [await raw(page, KEYS.graphMode)]), {
+      [scope]: 'all',
+    });
     assert.equal(await codec(page, 'graphMode.resolve', [{ scope }], { fresh: true }), 'all');
-    proved('graphMode', 'legacy->codec', 'browser-legacy-ui', 'pressing All events writes {"<project>\\u0000": "all"} that the codec resolves');
+    proved(
+      'graphMode',
+      'legacy->codec',
+      'browser-legacy-ui',
+      'pressing All events writes {"<project>\\u0000": "all"} that the codec resolves',
+    );
     assert.equal(await legacy(page, 'projectGraphModeScope()'), scope);
     await context.close();
   });
@@ -277,23 +381,47 @@ try {
     await codec(seed, 'graphMode.set', [scope, 'all']);
     await seed.close();
     const { page } = await legacyPage(context, `#n=project:${PROJECT}:decisions`);
-    await page.locator('[data-next-cockpit-action="graph-mode"][data-arg="all"][aria-pressed="true"]').waitFor();
-    assert.equal(await page.locator('[data-next-cockpit-action="graph-mode"][aria-pressed="true"]').count(), 1);
-    proved('graphMode', 'codec->legacy', 'browser-legacy-ui', 'legacy Decisions tab presses the mode the codec wrote');
+    await page
+      .locator('[data-next-cockpit-action="graph-mode"][data-arg="all"][aria-pressed="true"]')
+      .waitFor();
+    assert.equal(
+      await page.locator('[data-next-cockpit-action="graph-mode"][aria-pressed="true"]').count(),
+      1,
+    );
+    proved(
+      'graphMode',
+      'codec->legacy',
+      'browser-legacy-ui',
+      'legacy Decisions tab presses the mode the codec wrote',
+    );
     // The retired build wrote every project under one empty key; both sides must drop it.
-    await setRaw(page, KEYS.graphMode, json({ '': 'all', 'p\u0000s': 'decisions', 'a\u0000b\u0000c': 'all', 'q\u0000': 'sideways' }));
+    await setRaw(
+      page,
+      KEYS.graphMode,
+      json({ '': 'all', 'p\u0000s': 'decisions', 'a\u0000b\u0000c': 'all', 'q\u0000': 'sideways' }),
+    );
     const decoded = await pure(page, 'decodeGraphModes', [await raw(page, KEYS.graphMode)]);
     await page.evaluate('projectGraphModeBySession.clear(); projectLoadGraphModes();');
     assert.deepEqual(await legacy(page, 'Object.fromEntries(projectGraphModeBySession)'), decoded);
     assert.deepEqual(decoded, { 'p\u0000s': 'decisions' });
-    proved('graphMode', 'codec->legacy', 'browser-legacy-function', 'legacy projectLoadGraphModes and the codec decode the same raw map, dropping empty-key, three-part and invalid-mode entries');
+    proved(
+      'graphMode',
+      'codec->legacy',
+      'browser-legacy-function',
+      'legacy projectLoadGraphModes and the codec decode the same raw map, dropping empty-key, three-part and invalid-mode entries',
+    );
     for (const corrupt of ['{', '5', '[]', '"x"']) {
       await setRaw(page, KEYS.graphMode, corrupt);
       await page.evaluate('projectGraphModeBySession.clear(); projectLoadGraphModes();');
       assert.equal(await legacy(page, 'projectGraphModeBySession.size'), 0);
       assert.deepEqual(await pure(page, 'decodeGraphModes', [corrupt]), {});
     }
-    proved('graphMode', 'codec', undefined, 'corrupt JSON, scalars and arrays read as no choices in both');
+    proved(
+      'graphMode',
+      'codec',
+      undefined,
+      'corrupt JSON, scalars and arrays read as no choices in both',
+    );
     await context.close();
   });
 
@@ -312,25 +440,55 @@ try {
     await add('  watch the tests  ');
     await add('second rule');
     await page.locator('[data-next-guardrail-toggle="0"]').click();
-    assert.equal(await raw(page, key), json([{ enabled: false, text: 'watch the tests' }, { enabled: true, text: 'second rule' }]));
-    assert.deepEqual(await codec(page, 'guardrails.rules', [PROJECT], { fresh: true }),
-      [{ enabled: false, text: 'watch the tests' }, { enabled: true, text: 'second rule' }]);
-    proved('guardrails', 'legacy->codec', 'browser-legacy-ui', 'adding two tripwires and toggling one writes the rule array the codec reads, trimmed and with enabled flags');
+    assert.equal(
+      await raw(page, key),
+      json([
+        { enabled: false, text: 'watch the tests' },
+        { enabled: true, text: 'second rule' },
+      ]),
+    );
+    assert.deepEqual(await codec(page, 'guardrails.rules', [PROJECT], { fresh: true }), [
+      { enabled: false, text: 'watch the tests' },
+      { enabled: true, text: 'second rule' },
+    ]);
+    proved(
+      'guardrails',
+      'legacy->codec',
+      'browser-legacy-ui',
+      'adding two tripwires and toggling one writes the rule array the codec reads, trimmed and with enabled flags',
+    );
 
     await add('a'.repeat(499) + '😀😀 tail');
-    assert.equal(JSON.parse(await raw(page, key))[2].text.length, 499, 'typed text stops before the surrogate pair');
+    assert.equal(
+      JSON.parse(await raw(page, key))[2].text.length,
+      499,
+      'typed text stops before the surrogate pair',
+    );
     await add('b'.repeat(499) + '😀😀 tail', { script: true });
     const rules = JSON.parse(await raw(page, key)).slice(-1);
     assert.equal(rules[0].text.length, 500);
     assert.equal(rules[0].text.charCodeAt(499), 0xd83d);
-    assert.deepEqual((await codec(page, 'guardrails.rules', [PROJECT], { fresh: true })).at(-1), rules[0]);
-    proved('guardrails', 'legacy->codec', 'browser-legacy-ui', 'UTF-16 boundary: typed text stops at 499 before a surrogate pair; script-set text is trimmed and cut at 500 by the page, splitting the pair; the codec reads it unchanged');
+    assert.deepEqual(
+      (await codec(page, 'guardrails.rules', [PROJECT], { fresh: true })).at(-1),
+      rules[0],
+    );
+    proved(
+      'guardrails',
+      'legacy->codec',
+      'browser-legacy-ui',
+      'UTF-16 boundary: typed text stops at 499 before a surrogate pair; script-set text is trimmed and cut at 500 by the page, splitting the pair; the codec reads it unchanged',
+    );
     for (let index = 0; index < 55; index += 1) await add(`rule ${index}`);
     const stored = JSON.parse(await raw(page, key));
     assert.equal(stored.length, 50);
     assert.equal(stored[49].text, 'rule 54');
     assert.deepEqual(await codec(page, 'guardrails.rules', [PROJECT], { fresh: true }), stored);
-    proved('guardrails', 'legacy->codec', 'browser-legacy-ui', 'legacy keeps the last 50 on add; codec loads all 50');
+    proved(
+      'guardrails',
+      'legacy->codec',
+      'browser-legacy-ui',
+      'legacy keeps the last 50 on add; codec loads all 50',
+    );
     await context.close();
   });
 
@@ -345,14 +503,51 @@ try {
     await seed.close();
     const { page } = await legacyPage(context, `#n=project:${PROJECT}:console`);
     await page.locator('[data-next-guardrail-toggle]').first().waitFor();
-    assert.deepEqual(await page.locator('[data-next-guardrail-toggle]').evaluateAll(rows => rows.map(row => [row.getAttribute('aria-checked'), row.querySelector('strong').textContent])),
-      [['true', 'first'], ['false', 'second'], ['true', 'third']]);
-    assert.equal(await raw(page, key), json([{ enabled: true, text: 'first' }, { enabled: false, text: 'second' }, { enabled: true, text: 'third' }]),
-      'the codec writes the rule array in the legacy key order');
-    proved('guardrails', 'codec->legacy', 'browser-legacy-ui', 'legacy console rail lists the rules and enabled states the codec wrote, and the raw array has the legacy key order');
+    assert.deepEqual(
+      await page
+        .locator('[data-next-guardrail-toggle]')
+        .evaluateAll((rows) =>
+          rows.map((row) => [
+            row.getAttribute('aria-checked'),
+            row.querySelector('strong').textContent,
+          ]),
+        ),
+      [
+        ['true', 'first'],
+        ['false', 'second'],
+        ['true', 'third'],
+      ],
+    );
+    assert.equal(
+      await raw(page, key),
+      json([
+        { enabled: true, text: 'first' },
+        { enabled: false, text: 'second' },
+        { enabled: true, text: 'third' },
+      ]),
+      'the codec writes the rule array in the legacy key order',
+    );
+    proved(
+      'guardrails',
+      'codec->legacy',
+      'browser-legacy-ui',
+      'legacy console rail lists the rules and enabled states the codec wrote, and the raw array has the legacy key order',
+    );
 
-    const plain = [null, ...Array.from({ length: 60 }, (_, index) => (index === 0 ? 'old plain string' : index === 1 ? { text: 'off', enabled: false } : `rule ${index}`)),
-      { text: '   ' }, { text: 7 }, 'z'.repeat(520), 'a'.repeat(499) + '😀😀'];
+    const plain = [
+      null,
+      ...Array.from({ length: 60 }, (_, index) =>
+        index === 0
+          ? 'old plain string'
+          : index === 1
+            ? { text: 'off', enabled: false }
+            : `rule ${index}`,
+      ),
+      { text: '   ' },
+      { text: 7 },
+      'z'.repeat(520),
+      'a'.repeat(499) + '😀😀',
+    ];
     const corpus = json(plain);
     await setRaw(page, key, corpus);
     const legacyRules = await legacy(page, `nextControlsReadRules(${json(PROJECT)})`);
@@ -361,15 +556,35 @@ try {
     assert.equal(codecRules.length, 50);
     assert.deepEqual(codecRules[0], { enabled: true, text: 'old plain string' });
     assert.deepEqual(codecRules[1], { enabled: false, text: 'off' });
-    proved('guardrails', 'codec->legacy', 'browser-legacy-function', 'nextControlsReadRules and the codec agree on old plain strings as enabled, invalid rules dropped, the 50-rule cap and the 500-unit text cap');
-    const short = json(['a'.repeat(520), 'a'.repeat(499) + '😀😀', { text: ' pad ', enabled: 0 }, { text: 'n', enabled: null }]);
-    assert.deepEqual(await pure(page, 'decodeGuardrails', [short]), await page.evaluate(`(() => { localStorage.setItem(${json(key)}, ${json(short)}); return nextControlsReadRules(${json(PROJECT)}); })()`));
+    proved(
+      'guardrails',
+      'codec->legacy',
+      'browser-legacy-function',
+      'nextControlsReadRules and the codec agree on old plain strings as enabled, invalid rules dropped, the 50-rule cap and the 500-unit text cap',
+    );
+    const short = json([
+      'a'.repeat(520),
+      'a'.repeat(499) + '😀😀',
+      { text: ' pad ', enabled: 0 },
+      { text: 'n', enabled: null },
+    ]);
+    assert.deepEqual(
+      await pure(page, 'decodeGuardrails', [short]),
+      await page.evaluate(
+        `(() => { localStorage.setItem(${json(key)}, ${json(short)}); return nextControlsReadRules(${json(PROJECT)}); })()`,
+      ),
+    );
     for (const corrupt of ['{', '{"text":"a"}', '5', 'null']) {
       await setRaw(page, key, corrupt);
       assert.deepEqual(await legacy(page, `nextControlsReadRules(${json(PROJECT)})`), []);
       assert.deepEqual(await pure(page, 'decodeGuardrails', [corrupt]), []);
     }
-    proved('guardrails', 'codec', undefined, 'corrupt, non-array and null values read as no rules; enabled only false disables');
+    proved(
+      'guardrails',
+      'codec',
+      undefined,
+      'corrupt, non-array and null values read as no rules; enabled only false disables',
+    );
     await context.close();
   });
 
@@ -385,7 +600,12 @@ try {
     await toggle.click();
     assert.equal(await raw(page, KEYS.workstream), '0');
     assert.equal(await codec(page, 'workstream.collapsed', [], { fresh: true }), false);
-    proved('workstream', 'legacy->codec', 'browser-legacy-ui', 'toggling OBSERVED STATE CHANGES writes 1 then 0 that the codec reads');
+    proved(
+      'workstream',
+      'legacy->codec',
+      'browser-legacy-ui',
+      'toggling OBSERVED STATE CHANGES writes 1 then 0 that the codec reads',
+    );
     await context.close();
 
     for (const collapsed of [true, false]) {
@@ -395,87 +615,143 @@ try {
       assert.equal(await raw(seed, KEYS.workstream), collapsed ? '1' : '0');
       await seed.close();
       const { page: reader } = await legacyPage(next, `#n=project:${PROJECT}:course`);
-      assert.equal(await reader.locator('[data-next-workstream-toggle]').getAttribute('aria-expanded'), String(!collapsed));
+      assert.equal(
+        await reader.locator('[data-next-workstream-toggle]').getAttribute('aria-expanded'),
+        String(!collapsed),
+      );
       await next.close();
     }
-    proved('workstream', 'codec->legacy', 'browser-legacy-ui', 'the legacy toggle loads expanded or collapsed from the codec-written 0 or 1');
+    proved(
+      'workstream',
+      'codec->legacy',
+      'browser-legacy-ui',
+      'the legacy toggle loads expanded or collapsed from the codec-written 0 or 1',
+    );
     const other = await newContext();
     const seed = await seedPage(other);
     await setRaw(seed, KEYS.workstream, 'true');
     await seed.close();
     const { page: reader } = await legacyPage(other, `#n=project:${PROJECT}:course`);
-    assert.equal(await reader.locator('[data-next-workstream-toggle]').getAttribute('aria-expanded'), 'true');
+    assert.equal(
+      await reader.locator('[data-next-workstream-toggle]').getAttribute('aria-expanded'),
+      'true',
+    );
     assert.equal(await codec(reader, 'workstream.collapsed', [], { fresh: true }), false);
-    proved('workstream', 'codec', undefined, 'only the word 1 means collapsed; true, empty and missing read expanded in both');
+    proved(
+      'workstream',
+      'codec',
+      undefined,
+      'only the word 1 means collapsed; true, empty and missing read expanded in both',
+    );
     await other.close();
   });
 
   // ── leader lease ──────────────────────────────────────────────────────
-  await scenario('leader lease: legacy writes, codec reads, codec foreign owner steers legacy', async () => {
-    const context = await newContext();
-    const { page, requests } = await legacyPage(context);
-    const tabId = await legacy(page, 'NEXT_TAB_ID');
-    const lease = await codec(page, 'lease.read', [], { fresh: true });
-    assert.equal(lease.id, tabId);
-    assert.equal(typeof lease.ts, 'number');
-    assert.equal(await raw(page, KEYS.leader), json({ id: tabId, ts: lease.ts }));
-    assert.equal(await pure(page, 'leaseIsLive', [lease, Date.now()]), true);
-    await sleep(2600);
-    assert.ok((await codec(page, 'lease.read')).ts > lease.ts, 'the legacy leader renews on its 2000 ms timer');
-    proved('leader', 'legacy->codec', 'browser-legacy-passive', 'the page writes {id, ts} under its own tab id and renews it; codec parses and judges it live');
-    assert.ok(requests.some(request => request.path === '/api/stream'));
+  await scenario(
+    'leader lease: legacy writes, codec reads, codec foreign owner steers legacy',
+    async () => {
+      const context = await newContext();
+      const { page, requests } = await legacyPage(context);
+      const tabId = await legacy(page, 'NEXT_TAB_ID');
+      const lease = await codec(page, 'lease.read', [], { fresh: true });
+      assert.equal(lease.id, tabId);
+      assert.equal(typeof lease.ts, 'number');
+      assert.equal(await raw(page, KEYS.leader), json({ id: tabId, ts: lease.ts }));
+      assert.equal(await pure(page, 'leaseIsLive', [lease, Date.now()]), true);
+      await sleep(2600);
+      assert.ok(
+        (await codec(page, 'lease.read')).ts > lease.ts,
+        'the legacy leader renews on its 2000 ms timer',
+      );
+      proved(
+        'leader',
+        'legacy->codec',
+        'browser-legacy-passive',
+        'the page writes {id, ts} under its own tab id and renews it; codec parses and judges it live',
+      );
+      assert.ok(requests.some((request) => request.path === '/api/stream'));
 
-    // A foreign lease, stale but written after this tab led: the throttled leader must still yield.
-    const foreign = { id: 'foreign-conformance-tab', ts: Date.now() - 7000 };
-    assert.equal(await pure(page, 'electionDecision', [{ lease: foreign, tabId, isLeader: true, now: Date.now() }]), 'yield');
-    await setRaw(page, KEYS.leader, json(foreign));
-    await page.waitForFunction('nextIsLeader === false && nextStreamSource === null', undefined, { timeout: 15000 });
-    assert.equal(await raw(page, KEYS.leader), json(foreign), 'the yielding tab does not overwrite the foreign record');
-    proved('leader', 'codec->legacy', 'browser-legacy-passive', 'a foreign owner written after the legacy tab led, even stale, makes it close its stream and yield, as electionDecision says');
+      // A foreign lease, stale but written after this tab led: the throttled leader must still yield.
+      const foreign = { id: 'foreign-conformance-tab', ts: Date.now() - 7000 };
+      assert.equal(
+        await pure(page, 'electionDecision', [
+          { lease: foreign, tabId, isLeader: true, now: Date.now() },
+        ]),
+        'yield',
+      );
+      await setRaw(page, KEYS.leader, json(foreign));
+      await page.waitForFunction('nextIsLeader === false && nextStreamSource === null', undefined, {
+        timeout: 15000,
+      });
+      assert.equal(
+        await raw(page, KEYS.leader),
+        json(foreign),
+        'the yielding tab does not overwrite the foreign record',
+      );
+      proved(
+        'leader',
+        'codec->legacy',
+        'browser-legacy-passive',
+        'a foreign owner written after the legacy tab led, even stale, makes it close its stream and yield, as electionDecision says',
+      );
 
-    await context.close();
+      await context.close();
 
-    // pagehide releases a lease the tab still owns.
-    const owner = await newContext();
-    const { page: leader } = await legacyPage(owner);
-    const observer = await seedPage(owner, 'lease-observer');
-    // The leader writes its lease on its first election, which a loaded runner can delay past page load.
-    await observer.waitForFunction(key => globalThis.localStorage.getItem(key) !== null, KEYS.leader, { timeout: 15000 });
-    assert.notEqual(await codec(observer, 'lease.read', [], { fresh: true }), null);
-    // The page is still alive after a synthetic pagehide, so its next election tick (within 2 s) writes the lease
-    // again, and the handler only releases while the page leads (a stream error under load drops that until the next
-    // tick). Read the key and the codec's view in the same task as the event, and only accept an attempt that led.
-    let released;
-    for (let attempt = 0; attempt < 20; attempt += 1) {
-      await leader.waitForFunction('nextIsLeader === true', undefined, { timeout: 15000 });
-      // A string, because `nextIsLeader` is a top-level `let` of the legacy page and no property of the window.
-      released = await leader.evaluate(`(() => {
+      // pagehide releases a lease the tab still owns.
+      const owner = await newContext();
+      const { page: leader } = await legacyPage(owner);
+      const observer = await seedPage(owner, 'lease-observer');
+      // The leader writes its lease on its first election, which a loaded runner can delay past page load.
+      await observer.waitForFunction(
+        (key) => globalThis.localStorage.getItem(key) !== null,
+        KEYS.leader,
+        { timeout: 15000 },
+      );
+      assert.notEqual(await codec(observer, 'lease.read', [], { fresh: true }), null);
+      // The page is still alive after a synthetic pagehide, so its next election tick (within 2 s) writes the lease
+      // again, and the handler only releases while the page leads (a stream error under load drops that until the next
+      // tick). Read the key and the codec's view in the same task as the event, and only accept an attempt that led.
+      let released;
+      for (let attempt = 0; attempt < 20; attempt += 1) {
+        await leader.waitForFunction('nextIsLeader === true', undefined, { timeout: 15000 });
+        // A string, because `nextIsLeader` is a top-level `let` of the legacy page and no property of the window.
+        released = await leader.evaluate(`(() => {
         const leading = nextIsLeader === true;
         window.dispatchEvent(new Event('pagehide'));
         return { leading, raw: localStorage.getItem(${json(KEYS.leader)}), lease: CargentoStorage.createLegacyStorage().lease.read() };
       })()`);
-      if (released.leading) break;
-    }
-    assert.equal(released.leading, true);
-    assert.equal(released.raw, null);
-    assert.equal(released.lease, null);
-    proved('leader', 'legacy->codec', 'browser-legacy-function', 'the pagehide handler removes the key a leading tab owns; the codec then reads no lease');
-    await owner.close();
+        if (released.leading) break;
+      }
+      assert.equal(released.leading, true);
+      assert.equal(released.raw, null);
+      assert.equal(released.lease, null);
+      proved(
+        'leader',
+        'legacy->codec',
+        'browser-legacy-function',
+        'the pagehide handler removes the key a leading tab owns; the codec then reads no lease',
+      );
+      await owner.close();
 
-    // Measured, not assumed: a real navigation does not run that release in Chromium, because the
-    // aborted EventSource reports CLOSED first and the legacy error handler clears nextIsLeader
-    // before pagehide fires. The lease is left to go stale, so the codec must read it as live.
-    const away = await newContext();
-    const { page: leaving } = await legacyPage(away);
-    const watcher = await seedPage(away, 'lease-watcher');
-    await leaving.goto(origin + '/__storage-seed');
-    const left = await raw(watcher, KEYS.leader);
-    const decoded = await codec(watcher, 'lease.read', [], { fresh: true });
-    assert.equal(decoded === null, left === null);
-    observations.push({ navigationLeavesLease: left !== null, lease: left === null ? null : 'a record with the departed tab id, live for up to 6 s' });
-    if (left !== null) assert.equal(await pure(watcher, 'leaseIsLive', [decoded, Date.now()]), true);
-    await away.close();
-  });
+      // Measured, not assumed: a real navigation does not run that release in Chromium, because the
+      // aborted EventSource reports CLOSED first and the legacy error handler clears nextIsLeader
+      // before pagehide fires. The lease is left to go stale, so the codec must read it as live.
+      const away = await newContext();
+      const { page: leaving } = await legacyPage(away);
+      const watcher = await seedPage(away, 'lease-watcher');
+      await leaving.goto(origin + '/__storage-seed');
+      const left = await raw(watcher, KEYS.leader);
+      const decoded = await codec(watcher, 'lease.read', [], { fresh: true });
+      assert.equal(decoded === null, left === null);
+      observations.push({
+        navigationLeavesLease: left !== null,
+        lease: left === null ? null : 'a record with the departed tab id, live for up to 6 s',
+      });
+      if (left !== null)
+        assert.equal(await pure(watcher, 'leaseIsLive', [decoded, Date.now()]), true);
+      await away.close();
+    },
+  );
 
   await scenario('leader lease: codec-written foreign owners live and stale', async () => {
     const live = await newContext();
@@ -485,23 +761,57 @@ try {
     const { page, requests } = await legacyPage(live);
     await sleep(2600);
     assert.equal(await legacy(page, 'nextIsLeader'), false);
-    assert.equal(requests.some(request => request.path === '/api/stream'), false, 'a tab yielding to a live foreign lease opens no stream');
-    assert.match(await raw(page, KEYS.leader), /^\{"id":"foreign-live-tab","ts":\d+\}$/, 'the codec writes id then a numeric ts');
-    assert.equal(await pure(page, 'electionDecision', [{ lease: await codec(page, 'lease.read', [], { fresh: true }), tabId: await legacy(page, 'NEXT_TAB_ID'), isLeader: false, now: Date.now() }]), 'yield');
-    proved('leader', 'codec->legacy', 'browser-legacy-passive', 'a codec-written live foreign lease keeps the legacy tab from opening /api/stream');
+    assert.equal(
+      requests.some((request) => request.path === '/api/stream'),
+      false,
+      'a tab yielding to a live foreign lease opens no stream',
+    );
+    assert.match(
+      await raw(page, KEYS.leader),
+      /^\{"id":"foreign-live-tab","ts":\d+\}$/,
+      'the codec writes id then a numeric ts',
+    );
+    assert.equal(
+      await pure(page, 'electionDecision', [
+        {
+          lease: await codec(page, 'lease.read', [], { fresh: true }),
+          tabId: await legacy(page, 'NEXT_TAB_ID'),
+          isLeader: false,
+          now: Date.now(),
+        },
+      ]),
+      'yield',
+    );
+    proved(
+      'leader',
+      'codec->legacy',
+      'browser-legacy-passive',
+      'a codec-written live foreign lease keeps the legacy tab from opening /api/stream',
+    );
     await live.close();
 
     // Near the 6000 ms edge: 5.2 s old is still live to legacy, and the codec must agree.
     const edge = await newContext();
     const edgeSeed = await seedPage(edge);
     await codec(edgeSeed, 'lease.write', ['foreign-edge-tab', Date.now() - 5200]);
-    assert.equal(await pure(edgeSeed, 'leaseIsLive', [await codec(edgeSeed, 'lease.read'), Date.now()]), true);
+    assert.equal(
+      await pure(edgeSeed, 'leaseIsLive', [await codec(edgeSeed, 'lease.read'), Date.now()]),
+      true,
+    );
     await edgeSeed.close();
     const { page: edgePage, requests: edgeRequests } = await legacyPage(edge);
     await sleep(500);
     assert.equal(await legacy(edgePage, 'nextIsLeader'), false);
-    assert.equal(edgeRequests.some(request => request.path === '/api/stream'), false);
-    proved('leader', 'codec->legacy', 'browser-legacy-passive', 'a codec-written lease 5.2 s old is still live to legacy (6000 ms edge), and leaseIsLive agrees');
+    assert.equal(
+      edgeRequests.some((request) => request.path === '/api/stream'),
+      false,
+    );
+    proved(
+      'leader',
+      'codec->legacy',
+      'browser-legacy-passive',
+      'a codec-written lease 5.2 s old is still live to legacy (6000 ms edge), and leaseIsLive agrees',
+    );
     await edge.close();
 
     const stale = await newContext();
@@ -511,8 +821,13 @@ try {
     const { page: taker, requests: takerRequests } = await legacyPage(stale);
     await taker.waitForFunction('nextIsLeader === true');
     assert.equal(JSON.parse(await raw(taker, KEYS.leader)).id, await legacy(taker, 'NEXT_TAB_ID'));
-    assert.ok(takerRequests.some(request => request.path === '/api/stream'));
-    proved('leader', 'codec->legacy', 'browser-legacy-passive', 'a codec-written stale foreign lease (7 s old) is taken over by the legacy tab, which opens its stream');
+    assert.ok(takerRequests.some((request) => request.path === '/api/stream'));
+    proved(
+      'leader',
+      'codec->legacy',
+      'browser-legacy-passive',
+      'a codec-written stale foreign lease (7 s old) is taken over by the legacy tab, which opens its stream',
+    );
     await stale.close();
 
     const corrupt = await newContext();
@@ -522,17 +837,30 @@ try {
     await corruptSeed.close();
     const { page: tolerant } = await legacyPage(corrupt);
     await tolerant.waitForFunction('nextIsLeader === true');
-    assert.equal(await legacy(tolerant, 'nextReadLease() && nextReadLease().id'), await legacy(tolerant, 'NEXT_TAB_ID'));
-    proved('leader', 'codec', undefined, 'a corrupt lease reads as none in the codec and the legacy tab leads, overwriting it');
+    assert.equal(
+      await legacy(tolerant, 'nextReadLease() && nextReadLease().id'),
+      await legacy(tolerant, 'NEXT_TAB_ID'),
+    );
+    proved(
+      'leader',
+      'codec',
+      undefined,
+      'a corrupt lease reads as none in the codec and the legacy tab leads, overwriting it',
+    );
     await corrupt.close();
 
     const blocked = await newContext({ blocked: true });
     const { page: self, requests: selfRequests } = await legacyPage(blocked);
     await self.waitForFunction('nextIsLeader === true');
-    assert.ok(selfRequests.some(request => request.path === '/api/stream'));
+    assert.ok(selfRequests.some((request) => request.path === '/api/stream'));
     assert.equal(await codec(self, 'lease.read', [], { fresh: true }), null);
     assert.equal(await codec(self, 'lease.write', ['t', 1]), false);
-    proved('leader', 'codec', undefined, 'blocked storage: the legacy tab leads itself and streams; the codec reads no lease and reports the refused write');
+    proved(
+      'leader',
+      'codec',
+      undefined,
+      'blocked storage: the legacy tab leads itself and streams; the codec reads no lease and reports the refused write',
+    );
     await blocked.close();
   });
 
@@ -542,37 +870,102 @@ try {
     const { page, requests } = await legacyPage(context);
     await page.waitForFunction('nextLastRevision !== null');
     // The page stores a revision only once the stream accepts it, which can trail the first data read on a slow runner.
-    await page.waitForFunction(key => globalThis.localStorage.getItem(key) !== null, KEYS.revision);
+    await page.waitForFunction(
+      (key) => globalThis.localStorage.getItem(key) !== null,
+      KEYS.revision,
+    );
     const revision = await legacy(page, 'nextLastRevision');
     assert.equal(await raw(page, KEYS.revision), revision);
     assert.equal(await codec(page, 'revision.read', [], { fresh: true }), revision);
-    const header = (await context.request.get(origin + '/api/data')).headers()['x-cargento-revision'];
-    assert.equal(header.split('.')[0], revision.split('.')[0], 'the stored revision carries this server\'s start stamp');
-    proved('revision', 'legacy->codec', 'browser-legacy-passive', 'the SSE revision the page accepted is stored raw, <started>.<counter>, and the codec reads it');
+    const header = (await context.request.get(origin + '/api/data')).headers()[
+      'x-cargento-revision'
+    ];
+    assert.equal(
+      header.split('.')[0],
+      revision.split('.')[0],
+      "the stored revision carries this server's start stamp",
+    );
+    proved(
+      'revision',
+      'legacy->codec',
+      'browser-legacy-passive',
+      'the SSE revision the page accepted is stored raw, <started>.<counter>, and the codec reads it',
+    );
 
-    const pairs = [['', 'a.1'], ['a.1', null], ['a.2', 'a.1'], ['a.1', 'a.1'], ['a.1', 'a.2'], ['a.10', 'a.9'], ['b.1', 'a.99'], ['a.1.5', 'a.1.4'],
-      ['a.1.5', 'a.2.4'], ['a.x', 'a.1'], ['a.x', 'a.x'], ['abc', 'abd'], ['abc', 'abc'], ['a.', 'a.1'], ['.5', '.4'], ['1.5', '1.5e0']];
+    const pairs = [
+      ['', 'a.1'],
+      ['a.1', null],
+      ['a.2', 'a.1'],
+      ['a.1', 'a.1'],
+      ['a.1', 'a.2'],
+      ['a.10', 'a.9'],
+      ['b.1', 'a.99'],
+      ['a.1.5', 'a.1.4'],
+      ['a.1.5', 'a.2.4'],
+      ['a.x', 'a.1'],
+      ['a.x', 'a.x'],
+      ['abc', 'abd'],
+      ['abc', 'abc'],
+      ['a.', 'a.1'],
+      ['.5', '.4'],
+      ['1.5', '1.5e0'],
+    ];
     for (const [a, b] of pairs) {
-      assert.equal(await pure(page, 'revisionNewer', [a, b]), await legacy(page, `nextRevisionNewer(${json(a)}, ${json(b)})`), `comparator ${json([a, b])}`);
+      assert.equal(
+        await pure(page, 'revisionNewer', [a, b]),
+        await legacy(page, `nextRevisionNewer(${json(a)}, ${json(b)})`),
+        `comparator ${json([a, b])}`,
+      );
     }
-    proved('revision', 'codec->legacy', 'browser-legacy-function', `revisionNewer agrees with nextRevisionNewer on ${pairs.length} pairs, including restarts, non-finite counters and a missing dot`);
+    proved(
+      'revision',
+      'codec->legacy',
+      'browser-legacy-function',
+      `revisionNewer agrees with nextRevisionNewer on ${pairs.length} pairs, including restarts, non-finite counters and a missing dot`,
+    );
 
-    const [started, counter] = [revision.slice(0, revision.lastIndexOf('.')), Number(revision.slice(revision.lastIndexOf('.') + 1))];
+    const [started, counter] = [
+      revision.slice(0, revision.lastIndexOf('.')),
+      Number(revision.slice(revision.lastIndexOf('.') + 1)),
+    ];
     const writer = await seedPage(context, 'revision-writer');
-    const dataBefore = requests.filter(request => request.path === '/api/data').length;
+    const dataBefore = requests.filter((request) => request.path === '/api/data').length;
     const newer = `${started}.${counter + 5}`;
     assert.equal(await codec(writer, 'revision.write', [newer]), true);
-    await page.waitForFunction(`nextLastRevision === ${json(newer)}`, undefined, { timeout: 15000 });
-    await page.waitForFunction(count => globalThis.performance.getEntriesByType('resource').filter(entry => new URL(entry.name).pathname === '/api/data').length > count,
-      dataBefore, { timeout: 15000 });
-    const dataAfter = requests.filter(request => request.path === '/api/data').length;
+    await page.waitForFunction(`nextLastRevision === ${json(newer)}`, undefined, {
+      timeout: 15000,
+    });
+    await page.waitForFunction(
+      (count) =>
+        globalThis.performance
+          .getEntriesByType('resource')
+          .filter((entry) => new URL(entry.name).pathname === '/api/data').length > count,
+      dataBefore,
+      { timeout: 15000 },
+    );
+    const dataAfter = requests.filter((request) => request.path === '/api/data').length;
     assert.ok(dataAfter > dataBefore, 'a newer revision written by another tab wakes a refetch');
     assert.equal(await codec(writer, 'revision.write', [`${started}.${counter + 4}`]), true);
     await sleep(800);
-    assert.equal(await legacy(page, 'nextLastRevision'), newer, 'an older revision does not move the tab');
-    assert.equal(requests.filter(request => request.path === '/api/data').length, dataAfter, 'an older revision wakes no refetch');
-    proved('revision', 'codec->legacy', 'browser-legacy-passive', 'a newer revision the codec writes from another tab wakes the legacy tab to refetch /api/data; an older one does nothing');
-    const event = await pure(writer, 'revisionFromStorageEvent', [{ key: KEYS.revision, newValue: newer }]);
+    assert.equal(
+      await legacy(page, 'nextLastRevision'),
+      newer,
+      'an older revision does not move the tab',
+    );
+    assert.equal(
+      requests.filter((request) => request.path === '/api/data').length,
+      dataAfter,
+      'an older revision wakes no refetch',
+    );
+    proved(
+      'revision',
+      'codec->legacy',
+      'browser-legacy-passive',
+      'a newer revision the codec writes from another tab wakes the legacy tab to refetch /api/data; an older one does nothing',
+    );
+    const event = await pure(writer, 'revisionFromStorageEvent', [
+      { key: KEYS.revision, newValue: newer },
+    ]);
     assert.equal(event, newer);
     await context.close();
 
@@ -580,7 +973,12 @@ try {
     const seed = await seedPage(blocked);
     assert.equal(await codec(seed, 'revision.write', ['1.1']), false);
     assert.equal(await codec(seed, 'revision.read'), null);
-    proved('revision', 'codec', undefined, 'blocked storage: write reports false and read is null; the page never hydrates from this key');
+    proved(
+      'revision',
+      'codec',
+      undefined,
+      'blocked storage: write reports false and read is null; the page never hydrates from this key',
+    );
     await blocked.close();
   });
 
@@ -593,11 +991,21 @@ try {
     assert.equal(await raw(page, key), '1');
     assert.equal(await legacy(page, `NEXT_LIVE_ESTIMATE_KEY + sessKey(${json(CLAUDE)})`), key);
     assert.equal(await codec(page, 'liveEstimate.on', [CLAUDE], { fresh: true }), true);
-    assert.equal(await codec(page, 'liveEstimate.on', [{ harness: 'codex', sid: CLAUDE.sid }], { fresh: true }), false);
+    assert.equal(
+      await codec(page, 'liveEstimate.on', [{ harness: 'codex', sid: CLAUDE.sid }], {
+        fresh: true,
+      }),
+      false,
+    );
     await legacy(page, `nextLiveMonitorSet(${json(CLAUDE)}, false)`);
     assert.equal(await raw(page, key), null);
     assert.equal(await codec(page, 'liveEstimate.on', [CLAUDE], { fresh: true }), false);
-    proved('liveEstimate', 'legacy->codec', 'browser-legacy-function', 'nextLiveMonitorSet writes the unencoded harness:sid key as 1 and removes it for off; the codec reads both. The UI switch needs annotations on, which this run disables');
+    proved(
+      'liveEstimate',
+      'legacy->codec',
+      'browser-legacy-function',
+      'nextLiveMonitorSet writes the unencoded harness:sid key as 1 and removes it for off; the codec reads both. The UI switch needs annotations on, which this run disables',
+    );
 
     // A local toggle wins over storage on both sides; storage that someone else wrote is not consulted afterwards.
     await legacy(page, `nextLiveMonitorSet(${json(CLAUDE)}, false)`);
@@ -605,7 +1013,11 @@ try {
     await setRaw(page, key, '1');
     assert.equal(await legacy(page, `nextLiveMonitorOn(${json(CLAUDE)})`), false);
     assert.equal(await codec(page, 'liveEstimate.on', [CLAUDE]), false);
-    assert.equal(await codec(page, 'liveEstimate.on', [CLAUDE], { fresh: true }), true, 'a fresh reader sees the raw value');
+    assert.equal(
+      await codec(page, 'liveEstimate.on', [CLAUDE], { fresh: true }),
+      true,
+      'a fresh reader sees the raw value',
+    );
     await context.close();
 
     const reader = await newContext();
@@ -615,16 +1027,30 @@ try {
     await seed.close();
     const { page: loaded } = await legacyPage(reader);
     assert.equal(await legacy(loaded, `nextLiveMonitorOn(${json(CLAUDE)})`), true);
-    assert.equal(await legacy(loaded, `nextLiveMonitorOn(${json({ harness: 'codex', sid: CLAUDE.sid })})`), false);
-    assert.equal(await legacy(loaded, `nextLiveMonitorOn(${json({ harness: 'claude', sid: 'other' })})`), false);
+    assert.equal(
+      await legacy(loaded, `nextLiveMonitorOn(${json({ harness: 'codex', sid: CLAUDE.sid })})`),
+      false,
+    );
+    assert.equal(
+      await legacy(loaded, `nextLiveMonitorOn(${json({ harness: 'claude', sid: 'other' })})`),
+      false,
+    );
     await codec(loaded, 'liveEstimate.set', [CLAUDE, false], { fresh: true });
     assert.equal(await raw(loaded, key), null);
     for (const value of ['0', 'true', '']) {
       await setRaw(loaded, key, value);
       await loaded.evaluate('nextLiveMonitorMemory.clear()');
-      assert.equal(await legacy(loaded, `nextLiveMonitorOn(${json(CLAUDE)})`), await codec(loaded, 'liveEstimate.on', [CLAUDE], { fresh: true }));
+      assert.equal(
+        await legacy(loaded, `nextLiveMonitorOn(${json(CLAUDE)})`),
+        await codec(loaded, 'liveEstimate.on', [CLAUDE], { fresh: true }),
+      );
     }
-    proved('liveEstimate', 'codec->legacy', 'browser-legacy-function', 'a codec-written 1 reads as on in nextLiveMonitorOn for that exact harness and sid only, removal as off, and 0, true and empty read off in both; a local toggle wins over storage on both sides');
+    proved(
+      'liveEstimate',
+      'codec->legacy',
+      'browser-legacy-function',
+      'a codec-written 1 reads as on in nextLiveMonitorOn for that exact harness and sid only, removal as off, and 0, true and empty read off in both; a local toggle wins over storage on both sides',
+    );
     await reader.close();
   });
 
@@ -644,15 +1070,28 @@ try {
       assert.equal(await codec(page, `${store}.get`, [], { fresh: true }), 'granted');
       await legacy(page, `${setLegacy}("declined")`);
       assert.equal(await codec(page, `${store}.get`, [], { fresh: true }), 'declined');
-      proved(family, 'legacy->codec', 'browser-legacy-function', `${setLegacy} writes the raw word the codec reads. The disclosure UI needs a credentialed usage fetch or an enabled observer model, which this run disables`);
+      proved(
+        family,
+        'legacy->codec',
+        'browser-legacy-function',
+        `${setLegacy} writes the raw word the codec reads. The disclosure UI needs a credentialed usage fetch or an enabled observer model, which this run disables`,
+      );
 
       assert.equal(await codec(page, `${store}.set`, ['granted'], { fresh: true }), true);
       assert.equal(await raw(page, key), 'granted');
       assert.equal(await legacy(page, `${getLegacy}()`), 'granted');
       await setRaw(page, key, 'garbled');
       // Each side falls back to its own memo: legacy last answered declined, the codec granted.
-      assert.equal(await legacy(page, `${getLegacy}()`), 'declined', 'legacy falls back to its memo for an unrecognised value');
-      assert.equal(await codec(page, `${store}.get`), 'granted', 'codec falls back to its memo for an unrecognised value');
+      assert.equal(
+        await legacy(page, `${getLegacy}()`),
+        'declined',
+        'legacy falls back to its memo for an unrecognised value',
+      );
+      assert.equal(
+        await codec(page, `${store}.get`),
+        'granted',
+        'codec falls back to its memo for an unrecognised value',
+      );
       await context.close();
 
       // Another tab's answer wins over this tab's memo, in both directions.
@@ -661,11 +1100,24 @@ try {
       const second = await seedPage(tabs, 'other-tab');
       await legacy(first, `${setLegacy}("granted")`);
       await codec(second, `${store}.set`, ['declined'], { fresh: true });
-      assert.equal(await legacy(first, `${getLegacy}()`), 'declined', 'legacy: the other tab answer wins over the memo');
+      assert.equal(
+        await legacy(first, `${getLegacy}()`),
+        'declined',
+        'legacy: the other tab answer wins over the memo',
+      );
       await codec(first, `${store}.set`, ['granted'], { fresh: true });
       await legacy(first, `${setLegacy}("declined")`);
-      assert.equal(await codec(first, `${store}.get`), 'declined', 'codec: an answer legacy stored wins over the codec memo');
-      proved(family, 'codec->legacy', 'browser-legacy-function', 'a codec answer written from another document overrides the legacy memo, and an answer legacy stores overrides the codec memo');
+      assert.equal(
+        await codec(first, `${store}.get`),
+        'declined',
+        'codec: an answer legacy stored wins over the codec memo',
+      );
+      proved(
+        family,
+        'codec->legacy',
+        'browser-legacy-function',
+        'a codec answer written from another document overrides the legacy memo, and an answer legacy stores overrides the codec memo',
+      );
       await tabs.close();
 
       const blocked = await newContext({ blocked: true });
@@ -674,29 +1126,50 @@ try {
       assert.equal(await legacy(shut, `${getLegacy}()`), 'granted');
       assert.equal(await codec(shut, `${store}.set`, ['granted'], { fresh: true }), false);
       assert.equal(await codec(shut, `${store}.get`), 'granted');
-      proved(family, 'codec', undefined, 'blocked storage: both hold the answer in memory for the tab; the codec reports the refused write');
+      proved(
+        family,
+        'codec',
+        undefined,
+        'blocked storage: both hold the answer in memory for the tab; the codec reports the refused write',
+      );
       await blocked.close();
     });
   }
 
   // ── cockpit project, usage and goal (project.js) ──────────────────────
-  await scenario('cockpit project and usage: legacy setProjectCockpit writes, codec reads', async () => {
-    const context = await newContext();
-    const { page } = await legacyPage(context);
-    await legacy(page, `setProjectCockpit(${json(PROJECT)})`);
-    await legacy(page, `setProjectCockpit("other project")`);
-    await legacy(page, `setProjectCockpit(${json(PROJECT)})`);
-    assert.equal(await raw(page, KEYS.cockpitProject), PROJECT);
-    assert.equal(await codec(page, 'cockpitProject.read', [], { fresh: true }), PROJECT);
-    assert.equal(await raw(page, KEYS.usage), json({ [PROJECT]: 2, 'other project': 1 }));
-    assert.deepEqual(await codec(page, 'usage.counts', [], { fresh: true }), { [PROJECT]: 2, 'other project': 1 });
-    await legacy(page, 'setProjectCockpit("")');
-    assert.equal(await raw(page, KEYS.cockpitProject), '');
-    assert.equal(await codec(page, 'cockpitProject.read', [], { fresh: true }), null);
-    proved('cockpitProject', 'legacy->codec', 'browser-legacy-function', 'setProjectCockpit writes the raw label; an empty one reads as null in the codec');
-    proved('usage', 'legacy->codec', 'browser-legacy-function', 'each setProjectCockpit increments projectUsage; the codec reads the label=>count object. The routes driven here render no control that calls it');
-    await context.close();
-  });
+  await scenario(
+    'cockpit project and usage: legacy setProjectCockpit writes, codec reads',
+    async () => {
+      const context = await newContext();
+      const { page } = await legacyPage(context);
+      await legacy(page, `setProjectCockpit(${json(PROJECT)})`);
+      await legacy(page, `setProjectCockpit("other project")`);
+      await legacy(page, `setProjectCockpit(${json(PROJECT)})`);
+      assert.equal(await raw(page, KEYS.cockpitProject), PROJECT);
+      assert.equal(await codec(page, 'cockpitProject.read', [], { fresh: true }), PROJECT);
+      assert.equal(await raw(page, KEYS.usage), json({ [PROJECT]: 2, 'other project': 1 }));
+      assert.deepEqual(await codec(page, 'usage.counts', [], { fresh: true }), {
+        [PROJECT]: 2,
+        'other project': 1,
+      });
+      await legacy(page, 'setProjectCockpit("")');
+      assert.equal(await raw(page, KEYS.cockpitProject), '');
+      assert.equal(await codec(page, 'cockpitProject.read', [], { fresh: true }), null);
+      proved(
+        'cockpitProject',
+        'legacy->codec',
+        'browser-legacy-function',
+        'setProjectCockpit writes the raw label; an empty one reads as null in the codec',
+      );
+      proved(
+        'usage',
+        'legacy->codec',
+        'browser-legacy-function',
+        'each setProjectCockpit increments projectUsage; the codec reads the label=>count object. The routes driven here render no control that calls it',
+      );
+      await context.close();
+    },
+  );
 
   await scenario('cockpit project and usage: codec writes, legacy reads at load', async () => {
     const context = await newContext();
@@ -707,19 +1180,46 @@ try {
     await codec(seed, 'usage.record', ['second']);
     await seed.close();
     const { page } = await legacyPage(context);
-    assert.equal(await legacy(page, 'projectCockpitLabel'), 'seeded label', 'the legacy boot reads the key the codec wrote');
-    assert.deepEqual(await legacy(page, 'Object.assign({}, projectUsage())'), { 'seeded label': 2, second: 1 });
-    proved('cockpitProject', 'codec->legacy', 'browser-legacy-passive', 'the legacy page boot reads the label the codec wrote into projectCockpitLabel');
-    proved('usage', 'codec->legacy', 'browser-legacy-function', 'projectUsage loads the label=>count object the codec wrote');
+    assert.equal(
+      await legacy(page, 'projectCockpitLabel'),
+      'seeded label',
+      'the legacy boot reads the key the codec wrote',
+    );
+    assert.deepEqual(await legacy(page, 'Object.assign({}, projectUsage())'), {
+      'seeded label': 2,
+      second: 1,
+    });
+    proved(
+      'cockpitProject',
+      'codec->legacy',
+      'browser-legacy-passive',
+      'the legacy page boot reads the label the codec wrote into projectCockpitLabel',
+    );
+    proved(
+      'usage',
+      'codec->legacy',
+      'browser-legacy-function',
+      'projectUsage loads the label=>count object the codec wrote',
+    );
     await context.close();
 
     // The load rules, run on the same raw text by both loaders.
-    const entries = Object.fromEntries(Array.from({ length: 250 }, (_, index) => [`k${index}`, index + 1]));
+    const entries = Object.fromEntries(
+      Array.from({ length: 250 }, (_, index) => [`k${index}`, index + 1]),
+    );
     const corpora = [
       json({ a: 5.9, b: '7', c: 0, d: -3, e: 'abc', f: 1e9, g: true, h: null, '': 4, i: [3] }),
       json(entries),
-      json({ '': 1, ...Object.fromEntries(Array.from({ length: 200 }, (_, index) => [`k${index}`, 1])) }),
-      '{', '5', '[1,2]', 'null', '"x"', '',
+      json({
+        '': 1,
+        ...Object.fromEntries(Array.from({ length: 200 }, (_, index) => [`k${index}`, 1])),
+      }),
+      '{',
+      '5',
+      '[1,2]',
+      'null',
+      '"x"',
+      '',
     ];
     for (const text of corpora) {
       const next = await newContext();
@@ -728,71 +1228,116 @@ try {
       await loader.close();
       const { page: reader } = await legacyPage(next);
       const expected = await legacy(reader, 'Object.assign({}, projectUsage())');
-      assert.deepEqual(await pure(reader, 'decodeUsage', [text === '' ? null : text]), expected, `usage corpus ${text.slice(0, 40)}`);
+      assert.deepEqual(
+        await pure(reader, 'decodeUsage', [text === '' ? null : text]),
+        expected,
+        `usage corpus ${text.slice(0, 40)}`,
+      );
       if (text === corpora[1]) assert.equal(Object.keys(expected).length, 200);
       await next.close();
     }
     const writes = await newContext();
     const { page: writer } = await legacyPage(writes);
-    await setRaw(writer, KEYS.usage, json(Object.fromEntries(Array.from({ length: 200 }, (_, index) => [`k${index}`, 1]))));
+    await setRaw(
+      writer,
+      KEYS.usage,
+      json(Object.fromEntries(Array.from({ length: 200 }, (_, index) => [`k${index}`, 1]))),
+    );
     await writer.evaluate('projectUsageCounts = null;');
     await legacy(writer, 'projectRecordUse("fresh")');
-    assert.equal(Object.keys(JSON.parse(await raw(writer, KEYS.usage))).length, 201, 'legacy writes do not bound the key count');
-    assert.equal(Object.keys(await codec(writer, 'usage.counts', [], { fresh: true })).length, 200, 'a reload takes the first 200 of the 201');
+    assert.equal(
+      Object.keys(JSON.parse(await raw(writer, KEYS.usage))).length,
+      201,
+      'legacy writes do not bound the key count',
+    );
+    assert.equal(
+      Object.keys(await codec(writer, 'usage.counts', [], { fresh: true })).length,
+      200,
+      'a reload takes the first 200 of the 201',
+    );
     await codec(writer, 'usage.record', ['fresh2'], { fresh: true });
-    assert.equal(Object.keys(JSON.parse(await raw(writer, KEYS.usage))).length, 201, 'a codec write keeps the 200 it loaded and adds one, without bounding');
-    proved('usage', 'codec', undefined, 'writes never bound the key count, in legacy or codec, while loads stop at 200');
+    assert.equal(
+      Object.keys(JSON.parse(await raw(writer, KEYS.usage))).length,
+      201,
+      'a codec write keeps the 200 it loaded and adds one, without bounding',
+    );
+    proved(
+      'usage',
+      'codec',
+      undefined,
+      'writes never bound the key count, in legacy or codec, while loads stop at 200',
+    );
     await writes.close();
   });
 
-  await scenario('goal: legacy editor writes, codec reads, codec writes, legacy reads', async () => {
-    const context = await newContext();
-    const { page } = await legacyPage(context);
-    const label = 'goal project/é';
-    const key = await pure(page, 'goalKey', [label]);
-    await page.evaluate(`projectGoalEditingLabel = ${json(label)};
+  await scenario(
+    'goal: legacy editor writes, codec reads, codec writes, legacy reads',
+    async () => {
+      const context = await newContext();
+      const { page } = await legacyPage(context);
+      const label = 'goal project/é';
+      const key = await pure(page, 'goalKey', [label]);
+      await page.evaluate(`projectGoalEditingLabel = ${json(label)};
       document.body.insertAdjacentHTML('beforeend', '<div id="conformance-goal-host">' + projectGoalBlock({label: ${json(label)}}, projectGoal(${json(label)}), '') + '</div>');`);
-    const field = page.locator('#conformance-goal-host #pc-goal');
-    assert.equal(await field.getAttribute('maxlength'), '500');
-    await field.fill('   ship the migration   ');
-    await page.evaluate(`projectGoalAction("project-goal-save", ${json(label)})`);
-    assert.equal(await raw(page, key), 'ship the migration');
-    assert.equal(await codec(page, 'goal.read', [label], { fresh: true }), 'ship the migration');
-    const long = 'g'.repeat(900);
-    await setValue(field, long);
-    await page.evaluate(`projectGoalAction("project-goal-save", ${json(label)})`);
-    assert.equal((await raw(page, key)).length, 900, 'the legacy store does not bound a goal');
-    assert.equal((await codec(page, 'goal.read', [label], { fresh: true })).length, 900);
-    await field.fill('   ');
-    await page.evaluate(`projectGoalAction("project-goal-save", ${json(label)})`);
-    assert.equal((await raw(page, key)).length, 900, 'an empty goal writes nothing');
-    assert.equal(await codec(page, 'goal.save', [label, '   '], { fresh: true }), 'empty');
-    await page.evaluate(`projectGoalAction("project-goal-clear", ${json(label)})`);
-    assert.equal(await raw(page, key), null);
-    assert.equal(await codec(page, 'goal.read', [label], { fresh: true }), '');
-    proved('goal', 'legacy->codec', 'browser-legacy-function', 'the legacy-rendered goal editor, saved through projectGoalAction, writes the trimmed raw text under the encoded-label key; clear removes it. No goal-editor control is rendered on the routes driven here, so the legacy editor markup is built by projectGoalBlock and inserted');
+      const field = page.locator('#conformance-goal-host #pc-goal');
+      assert.equal(await field.getAttribute('maxlength'), '500');
+      await field.fill('   ship the migration   ');
+      await page.evaluate(`projectGoalAction("project-goal-save", ${json(label)})`);
+      assert.equal(await raw(page, key), 'ship the migration');
+      assert.equal(await codec(page, 'goal.read', [label], { fresh: true }), 'ship the migration');
+      const long = 'g'.repeat(900);
+      await setValue(field, long);
+      await page.evaluate(`projectGoalAction("project-goal-save", ${json(label)})`);
+      assert.equal((await raw(page, key)).length, 900, 'the legacy store does not bound a goal');
+      assert.equal((await codec(page, 'goal.read', [label], { fresh: true })).length, 900);
+      await field.fill('   ');
+      await page.evaluate(`projectGoalAction("project-goal-save", ${json(label)})`);
+      assert.equal((await raw(page, key)).length, 900, 'an empty goal writes nothing');
+      assert.equal(await codec(page, 'goal.save', [label, '   '], { fresh: true }), 'empty');
+      await page.evaluate(`projectGoalAction("project-goal-clear", ${json(label)})`);
+      assert.equal(await raw(page, key), null);
+      assert.equal(await codec(page, 'goal.read', [label], { fresh: true }), '');
+      proved(
+        'goal',
+        'legacy->codec',
+        'browser-legacy-function',
+        'the legacy-rendered goal editor, saved through projectGoalAction, writes the trimmed raw text under the encoded-label key; clear removes it. No goal-editor control is rendered on the routes driven here, so the legacy editor markup is built by projectGoalBlock and inserted',
+      );
 
-    assert.equal(await codec(page, 'goal.save', [label, '  padded goal  '], { fresh: true }), 'saved');
-    assert.equal(await raw(page, key), 'padded goal');
-    await page.evaluate(`delete projectDraftByLabel[${json(label)}]`);
-    assert.equal(await legacy(page, `projectGoal(${json(label)})`), 'padded goal');
-    await codec(page, 'goal.save', [label, long]);
-    await page.evaluate(`delete projectDraftByLabel[${json(label)}]`);
-    assert.equal((await legacy(page, `projectGoal(${json(label)})`)).length, 900);
-    assert.equal(await codec(page, 'goal.clear', [label]), 'cleared');
-    await page.evaluate(`delete projectDraftByLabel[${json(label)}]`);
-    assert.equal(await legacy(page, `projectGoal(${json(label)})`), '');
-    proved('goal', 'codec->legacy', 'browser-legacy-function', 'projectGoal reads the trimmed text, the unbounded 900-unit text and the cleared state the codec wrote');
-    const blocked = await newContext({ blocked: true });
-    const { page: shut } = await legacyPage(blocked);
-    assert.equal(await codec(shut, 'goal.read', [label], { fresh: true }), '');
-    assert.equal(await codec(shut, 'goal.save', [label, 'x']), 'unavailable');
-    assert.equal(await legacy(shut, `projectGoal(${json(label)})`), '');
-    proved('goal', 'codec', undefined, 'blocked storage reads as empty and a save reports unavailable in the codec, matching the legacy read');
-    await blocked.close();
-    await context.close();
-  });
-
+      assert.equal(
+        await codec(page, 'goal.save', [label, '  padded goal  '], { fresh: true }),
+        'saved',
+      );
+      assert.equal(await raw(page, key), 'padded goal');
+      await page.evaluate(`delete projectDraftByLabel[${json(label)}]`);
+      assert.equal(await legacy(page, `projectGoal(${json(label)})`), 'padded goal');
+      await codec(page, 'goal.save', [label, long]);
+      await page.evaluate(`delete projectDraftByLabel[${json(label)}]`);
+      assert.equal((await legacy(page, `projectGoal(${json(label)})`)).length, 900);
+      assert.equal(await codec(page, 'goal.clear', [label]), 'cleared');
+      await page.evaluate(`delete projectDraftByLabel[${json(label)}]`);
+      assert.equal(await legacy(page, `projectGoal(${json(label)})`), '');
+      proved(
+        'goal',
+        'codec->legacy',
+        'browser-legacy-function',
+        'projectGoal reads the trimmed text, the unbounded 900-unit text and the cleared state the codec wrote',
+      );
+      const blocked = await newContext({ blocked: true });
+      const { page: shut } = await legacyPage(blocked);
+      assert.equal(await codec(shut, 'goal.read', [label], { fresh: true }), '');
+      assert.equal(await codec(shut, 'goal.save', [label, 'x']), 'unavailable');
+      assert.equal(await legacy(shut, `projectGoal(${json(label)})`), '');
+      proved(
+        'goal',
+        'codec',
+        undefined,
+        'blocked storage reads as empty and a save reports unavailable in the codec, matching the legacy read',
+      );
+      await blocked.close();
+      await context.close();
+    },
+  );
 
   // ── codec writes that the real legacy page has to accept ──────────────
   await scenario('codec writes are accepted by the real legacy page', async () => {
@@ -803,19 +1348,38 @@ try {
     const here = await pure(page, 'graphModeScope', [PROJECT, null]);
     const there = await pure(page, 'graphModeScope', ['another project', 'sid:2']);
     assert.equal(await codec(page, 'graphMode.set', [there, 'decisions'], { fresh: true }), true);
-    assert.deepEqual(JSON.parse(await raw(page, KEYS.graphMode)), { [here]: 'all', [there]: 'decisions' });
+    assert.deepEqual(JSON.parse(await raw(page, KEYS.graphMode)), {
+      [here]: 'all',
+      [there]: 'decisions',
+    });
     await page.reload();
-    await page.waitForFunction("typeof nextData !== 'undefined' && !!nextData && document.querySelector('[data-next-cockpit-action=\"graph-mode\"]')");
-    await page.locator('[data-next-cockpit-action="graph-mode"][data-arg="all"][aria-pressed="true"]').waitFor();
-    assert.deepEqual(await legacy(page, 'Object.fromEntries(projectGraphModeBySession)'), { [here]: 'all', [there]: 'decisions' });
-    proved('graphMode', 'codec->legacy', 'browser-legacy-ui', 'a codec set beside a legacy-written scope keeps both; the reloaded legacy page presses the legacy choice and loads the codec one');
+    await page.waitForFunction(
+      "typeof nextData !== 'undefined' && !!nextData && document.querySelector('[data-next-cockpit-action=\"graph-mode\"]')",
+    );
+    await page
+      .locator('[data-next-cockpit-action="graph-mode"][data-arg="all"][aria-pressed="true"]')
+      .waitFor();
+    assert.deepEqual(await legacy(page, 'Object.fromEntries(projectGraphModeBySession)'), {
+      [here]: 'all',
+      [there]: 'decisions',
+    });
+    proved(
+      'graphMode',
+      'codec->legacy',
+      'browser-legacy-ui',
+      'a codec set beside a legacy-written scope keeps both; the reloaded legacy page presses the legacy choice and loads the codec one',
+    );
     await graph.close();
 
     // Guardrails: the codec's 50-rule cap on add leaves the page showing exactly the last fifty.
     const cap = await newContext();
     const capSeed = await seedPage(cap);
-    for (let index = 0; index < 55; index += 1) await codec(capSeed, 'guardrails.add', [PROJECT, `rule ${index}`], { fresh: index === 0 });
-    assert.equal(JSON.parse(await raw(capSeed, await pure(capSeed, 'guardrailKey', [PROJECT]))).length, 50);
+    for (let index = 0; index < 55; index += 1)
+      await codec(capSeed, 'guardrails.add', [PROJECT, `rule ${index}`], { fresh: index === 0 });
+    assert.equal(
+      JSON.parse(await raw(capSeed, await pure(capSeed, 'guardrailKey', [PROJECT]))).length,
+      50,
+    );
     await capSeed.close();
     const { page: rails } = await legacyPage(cap, `#n=project:${PROJECT}:console`);
     await rails.locator('[data-next-guardrail-toggle]').first().waitFor();
@@ -823,7 +1387,12 @@ try {
     assert.equal(texts.length, 50);
     assert.equal(texts[0], 'rule 5');
     assert.equal(texts[49], 'rule 54');
-    proved('guardrails', 'codec->legacy', 'browser-legacy-ui', 'fifty-five codec adds leave 50 rules, the last fifty, and the legacy console lists exactly those');
+    proved(
+      'guardrails',
+      'codec->legacy',
+      'browser-legacy-ui',
+      'fifty-five codec adds leave 50 rules, the last fifty, and the legacy console lists exactly those',
+    );
     await cap.close();
 
     // Lease: a codec release is what legacy treats as released, so a waiting legacy tab takes over.
@@ -834,15 +1403,35 @@ try {
     const { page: waiting, requests } = await legacyPage(lease);
     await sleep(500);
     assert.equal(await legacy(waiting, 'nextIsLeader'), false);
-    assert.equal(requests.some(request => request.path === '/api/stream'), false);
+    assert.equal(
+      requests.some((request) => request.path === '/api/stream'),
+      false,
+    );
     assert.equal(await codec(waiting, 'lease.release', [], { fresh: true }), true);
-    assert.equal(await raw(waiting, KEYS.leader), null, 'release removes the key rather than writing a value');
+    assert.equal(
+      await raw(waiting, KEYS.leader),
+      null,
+      'release removes the key rather than writing a value',
+    );
     await waiting.waitForFunction('nextIsLeader === true', undefined, { timeout: 15000 });
     // Playwright delivers `request` events asynchronously, so the page flag can flip before the Node-side list sees the stream.
-    for (let waited = 0; waited < 3000 && !requests.some(request => request.path === '/api/stream'); waited += 50) await sleep(50);
-    assert.ok(requests.some(request => request.path === '/api/stream'));
-    assert.equal(JSON.parse(await raw(waiting, KEYS.leader)).id, await legacy(waiting, 'NEXT_TAB_ID'));
-    proved('leader', 'codec->legacy', 'browser-legacy-passive', 'after a codec release the key is absent and the waiting legacy tab takes over and opens its stream on its next election');
+    for (
+      let waited = 0;
+      waited < 3000 && !requests.some((request) => request.path === '/api/stream');
+      waited += 50
+    )
+      await sleep(50);
+    assert.ok(requests.some((request) => request.path === '/api/stream'));
+    assert.equal(
+      JSON.parse(await raw(waiting, KEYS.leader)).id,
+      await legacy(waiting, 'NEXT_TAB_ID'),
+    );
+    proved(
+      'leader',
+      'codec->legacy',
+      'browser-legacy-passive',
+      'after a codec release the key is absent and the waiting legacy tab takes over and opens its stream on its next election',
+    );
     await lease.close();
 
     // Memo: the codec bounds what it writes the way the page does, so raw storage holds 500 units.
@@ -859,10 +1448,22 @@ try {
     assert.equal(rawFocus.charCodeAt(499), 0xd83d);
     await memoSeed.close();
     const { page: shown } = await legacyPage(memo, `#n=project:${PROJECT}`);
-    assert.equal(await legacy(shown, `nextCockpitBoundMemo(${json(rawFocus)}) === ${json(rawFocus)}`), true, 'legacy would have stored exactly the codec-written text');
+    assert.equal(
+      await legacy(shown, `nextCockpitBoundMemo(${json(rawFocus)}) === ${json(rawFocus)}`),
+      true,
+      'legacy would have stored exactly the codec-written text',
+    );
     await shown.locator('[data-next-cockpit-memo-field="outcome"] strong').waitFor();
-    assert.equal((await shown.locator('[data-next-cockpit-memo-field="outcome"] strong').textContent()).length, 500);
-    proved('memo', 'codec->legacy', 'browser-legacy-ui', 'the codec writes 500 units for over-long and surrogate-cut text, equal to what nextCockpitBoundMemo yields, and the legacy page shows all 500');
+    assert.equal(
+      (await shown.locator('[data-next-cockpit-memo-field="outcome"] strong').textContent()).length,
+      500,
+    );
+    proved(
+      'memo',
+      'codec->legacy',
+      'browser-legacy-ui',
+      'the codec writes 500 units for over-long and surrogate-cut text, equal to what nextCockpitBoundMemo yields, and the legacy page shows all 500',
+    );
     await memo.close();
   });
 
@@ -877,8 +1478,15 @@ try {
     const scope = await pure(seed, 'graphModeScope', [PROJECT, null]);
     // Values that legacy accepts but a tidy-up on load would change; rollback needs them back exactly.
     const stored = {
-      [KEYS.usage]: json(Object.fromEntries(Array.from({ length: 201 }, (_, index) => [`k${index}`, index + 1]))),
-      [guardKey]: json([null, 'plain', { text: '  padded  ', enabled: 0 }, ...Array.from({ length: 60 }, (_, index) => `r${index}`)]),
+      [KEYS.usage]: json(
+        Object.fromEntries(Array.from({ length: 201 }, (_, index) => [`k${index}`, index + 1])),
+      ),
+      [guardKey]: json([
+        null,
+        'plain',
+        { text: '  padded  ', enabled: 0 },
+        ...Array.from({ length: 60 }, (_, index) => `r${index}`),
+      ]),
       [KEYS.graphMode]: json({ '': 'all', [scope]: 'decisions', 'x\u0000y\u0000z': 'all' }),
       [memoKey]: 'm'.repeat(700),
       [goalKey]: '  untrimmed ' + 'g'.repeat(800),
@@ -891,41 +1499,62 @@ try {
       [liveKey]: '1',
     };
     for (const [key, value] of Object.entries(stored)) await setRaw(seed, key, value);
-    const recorded = await seed.evaluate(([project, identityRow, focusKey]) => {
-      const writes = [];
-      const originals = {};
-      for (const method of ['setItem', 'removeItem', 'clear']) {
-        originals[method] = Storage.prototype[method];
-        Storage.prototype[method] = function recorder(...args) { writes.push([method, args[0]]); return originals[method].apply(this, args); };
-      }
-      const before = Object.fromEntries(Object.keys(localStorage).map(key => [key, localStorage.getItem(key)]));
-      try {
-        const s = globalThis.CargentoStorage.createLegacyStorage();
-        const scopeKey = globalThis.CargentoStorage.graphModeScope(project, null);
-        for (let pass = 0; pass < 2; pass += 1) {
-          s.usage.counts();
-          s.guardrails.rules(project);
-          s.graphMode.resolve({ scope: scopeKey });
-          s.memo.read(focusKey);
-          s.goal.read(project);
-          s.lease.read();
-          s.revision.read();
-          s.usageConsent.get();
-          s.observerConsent.get();
-          s.workstream.collapsed();
-          s.cockpitProject.read();
-          s.liveEstimate.on(identityRow);
+    const recorded = await seed.evaluate(
+      ([project, identityRow, focusKey]) => {
+        const writes = [];
+        const originals = {};
+        for (const method of ['setItem', 'removeItem', 'clear']) {
+          originals[method] = Storage.prototype[method];
+          Storage.prototype[method] = function recorder(...args) {
+            writes.push([method, args[0]]);
+            return originals[method].apply(this, args);
+          };
         }
-      } finally {
-        for (const method of Object.keys(originals)) Storage.prototype[method] = originals[method];
-      }
-      const after = Object.fromEntries(Object.keys(localStorage).map(key => [key, localStorage.getItem(key)]));
-      return { writes, unchanged: JSON.stringify(before) === JSON.stringify(after), keys: Object.keys(after).length };
-    }, [PROJECT, CLAUDE, memoKey]);
+        const before = Object.fromEntries(
+          Object.keys(localStorage).map((key) => [key, localStorage.getItem(key)]),
+        );
+        try {
+          const s = globalThis.CargentoStorage.createLegacyStorage();
+          const scopeKey = globalThis.CargentoStorage.graphModeScope(project, null);
+          for (let pass = 0; pass < 2; pass += 1) {
+            s.usage.counts();
+            s.guardrails.rules(project);
+            s.graphMode.resolve({ scope: scopeKey });
+            s.memo.read(focusKey);
+            s.goal.read(project);
+            s.lease.read();
+            s.revision.read();
+            s.usageConsent.get();
+            s.observerConsent.get();
+            s.workstream.collapsed();
+            s.cockpitProject.read();
+            s.liveEstimate.on(identityRow);
+          }
+        } finally {
+          for (const method of Object.keys(originals))
+            Storage.prototype[method] = originals[method];
+        }
+        const after = Object.fromEntries(
+          Object.keys(localStorage).map((key) => [key, localStorage.getItem(key)]),
+        );
+        return {
+          writes,
+          unchanged: JSON.stringify(before) === JSON.stringify(after),
+          keys: Object.keys(after).length,
+        };
+      },
+      [PROJECT, CLAUDE, memoKey],
+    );
     assert.deepEqual(recorded.writes, []);
     assert.equal(recorded.unchanged, true);
     assert.equal(recorded.keys, Object.keys(stored).length);
-    for (const family of receipt.keys()) proved(family, 'codec', undefined, 'reading, twice, writes nothing and leaves legacy-valid raw values exactly as stored');
+    for (const family of receipt.keys())
+      proved(
+        family,
+        'codec',
+        undefined,
+        'reading, twice, writes nothing and leaves legacy-valid raw values exactly as stored',
+      );
     await seed.close();
 
     // The legacy loaders are the standard: run in one synchronous call so no legacy timer can write between.
@@ -966,7 +1595,7 @@ try {
   const evidence = { directions: 24, ui: 0, passive: 0, legacyFunction: 0, codecLevelChecks: 0 };
   for (const entry of receipt.values()) {
     for (const side of [entry.legacyToCodec, entry.codecToLegacy]) {
-      const strongest = rank.find(how => side.has(how));
+      const strongest = rank.find((how) => side.has(how));
       if (strongest === rank[0]) evidence.ui += 1;
       else if (strongest === rank[1]) evidence.passive += 1;
       else evidence.legacyFunction += 1;
@@ -978,20 +1607,33 @@ try {
   const families = [...receipt].map(([name, entry]) => ({
     family: name,
     key: entry.key,
-    legacyToCodec: Object.fromEntries([...entry.legacyToCodec].map(([how, checks]) => [how, checks])),
-    codecToLegacy: Object.fromEntries([...entry.codecToLegacy].map(([how, checks]) => [how, checks])),
+    legacyToCodec: Object.fromEntries(
+      [...entry.legacyToCodec].map(([how, checks]) => [how, checks]),
+    ),
+    codecToLegacy: Object.fromEntries(
+      [...entry.codecToLegacy].map(([how, checks]) => [how, checks]),
+    ),
     codecLevel: entry.codecLevel,
   }));
-  console.log(JSON.stringify({ storageConformance: {
-    browser: browser.version(),
-    legacyPage: 'real Python runtime, synthetic fixture, models/usage/notifications/focus disabled',
-    codec: 'frontend/src/storage bundled with Vite and executed in the page',
-    evidence,
-    externalRequests: 0,
-    actionRequests: 0,
-    observations,
-    families,
-  } }, null, 2));
+  console.log(
+    JSON.stringify(
+      {
+        storageConformance: {
+          browser: browser.version(),
+          legacyPage:
+            'real Python runtime, synthetic fixture, models/usage/notifications/focus disabled',
+          codec: 'frontend/src/storage bundled with Vite and executed in the page',
+          evidence,
+          externalRequests: 0,
+          actionRequests: 0,
+          observations,
+          families,
+        },
+      },
+      null,
+      2,
+    ),
+  );
 } finally {
   await browser.close();
   await backend.stop();

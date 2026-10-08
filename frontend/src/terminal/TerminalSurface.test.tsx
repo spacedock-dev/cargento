@@ -27,8 +27,12 @@ function world(answers: Record<string, OriginAnswer>) {
     requests.push({ method: init?.method ?? 'GET', url });
     const match = /^\/api\/interaction\/origin\?harness=([^&]*)&sid=([^&]*)$/.exec(url);
     if (!match) return Promise.reject(new Error('offline'));
-    const answer = answers[`${decodeURIComponent(match[1] ?? '')}:${decodeURIComponent(match[2] ?? '')}`] ?? { status: 404 };
-    return Promise.resolve(new Response(JSON.stringify(answer.body ?? {}), { status: answer.status }));
+    const answer = answers[
+      `${decodeURIComponent(match[1] ?? '')}:${decodeURIComponent(match[2] ?? '')}`
+    ] ?? { status: 404 };
+    return Promise.resolve(
+      new Response(JSON.stringify(answer.body ?? {}), { status: answer.status }),
+    );
   };
   const shell = createShell({
     env,
@@ -122,7 +126,9 @@ describe('what the surface says before it can offer a terminal', () => {
   it('says it is checking, as a status, until the first answer', async () => {
     const w = world({ 'codex:alpha': REGISTERED });
     const view = mount(w);
-    expect(view.getByRole('status').textContent).toBe('Checking terminal registration for this exact session.');
+    expect(view.getByRole('status').textContent).toBe(
+      'Checking terminal registration for this exact session.',
+    );
     await settle();
     expect(view.queryByRole('status')).toBeNull();
   });
@@ -131,7 +137,9 @@ describe('what the surface says before it can offer a terminal', () => {
     const w = world({ 'codex:alpha': REGISTERED });
     mount(w, { harness: 'codex', sid: 'colon:sid' });
     await settle();
-    expect(w.requests).toEqual([{ method: 'GET', url: '/api/interaction/origin?harness=codex&sid=colon%3Asid' }]);
+    expect(w.requests).toEqual([
+      { method: 'GET', url: '/api/interaction/origin?harness=codex&sid=colon%3Asid' },
+    ]);
   });
 
   it('asks nothing, and says why, for a session with no exact identity', async () => {
@@ -139,16 +147,27 @@ describe('what the surface says before it can offer a terminal', () => {
     const view = mount(w, { harness: 'codex', sid: '' });
     await settle();
     expect(w.requests).toEqual([]);
-    expect(view.getByText('This session published no exact identity, so no terminal can be matched to it.')).toBeInTheDocument();
+    expect(
+      view.getByText(
+        'This session published no exact identity, so no terminal can be matched to it.',
+      ),
+    ).toBeInTheDocument();
     expect(view.queryByRole('button', { name: 'Open terminal' })).toBeNull();
   });
 
   it('never lets a terminal registered for one session be opened from another that shares its sid or project', async () => {
-    const w = world({ 'codex:alpha': REGISTERED, 'claude:alpha': { status: 200, body: { state: 'refused', reason: 'session-mismatch' } } });
+    const w = world({
+      'codex:alpha': REGISTERED,
+      'claude:alpha': { status: 200, body: { state: 'refused', reason: 'session-mismatch' } },
+    });
     const view = mount(w, { harness: 'claude', sid: 'alpha' });
     await settle();
-    expect(w.requests.map((request) => request.url)).toEqual(['/api/interaction/origin?harness=claude&sid=alpha']);
-    expect(view.getByText('The registered terminal belongs to another session.')).toBeInTheDocument();
+    expect(w.requests.map((request) => request.url)).toEqual([
+      '/api/interaction/origin?harness=claude&sid=alpha',
+    ]);
+    expect(
+      view.getByText('The registered terminal belongs to another session.'),
+    ).toBeInTheDocument();
     expect(view.queryByRole('button', { name: 'Open terminal' })).toBeNull();
   });
 
@@ -164,12 +183,16 @@ describe('what the surface says before it can offer a terminal', () => {
     expect(steps).toHaveLength(2);
     expect(steps?.[0]?.textContent).toContain('--interaction-origin-session harness:sid');
     expect(steps?.[0]?.textContent).toContain('--interaction-origin-registration-file PATH');
-    expect(steps?.[1]?.textContent).toBe('Run the registration client inside the tmux pane for this exact session with that file.');
+    expect(steps?.[1]?.textContent).toBe(
+      'Run the registration client inside the tmux pane for this exact session with that file.',
+    );
     expect(view.getByText('Output is read-only.')).toBeInTheDocument();
   });
 
   it('shows no recipe for a reason registering cannot fix', async () => {
-    const w = world({ 'codex:alpha': { status: 200, body: { state: 'unknown', reason: 'origin-disconnected' } } });
+    const w = world({
+      'codex:alpha': { status: 200, body: { state: 'unknown', reason: 'origin-disconnected' } },
+    });
     const view = mount(w);
     await settle();
     expect(view.getByText('The registered tmux pane is disconnected.')).toBeInTheDocument();
@@ -177,7 +200,9 @@ describe('what the surface says before it can offer a terminal', () => {
   });
 
   it('shows a reason this page has no sentence for as the server stated it', async () => {
-    const w = world({ 'codex:alpha': { status: 200, body: { state: 'refused', reason: 'brand-new-reason' } } });
+    const w = world({
+      'codex:alpha': { status: 200, body: { state: 'refused', reason: 'brand-new-reason' } },
+    });
     const view = mount(w);
     await settle();
     expect(view.getByText('The server refused terminal access.')).toBeInTheDocument();
@@ -188,7 +213,9 @@ describe('what the surface says before it can offer a terminal', () => {
     const w = world({});
     const first = mount(w, { project: 'alpha/app' });
     await settle();
-    const details = first.getByText('How to register a terminal').closest('details') as HTMLDetailsElement;
+    const details = first
+      .getByText('How to register a terminal')
+      .closest('details') as HTMLDetailsElement;
     act(() => {
       details.open = true;
     });
@@ -196,13 +223,17 @@ describe('what the surface says before it can offer a terminal', () => {
     fireEvent.click(first.getByRole('button', { name: 'toggle view' }));
     expect(first.getByText('another view')).toBeInTheDocument();
     fireEvent.click(first.getByRole('button', { name: 'toggle view' }));
-    const back = first.getByText('How to register a terminal').closest('details') as HTMLDetailsElement;
+    const back = first
+      .getByText('How to register a terminal')
+      .closest('details') as HTMLDetailsElement;
     expect(back.open).toBe(true);
     first.unmount();
     // Another project's console, same session identity: its own state, closed.
     const other = mount(w, { project: 'beta/api' });
     await settle();
-    expect((other.getByText('How to register a terminal').closest('details') as HTMLDetailsElement).open).toBe(false);
+    expect(
+      (other.getByText('How to register a terminal').closest('details') as HTMLDetailsElement).open,
+    ).toBe(false);
   });
 });
 
@@ -223,7 +254,9 @@ describe('opening the terminal', () => {
     await settle();
     fireEvent.click(view.getByRole('button', { name: 'Open terminal' }));
     await settle();
-    expect(view.getByLabelText('Read-only terminal output', { selector: 'aside' })).toBeInTheDocument();
+    expect(
+      view.getByLabelText('Read-only terminal output', { selector: 'aside' }),
+    ).toBeInTheDocument();
     expect(view.getByText('smoke:0.0')).toBeInTheDocument();
     expect(view.getByText('read-only')).toBeInTheDocument();
     expect(w.loads).toHaveLength(1);
@@ -231,12 +264,17 @@ describe('opening the terminal', () => {
     await settle();
     expect(instances).toHaveLength(1);
     expect(w.sockets).toHaveLength(1);
-    expect(document.querySelector('#pc-terminal-viewport #pc-terminal-screen .xterm')).not.toBeNull();
+    expect(
+      document.querySelector('#pc-terminal-viewport #pc-terminal-screen .xterm'),
+    ).not.toBeNull();
   });
 
   it('says what it was not told, and never invents a coordinate', async () => {
     const w = world({
-      'codex:alpha': { status: 200, body: { state: 'registered', origin: { window_index: 0 }, origin_id_hint: 'abcd1234' } },
+      'codex:alpha': {
+        status: 200,
+        body: { state: 'registered', origin: { window_index: 0 }, origin_id_hint: 'abcd1234' },
+      },
     });
     const view = mount(w);
     await settle();
@@ -283,7 +321,12 @@ describe('opening the terminal', () => {
     w.loads[0]?.();
     await settle();
     const screen = document.getElementById('pc-terminal-screen');
-    w.sockets[0]?.deliver({ state: 'streamed', sequence: 1, origin_id_hint: 'abcd1234', chunks: [{ sequence: 1, data: 'kept', cols: 80, rows: 24 }] });
+    w.sockets[0]?.deliver({
+      state: 'streamed',
+      sequence: 1,
+      origin_id_hint: 'abcd1234',
+      chunks: [{ sequence: 1, data: 'kept', cols: 80, rows: 24 }],
+    });
     fireEvent.click(view.getByRole('button', { name: 'toggle view' }));
     expect(document.getElementById('pc-terminal-viewport')).toBeNull();
     expect(screen?.isConnected).toBe(false);

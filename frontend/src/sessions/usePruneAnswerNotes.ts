@@ -10,7 +10,8 @@ export function usePruneAnswerNotes(payload: Row): void {
   const { runtime } = useShell();
   useEffect(() => {
     const all = Array.isArray(payload['asks']) ? (payload['asks'] as unknown[]) : [];
-    answerNotesFor(runtime).prune(new Set(all.map((ask) => String((ask as Row | null)?.['id'] ?? ''))));
+    answerNotesFor(runtime).prune(
+      new Set(all.map((ask) => String((ask as Row | null)?.['id'] ?? ''))),
+    );
   }, [runtime, payload]);
 }
-

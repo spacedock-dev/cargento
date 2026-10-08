@@ -21,7 +21,8 @@ import { revisionSuperseded } from './rows';
    when a new payload arrives, because it is measured from the payload's own `generated`. */
 
 export const ANSWER_FAILURE = 'no confirmation came back — it may already have been answered';
-export const LONG_TURN_NOTE = 'This request is running long (or estimated to). Double-check what the agent is doing matches your expectations.';
+export const LONG_TURN_NOTE =
+  'This request is running long (or estimated to). Double-check what the agent is doing matches your expectations.';
 
 /* The exact requests that belong to one session, in payload order, only while the board says it
    publishes requests. A request whose owner is not exactly this session is none of its business. */
@@ -48,8 +49,12 @@ const DETAIL_STATES = {
   idle: { label: 'idle', token: 'idle' },
 } as const;
 
-export function detailState(state: unknown): { readonly label: string; readonly token: string } | null {
-  return typeof state === 'string' && Object.hasOwn(DETAIL_STATES, state) ? DETAIL_STATES[state as keyof typeof DETAIL_STATES] : null;
+export function detailState(
+  state: unknown,
+): { readonly label: string; readonly token: string } | null {
+  return typeof state === 'string' && Object.hasOwn(DETAIL_STATES, state)
+    ? DETAIL_STATES[state as keyof typeof DETAIL_STATES]
+    : null;
 }
 
 /* The measured line under the title. An observed end supersedes the present-tense activity and duration
@@ -57,7 +62,12 @@ export function detailState(state: unknown): { readonly label: string; readonly 
    unconditional: every clause above is a reading, and these say what the readings cannot cover, so they
    qualify the whole line rather than any one of them. `entries` is the activity list's own count, and
    nothing where the record was not read. */
-export function sessionMeta(session: Row, labels: ReadonlyMap<string, string>, generated: number | null, entries: number | null): string {
+export function sessionMeta(
+  session: Row,
+  labels: ReadonlyMap<string, string>,
+  generated: number | null,
+  entries: number | null,
+): string {
   const parts: string[] = [];
   const harness = registryLabel(labels, session);
   if (harness) parts.push(harness);
@@ -73,7 +83,8 @@ export function sessionMeta(session: Row, labels: ReadonlyMap<string, string>, g
       if (session['wait_unconfirmed']) parts.push('unconfirmed: no positive observation in 5m');
     } else if (state === 'working') {
       const turn = session['turn'];
-      const elapsed = isRecord(turn) && typeof turn['elapsed_h'] === 'string' ? turn['elapsed_h'].trim() : '';
+      const elapsed =
+        isRecord(turn) && typeof turn['elapsed_h'] === 'string' ? turn['elapsed_h'].trim() : '';
       if (elapsed) parts.push(`turn started ${elapsed} ago`);
     } else if (state === 'idle') {
       const started = durationSince(generated, session['started_at']);
@@ -109,17 +120,61 @@ export interface Facts {
    state not measured"), so the summary says it once. */
 export function sessionFacts(observed: ObservedSession, asks: readonly Row[]): Facts {
   const rows: Fact[] = [
-    { key: 'next', label: 'NEXT STEP', text: observed.nextText, known: observed.nextKnown, note: '', commandFact: observed.nextKnown && asks.length === 0 },
-    { key: 'turn', label: 'TURN', text: observed.turnText, known: observed.turnKnown, note: '', commandFact: false },
-    { key: 'block', label: 'BLOCKED', text: observed.blockText, known: observed.blockKnown, note: observed.blockNote, commandFact: false },
-    { key: 'outcome', label: 'OUTCOME', text: observed.outcomeText, known: observed.outcomeKnown, note: '', commandFact: false },
-    { key: 'git', label: 'GIT STATE', text: observed.gitText, known: observed.gitKnown, note: '', commandFact: false },
-    { key: 'project', label: 'PROJECT', text: observed.project, known: true, note: '', commandFact: false },
+    {
+      key: 'next',
+      label: 'NEXT STEP',
+      text: observed.nextText,
+      known: observed.nextKnown,
+      note: '',
+      commandFact: observed.nextKnown && asks.length === 0,
+    },
+    {
+      key: 'turn',
+      label: 'TURN',
+      text: observed.turnText,
+      known: observed.turnKnown,
+      note: '',
+      commandFact: false,
+    },
+    {
+      key: 'block',
+      label: 'BLOCKED',
+      text: observed.blockText,
+      known: observed.blockKnown,
+      note: observed.blockNote,
+      commandFact: false,
+    },
+    {
+      key: 'outcome',
+      label: 'OUTCOME',
+      text: observed.outcomeText,
+      known: observed.outcomeKnown,
+      note: '',
+      commandFact: false,
+    },
+    {
+      key: 'git',
+      label: 'GIT STATE',
+      text: observed.gitText,
+      known: observed.gitKnown,
+      note: '',
+      commandFact: false,
+    },
+    {
+      key: 'project',
+      label: 'PROJECT',
+      text: observed.project,
+      known: true,
+      note: '',
+      commandFact: false,
+    },
   ];
   return {
     shown: rows.filter((row) => row.key === 'next' || row.key === 'block'),
     behind: rows.filter((row) => row.key !== 'next' && row.key !== 'block'),
-    summary: observed.outcomeKnown ? `Session facts: ${observed.outcomeText}` : `Session facts: ${observed.outcomeText} · ${observed.gitText}`,
+    summary: observed.outcomeKnown
+      ? `Session facts: ${observed.outcomeText}`
+      : `Session facts: ${observed.outcomeText} · ${observed.gitText}`,
   };
 }
 
@@ -146,11 +201,14 @@ export function loopNote(loop: unknown): string {
   const rawTool = typeof loop['tool'] === 'string' ? loop['tool'].trim() : '';
   const tool = rawTool ? ` (most recently ${humanTool(rawTool)})` : '';
   const failures = nextNumber(loop['failures']);
-  const total = failures !== null && Number.isInteger(failures) && failures > errors ? failures : errors;
+  const total =
+    failures !== null && Number.isInteger(failures) && failures > errors ? failures : errors;
   const calls = total === 1 ? 'tool call' : 'tool calls';
   const advice = 'Check the agent is working the problem rather than repeating the failure.';
-  if (loop['barren'] === true) return `${String(total)} ${calls} failed this turn and none succeeded${tool}. ${advice}`;
-  if (total > errors) return `${String(total)} ${calls} failed this turn, ${String(errors)} of them consecutive${tool}. ${advice}`;
+  if (loop['barren'] === true)
+    return `${String(total)} ${calls} failed this turn and none succeeded${tool}. ${advice}`;
+  if (total > errors)
+    return `${String(total)} ${calls} failed this turn, ${String(errors)} of them consecutive${tool}. ${advice}`;
   return `${String(errors)} ${calls} in a row came back as errors${tool}. ${advice}`;
 }
 
@@ -165,7 +223,11 @@ export function sessionHealth(session: Row): Health | null {
   const long = isRecord(turn) && turn['long'] === true;
   const note = loopNote(session['loop']);
   if (!long && !note) return null;
-  return { kind: long ? 'long-turn' : 'failed-tool-loop', label: long ? 'LONG TURN' : 'FAILED TOOL LOOP', why: note || LONG_TURN_NOTE };
+  return {
+    kind: long ? 'long-turn' : 'failed-tool-loop',
+    label: long ? 'LONG TURN' : 'FAILED TOOL LOOP',
+    why: note || LONG_TURN_NOTE,
+  };
 }
 
 export type TaskGlyph = 'completed' | 'in progress' | 'pending';
@@ -202,7 +264,12 @@ export function sessionTasks(tasks: readonly unknown[]): Tasks | null {
         id: published(field(task, 'id')),
         subject: published(field(task, 'subject')),
         pending: status === 'pending',
-        glyph: status === 'completed' ? 'completed' : status === 'in_progress' ? 'in progress' : 'pending',
+        glyph:
+          status === 'completed'
+            ? 'completed'
+            : status === 'in_progress'
+              ? 'in progress'
+              : 'pending',
       };
     }),
   };
@@ -233,7 +300,11 @@ export interface Subagents {
    third population and gets its own clause rather than being folded into either count. The heading has to
    survive a finished board still inside the display window, every element inactive: hiding the list there
    would be the vanishing act, so the heading tells the truth and the rows stay. */
-export function sessionSubagents(subagents: readonly unknown[], omitted: number, generated: number | null): Subagents | null {
+export function sessionSubagents(
+  subagents: readonly unknown[],
+  omitted: number,
+  generated: number | null,
+): Subagents | null {
   if (!subagents.length) return null;
   const parentOf = (subagent: unknown): string => {
     const parent = field(subagent, 'parent');
@@ -241,10 +312,18 @@ export function sessionSubagents(subagents: readonly unknown[], omitted: number,
   };
   const direct = subagents.filter((subagent) => !parentOf(subagent));
   const running = direct.filter(subagentIsLive).length;
-  const beneath = subagents.filter((subagent) => parentOf(subagent) && subagentIsLive(subagent)).length;
+  const beneath = subagents.filter(
+    (subagent) => parentOf(subagent) && subagentIsLive(subagent),
+  ).length;
   const label =
-    (running === 0 ? `${String(direct.length)} SUBAGENT${direct.length === 1 ? '' : 'S'} · NONE RUNNING` : running === 1 ? '1 RUNNING SUBAGENT' : `${String(running)} RUNNING SUBAGENTS`) +
-    (beneath === 0 ? '' : ` · ${String(beneath)} WORKER${beneath === 1 ? '' : 'S'} RUNNING BENEATH`);
+    (running === 0
+      ? `${String(direct.length)} SUBAGENT${direct.length === 1 ? '' : 'S'} · NONE RUNNING`
+      : running === 1
+        ? '1 RUNNING SUBAGENT'
+        : `${String(running)} RUNNING SUBAGENTS`) +
+    (beneath === 0
+      ? ''
+      : ` · ${String(beneath)} WORKER${beneath === 1 ? '' : 'S'} RUNNING BENEATH`);
   return {
     label,
     omitted: omitted || 0,
@@ -279,7 +358,9 @@ export function sessionFooter(session: Row): Footer | null {
     source = source === 'turn' ? 'session' : 'turn';
     value = source === 'turn' ? turnTotal : sessionTotal;
   }
-  return value === null ? null : { source, text: `${compactTokens(value)} output tokens this ${source}` };
+  return value === null
+    ? null
+    : { source, text: `${compactTokens(value)} output tokens this ${source}` };
 }
 
 export interface Delivery {
@@ -303,7 +384,10 @@ export function sessionDelivery(session: Row): Delivery | null {
   if (!Number.isFinite(raises) || raises < 1) return null;
   /* The sentence describes the LATEST raise and no other, so the count and the sentence must not read as
      one claim: "3 notifications were raised" above one outcome reads as three of that outcome. */
-  const count = raises === 1 ? 'One notification was raised about this session' : `${String(raises)} notifications were raised about this session. The most recent:`;
+  const count =
+    raises === 1
+      ? 'One notification was raised about this session'
+      : `${String(raises)} notifications were raised about this session. The most recent:`;
   return {
     outcome: published(session['delivery_outcome']),
     mixed: session['delivery_mixed'] === true,
@@ -355,16 +439,26 @@ export function departureRow(row: Row, current: number | null): DepartureRow {
   const text = (key: string): string => published(row[key]);
   const revision = Number(row['revision']);
   const read = Number.isFinite(revision) && revision > 0 ? revision : null;
-  const baseline = read !== null ? `read against revision ${String(read)}` : 'the revision it read is not on record';
+  const baseline =
+    read !== null
+      ? `read against revision ${String(read)}`
+      : 'the revision it read is not on record';
   const cutoff = Number(row['cutoff']);
-  const window = Number.isFinite(cutoff) && cutoff > 0 ? ` · evidence to ${clock(cutoff)}` : ' · the evidence window is not on record';
+  const window =
+    Number.isFinite(cutoff) && cutoff > 0
+      ? ` · evidence to ${clock(cutoff)}`
+      : ' · the evidence window is not on record';
   const at = Number(row['at']);
   return {
     constraint: text('constraint'),
     at: Number.isFinite(at) && at > 0 ? clock(at) : '',
     clause: text('clause'),
     reading: text('reading'),
-    base: baseline + window + (text('cutoff_text') ? ` · ${text('cutoff_text')}` : '') + (text('evidence') ? ` · ${text('evidence')}` : ''),
+    base:
+      baseline +
+      window +
+      (text('cutoff_text') ? ` · ${text('cutoff_text')}` : '') +
+      (text('evidence') ? ` · ${text('evidence')}` : ''),
     stale: revisionSuperseded('This raise', read, current),
     followUp: text('follow_up'),
   };
@@ -397,7 +491,10 @@ export function unaskedDepartures(session: Row): Departures | null {
   if (!raised.length && !why) return null;
   const current = nextNumber(session['annotation_revision']);
   return {
-    heading: raised.length === 1 ? 'One departure was raised' : `${String(raised.length)} departures were raised`,
+    heading:
+      raised.length === 1
+        ? 'One departure was raised'
+        : `${String(raised.length)} departures were raised`,
     rows: raised.map((row) => departureRow(isRecord(row) ? row : {}, current)),
     why,
     absence: deliveryAbsence(session, raised.length > 0),
@@ -407,7 +504,8 @@ export function unaskedDepartures(session: Row): Departures | null {
 export const FOCUS_OFF_LINE = 'Terminal raise: off for this run.';
 const NO_TERMINAL_LINE =
   'No terminal was reported for this session, so it cannot be raised. That is the ordinary answer outside tmux, for a session older than this server run, and on Linux and Windows.';
-const RAISE_LIMIT = 'A raise switches what the terminal displays; its window may still be behind others.';
+const RAISE_LIMIT =
+  'A raise switches what the terminal displays; its window may still be behind others.';
 
 export interface ReentryInputs {
   readonly label: string;
@@ -423,13 +521,20 @@ export interface ReentryInputs {
    with no re-entry command never will have one, while one with a command and no usable id has none THIS
    RUN. The raise's own limit is the standing one, said here because one session is the whole subject and
    silence would read as "no limit". */
-export function reentryLimit(input: ReentryInputs): { readonly resume: string; readonly raise: string } {
+export function reentryLimit(input: ReentryInputs): {
+  readonly resume: string;
+  readonly raise: string;
+} {
   const resume = input.hasCommand
     ? ''
     : !input.knownHarness
       ? `${input.label} publishes no re-entry command, so there is none to copy.`
       : 'This session published no usable id this run, so there is no re-entry command to copy.';
-  const raise = input.canRaise ? RAISE_LIMIT : !input.focusCapability ? FOCUS_OFF_LINE : NO_TERMINAL_LINE;
+  const raise = input.canRaise
+    ? RAISE_LIMIT
+    : !input.focusCapability
+      ? FOCUS_OFF_LINE
+      : NO_TERMINAL_LINE;
   return { resume, raise };
 }
 
@@ -457,7 +562,10 @@ export function commandReports(payload: Row, session: Row): CommandReports {
       // A timestamp that is no date prints nothing: the page this ports throws on one, which would blank
       // the whole session for a malformed report.
       const when = date && !Number.isNaN(date.getTime()) ? ` · ${date.toISOString()}` : '';
-      return { text: `Command shape reported: ${String(report['label'])}`, source: `${String(report['tool_name'])}${when}` };
+      return {
+        text: `Command shape reported: ${String(report['label'])}`,
+        source: `${String(report['tool_name'])}${when}`,
+      };
     }),
   };
 }

@@ -17,15 +17,24 @@ function fixture() {
   const fetch: FetchLike = (url, init) => {
     requests.push({ method: init?.method ?? 'GET', url });
     return Promise.resolve(
-      new Response(JSON.stringify({ generated: requests.length, sessions: [{ harness: 'claude', sid: 's' }] }), {
-        status: 200,
-        headers: { 'X-Cargento-Revision': `1.${String(requests.length)}` },
-      }),
+      new Response(
+        JSON.stringify({ generated: requests.length, sessions: [{ harness: 'claude', sid: 's' }] }),
+        {
+          status: 200,
+          headers: { 'X-Cargento-Revision': `1.${String(requests.length)}` },
+        },
+      ),
     );
   };
   const clock = createFakeClock();
   const env = createFakeEnvironment({ clock });
-  const runtime = createBoardRuntime({ fetch, storage: createFakeStorageHub().forTab(), env, search: '', doc: null });
+  const runtime = createBoardRuntime({
+    fetch,
+    storage: createFakeStorageHub().forTab(),
+    env,
+    search: '',
+    doc: null,
+  });
   return { requests, clock, env, runtime };
 }
 

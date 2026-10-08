@@ -56,9 +56,13 @@ export function mountSessions(options: SessionsShellOptions = {}) {
       const script = state.answer;
       switch (script.kind) {
         case 'confirm':
-          return Promise.resolve(new Response(JSON.stringify({ ok: true, answered: true }), { status: 200 }));
+          return Promise.resolve(
+            new Response(JSON.stringify({ ok: true, answered: true }), { status: 200 }),
+          );
         case 'refuse':
-          return Promise.resolve(new Response(JSON.stringify({ ok: true, answered: false }), { status: 200 }));
+          return Promise.resolve(
+            new Response(JSON.stringify({ ok: true, answered: false }), { status: 200 }),
+          );
         case 'status':
           return Promise.resolve(new Response('no', { status: script.status }));
         case 'not-json':
@@ -71,10 +75,14 @@ export function mountSessions(options: SessionsShellOptions = {}) {
           });
       }
     }
-    if (state.data === undefined || state.data === null) return Promise.reject(new Error('offline'));
+    if (state.data === undefined || state.data === null)
+      return Promise.reject(new Error('offline'));
     const respond = () => {
       state.revision += 1;
-      return new Response(JSON.stringify(state.data), { status: 200, headers: { 'X-Cargento-Revision': `7.${String(state.revision)}` } });
+      return new Response(JSON.stringify(state.data), {
+        status: 200,
+        headers: { 'X-Cargento-Revision': `7.${String(state.revision)}` },
+      });
     };
     if (state.holdData && !state.heldData) {
       return new Promise<Response>((resolve) => {
@@ -82,7 +90,12 @@ export function mountSessions(options: SessionsShellOptions = {}) {
       });
     }
     state.revision += 1;
-    return Promise.resolve(new Response(JSON.stringify(state.data), { status: 200, headers: { 'X-Cargento-Revision': `7.${String(state.revision)}` } }));
+    return Promise.resolve(
+      new Response(JSON.stringify(state.data), {
+        status: 200,
+        headers: { 'X-Cargento-Revision': `7.${String(state.revision)}` },
+      }),
+    );
   };
   const written: string[] = [];
   const shell = createShell({
@@ -93,7 +106,10 @@ export function mountSessions(options: SessionsShellOptions = {}) {
     events: { addEventListener: () => undefined, removeEventListener: () => undefined },
     search: '',
     doc: options.focusCapability
-      ? { querySelector: () => ({ getAttribute: () => options.focusCapability ?? null }) as unknown as Element }
+      ? {
+          querySelector: () =>
+            ({ getAttribute: () => options.focusCapability ?? null }) as unknown as Element,
+        }
       : null,
     host: { reload: () => undefined, streamSupported: true },
     reducedMotion: () => false,
@@ -104,11 +120,14 @@ export function mountSessions(options: SessionsShellOptions = {}) {
       },
     }),
   });
-  const tree = options.strict === false ? <App shell={shell} /> : (
-    <StrictMode>
+  const tree =
+    options.strict === false ? (
       <App shell={shell} />
-    </StrictMode>
-  );
+    ) : (
+      <StrictMode>
+        <App shell={shell} />
+      </StrictMode>
+    );
   const view = render(tree);
   return {
     ...view,
@@ -118,7 +137,10 @@ export function mountSessions(options: SessionsShellOptions = {}) {
     state,
     written,
     history,
-    gets: () => state.requests.filter((request) => request.method === 'GET' && request.url.startsWith('/api/data')).length,
+    gets: () =>
+      state.requests.filter(
+        (request) => request.method === 'GET' && request.url.startsWith('/api/data'),
+      ).length,
     posts: () => state.requests.filter((request) => request.method !== 'GET'),
     settle: () => act(async () => void (await flush())),
     /** Lets the held board read answer, as a slow refresh would. */

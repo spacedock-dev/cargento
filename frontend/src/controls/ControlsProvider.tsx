@@ -6,7 +6,13 @@ import { installPopoverDismissal } from './popoverDismissal';
    root. The effects arm the cue timers and the document-level popover handlers;
    each is idempotent and released on cleanup, so StrictMode's effect, cleanup,
    effect leaves exactly one of each. */
-export function ControlsProvider({ controls, children }: { readonly controls: Controls; readonly children: ReactNode }) {
+export function ControlsProvider({
+  controls,
+  children,
+}: {
+  readonly controls: Controls;
+  readonly children: ReactNode;
+}) {
   useEffect(() => controls.activate(), [controls]);
   useEffect(() => installPopoverDismissal(document), []);
   return <ControlsContext value={controls}>{children}</ControlsContext>;

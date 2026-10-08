@@ -52,7 +52,9 @@ describe('leader lease (cargento.next.leader)', () => {
     const live = { id: 'other', ts: now - 1000 };
     const stale = { id: 'other', ts: now - 7000 };
     expect(electionDecision({ lease: null, tabId: 'me', isLeader: false, now })).toBe('lead');
-    expect(electionDecision({ lease: { id: 'me', ts: now }, tabId: 'me', isLeader: true, now })).toBe('lead');
+    expect(
+      electionDecision({ lease: { id: 'me', ts: now }, tabId: 'me', isLeader: true, now }),
+    ).toBe('lead');
     expect(electionDecision({ lease: live, tabId: 'me', isLeader: false, now })).toBe('yield');
     expect(electionDecision({ lease: live, tabId: 'me', isLeader: true, now })).toBe('yield');
     expect(electionDecision({ lease: stale, tabId: 'me', isLeader: false, now })).toBe('lead');
@@ -70,7 +72,9 @@ describe('leader lease (cargento.next.leader)', () => {
     expect(lease.read()).toBeNull();
     expect(lease.write('me', 1)).toBe(false);
     expect(lease.release()).toBe(false);
-    expect(electionDecision({ lease: lease.read(), tabId: 'me', isLeader: false, now: 1 })).toBe('lead');
+    expect(electionDecision({ lease: lease.read(), tabId: 'me', isLeader: false, now: 1 })).toBe(
+      'lead',
+    );
   });
 
   it('builds a tab id from base-36 randomness and the clock', () => {
@@ -118,7 +122,9 @@ describe('revision (cargento.next.revision)', () => {
   });
 
   it('extracts a revision from its storage event and ignores every other key', () => {
-    expect(revisionFromStorageEvent({ key: 'cargento.next.revision', newValue: '1.2' })).toBe('1.2');
+    expect(revisionFromStorageEvent({ key: 'cargento.next.revision', newValue: '1.2' })).toBe(
+      '1.2',
+    );
     expect(revisionFromStorageEvent({ key: 'cargento.next.revision', newValue: null })).toBe('');
     expect(revisionFromStorageEvent({ key: 'cargento.next.leader', newValue: '1.2' })).toBeNull();
     expect(revisionFromStorageEvent(null)).toBeNull();

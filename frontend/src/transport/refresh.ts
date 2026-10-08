@@ -44,7 +44,10 @@ interface Wanted {
    after a fetch that STARTED AFTER THE CALL has painted: a superseded or
    dropped run hands its waiters on. A failure is counted only by the run that
    is still current, so an older request's failure never marks the board. */
-export function createRefreshController(deps: { readonly sink: RefreshSink; readonly revisions: RevisionMemo }) {
+export function createRefreshController(deps: {
+  readonly sink: RefreshSink;
+  readonly revisions: RevisionMemo;
+}) {
   let latestRequest = 0;
   let active: Run | null = null;
   let wanted: Wanted | null = null;
@@ -71,7 +74,12 @@ export function createRefreshController(deps: { readonly sink: RefreshSink; read
         /* A wake queued for a revision this answer already carries is answered
            by it: the announcement and this body are one collection. */
         const queued = wanted;
-        if (active === run && queued?.revision && outcome.revision && !revisionNewer(queued.revision, outcome.revision)) {
+        if (
+          active === run &&
+          queued?.revision &&
+          outcome.revision &&
+          !revisionNewer(queued.revision, outcome.revision)
+        ) {
           run.waiters.push(...queued.waiters);
           wanted = null;
         }
@@ -117,7 +125,11 @@ export function createRefreshController(deps: { readonly sink: RefreshSink; read
       const queued = wanted;
       if (queued || run.waiters.length) {
         wanted = null;
-        start(queued ? queued.manual : false, [...run.waiters.splice(0), ...(queued ? queued.waiters : [])], 'wake');
+        start(
+          queued ? queued.manual : false,
+          [...run.waiters.splice(0), ...(queued ? queued.waiters : [])],
+          'wake',
+        );
       }
     });
   }

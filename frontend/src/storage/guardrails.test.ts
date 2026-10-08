@@ -82,7 +82,9 @@ describe('guardrail family (cargento.next.guardrails.)', () => {
       { enabled: true, text: 'a' },
       { enabled: false, text: 'b' },
     ]);
-    expect(backend.data.get(guardrailKey('p'))).toBe('[{"enabled":true,"text":"a"},{"enabled":false,"text":"b"}]');
+    expect(backend.data.get(guardrailKey('p'))).toBe(
+      '[{"enabled":true,"text":"a"},{"enabled":false,"text":"b"}]',
+    );
     const before = backend.writes.length;
     expect(guardrails.toggle('p', 5).rules).toHaveLength(2);
     expect(guardrails.toggle('p', -1).rules).toHaveLength(2);

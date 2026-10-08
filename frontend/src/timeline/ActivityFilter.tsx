@@ -13,7 +13,13 @@ const CHOICES: readonly { readonly mode: GraphMode; readonly label: string }[] =
    The three-way activity filter. A press changes the view, not the session, so it is a pressed-state
    toggle and not a navigation. The buttons are the same nodes on every redraw, which is what keeps a
    keyboard reader's place on the one they pressed. */
-export function ActivityFilter({ mode, onChoose }: { readonly mode: GraphMode; readonly onChoose: (mode: GraphMode) => void }) {
+export function ActivityFilter({
+  mode,
+  onChoose,
+}: {
+  readonly mode: GraphMode;
+  readonly onChoose: (mode: GraphMode) => void;
+}) {
   return (
     <div className="pc-graph-filter" role="group" aria-label="Work activity filter">
       {CHOICES.map((choice) => (

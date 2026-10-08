@@ -42,7 +42,9 @@ export function compare(left: string, right: string): number {
 
 /* The pair every fact travels as: the sentence to show and whether it is a measurement. An unmeasured
    fact carries the reason in its text, so a reader never meets a blank that could be a zero. */
-export type Pair<N extends string> = { readonly [K in `${N}Text`]: string } & { readonly [K in `${N}Known`]: boolean };
+export type Pair<N extends string> = { readonly [K in `${N}Text`]: string } & {
+  readonly [K in `${N}Known`]: boolean;
+};
 
 export function pair<N extends string>(name: N, value: unknown, reason: string): Pair<N> {
   const text = trimmed(value);
@@ -77,7 +79,10 @@ export function exactAskOwner(payload: Row, ask: Row | null | undefined): Row | 
   const sid = identityPart(ask?.['session_id']);
   if (!sid) return null;
   const harness = identityPart(ask?.['harness']);
-  const matches = payloadSessionRows(payload).filter((row) => identityPart(row['sid']) === sid && (!harness || identityPart(row['harness']) === harness));
+  const matches = payloadSessionRows(payload).filter(
+    (row) =>
+      identityPart(row['sid']) === sid && (!harness || identityPart(row['harness']) === harness),
+  );
   return matches.length === 1 ? (matches[0] ?? null) : null;
 }
 
@@ -105,8 +110,13 @@ export function clock(stamp: number): string {
    presented as their words. The server places each field on the message it quotes (the quoted_as
    list), so this reads its answer. */
 export function promptCopied(session: Row | null | undefined, field: string): boolean {
-  const entries = Array.isArray(session?.['copied_prompts']) ? (session['copied_prompts'] as unknown[]) : [];
-  return entries.some((entry) => isRecord(entry) && Array.isArray(entry['quoted_as']) && entry['quoted_as'].includes(field));
+  const entries = Array.isArray(session?.['copied_prompts'])
+    ? (session['copied_prompts'] as unknown[])
+    : [];
+  return entries.some(
+    (entry) =>
+      isRecord(entry) && Array.isArray(entry['quoted_as']) && entry['quoted_as'].includes(field),
+  );
 }
 
 /* The readings a row's collector could not take from a store it opened, as names. `source_gaps` is an
@@ -114,7 +124,9 @@ export function promptCopied(session: Row | null | undefined, field: string): bo
 export function gapNames(session: Row | null | undefined): string[] {
   const gaps = session?.['source_gaps'];
   if (!Array.isArray(gaps)) return [];
-  return gaps.filter((name): name is string => typeof name === 'string' && Boolean(name.trim())).map((name) => name.trim());
+  return gaps
+    .filter((name): name is string => typeof name === 'string' && Boolean(name.trim()))
+    .map((name) => name.trim());
 }
 
 /* Whether no event can ever reach this row, so an absent stop says nothing about whether the turn
@@ -129,7 +141,8 @@ export function isScanOnly(session: Row | null | undefined): boolean {
 
 /* The working lane's order: a long turn first, then by sid. */
 export function workingOrder(rows: readonly Row[]): Row[] {
-  const bySid = (left: Row, right: Row) => compare(identityPart(left['sid']), identityPart(right['sid']));
+  const bySid = (left: Row, right: Row) =>
+    compare(identityPart(left['sid']), identityPart(right['sid']));
   const rank = (row: Row) => (isRecord(row['turn']) && row['turn']['long'] ? 1 : 2);
   return [...rows].sort((left, right) => {
     const byRank = rank(left) - rank(right);

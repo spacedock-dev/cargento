@@ -1,5 +1,10 @@
 import { describe, expect, it, vi } from 'vitest';
-import { createPendingRegistry, PENDING_BACKSTOP_MS, PENDING_BOUND_MS, PENDING_SAY_MS } from './pending';
+import {
+  createPendingRegistry,
+  PENDING_BACKSTOP_MS,
+  PENDING_BOUND_MS,
+  PENDING_SAY_MS,
+} from './pending';
 import { createFakeClock } from './testing';
 
 function setup() {

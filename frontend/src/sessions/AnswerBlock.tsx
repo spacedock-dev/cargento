@@ -14,19 +14,30 @@ import { askResponsibility } from './rows';
 
 const key = (id: string, index: number): string => `answer:${id}:${String(index)}`;
 
-function AnswerButton({ id, index, option }: { readonly id: string; readonly index: number; readonly option: unknown }) {
+function AnswerButton({
+  id,
+  index,
+  option,
+}: {
+  readonly id: string;
+  readonly index: number;
+  readonly option: unknown;
+}) {
   const shell = useShell();
   const { runtime, controls } = shell;
   const pending = useDisplayed((snapshot) => snapshot.pending);
   const control = key(id, index);
-  const ref = useFocusKey<HTMLButtonElement>(controls.focusLane, control, { fallback: 'session-title' });
+  const ref = useFocusKey<HTMLButtonElement>(controls.focusLane, control, {
+    fallback: 'session-title',
+  });
   const busy = pending.includes(control);
   const label = String(option == null ? '' : option);
 
   const press = async () => {
     if (!id || !Number.isInteger(index) || index < 0) return;
     // One answer to one question at a time: another option waits for this one.
-    if (runtime.store.getSnapshot().pending.some((held) => held.startsWith(`answer:${id}:`))) return;
+    if (runtime.store.getSnapshot().pending.some((held) => held.startsWith(`answer:${id}:`)))
+      return;
     const token = runtime.pending.start(control, 'Sending…');
     if (!token) return;
     const notes = answerNotesFor(runtime);
@@ -107,8 +118,16 @@ export function AnswerBlock({
           const options = Array.isArray(ask['options']) ? (ask['options'] as unknown[]) : [];
           const failure = held.get(id);
           return (
-            <article key={`${id}#${String(position)}`} className="next-session-ask" data-next-session-ask={id}>
-              <p className="next-session-ask-question">{asks.length === 1 ? observed.askText : String(ask['question'] == null ? '' : ask['question'])}</p>
+            <article
+              key={`${id}#${String(position)}`}
+              className="next-session-ask"
+              data-next-session-ask={id}
+            >
+              <p className="next-session-ask-question">
+                {asks.length === 1
+                  ? observed.askText
+                  : String(ask['question'] == null ? '' : ask['question'])}
+              </p>
               {options.length ? (
                 <div className="next-session-answer-options">
                   {options.map((option, index) => (

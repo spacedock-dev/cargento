@@ -48,7 +48,10 @@ export interface Clock {
 export interface EventSourceLike {
   readonly readyState: number;
   close(): void;
-  addEventListener(type: 'error' | 'revision', listener: (event: { readonly data?: unknown }) => void): void;
+  addEventListener(
+    type: 'error' | 'revision',
+    listener: (event: { readonly data?: unknown }) => void,
+  ): void;
 }
 
 export interface Environment {

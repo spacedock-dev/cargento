@@ -7,7 +7,11 @@ import { useControls } from './kit';
    StrictMode runs the pair once more on mount: a capture of the unchanged node
    followed by a restore of the same values, which changes nothing. The element
    ref is merged with the focus lane's, so one node registers in both. */
-export function useFieldMemory<T extends HTMLInputElement | HTMLTextAreaElement>(memoryKey: string | null, focusKey: string | null, fallback?: string) {
+export function useFieldMemory<T extends HTMLInputElement | HTMLTextAreaElement>(
+  memoryKey: string | null,
+  focusKey: string | null,
+  fallback?: string,
+) {
   const { fields, focusLane } = useControls();
   const element = useRef<T | null>(null);
   useLayoutEffect(() => {

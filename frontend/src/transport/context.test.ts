@@ -20,7 +20,12 @@ const flush = async () => {
   for (let turn = 0; turn < 6; turn += 1) await Promise.resolve();
 };
 
-const okContext = (body: ProjectContext): ApiResult<ProjectContext> => ({ kind: 'ok', status: 200, body, revision: '' });
+const okContext = (body: ProjectContext): ApiResult<ProjectContext> => ({
+  kind: 'ok',
+  status: 200,
+  body,
+  revision: '',
+});
 const offer = (enabled = true, disclosure = 'Sends prose to a model.'): ProjectContext => ({
   observer_model: { enabled, disclosure },
 });
@@ -31,15 +36,28 @@ const FOCUSED = { projectKey: '/repo/a', focus: FOCUS };
 
 function setup(consent: Consent = null) {
   const board = createBoardStore({ now: () => 1 });
-  const calls: { query: Parameters<ReturnType<typeof clientStub>['getProjectContext']>[0]; answer: Deferred<ApiResult<ProjectContext>> }[] = [];
+  const calls: {
+    query: Parameters<ReturnType<typeof clientStub>['getProjectContext']>[0];
+    answer: Deferred<ApiResult<ProjectContext>>;
+  }[] = [];
   const clientStub = () => ({
-    getProjectContext(query: { project: string; session?: string; refresh?: boolean; observerModel?: boolean; signal?: AbortSignal }) {
+    getProjectContext(query: {
+      project: string;
+      session?: string;
+      refresh?: boolean;
+      observerModel?: boolean;
+      signal?: AbortSignal;
+    }) {
       const answer = deferred<ApiResult<ProjectContext>>();
       calls.push({ query, answer });
       return answer.promise;
     },
   });
-  const loader = createContextLoader({ client: clientStub(), store: board, storage: { observerConsent: () => consent } });
+  const loader = createContextLoader({
+    client: clientStub(),
+    store: board,
+    storage: { observerConsent: () => consent },
+  });
   return { board, calls, loader };
 }
 
@@ -95,7 +113,11 @@ describe('passive context reads', () => {
     calls[1]?.answer.resolve({ kind: 'http-error', status: 503, body: '<html>' });
     await flush();
     const entry = board.getSnapshot().contexts.get('/repo/a\n');
-    expect(entry).toEqual({ data: { observers: [] }, revision: 11, error: { kind: 'http-error', status: 503 } });
+    expect(entry).toEqual({
+      data: { observers: [] },
+      revision: 11,
+      error: { kind: 'http-error', status: 503 },
+    });
     expect(selectContextState(board.getSnapshot(), '/repo/a\n')).toBe('stale');
     loader.load(PROJECT);
     expect(calls).toHaveLength(2);
@@ -117,7 +139,11 @@ describe('passive context reads', () => {
       seen.push(board.getSnapshot().contexts.get('/repo/a\n')?.error);
       expect(selectContextState(board.getSnapshot(), '/repo/a\n')).toBe('unavailable');
     }
-    expect(seen).toEqual([{ kind: 'http-error', status: 403 }, { kind: 'network-error' }, { kind: 'malformed', status: 200 }]);
+    expect(seen).toEqual([
+      { kind: 'http-error', status: 403 },
+      { kind: 'network-error' },
+      { kind: 'malformed', status: 200 },
+    ]);
   });
 
   it('keeps project and session scopes in separate entries', async () => {
@@ -174,14 +200,27 @@ describe('explicit observer summary', () => {
   it('reads the focused session with refresh and observer_model, and records ready', async () => {
     const s = await withOffer('granted');
     const pending = s.loader.requestObserverSummary(FOCUSED);
-    expect(s.calls[1]?.query).toMatchObject({ project: '/repo/a', session: 'claude:s:1', refresh: true, observerModel: true });
-    expect(selectObserverRequest(s.board.getSnapshot(), '/repo/a\nclaude:s:1')).toEqual({ pending: true, state: null });
-    s.calls[1]?.answer.resolve(okContext({ ...offer(), observers: [{ harness: 'claude', sid: 's:1', goal: 'ship' }] }));
+    expect(s.calls[1]?.query).toMatchObject({
+      project: '/repo/a',
+      session: 'claude:s:1',
+      refresh: true,
+      observerModel: true,
+    });
+    expect(selectObserverRequest(s.board.getSnapshot(), '/repo/a\nclaude:s:1')).toEqual({
+      pending: true,
+      state: null,
+    });
+    s.calls[1]?.answer.resolve(
+      okContext({ ...offer(), observers: [{ harness: 'claude', sid: 's:1', goal: 'ship' }] }),
+    );
     await pending;
     const entry = s.board.getSnapshot().contexts.get('/repo/a\nclaude:s:1');
     expect(entry?.data?.observers?.[0]?.goal).toBe('ship');
     expect(entry?.error).toBeNull();
-    expect(selectObserverRequest(s.board.getSnapshot(), '/repo/a\nclaude:s:1')).toEqual({ pending: false, state: 'ready' });
+    expect(selectObserverRequest(s.board.getSnapshot(), '/repo/a\nclaude:s:1')).toEqual({
+      pending: false,
+      state: 'ready',
+    });
   });
 
   it('records error and keeps the previous context when the request fails', async () => {
@@ -189,7 +228,10 @@ describe('explicit observer summary', () => {
     const pending = s.loader.requestObserverSummary(FOCUSED);
     s.calls[1]?.answer.resolve({ kind: 'http-error', status: 503, body: null });
     await pending;
-    expect(selectObserverRequest(s.board.getSnapshot(), '/repo/a\nclaude:s:1')).toEqual({ pending: false, state: 'error' });
+    expect(selectObserverRequest(s.board.getSnapshot(), '/repo/a\nclaude:s:1')).toEqual({
+      pending: false,
+      state: 'error',
+    });
     expect(s.board.getSnapshot().contexts.get('/repo/a\nclaude:s:1')?.data).toEqual(offer());
   });
 
@@ -218,11 +260,17 @@ describe('explicit observer summary', () => {
     s.loader.load(FOCUSED);
     expect(s.calls).toHaveLength(2);
     const explicit = s.loader.requestObserverSummary(FOCUSED);
-    s.calls[2]?.answer.resolve(okContext({ ...offer(), observers: [{ harness: 'claude', sid: 's:1', goal: 'explicit' }] }));
+    s.calls[2]?.answer.resolve(
+      okContext({ ...offer(), observers: [{ harness: 'claude', sid: 's:1', goal: 'explicit' }] }),
+    );
     await explicit;
-    s.calls[1]?.answer.resolve(okContext({ ...offer(), observers: [{ harness: 'claude', sid: 's:1', goal: 'passive' }] }));
+    s.calls[1]?.answer.resolve(
+      okContext({ ...offer(), observers: [{ harness: 'claude', sid: 's:1', goal: 'passive' }] }),
+    );
     await flush();
-    expect(s.board.getSnapshot().contexts.get('/repo/a\nclaude:s:1')?.data?.observers?.[0]?.goal).toBe('explicit');
+    expect(
+      s.board.getSnapshot().contexts.get('/repo/a\nclaude:s:1')?.data?.observers?.[0]?.goal,
+    ).toBe('explicit');
   });
 
   it('never issues an observer request from a passive read, a repeat load or disposal', async () => {

@@ -4,7 +4,9 @@ import { boundMemo, createLegacyStorage, memoKey } from '.';
 
 describe('cockpit memo family (cargento.cockpit.memo.v2:)', () => {
   it('builds the released key: encoded project, encoded scope, kind', () => {
-    expect(memoKey('proj/é', null, 'outcome')).toBe('cargento.cockpit.memo.v2:proj%2F%C3%A9:project:outcome');
+    expect(memoKey('proj/é', null, 'outcome')).toBe(
+      'cargento.cockpit.memo.v2:proj%2F%C3%A9:project:outcome',
+    );
     expect(memoKey('k', { harness: 'claude', sid: 'a:b' }, 'focus')).toBe(
       'cargento.cockpit.memo.v2:k:claude%3Aa%3Ab:focus',
     );
@@ -27,7 +29,8 @@ describe('cockpit memo family (cargento.cockpit.memo.v2:)', () => {
     expect(memo.write(key, 'y'.repeat(600))).toBe('saved');
     expect(backend.data.get(key)).toBe('y'.repeat(500));
     expect(memo.state(key)).toBe('saved');
-    for (let index = 0; index < 120; index += 1) memo.write(memoKey(`p${index}`, null, 'focus'), 'v');
+    for (let index = 0; index < 120; index += 1)
+      memo.write(memoKey(`p${index}`, null, 'focus'), 'v');
     expect(backend.data.size).toBe(121);
   });
 

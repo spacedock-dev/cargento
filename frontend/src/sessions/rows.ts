@@ -12,7 +12,17 @@ import {
   type ObservedSession,
   type Row,
 } from '../observed';
-import { intentDraft, openedWithControl, PROMPT_CHOSEN, PROMPT_SOURCES, READING_ASSESSMENT_KEYS, READING_CLAIMS, readingNamesConstraint, sessionInstruction, type PromptCandidate } from './intent';
+import {
+  intentDraft,
+  openedWithControl,
+  PROMPT_CHOSEN,
+  PROMPT_SOURCES,
+  READING_ASSESSMENT_KEYS,
+  READING_CLAIMS,
+  readingNamesConstraint,
+  sessionInstruction,
+  type PromptCandidate,
+} from './intent';
 
 /* What the Sessions screen draws, as data: a pure function of one payload and the model read from it, so
    every sentence is testable without a DOM and the screen cannot say something the rows do not. The
@@ -87,9 +97,15 @@ export interface DriftRecord {
 
 export function drift(source: Row | undefined, context: SessionsContext): DriftRecord[] {
   if (!context.annotate || !source) return [];
-  const rows: DriftRecord[] = (Array.isArray(source['departures']) ? (source['departures'] as unknown[]) : [])
+  const rows: DriftRecord[] = (
+    Array.isArray(source['departures']) ? (source['departures'] as unknown[]) : []
+  )
     .filter((row) => typeof row === 'object' && row !== null)
-    .map((row) => ({ at: nextNumber((row as Row)['at']), revision: nextNumber((row as Row)['revision']), subject: 'This raise' as const }));
+    .map((row) => ({
+      at: nextNumber((row as Row)['at']),
+      revision: nextNumber((row as Row)['revision']),
+      subject: 'This raise' as const,
+    }));
   const raw = source['annotation_assessment'];
   if (isRecord(raw) && Object.keys(raw).every((key) => READING_ASSESSMENT_KEYS.includes(key))) {
     const criteria = isRecord(raw['criteria']) ? raw['criteria'] : {};
@@ -97,10 +113,20 @@ export function drift(source: Row | undefined, context: SessionsContext): DriftR
       .filter((key) => readingNamesConstraint(key) && key !== READING_CLAIMS)
       .some((key) => {
         const criterion = criteria[key];
-        return isRecord(criterion) && criterion['result'] === 'departure' && Array.isArray(criterion['cites']) && criterion['cites'].some((cite) => typeof cite === 'string' && cite.trim());
+        return (
+          isRecord(criterion) &&
+          criterion['result'] === 'departure' &&
+          Array.isArray(criterion['cites']) &&
+          criterion['cites'].some((cite) => typeof cite === 'string' && cite.trim())
+        );
       });
     // A contradicted claim is not drift from the intent.
-    if (departed) rows.push({ at: nextNumber(raw['read_at']), revision: nextNumber(raw['revision_read']), subject: 'This reading' });
+    if (departed)
+      rows.push({
+        at: nextNumber(raw['read_at']),
+        revision: nextNumber(raw['revision_read']),
+        subject: 'This reading',
+      });
   }
   return rows;
 }
@@ -109,7 +135,11 @@ export function drift(source: Row | undefined, context: SessionsContext): DriftR
    reason the legacy page owns it once: a second wording would be a second promise. Silence on either
    absence rather than a placeholder: a raise whose revision did not survive says so on its own line and
    is never shown today's number. */
-export function revisionSuperseded(subject: string, read: number | null, current: number | null): string {
+export function revisionSuperseded(
+  subject: string,
+  read: number | null,
+  current: number | null,
+): string {
   if (read === null || current === null || read === current) return '';
   return `${subject} read revision ${String(read)}. Revision ${String(current)} is current, so it does not describe what you are asking for now.`;
 }
@@ -128,7 +158,11 @@ export function driftMark(source: Row | undefined, context: SessionsContext): Dr
   const dated = records.map((row) => row.at).filter((at): at is number => at !== null && at > 0);
   const age = dated.length ? durationSince(context.generated, Math.max(...dated)) : null;
   const current = nextNumber(source['annotation_revision']);
-  const stale = [...new Set(records.map((row) => revisionSuperseded(row.subject, row.revision, current)).filter(Boolean))];
+  const stale = [
+    ...new Set(
+      records.map((row) => revisionSuperseded(row.subject, row.revision, current)).filter(Boolean),
+    ),
+  ];
   return {
     age: age === null ? 'age unknown' : `${age} ago`,
     someUnknown: records.some((row) => row.at === null || row.at <= 0) && dated.length > 0,
@@ -164,8 +198,13 @@ export interface GoalCell {
 /* Admitted by [DEC-22](docs/design-reading-a-session.md#dec-22-your-own-prompt-may-become-your-goal): the
    collector's asked Claude instruction and the classified Codex title, never a workflow or observer
    paraphrase. Displaying it saves nothing. */
-export function goalCell(source: Row | undefined, context: SessionsContext, chosen: PromptCandidate | null = null): GoalCell {
-  if (!context.annotate) return { label: 'GOAL', kind: 'off', text: 'Annotations off', known: false };
+export function goalCell(
+  source: Row | undefined,
+  context: SessionsContext,
+  chosen: PromptCandidate | null = null,
+): GoalCell {
+  if (!context.annotate)
+    return { label: 'GOAL', kind: 'off', text: 'Annotations off', known: false };
   const typed = String(source?.['annotation_goal'] || '').trim();
   const asked = source?.['harness'] === 'claude' ? sessionInstruction(source, 'asked') : null;
   const prompt = asked
@@ -176,7 +215,10 @@ export function goalCell(source: Row | undefined, context: SessionsContext, chos
   /* The words the session page drafts, so the link lands on the words the cell named: the first prompt, or
      the latest where no first one with a time is published. Over a session that opened with a harness
      control the page drafts nothing, so the cell names nothing either. */
-  const draft = typed || !source ? null : intentDraft(source, { annotate: context.annotate, unreadable: context.unreadable }, chosen);
+  const draft =
+    typed || !source
+      ? null
+      : intentDraft(source, { annotate: context.annotate, unreadable: context.unreadable }, chosen);
   const text = typed || (draft ? draft.text : openedWithControl(source) ? '' : prompt);
   const label = typed
     ? PROMPT_SOURCES.includes(String(source?.['annotation_goal_source']))
@@ -189,7 +231,9 @@ export function goalCell(source: Row | undefined, context: SessionsContext, chos
         : text
           ? 'GOAL · YOUR LATEST PROMPT'
           : 'GOAL';
-  return typed ? { label, kind: 'typed', text, known: true } : { label, kind: 'link', text: text || 'Add a goal', known: Boolean(text) };
+  return typed
+    ? { label, kind: 'typed', text, known: true }
+    : { label, kind: 'link', text: text || 'Add a goal', known: Boolean(text) };
 }
 
 export interface SessionRow {
@@ -219,16 +263,29 @@ export interface SessionsScreen {
    list would turn a stored reading into running evidence and inflate its counter. A held request outranks
    a recorded departure, which outranks a working session; the sort is stable, so within a rank the lanes'
    own order stands. */
-export function groupSessions(model: Observed, sources: ReadonlyMap<string, Row>, context: SessionsContext): { active: ObservedSession[]; history: ObservedSession[] } {
+export function groupSessions(
+  model: Observed,
+  sources: ReadonlyMap<string, Row>,
+  context: SessionsContext,
+): { active: ObservedSession[]; history: ObservedSession[] } {
   const ordered = [...model.active, ...model.history];
-  const rank = (session: ObservedSession) => (session.isNeeds || session.askKnown ? 0 : drift(sources.get(sessionKey(session)), context).length ? 1 : 2);
+  const rank = (session: ObservedSession) =>
+    session.isNeeds || session.askKnown
+      ? 0
+      : drift(sources.get(sessionKey(session)), context).length
+        ? 1
+        : 2;
   const active = ordered.filter((session) => session.isActive || rank(session) < 2);
   const activeKeys = new Set(active.map(sessionKey));
   active.sort((left, right) => rank(left) - rank(right));
   return { active, history: ordered.filter((session) => !activeKeys.has(sessionKey(session))) };
 }
 
-export function buildSessionsScreen(payload: Row, model: Observed, chosenFor?: (session: Row) => PromptCandidate | null): SessionsScreen {
+export function buildSessionsScreen(
+  payload: Row,
+  model: Observed,
+  chosenFor?: (session: Row) => PromptCandidate | null,
+): SessionsScreen {
   const context = sessionsContext(payload);
   const rows = payloadSessionRows(payload);
   const sources = new Map(rows.map((session) => [sessionKey(session), session] as const));
@@ -245,12 +302,18 @@ export function buildSessionsScreen(payload: Row, model: Observed, chosenFor?: (
   const row = (session: ObservedSession, history: boolean): SessionRow => {
     const source = sources.get(sessionKey(session));
     const ask = source ? askFor(payload, source, asks) : null;
-    const since = session.isEnded && source ? durationSince(context.generated, endedAt(source)) : '';
+    const since =
+      session.isEnded && source ? durationSince(context.generated, endedAt(source)) : '';
     return {
       key: unique(session),
       session,
       source,
-      route: { view: 'session', project: session.project, harness: session.harness, session: session.sid },
+      route: {
+        view: 'session',
+        project: session.project,
+        harness: session.harness,
+        session: session.sid,
+      },
       harnessLabel: labels.get(session.harness) || session.harness,
       goal: goalCell(source, context, source && chosenFor ? chosenFor(source) : null),
       drift: driftMark(source, context),
@@ -267,4 +330,3 @@ export function buildSessionsScreen(payload: Row, model: Observed, chosenFor?: (
     history: groups.history.map((session) => row(session, true)),
   };
 }
-

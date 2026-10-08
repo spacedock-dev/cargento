@@ -14,7 +14,11 @@ export interface XtermOptions {
   readonly scrollback: number;
   readonly fontSize: number;
   readonly fontFamily: string;
-  readonly theme: { readonly background: string; readonly foreground: string; readonly cursor: string };
+  readonly theme: {
+    readonly background: string;
+    readonly foreground: string;
+    readonly cursor: string;
+  };
 }
 
 /* The slice of xterm this page touches. `Terminal` is a global the vendored script defines. */

@@ -124,13 +124,22 @@ export function createApiClient(deps: { readonly fetch: FetchLike }) {
   const get = <T>(path: string, signal: AbortSignal | undefined, readRevision = false) =>
     settle<T>(() => fetchBounded(deps.fetch, path, undefined, signal), signal, readRevision);
 
-  const post = <T>(path: string, body: unknown, signal?: AbortSignal, headers: Record<string, string> = {}) =>
+  const post = <T>(
+    path: string,
+    body: unknown,
+    signal?: AbortSignal,
+    headers: Record<string, string> = {},
+  ) =>
     settle<T>(
       () =>
         fetchBounded(
           deps.fetch,
           path,
-          { method: 'POST', headers: { 'Content-Type': 'application/json', ...headers }, body: JSON.stringify(body) },
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', ...headers },
+            body: JSON.stringify(body),
+          },
           signal,
         ),
       signal,
@@ -139,8 +148,11 @@ export function createApiClient(deps: { readonly fetch: FetchLike }) {
 
   return {
     /** The one route that reads `X-Cargento-Revision`. */
-    getData: (options: { readonly showAll: boolean; readonly usage: boolean; readonly signal?: AbortSignal }) =>
-      get<PayloadData>(dataPath(options), options.signal, true),
+    getData: (options: {
+      readonly showAll: boolean;
+      readonly usage: boolean;
+      readonly signal?: AbortSignal;
+    }) => get<PayloadData>(dataPath(options), options.signal, true),
 
     getProjectContext(query: ProjectContextQuery) {
       let path = `/api/project-context?project=${encodeURIComponent(query.project)}`;
@@ -151,7 +163,8 @@ export function createApiClient(deps: { readonly fetch: FetchLike }) {
       return get<ProjectContext>(path, query.signal);
     },
 
-    getAnnotations: (options: { readonly signal?: AbortSignal }) => get<AnnotationsBody>('/api/annotations', options.signal),
+    getAnnotations: (options: { readonly signal?: AbortSignal }) =>
+      get<AnnotationsBody>('/api/annotations', options.signal),
 
     getInteractionOrigin: (identity: SessionIdentity, signal?: AbortSignal) =>
       get<InteractionOrigin>(
@@ -159,25 +172,40 @@ export function createApiClient(deps: { readonly fetch: FetchLike }) {
         signal,
       ),
 
-    postAnnotate: (body: AnnotateRequest, signal?: AbortSignal) => post<AnnotateReceipt>('/api/annotate', body, signal),
+    postAnnotate: (body: AnnotateRequest, signal?: AbortSignal) =>
+      post<AnnotateReceipt>('/api/annotate', body, signal),
     postDirection: (body: SessionIdentity & { readonly fact_id: string }, signal?: AbortSignal) =>
       post<DirectionReceipt>('/api/direction', body, signal),
-    postReading: (body: ReadingRequest, signal?: AbortSignal) => post<ReadingReceipt>('/api/reading', body, signal),
+    postReading: (body: ReadingRequest, signal?: AbortSignal) =>
+      post<ReadingReceipt>('/api/reading', body, signal),
     postReadingCancel: (
-      body: SessionIdentity & { readonly job: string; readonly press: true; readonly observer_model: 1 },
+      body: SessionIdentity & {
+        readonly job: string;
+        readonly press: true;
+        readonly observer_model: 1;
+      },
       signal?: AbortSignal,
     ) => post<ReadingCancelReceipt>('/api/reading/cancel', body, signal),
-    postCorrection: (body: SessionIdentity, signal?: AbortSignal) => post<CorrectionReceipt>('/api/correction', body, signal),
-    postCorrectionCopied: (body: SessionIdentity & { readonly text: string }, signal?: AbortSignal) =>
-      post<Record<string, unknown>>('/api/correction/copied', body, signal),
-    postTripwire: (body: TripwireRequest, signal?: AbortSignal) => post<TripwireReceipt>('/api/tripwire', body, signal),
-    postLane: (body: { readonly supported: boolean; readonly permission: string }, signal?: AbortSignal) =>
-      post<Record<string, unknown>>('/api/lane', body, signal),
+    postCorrection: (body: SessionIdentity, signal?: AbortSignal) =>
+      post<CorrectionReceipt>('/api/correction', body, signal),
+    postCorrectionCopied: (
+      body: SessionIdentity & { readonly text: string },
+      signal?: AbortSignal,
+    ) => post<Record<string, unknown>>('/api/correction/copied', body, signal),
+    postTripwire: (body: TripwireRequest, signal?: AbortSignal) =>
+      post<TripwireReceipt>('/api/tripwire', body, signal),
+    postLane: (
+      body: { readonly supported: boolean; readonly permission: string },
+      signal?: AbortSignal,
+    ) => post<Record<string, unknown>>('/api/lane', body, signal),
     postAnswer: (body: { readonly id: string; readonly index: number }, signal?: AbortSignal) =>
       post<AnswerReceipt>('/api/answer', body, signal),
-    postDismiss: (body: SessionIdentity, signal?: AbortSignal) => post<DismissReceipt>('/api/dismiss', body, signal),
-    postNotify: (body: { readonly message: string; readonly session_id: string }, signal?: AbortSignal) =>
-      post<NotifyReceipt>('/api/notify', body, signal),
+    postDismiss: (body: SessionIdentity, signal?: AbortSignal) =>
+      post<DismissReceipt>('/api/dismiss', body, signal),
+    postNotify: (
+      body: { readonly message: string; readonly session_id: string },
+      signal?: AbortSignal,
+    ) => post<NotifyReceipt>('/api/notify', body, signal),
 
     /* One attempt per call. 429 means wait and 403 means this document is
        stale; nothing else the server says is actionable from here. A missing

@@ -36,7 +36,14 @@ export {
 export type { SessionIdentity } from './keys';
 export { STORAGE_KEYS, sessionKey } from './keys';
 export type { ElectionDecision, Lease, LeaseStore } from './lease';
-export { createTabId, electionDecision, LEASE_RENEW_MS, LEASE_STALE_MS, leaseIsLive, parseLease } from './lease';
+export {
+  createTabId,
+  electionDecision,
+  LEASE_RENEW_MS,
+  LEASE_STALE_MS,
+  leaseIsLive,
+  parseLease,
+} from './lease';
 export type { MemoKind, MemoState, MemoStore } from './memo';
 export { boundMemo, MEMO_LIMIT, memoKey } from './memo';
 export type { RevisionStore } from './revision';

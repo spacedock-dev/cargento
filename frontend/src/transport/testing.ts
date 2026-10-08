@@ -44,7 +44,9 @@ export function createFakeClock(start = 1_000_000): FakeClock {
     advance(ms) {
       const target = now + ms;
       for (;;) {
-        const due = timers.filter((timer) => timer.at <= target).sort((a, b) => a.at - b.at || a.id - b.id)[0];
+        const due = timers
+          .filter((timer) => timer.at <= target)
+          .sort((a, b) => a.at - b.at || a.id - b.id)[0];
         if (!due) break;
         now = due.at;
         if (due.every === null) cancel(due.id);
@@ -61,7 +63,10 @@ export class FakeEventSource implements EventSourceLike {
   closed = false;
   private readonly listeners = new Map<string, ((event: { readonly data?: unknown }) => void)[]>();
 
-  addEventListener(type: 'error' | 'revision', listener: (event: { readonly data?: unknown }) => void): void {
+  addEventListener(
+    type: 'error' | 'revision',
+    listener: (event: { readonly data?: unknown }) => void,
+  ): void {
     this.listeners.set(type, [...(this.listeners.get(type) ?? []), listener]);
   }
 
@@ -93,7 +98,11 @@ export interface FakeEnvironment extends Environment {
 }
 
 export function createFakeEnvironment(
-  options: { readonly clock?: FakeClock; readonly tabId?: string; readonly streamSupported?: boolean } = {},
+  options: {
+    readonly clock?: FakeClock;
+    readonly tabId?: string;
+    readonly streamSupported?: boolean;
+  } = {},
 ): FakeEnvironment {
   const clock = options.clock ?? createFakeClock();
   const pageHide = new Set<() => void>();
@@ -147,7 +156,10 @@ export interface FakeStorageHub {
 }
 
 export function createFakeStorageHub(): FakeStorageHub {
-  const subscribers = new Set<{ readonly owner: object; readonly listener: (revision: string) => void }>();
+  const subscribers = new Set<{
+    readonly owner: object;
+    readonly listener: (revision: string) => void;
+  }>();
   const hub: FakeStorageHub = {
     lease: null,
     revision: null,

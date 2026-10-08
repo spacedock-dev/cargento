@@ -27,7 +27,11 @@ function cueText(state: MemoState | undefined): string {
 export function HumanContextField(props: HumanContextFieldProps) {
   const controls = useControls();
   const editing = useValueStore(controls.memoEditing);
-  return editing?.key === props.memoKey ? <Editor {...props} fresh={editing.fresh} /> : <Reading {...props} />;
+  return editing?.key === props.memoKey ? (
+    <Editor {...props} fresh={editing.fresh} />
+  ) : (
+    <Reading {...props} />
+  );
 }
 
 function editKey(memoKey: string): string {
@@ -42,14 +46,26 @@ function Reading({ memoKey, kind, label }: HumanContextFieldProps) {
     <div className="ctl-memo" data-memo-field={kind}>
       <span>{label}</span>
       <strong>{value || 'Not set'}</strong>
-      <button type="button" className="ctl-memo-edit" aria-label={`Edit ${label}`} ref={ref} onClick={() => controls.startMemoEdit(memoKey)}>
+      <button
+        type="button"
+        className="ctl-memo-edit"
+        aria-label={`Edit ${label}`}
+        ref={ref}
+        onClick={() => controls.startMemoEdit(memoKey)}
+      >
         Edit
       </button>
     </div>
   );
 }
 
-function Editor({ memoKey, kind, label, placeholder, fresh }: HumanContextFieldProps & { readonly fresh: boolean }) {
+function Editor({
+  memoKey,
+  kind,
+  label,
+  placeholder,
+  fresh,
+}: HumanContextFieldProps & { readonly fresh: boolean }) {
   const controls = useControls();
   const [state, setState] = useState<MemoState | undefined>(() => controls.memo.state(memoKey));
   const [initial] = useState(() => controls.memo.read(memoKey));

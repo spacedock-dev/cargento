@@ -19,7 +19,11 @@ const flush = async () => {
 };
 
 const body = (generated: number): PayloadData => ({ generated, sessions: [] });
-const ok = (generated: number, revision = ''): DataOutcome => ({ kind: 'data', body: body(generated), revision });
+const ok = (generated: number, revision = ''): DataOutcome => ({
+  kind: 'data',
+  body: body(generated),
+  revision,
+});
 
 function harness() {
   const fetches: { signal: AbortSignal; answer: Deferred<DataOutcome> }[] = [];
@@ -35,7 +39,9 @@ function harness() {
     accepted: (data, revision) => events.push(`accepted:${String(data.generated)}@${revision}`),
     failed: (failure) => events.push(`failed:${failure.kind}`),
     paint(info) {
-      events.push(`paint:${info.manual ? 'manual' : 'background'}:${info.accepted ? 'data' : 'failure'}`);
+      events.push(
+        `paint:${info.manual ? 'manual' : 'background'}:${info.accepted ? 'data' : 'failure'}`,
+      );
       const gate = deferred<undefined>();
       paints.push(gate);
       return gate.promise;
@@ -305,7 +311,13 @@ describe('uses injected sink only', () => {
     const fetchData = vi.fn(() => new Promise<DataOutcome>(() => undefined));
     const controller = createRefreshController({
       revisions: createRevisionMemo(),
-      sink: { fetchData, manualInFlight: vi.fn(), accepted: vi.fn(), failed: vi.fn(), paint: () => Promise.resolve() },
+      sink: {
+        fetchData,
+        manualInFlight: vi.fn(),
+        accepted: vi.fn(),
+        failed: vi.fn(),
+        paint: () => Promise.resolve(),
+      },
     });
     void controller.poll();
     void controller.refresh();

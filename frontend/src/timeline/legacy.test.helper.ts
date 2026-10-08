@@ -49,7 +49,11 @@ export function loadLegacyTimeline(): LegacyTimeline {
     Object,
     Set,
     Map,
-    esc: (value: unknown) => String(value == null ? '' : value).replace(/[&<>"']/g, (c) => `&#${String(c.charCodeAt(0))};`),
+    esc: (value: unknown) =>
+      String(value == null ? '' : value).replace(
+        /[&<>"']/g,
+        (c) => `&#${String(c.charCodeAt(0))};`,
+      ),
     sessKey: (session: { harness?: unknown; sid?: unknown; session?: unknown } | null) =>
       `${String(session?.harness || '')}:${String(session?.sid || session?.session || '')}`,
     fmtDur: (seconds: number) => `${String(Math.round(Number(seconds)))}s`,
@@ -63,7 +67,10 @@ export function loadLegacyTimeline(): LegacyTimeline {
     setScope(project, session) {
       sandbox['__project'] = project;
       sandbox['__session'] = session;
-      vm.runInContext('nextRoute = {view:"project", project:__project}; projectQuerySession = __session;', sandbox);
+      vm.runInContext(
+        'nextRoute = {view:"project", project:__project}; projectQuerySession = __session;',
+        sandbox,
+      );
     },
     reload() {
       // A reload is a new page: the module state is gone and only `localStorage` remains.
@@ -74,7 +81,8 @@ export function loadLegacyTimeline(): LegacyTimeline {
       return fn(data, model, delegations, focus, origins, options);
     },
     setGraphMode: (mode) => (sandbox['projectSetGraphMode'] as (m: string) => boolean)(mode),
-    resolveGraphMode: (options) => (sandbox['projectResolveGraphMode'] as (o?: unknown) => string)(options),
+    resolveGraphMode: (options) =>
+      (sandbox['projectResolveGraphMode'] as (o?: unknown) => string)(options),
   };
 }
 
@@ -89,7 +97,9 @@ export interface LegacyRow {
    in these tests never carries a character that escapes. */
 export function legacyRows(html: string): LegacyRow[] {
   const rows: LegacyRow[] = [];
-  for (const match of html.matchAll(/<article class="pc-graph-row[^>]*data-lane-key="([^"]*)"[^>]*data-event-id="([^"]*)" data-semantic-kind="([^"]*)"([^>]*)>/g)) {
+  for (const match of html.matchAll(
+    /<article class="pc-graph-row[^>]*data-lane-key="([^"]*)"[^>]*data-event-id="([^"]*)" data-semantic-kind="([^"]*)"([^>]*)>/g,
+  )) {
     const attributes = match[4] ?? '';
     rows.push({
       eventId: match[2] ?? '',

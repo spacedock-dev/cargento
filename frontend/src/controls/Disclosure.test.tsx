@@ -17,7 +17,8 @@ function mount(ui: ReactElement, options: TestControlsOptions = {}) {
   return { kit, view, rerender: (node: ReactElement) => view.rerender(wrap(node)) };
 }
 
-const key = (name: string, project: string | null = 'alpha', scope: string | null = 'claude:s1') => disclosureKey({ project, scope, name });
+const key = (name: string, project: string | null = 'alpha', scope: string | null = 'claude:s1') =>
+  disclosureKey({ project, scope, name });
 
 function toggle(details: HTMLDetailsElement, open: boolean) {
   // jsdom queues its own `toggle` event; the component listens for exactly that one.

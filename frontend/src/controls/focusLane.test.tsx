@@ -4,8 +4,22 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createFocusLane, type FocusLane } from './focusLane';
 import { useFocusKey } from './useFocusKey';
 
-function Keyed({ lane, name, fallback, hidden }: { lane: FocusLane; name: string; fallback?: string; hidden?: boolean }) {
-  const ref = useFocusKey<HTMLButtonElement>(lane, name, fallback === undefined ? {} : { fallback });
+function Keyed({
+  lane,
+  name,
+  fallback,
+  hidden,
+}: {
+  lane: FocusLane;
+  name: string;
+  fallback?: string;
+  hidden?: boolean;
+}) {
+  const ref = useFocusKey<HTMLButtonElement>(
+    lane,
+    name,
+    fallback === undefined ? {} : { fallback },
+  );
   return hidden ? null : (
     <button type="button" ref={ref}>
       {name}

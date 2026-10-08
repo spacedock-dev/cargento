@@ -70,7 +70,9 @@ export function genCase(seed: number): GeneratedCase {
       work_item_id: `${unbound ? 'workflow-unbound' : 'workflow'}:item-${String(unbound ? index % 2 : index)}`,
       label: pick(['project-cockpit', 'item-a', 'Item A', 'dispatch-authority', '']),
       kind,
-      source_bindings: chance(0.5) ? [{ source: 'task state', value: `/repo/.spacedock/explore:item-${String(index)}` }] : [],
+      source_bindings: chance(0.5)
+        ? [{ source: 'task state', value: `/repo/.spacedock/explore:item-${String(index)}` }]
+        : [],
     };
   });
   const itemIds = items.map((item) => item.work_item_id);
@@ -86,30 +88,57 @@ export function genCase(seed: number): GeneratedCase {
       type: pick(FACT_TYPES),
       summary: pick(SUMMARIES),
     };
-    if (chance(0.7) && itemIds.length) fact['work_item_id'] = chance(0.1) ? 'unknown-item' : pick(itemIds);
+    if (chance(0.7) && itemIds.length)
+      fact['work_item_id'] = chance(0.1) ? 'unknown-item' : pick(itemIds);
     if (hasSession) fact['source_session'] = { harness: pick(HARNESSES), sid: pick(SIDS) };
-    if (chance(0.7)) fact['evidence'] = { source: 'root transcript', confidence: pick(['exact', 'derived', 'exact']) };
+    if (chance(0.7))
+      fact['evidence'] = {
+        source: 'root transcript',
+        confidence: pick(['exact', 'derived', 'exact']),
+      };
     if (chance(0.3)) fact['current_state'] = true;
     if (chance(0.3)) fact['stage'] = pick(['shaping', 'review', 'build']);
     if (chance(0.2)) fact['target_stage'] = pick(['shaping', 'done']);
-    if (chance(0.3)) fact['source_kind'] = pick(['gate', 'work_birth', 'task_started', 'retry', 'failed_attempt', 'child_assignment']);
+    if (chance(0.3))
+      fact['source_kind'] = pick([
+        'gate',
+        'work_birth',
+        'task_started',
+        'retry',
+        'failed_attempt',
+        'child_assignment',
+      ]);
     if (chance(0.3)) fact['scope'] = pick(['project', 'session', 'PROJECT']);
     if (chance(0.3)) fact['by'] = pick(['person:captain', 'agent']);
     if (chance(0.3)) fact['decision'] = pick(['approve', 'revise', 'hold', 'defer']);
-    if (chance(0.3)) fact['application_state'] = pick(['applied', 'consumed', 'pending', 'unspent', 'superseded', '', 'weird']);
-    if (chance(0.2)) fact['contributor'] = { verified: chance(0.5), label: pick(['Worker One', '']) };
+    if (chance(0.3))
+      fact['application_state'] = pick([
+        'applied',
+        'consumed',
+        'pending',
+        'unspent',
+        'superseded',
+        '',
+        'weird',
+      ]);
+    if (chance(0.2))
+      fact['contributor'] = { verified: chance(0.5), label: pick(['Worker One', '']) };
     if (chance(0.05)) fact['at'] = 'not-a-number';
     facts.push(fact);
   }
-  const factIds = facts.map((fact) => fact['fact_id']).filter((id): id is string => typeof id === 'string');
+  const factIds = facts
+    .map((fact) => fact['fact_id'])
+    .filter((id): id is string => typeof id === 'string');
   const someFact = () => (factIds.length ? pick(factIds) : 'none');
 
-  const heads = itemIds.filter(() => chance(0.6)).map((id) => ({
-    work_item_id: id,
-    status: pick(['prepared', 'outcome', 'decision', 'current stage', 'requested']),
-    stage: pick(['shaping', 'review']),
-    latest_meaningful_event: chance(0.1) ? 'missing' : someFact(),
-  }));
+  const heads = itemIds
+    .filter(() => chance(0.6))
+    .map((id) => ({
+      work_item_id: id,
+      status: pick(['prepared', 'outcome', 'decision', 'current stage', 'requested']),
+      stage: pick(['shaping', 'review']),
+      latest_meaningful_event: chance(0.1) ? 'missing' : someFact(),
+    }));
   const intents = Array.from({ length: int(5) }, (_, index) => ({
     projection_id: `i${String(index)}`,
     // Gaps of seconds, minutes and ten minutes, so the near-duplicate window of fifteen minutes is crossed both ways.
@@ -123,31 +152,73 @@ export function genCase(seed: number): GeneratedCase {
     summary: pick(SUMMARIES),
     derived_from: someFact(),
   }));
-  const episodes = intents.filter(() => chance(0.5)).map((intent) => ({
-    intent_id: intent.projection_id,
-    adaptation_fact: someFact(),
-    confidence: pick(['exact', 'derived', '']),
-  }));
+  const episodes = intents
+    .filter(() => chance(0.5))
+    .map((intent) => ({
+      intent_id: intent.projection_id,
+      adaptation_fact: someFact(),
+      confidence: pick(['exact', 'derived', '']),
+    }));
   const relations = Array.from({ length: int(6) }, () => {
     const key = `${pick(HARNESSES)}:${pick(SIDS)}`;
     const to = chance(0.8) && itemIds.length ? pick(itemIds) : 'zzz';
     return chance(0.6)
-      ? { type: 'dispatches_to', from: `fo:${key}`, to: `task:${to}`, evidence_ref: someFact(), confidence: pick(['exact', 'derived']) }
-      : { type: pick(['returns_to', 'retries', 'failed_attempt', 'other']), from: `task:${to}`, to: `fo:${key}`, evidence_ref: someFact(), confidence: pick(['exact', 'derived']) };
+      ? {
+          type: 'dispatches_to',
+          from: `fo:${key}`,
+          to: `task:${to}`,
+          evidence_ref: someFact(),
+          confidence: pick(['exact', 'derived']),
+        }
+      : {
+          type: pick(['returns_to', 'retries', 'failed_attempt', 'other']),
+          from: `task:${to}`,
+          to: `fo:${key}`,
+          evidence_ref: someFact(),
+          confidence: pick(['exact', 'derived']),
+        };
   });
 
   const activity: Record<string, unknown> = {};
-  if (!chance(0.3)) activity['nodes'] = Array.from({ length: int(4) }, () => ({ kind: pick(['work', 'burst']), at: 100 + int(20), work_item_ids: itemIds.filter(() => chance(0.4)) }));
-  if (chance(0.5)) activity['history_nodes'] = Array.from({ length: int(3) }, () => ({ kind: pick(['work', 'burst']), at: 100 + int(20), work_item_ids: itemIds.filter(() => chance(0.4)) }));
+  if (!chance(0.3))
+    activity['nodes'] = Array.from({ length: int(4) }, () => ({
+      kind: pick(['work', 'burst']),
+      at: 100 + int(20),
+      work_item_ids: itemIds.filter(() => chance(0.4)),
+    }));
+  if (chance(0.5))
+    activity['history_nodes'] = Array.from({ length: int(3) }, () => ({
+      kind: pick(['work', 'burst']),
+      at: 100 + int(20),
+      work_item_ids: itemIds.filter(() => chance(0.4)),
+    }));
   if (chance(0.5)) activity['steering'] = steering;
 
   const semantic: Record<string, unknown> = {
     facts,
     work_items: items,
     relations,
-    projections: { operator_intents: intents, trail_heads: heads, steering_episodes: episodes, activity },
+    projections: {
+      operator_intents: intents,
+      trail_heads: heads,
+      steering_episodes: episodes,
+      activity,
+    },
   };
-  if (chance(0.7)) semantic['history'] = { window_sec: pick([86400, 3600, 90, 45, 0]), reason: chance(0.1) ? 'The history store could not be read.' : undefined, events: chance(0.5) ? [{ event_type: 'assignment', source_identity: 'codex:obs-1', work_binding: pick(itemIds.length ? itemIds : ['x']) }] : [] };
+  if (chance(0.7))
+    semantic['history'] = {
+      window_sec: pick([86400, 3600, 90, 45, 0]),
+      reason: chance(0.1) ? 'The history store could not be read.' : undefined,
+      events: chance(0.5)
+        ? [
+            {
+              event_type: 'assignment',
+              source_identity: 'codex:obs-1',
+              work_binding: pick(itemIds.length ? itemIds : ['x']),
+            },
+          ]
+        : [],
+    };
   if (chance(0.05)) semantic['facts'] = 'not a list';
 
   const delegations = Array.from({ length: int(3) }, (_, index) => ({
@@ -163,7 +234,11 @@ export function genCase(seed: number): GeneratedCase {
     __index: index,
   }));
 
-  const focus = chance(0.5) ? { harness: pick(HARNESSES), sid: pick(SIDS), state: pick(['working', 'idle', 'needs_input']) } : null;
-  const origins = chance(0.5) ? Array.from({ length: 1 + int(3) }, () => ({ harness: pick(HARNESSES), sid: pick(SIDS) })) : undefined;
+  const focus = chance(0.5)
+    ? { harness: pick(HARNESSES), sid: pick(SIDS), state: pick(['working', 'idle', 'needs_input']) }
+    : null;
+  const origins = chance(0.5)
+    ? Array.from({ length: 1 + int(3) }, () => ({ harness: pick(HARNESSES), sid: pick(SIDS) }))
+    : undefined;
   return { semantic, delegations, focus, origins, fallbackSession: chance(0.5) ? 'codex:a' : '' };
 }

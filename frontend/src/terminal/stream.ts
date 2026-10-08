@@ -79,7 +79,10 @@ export function createOutputStream(deps: OutputStreamDeps) {
       current.close();
       return;
     }
-    const listed = Array.isArray(frame.chunks) && frame.chunks.length > 0 ? (frame.chunks as Chunk[]) : [frame as Chunk];
+    const listed =
+      Array.isArray(frame.chunks) && frame.chunks.length > 0
+        ? (frame.chunks as Chunk[])
+        : [frame as Chunk];
     let resetPending = Boolean(frame.reset);
     for (const chunk of listed) {
       const next = Number(chunk.sequence);
@@ -142,7 +145,12 @@ export function createOutputStream(deps: OutputStreamDeps) {
     sequence = 0;
   }
 
-  return { connect, dispose, sequence: (): number => sequence, connected: (): boolean => socket !== null };
+  return {
+    connect,
+    dispose,
+    sequence: (): number => sequence,
+    connected: (): boolean => socket !== null,
+  };
 }
 
 export type OutputStream = ReturnType<typeof createOutputStream>;

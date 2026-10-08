@@ -42,22 +42,30 @@ describe('graph mode family (cargento.next.graph.mode)', () => {
     const { graphMode } = createLegacyStorage(() => backend);
     expect(graphMode.set(graphModeScope('p', 's'), 'all')).toBe(true);
     graphMode.set(graphModeScope('p', null), 'decisions');
-    expect(backend.data.get('cargento.next.graph.mode')).toBe('{"p\\u0000s":"all","p\\u0000":"decisions"}');
+    expect(backend.data.get('cargento.next.graph.mode')).toBe(
+      '{"p\\u0000s":"all","p\\u0000":"decisions"}',
+    );
   });
 
   it('refuses a mode that is not offered and writes nothing', () => {
     const backend = fakeBackend();
     const { graphMode } = createLegacyStorage(() => backend);
-    expect((graphMode.set as (scope: string, mode: string) => boolean)('p\u0000', 'nope')).toBe(false);
+    expect((graphMode.set as (scope: string, mode: string) => boolean)('p\u0000', 'nope')).toBe(
+      false,
+    );
     expect(backend.writes).toEqual([]);
   });
 
   it('resolves a pinned mode, then the stored one, then the default, then active', () => {
     const scope = graphModeScope('p', 's');
-    const { graphMode } = createLegacyStorage(() => fakeBackend({ 'cargento.next.graph.mode': '{"p\\u0000s":"all"}' }));
+    const { graphMode } = createLegacyStorage(() =>
+      fakeBackend({ 'cargento.next.graph.mode': '{"p\\u0000s":"all"}' }),
+    );
     expect(graphMode.resolve({ scope, mode: 'decisions' })).toBe('decisions');
     expect(graphMode.resolve({ scope })).toBe('all');
-    expect(graphMode.resolve({ scope: graphModeScope('q', 's'), defaultMode: 'decisions' })).toBe('decisions');
+    expect(graphMode.resolve({ scope: graphModeScope('q', 's'), defaultMode: 'decisions' })).toBe(
+      'decisions',
+    );
     expect(graphMode.resolve({ scope: graphModeScope('q', 's') })).toBe('active');
     expect(graphMode.resolve({ scope, mode: 'bogus' as 'all' })).toBe('all');
   });
@@ -66,7 +74,9 @@ describe('graph mode family (cargento.next.graph.mode)', () => {
     const { graphMode } = createLegacyStorage(() => readOnlyBackend());
     graphMode.set(graphModeScope('p', null), 'all');
     expect(graphMode.resolve({ scope: graphModeScope('p', null) })).toBe('all');
-    expect(createLegacyStorage(() => blockedBackend()).graphMode.resolve({ scope: 'p\u0000' })).toBe('active');
+    expect(
+      createLegacyStorage(() => blockedBackend()).graphMode.resolve({ scope: 'p\u0000' }),
+    ).toBe('active');
   });
 });
 
@@ -159,7 +169,9 @@ describe('usage family (cargento.projectUsage.v1)', () => {
   });
 
   it('loads the first two hundred entries only', () => {
-    const entries = Object.fromEntries(Array.from({ length: 250 }, (_, index) => [`k${index}`, index + 1]));
+    const entries = Object.fromEntries(
+      Array.from({ length: 250 }, (_, index) => [`k${index}`, index + 1]),
+    );
     const loaded = decodeUsage(JSON.stringify(entries));
     expect(Object.keys(loaded)).toHaveLength(200);
     expect(loaded['k199']).toBe(200);
@@ -184,7 +196,10 @@ describe('usage family (cargento.projectUsage.v1)', () => {
     const { usage } = createLegacyStorage(() => backend);
     usage.record('fresh');
     usage.record('fresh');
-    const stored = JSON.parse(backend.data.get('cargento.projectUsage.v1') ?? '{}') as Record<string, number>;
+    const stored = JSON.parse(backend.data.get('cargento.projectUsage.v1') ?? '{}') as Record<
+      string,
+      number
+    >;
     expect(Object.keys(stored)).toHaveLength(201);
     expect(stored['fresh']).toBe(2);
     expect(usage.counts()['fresh']).toBe(2);

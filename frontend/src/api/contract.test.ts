@@ -5,7 +5,13 @@
 import { readFileSync, readdirSync } from 'node:fs';
 import { describe, expect, it, vi } from 'vitest';
 import { createBoardStore } from '../store/board';
-import { selectBuildState, selectDataStatus, selectHarnessSources, selectSession, selectSessions } from '../store/selectors';
+import {
+  selectBuildState,
+  selectDataStatus,
+  selectHarnessSources,
+  selectSession,
+  selectSessions,
+} from '../store/selectors';
 import { createLiveTransport } from '../transport/live';
 import { createRevisionMemo, revisionNewer } from '../transport/revision';
 import { createFakeClock, createFakeEnvironment, createFakeStorageHub } from '../transport/testing';
@@ -45,9 +51,13 @@ const byName = (name: string): Fixture => {
 
 function responseOf(fixture: Fixture): Response {
   const { status, headers } = fixture.response;
-  if (fixture.response.body !== undefined) return new Response(JSON.stringify(fixture.response.body), { status, headers });
+  if (fixture.response.body !== undefined)
+    return new Response(JSON.stringify(fixture.response.body), { status, headers });
   if (fixture.response.error_page) {
-    return new Response(`<html><body>${fixture.response.error_page.contains.join('\n')}</body></html>`, { status, headers });
+    return new Response(
+      `<html><body>${fixture.response.error_page.contains.join('\n')}</body></html>`,
+      { status, headers },
+    );
   }
   return new Response(fixture.response.text ?? '', { status, headers });
 }
@@ -74,11 +84,13 @@ function expectClassified(result: ApiResult<unknown>, fixture: Fixture): void {
     return;
   }
   expect(result).toMatchObject({ kind: 'http-error', status });
-  if (fixture.response.body !== undefined && result.kind === 'http-error') expect(result.body).toEqual(fixture.response.body);
+  if (fixture.response.body !== undefined && result.kind === 'http-error')
+    expect(result.body).toEqual(fixture.response.body);
   if (fixture.response.error_page && result.kind === 'http-error') {
     // An error page is HTML: the status is kept and no JSON is invented for it.
     expect(typeof result.body).toBe('string');
-    for (const needle of fixture.response.error_page.contains) expect(result.body).toContain(needle);
+    for (const needle of fixture.response.error_page.contains)
+      expect(result.body).toContain(needle);
   }
 }
 
@@ -103,7 +115,14 @@ const POST_METHODS: Record<string, PostMethod> = {
 describe('the fixture set is present', () => {
   it('holds the recorded scenarios the client contract needs', () => {
     expect(fixtures.length).toBeGreaterThanOrEqual(70);
-    for (const name of ['data-healthy', 'data-empty', 'data-unavailable', 'data-identity-collisions', 'data-restarted-build', 'focus-focused']) {
+    for (const name of [
+      'data-healthy',
+      'data-empty',
+      'data-unavailable',
+      'data-identity-collisions',
+      'data-restarted-build',
+      'focus-focused',
+    ]) {
       expect(byName(name).name).toBe(name);
     }
   });
@@ -111,7 +130,9 @@ describe('the fixture set is present', () => {
 
 describe('every recorded GET answers as recorded', () => {
   const reads = fixtures.filter(
-    (fixture) => fixture.request.method === 'GET' && /^\/api\/(data|annotations|project-context)$/.test(fixture.request.path),
+    (fixture) =>
+      fixture.request.method === 'GET' &&
+      /^\/api\/(data|annotations|project-context)$/.test(fixture.request.path),
   );
 
   it('covers data, annotations and project-context', () => {
@@ -126,7 +147,10 @@ describe('every recorded GET answers as recorded', () => {
       const params = new URLSearchParams(fixture.request.query);
       const result =
         fixture.request.path === '/api/data'
-          ? await client.getData({ showAll: params.get('all') === '1', usage: params.get('usage') === '1' })
+          ? await client.getData({
+              showAll: params.get('all') === '1',
+              usage: params.get('usage') === '1',
+            })
           : fixture.request.path === '/api/annotations'
             ? await client.getAnnotations({})
             : await client.getProjectContext({
@@ -145,7 +169,9 @@ describe('every recorded GET answers as recorded', () => {
       expectClassified(result, fixture);
       if (result.kind === 'ok') {
         expect(result.revision).toBe(
-          fixture.request.path === '/api/data' ? (fixture.response.headers['X-Cargento-Revision'] ?? '') : '',
+          fixture.request.path === '/api/data'
+            ? (fixture.response.headers['X-Cargento-Revision'] ?? '')
+            : '',
         );
       }
     });
@@ -153,11 +179,17 @@ describe('every recorded GET answers as recorded', () => {
 });
 
 describe('every recorded POST is sent once, as recorded, and answered as recorded', () => {
-  const writes = fixtures.filter((fixture) => fixture.request.method === 'POST' && fixture.request.path in POST_METHODS);
+  const writes = fixtures.filter(
+    (fixture) => fixture.request.method === 'POST' && fixture.request.path in POST_METHODS,
+  );
 
   it('covers every action route the client adapts', () => {
     expect(new Set(writes.map((fixture) => fixture.request.path))).toEqual(
-      new Set(Object.keys(POST_METHODS).filter((path) => path !== '/api/tripwire' || writes.some((f) => f.request.path === path))),
+      new Set(
+        Object.keys(POST_METHODS).filter(
+          (path) => path !== '/api/tripwire' || writes.some((f) => f.request.path === path),
+        ),
+      ),
     );
   });
 
@@ -190,7 +222,10 @@ describe('focus fixtures map to the closed outcomes', () => {
       const fixture = byName(name);
       const { sent, client } = replayOf(fixture);
       // The oversize request was recorded with no body: the 413 is the server's, not something the client builds.
-      const identity = (fixture.request.body ?? { harness: 'claude', sid: 'a1b2c3d4' }) as { harness: string; sid: string };
+      const identity = (fixture.request.body ?? { harness: 'claude', sid: 'a1b2c3d4' }) as {
+        harness: string;
+        sid: string;
+      };
       expect(await client.focus({ identity, capability: 'present' })).toBe(outcome);
       expect(sent).toHaveLength(1);
       expect(sent[0]?.init?.headers).toMatchObject({ 'X-Cargento-Capability': 'present' });
@@ -202,7 +237,12 @@ describe('focus fixtures map to the closed outcomes', () => {
     expect(fixture.response.status).toBe(403);
     expect(fixture.request.headers).not.toHaveProperty('X-Cargento-Capability');
     const { sent, client } = replayOf(fixture);
-    expect(await client.focus({ identity: fixture.request.body as { harness: string; sid: string }, capability: '' })).toBe('unavailable');
+    expect(
+      await client.focus({
+        identity: fixture.request.body as { harness: string; sid: string },
+        capability: '',
+      }),
+    ).toBe('unavailable');
     expect(sent).toHaveLength(0);
   });
 });
@@ -210,7 +250,10 @@ describe('focus fixtures map to the closed outcomes', () => {
 function boardFrom(name: string) {
   const fixture = byName(name);
   const store = createBoardStore({ now: () => 1 });
-  store.acceptData(fixture.response.body as PayloadData, fixture.response.headers['X-Cargento-Revision'] ?? '');
+  store.acceptData(
+    fixture.response.body as PayloadData,
+    fixture.response.headers['X-Cargento-Revision'] ?? '',
+  );
   return store;
 }
 
@@ -255,7 +298,10 @@ describe('selectors over recorded boards', () => {
     store.acceptData(without as PayloadData, '');
     expect(selectSessions(store.getSnapshot())).toEqual({ present: false, rows: [] });
 
-    const mangled = { ...healthy, sessions: [null, 7, 'x', ...(healthy.sessions ?? [])] } as unknown as PayloadData;
+    const mangled = {
+      ...healthy,
+      sessions: [null, 7, 'x', ...(healthy.sessions ?? [])],
+    } as unknown as PayloadData;
     store.acceptData(mangled, '');
     expect(selectSessions(store.getSnapshot()).rows).toHaveLength(healthy.sessions?.length ?? -1);
   });
@@ -264,18 +310,32 @@ describe('selectors over recorded boards', () => {
     const healthy = byName('data-healthy');
     const restarted = byName('data-restarted-build');
     const store = createBoardStore({ now: () => 1 });
-    store.acceptData(healthy.response.body as PayloadData, healthy.response.headers['X-Cargento-Revision'] ?? '');
+    store.acceptData(
+      healthy.response.body as PayloadData,
+      healthy.response.headers['X-Cargento-Revision'] ?? '',
+    );
     expect(selectBuildState(store.getSnapshot())).toBe('same');
-    store.acceptData(restarted.response.body as PayloadData, restarted.response.headers['X-Cargento-Revision'] ?? '');
+    store.acceptData(
+      restarted.response.body as PayloadData,
+      restarted.response.headers['X-Cargento-Revision'] ?? '',
+    );
     expect(selectBuildState(store.getSnapshot())).toBe('reload-required');
-    expect(revisionNewer(restarted.response.headers['X-Cargento-Revision'], healthy.response.headers['X-Cargento-Revision'])).toBe(true);
+    expect(
+      revisionNewer(
+        restarted.response.headers['X-Cargento-Revision'],
+        healthy.response.headers['X-Cargento-Revision'],
+      ),
+    ).toBe(true);
   });
 
   it('reports no revision when a proxy strips the header from a healthy answer', async () => {
     const fixture = byName('data-healthy');
     const stripped = new Response(JSON.stringify(fixture.response.body), { status: 200 });
     const client = createApiClient({ fetch: () => Promise.resolve(stripped) });
-    expect(await client.getData({ showAll: false, usage: false })).toMatchObject({ kind: 'ok', revision: '' });
+    expect(await client.getData({ showAll: false, usage: false })).toMatchObject({
+      kind: 'ok',
+      revision: '',
+    });
   });
 });
 
@@ -285,8 +345,16 @@ function frames(text: string): { event: string; data: string }[] {
     .map((block) => block.split('\n').filter((line) => line && !line.startsWith(':')))
     .filter((lines) => lines.length > 0)
     .map((lines) => ({
-      event: lines.find((line) => line.startsWith('event:'))?.slice(6).trim() ?? 'message',
-      data: lines.find((line) => line.startsWith('data:'))?.slice(5).trim() ?? '',
+      event:
+        lines
+          .find((line) => line.startsWith('event:'))
+          ?.slice(6)
+          .trim() ?? 'message',
+      data:
+        lines
+          .find((line) => line.startsWith('data:'))
+          ?.slice(5)
+          .trim() ?? '',
     }));
 }
 
@@ -296,12 +364,19 @@ describe('stream fixtures through the live transport', () => {
     const hub = createFakeStorageHub();
     const env = createFakeEnvironment({ clock });
     const onWake = vi.fn<(revision: string) => void>();
-    const live = createLiveTransport({ env, storage: hub.forTab(), revisions: createRevisionMemo(), onWake, onPoll: vi.fn() });
+    const live = createLiveTransport({
+      env,
+      storage: hub.forTab(),
+      revisions: createRevisionMemo(),
+      onWake,
+      onPoll: vi.fn(),
+    });
     live.start();
     return { env, onWake, live };
   }
   const deliver = (tab: ReturnType<typeof liveTab>, text: string) => {
-    for (const frame of frames(text)) if (frame.event === 'revision') tab.env.sources[0]?.emit('revision', frame.data);
+    for (const frame of frames(text))
+      if (frame.event === 'revision') tab.env.sources[0]?.emit('revision', frame.data);
   };
 
   it('wakes once for the initial revision and again for each newer one, including a restarted server', () => {

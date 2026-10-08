@@ -12,7 +12,8 @@ import { mountShell } from '../shell/testing';
    answer options, the activity column, the footer, and the attributes the page carries on its root. */
 
 const legacy = loadLegacyViews();
-const norm = (node: Element | null): string => (node ? (node.textContent ?? '').replace(/\s+/g, ' ').trim() : '');
+const norm = (node: Element | null): string =>
+  node ? (node.textContent ?? '').replace(/\s+/g, ' ').trim() : '';
 
 interface DetailSummary {
   readonly state: string | null;
@@ -24,7 +25,16 @@ interface DetailSummary {
 
 function summarize(root: ParentNode): DetailSummary {
   const article = root.querySelector('article.next-session-detail');
-  if (!article) return { state: root.querySelector('[data-next-session-state]')?.getAttribute('data-next-session-state') ?? null, attributes: {}, text: norm(root.querySelector('.next-session-detail-empty')), answers: [], links: [] };
+  if (!article)
+    return {
+      state:
+        root.querySelector('[data-next-session-state]')?.getAttribute('data-next-session-state') ??
+        null,
+      attributes: {},
+      text: norm(root.querySelector('.next-session-detail-empty')),
+      answers: [],
+      links: [],
+    };
   const copy = article.cloneNode(true) as Element;
   copy.querySelector('.next-session-panel')?.remove();
   return {
@@ -36,32 +46,61 @@ function summarize(root: ParentNode): DetailSummary {
       blocked: String(article.classList.contains('next-session-detail--blocked')),
     },
     text: norm(copy),
-    answers: [...article.querySelectorAll('[data-next-answer]')].map((button) => `${button.getAttribute('data-next-answer')}#${button.getAttribute('data-next-answer-index')}:${norm(button)}`),
+    answers: [...article.querySelectorAll('[data-next-answer]')].map(
+      (button) =>
+        `${button.getAttribute('data-next-answer')}#${button.getAttribute('data-next-answer-index')}:${norm(button)}`,
+    ),
     links: [...article.querySelectorAll('a')].map((anchor) => anchor.getAttribute('href') ?? ''),
   };
 }
 
-function legacySummary(payload: unknown, route: { project: string; harness?: string; session: string; from?: string }, capability = ''): DetailSummary {
+function legacySummary(
+  payload: unknown,
+  route: { project: string; harness?: string; session: string; from?: string },
+  capability = '',
+): DetailSummary {
   legacy.setFocusCapability(capability);
   const template = document.createElement('template');
   template.innerHTML = legacy.sessionHtml(payload, route);
   return summarize(template.content);
 }
 
-async function reactSummary(payload: unknown, route: { project: string; harness?: string; session: string; from?: string }, capability = ''): Promise<DetailSummary> {
+async function reactSummary(
+  payload: unknown,
+  route: { project: string; harness?: string; session: string; from?: string },
+  capability = '',
+): Promise<DetailSummary> {
   const fragment = fragmentForRoute({ view: 'session', ...route });
-  const page = mountShell({ hash: fragment, data: payload, strict: false, ...(capability ? { focusCapability: capability } : {}) });
+  const page = mountShell({
+    hash: fragment,
+    data: payload,
+    strict: false,
+    ...(capability ? { focusCapability: capability } : {}),
+  });
   await page.settle();
   const body = page.container.querySelector('[data-next-view-body="session"]');
   const root = page.container.querySelector('main');
-  const result = body ? summarize(body.parentElement ?? page.container) : summarize(root ?? page.container);
+  const result = body
+    ? summarize(body.parentElement ?? page.container)
+    : summarize(root ?? page.container);
   page.unmount();
   return result;
 }
 
-function routesOf(payload: Record<string, unknown>): { project: string; harness: string; session: string }[] {
-  const rows = (Array.isArray(payload['sessions']) ? (payload['sessions'] as Record<string, unknown>[]) : []).filter((row) => (typeof row['sid'] === 'string' && row['sid'] !== '') || typeof row['sid'] === 'number');
-  return rows.slice(0, 3).map((row) => ({ project: String(row['project'] ?? ''), harness: String(row['harness'] ?? ''), session: String(row['sid']) }));
+function routesOf(
+  payload: Record<string, unknown>,
+): { project: string; harness: string; session: string }[] {
+  const rows = (
+    Array.isArray(payload['sessions']) ? (payload['sessions'] as Record<string, unknown>[]) : []
+  ).filter(
+    (row) =>
+      (typeof row['sid'] === 'string' && row['sid'] !== '') || typeof row['sid'] === 'number',
+  );
+  return rows.slice(0, 3).map((row) => ({
+    project: String(row['project'] ?? ''),
+    harness: String(row['harness'] ?? ''),
+    session: String(row['sid']),
+  }));
 }
 
 describe('the session page reads as the legacy page does, over generated payloads', () => {
@@ -81,7 +120,9 @@ describe('the session page reads as the legacy page does, over generated payload
             const right = JSON.stringify(mine);
             let at = 0;
             while (left[at] === right[at]) at += 1;
-            failures.push(`seed ${String(seed)} ${route.harness}/${route.session}: ${JSON.stringify(left.slice(Math.max(0, at - 100), at + 140))} vs ${JSON.stringify(right.slice(Math.max(0, at - 100), at + 140))}`);
+            failures.push(
+              `seed ${String(seed)} ${route.harness}/${route.session}: ${JSON.stringify(left.slice(Math.max(0, at - 100), at + 140))} vs ${JSON.stringify(right.slice(Math.max(0, at - 100), at + 140))}`,
+            );
           }
           if (failures.length >= 3) break;
         }
@@ -101,7 +142,16 @@ describe('the session page reads as the legacy page does, over generated payload
   });
 
   it('reaches held requests, ended sessions, tasks, workers, health notes, deliveries and reports, so agreement means something', () => {
-    const seen = { ask: 0, ended: 0, tasks: 0, workers: 0, health: 0, facts: 0, absent: 0, noRaise: 0 };
+    const seen = {
+      ask: 0,
+      ended: 0,
+      tasks: 0,
+      workers: 0,
+      health: 0,
+      facts: 0,
+      absent: 0,
+      noRaise: 0,
+    };
     for (let seed = 1; seed <= 120; seed += 1) {
       const payload = genPayload(seed, { wellFormed: true });
       for (const route of routesOf(payload)) {

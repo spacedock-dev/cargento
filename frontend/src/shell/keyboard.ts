@@ -31,7 +31,8 @@ export function shortcutTarget(event: KeyEventLike, route: RouteInput): RouteInp
   if (FIELDS.includes(event.tagName.toLowerCase()) || event.isContentEditable) return null;
   if (event.key === 'Escape') {
     const home = route.view === 'session' ? sessionHome(route) : 'sessions';
-    if (home === 'projects' && route.project) return { view: 'project', project: route.project, session: null };
+    if (home === 'projects' && route.project)
+      return { view: 'project', project: route.project, session: null };
     return { view: home, project: null, session: null };
   }
   const letter = event.key.toLowerCase();

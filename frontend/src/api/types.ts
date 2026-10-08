@@ -98,7 +98,13 @@ export interface InteractionOrigin {
   readonly state?: 'registered' | 'unavailable' | string;
 }
 
-export type AnnotateOutcome = 'stored' | 'unchanged' | 'refused' | 'unwritable' | 'untrusted' | 'unreadable';
+export type AnnotateOutcome =
+  | 'stored'
+  | 'unchanged'
+  | 'refused'
+  | 'unwritable'
+  | 'untrusted'
+  | 'unreadable';
 
 export interface AnnotateReceipt {
   readonly ok?: boolean;

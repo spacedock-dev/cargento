@@ -37,7 +37,9 @@ export function stableProjectKey(group: {
   readonly label: string;
   readonly sessions: readonly { readonly project_key?: unknown }[];
 }): string {
-  const keys = new Set(group.sessions.map((session) => String(session.project_key || '')).filter(Boolean));
+  const keys = new Set(
+    group.sessions.map((session) => String(session.project_key || '')).filter(Boolean),
+  );
   const [only] = keys;
   return keys.size === 1 && only !== undefined ? only : group.label;
 }

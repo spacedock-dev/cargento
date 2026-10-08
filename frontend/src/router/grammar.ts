@@ -112,7 +112,8 @@ function sessionRouteFromToken(token: string): SessionRoute | null {
     const project = decode(parts[1] ?? '');
     const harness = decode(parts[2] ?? '');
     const session = decode(parts[3] ?? '');
-    if (project !== null && harness && session) return { view: 'session', project, harness, session };
+    if (project !== null && harness && session)
+      return { view: 'session', project, harness, session };
   }
   if (parts.length === 3 && parts[0] === 'session') {
     const project = decode(parts[1] ?? '');
@@ -139,9 +140,11 @@ function pathRouteFromToken(token: string): Route {
     const project = decode(parts[1] ?? '');
     const focus = decode(parts[2] ?? '');
     const tab = decode(parts[3] ?? '');
-    const held = project && focus && tab === RETIRED_SESSION_TAB ? heldToSessionRoute(project, focus) : null;
+    const held =
+      project && focus && tab === RETIRED_SESSION_TAB ? heldToSessionRoute(project, focus) : null;
     if (held) return held;
-    if (project && focus && isTab(tab)) return { view: 'project', project, session: null, focus, tab };
+    if (project && focus && isTab(tab))
+      return { view: 'project', project, session: null, focus, tab };
   }
   /* Sessions is the landing view, so the bare URL and every fragment that parses as nothing land
      there. */
@@ -174,7 +177,11 @@ export function fragmentForRoute(route: RouteInput | null | undefined): string {
     return body + from;
   }
   const held =
-    route && route.view === 'project' && route.project && route.focus && route.tab === RETIRED_SESSION_TAB
+    route &&
+    route.view === 'project' &&
+    route.project &&
+    route.focus &&
+    route.tab === RETIRED_SESSION_TAB
       ? heldToSessionRoute(route.project, String(route.focus))
       : null;
   if (held) return fragmentForRoute(held);
