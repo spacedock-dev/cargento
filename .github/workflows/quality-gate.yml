@@ -414,7 +414,9 @@ jobs:
     needs: changes
     if: needs.changes.outputs.code == 'true'
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 15
+    # Eleven browser proofs take about 15 minutes on a hosted macOS runner (three shared cores) and the migration
+    # adds more; each step keeps its own short timeout, so a hang still ends in minutes.
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:

@@ -167,7 +167,7 @@ class FrontendWiringControlsTest(unittest.TestCase):
             workflow_jobs["platform-tests"], {"macos-latest"}
         )
         self.assertFalse(frontend["strategy"]["fail-fast"])
-        self.assertLessEqual(frontend["timeout-minutes"], 15)
+        self.assertLessEqual(frontend["timeout-minutes"], 30)
         self.assertEqual("changes", frontend["needs"])
         self.assertEqual("needs.changes.outputs.code == 'true'", frontend["if"])
         aggregate = workflow_jobs["quality-gate"]
