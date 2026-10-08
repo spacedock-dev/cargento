@@ -179,7 +179,20 @@ export async function openPage(browser, origins, { viewport, reducedMotion, loca
  * the document title, the current primary item, the breadcrumb sentence and the history depth.
  * The same function runs against the legacy page and the React page.
  */
-export function observeShell(page) {
+/* A render follows its event by a frame or more, so a read taken the instant after a click can still show the
+   previous view on a slow runner. The shell counts as observed once two reads 80 ms apart agree. */
+export async function observeShell(page) {
+  let previous = await readShell(page);
+  for (let waited = 0; waited < 4000; waited += 80) {
+    await new Promise(resolve => setTimeout(resolve, 80));
+    const next = await readShell(page);
+    if (JSON.stringify(next) === JSON.stringify(previous)) return next;
+    previous = next;
+  }
+  throw Error('The shell kept changing for four seconds.');
+}
+
+function readShell(page) {
   return page.evaluate(() => {
     const { document, location, history } = globalThis;
     const text = node => (node ? node.textContent.replace(/\s+/g, ' ').trim() : null);
