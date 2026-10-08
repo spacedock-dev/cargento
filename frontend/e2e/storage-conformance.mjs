@@ -66,7 +66,7 @@ async function startBackend() {
   child.stderr.on('data', chunk => { stderr = (stderr + chunk).slice(-4000); });
   const exit = new Promise(resolve => child.once('exit', (code, signal) => resolve({ code, signal })));
   const lines = createInterface({ input: child.stdout });
-  child.stdin.on('error', () => {});
+  child.stdin.on('error', () => undefined);
   const ready = await new Promise((resolve, reject) => {
     const timer = setTimeout(() => reject(Error('Conformance backend readiness deadline: ' + stderr)), 20000);
     child.once('exit', () => { clearTimeout(timer); reject(Error('Conformance backend exited early: ' + stderr)); });

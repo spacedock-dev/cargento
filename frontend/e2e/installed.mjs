@@ -25,7 +25,7 @@ async function backend(plugin, mode, terminal, use) {
   child.stderr.on('data', chunk => { stderr = (stderr + chunk).slice(-4000); });
   const exit = new Promise(resolve => child.once('exit', (code, signal) => resolve({ code, signal })));
   const lines = createInterface({ input: child.stdout });
-  child.stdin.on('error', () => {});
+  child.stdin.on('error', () => undefined);
   let failure;
   try {
     const ready = await new Promise((resolve, reject) => {

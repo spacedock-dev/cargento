@@ -17,7 +17,9 @@ function board(options: { data?: unknown; failures?: number; at?: number; build?
     store.acceptData(options.build === undefined ? data : body({ ...(data as object), build: options.build }), '1.1');
   }
   for (let index = 0; index < (options.failures ?? 0); index += 1) store.recordFailure({ kind: 'network-error' });
-  return { store, snapshot: (): BoardSnapshot => store.getSnapshot(), setClock: (value: number) => void (clock = value) };
+  return { store, snapshot: (): BoardSnapshot => store.getSnapshot(), setClock: (value: number) => {
+      clock = value;
+    } };
 }
 
 function show(snapshot: BoardSnapshot, extra: { now?: number; retryMs?: number; onRetry?: () => void; onReload?: () => void } = {}) {

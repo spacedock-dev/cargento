@@ -133,7 +133,7 @@ try {
   });
   const readSampler = async target => target.evaluate(() => { globalThis.__sampling = false; return globalThis.__motion; });
   /* Identity, not equality: the node itself is held on the window and compared after the updates. */
-  const mark = (selector, name) => page.locator(selector).evaluate((node, key) => { (globalThis.__marks ??= {})[key] = node; }, name);
+  const mark = (selector, name) => page.locator(selector).evaluate((node, key) => { globalThis.__marks ??= {}; globalThis.__marks[key] = node; }, name);
   const same = (selector, name) => page.locator(selector).evaluate((node, key) => globalThis.__marks[key] === node, name);
 
   // ---------------------------------------------------------------------------------------------

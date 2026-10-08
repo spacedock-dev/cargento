@@ -228,6 +228,7 @@ export function readSemantic(raw: unknown): SemanticModel {
         stage: text(head.stage),
         latestMeaningfulEvent: text(head.latest_meaningful_event),
       })),
+    // biome-ignore lint/suspicious/noPrototypeBuiltins: Object.hasOwn would change the shipped page bytes, and this port leaves them alone.
     nodes: Object.prototype.hasOwnProperty.call(activity, 'nodes') ? readNodes(activity.nodes) : null,
     historyNodes: readNodes(activity.history_nodes),
     steering: readIntents(activity.steering),

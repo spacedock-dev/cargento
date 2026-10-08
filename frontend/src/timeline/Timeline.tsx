@@ -94,6 +94,7 @@ export function Timeline({ project, projectKey, focus, sessions, delegations, de
 
   /* Passive reads, and the only thing this component starts. The runtime makes a repeat for a revision it has
      already settled a no-op, which is what keeps StrictMode and a remount from reading twice. */
+  // biome-ignore lint/correctness/useExhaustiveDependencies: revision is the refetch trigger, not a value the body reads.
   useEffect(() => {
     runtime.loadContext({ projectKey, focus: null });
     if (focusHarness !== null && focusSid !== null) runtime.loadContext({ projectKey, focus: { harness: focusHarness, sid: focusSid } });

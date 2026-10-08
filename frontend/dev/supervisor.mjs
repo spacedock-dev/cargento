@@ -65,7 +65,7 @@ function owned(child) {
 async function stopChild(child, worker = false) {
   if (!child || child.exitCode !== null || child.signalCode !== null) return;
   child.expectedStop = true;
-  if (worker && child.connected) child.send({ type: 'stop' }, () => {});
+  if (worker && child.connected) child.send({ type: 'stop' }, () => undefined);
   else child.kill('SIGTERM');
   let timer;
   await Promise.race([child.stopped, new Promise(resolve => { timer = setTimeout(resolve, 2500); })]);

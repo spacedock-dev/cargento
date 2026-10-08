@@ -23,7 +23,7 @@ import '../src/styles/shell.css';
 import '../src/styles/controls.css';
 
 // A test entry module that mounts itself and exports nothing, so fast refresh has no component to track.
-// eslint-disable-next-line react-refresh/only-export-components
+// biome-ignore lint/style/useComponentExportOnlyModules: nothing is exported, as the note above says.
 function Hosted() {
   const shell = useShell();
   useBoardRuntime(shell.runtime);
