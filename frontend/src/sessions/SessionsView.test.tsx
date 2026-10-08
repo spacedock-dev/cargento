@@ -291,7 +291,9 @@ describe('row control cues keep the newest thirty-two', () => {
 });
 
 describe('the goal link opens the session at its goal', () => {
-  it('lands focus on the session page’s Intent heading, once, and not on a later visit', async () => {
+  const focused = () => document.activeElement?.getAttribute('data-next-focus');
+
+  it('lands focus in the empty goal box when nothing is drafted, once, and not on a later visit', async () => {
     const data = board([{ harness: 'cursor', sid: 'x', project: 'p', state: 'idle' }], {
       annotate: true,
     });
@@ -299,7 +301,7 @@ describe('the goal link opens the session at its goal', () => {
     fireEvent.click(document.querySelector('a[data-next-goal-focus]') as Element);
     await page.settle();
     expect(page.router.getRoute().view).toBe('session');
-    expect(document.activeElement?.id).toBe('next-session-intent-heading');
+    expect(focused()).toBe('held:cursor:x:goal');
     await act(async () => {
       page.router.navigate({ view: 'sessions', project: null, session: null });
     });
@@ -308,7 +310,27 @@ describe('the goal link opens the session at its goal', () => {
       page.router.navigate({ view: 'session', project: 'p', harness: 'cursor', session: 'x' });
     });
     await page.settle();
-    expect(document.activeElement?.id).not.toBe('next-session-intent-heading');
+    expect(focused()).not.toBe('held:cursor:x:goal');
+  });
+
+  it('lands on the panel heading over an untouched draft, where a focused box could not also grow to show it whole', async () => {
+    const data = board(
+      [
+        {
+          harness: 'claude',
+          sid: 'y',
+          project: 'p',
+          state: 'idle',
+          first_prompt: 'Ship the queue',
+          first_prompt_at: 100,
+        },
+      ],
+      { annotate: true },
+    );
+    const page = await open(data);
+    fireEvent.click(document.querySelector('a[data-next-goal-focus]') as Element);
+    await page.settle();
+    expect(document.activeElement?.id).toBe('next-session-intent-heading');
   });
 });
 

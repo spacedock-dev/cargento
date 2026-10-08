@@ -88,7 +88,8 @@ the React storage codecs read and write what the legacy page does. `pnpm test:sh
 the React shell's routes against the legacy page in the same browser, and `pnpm test:controls:browser`
 checks that focus, drafts, composition and open selects survive live updates. `pnpm test:sessions:browser`
 compares Sessions and session detail with the legacy page, and `pnpm test:terminal:browser` does the same for
-the timeline filter and the output-only terminal.
+the timeline filter and the output-only terminal. `pnpm test:intent:browser` compares the Intent log and the
+Intent panel's editors with the legacy page, including native undo and IME composition.
 
 ## Before you open a PR
 

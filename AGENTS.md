@@ -246,6 +246,7 @@ pnpm test:shell:browser
 pnpm test:controls:browser
 pnpm test:sessions:browser
 pnpm test:terminal:browser
+pnpm test:intent:browser
 coverage erase
 python3 scripts/run_tests.py --coverage -s cargento/skills/cargento/tests -t .
 python3 scripts/run_tests.py --coverage -s scripts/tests -t scripts/tests

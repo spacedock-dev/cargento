@@ -14,6 +14,7 @@ import { ProjectTabs } from './ProjectTabs';
 import { OWNERS } from './owners';
 import { RouteLink } from './RouteLink';
 import { useDisplayed } from './context';
+import { IntentLog } from '../intent';
 import { SessionDetail, SessionsView } from '../sessions';
 import type { Row } from '../observed';
 
@@ -86,6 +87,9 @@ function SessionsBranch() {
 function TopLevelView({ route }: { readonly route: TopLevelRoute }) {
   const snapshot = useDisplayed((current) => current);
   if (route.view === 'sessions') return <SessionsBranch />;
+  /* The Intent log states its own absences (annotations off, store unreadable, still reading), so it
+     draws before the first payload as well: it names what it is waiting for rather than a blank. */
+  if (route.view === 'intent') return <IntentLog />;
   return (
     <section className="next-view" data-next-view-body={route.view}>
       <h1>{HEADINGS[route.view]}</h1>

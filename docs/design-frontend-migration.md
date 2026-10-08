@@ -263,8 +263,31 @@ maximum, because the legacy page's own textarea rule makes xterm's helper elemen
 Not mounted yet, and named: the timeline and terminal components are built and proven in their own
 browser harness but sit in the project view's Decisions and Console tabs, which the project step owns,
 so no route shows them today. The capacity strip belongs to the Attention step, the Intent and drift
-panel to the Intent step (the session page shows a stated slot), and the last-reply and
+panel's drift half (Analyze, readings, steer back) to the next step (the Drift section shows a stated slot), and the last-reply and
 recovery-briefing text lives in the project Console.
+
+## The Intent log and the Intent panel
+
+The Intent log (`#n=intent`) and the panel on the session page (the goal and expected-outcome editor,
+the prompt menu, later directions, Keep, discard and the live monitor switch) are ports of the legacy
+`next-intent.js` and the editor half of `next-cockpit.js`. Every pure function was checked by running the
+legacy function next to its TypeScript twin over generated inputs, with mutants that show the comparison
+can fail; the differential caught one real divergence (a chosen prompt kept past a store that was
+switched off). A browser proof serves one board to the legacy page and the React page in one Chromium and
+compares the log and each editor state.
+
+The editors are native. A revision announced over the real stream, a poll, StrictMode and an IME
+composition leave the node, text, caret, selection and native undo where they were; the proof types, moves
+the caret, composes through the debugger protocol and lets revisions land. Unsaved text survives leaving
+the route and returning, but the node and its undo history do not, because the Intent view unmounts; that
+limit is stated rather than hidden. Nothing is sent by a mount, StrictMode, a poll or a route change, a
+save is one POST and never retried, and a save in flight when the reader navigates away is sent once.
+
+What the Analyze step builds on is exported from `frontend/src/intent`: `DirectionQuestion` (Keep settles
+through the annotation route until a reading is supplied), `openPendingDirection` for Update intent
+instead (one direction read, nothing saved), `intentForReading`, the live monitor switch and the shared
+reading-feedback lane. Not ported here: the per-entry Add to my intent buttons of the legacy activity list,
+which belong with the numbered activity list that the React page does not have yet.
 
 ## Reader state and storage
 

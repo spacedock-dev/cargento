@@ -505,6 +505,11 @@ jobs:
         env:
           CARGENTO_TEST_PYTHON: ${{ steps.python.outputs.python-path }}
         run: pnpm test:sessions:browser
+      - name: Intent log and Intent panel browser proof
+        timeout-minutes: 8
+        env:
+          CARGENTO_TEST_PYTHON: ${{ steps.python.outputs.python-path }}
+        run: pnpm test:intent:browser
       - name: Timeline and output-only terminal browser proof
         timeout-minutes: 5
         env:
