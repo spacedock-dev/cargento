@@ -347,7 +347,7 @@ export function SessionDetail({ route, data, session }: SessionDetailProps): Rea
         />
       ) : null}
       <div className="next-session-columns">
-        <DriftSlot harness={observed.harness} sid={observed.sid}>
+        <DriftSlot session={session} payload={payload} project={route.project}>
           <DelegatedWorkLine session={session} now={generated} />
           <DepartureEvidence
             session={session}
