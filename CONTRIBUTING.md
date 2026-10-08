@@ -427,18 +427,29 @@ git push origin v0.2.0
 
 The [Release workflow](.github/workflows/release.yml) refuses the tag unless it is on main, is
 strict semver, and is strictly greater than every existing release tag. Semver only moves forward,
-and back-tagging is impossible. It then runs the contract validator plus the validator, bump-version
-and behavior-focused dashboard test modules on the main tip, rather than the whole quality gate,
-which already ran on every commit that reached main. From there it writes one bump commit updating
-all owned version
-fields, moves the tag onto the released commit, advances the `stable` branch to it, and publishes a
-GitHub Release with generated notes. `stable` is what the shared
+and back-tagging is impossible. It then fixes one commit to release and verifies exactly that commit
+in jobs that hold no credentials: the frontend is rebuilt and compared with the tracked bundle, and
+the contract validator, the bump-version and validator tests and the dashboard suite run on it.
+That is not the whole quality gate, which already ran on every commit that reached main. Only the
+final job holds the deploy key, and it runs no Node or frontend dependency code. It refuses to
+continue if main moved while the verifiers ran, writes one bump commit updating all owned version
+fields, proves the archive of that exact commit with Python only, then moves the tag onto the
+released commit, advances the `stable` branch to it (forward only, never back to an older release),
+and publishes a GitHub Release with generated notes. `stable` is what the shared
 [spacedock-dev/marketplace](https://github.com/spacedock-dev/marketplace) listing tracks, so a
 release that did not move it would leave the marketplace serving an older Cargento.
 The bump is skipped when the manifests already carry the tagged version, which is also how you
-release the current version as-is. Every step is idempotent, so re-running a partially failed
-release finishes it. Release tags are immutable (a tag ruleset blocks deleting or moving them), and
-PRs can never change version fields (the `version-guard` check).
+release the current version as-is. Every step is idempotent, so a partially failed release is
+finished by **Re-run all jobs** on the same run. That is the only re-run that resolves the release
+target again: **Re-run failed jobs** keeps the first target and fails again once main has moved, and
+pushing the tag a second time does nothing because it already exists. Release tags are immutable (a
+tag ruleset blocks deleting or moving them), and PRs can never change version fields (the
+`version-guard` check).
+
+To rehearse the sequence without GitHub, run `python3 scripts/release_transition.py --repo <throwaway
+clone> rehearse --tag v0.2.0 --dry-run` in a clone whose remote is a local bare repository; it
+refuses any remote that is not a local path. The `cargento-release` skill describes it, and the
+archive proof `scripts/verify_release_archive.py`, in full.
 
 ## Reporting bugs and requesting features
 

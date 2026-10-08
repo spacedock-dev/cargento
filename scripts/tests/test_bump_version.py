@@ -136,16 +136,18 @@ class ManifestPathsTest(unittest.TestCase):
         script that rewrites them.
         """
         workflow = (bump_version.ROOT / ".github/workflows/release.yml").read_text(encoding="utf-8")
-        self.assertIn("bump_version.py --paths", workflow)
-        staged = [line for line in workflow.splitlines() if line.strip().startswith("git add")]
-        self.assertEqual(1, len(staged), "one staging step")
+        transition = (bump_version.ROOT / "scripts/release_transition.py").read_text(
+            encoding="utf-8"
+        )
+        # The staging moved out of YAML into the tested release script, which asks
+        # bump_version.py for the list instead of holding one.
+        self.assertIn('"--paths"', transition)
+        self.assertNotIn("git add", workflow, "staging belongs to the tested script")
         for path in bump_version.MANIFESTS:
+            relative = path.relative_to(bump_version.ROOT).as_posix()
             with self.subTest(path=path.name):
-                self.assertNotIn(
-                    path.relative_to(bump_version.ROOT).as_posix(),
-                    staged[0],
-                    "stage the derived list, not a literal path",
-                )
+                self.assertNotIn(relative, workflow, "derive the list, not a literal path")
+                self.assertNotIn(relative, transition, "the script derives it as well")
 
 
 class _Capture:

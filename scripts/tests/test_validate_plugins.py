@@ -911,8 +911,8 @@ class ReleasePublicNotesGateTest(unittest.TestCase):
         self.assertNotIn("if", setup[0], "Resumed releases also import the YAML validator")
         names = [str(step.get("name", "")) for step in steps]
         for name in [
-            "Run the full validation suite on the release tree (main tip)",
             "Prepare and validate the public release notes",
+            "Write the version bump commit",
         ]:
             self.assertLess(steps.index(setup[0]), names.index(name))
 
@@ -933,7 +933,8 @@ class ReleasePublicNotesGateTest(unittest.TestCase):
         self.assertIsNotNone(prepared, "Release notes need a pre-publication gate")
         assert prepared is not None
         for name in [
-            "Bump version fields, re-validate, and push the release commit",
+            "Write the version bump commit",
+            "Push the release commit to main",
             "Move the tag onto the release commit",
             "Advance the stable branch",
             "Publish the GitHub Release",
@@ -1001,6 +1002,10 @@ class ReleasePublicNotesGateTest(unittest.TestCase):
                     encoding="utf-8",
                 )
                 gh.chmod(0o700)
+                # The notes step calls the venv interpreter by explicit path.
+                venv = root / "release-venv" / "bin"
+                venv.mkdir(parents=True)
+                (venv / "python").symlink_to(sys.executable)
                 git = binary / "git"
                 git.write_text(
                     '#!/bin/sh\nprintf "mutation\\n" >> "$MUTATION_LOG"\n', encoding="utf-8"
@@ -1011,7 +1016,8 @@ class ReleasePublicNotesGateTest(unittest.TestCase):
                     PATH=str(binary) + os.pathsep + os.environ["PATH"],
                     TAG="v9.9.9",
                     VERSION="9.9.9",
-                    RELEASE_COMMIT="source-receipt",
+                    TARGET="source-receipt",
+                    FINAL="a" * 40,
                     GITHUB_REPOSITORY="example/project",
                     RUNNER_TEMP=directory,
                     GITHUB_ENV=str(root / "env"),
