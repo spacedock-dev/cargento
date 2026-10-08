@@ -1002,6 +1002,10 @@ class ReleasePublicNotesGateTest(unittest.TestCase):
                     encoding="utf-8",
                 )
                 gh.chmod(0o700)
+                # The notes step calls the venv interpreter by explicit path.
+                venv = root / "release-venv" / "bin"
+                venv.mkdir(parents=True)
+                (venv / "python").symlink_to(sys.executable)
                 git = binary / "git"
                 git.write_text(
                     '#!/bin/sh\nprintf "mutation\\n" >> "$MUTATION_LOG"\n', encoding="utf-8"

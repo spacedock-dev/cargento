@@ -267,6 +267,7 @@ class VerificationJobTest(unittest.TestCase):
 class PublishingOrderTest(unittest.TestCase):
     ORDER = (
         "release_transition.py assert-checkout",
+        "validate_plugins.py --public-text",
         "release_transition.py bump",
         "release_transition.py commit-bump",
         "verify_release_archive.py",
@@ -280,16 +281,40 @@ class PublishingOrderTest(unittest.TestCase):
         run = commands("release")
         return [next(i for i, c in enumerate(run) if needle in c) for needle in self.ORDER]
 
-    def test_the_checkout_is_asserted_first_and_the_archive_is_proven_before_any_push(self) -> None:
+    def test_the_archive_is_proven_and_the_notes_checked_before_any_mutation(self) -> None:
         found = self.positions()
         self.assertEqual(sorted(found), found)
-        self.assertEqual(0, found[0], "the assertion is the first command the key can reach")
+
+    def test_plain_shell_pins_head_before_any_repository_code_runs(self) -> None:
+        run = commands("release")
+        first = code(run[0])
+        self.assertIn("git rev-parse HEAD", first)
+        self.assertIn('"$TARGET"', first)
+        self.assertIn('git checkout --detach "$TARGET"', first)
+        self.assertRegex(first, r'\[ "\$\(git rev-parse HEAD\)" != "\$TARGET" \]')
+        self.assertNotIn("python", first)
+        self.assertNotIn("scripts/", first)
+        self.assertIn("Re-run all jobs", first)
+        # The assertion is the second check, and the first repository script to run.
+        self.assertIn("assert-checkout", run[1])
+        for command in run[:1]:
+            self.assertNotRegex(code(command), r"python3?\s|\./scripts|scripts/")
+
+    def test_the_resume_detach_cannot_be_skipped_or_conditional(self) -> None:
+        first = steps("release")[1]
+        self.assertNotIn("if", first)
+        self.assertNotIn("continue-on-error", first)
+        self.assertIn('elif [ "$MODE" = "resume" ]', first["run"])
+
+    def test_the_target_is_validated_as_a_sha_in_shell_before_git_sees_it(self) -> None:
+        self.assertIn("[0-9a-f]{40}", commands("release")[0])
 
     def test_the_assertion_binds_the_verified_commit_and_the_resolved_target(self) -> None:
         step = next(s for s in steps("release") if "assert-checkout" in s.get("run", ""))
         text = step["run"]
-        for flag in ("--mode", "--target", "--verified", "--tag"):
-            self.assertIn(flag, text)
+        self.assertIn('--mode "$MODE"', text)
+        self.assertIn('--target "$TARGET"', text)
+        self.assertIn('--tag "$TAG"', text)
         self.assertIn('--verified "$VERIFIED_FRONTEND"', text)
         self.assertIn('--verified "$VERIFIED_TREE"', text)
         env = jobs()["release"]["env"]
@@ -308,15 +333,203 @@ class PublishingOrderTest(unittest.TestCase):
             self.assertNotIn("git push", command)
             self.assertNotIn("--force", command)
 
-    def test_a_resumed_release_runs_no_bump_and_no_validation_suite(self) -> None:
-        for fragment in ("release_transition.py bump", "release_transition.py commit-bump"):
+    def test_a_resumed_release_runs_no_bump_and_pushes_no_bump(self) -> None:
+        for fragment in (
+            "release_transition.py bump",
+            "release_transition.py commit-bump",
+            "release_transition.py push-bump",
+        ):
             step = next(s for s in steps("release") if fragment in s.get("run", ""))
-            self.assertEqual("env.MODE == 'fresh'", step["if"])
+            self.assertEqual("env.MODE == 'fresh'", step["if"], fragment)
 
-    def test_the_python_requirements_install_into_a_venv(self) -> None:
-        text = "\n".join(commands("release"))
-        self.assertIn("python3 -m venv", text)
-        self.assertIn("GITHUB_PATH", text)
+
+class KeyJobWiringTest(unittest.TestCase):
+    """Wiring a mutation can break without any Python test noticing."""
+
+    def release_steps(self) -> list[dict[str, Any]]:
+        return steps("release")
+
+    def test_no_release_step_can_swallow_a_failure(self) -> None:
+        job = jobs()["release"]
+        self.assertNotIn("if", job, "an always() or cancelled() job would run past a failure")
+        self.assertNotIn("continue-on-error", job)
+        for step in self.release_steps():
+            with self.subTest(step=step.get("name")):
+                self.assertNotIn("continue-on-error", step)
+                self.assertNotRegex(code(step.get("run", "")), r"\|\|\s*(true|:)\b|;\s*true\b")
+                self.assertNotIn("set +e", step.get("run", ""))
+                self.assertNotIn("always()", str(step.get("if", "")))
+                self.assertNotIn("failure()", str(step.get("if", "")))
+                if "run" in step:
+                    self.assertTrue(step["run"].lstrip().startswith("set -euo pipefail"))
+
+    def test_the_only_conditions_are_the_mode_gates(self) -> None:
+        conditions = {step.get("name"): step["if"] for step in self.release_steps() if "if" in step}
+        self.assertEqual(
+            {
+                "Write the version bump commit": "env.MODE == 'fresh'",
+                "Push the release commit to main": "env.MODE == 'fresh'",
+            },
+            conditions,
+        )
+
+    def test_the_job_uses_one_action_and_no_cross_job_channel(self) -> None:
+        self.assertEqual(
+            ["actions/checkout"],
+            [step["uses"].split("@")[0] for step in self.release_steps() if "uses" in step],
+        )
+        text = serialized(jobs()["release"])
+        for channel in ("actions/cache", "download-artifact", "upload-artifact", "setup-"):
+            self.assertNotIn(channel, text)
+
+    def test_the_environment_is_exactly_the_six_resolved_values(self) -> None:
+        self.assertEqual(
+            {"TAG", "MODE", "VERSION", "TARGET", "VERIFIED_FRONTEND", "VERIFIED_TREE"},
+            set(jobs()["release"]["env"]),
+        )
+        for step in self.release_steps():
+            for name in step.get("env", {}):
+                with self.subTest(step=step.get("name"), name=name):
+                    self.assertIn(name, {"GH_TOKEN"})
+        text = "\n".join(code(c) for c in commands("release"))
+        for hazard in ("BASH_ENV", "GITHUB_PATH", "PYTHONPATH", "LD_PRELOAD", "NODE_OPTIONS"):
+            self.assertNotIn(hazard, text)
+
+    def test_the_python_install_is_wheels_only_from_the_default_index(self) -> None:
+        installs = [c for c in commands("release") if "pip install" in c]
+        self.assertEqual(1, len(installs))
+        line = next(part for part in installs[0].splitlines() if "pip install" in part)
+        self.assertIn("--only-binary=:all:", line)
+        self.assertIn("--requirement requirements-validation.txt", line)
+        for forbidden in ("--index-url", "--extra-index-url", "--find-links", "--user", "-i "):
+            self.assertNotIn(forbidden, line)
+        self.assertIn('"$RUNNER_TEMP/release-venv/bin/python" -m pip', line)
+
+    def test_the_requirements_are_exact_pins(self) -> None:
+        lines = [
+            line.strip()
+            for line in (ROOT / "requirements-validation.txt").read_text().splitlines()
+            if line.strip() and not line.lstrip().startswith("#")
+        ]
+        self.assertTrue(lines)
+        for line in lines:
+            self.assertRegex(line, r"^[A-Za-z0-9_.-]+==[0-9][0-9A-Za-z.]*$")
+
+    def test_scripts_that_need_yaml_run_on_the_venv_interpreter_by_explicit_path(self) -> None:
+        interpreter = '"$RUNNER_TEMP/release-venv/bin/python"'
+        for fragment in ("validate_plugins.py --public-text", "verify_release_archive.py"):
+            command = next(c for c in commands("release") if fragment in c)
+            self.assertIn(f"{interpreter} scripts/{fragment}", command)
+
+    def test_notes_are_checked_with_their_token_before_the_first_mutation(self) -> None:
+        run = commands("release")
+        notes = next(i for i, c in enumerate(run) if "--public-text" in c)
+        mutation = min(
+            i
+            for i, c in enumerate(run)
+            if re.search(
+                r"release_transition\.py (bump|commit-bump|push-bump|move-tag|advance-stable)", c
+            )
+            or "gh release create" in c
+        )
+        self.assertLess(notes, mutation)
+        step = next(s for s in self.release_steps() if "--public-text" in s.get("run", ""))
+        self.assertEqual("${{ github.token }}", step["env"]["GH_TOKEN"])
+
+    def test_publication_binds_the_tag_and_the_token(self) -> None:
+        step = next(s for s in self.release_steps() if "gh release create" in s.get("run", ""))
+        self.assertEqual("${{ github.token }}", step["env"]["GH_TOKEN"])
+        self.assertIn("--verify-tag", step["run"])
+        self.assertIn('--notes-file "$NOTES_FILE"', step["run"])
+
+    def test_the_commit_that_publishes_is_the_one_that_was_proven(self) -> None:
+        final = next(c for c in commands("release") if "release_transition.py final" in c)
+        self.assertIn('--mode "$MODE" --target "$TARGET"', final)
+        self.assertIn("FINAL=$(", final)
+        for name in ("push-bump", "advance-stable"):
+            command = next(c for c in commands("release") if f"release_transition.py {name}" in c)
+            self.assertIn('--final "$FINAL"', command)
+            self.assertNotIn('--final "$TARGET"', command)
+        move = next(c for c in commands("release") if "release_transition.py move-tag" in c)
+        self.assertIn('--tag "$TAG" --final "$FINAL"', move)
+
+
+class GateParityTest(unittest.TestCase):
+    """What the credential-free jobs run, pinned beyond the `uses:` lines."""
+
+    def test_triggers_and_runner_are_exact(self) -> None:
+        workflow = load(RELEASE)
+        triggers = cast("dict[Any, Any]", workflow).get(True) or workflow["on"]
+        self.assertEqual(
+            ["v[0-9]+.[0-9]+.[0-9]+", "[0-9]+.[0-9]+.[0-9]+"], triggers["push"]["tags"]
+        )
+        for name, job in jobs().items():
+            self.assertEqual("ubuntu-24.04", job["runs-on"], name)
+
+    def test_the_frontend_verifier_runs_the_gates_commands_in_order(self) -> None:
+        run = commands("verify-frontend")
+        expected = [
+            "assert-head",
+            "node -e",
+            "pnpm install --frozen-lockfile --ignore-scripts",
+            "pnpm lint",
+            "pnpm typecheck",
+            "pnpm test",
+            "pnpm build:check",
+            "pnpm exec playwright install --with-deps chromium",
+            "pnpm test:parser",
+            "pnpm test:installed",
+            "git status --porcelain",
+            "git rev-parse HEAD",
+        ]
+        self.assertEqual(len(expected), len(run), run)
+        for fragment, command in zip(expected, run, strict=True):
+            self.assertIn(fragment, command)
+        for command in run:
+            self.assertNotIn("|| true", command)
+        for step in steps("verify-frontend"):
+            self.assertNotIn("continue-on-error", step)
+            self.assertNotIn("if", step)
+        recording = next(s for s in steps("verify-frontend") if s.get("id") == "verified")
+        self.assertIn('[ "$SHA" != "$TARGET" ]', recording["run"])
+        self.assertIn("exit 1", recording["run"])
+
+    def test_the_installed_proof_gets_the_setup_python_interpreter(self) -> None:
+        step = next(s for s in steps("verify-frontend") if s.get("run") == "pnpm test:installed")
+        self.assertEqual(
+            "${{ steps.python.outputs.python-path }}", step["env"]["CARGENTO_TEST_PYTHON"]
+        )
+        python = next(s for s in steps("verify-frontend") if s.get("id") == "python")
+        self.assertEqual("3.11", python["with"]["python-version"])
+
+    def test_the_tree_verifier_installs_before_it_validates_on_the_same_python(self) -> None:
+        listed = steps("verify-tree")
+        names = [s.get("name") or s.get("uses") for s in listed]
+        install = next(i for i, s in enumerate(listed) if "pip install" in s.get("run", ""))
+        setup = next(i for i, s in enumerate(listed) if "setup-python" in s.get("uses", ""))
+        suite = next(i for i, s in enumerate(listed) if "unittest discover" in s.get("run", ""))
+        self.assertLess(setup, install, names)
+        self.assertLess(install, suite, names)
+        self.assertEqual("3.12", listed[setup]["with"]["python-version"])
+        for index in (setup, install, suite):
+            self.assertEqual("env.MODE == 'fresh'", listed[index]["if"])
+        text = listed[install]["run"]
+        self.assertIn("--requirement requirements-validation.txt", text)
+        run = listed[suite]["run"]
+        for command in (
+            "python3 scripts/validate_plugins.py",
+            "python3 -m unittest scripts/tests/test_validate_plugins.py",
+            "python3 -m unittest scripts/tests/test_bump_version.py",
+            "python3 -m unittest discover -s cargento/skills/cargento/tests -t .",
+        ):
+            self.assertIn(command, run)
+        self.assertNotIn("continue-on-error", listed[suite])
+
+    def test_resolve_hands_only_validated_values_to_later_jobs(self) -> None:
+        resolve = next(s for s in steps("resolve") if s.get("id") == "resolve")
+        self.assertIn('--tag "$TAG"', resolve["run"])
+        self.assertIn('--github-output "$GITHUB_OUTPUT"', resolve["run"])
+        self.assertEqual({"TAG": "${{ github.ref_name }}"}, resolve["env"])
 
 
 if __name__ == "__main__":
