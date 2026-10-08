@@ -253,3 +253,164 @@ describe('Steer back beside a question', () => {
     expect(byAction('steer-back')).toBeNull();
   });
 });
+
+/* The correction composes again for the record as it stands only where the reader opened the box, left it
+   unedited, and the record then changed: one deterministic server read, never a model call, once per change
+   and never for a box that is closed. */
+describe('a correction the reader opened follows the record, honestly', () => {
+  const newWork = [...FACTS, check('c9', 1200, 'passed')];
+  /* Opens the box and leaves it, as a reader does; the card shows boards again from then on. */
+  async function openAndLeave(page: ReturnType<typeof mountSteer>) {
+    await press(byAction('steer-back'));
+    await page.settle();
+    const field = box() as HTMLTextAreaElement;
+    await act(async () => {
+      field.blur();
+    });
+    return field;
+  }
+
+  it('composes once more for one change in the record, however many boards follow', async () => {
+    const page = mountSteer({
+      strict: true,
+      routes: {
+        '/api/correction': () => json({ ok: true, parts: PARTS }),
+        '/api/project-context': () => json({ semantic: { facts: newWork } }),
+      },
+    });
+    await page.settle();
+    await page.settle();
+    await openAndLeave(page);
+    expect(corrections(page)).toHaveLength(1);
+    // The reading moves on (its read time is part of what the correction was composed from).
+    const moved = { ...ASSESSMENT, read_at: 1100 };
+    for (const generated of [1300, 1400, 1500]) {
+      await page.poll({
+        ...driftBoard({ session: { ...session, annotation_assessment: moved } }),
+        generated,
+      });
+    }
+    await page.settle();
+    expect(corrections(page).filter((r) => r.path === '/api/correction')).toHaveLength(2);
+    await page.advance(60_000);
+    await page.poll({
+      ...driftBoard({ session: { ...session, annotation_assessment: moved } }),
+      generated: 1600,
+    });
+    expect(corrections(page).filter((r) => r.path === '/api/correction')).toHaveLength(2);
+  });
+
+  it('asks once while the recomposition is out, however many boards arrive meanwhile', async () => {
+    let calls = 0;
+    const page = mountSteer({
+      routes: {
+        '/api/correction': () => {
+          calls += 1;
+          return calls === 1 ? json({ ok: true, parts: PARTS }) : 'hold';
+        },
+      },
+    });
+    await page.settle();
+    await page.settle();
+    await openAndLeave(page);
+    const moved = { ...ASSESSMENT, read_at: 1100 };
+    for (const generated of [1300, 1400, 1500, 1600]) {
+      await page.poll({
+        ...driftBoard({ session: { ...session, annotation_assessment: moved } }),
+        generated,
+      });
+    }
+    expect(corrections(page).filter((r) => r.path === '/api/correction')).toHaveLength(2);
+  });
+
+  it('never composes for a box the reader closed', async () => {
+    const page = mountSteer();
+    await page.settle();
+    await page.settle();
+    await openAndLeave(page);
+    await press(byAction('steer-back'));
+    expect(box()).toBeNull();
+    const moved = { ...ASSESSMENT, read_at: 1100 };
+    for (const generated of [1300, 1400]) {
+      await page.poll({
+        ...driftBoard({ session: { ...session, annotation_assessment: moved } }),
+        generated,
+      });
+    }
+    await page.go('#n=sessions');
+    await page.go('#n=session:alpha%2Fapp:claude:s1');
+    expect(corrections(page).filter((r) => r.path === '/api/correction')).toHaveLength(1);
+  });
+
+  it('leaves an edited box alone, says it is from an older record, and recomposes once per press', async () => {
+    const page = mountSteer({
+      routes: {
+        '/api/correction': () => json({ ok: true, parts: PARTS }),
+      },
+    });
+    await page.settle();
+    await page.settle();
+    await press(byAction('steer-back'));
+    await page.settle();
+    const field = box() as HTMLTextAreaElement;
+    field.value = 'Mine.';
+    await act(async () => {
+      fireEvent.input(field);
+      field.blur();
+    });
+    const moved = { ...ASSESSMENT, read_at: 1100 };
+    await page.poll({
+      ...driftBoard({ session: { ...session, annotation_assessment: moved } }),
+      generated: 1300,
+    });
+    expect(corrections(page).filter((r) => r.path === '/api/correction')).toHaveLength(1);
+    expect(document.querySelector('[data-next-correction-older]')).not.toBeNull();
+    const recompose = byAction('correction-recompose') as HTMLElement;
+    await act(async () => {
+      fireEvent.click(recompose);
+      fireEvent.click(recompose);
+      fireEvent.click(recompose);
+    });
+    await page.settle();
+    expect(corrections(page).filter((r) => r.path === '/api/correction')).toHaveLength(2);
+  });
+});
+
+describe('a focused correction box keeps its node, caret and selection when the layout shifts', () => {
+  it('holds the card while the reader is in an untouched box', async () => {
+    const page = mountSteer();
+    await page.settle();
+    await page.settle();
+    await press(byAction('steer-back'));
+    await page.settle();
+    const field = box() as HTMLTextAreaElement;
+    field.focus();
+    field.setSelectionRange(2, 7);
+    // New work lands: a stale mark that would move the box in the tree.
+    await page.poll({ ...driftBoard({ session }), generated: 1300 });
+    page.state.data = driftBoard({ session });
+    expect(box()).toBe(field);
+    expect([field.selectionStart, field.selectionEnd]).toEqual([2, 7]);
+    expect(document.activeElement).toBe(field);
+  });
+});
+
+describe('a compose answer arriving after the reader left asks for nothing', () => {
+  it('does not move focus into the box on return', async () => {
+    const page = mountSteer({
+      routes: {
+        '/api/correction': () => 'hold',
+        '/api/correction/copied': () => json({ ok: true }),
+      },
+    });
+    await page.settle();
+    await page.settle();
+    await press(byAction('steer-back'));
+    await page.go('#n=intent');
+    await page.release('/api/correction', json({ ok: true, parts: PARTS }));
+    await page.go('#n=session:alpha%2Fapp:claude:s1');
+    await page.settle();
+    expect(box()).not.toBeNull();
+    expect(document.activeElement).not.toBe(box());
+  });
+});

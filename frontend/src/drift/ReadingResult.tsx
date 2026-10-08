@@ -255,7 +255,7 @@ function ResultFoot() {
         ariaPressed={marked}
         focusKey={`not-accurate:${model.key}`}
         onPress={() => {
-          if (model.identity) void markNotAccurate(ctx, model.identity, readAt);
+          if (model.identity) void markNotAccurate(ctx, model.identity, readAt, marked);
         }}
       />
       {ctx.drift.notAccurate.has(model.key) ? (

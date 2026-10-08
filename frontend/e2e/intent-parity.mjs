@@ -387,7 +387,9 @@ try {
     });
     // Stand outside the page: the backend only recollects when something reads it.
     await call(board.react.origin, 'GET', '/api/data');
-    await o.page.waitForFunction(() => true, undefined, { timeout: patience(100) });
+    // A beat for the announcement to travel. This was a `waitForFunction(() => true)` that waits for a frame,
+    // which a page in the background does not draw within 100 ms on a loaded machine.
+    await new Promise((resolve) => setTimeout(resolve, patience(100)));
     const until = Date.now() + patience(15000);
     while (o.counts().data <= before && Date.now() < until)
       await new Promise((r) => setTimeout(r, 100));

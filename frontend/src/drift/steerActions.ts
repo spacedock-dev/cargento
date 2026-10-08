@@ -13,6 +13,7 @@ import {
   correctionText,
   type HeldCorrection,
 } from './correction';
+import { requestFocus } from './focus';
 import { currentPayload } from './overlay';
 import { CORRECTION_FAILED, CORRECTION_NOTHING, CORRECTION_PAINT_PAUSED } from './sentences';
 import type { DriftCtx } from './state';
@@ -72,7 +73,7 @@ export async function composeCorrection(
   stamp: string,
   quiet: HeldCorrection | null = null,
 ): Promise<void> {
-  const { drift, intent } = ctx;
+  const { drift } = ctx;
   const key = compatSessKey(identity);
   const next: HeldCorrection = {
     id: drift.nextCorrectionId(),
@@ -129,7 +130,7 @@ export async function composeCorrection(
   /* Replaced or closed while the request was out: that answer is not this box's. */
   if (drift.corrections.get(key) !== next) return;
   drift.notify();
-  intent.held.requestFocus(next.why ? `steer-back:${key}` : `correction:${key}`);
+  requestFocus(ctx, next.why ? `steer-back:${key}` : `correction:${key}`);
 }
 
 /* The press opens the box and asks the server, naming the session and nothing else, so no text the page holds
@@ -145,20 +146,22 @@ export function steerBack(ctx: DriftCtx, identity: SessionIdentity): Promise<voi
   if (held?.open && !held.why) {
     held.open = false;
     drift.notify();
-    intent.held.requestFocus(`steer-back:${key}`);
+    requestFocus(ctx, `steer-back:${key}`);
     return undefined;
   }
   if (held && !held.why && typeof held.text === 'string' && Array.isArray(held.parts)) {
     held.open = true;
     drift.notify();
-    intent.held.requestFocus(`correction:${key}`);
+    requestFocus(ctx, `correction:${key}`);
     return undefined;
   }
   return composeCorrection(ctx, identity, correctionStamp(annotationOf(session)));
 }
 
 /* "Recompose": the reader asked for the record as it stands, over their edit. */
-export function recomposeCorrection(ctx: DriftCtx, identity: SessionIdentity): Promise<void> {
+export async function recomposeCorrection(ctx: DriftCtx, identity: SessionIdentity): Promise<void> {
+  /* One composition at a time: a second press while one is out asks for nothing. */
+  if (ctx.drift.corrections.get(compatSessKey(identity))?.pending) return;
   const session = liveRow(ctx.intent, identity);
   return composeCorrection(ctx, identity, correctionStamp(session ? annotationOf(session) : null));
 }
@@ -182,7 +185,7 @@ export async function copyCorrection(ctx: DriftCtx, identity: SessionIdentity): 
   if (!held.edited && correctionStale(held, annotationOf(session), source, session)) {
     held.cue = 'failed';
     drift.notify();
-    intent.held.requestFocus(`correction-copy:${key}`);
+    requestFocus(ctx, `correction-copy:${key}`);
     return;
   }
   const text = draftNow(ctx, session, held);
@@ -201,7 +204,7 @@ export async function copyCorrection(ctx: DriftCtx, identity: SessionIdentity): 
   held.copying = false;
   held.cue = copied ? 'copied' : 'failed';
   drift.notify();
-  intent.held.requestFocus(`correction-copy:${key}`);
+  requestFocus(ctx, `correction-copy:${key}`);
   if (!copied) return;
   const request = bounded(ctx);
   try {

@@ -19,6 +19,7 @@ import { intentForReading } from '../intent/api';
 import { KEEP_REFUSED } from '../intent/sentences';
 import { isRecord, type Row } from '../observed';
 import { acknowledgeFlip } from './flip';
+import { requestFocus } from './focus';
 import { currentPayload, showJob, showReading, showRoute } from './overlay';
 import {
   needsAllow,
@@ -55,11 +56,32 @@ function pressDetails(ctx: DriftCtx, identity: SessionIdentity) {
   return { session, input: { ...input, payload }, payload };
 }
 
+/* What the card the reader pressed on was drawn from. The Drift card can be held while a board arrives, and
+   then the board a handler reads is newer than the card the reader read: a press names what the reader saw,
+   and where the two differ it sends nothing. */
+export interface Drawn {
+  readonly route: Row | null;
+  readonly revision: number;
+}
+
+/* The sentence for a receiver that moved between the draw and the press, or nothing where it did not. The
+   provider and the model say who reads it; the two destinations say where it goes, and an Allow is bound to
+   both. */
+function movedSince(drawn: Row | null, live: Row | null): string {
+  if (!drawn || !live) return drawn === live ? '' : PROVIDER_CHANGED;
+  const differs = (field: string): boolean =>
+    String(drawn[field] || '') !== String(live[field] || '');
+  if (differs('provider') || differs('model') || differs('harness')) return PROVIDER_CHANGED;
+  if (differs('destination') || differs('words_destination')) return DESTINATION_CHANGED;
+  return '';
+}
+
 /* One reading, on one press, and no retry. */
 export async function askForReading(
   ctx: DriftCtx,
   identity: SessionIdentity,
-  allow = false,
+  allow: boolean,
+  drawn: Drawn,
 ): Promise<void> {
   const { intent, shell } = ctx;
   const held = intent.held;
@@ -96,10 +118,24 @@ export async function askForReading(
     held.notify();
     return;
   }
-  /* The provider the page named, sent with the press so the server can refuse one whose receiver changed
-     since. A refusal above already covers a route with no provider. */
-  const route = readingRoute(payload, session);
-  if (!route) return;
+  /* The receiver and the revision the card showed, sent with the press so the server can refuse one that
+     changed since. A refusal above already covers a route with no provider; where the live board no longer
+     agrees with the card, nothing is sent and the card's own sentence says why. */
+  const live = readingRoute(payload, session);
+  const route = drawn.route;
+  if (!route || !live) return;
+  const liveRevision = nextNumber(annotationOf(session)?.['revision']) || 0;
+  const moved = movedSince(route, live) || (liveRevision !== drawn.revision ? KEEP_REFUSED : '');
+  if (moved) {
+    held.requests.set(key, { pending: false, message: moved, consent: false });
+    if (moved === KEEP_REFUSED) {
+      /* Said once, by the persistent region, as the server's own revision refusal is. */
+      held.requests.set(key, { pending: false, message: moved, consent: false, announced: true });
+      announce(intent, `keep:${key}`, moved);
+    }
+    held.notify();
+    return;
+  }
   const provider = String(route['provider']);
   /* The destinations the disclosure named, sent with an Allow so the server can refuse one given about an
      endpoint that has since moved: where tool output goes, and where the words go, which the Allow is
@@ -130,7 +166,7 @@ export async function askForReading(
       : (reading?.adoption ?? {});
   /* The revision this panel drew, so a press from a page another tab has since moved on is refused before
      anything starts: the model would otherwise read words this reader never saw. */
-  const expected = nextNumber(annotationOf(session)?.['revision']) || 0;
+  const expected = drawn.revision;
   const control = allow ? `reading-allow:${key}` : `reading:${key}`;
   const press = pendingStart(intent, control, 'Starting…', 'Starting the analysis.');
   if (!press) return;
@@ -304,7 +340,7 @@ export async function askForReading(
   } finally {
     note.pending = false;
     pendingEnd(intent, control, press);
-    held.requestFocus(`reading:${key}`);
+    requestFocus(ctx, `reading:${key}`);
     settled = true;
   }
   void settled;
@@ -461,7 +497,7 @@ export async function cancelReading(ctx: DriftCtx, identity: SessionIdentity): P
     cancel.pending = false;
     pendingEnd(intent, control, press);
     drift.notify();
-    intent.held.requestFocus(control);
+    requestFocus(ctx, control);
   }
 }
 
@@ -498,7 +534,7 @@ export async function readingOff(ctx: DriftCtx, identity: SessionIdentity | null
     }
   } finally {
     pendingEnd(intent, control, press);
-    intent.held.requestFocus(control);
+    requestFocus(ctx, control);
   }
 }
 
@@ -510,6 +546,8 @@ export async function markNotAccurate(
   ctx: DriftCtx,
   identity: SessionIdentity,
   readAt: number,
+  /** Whether the card drew the reading marked: the press toggles what the reader saw. */
+  marked: boolean,
 ): Promise<void> {
   const { intent, shell, drift } = ctx;
   const session = liveRow(intent, identity);
@@ -519,8 +557,7 @@ export async function markNotAccurate(
   const press = pendingStart(intent, control, 'Saving…');
   if (!press) return;
   intent.held.notify();
-  const annotation = annotationOf(session);
-  const on = !(annotation?.['not_accurate'] === true);
+  const on = !marked;
   drift.notAccurate.delete(key);
   let saved = false;
   try {
@@ -545,7 +582,7 @@ export async function markNotAccurate(
   } finally {
     pendingEnd(intent, control, press);
     drift.notify();
-    intent.held.requestFocus(control);
+    requestFocus(ctx, control);
   }
 }
 

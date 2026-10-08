@@ -128,8 +128,9 @@ const summarizeCard = () => {
    thing about the reader's words either way. */
 const comparable = (value) =>
   JSON.stringify(value)
-    .replace(/\b\d+[smhd]( \d+[smh])?\b/g, '<age>')
-    .replace(/\b\d\d:\d\d\b/g, '<clock>')
+    // No word boundary before the digits: a list row prints "exact" and its age with nothing between.
+    .replace(/(?<!\d)\d+[smhd]( \d+[smh])?(?![A-Za-z0-9])/g, '<age>')
+    .replace(/(?<!\d)\d\d:\d\d(?!\d)/g, '<clock>')
     .replace(/fact:[0-9a-f]{16}/g, '<fact>');
 
 async function settled(read, { deadline = patience(6000), every = 120 } = {}) {
@@ -203,10 +204,18 @@ try {
   const react = await newPage('react');
 
   /* ===================== DIFFERENTIAL: the card, state by state ===================== */
-  async function compare(label, make, { text = true } = {}) {
+  async function compare(label, make, { text = true, ready = null } = {}) {
     const g = await clockOf();
     await setState(legacy, react, (o) => make(g, o));
     await both((kind) => load(kind === 'legacy' ? legacy : react));
+    // A state the legacy page reaches after a record read, said by what it draws rather than by a delay.
+    if (ready) {
+      await both((kind) =>
+        (kind === 'legacy' ? legacy : react).page.waitForSelector(ready, {
+          timeout: patience(15000),
+        }),
+      );
+    }
     const read = (o) => settled(() => o.page.evaluate(summarizeCard));
     const [old, mine] = await Promise.all([read(legacy), read(react)]);
     for (const key of Object.keys(old)) {
@@ -972,6 +981,30 @@ try {
       // The stale mark moves the box in the layout, which the reader has left; the words are theirs and stay.
       assert.equal(await react.page.locator('[data-next-correction-paint-why]').isHidden(), true);
       assert.equal((await caretOf(react)).value, 'hello brave Xworld');
+    },
+  );
+
+  await step(
+    'a focused, untouched correction box keeps its node, caret and selection when a stale mark would move it',
+    async () => {
+      await openSteer(react);
+      await mark(react, BOX, 'box');
+      await react.page.locator(BOX).evaluate((node) => {
+        node.focus();
+        node.setSelectionRange(2, 7);
+      });
+      await apply(react, (g) =>
+        steerState(g, { facts: [...RECORD(g), check('c9', g - 20, 'passed')] }),
+      );
+      await tick(react);
+      await tick(react);
+      assert.equal(await same(react, BOX, 'box'), true, 'the stale mark replaced the box');
+      const caret = await caretOf(react);
+      assert.deepEqual([caret.start, caret.end, caret.focused], [2, 7, true]);
+      assert.equal(await react.page.locator('[data-next-result-stale]').count(), 0);
+      // Leaving it shows the board.
+      await react.page.locator('.next-session-drift-heading').click();
+      await react.page.waitForSelector('[data-next-result-stale="work"]');
     },
   );
 

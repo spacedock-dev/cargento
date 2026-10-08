@@ -23,7 +23,7 @@ import {
 } from './ReadingControl';
 import { ReadingResult } from './ReadingResult';
 import { anyConsent, needsAllow, promptReadingRefusal, routeRefusal } from './route';
-import { OFFER, READING_DEFINITION, SCOPE, UNKNOWN_KEY } from './sentences';
+import { absenceAttr, OFFER, READING_DEFINITION, SCOPE, UNKNOWN_KEY } from './sentences';
 import { SteerBox, SteerButton, UpdateIntentButton } from './SteerBack';
 import { useFollowCorrection } from './useFollowCorrection';
 import { Why } from './Why';
@@ -252,6 +252,7 @@ function RefusedLine({
         className="next-cockpit-reading-why"
         id={REFUSED_ID}
         {...(request?.refusal && !request.announced ? { role: 'status' } : {})}
+        {...absenceAttr(board.reason)}
       >
         {board.settling ? <span className="next-wait-dot" aria-hidden="true" /> : null}
         {board.reason}

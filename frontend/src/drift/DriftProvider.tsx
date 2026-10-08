@@ -14,20 +14,19 @@ import { clearFlipLines } from './flip';
 import { trackJobs } from './jobs';
 import { syncPaused } from './steerActions';
 
-/* Whether the reader is mid-edit in this session's correction box, which is when the Drift card keeps showing
-   the board it already drew. The legacy page queued the whole page's paint for this; the React page keeps a
-   persistent node, so the editor's own caret, selection and undo survive a redraw, but a redraw that moved
-   the box in the tree (a new result arriving over the card the reader is typing under, a stale mark turning
-   the box into a different layout) would remount it, ending the composition and erasing the undo history.
-   So a board that arrives while the reader is composing, holding a pointer on a control they left the box
-   for, or typing in an edited correction waits, and the newest one shows when they leave
+/* Whether the reader is in this session's correction box (untouched or edited), composing in it, or holding a
+   pointer on a control they left it for: then the Drift card keeps showing the board it already drew. The
+   legacy page queued the whole page's paint for an edited box. The React page keeps a persistent node, so the
+   editor's caret, selection and undo survive an ordinary redraw, but a redraw that moves the box in the tree
+   (a stale mark turning the layout into another) would remount it, resetting the caret of a reader who has
+   only clicked into it and ending a composition. So a board that arrives while the reader is in the box
+   waits, and the newest one shows when they leave
    ([the reader state row](../../../docs/design-reader-state.md)). The reader's own presses never wait. */
 function engaged(ctx: DriftCtx, key: string): boolean {
   const { editor, corrections } = ctx.drift;
   if (editor.composition) return true;
   if (editor.pointer && editor.pointer.key === key) return true;
-  const held = corrections.get(key);
-  return Boolean(held && held.edited && editor.focused === key);
+  return Boolean(corrections.get(key) && editor.focused === key);
 }
 
 export function DriftProvider({
@@ -121,6 +120,8 @@ export function DriftProvider({
   useEffect(
     () => () => {
       for (const seen of ctx.drift.jobsSeen.values()) seen.drawn = false;
+      // A press's ask for focus belongs to the page it was made on, so one still waiting goes with the card.
+      ctx.intent.held.takeFocus();
     },
     [ctx],
   );

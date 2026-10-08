@@ -246,8 +246,7 @@ export function attachEditor(
     if (event.button !== 0 || event.isPrimary === false) return;
     if (event.target instanceof Node && input.contains(event.target)) return;
     if (doc.activeElement !== input) return;
-    const held = heldOf();
-    if (!held || !held.edited) return;
+    if (!heldOf()) return;
     const target =
       event.target instanceof Element
         ? (event.target.closest('button,a,summary,[role=button]') ?? event.target)

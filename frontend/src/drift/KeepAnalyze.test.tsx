@@ -87,3 +87,19 @@ describe('Keep during a held close', () => {
     expect(byAction('direction-keep')?.textContent).toBe('Keep my intent');
   });
 });
+
+describe('the refusal under the question', () => {
+  it("says what kind of absence it is, as the Analyze control's refusal does", async () => {
+    const page = mountDrift({
+      facts: [LATER],
+      session,
+      routes,
+      payload: { reading: { reason: 'run-disabled', used: 0, limit: 10 } },
+    });
+    await page.settle();
+    await page.settle();
+    const refused = document.querySelector('#next-cockpit-reading-refused') as HTMLElement;
+    expect(refused.textContent).toContain('Model calls are off for this run');
+    expect(refused.getAttribute('data-absence')).toBe('run-config');
+  });
+});

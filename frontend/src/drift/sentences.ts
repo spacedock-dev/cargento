@@ -232,3 +232,9 @@ export const BLOCKER_LINES: Readonly<Record<string, string>> = {
   'no-outcome-line': 'No expected outcome line was saved.',
   'reading-malformed': 'Part of the stored analysis could not be read.',
 };
+
+/* The attribute that says which kind of absence a refusal is, only for the sentences that are one. */
+export const absenceAttr = (text: string): Record<string, string> => {
+  const kind = REFUSAL_ABSENCE.get(text);
+  return kind ? { 'data-absence': kind } : {};
+};

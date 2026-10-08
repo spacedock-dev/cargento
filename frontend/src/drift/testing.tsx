@@ -29,6 +29,14 @@ export const POLICY = {
   limit: 10,
 };
 
+export const UNCONSENTED = {
+  providers: { claude: false },
+  words: {},
+  tool_output: {},
+  used: 0,
+  limit: 10,
+};
+
 export function driftBoard(
   options: {
     readonly payload?: Record<string, unknown>;

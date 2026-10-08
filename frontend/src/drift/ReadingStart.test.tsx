@@ -1,6 +1,15 @@
 import { act, fireEvent } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
-import { byAction, json, mountDrift, press, readingPosts, textOf } from './testing';
+import {
+  ROUTE,
+  byAction,
+  driftBoard,
+  json,
+  mountDrift,
+  press,
+  readingPosts,
+  textOf,
+} from './testing';
 
 /* Nothing in the Drift section sends a request from a mount, a second mount under StrictMode, a poll, a
    reconnect, a route change, a hover, a focus or a keypress. The counts are requests the backend saw, by
@@ -177,5 +186,38 @@ describe('consent and destination', () => {
     );
     await page.advance(5_000);
     expect(readingPosts(page)).toHaveLength(1);
+  });
+});
+
+describe('a press names the session by its exact harness and sid', () => {
+  it('sends the codex pair for a codex session that shares its sid with a claude one', async () => {
+    const codexRoute = { ...ROUTE, provider: 'codex', harness: 'codex', model: '' };
+    const payload = driftBoard();
+    const claudeRow = (payload.sessions as Record<string, unknown>[])[0] as Record<string, unknown>;
+    const page = mountDrift({
+      hash: '#n=session:alpha%2Fapp:codex:x%3Ay',
+      payload: {
+        sessions: [claudeRow, { ...claudeRow, harness: 'codex', sid: 'x:y', state: 'working' }],
+        reading_routes: { claude: ROUTE, codex: codexRoute },
+        reading: {
+          providers: { claude: true, codex: true },
+          words: { claude: true, codex: true },
+          tool_output: { claude: ['api'], codex: ['api'] },
+          used: 0,
+          limit: 10,
+        },
+      },
+      routes: { '/api/reading': () => json({ ok: true, produced: false }) },
+    });
+    await page.settle();
+    await page.settle();
+    await press(byAction('reading-ask'));
+    await page.settle();
+    expect(readingPosts(page)).toHaveLength(1);
+    expect(readingPosts(page)[0]?.body).toMatchObject({
+      harness: 'codex',
+      sid: 'x:y',
+      provider: 'codex',
+    });
   });
 });

@@ -10,12 +10,12 @@ import { useDrift } from './context';
 import type { Board } from './flip';
 import { anyConsent, budgetLine, needsAllow, readingJob, routeRefusal, withheldAge } from './route';
 import {
+  absenceAttr,
   BACKGROUND,
   CANCEL_FAILED,
   JOB_NOTE,
   JOB_NOTE_SO_FAR,
   JOB_TITLE,
-  REFUSAL_ABSENCE,
 } from './sentences';
 import { Why } from './Why';
 
@@ -25,11 +25,6 @@ import { Why } from './Why';
 
 export const REFUSED_ID = 'next-cockpit-reading-refused';
 export const DISCLOSURE_ID = 'next-cockpit-reading-disclosure';
-
-const absenceAttr = (text: string): Record<string, string> => {
-  const kind = REFUSAL_ABSENCE.get(text);
-  return kind ? { 'data-absence': kind } : {};
-};
 
 /* The attempt count beside the control, worded the same in every state: short to the eye, and the whole
    sentence to a screen reader, which the short form is hidden from. */
@@ -311,7 +306,12 @@ export function ReadingControl({
       focusKey={confirming ? allowKey : `reading:${key}`}
       {...(confirming ? { fallbackKey: `reading:${key}` } : {})}
       onPress={() => {
-        if (identity) void askForReading(ctx, identity, confirming);
+        if (identity) {
+          void askForReading(ctx, identity, confirming, {
+            route,
+            revision: nextNumber(annotation?.['revision']) || 0,
+          });
+        }
       }}
     />
   );
