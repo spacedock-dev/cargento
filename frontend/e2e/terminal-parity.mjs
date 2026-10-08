@@ -90,7 +90,7 @@ const titleOf = page => page.evaluate(() => {
   return bar ? bar.textContent.replace(/\s+/g, ' ').trim() : null;
 });
 
-async function waitRows(page, text, timeout = 10000) {
+async function waitRows(page, text, timeout = patience(10000)) {
   try {
     await page.waitForFunction(needle => [...globalThis.document.querySelectorAll('#pc-terminal-screen .xterm-rows > div')]
       .some(row => row.textContent.includes(needle)), text, { timeout });
@@ -109,6 +109,20 @@ async function wheelOverInset(side, deltaY) {
   const box = await side.page.locator('#pc-terminal-viewport').boundingBox();
   await side.page.mouse.move(box.x + 3, box.y + box.height / 2);
   await side.page.mouse.wheel(0, deltaY);
+}
+
+/* A fixed wait only guesses how long the page needs. This reads until two consecutive readings agree, so a
+   runner that delivers scroll events late is waited for instead of measured mid-flight (the threshold step read
+   the legacy page 150 ms after a scroll on a hosted macOS runner and saw it still following). */
+async function settled(read) {
+  let last = JSON.stringify(await read());
+  for (let still = 0, tries = 0; still < 2 && tries < 60; tries += 1) {
+    await pause(60);
+    const now = JSON.stringify(await read());
+    still = now === last ? still + 1 : 0;
+    last = now;
+  }
+  return JSON.parse(last);
 }
 
 /* The sides: one tracked page each over the same backend pair. */
@@ -282,8 +296,7 @@ try {
         await scrollTo(world[name].page, live);
         await scrollTo(world[name].page, live - distance);
       }
-      await pause(150);
-      const state = await pairs(side => metricsOf(side.page));
+      const state = await settled(() => pairs(async side => (({ jumpHidden }) => ({ jumpHidden }))(await metricsOf(side.page))));
       flips.legacy.push(state.legacy.jumpHidden);
       flips.react.push(state.react.jumpHidden);
     }
@@ -338,6 +351,7 @@ try {
     for (const name of SIDES) assert.equal(world[name].stream().filter(socket => socket.closed === null).length, 1, `${name}: the socket did not stay open while away`);
     await both(side => side.page.goBack());
     await both(side => side.page.locator('#pc-terminal-viewport').waitFor());
+    await both(side => waitRows(side.page, 'printed while away'));
     await pause(300);
     const rows = await pairs(side => rowsOf(side.page));
     assert.ok(rows.react.some(row => row.includes('printed while away')), 'the output printed while away is missing in react');
@@ -408,9 +422,12 @@ try {
   });
 
   await step('Close lets go of exactly the page’s own socket and renderer, and nothing reconnects', async () => {
-    const before = { legacy: world.legacy.stream().length, react: world.react.stream().length };
     await both(side => side.page.getByRole('button', { name: 'Close' }).click());
     await both(side => openButton(side).waitFor());
+    /* The count is taken once Close has taken effect: the stream was still reconnecting when it was pressed, and
+       a reconnect that landed between a count taken before the press and the press itself is not a socket opened
+       after Close (a hosted runner measured exactly that: 10 against 9). */
+    const before = { legacy: world.legacy.stream().length, react: world.react.stream().length };
     await pause(2600);
     for (const name of SIDES) {
       const sockets = world[name].stream();

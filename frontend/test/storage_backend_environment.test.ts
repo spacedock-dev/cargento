@@ -36,8 +36,16 @@ describe('the storage conformance backend environment', () => {
     HARNESS_STORE_ROOT: '/home/real/.store',
   };
 
+  // Python prints a path with the separators of the machine running the test, so locations are compared
+  // with forward slashes.
+  const slashes = (value: string | undefined): string => (value ?? '').replaceAll('\\', '/');
+  const owned = (environ: Record<string, string>): Record<string, string> =>
+    Object.fromEntries(
+      Object.entries(environ).map(([key, value]) => [key, ['SYSTEMROOT', 'WINDIR'].includes(key) ? value : slashes(value)]),
+    );
+
   it('keeps only the owned locations on POSIX', () => {
-    expect(isolate('posix', host)).toEqual({
+    expect(owned(isolate('posix', host))).toEqual({
       HOME: '/scratch',
       USERPROFILE: '/scratch',
       CARGENTO_HOME: expect.stringMatching(/state$/) as string,
@@ -50,7 +58,7 @@ describe('the storage conformance backend environment', () => {
     expect(result['SYSTEMROOT']).toBe('C:\\Windows');
     expect(result['WINDIR']).toBe('C:\\Windows');
     expect(Object.keys(result).sort()).toEqual(['CARGENTO_HOME', 'HOME', 'PATH', 'SYSTEMROOT', 'USERPROFILE', 'WINDIR']);
-    expect(result['HOME']).toBe('/scratch');
-    expect(result['PATH']).toMatch(/no-executables$/);
+    expect(slashes(result['HOME'])).toBe('/scratch');
+    expect(slashes(result['PATH'])).toMatch(/no-executables$/);
   });
 });

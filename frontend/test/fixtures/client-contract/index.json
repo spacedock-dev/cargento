@@ -650,9 +650,16 @@
     },
     {
       "method": "POST",
+      "name": "tripwire-unreadable",
+      "route": "/api/tripwire",
+      "sha256": "9fe010015148c1497b0b4c5a519bdde4ce266cdf94f01c9770b802c9421bbc65",
+      "status": 503
+    },
+    {
+      "method": "POST",
       "name": "tripwire-unwritable",
       "route": "/api/tripwire",
-      "sha256": "1c7222926e3382d36a40acf44f6d7f8e73e14833136f66ae52de2b59bf6b08eb",
+      "sha256": "b6c03657ada99b487ee568f97dfd01933e0be657a3bbae5f672f5d7301de05fb",
       "status": 503
     }
   ],
