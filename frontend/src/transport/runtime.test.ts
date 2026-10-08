@@ -235,6 +235,23 @@ describe('HMR replacement', () => {
   });
 });
 
+describe('two tabs on one lease', () => {
+  it('lets exactly one of them be the leader, which is what keeps a stage banner to one tab', async () => {
+    const api = backend();
+    const clock = createFakeClock();
+    const hub = createFakeStorageHub();
+    const first = runtimeFor({ api, clock, hub, tabId: 'tab-a' });
+    const second = runtimeFor({ api, clock, hub, tabId: 'tab-b' });
+    first.runtime.start();
+    await flush();
+    second.runtime.start();
+    await flush();
+    expect([first.runtime.isLeader(), second.runtime.isLeader()]).toEqual([true, false]);
+    first.runtime.dispose();
+    second.runtime.dispose();
+  });
+});
+
 describe('live updates', () => {
   it('refetches once for a newer stream revision and not for a repeat or an older one', async () => {
     const { api, env, runtime } = runtimeFor();
