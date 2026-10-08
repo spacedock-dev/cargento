@@ -490,6 +490,16 @@ jobs:
         env:
           CARGENTO_TEST_PYTHON: ${{ steps.python.outputs.python-path }}
         run: pnpm test:storage:browser
+      - name: React shell and routing browser proof
+        timeout-minutes: 5
+        env:
+          CARGENTO_TEST_PYTHON: ${{ steps.python.outputs.python-path }}
+        run: pnpm test:shell:browser
+      - name: Shared controls continuity browser proof
+        timeout-minutes: 5
+        env:
+          CARGENTO_TEST_PYTHON: ${{ steps.python.outputs.python-path }}
+        run: pnpm test:controls:browser
 
   # The single required status check. Branch protection requires this job, so
   # every job above must succeed (a skip or failure anywhere fails the gate).

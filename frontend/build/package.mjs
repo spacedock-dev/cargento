@@ -20,7 +20,7 @@ export function stableJson(value) {
   return JSON.stringify(sort(value), null, 2) + '\n';
 }
 
-export function createDocument(javascript, css, template = '<!doctype html><html lang="en"><head><meta charset="UTF-8"><title>Cargento frontend preview</title></head><body><div id="root"></div><script type="module" src="entry.js"></script></body></html>') {
+export function createDocument(javascript, css, template = '<!doctype html><html lang="en"><head><meta charset="UTF-8"><title>Cargento</title></head><body><div id="root"></div><script type="module" src="entry.js"></script></body></html>') {
   const dom = new JSDOM(template);
   try {
     const document = dom.window.document;

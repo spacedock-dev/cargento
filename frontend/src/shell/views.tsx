@@ -1,0 +1,145 @@
+import { payloadSessions } from '../api/bootstrap';
+import { compatSessKey } from '../api/identity';
+import { fragmentForRoute, type ProjectRoute, type Route, type SessionRoute, type TopLevelRoute } from '../router/grammar';
+import type { BoardSnapshot } from '../store/board';
+import { selectDataStatus } from '../store/selectors';
+import { findSession, sessionTitle, windowHours } from './derive';
+import { ProjectTabs } from './ProjectTabs';
+import { OWNERS } from './owners';
+import { RouteLink } from './RouteLink';
+import { useDisplayed } from './context';
+
+/* The views the later steps fill in. Each is a placeholder that says what is missing and which step
+   brings it (`./owners`), because a blank page would read as an empty healthy board, and the page must
+   keep saying "unavailable" for what it does not do. The Python dashboard stays the default and serves
+   all of them. A later step replaces the placeholder it owns and nothing else here: the routes, the
+   chrome and the absence states around it are this step's and stay. */
+
+const HEADINGS: Readonly<Record<TopLevelRoute['view'], string>> = {
+  sessions: 'Session operations',
+  projects: 'Projects',
+  attention: 'Attention',
+  intent: 'Intent log',
+};
+
+function Placeholder({ view, name }: { readonly view: keyof typeof OWNERS; readonly name: string }) {
+  const { step, what } = OWNERS[view];
+  return (
+    <p className="next-placeholder" data-next-placeholder={view} data-next-owner={step}>
+      {`${name} is not available in the React interface yet. It arrives with a later migration step (${what}); the Python dashboard still serves it.`}
+    </p>
+  );
+}
+
+/* Unread is not unavailable, and neither is an empty board: a view says which of the three it is. */
+function BoardStatus({ snapshot }: { readonly snapshot: BoardSnapshot }) {
+  const status = selectDataStatus(snapshot);
+  if (status === 'unread') return <p className="next-absence">The first payload has not arrived yet.</p>;
+  if (status === 'unavailable') return <p className="next-absence">No data has been received in this tab.</p>;
+  return null;
+}
+
+function TopLevelView({ route }: { readonly route: TopLevelRoute }) {
+  const snapshot = useDisplayed((current) => current);
+  return (
+    <section className="next-view" data-next-view-body={route.view}>
+      <h1>{HEADINGS[route.view]}</h1>
+      <BoardStatus snapshot={snapshot} />
+      <Placeholder view={route.view} name={HEADINGS[route.view]} />
+    </section>
+  );
+}
+
+function SessionView({ route }: { readonly route: SessionRoute }) {
+  const data = useDisplayed((snapshot) => snapshot.data);
+  /* A pasted link lands here before the first payload does, and "not in the payload" would then be a
+     claim about a payload nobody has read. */
+  if (!data) {
+    return (
+      <section className="next-session-detail-empty" data-next-view-body="session" data-next-session-state="unread">
+        <p className="next-absence">The first payload has not arrived yet.</p>
+      </section>
+    );
+  }
+  const session = findSession(data, route.project, route.harness, route.session);
+  if (!session) {
+    /* Named, because a pasted link is the usual way here and the reader needs to know which session
+       the board no longer holds. The window is stated as a fact about the board, never as the cause:
+       a session from another machine is absent for a different reason. */
+    const who = [route.harness, route.session].filter(Boolean).join(' · ');
+    const hours = windowHours(data);
+    return (
+      <section className="next-session-detail-empty" data-next-view-body="session" data-next-session-state="outside-payload">
+        <p className="next-absence">This session is not in the current payload.</p>
+        {who ? <p className="next-session-identity">{who}</p> : null}
+        {hours !== null && hours > 0 ? <p>{`The board holds sessions observed in the last ${String(hours)} ${hours === 1 ? 'hour' : 'hours'}.`}</p> : null}
+        <RouteLink route={{ view: 'sessions', project: null, session: null }}>View all sessions</RouteLink>
+      </section>
+    );
+  }
+  return (
+    <section className="next-view" data-next-view-body="session">
+      <h1>{sessionTitle(session)}</h1>
+      <Placeholder view="session" name="This session’s page" />
+    </section>
+  );
+}
+
+function ProjectView({ route }: { readonly route: ProjectRoute }) {
+  const data = useDisplayed((snapshot) => snapshot.data);
+  const collection = payloadSessions(data);
+  if (!data) {
+    return (
+      <section className="next-project-detail-empty" data-next-view-body="project" data-next-project-state="unread">
+        <p className="next-absence">The first payload has not arrived yet.</p>
+      </section>
+    );
+  }
+  if (!collection.present) {
+    return (
+      <section className="next-project-detail-empty" data-next-view-body="project" data-next-project-state="no-collection">
+        <p className="next-absence">The board published no session collection.</p>
+      </section>
+    );
+  }
+  const members = collection.rows.filter((row) => String(row.project ?? '') === route.project);
+  if (members.length === 0) {
+    return (
+      <section className="next-project-detail-empty" data-next-view-body="project" data-next-project-state="outside-payload">
+        <p className="next-absence">Not present in the current payload.</p>
+        <RouteLink route={{ view: 'projects', project: null, session: null }}>View all projects</RouteLink>
+      </section>
+    );
+  }
+  /* A focus is the exact compatibility key of one session of this project. One the board no longer holds
+     is stated, with the way back to the project root, rather than silently showing the whole project. */
+  if (route.focus && !members.some((row) => compatSessKey(row) === route.focus)) {
+    return (
+      <section className="next-cockpit-stale-session" data-next-view-body="project" data-next-cockpit-stale-session>
+        <span>SESSION FILTER</span>
+        <h1>Session filter is outside this payload window</h1>
+        <p>{route.focus}</p>
+        <a href={fragmentForRoute({ view: 'project', project: route.project, tab: route.tab ?? 'now' })}>View project root</a>
+      </section>
+    );
+  }
+  return (
+    <section className="next-view" data-next-view-body="project" data-next-project-detail={route.project}>
+      <h1>{route.project}</h1>
+      <ProjectTabs route={route}>
+        {(tab) => <Placeholder view="project" name={`The ${tab} view`} />}
+      </ProjectTabs>
+    </section>
+  );
+}
+
+export function RoutedView({ route }: { readonly route: Route }) {
+  switch (route.view) {
+    case 'session':
+      return <SessionView route={route} />;
+    case 'project':
+      return <ProjectView route={route} />;
+    default:
+      return <TopLevelView route={route} />;
+  }
+}

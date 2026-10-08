@@ -24,7 +24,9 @@
     "test:installed": "node frontend/e2e/installed.mjs",
     "test:storage:browser": "node frontend/e2e/storage-conformance.mjs",
     "test:dev": "node --test --test-concurrency=1 frontend/dev/*.test.mjs",
-    "test:dev:browser": "node frontend/e2e/development.mjs"
+    "test:dev:browser": "node frontend/e2e/development.mjs",
+    "test:shell:browser": "node frontend/e2e/shell-routing.mjs",
+    "test:controls:browser": "node frontend/e2e/controls-continuity.mjs"
   },
   "dependencies": {
     "react": "19.3.0",

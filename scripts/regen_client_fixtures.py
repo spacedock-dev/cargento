@@ -471,6 +471,18 @@ class Recorder:
 # ---- streams ---------------------------------------------------------------------------
 
 
+def _read_more(
+    sock: socket.socket, received: str, stop: Callable[[str], bool], deadline: float
+) -> str:
+    """Append what the stream sends until `stop(text)`, the peer closes, or the deadline."""
+    while not stop(received) and time.monotonic() < deadline:
+        chunk = sock.recv(4096)
+        if not chunk:
+            break
+        received += chunk.decode("utf-8")
+    return received
+
+
 def _read_stream(
     rig: Rig,
     request: dict[str, Any],
@@ -513,14 +525,14 @@ def _read_stream(
                     break
                 body += chunk
             return _response_record(status, pairs, body)
-        if during is not None:
-            during()
         received = body.decode("utf-8")
-        while not stop(received) and time.monotonic() < deadline:
-            chunk = sock.recv(4096)
-            if not chunk:
-                break
-            received += chunk.decode("utf-8")
+        if during is not None:
+            # The server picks the connect-time revision on its own thread after the head is
+            # sent, so a write made before that frame is read can become that frame and leave
+            # nothing to wait for. Publish only once the connect-time frame has arrived.
+            received = _read_more(sock, received, lambda text: "\n\n" in text, deadline)
+            during()
+        received = _read_more(sock, received, stop, deadline)
     record = _response_record(status, pairs, b"")
     # Cut to the frames the scenario is about. A reader that stalls past the heartbeat is
     # sent extra keepalive comments, and those are timing, not contract.

@@ -20,6 +20,8 @@ export interface RuntimeOptions {
   /** Where a consumer holds back painting (see `store/commit-gate`). Absent means paint at once. */
   readonly paint?: RefreshSink['paint'];
   readonly announce?: (key: string, sentence: string) => void;
+  /** The entry ended; the announcer drops its guard for this key (see `PendingDeps.forget`). */
+  readonly forget?: (key: string) => void;
 }
 
 /* The one place the board's resources are started and stopped. The store and
@@ -56,6 +58,7 @@ export function createBoardRuntime(options: RuntimeOptions) {
     clock: env.clock,
     onChange: () => store.setPending(pendingRegistry.keys()),
     announce: options.announce ?? (() => undefined),
+    ...(options.forget ? { forget: options.forget } : {}),
   });
 
   let owned: Owned | null = null;

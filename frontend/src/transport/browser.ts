@@ -2,7 +2,7 @@ import type { FetchLike } from '../api/client';
 import { createLegacyStorage, createTabId, type BackendProvider, type LegacyStorage } from '../storage';
 import { createTransportStorage, type StorageEventTarget } from './legacyStorage';
 import type { Environment, EventSourceLike, TimerHandle } from './ports';
-import { createBoardRuntime, type BoardRuntime } from './runtime';
+import { createBoardRuntime, type BoardRuntime, type RuntimeOptions } from './runtime';
 
 /* The browser surface the environment reads, named so a test can supply it
    without a real window. */
@@ -64,6 +64,11 @@ export interface BrowserRuntimeOptions {
   readonly events?: StorageEventTarget;
   readonly search?: string;
   readonly doc?: Pick<Document, 'querySelector'> | null;
+  /* The shell's hooks, passed through to the board runtime untouched: where a paint is held back, and
+     where a pending control's start sentence is spoken and forgotten. */
+  readonly paint?: RuntimeOptions['paint'];
+  readonly announce?: RuntimeOptions['announce'];
+  readonly forget?: RuntimeOptions['forget'];
 }
 
 /* Builds the runtime for this document and starts nothing: the caller decides
@@ -85,6 +90,9 @@ export function createBrowserRuntime(options: BrowserRuntimeOptions = {}): Brows
     env: options.env ?? createBrowserEnvironment(globals),
     search: options.search ?? window.location.search,
     doc: options.doc === undefined ? document : options.doc,
+    ...(options.paint ? { paint: options.paint } : {}),
+    ...(options.announce ? { announce: options.announce } : {}),
+    ...(options.forget ? { forget: options.forget } : {}),
   });
   return Object.assign(runtime, { storage: legacy });
 }

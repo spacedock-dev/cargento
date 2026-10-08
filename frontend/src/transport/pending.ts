@@ -26,6 +26,9 @@ export interface PendingDeps {
   /** The set of pending keys changed without the caller ending an entry. */
   readonly onChange: () => void;
   readonly announce: (key: string, sentence: string) => void;
+  /* The entry ended, by its owner or by the backstop. The announcer drops its "already said" guard for
+     this key, so the next press's start sentence is spoken again rather than suppressed as a repeat. */
+  readonly forget?: (key: string) => void;
 }
 
 /* Held outside the rendered tree because the board redraws on every poll. The
@@ -45,6 +48,7 @@ export function createPendingRegistry(deps: PendingDeps) {
     if (!entry || entry !== token) return false;
     clearTimers(entry);
     entries.delete(key);
+    deps.forget?.(key);
     return true;
   }
 

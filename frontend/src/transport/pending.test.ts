@@ -119,3 +119,50 @@ describe('per-control pending work', () => {
     expect(registry.start('c', 'Saving')).toBeNull();
   });
 });
+
+/* The legacy `nextPendingEnd` deleted the pending cue's announced-sentence guard with the entry, "so the
+   next press's start sentence is said again rather than suppressed as a repeat of this one". The registry
+   owns the entry's life, so it owns telling the announcer to forget. */
+describe('forgetting the start sentence when an entry ends', () => {
+  function withForget() {
+    const clock = createFakeClock();
+    const announce = vi.fn();
+    const forget = vi.fn();
+    const registry = createPendingRegistry({ clock, onChange: vi.fn(), announce, forget });
+    return { clock, announce, forget, registry };
+  }
+
+  it('forgets the key once, when the owning token ends the entry', () => {
+    const { registry, clock, forget } = withForget();
+    const token = registry.start('save:a', 'Saving', 'Saving.');
+    clock.advance(400);
+    expect(forget).not.toHaveBeenCalled();
+    expect(registry.end('save:a', token)).toBe(true);
+    expect(forget).toHaveBeenCalledOnce();
+    expect(forget).toHaveBeenCalledWith('save:a');
+  });
+
+  it('forgets nothing when a token that no longer owns the entry tries to end it', () => {
+    const { registry, forget } = withForget();
+    const old = registry.start('save:a', 'Saving', 'Saving.');
+    registry.end('save:a', old);
+    forget.mockClear();
+    registry.start('save:a', 'Saving', 'Saving.');
+    expect(registry.end('save:a', old)).toBe(false);
+    expect(registry.end('save:a', null)).toBe(false);
+    expect(forget).not.toHaveBeenCalled();
+  });
+
+  it('forgets when the backstop clears a lost request', () => {
+    const { registry, clock, forget } = withForget();
+    registry.start('save:a', 'Saving', 'Saving.');
+    clock.advance(PENDING_BOUND_MS + PENDING_BACKSTOP_MS);
+    expect(forget).toHaveBeenCalledWith('save:a');
+  });
+
+  it('is optional: a registry built without it ends entries as before', () => {
+    const { registry } = setup();
+    const token = registry.start('save:a', 'Saving', 'Saving.');
+    expect(registry.end('save:a', token)).toBe(true);
+  });
+});
