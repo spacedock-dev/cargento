@@ -382,7 +382,10 @@ try {
       }
       const boot = o.counts();
       assert.equal(boot.stream, 1, 'one event stream under StrictMode');
-      assert.ok(boot.data >= 1 && boot.data <= 2, `boot read plus at most the stream's first wake, saw ${boot.data}`);
+      // The boot read, the stream's first announcement and, when the fixture board's revision advanced between them, one
+      // follow-up. A duplicated start under StrictMode would also show as a second stream, which is asserted above, and
+      // the runtime's own start counts are pinned in its unit tests.
+      assert.ok(boot.data >= 1 && boot.data <= 3, `boot read, the stream's first wake and at most one follow-up, saw ${boot.data}`);
       assert.equal(boot.nonGet, 0);
       o.reset();
       for (const fragment of ['#n=attention', '#n=projects', `#n=project:${A}`, `#n=project:${A}:course`, `#n=session:${A}:claude:shared-sid`, '#n=intent', '#n=sessions']) {
