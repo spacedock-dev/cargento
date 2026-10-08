@@ -528,6 +528,22 @@ def _read_stream(
     return record
 
 
+def stream_heartbeat(recorder: Recorder, scratch: Scratch) -> None:
+    """Its own function so a test can slow the reader for this scenario alone."""
+    initial = get("/api/stream", **{"Sec-Fetch-Site": "same-origin"})
+    rig = Rig(scratch, "stream-heartbeat", stream_heartbeat_sec=0.2)
+    try:
+        recorder.add(
+            "stream-heartbeat",
+            initial,
+            _read_stream(rig, initial, stop=lambda text: "keepalive" in text, frames=1),
+            "Before anything is published the stream carries only the comment heartbeat, "
+            "which an EventSource never delivers as an event.",
+        )
+    finally:
+        rig.close()
+
+
 def stream_scenarios(recorder: Recorder, scratch: Scratch) -> None:
     initial = get("/api/stream", **{"Sec-Fetch-Site": "same-origin"})
     rig = Rig(scratch, "stream-initial")
@@ -543,17 +559,7 @@ def stream_scenarios(recorder: Recorder, scratch: Scratch) -> None:
     finally:
         rig.close()
 
-    rig = Rig(scratch, "stream-heartbeat", stream_heartbeat_sec=0.2)
-    try:
-        recorder.add(
-            "stream-heartbeat",
-            initial,
-            _read_stream(rig, initial, stop=lambda text: "keepalive" in text, frames=1),
-            "Before anything is published the stream carries only the comment heartbeat, "
-            "which an EventSource never delivers as an event.",
-        )
-    finally:
-        rig.close()
+    stream_heartbeat(recorder, scratch)
 
     rig = Rig(scratch, "stream-change")
     try:

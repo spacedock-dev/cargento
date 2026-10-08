@@ -234,12 +234,26 @@ class ClientContractFixtureTest(unittest.TestCase):
             def __exit__(self, *_exc: object) -> None:
                 self.sock.close()
 
-        with mock.patch.object(socket, "create_connection", lambda *a, **k: Stalled(real(*a, **k))):
-            slow = regen.generate()
+        # Only the heartbeat scenario: the others publish while the reader reads, and a stalled
+        # reader there is a race of its own that says nothing about the recorded bytes.
+        recorder = regen.Recorder()
+        scratch = regen.Scratch()
+        try:
+            with (
+                mock.patch.object(
+                    socket, "create_connection", lambda *a, **k: Stalled(real(*a, **k))
+                ),
+                regen.guarded(),
+            ):
+                regen.stream_heartbeat(recorder, scratch)
+        finally:
+            scratch.close()
         committed = self.committed()
-        for name in sorted(n for n in slow if n.startswith("stream-")):
-            with self.subTest(fixture=name):
-                self.assertEqual(committed[name], slow[name])
+        self.assertEqual(["stream-heartbeat"], sorted(recorder.scenarios))
+        self.assertEqual(
+            committed["stream-heartbeat.json"],
+            regen.canonical(recorder.scenarios["stream-heartbeat"]),
+        )
 
     def test_check_flag_is_cheap_and_agrees(self) -> None:
         result = subprocess.run(
