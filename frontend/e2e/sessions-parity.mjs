@@ -639,7 +639,12 @@ try {
         assert.equal(kept.focus, 'live-work', 'focus stayed on the link');
         // The browser's own scroll anchoring may move the scroll offset to keep what the reader is looking at where it
         // was when a row above it changes height; what must hold is that the focused link did not move on screen.
-        assert.equal(kept.linkTop, kept.before, 'the focused link stayed where it was on screen');
+        // Rounded from fractional positions, so scroll anchoring can leave the link one pixel off (a hosted runner
+        // measured 712 against 711); a reader who scrolled to follow it would be several rows away.
+        assert.ok(
+          Math.abs(kept.linkTop - kept.before) <= 1,
+          `the focused link stayed where it was on screen: ${kept.linkTop} against ${kept.before}`,
+        );
         assert.deepEqual(kept.open, ['How rows are split'], 'the caveat stayed open');
         return kept;
       } finally {
