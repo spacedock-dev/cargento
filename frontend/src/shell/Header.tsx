@@ -85,6 +85,7 @@ function ProjectMore({
       running={counts.running}
       subagents={counts.subagents}
       briefingText={briefing.briefingText}
+      {...(briefing.addHumanContext ? { addHumanContext: briefing.addHumanContext } : {})}
     />
   );
 }

@@ -1,4 +1,5 @@
 import { createControls, type Announce, type ControlsDeps } from '../controls/kit';
+import { startWorkstream } from '../workstream';
 import { choiceOpenIn, createDisplayGate } from '../controls/displayGate';
 import { createRouter, type Router } from '../router/router';
 import {
@@ -73,6 +74,8 @@ export function createShell(options: ShellOptions = {}): Shell {
     ...(options.doc !== undefined ? { doc: options.doc } : {}),
   });
   display.attach(runtime.store);
+  // Observed from the first payload, so the workstream and the delegation figure can reach back to it.
+  startWorkstream(runtime);
   const controls = createControls({
     clock: env.clock,
     announce: routeAnnouncement(announcer),

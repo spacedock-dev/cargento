@@ -1,0 +1,74 @@
+/* The Console's operating rail (delegation, waiting, capacity) and the setup disclosures. Each rule is the legacy sheet's own, copied so the two pages draw alike while the
+   Python dashboard stays the rollback. */
+.next-project-detail-rail{width:356px;max-width:100%;min-width:0;border-left:1px solid var(--rule);background:var(--sunk);display:flex;flex-direction:column}
+.next-rail-panel{display:flex;flex-direction:column;gap:12px;padding:18px 22px;border-bottom:1px solid var(--rule)}
+.next-rail-panel:first-child{padding-top:20px}
+.next-rail-panel:last-child{border-bottom:0}
+.next-rail-header{display:flex;align-items:baseline;gap:9px}
+.next-rail-header h2{margin:0;color:var(--ink-label);font:600 var(--fs-label) var(--mono);letter-spacing:.07em}
+.next-rail-meta{margin-left:auto;color:var(--ink2);font:var(--fs-label) var(--mono);text-align:right}
+.next-rail-meta--sentence{font:var(--fs-label) var(--sans)}
+.next-rail-meta--amber{color:var(--amber)}
+.next-project-detail-rail .next-rail-reason{margin:0;color:var(--ink2);font-family:var(--sans);font-size:var(--fs-body);line-height:1.5}
+.next-delegation-figure{display:flex;gap:9px;align-items:baseline}
+.next-delegation-figure>strong{color:var(--accent);font:700 var(--fs-head)/1 var(--mono);letter-spacing:-.02em}
+.next-delegation-caption{margin:0;color:var(--ink2);font-size:var(--fs-body);font-weight:500;line-height:1.55;max-width:var(--measure)}
+.next-delegation progress{display:block;width:100%;height:5px;border:0;border-radius:var(--r-control);overflow:hidden;background:var(--rule);accent-color:var(--accent-dim)}
+.next-delegation progress::-webkit-progress-bar{background:var(--rule)}
+.next-delegation progress::-webkit-progress-value{background:var(--accent-dim)}
+.next-delegation progress::-moz-progress-bar{background:var(--accent-dim)}
+.next-delegation-metrics{display:flex;flex-wrap:wrap;gap:4px 9px;color:var(--ink2);font:var(--fs-label)/1.5 var(--mono)}
+.next-delegation-withheld{display:flex;flex-direction:column;gap:6px;color:var(--ink2)}
+.next-delegation-withheld strong{font:700 var(--fs-value) var(--mono)}
+.next-delegation-withheld strong[data-next-absent]{font-family:var(--sans)}
+.next-delegation-withheld small{color:var(--ink2);font-size:var(--fs-label);line-height:1.5}
+.next-delegation-trend{color:var(--ink2);font:var(--fs-label) var(--mono)}
+.next-rail-wait{display:flex;flex-direction:column;gap:8px;padding:12px 13px;border:1px solid var(--rule);border-left:2px solid var(--amber);border-radius:var(--r-card);background:var(--panel)}
+.next-rail-wait-heading{display:flex;align-items:baseline;gap:9px}
+.next-rail-wait-heading a{min-width:0;color:var(--ink);font-size:var(--fs-body);font-weight:500;line-height:1.55;overflow-wrap:anywhere;text-decoration:none}
+.next-rail-wait-heading a:hover{text-decoration:underline}
+.next-rail-wait-duration{margin-left:auto;flex-shrink:0;color:var(--amber);font:700 var(--fs-label) var(--mono)}
+.next-rail-question{margin:0;color:var(--ink2);font-size:var(--fs-body);font-weight:500;line-height:1.55;overflow-wrap:anywhere}
+.next-rail-wait-controls{display:flex;flex-wrap:wrap;gap:7px;padding-top:2px}
+/* Not collapsed onto `.next-action`, and this is the exception DRC-4604's own
+   exempt list implies without naming. This is a CONTAINER-scoped override, not
+   a control recipe: it adjusts whatever controls the waiting card holds, and
+   one of them is `.next-session-raise`, which carries --amber at rest as a
+   state signal the neutral primitive would erase. Collapsing the wrapper would
+   reach through to an exempt control. It keeps its radius for the same reason
+   it keeps its padding: it is adjusting a box the primitive already drew. */
+.next-rail-wait-controls button{margin-top:0;padding:5px 10px;border-radius:var(--r-control)}
+.next-rail-capacity-window{display:flex;flex-direction:column;gap:6px}
+.next-rail-capacity-heading{display:flex;align-items:baseline;gap:8px;color:var(--ink2);font:var(--fs-label) var(--mono)}
+.next-rail-capacity-heading b,.next-rail-capacity-heading strong{color:var(--ink)}
+.next-rail-capacity-heading strong{margin-left:auto;font-variant-numeric:tabular-nums}
+.next-rail-capacity-heading .next-rail-used--amber,.next-rail-pace--hot{color:var(--amber)}
+.next-rail-capacity-heading .next-rail-used--secondary{color:var(--ink2)}
+.next-rail-capacity-bar{position:relative;height:6px;border-radius:var(--r-control);background:var(--rule);overflow:hidden}
+.next-rail-capacity-fill{position:absolute;inset:0 auto 0 0;border-radius:var(--r-control);background:var(--accent-dim)}
+.next-rail-capacity-fill--clay{background:var(--clay)}
+.next-rail-capacity-fill--amber{background:var(--amber)}
+.next-rail-capacity-fill--unknown{background:var(--ink3)}
+.next-rail-capacity-tick{position:absolute;top:-2px;bottom:-2px;width:1.5px;background:var(--ink2)}
+.next-rail-capacity-caption{display:flex;flex-wrap:wrap;align-items:baseline;gap:8px;color:var(--ink2);font:var(--fs-label) var(--mono)}
+.next-project-detail-rail .next-usage-consent{margin:0;padding:12px;font-size:var(--fs-label)}
+.next-project-detail-rail .next-usage-consent-note{font-family:var(--sans);font-size:var(--fs-label)}
+.next-project-detail-rail .next-usage-switch{margin:0;font-size:var(--fs-label)}
+@media(max-width:760px){
+  .next-project-detail-rail{width:100%;border-top:1px solid var(--rule);border-left:0}
+}
+.next-cockpit-panel[data-next-cockpit-panel="console"]>.next-project-detail-rail{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));align-items:start;width:auto;min-width:0;border-left:0}
+.next-cockpit-console-status{margin:0;padding:9px 12px;border-bottom:1px solid var(--rule);color:var(--ink2);font:var(--fs-label) var(--sans)}
+.next-cockpit-console-setup{margin:0;padding:9px 12px;border-top:1px solid var(--rule)}
+.next-cockpit-console-setup>ul{margin:8px 0 0;padding-left:18px}
+.next-cockpit-console-status summary{cursor:pointer}
+.next-cockpit-console-status ul{margin:8px 0 0;padding-left:18px}
+.next-cockpit-plan-details>summary,.next-cockpit-console-status>summary,
+.next-cockpit-console-setup>summary{align-content:center;padding:4px 0;color:var(--ink2);font:500 var(--fs-body)/1.55 var(--sans);text-decoration:underline;text-decoration-color:var(--line);text-underline-offset:4px;max-width:var(--measure)}
+.next-cockpit-content .next-rail-meta--amber{color:var(--ink2)}
+@media(max-width:760px){
+  .next-cockpit-panel[data-next-cockpit-panel="console"]>.next-project-detail-rail{grid-template-columns:1fr}
+}
+.next-cockpit-scope{display:flex;align-items:baseline;gap:12px;padding:7px 12px;font:var(--fs-label) var(--mono);color:var(--ink2)}
+.next-cockpit-scope strong{font-size:var(--fs-label);letter-spacing:.07em;color:var(--ink)}
+.next-cockpit-scope--evidence{margin-top:12px;border-top:1px solid var(--rule);border-bottom:1px solid var(--rule)}

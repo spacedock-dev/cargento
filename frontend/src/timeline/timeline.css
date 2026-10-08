@@ -1,11 +1,10 @@
 /* The semantic timeline and its activity filter. Ported from the legacy sheet's SUBSTRATE section so the
-   two renderers look alike; the lane rails and graph marks are the project step's, so the row is a two
-   column grid of age and body. Tokens are the React page's own (styles/shell.css). */
+   two renderers look alike: a row is a grid of age, rail and body, one rail column for each lane. Tokens are the React page's own (styles/shell.css). */
 .next-cockpit-semantic{border-top:1px solid var(--rule)}
 .next-cockpit-semantic>h2{margin:0;padding:12px 10px;border-bottom:1px solid var(--rule);color:var(--ink-label);font-family:var(--mono);font-size:var(--fs-label);font-weight:600;letter-spacing:.07em}
 .next-cockpit-empty{margin:0;padding:12px 10px;color:var(--ink2);font:var(--fs-body)/1.55 var(--sans)}
 .next-cockpit-stale-read{margin:0 0 10px;max-width:var(--measure);color:var(--ink2);font:var(--fs-body)/1.55 var(--sans)}
-.pc-semantic-timeline{min-width:0;position:relative;padding:10px 0 4px;font-family:var(--sans);font-size:var(--fs-body);line-height:1.5}
+.pc-semantic-timeline{--lane-count:1;min-width:0;position:relative;padding:10px 0 4px;font-family:var(--sans);font-size:var(--fs-body);line-height:1.5}
 .pc-semantic-timeline code,.pc-semantic-timeline .pc-source{font-family:var(--mono);font-size:var(--fs-label);overflow-wrap:anywhere}
 .pc-semantic-timeline button:focus-visible,.pc-semantic-timeline summary:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
 .pc-substrate-empty,.pc-substrate-reason{color:var(--ink2);font:var(--fs-label)/1.55 var(--sans);overflow-wrap:anywhere}
@@ -15,7 +14,7 @@
 .pc-graph-filter button.selected{border-bottom-color:var(--accent);color:var(--ink)}
 .pc-history-band{margin-top:8px;border-top:1px solid var(--rule);padding-top:7px}
 .pc-history-band>summary,.pc-trail-history>summary,.pc-entry-suppressed>summary,.pc-event-evidence>summary{cursor:pointer;color:var(--ink2);font:500 var(--fs-body)/1.55 var(--sans);max-width:var(--measure)}
-.pc-graph-row{display:grid;grid-template-columns:74px minmax(0,1fr);align-items:start;min-height:48px}
+.pc-graph-row{display:grid;grid-template-columns:74px calc(var(--lane-count) * 24px) minmax(0,1fr);align-items:start;min-height:48px}
 .pc-graph-row>time,.pc-graph-time{padding:8px 6px 0 0;color:var(--ink2);text-align:right;overflow-wrap:anywhere}
 .pc-graph-row>time{font:var(--fs-label)/1.5 var(--mono)}
 .pc-graph-row>.pc-trail-body{min-width:0;padding:5px 0 15px}
@@ -42,7 +41,20 @@
 .next-scope-marker--square{border-radius:0;background:currentColor}
 .next-scope-marker--round{border-radius:50%;background:transparent}
 .next-scope-marker--unknown{width:6px;height:6px;transform:rotate(45deg);background:transparent}
+.pc-lane-legend{display:grid;grid-template-columns:74px calc(var(--lane-count) * 24px) minmax(0,1fr);margin-bottom:8px}
+.pc-lane-labels{grid-column:3;display:flex;gap:6px;flex-wrap:wrap;color:var(--ink2);font:var(--fs-label) var(--sans)}
+.pc-lane-labels span{padding:1px 6px;border-left:2px solid var(--rule);white-space:normal;overflow-wrap:anywhere}
+.pc-graph-rail{position:relative;align-self:stretch;display:grid;grid-template-columns:repeat(var(--lane-count),minmax(0,1fr));min-height:48px}
+.pc-rail-cell{position:relative;min-width:0}
+.pc-rail-cell[data-flow-key]::before{content:"";position:absolute;left:calc(50% - 1px);top:0;bottom:0;border-left:1px solid var(--rule)}
+.pc-rail-cell.flow-out::before{top:13px}
+.pc-rail-cell.flow-in::before{bottom:auto;height:13px}
+.pc-graph-mark{position:absolute;z-index:1;left:calc(50% - 5px);top:9px;width:9px;height:9px;border:2px solid var(--ink2);border-radius:50%;background:var(--bg);box-shadow:0 0 0 3px var(--bg)}
+.pc-graph-mark.steering{left:calc(50% - 4px);top:10px;width:7px;height:7px;border:0;border-radius:0;background:var(--accent);transform:rotate(45deg)}
 @media(max-width:760px){
+  .pc-lane-legend{display:none}
+  .pc-graph-row{grid-template-columns:74px minmax(0,1fr)}
+  .pc-graph-rail{display:none}
   .pc-trail-top{display:grid;grid-template-columns:minmax(0,1fr);gap:3px}
   .pc-trail-top span{text-align:left}
 }

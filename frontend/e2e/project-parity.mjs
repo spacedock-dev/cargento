@@ -1,0 +1,1244 @@
+/*
+ * The Projects list and a project's page in a real browser, against the real backend (DRC-4826).
+ *
+ * Two kinds of proof. The DIFFERENTIAL half drives the legacy page and the React page in the same Chromium over
+ * the same board and compares what a reader can read: the Projects list group by group and row by row, then each
+ * project's header, scope tree, recovery strip, tab strip and its Now and Course panels, for the proof board
+ * (several projects, a plan, the same sid under two harnesses, a session that ended without an end stamp, a
+ * source gap, a project with no plan or context, a unicode label, a label that differs by a space), for the
+ * states that need a different board (no sessions, no plans, a session the board no longer holds, a context that
+ * failed) and for a run of generated boards. The BEHAVIOUR half holds the React page to what a text comparison
+ * cannot see: nothing posts, copies or notifies on mount, StrictMode, a poll or navigation; the workstream
+ * collapse survives a reload and a refusing store; a human-context note keeps its node, caret and native undo
+ * through the board's own revisions and through tab changes; a scope survives leaving the project and coming
+ * back; an open plan survives a poll; and 320, 375 and 640 CSS px layouts do not scroll sideways.
+ *
+ * Models, usage, notifications and the terminal are off or replaced: the page's clipboard is a recorder, the
+ * backend serving both pages answers only the document and its health, and every board and project-context read
+ * is the one this script serves. The Decisions and Console tabs and the steering bar belong to the steering step
+ * and are outside the comparison. Run with `pnpm test:project:browser`; `CARGENTO_E2E_STEPS=<regex>` runs only
+ * the steps whose name matches, `PROJECT_E2E_SEEDS` sets how many generated boards the differential compares.
+ *
+ * Timing: every fixed wait here means "give the page time to react", and a hosted runner has a few shared cores,
+ * so each is tripled under CI and every comparison reads until two reads agree (`settled`) rather than once.
+ */
+import assert from 'node:assert/strict';
+import { mkdir } from 'node:fs/promises';
+import { fileURLToPath } from 'node:url';
+import { chromium } from '@playwright/test';
+import { openPage } from './support/browser.mjs';
+import {
+  instrumentResources,
+  recordClipboard,
+  resources,
+  startSessionsBoard,
+} from './sessions-board.mjs';
+
+const patience = (ms) => (process.env.CI ? ms * 3 : ms);
+// The key that undoes in a text box: Command on macOS, Control elsewhere.
+const MOD = process.platform === 'darwin' ? 'Meta' : 'Control';
+
+// The generators are TypeScript the unit tests also use; Node 26 strips the types as it imports them.
+process.removeAllListeners('warning');
+const base = await import('../src/observed/generate.test.helper.ts');
+const { makeBoards } = await import('../test/project_boards.ts');
+const { genBoard, genContext, parityBoard } = makeBoards(base);
+
+// Captures land in the main checkout's gitignored docs/screenshots/ even when run from a worktree of it.
+const checkout = fileURLToPath(new URL('../../', import.meta.url)).replace(
+  /\/\.claude\/worktrees\/[^/]+\/?$/,
+  '/',
+);
+const SHOTS = (process.env.CARGENTO_SCREENSHOTS || `${checkout}docs/screenshots`).replace(
+  /\/?$/,
+  '/',
+);
+const SEEDS = Number(process.env.PROJECT_E2E_SEEDS || 12);
+const E = encodeURIComponent;
+const receipts = {};
+const failures = [];
+const shots = [];
+const only = process.env.CARGENTO_E2E_STEPS ? new RegExp(process.env.CARGENTO_E2E_STEPS) : null;
+
+async function step(name, run) {
+  if (only && !only.test(name)) return;
+  try {
+    const detail = await run();
+    receipts[name] = detail === undefined ? 'ok' : detail;
+  } catch (error) {
+    failures.push({ name, message: String(error.stack || error.message || error).slice(0, 2500) });
+    receipts[name] = 'FAILED';
+  }
+}
+
+/* ---- what a reader can read, reduced to data. These run IN the page, so they are self-contained. ---- */
+const summarizeList = () => {
+  const norm = (node) => (node ? node.textContent.replace(/\s+/g, ' ').trim() : '');
+  const { document } = globalThis;
+  const root = document.querySelector('[data-next-view-body="projects"]');
+  if (!root) return { missing: true, text: norm(document.body).slice(0, 200) };
+  return {
+    note: norm(root.querySelector('.next-projects-note')),
+    groups: [...root.querySelectorAll('[data-next-project-group]')].map((group) => ({
+      kind: group.getAttribute('data-next-project-group'),
+      header: norm(group.querySelector(':scope > header')),
+      empty: group.querySelector('.next-projects-empty')
+        ? norm(group.querySelector('.next-projects-empty'))
+        : null,
+      rows: [...group.querySelectorAll('article.next-project-row')].map((row) => ({
+        project: row.getAttribute('data-next-project'),
+        route: row.getAttribute('data-next-route'),
+        tone: [...row.classList].find((name) => name.startsWith('next-project-tone--')) || '',
+        history: row.getAttribute('data-next-project-history') === 'true',
+        role: row.getAttribute('role'),
+        tabindex: row.getAttribute('tabindex'),
+        text: norm(row),
+        members: [...row.querySelectorAll('button.next-project-session')].map((member) => [
+          member.getAttribute('data-next-route'),
+          member.getAttribute('data-next-harness'),
+          member.getAttribute('data-next-session'),
+          norm(member),
+        ]),
+        more: row.querySelector('.next-project-more')
+          ? norm(row.querySelector('.next-project-more'))
+          : null,
+      })),
+    })),
+  };
+};
+
+const summarizeProject = (tab) => {
+  const norm = (node) => (node ? node.textContent.replace(/\s+/g, ' ').trim() : '');
+  const { document } = globalThis;
+  const body = document.querySelector('[data-next-view-body="project"]');
+  const article = document.querySelector('article.next-project-detail');
+  if (!article)
+    return {
+      empty: body
+        ? {
+            state: body.getAttribute('data-next-project-state') || body.className,
+            text: norm(body),
+            links: [...body.querySelectorAll('a')].map((a) => a.getAttribute('href')),
+          }
+        : { missing: true },
+    };
+  const header = article.querySelector('.next-project-detail-header');
+  const tree = article.querySelector('nav.next-cockpit-scope-tree');
+  const strip = article.querySelector('.next-cockpit-recovery');
+  const panel =
+    article.querySelector(`[data-next-cockpit-panel="${tab}"]`) ||
+    article.querySelector('.next-cockpit-panel');
+  return {
+    header: norm(header),
+    viewing: norm(article.querySelector('.next-cockpit-viewing-session')),
+    scopeTree: norm(tree),
+    scopeLinks: [...(tree ? tree.querySelectorAll('a') : [])].map((link) => [
+      link.getAttribute('href'),
+      link.getAttribute('data-scope-kind'),
+      link.hasAttribute('aria-current'),
+    ]),
+    switcher: norm(article.querySelector('.next-cockpit-scope-switcher > summary')),
+    strip: norm(strip),
+    stripLinks: [...(strip ? strip.querySelectorAll('a') : [])].map((link) =>
+      link.getAttribute('href'),
+    ),
+    tabs: [...article.querySelectorAll('nav.next-cockpit-tabs [role="tab"]')].map(
+      (button) => `${norm(button)}|${button.getAttribute('aria-selected')}`,
+    ),
+    panel: norm(panel),
+    panelLinks: [...(panel ? panel.querySelectorAll('a') : [])].map((link) =>
+      link.getAttribute('href'),
+    ),
+  };
+};
+
+/* ---- pages ---- */
+const legacyReady = (page) =>
+  page.waitForFunction('typeof nextData !== "undefined" && nextData !== null');
+const reactReady = (page) =>
+  page.waitForFunction(
+    () =>
+      globalThis.document.querySelector('nav[aria-label="Primary"]') &&
+      !/Waiting for the first board|first payload has not arrived/.test(
+        globalThis.document.body.innerText,
+      ),
+  );
+
+async function load(opened, origin, kind, fragment = '') {
+  await opened.page.goto('about:blank');
+  await opened.page.goto(origin + '/' + fragment);
+  await (kind === 'legacy' ? legacyReady : reactReady)(opened.page);
+  await opened.page.waitForTimeout(patience(120));
+}
+
+/* A read taken the instant after a navigation can still show the previous view, and a project's context read
+   arrives a beat after the page. The page counts as read once two reads 120 ms apart agree. */
+async function settled(page, read, ...args) {
+  let previous = await page.evaluate(read, ...args);
+  for (let waited = 0; waited < patience(5000); waited += 120) {
+    await new Promise((resolve) => setTimeout(resolve, 120));
+    const next = await page.evaluate(read, ...args);
+    if (JSON.stringify(next) === JSON.stringify(previous)) return next;
+    previous = next;
+  }
+  throw new Error('The page kept changing.');
+}
+
+/* One board for both pages, so they share one clock: every read of /api/data answers it, every project-context
+   read answers `holder.contexts` by `project\nsession` (the project's own where the session has none), and the
+   stream is refused so nothing else moves. A context of `null` is a read that fails. */
+async function freeze(opened, holder) {
+  await opened.page.route('**/api/data*', (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      headers: { 'X-Cargento-Revision': '7.1' },
+      body: JSON.stringify(holder.body),
+    }),
+  );
+  await opened.page.route('**/api/project-context*', (route) => {
+    const url = new URL(route.request().url());
+    const project = url.searchParams.get('project') ?? '';
+    const session = url.searchParams.get('session') ?? '';
+    const body = holder.contexts[`${project}\n${session}`] ?? holder.contexts[`${project}\n`];
+    if (!body) return route.fulfill({ status: 500, contentType: 'text/plain', body: 'no context' });
+    return route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify(body),
+    });
+  });
+  await opened.page.route('**/api/stream', (route) => route.abort('failed'));
+}
+
+function firstDifference(left, right, path = '$') {
+  if (JSON.stringify(left) === JSON.stringify(right)) return null;
+  if (left && right && typeof left === 'object' && typeof right === 'object') {
+    for (const key of new Set([...Object.keys(left), ...Object.keys(right)])) {
+      const found = firstDifference(left[key], right[key], `${path}.${key}`);
+      if (found) return found;
+    }
+  }
+  return `${path}: ${JSON.stringify(left)?.slice(0, 260)} != ${JSON.stringify(right)?.slice(0, 260)}`;
+}
+
+/* The legacy page is the oracle, not the subject. On a hosted macOS runner it can stop drawing after leaving
+   and returning, so a legacy page that does not draw is recorded and the React page is still held to every
+   assertion; a comparison with legacy only runs while legacy draws. */
+const legacyDraw = { stale: false };
+
+/* A difference found by the comparison is a failure unless it is named here with its reason. */
+const DEVIATIONS = [];
+
+const proof = parityBoard();
+const contextsFor = (contexts) => {
+  const out = {};
+  for (const [project, body] of Object.entries(contexts)) if (body) out[`${project}\n`] = body;
+  return out;
+};
+const stableKeyOf = (board, label) => {
+  const row = (board.sessions || []).find((candidate) => candidate.project === label);
+  return (row && row.project_key) || label;
+};
+const labelsOf = (board) => [
+  ...new Set((board.sessions || []).map((row) => (row.project == null ? '' : String(row.project)))),
+];
+const fragmentFor = (label, { focus, tab } = {}) =>
+  `#n=project:${E(label)}${focus ? `:${E(focus)}` : ''}${tab && tab !== 'now' ? `:${tab}` : ''}`;
+
+const browser = await chromium.launch();
+const board = await startSessionsBoard({ legacy: true });
+const reactOrigins = [board.react.origin, board.react.viteOrigin];
+const opened = [];
+async function newPage(kind, options = {}) {
+  const page = await openPage(
+    browser,
+    kind === 'legacy' ? board.legacy.origin : reactOrigins,
+    options,
+  );
+  await recordClipboard(page.context);
+  await instrumentResources(page.context);
+  opened.push(page);
+  return page;
+}
+
+try {
+  await mkdir(SHOTS, { recursive: true });
+  const legacy = await newPage('legacy');
+  const react = await newPage('react');
+  const holder = { body: proof.board, contexts: contextsFor(proof.contexts) };
+  await freeze(legacy, holder);
+  await freeze(react, holder);
+
+  async function both(fragment, read, ...args) {
+    await load(react, board.react.origin, 'react', fragment);
+    const mine = await settled(react.page, read, ...args);
+    if (legacyDraw.stale) return { mine, old: null };
+    try {
+      await load(legacy, board.legacy.origin, 'legacy', fragment);
+      return { mine, old: await settled(legacy.page, read, ...args) };
+    } catch {
+      legacyDraw.stale = true;
+      return { mine, old: null };
+    }
+  }
+
+  /* ===================== DIFFERENTIAL: the proof board ===================== */
+  await step(
+    'differential: the Projects list reads the same, group by group and row by row',
+    async () => {
+      const { mine, old } = await both('#n=projects', summarizeList);
+      assert.ok(mine.groups?.length === 2, 'the React list draws both groups');
+      const rows = mine.groups.reduce((sum, group) => sum + group.rows.length, 0);
+      assert.ok(rows >= 6, `the proof board carries its projects (${rows})`);
+      if (old) assert.equal(firstDifference(old, mine), null);
+      return { rows, active: mine.groups[0].rows.map((row) => row.project) };
+    },
+  );
+
+  await step('differential: every project of the proof board, on Now and on Course', async () => {
+    const compared = [];
+    for (const label of labelsOf(proof.board).filter(Boolean)) {
+      for (const tab of ['now', 'course']) {
+        const { mine, old } = await both(fragmentFor(label, { tab }), summarizeProject, tab);
+        assert.ok(mine.header, `${label} ${tab}: the page drew its project`);
+        if (old) assert.equal(firstDifference(old, mine), null, `${label} ${tab}`);
+        compared.push(`${label}:${tab}`);
+      }
+    }
+    return { compared: compared.length };
+  });
+
+  await step(
+    'differential: a project’s exact sessions as scopes, on Now and on Course',
+    async () => {
+      const compared = [];
+      const rows = proof.board.sessions.filter((row) => row.project === 'alpha/app');
+      for (const row of rows) {
+        const focus = `${row.harness}:${row.sid}`;
+        for (const tab of ['now', 'course']) {
+          const { mine, old } = await both(
+            fragmentFor('alpha/app', { focus, tab }),
+            summarizeProject,
+            tab,
+          );
+          assert.ok(mine.viewing, `${focus} ${tab}: the page says which session it is viewing`);
+          if (old) assert.equal(firstDifference(old, mine), null, `${focus} ${tab}`);
+          compared.push(`${focus}:${tab}`);
+        }
+      }
+      return { compared: compared.length };
+    },
+  );
+
+  /* ===================== DIFFERENTIAL: states that need another board ===================== */
+  await step(
+    'differential: no sessions, a project the board lacks, a stale focus and a failed read',
+    async () => {
+      const results = {};
+      holder.body = {
+        generated: proof.board.generated,
+        harnesses: proof.board.harnesses,
+        sessions: [],
+      };
+      {
+        const { mine, old } = await both('#n=projects', summarizeList);
+        if (old) assert.equal(firstDifference(old, mine), null, 'no sessions: the list');
+        assert.ok(mine.groups.every((group) => group.rows.length === 0 && group.empty));
+        results.noSessions = mine.groups.map((group) => group.empty);
+        const gone = await both(fragmentFor('alpha/app'), summarizeProject, 'now');
+        if (gone.old)
+          assert.equal(firstDifference(gone.old.empty.text, gone.mine.empty.text), null);
+        assert.match(gone.mine.empty.text, /not present in the current payload/i);
+      }
+      holder.body = proof.board;
+      {
+        const stale = await both(fragmentFor('alpha/app', { focus: 'claude:gone' }), () =>
+          globalThis.document
+            .querySelector('[data-next-view-body="project"]')
+            ?.textContent.replace(/\s+/g, ' ')
+            .trim(),
+        );
+        if (stale.old) assert.equal(stale.old, stale.mine, 'the stale focus');
+        assert.match(stale.mine, /Session filter is outside this payload window/);
+        results.staleFocus = stale.mine;
+      }
+      holder.contexts = {};
+      {
+        const failed = await both(
+          fragmentFor('alpha/app', { tab: 'course' }),
+          summarizeProject,
+          'course',
+        );
+        if (failed.old)
+          assert.equal(firstDifference(failed.old, failed.mine), null, 'a failed read');
+        assert.match(failed.mine.panel, /Course evidence unavailable/);
+        assert.match(failed.mine.strip, /Captain attention unavailable/);
+        results.failedRead = 'unavailable, never "no changes"';
+      }
+      holder.contexts = contextsFor(proof.contexts);
+      return results;
+    },
+  );
+
+  await step(
+    'differential: a project with no plan, and one that ended without an end stamp',
+    async () => {
+      const beta = await both(fragmentFor('beta/api'), summarizeProject, 'now');
+      if (beta.old) assert.equal(firstDifference(beta.old, beta.mine), null, 'beta/api');
+      assert.ok(!/PLAN\b/.test(beta.mine.panel) || /No live session plan/.test(beta.mine.panel));
+      const alpha = await both(fragmentFor('alpha/app'), summarizeProject, 'now');
+      assert.match(alpha.mine.panel, /HOW THINGS ENDED/);
+      assert.match(alpha.mine.panel, /Ended with uncommitted work/);
+      return { noPlan: 'stated', ended: 'in HOW THINGS ENDED' };
+    },
+  );
+
+  /* ===================== DIFFERENTIAL: generated boards ===================== */
+  await step(
+    `differential: ${SEEDS} generated boards read the same, list and project pages`,
+    async () => {
+      let lists = 0;
+      let pages = 0;
+      for (let seed = 1; seed <= SEEDS; seed += 1) {
+        const generated = genBoard(seed);
+        holder.body = generated;
+        holder.contexts = {};
+        const labels = labelsOf(generated).filter(Boolean);
+        for (const label of labels) {
+          const context = genContext(seed, generated);
+          if (context) holder.contexts[`${stableKeyOf(generated, label)}\n`] = context;
+        }
+        const list = await both('#n=projects', summarizeList);
+        if (list.old) {
+          const found = firstDifference(list.old, list.mine);
+          if (found && !DEVIATIONS.some((d) => d.seed === seed && d.scope === 'list'))
+            assert.fail(`seed ${seed} list: ${found}`);
+        }
+        lists += 1;
+        for (const label of labels.slice(0, 2)) {
+          const tab = seed % 2 ? 'now' : 'course';
+          const page = await both(fragmentFor(label, { tab }), summarizeProject, tab);
+          if (page.old) {
+            const found = firstDifference(page.old, page.mine);
+            if (found && !DEVIATIONS.some((d) => d.seed === seed && d.scope === label))
+              assert.fail(`seed ${seed} ${JSON.stringify(label)} ${tab}: ${found}`);
+          }
+          pages += 1;
+        }
+      }
+      holder.body = proof.board;
+      holder.contexts = contextsFor(proof.contexts);
+      return { lists, pages };
+    },
+  );
+
+  await step(
+    'differential: hostile text is text on both pages, and draws no element, selector or script',
+    async () => {
+      const hostile = [
+        '"]\'><img src=x onerror=globalThis.__hit=1>',
+        '<script>globalThis.__hit=1</script>',
+        '\u202eRTL',
+      ];
+      holder.body = {
+        generated: proof.board.generated,
+        sessions: hostile.map((text, index) => ({
+          harness: 'claude',
+          sid: `s${index}:${text}`,
+          project: text,
+          title: text,
+          state: 'working',
+          active: true,
+          state_detail: text,
+          last_activity: proof.board.generated - 3,
+        })),
+      };
+      holder.contexts = {};
+      const list = await both('#n=projects', summarizeList);
+      if (list.old) assert.equal(firstDifference(list.old, list.mine), null);
+      assert.equal(await react.page.evaluate(() => globalThis.__hit), undefined, 'no handler ran');
+      assert.equal(
+        await react.page.locator('main img, main script').count(),
+        0,
+        'no element was injected',
+      );
+      const label = hostile[0];
+      const page = await both(fragmentFor(label), summarizeProject, 'now');
+      assert.ok(page.mine.header.includes('img src'), 'the label is drawn as text');
+      if (page.old) assert.equal(firstDifference(page.old, page.mine), null);
+      holder.body = proof.board;
+      holder.contexts = contextsFor(proof.contexts);
+    },
+  );
+
+  /* ===================== BEHAVIOUR: resources, and nothing the reader did not press for ===================== */
+  async function clocked(fragment, { storage, initScripts = [] } = {}) {
+    const o = await newPage('react');
+    const state = { body: proof.board, contexts: contextsFor(proof.contexts), polls: 0 };
+    await o.page.clock.install({ time: Date.now() });
+    if (storage)
+      await o.context.addInitScript((seed) => {
+        for (const [key, value] of Object.entries(seed)) {
+          try {
+            globalThis.localStorage.setItem(key, value);
+          } catch {
+            /* a refusing store */
+          }
+        }
+      }, storage);
+    for (const script of initScripts) await o.context.addInitScript(script);
+    await o.page.route('**/api/data*', (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        headers: { 'X-Cargento-Revision': '7.1' },
+        body: JSON.stringify(state.body),
+      }),
+    );
+    await o.page.route('**/api/project-context*', (route) => {
+      const url = new URL(route.request().url());
+      const project = url.searchParams.get('project') ?? '';
+      const session = url.searchParams.get('session') ?? '';
+      const body = state.contexts[`${project}\n${session}`] ?? state.contexts[`${project}\n`];
+      if (!body)
+        return route.fulfill({ status: 500, contentType: 'text/plain', body: 'no context' });
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify(body),
+      });
+    });
+    await o.page.route('**/api/stream', (route) => route.abort('failed'));
+    await o.page.goto(board.react.origin + '/' + fragment);
+    await reactReady(o.page);
+    await o.page.waitForTimeout(patience(300));
+    o.state = state;
+    /* One board revision, as the page's own fallback poll brings it: the clock moves past the interval and the
+       board's own clock moves with it. */
+    o.poll = async (change = {}) => {
+      state.body = { ...state.body, ...change, generated: state.body.generated + 25 };
+      state.polls += 1;
+      const before = o.counts().data;
+      await o.page.clock.fastForward(20_000);
+      for (let waited = 0; waited < patience(4000) && o.counts().data <= before; waited += 100)
+        await new Promise((resolve) => setTimeout(resolve, 100));
+      await o.page.waitForTimeout(patience(250));
+    };
+    return o;
+  }
+
+  await step(
+    'resources: a project page opens one stream and reads once, under StrictMode, and navigation adds nothing',
+    async () => {
+      const live = await newPage('react');
+      try {
+        await live.page.goto(board.react.origin + '/' + fragmentFor('alpha/app'));
+        await reactReady(live.page);
+        await live.page.waitForTimeout(patience(600));
+        const contextReads = () =>
+          live.log.requests.filter((entry) => entry.path.startsWith('/api/project-context')).length;
+        const first = {
+          counts: live.counts(),
+          res: await resources(live.page),
+          context: contextReads(),
+        };
+        assert.ok(
+          first.counts.data >= 1 && first.counts.data <= 2,
+          `boot read, saw ${first.counts.data}`,
+        );
+        assert.equal(first.counts.stream, 1, 'one stream');
+        assert.equal(first.counts.nonGet, 0, 'nothing but reads');
+        assert.deepEqual([first.res.opened, first.res.closed, first.res.sources], [1, 0, 1]);
+        assert.ok(
+          first.context >= 1 && first.context <= 2,
+          `the project context was read ${first.context} times`,
+        );
+        for (let round = 0; round < 5; round += 1) {
+          await live.page.locator('nav[aria-label="Primary"] a', { hasText: 'Projects' }).click();
+          await live.page.waitForSelector('[data-next-view-body="projects"]');
+          // The row's name, not its middle: a member line there is a link of its own to one session.
+          await live.page
+            .locator('article.next-project-row[data-next-project="alpha/app"] .next-project-name')
+            .click();
+          await live.page.waitForSelector('article.next-project-detail');
+          for (const tab of ['Course', 'Now']) {
+            await live.page.getByRole('tab', { name: new RegExp(`^${tab}`) }).click();
+            await live.page.waitForTimeout(patience(60));
+          }
+        }
+        await live.page.waitForTimeout(patience(500));
+        const after = {
+          counts: live.counts(),
+          res: await resources(live.page),
+          context: contextReads(),
+        };
+        assert.equal(after.counts.stream, 1, 'navigation opened no second stream');
+        assert.ok(
+          after.counts.data <= first.counts.data + 1,
+          `navigation read ${after.counts.data - first.counts.data} more times`,
+        );
+        assert.ok(
+          after.context <= first.context + 2,
+          `navigation asked for the context ${after.context - first.context} more times`,
+        );
+        assert.equal(after.counts.nonGet, 0);
+        assert.deepEqual([after.res.opened, after.res.closed, after.res.sources], [1, 0, 1]);
+        assert.ok(
+          after.res.intervals <= first.res.intervals,
+          `intervals settled (${first.res.intervals} -> ${after.res.intervals})`,
+        );
+        assert.deepEqual(
+          await live.page.evaluate(() => globalThis.__copied),
+          [],
+          'nothing was copied',
+        );
+        assert.deepEqual(live.log.consoleErrors, []);
+        assert.deepEqual(live.log.pageErrors, []);
+        assert.deepEqual(live.log.externalRequests, []);
+        return {
+          first: { ...first.counts, ...first.res, context: first.context },
+          after: { ...after.counts, ...after.res, context: after.context },
+        };
+      } finally {
+        await live.close();
+      }
+    },
+  );
+
+  await step(
+    'actions: Copy briefing copies once per press, from the rows the strip draws, and never on its own',
+    async () => {
+      const o = await clocked(fragmentFor('alpha/app'));
+      try {
+        await o.poll();
+        await o.page.getByRole('tab', { name: /^Course/ }).click();
+        await o.poll();
+        assert.deepEqual(
+          await o.page.evaluate(() => globalThis.__copied),
+          [],
+          'nothing copied before a press',
+        );
+        assert.deepEqual(o.log.nonGet, [], 'nothing posted before a press');
+        await o.page.locator('summary[aria-label="More"]').click();
+        await o.page.getByRole('button', { name: 'Copy briefing' }).click();
+        await o.page.waitForTimeout(patience(150));
+        const copied = await o.page.evaluate(() => globalThis.__copied);
+        assert.equal(copied.length, 1, 'one press, one copy');
+        assert.ok(
+          copied[0].startsWith('Cargento recovery briefing\nProject: app\n'),
+          copied[0].slice(0, 80),
+        );
+        assert.match(copied[0], /Captain attention: Authorize the dispatch\?/);
+        assert.match(copied[0], /Assignment: Ship feature · Build · Exact workflow state/);
+        assert.equal(
+          await o.page.getByRole('button', { name: 'Copied' }).count(),
+          1,
+          'the control says it copied',
+        );
+        await o.poll();
+        assert.equal(
+          await o.page.getByRole('button', { name: 'Copied' }).count(),
+          1,
+          'the cue outlived a poll',
+        );
+        await o.page.getByRole('button', { name: 'Copied' }).click();
+        assert.equal(
+          (await o.page.evaluate(() => globalThis.__copied)).length,
+          2,
+          'a second press is a second copy',
+        );
+        assert.deepEqual(o.log.nonGet, [], 'copying posts nothing');
+        return { copied: copied[0].split('\n').length + ' lines' };
+      } finally {
+        await o.close();
+      }
+    },
+  );
+
+  /* ===================== BEHAVIOUR: the workstream's collapse ===================== */
+  const WORKSTREAM_KEY = 'cargento.next.workstream.collapsed';
+  await step(
+    'workstream: the collapse survives a reload as 1 or 0, and a refusing store keeps the tab’s toggle',
+    async () => {
+      const o = await clocked(fragmentFor('alpha/app', { tab: 'course' }));
+      try {
+        const toggle = o.page.locator('[data-next-workstream-toggle]');
+        assert.equal(await toggle.getAttribute('aria-expanded'), 'true');
+        await toggle.click();
+        assert.equal(await toggle.getAttribute('aria-expanded'), 'false');
+        assert.equal(
+          await o.page.evaluate((key) => globalThis.localStorage.getItem(key), WORKSTREAM_KEY),
+          '1',
+        );
+        await o.page.reload();
+        await reactReady(o.page);
+        await o.page.waitForTimeout(patience(300));
+        assert.equal(
+          await o.page.locator('[data-next-workstream-toggle]').getAttribute('aria-expanded'),
+          'false',
+          'collapsed after a reload',
+        );
+        await o.page.locator('[data-next-workstream-toggle]').click();
+        assert.equal(
+          await o.page.evaluate((key) => globalThis.localStorage.getItem(key), WORKSTREAM_KEY),
+          '0',
+        );
+      } finally {
+        await o.close();
+      }
+      // A store that refuses every write: the toggle still works in the tab.
+      const blocked = await clocked(fragmentFor('alpha/app', { tab: 'course' }), {
+        initScripts: [
+          () => {
+            const refuse = () => {
+              throw new DOMException('blocked', 'QuotaExceededError');
+            };
+            globalThis.Storage.prototype.setItem = refuse;
+          },
+        ],
+      });
+      try {
+        const toggle = blocked.page.locator('[data-next-workstream-toggle]');
+        await toggle.click();
+        assert.equal(
+          await toggle.getAttribute('aria-expanded'),
+          'false',
+          'the tab keeps the toggle',
+        );
+        await blocked.page.getByRole('tab', { name: /^Now/ }).click();
+        await blocked.page.getByRole('tab', { name: /^Course/ }).click();
+        assert.equal(
+          await blocked.page.locator('[data-next-workstream-toggle]').getAttribute('aria-expanded'),
+          'false',
+          'and it survives a tab change',
+        );
+      } finally {
+        await blocked.close();
+      }
+      // The legacy page's unnamespaced key is not adopted.
+      const stray = await clocked(fragmentFor('alpha/app', { tab: 'course' }), {
+        storage: { 'cargento.workstream.collapsed': '1' },
+      });
+      try {
+        assert.equal(
+          await stray.page.locator('[data-next-workstream-toggle]').getAttribute('aria-expanded'),
+          'true',
+          'an unnamespaced key is not read',
+        );
+      } finally {
+        await stray.close();
+      }
+      return {
+        key: WORKSTREAM_KEY,
+        readBack: '1 then 0',
+        refusingStore: 'tab toggle kept',
+        unnamespaced: 'not adopted',
+      };
+    },
+  );
+
+  await step(
+    'workstream: a change this tab saw is listed, and the legacy page lists the same change from the same boards',
+    async () => {
+      const changed = (state, generated) => ({
+        generated,
+        sessions: proof.board.sessions.map((row) =>
+          row.sid === 'a-lead' && row.harness === 'claude' ? { ...row, state } : row,
+        ),
+      });
+      const results = {};
+      for (const [name, origin, kind] of [
+        ['react', board.react.origin, 'react'],
+        ['legacy', board.legacy.origin, 'legacy'],
+      ]) {
+        const o = name === 'react' ? react : legacy;
+        holder.body = proof.board;
+        await load(o, origin, kind, fragmentFor('alpha/app', { tab: 'course' }));
+        // Two further boards reach the page the way a poll would: the legacy page and this one both observe them.
+        for (const [index, state] of ['idle', 'working'].entries()) {
+          holder.body = {
+            ...proof.board,
+            ...changed(state, proof.board.generated + 60 * (index + 1)),
+          };
+          await o.page.evaluate(() =>
+            globalThis.dispatchEvent(
+              new globalThis.StorageEvent('storage', {
+                key: 'cargento.next.revision',
+                newValue: `9.${Date.now() % 100000}`,
+              }),
+            ),
+          );
+          await o.page.waitForTimeout(patience(400));
+        }
+        results[name] = await settled(o.page, () => ({
+          rows: [...globalThis.document.querySelectorAll('.next-project-change')].map((row) =>
+            row.textContent.replace(/\s+/g, ' ').trim(),
+          ),
+          note: globalThis.document.querySelector('[data-next-workstream-toggle] small')
+            ?.textContent,
+        }));
+      }
+      holder.body = proof.board;
+      assert.ok(results.react.rows.length >= 1, 'this tab observed a change');
+      // The reload of both pages above read the board once each, so each saw the same two changes.
+      assert.deepEqual(
+        results.react.rows.slice(-2).map((row) => row.replace(/^\d\d:\d\d/, '')),
+        results.legacy.rows.slice(-2).map((row) => row.replace(/^\d\d:\d\d/, '')),
+      );
+      return results.react;
+    },
+  );
+
+  /* ===================== BEHAVIOUR: human context ===================== */
+  await step(
+    'memo: a note keeps its node, text, caret, focus and native undo through the board’s own revisions and tab changes',
+    async () => {
+      const o = await clocked(fragmentFor('beta/api'));
+      try {
+        await o.page.getByText('+ Add human context · this browser').click();
+        const box = o.page.locator(
+          'textarea[placeholder="What result should this scope achieve?"]',
+        );
+        await box.waitFor();
+        assert.equal(
+          await box.evaluate((node) => node === globalThis.document.activeElement),
+          true,
+          'the editor took focus when opened',
+        );
+        await o.page.evaluate(() => {
+          globalThis.document.querySelector(
+            'textarea[placeholder="What result should this scope achieve?"]',
+          ).__mark = 'kept';
+        });
+        await o.page.keyboard.type('hello brave world');
+        for (let i = 0; i < 5; i += 1) await o.page.keyboard.press('ArrowLeft');
+        await o.page.keyboard.type('X');
+        await o.page.keyboard.press('ArrowLeft');
+        await o.page.keyboard.press('Shift+ArrowLeft');
+        await o.page.keyboard.press('Shift+ArrowLeft');
+        const before = await box.evaluate((node) => [
+          node.selectionStart,
+          node.selectionEnd,
+          node.value,
+        ]);
+        await o.poll();
+        await o.poll({
+          sessions: o.state.body.sessions.map((row) =>
+            row.sid === 'b-1' ? { ...row, state: 'working' } : row,
+          ),
+        });
+        const through = await box.evaluate((node) => [
+          node.selectionStart,
+          node.selectionEnd,
+          node.value,
+          globalThis.document.activeElement === node,
+          node.__mark,
+        ]);
+        assert.deepEqual(through.slice(0, 3), before, 'text and caret survived the revisions');
+        assert.equal(through[3], true, 'focus stayed in the note');
+        assert.equal(through[4], 'kept', 'the note’s node was kept, not replaced');
+        // The strip sits above the tabs, so a tab change leaves the note where it is.
+        await o.page.getByRole('tab', { name: /^Course/ }).click();
+        await o.page.waitForTimeout(patience(100));
+        await o.page.getByRole('tab', { name: /^Now/ }).click();
+        await o.page.waitForTimeout(patience(100));
+        await o.poll();
+        const after = await box.evaluate((node) => [
+          node.selectionStart,
+          node.selectionEnd,
+          node.value,
+          node.__mark,
+        ]);
+        assert.deepEqual(
+          [after[0], after[1], after[2]],
+          before,
+          'a tab change left the note alone',
+        );
+        assert.equal(after[3], 'kept');
+        await box.focus();
+        await o.page.keyboard.press(`${MOD}+z`);
+        assert.equal(
+          await box.inputValue(),
+          'hello brave world',
+          'native undo still steps back over the typed character',
+        );
+        await o.page.keyboard.press(`${MOD}+Shift+z`);
+        assert.equal(await box.inputValue(), 'hello brave Xworld', 'and forward again');
+        assert.equal(
+          await o.page.evaluate(
+            (key) => globalThis.localStorage.getItem(key),
+            'cargento.cockpit.memo.v2:beta%2Fapi:project:outcome',
+          ),
+          'hello brave Xworld',
+          'saved on input to the released key',
+        );
+        assert.deepEqual(o.log.nonGet, [], 'typing and revisions sent nothing');
+        return { caret: before.slice(0, 2), value: before[2] };
+      } finally {
+        await o.close();
+      }
+    },
+  );
+
+  await step(
+    'memo: a note belongs to its project and its scope, and Escape puts back the words held when editing began',
+    async () => {
+      const o = await clocked(fragmentFor('beta/api'), {
+        storage: { 'cargento.cockpit.memo.v2:beta%2Fapi:project:outcome': 'Land the queue' },
+      });
+      try {
+        assert.match(
+          await o.page.locator('.next-cockpit-recovery-memos').innerText(),
+          /Land the queue/,
+        );
+        await o.page.locator('button[aria-label="Edit OUTCOME"]').click();
+        const box = o.page.locator(
+          'textarea[placeholder="What result should this scope achieve?"]',
+        );
+        await box.waitFor();
+        assert.equal(
+          await box.inputValue(),
+          'Land the queue',
+          'the editor opens with the saved words',
+        );
+        await box.pressSequentially(' and more', { delay: 10 });
+        await o.page.keyboard.press('Escape');
+        await o.page.waitForTimeout(patience(100));
+        assert.match(
+          await o.page.locator('.next-cockpit-recovery-memos').innerText(),
+          /Land the queue/,
+        );
+        assert.equal(
+          await o.page.evaluate(() =>
+            globalThis.localStorage.getItem('cargento.cockpit.memo.v2:beta%2Fapi:project:outcome'),
+          ),
+          'Land the queue',
+          'Escape restored the saved words',
+        );
+        // Another project does not show it.
+        await o.page.evaluate(() => {
+          globalThis.location.hash = '#n=project:calm%2Fapp';
+        });
+        await o.page.waitForSelector(
+          'article.next-project-detail[data-next-project-detail="calm/app"]',
+        );
+        assert.equal(
+          await o.page.getByText('Land the queue').count(),
+          0,
+          'the note stayed with its project',
+        );
+        // A session scope of the first project draws no note, and the root draws it again on return.
+        await o.page.evaluate(() => {
+          globalThis.location.hash = '#n=project:beta%2Fapi';
+        });
+        await o.page.waitForSelector(
+          'article.next-project-detail[data-next-project-detail="beta/api"]',
+        );
+        assert.match(
+          await o.page.locator('.next-cockpit-recovery-memos').innerText(),
+          /Land the queue/,
+        );
+      } finally {
+        await o.close();
+      }
+    },
+  );
+
+  /* ===================== BEHAVIOUR: scope, disclosures, focus ===================== */
+  await step(
+    'scope: the root and an exact session are different scopes, and the scope survives leaving and coming back',
+    async () => {
+      const results = {};
+      const o = await clocked(fragmentFor('alpha/app', { tab: 'course' }));
+      try {
+        const links = o.page.locator('nav.next-cockpit-scope-tree a');
+        assert.equal(
+          await links.first().getAttribute('aria-current'),
+          'page',
+          'the root is the current scope',
+        );
+        assert.equal(await links.first().getAttribute('data-scope-kind'), 'project');
+        const target = o.page.locator(
+          'nav.next-cockpit-scope-tree a[data-next-cockpit-scope="claude:a-wait"]',
+        );
+        assert.equal(await target.getAttribute('data-scope-kind'), 'session');
+        await target.click();
+        await o.page.waitForFunction(() => globalThis.location.hash.includes('claude%3Aa-wait'));
+        results.focused = await o.page.evaluate(() => globalThis.location.hash);
+        assert.equal(
+          await o.page
+            .locator('nav.next-cockpit-scope-tree a[data-next-cockpit-scope="claude:a-wait"]')
+            .getAttribute('aria-current'),
+          'page',
+        );
+        assert.match(
+          await o.page.locator('.next-cockpit-viewing-session').innerText(),
+          /Viewing session · Claude Code · needs_input/,
+        );
+        assert.match(results.focused, /:course$/, 'the tab was kept');
+        // Away to Sessions and back with the browser's own history.
+        await o.page.locator('nav[aria-label="Primary"] a', { hasText: 'Sessions' }).click();
+        await o.page.waitForSelector('[data-next-view-body="sessions"]');
+        await o.page.goBack();
+        await o.page.waitForSelector('article.next-project-detail');
+        assert.equal(
+          await o.page.evaluate(() => globalThis.location.hash),
+          results.focused,
+          'back restored the scope',
+        );
+        assert.equal(
+          await o.page
+            .locator('nav.next-cockpit-scope-tree a[data-next-cockpit-scope="claude:a-wait"]')
+            .getAttribute('aria-current'),
+          'page',
+        );
+        await o.page.reload();
+        await reactReady(o.page);
+        await o.page.waitForSelector('article.next-project-detail');
+        assert.equal(
+          await o.page.evaluate(() => globalThis.location.hash),
+          results.focused,
+          'a reload kept it',
+        );
+        // Another harness's session with the same sid is a different scope.
+        const same = await o.page
+          .locator('nav.next-cockpit-scope-tree a[data-next-cockpit-scope$=":a-lead"]')
+          .evaluateAll((nodes) =>
+            nodes.map((node) => node.getAttribute('data-next-cockpit-scope')),
+          );
+        assert.deepEqual(same.sort(), ['claude:a-lead', 'codex:a-lead']);
+        return results;
+      } finally {
+        await o.close();
+      }
+    },
+  );
+
+  await step(
+    'continuity: an open plan, a focused link and the page’s nodes survive a poll that changes the rows',
+    async () => {
+      const o = await clocked(fragmentFor('alpha/app'));
+      try {
+        await o.page.getByText('Show project plan').click();
+        await o.page.evaluate(() => {
+          const card = globalThis.document.querySelector('[data-next-going-on="a-lead"]');
+          card.__mark = 'kept';
+          const link = globalThis.document.querySelector(
+            'nav.next-cockpit-scope-tree a[data-next-cockpit-scope="claude:a-lead"]',
+          );
+          link.focus();
+        });
+        await o.poll({
+          sessions: o.state.body.sessions.map((row) =>
+            row.sid === 'a-lead' && row.harness === 'claude' ? { ...row, rate_per_min: 1500 } : row,
+          ),
+        });
+        const kept = await o.page.evaluate(() => ({
+          mark: globalThis.document.querySelector('[data-next-going-on="a-lead"]')?.__mark,
+          text: globalThis.document
+            .querySelector('[data-next-going-on="a-lead"]')
+            ?.textContent.includes('1,500'),
+          focus: globalThis.document.activeElement?.getAttribute('data-next-cockpit-scope'),
+          open: [...globalThis.document.querySelectorAll('details[open] > summary')].map(
+            (summary) => summary.textContent,
+          ),
+        }));
+        assert.equal(kept.text, true, 'the change reached the card');
+        assert.equal(kept.mark, 'kept', 'the card was updated, not replaced');
+        assert.equal(kept.focus, 'claude:a-lead', 'focus stayed on the scope link');
+        assert.ok(kept.open.includes('Show project plan'), 'the plan stayed open');
+        await o.page.getByRole('tab', { name: /^Course/ }).click();
+        await o.page.getByRole('tab', { name: /^Now/ }).click();
+        assert.ok(
+          (
+            await o.page.evaluate(() =>
+              [...globalThis.document.querySelectorAll('details[open] > summary')].map(
+                (summary) => summary.textContent,
+              ),
+            )
+          ).includes('Show project plan'),
+          'and a tab change',
+        );
+        return kept;
+      } finally {
+        await o.close();
+      }
+    },
+  );
+
+  /* ===================== BEHAVIOUR: keyboard ===================== */
+  await step(
+    'keyboard: a project row opens with Enter, the tab strip wraps with the arrows, and a scope is reached by Tab',
+    async () => {
+      const results = {};
+      for (const [name, origin, kind, opened_] of [
+        ['legacy', board.legacy.origin, 'legacy', legacy],
+        ['react', board.react.origin, 'react', react],
+      ]) {
+        if (name === 'legacy' && legacyDraw.stale) continue;
+        try {
+          await load(opened_, origin, kind, '#n=projects');
+          await opened_.page.evaluate(() => globalThis.document.activeElement?.blur());
+          let stops = 0;
+          for (; stops < 60; stops += 1) {
+            await opened_.page.keyboard.press('Tab');
+            const onRow = await opened_.page.evaluate(
+              () => globalThis.document.activeElement?.matches('article.next-project-row') === true,
+            );
+            if (onRow) break;
+          }
+          assert.ok(stops < 60, `${name}: a project row is reachable by Tab`);
+          await opened_.page.keyboard.press('Enter');
+          await opened_.page.waitForFunction(() => globalThis.location.hash.includes('project:'));
+          results[name] = { opens: await opened_.page.evaluate(() => globalThis.location.hash) };
+        } catch (error) {
+          if (name === 'legacy') legacyDraw.stale = true;
+          else throw error;
+        }
+      }
+      if (results.legacy) assert.deepEqual(results.react, results.legacy);
+      const o = react;
+      await o.page.waitForSelector('article.next-project-detail');
+      const tab = (name) => o.page.getByRole('tab', { name: new RegExp(`^${name}`) });
+      await tab('Now').focus();
+      await o.page.keyboard.press('ArrowLeft');
+      assert.equal(
+        await o.page.evaluate(() => globalThis.document.activeElement?.textContent.slice(0, 7)),
+        'Console',
+        'ArrowLeft wraps to the last tab and focuses it',
+      );
+      await o.page.keyboard.press('ArrowRight');
+      assert.equal(
+        await o.page.evaluate(() => globalThis.document.activeElement?.textContent.slice(0, 3)),
+        'Now',
+      );
+      let reached = false;
+      for (let stop = 0; stop < 80 && !reached; stop += 1) {
+        await o.page.keyboard.press('Tab');
+        reached = await o.page.evaluate(
+          () => globalThis.document.activeElement?.hasAttribute('data-next-cockpit-scope') === true,
+        );
+      }
+      assert.ok(reached, 'a scope link is reachable by Tab');
+      return { ...results, tabStrip: 'wraps' };
+    },
+  );
+
+  /* ===================== BEHAVIOUR: layout ===================== */
+  await step(
+    'layout: 320, 375 and 640 CSS px (and 1280) never scroll sideways, on the list and every tab',
+    async () => {
+      const widths = [320, 375, 640, 1280];
+      const overflow = [];
+      for (const width of widths) {
+        const o = await newPage('react', { viewport: { width, height: 900 } });
+        try {
+          await o.page.route('**/api/data*', (route) =>
+            route.fulfill({
+              status: 200,
+              contentType: 'application/json',
+              headers: { 'X-Cargento-Revision': '7.1' },
+              body: JSON.stringify(proof.board),
+            }),
+          );
+          await o.page.route('**/api/project-context*', (route) => {
+            const url = new URL(route.request().url());
+            const body = contextsFor(proof.contexts)[`${url.searchParams.get('project')}\n`];
+            return body
+              ? route.fulfill({
+                  status: 200,
+                  contentType: 'application/json',
+                  body: JSON.stringify(body),
+                })
+              : route.fulfill({ status: 500, body: 'no' });
+          });
+          await o.page.route('**/api/stream', (route) => route.abort('failed'));
+          for (const fragment of [
+            '#n=projects',
+            fragmentFor('alpha/app'),
+            fragmentFor('alpha/app', { tab: 'course' }),
+            fragmentFor('alpha/app', { focus: 'claude:a-wait' }),
+            fragmentFor('ünï/çødé'),
+            fragmentFor('beta/api'),
+          ]) {
+            await o.page.goto('about:blank');
+            await o.page.goto(board.react.origin + '/' + fragment);
+            await reactReady(o.page);
+            await o.page.waitForTimeout(patience(250));
+            if (fragment.includes('alpha')) {
+              const switcher = o.page.locator('details.next-cockpit-scope-switcher > summary');
+              // The switcher is the compact page's, so the wide page hides it and there is nothing to open.
+              if (await switcher.isVisible()) await switcher.click();
+            }
+            const wide = await o.page.evaluate(() => ({
+              scroll: globalThis.document.documentElement.scrollWidth,
+              client: globalThis.document.documentElement.clientWidth,
+            }));
+            if (wide.scroll > wide.client)
+              overflow.push(`${width}px ${fragment}: ${wide.scroll} > ${wide.client}`);
+          }
+        } finally {
+          await o.close();
+        }
+      }
+      assert.deepEqual(overflow, [], 'nothing scrolls sideways');
+      return { widths };
+    },
+  );
+
+  /* ===================== screenshots ===================== */
+  await step(
+    'screenshots: the list and a project page, on both pages, wide and narrow',
+    async () => {
+      for (const [name, o, origin, kind] of [
+        ['legacy', legacy, board.legacy.origin, 'legacy'],
+        ['react', react, board.react.origin, 'react'],
+      ]) {
+        if (name === 'legacy' && legacyDraw.stale) continue;
+        for (const [label, fragment] of [
+          ['projects-list', '#n=projects'],
+          ['project-alpha-now', fragmentFor('alpha/app')],
+          ['project-alpha-course', fragmentFor('alpha/app', { tab: 'course' })],
+        ]) {
+          for (const width of [1280, 375]) {
+            await o.page.setViewportSize({ width, height: 1100 });
+            await load(o, origin, kind, fragment);
+            await o.page.waitForTimeout(patience(300));
+            const file = `${SHOTS}project-views-${label}-${name}-${width}.png`;
+            await o.page.screenshot({ path: file, fullPage: true });
+            shots.push(file);
+          }
+        }
+      }
+      return { shots: shots.length };
+    },
+  );
+
+  for (const page of opened) {
+    // Every page this run opened stayed inside the board's own origins.
+    if (page.log.externalRequests.length)
+      failures.push({ name: 'externals', message: JSON.stringify(page.log.externalRequests) });
+  }
+} finally {
+  for (const page of opened) await page.close().catch(() => undefined);
+  await browser.close();
+  await board.close();
+}
+
+console.log(
+  JSON.stringify(
+    {
+      project: receipts,
+      deviations: DEVIATIONS,
+      legacyDrew: !legacyDraw.stale,
+      screenshots: shots,
+    },
+    null,
+    2,
+  ),
+);
+if (failures.length) {
+  console.error(JSON.stringify({ failures }, null, 2));
+  process.exitCode = 1;
+}

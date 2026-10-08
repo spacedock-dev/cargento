@@ -10,12 +10,12 @@ import {
 import type { BoardSnapshot } from '../store/board';
 import { selectDataStatus } from '../store/selectors';
 import { findSession, windowHours } from './derive';
-import { ProjectTabs } from './ProjectTabs';
 import { OWNERS } from './owners';
 import { RouteLink } from './RouteLink';
 import { useDisplayed } from './context';
 import { IntentLog } from '../intent';
 import { SessionDetail, SessionsView } from '../sessions';
+import { PROJECT_SLOTS, ProjectDetail, ProjectsView } from '../project';
 import type { Row } from '../observed';
 
 /* The views the later steps fill in. Each is a placeholder that says what is missing and which step
@@ -84,9 +84,37 @@ function SessionsBranch() {
   return <SessionsView />;
 }
 
+/* Projects is the Sessions collection grouped by label, so it states the same two absences before it draws:
+   no board yet, and a board that carried no session collection, which "no projects" would misreport. */
+function ProjectsBranch() {
+  const snapshot = useDisplayed((current) => current);
+  if (!snapshot.data) {
+    return (
+      <section className="next-projects" data-next-view-body="projects">
+        <h1>{HEADINGS.projects}</h1>
+        <BoardStatus snapshot={snapshot} />
+      </section>
+    );
+  }
+  if (!payloadSessions(snapshot.data).present) {
+    return (
+      <section
+        className="next-projects"
+        data-next-view-body="projects"
+        data-next-projects-state="no-collection"
+      >
+        <h1>{HEADINGS.projects}</h1>
+        <p className="next-absence">The board published no session collection.</p>
+      </section>
+    );
+  }
+  return <ProjectsView conditions={PROJECT_SLOTS.projectsConditions?.() ?? null} />;
+}
+
 function TopLevelView({ route }: { readonly route: TopLevelRoute }) {
   const snapshot = useDisplayed((current) => current);
   if (route.view === 'sessions') return <SessionsBranch />;
+  if (route.view === 'projects') return <ProjectsBranch />;
   /* The Intent log states its own absences (annotations off, store unreadable, still reading), so it
      draws before the first payload as well: it names what it is waiting for rather than a blank. */
   if (route.view === 'intent') return <IntentLog />;
@@ -205,18 +233,7 @@ function ProjectView({ route }: { readonly route: ProjectRoute }) {
       </section>
     );
   }
-  return (
-    <section
-      className="next-view"
-      data-next-view-body="project"
-      data-next-project-detail={route.project}
-    >
-      <h1>{route.project}</h1>
-      <ProjectTabs route={route}>
-        {(tab) => <Placeholder view="project" name={`The ${tab} view`} />}
-      </ProjectTabs>
-    </section>
-  );
+  return <ProjectDetail route={route} slots={PROJECT_SLOTS} />;
 }
 
 export function RoutedView({ route }: { readonly route: Route }) {
