@@ -230,7 +230,7 @@ python3 scripts/bump_version.py --current   # version-field parity across all ow
 git diff "$(git merge-base origin/main HEAD)"..HEAD \
   -- '*plugin.json' '*gemini-extension.json' | grep -E '^[+-].*"version"'
 pnpm install --frozen-lockfile   # exact Node from .node-version; pnpm from package.json
-pnpm lint
+pnpm lint   # Biome: lint rules and formatting; `pnpm format` rewrites the formatting
 pnpm typecheck
 pnpm test
 pnpm test:dev

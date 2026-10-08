@@ -12,7 +12,7 @@
     "dev:preview": "vite --config frontend/vite.config.mts",
     "build": "node frontend/build/package.mjs",
     "preview": "vite preview --config frontend/vite.config.mts",
-    "lint": "biome lint --error-on-warnings",
+    "lint": "biome check --error-on-warnings",
     "format": "biome format --write",
     "typecheck": "tsc --noEmit",
     "test": "vitest run && node --test frontend/build/package.test.mjs",
