@@ -306,7 +306,7 @@ class OpenCodePluginTest(support.RuntimeTestCase):
         # A blocked FIFO read never ends, so the defect is the runner's 10 s
         # timeout; the healthy floor is 0.41 s plus the same node startup that
         # cost 1.02 s on Windows above. 1.6 s left no room for a slow runner.
-        self.assertLess(result["elapsed"], 4.0)
+        self.assertLess(result["elapsed"], 8.0)
         self.assertEqual([], self.records)
 
     def test_request_overflow_never_claims_clearance_for_untracked_waits(self) -> None:

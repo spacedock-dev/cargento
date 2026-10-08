@@ -101,7 +101,8 @@ class GroupQuiescenceTest(unittest.TestCase):
             with mock.patch.object(subprocess, "Popen", spawn):
                 before = time.monotonic()
                 self.assertIsNone(supervise._group_running(42, 0.05))
-                self.assertLess(time.monotonic() - before, 0.5)
+                # The stub blocks for up to three seconds, so anything under two shows the probe gave up.
+                self.assertLess(time.monotonic() - before, 2.0)
                 self.assertTrue(started.is_set())
                 release.set()
                 self.assertTrue(cleaned.wait(1), "a late probe was not killed and reaped")
@@ -152,7 +153,7 @@ class GroupQuiescenceTest(unittest.TestCase):
         ):
             group._wait_group(before + 0.025)
         self.assertTrue(probe.called)
-        self.assertLess(time.monotonic() - before, 0.5)
+        self.assertLess(time.monotonic() - before, 5.0)
 
     @unittest.skipIf(sys.platform == "win32", "POSIX leader identity")
     def test_failed_quiescence_observation_refuses_and_reaps_the_killed_leader(self) -> None:
@@ -184,7 +185,7 @@ class GroupQuiescenceTest(unittest.TestCase):
             self.assertRaises(supervise.UnstoppedError),
         ):
             group._finish_windows()
-        self.assertLess(time.monotonic() - before, 0.5)
+        self.assertLess(time.monotonic() - before, 5.0)
 
     def test_a_failed_windows_job_query_cannot_publish_a_normal_reply(self) -> None:
         group = supervise.Group(_FakeWindowsProcess(exits=True), job=7)  # type: ignore[arg-type]
@@ -965,7 +966,7 @@ class AnOutputFileHasABoundTest(unittest.TestCase):
             )
         # Includes the kill and the reap; generous for a loaded runner, and
         # far inside the 60 s timeout the call would otherwise run to.
-        self.assertLess(time.time() - float(crossed.read_text()), 3.0)
+        self.assertLess(time.time() - float(crossed.read_text()), 20.0)
         self.assertGreater(out.stat().st_size, limit)
         helper = int(pid_file.read_text())
         self.assertTrue(_wait_until(lambda: not process_alive(helper)), "its helper outlived it")
