@@ -233,12 +233,14 @@ pnpm install --frozen-lockfile   # exact Node from .node-version; pnpm from pack
 pnpm lint
 pnpm typecheck
 pnpm test
+pnpm test:dev
 pnpm build
 pnpm build:check
 pnpm exec playwright install chromium   # lockfile-pinned browser, once per installation
 pnpm test:browser
 pnpm test:parser
 pnpm test:installed
+pnpm test:dev:browser
 coverage erase
 python3 scripts/run_tests.py --coverage -s cargento/skills/cargento/tests -t .
 python3 scripts/run_tests.py --coverage -s scripts/tests -t scripts/tests
@@ -459,6 +461,8 @@ The required frontend matrix uses pinned Node and pnpm on Linux and macOS, and o
 frontend lint, strict types, unit tests and a clean preview build on each platform. Linux checks
 the canonical tracked build; every platform checks hostile HTML literals and an installed Python
 3.11 copy in pinned Chromium, with Node hidden from the backend and external asset requests refused.
+Every platform also exercises owned development startup/cleanup and real Python/Vite hot refresh,
+API/SSE, backend restart and inert capability guards with models, usage and native actions disabled.
 The Python jobs retain their existing discovery and coverage gate. Native harness canary Node
 requirements remain independent of this build toolchain.
 

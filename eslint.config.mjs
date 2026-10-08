@@ -17,7 +17,7 @@ export default defineConfig([
     extends: [reactHooks.configs.flat.recommended, reactRefresh.configs.vite],
   },
   {
-    files: ['eslint.config.mjs', 'frontend/build/**/*.mjs', 'frontend/e2e/**/*.mjs'],
+    files: ['eslint.config.mjs', 'frontend/build/**/*.mjs', 'frontend/dev/**/*.mjs', 'frontend/e2e/**/*.mjs'],
     extends: [js.configs.recommended],
     languageOptions: { globals: globals.node },
   },

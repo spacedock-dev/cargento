@@ -43,6 +43,7 @@ from cargento_runtime import reading_jobs as runtime_reading_jobs
 from cargento_runtime import reading_route as runtime_reading_route
 from cargento_runtime import snapshot as runtime_snapshot
 from cargento_runtime import stream as runtime_stream
+from cargento_runtime.frontend_dev import DevelopmentFrontend
 
 _WEBSOCKET_GUID = b"258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
 
@@ -781,8 +782,22 @@ class _RequestHandler(BaseHTTPRequestHandler):
         # address it was actually given rather than assuming the launcher.
         return host == bound
 
+    def _development_authority_ok(self) -> bool:
+        config = getattr(getattr(self.server, "application", None), "config", None)
+        dev = getattr(config, "frontend_dev", None)
+        # Only an admitted immutable startup identity selects this policy.
+        if not isinstance(dev, DevelopmentFrontend):
+            return True
+        hosts = self.headers.get_all("Host", [])
+        origins = self.headers.get_all("Origin", [])
+        return hosts == [dev.python_origin.removeprefix("http://")] and (
+            not origins or origins == [dev.python_origin]
+        )
+
     def _local_ok(self, *, allow_cross_site_navigation: bool = False) -> bool:
-        if not self._host_admitted(normalize_host(self.headers.get("Host") or "")):
+        if not self._development_authority_ok() or not self._host_admitted(
+            normalize_host(self.headers.get("Host") or "")
+        ):
             return False
         if (self.headers.get("Sec-Fetch-Site") or "").lower() == "cross-site" and not (
             allow_cross_site_navigation and self._is_document_navigation()

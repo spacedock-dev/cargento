@@ -83,6 +83,35 @@ replaces the artifact and its metadata together. A selected bad build fails befo
 recovery commands remain available. The default legacy page keeps its original bytes throughout
 the migration.
 
+## Integrated development
+
+The contributor command owns a Vite worker and the actual foreground Python launcher. Python
+serves the document, APIs and SSE; Vite serves modules and hot refresh. Its startup ticket is
+read once, and a fresh HMAC challenge binds both exact loopback origins, the worker PID and both
+process generations. The shared secret stays in owned IPC and a private startup file, which the
+supervisor removes after readiness. This prevents adopting an accidental listener; it does not
+authenticate against another process able to read the same user's private files.
+
+Vite's built-in host, CORS, token and filesystem settings do not establish the whole boundary.
+They accept extra loopback authorities, and the measured source-directory symlink test escaped
+the configured filesystem allowlist. Admission therefore checks exact raw Host/Origin headers
+and canonical filesystem paths before Vite dispatch. An unbound public WebSocket dispatcher
+receives only admitted upgrades. HMR retains Vite's token check; its token-free ping protocol
+still passes the same exact host, origin and path admission.
+Python keeps its own origin, framing and capability checks; its routes never proxy through Vite.
+
+All harness and platform data-location inputs point inside the owned scratch tree, and Python
+checks the actual resolved collector candidates before starting. Windows retains only the system
+directory inputs its socket loader requires. Model calls, quota fetching and native actions are
+disabled. Normal development exposes no focus capability; a separate inert fixture verifies
+capability transport and refusal without claiming a terminal was raised.
+
+Hot refresh preserves the document's development identity. Explicit Python restart waits for the
+old child to close, repeats the worker admission and changes the backend generation and build.
+The contributor reloads for that instance. Worker failure stops Python too; interruption, EOF and
+failed startup clean only captured children and owned files. Production uses its committed page
+and content identity, with no development modules or HMR endpoint.
+
 ## Reader state and storage
 
 Each reader-state row specifies stable identity, stored state, retained deferral or a mechanism

@@ -704,7 +704,13 @@ class Application:
     ) -> None:
         self.config = config
         self.frontend_build = (
-            ("react-" if config.frontend == "react" else "")
+            (
+                "react-dev-"
+                if config.frontend_dev is not None
+                else "react-"
+                if config.frontend == "react"
+                else ""
+            )
             + hashlib.sha256(frontend_page_bytes).hexdigest()[:16]
             if frontend_page_bytes is not None
             else frontend_page.build_id(config.frontend)

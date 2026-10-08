@@ -1463,6 +1463,9 @@ class RuntimeImportGraphTest(unittest.TestCase):
         },
         # The CLI is the assembly point, so it may import any runtime module.
         "cargento_runtime.cli": {
+            # Startup-only development admission and inert fixture notifiers.
+            "cargento_runtime.frontend_dev",
+            "cargento_runtime.deliveries",
             "cargento_runtime.reading_policy",
             # `--forget` deletes the copied-correction digests (DRC-4678).
             "cargento_runtime.copied_corrections",
@@ -1804,7 +1807,9 @@ class RuntimeImportGraphTest(unittest.TestCase):
             "cargento_runtime.transcripts",
             "cargento_runtime.turns",
         },
-        "cargento_runtime.config": set(),
+        # Immutable development identity is typed by the stdlib-only leaf.
+        "cargento_runtime.config": {"cargento_runtime.frontend_dev"},
+        "cargento_runtime.frontend_dev": set(),
         # `observation` is here for typing only: the server carries the
         # coordinator so `serve` can start it, and the ingress route reaches it
         # through that attribute rather than through a module global. `events`
@@ -1815,6 +1820,8 @@ class RuntimeImportGraphTest(unittest.TestCase):
         # question and option text it stores. The register route builds the
         # `PendingAsk` and is therefore the one place that bounding can happen.
         "cargento_runtime.http_api": {
+            # The immutable admitted identity selects stricter dev authority.
+            "cargento_runtime.frontend_dev",
             "cargento_runtime.reading_policy",
             # `POST /api/correction/copied`, and the `copied` mark on facts (DRC-4678).
             "cargento_runtime.copied_corrections",

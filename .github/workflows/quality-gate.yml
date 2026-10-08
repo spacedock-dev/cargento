@@ -457,6 +457,11 @@ jobs:
       - name: Frontend behavioral unit tests
         timeout-minutes: 3
         run: pnpm test
+      - name: Owned development lifecycle and isolation tests
+        timeout-minutes: 3
+        env:
+          CARGENTO_TEST_PYTHON: ${{ steps.python.outputs.python-path }}
+        run: pnpm test:dev
       - name: Clean native preview build (not the shipping artifact)
         timeout-minutes: 3
         run: pnpm build:preview
@@ -475,6 +480,11 @@ jobs:
         env:
           CARGENTO_TEST_PYTHON: ${{ steps.python.outputs.python-path }}
         run: pnpm test:installed
+      - name: Real Python and Vite hot refresh browser proof
+        timeout-minutes: 3
+        env:
+          CARGENTO_TEST_PYTHON: ${{ steps.python.outputs.python-path }}
+        run: pnpm test:dev:browser
 
   # The single required status check. Branch protection requires this job, so
   # every job above must succeed (a skip or failure anywhere fails the gate).

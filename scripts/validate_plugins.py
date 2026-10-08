@@ -429,6 +429,7 @@ CARGENTO_RUNTIME_FILES = (
     "skills/cargento/cargento_runtime/__init__.py",
     "skills/cargento/cargento_runtime/cli.py",
     "skills/cargento/cargento_runtime/config.py",
+    "skills/cargento/cargento_runtime/frontend_dev.py",
     "skills/cargento/cargento_runtime/state.py",
     "skills/cargento/cargento_runtime/stream.py",
     "skills/cargento/cargento_runtime/asks.py",
