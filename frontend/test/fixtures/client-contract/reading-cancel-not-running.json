@@ -1,0 +1,33 @@
+{
+  "format": 1,
+  "name": "reading-cancel-not-running",
+  "notes": "No running job by that id: 409 not-running, the same answer for an unknown session.",
+  "request": {
+    "body": {
+      "harness": "claude",
+      "job": "j1",
+      "observer_model": 1,
+      "press": true,
+      "sid": "a1b2c3d4"
+    },
+    "headers": {
+      "Origin": "{origin}"
+    },
+    "method": "POST",
+    "path": "/api/reading/cancel",
+    "query": ""
+  },
+  "response": {
+    "body": {
+      "ok": false,
+      "reason": "not-running"
+    },
+    "headers": {
+      "Cache-Control": "no-store",
+      "Content-Length": "35",
+      "Content-Security-Policy": "frame-ancestors 'none'",
+      "Content-Type": "application/json"
+    },
+    "status": 409
+  }
+}

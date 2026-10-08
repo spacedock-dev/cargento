@@ -1,0 +1,29 @@
+{
+  "format": 1,
+  "name": "correction-copied-malformed",
+  "notes": "A copy with no sid or text is a 400.",
+  "request": {
+    "body": {
+      "harness": "claude"
+    },
+    "headers": {
+      "Origin": "{origin}"
+    },
+    "method": "POST",
+    "path": "/api/correction/copied",
+    "query": ""
+  },
+  "response": {
+    "error_page": {
+      "contains": [
+        "Error code: 400",
+        "Error response"
+      ],
+      "kind": "python-http-server"
+    },
+    "headers": {
+      "Content-Type": "text/html;charset=utf-8"
+    },
+    "status": 400
+  }
+}

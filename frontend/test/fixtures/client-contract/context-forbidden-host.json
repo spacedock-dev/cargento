@@ -1,0 +1,27 @@
+{
+  "format": 1,
+  "name": "context-forbidden-host",
+  "notes": "The strict origin check applies; the navigation exception is not inherited.",
+  "request": {
+    "body": null,
+    "headers": {
+      "Host": "evil.example"
+    },
+    "method": "GET",
+    "path": "/api/project-context",
+    "query": "project=alpha-app"
+  },
+  "response": {
+    "error_page": {
+      "contains": [
+        "Error code: 403",
+        "Error response"
+      ],
+      "kind": "python-http-server"
+    },
+    "headers": {
+      "Content-Type": "text/html;charset=utf-8"
+    },
+    "status": 403
+  }
+}

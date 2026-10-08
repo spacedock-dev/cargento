@@ -1,0 +1,38 @@
+{
+  "format": 1,
+  "name": "reading-unknown-session",
+  "notes": "With the route's own disclosure echoed back, a session that is not published answers 200 produced:false, never a 404 that would reveal which sids exist.",
+  "request": {
+    "body": {
+      "allow": true,
+      "harness": "claude",
+      "model": "claude-sonnet-5-5",
+      "observer_model": 1,
+      "press": true,
+      "provider": "claude",
+      "sid": "00000000",
+      "tool_output": "claude.synthetic.invalid",
+      "words_destination": "claude.synthetic.invalid"
+    },
+    "headers": {
+      "Origin": "{origin}"
+    },
+    "method": "POST",
+    "path": "/api/reading",
+    "query": ""
+  },
+  "response": {
+    "body": {
+      "ok": true,
+      "produced": false,
+      "reason": "no annotated session by that name"
+    },
+    "headers": {
+      "Cache-Control": "no-store",
+      "Content-Length": "73",
+      "Content-Security-Policy": "frame-ancestors 'none'",
+      "Content-Type": "application/json"
+    },
+    "status": 200
+  }
+}

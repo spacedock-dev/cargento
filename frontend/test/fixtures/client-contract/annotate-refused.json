@@ -1,0 +1,37 @@
+{
+  "format": 1,
+  "name": "annotate-refused",
+  "notes": "Adopting a prompt for a session the board does not publish is refused, with persisted false.",
+  "request": {
+    "body": {
+      "adopt": "last",
+      "harness": "claude",
+      "sid": "00000000"
+    },
+    "headers": {
+      "Origin": "{origin}"
+    },
+    "method": "POST",
+    "path": "/api/annotate",
+    "query": ""
+  },
+  "response": {
+    "body": {
+      "discarded": null,
+      "ok": true,
+      "outcome": "refused",
+      "persisted": false,
+      "revision": null,
+      "revision_count": 0,
+      "saved_revision": null,
+      "withdrew": true
+    },
+    "headers": {
+      "Cache-Control": "no-store",
+      "Content-Length": "139",
+      "Content-Security-Policy": "frame-ancestors 'none'",
+      "Content-Type": "application/json"
+    },
+    "status": 200
+  }
+}

@@ -1,0 +1,31 @@
+{
+  "format": 1,
+  "name": "reading-malformed-press",
+  "notes": "A press that does not carry observer_model=1 is a 400.",
+  "request": {
+    "body": {
+      "harness": "claude",
+      "press": true,
+      "sid": "a1b2c3d4"
+    },
+    "headers": {
+      "Origin": "{origin}"
+    },
+    "method": "POST",
+    "path": "/api/reading",
+    "query": ""
+  },
+  "response": {
+    "error_page": {
+      "contains": [
+        "Error code: 400",
+        "Error response"
+      ],
+      "kind": "python-http-server"
+    },
+    "headers": {
+      "Content-Type": "text/html;charset=utf-8"
+    },
+    "status": 400
+  }
+}

@@ -1,0 +1,25 @@
+{
+  "format": 1,
+  "name": "api-not-found",
+  "notes": "An unknown API path answers 404 as HTML.",
+  "request": {
+    "body": null,
+    "headers": {},
+    "method": "GET",
+    "path": "/api/not-a-route",
+    "query": ""
+  },
+  "response": {
+    "error_page": {
+      "contains": [
+        "Error code: 404",
+        "Error response"
+      ],
+      "kind": "python-http-server"
+    },
+    "headers": {
+      "Content-Type": "text/html;charset=utf-8"
+    },
+    "status": 404
+  }
+}

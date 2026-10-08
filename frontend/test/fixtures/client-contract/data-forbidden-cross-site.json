@@ -1,0 +1,29 @@
+{
+  "format": 1,
+  "name": "data-forbidden-cross-site",
+  "notes": "A refusal is an HTML error page with no X-Cargento-Revision and no JSON body.",
+  "request": {
+    "body": null,
+    "headers": {
+      "Sec-Fetch-Dest": "empty",
+      "Sec-Fetch-Mode": "cors",
+      "Sec-Fetch-Site": "cross-site"
+    },
+    "method": "GET",
+    "path": "/api/data",
+    "query": ""
+  },
+  "response": {
+    "error_page": {
+      "contains": [
+        "Error code: 403",
+        "Error response"
+      ],
+      "kind": "python-http-server"
+    },
+    "headers": {
+      "Content-Type": "text/html;charset=utf-8"
+    },
+    "status": 403
+  }
+}

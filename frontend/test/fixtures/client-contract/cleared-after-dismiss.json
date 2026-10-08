@@ -1,0 +1,30 @@
+{
+  "format": 1,
+  "name": "cleared-after-dismiss",
+  "notes": "The handled sessions, identified by harness and sid only.",
+  "request": {
+    "body": null,
+    "headers": {},
+    "method": "GET",
+    "path": "/api/cleared",
+    "query": ""
+  },
+  "response": {
+    "body": {
+      "cleared": [
+        {
+          "at": 1900000000.0,
+          "harness": "claude",
+          "sid": "a1b2c3d4"
+        }
+      ]
+    },
+    "headers": {
+      "Cache-Control": "no-store",
+      "Content-Length": "69",
+      "Content-Security-Policy": "frame-ancestors 'none'",
+      "Content-Type": "application/json"
+    },
+    "status": 200
+  }
+}

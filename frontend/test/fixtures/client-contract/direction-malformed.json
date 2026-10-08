@@ -1,0 +1,29 @@
+{
+  "format": 1,
+  "name": "direction-malformed",
+  "notes": "Missing identity fields are a 400.",
+  "request": {
+    "body": {
+      "harness": "claude"
+    },
+    "headers": {
+      "Origin": "{origin}"
+    },
+    "method": "POST",
+    "path": "/api/direction",
+    "query": ""
+  },
+  "response": {
+    "error_page": {
+      "contains": [
+        "Error code: 400",
+        "Error response"
+      ],
+      "kind": "python-http-server"
+    },
+    "headers": {
+      "Content-Type": "text/html;charset=utf-8"
+    },
+    "status": 400
+  }
+}

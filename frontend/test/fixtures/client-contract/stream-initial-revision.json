@@ -1,0 +1,23 @@
+{
+  "format": 1,
+  "name": "stream-initial-revision",
+  "notes": "A client that connects after the board has published sees the current revision at once; id and data are the same <started>.<counter> string.",
+  "request": {
+    "body": null,
+    "headers": {
+      "Sec-Fetch-Site": "same-origin"
+    },
+    "method": "GET",
+    "path": "/api/stream",
+    "query": ""
+  },
+  "response": {
+    "headers": {
+      "Cache-Control": "no-store",
+      "Content-Type": "text/event-stream",
+      "X-Accel-Buffering": "no"
+    },
+    "status": 200,
+    "text": "id: 1900000000.1\nevent: revision\ndata: 1900000000.1\n\n"
+  }
+}

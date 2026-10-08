@@ -1,0 +1,37 @@
+{
+  "format": 1,
+  "name": "annotate-unwritable",
+  "notes": "The state home cannot hold the store or its lock: kept for this run only, persisted false.",
+  "request": {
+    "body": {
+      "goal": "Ship the parser",
+      "harness": "claude",
+      "sid": "a1b2c3d4"
+    },
+    "headers": {
+      "Origin": "{origin}"
+    },
+    "method": "POST",
+    "path": "/api/annotate",
+    "query": ""
+  },
+  "response": {
+    "body": {
+      "discarded": null,
+      "ok": true,
+      "outcome": "unwritable",
+      "persisted": false,
+      "revision": 1,
+      "revision_count": 1,
+      "saved_revision": null,
+      "withdrew": true
+    },
+    "headers": {
+      "Cache-Control": "no-store",
+      "Content-Length": "139",
+      "Content-Security-Policy": "frame-ancestors 'none'",
+      "Content-Type": "application/json"
+    },
+    "status": 200
+  }
+}

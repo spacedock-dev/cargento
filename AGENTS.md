@@ -241,6 +241,7 @@ pnpm test:browser
 pnpm test:parser
 pnpm test:installed
 pnpm test:dev:browser
+pnpm test:storage:browser
 coverage erase
 python3 scripts/run_tests.py --coverage -s cargento/skills/cargento/tests -t .
 python3 scripts/run_tests.py --coverage -s scripts/tests -t scripts/tests

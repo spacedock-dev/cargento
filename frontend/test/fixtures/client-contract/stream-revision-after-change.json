@@ -1,0 +1,23 @@
+{
+  "format": 1,
+  "name": "stream-revision-after-change",
+  "notes": "The connect-time frame for revision 1, then revision 2 after an invalidating write and the read that republishes.",
+  "request": {
+    "body": null,
+    "headers": {
+      "Sec-Fetch-Site": "same-origin"
+    },
+    "method": "GET",
+    "path": "/api/stream",
+    "query": ""
+  },
+  "response": {
+    "headers": {
+      "Cache-Control": "no-store",
+      "Content-Type": "text/event-stream",
+      "X-Accel-Buffering": "no"
+    },
+    "status": 200,
+    "text": "id: 1900000000.1\nevent: revision\ndata: 1900000000.1\n\nid: 1900000000.2\nevent: revision\ndata: 1900000000.2\n\n"
+  }
+}

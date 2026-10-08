@@ -1,0 +1,25 @@
+{
+  "format": 1,
+  "name": "annotations-disabled",
+  "notes": "Run with annotations off: the route exists and the store does not, so 503.",
+  "request": {
+    "body": null,
+    "headers": {},
+    "method": "GET",
+    "path": "/api/annotations",
+    "query": ""
+  },
+  "response": {
+    "error_page": {
+      "contains": [
+        "Error code: 503",
+        "Error response"
+      ],
+      "kind": "python-http-server"
+    },
+    "headers": {
+      "Content-Type": "text/html;charset=utf-8"
+    },
+    "status": 503
+  }
+}

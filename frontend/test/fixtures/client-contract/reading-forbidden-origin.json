@@ -1,0 +1,32 @@
+{
+  "format": 1,
+  "name": "reading-forbidden-origin",
+  "notes": "A wrong-port Origin never reaches the reading gate.",
+  "request": {
+    "body": {
+      "harness": "claude",
+      "observer_model": 1,
+      "press": true,
+      "sid": "a1b2c3d4"
+    },
+    "headers": {
+      "Origin": "http://127.0.0.1:1"
+    },
+    "method": "POST",
+    "path": "/api/reading",
+    "query": ""
+  },
+  "response": {
+    "error_page": {
+      "contains": [
+        "Error code: 403",
+        "Error response"
+      ],
+      "kind": "python-http-server"
+    },
+    "headers": {
+      "Content-Type": "text/html;charset=utf-8"
+    },
+    "status": 403
+  }
+}

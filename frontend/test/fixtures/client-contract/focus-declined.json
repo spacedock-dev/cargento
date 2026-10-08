@@ -1,0 +1,30 @@
+{
+  "format": 1,
+  "name": "focus-declined",
+  "notes": "A session this run never observed a terminal for answers focused:false, the same answer as a failed raise.",
+  "request": {
+    "body": {
+      "harness": "claude",
+      "sid": "00000000"
+    },
+    "headers": {
+      "Origin": "{origin}",
+      "X-Cargento-Capability": "{capability}"
+    },
+    "method": "POST",
+    "path": "/api/focus",
+    "query": ""
+  },
+  "response": {
+    "body": {
+      "focused": false
+    },
+    "headers": {
+      "Cache-Control": "no-store",
+      "Content-Length": "17",
+      "Content-Security-Policy": "frame-ancestors 'none'",
+      "Content-Type": "application/json"
+    },
+    "status": 200
+  }
+}

@@ -1,0 +1,27 @@
+{
+  "format": 1,
+  "name": "tripwire-disabled",
+  "notes": "Tripwires off for this run: the route exists and the feature does not, so 503.",
+  "request": {
+    "body": {},
+    "headers": {
+      "Origin": "{origin}"
+    },
+    "method": "POST",
+    "path": "/api/tripwire",
+    "query": ""
+  },
+  "response": {
+    "error_page": {
+      "contains": [
+        "Error code: 503",
+        "Error response"
+      ],
+      "kind": "python-http-server"
+    },
+    "headers": {
+      "Content-Type": "text/html;charset=utf-8"
+    },
+    "status": 503
+  }
+}

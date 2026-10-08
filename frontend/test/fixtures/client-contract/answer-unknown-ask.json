@@ -1,0 +1,30 @@
+{
+  "format": 1,
+  "name": "answer-unknown-ask",
+  "notes": "An id that names no ask answers the same as any other refusal.",
+  "request": {
+    "body": {
+      "id": "no-such-ask",
+      "index": 0
+    },
+    "headers": {
+      "Origin": "{origin}"
+    },
+    "method": "POST",
+    "path": "/api/answer",
+    "query": ""
+  },
+  "response": {
+    "body": {
+      "answered": false,
+      "ok": true
+    },
+    "headers": {
+      "Cache-Control": "no-store",
+      "Content-Length": "28",
+      "Content-Security-Policy": "frame-ancestors 'none'",
+      "Content-Type": "application/json"
+    },
+    "status": 200
+  }
+}

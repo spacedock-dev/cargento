@@ -1,0 +1,29 @@
+{
+  "format": 1,
+  "name": "lane-malformed",
+  "notes": "A body that is not an object is a 400.",
+  "request": {
+    "body": [
+      1
+    ],
+    "headers": {
+      "Origin": "{origin}"
+    },
+    "method": "POST",
+    "path": "/api/lane",
+    "query": ""
+  },
+  "response": {
+    "error_page": {
+      "contains": [
+        "Error code: 400",
+        "Error response"
+      ],
+      "kind": "python-http-server"
+    },
+    "headers": {
+      "Content-Type": "text/html;charset=utf-8"
+    },
+    "status": 400
+  }
+}

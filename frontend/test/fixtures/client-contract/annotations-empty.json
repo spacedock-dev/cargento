@@ -1,0 +1,25 @@
+{
+  "format": 1,
+  "name": "annotations-empty",
+  "notes": "An empty store reads as an empty list.",
+  "request": {
+    "body": null,
+    "headers": {},
+    "method": "GET",
+    "path": "/api/annotations",
+    "query": ""
+  },
+  "response": {
+    "body": {
+      "annotations": [],
+      "intent_revision": "c1cbdb551ef014cff7b3f292363ed001c7531672f03382c7864fae1ae0c2f373"
+    },
+    "headers": {
+      "Cache-Control": "no-store",
+      "Content-Length": "103",
+      "Content-Security-Policy": "frame-ancestors 'none'",
+      "Content-Type": "application/json"
+    },
+    "status": 200
+  }
+}

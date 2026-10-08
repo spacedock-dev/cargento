@@ -1,0 +1,57 @@
+{
+  "format": 1,
+  "name": "reading-provider-changed",
+  "notes": "The page named a provider that is not the one this press would reach: 409, with nothing consented or spent.",
+  "request": {
+    "body": {
+      "harness": "claude",
+      "observer_model": 1,
+      "press": true,
+      "provider": "codex",
+      "sid": "a1b2c3d4"
+    },
+    "headers": {
+      "Origin": "{origin}"
+    },
+    "method": "POST",
+    "path": "/api/reading",
+    "query": ""
+  },
+  "response": {
+    "body": {
+      "ok": false,
+      "produced": false,
+      "reason": "provider-changed",
+      "route": {
+        "destination": "claude.synthetic.invalid",
+        "disclosure": "This session's own harness reads it. Sent: your goal and a bounded set of the session's entries, with your messages and the agent's messages up to 1,000 characters each, and your expected outcome lines. The agent's newest final reply, as its transcript records one, goes whole instead where it fits 4,096 bytes. Tool output, only after you allow it: a check's command, result and last 180 characters of output as printed, the paths of the files it wrote; agent messages may quote it. To: claude.synthetic.invalid, as your Claude Code settings name it, with credential shapes redacted, through your Claude Code CLI and its sign-in using claude-sonnet-5-5, spending your capacity. That CLI also sends its working directory, platform, shell, OS version, date and device identifier, and under a Claude account sign-in your email address and account ID. A reading is a model's account of the evidence, never a verification that the work was done.",
+        "disclosure_parts": [
+          "This session's own harness reads it.",
+          "Sent: your goal and a bounded set of the session's entries, with your messages and the agent's messages up to 1,000 characters each, and your expected outcome lines.",
+          "The agent's newest final reply, as its transcript records one, goes whole instead where it fits 4,096 bytes.",
+          "Tool output, only after you allow it: a check's command, result and last 180 characters of output as printed, the paths of the files it wrote; agent messages may quote it.",
+          "To: claude.synthetic.invalid, as your Claude Code settings name it, with credential shapes redacted, through your Claude Code CLI and its sign-in using claude-sonnet-5-5, spending your capacity.",
+          "That CLI also sends its working directory, platform, shell, OS version, date and device identifier, and under a Claude account sign-in your email address and account ID.",
+          "A reading is a model's account of the evidence, never a verification that the work was done."
+        ],
+        "fallback": false,
+        "harness": "claude",
+        "label": "Claude Code",
+        "model": "claude-sonnet-5-5",
+        "note": "This session's own harness reads it.",
+        "provider": "claude",
+        "reason": "own-harness",
+        "tool_output": "Tool output, only after you allow it: a check's command, result and last 180 characters of output as printed, the paths of the files it wrote; agent messages may quote it.",
+        "vendor": "Anthropic",
+        "words_destination": "claude.synthetic.invalid"
+      }
+    },
+    "headers": {
+      "Cache-Control": "no-store",
+      "Content-Length": "2473",
+      "Content-Security-Policy": "frame-ancestors 'none'",
+      "Content-Type": "application/json"
+    },
+    "status": 409
+  }
+}

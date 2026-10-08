@@ -1,0 +1,35 @@
+{
+  "format": 1,
+  "name": "reading-adoption-refused",
+  "notes": "Keep without the revision it settles: refused 422 before any route or model.",
+  "request": {
+    "body": {
+      "harness": "claude",
+      "observer_model": 1,
+      "press": true,
+      "settle_through": 1.0,
+      "sid": "a1b2c3d4"
+    },
+    "headers": {
+      "Origin": "{origin}"
+    },
+    "method": "POST",
+    "path": "/api/reading",
+    "query": ""
+  },
+  "response": {
+    "body": {
+      "adoption_refused": true,
+      "ok": false,
+      "produced": false,
+      "settled": "refused"
+    },
+    "headers": {
+      "Cache-Control": "no-store",
+      "Content-Length": "73",
+      "Content-Security-Policy": "frame-ancestors 'none'",
+      "Content-Type": "application/json"
+    },
+    "status": 422
+  }
+}

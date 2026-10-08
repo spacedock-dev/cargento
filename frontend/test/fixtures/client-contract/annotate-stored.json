@@ -1,0 +1,40 @@
+{
+  "format": 1,
+  "name": "annotate-stored",
+  "notes": "First save: stored, revision 1, persisted true.",
+  "request": {
+    "body": {
+      "goal": "Ship the parser",
+      "harness": "claude",
+      "lines": [
+        "Tests pass"
+      ],
+      "sid": "a1b2c3d4"
+    },
+    "headers": {
+      "Origin": "{origin}"
+    },
+    "method": "POST",
+    "path": "/api/annotate",
+    "query": ""
+  },
+  "response": {
+    "body": {
+      "discarded": null,
+      "ok": true,
+      "outcome": "stored",
+      "persisted": true,
+      "revision": 1,
+      "revision_count": 1,
+      "saved_revision": null,
+      "withdrew": true
+    },
+    "headers": {
+      "Cache-Control": "no-store",
+      "Content-Length": "134",
+      "Content-Security-Policy": "frame-ancestors 'none'",
+      "Content-Type": "application/json"
+    },
+    "status": 200
+  }
+}

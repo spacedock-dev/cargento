@@ -485,6 +485,11 @@ jobs:
         env:
           CARGENTO_TEST_PYTHON: ${{ steps.python.outputs.python-path }}
         run: pnpm test:dev:browser
+      - name: Legacy storage conformance browser proof
+        timeout-minutes: 3
+        env:
+          CARGENTO_TEST_PYTHON: ${{ steps.python.outputs.python-path }}
+        run: pnpm test:storage:browser
 
   # The single required status check. Branch protection requires this job, so
   # every job above must succeed (a skip or failure anywhere fails the gate).

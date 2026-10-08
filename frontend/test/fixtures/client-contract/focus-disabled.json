@@ -1,0 +1,31 @@
+{
+  "format": 1,
+  "name": "focus-disabled",
+  "notes": "Focus off for this run (the default): 503, whatever the capability.",
+  "request": {
+    "body": {
+      "harness": "claude",
+      "sid": "a1b2c3d4"
+    },
+    "headers": {
+      "Origin": "{origin}",
+      "X-Cargento-Capability": "{capability}"
+    },
+    "method": "POST",
+    "path": "/api/focus",
+    "query": ""
+  },
+  "response": {
+    "error_page": {
+      "contains": [
+        "Error code: 503",
+        "Error response"
+      ],
+      "kind": "python-http-server"
+    },
+    "headers": {
+      "Content-Type": "text/html;charset=utf-8"
+    },
+    "status": 503
+  }
+}

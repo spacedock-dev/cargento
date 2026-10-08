@@ -1,0 +1,32 @@
+{
+  "format": 1,
+  "name": "direction-unavailable",
+  "notes": "A direction the session record cannot open answers one 200 body, never a 404.",
+  "request": {
+    "body": {
+      "fact_id": "fact-1",
+      "harness": "claude",
+      "sid": "a1b2c3d4"
+    },
+    "headers": {
+      "Origin": "{origin}"
+    },
+    "method": "POST",
+    "path": "/api/direction",
+    "query": ""
+  },
+  "response": {
+    "body": {
+      "ok": false,
+      "reason": "unavailable",
+      "why": "Cargento could not open that direction from the session's record, so nothing was added. The part of the record it reads may no longer reach back to it, or it may not be later than your intent. Type the line yourself instead."
+    },
+    "headers": {
+      "Cache-Control": "no-store",
+      "Content-Length": "268",
+      "Content-Security-Policy": "frame-ancestors 'none'",
+      "Content-Type": "application/json"
+    },
+    "status": 200
+  }
+}

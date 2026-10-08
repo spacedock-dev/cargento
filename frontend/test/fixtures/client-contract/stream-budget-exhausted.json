@@ -1,0 +1,25 @@
+{
+  "format": 1,
+  "name": "stream-budget-exhausted",
+  "notes": "With the one stream slot taken the next client is refused 503, never queued.",
+  "request": {
+    "body": null,
+    "headers": {},
+    "method": "GET",
+    "path": "/api/stream",
+    "query": ""
+  },
+  "response": {
+    "error_page": {
+      "contains": [
+        "Error code: 503",
+        "Error response"
+      ],
+      "kind": "python-http-server"
+    },
+    "headers": {
+      "Content-Type": "text/html;charset=utf-8"
+    },
+    "status": 503
+  }
+}

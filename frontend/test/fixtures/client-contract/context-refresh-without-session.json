@@ -1,0 +1,25 @@
+{
+  "format": 1,
+  "name": "context-refresh-without-session",
+  "notes": "refresh=1 needs an exact focused session.",
+  "request": {
+    "body": null,
+    "headers": {},
+    "method": "GET",
+    "path": "/api/project-context",
+    "query": "project=alpha-app&refresh=1"
+  },
+  "response": {
+    "error_page": {
+      "contains": [
+        "Error code: 400",
+        "Error response"
+      ],
+      "kind": "python-http-server"
+    },
+    "headers": {
+      "Content-Type": "text/html;charset=utf-8"
+    },
+    "status": 400
+  }
+}

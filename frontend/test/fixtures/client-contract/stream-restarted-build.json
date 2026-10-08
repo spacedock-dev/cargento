@@ -1,0 +1,23 @@
+{
+  "format": 1,
+  "name": "stream-restarted-build",
+  "notes": "The same route from a server that restarted: the start stamp half of the revision differs, which a client must read as newer whatever the counter says.",
+  "request": {
+    "body": null,
+    "headers": {
+      "Sec-Fetch-Site": "same-origin"
+    },
+    "method": "GET",
+    "path": "/api/stream",
+    "query": ""
+  },
+  "response": {
+    "headers": {
+      "Cache-Control": "no-store",
+      "Content-Type": "text/event-stream",
+      "X-Accel-Buffering": "no"
+    },
+    "status": 200,
+    "text": "id: 1900000500.1\nevent: revision\ndata: 1900000500.1\n\n"
+  }
+}
