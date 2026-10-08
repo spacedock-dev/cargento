@@ -95,10 +95,11 @@ same directories through the relative symlinks under `.agents/skills/`.
 - The full unittest suite under `coverage`, against the `fail_under` threshold in `pyproject.toml`.
   That threshold only ratchets up. A PR that must merge below it needs the `coverage-exception`
   label, which is visible in the PR timeline.
-- `platform-tests`, the unit suite re-run natively on macOS and Windows. Ubuntu is covered by the
+- `platform-tests`, the unit suite re-run natively on macOS, and on Windows on pushes to `main` or when a
+  pull request carries the `windows-ci` label (paused on other pull requests during the frontend migration). Ubuntu is covered by the
   coverage job and the runtime floor, which both run the whole suite there.
 - The frontend matrix, with exact Node and pnpm pins, lint, strict types, unit tests and clean
-  preview builds on Linux, macOS and Windows. Linux compares the canonical build with tracked
+  preview builds on Linux and macOS, and on Windows under the same condition. Linux compares the canonical build with tracked
   assets. Every platform runs browser checks against an installed Python-only copy.
 
 Those checks run when the diff contains something they can measure. A change to prose

@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import json
 import os
+import re
 import subprocess
 import tempfile
 import unittest
@@ -136,6 +138,20 @@ class FrontendAggregateControlsTest(unittest.TestCase):
 
 
 class FrontendWiringControlsTest(unittest.TestCase):
+    def check_windows_paused_on_pull_requests(
+        self, job: dict[str, Any], pull_request: set[str]
+    ) -> None:
+        """Windows runs on main pushes and labelled pull requests only, until the migration's final stage."""
+        selection = job["strategy"]["matrix"]["os"]
+        self.assertIsInstance(selection, str)
+        self.assertIn("github.event_name == 'pull_request'", selection)
+        self.assertIn("contains(github.event.pull_request.labels.*.name, 'windows-ci')", selection)
+        unlabelled, everywhere = (
+            json.loads(part) for part in re.findall(r"'(\[[^']*\])'", selection)
+        )
+        self.assertEqual(pull_request, set(unlabelled))
+        self.assertEqual(pull_request | {"windows-latest"}, set(everywhere))
+
     def test_gate_checkouts_do_not_leave_credentials_for_later_commands(self) -> None:
         for name, job in jobs().items():
             for step in job.get("steps", []):
@@ -146,9 +162,9 @@ class FrontendWiringControlsTest(unittest.TestCase):
     def test_matrix_is_required_and_keeps_all_current_python_jobs(self) -> None:
         workflow_jobs = jobs()
         frontend = workflow_jobs["frontend"]
-        self.assertEqual(
-            {"ubuntu-latest", "macos-latest", "windows-latest"},
-            set(frontend["strategy"]["matrix"]["os"]),
+        self.check_windows_paused_on_pull_requests(frontend, {"ubuntu-latest", "macos-latest"})
+        self.check_windows_paused_on_pull_requests(
+            workflow_jobs["platform-tests"], {"macos-latest"}
         )
         self.assertFalse(frontend["strategy"]["fail-fast"])
         self.assertLessEqual(frontend["timeout-minutes"], 15)
