@@ -105,9 +105,22 @@ export async function startWorld({ mutations = {}, mutation = process.env.CARGEN
     }
     assert.ok(!mutation || mutations[mutation], `unknown mutation ${mutation}`);
 
-    const [pythonPort, vitePort, legacyPort] = await freePorts(3);
     const helper = join(copy, 'frontend/test/terminal_backend.py');
-    dev = await startDevelopment({ root: copy, port: pythonPort, vitePort, backendHelper: helper });
+    /* A sibling run can bind a port between the check that it is free and the bind itself; startup then fails
+       loudly rather than adopting someone else's listener. Try again on other ports, a few times. */
+    const refused = [];
+    let ports;
+    for (let attempt = 0; ; attempt += 1) {
+      ports = await freePorts(3, refused);
+      try {
+        dev = await startDevelopment({ root: copy, port: ports[0], vitePort: ports[1], backendHelper: helper });
+        break;
+      } catch (error) {
+        refused.push(...ports);
+        if (attempt >= 3 || !/in use|EADDRINUSE|belongs to another|backend exited|readiness/i.test(String(error.message))) throw error;
+      }
+    }
+    const legacyPort = ports[2];
     world.react = { origin: dev.origin, viteOrigin: dev.viteOrigin, control: join(dev.scratch, 'state/terminal-fixture/control.ndjson') };
 
     legacyScratch = await mkdtemp(join(tmpdir(), 'cargento-terminal-legacy-'));

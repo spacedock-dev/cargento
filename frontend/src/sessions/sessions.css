@@ -418,3 +418,13 @@
   min-width: 0;
   overflow-wrap: anywhere;
 }
+
+/* Sentences on this page carry tokens that cannot break by themselves (a path, an id, a long option). At a narrow
+   width or a large text size they wrap inside their column rather than widening the page. */
+.next-session-detail {
+  overflow-wrap: anywhere;
+}
+.next-session-columns > *,
+.next-session-activity > * {
+  min-width: 0;
+}

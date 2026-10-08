@@ -1,8 +1,8 @@
 {
   "document": {
-    "bytes": 760756,
+    "bytes": 761992,
     "file": "react.html",
-    "sha256": "b5a533fa09147cbc971af96c46a2be47c01bac7eca3ff0e0bf00c80594e98174"
+    "sha256": "ad5a8d28bde8a7c7a24dbb33b70cdaf59398fe0bc77fa3f6226e3fa44219054e"
   },
   "format": 1,
   "frontend": "react",
@@ -358,7 +358,7 @@
       },
       {
         "file": "frontend/src/sessions/AnswerBlock.tsx",
-        "sha256": "c596a20abda9d678a148216a535afab12c63bc7bad397c2c5421505aeb3fec56"
+        "sha256": "74202d6042368483e37ea9e3423addf54ad2da4a6f2d784a1b39e13b8be07215"
       },
       {
         "file": "frontend/src/sessions/DepartureParts.tsx",
@@ -374,7 +374,7 @@
       },
       {
         "file": "frontend/src/sessions/SessionDetail.tsx",
-        "sha256": "e465ddebabc5fd7c196e4fa81ee906557dd6e99b6f72bdd1e8e9c864a68a5597"
+        "sha256": "e182750efa005e33bae93bec00d6cdadf162aa179cd5e3708b7668cd6344affb"
       },
       {
         "file": "frontend/src/sessions/SessionsView.tsx",
@@ -382,7 +382,7 @@
       },
       {
         "file": "frontend/src/sessions/detail.ts",
-        "sha256": "49215925c3cd51370d2dadcf2481db22ba15ae39ace315ad3105163a551d3985"
+        "sha256": "252d61657ce0f7fea85b3c5d8b460695bddffd00e1a56063ce33eeaba1bc173e"
       },
       {
         "file": "frontend/src/sessions/heldState.ts",
@@ -406,11 +406,11 @@
       },
       {
         "file": "frontend/src/sessions/sessions.css",
-        "sha256": "fabe37d5653a2241f7e415aa48c398119e59449653cfd38342cd40c5e68b49e6"
+        "sha256": "0c27057d08c22c1aa94e8ed25731ca5a7999352533e288c527f7a5ae0decd94d"
       },
       {
         "file": "frontend/src/sessions/testing.tsx",
-        "sha256": "2a6f5259d9fd1104bfce6e7b4c351c3c065641f5952f19af970852120856473d"
+        "sha256": "dea6b220c458429b27b10cf3d6a7196f0bb27dcdc284c204f7cc9df21131042f"
       },
       {
         "file": "frontend/src/sessions/usePruneAnswerNotes.ts",

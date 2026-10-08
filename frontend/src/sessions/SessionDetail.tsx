@@ -25,6 +25,8 @@ import {
   sessionSubagents,
   sessionTasks,
   unaskedDepartures,
+  LANE_OFF_RECORD,
+  laneOffWhy,
 } from './detail';
 import { RouteAnchor } from './SessionsView';
 import { harnessLabels } from './rows';
@@ -80,12 +82,24 @@ function Controls({ session, observed, route, labels }: { readonly session: Row;
 
 /* The departures raised to the reader and the way back beside them, drawn under the label the legacy page
    gives them until the Intent step's panel composes them itself. */
-function DepartureEvidence({ session }: { readonly session: Row }) {
+function DepartureEvidence({ session, laneOn, offReason }: { readonly session: Row; readonly laneOn: boolean; readonly offReason: unknown }) {
   const body = unaskedDepartures(session);
   if (!body) return null;
   return (
     <div className="next-cockpit-departure-part">
       <span className="next-cockpit-departure-label">FROM THE CHECKS RUN WHILE YOU WERE AWAY</span>
+      {/* With the lane off the rows are still on the wire, so they are printed with the limit that qualifies them:
+          without it the label alone would read as checks that ran while the reader was away. */}
+      {laneOn ? null : (
+        <>
+          <p className="next-cockpit-reading-why" data-absence="run-config">
+            {laneOffWhy(offReason)}
+          </p>
+          <p className="next-cockpit-reading-why" data-absence="run-config">
+            {LANE_OFF_RECORD}
+          </p>
+        </>
+      )}
       <UnaskedDepartureBody session={session} />
     </div>
   );
@@ -198,7 +212,7 @@ export function SessionDetail({ route, data, session }: SessionDetailProps): Rea
       <div className="next-session-columns">
         <DriftSlot harness={observed.harness} sid={observed.sid}>
           <DelegatedWorkLine session={session} now={generated} />
-          <DepartureEvidence session={session} />
+          <DepartureEvidence session={session} laneOn={payload['unasked'] === true} offReason={payload['unasked_off_reason']} />
         </DriftSlot>
         <div className="next-session-activity" data-next-session-activity>
           <h2 className="next-session-activity-heading">Session activity</h2>

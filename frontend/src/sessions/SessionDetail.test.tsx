@@ -65,6 +65,22 @@ describe('answering a held request', () => {
     expect(document.querySelector('[data-next-pending]')).toBeNull();
   });
 
+  it('holds the busy control until the refresh after a confirmed answer lands, so no second option can follow it', async () => {
+    const page = await open(asked());
+    page.state.holdData = true;
+    fireEvent.click(screen.getByRole('button', { name: 'Yes' }));
+    await page.settle();
+    expect(page.posts()).toHaveLength(1);
+    // The server confirmed, but the board that drops the question has not arrived: the card is still on screen.
+    expect(document.querySelector('[data-next-answer-index="0"]')?.getAttribute('aria-busy')).toBe('true');
+    fireEvent.click(document.querySelector('[data-next-answer-index="1"]') as Element);
+    await page.settle();
+    expect(page.posts()).toHaveLength(1);
+    expect(failure()).toBeNull();
+    await page.releaseData();
+    expect(document.querySelector('[data-next-pending]')).toBeNull();
+  });
+
   it('keeps the question when the server did not confirm, and says so', async () => {
     for (const answer of [{ kind: 'refuse' }, { kind: 'status', status: 500 }, { kind: 'not-json' }, { kind: 'offline' }] as const) {
       const page = await open(asked(), { answer });
@@ -233,5 +249,34 @@ describe('the raise control', () => {
   it('is not drawn for a session that is not waiting, where the header offers copy controls alone', async () => {
     await open(board([{ ...ONE, state: 'idle', focusable: true }]), { focusCapability: 'minted' });
     expect(document.querySelector('.ctl-raise')).toBeNull();
+  });
+});
+
+describe('the checks run while the reader was away, when that lane is off', () => {
+  const departed = { ...ONE, departures: [{ at: NOW - 600, revision: 1, constraint: 'goal', reading: 'The change widened the goal.' }] };
+  const label = 'FROM THE CHECKS RUN WHILE YOU WERE AWAY';
+  const part = () => document.querySelector('.next-cockpit-departure-part') as HTMLElement;
+
+  it('prints the limit beside the rows it qualifies, as the legacy page does, so the label never reads as checks that ran', async () => {
+    await open(board([departed], { unasked: false }));
+    expect(part().textContent).toContain(label);
+    const sentences = [...part().querySelectorAll('[data-absence="run-config"]')].map((node) => node.textContent);
+    expect(sentences).toEqual([
+      'Nothing watches for a departure on its own. Start with --unasked-readings to have Cargento check a session against what you asked for while you are away.',
+      'The checks that run while you were away are off for this run, so nothing new is being checked. What was already raised is still on record.',
+    ]);
+    expect(part().textContent).toContain('The change widened the goal.');
+  });
+
+  it('names the model off switch when that is why the lane is off', async () => {
+    await open(board([departed], { unasked: false, unasked_off_reason: 'run-disabled' }));
+    const first = part().querySelector('[data-absence="run-config"]')?.textContent ?? '';
+    expect(first).toBe('The model off switch refuses unasked checks. Restart with --unasked-readings and without either --no-harness-usage or --no-observer-model to enable them.');
+  });
+
+  it('adds no off-switch sentence when the lane is on', async () => {
+    await open(board([departed], { unasked: true }));
+    expect(part().querySelector('[data-absence="run-config"]')).toBeNull();
+    expect(part().textContent).toContain('The change widened the goal.');
   });
 });

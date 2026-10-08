@@ -257,6 +257,17 @@ describe('leaving and coming back', () => {
     return { t, viewport, detach };
   }
 
+  it('binds the socket to the origin the exact session registered: a frame from another pane is never drawn', async () => {
+    // The stream URL names no session. The origin hint the lookup returned is the only thing tying this socket to
+    // this harness and sid, so the owner must hand that hint on, and a frame that carries another one must close it.
+    const { t } = await running();
+    t.sockets[0]?.deliver({ ...streamed(1, 'another pane'), origin_id_hint: 'ffff0000' });
+    expect(instances[0]?.written).toEqual([]);
+    expect(t.sockets[0]?.closed).toBe(1);
+    t.sockets[0]?.deliver(streamed(2, 'this pane'));
+    expect(instances[0]?.written).toEqual(['this pane']);
+  });
+
   it('keeps the terminal, its screen and its socket when the view unmounts, and puts the same ones back', async () => {
     const { t, viewport, detach } = await running();
     t.sockets[0]?.deliver(streamed(1, 'kept output'));

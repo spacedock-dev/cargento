@@ -380,6 +380,17 @@ export interface Departures {
 /* The rows and the absence sentence, in one wording for every surface that shows them: the drift block's
    departures section. The heading counts, and each row says when ("while you were away" was a claim about
    the reader, and nothing here observes where they were). */
+/* What the page says about the checks run while the reader was away when that lane is off. Two sentences and two
+   subjects, in two paragraphs so neither qualifies the other: the first is about the present, the second about the
+   record, which is read whichever way the switch is set. The wording is the legacy page's. */
+export const LANE_OFF_RECORD =
+  'The checks that run while you were away are off for this run, so nothing new is being checked. What was already raised is still on record.';
+export function laneOffWhy(reason: unknown): string {
+  return reason === 'run-disabled'
+    ? 'The model off switch refuses unasked checks. Restart with --unasked-readings and without either --no-harness-usage or --no-observer-model to enable them.'
+    : 'Nothing watches for a departure on its own. Start with --unasked-readings to have Cargento check a session against what you asked for while you are away.';
+}
+
 export function unaskedDepartures(session: Row): Departures | null {
   const raised = Array.isArray(session['departures']) ? (session['departures'] as unknown[]) : [];
   const why = published(session['departure_why']);

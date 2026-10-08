@@ -18,6 +18,8 @@ describe('resolving the activity filter', () => {
     const { modes } = modesOver({ [KEY]: '{"alpha\\u0000":"all"}' });
     expect(modes.resolve({ project: 'alpha', session: null, mode: 'decisions' })).toBe('decisions');
     expect(modes.resolve({ project: 'alpha', session: null })).toBe('all');
+    // The reader's own choice outranks the caller's default.
+    expect(modes.resolve({ project: 'alpha', session: null, defaultMode: 'decisions' })).toBe('all');
     expect(modes.resolve({ project: 'beta', session: null, defaultMode: 'decisions' })).toBe('decisions');
     expect(modes.resolve({ project: 'beta', session: null })).toBe('active');
   });

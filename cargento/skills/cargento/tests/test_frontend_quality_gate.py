@@ -245,6 +245,21 @@ class FrontendWiringControlsTest(unittest.TestCase):
                 commands.index(browser_command),
             )
 
+    def test_each_browser_script_runs_every_proof_it_names(self) -> None:
+        """A script that chains two proofs is one workflow step, so the step test alone cannot see one dropped."""
+        scripts = json.loads((ROOT / "package.json").read_text())["scripts"]
+        expected = {
+            "test:terminal:browser": ("terminal-parity.mjs", "timeline-filter.mjs"),
+            "test:sessions:browser": ("sessions-parity.mjs",),
+            "test:shell:browser": ("shell-routing.mjs",),
+            "test:controls:browser": ("controls-continuity.mjs",),
+            "test:storage:browser": ("storage-conformance.mjs",),
+        }
+        for name, files in expected.items():
+            for file in files:
+                with self.subTest(script=name, proof=file):
+                    self.assertIn(f"frontend/e2e/{file}", scripts[name])
+
     def test_native_build_is_separate_from_canonical_check_and_installed_smoke(self) -> None:
         steps = jobs()["frontend"]["steps"]
         commands = {step.get("run"): step for step in steps if "run" in step}

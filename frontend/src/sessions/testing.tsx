@@ -45,6 +45,9 @@ export function mountSessions(options: SessionsShellOptions = {}) {
     answer: options.answer ?? ({ kind: 'confirm' } as AnswerScript),
     requests: [] as Request[],
     held: null as null | ((response: Response) => void),
+    /** While set, the next board read waits for `releaseData`, as a slow refresh would. */
+    holdData: false,
+    heldData: null as null | (() => void),
   };
   const fetch: FetchLike = (url, init) => {
     const body = init?.body ? (JSON.parse(String(init.body)) as unknown) : null;
@@ -69,6 +72,15 @@ export function mountSessions(options: SessionsShellOptions = {}) {
       }
     }
     if (state.data === undefined || state.data === null) return Promise.reject(new Error('offline'));
+    const respond = () => {
+      state.revision += 1;
+      return new Response(JSON.stringify(state.data), { status: 200, headers: { 'X-Cargento-Revision': `7.${String(state.revision)}` } });
+    };
+    if (state.holdData && !state.heldData) {
+      return new Promise<Response>((resolve) => {
+        state.heldData = () => resolve(respond());
+      });
+    }
     state.revision += 1;
     return Promise.resolve(new Response(JSON.stringify(state.data), { status: 200, headers: { 'X-Cargento-Revision': `7.${String(state.revision)}` } }));
   };
@@ -109,6 +121,15 @@ export function mountSessions(options: SessionsShellOptions = {}) {
     gets: () => state.requests.filter((request) => request.method === 'GET' && request.url.startsWith('/api/data')).length,
     posts: () => state.requests.filter((request) => request.method !== 'GET'),
     settle: () => act(async () => void (await flush())),
+    /** Lets the held board read answer, as a slow refresh would. */
+    async releaseData() {
+      await act(async () => {
+        state.holdData = false;
+        state.heldData?.();
+        state.heldData = null;
+        await flush();
+      });
+    },
     /** Answers the held answer request, as the server would. */
     async release(response: Response) {
       await act(async () => {

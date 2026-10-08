@@ -36,8 +36,13 @@ function AnswerButton({ id, index, option }: { readonly id: string; readonly ind
     );
     if (confirmed) notes.delete(id);
     else notes.set(id, ANSWER_FAILURE);
-    runtime.pending.end(control, token);
-    if (confirmed) await runtime.refresh();
+    // The control stays busy until the board that drops the question has been read: ending it at the confirmation
+    // would leave the answered card on screen with live buttons for a second option.
+    try {
+      if (confirmed) await runtime.refresh();
+    } finally {
+      runtime.pending.end(control, token);
+    }
   };
 
   return (
