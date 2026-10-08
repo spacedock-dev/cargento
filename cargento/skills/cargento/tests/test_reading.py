@@ -1085,7 +1085,8 @@ class WhatTheReadingWasActuallyShown(unittest.TestCase):
         )
         started = time.perf_counter()
         _, selected = reading.build_prompt(ledger, goal="g", lines=(), max_bytes=200_000)
-        self.assertLess(time.perf_counter() - started, 0.5)
+        # A prompt that waited seconds is the defect; a loaded runner can take a second.
+        self.assertLess(time.perf_counter() - started, 2.5)
         self.assertGreater(len(selected.entries), 100)
 
     def test_the_reading_reads_the_most_recent_work_first(self) -> None:

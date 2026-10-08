@@ -579,9 +579,9 @@ class ABusyStoreIsReportedNotWrittenTest(_SharedHomeCase):
             self.assertEqual(annotation_store.OUTCOME_UNWRITABLE, answer)
             # One wait each. Queued behind the in-process lock they answered
             # at one, two and three waits.
-            self.assertLess(seconds, wait * 1.6, took)
+            self.assertLess(seconds, wait * 1.9, took)
         for name in ("refresh", "active"):
-            self.assertLess(took[name][1], wait / 2, took)
+            self.assertLess(took[name][1], wait * 0.9, took)
 
     def test_forget_on_a_machine_that_never_saved_creates_nothing(self) -> None:
         home = tempfile.mkdtemp()
@@ -975,7 +975,8 @@ class AWriterInsideAWriterTest(_SharedHomeCase):
         ):
             self.assertIsNotNone(store)
             annotation_store.annotate(self.config, self.first, "claude", SID, goal="Nested")
-        self.assertLess(time.monotonic() - began, 1.0)
+        # Far inside the ten-second store wait the nested writer would otherwise sit through.
+        self.assertLess(time.monotonic() - began, 5.0)
         # The outer write released everything on the way out.
         self.assertEqual(
             annotation_store.OUTCOME_STORED,

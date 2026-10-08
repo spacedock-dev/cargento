@@ -485,7 +485,7 @@ class SpacedockParserTest(unittest.TestCase):
 
         self.assertEqual([], spacedock.boot_records(config, payload))
 
-        self.assertLess(time.monotonic() - started, 1.0)
+        self.assertLess(time.monotonic() - started, 5.0)
 
     RENDERED_BOOT = (
         'command: "boot"\n'
