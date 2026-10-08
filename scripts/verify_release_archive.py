@@ -7,20 +7,27 @@ Usage:
 
 The Release workflow verifies the frontend in a job that holds no credentials and
 then bumps version fields in a job that does. The bump commit is therefore a tree
-nobody built, and this is the check that it still ships what was verified. It
-runs in the privileged job with Python only: nothing here starts Node, pnpm or any
-frontend dependency, and the smoke runs in a scrubbed environment with a throwaway
-home and an empty PATH.
+nobody built, and this is the check that it still ships what was verified. It runs
+in the key-holding job with Python only: nothing here starts Node, pnpm or any
+frontend dependency, and the archived Python runs with a throwaway home and an
+empty PATH. That keeps Node out of reach; it is not credential isolation, because
+the archived Python is still the job's user and first-party code from the verified
+tree.
 
 Checks, in order, each of which stops the release on failure:
 
     versions   the three owned manifests carry the tag's version, in parity
     changes    the release commit is the verified commit or its direct child and
-               differs from it in the version manifests alone
+               differs from it only in the `version` value of the owned manifests
     bundle     the React bundle files in the archive equal the verified blobs
     inventory  the archive's own runtime inventory check passes
-    page       Python's integrity check accepts the archived React page
-    launch     the archived launcher starts and diagnoses with --frontend react
+    page       Python's integrity check accepts the archived React page, and the
+               bytes it accepted are the verified document
+    launch     the archived launcher starts and runs `--frontend react --diagnose`
+
+`launch` proves only that the launcher starts: `--diagnose` exits before it loads a
+page. The `bundle` and `page` checks are what bind the served page to the verified
+one.
 
 The bundle is version-independent: build provenance carries no release version, so
 a bump never changes it, and a changed bundle byte means a rebuild nobody verified.
@@ -31,7 +38,6 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
-import os
 import re
 import shutil
 import subprocess
@@ -52,7 +58,7 @@ BUNDLE_FILES = (
     f"{WEB}/vendor/xterm.css",
 )
 FULL_SHA = re.compile(r"^[0-9a-f]{40}$")
-SEMVER = re.compile(r"^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$")
+SEMVER = re.compile(r"^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$")
 # -I for the page probe: no user site, no PYTHON* variables, no script directory,
 # so the only code that can import is the interpreter's own plus the archive path
 # the probe inserts itself. server.py cannot use -I (it imports its sibling
@@ -69,6 +75,12 @@ from cargento_runtime.web import page
 data = page.load_frontend_page("react")
 print(json.dumps({"sha256": hashlib.sha256(data).hexdigest(), "bytes": len(data)}))
 """
+
+
+def annotation(text: str) -> str:
+    """One workflow-command line: a newline in the text must not start a second command."""
+    escaped = text.replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A")
+    return f"::error::{escaped}"
 
 
 class ArchiveError(Exception):
@@ -147,42 +159,50 @@ def _safe_target(name: str, root: Path) -> Path:
 
 
 def extract_archive(archive: Path, destination: Path) -> None:
-    """Extract files, directories and in-tree relative symlinks; refuse the rest.
+    """Extract regular files and directories only; refuse every link and special member.
 
-    `tarfile.extractall` filters differ across the supported Python floor, and an
-    archive of a commit that could hold a hostile member is the case this exists
-    for, so the member policy is spelled out here instead of inherited.
+    The archive is of a repository commit, which can hold a hostile member, and
+    `tarfile.extractall` filters differ across the supported Python floor, so the
+    policy is spelled out here. Links are refused outright rather than checked
+    lexically: a chain of individually harmless symlinks (`a -> .`, `a/b -> ..`)
+    walks out of the root, and nothing this proof reads needs one. `build_archive`
+    leaves out the paths that carry the repository's own links.
     """
     root = destination.resolve()
     with tarfile.open(archive) as tar:
         members = tar.getmembers()
         for member in members:
-            target = _safe_target(member.name, root)
-            if member.issym():
-                link = PurePosixPath(member.linkname)
-                resolved = os.path.normpath(os.path.join(os.path.dirname(target), member.linkname))
-                inside = Path(resolved).is_relative_to(root)
-                if link.is_absolute() or not inside:
-                    message = f"archive link {member.name!r} points outside the tree"
-                    raise ArchiveError(message)
-            elif not (member.isfile() or member.isdir()):
-                message = f"archive member {member.name!r} is not a file, directory or link"
+            _safe_target(member.name, root)
+            if not (member.isfile() or member.isdir()):
+                message = f"archive member {member.name!r} is not a regular file or directory"
                 raise ArchiveError(message)
         for member in members:
             target = _safe_target(member.name, root)
             if member.isdir():
                 target.mkdir(parents=True, exist_ok=True)
-            elif member.issym():
-                target.parent.mkdir(parents=True, exist_ok=True)
-                target.symlink_to(member.linkname)
-            else:
-                target.parent.mkdir(parents=True, exist_ok=True)
-                source = tar.extractfile(member)
-                if source is None:  # pragma: no cover -- isfile() members always open
-                    message = f"archive member {member.name!r} is unreadable"
-                    raise ArchiveError(message)
-                target.write_bytes(source.read())
-                target.chmod(0o755 if member.mode & 0o111 else 0o644)
+                continue
+            target.parent.mkdir(parents=True, exist_ok=True)
+            if not target.parent.resolve().is_relative_to(root):
+                message = f"archive member {member.name!r} resolves outside the tree"
+                raise ArchiveError(message)
+            source = tar.extractfile(member)
+            if source is None:  # pragma: no cover -- isfile() members always open
+                message = f"archive member {member.name!r} is unreadable"
+                raise ArchiveError(message)
+            target.write_bytes(source.read())
+            target.chmod(0o755 if member.mode & 0o111 else 0o644)
+
+
+ARCHIVE_PATHS = ("cargento", "cargento-gemini", "scripts")
+
+
+def build_archive(repo: Path, commit: str, archive: Path) -> None:
+    """`git archive` of the exact commit, limited to what the smoke reads.
+
+    The repository root carries relative symlinks (the Codex skill aliases) that the
+    extraction policy refuses; none of them is under these three trees.
+    """
+    git_bytes(repo, "archive", "--format=tar", "-o", str(archive), commit, "--", *ARCHIVE_PATHS)
 
 
 def verified_manifest_paths(repo: Path, verified: str, scratch: Path) -> list[str]:
@@ -221,7 +241,20 @@ def check_versions(tree: Path, paths: list[str], version: str) -> None:
         raise ArchiveError(message)
 
 
+def _json_at(repo: Path, rev: str, relative: str) -> dict[str, object]:
+    try:
+        value = json.loads(git_bytes(repo, "cat-file", "blob", f"{rev}:{relative}"))
+    except (ArchiveError, ValueError) as exc:
+        message = f"{relative} is missing or not JSON at {rev[:12]}"
+        raise ArchiveError(message) from exc
+    if not isinstance(value, dict):
+        message = f"{relative} is not a JSON object at {rev[:12]}"
+        raise ArchiveError(message)
+    return value
+
+
 def check_changes(repo: Path, commit: str, verified: str, allowed: list[str]) -> None:
+    """The release commit may change the owned manifests' `version` value and nothing else."""
     if commit != verified and git_text(repo, "rev-parse", f"{commit}^") != verified:
         message = "the release commit must be the verified commit or its direct child"
         raise ArchiveError(message)
@@ -230,6 +263,14 @@ def check_changes(repo: Path, commit: str, verified: str, allowed: list[str]) ->
     if extra:
         message = f"release commit changed files beyond the version manifests: {extra}"
         raise ArchiveError(message)
+    for relative in changed:
+        before = _json_at(repo, verified, relative)
+        after = _json_at(repo, commit, relative)
+        before.pop("version", None)
+        after.pop("version", None)
+        if before != after:
+            message = f"release commit changed {relative} beyond the version value"
+            raise ArchiveError(message)
 
 
 def check_bundle(repo: Path, tree: Path, verified: str) -> None:
@@ -296,7 +337,7 @@ def verify_archive(repo: Path, commit: str, verified: str, version: str) -> Repo
     report = Report()
     try:
         archive = scratch / "release.tar"
-        git_bytes(repo, "archive", "--format=tar", "-o", str(archive), commit)
+        build_archive(repo, commit, archive)
         tree = scratch / "tree"
         tree.mkdir()
         extract_archive(archive, tree)
@@ -330,7 +371,7 @@ def main(argv: list[str] | None = None) -> int:
     try:
         report = verify_archive(args.repo, args.commit, args.verified, args.version)
     except ArchiveError as exc:
-        print(f"::error::release archive proof failed: {exc}")
+        print(annotation(f"release archive proof failed: {exc}"))
         return 1
     print(f"Release archive proof passed: {', '.join(report.checks)}.")
     return 0

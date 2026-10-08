@@ -12,6 +12,7 @@ import json
 import re
 import subprocess
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -187,7 +188,7 @@ class AssertCheckoutTest(unittest.TestCase):
         before = self.fx.origin_snapshot()
         with self.assertRaises(rt.ReleaseError) as caught:
             rt.assert_checkout(self.fx.work, "fresh", self.tip, "v0.2.0", verified=self.tip)
-        self.assertIn("moved", str(caught.exception))
+        self.assertIn("Re-run all jobs", str(caught.exception))
         self.assertIn("re-run", str(caught.exception).lower())
         self.assertEqual(before, self.fx.origin_snapshot())
 
@@ -410,7 +411,7 @@ class CommandLineTest(unittest.TestCase):
             self.tip,
         )
         self.assertEqual(1, result.returncode)
-        self.assertIn("::error::main moved", result.stdout)
+        self.assertIn("::error::main is at", result.stdout)
 
     def test_every_verifier_must_have_seen_the_target(self) -> None:
         git(self.fx.work, "checkout", "-q", "--detach", self.tip)
@@ -493,7 +494,7 @@ class RehearsalTest(unittest.TestCase):
         before = self.fx.origin_snapshot()
         with self.assertRaises(rt.ReleaseError) as caught:
             self.drive("v0.2.0", after={"verify": advance})
-        self.assertIn("moved", str(caught.exception))
+        self.assertIn("Re-run all jobs", str(caught.exception))
         after = self.fx.origin_snapshot()
         landed = after["refs/heads/main"]
         self.assertNotEqual(before["refs/heads/main"], landed)
@@ -513,9 +514,6 @@ class RehearsalTest(unittest.TestCase):
         with self.assertRaises(rt.ReleaseError):
             self.drive("v0.2.0", after={"verify": poison})
         self.assertIsNone(self.fx.origin_rev("refs/heads/stable"))
-        self.assertEqual(
-            self.fx.origin_rev("refs/tags/v0.2.0"), self.fx.origin_rev("refs/tags/v0.2.0")
-        )
         for ref in ("refs/tags/v0.2.0", "refs/heads/stable"):
             published = self.fx.origin_rev(ref)
             if published:
@@ -574,6 +572,10 @@ class RehearsalTest(unittest.TestCase):
         outcome = self.drive("v0.2.0")
         self.assertEqual("resume", outcome.mode)
         self.assertEqual(first, self.fx.origin_rev("refs/tags/v0.2.0"))
+        # Resuming an older release must not drag the marketplace channel backwards.
+        self.assertEqual(
+            self.fx.origin_rev("refs/tags/v0.3.0"), self.fx.origin_rev("refs/heads/stable")
+        )
         self.assertEqual(
             "0.3.0", json.loads(git(self.fx.origin, "show", f"v0.3.0:{MANIFESTS[0]}"))["version"]
         )
@@ -586,6 +588,169 @@ class RehearsalTest(unittest.TestCase):
         with self.assertRaises(rt.ReleaseError):
             self.drive("v0.2.0")
         self.assertEqual(before, self.fx.origin_snapshot())
+
+
+class RecoveryWordingTest(unittest.TestCase):
+    """What an operator reads when main moved, and the shape the workflow now runs."""
+
+    def setUp(self) -> None:
+        self.fx = Fixture(self)
+        self.tip = self.fx.commit("feat: work")
+        self.fx.tag("v0.2.0")
+        self.fx.commit("feat: landed during verification")
+        self.fx.fetch()
+        git(self.fx.work, "checkout", "-q", "--detach", "origin/main")
+
+    def test_the_moved_main_message_sends_the_operator_to_rerun_all_jobs(self) -> None:
+        with self.assertRaises(rt.ReleaseError) as caught:
+            rt.assert_checkout(self.fx.work, "fresh", self.tip, "v0.2.0", verified=self.tip)
+        text = str(caught.exception)
+        self.assertIn("Re-run all jobs", text)
+        self.assertNotIn("failed jobs", text)
+        # The bump commit may already be on main when this is a retry of a part-run
+        # release, so the message must not claim nothing was published.
+        self.assertNotIn("Nothing was published", text)
+
+    def test_resume_checks_the_target_against_main_not_against_head(self) -> None:
+        # The workflow detaches onto the target before any repository code runs, so
+        # HEAD is the target and ancestry has to be asked of main's own ref.
+        self.fx.set_version("0.2.0")
+        git(self.fx.work, "commit", "-q", "--amend", "-m", "chore(release): v0.2.0")
+        git(self.fx.work, "push", "-q", "--force", "origin", "main")
+        release = git(self.fx.work, "rev-parse", "HEAD")
+        git(self.fx.work, "checkout", "-q", "--detach", release)
+        rt.assert_checkout(self.fx.work, "resume", release, "v0.2.0", verified=release)
+
+    def test_resume_refuses_a_detached_target_main_does_not_contain(self) -> None:
+        git(self.fx.work, "checkout", "-q", "-b", "side", self.tip)
+        side = self.fx.commit("feat: off main", push=False, branch="side")
+        git(self.fx.work, "checkout", "-q", "--detach", side)
+        with self.assertRaises(rt.ReleaseError) as caught:
+            rt.assert_checkout(self.fx.work, "resume", side, "v0.2.0", verified=side)
+        self.assertIn("not on main", str(caught.exception))
+
+
+class AdvanceStableTest(unittest.TestCase):
+    """`stable` only moves forward: the marketplace channel never regresses."""
+
+    def setUp(self) -> None:
+        self.fx = Fixture(self)
+        self.first = self.fx.commit("feat: first")
+        self.second = self.fx.commit("feat: second")
+
+    def advance(self, final: str) -> str:
+        return rt.advance_stable(self.fx.work, "origin", final)
+
+    def test_an_absent_stable_is_created(self) -> None:
+        self.assertIsNone(self.fx.origin_rev("refs/heads/stable"))
+        self.advance(self.first)
+        self.assertEqual(self.first, self.fx.origin_rev("refs/heads/stable"))
+
+    def test_stable_moves_to_a_descendant(self) -> None:
+        self.advance(self.first)
+        self.advance(self.second)
+        self.assertEqual(self.second, self.fx.origin_rev("refs/heads/stable"))
+
+    def test_stable_ahead_of_the_release_is_left_alone_with_a_message(self) -> None:
+        self.advance(self.second)
+        outcome = self.advance(self.first)
+        self.assertEqual(self.second, self.fx.origin_rev("refs/heads/stable"))
+        self.assertIn("not moving stable backwards", outcome)
+
+    def test_a_diverged_stable_is_left_alone(self) -> None:
+        self.advance(self.second)
+        git(self.fx.work, "checkout", "-q", "-b", "side", self.first)
+        other = self.fx.commit("feat: sibling", push=False, branch="side")
+        outcome = self.advance(other)
+        self.assertEqual(self.second, self.fx.origin_rev("refs/heads/stable"))
+        self.assertIn("not moving stable", outcome)
+
+    def test_the_same_commit_is_an_idempotent_no_regression(self) -> None:
+        self.advance(self.second)
+        self.advance(self.second)
+        self.assertEqual(self.second, self.fx.origin_rev("refs/heads/stable"))
+
+    def test_a_stable_whose_history_cannot_be_read_is_not_overwritten(self) -> None:
+        self.advance(self.second)
+        # A clone that never fetched stable and cannot fetch it must fail closed.
+        git(self.fx.work, "remote", "set-url", "origin", str(self.fx.root / "gone.git"))
+        with self.assertRaises(rt.ReleaseError):
+            self.advance(self.first)
+
+
+class RemoteLocalityTest(unittest.TestCase):
+    def setUp(self) -> None:
+        self.fx = Fixture(self)
+
+    def test_a_local_path_remote_is_local(self) -> None:
+        self.assertTrue(rt.is_local_remote(self.fx.work, "origin"))
+
+    def test_a_push_url_override_is_checked_too(self) -> None:
+        git(self.fx.work, "config", "remote.origin.pushurl", "https://example.invalid/x.git")
+        self.assertFalse(rt.is_local_remote(self.fx.work, "origin"))
+        with self.assertRaises(rt.ReleaseError):
+            rt.rehearse(self.fx.work, "v0.1.0")
+
+    def test_every_url_of_a_multi_url_remote_is_checked(self) -> None:
+        git(self.fx.work, "remote", "set-url", "--add", "--push", "origin", str(self.fx.origin))
+        git(
+            self.fx.work,
+            "remote",
+            "set-url",
+            "--add",
+            "--push",
+            "origin",
+            "git@example.invalid:x/y.git",
+        )
+        self.assertFalse(rt.is_local_remote(self.fx.work, "origin"))
+
+
+class GuardTest(unittest.TestCase):
+    """Guards whose removal used to leave every test green."""
+
+    def test_a_non_ascii_digit_is_not_a_version_number(self) -> None:
+        with self.assertRaises(rt.ReleaseError):
+            rt.parse_tag("1.2.1\u0663")
+
+    def test_the_output_file_refuses_a_value_that_would_forge_another_line(self) -> None:
+        with tempfile.TemporaryDirectory() as scratch:
+            target = Path(scratch) / "out"
+            for value in ("a\nmode=resume", "a\rb"):
+                with self.subTest(value=value), self.assertRaises(rt.ReleaseError):
+                    rt.github_output(target, {"mode": value})
+            self.assertFalse(target.exists())
+
+    def test_a_manifest_version_that_is_not_a_string_is_no_version(self) -> None:
+        fx = Fixture(self)
+        for body in ('{"version": 5}', "[]", "null", "not json", '{"version": null}'):
+            with self.subTest(body=body):
+                fx.commit("fix: odd manifest", files={rt.TRUTH_MANIFEST: body})
+                self.assertIsNone(rt.manifest_version(fx.work, "HEAD"))
+
+    def test_annotations_cannot_carry_workflow_commands_on_a_second_line(self) -> None:
+        text = rt.annotation("bad\n::stop-commands::x\r%")
+        self.assertNotIn("\n", text)
+        self.assertNotIn("\r", text)
+        self.assertTrue(text.startswith("::error::"))
+        self.assertEqual(1, len(text.splitlines()))
+
+    def test_a_release_commit_carrying_a_hostile_version_prints_one_line(self) -> None:
+        fx = Fixture(self)
+        fx.commit("feat: work")
+        fx.tag("v0.2.0")
+        hostile = '{"version": "0.2.0\\n::stop-commands::abc"}'
+        fx.commit("chore(release): v0.2.0", files={rt.TRUTH_MANIFEST: hostile})
+        fx.fetch()
+        result = subprocess.run(
+            [sys.executable, str(SCRIPT), "--repo", str(fx.work), "resolve", "--tag", "v0.2.0"],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=60,
+        )
+        self.assertEqual(1, result.returncode)
+        self.assertEqual(1, len(result.stdout.splitlines()), result.stdout)
+        self.assertTrue(result.stdout.startswith("::error::"))
 
 
 if __name__ == "__main__":

@@ -36,7 +36,7 @@ MANIFESTS = (
     # `<root>/hooks/hooks.json` and neither lets that path move.
     ROOT / "cargento-gemini/gemini-extension.json",
 )
-SEMVER_RE = re.compile(r"^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$")
+SEMVER_RE = re.compile(r"^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$")
 
 
 def parse_semver(value: str) -> tuple[int, int, int]:

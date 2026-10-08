@@ -10,6 +10,7 @@ from __future__ import annotations
 import io
 import json
 import os
+import subprocess
 import sys
 import tarfile
 import tempfile
@@ -215,24 +216,180 @@ class ExtractionTest(unittest.TestCase):
                     vra.extract_archive(self.archive(names), Path(dest))
                 self.assertEqual([], list(Path(dest).iterdir()))
 
-    def test_links_that_leave_the_tree_are_refused(self) -> None:
-        for target in ("/etc/passwd", "../../outside", "a/../../outside"):
+    def tar_of(self, entries: list[tuple[str, bytes, str, str]]) -> Path:
+        """Entries are (name, kind, linkname-or-data); kind is file, sym, hard or fifo."""
+        handle, name = tempfile.mkstemp(suffix=".tar")
+        os.close(handle)
+        self.addCleanup(Path(name).unlink)
+        with tarfile.open(name, "w") as tar:
+            for entry in entries:
+                member, kind, target = entry[0], entry[2], entry[3]
+                info = tarfile.TarInfo(member)
+                if kind == "sym":
+                    info.type, info.linkname = tarfile.SYMTYPE, target
+                    tar.addfile(info)
+                elif kind == "hard":
+                    info.type, info.linkname = tarfile.LNKTYPE, target
+                    tar.addfile(info)
+                elif kind == "fifo":
+                    info.type = tarfile.FIFOTYPE
+                    tar.addfile(info)
+                else:
+                    info.size = len(entry[1])
+                    tar.addfile(info, io.BytesIO(entry[1]))
+        return Path(name)
+
+    def test_every_link_is_refused_whatever_it_points_at(self) -> None:
+        for target in ("/etc/passwd", "../../outside", "a/../../outside", "real", "."):
             with (
                 self.subTest(target=target),
                 tempfile.TemporaryDirectory() as dest,
                 self.assertRaises(vra.ArchiveError),
             ):
-                vra.extract_archive(self.archive(["ok"], link=("escape", target)), Path(dest))
+                vra.extract_archive(
+                    self.tar_of([("real", b"x", "file", ""), ("alias", b"", "sym", target)]),
+                    Path(dest),
+                )
 
-    def test_a_link_that_stays_inside_the_tree_extracts(self) -> None:
-        with tempfile.TemporaryDirectory() as dest:
-            vra.extract_archive(self.archive(["dir/real"], link=("dir/alias", "real")), Path(dest))
-            self.assertEqual(b"x", (Path(dest) / "dir/alias").read_bytes())
+    def test_a_hard_link_is_refused(self) -> None:
+        with tempfile.TemporaryDirectory() as dest, self.assertRaises(vra.ArchiveError):
+            vra.extract_archive(
+                self.tar_of([("real", b"x", "file", ""), ("alias", b"", "hard", "real")]),
+                Path(dest),
+            )
+
+    def test_a_symlink_chain_cannot_write_above_the_root(self) -> None:
+        # Each link is individually harmless under a lexical check; together they
+        # walk two directories up before the final file is written.
+        with tempfile.TemporaryDirectory() as outer:
+            root = Path(outer) / "one" / "two"
+            root.mkdir(parents=True)
+            chain = [
+                ("a", b"", "sym", "."),
+                ("a/b", b"", "sym", ".."),
+                ("a/b/c", b"", "sym", "../.."),
+                ("a/b/c/ESCAPED.txt", b"escaped", "file", ""),
+            ]
+            with self.assertRaises(vra.ArchiveError):
+                vra.extract_archive(self.tar_of(chain), root)
+            self.assertEqual([], list(Path(outer).rglob("ESCAPED.txt")))
+
+    def test_a_member_that_is_not_a_file_or_directory_is_refused(self) -> None:
+        with tempfile.TemporaryDirectory() as dest, self.assertRaises(vra.ArchiveError):
+            vra.extract_archive(self.tar_of([("pipe", b"", "fifo", "")]), Path(dest))
 
     def test_ordinary_members_extract(self) -> None:
         with tempfile.TemporaryDirectory() as dest:
             vra.extract_archive(self.archive(["a/b.txt"]), Path(dest))
             self.assertEqual(b"x", (Path(dest) / "a/b.txt").read_bytes())
+
+
+class StricterProofTest(unittest.TestCase):
+    """The bump may change the version value and nothing else, and every guard is pinned."""
+
+    def setUp(self) -> None:
+        self.fx = Fixture(self)
+        self.verified = self.fx.commit("feat: work")
+        rt.bump(self.fx.work, "0.2.0")
+
+    def commit_and_prove(self, needle: str) -> None:
+        git(self.fx.work, "add", "-A")
+        git(self.fx.work, "commit", "-q", "-m", "chore(release): v0.2.0")
+        final = git(self.fx.work, "rev-parse", "HEAD")
+        with self.assertRaises(vra.ArchiveError) as caught:
+            vra.verify_archive(self.fx.work, final, self.verified, "0.2.0")
+        self.assertIn(needle, str(caught.exception))
+
+    def test_a_key_added_to_a_manifest_alongside_the_version_is_refused(self) -> None:
+        path = self.fx.work / MANIFESTS[0]
+        data = json.loads(path.read_text(encoding="utf-8"))
+        data["hooks"] = "./evil/hooks.json"
+        path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+        self.commit_and_prove("beyond the version")
+
+    def test_a_key_removed_from_a_manifest_alongside_the_version_is_refused(self) -> None:
+        path = self.fx.work / MANIFESTS[0]
+        data = json.loads(path.read_text(encoding="utf-8"))
+        data.pop("description")
+        path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+        self.commit_and_prove("beyond the version")
+
+    def test_a_deleted_file_is_a_change(self) -> None:
+        git(self.fx.work, "rm", "-q", "cargento/hooks.json")
+        self.commit_and_prove("beyond the version")
+
+    def test_a_deleted_manifest_is_a_change(self) -> None:
+        final = git(self.fx.work, "rev-parse", "HEAD")
+        git(self.fx.work, "rm", "-q", "-f", MANIFESTS[1])
+        git(self.fx.work, "commit", "-q", "-m", "chore(release): v0.2.0")
+        with self.assertRaises(vra.ArchiveError) as caught:
+            vra.check_changes(
+                self.fx.work, git(self.fx.work, "rev-parse", "HEAD"), final, list(MANIFESTS)
+            )
+        self.assertIn("missing or not JSON", str(caught.exception))
+
+    def test_the_allowed_paths_come_from_the_verified_script_not_the_release_commit(self) -> None:
+        script = self.fx.work / "scripts/bump_version.py"
+        text = script.read_text(encoding="utf-8")
+        script.write_text(
+            text.replace(
+                '    ROOT / "cargento-gemini/gemini-extension.json",',
+                '    ROOT / "cargento-gemini/gemini-extension.json",\n    ROOT / "README.md",',
+            ),
+            encoding="utf-8",
+        )
+        (self.fx.work / "README.md").write_text("changed in the release commit\n", encoding="utf-8")
+        self.commit_and_prove("beyond the version")
+
+    def test_a_symlink_elsewhere_in_the_repository_does_not_block_the_archive(self) -> None:
+        link = self.fx.work / ".agents/skills/alias"
+        link.parent.mkdir(parents=True)
+        link.symlink_to("../../scripts")
+        git(self.fx.work, "add", "-A")
+        git(self.fx.work, "commit", "-q", "-m", "feat: alias")
+        verified = git(self.fx.work, "rev-parse", "HEAD")
+        final = rt.commit_bump(self.fx.work, "v0.2.0")
+        vra.verify_archive(self.fx.work, final, verified, "0.2.0")
+
+    def test_arguments_are_validated_before_git_sees_them(self) -> None:
+        head = git(self.fx.work, "rev-parse", "HEAD")
+        for bad in ("main", "HEAD", "--output=x", head[:12], head.upper(), ""):
+            with self.subTest(bad=bad), self.assertRaises(vra.ArchiveError):
+                vra.verify_archive(self.fx.work, bad, head, "0.1.0")
+            with self.subTest(verified=bad), self.assertRaises(vra.ArchiveError):
+                vra.verify_archive(self.fx.work, head, bad, "0.1.0")
+        for version in ("01.2.3", "0.2", "v0.2.0", "0.2.0-rc1", "1.2.1\u0663"):
+            with (
+                self.subTest(version=version),
+                self.assertRaisesRegex(vra.ArchiveError, "strict semver"),
+            ):
+                vra.verify_archive(self.fx.work, head, head, version)
+
+    def test_the_page_must_be_the_verified_document_not_just_a_valid_one(self) -> None:
+        wrong = subprocess.CompletedProcess(
+            [], 0, stdout='{"sha256": "' + "0" * 64 + '"}\n', stderr=""
+        )
+        with (
+            tempfile.TemporaryDirectory() as scratch,
+            mock.patch.object(vra, "run_python", return_value=wrong),
+            self.assertRaises(vra.ArchiveError) as caught,
+        ):
+            vra.check_page(
+                self.fx.work, Path(scratch), git(self.fx.work, "rev-parse", "HEAD"), Path(scratch)
+            )
+        self.assertIn("other than the verified document", str(caught.exception))
+
+    def test_a_failure_is_printed_as_one_annotation_line(self) -> None:
+        output = io.StringIO()
+        boom = vra.ArchiveError("bad\n::stop-commands::abc\r%")
+        with (
+            mock.patch.object(vra, "verify_archive", side_effect=boom),
+            mock.patch("sys.stdout", output),
+        ):
+            code = vra.main(["--commit", "a", "--verified", "b", "--version", "0.2.0"])
+        self.assertEqual(1, code)
+        self.assertEqual(1, len(output.getvalue().splitlines()), output.getvalue())
+        self.assertTrue(output.getvalue().startswith("::error::"))
 
 
 if __name__ == "__main__":

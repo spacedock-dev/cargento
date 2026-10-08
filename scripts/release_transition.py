@@ -49,6 +49,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable, Mapping
 
 SEMVER = bump_version.SEMVER_RE
+annotation = verify_release_archive.annotation
 FULL_SHA = re.compile(r"^[0-9a-f]{40}$")
 TRUTH_MANIFEST = bump_version.TRUTH.relative_to(bump_version.ROOT).as_posix()
 TAG_GLOBS = ("v[0-9]*.[0-9]*.[0-9]*", "[0-9]*.[0-9]*.[0-9]*")
@@ -217,13 +218,23 @@ def is_ancestor(repo: Path, ancestor: str, descendant: str) -> bool:
     )
 
 
-def assert_checkout(repo: Path, mode: str, target: str, tag: str, *, verified: str) -> None:
+def assert_checkout(
+    repo: Path,
+    mode: str,
+    target: str,
+    tag: str,
+    *,
+    verified: str,
+    main_ref: str = "origin/main",
+) -> None:
     """Refuse to publish unless this checkout is the tree that was verified.
 
-    Fresh: HEAD is the target. A main that advanced since `resolve` fails here, with
-    nothing pushed, and a re-run verifies the newer tip. Resume: the target is an
-    older release commit, so main must still contain it and it must still carry the
-    tag's version.
+    Fresh: HEAD is the target. A main that advanced since `resolve` fails here; the
+    bump commit may already be on main when this is a retry, so the message sends the
+    operator to re-run ALL jobs, the only re-run that resolves a new target. Resume:
+    the workflow has already detached onto the target, so main is judged through its
+    own ref: it must still contain the release commit, which must carry the tag's
+    version.
     """
     if mode not in MODES:
         message = f"unknown release mode {mode!r}"
@@ -240,14 +251,16 @@ def assert_checkout(repo: Path, mode: str, target: str, tag: str, *, verified: s
     if mode == "fresh":
         if head != target:
             message = (
-                f"main moved from {target} to {head} while the frontend was being verified. "
-                "Nothing was published. Re-run the failed jobs: the release resolves and "
-                "verifies the new tip."
+                f"main is at {head}, not the {target} this run resolved and verified. "
+                "Use Re-run all jobs on this run so resolve takes the new tip and the "
+                "verifiers cover it; if the release commit is already on main, the re-run "
+                "resumes it."
             )
             raise ReleaseError(message)
         return
-    if not is_ancestor(repo, target, head):
-        message = f"release commit {target} is not on main (HEAD {head}) - refusing to resume"
+    main_tip = run_git(repo, "rev-parse", "--verify", f"{main_ref}^{{commit}}")
+    if not is_ancestor(repo, target, main_tip):
+        message = f"release commit {target} is not on main ({main_tip}) - refusing to resume"
         raise ReleaseError(message)
     carried = manifest_version(repo, target)
     if carried != version:
@@ -333,24 +346,48 @@ def move_tag(repo: Path, remote: str, tag: str, final: str) -> None:
     run_git(repo, "push", "--force", remote, f"refs/tags/{tag}")
 
 
-def advance_stable(repo: Path, remote: str, final: str) -> None:
-    """The marketplace's moving channel. Idempotent: a resume re-points it to the same commit."""
+def advance_stable(repo: Path, remote: str, final: str) -> str:
+    """The marketplace's moving channel, which only ever moves forward.
+
+    Pushed when `stable` is absent or an ancestor of the release commit (so a re-run
+    re-points it to the same commit). Resuming an older release after a newer one
+    finished would otherwise drag the channel backwards. If the remote branch cannot be
+    fetched to compare, the push is refused rather than assumed safe.
+    """
     require_sha("release commit", final)
+    listed = run_git(repo, "ls-remote", "--heads", remote, "refs/heads/stable")
+    current = listed.split()[0] if listed else ""
+    if current:
+        run_git(repo, "fetch", "-q", "--no-tags", remote, "refs/heads/stable")
+        if not is_ancestor(repo, current, final):
+            return (
+                f"stable is at {current}, which is not an ancestor of {final}; "
+                "not moving stable backwards"
+            )
     run_git(repo, "push", "--force", remote, f"{final}:refs/heads/stable")
+    return f"stable now at {final}"
 
 
 def github_output(path: Path, values: Mapping[str, str]) -> None:
+    """Append `key=value` lines; a value that could forge another line writes nothing at all."""
+    for key, value in values.items():
+        if "\n" in value or "\r" in value:
+            message = f"output {key} would break the output file"
+            raise ReleaseError(message)
     with path.open("a", encoding="utf-8") as handle:
         for key, value in values.items():
-            if "\n" in value or "\r" in value:
-                message = f"output {key} would break the output file"
-                raise ReleaseError(message)
             handle.write(f"{key}={value}\n")
 
 
 def is_local_remote(repo: Path, remote: str) -> bool:
-    url = run_git(repo, "remote", "get-url", remote)
-    return url.startswith(("/", "file://")) or bool(re.match(r"^[A-Za-z]:[\\/]", url))
+    """Every fetch and push URL must be a local path: `pushurl` can differ from `url`."""
+    urls = [
+        *run_git(repo, "remote", "get-url", "--all", remote).splitlines(),
+        *run_git(repo, "remote", "get-url", "--push", "--all", remote).splitlines(),
+    ]
+    return bool(urls) and all(
+        url.startswith(("/", "file://")) or bool(re.match(r"^[A-Za-z]:[\\/]", url)) for url in urls
+    )
 
 
 class _Rehearsal:
@@ -390,9 +427,16 @@ class _Rehearsal:
         self.fetch()
         run_git(self.repo, "checkout", "-q", "--detach", f"{self.remote}/main")
         current = self.current
-        assert_checkout(self.repo, current.mode, current.target, self.tag, verified=self.verified)
         if current.mode == "resume":
             run_git(self.repo, "checkout", "-q", "--detach", current.target)
+        assert_checkout(
+            self.repo,
+            current.mode,
+            current.target,
+            self.tag,
+            verified=self.verified,
+            main_ref=f"{self.remote}/main",
+        )
 
     def phase_bump(self) -> None:
         current = self.current
@@ -475,6 +519,7 @@ def build_parser() -> argparse.ArgumentParser:
     # Repeated: every credential-free job that checked something out reports its own
     # commit, and a publish needs all of them to be the target.
     checkout.add_argument("--verified", action="append", required=True)
+    checkout.add_argument("--main-ref", default="origin/main")
     command("bump", "tag")
     command("commit-bump", "tag")
     command("final", "mode", "target")
@@ -499,7 +544,14 @@ def dispatch(args: argparse.Namespace) -> int:  # noqa: C901, PLR0912 -- one arm
             assert_head(repo, args.expected)
         case "assert-checkout":
             for verified in args.verified:
-                assert_checkout(repo, args.mode, args.target, args.tag, verified=verified)
+                assert_checkout(
+                    repo,
+                    args.mode,
+                    args.target,
+                    args.tag,
+                    verified=verified,
+                    main_ref=args.main_ref,
+                )
         case "bump":
             version, _ = parse_tag(args.tag)
             print("bumped" if bump(repo, version) else "unchanged")
@@ -515,7 +567,7 @@ def dispatch(args: argparse.Namespace) -> int:  # noqa: C901, PLR0912 -- one arm
                 raise ReleaseError(message)
             move_tag(repo, args.remote, args.tag, args.final)
         case "advance-stable":
-            advance_stable(repo, args.remote, args.final)
+            print(advance_stable(repo, args.remote, args.final))
         case "rehearse":
             outcome = rehearse(repo, args.tag, dry_run=args.dry_run)
             print(f"{outcome.mode} release of {args.tag}: stopped after {outcome.last_phase}")
@@ -529,7 +581,7 @@ def main(argv: list[str] | None = None) -> int:
     try:
         return dispatch(args)
     except ReleaseError as exc:
-        print(f"::error::{exc}")
+        print(annotation(str(exc)))
         return 1
 
 

@@ -12,11 +12,13 @@ from __future__ import annotations
 
 import atexit
 import json
+import os
 import shutil
 import subprocess
 import tempfile
 from pathlib import Path
 from typing import TYPE_CHECKING
+from unittest import mock
 
 if TYPE_CHECKING:
     import unittest
@@ -46,6 +48,22 @@ IDENTITY = (
     "-c",
     "tag.gpgsign=false",
 )
+
+# Every git process in these tests, including the ones the scripts under test start,
+# inherits this. `gc --auto` and `maintenance run --auto` detach and keep writing
+# into a repository after the command that started them returns, which races both a
+# neighbouring clone of the shared template and the per-test temp-dir cleanup. None
+# of the figures measured here depends on packing, so nothing is lost by switching
+# it off.
+QUIET_GIT = {
+    "GIT_CONFIG_COUNT": "3",
+    "GIT_CONFIG_KEY_0": "gc.auto",
+    "GIT_CONFIG_VALUE_0": "0",
+    "GIT_CONFIG_KEY_1": "maintenance.auto",
+    "GIT_CONFIG_VALUE_1": "false",
+    "GIT_CONFIG_KEY_2": "core.fsmonitor",
+    "GIT_CONFIG_VALUE_2": "false",
+}
 
 _template: Path | None = None
 _scratch: list[Path] = []
@@ -119,12 +137,15 @@ class Fixture:
     """One bare origin and one working clone, both under a per-test temp dir."""
 
     def __init__(self, case: unittest.TestCase) -> None:
-        temp = tempfile.TemporaryDirectory(prefix="release-rehearsal-")
-        case.addCleanup(temp.cleanup)
-        self.root = Path(temp.name)
+        # Scoped to the test: other modules in the same process keep their own git.
+        patch = mock.patch.dict(os.environ, QUIET_GIT)
+        patch.start()
+        case.addCleanup(patch.stop)
+        self.root = Path(tempfile.mkdtemp(prefix=f"release-rehearsal-{os.getpid()}-"))
+        case.addCleanup(shutil.rmtree, self.root, ignore_errors=True)
         self.origin = self.root / "origin.git"
         self.work = self.root / "work"
-        git(self.root, "clone", "-q", "--bare", str(template()), str(self.origin))
+        git(self.root, "clone", "-q", "--no-hardlinks", "--bare", str(template()), str(self.origin))
         git(self.root, "clone", "-q", str(self.origin), str(self.work))
 
     def sync(self) -> None:
