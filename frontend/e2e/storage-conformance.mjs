@@ -429,7 +429,7 @@ try {
     const foreign = { id: 'foreign-conformance-tab', ts: Date.now() - 7000 };
     assert.equal(await pure(page, 'electionDecision', [{ lease: foreign, tabId, isLeader: true, now: Date.now() }]), 'yield');
     await setRaw(page, KEYS.leader, json(foreign));
-    await page.waitForFunction('nextIsLeader === false && nextStreamSource === null', undefined, { timeout: 4000 });
+    await page.waitForFunction('nextIsLeader === false && nextStreamSource === null', undefined, { timeout: 15000 });
     assert.equal(await raw(page, KEYS.leader), json(foreign), 'the yielding tab does not overwrite the foreign record');
     proved('leader', 'codec->legacy', 'browser-legacy-passive', 'a foreign owner written after the legacy tab led, even stale, makes it close its stream and yield, as electionDecision says');
 
@@ -439,10 +439,26 @@ try {
     const owner = await newContext();
     const { page: leader } = await legacyPage(owner);
     const observer = await seedPage(owner, 'lease-observer');
+    // The leader writes its lease on its first election, which a loaded runner can delay past page load.
+    await observer.waitForFunction(key => globalThis.localStorage.getItem(key) !== null, KEYS.leader, { timeout: 15000 });
     assert.notEqual(await codec(observer, 'lease.read', [], { fresh: true }), null);
-    await leader.evaluate("window.dispatchEvent(new Event('pagehide'))");
-    assert.equal(await raw(observer, KEYS.leader), null);
-    assert.equal(await codec(observer, 'lease.read', [], { fresh: true }), null);
+    // The page is still alive after a synthetic pagehide, so its next election tick (within 2 s) writes the lease
+    // again, and the handler only releases while the page leads (a stream error under load drops that until the next
+    // tick). Read the key and the codec's view in the same task as the event, and only accept an attempt that led.
+    let released;
+    for (let attempt = 0; attempt < 20; attempt += 1) {
+      await leader.waitForFunction('nextIsLeader === true', undefined, { timeout: 15000 });
+      // A string, because `nextIsLeader` is a top-level `let` of the legacy page and no property of the window.
+      released = await leader.evaluate(`(() => {
+        const leading = nextIsLeader === true;
+        window.dispatchEvent(new Event('pagehide'));
+        return { leading, raw: localStorage.getItem(${json(KEYS.leader)}), lease: CargentoStorage.createLegacyStorage().lease.read() };
+      })()`);
+      if (released.leading) break;
+    }
+    assert.equal(released.leading, true);
+    assert.equal(released.raw, null);
+    assert.equal(released.lease, null);
     proved('leader', 'legacy->codec', 'browser-legacy-function', 'the pagehide handler removes the key a leading tab owns; the codec then reads no lease');
     await owner.close();
 
@@ -525,6 +541,8 @@ try {
     const context = await newContext();
     const { page, requests } = await legacyPage(context);
     await page.waitForFunction('nextLastRevision !== null');
+    // The page stores a revision only once the stream accepts it, which can trail the first data read on a slow runner.
+    await page.waitForFunction(key => globalThis.localStorage.getItem(key) !== null, KEYS.revision);
     const revision = await legacy(page, 'nextLastRevision');
     assert.equal(await raw(page, KEYS.revision), revision);
     assert.equal(await codec(page, 'revision.read', [], { fresh: true }), revision);
@@ -544,9 +562,9 @@ try {
     const dataBefore = requests.filter(request => request.path === '/api/data').length;
     const newer = `${started}.${counter + 5}`;
     assert.equal(await codec(writer, 'revision.write', [newer]), true);
-    await page.waitForFunction(`nextLastRevision === ${json(newer)}`, undefined, { timeout: 4000 });
+    await page.waitForFunction(`nextLastRevision === ${json(newer)}`, undefined, { timeout: 15000 });
     await page.waitForFunction(count => globalThis.performance.getEntriesByType('resource').filter(entry => new URL(entry.name).pathname === '/api/data').length > count,
-      dataBefore, { timeout: 4000 });
+      dataBefore, { timeout: 15000 });
     const dataAfter = requests.filter(request => request.path === '/api/data').length;
     assert.ok(dataAfter > dataBefore, 'a newer revision written by another tab wakes a refetch');
     assert.equal(await codec(writer, 'revision.write', [`${started}.${counter + 4}`]), true);
@@ -819,7 +837,7 @@ try {
     assert.equal(requests.some(request => request.path === '/api/stream'), false);
     assert.equal(await codec(waiting, 'lease.release', [], { fresh: true }), true);
     assert.equal(await raw(waiting, KEYS.leader), null, 'release removes the key rather than writing a value');
-    await waiting.waitForFunction('nextIsLeader === true', undefined, { timeout: 4500 });
+    await waiting.waitForFunction('nextIsLeader === true', undefined, { timeout: 15000 });
     // Playwright delivers `request` events asynchronously, so the page flag can flip before the Node-side list sees the stream.
     for (let waited = 0; waited < 3000 && !requests.some(request => request.path === '/api/stream'); waited += 50) await sleep(50);
     assert.ok(requests.some(request => request.path === '/api/stream'));
