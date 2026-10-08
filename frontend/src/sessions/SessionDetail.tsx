@@ -15,7 +15,14 @@ import { useDisplayed, useShell } from '../shell/context';
 import type { PayloadData } from '../api/types';
 import { AnswerBlock } from './AnswerBlock';
 import { usePruneAnswerNotes } from './usePruneAnswerNotes';
-import { DelegatedWorkLine, UnaskedDepartureBody } from './DepartureParts';
+import {
+  useDrift,
+  DriftBody,
+  DriftPill,
+  DriftProvider,
+  DeparturesSection,
+  WorkListView,
+} from '../drift';
 import { DriftSlot } from './DriftSlot';
 import {
   CommandReportsView,
@@ -41,9 +48,6 @@ import {
   sessionMeta,
   sessionSubagents,
   sessionTasks,
-  unaskedDepartures,
-  LANE_OFF_RECORD,
-  laneOffWhy,
 } from './detail';
 import { RouteAnchor } from './SessionsView';
 import { harnessLabels } from './rows';
@@ -144,39 +148,6 @@ function Controls({
   );
 }
 
-/* The departures raised to the reader and the way back beside them, drawn under the label the legacy page
-   gives them until the Intent step's panel composes them itself. */
-function DepartureEvidence({
-  session,
-  laneOn,
-  offReason,
-}: {
-  readonly session: Row;
-  readonly laneOn: boolean;
-  readonly offReason: unknown;
-}) {
-  const body = unaskedDepartures(session);
-  if (!body) return null;
-  return (
-    <div className="next-cockpit-departure-part">
-      <span className="next-cockpit-departure-label">FROM THE CHECKS RUN WHILE YOU WERE AWAY</span>
-      {/* With the lane off the rows are still on the wire, so they are printed with the limit that qualifies them:
-          without it the label alone would read as checks that ran while the reader was away. */}
-      {laneOn ? null : (
-        <>
-          <p className="next-cockpit-reading-why" data-absence="run-config">
-            {laneOffWhy(offReason)}
-          </p>
-          <p className="next-cockpit-reading-why" data-absence="run-config">
-            {LANE_OFF_RECORD}
-          </p>
-        </>
-      )}
-      <UnaskedDepartureBody session={session} />
-    </div>
-  );
-}
-
 function humanLabel(value: string): string {
   const words = String(value || 'work')
     .replace(/[-_]+/g, ' ')
@@ -249,7 +220,8 @@ function Header({
   const ended = endedAt(session) !== null && !observed.askKnown;
   const word = ended ? 'ended' : observed.askKnown ? 'needs input' : state?.label;
   const label = observed.project;
-  const meta = sessionMeta(session, labels, generated, null);
+  const drift = useDrift();
+  const meta = sessionMeta(session, labels, generated, drift.model.entryCount);
   return (
     <header className="next-session-detail-header">
       <div className="next-session-detail-title">
@@ -279,6 +251,7 @@ function Header({
       </div>
       <div className="next-session-detail-bar">
         {meta ? <p className="next-session-detail-meta">{meta}</p> : null}
+        <DriftPill />
         <Controls session={session} observed={observed} route={route} labels={labels} />
       </div>
     </header>
@@ -331,66 +304,70 @@ export function SessionDetail({ route, data, session }: SessionDetailProps): Rea
       {...(state ? { 'data-next-session-state': state.token } : {})}
       data-tone={observed.tone}
     >
-      <Header
-        session={session}
-        observed={observed}
-        route={route}
-        labels={labels}
-        generated={generated}
-      />
-      {observed.askKnown ? (
-        <AnswerBlock
-          payload={payload}
+      <DriftProvider session={session} payload={payload} project={route.project}>
+        <Header
+          session={session}
           observed={observed}
-          asks={asks}
-          title={askingTitle(labels, session)}
+          route={route}
+          labels={labels}
+          generated={generated}
         />
-      ) : null}
-      <div className="next-session-columns">
-        <DriftSlot session={session} payload={payload} project={route.project}>
-          <DelegatedWorkLine session={session} now={generated} />
-          <DepartureEvidence
-            session={session}
-            laneOn={payload['unasked'] === true}
-            offReason={payload['unasked_off_reason']}
+        {observed.askKnown ? (
+          <AnswerBlock
+            payload={payload}
+            observed={observed}
+            asks={asks}
+            title={askingTitle(labels, session)}
           />
-        </DriftSlot>
-        <div className="next-session-activity" data-next-session-activity>
-          <h2 className="next-session-activity-heading">Session activity</h2>
-          <CommandSurface session={session} observed={observed} generated={generated} />
-          {subagents ? <SubagentsView subagents={subagents} /> : null}
-          <FactsView facts={facts} disclosureKey={factKey('session-facts')} />
-          <div className="next-session-evidence">
-            {asked ? (
-              <section data-next-session-command-fact="assignment">
-                <h2>ASSIGNMENT</h2>
-                <InstructionLine
-                  session={session}
-                  generated={generated}
-                  className="next-session-command-context"
-                />
-              </section>
+        ) : null}
+        <div className="next-session-columns">
+          <DriftSlot
+            session={session}
+            payload={payload}
+            project={route.project}
+            drift={<DriftBody primary={!(observed.isNeeds || observed.askKnown)} />}
+          >
+            <DeparturesSection />
+          </DriftSlot>
+          <div className="next-session-activity" data-next-session-activity>
+            <h2 className="next-session-activity-heading">Session activity</h2>
+            <CommandSurface session={session} observed={observed} generated={generated} />
+            {/* The numbered record every "#<n>" on this page names, right after CURRENT ACTIVITY. */}
+            <WorkListView />
+            {subagents ? <SubagentsView subagents={subagents} /> : null}
+            <FactsView facts={facts} disclosureKey={factKey('session-facts')} />
+            <div className="next-session-evidence">
+              {asked ? (
+                <section data-next-session-command-fact="assignment">
+                  <h2>ASSIGNMENT</h2>
+                  <InstructionLine
+                    session={session}
+                    generated={generated}
+                    className="next-session-command-context"
+                  />
+                </section>
+              ) : null}
+            </div>
+            {health ? <HealthView health={health} /> : null}
+            {tasks ? <TasksView tasks={tasks} /> : null}
+            <CommandReportsView reports={reports} disclosureKey={factKey('command-reports')} />
+            {delivery ? <DeliveryView delivery={delivery} /> : null}
+            {/* The record under the activity column belongs to the annotation store: with it off the page this
+              ports draws neither card nor pointer, and a card claiming an end the store cannot back would be new. */}
+            {payload['annotate'] === true ? (
+              <>
+                <LandedView landing={observed.landing} disclosureKey={factKey('landed-why')} />
+                <DeparturesKept disclosureKey={factKey('kept-why')} />
+              </>
             ) : null}
           </div>
-          {health ? <HealthView health={health} /> : null}
-          {tasks ? <TasksView tasks={tasks} /> : null}
-          <CommandReportsView reports={reports} disclosureKey={factKey('command-reports')} />
-          {delivery ? <DeliveryView delivery={delivery} /> : null}
-          {/* The record under the activity column belongs to the annotation store: with it off the page this
-              ports draws neither card nor pointer, and a card claiming an end the store cannot back would be new. */}
-          {payload['annotate'] === true ? (
-            <>
-              <LandedView landing={observed.landing} disclosureKey={factKey('landed-why')} />
-              <DeparturesKept disclosureKey={factKey('kept-why')} />
-            </>
-          ) : null}
         </div>
-      </div>
-      {footer ? (
-        <footer className="next-session-footer" data-next-session-tokens={footer.source}>
-          {footer.text}
-        </footer>
-      ) : null}
+        {footer ? (
+          <footer className="next-session-footer" data-next-session-tokens={footer.source}>
+            {footer.text}
+          </footer>
+        ) : null}
+      </DriftProvider>
     </article>
   );
 }

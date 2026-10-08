@@ -670,7 +670,12 @@ try {
         ['/api/direction', '/api/direction'],
         'the first Keep settled something or sent more than the reads',
       );
-      await react.page.locator('[data-next-cockpit-action="direction-add"]').click();
+      // The question's own Add: the numbered activity list draws one beside every later direction too.
+      await react.page
+        .locator(
+          '[data-next-cockpit-direction-question] [data-next-cockpit-action="direction-add"]',
+        )
+        .click();
       await react.page.waitForSelector('[data-next-cockpit-direction-key]');
       assert.equal(
         await react.page

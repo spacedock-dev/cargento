@@ -37,6 +37,18 @@ function summarize(root: ParentNode): DetailSummary {
     };
   const copy = article.cloneNode(true) as Element;
   copy.querySelector('.next-session-panel')?.remove();
+  /* The numbered activity list and the header's drift pill and entry count belong to the Drift step: the legacy
+     stub draws none of them, and `drift-parity.mjs` and the drift tests hold them to the real page. */
+  for (const owned of copy.querySelectorAll('[data-next-cockpit-work], [data-next-drift-pill]')) {
+    owned.remove();
+  }
+  const meta = copy.querySelector('.next-session-detail-meta');
+  if (meta) {
+    meta.textContent = (meta.textContent ?? '')
+      .split(' · ')
+      .filter((part) => !/^\d+ entr(?:y|ies)$/.test(part))
+      .join(' · ');
+  }
   return {
     state: null,
     attributes: {

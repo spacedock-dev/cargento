@@ -1,6 +1,6 @@
 import { CopyControl, RaiseControl, resumeCommand, useControls } from '../controls';
 import { delegatedWork, type Row } from '../observed';
-import { unaskedDepartures, type DepartureRow } from './detail';
+import { LANE_OFF_RECORD, laneOffWhy, unaskedDepartures, type DepartureRow } from './detail';
 
 /* The pieces of the session page that sit beside the Intent panel's reading and are measured evidence in
    their own right: what became of a departure raised to the reader, the way back into the session beside
@@ -93,5 +93,38 @@ export function DelegatedWorkLine({
         </p>
       ) : null}
     </>
+  );
+}
+
+/* The departures raised to the reader and the way back beside them, drawn under the label the legacy page
+   gives them until the Intent step's panel composes them itself. */
+export function DepartureEvidence({
+  session,
+  laneOn,
+  offReason,
+}: {
+  readonly session: Row;
+  readonly laneOn: boolean;
+  readonly offReason: unknown;
+}) {
+  const body = unaskedDepartures(session);
+  if (!body) return null;
+  return (
+    <div className="next-cockpit-departure-part">
+      <span className="next-cockpit-departure-label">FROM THE CHECKS RUN WHILE YOU WERE AWAY</span>
+      {/* With the lane off the rows are still on the wire, so they are printed with the limit that qualifies them:
+          without it the label alone would read as checks that ran while the reader was away. */}
+      {laneOn ? null : (
+        <>
+          <p className="next-cockpit-reading-why" data-absence="run-config">
+            {laneOffWhy(offReason)}
+          </p>
+          <p className="next-cockpit-reading-why" data-absence="run-config">
+            {LANE_OFF_RECORD}
+          </p>
+        </>
+      )}
+      <UnaskedDepartureBody session={session} />
+    </div>
   );
 }

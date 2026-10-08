@@ -89,7 +89,9 @@ the React shell's routes against the legacy page in the same browser, and `pnpm 
 checks that focus, drafts, composition and open selects survive live updates. `pnpm test:sessions:browser`
 compares Sessions and session detail with the legacy page, and `pnpm test:terminal:browser` does the same for
 the timeline filter and the output-only terminal. `pnpm test:intent:browser` compares the Intent log and the
-Intent panel's editors with the legacy page, including native undo and IME composition.
+Intent panel's editors with the legacy page, including native undo and IME composition, and
+`pnpm test:drift:browser` does the same for the Drift section, Analyze and its consent step, the result, Steer back
+and the departures, over a scripted board that never reaches a model.
 
 ## Before you open a PR
 

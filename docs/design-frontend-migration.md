@@ -289,6 +289,32 @@ instead (one direction read, nothing saved), `intentForReading`, the live monito
 reading-feedback lane. Not ported here: the per-entry Add to my intent buttons of the legacy activity list,
 which belong with the numbered activity list that the React page does not have yet.
 
+## The Drift card, Analyze and Steer back
+
+The Drift section of the session page (the live and analysis levels, the reading card, Analyze and its
+consent, the result, Cancel, Steer back and the departures raised while the reader was away) and the
+numbered activity list it cites are ports of the drift half of `next-cockpit.js`. The pure parts (the
+reading shape contract, result wording, route and refusal ranking, level, correction arithmetic, the
+numbered list) were run next to the lifted legacy source over hundreds of generated cases each; the flip
+ledger and job cues are covered by behaviour tests. One browser proof serves a scripted board to the legacy
+page and the React page and compares the whole card in every state: no reading, pending, withheld,
+completed, failed, cancelling, superseded, a gap and the lane off.
+
+Only an explicit press after consent starts a reading. Mounting, StrictMode, a poll, a reconnect, a route
+change, hover, focus and a key press send nothing, and every POST is one attempt that is never retried. The
+destination and the revision floor are read at press time: a changed destination answers with the stated
+reason and sends nothing more. A refusal on an adopted prompt is drawn from the shared request lane the Keep
+action writes. Steer back composes an editable correction (2000 code points) that is only ever copied, never
+written to the session; the proof drives typing, caret, selection and native undo through board ticks, IME
+composition through the debugger protocol, a paste over the cap, and a pointer held through the click.
+
+Deviations, each recorded rather than hidden. The card, the numbered list and the departures hold the last
+board they drew while the reader is editing, composing or pointing, and say "Updates are paused" instead of
+the legacy whole-page queue, because the shell's display gate is wired to open selects. A stale mark that
+moves the correction box after the reader leaves it remounts the box: the words survive and native undo
+does not. Dismissal has no legacy web surface (nothing in the web assets calls the dismiss route), so none
+was built.
+
 ## Reader state and storage
 
 Each reader-state row specifies stable identity, stored state, retained deferral or a mechanism

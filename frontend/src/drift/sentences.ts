@@ -1,0 +1,234 @@
+/* The sentences the Drift section owns, one home each. The page owns every sentence of a reading's rows:
+   the producer's `why` is a closed token and its prose never reaches the page through a field. Ported from
+   the legacy cockpit verbatim, and held to it by `shape.differential.test.ts`, which walks the producer's
+   token set against this table. */
+
+export const DEPARTURE = 'departure';
+export const CONSISTENT = 'consistent with the evidence read';
+export const UNVERIFIABLE = 'not verifiable from available evidence';
+/* `reading.RESULT_UNSUPPORTED`: the claims question's own fourth result, never a departure, and only ever
+   on the claims row. */
+export const UNSUPPORTED = 'not shown by the record';
+export const NOT_REACHED = 'not reached at this stop';
+export const RESULTS: readonly string[] = [
+  DEPARTURE,
+  CONSISTENT,
+  UNVERIFIABLE,
+  UNSUPPORTED,
+  NOT_REACHED,
+];
+export const CLAIMS = 'claims';
+
+/* The published shape, spelt once on each side: a producer and a renderer disagreeing about a key name
+   without either noticing is the measured failure. */
+export const CRITERION_KEYS: readonly string[] = ['result', 'cites', 'detail', 'clause', 'why'];
+
+export const ASSISTANT_ONLY =
+  'Nothing cited here demonstrates that the requested output exists; each entry describes or asks for the work rather than showing it.';
+export const UNCITED = 'Nothing resolvable was cited, so there is no entry to read this against.';
+export const BASELINE_OPEN =
+  'You have given a later direction that is still unsettled, so this reads against a baseline that may not be the one you want.';
+export const CLAUSE_UNRETAINED = 'the words of the revision this reading read are not retained';
+export const UNKNOWN_KEY =
+  'This board cannot read the reading it was given: it carries a field this build does not know. Nothing from it is shown, because a reading half-read is not a reading.';
+export const SAVE_STEP = 'Save a goal above to analyze drift.';
+export const NO_WORDS = `Nothing has been typed for this session, so there is nothing to read it against. ${SAVE_STEP}`;
+export const MODEL_UNREAD =
+  'Reading availability has not been read, so no reading can be offered. Cargento asks again with the next update.';
+export const JOB_TITLE = 'Analyzing drift';
+export const JOB_NOTE = 'You can keep working. The result will appear here.';
+export const JOB_NOTE_SO_FAR = 'Reads only the work so far. The result will appear here.';
+export const BACKGROUND = 'Runs in the background.';
+export const CANCEL_FAILED =
+  'Could not confirm the cancel. The analysis may still be running; refresh to check.';
+export const MODEL_OFF =
+  'Model calls are off for this run. Restart without --no-observer-model or its alias --no-harness-usage to allow a reading.';
+export const UNAUTHORIZED =
+  'Analyzing drift is not enabled in this build, because the abstention check that gates it has not been recorded. It waits on a later release; nothing on this page lifts it.';
+export const ANNOTATIONS_OFF =
+  'Annotations are off for this run. Start without --no-annotations to type a goal and an expected output here.';
+export const ROUTE_UNREAD =
+  'Who would read this session is not published, so no analysis is offered. Cargento asks again with the next update.';
+export const PROVIDER_CHANGED =
+  'The reader for this session changed since this page was drawn, so nothing was sent; read who reads it now and press again.';
+export const DESTINATION_CHANGED =
+  'Where this session would be sent changed since this page was drawn, so nothing was sent; read where it goes now and press again.';
+
+/* Which kind of absence each refusal is. Never on a paragraph that is not an absence: the class also
+   carries rules, offers and results, and tagging them all would make the attribute a structurally present
+   default that measures nothing about the session. */
+export const REFUSAL_ABSENCE: ReadonlyMap<string, string> = new Map([
+  [ROUTE_UNREAD, 'not-observed'],
+  [NO_WORDS, 'waiting-on-you'],
+  [MODEL_UNREAD, 'not-observed'],
+  [MODEL_OFF, 'run-config'],
+  [UNAUTHORIZED, 'run-config'],
+  [ANNOTATIONS_OFF, 'run-config'],
+]);
+
+export const DERIVED_ONLY =
+  "Rests only on Cargento's own summary of this session, which is not evidence about it.";
+export const OWN_WORDS_ONLY =
+  'Rests only on what you asked for, which is the request rather than the work.';
+export const MALFORMED = 'The reading did not return a usable result for this constraint.';
+export const NOT_ASKED =
+  'This constraint was not put to the reading when it was made, so no verdict on it was asked for.';
+export const VERDICT_STATED =
+  "The reading's explanation stated whether the work landed, which is a verdict the evidence read does not license, so its result was withdrawn.";
+export const CHECK_DOES_NOT_SHOW_IT =
+  'The check it cited does not show this: a departure needs its latest run failing, and a consistent its latest run passing with no change after it, both after the words you saved.';
+export const CHANGED_AFTER_CHECK =
+  'The check it cited passed, and a later command may have changed files, so it does not show this.';
+export const CHECK_READ_INCOMPLETE =
+  'The check passed, but part of the work record was not read, so it does not show this.';
+export const CHECKS_NOT_READ =
+  'No check this session recorded had room in the reading, so your expected output was not put to it.';
+export const TELLS_THE_PERSON =
+  'This line is about what the agent told you, and the analysis rested it on no message the agent wrote, so it reads as not verifiable.';
+export const FAILED_CHECK_ON_RECORD =
+  'A check this session ran failed after the words you saved, and this rests on no check that passed, so it reads as not verifiable.';
+export const FAILED_CHECK_UNREAD =
+  'A check that failed was not read, because the reading had no room for it, so nothing here says the output is consistent.';
+export const CLAIM_RECORD_UNREAD =
+  "Not all of this session's checks were read, so the analysis cannot say the record does not show what the agent said.";
+export const CLAIM_UNCITED =
+  "The analysis did not cite the agent's message and, for a contradiction or a match, the entry it compared it with, so it reads as not verifiable.";
+
+/* Why a stored row is `not verifiable`, token to sentence (`reading.WHY_TOKENS`). Consulted only where the
+   page's own derivation left a `not verifiable` row without a reason: the live rules stay authoritative, and
+   a stored reason never overrides a result derived from evidence the page holds. */
+export const STORED_WHY: Readonly<Record<string, string>> = {
+  'not-asked': NOT_ASKED,
+  unreadable: MALFORMED,
+  uncited: UNCITED,
+  'no-work-shown': ASSISTANT_ONLY,
+  'board-quoting-itself': DERIVED_ONLY,
+  uncorroborated: OWN_WORDS_ONLY,
+  'verdict-stated': VERDICT_STATED,
+  'check-does-not-show-it': CHECK_DOES_NOT_SHOW_IT,
+  'failed-check-unread': FAILED_CHECK_UNREAD,
+  'changed-after-check': CHANGED_AFTER_CHECK,
+  'check-read-incomplete': CHECK_READ_INCOMPLETE,
+  'checks-not-read': CHECKS_NOT_READ,
+  'tells-the-person': TELLS_THE_PERSON,
+  'failed-check-on-record': FAILED_CHECK_ON_RECORD,
+  'claim-uncited': CLAIM_UNCITED,
+  'claim-record-unread': CLAIM_RECORD_UNREAD,
+};
+
+export const RESULT_CANT_TELL = "Can't tell";
+export const RESULT_NOTHING_SHOWS = "Can't tell: nothing recorded shows this yet";
+export const RESULT_CLAIM_TAIL = "The record read is the board's recent tail.";
+export const RESULT_DEPARTS = 'Departs from your intent';
+export const RESULT_NOTHING_FOUND =
+  'Nothing found against what it read. This is not a check that the work was done.';
+export const RESULT_NOT_ACCURATE = 'Not accurate?';
+export const RESULT_MARKED = 'You marked this analysis not accurate.';
+export const RESULT_MARK_UNSAVED = 'Your mark was not saved. Press Not accurate? again to retry.';
+export const READING_FINISHED = 'The analysis finished. Its result is in the Drift section.';
+
+export const STEER_BY_HAND = 'Raised to you and nowhere else.';
+export const STEER_BY_HAND_WHY =
+  'Cargento does not write into a session, so steering is by hand; the steer box in Console states the same rule about notes you write there.';
+export const DEPARTURE_DEFINITION =
+  'A departure is a place the record does not match the words you chose.';
+export const READING_DEFINITION =
+  'A reading is one model pass over the record, made only when you press for it.';
+export const REVISION_DEFINITION = 'Each save is a revision.';
+
+export const OFFER =
+  'A reading is a model’s account of the evidence on this page: the observed record in this session’s activity and the goal and output you saved, and nothing else. It does not read a diff, a file, a test or a deliverable, replies from git, gh or connected tools, or what you saw on your screen.';
+export const SCOPE =
+  'What it reads is the evidence on this page: the observed record in this session’s activity and the goal and output you saved, and nothing else. It does not read a diff, a file, a test or a deliverable, replies from git, gh or connected tools, or your screen.';
+
+export const PRESS_LINES: Readonly<Record<string, string>> = {
+  'idle-unknown': 'Analyze opens while this session runs.',
+  unobservable: 'This harness sends no events, so Analyze opens only while it runs.',
+  'turn-stop': 'Analyze opens while a turn runs or once the session ends.',
+  settling: 'Ready in a few seconds.',
+  'stop-settling': 'Ready in a few seconds.',
+  'revision-after-end': 'Your intent was saved after this session ended.',
+};
+export const PRESS_CODEX = 'Codex sessions can be analyzed only while a turn is running.';
+export const PRESS_CLAUDE =
+  "Last turn isn't recorded as finished. Run another turn to open Analyze.";
+export const PRESS_EVENTS = 'Analyze opens while this session runs or once it ends.';
+
+export const FLIP_HOLD_MS = 10_000;
+export const FLIP_SAY_EVERY_MS = 60_000;
+export const FLIP_OPEN_RUNNING = 'Analyze is open again: the session is running.';
+export const FLIP_OPEN_LAST_TURN = "Analyze is open: the session's last turn finished.";
+export const FLIP_OPEN_ENDED = 'Analyze is open: the session ended.';
+/* "Went quiet", not "stopped": a close also follows a turn left on an open tool call or an interruption,
+   which did not stop. */
+export const FLIP_CLOSED = 'Analyze closed: the session went quiet.';
+export const FLIP_CLOSED_REVISION =
+  'Analyze closed: your intent was saved after the session ended.';
+export const FLIP_CLOSED_UNANSWERED = 'Analyze closed before you answered, so nothing was sent.';
+
+export const WORK_READ_FROM = 'Cargento reads work results from Claude Code and Pi only.';
+export const WORK_AS_REPORTED = 'Results are as the tool reported; not inspected.';
+
+export const CORRECTION_CAP = 2000;
+export const STEER_HARNESSES: readonly string[] = ['claude'];
+export const CORRECTION_HINT = 'Cargento never sends this. Copy it and paste it into the session.';
+export const CORRECTION_NOTHING = 'Nothing recorded now gives a correction to steer back from.';
+export const CORRECTION_FAILED = 'Could not compose a correction. Press Steer back again to retry.';
+export const CORRECTION_OLDER =
+  'This was composed from an older record. Recompose replaces your edit with a correction from the record as it stands.';
+export const CORRECTION_EDIT_REFUSED = 'This edit is unavailable here. Your text is kept.';
+export const CORRECTION_COMPOSITION_REFUSED =
+  'This composition would exceed 2,000 characters and was not kept.';
+export const CORRECTION_UNDO_UNAVAILABLE =
+  'The previous text was restored. Undo is unavailable for this refused edit.';
+export const CORRECTION_PAINT_PAUSED =
+  'Updates are paused while you edit this correction. Leave the box to show new work.';
+
+export const LIVE_LEVEL_NAMES: Readonly<Record<string, string>> = {
+  none_or_low: 'None or low',
+  medium: 'Medium',
+  high: 'High',
+  extreme: 'Extreme',
+  not_enough: 'Not enough recorded yet',
+};
+export const LEVEL_SCALE: readonly string[] = ['none_or_low', 'medium', 'high', 'extreme'];
+export const LIVE_LINE = 'Reads checks and file paths, not what your intent says.';
+export const LIVE_HINT =
+  'Shows a level after every turn, from checks and file paths, with no model call. The level shows here and in the header.';
+export const LIVE_SAVE = 'Save your intent to see a live estimate.';
+export const UNCHECKED = 'Not checked yet';
+export const NUDGE = 'This is a quick estimate. Analyze to see what drifted and how to steer back.';
+export const HARNESS_LIMIT = "Cargento can't read work or the agent's replies from this harness.";
+
+export const REASON_LINES: Readonly<Record<string, (n: string) => string>> = {
+  'failed-check': (n) => (n ? `A check failed at ${n}.` : 'A check failed.'),
+  departure: (n) =>
+    n ? `Departure evidence: ${n}.` : 'The model assessed a departure from your intent.',
+  'pass-then-write': () => 'A check passed, then files were written after it.',
+  'claim-contradicted': (n) =>
+    n
+      ? `The record contradicts what the agent said at ${n}.`
+      : 'The record contradicts what the agent said.',
+  'claim-not-shown': (n) =>
+    n
+      ? `The record read does not show what the agent said at ${n}.`
+      : 'The record read does not show what the agent said.',
+  'writes-outside-folders': () => 'Some files were written outside the folders your intent names.',
+  'most-writes-outside-folders': () =>
+    'Most files were written outside the folders your intent names.',
+};
+export const BLOCKER_LINES: Readonly<Record<string, string>> = {
+  'no-passing-check': 'No check has passed yet.',
+  'check-not-recorded': 'A check ran and its result was not recorded.',
+  'background-run': 'A check ran in the background, so its result is not known.',
+  'command-after-pass': 'A command that can change files ran after the last pass.',
+  'pass-older-than-read': 'The last pass is older than the work it would show.',
+  'later-direction': 'A later direction of yours is unsettled.',
+  'entries-not-listed': 'Some written files were counted and not listed.',
+  'intent-names-no-folder': 'Your intent names no folder, so where files went is not weighed.',
+  'scan-incomplete': 'The record was not read in full.',
+  'line-not-shown-by-a-check': 'A line of your intent is not shown by any check.',
+  'outcome-not-reached': 'Work against your intent was not reached at this stop.',
+  'no-outcome-line': 'No expected outcome line was saved.',
+  'reading-malformed': 'Part of the stored analysis could not be read.',
+};
