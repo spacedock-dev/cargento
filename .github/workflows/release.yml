@@ -5,43 +5,59 @@ name: Release
 #
 #     git tag v0.2.0 && git push origin v0.2.0
 #
-# This workflow then:
-#   1. refuses the tag unless it is on main (an ancestor of the main tip),
-#      is strict semver, and is STRICTLY GREATER than every existing
-#      release tag (no back-tagging, ever);
-#   2. runs the full validation suite on the main tip — the tree being
-#      released;
-#   3. writes one release commit on main bumping all five owned version
-#      fields via scripts/bump_version.py — skipped when the manifests
-#      already carry the tagged version (a re-run resuming after a partial
-#      failure, or an intentional release of the current version);
-#   4. moves the tag onto the released commit (so `git checkout <tag>`
-#      shows the released manifests);
-#   5. publishes a GitHub Release with generated notes (skipped if it
-#      already exists).
+# Four jobs, split by what each may hold:
 #
-# Every step is idempotent, so a re-run after any partial failure finishes
-# the release instead of wedging — even if a LATER release completed in
-# between (the resume path finds this tag's own release commit in main
-# history and skips the strictly-greater check, which would otherwise
-# compare against tags that postdate it). If main advances between the tag
-# push and this run, the release simply includes those extra commits.
+#   resolve          read-only token, no Node, no key. Fixes ONE commit (the target)
+#                    before anything runs: for a fresh release the main tip, captured
+#                    once; for a resumed one the existing `chore(release): <tag>` commit.
+#                    Refuses the tag unless it is strict semver, on main, and STRICTLY
+#                    GREATER than every existing release tag (no back-tagging, ever);
+#                    the resume path skips that last check on purpose, because a LATER
+#                    release may have completed in between.
+#   verify-frontend  read-only token, checkout WITHOUT persisted credentials, no key.
+#                    The only job that installs frontend dependencies and runs them.
+#                    Rebuilds the React bundle from exactly the target and compares it
+#                    with the tracked artifact, lints, type-checks, tests, and runs the
+#                    Python-only installed proof.
+#   verify-tree      the same (no credentials). The repository validation suite on the
+#                    target; it starts `node` whenever `node` is on PATH, so it cannot
+#                    share a job with the deploy key.
+#   release          holds the deploy key and runs NO Node, pnpm, npm, corepack or
+#                    frontend dependency code. Refuses to continue unless its own
+#                    checkout IS the target both verifiers saw, then writes the bump
+#                    commit, proves `git archive` of the exact release commit with
+#                    Python only, and only then pushes the bump, moves the tag, advances
+#                    `stable` and publishes.
+#
+# If main advanced while the frontend was being verified, `release` fails before it
+# mutates anything. Re-run the failed jobs: `resolve` takes the new tip and the
+# verifiers cover it. Every step is idempotent, so a re-run after any partial failure
+# finishes the release instead of wedging, even if a LATER release completed in
+# between: the resume path finds this tag's own release commit in main history,
+# verifies that commit, and publishes it, never a newer main bundle. Those decisions
+# live in scripts/release_transition.py and are tested against temporary
+# repositories; the archive proof lives in scripts/verify_release_archive.py.
+#
+# The React bundle is version-independent (its provenance carries no release version),
+# so the post-bump commit must ship byte-identical bundle files. The archive proof
+# checks that, and that the bump touched nothing but the version manifests, before the
+# tag or `stable` can move.
 #
 # Ruleset interplay: main requires PRs + the `validate` check, and semver
-# tags are immutable — both with a bypass for the repository's release
-# deploy key (secret RELEASE_DEPLOY_KEY), which is what lets steps 4–5 push
+# tags are immutable, both with a bypass for the repository's release
+# deploy key (secret RELEASE_DEPLOY_KEY), which is what lets the publishing job push
 # the bump commit and move the tag over SSH. The deploy-key push also
 # re-triggers the validate workflow on main (GITHUB_TOKEN pushes would
 # not), so the bump commit gets a normal post-merge check run too.
 # Humans cannot delete or move release tags at all.
 #
 # Security model:
-#   - contents:write only (for gh release create) — pushes go over SSH via
-#     the deploy key, which exists solely for this workflow.
-#   - Tag names reach shell only via GITHUB_REF_NAME (validated against a
-#     strict regex before any use in annotations or commands).
-#   - actions/checkout pinned to an immutable SHA; the ssh-key input wires
-#     the deploy key into the checkout's push credentials.
+#   - The key and the write token exist in one job. Every job that runs dependency
+#     code has `contents: read` and a checkout with persist-credentials: false;
+#     tests pin that boundary (cargento/skills/cargento/tests/test_release_workflow.py).
+#   - Tag names reach shell only through env: and are validated against a strict
+#     regex by release_transition.py before any use.
+#   - Every action is pinned to an immutable SHA; toolchain pins match quality-gate.yml.
 
 on:
   push:
@@ -50,111 +66,174 @@ on:
       - '[0-9]+.[0-9]+.[0-9]+'
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: release
   cancel-in-progress: false
 
 jobs:
-  release:
+  resolve:
+    name: Resolve the release target
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    outputs:
+      mode: ${{ steps.resolve.outputs.mode }}
+      version: ${{ steps.resolve.outputs.version }}
+      target: ${{ steps.resolve.outputs.target }}
     steps:
-      - name: Checkout main with full history and tags
-        # actions/checkout@v7.0.1 — pinned to immutable SHA.
+      - name: Checkout main with full history and tags, without credentials
+        # actions/checkout@v7.0.1, pinned to an immutable SHA.
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           ref: main
           fetch-depth: 0
-          # Pushes authenticate as the release deploy key — the bypass actor
-          # on both rulesets. GITHUB_TOKEN cannot push to protected main.
-          ssh-key: ${{ secrets.RELEASE_DEPLOY_KEY }}
-          persist-credentials: true
+          persist-credentials: false
 
-      - name: Validate tag placement and semver monotonicity
+      - name: Validate the tag and fix the release target
+        id: resolve
+        timeout-minutes: 2
+        env:
+          TAG: ${{ github.ref_name }}
         run: |
           set -euo pipefail
-          TAG="$GITHUB_REF_NAME"
-          VERSION="${TAG#v}"
+          python3 scripts/release_transition.py resolve --tag "$TAG" --github-output "$GITHUB_OUTPUT"
 
-          if ! [[ "$VERSION" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
-            echo "::error::tag '$TAG' is not strict semver"
+  verify-frontend:
+    name: Verify the frontend at the target
+    needs: resolve
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    permissions:
+      contents: read
+    outputs:
+      verified: ${{ steps.verified.outputs.sha }}
+    env:
+      TARGET: ${{ needs.resolve.outputs.target }}
+    steps:
+      - name: Checkout exactly the target, without credentials
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ needs.resolve.outputs.target }}
+          persist-credentials: false
+
+      - name: Confirm the checkout is the target
+        timeout-minutes: 1
+        run: |
+          set -euo pipefail
+          python3 scripts/release_transition.py assert-head --expected "$TARGET"
+
+      # Same pins as the quality gate's frontend job; the tests compare them.
+      # actions/setup-node@v7.0.0, exact verified release commit.
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version-file: .node-version
+          check-latest: false
+          package-manager-cache: false
+      # pnpm/setup@v3.0.0 verifies its native pnpm download's signature/checksum.
+      - uses: pnpm/setup@fbda4c85fc2e1e08721cd8763afea8f48d60f024
+        with:
+          version: 12.9.1
+          install: false
+          node-version-file: false
+          cache: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        id: python
+        with:
+          python-version: "3.11"
+      - name: Verify effective builder versions
+        timeout-minutes: 1
+        run: node -e "const fs=require('node:fs');const wanted=fs.readFileSync('.node-version','utf8').trim();if(process.versions.node!==wanted)throw Error('Unexpected Node '+process.versions.node);console.log('Node '+process.versions.node)"
+      - name: Frozen install with dependency scripts denied
+        timeout-minutes: 5
+        run: pnpm install --frozen-lockfile --ignore-scripts
+      - name: Frontend lint
+        timeout-minutes: 2
+        run: pnpm lint
+      - name: Strict frontend types
+        timeout-minutes: 2
+        run: pnpm typecheck
+      - name: Frontend behavioral unit tests
+        timeout-minutes: 3
+        run: pnpm test
+      - name: Canonical rebuild and tracked artifact comparison
+        timeout-minutes: 3
+        run: pnpm build:check
+      - name: Install pinned Chromium and its host dependencies
+        timeout-minutes: 5
+        run: pnpm exec playwright install --with-deps chromium
+      - name: Hostile inline artifact parser browser proof
+        timeout-minutes: 3
+        run: pnpm test:parser
+      - name: Installed Python-only artifact browser proof
+        timeout-minutes: 3
+        env:
+          CARGENTO_TEST_PYTHON: ${{ steps.python.outputs.python-path }}
+        run: pnpm test:installed
+      - name: Confirm verification left the tracked tree untouched
+        timeout-minutes: 1
+        run: |
+          set -euo pipefail
+          if [ -n "$(git status --porcelain)" ]; then
+            echo "::error::verification changed the tracked tree, so it did not verify the target"
+            git status --porcelain
             exit 1
           fi
-
-          git fetch origin main --tags --force
-          TAG_COMMIT=$(git rev-parse "refs/tags/$TAG^{commit}")
-          MAIN_TIP=$(git rev-parse origin/main)
-          if ! git merge-base --is-ancestor "$TAG_COMMIT" "$MAIN_TIP"; then
-            echo "::error::tag $TAG ($TAG_COMMIT) is not on main — release tags must be created on main. Tag the main tip with the next version instead."
+      - name: Record the verified commit
+        id: verified
+        timeout-minutes: 1
+        run: |
+          set -euo pipefail
+          SHA=$(git rev-parse HEAD)
+          if [ "$SHA" != "$TARGET" ]; then
+            echo "::error::verified $SHA but the target is $TARGET"
             exit 1
           fi
+          echo "sha=$SHA" >> "$GITHUB_OUTPUT"
 
-          # Resume detection: if a release commit for THIS tag already exists
-          # on main, a partial release is being finished — possibly after a
-          # LATER release completed, so the strictly-greater check must not
-          # re-run (it compares against tags that postdate this one). The
-          # commit is trusted only if its manifests actually carry VERSION;
-          # a PR squash title can't fake that, because version-guard (a
-          # required check) blocks version edits in PRs.
-          # No `exit` in the awk program: exiting on the first match closes the
-          # pipe while `git log` is still writing, and under `pipefail` that
-          # SIGPIPE surfaces as exit 141 and aborts the step. It fires exactly
-          # when a release commit IS on main — the resume path this block
-          # exists to detect — so the early exit broke resuming and left a
-          # failed run on every release.
-          RELEASE_COMMIT=$(git log --format='%H%x09%s' origin/main \
-            | awk -F'\t' -v s="chore(release): $TAG" '$2 == s && !found {print $1; found=1}')
-          if [ -n "$RELEASE_COMMIT" ]; then
-            RC_VERSION=$(git show "$RELEASE_COMMIT:cargento/.claude-plugin/plugin.json" | jq -r '.version // empty')
-            if [ "$RC_VERSION" != "$VERSION" ]; then
-              echo "::error::commit $RELEASE_COMMIT is titled 'chore(release): $TAG' but its manifests carry '$RC_VERSION' — refusing to resume onto it"
-              exit 1
-            fi
-            echo "Resuming release $TAG onto existing release commit $RELEASE_COMMIT"
-          else
-            # Fresh release. No back-tagging: strictly greater than every
-            # existing release tag (numeric semver, not lexicographic).
-            git tag -l 'v[0-9]*.[0-9]*.[0-9]*' '[0-9]*.[0-9]*.[0-9]*' > /tmp/all-tags.txt
-            python3 - "$TAG" /tmp/all-tags.txt <<'PY'
-          import re
-          import sys
+  verify-tree:
+    name: Validate the release tree
+    needs: resolve
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    permissions:
+      contents: read
+    outputs:
+      verified: ${{ steps.verified.outputs.sha }}
+    env:
+      TARGET: ${{ needs.resolve.outputs.target }}
+      MODE: ${{ needs.resolve.outputs.mode }}
+    steps:
+      - name: Checkout exactly the target, without credentials
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ needs.resolve.outputs.target }}
+          persist-credentials: false
 
-          strict = re.compile(r"^v?(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$")
+      - name: Confirm the checkout is the target
+        timeout-minutes: 1
+        run: |
+          set -euo pipefail
+          python3 scripts/release_transition.py assert-head --expected "$TARGET"
 
-          def parse(tag):
-              m = strict.fullmatch(tag)
-              return tuple(int(p) for p in m.groups()) if m else None
-
-          new_tag = sys.argv[1]
-          new = parse(new_tag)
-          with open(sys.argv[2]) as f:
-              for line in f.read().split():
-                  if line == new_tag:
-                      continue
-                  old = parse(line)
-                  if old is not None and old >= new:
-                      sys.exit(f"::error::tag {new_tag} is not strictly greater than existing release tag {line} — back-tagging is not allowed")
-          PY
-          fi
-
-          {
-            echo "VERSION=$VERSION"
-            echo "TAG=$TAG"
-            echo "RELEASE_COMMIT=$RELEASE_COMMIT"
-          } >> "$GITHUB_ENV"
-
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        if: env.MODE == 'fresh'
+        with:
+          python-version: "3.12"
       - name: Install release validation dependencies
-        # The standalone public-note gate also runs on resume and imports YAML.
+        if: env.MODE == 'fresh'
+        timeout-minutes: 3
         run: |
           set -euo pipefail
           python3 -m pip install --disable-pip-version-check --requirement requirements-validation.txt
 
-      - name: Run the full validation suite on the release tree (main tip)
-        # In resume mode the release tree was already validated when its
-        # bump commit was first pushed.
-        if: env.RELEASE_COMMIT == ''
+      - name: Run the full validation suite on the release tree
+        # A resumed release's tree was already validated when its bump commit was
+        # first pushed.
+        if: env.MODE == 'fresh'
+        timeout-minutes: 20
         run: |
           set -euo pipefail
           python3 scripts/validate_plugins.py
@@ -162,13 +241,75 @@ jobs:
           python3 -m unittest scripts/tests/test_bump_version.py
           python3 -m unittest discover -s cargento/skills/cargento/tests -t .
 
+      - name: Record the validated commit
+        id: verified
+        timeout-minutes: 1
+        run: |
+          set -euo pipefail
+          SHA=$(git rev-parse HEAD)
+          if [ "$SHA" != "$TARGET" ]; then
+            echo "::error::validated $SHA but the target is $TARGET"
+            exit 1
+          fi
+          echo "sha=$SHA" >> "$GITHUB_OUTPUT"
+
+  release:
+    name: Publish the release
+    needs: [resolve, verify-frontend, verify-tree]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    env:
+      TAG: ${{ github.ref_name }}
+      MODE: ${{ needs.resolve.outputs.mode }}
+      VERSION: ${{ needs.resolve.outputs.version }}
+      TARGET: ${{ needs.resolve.outputs.target }}
+      VERIFIED_FRONTEND: ${{ needs.verify-frontend.outputs.verified }}
+      VERIFIED_TREE: ${{ needs.verify-tree.outputs.verified }}
+    steps:
+      - name: Checkout main with full history and tags
+        # actions/checkout@v7.0.1, pinned to an immutable SHA.
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: main
+          fetch-depth: 0
+          # Pushes authenticate as the release deploy key, the bypass actor
+          # on both rulesets. GITHUB_TOKEN cannot push to protected main.
+          ssh-key: ${{ secrets.RELEASE_DEPLOY_KEY }}
+          persist-credentials: true
+
+      - name: Refuse to publish anything but the verified tree
+        # The first command this job runs. Fresh: HEAD must be the target, so a main
+        # that moved during verification fails here with nothing published.
+        run: |
+          set -euo pipefail
+          python3 scripts/release_transition.py assert-checkout \
+            --mode "$MODE" --target "$TARGET" --tag "$TAG" \
+            --verified "$VERIFIED_FRONTEND" --verified "$VERIFIED_TREE"
+
+      - name: Work from the verified commit when resuming
+        if: env.MODE == 'resume'
+        run: |
+          set -euo pipefail
+          git checkout --detach "$TARGET"
+
+      - name: Install release validation dependencies
+        # An isolated environment: the archive proof runs under `python3 -I`, which
+        # drops the user site, so the YAML dependency must live in the interpreter.
+        # The standalone public-note gate also runs on resume and imports YAML.
+        run: |
+          set -euo pipefail
+          python3 -m venv "$RUNNER_TEMP/release-venv"
+          "$RUNNER_TEMP/release-venv/bin/python" -m pip install --disable-pip-version-check --requirement requirements-validation.txt
+          echo "$RUNNER_TEMP/release-venv/bin" >> "$GITHUB_PATH"
+
       - name: Prepare and validate the public release notes
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           NOTES_FILE="$RUNNER_TEMP/cargento-release-notes.md"
-          TARGET="${RELEASE_COMMIT:-$(git rev-parse HEAD)}"
           # Fetch the raw generated body before bumping or moving any release
           # reference. A private tracker reference requires a curated correction;
           # the workflow never rewrites or publishes an unchecked body.
@@ -214,46 +355,45 @@ jobs:
           python3 scripts/validate_plugins.py --public-text "$NOTES_FILE"
           echo "NOTES_FILE=$NOTES_FILE" >> "$GITHUB_ENV"
 
-      - name: Bump version fields, re-validate, and push the release commit
-        if: env.RELEASE_COMMIT == ''
+      - name: Write the version bump commit
+        if: env.MODE == 'fresh'
         run: |
           set -euo pipefail
-          CURRENT=$(python3 scripts/bump_version.py --current)
-          if [ "$CURRENT" = "$VERSION" ]; then
-            # An intentional release of the version the manifests already
-            # carry (e.g. the initial release) — nothing to bump.
-            echo "Manifests already at $VERSION — skipping bump commit."
-            exit 0
-          fi
-          # The script independently refuses any target that is not strictly
-          # greater than the current manifest version.
-          python3 scripts/bump_version.py "$VERSION"
-          python3 scripts/validate_plugins.py
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          # Read from bump_version.py rather than restated here. This list was
-          # hardcoded and drifted the moment the Gemini manifest moved out of the
-          # plugin root: the bump succeeded, then `git add` failed on a path that
-          # no longer existed and took the release down mid-run.
-          # shellcheck disable=SC2046 # word splitting is the point: one path per line
-          git add $(python3 scripts/bump_version.py --paths)
-          # -s: DCO sign-off (as github-actions[bot]) per repo convention.
-          git commit -s -m "chore(release): $TAG" -m "Bump plugin version to $VERSION (tag-driven release)."
+          # Nothing to write when the manifests already carry the tagged version (an
+          # intentional release of the current version, such as the initial release).
+          # bump_version.py independently refuses any target that is not strictly
+          # greater than the current version, and the field list is read from it
+          # rather than restated here.
+          python3 scripts/release_transition.py bump --tag "$TAG"
+          python3 scripts/release_transition.py commit-bump --tag "$TAG"
+
+      - name: Record the commit this release publishes
+        run: |
+          set -euo pipefail
+          FINAL=$(python3 scripts/release_transition.py final --mode "$MODE" --target "$TARGET")
+          echo "FINAL=$FINAL" >> "$GITHUB_ENV"
+
+      - name: Prove the archive of the exact release commit, Python only
+        # Before the bump is pushed, the tag moved or `stable` advanced. Scrubbed
+        # environment, throwaway home, empty PATH: nothing here can reach Node.
+        run: |
+          set -euo pipefail
+          python3 scripts/verify_release_archive.py --repo . --commit "$FINAL" --verified "$TARGET" --version "$VERSION"
+
+      - name: Push the release commit to main
+        if: env.MODE == 'fresh'
+        run: |
+          set -euo pipefail
           # No --force: if main advanced mid-run this rejects cleanly and a
           # re-run resumes from the new tip.
-          git push origin HEAD:main
+          python3 scripts/release_transition.py push-bump --final "$FINAL"
 
       - name: Move the tag onto the release commit
         run: |
           set -euo pipefail
-          # So `git checkout <tag>` shows the released (bumped) manifests.
-          # In resume mode the target is the previously pushed release
-          # commit; otherwise it is HEAD (the fresh bump commit, or the tip
-          # itself when no bump was needed). Allowed only via the deploy-key
-          # bypass on the tag ruleset.
-          TARGET="${RELEASE_COMMIT:-$(git rev-parse HEAD)}"
-          git tag -f "$TAG" "$TARGET"
-          git push --force origin "refs/tags/$TAG"
+          # So `git checkout <tag>` shows the released (bumped) manifests. Allowed
+          # only via the deploy-key bypass on the tag ruleset.
+          python3 scripts/release_transition.py move-tag --tag "$TAG" --final "$FINAL"
 
       - name: Advance the stable branch
         run: |
@@ -263,8 +403,7 @@ jobs:
           # makes the listing self-updating: without it the marketplace would
           # serve whatever stable pointed at when it was written, forever.
           # Idempotent, so a resumed release re-points it to the same commit.
-          TARGET="${RELEASE_COMMIT:-$(git rev-parse HEAD)}"
-          git push --force origin "$TARGET:refs/heads/stable"
+          python3 scripts/release_transition.py advance-stable --final "$FINAL"
 
       - name: Publish the GitHub Release
         env:
@@ -272,7 +411,7 @@ jobs:
         run: |
           set -euo pipefail
           if gh release view "$TAG" > /dev/null 2>&1; then
-            echo "Release $TAG already exists — nothing to publish."
+            echo "Release $TAG already exists - nothing to publish."
             exit 0
           fi
           gh release create "$TAG" \
