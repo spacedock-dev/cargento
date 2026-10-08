@@ -9,7 +9,8 @@ import { startDevelopment } from '../dev/supervisor.mjs';
 const repository = fileURLToPath(new URL('../../', import.meta.url));
 const copy = await mkdtemp(join(tmpdir(), 'cargento-development-browser-'));
 let dev, browser, context;
-const external = [], errors = [];
+const external = [], errors = [], restartResets = [];
+let restarting = false;
 const failures = [];
 try {
   await cp(join(repository, 'frontend'), join(copy, 'frontend'), { recursive: true });
@@ -35,8 +36,21 @@ try {
   });
   const page = await context.newPage();
   page.on('pageerror', error => errors.push(error.message));
-  page.on('response', response => { if (response.status() >= 400) failures.push({ url: response.url(), status: response.status() }); });
-  page.on('console', message => { if (message.type() === 'error') errors.push(message.text()); });
+  page.on('response', async response => {
+    if (response.status() < 400) return;
+    // The body names the refusing layer: the worker's own guard answers "Development origin refused.", Vite's filesystem guard answers "403 Restricted".
+    failures.push({ url: response.url(), status: response.status(), body: (await response.text().catch(() => '')).slice(0, 600) });
+  });
+  // Stopping the owned backend resets the open event stream. Chromium reports that reset as a console error on Windows
+  // (Linux and macOS close it cleanly), so only a reset of the Python event stream is set aside, only while the restart
+  // is in flight, and at most twice (one stream, one reconnect attempt). A reset of any other resource still fails.
+  page.on('console', message => {
+    if (message.type() !== 'error') return;
+    const url = message.location().url;
+    if (restarting && /net::ERR_CONNECTION_RESET/.test(message.text()) && (!url || url.endsWith('/api/stream')) && restartResets.length < 2) {
+      restartResets.push(message.text());
+    } else errors.push(message.text());
+  });
   await page.goto(dev.origin);
   await page.getByRole('heading', { name: 'Cargento frontend preview' }).waitFor();
   assert.equal(await page.evaluate(() => globalThis.document.fonts.size), 15);
@@ -71,11 +85,13 @@ try {
   await page.waitForFunction(previous => globalThis.__devRevisions.at(-1) !== previous, before);
   const oldGeneration = dev.ready.generation;
   const oldOpenCount = await page.evaluate(() => globalThis.__devOpenCount);
+  restarting = true;
   await dev.restart();
   assert.notEqual(dev.ready.generation, oldGeneration);
   await page.waitForFunction(async oldBuild => (await (await fetch('/api/data')).json()).build !== oldBuild, first.build);
   await page.waitForFunction(previous => globalThis.__devOpenCount > previous &&
     globalThis.__devStream.readyState === globalThis.EventSource.OPEN, oldOpenCount);
+  restarting = false;
   assert.equal((await context.request.get(dev.origin + '/api/data', { headers: { Origin: dev.viteOrigin } })).status(), 403);
   assert.equal((await context.request.get(dev.origin + '/@vite/client')).status(), 404);
   assert.equal((await context.request.post(dev.origin + '/api/focus', { headers: { Origin: dev.viteOrigin }, data: {} })).status(), 403);

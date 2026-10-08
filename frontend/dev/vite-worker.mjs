@@ -42,7 +42,9 @@ async function start(options) {
     return tail === '' || (tail !== '..' && !tail.startsWith('..' + (process.platform === 'win32' ? '\\' : '/')) && !isAbsolute(tail));
   });
   dispatch = createHttpServer(); // Never bound. Vite receives only admitted upgrade events.
-  vite = await createServer({ configFile: false, envFile: false, root: join(options.root, 'frontend'),
+  // Vite's first Windows realpath is the JS one, which keeps an 8.3 segment such as RUNNER~1, and it then refuses
+  // every file under that spelling. Hand it the native canonical root this worker already admits against.
+  vite = await createServer({ configFile: false, envFile: false, root: frontendRoot,
     plugins: [react(), { name: 'cargento-dev-origin', configureServer(server) {
       server.middlewares.use(async (req, res, next) => {
         if (!exactHeader(req, 'host', authority) || req.method !== 'GET') return refuse(res);

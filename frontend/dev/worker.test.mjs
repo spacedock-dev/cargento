@@ -4,9 +4,9 @@ import { request } from 'node:http';
 import { randomBytes } from 'node:crypto';
 import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
-import { mkdtemp, rm, mkdir, writeFile, symlink } from 'node:fs/promises';
+import { mkdtemp, rm, mkdir, writeFile, symlink, cp } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, relative } from 'node:path';
 
 const root = fileURLToPath(new URL('../../', import.meta.url));
 function exchange(port, path, headers = {}, upgrade = false) {
@@ -77,5 +77,37 @@ test('real Vite admits only owned handshake and exact Python-origin modules/HMR'
     await exited; clearTimeout(timer);
     await rm(link, { force: true, recursive: true });
     await rm(scratch, { recursive: true, force: true });
+  }
+});
+
+// On a Windows runner os.tmpdir() is an 8.3 short path (C:\\Users\\RUNNER~1\\...). Vite refuses any file whose
+// path keeps a short-name segment, so a copied tree under tmpdir must be served from its canonical spelling.
+// This reproduces only on Windows (it fails there without the canonical root); on POSIX it passes either way.
+test('real Vite serves a source tree whose root is spelled through the temporary directory', { timeout: 30000 }, async () => {
+  const copy = await mkdtemp(join(tmpdir(), 'cargento-vite-root-'));
+  const child = fork(fileURLToPath(new URL('./vite-worker.mjs', import.meta.url)), [], { stdio: ['ignore', 'pipe', 'pipe', 'ipc'] });
+  let error = ''; child.stderr.on('data', chunk => error += chunk);
+  const exited = new Promise(resolve => child.once('exit', resolve));
+  try {
+    await cp(join(root, 'frontend'), join(copy, 'frontend'), { recursive: true });
+    await cp(join(root, 'cargento'), join(copy, 'cargento'), { recursive: true,
+      filter: path => !relative(join(root, 'cargento'), path).split(/[\\/]/).some(part => part === 'tests' || part === '__pycache__') });
+    await symlink(join(root, 'node_modules'), join(copy, 'node_modules'), process.platform === 'win32' ? 'junction' : 'dir');
+    const ready = new Promise((resolve, reject) => {
+      child.once('message', value => value.type === 'ready' ? resolve(value) : reject(Error(JSON.stringify(value))));
+      child.once('exit', () => reject(Error('Worker exited: ' + error)));
+    });
+    child.send({ type: 'start', root: copy, scratch: copy, port: 4592, pythonPort: 4593, nonce: '00'.repeat(32),
+      viteGeneration: '22'.repeat(16), backendGeneration: '33'.repeat(16) });
+    await ready;
+    const headers = { Origin: 'http://127.0.0.1:4593' };
+    const served = await exchange(4592, '/src/main.tsx', headers);
+    assert.equal(served.status, 200, served.body.slice(0, 300));
+    assert.equal((await exchange(4592, '/@fs/' + join(copy, 'cargento/skills/cargento/server.py').replaceAll('\\', '/'), headers)).status, 403);
+  } finally {
+    if (child.connected) child.send({ type: 'stop' });
+    const timer = setTimeout(() => child.kill('SIGKILL'), 4000);
+    await exited; clearTimeout(timer);
+    await rm(copy, { recursive: true, force: true });
   }
 });
