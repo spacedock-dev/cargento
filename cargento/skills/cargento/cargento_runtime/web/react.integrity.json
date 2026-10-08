@@ -1,8 +1,8 @@
 {
   "document": {
-    "bytes": 1287240,
+    "bytes": 1287452,
     "file": "react.html",
-    "sha256": "6a07ad29dc7878c81b75a69722e9b02233b2821bf9de7f68b86d3a8c3986422b"
+    "sha256": "2a162e7abccb52d2482d32678ce2f58a734713367fecbec50d34fb9afbc967ab"
   },
   "format": 1,
   "frontend": "react",
@@ -230,7 +230,7 @@
       },
       {
         "file": "frontend/src/controls/MoreMenu.tsx",
-        "sha256": "e2ea14f0ded26fbab2b3793c9f00a41682ef1d958a7e0e92c12210e8dc31d45a"
+        "sha256": "06335bcdaccc226a637d14aee98275000a85f62e8b16efda433ba9cf57951db4"
       },
       {
         "file": "frontend/src/controls/RaiseControl.tsx",
@@ -326,7 +326,7 @@
       },
       {
         "file": "frontend/src/delegation/delegation.css",
-        "sha256": "e1bfecbe5db3489adf6e91b2493b9a86c81a4cf702aecdd8c1e235a3e2cedc04"
+        "sha256": "85bddb306bba7d357ad65dcd2f086ff2bb6791362d8aeb34c20356e2258c1787"
       },
       {
         "file": "frontend/src/delegation/evidence.ts",
@@ -878,7 +878,7 @@
       },
       {
         "file": "frontend/src/shell/projectBriefing.ts",
-        "sha256": "eb4c8a8a020c6661ce3e10011bc214bd9a8cce6d5584a323620456df02a871d4"
+        "sha256": "d1bac7ef3c48ca45d564830c3fdb6cac076691714fa9028b47fbd038195a97f4"
       },
       {
         "file": "frontend/src/shell/testing.tsx",

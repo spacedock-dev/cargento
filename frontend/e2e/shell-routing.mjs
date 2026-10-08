@@ -495,7 +495,9 @@ try {
     'project tabs: Now is the default and the arrow keys wrap over the strip, keeping focus on the new tab',
     async () => {
       await load(react, board.react.origin, 'react', `#n=project:${A}`);
-      const tab = (name) => react.page.getByRole('tab', { name, exact: true });
+      /* The legacy tab carries its count in its accessible name ("Course No observed state changes observed"), so a tab
+         is found by its label as the first word of that name; Now and Console carry no cue and are their label. */
+      const tab = (name) => react.page.getByRole('tab', { name: new RegExp(`^${name}( |$)`) });
       assert.equal(await tab('Now').getAttribute('aria-selected'), 'true');
       await tab('Now').focus();
       await react.page.keyboard.press('ArrowLeft');
@@ -770,15 +772,14 @@ try {
         await o.page.goto('about:blank');
         await o.page.goto(board.react.origin + `/#n=project:${A}`);
         await reactReady(o.page);
-        const tabindexes = await o.page
-          .getByRole('tab')
-          .evaluateAll((tabs) =>
-            tabs.map((tab) => [
-              tab.textContent,
-              tab.getAttribute('tabindex'),
-              tab.getAttribute('aria-selected'),
-            ]),
-          );
+        const tabindexes = await o.page.getByRole('tab').evaluateAll((tabs) =>
+          tabs.map((tab) => [
+            // The label is the button's first text; the cue after it is the legacy page's own.
+            tab.firstChild.textContent,
+            tab.getAttribute('tabindex'),
+            tab.getAttribute('aria-selected'),
+          ]),
+        );
         assert.deepEqual(tabindexes, [
           ['Now', '0', 'true'],
           ['Course', '-1', 'false'],
@@ -1057,17 +1058,17 @@ try {
   );
 
   await step(
-    'more menu: on a project route it stays open across polls and keeps its Copy briefing result, and copies nothing it cannot build',
+    'more menu: on a project route it stays open across polls and keeps its Copy briefing result, copies the briefing it built, and copies nothing for a project it cannot build one for',
     async () => {
       const o = await clocked(`#n=project:${A}`);
       try {
         await o.page.evaluate(() => {
-          globalThis.__clipboardWrites = 0;
+          globalThis.__clipboardWrites = [];
           Object.defineProperty(globalThis.navigator, 'clipboard', {
             configurable: true,
             value: {
-              writeText: async () => {
-                globalThis.__clipboardWrites += 1;
+              writeText: async (text) => {
+                globalThis.__clipboardWrites.push(String(text));
               },
             },
           });
@@ -1084,21 +1085,22 @@ try {
         o.state.mutate = (body) => ({ ...body, generated: body.generated + 1 });
         await o.poll();
         assert.ok(await status.isVisible(), 'the menu stayed open across a poll');
-        assert.equal(
+        assert.deepEqual(
           await o.page.evaluate(() => globalThis.__clipboardWrites),
-          0,
+          [],
           'nothing is copied before a press',
         );
         await o.page.getByRole('button', { name: 'Copy briefing' }).click();
-        await o.page.getByRole('button', { name: 'Copy unavailable' }).waitFor();
-        assert.equal(
-          await o.page.evaluate(() => globalThis.__clipboardWrites),
-          0,
-          'no briefing exists yet, so no empty one is written',
+        await o.page.getByRole('button', { name: 'Copied' }).waitFor();
+        const written = await o.page.evaluate(() => globalThis.__clipboardWrites);
+        assert.equal(written.length, 1, 'one press writes one briefing');
+        assert.ok(
+          written[0].startsWith('Cargento recovery briefing\nProject: app\nScope: Project\n'),
+          `the briefing the project page builds was copied: ${written[0].slice(0, 80)}`,
         );
         assert.match(
           await o.page.locator('#next-cockpit-cue-status').innerText(),
-          /The project briefing is not available in the React interface yet/,
+          /Copied the project briefing/,
         );
         o.state.mutate = (body) => ({ ...body, generated: body.generated + 2 });
         await o.poll();
@@ -1107,8 +1109,13 @@ try {
         }, `#n=project:${A}:course`);
         await o.page.waitForTimeout(patience(100));
         assert.ok(
-          await o.page.getByRole('button', { name: 'Copy unavailable' }).isVisible(),
+          await o.page.getByRole('button', { name: 'Copied' }).isVisible(),
           'the result has no expiry and survives a tab change in the same project',
+        );
+        assert.equal(
+          (await o.page.evaluate(() => globalThis.__clipboardWrites)).length,
+          1,
+          'a poll and a tab change copy nothing more',
         );
         await o.page.evaluate((next) => {
           globalThis.location.hash = next;
@@ -1117,6 +1124,25 @@ try {
         assert.ok(
           await o.page.getByRole('button', { name: 'Copy briefing' }).isVisible(),
           'a different project reads its own, untouched',
+        );
+        // A project the board does not hold has no briefing to build: the press says so and writes nothing.
+        await o.page.evaluate(
+          (next) => {
+            globalThis.location.hash = next;
+          },
+          `#n=project:${E('nowhere')}`,
+        );
+        await o.page.waitForTimeout(patience(100));
+        await o.page.getByRole('button', { name: 'Copy briefing' }).click();
+        await o.page.getByRole('button', { name: 'Copy unavailable' }).waitFor();
+        assert.equal(
+          (await o.page.evaluate(() => globalThis.__clipboardWrites)).length,
+          1,
+          'no briefing exists for it, so no empty one is written',
+        );
+        assert.match(
+          await o.page.locator('#next-cockpit-cue-status').innerText(),
+          /There is no briefing to copy: the project is not in the current payload/,
         );
       } finally {
         await o.close();

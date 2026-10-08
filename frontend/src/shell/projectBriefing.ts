@@ -25,7 +25,10 @@ export function useProjectBriefing(route: ProjectRoute): ProjectBriefing {
   const controls = useControls();
   const read = useCallback((key: string) => controls.memo.read(key), [controls]);
   const briefingText = useCallback(() => {
-    if (!model) throw new BriefingUnavailable('The project is not in the current payload.');
+    if (!model)
+      throw new BriefingUnavailable(
+        'There is no briefing to copy: the project is not in the current payload.',
+      );
     return briefingOf(model, read).text;
   }, [model, read]);
   let addHumanContext: ProjectBriefing['addHumanContext'] = null;

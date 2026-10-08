@@ -1090,6 +1090,7 @@ try {
           ['console', null],
           ['decisions', null],
           ['course', BOARD.live],
+          ['console', BOARD.live],
         ]) {
           await load(side, fragmentFor(tab, focus));
           await settled(() =>
@@ -1097,14 +1098,30 @@ try {
               () => document.querySelector('[data-next-cockpit-panel]')?.textContent.length ?? 0,
             ),
           );
-          const wide = await side.page.evaluate(() => {
-            const root = document.documentElement;
-            return { scroll: root.scrollWidth, client: root.clientWidth };
+          // The window's own size, then the reader's text at twice the size: a rail that fits at one and
+          // not the other is the defect this step exists to catch, and the widest element is named.
+          for (const scale of ['100%', '200%']) {
+            await side.page.evaluate((fontSize) => {
+              document.documentElement.style.fontSize = fontSize;
+            }, scale);
+            const wide = await side.page.evaluate(() => {
+              const root = document.documentElement;
+              const past = [...document.querySelectorAll('body *')]
+                .filter((node) => node.getBoundingClientRect().right > root.clientWidth + 0.5)
+                .slice(0, 3)
+                .map(
+                  (node) => `${node.tagName.toLowerCase()}.${String(node.className).slice(0, 40)}`,
+                );
+              return { scroll: root.scrollWidth, client: root.clientWidth, past };
+            });
+            assert.ok(
+              wide.scroll <= wide.client,
+              `${tab}${focus ? ' (session)' : ''} at ${label}, text ${scale}: page scrolls horizontally (${wide.scroll} > ${wide.client}) at ${wide.past.join(', ')}`,
+            );
+          }
+          await side.page.evaluate(() => {
+            document.documentElement.style.fontSize = '';
           });
-          assert.ok(
-            wide.scroll <= wide.client,
-            `${tab}${focus ? ' (session)' : ''} at ${label}: page scrolls horizontally (${wide.scroll} > ${wide.client})`,
-          );
         }
         await load(side, fragmentFor('console', BOARD.terminal));
         await settled(() =>

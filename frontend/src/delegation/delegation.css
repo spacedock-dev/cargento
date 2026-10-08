@@ -67,8 +67,16 @@
 .next-cockpit-console-setup>summary{align-content:center;padding:4px 0;color:var(--ink2);font:500 var(--fs-body)/1.55 var(--sans);text-decoration:underline;text-decoration-color:var(--line);text-underline-offset:4px;max-width:var(--measure)}
 .next-cockpit-content .next-rail-meta--amber{color:var(--ink2)}
 @media(max-width:760px){
-  .next-cockpit-panel[data-next-cockpit-panel="console"]>.next-project-detail-rail{grid-template-columns:1fr}
+  .next-cockpit-panel[data-next-cockpit-panel="console"]>.next-project-detail-rail{grid-template-columns:minmax(0,1fr)}
 }
 .next-cockpit-scope{display:flex;align-items:baseline;gap:12px;padding:7px 12px;font:var(--fs-label) var(--mono);color:var(--ink2)}
 .next-cockpit-scope strong{font-size:var(--fs-label);letter-spacing:.07em;color:var(--ink)}
 .next-cockpit-scope--evidence{margin-top:12px;border-top:1px solid var(--rule);border-bottom:1px solid var(--rule)}
+/* A grid track is `minmax(auto,1fr)` by default, so one panel whose content cannot shrink (a long token, a
+   heading that will not wrap) widened the whole rail past the window at 200% text size. The panels may
+   shrink and their text wraps. */
+.next-project-detail-rail>.next-rail-panel{min-width:0}
+.next-rail-panel :is(h2,p,strong,span,a,small){overflow-wrap:anywhere}
+.next-rail-header{flex-wrap:wrap}
+/* The scope cue and its word are two items on one line; at a large text size they wrap rather than widen the page. */
+.next-cockpit-scope{flex-wrap:wrap}
