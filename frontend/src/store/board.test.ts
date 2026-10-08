@@ -78,6 +78,20 @@ describe('listener isolation', () => {
     expect(errors.length).toBeGreaterThan(0);
     expect(board.listenerErrorCount()).toBe(40);
   });
+
+  it('reports a new error after a burst once the minute window has passed', () => {
+    let clock = 1;
+    const errors: unknown[] = [];
+    const board = createBoardStore({ now: () => clock, reportError: (error) => errors.push(error) });
+    board.subscribe(() => {
+      throw new Error('subscriber bug');
+    });
+    for (let change = 0; change < 40; change += 1) board.setPending([String(change)]);
+    expect(errors).toHaveLength(10);
+    clock += 60_000;
+    board.setPending(['later']);
+    expect(errors).toHaveLength(11);
+  });
 });
 
 describe('accepted data and failures', () => {

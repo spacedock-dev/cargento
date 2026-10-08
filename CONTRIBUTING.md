@@ -78,6 +78,11 @@ and Playwright checks the built page in Chromium. Vite and its React plugin own 
 refresh; no router, state library or UI kit is installed. Node and pnpm are build tools: the shipped
 Python dashboard still requires neither.
 
+The typed client is tested against fixtures captured from the real server. After changing a route's
+response, run `python3 scripts/regen_client_fixtures.py` and commit the result; `--check` shows
+whether anything is stale. `pnpm test:storage:browser` drives the legacy page in Chromium to prove
+the React storage codecs read and write what the legacy page does.
+
 ## Before you open a PR
 
 Run the canonical pre-PR suite in [AGENTS.md](AGENTS.md#pre-pr-checks) and make sure it is clean.
@@ -110,7 +115,8 @@ same directories through the relative symlinks under `.agents/skills/`.
 - The frontend matrix, with exact Node and pnpm pins, lint, strict types, unit tests and clean
   preview builds on Linux and macOS, and on Windows under the same condition. Linux compares the
   canonical build with tracked assets. Every platform runs browser checks against an installed
-  Python-only copy, plus owned development lifecycle and real Python/Vite hot-refresh checks.
+  Python-only copy, plus owned development lifecycle, real Python/Vite hot-refresh and legacy
+  storage conformance checks.
 
 Those checks run when the diff contains something they can measure. A change to prose
 documentation alone skips them, because none of them reads it. The `quality-gate` check itself

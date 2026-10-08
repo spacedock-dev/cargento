@@ -36,6 +36,7 @@ export interface BoardSnapshot {
 }
 
 const MAX_REPORTED_LISTENER_ERRORS = 10;
+const LISTENER_ERROR_WINDOW_MS = 60_000;
 
 const INITIAL: BoardSnapshot = Object.freeze({
   data: null,
@@ -66,6 +67,8 @@ export function createBoardStore(deps: {
 }) {
   let snapshot: BoardSnapshot = INITIAL;
   let listenerErrors = 0;
+  let windowStart = Number.NEGATIVE_INFINITY;
+  let windowReports = 0;
   const listeners = new Set<() => void>();
   const report =
     deps.reportError ??
@@ -75,9 +78,11 @@ export function createBoardStore(deps: {
 
   /* Each listener is called on its own so one that throws cannot turn an
      accepted body into a counted failure, starve the listeners after it, or
-     leave the refresh run that published it unreleased. Reports are capped,
-     because a listener that throws on every change would otherwise flood the
-     page's error handler at the poll rate; the count is kept regardless. */
+     leave the refresh run that published it unreleased. Reports are capped per
+     minute rather than for the store's life, because a listener that throws on
+     every change would otherwise flood the page's error handler at the poll
+     rate, while a new bug an hour later must still be seen; the count is kept
+     regardless. */
   function publish(next: BoardSnapshot): void {
     snapshot = next;
     for (const listener of [...listeners]) {
@@ -85,7 +90,13 @@ export function createBoardStore(deps: {
         listener();
       } catch (error) {
         listenerErrors += 1;
-        if (listenerErrors <= MAX_REPORTED_LISTENER_ERRORS) {
+        const at = deps.now();
+        if (at - windowStart >= LISTENER_ERROR_WINDOW_MS) {
+          windowStart = at;
+          windowReports = 0;
+        }
+        if (windowReports < MAX_REPORTED_LISTENER_ERRORS) {
+          windowReports += 1;
           try {
             report(error);
           } catch {

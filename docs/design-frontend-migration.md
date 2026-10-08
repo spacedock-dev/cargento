@@ -112,6 +112,52 @@ The contributor reloads for that instance. Worker failure stops Python too; inte
 failed startup clean only captured children and owned files. Production uses its committed page
 and content identity, with no development modules or HMR endpoint.
 
+## Typed client and store
+
+The React data layer lives in `frontend/src/{api,store,transport,storage}` and owns every request,
+timer, event stream and browser-storage key the page uses. Components subscribe to one external
+immutable store and never fetch, poll, open a stream or touch `localStorage` themselves. A runtime
+owner starts and disposes those resources explicitly. It is idempotent under StrictMode and HMR
+replacement, aborts only requests it started, closes only streams it opened, and holds the
+pending-action registry and the one per-document storage instance for as long as it lives.
+
+The legacy source wins wherever a prose description disagrees with it, because the port must keep
+rollback compatible. Measured differences from the first written port map, all resolved toward the
+legacy code: the guardrail cap keeps the first fifty valid rules on read and the last fifty on add;
+the twelve-hold select deferral resets only when a deferred commit is waiting, never past the cap;
+the usage load counts an empty-key entry against its 200 before dropping it; and a real navigation
+does not release the leader lease, because the stream reports closed before `pagehide` fires.
+The refresh controller, election and revision logic were checked differentially against the real
+legacy files over thousands of random schedules with no divergence.
+
+Rules the layer keeps that a green suite does not enforce on its own:
+
+- An action is sent once. A POST is never retried, a second focus press while one is in flight is
+  answered locally as throttled, and an empty harness, session or capability sends nothing.
+- A refusal, an outage and an unreadable body stay distinct from an empty healthy board, and the
+  last accepted data survives a failed read.
+- The exact harness and session pair is the identity of a request. The compatibility key
+  (`sid`, falling back to the display session) names storage entries only.
+- A read of any storage family writes nothing, so a mount or poll cannot trim or rewrite a value
+  the legacy page would still accept.
+
+The fixtures under `frontend/test/fixtures/client-contract/` are captured from the real
+application and HTTP server with models, quota fetching and native actions off, and a guard counts
+that none ran. `python3 scripts/regen_client_fixtures.py` rewrites them and `--check` fails when
+the server's answer has drifted. The Python suite regenerates every file and compares bytes, and
+the TypeScript suite replays each recorded request and classification, so a backend change breaks
+both sides. The standard library's error pages vary by Python version, so an error page is recorded
+as its status and the markers it must contain rather than as raw text, and the stream heartbeat is
+cut at its first frame so its bytes do not depend on reader speed. Routes that need a model, a
+native action or a per-run value are listed with their reason in the index instead of being
+written by hand.
+
+Storage conformance runs the real legacy page in Chromium against the real backend, in both
+directions for all twelve families. A direction is labelled by what exercised it: the page's own UI,
+passive page behaviour, a legacy function run in the page when no reachable control exists without a
+model or credential path, or a codec-level check. The receipt counts each kind and does not fold
+them into one total.
+
 ## Reader state and storage
 
 Each reader-state row specifies stable identity, stored state, retained deferral or a mechanism

@@ -819,7 +819,9 @@ try {
     assert.equal(requests.some(request => request.path === '/api/stream'), false);
     assert.equal(await codec(waiting, 'lease.release', [], { fresh: true }), true);
     assert.equal(await raw(waiting, KEYS.leader), null, 'release removes the key rather than writing a value');
-    await waiting.waitForFunction('nextIsLeader === true', undefined, { timeout: 4500 }).catch(async error => { console.error('DEBUG', await waiting.evaluate('[nextIsLeader, document.visibilityState, localStorage.getItem("cargento.next.leader")]')); throw error; });
+    await waiting.waitForFunction('nextIsLeader === true', undefined, { timeout: 4500 });
+    // Playwright delivers `request` events asynchronously, so the page flag can flip before the Node-side list sees the stream.
+    for (let waited = 0; waited < 3000 && !requests.some(request => request.path === '/api/stream'); waited += 50) await sleep(50);
     assert.ok(requests.some(request => request.path === '/api/stream'));
     assert.equal(JSON.parse(await raw(waiting, KEYS.leader)).id, await legacy(waiting, 'NEXT_TAB_ID'));
     proved('leader', 'codec->legacy', 'browser-legacy-passive', 'after a codec release the key is absent and the waiting legacy tab takes over and opens its stream on its next election');
