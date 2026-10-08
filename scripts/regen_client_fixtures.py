@@ -48,6 +48,7 @@ from cargento_runtime import annotations as annotation_store  # noqa: E402 - ski
 from cargento_runtime import observation as observation_module  # noqa: E402 - skill runtime path
 from cargento_runtime import reading_jobs as runtime_reading_jobs  # noqa: E402 - skill runtime path
 from cargento_runtime import reading_route as runtime_reading_route  # noqa: E402 - runtime path
+from cargento_runtime import tripwires as runtime_tripwires  # noqa: E402 - runtime path
 from cargento_runtime.aggregate import Application, HarnessSpec  # noqa: E402 - skill runtime path
 from cargento_runtime.config import build_runtime_config  # noqa: E402 - skill runtime path
 from cargento_runtime.http_api import CargentoHTTPServer  # noqa: E402 - skill runtime path
@@ -1140,7 +1141,12 @@ def reading_scenarios(recorder: Recorder, scratch: Scratch) -> None:
             # The route's own resolution, against no environment variables and no settings files,
             # which is the shipped default and so names the vendor.
             lambda provider, **_: real_destination(
-                provider, environ={}, root=empty_root, system="Linux"
+                # An account is named explicitly: with none, the route asks the POSIX password file,
+                # which Windows lacks, and then names no destination there at all.
+                provider,
+                environ={"HOME": "/synthetic/home", "USER": "fixture"},
+                root=empty_root,
+                system="Linux",
             ),
         )
     )
@@ -1426,15 +1432,26 @@ def tripwire_scenarios(recorder: Recorder, scratch: Scratch) -> None:
     finally:
         rig.close()
 
-    rig = Rig(scratch, "tripwire-blocked", tripwires_enabled=True, blocked_state=True)
+    # A state home that cannot hold the store fails in a different place on each platform
+    # (unreadable first on one, unwritable first on another), so each state is made at the one
+    # function the route calls for it, and the route's own answer to it is what is recorded.
+    rig = Rig(scratch, "tripwire-blocked", tripwires_enabled=True)
     try:
-        recorder.capture(
-            rig,
-            "tripwire-unwritable",
-            post("/api/tripwire", request),
-            "A state home that cannot hold the store reads as an unreadable one: "
-            "503, nothing saved.",
-        )
+        with mock.patch.object(runtime_tripwires, "load", lambda *_args, **_kwargs: None):
+            recorder.capture(
+                rig,
+                "tripwire-unreadable",
+                post("/api/tripwire", request),
+                "A store that cannot be read: 503, nothing saved, and the sentence says no stage "
+                "condition is being checked.",
+            )
+        with mock.patch.object(runtime_tripwires, "save", lambda *_args, **_kwargs: False):
+            recorder.capture(
+                rig,
+                "tripwire-unwritable",
+                post("/api/tripwire", request),
+                "A store that refuses the write: 503, nothing saved.",
+            )
     finally:
         rig.close()
 
