@@ -56,7 +56,8 @@ const step = async (name, run) => {
   }
 };
 
-const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
+// Doubled on a hosted runner, which draws frames and delivers events later; only a pass gets slower, the assertions after a pause are unchanged.
+const pause = ms => new Promise(resolve => setTimeout(resolve, process.env.CI ? ms * 2 : ms));
 
 const copy = await mkdtemp(join(tmpdir(), 'cargento-controls-browser-'));
 let dev, browser, shell, reduced;

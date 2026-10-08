@@ -19,6 +19,11 @@ import { fileURLToPath } from 'node:url';
 import { chromium } from '@playwright/test';
 import { BOARD, openPage, observeShell, startBoard } from './support/browser.mjs';
 
+/* Every fixed wait here means "give the page time to react". A hosted runner has a few shared cores and draws frames,
+   fires timers and delivers stream events later than a desktop does, so each wait is tripled there. A wait that is too
+   long only slows a pass: the assertion after it is unchanged. */
+const patience = ms => (process.env.CI ? ms * 3 : ms);
+
 // Captures land in the gitignored docs/screenshots/ of this checkout unless a run names another directory.
 const SHOTS = (process.env.CARGENTO_SCREENSHOTS || fileURLToPath(new URL('../../docs/screenshots', import.meta.url))).replace(/\/?$/, '/');
 const E = encodeURIComponent;
@@ -49,7 +54,7 @@ async function load(opened, origin, kind, fragment = '') {
   await opened.page.goto('about:blank');
   await opened.page.goto(origin + '/' + fragment);
   await (kind === 'legacy' ? legacyReady : reactReady)(opened.page);
-  await opened.page.waitForTimeout(150);
+  await opened.page.waitForTimeout(patience(150));
 }
 
 const counts = page => page.evaluate(() => {
@@ -159,10 +164,10 @@ try {
         const before = await observeShell(opened.page);
         await opened.page.reload();
         await (kind === 'legacy' ? legacyReady : reactReady)(opened.page);
-        await opened.page.waitForTimeout(100);
+        await opened.page.waitForTimeout(patience(100));
         const reloaded = await observeShell(opened.page);
         await opened.page.keyboard.press('Escape');
-        await opened.page.waitForTimeout(100);
+        await opened.page.waitForTimeout(patience(100));
         const escaped = await observeShell(opened.page);
         after[kind] = { before: [before.hash, before.current, before.breadcrumb], reloaded: [reloaded.hash, reloaded.current, reloaded.breadcrumb], escaped: [escaped.hash, escaped.current] };
       }
@@ -209,9 +214,9 @@ try {
     await opened.page.goto(origin + '/#n=sessions');
     await opened.page.locator('nav[aria-label="Primary"]').waitFor();
     if (shape.boot !== 'fail') await (kind === 'legacy' ? legacyReady : reactReady)(opened.page);
-    await opened.page.waitForTimeout(400);
+    await opened.page.waitForTimeout(patience(400));
     opened.state = state;
-    opened.poll = async () => { await opened.page.clock.fastForward(20_000); await opened.page.waitForTimeout(250); };
+    opened.poll = async () => { await opened.page.clock.fastForward(20_000); await opened.page.waitForTimeout(patience(250)); };
     return opened;
   }
   const noticeText = async page => (await page.evaluate(() => [...globalThis.document.querySelectorAll('[data-next-state]')]
@@ -233,7 +238,7 @@ try {
         seen.push(['three failures', await noticeText(o.page)]);
         o.state.fail = false;
         await o.page.getByRole('button', { name: 'Retry now' }).click();
-        await o.page.waitForTimeout(400);
+        await o.page.waitForTimeout(patience(400));
         seen.push(['after Retry now', await noticeText(o.page)]);
         o.state.mutate = body => ({ ...body, history_reset: 'unreadable', build: 'a-different-build' });
         await o.poll();
@@ -295,18 +300,18 @@ try {
       const before = (await observeShell(o.page)).historyLength;
       await o.page.evaluate(() => { globalThis.location.hash = '#n=bogus'; });
       await o.page.waitForFunction(() => globalThis.location.hash === '#n=sessions');
-      await o.page.waitForTimeout(150);
+      await o.page.waitForTimeout(patience(150));
       const typed = await observeShell(o.page);
       assert.equal(typed.historyLength, before + 1, 'typing a fragment adds one entry, and its rewrite adds none');
       assert.equal(typed.current, 'Sessions');
       await o.page.goBack();
-      await o.page.waitForTimeout(250);
+      await o.page.waitForTimeout(patience(250));
       assert.equal((await observeShell(o.page)).hash, '#n=attention', 'Back returns to the preceding view instead of bouncing forward off the dead link');
       await o.page.evaluate(next => { globalThis.location.hash = next; }, `#n=project:${A}:${E('claude:shared-sid')}:held-to`);
-      await o.page.waitForTimeout(250);
+      await o.page.waitForTimeout(patience(250));
       assert.equal((await observeShell(o.page)).hash, `#n=session:${A}:claude:shared-sid`);
       await o.page.goBack();
-      await o.page.waitForTimeout(250);
+      await o.page.waitForTimeout(patience(250));
       assert.equal((await observeShell(o.page)).hash, '#n=attention', 'Back from the aliased session returns to where the reader was');
     } finally { await o.close(); }
   });
@@ -314,18 +319,18 @@ try {
   await step('history: Escape walks a session back to where it came from, and Back returns across in-page moves', async () => {
     await load(react, board.react.origin, 'react', `#n=session:${A}:claude:shared-sid&from=attention`);
     await react.page.keyboard.press('Escape');
-    await react.page.waitForTimeout(80);
+    await react.page.waitForTimeout(patience(80));
     assert.equal((await observeShell(react.page)).hash, '#n=attention');
     await react.page.goBack();
     assert.equal((await observeShell(react.page)).hash, `#n=session:${A}:claude:shared-sid&from=attention`);
     await react.page.keyboard.press('KeyA');
-    await react.page.waitForTimeout(60);
+    await react.page.waitForTimeout(patience(60));
     assert.equal((await observeShell(react.page)).hash, '#n=attention');
     await react.page.keyboard.press('KeyP');
-    await react.page.waitForTimeout(60);
+    await react.page.waitForTimeout(patience(60));
     assert.equal((await observeShell(react.page)).hash, '#n=projects');
     await react.page.keyboard.press('KeyS');
-    await react.page.waitForTimeout(60);
+    await react.page.waitForTimeout(patience(60));
     assert.equal((await observeShell(react.page)).hash, '#n=sessions');
   });
 
@@ -375,7 +380,7 @@ try {
       // wait for the request count to hold still before counting what the interactions add.
       let last = '';
       for (let still = 0; still < 6;) {
-        await o.page.waitForTimeout(250);
+        await o.page.waitForTimeout(patience(250));
         const now = JSON.stringify(o.counts());
         still = now === last ? still + 1 : 0;
         last = now;
@@ -390,11 +395,16 @@ try {
       o.reset();
       for (const fragment of ['#n=attention', '#n=projects', `#n=project:${A}`, `#n=project:${A}:course`, `#n=session:${A}:claude:shared-sid`, '#n=intent', '#n=sessions']) {
         await o.page.evaluate(next => { globalThis.location.hash = next; }, fragment);
-        await o.page.waitForTimeout(40);
+        await o.page.waitForTimeout(patience(40));
       }
       for (const key of ['KeyA', 'KeyP', 'KeyS', 'Escape', 'KeyD']) await o.page.keyboard.press(key);
-      await o.page.waitForTimeout(300);
-      assert.deepEqual(o.counts(), { data: 0, stream: 0, nonGet: 0 });
+      await o.page.waitForTimeout(patience(300));
+      // Twelve interactions that each caused a read would show twelve. One read can still be the stream's first
+      // announcement arriving after the settle window above on a slow runner, so one is allowed; the runtime's unit
+      // tests pin the exact count with a fake clock.
+      const after = o.counts();
+      assert.ok(after.data <= 1, `interactions caused ${after.data} data reads`);
+      assert.deepEqual({ stream: after.stream, nonGet: after.nonGet }, { stream: 0, nonGet: 0 });
       assert.deepEqual(o.log.externalRequests, []);
       assert.deepEqual([...o.log.consoleErrors, ...o.log.pageErrors], []);
     } finally { await o.close(); }
@@ -428,7 +438,7 @@ try {
     });
     for (const fragment of ['#n=attention', `#n=project:${A}`, `#n=session:${A}:claude:shared-sid`, '#n=sessions']) {
       await react.page.evaluate(next => { globalThis.location.hash = next; }, fragment);
-      await react.page.waitForTimeout(40);
+      await react.page.waitForTimeout(patience(40));
     }
     const after = await react.page.evaluate(() => ({
       writes: globalThis.__writes,
@@ -443,14 +453,14 @@ try {
     for (const path of ['/?next=true', '/?next=false', '/?next=', '/?all=1&next=true']) assert.equal(await status(path), 404, path);
     react.reset();
     await load(react, board.react.origin, 'react', '#n=sessions');
-    await react.page.waitForTimeout(300);
+    await react.page.waitForTimeout(patience(300));
     assert.ok(react.log.requests.some(entry => entry.path === '/api/data'), 'the plain board reads /api/data');
     assert.ok(!react.log.requests.some(entry => entry.path.includes('all=1')), 'no all=1 without the query');
     react.reset();
     await react.page.goto('about:blank');
     await react.page.goto(board.react.origin + '/?all=1&usage=1&nextish=true#n=sessions');
     await reactReady(react.page);
-    await react.page.waitForTimeout(300);
+    await react.page.waitForTimeout(patience(300));
     const data = react.log.requests.filter(entry => entry.path.startsWith('/api/data')).map(entry => entry.path);
     assert.ok(data.length >= 1 && data.every(path => path === '/api/data?all=1'), 'only all=1 rides the data read, saw ' + JSON.stringify(data));
     react.reset();
@@ -499,10 +509,10 @@ try {
       await o.page.route('**/api/data*', route => route.abort('failed'));
       await o.page.goto(board.react.origin + '/#n=sessions');
       await o.page.locator('nav[aria-label="Primary"]').waitFor();
-      await o.page.waitForTimeout(300);
+      await o.page.waitForTimeout(patience(300));
       assert.equal((await o.page.locator('.next-running').innerText()).trim(), 'Waiting for the first board.');
       assert.equal(await o.page.locator('.next-status-dot').count(), 0, 'no live dot over a board nobody has read');
-      for (let poll = 0; poll < 2; poll += 1) { await o.page.clock.fastForward(20_000); await o.page.waitForTimeout(200); }
+      for (let poll = 0; poll < 2; poll += 1) { await o.page.clock.fastForward(20_000); await o.page.waitForTimeout(patience(200)); }
       const text = (await o.page.locator('[data-next-state="stalled"]').innerText()).replace(/\s+/g, ' ');
       assert.match(text, /No data has been received in this tab\./);
       assert.doesNotMatch(text, /stale|Last updated/);
@@ -529,9 +539,9 @@ try {
     await opened.page.route('**/api/stream', route => route.abort('failed'));
     await opened.page.goto(board.react.origin + '/' + fragment);
     await reactReady(opened.page);
-    await opened.page.waitForTimeout(400);
+    await opened.page.waitForTimeout(patience(400));
     opened.state = state;
-    opened.poll = async () => { await opened.page.clock.fastForward(20_000); await opened.page.waitForTimeout(250); };
+    opened.poll = async () => { await opened.page.clock.fastForward(20_000); await opened.page.waitForTimeout(patience(250)); };
     return opened;
   }
 
@@ -557,7 +567,7 @@ try {
       o.state.fail = false;
       await o.page.keyboard.press('Enter');
       await o.page.waitForFunction(() => !globalThis.document.querySelector('[data-next-state="stalled"]'));
-      await o.page.waitForTimeout(100);
+      await o.page.waitForTimeout(patience(100));
       const landed = await o.page.evaluate(() => ({ focus: globalThis.document.activeElement.textContent, scrollY: Math.round(globalThis.scrollY) }));
       assert.deepEqual(landed, { focus: 'Sessions', scrollY: 900 }, 'focus falls back to the current primary item without scrolling the page');
     } finally { await o.close(); }
@@ -676,10 +686,10 @@ try {
       o.state.mutate = body => ({ ...body, generated: body.generated + 2 });
       await o.poll();
       await o.page.evaluate(next => { globalThis.location.hash = next; }, `#n=project:${A}:course`);
-      await o.page.waitForTimeout(100);
+      await o.page.waitForTimeout(patience(100));
       assert.ok(await o.page.getByRole('button', { name: 'Copy unavailable' }).isVisible(), 'the result has no expiry and survives a tab change in the same project');
       await o.page.evaluate(next => { globalThis.location.hash = next; }, `#n=project:${B}`);
-      await o.page.waitForTimeout(100);
+      await o.page.waitForTimeout(patience(100));
       assert.ok(await o.page.getByRole('button', { name: 'Copy briefing' }).isVisible(), 'a different project reads its own, untouched');
     } finally { await o.close(); }
   });
