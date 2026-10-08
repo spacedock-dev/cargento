@@ -286,8 +286,42 @@ save is one POST and never retried, and a save in flight when the reader navigat
 What the Analyze step builds on is exported from `frontend/src/intent`: `DirectionQuestion` (Keep settles
 through the annotation route until a reading is supplied), `openPendingDirection` for Update intent
 instead (one direction read, nothing saved), `intentForReading`, the live monitor switch and the shared
-reading-feedback lane. Not ported here: the per-entry Add to my intent buttons of the legacy activity list,
-which belong with the numbered activity list that the React page does not have yet.
+reading-feedback lane. The per-entry Add to my intent buttons of the legacy activity list are drawn by the
+Drift step's numbered activity list.
+
+## The Drift card, Analyze and Steer back
+
+The Drift section of the session page (the live and analysis levels, the reading card, Analyze and its
+consent, the result, Cancel, Steer back and the departures raised while the reader was away) and the
+numbered activity list it cites are ports of the drift half of `next-cockpit.js`. The pure parts (the
+reading shape contract, result wording, route and refusal ranking, level, correction arithmetic, the
+numbered list) were run next to the lifted legacy source over hundreds of generated cases each; the flip
+ledger and job cues are covered by behaviour tests. One browser proof serves a scripted board to the legacy
+page and the React page and compares the whole card in every state: no reading, pending, withheld,
+completed, failed, cancelling, superseded, a gap and the lane off.
+
+Only an explicit press after consent starts a reading. Mounting, StrictMode, a poll, a reconnect, a route
+change, hover, focus and a key press send nothing, and every POST is one attempt that is never retried. One
+exception is stated rather than hidden: a Steer back box the reader opened and left unedited composes again,
+once, when the record it was composed from changes. That is a deterministic server read of the correction the
+reader asked for, never a model call; a closed box and an edited one send nothing. A press sends what the card
+it was made on showed: the receiver, both destinations, the model and the revision floor as drawn. Where the
+board has moved since (a card can be held while a board arrives), nothing is sent and the card says why: a
+changed destination or reader, or the revision sentence. A server refusal of a changed destination answers
+with the stated reason and sends nothing more. A refusal on an adopted prompt is drawn from the shared request lane the Keep
+action writes. Steer back composes an editable correction (2000 code points) that is only ever copied, never
+written to the session; the proof drives typing, caret, selection and native undo through board ticks, IME
+composition through the debugger protocol, a paste over the cap, and a pointer held through the click.
+
+Deviations, each recorded rather than hidden. The card, the numbered list and the departures hold the last
+board they drew while the reader is in the correction box (untouched or edited), composing, or holding a
+pointer on a control they left it for, and say "Updates are paused" instead of the legacy whole-page queue,
+because the shell's display gate is wired to open selects. The box keeps its node, caret, selection and undo
+for as long as it holds focus; a stale mark that moves it after the reader leaves it remounts the box, and the
+words survive but native undo does not. A failed read of the project's observed record says "could not be
+read" where the legacy page, which reads only the focused session's record, says "not read yet": the Intent
+panel here reads both, and neither sentence is an empty record. Dismissal has no legacy web surface (nothing in
+the web assets calls the dismiss route), so none was built.
 
 ## Reader state and storage
 

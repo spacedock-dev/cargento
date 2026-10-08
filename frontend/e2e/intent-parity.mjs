@@ -387,7 +387,9 @@ try {
     });
     // Stand outside the page: the backend only recollects when something reads it.
     await call(board.react.origin, 'GET', '/api/data');
-    await o.page.waitForFunction(() => true, undefined, { timeout: patience(100) });
+    // A beat for the announcement to travel. This was a `waitForFunction(() => true)` that waits for a frame,
+    // which a page in the background does not draw within 100 ms on a loaded machine.
+    await new Promise((resolve) => setTimeout(resolve, patience(100)));
     const until = Date.now() + patience(15000);
     while (o.counts().data <= before && Date.now() < until)
       await new Promise((r) => setTimeout(r, 100));
@@ -670,7 +672,12 @@ try {
         ['/api/direction', '/api/direction'],
         'the first Keep settled something or sent more than the reads',
       );
-      await react.page.locator('[data-next-cockpit-action="direction-add"]').click();
+      // The question's own Add: the numbered activity list draws one beside every later direction too.
+      await react.page
+        .locator(
+          '[data-next-cockpit-direction-question] [data-next-cockpit-action="direction-add"]',
+        )
+        .click();
       await react.page.waitForSelector('[data-next-cockpit-direction-key]');
       assert.equal(
         await react.page

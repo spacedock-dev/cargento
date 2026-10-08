@@ -24,7 +24,7 @@ describe('a view this step does not own says so, and names the step that does', 
     expect(document.body.textContent).not.toContain('Session views are not available');
   });
 
-  it('draws the Sessions screen, the session page and the Intent panel themselves, with only the drift reading left as a stated slot', async () => {
+  it('draws the Sessions screen, the session page, the Intent panel and the drift reading themselves, with no stated slot left', async () => {
     await open('#n=sessions');
     expect(document.querySelector('[data-next-placeholder]')).toBeNull();
     expect(document.querySelectorAll('article.next-operation-row')).toHaveLength(
@@ -32,9 +32,8 @@ describe('a view this step does not own says so, and names the step that does', 
     );
     await open('#n=session:alpha%2Fapp:claude:shared-sid');
     expect(document.querySelector('article.next-session-detail')).not.toBeNull();
-    expect(document.querySelector('[data-next-placeholder]')?.getAttribute('data-next-owner')).toBe(
-      'drift',
-    );
+    expect(document.querySelector('[data-next-placeholder]')).toBeNull();
+    expect(document.querySelector('.next-session-drift')).not.toBeNull();
   });
 
   it('keeps one owner per view in a table the later steps read', () => {

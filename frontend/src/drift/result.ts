@@ -1,0 +1,414 @@
+import { nextNumber } from '../api/bootstrap';
+import type { Annotation } from '../intent/annotation';
+import { personAuthored, type WorkEntry } from '../intent/work';
+import { clock, type Row } from '../observed';
+import { revisionSuperseded } from '../sessions/rows';
+import {
+  CLAIMS,
+  CONSISTENT,
+  DEPARTURE,
+  NOT_REACHED,
+  RESULT_CANT_TELL,
+  RESULT_CLAIM_TAIL,
+  RESULT_NOTHING_SHOWS,
+  UNSUPPORTED,
+  UNVERIFIABLE,
+} from './sentences';
+import {
+  agentMessage,
+  evidenceAt,
+  isOutcomeLine,
+  windowPartial,
+  type Criterion,
+  type Shape,
+} from './shape';
+
+/* What the result stage says about a reading that survived the shape contract: where each line points, the
+   answer over all of them, where the work went and why a result is stale. Each function returns the words
+   and the numbers the words are made of, so the component that draws them cannot say a figure the list did
+   not give. The legacy cockpit's `nextCockpitResult*` and `nextDriftAnswer` are the oracle. */
+
+export type Numbers = ReadonlyMap<string, number>;
+export type EntryIndex = ReadonlyMap<string, WorkEntry>;
+
+export function indexEntries(entries: readonly WorkEntry[]): Map<string, WorkEntry> {
+  return new Map(entries.map((entry) => [String(entry.id || ''), entry]));
+}
+
+/* Each line's words, verbatim from the ruling, and never "Done" or a check mark. The number is the activity
+   list's own, so the "#<n>" is a row on screen; an entry the list does not number keeps its time instead.
+   `arrived` is the failed-check answer's: the time it falls back to is when the result arrived, not when the
+   check was called. */
+export function resultWhere(
+  entry: WorkEntry | null | undefined,
+  numbers: Numbers,
+  arrived = false,
+): string {
+  if (!entry) return '';
+  const n = numbers.get(String(entry.id || ''));
+  if (n !== undefined) return `#${String(n)}`;
+  const at = arrived ? evidenceAt(entry) : nextNumber(entry.at);
+  return at !== null && at > 0 ? clock(at) : '';
+}
+
+/* The claims row's four states, each naming the agent's message by the list's number. "Not shown" says the
+   record read is the board's recent tail, so it is about what was read, never that the thing did not
+   happen. */
+export function claimStatus(row: Criterion, numbers: Numbers, short: boolean): string {
+  const said = resultWhere(row.claimEntry, numbers);
+  const record = resultWhere(row.recordEntry, numbers);
+  const what = said ? `What the agent said at ${said}` : 'What the agent said';
+  if (row.result === DEPARTURE) {
+    return `${what} is contradicted${record ? ` at ${record}` : ''}`;
+  }
+  if (row.result === UNSUPPORTED) {
+    return short
+      ? `${what} is not shown by the record`
+      : `${what} is not shown by the record. ${RESULT_CLAIM_TAIL}`;
+  }
+  if (row.result === CONSISTENT && record) {
+    const tool =
+      row.recordEntry &&
+      (String(row.recordEntry.type || '') === 'tool_report' || row.recordEntry.subject === 'check');
+    return `${what} is shown at ${record}${tool && !short ? ', as the tool reported; not inspected' : ''}`;
+  }
+  return row.why || row.limit ? RESULT_CANT_TELL : RESULT_NOTHING_SHOWS;
+}
+
+export function resultStatus(
+  row: Criterion,
+  numbers: Numbers,
+  byId: EntryIndex,
+  short = false,
+): string {
+  if (row.key === CLAIMS) return claimStatus(row, numbers, short);
+  if (row.result === NOT_REACHED) return 'Not reached at this stop';
+  if (row.result === DEPARTURE) {
+    const where = resultWhere(byId.get(String(row.citedIds[0] ?? '')), numbers);
+    return where ? `Departs; evidence ${where}` : 'Departs';
+  }
+  if (row.result === CONSISTENT && row.restsOn) {
+    const where = resultWhere(row.restsOnEntry, numbers);
+    if (where) {
+      /* `short` is the checklist's line in view: the source stays named, and the qualifier is said in full in
+         the line's Evidence. */
+      const who = row.restsOn === 'message' ? 'the agent' : 'the session';
+      if (short) {
+        return row.restsOn === 'tool'
+          ? `Consistent with ${where}`
+          : `Consistent with what ${who} said at ${where}`;
+      }
+      return row.restsOn === 'tool'
+        ? `Consistent with ${where}, as the tool reported; not inspected`
+        : `Consistent with what ${who} said at ${where}; not a check`;
+    }
+  }
+  /* A consistent the page cannot place is no claim it can word, so it is said as what it is to the reader:
+     nothing shown. */
+  return row.why || row.limit
+    ? RESULT_CANT_TELL
+    : row.citedIds.length
+      ? "Can't tell: what was read does not settle this"
+      : RESULT_NOTHING_SHOWS;
+}
+
+export type ResultState = 'departs' | 'unshown' | 'consistent' | 'cant-tell' | 'not-reached';
+
+export function resultState(row: Criterion): ResultState {
+  if (row.key === CLAIMS) {
+    return row.result === DEPARTURE
+      ? 'departs'
+      : row.result === UNSUPPORTED
+        ? 'unshown'
+        : row.result === CONSISTENT && row.recordEntry
+          ? 'consistent'
+          : 'cant-tell';
+  }
+  return row.result === DEPARTURE
+    ? 'departs'
+    : row.result === NOT_REACHED
+      ? 'not-reached'
+      : row.result === CONSISTENT && row.restsOn
+        ? 'consistent'
+        : 'cant-tell';
+}
+
+/* The claims row as the result draws it: not where the agent made no claim, which the reading says as its
+   own `unverifiable` with no reason. */
+export function claimsDrawn(shape: Shape): Criterion[] {
+  return shape.criteria.filter((row) => row.key === CLAIMS && row.result !== UNVERIFIABLE);
+}
+
+/* The failed checks after the words, by the server's rule (`_failed_checks`): one person-message boundary for
+   the answer and the correction, mirroring reading.py. */
+export function failedChecksAfterPerson(
+  entries: readonly WorkEntry[],
+  anchor: unknown = null,
+  floor = 0,
+): WorkEntry[] {
+  const times = entries
+    .filter((entry) => entry && entry.type === 'user_message')
+    .map((entry) => nextNumber(entry.at))
+    .filter((at): at is number => at !== null && at > 0);
+  const last = nextNumber(anchor);
+  if (last !== null && last > 0) times.push(last);
+  if (!times.length) return [];
+  const start = Math.max(floor || 0, ...times);
+  return entries.filter(
+    (entry) =>
+      entry &&
+      entry.type === 'tool_report' &&
+      entry.subject === 'check' &&
+      entry.result === 'failed' &&
+      (evidenceAt(entry) || 0) > start,
+  );
+}
+
+export type Answer =
+  | { readonly kind: 'departs'; readonly count: number; readonly departures: readonly Criterion[] }
+  | { readonly kind: 'failed-check'; readonly failed: WorkEntry }
+  | { readonly kind: 'not-reached' }
+  | { readonly kind: 'cant-tell' }
+  | { readonly kind: 'nothing-found' };
+
+/* Item 14's answer reducer, over the rows after every page rule. Any valid departure departs, whatever the
+   other lines say; otherwise a failed check in the reading's window; otherwise any line without a valid
+   verdict cannot tell; otherwise nothing was found. A reading with no outcome line cannot tell either: the
+   goal row alone is not an answer against what the work was for. The answer is about the intent alone, so
+   the claims row never counts as departing from it and never holds "Nothing found" back. */
+export function driftAnswer(
+  shape: Shape,
+  entries: readonly WorkEntry[],
+  scan: Row | null | undefined = null,
+): Answer {
+  const intent = shape.criteria.filter((row) => row.key !== CLAIMS);
+  const departures = intent.filter((row) => row.result === DEPARTURE);
+  if (departures.length) return { kind: 'departs', count: departures.length, departures };
+  if (!intent.some((row) => isOutcomeLine(row.key))) return { kind: 'cant-tell' };
+  const failed = failedChecksAfterPerson(entries, scan?.['last_user_at'], shape.windowStart || 0);
+  const first = failed[0];
+  if (first) {
+    const latest = failed.reduce(
+      (a, b) => ((evidenceAt(b) || 0) >= (evidenceAt(a) || 0) ? b : a),
+      first,
+    );
+    return { kind: 'failed-check', failed: latest };
+  }
+  const verdict = (row: Criterion) => row.result === CONSISTENT && Boolean(row.restsOn);
+  if (
+    intent.some((row) => row.result === NOT_REACHED) &&
+    intent.every((row) => verdict(row) || row.result === NOT_REACHED)
+  ) {
+    return { kind: 'not-reached' };
+  }
+  if (!intent.some((row) => isOutcomeLine(row.key)) || !intent.every(verdict)) {
+    return { kind: 'cant-tell' };
+  }
+  return { kind: 'nothing-found' };
+}
+
+/* These are recorded event times, never the reading's time or a claim about when intent changed. A date and
+   UTC keep older evidence unambiguous. */
+export function recordedTime(at: unknown): string {
+  const epoch = nextNumber(at);
+  if (epoch === null || epoch <= 0) return 'time not recorded';
+  const date = new Date(epoch * 1000);
+  return Number.isFinite(date.getTime())
+    ? `${date
+        .toISOString()
+        .replace(/\.\d{3}Z$/, '')
+        .replace('T', ' ')} UTC`
+    : 'time not recorded';
+}
+
+export interface WorkGroup {
+  readonly folder: string;
+  readonly files: number;
+  readonly references: string;
+}
+
+export interface ResultWork {
+  readonly groups: readonly WorkGroup[];
+  /** Written files the scan counted and did not list, or 0. */
+  readonly more: number;
+  /** The scan's total for this window is unavailable or smaller than what is listed. */
+  readonly unavailable: boolean;
+}
+
+/* Where the work went: the written paths in this analysis window, grouped by folder without a model. A path
+   with no folder is the working directory. The listing cannot count its own omissions; the scan supplies a
+   distinct-path count for the same cutoff. A saved result keeps that cutoff even when the current intent
+   window moves. */
+export function resultWork(
+  entries: readonly WorkEntry[],
+  numbers: Numbers,
+  scan: Row | null | undefined,
+  resultWindow: number | null,
+): ResultWork | null {
+  const writes = entries.filter(
+    (entry) =>
+      entry &&
+      entry.type === 'tool_report' &&
+      entry.subject === 'write' &&
+      (nextNumber(entry.at) ?? 0) > 0 &&
+      (resultWindow === null || (nextNumber(entry.at) ?? 0) >= resultWindow),
+  );
+  const written = scan?.['window_written_paths'];
+  const counted =
+    scan !== null &&
+    scan !== undefined &&
+    nextNumber(scan['window_start']) === resultWindow &&
+    Number.isSafeInteger(written) &&
+    (written as number) >= 0
+      ? (written as number)
+      : null;
+  if (!writes.length && !counted) return null;
+  const groups = new Map<string, WorkEntry[]>();
+  for (const entry of writes) {
+    const path = String(entry.summary || '');
+    const cut = path.lastIndexOf('/');
+    const folder = cut > 0 ? path.slice(0, cut) : '';
+    const held = groups.get(folder);
+    if (held) held.push(entry);
+    else groups.set(folder, [entry]);
+  }
+  const ordered = [...groups].sort(
+    (a, b) => b[1].length - a[1].length || (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0),
+  );
+  const listed = ordered.map(([folder, rows]): WorkGroup => {
+    const numbered = rows
+      .filter((entry) => numbers.has(String(entry.id || '')))
+      .map((entry) => `#${String(numbers.get(String(entry.id || '')))}`);
+    const unnumbered = rows.length - numbered.length;
+    const references = [
+      ...numbered,
+      ...(unnumbered ? [`${String(unnumbered)} not numbered in the current view`] : []),
+    ];
+    return { folder, files: rows.length, references: references.join(', ') };
+  });
+  const more = counted !== null && counted >= writes.length ? counted - writes.length : 0;
+  return {
+    groups: listed,
+    more,
+    unavailable: !more && (counted === null || counted < writes.length),
+  };
+}
+
+export interface Stale {
+  readonly kind: 'intent' | 'work';
+  readonly head: string;
+  /** The revision sentence, only where the words changed. */
+  readonly superseded: string;
+}
+
+/* The two stale states of item 6, from the revision the reading read and the newest entry it saw
+   (`evidence_through`). The words changing says why with the revision sentence the raises use; new work is
+   any entry after the reading's newest. A reading stored with no such time counts from when it read instead,
+   so an older row still owns up to work that landed after it. */
+export function resultStale(
+  shape: Shape,
+  raw: Row | null | undefined,
+  annotation: Annotation | null | undefined,
+  entries: readonly WorkEntry[],
+): Stale | null {
+  const current = nextNumber(annotation?.['revision']);
+  const superseded = revisionSuperseded('This reading', shape.revisionRead, current);
+  const evidence = nextNumber(raw?.['evidence_through']);
+  const through = evidence !== null ? evidence : nextNumber(raw?.['read_at']);
+  const newer =
+    !superseded &&
+    through !== null &&
+    entries.some((entry) => (nextNumber(entry?.at) || 0) > through);
+  if (!superseded && !newer) return null;
+  const readAt = nextNumber(raw?.['read_at']);
+  const after =
+    !superseded && readAt !== null
+      ? entries
+          .filter((entry) => personAuthored(entry))
+          .find((entry) => (nextNumber(entry.at) || 0) > readAt)
+      : null;
+  const head = superseded
+    ? 'Your intent changed after this analysis.'
+    : after
+      ? `Read before your message at ${clock(Number(after.at))}. New work since this analysis.`
+      : 'New work since this analysis.';
+  return { kind: superseded ? 'intent' : 'work', head, superseded };
+}
+
+/* What arrived since a reading read, counted from the entries and never authored. */
+export function arrivedLine(
+  annotation: Annotation | null | undefined,
+  entries: readonly WorkEntry[],
+): string {
+  const assessment = annotation?.['assessment'];
+  const at = nextNumber(
+    assessment && typeof assessment === 'object' ? (assessment as Row)['read_at'] : null,
+  );
+  if (!(at !== null && at > 0)) return '';
+  const arrived = entries.filter((entry) => (evidenceAt(entry) || 0) > at);
+  const checks = arrived.filter(
+    (entry) => entry.type === 'tool_report' && entry.subject === 'check',
+  ).length;
+  const writes = arrived.filter(
+    (entry) => entry.type === 'tool_report' && entry.subject === 'write',
+  ).length;
+  const messages = arrived.filter((entry) =>
+    ['user_message', 'agent_message'].includes(entry.type),
+  ).length;
+  const parts = (
+    [
+      [checks, 'check'],
+      [writes, 'file write'],
+      [messages, 'message'],
+    ] as const
+  )
+    .filter(([count]) => count > 0)
+    .map(([count, label]) => `${String(count)} ${label}${count === 1 ? '' : 's'}`);
+  return parts.length ? `${parts.join(', ')} arrived since this analysis.` : '';
+}
+
+/* How far the message tail reached, said as clauses. Coverage that was not recorded says so rather than
+   reading as complete. */
+export function coverageLine(shape: Shape): string {
+  const measured = shape.coverage;
+  const clauses: string[] = [];
+  if (!measured || measured.tail_truncated === null) {
+    clauses.push('Coverage was not recorded for this reading.');
+  } else if (windowPartial(shape)) {
+    const start = measured.tail_start ?? 0;
+    clauses.push(
+      `Message tail starts ${clock(start)}; about ${String(Math.max(1, Math.ceil((start - (shape.windowStart ?? 0)) / 60)))} min at the start of the window were outside it. The check listing can include older work.`,
+    );
+  } else if (measured.tail_truncated && measured.tail_start === null) {
+    clauses.push('The message tail was truncated; its start time was not recorded.');
+  }
+  if (measured?.unlisted) {
+    clauses.push(
+      `${String(measured.unlisted)} ${measured.unlisted === 1 ? 'pass or write in the window was' : 'passes or writes in the window were'} not listed.`,
+    );
+  }
+  if (measured?.unread_checks) {
+    clauses.push(
+      `${String(measured.unread_checks)} ${measured.unread_checks === 1 ? 'check' : 'checks'} had no room in the reading.`,
+    );
+  }
+  if (measured && ['excerpt', 'unroomed'].includes(measured.goal_source)) {
+    clauses.push(
+      'The adopted source could not be read whole; this reading used the saved excerpt. Put the instruction you meant in the goal box, then analyze again.',
+    );
+  } else if (measured && measured.goal_source === 'whole') {
+    clauses.push('The adopted source was found; Analyze read up to 1,000 characters.');
+  }
+  return clauses.join(' ');
+}
+
+/* Whether an entry is one of the agent's own words, for the evidence rows' kind. */
+export function entryKind(entry: WorkEntry): string {
+  return entry.subject === 'check'
+    ? `${entry.result || 'Recorded'} check`
+    : entry.subject === 'write'
+      ? 'File write'
+      : agentMessage(entry)
+        ? 'Agent message'
+        : String(entry.type || 'Recorded entry');
+}

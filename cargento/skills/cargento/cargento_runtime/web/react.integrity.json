@@ -1,8 +1,8 @@
 {
   "document": {
-    "bytes": 862432,
+    "bytes": 1025784,
     "file": "react.html",
-    "sha256": "5f133c6578fa79ab00a0ff3e12af9d3533b8317d88daef227d8aa7548efa2973"
+    "sha256": "c854bcfeb223e7b2a8c769529c5fa3c408ca0c472c6a102146a7b0cff94de61d"
   },
   "format": 1,
   "frontend": "react",
@@ -305,6 +305,130 @@
         "sha256": "e1a5710ffa0c16008019874b96e3a86c48ebf5512476740182e550ed7d0a46b3"
       },
       {
+        "file": "frontend/src/drift/Departures.tsx",
+        "sha256": "26990239fd18ac6ea3e900794ec73bcd460bbfb54159af43cd58475d928fdf62"
+      },
+      {
+        "file": "frontend/src/drift/DriftBody.tsx",
+        "sha256": "7d6b65f59d62b56ef74ffc8a1ec8b528ad8a9cfe04b9c807a5a659f052b75ab1"
+      },
+      {
+        "file": "frontend/src/drift/DriftLevelView.tsx",
+        "sha256": "792592edd0aabe2ef360aa574f6ee47e76b69c3169b5d9f450fe04b0ab6ec85f"
+      },
+      {
+        "file": "frontend/src/drift/DriftProvider.tsx",
+        "sha256": "88d6695b10ba3d5ac7198be32249d498ccd72be440cc97e49033401459ba9900"
+      },
+      {
+        "file": "frontend/src/drift/Evidence.tsx",
+        "sha256": "c25a7f24f7317cdbac4d1ac508cc0f453ef33bce6b572c62341c3fac412830c4"
+      },
+      {
+        "file": "frontend/src/drift/ReadingControl.tsx",
+        "sha256": "8dafbd1585a27b57d9b0646d4f64eae723fad094490edb396344f22d175f7e27"
+      },
+      {
+        "file": "frontend/src/drift/ReadingResult.tsx",
+        "sha256": "60f69ce1fc0a1ebb21920dde5f7e04233dbde88c3de3bc3446299d3573d55f25"
+      },
+      {
+        "file": "frontend/src/drift/SteerBack.tsx",
+        "sha256": "531d49b9bc8f5edf502a7f1949209f16dbacaa9958d95273fe8d7d4d619b4074"
+      },
+      {
+        "file": "frontend/src/drift/Why.tsx",
+        "sha256": "935a792e88d1df881b4a346581e3e224431ba194d512b3728448d1f6efe93c03"
+      },
+      {
+        "file": "frontend/src/drift/WorkListView.tsx",
+        "sha256": "d4c1676a10d00e2a2480f8d11f1d40846e42bf8b9534d1a43d2668643adc9f78"
+      },
+      {
+        "file": "frontend/src/drift/actions.ts",
+        "sha256": "e5055bf9782bf34a6921642759cd192d62484253d616de70077336b5796bd6b4"
+      },
+      {
+        "file": "frontend/src/drift/context.ts",
+        "sha256": "c566f6d49fe81ad7f76e6cb1de795ad4d83818499ee97478b12e67ea5c77b03c"
+      },
+      {
+        "file": "frontend/src/drift/correction.ts",
+        "sha256": "1e725cfab608d160e61b64d6bba118bffc4869559f46937c5d5c6d4785bf6aa0"
+      },
+      {
+        "file": "frontend/src/drift/drift.css",
+        "sha256": "25c8b38b341dd35968e6d67232ca7028346ef94d8f782cd2803048d58deb80bb"
+      },
+      {
+        "file": "frontend/src/drift/editor.ts",
+        "sha256": "0eb8cf556d58a349eef7771adfc97b842fb8b71fcc23f07bc1298cd6043177b8"
+      },
+      {
+        "file": "frontend/src/drift/flip.ts",
+        "sha256": "754f016ae6df089222f1ac575a1113d6f8185daca462c6e10a779d5ac0e2354c"
+      },
+      {
+        "file": "frontend/src/drift/focus.ts",
+        "sha256": "e8417bd1e9076943afadd9159303bce8c9d85b91521b4552a396bcd0d992743d"
+      },
+      {
+        "file": "frontend/src/drift/index.ts",
+        "sha256": "13e33330f560f0a16e8673dd54a5d120822b668b99fa9f8ed722a53db6e22573"
+      },
+      {
+        "file": "frontend/src/drift/jobs.ts",
+        "sha256": "e941fe320f86e8bb5427c10f3d541db0ed74f5e223695e16542d132c2c00e3ca"
+      },
+      {
+        "file": "frontend/src/drift/level.ts",
+        "sha256": "522acf7544edeeb5bc97e472c2a364391da63657e1784a6d06cbe4ee7b9767d7"
+      },
+      {
+        "file": "frontend/src/drift/model.ts",
+        "sha256": "1cd7e9c7ad65f37fe2638bd86f5190c80d33a76aaf0a5abac5aa36867420bea4"
+      },
+      {
+        "file": "frontend/src/drift/overlay.ts",
+        "sha256": "76b11032f5308febc52e3123b837e48f2c83334da1cdbd1b2dceb2af3bff370d"
+      },
+      {
+        "file": "frontend/src/drift/result.ts",
+        "sha256": "023ecb66f998e5697f2c15e149914c30119174a7f8973bdf917329ff82c9e5c7"
+      },
+      {
+        "file": "frontend/src/drift/route.ts",
+        "sha256": "bea5fec3bcc949151fb4f3ccc45f72ed23a71634742ea81cdd4dee4f2a584d4e"
+      },
+      {
+        "file": "frontend/src/drift/sentences.ts",
+        "sha256": "13b599023a81c85d19168272a3760d8d200501866c1a763edbc34552b3c0dd37"
+      },
+      {
+        "file": "frontend/src/drift/shape.ts",
+        "sha256": "6b0abd12e77af26a346394e880b23575481cdcb8ccc7c0c033232e0869045b8d"
+      },
+      {
+        "file": "frontend/src/drift/state.ts",
+        "sha256": "a2df9868eb1f946d04541612c07f9f2bcaa0ec7a09e5f845e0490a9e4ed96f9c"
+      },
+      {
+        "file": "frontend/src/drift/steerActions.ts",
+        "sha256": "2518df4c1f32b12c660cea0d945ed0b794209e2a9390f0ed0506bafe0e5affcc"
+      },
+      {
+        "file": "frontend/src/drift/testing.tsx",
+        "sha256": "d4b561cbc835a1b85f859e79f5f3c33ee057514237c026cfed7f7f2148f12843"
+      },
+      {
+        "file": "frontend/src/drift/useFollowCorrection.ts",
+        "sha256": "19c3e11c1c7dbf941b5e01f911c69ca726c8fbb5fe36a077b04a829cf64972ac"
+      },
+      {
+        "file": "frontend/src/drift/workList.ts",
+        "sha256": "fb456e515ebb17507193ade93797814b36df42f9e332c010d8f0bd76acaec23d"
+      },
+      {
         "file": "frontend/src/intent/ActionButton.tsx",
         "sha256": "f08480acb439d1c206aa2f195e9d5445866507422a9c478fed256a3c94b4b2c5"
       },
@@ -490,7 +614,7 @@
       },
       {
         "file": "frontend/src/sessions/DepartureParts.tsx",
-        "sha256": "c9614ef07fd2b545a8240b620c87d4d9259362a6170b42b9a485523d500813bc"
+        "sha256": "bbc54730389d718f5ff41baef73787cd97668383d7e08c4214a3ec3189d66a23"
       },
       {
         "file": "frontend/src/sessions/DetailParts.tsx",
@@ -502,7 +626,7 @@
       },
       {
         "file": "frontend/src/sessions/SessionDetail.tsx",
-        "sha256": "6206fcc62a52a68e081af9da0dc058762997ab8b603eb78a3e06afaf2fe95e2c"
+        "sha256": "0b6d56d7c4fb4f9eb3290cb911564a6b2725f15b3edfca0903cf15d3f8d1f96f"
       },
       {
         "file": "frontend/src/sessions/SessionsView.tsx",
@@ -826,7 +950,7 @@
       },
       {
         "file": "package.json",
-        "sha256": "6f79dce33cdba6427b808ea4aef795d1df0a300636e893d68079c383f6167a96"
+        "sha256": "1ba3a3735b13b2799984ff626531980e5791776e8dd3ad614183678f3922f6d8"
       },
       {
         "file": "pnpm-lock.yaml",

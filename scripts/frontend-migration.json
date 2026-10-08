@@ -343,7 +343,7 @@
         "cargento/skills/cargento/tests/test_next_reconciliation.py",
         "cargento/skills/cargento/tests/test_next_reading_route.py"
       ],
-      "contract": "Recorded raises, review/dismissal, delivery and superseded revision state remain separate source-backed collections with honest absence."
+      "contract": "Recorded raises, review/dismissal, delivery and superseded revision state remain separate source-backed collections with honest absence. No legacy web surface calls the dismiss route, so the React page builds no dismissal control."
     },
     {
       "name": "projects-list-and-history",

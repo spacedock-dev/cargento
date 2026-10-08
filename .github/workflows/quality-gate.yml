@@ -414,7 +414,9 @@ jobs:
     needs: changes
     if: needs.changes.outputs.code == 'true'
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 15
+    # Eleven browser proofs take about 15 minutes on a hosted macOS runner (three shared cores) and the migration
+    # adds more; each step keeps its own short timeout, so a hang still ends in minutes.
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
@@ -510,6 +512,11 @@ jobs:
         env:
           CARGENTO_TEST_PYTHON: ${{ steps.python.outputs.python-path }}
         run: pnpm test:intent:browser
+      - name: Drift, Analyze and Steer back browser proof
+        timeout-minutes: 8
+        env:
+          CARGENTO_TEST_PYTHON: ${{ steps.python.outputs.python-path }}
+        run: pnpm test:drift:browser
       - name: Timeline and output-only terminal browser proof
         timeout-minutes: 5
         env:
