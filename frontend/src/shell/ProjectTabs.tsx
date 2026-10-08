@@ -50,6 +50,8 @@ export function ProjectTabs({ route, children }: { readonly route: ProjectRoute;
 
   const onKeyDown = (current: ProjectTab) => (event: KeyboardEvent<HTMLButtonElement>) => {
     if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+    // Alt/Cmd+Arrow is the browser's Back and Forward and Ctrl/Cmd+Home/End its scroll: the legacy page returns before its tab handler.
+    if (event.altKey || event.ctrlKey || event.metaKey) return;
     const index = Math.max(0, tabs.indexOf(current));
     const next =
       event.key === 'Home' ? 0 : event.key === 'End' ? tabs.length - 1 : (index + (event.key === 'ArrowRight' ? 1 : -1) + tabs.length) % tabs.length;

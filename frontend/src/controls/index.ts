@@ -23,6 +23,7 @@ export {
   type Controls,
   type ControlsDeps,
 } from './kit';
+export { BriefingUnavailable } from './briefingUnavailable';
 export { MoreMenu, type MoreMenuProps } from './MoreMenu';
 export { RaiseControl, type RaiseControlProps } from './RaiseControl';
 export { resumeCommand } from './resumeCommand';

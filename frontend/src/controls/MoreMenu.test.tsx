@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { contextKey } from '../api/identity';
 import { memoKey } from '../storage';
 import { ControlsProvider } from './ControlsProvider';
+import { BriefingUnavailable } from './briefingUnavailable';
 import { MoreMenu, type MoreMenuProps } from './MoreMenu';
 import { testControls, type TestControlsOptions } from './testControls';
 
@@ -76,6 +77,14 @@ describe('the project More menu', () => {
     rerender(menu({ focus: null }));
     expect(view.getByRole('button', { name: 'Copied' })).toBeInTheDocument();
     expect(kit.controls.briefing.read(contextKey('alpha/app', null))).toBe('copied');
+  });
+
+  it('says the briefing is not available yet, rather than blaming the clipboard, when no builder exists', async () => {
+    const unbuilt = mount(menu({ briefingText: () => { throw new BriefingUnavailable('not migrated'); } }));
+    fireEvent.click(unbuilt.view.getByRole('button', { name: 'Copy briefing' }));
+    await flush();
+    expect(unbuilt.view.getByRole('button', { name: 'Copy unavailable' })).toBeInTheDocument();
+    expect(unbuilt.kit.announced.map((entry) => entry.text)).toEqual(['The project briefing is not available in the React interface yet']);
   });
 
   it('reads Copy unavailable for a rejected clipboard and for none at all', async () => {

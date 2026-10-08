@@ -1,8 +1,8 @@
 {
   "document": {
-    "bytes": 641149,
+    "bytes": 641320,
     "file": "react.html",
-    "sha256": "8e1a6723376c1910ccd766d6c0aa4fec66c22d7dfd4ef7dce31836f0fe077e77"
+    "sha256": "fbd328b458e15d198897a1e06457fd81ecc6175c0051289dd9e31a3a5cf21f2b"
   },
   "format": 1,
   "frontend": "react",
@@ -178,11 +178,11 @@
       },
       {
         "file": "frontend/build/package.mjs",
-        "sha256": "3e2c654488e3167d4b68136d9db798076d5576aac22ac201958343cb31c92533"
+        "sha256": "4cefc76fc27948ddcffd879632905f0de7f8db05d60d14d78220007eaa959702"
       },
       {
         "file": "frontend/index.html",
-        "sha256": "9ab574bfb7459a088db303e11b9faf834dc5c4bb0cbb25c6daac46f2344091da"
+        "sha256": "6909054e0c42b07c747be6a8d353a7a263a7946517dfe5585874bf7078c502c9"
       },
       {
         "file": "frontend/src/App.tsx",
@@ -230,11 +230,15 @@
       },
       {
         "file": "frontend/src/controls/MoreMenu.tsx",
-        "sha256": "a69fadc60687e2c20a958a8804676cfe20046c86e51edce44859a1e250a1abf2"
+        "sha256": "fb2d9a73a2c086bc1d33410f21e7cd542119d3786645d123b44a634eaef7f285"
       },
       {
         "file": "frontend/src/controls/RaiseControl.tsx",
         "sha256": "99f5c3d6b3e833c7e5d8a87a2e4e494a94a9cd4576915c23b3484c00eaf8bc39"
+      },
+      {
+        "file": "frontend/src/controls/briefingUnavailable.ts",
+        "sha256": "c09235de62b8f0fa37ac0f0f361cea0d5a279cb86e8686ec837b25b7cd09a15b"
       },
       {
         "file": "frontend/src/controls/disclosureStore.ts",
@@ -262,7 +266,7 @@
       },
       {
         "file": "frontend/src/controls/index.ts",
-        "sha256": "2e4a67e71e83455f3d827ceab0ee09438e335f9e7e3c3bbde1eef0d07ce5142f"
+        "sha256": "f1309798ffc11593696b497353e8302c6eb1b5a05a99d952ad057517e00e8fb7"
       },
       {
         "file": "frontend/src/controls/keyedState.ts",
@@ -342,7 +346,7 @@
       },
       {
         "file": "frontend/src/shell/ProjectTabs.tsx",
-        "sha256": "8b4f5ca11962ce37c35d54c0a833ac5898cce75f851cdf9b693d668c9d090878"
+        "sha256": "f78c21cf13d72f186a501a77251a786f949e8c8c61ce14974600fb8987bc5169"
       },
       {
         "file": "frontend/src/shell/RouteLink.tsx",
@@ -382,7 +386,7 @@
       },
       {
         "file": "frontend/src/shell/projectBriefing.ts",
-        "sha256": "23b5c3529fd60e2192bd6711016ec6397d62345e18f64e0911448f39887ad450"
+        "sha256": "fa6a9454c7b002b40951a671e35cbf82615cfca38f26550eca690d7e78b3fb82"
       },
       {
         "file": "frontend/src/shell/testing.tsx",

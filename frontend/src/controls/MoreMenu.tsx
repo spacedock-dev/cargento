@@ -3,6 +3,7 @@ import type { SessionIdentity } from '../api/types';
 import { Disclosure } from './Disclosure';
 import { disclosureKey } from './disclosureStore';
 import { useControls, useKeyedValue } from './kit';
+import { BriefingUnavailable } from './briefingUnavailable';
 
 export interface MoreMenuProps {
   /** The stable project key, never a label assumed unique. */
@@ -41,9 +42,14 @@ export function MoreMenu({ projectKey, focus, running, subagents, briefingText, 
       const clipboard = controls.clipboard();
       if (!clipboard) throw new Error('clipboard unavailable');
       await clipboard.writeText(briefingText());
-    } catch {
+    } catch (error) {
       controls.briefing.remember(key, 'error');
-      controls.announce(announceKey, 'The briefing could not be copied');
+      controls.announce(
+        announceKey,
+        error instanceof BriefingUnavailable
+          ? 'The project briefing is not available in the React interface yet'
+          : 'The briefing could not be copied',
+      );
       return;
     }
     controls.briefing.remember(key, 'copied');

@@ -182,6 +182,12 @@ differences from the legacy page: the header says "Waiting for the first board."
 payload, where legacy printed zeros that read as a measured empty board, and Retry uses
 `aria-disabled` instead of `disabled` so keyboard focus survives its own removal.
 
+Named for later steps rather than missing: the control that copies a session link arrives with the
+sessions step, the "Attention updated" announcement with the Attention step, the notification
+control with the notification step, and the project briefing with the project view. Until the
+briefing exists, pressing Copy briefing announces that it is not available in the React interface
+yet instead of blaming the clipboard.
+
 Shared controls keep reader state the redraw would otherwise discard. A keyed focus lane restores
 the same control or a named fallback without scrolling an offscreen one, a field memory keeps an
 unsaved draft, caret, undo and composition across live updates, and an open native select holds the

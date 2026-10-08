@@ -453,7 +453,7 @@ try {
     react.reset();
   });
 
-  await step('permalink: a copied session link keeps ?all=1 and reopens the same exact session after a reload', async () => {
+  await step('permalink: the session link the page builds keeps ?all=1 (the control that copies it arrives with the sessions step) and reopens the same exact session after a reload', async () => {
     const link = `${board.react.origin}/?all=1#n=session:${A}:codex:shared-sid`;
     await react.page.goto('about:blank');
     await react.page.goto(link);
@@ -669,7 +669,7 @@ try {
       await o.page.getByRole('button', { name: 'Copy briefing' }).click();
       await o.page.getByRole('button', { name: 'Copy unavailable' }).waitFor();
       assert.equal(await o.page.evaluate(() => globalThis.__clipboardWrites), 0, 'no briefing exists yet, so no empty one is written');
-      assert.match(await o.page.locator('#next-cockpit-cue-status').innerText(), /The briefing could not be copied/);
+      assert.match(await o.page.locator('#next-cockpit-cue-status').innerText(), /The project briefing is not available in the React interface yet/);
       o.state.mutate = body => ({ ...body, generated: body.generated + 2 });
       await o.poll();
       await o.page.evaluate(next => { globalThis.location.hash = next; }, `#n=project:${A}:course`);

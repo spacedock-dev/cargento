@@ -147,7 +147,8 @@ try {
   assert.deepEqual(external, []); assert.deepEqual(errors, []);
   console.log(JSON.stringify({ development: { realPython: true, hotRefreshPreservedState: true, fonts: 15,
     collectorFixtureObserved: true, realSseRevision: true, backendRestart: true, sseReconnected: true,
-    externalRequests: 0, modelsAndUsageDisabled: true, nativeActionsDisabled: true },
+    externalRequests: 0, modelsAndUsageDisabled: true, nativeActionsDisabled: true,
+    restartConsoleResetsSetAside: restartResets.length },
   inertCapabilityFixture: { actualInjection: true, missingAndWrongRefused: true, crossOriginRefused: true,
     renewedAfterRestart: true, staleRefused: true, authorizedResponseFocused: false, nativeRaiseInert: true } }, null, 2));
 } catch (error) {

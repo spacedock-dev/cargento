@@ -560,7 +560,7 @@ try {
 
   assert.deepEqual(log.externalRequests, [], 'a request left the board');
   assert.deepEqual(log.pageErrors, [], 'a page error was raised');
-  assert.deepEqual(log.consoleErrors.filter(text => !/net::ERR_FAILED|Failed to load resource/.test(text)), [], 'a console error was logged');
+  assert.deepEqual(log.consoleErrors.filter(text => !/^Failed to load resource: net::ERR_FAILED$/.test(text)), [], 'a console error was logged');
   if (shots) {
     await load();
     await page.screenshot({ path: join(SCREENSHOTS, 'drc-4823-controls-gallery-1100px.png') });

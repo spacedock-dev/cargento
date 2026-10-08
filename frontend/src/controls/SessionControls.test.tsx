@@ -79,6 +79,21 @@ describe('copy controls: ID, absolute link and resume command', () => {
     expect(kit.controls.cues.read(laneKey('command', 'claude', 's-1'))).toBeUndefined();
   });
 
+  it('keeps the link and the command in lanes of their own, each marked only by its own press', async () => {
+    const { kit, view } = mount(controls());
+    fireEvent.click(view.getByRole('button', { name: 'Copy a link to this session' }));
+    await flush();
+    expect(view.getByRole('button', { name: 'Copy a link to this session' }).getAttribute('data-copy-state')).toBe('copied');
+    expect(view.getByRole('button', { name: /Copy re-entry command/ }).hasAttribute('data-copy-state')).toBe(false);
+    expect(kit.controls.cues.read(laneKey('link', 'claude', 's-1'))).toBe('copied');
+    expect(kit.controls.cues.read(laneKey('command', 'claude', 's-1'))).toBeUndefined();
+    fireEvent.click(view.getByRole('button', { name: /Copy re-entry command/ }));
+    await flush();
+    expect(kit.controls.cues.read(laneKey('command', 'claude', 's-1'))).toBe('copied');
+    expect(kit.controls.cues.read(laneKey('copy', 'claude', 's-1'))).toBeUndefined();
+    expect(kit.announced.map((entry) => entry.text)).toEqual(['Copied a link to this session', 'Copied claude --resume s-1']);
+  });
+
   it('keeps the cue on a node that is replaced, then lets it lapse after thirty seconds', async () => {
     function Page() {
       const [generation, setGeneration] = useState(0);

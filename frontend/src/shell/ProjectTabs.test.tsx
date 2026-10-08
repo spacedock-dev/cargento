@@ -52,6 +52,19 @@ describe('the project tab strip', () => {
     expect(hash(page)).toBe('#n=project:alpha%2Fapp');
   });
 
+  it('leaves a modified arrow or Home/End to the browser, as the legacy page does', async () => {
+    const page = await open('#n=project:alpha%2Fapp');
+    const before = page.history.entries().length;
+    for (const key of ['ArrowLeft', 'ArrowRight', 'Home', 'End']) {
+      for (const modifier of [{ altKey: true }, { metaKey: true }, { ctrlKey: true }]) {
+        const notCancelled = fireEvent.keyDown(tab('Now'), { key, ...modifier });
+        expect(notCancelled, `${key} ${Object.keys(modifier)[0]} must not be cancelled`).toBe(true);
+      }
+    }
+    expect(page.history.entries()).toHaveLength(before);
+    expect(hash(page)).toBe('#n=project:alpha%2Fapp');
+  });
+
   it('leaves every other key to the browser', async () => {
     const page = await open('#n=project:alpha%2Fapp');
     const before = page.history.entries().length;
