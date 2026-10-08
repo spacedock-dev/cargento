@@ -323,6 +323,38 @@ read" where the legacy page, which reads only the focused session's record, says
 panel here reads both, and neither sentence is an empty record. Dismissal has no legacy web surface (nothing in
 the web assets calls the dismiss route), so none was built.
 
+## Project views, steering and the Console
+
+The Projects list and history, project detail with its workflow plans, the scope tree and switcher, the
+recovery briefing, the human-context notes, Now and Course, the workstream panel, the steering bar, local
+and workflow-stage tripwires, the Decisions timeline with its lanes and the Console operating rail
+(delegation, waiting, capacity as the project page draws them) are ports of the project half of the legacy
+page. The pure functions were run next to the legacy source, the whole legacy page loaded in one `vm`
+for the project model, over hundreds to thousands of generated boards each, with sensitivity mutants and
+non-vacuity floors so a green run cannot be an empty comparison. Two browser proofs serve one board to the
+legacy page and the React page in one Chromium: the project views over the list and every project state
+(no sessions, stale focus, a failed read, no plan, ended without an end stamp, hostile text), and the
+steering, tripwire, Decisions and Console surfaces over a real backend, including the retained terminal.
+
+Drafts and notes are native editors keyed by the exact project or session: text, caret, selection and
+native undo survive board revisions, tab changes and a route away and back, and are never reused for
+another project, which is the defect the Intent step found. Tripwires and steering text are browser
+preferences. They are never sent to a session and the surfaces say they are not enforcement. A stage
+condition saves through one explicit POST with the shared 15 second bound, never retried, and a lost or
+non-JSON answer says "Could not save the stage condition." The workstream observes the board from the
+first payload (the shell starts it) and keeps the legacy collapse key without adopting the old
+unnamespaced one; a missing window reads "since this tab opened", never zero.
+
+Deviations, each recorded rather than hidden: Add human context is not offered at a focused session (the
+legacy page offered a button that opened an editor nothing drew); delegation lanes always read the
+project-scope assignments, where the legacy page read a cache the Decisions tab happened to seed; a
+non-record member of the hierarchy is skipped where legacy throws; the tripwire box takes focus when it
+opens and gives it back to its button, and an Enter that commits an IME composition adds no rule; a usage
+entry with no harness name states the absence where legacy throws; disclosures use the shared accordion;
+panels are plain sections inside the shell's tab panel. Not ported because nothing in the legacy source
+calls them: `nextCockpitNowState`, `ActiveDelegation`, `NeedsYou`, `SystemDetails`, `TaskSubject`,
+`MemoFields`, `ProjectStatus`, `RecoveryOutcome` and `nextProjectWorkstream`.
+
 ## Reader state and storage
 
 Each reader-state row specifies stable identity, stored state, retained deferral or a mechanism
