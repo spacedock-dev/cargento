@@ -11,8 +11,8 @@
       "press": true,
       "provider": "claude",
       "sid": "00000000",
-      "tool_output": "claude.synthetic.invalid",
-      "words_destination": "claude.synthetic.invalid"
+      "tool_output": "Anthropic",
+      "words_destination": "Anthropic"
     },
     "headers": {
       "Origin": "{origin}"

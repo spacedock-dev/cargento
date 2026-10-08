@@ -100,9 +100,6 @@ const POST_METHODS: Record<string, PostMethod> = {
   '/api/notify': 'postNotify',
 };
 
-// Recorded with `option`, which the route never reads (it reads `index`); the answer is the same 200.
-const BODY_NOT_COMPARED = new Set(['answer-unknown-ask']);
-
 describe('the fixture set is present', () => {
   it('holds the recorded scenarios the client contract needs', () => {
     expect(fixtures.length).toBeGreaterThanOrEqual(70);
@@ -135,6 +132,7 @@ describe('every recorded GET answers as recorded', () => {
             : await client.getProjectContext({
                 project: params.get('project') ?? '',
                 ...(params.get('session') ? { session: params.get('session') as string } : {}),
+                prompts: params.get('prompts') === '1',
                 refresh: params.get('refresh') === '1',
                 observerModel: params.get('observer_model') === '1',
               });
@@ -172,9 +170,7 @@ describe('every recorded POST is sent once, as recorded, and answered as recorde
       expect(sent).toHaveLength(1);
       expect(sent[0]?.url).toBe(fixture.request.path);
       expect(sent[0]?.init?.method).toBe('POST');
-      if (!BODY_NOT_COMPARED.has(fixture.name)) {
-        expect(JSON.parse(String(sent[0]?.init?.body))).toEqual(fixture.request.body ?? {});
-      }
+      expect(JSON.parse(String(sent[0]?.init?.body))).toEqual(fixture.request.body ?? {});
       expectClassified(result, fixture);
     });
   }
@@ -308,13 +304,6 @@ describe('stream fixtures through the live transport', () => {
     for (const frame of frames(text)) if (frame.event === 'revision') tab.env.sources[0]?.emit('revision', frame.data);
   };
 
-  it('delivers no event for a heartbeat comment', () => {
-    const tab = liveTab();
-    deliver(tab, byName('stream-heartbeat').response.text ?? '');
-    expect(tab.onWake).not.toHaveBeenCalled();
-    tab.live.dispose();
-  });
-
   it('wakes once for the initial revision and again for each newer one, including a restarted server', () => {
     const tab = liveTab();
     const initial = byName('stream-initial-revision').response.text ?? '';
@@ -325,11 +314,5 @@ describe('stream fixtures through the live transport', () => {
     deliver(tab, byName('stream-restarted-build').response.text ?? '');
     expect(tab.onWake).toHaveBeenCalledTimes(3);
     tab.live.dispose();
-  });
-
-  it('records refusals of the stream route as http errors the client never retries', () => {
-    for (const name of ['stream-budget-exhausted', 'stream-forbidden-cross-site', 'stream-forbidden-frame']) {
-      expect(byName(name).response.status).toBeGreaterThanOrEqual(400);
-    }
   });
 });

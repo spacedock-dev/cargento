@@ -1,0 +1,39 @@
+{
+  "format": 1,
+  "name": "annotate-direction-refused",
+  "notes": "A fact the session record does not hold is refused, persisted false.",
+  "request": {
+    "body": {
+      "add_direction": "fact:0000000000000000",
+      "expected_revision": 2,
+      "harness": "claude",
+      "sid": "a1b2c3d4",
+      "text": "x"
+    },
+    "headers": {
+      "Origin": "{origin}"
+    },
+    "method": "POST",
+    "path": "/api/annotate",
+    "query": ""
+  },
+  "response": {
+    "body": {
+      "discarded": null,
+      "ok": true,
+      "outcome": "refused",
+      "persisted": false,
+      "revision": 2,
+      "revision_count": 2,
+      "saved_revision": null,
+      "withdrew": true
+    },
+    "headers": {
+      "Cache-Control": "no-store",
+      "Content-Length": "136",
+      "Content-Security-Policy": "frame-ancestors 'none'",
+      "Content-Type": "application/json"
+    },
+    "status": 200
+  }
+}

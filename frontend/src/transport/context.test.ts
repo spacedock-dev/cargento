@@ -246,3 +246,24 @@ describe('explicit observer summary', () => {
     expect(selectObserverRequest(s.board.getSnapshot(), '/repo/a\nclaude:s:1').state).toBeNull();
   });
 });
+
+describe('freshness of a board body without a generation', () => {
+  /* Legacy reads `nextFiniteNumber(nextData.generated)`, so a body with no
+     `generated` is generation 0 and a settled read (revision 0) is never
+     reread. The server always publishes `generated`; this pins that the port
+     did not change the legacy default. */
+  it('treats a missing generated as generation 0, as the legacy loader does', async () => {
+    const { loader, calls, board } = setup();
+    board.acceptData({ sessions: [] }, '');
+    loader.load(PROJECT);
+    calls[0]?.answer.resolve(okContext({}));
+    await flush();
+    expect(board.getSnapshot().contexts.get('/repo/a\n')?.revision).toBe(0);
+    board.acceptData({ sessions: [] }, '');
+    loader.load(PROJECT);
+    expect(calls).toHaveLength(1);
+    board.acceptData({ generated: 1, sessions: [] }, '');
+    loader.load(PROJECT);
+    expect(calls).toHaveLength(2);
+  });
+});

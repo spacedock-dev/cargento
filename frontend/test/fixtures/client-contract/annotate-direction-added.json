@@ -1,0 +1,39 @@
+{
+  "format": 1,
+  "name": "annotate-direction-added",
+  "notes": "The reviewed direction saved as an outcome line, revision 2.",
+  "request": {
+    "body": {
+      "add_direction": "fact:4aae9c22a7d95d9a",
+      "expected_revision": 1,
+      "harness": "claude",
+      "sid": "a1b2c3d4",
+      "text": "Keep the diff small and leave the tests alone."
+    },
+    "headers": {
+      "Origin": "{origin}"
+    },
+    "method": "POST",
+    "path": "/api/annotate",
+    "query": ""
+  },
+  "response": {
+    "body": {
+      "discarded": null,
+      "ok": true,
+      "outcome": "stored",
+      "persisted": true,
+      "revision": 2,
+      "revision_count": 2,
+      "saved_revision": null,
+      "withdrew": true
+    },
+    "headers": {
+      "Cache-Control": "no-store",
+      "Content-Length": "134",
+      "Content-Security-Policy": "frame-ancestors 'none'",
+      "Content-Type": "application/json"
+    },
+    "status": 200
+  }
+}

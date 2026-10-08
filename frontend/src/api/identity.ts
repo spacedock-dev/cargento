@@ -7,7 +7,10 @@ interface IdentityFields {
 }
 
 /* The page's `sessKey`: the display id stands in only when a row has no sid.
-   That is a map key's fallback, so it must never reach a request. */
+   This is the key of the legacy-written families that name a session (memo,
+   live-estimate) and of context cache keys, where the fallback is part of the
+   released format. It is a map key, so it must never reach a request: use
+   `exactIdentity` for that. */
 export function compatSessKey(row: IdentityFields | null | undefined): string {
   return `${String(row?.harness || '')}:${String(row?.sid || row?.session || '')}`;
 }

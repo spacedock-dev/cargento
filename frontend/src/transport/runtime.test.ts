@@ -95,11 +95,11 @@ describe('start and dispose', () => {
     expect(hub.lease).toBeNull();
   });
 
-  it('keeps one owner after repeated start and dispose cycles', async () => {
+  it('keeps one owner after repeated start and stop cycles', async () => {
     const { env, clock, hub, runtime } = runtimeFor();
     for (let cycle = 0; cycle < 5; cycle += 1) {
       runtime.start();
-      runtime.dispose();
+      runtime.stop();
     }
     runtime.start();
     await flush();
@@ -111,13 +111,16 @@ describe('start and dispose', () => {
     runtime.dispose();
   });
 
-  it('keeps the accepted board across a dispose and a later start', async () => {
+  it('keeps the accepted board across a stop and a later start', async () => {
     const { runtime } = runtimeFor();
     runtime.start();
     await flush();
     const data = runtime.store.getSnapshot().data;
-    runtime.dispose();
+    runtime.stop();
     expect(runtime.store.getSnapshot().data).toBe(data);
+    runtime.start();
+    expect(runtime.store.getSnapshot().data).toBe(data);
+    runtime.dispose();
   });
 
   it('drops a read still in flight when disposed', async () => {
@@ -474,3 +477,220 @@ function documentWithFocus(content: string): Pick<Document, 'querySelector'> {
   page.head.append(meta);
   return page;
 }
+
+function heldFetch(api: Backend) {
+  const held: { url: string; init: RequestInit | undefined; release: (response: Response) => void }[] = [];
+  const fetch: FetchLike = (url, init) => {
+    api.requests.push({ method: init?.method ?? 'GET', url });
+    if (url.startsWith('/api/data')) return Promise.resolve(api.respond(url));
+    return new Promise<Response>((resolve) => held.push({ url, init, release: resolve }));
+  };
+  return { held, fetch };
+}
+
+function runtimeWith(fetch: FetchLike, options: { doc?: Pick<Document, 'querySelector'> | null; hub?: FakeStorageHub } = {}) {
+  const clock = createFakeClock();
+  const hub = options.hub ?? createFakeStorageHub();
+  const env = createFakeEnvironment({ clock });
+  const runtime = createBoardRuntime({ fetch, storage: hub.forTab(), env, search: '', doc: options.doc ?? null });
+  return { clock, hub, env, runtime };
+}
+
+describe('focus is one explicit attempt at a time', () => {
+  const identity = { harness: 'claude', sid: 's1' };
+
+  it('answers a second press as throttled without a request while one is in flight', async () => {
+    const api = backend();
+    const { held, fetch } = heldFetch(api);
+    const { runtime } = runtimeWith(fetch, { doc: documentWithFocus('cap') });
+    const first = runtime.focus(identity);
+    const second = await runtime.focus(identity);
+    expect(second).toBe('throttled');
+    expect(held.filter((request) => request.url === '/api/focus')).toHaveLength(1);
+    held[0]?.release(new Response(JSON.stringify({ focused: true }), { status: 200 }));
+    expect(await first).toBe('sent');
+    const third = runtime.focus(identity);
+    expect(held.filter((request) => request.url === '/api/focus')).toHaveLength(2);
+    held[1]?.release(new Response(JSON.stringify({ focused: false }), { status: 200 }));
+    expect(await third).toBe('declined');
+  });
+
+  it('releases the in-flight flag when the request fails', async () => {
+    const api = backend();
+    api.fetch = () => Promise.reject(new TypeError('offline'));
+    const { runtime } = runtimeWith(api.fetch, { doc: documentWithFocus('cap') });
+    expect(await runtime.focus(identity)).toBe('failed');
+    expect(await runtime.focus(identity)).toBe('failed');
+  });
+
+  it('sends nothing for an empty sid, an empty harness or an empty capability', async () => {
+    const api = backend();
+    const { held, fetch } = heldFetch(api);
+    const withCapability = runtimeWith(fetch, { doc: documentWithFocus('cap') });
+    expect(await withCapability.runtime.focus({ harness: 'claude', sid: '' })).toBe('unavailable');
+    expect(await withCapability.runtime.focus({ harness: '', sid: 's1' })).toBe('unavailable');
+    expect(await withCapability.runtime.focus({ harness: ' ', sid: 's1' })).toBe('unavailable');
+    const without = runtimeWith(fetch, { doc: documentWithFocus('  ') });
+    expect(await without.runtime.focus(identity)).toBe('unavailable');
+    expect(held).toHaveLength(0);
+    expect(api.posts()).toBe(0);
+  });
+});
+
+describe('holders are per generation', () => {
+  it('ignores a stale release after a stop and does not tear down a later holder', async () => {
+    const { env, clock, runtime } = runtimeFor();
+    const stale = runtime.acquire();
+    runtime.stop();
+    stale();
+    const a = runtime.acquire();
+    const b = runtime.acquire();
+    a();
+    clock.advance(0);
+    expect(env.openStreams()).toBe(1);
+    b();
+    clock.advance(0);
+    expect(env.openStreams()).toBe(0);
+  });
+
+  it('cannot be revived by acquire or start once disposed', async () => {
+    const { api, env, runtime } = runtimeFor();
+    runtime.dispose();
+    const release = runtime.acquire();
+    runtime.start();
+    await flush();
+    expect(env.streamOpens()).toBe(0);
+    expect(api.gets()).toBe(0);
+    expect(() => release()).not.toThrow();
+  });
+
+  it('retires a superseded runtime so a stale holder cannot revive it', async () => {
+    const api = backend();
+    const clock = createFakeClock();
+    const hub = createFakeStorageHub();
+    const holder: Record<symbol, BoardRuntime | undefined> = {};
+    const first = runtimeFor({ api, clock, hub, tabId: 'a' });
+    replaceRuntime(first.runtime, holder);
+    first.runtime.acquire();
+    const second = runtimeFor({ api, clock, hub, tabId: 'a' });
+    replaceRuntime(second.runtime, holder);
+    second.runtime.acquire();
+    await flush();
+    const before = api.gets();
+    const late = first.runtime.acquire();
+    clock.advance(60_000);
+    await flush();
+    expect(first.env.openStreams()).toBe(0);
+    expect(first.env.streamOpens()).toBe(1);
+    expect(api.gets() - before).toBe(3);
+    expect(() => late()).not.toThrow();
+  });
+
+  it('does not dispose the runtime it installs when it is installed twice', async () => {
+    const { env, runtime } = runtimeFor();
+    const holder: Record<symbol, BoardRuntime | undefined> = {};
+    replaceRuntime(runtime, holder);
+    runtime.start();
+    replaceRuntime(runtime, holder);
+    await flush();
+    expect(env.openStreams()).toBe(1);
+    runtime.start();
+    expect(env.openStreams()).toBe(1);
+    runtime.dispose();
+  });
+
+  it('keeps a restarted owner alive when stop runs while a teardown is scheduled', async () => {
+    const { env, clock, runtime } = runtimeFor();
+    runtime.acquire()();
+    runtime.stop();
+    runtime.start();
+    clock.advance(0);
+    expect(env.openStreams()).toBe(1);
+    runtime.dispose();
+  });
+
+  it('clears the scheduled teardown when disposed', () => {
+    const { clock, runtime } = runtimeFor();
+    runtime.acquire()();
+    runtime.dispose();
+    expect(clock.activeTimers()).toBe(0);
+  });
+});
+
+describe('pending work lives as long as the runtime', () => {
+  it('keeps an in-flight guard across an unmount longer than one tick', async () => {
+    const { clock, runtime } = runtimeFor();
+    const release = runtime.acquire();
+    const token = runtime.pending.start('save:a', 'Saving');
+    release();
+    clock.advance(10);
+    expect(runtime.pending.has('save:a')).toBe(true);
+    expect(token?.signal.aborted).toBe(false);
+    expect(runtime.pending.start('save:a', 'Saving')).toBeNull();
+    const remount = runtime.acquire();
+    expect(runtime.pending.has('save:a')).toBe(true);
+    expect(runtime.pending.end('save:a', token)).toBe(true);
+    remount();
+    clock.advance(0);
+  });
+
+  it('hands out a token between a stop and the next acquire', () => {
+    const { runtime } = runtimeFor();
+    runtime.acquire()();
+    runtime.stop();
+    expect(runtime.pending.start('save:a', 'Saving')).not.toBeNull();
+    runtime.dispose();
+  });
+
+  it('still clears a lost request at the backstop while stopped', () => {
+    const { clock, runtime } = runtimeFor();
+    runtime.pending.start('save:a', 'Saving');
+    clock.advance(20_000);
+    expect(runtime.store.getSnapshot().pending).toEqual([]);
+    runtime.dispose();
+  });
+});
+
+describe('a failing subscriber does not corrupt the board', () => {
+  it('keeps the accepted body, the other subscribers and the refresh owner intact', async () => {
+    const { api, env, runtime } = runtimeFor();
+    const reported: unknown[] = [];
+    const seen = { late: 0 };
+    runtime.store.subscribe(() => {
+      throw new Error('subscriber bug');
+    });
+    runtime.store.subscribe(() => (seen.late += 1));
+    runtime.start();
+    await flush();
+    const snapshot = runtime.store.getSnapshot();
+    expect(snapshot.data).not.toBeNull();
+    expect(snapshot.failures).toBe(0);
+    expect(seen.late).toBeGreaterThan(0);
+    api.generated = 2;
+    env.sources[0]?.emit('revision', '5.2');
+    await flush();
+    expect(api.gets()).toBe(2);
+    expect(runtime.store.getSnapshot().failures).toBe(0);
+    expect(reported).toEqual([]);
+    runtime.dispose();
+  });
+});
+
+describe('abort and retry guards', () => {
+  it('aborts an in-flight context read on stop and dispose and writes nothing afterwards', async () => {
+    for (const end of ['stop', 'dispose'] as const) {
+      const api = backend();
+      const { held, fetch } = heldFetch(api);
+      const { runtime } = runtimeWith(fetch);
+      runtime.start();
+      await flush();
+      runtime.loadContext({ projectKey: '/repo/a', focus: null });
+      expect(held).toHaveLength(1);
+      runtime[end]();
+      expect(held[0]?.init?.signal?.aborted, end).toBe(true);
+      held[0]?.release(new Response('{}', { status: 200 }));
+      await flush();
+      expect(runtime.store.getSnapshot().contexts.size, end).toBe(0);
+    }
+  });
+});

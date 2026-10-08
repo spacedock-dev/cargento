@@ -19,6 +19,10 @@ import time
 from pathlib import Path
 from typing import Any
 
+# One environment rule for every owned backend: the installed smoke already keeps the Windows
+# loader directories there, and a second copy is how the two would drift.
+from installed_backend import isolated_environment
+
 PROJECT = "storage-conformance"
 SESSIONS = (("claude", "claude-sid:one"), ("codex", "codex-sid-two"))
 
@@ -48,13 +52,9 @@ def main() -> int:
     with tempfile.TemporaryDirectory(prefix="cargento-storage-conformance-") as temporary:
         scratch = Path(temporary)
         (scratch / "no-executables").mkdir()
+        isolated = isolated_environment(scratch, dict(os.environ), os_name=os.name)
         os.environ.clear()
-        os.environ.update(
-            HOME=str(scratch),
-            USERPROFILE=str(scratch),
-            CARGENTO_HOME=str(scratch / "state"),
-            PATH=str(scratch / "no-executables"),
-        )
+        os.environ.update(isolated)
         config = modules["config"].build_runtime_config(
             environ=dict(os.environ),
             platform_name=sys.platform,

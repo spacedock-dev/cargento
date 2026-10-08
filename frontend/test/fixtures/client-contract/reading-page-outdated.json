@@ -1,0 +1,51 @@
+{
+  "format": 1,
+  "name": "reading-page-outdated",
+  "notes": "An Allow from a page that predates words_destination is refused 400 and records no consent.",
+  "request": {
+    "body": {
+      "allow": true,
+      "harness": "claude",
+      "model": "claude-sonnet-5-5",
+      "observer_model": 1,
+      "press": true,
+      "provider": "claude",
+      "sid": "a1b2c3d4"
+    },
+    "headers": {
+      "Origin": "{origin}"
+    },
+    "method": "POST",
+    "path": "/api/reading",
+    "query": ""
+  },
+  "response": {
+    "body": {
+      "ok": false,
+      "produced": false,
+      "reason": "page-outdated",
+      "route": {
+        "destination": "Anthropic",
+        "disclosure": "",
+        "disclosure_parts": [],
+        "fallback": false,
+        "harness": "claude",
+        "label": "Claude Code",
+        "model": "claude-sonnet-5-5",
+        "note": "This page is from an older version of Cargento, so nothing was sent. Reload the page to analyze.",
+        "provider": "",
+        "reason": "page-outdated",
+        "tool_output": "Tool output, only after you allow it: a check's command, result and last 180 characters of output as printed, the paths of the files it wrote; agent messages may quote it.",
+        "vendor": "Anthropic",
+        "words_destination": "Anthropic"
+      }
+    },
+    "headers": {
+      "Cache-Control": "no-store",
+      "Content-Length": "600",
+      "Content-Security-Policy": "frame-ancestors 'none'",
+      "Content-Type": "application/json"
+    },
+    "status": 400
+  }
+}

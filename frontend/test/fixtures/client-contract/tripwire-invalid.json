@@ -1,0 +1,28 @@
+{
+  "format": 1,
+  "name": "tripwire-invalid",
+  "notes": "A body that is not exactly id, stage, action and expected_revision is a 400 with the reason in JSON.",
+  "request": {
+    "body": {},
+    "headers": {
+      "Origin": "{origin}"
+    },
+    "method": "POST",
+    "path": "/api/tripwire",
+    "query": ""
+  },
+  "response": {
+    "body": {
+      "error": "Invalid stage condition request.",
+      "ok": false,
+      "status": 400
+    },
+    "headers": {
+      "Cache-Control": "no-store",
+      "Content-Length": "73",
+      "Content-Security-Policy": "frame-ancestors 'none'",
+      "Content-Type": "application/json"
+    },
+    "status": 400
+  }
+}

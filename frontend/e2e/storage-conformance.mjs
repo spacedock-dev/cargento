@@ -50,12 +50,12 @@ function proved(family, direction, how, what) {
   side.get(how).push(what);
 }
 
-async function buildCodec() {
+async function buildBundle(entry, name) {
   const output = await build({ root, configFile: false, logLevel: 'silent',
-    build: { write: false, minify: false, lib: { entry: process.env.CARGENTO_STORAGE_ENTRY || 'frontend/src/storage/index.ts', name: 'CargentoStorage', formats: ['iife'], fileName: 'storage' } } });
+    build: { write: false, minify: false, lib: { entry, name, formats: ['iife'], fileName: name } } });
   const bundle = Array.isArray(output) ? output[0] : output;
   // Playwright wraps init scripts, so the IIFE's `var` would not reach the page's global scope.
-  return bundle.output[0].code + '\nglobalThis.CargentoStorage = CargentoStorage;\n';
+  return bundle.output[0].code + `\nglobalThis.${name} = ${name};\n`;
 }
 
 async function startBackend() {
@@ -89,7 +89,9 @@ async function startBackend() {
   return { ready, stop };
 }
 
-const bundle = await buildCodec();
+// The identity helpers are the API layer's own, so the memo and live-estimate keys are derived the way the client derives them.
+const bundle = (await buildBundle(process.env.CARGENTO_STORAGE_ENTRY || 'frontend/src/storage/index.ts', 'CargentoStorage')) +
+  (await buildBundle('frontend/src/api/identity.ts', 'CargentoIdentity'));
 const backend = await startBackend();
 const origin = `http://127.0.0.1:${backend.ready.port}`;
 const browser = await chromium.launch();
@@ -165,6 +167,10 @@ async function pure(page, name, args = []) {
   }, [name, args]);
 }
 
+async function identity(page, name, args = []) {
+  return page.evaluate(([fn, values]) => globalThis.CargentoIdentity[fn](...values), [name, args]);
+}
+
 const raw = (page, key) => page.evaluate(storageKey => localStorage.getItem(storageKey), key);
 const setRaw = (page, key, value) => page.evaluate(([storageKey, text]) => localStorage.setItem(storageKey, text), [key, value]);
 const legacy = (page, expression) => page.evaluate(expression);
@@ -220,15 +226,13 @@ try {
       [{ label: 'p/é', sessions: [{ project_key: 'pk 1' }] }, null, 'outcome'],
       [{ label: 'only-label', sessions: [{}, { project_key: 'a' }] }, CLAUDE, 'focus'],
       [{ label: 'only-label', sessions: [] }, { harness: 'codex', sid: 'x:y z' }, 'outcome'],
+      [{ label: 'only-label', sessions: [] }, { harness: 'claude', session: 'abcd1234' }, 'focus'],
     ]) {
-      const projectKey = (() => {
-        const keys = new Set(group.sessions.map(session => String(session.project_key || '')).filter(Boolean));
-        return keys.size === 1 ? [...keys][0] : group.label;
-      })();
+      const projectKey = await identity(page, 'stableProjectKey', [group]);
       const expected = await legacy(page, `nextCockpitMemoKey(${json(group)}, ${json(focus)}, ${json(kind)})`);
       assert.equal(await pure(page, 'memoKey', [projectKey, focus, kind]), expected);
     }
-    proved('memo', 'legacy->codec', 'browser-legacy-function', 'key spelling for project and exact harness:sid scopes, encoded, matches nextCockpitMemoKey');
+    proved('memo', 'legacy->codec', 'browser-legacy-function', 'key spelling for project and exact harness:sid scopes, encoded, matches nextCockpitMemoKey, with the project key derived by api/identity.stableProjectKey');
     await context.close();
   });
 
@@ -343,7 +347,9 @@ try {
     await page.locator('[data-next-guardrail-toggle]').first().waitFor();
     assert.deepEqual(await page.locator('[data-next-guardrail-toggle]').evaluateAll(rows => rows.map(row => [row.getAttribute('aria-checked'), row.querySelector('strong').textContent])),
       [['true', 'first'], ['false', 'second'], ['true', 'third']]);
-    proved('guardrails', 'codec->legacy', 'browser-legacy-ui', 'legacy console rail lists the rules and enabled states the codec wrote');
+    assert.equal(await raw(page, key), json([{ enabled: true, text: 'first' }, { enabled: false, text: 'second' }, { enabled: true, text: 'third' }]),
+      'the codec writes the rule array in the legacy key order');
+    proved('guardrails', 'codec->legacy', 'browser-legacy-ui', 'legacy console rail lists the rules and enabled states the codec wrote, and the raw array has the legacy key order');
 
     const plain = [null, ...Array.from({ length: 60 }, (_, index) => (index === 0 ? 'old plain string' : index === 1 ? { text: 'off', enabled: false } : `rule ${index}`)),
       { text: '   ' }, { text: 7 }, 'z'.repeat(520), 'a'.repeat(499) + '😀😀'];
@@ -464,7 +470,7 @@ try {
     await sleep(2600);
     assert.equal(await legacy(page, 'nextIsLeader'), false);
     assert.equal(requests.some(request => request.path === '/api/stream'), false, 'a tab yielding to a live foreign lease opens no stream');
-    assert.equal(JSON.parse(await raw(page, KEYS.leader)).id, 'foreign-live-tab');
+    assert.match(await raw(page, KEYS.leader), /^\{"id":"foreign-live-tab","ts":\d+\}$/, 'the codec writes id then a numeric ts');
     assert.equal(await pure(page, 'electionDecision', [{ lease: await codec(page, 'lease.read', [], { fresh: true }), tabId: await legacy(page, 'NEXT_TAB_ID'), isLeader: false, now: Date.now() }]), 'yield');
     proved('leader', 'codec->legacy', 'browser-legacy-passive', 'a codec-written live foreign lease keeps the legacy tab from opening /api/stream');
     await live.close();
@@ -769,6 +775,162 @@ try {
     await context.close();
   });
 
+
+  // ── codec writes that the real legacy page has to accept ──────────────
+  await scenario('codec writes are accepted by the real legacy page', async () => {
+    // Graph mode: a codec write merges with the scopes already there instead of replacing the map.
+    const graph = await newContext();
+    const { page } = await legacyPage(graph, `#n=project:${PROJECT}:decisions`);
+    await page.locator('[data-next-cockpit-action="graph-mode"][data-arg="all"]').click();
+    const here = await pure(page, 'graphModeScope', [PROJECT, null]);
+    const there = await pure(page, 'graphModeScope', ['another project', 'sid:2']);
+    assert.equal(await codec(page, 'graphMode.set', [there, 'decisions'], { fresh: true }), true);
+    assert.deepEqual(JSON.parse(await raw(page, KEYS.graphMode)), { [here]: 'all', [there]: 'decisions' });
+    await page.reload();
+    await page.waitForFunction("typeof nextData !== 'undefined' && !!nextData && document.querySelector('[data-next-cockpit-action=\"graph-mode\"]')");
+    await page.locator('[data-next-cockpit-action="graph-mode"][data-arg="all"][aria-pressed="true"]').waitFor();
+    assert.deepEqual(await legacy(page, 'Object.fromEntries(projectGraphModeBySession)'), { [here]: 'all', [there]: 'decisions' });
+    proved('graphMode', 'codec->legacy', 'browser-legacy-ui', 'a codec set beside a legacy-written scope keeps both; the reloaded legacy page presses the legacy choice and loads the codec one');
+    await graph.close();
+
+    // Guardrails: the codec's 50-rule cap on add leaves the page showing exactly the last fifty.
+    const cap = await newContext();
+    const capSeed = await seedPage(cap);
+    for (let index = 0; index < 55; index += 1) await codec(capSeed, 'guardrails.add', [PROJECT, `rule ${index}`], { fresh: index === 0 });
+    assert.equal(JSON.parse(await raw(capSeed, await pure(capSeed, 'guardrailKey', [PROJECT]))).length, 50);
+    await capSeed.close();
+    const { page: rails } = await legacyPage(cap, `#n=project:${PROJECT}:console`);
+    await rails.locator('[data-next-guardrail-toggle]').first().waitFor();
+    const texts = await rails.locator('[data-next-guardrail-toggle] strong').allTextContents();
+    assert.equal(texts.length, 50);
+    assert.equal(texts[0], 'rule 5');
+    assert.equal(texts[49], 'rule 54');
+    proved('guardrails', 'codec->legacy', 'browser-legacy-ui', 'fifty-five codec adds leave 50 rules, the last fifty, and the legacy console lists exactly those');
+    await cap.close();
+
+    // Lease: a codec release is what legacy treats as released, so a waiting legacy tab takes over.
+    const lease = await newContext();
+    const leaseSeed = await seedPage(lease);
+    await codec(leaseSeed, 'lease.write', ['foreign-release-tab', Date.now()], { fresh: true });
+    await leaseSeed.close();
+    const { page: waiting, requests } = await legacyPage(lease);
+    await sleep(500);
+    assert.equal(await legacy(waiting, 'nextIsLeader'), false);
+    assert.equal(requests.some(request => request.path === '/api/stream'), false);
+    assert.equal(await codec(waiting, 'lease.release', [], { fresh: true }), true);
+    assert.equal(await raw(waiting, KEYS.leader), null, 'release removes the key rather than writing a value');
+    await waiting.waitForFunction('nextIsLeader === true', undefined, { timeout: 4500 }).catch(async error => { console.error('DEBUG', await waiting.evaluate('[nextIsLeader, document.visibilityState, localStorage.getItem("cargento.next.leader")]')); throw error; });
+    assert.ok(requests.some(request => request.path === '/api/stream'));
+    assert.equal(JSON.parse(await raw(waiting, KEYS.leader)).id, await legacy(waiting, 'NEXT_TAB_ID'));
+    proved('leader', 'codec->legacy', 'browser-legacy-passive', 'after a codec release the key is absent and the waiting legacy tab takes over and opens its stream on its next election');
+    await lease.close();
+
+    // Memo: the codec bounds what it writes the way the page does, so raw storage holds 500 units.
+    const memo = await newContext();
+    const memoSeed = await seedPage(memo);
+    const outcome = await pure(memoSeed, 'memoKey', [PROJECT, null, 'outcome']);
+    const focus = await pure(memoSeed, 'memoKey', [PROJECT, null, 'focus']);
+    await codec(memoSeed, 'memo.write', [outcome, 'y'.repeat(700)], { fresh: true });
+    await codec(memoSeed, 'memo.write', [focus, 'a'.repeat(499) + '😀']);
+    const rawOutcome = await raw(memoSeed, outcome);
+    const rawFocus = await raw(memoSeed, focus);
+    assert.equal(rawOutcome.length, 500);
+    assert.equal(rawFocus.length, 500);
+    assert.equal(rawFocus.charCodeAt(499), 0xd83d);
+    await memoSeed.close();
+    const { page: shown } = await legacyPage(memo, `#n=project:${PROJECT}`);
+    assert.equal(await legacy(shown, `nextCockpitBoundMemo(${json(rawFocus)}) === ${json(rawFocus)}`), true, 'legacy would have stored exactly the codec-written text');
+    await shown.locator('[data-next-cockpit-memo-field="outcome"] strong').waitFor();
+    assert.equal((await shown.locator('[data-next-cockpit-memo-field="outcome"] strong').textContent()).length, 500);
+    proved('memo', 'codec->legacy', 'browser-legacy-ui', 'the codec writes 500 units for over-long and surrogate-cut text, equal to what nextCockpitBoundMemo yields, and the legacy page shows all 500');
+    await memo.close();
+  });
+
+  // ── reading must not write ────────────────────────────────────────────
+  await scenario('reads write nothing, in the codec and in legacy', async () => {
+    const context = await newContext();
+    const seed = await seedPage(context);
+    const memoKey = await pure(seed, 'memoKey', [PROJECT, null, 'outcome']);
+    const goalKey = await pure(seed, 'goalKey', [PROJECT]);
+    const guardKey = await pure(seed, 'guardrailKey', [PROJECT]);
+    const liveKey = await pure(seed, 'liveEstimateKey', [CLAUDE]);
+    const scope = await pure(seed, 'graphModeScope', [PROJECT, null]);
+    // Values that legacy accepts but a tidy-up on load would change; rollback needs them back exactly.
+    const stored = {
+      [KEYS.usage]: json(Object.fromEntries(Array.from({ length: 201 }, (_, index) => [`k${index}`, index + 1]))),
+      [guardKey]: json([null, 'plain', { text: '  padded  ', enabled: 0 }, ...Array.from({ length: 60 }, (_, index) => `r${index}`)]),
+      [KEYS.graphMode]: json({ '': 'all', [scope]: 'decisions', 'x\u0000y\u0000z': 'all' }),
+      [memoKey]: 'm'.repeat(700),
+      [goalKey]: '  untrimmed ' + 'g'.repeat(800),
+      [KEYS.leader]: '{"id":"someone","ts":"1"}',
+      [KEYS.revision]: 'start.7',
+      [KEYS.usageConsent]: 'garbled',
+      [KEYS.observerConsent]: 'granted',
+      [KEYS.workstream]: 'true',
+      [KEYS.cockpitProject]: 'a project',
+      [liveKey]: '1',
+    };
+    for (const [key, value] of Object.entries(stored)) await setRaw(seed, key, value);
+    const recorded = await seed.evaluate(([project, identityRow, focusKey]) => {
+      const writes = [];
+      const originals = {};
+      for (const method of ['setItem', 'removeItem', 'clear']) {
+        originals[method] = Storage.prototype[method];
+        Storage.prototype[method] = function recorder(...args) { writes.push([method, args[0]]); return originals[method].apply(this, args); };
+      }
+      const before = Object.fromEntries(Object.keys(localStorage).map(key => [key, localStorage.getItem(key)]));
+      try {
+        const s = globalThis.CargentoStorage.createLegacyStorage();
+        const scopeKey = globalThis.CargentoStorage.graphModeScope(project, null);
+        for (let pass = 0; pass < 2; pass += 1) {
+          s.usage.counts();
+          s.guardrails.rules(project);
+          s.graphMode.resolve({ scope: scopeKey });
+          s.memo.read(focusKey);
+          s.goal.read(project);
+          s.lease.read();
+          s.revision.read();
+          s.usageConsent.get();
+          s.observerConsent.get();
+          s.workstream.collapsed();
+          s.cockpitProject.read();
+          s.liveEstimate.on(identityRow);
+        }
+      } finally {
+        for (const method of Object.keys(originals)) Storage.prototype[method] = originals[method];
+      }
+      const after = Object.fromEntries(Object.keys(localStorage).map(key => [key, localStorage.getItem(key)]));
+      return { writes, unchanged: JSON.stringify(before) === JSON.stringify(after), keys: Object.keys(after).length };
+    }, [PROJECT, CLAUDE, memoKey]);
+    assert.deepEqual(recorded.writes, []);
+    assert.equal(recorded.unchanged, true);
+    assert.equal(recorded.keys, Object.keys(stored).length);
+    for (const family of receipt.keys()) proved(family, 'codec', undefined, 'reading, twice, writes nothing and leaves legacy-valid raw values exactly as stored');
+    await seed.close();
+
+    // The legacy loaders are the standard: run in one synchronous call so no legacy timer can write between.
+    const { page } = await legacyPage(context);
+    const legacyWrites = await page.evaluate(`(() => {
+      const writes = [];
+      const original = {};
+      for (const method of ['setItem', 'removeItem', 'clear']) {
+        original[method] = Storage.prototype[method];
+        Storage.prototype[method] = function(...args){ writes.push([method, args[0]]); return original[method].apply(this, args); };
+      }
+      try {
+        projectUsageCounts = null; projectUsage();
+        nextControlsReadRules(${json(PROJECT)});
+        projectGraphModeBySession.clear(); projectLoadGraphModes();
+        nextCockpitReadMemo(${json(memoKey)}); projectGoal(${json(PROJECT)});
+        nextReadLease(); nextUsageConsent(); nextObserverConsent(); nextWorkstreamStoredCollapsed();
+        nextLiveMonitorMemory.clear(); nextLiveMonitorOn(${json(CLAUDE)});
+      } finally { for (const method of Object.keys(original)) Storage.prototype[method] = original[method]; }
+      return writes;
+    })()`);
+    assert.deepEqual(legacyWrites, [], 'legacy loaders write nothing either, so the codec matches');
+    await context.close();
+  });
+
   const unproved = [];
   for (const [family, entry] of receipt) {
     if (!entry.legacyToCodec.size) unproved.push(`${family}: legacy->codec`);
@@ -778,6 +940,20 @@ try {
   assert.deepEqual(problems.external, [], 'no external request');
   assert.deepEqual(problems.pageErrors, [], 'no page error');
   assert.deepEqual(problems.unexpectedPosts, [], 'no action request: every request was a GET');
+
+  // Strongest evidence per family and direction; a headline that lumped them would overclaim.
+  const rank = ['browser-legacy-ui', 'browser-legacy-passive', 'browser-legacy-function'];
+  const evidence = { directions: 24, ui: 0, passive: 0, legacyFunction: 0, codecLevelChecks: 0 };
+  for (const entry of receipt.values()) {
+    for (const side of [entry.legacyToCodec, entry.codecToLegacy]) {
+      const strongest = rank.find(how => side.has(how));
+      if (strongest === rank[0]) evidence.ui += 1;
+      else if (strongest === rank[1]) evidence.passive += 1;
+      else evidence.legacyFunction += 1;
+    }
+    evidence.codecLevelChecks += entry.codecLevel.length;
+  }
+  assert.equal(evidence.ui + evidence.passive + evidence.legacyFunction, receipt.size * 2);
 
   const families = [...receipt].map(([name, entry]) => ({
     family: name,
@@ -790,7 +966,7 @@ try {
     browser: browser.version(),
     legacyPage: 'real Python runtime, synthetic fixture, models/usage/notifications/focus disabled',
     codec: 'frontend/src/storage bundled with Vite and executed in the page',
-    familiesProvedBothDirections: families.length,
+    evidence,
     externalRequests: 0,
     actionRequests: 0,
     observations,

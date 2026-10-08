@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { blockedBackend, fakeBackend, readOnlyBackend } from '../../test/storage_backends';
-import { createLegacyStorage, liveEstimateKey, STORAGE_KEYS } from '.';
+import { compatSessKey } from '../api/identity';
+import { createLegacyStorage, liveEstimateKey, memoKey, sessionKey, STORAGE_KEYS } from '.';
 
 describe('live estimate family (cargento.next.live-estimate:)', () => {
   const session = { harness: 'claude', sid: 'a b:c' };
@@ -8,6 +9,14 @@ describe('live estimate family (cargento.next.live-estimate:)', () => {
   it('keys on the unencoded harness:sid pair', () => {
     expect(liveEstimateKey(session)).toBe('cargento.next.live-estimate:claude:a b:c');
     expect(liveEstimateKey({ harness: 'codex', sid: 'a b:c' })).not.toBe(liveEstimateKey(session));
+  });
+
+  it('keys a row with no sid on its display id, as the page does, and agrees with the API layer', () => {
+    const row = { harness: 'claude', sid: '', session: 'abcd1234' };
+    expect(liveEstimateKey(row)).toBe('cargento.next.live-estimate:claude:abcd1234');
+    expect(sessionKey(row)).toBe(compatSessKey(row));
+    expect(memoKey('p', row, 'focus')).toBe('cargento.cockpit.memo.v2:p:claude%3Aabcd1234:focus');
+    expect(liveEstimateKey({ harness: 'claude', sid: '' })).toBe('cargento.next.live-estimate:claude:');
   });
 
   it('is on only for the raw word 1, and off removes the key', () => {

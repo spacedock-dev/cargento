@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
   FOCUS_META_SELECTOR,
-  createBuildTracker,
   dataPath,
   nextFiniteNumber,
   nextNumber,
@@ -75,28 +74,5 @@ describe('payload collections', () => {
     expect(payloadSessions([])).toEqual({ present: false, rows: [] });
     expect(payloadAsks({ asks: [{ id: 'q' }, 1] })).toEqual({ present: true, rows: [{ id: 'q' }] });
     expect(payloadAsks({})).toEqual({ present: false, rows: [] });
-  });
-});
-
-describe('build tracking', () => {
-  it('remembers the first non-empty build and flags a later different one', () => {
-    const tracker = createBuildTracker();
-    expect(tracker.state({ build: 'a' })).toBe('unknown');
-    tracker.note({ build: '' });
-    tracker.note({ build: 7 });
-    expect(tracker.first()).toBe('');
-    tracker.note({ build: 'a' });
-    tracker.note({ build: 'b' });
-    expect(tracker.first()).toBe('a');
-    expect(tracker.state({ build: 'a' })).toBe('same');
-    expect(tracker.state({ build: 'b' })).toBe('reload-required');
-  });
-
-  it('does not treat a missing build as either compatible or changed', () => {
-    const tracker = createBuildTracker();
-    tracker.note({ build: 'a' });
-    expect(tracker.state({})).toBe('unknown');
-    expect(tracker.state({ build: '' })).toBe('unknown');
-    expect(tracker.state(null)).toBe('unknown');
   });
 });

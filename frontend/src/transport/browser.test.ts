@@ -1,5 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
-import { createBrowserEnvironment, type BrowserGlobals } from './browser';
+import { blockedBackend } from '../../test/storage_backends';
+import type { FetchLike } from '../api/client';
+import { createBrowserEnvironment, createBrowserRuntime, type BrowserGlobals } from './browser';
+import { createFakeClock, createFakeEnvironment } from './testing';
 
 function globals(options: { hidden?: boolean; withEventSource?: boolean } = {}) {
   const windowListeners = new Map<string, Set<() => void>>();
@@ -94,5 +97,55 @@ describe('browser environment', () => {
     env.clock.setInterval(callback, 7);
     expect(t.g.window.setTimeout).toHaveBeenCalledWith(callback, 5);
     expect(t.g.window.setInterval).toHaveBeenCalledWith(callback, 7);
+  });
+});
+
+describe('the browser runtime shares one storage instance', () => {
+  const flush = async () => {
+    for (let turn = 0; turn < 12; turn += 1) await Promise.resolve();
+  };
+
+  function blockedRuntime() {
+    const urls: string[] = [];
+    const fetch: FetchLike = (url) => {
+      urls.push(url);
+      const body = url.startsWith('/api/project-context')
+        ? { observer_model: { enabled: true, disclosure: 'Sends prose to a model.' } }
+        : { generated: 1, sessions: [] };
+      return Promise.resolve(new Response(JSON.stringify(body), { status: 200 }));
+    };
+    const runtime = createBrowserRuntime({
+      env: createFakeEnvironment({ clock: createFakeClock() }),
+      fetch,
+      provider: () => blockedBackend(),
+      events: { addEventListener: () => undefined, removeEventListener: () => undefined },
+      search: '',
+      doc: null,
+    });
+    return { runtime, urls };
+  }
+
+  it('lets a quota grant made through the runtime’s storage ungate usage when browser storage is blocked', async () => {
+    const { runtime, urls } = blockedRuntime();
+    runtime.storage.usageConsent.set('granted');
+    runtime.start();
+    await flush();
+    expect(urls[0]).toBe('/api/data?usage=1');
+    runtime.dispose();
+  });
+
+  it('lets an observer grant made through the runtime’s storage ungate the explicit summary', async () => {
+    const { runtime, urls } = blockedRuntime();
+    runtime.start();
+    await flush();
+    const scope = { projectKey: 'p', focus: { harness: 'claude', sid: 's' } };
+    runtime.loadContext(scope);
+    await flush();
+    await runtime.requestObserverSummary(scope);
+    expect(urls.filter((url) => url.includes('observer_model=1'))).toHaveLength(0);
+    runtime.storage.observerConsent.set('granted');
+    await runtime.requestObserverSummary(scope);
+    expect(urls.filter((url) => url.includes('refresh=1&observer_model=1'))).toHaveLength(1);
+    runtime.dispose();
   });
 });

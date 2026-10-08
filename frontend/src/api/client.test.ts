@@ -215,3 +215,53 @@ describe('fetchBounded', () => {
     expect(seen).toEqual([controller.signal, undefined]);
   });
 });
+
+describe('no adapter ever retries an action', () => {
+  const identity = { harness: 'claude', sid: 's' };
+  const adapters: Record<string, (client: ReturnType<typeof createApiClient>) => Promise<unknown>> = {
+    postAnnotate: (c) => c.postAnnotate(identity),
+    postDirection: (c) => c.postDirection({ ...identity, fact_id: 'f' }),
+    postReading: (c) => c.postReading({ ...identity, provider: 'claude', press: true, observer_model: 1 }),
+    postReadingCancel: (c) => c.postReadingCancel({ ...identity, job: 'j', press: true, observer_model: 1 }),
+    postCorrection: (c) => c.postCorrection(identity),
+    postCorrectionCopied: (c) => c.postCorrectionCopied({ ...identity, text: 't' }),
+    postTripwire: (c) => c.postTripwire({ action: 'save', id: 'r', stage: 's', expected_revision: '' }),
+    postLane: (c) => c.postLane({ supported: true, permission: 'granted' }),
+    postAnswer: (c) => c.postAnswer({ id: 'a', index: 0 }),
+    postDismiss: (c) => c.postDismiss(identity),
+    postNotify: (c) => c.postNotify({ message: 'm', session_id: 's' }),
+    focus: (c) => c.focus({ identity, capability: 'cap' }),
+  };
+
+  it('covers every POST adapter the client exposes', () => {
+    const exposed = Object.keys(createApiClient({ fetch: () => Promise.reject(new Error('x')) })).filter(
+      (name) => name.startsWith('post') || name === 'focus',
+    );
+    expect(Object.keys(adapters).sort()).toEqual(exposed.sort());
+  });
+
+  for (const [name, call] of Object.entries(adapters)) {
+    it(`${name} makes exactly one fetch on a network failure and on an HTTP failure`, async () => {
+      for (const failure of [() => Promise.reject(new TypeError('offline')), () => Promise.resolve(new Response('', { status: 503 }))]) {
+        const fetch = vi.fn<FetchLike>(failure);
+        await call(createApiClient({ fetch }));
+        expect(fetch).toHaveBeenCalledTimes(1);
+      }
+    });
+  }
+});
+
+describe('settling', () => {
+  it('reports aborted, not ok, when the signal aborts while the body is being read', async () => {
+    const controller = new AbortController();
+    const response = new Response('{"generated":1}', { status: 200 });
+    Object.defineProperty(response, 'text', {
+      value: () => {
+        controller.abort();
+        return Promise.resolve('{"generated":1}');
+      },
+    });
+    const client = createApiClient({ fetch: () => Promise.resolve(response) });
+    expect((await client.getData({ showAll: false, usage: false, signal: controller.signal })).kind).toBe('aborted');
+  });
+});

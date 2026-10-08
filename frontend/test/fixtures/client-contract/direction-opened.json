@@ -1,0 +1,40 @@
+{
+  "format": 1,
+  "name": "direction-opened",
+  "notes": "A later direction read back whole for review.",
+  "request": {
+    "body": {
+      "fact_id": "fact:4aae9c22a7d95d9a",
+      "harness": "claude",
+      "sid": "a1b2c3d4"
+    },
+    "headers": {
+      "Origin": "{origin}"
+    },
+    "method": "POST",
+    "path": "/api/direction",
+    "query": ""
+  },
+  "response": {
+    "body": {
+      "clipped": false,
+      "fact_id": "fact:4aae9c22a7d95d9a",
+      "fits": true,
+      "goal_choice": {
+        "at": 1899998200.0,
+        "cut": false,
+        "fact_id": "fact:4aae9c22a7d95d9a",
+        "text": "Keep the diff small and leave the tests alone."
+      },
+      "ok": true,
+      "text": "Keep the diff small and leave the tests alone."
+    },
+    "headers": {
+      "Cache-Control": "no-store",
+      "Content-Length": "265",
+      "Content-Security-Policy": "frame-ancestors 'none'",
+      "Content-Type": "application/json"
+    },
+    "status": 200
+  }
+}

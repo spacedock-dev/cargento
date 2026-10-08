@@ -35,6 +35,8 @@ export interface BoardSnapshot {
   readonly pending: readonly string[];
 }
 
+const MAX_REPORTED_LISTENER_ERRORS = 10;
+
 const INITIAL: BoardSnapshot = Object.freeze({
   data: null,
   revision: '',
@@ -57,13 +59,41 @@ function sameList(a: readonly string[], b: readonly string[]): boolean {
    `useSyncExternalStore` sees a stable identity while nothing happened. The
    store only holds what was accepted; when to SHOW it is `commit-gate`'s
    decision, so acceptance and paint stay separate. */
-export function createBoardStore(deps: { readonly now: () => number }) {
+export function createBoardStore(deps: {
+  readonly now: () => number;
+  /** Where a throwing subscriber's error goes. The default hands it to the page's own error reporting. */
+  readonly reportError?: (error: unknown) => void;
+}) {
   let snapshot: BoardSnapshot = INITIAL;
+  let listenerErrors = 0;
   const listeners = new Set<() => void>();
+  const report =
+    deps.reportError ??
+    ((error: unknown) => {
+      globalThis.reportError?.(error);
+    });
 
+  /* Each listener is called on its own so one that throws cannot turn an
+     accepted body into a counted failure, starve the listeners after it, or
+     leave the refresh run that published it unreleased. Reports are capped,
+     because a listener that throws on every change would otherwise flood the
+     page's error handler at the poll rate; the count is kept regardless. */
   function publish(next: BoardSnapshot): void {
     snapshot = next;
-    for (const listener of [...listeners]) listener();
+    for (const listener of [...listeners]) {
+      try {
+        listener();
+      } catch (error) {
+        listenerErrors += 1;
+        if (listenerErrors <= MAX_REPORTED_LISTENER_ERRORS) {
+          try {
+            report(error);
+          } catch {
+            /* a failing reporter must not break the publish either */
+          }
+        }
+      }
+    }
   }
 
   return {
@@ -75,6 +105,7 @@ export function createBoardStore(deps: { readonly now: () => number }) {
     },
     getSnapshot: (): BoardSnapshot => snapshot,
     subscriberCount: (): number => listeners.size,
+    listenerErrorCount: (): number => listenerErrors,
 
     acceptData(body: PayloadData, revision: string): void {
       const build = typeof body.build === 'string' ? body.build : '';

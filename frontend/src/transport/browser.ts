@@ -1,5 +1,6 @@
-import { createLegacyStorage, createTabId } from '../storage';
-import { createTransportStorage } from './legacyStorage';
+import type { FetchLike } from '../api/client';
+import { createLegacyStorage, createTabId, type BackendProvider, type LegacyStorage } from '../storage';
+import { createTransportStorage, type StorageEventTarget } from './legacyStorage';
 import type { Environment, EventSourceLike, TimerHandle } from './ports';
 import { createBoardRuntime, type BoardRuntime } from './runtime';
 
@@ -51,20 +52,39 @@ export function createBrowserEnvironment(g: BrowserGlobals): Environment {
   };
 }
 
+export type BrowserRuntime = BoardRuntime & {
+  /** The document's one storage instance, shared with the UI so in-tab consent and memo fallbacks agree when browser storage is blocked. */
+  readonly storage: LegacyStorage;
+};
+
+export interface BrowserRuntimeOptions {
+  readonly env?: Environment;
+  readonly fetch?: FetchLike;
+  readonly provider?: BackendProvider;
+  readonly events?: StorageEventTarget;
+  readonly search?: string;
+  readonly doc?: Pick<Document, 'querySelector'> | null;
+}
+
 /* Builds the runtime for this document and starts nothing: the caller decides
-   when (an effect's `acquire`). */
-export function createBrowserRuntime(): BoardRuntime {
+   when (an effect's `acquire`). The one `LegacyStorage` it creates is exposed,
+   because each instance holds its own in-tab fallbacks and a second instance
+   would disagree with the transport about consent when storage is blocked. The
+   options exist for tests; production passes none. */
+export function createBrowserRuntime(options: BrowserRuntimeOptions = {}): BrowserRuntime {
   const globals: BrowserGlobals = {
     window,
     document,
     EventSource: typeof EventSource === 'undefined' ? undefined : (EventSource as unknown as new (url: string) => EventSourceLike),
     now: () => Date.now(),
   };
-  return createBoardRuntime({
-    fetch: (url, init) => fetch(url, init),
-    storage: createTransportStorage(createLegacyStorage(), window),
-    env: createBrowserEnvironment(globals),
-    search: window.location.search,
-    doc: document,
+  const legacy = options.provider ? createLegacyStorage(options.provider) : createLegacyStorage();
+  const runtime = createBoardRuntime({
+    fetch: options.fetch ?? ((url, init) => fetch(url, init)),
+    storage: createTransportStorage(legacy, options.events ?? window),
+    env: options.env ?? createBrowserEnvironment(globals),
+    search: options.search ?? window.location.search,
+    doc: options.doc === undefined ? document : options.doc,
   });
+  return Object.assign(runtime, { storage: legacy });
 }

@@ -1,3 +1,5 @@
+import { compatSessKey } from '../api/identity';
+
 /*
  * Exact spellings of the twelve persisted families. They stay readable by the legacy page
  * while its rollback exists, so nothing here adds a namespace, wrapper, version or expiry.
@@ -17,13 +19,15 @@ export const STORAGE_KEYS = {
   usage: 'cargento.projectUsage.v1',
 } as const;
 
-/** Exact harness and session id; a display id never stands in for either. */
+/**
+ * Exact harness and session id. `session` is the display id some rows carry instead of a sid; it
+ * only ever completes a storage key, as in the legacy page, and is never an action identity.
+ */
 export interface SessionIdentity {
   readonly harness: string;
   readonly sid: string;
+  readonly session?: string;
 }
 
-/** The legacy `sessKey`: split a composite only at its first colon, because a sid may contain colons. */
-export function sessionKey(session: SessionIdentity): string {
-  return `${String(session.harness || '')}:${String(session.sid || '')}`;
-}
+/** One implementation of the page's `sessKey`, shared with the API layer so the two cannot diverge. */
+export const sessionKey: (session: SessionIdentity) => string = compatSessKey;

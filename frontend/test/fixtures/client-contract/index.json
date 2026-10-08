@@ -3,7 +3,8 @@
   "normalised": {
     "error_page": "stdlib error pages are recorded by status, not by text, because their wording differs between Python releases",
     "headers": "Date, Server and Connection are dropped; Content-Length is dropped from error pages",
-    "json_body": "bodies are re-serialised with sorted keys; the wire order is not kept"
+    "json_body": "bodies are re-serialised with sorted keys; the wire order is not kept",
+    "reading_route": "the CLI lookup is pinned to a present binary, which is a machine fact; the destination is the route's own resolution against an empty environment and no settings files, which is the shipped default and names the vendor"
   },
   "placeholders": {
     "{capability}": "the focus capability the page was served with; a per-process secret",
@@ -12,9 +13,37 @@
   "scenarios": [
     {
       "method": "POST",
+      "name": "annotate-adopted",
+      "route": "/api/annotate",
+      "sha256": "ce3bc949270b2b2dd45fa5db455c1d3b28329f6f7c72aea411ca2f4d877fb35e",
+      "status": 200
+    },
+    {
+      "method": "POST",
+      "name": "annotate-cleared",
+      "route": "/api/annotate",
+      "sha256": "b5b54d3c39e75da0608b4a4f80110dd97e604d8f66b0ce1c27e36b9cc5b4ffb6",
+      "status": 200
+    },
+    {
+      "method": "POST",
       "name": "annotate-current-revision",
       "route": "/api/annotate",
       "sha256": "4de78cf04aad1ca2551656393391b96f7d52612a279cb131597070762d10fc1a",
+      "status": 200
+    },
+    {
+      "method": "POST",
+      "name": "annotate-direction-added",
+      "route": "/api/annotate",
+      "sha256": "dc9a9d29589b8963fb834e8fb673886ed8e32509955fe04da9ffc1a0170e9d08",
+      "status": 200
+    },
+    {
+      "method": "POST",
+      "name": "annotate-direction-refused",
+      "route": "/api/annotate",
+      "sha256": "5a2b084f6fbedd0b6c579704bfb841e51273ce9b7427fb96cbaf64e1e279f010",
       "status": 200
     },
     {
@@ -148,6 +177,20 @@
       "name": "cleared-after-dismiss",
       "route": "/api/cleared",
       "sha256": "cd1caaf9b2d31f59082fa9bf5feefba6fea3bd314824eac328fcf32b81f9b592",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "name": "context-focused-facts",
+      "route": "/api/project-context",
+      "sha256": "bc9beaa06fe99ca2253e8627017a5fe7521b5b699113ee25995ab19a6a7a436d",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "name": "context-focused-prompts",
+      "route": "/api/project-context",
+      "sha256": "78332725862b9f91e06f52d1e804b19c6cb5529562a8778da939336975e4bc3b",
       "status": 200
     },
     {
@@ -306,6 +349,13 @@
     },
     {
       "method": "POST",
+      "name": "direction-opened",
+      "route": "/api/direction",
+      "sha256": "abde77a43c2a8d2c49bdc68c179a03b609946906acc273a87564e16106af178a",
+      "status": 200
+    },
+    {
+      "method": "POST",
       "name": "direction-unavailable",
       "route": "/api/direction",
       "sha256": "ec71696c12d90c6790f883237a863067d8d3b0bda1c7ab498fff0278e372b67a",
@@ -441,8 +491,15 @@
       "method": "POST",
       "name": "reading-consent-required",
       "route": "/api/reading",
-      "sha256": "45f7de46a17e5ffd6b4e5fe1f6cf79258b2bdfe4a474339b9e36145fb8b31fbb",
+      "sha256": "bf496e830624a0a15742c8f7bc109694bbae4535193d285013bbd9b3116a44b1",
       "status": 403
+    },
+    {
+      "method": "POST",
+      "name": "reading-destination-changed",
+      "route": "/api/reading",
+      "sha256": "9b98d924ff9fa3a71e8c93feaec3bbf4b1f914ce76c1144a8c81456dd556d0aa",
+      "status": 409
     },
     {
       "method": "POST",
@@ -474,9 +531,16 @@
     },
     {
       "method": "POST",
+      "name": "reading-page-outdated",
+      "route": "/api/reading",
+      "sha256": "f73f9b421e43a35f5e0bd28a83b37ae185cd91c511744d6f8e89c27c98b6cd10",
+      "status": 400
+    },
+    {
+      "method": "POST",
       "name": "reading-provider-changed",
       "route": "/api/reading",
-      "sha256": "c438cf0516ef349a0a0a180f6daa84c2c9f03e2eb7aee0197cd190edb1637f26",
+      "sha256": "e930e2fbf8741a4b0981148ebaf71493806fd6c18c9c0ae584e7bb7500da067b",
       "status": 409
     },
     {
@@ -484,6 +548,13 @@
       "name": "reading-revision-changed",
       "route": "/api/reading",
       "sha256": "14fe731da48d9dea39024cf0045690e5f1db0853f4603138c33f288c4fd006e3",
+      "status": 409
+    },
+    {
+      "method": "POST",
+      "name": "reading-stale-model",
+      "route": "/api/reading",
+      "sha256": "07d19c0c2aa2b262e0157c9d782b66eb48f9e755073790ef5f74d5db446645a1",
       "status": 409
     },
     {
@@ -497,7 +568,7 @@
       "method": "POST",
       "name": "reading-unknown-session",
       "route": "/api/reading",
-      "sha256": "aa159c969c476ca194aef0badd75aabf6a09eebf89c78e737508962eeaa54b62",
+      "sha256": "14988adfef87f392f2c3bd71f74c9126430b84f321888ecaf41e948deaa6c446",
       "status": 200
     },
     {
@@ -555,11 +626,37 @@
       "route": "/api/tripwire",
       "sha256": "06c9124a2727d72c31eac4fa8ebdcd46feb7c5b8f8866877e4785f8091f019b5",
       "status": 503
+    },
+    {
+      "method": "POST",
+      "name": "tripwire-invalid",
+      "route": "/api/tripwire",
+      "sha256": "4cd670fef5691dc42e6a735d882af42877d7f119f8635196a4f9b2d309de077a",
+      "status": 400
+    },
+    {
+      "method": "POST",
+      "name": "tripwire-removed",
+      "route": "/api/tripwire",
+      "sha256": "28f4c5a69ee4fc87781c330c1bb61b97053ac170d5fc9055abdb537dc1f4a097",
+      "status": 200
+    },
+    {
+      "method": "POST",
+      "name": "tripwire-stale-revision",
+      "route": "/api/tripwire",
+      "sha256": "60bf9b9bb6bf04ec8af390a68c54b2227c3f8bfd431310aefcd66c3954a13f24",
+      "status": 409
+    },
+    {
+      "method": "POST",
+      "name": "tripwire-unwritable",
+      "route": "/api/tripwire",
+      "sha256": "1c7222926e3382d36a40acf44f6d7f8e73e14833136f66ae52de2b59bf6b08eb",
+      "status": 503
     }
   ],
   "unreachable": {
-    "annotate-adopted": "adopting a prompt (saved_revision, keep/adopt) reads the session's transcript, which these synthetic rows do not have",
-    "annotate-cleared": "clearing a session stamps the discard time from the wall clock, not the application clock, so the receipt's `discarded` differs on every run",
     "answer-confirmed": "needs a registered ask, which an agent's own ingress token creates",
     "context-refresh-granted": "GET /api/project-context?refresh=1&observer_model=1 with a model enabled spends a model call; only the model-disabled answer is captured",
     "data-malformed-fields": "the application always publishes the full row schema, so a missing or malformed field cannot come from the real server; clients derive those cases by mutating the captured healthy body",
@@ -569,7 +666,6 @@
     "health": "the body carries the process id, which differs on every run",
     "interaction": "the terminal prototype is not started by the board server in these runs",
     "reading-cancel-accepted": "needs a running reading job, which needs a model launch",
-    "reading-started": "POST /api/reading answering 202 with a job starts a model reading; the guard forbids launching one, so no job or publication shape is captured",
-    "tripwire-enabled": "needs a workflow entity directory the synthetic rows do not have"
+    "reading-started": "POST /api/reading answering 202 with a job starts a model reading; the guard forbids launching one, so no job or publication shape is captured"
   }
 }

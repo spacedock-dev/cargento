@@ -21,6 +21,7 @@ from __future__ import annotations
 import argparse
 import contextlib
 import dataclasses
+import datetime
 import hashlib
 import http.client
 import json
@@ -105,15 +106,6 @@ UNREACHABLE: dict[str, str] = {
         "only on the refusals captured as data-forbidden-*, and clients strip it from "
         "data-healthy for the proxy case"
     ),
-    "annotate-cleared": (
-        "clearing a session stamps the discard time from the wall clock, not the "
-        "application clock, so the receipt's `discarded` differs on every run"
-    ),
-    "annotate-adopted": (
-        "adopting a prompt (saved_revision, keep/adopt) reads the session's transcript, "
-        "which these synthetic rows do not have"
-    ),
-    "tripwire-enabled": "needs a workflow entity directory the synthetic rows do not have",
     "answer-confirmed": "needs a registered ask, which an agent's own ingress token creates",
     "focus-real-raise": "a real terminal raise is a native action; only an inert runner is used",
     "health": "the body carries the process id, which differs on every run",
@@ -245,6 +237,7 @@ class Rig:
     ) -> None:
         self.dir = scratch.subdir(name)
         self.focus_now = NOW
+        self.now = NOW
         if blocked_state:
             # A regular file where the state directory belongs, so no store can be created or
             # locked under it on any platform without relying on permission bits.
@@ -277,6 +270,7 @@ class Rig:
             os_name="posix",
             launcher_path=SKILL / "server.py",
             port=4581,
+            store_root_overrides={"claude.projects": str(self.dir / "projects")},
             **flags,
         )
         self.config = dataclasses.replace(config, **config_changes)
@@ -292,7 +286,7 @@ class Rig:
             native_notifier=self._native,
             popup_notifier=self._popup,
             diagnostic_sink=self.diagnostics.append,
-            clock=lambda: NOW,
+            clock=lambda: self.now,
             frontend_page_bytes=page,
         )
         self.observation: Any = None
@@ -358,6 +352,13 @@ class Rig:
     @property
     def capability(self) -> str:
         return str(self.observation.focus_capability())
+
+    def write_transcript(self, sid: str, entries: list[dict[str, Any]]) -> None:
+        """A Claude Code transcript where the resolver globs for one."""
+        folder = self.dir / "projects" / "-work-alpha-app"
+        folder.mkdir(parents=True, exist_ok=True)
+        lines = "\n".join(json.dumps(entry) for entry in entries)
+        (folder / f"{sid}-full.jsonl").write_text(lines + "\n", encoding="utf-8")
 
     def republish(self) -> None:
         """Drop the published bodies so the next read collects the current rows."""
@@ -475,6 +476,7 @@ def _read_stream(
     request: dict[str, Any],
     *,
     stop: Callable[[str], bool],
+    frames: int,
     during: Callable[[], None] | None = None,
     timeout: float = 10.0,
 ) -> dict[str, Any]:
@@ -520,7 +522,9 @@ def _read_stream(
                 break
             received += chunk.decode("utf-8")
     record = _response_record(status, pairs, b"")
-    record["text"] = received
+    # Cut to the frames the scenario is about. A reader that stalls past the heartbeat is
+    # sent extra keepalive comments, and those are timing, not contract.
+    record["text"] = "".join(f"{frame}\n\n" for frame in received.split("\n\n")[:frames])
     return record
 
 
@@ -532,7 +536,7 @@ def stream_scenarios(recorder: Recorder, scratch: Scratch) -> None:
         recorder.add(
             "stream-initial-revision",
             initial,
-            _read_stream(rig, initial, stop=lambda text: text.endswith("\n\n")),
+            _read_stream(rig, initial, stop=lambda text: text.endswith("\n\n"), frames=1),
             "A client that connects after the board has published sees the current revision "
             "at once; id and data are the same <started>.<counter> string.",
         )
@@ -544,7 +548,7 @@ def stream_scenarios(recorder: Recorder, scratch: Scratch) -> None:
         recorder.add(
             "stream-heartbeat",
             initial,
-            _read_stream(rig, initial, stop=lambda text: "keepalive" in text),
+            _read_stream(rig, initial, stop=lambda text: "keepalive" in text, frames=1),
             "Before anything is published the stream carries only the comment heartbeat, "
             "which an EventSource never delivers as an event.",
         )
@@ -567,6 +571,7 @@ def stream_scenarios(recorder: Recorder, scratch: Scratch) -> None:
                 rig,
                 initial,
                 stop=lambda text: text.count("event: revision") >= 2,
+                frames=2,
                 during=change,
             ),
             "The connect-time frame for revision 1, then revision 2 after an invalidating "
@@ -581,7 +586,7 @@ def stream_scenarios(recorder: Recorder, scratch: Scratch) -> None:
         recorder.add(
             "stream-restarted-build",
             initial,
-            _read_stream(rig, initial, stop=lambda text: text.endswith("\n\n")),
+            _read_stream(rig, initial, stop=lambda text: text.endswith("\n\n"), frames=1),
             "The same route from a server that restarted: the start stamp half of the "
             "revision differs, which a client must read as newer whatever the counter says.",
         )
@@ -1108,11 +1113,17 @@ def reading_scenarios(recorder: Recorder, scratch: Scratch) -> None:
     # Only inputs to the route's own code are fixed; no reply is written here.
     patches = contextlib.ExitStack()
     patches.enter_context(mock.patch.object(shutil, "which", lambda name: f"/synthetic/{name}"))
+    real_destination = runtime_reading_route.destination
+    empty_root = scratch.subdir("no-settings")
     patches.enter_context(
         mock.patch.object(
             runtime_reading_route,
             "destination",
-            lambda provider, **_: f"{provider}.synthetic.invalid",
+            # The route's own resolution, against no environment variables and no settings files,
+            # which is the shipped default and so names the vendor.
+            lambda provider, **_: real_destination(
+                provider, environ={}, root=empty_root, system="Linux"
+            ),
         )
     )
     rig = Rig(scratch, "reading", model_calls_disabled=False)
@@ -1163,6 +1174,36 @@ def reading_scenarios(recorder: Recorder, scratch: Scratch) -> None:
             post("/api/reading", {**press, "settle_through": 1.0}),
             "Keep without the revision it settles: refused 422 before any route or model.",
         )
+        recorder.capture(
+            rig,
+            "reading-stale-model",
+            post("/api/reading", {**press, "provider": "claude", "model": "stale-model"}),
+            "The Claude model the page drew is not the one the route selects: 409, nothing "
+            "recorded and nothing spent.",
+        )
+        recorder.capture(
+            rig,
+            "reading-page-outdated",
+            post("/api/reading", {**press, "provider": "claude", "model": model, "allow": True}),
+            "An Allow from a page that predates words_destination is refused 400 and records "
+            "no consent.",
+        )
+        recorder.capture(
+            rig,
+            "reading-destination-changed",
+            post(
+                "/api/reading",
+                {
+                    **press,
+                    "provider": "claude",
+                    "model": model,
+                    "allow": True,
+                    "words_destination": "Somewhere else",
+                },
+            ),
+            "An Allow given for a destination other than today's is refused 409, and records "
+            "no consent.",
+        )
         consent = recorder.capture(
             rig,
             "reading-consent-required",
@@ -1204,6 +1245,180 @@ def reading_scenarios(recorder: Recorder, scratch: Scratch) -> None:
     finally:
         rig.close()
         patches.close()
+
+
+class FrozenTime:
+    """The `time` module with `time()` pinned, patched into one module's namespace only."""
+
+    @staticmethod
+    def time() -> float:
+        return NOW
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(time, name)
+
+
+FIRST_PROMPT = "Add retry with backoff to the webhook handler."
+LATER_PROMPT = "Keep the diff small and leave the tests alone."
+
+
+def _transcript_entry(kind: str, text: str, at: float, index: int) -> dict[str, Any]:
+    stamp = datetime.datetime.fromtimestamp(at, datetime.UTC).isoformat().replace("+00:00", "Z")
+    return {
+        "type": kind,
+        "uuid": f"u{index}",
+        "parentUuid": f"u{index - 1}" if index else None,
+        "isSidechain": False,
+        "cwd": "/work/alpha-app",
+        "sessionId": "a1b2c3d4-0000-4000-8000-000000000000",
+        "timestamp": stamp,
+        "message": {"role": kind, "content": [{"type": "text", "text": text}]},
+    }
+
+
+def adoption_scenarios(recorder: Recorder, scratch: Scratch) -> None:
+    first_at, later_at = NOW - 3600, NOW - 1800
+    row = synthetic_row(
+        "claude",
+        "a1b2c3d4",
+        "alpha-app",
+        title="Retry work",
+        state="working",
+        age=5.0,
+        first_prompt=FIRST_PROMPT,
+        first_prompt_at=first_at,
+        last_prompt=LATER_PROMPT,
+        prompt_at=later_at,
+    )
+    rig = Rig(scratch, "adoption", rows={"claude": [row], "codex": []})
+    try:
+        rig.write_transcript(
+            "a1b2c3d4",
+            [
+                _transcript_entry("user", FIRST_PROMPT, first_at, 0),
+                _transcript_entry("assistant", "Done.", first_at + 60, 1),
+                _transcript_entry("user", LATER_PROMPT, later_at, 2),
+            ],
+        )
+        scope = "project=alpha-app&session=claude:a1b2c3d4"
+        context = recorder.capture(
+            rig,
+            "context-focused-facts",
+            get("/api/project-context", scope),
+            "A focused session whose transcript the server reads: the observed record carries "
+            "one fact per person message, each with a stable fact_id.",
+        )
+        recorder.capture(
+            rig,
+            "context-focused-prompts",
+            get("/api/project-context", scope + "&prompts=1"),
+            "prompts=1 adds the menu of prompts this session can adopt as its goal.",
+        )
+        facts = context["body"]["semantic"]["facts"]
+        later = next(
+            fact for fact in facts if fact.get("type") == "user_message" and fact["at"] > first_at
+        )
+        recorder.capture(
+            rig,
+            "annotate-adopted",
+            post(
+                "/api/annotate",
+                {
+                    **SESSION,
+                    "adopt": "first-prompt",
+                    "expected_prompt": FIRST_PROMPT,
+                    "expected_prompt_at": first_at,
+                    "expected_revision": 0,
+                },
+            ),
+            "Adopting the first prompt as the goal: stored, and saved_revision names the "
+            "revision this adoption wrote.",
+        )
+        recorder.capture(
+            rig,
+            "direction-opened",
+            post("/api/direction", {**SESSION, "fact_id": later["fact_id"]}),
+            "A later direction read back whole for review.",
+        )
+        recorder.capture(
+            rig,
+            "annotate-direction-added",
+            post(
+                "/api/annotate",
+                {
+                    **SESSION,
+                    "add_direction": later["fact_id"],
+                    "text": LATER_PROMPT,
+                    "expected_revision": 1,
+                },
+            ),
+            "The reviewed direction saved as an outcome line, revision 2.",
+        )
+        recorder.capture(
+            rig,
+            "annotate-direction-refused",
+            post(
+                "/api/annotate",
+                {
+                    **SESSION,
+                    "add_direction": "fact:0000000000000000",
+                    "text": "x",
+                    "expected_revision": 2,
+                },
+            ),
+            "A fact the session record does not hold is refused, persisted false.",
+        )
+        with mock.patch.object(annotation_store, "time", FrozenTime()):
+            recorder.capture(
+                rig,
+                "annotate-cleared",
+                post("/api/annotate", {**SESSION, "clear": True}),
+                "Clearing withdraws every revision and stamps the discard. The server stamps it "
+                "from the wall clock, so this module's clock is pinned for the one request.",
+            )
+    finally:
+        rig.close()
+
+
+def tripwire_scenarios(recorder: Recorder, scratch: Scratch) -> None:
+    key = "0" * 63 + "1"
+    request = {"id": key, "stage": "review", "action": "remove", "expected_revision": ""}
+    rig = Rig(scratch, "tripwire", tripwires_enabled=True)
+    try:
+        recorder.capture(
+            rig,
+            "tripwire-invalid",
+            post("/api/tripwire", {}),
+            "A body that is not exactly id, stage, action and expected_revision is a 400 with "
+            "the reason in JSON.",
+        )
+        recorder.capture(
+            rig,
+            "tripwire-stale-revision",
+            post("/api/tripwire", {**request, "expected_revision": "a" * 32}),
+            "A condition that changed since the page read it is a 409; nothing is saved.",
+        )
+        recorder.capture(
+            rig,
+            "tripwire-removed",
+            post("/api/tripwire", request),
+            "A writable store accepts the change: 200 with the resulting rule (none, after a "
+            "removal).",
+        )
+    finally:
+        rig.close()
+
+    rig = Rig(scratch, "tripwire-blocked", tripwires_enabled=True, blocked_state=True)
+    try:
+        recorder.capture(
+            rig,
+            "tripwire-unwritable",
+            post("/api/tripwire", request),
+            "A state home that cannot hold the store reads as an unreadable one: "
+            "503, nothing saved.",
+        )
+    finally:
+        rig.close()
 
 
 def focus_scenarios(recorder: Recorder, scratch: Scratch) -> None:
@@ -1261,6 +1476,8 @@ SCENARIO_SECTIONS: tuple[Callable[[Recorder, Scratch], None], ...] = (
     action_scenarios,
     copy_and_direction_scenarios,
     reading_scenarios,
+    adoption_scenarios,
+    tripwire_scenarios,
     focus_scenarios,
 )
 
@@ -1315,6 +1532,9 @@ def manifest_of(scenarios: dict[str, dict[str, Any]], files: dict[str, bytes]) -
             "from error pages",
             "error_page": "stdlib error pages are recorded by status, not by text, because "
             "their wording differs between Python releases",
+            "reading_route": "the CLI lookup is pinned to a present binary, which is a machine "
+            "fact; the destination is the route's own resolution against an empty environment "
+            "and no settings files, which is the shipped default and names the vendor",
             "json_body": "bodies are re-serialised with sorted keys; the wire order is not kept",
         },
         "scenarios": rows,

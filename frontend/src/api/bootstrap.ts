@@ -69,28 +69,3 @@ export function payloadSessions(payload: unknown): RowCollection<PayloadSession>
 export function payloadAsks(payload: unknown): RowCollection<PayloadAsk> {
   return objectRows<PayloadAsk>(payload, 'asks');
 }
-
-export type BuildState = 'unknown' | 'same' | 'reload-required';
-
-function buildOf(payload: unknown): string {
-  return isRecord(payload) && typeof payload['build'] === 'string' ? payload['build'] : '';
-}
-
-/* Per document. Data keeps updating while an older document's build differs;
-   only the action capability is stale, which is why this reports a state and
-   does not stop anything. */
-export function createBuildTracker() {
-  let first = '';
-  return {
-    note(payload: unknown): void {
-      const build = buildOf(payload);
-      if (build && !first) first = build;
-    },
-    first: (): string => first,
-    state(payload: unknown): BuildState {
-      const build = buildOf(payload);
-      if (!first || !build) return 'unknown';
-      return build === first ? 'same' : 'reload-required';
-    },
-  };
-}

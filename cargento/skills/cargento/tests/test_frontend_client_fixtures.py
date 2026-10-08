@@ -11,11 +11,14 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+import socket
 import subprocess
 import sys
+import time
 import unittest
 from pathlib import Path
-from typing import Any, ClassVar
+from typing import Any, ClassVar, Self
+from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[4]
 SCRIPTS = ROOT / "scripts"
@@ -103,6 +106,19 @@ REQUIRED = frozenset(
         "focus-missing-capability",
         "cleared-after-dismiss",
         "context-project-key",
+        "reading-destination-changed",
+        "reading-page-outdated",
+        "reading-stale-model",
+        "tripwire-invalid",
+        "tripwire-removed",
+        "tripwire-stale-revision",
+        "tripwire-unwritable",
+        "direction-opened",
+        "annotate-adopted",
+        "annotate-direction-added",
+        "annotate-direction-refused",
+        "annotate-cleared",
+        "context-focused-prompts",
         "dismiss-persisted",
         "dismiss-disabled",
         "notify-accepted",
@@ -191,6 +207,39 @@ class ClientContractFixtureTest(unittest.TestCase):
             {"model_launches": 0, "native_notifications": 0, "subprocess_spawns": 0},
             regen.GUARD_COUNTS,
         )
+
+    def test_recorded_stream_bytes_do_not_depend_on_how_fast_the_reader_is(self) -> None:
+        # A reader that stalls past the 0.2 s heartbeat is sent more keepalive frames than one
+        # that does not; the recorded text is cut at the frames the scenario is about.
+        real = socket.create_connection
+
+        class Stalled:
+            def __init__(self, sock: Any) -> None:
+                self.sock = sock
+                self.reads = 0
+
+            def recv(self, size: int) -> bytes:
+                self.reads += 1
+                if self.reads == 2:
+                    time.sleep(0.7)
+                data: bytes = self.sock.recv(size)
+                return data
+
+            def __getattr__(self, name: str) -> Any:
+                return getattr(self.sock, name)
+
+            def __enter__(self) -> Self:
+                return self
+
+            def __exit__(self, *_exc: object) -> None:
+                self.sock.close()
+
+        with mock.patch.object(socket, "create_connection", lambda *a, **k: Stalled(real(*a, **k))):
+            slow = regen.generate()
+        committed = self.committed()
+        for name in sorted(n for n in slow if n.startswith("stream-")):
+            with self.subTest(fixture=name):
+                self.assertEqual(committed[name], slow[name])
 
     def test_check_flag_is_cheap_and_agrees(self) -> None:
         result = subprocess.run(

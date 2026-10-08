@@ -1,5 +1,6 @@
 import { readBootstrap } from '../api/bootstrap';
 import { createApiClient, type FetchLike } from '../api/client';
+import { exactIdentity } from '../api/identity';
 import type { FocusOutcome, SessionIdentity } from '../api/types';
 import { createBoardStore } from '../store/board';
 import { createContextLoader, type ContextScope } from './context';
@@ -21,10 +22,19 @@ export interface RuntimeOptions {
   readonly announce?: (key: string, sentence: string) => void;
 }
 
-/* The one place the board's resources are started and stopped. The store
-   outlives a start/dispose cycle so a remounted view still has the last
-   accepted board; every fetch, socket, timer and listener belongs to an
-   `Owned` set created by `start` and torn down whole by `dispose`.
+/* The one place the board's resources are started and stopped. The store and
+   the pending-token registry belong to the runtime and live as long as it
+   does, so a view that unmounts and remounts still has the last accepted board
+   and an in-flight action's re-press guard; the registry's timers only abort
+   or clear their own entries and reach no network on their own. Every fetch,
+   socket, timer and listener of the live board belongs to an `Owned` set that
+   `start` creates and `stop` tears down whole.
+
+   `stop` is the revivable teardown (the last holder leaving). `dispose` is
+   terminal: a disposed or superseded runtime cannot be revived by a stale
+   holder's `acquire`. Release functions are tied to the generation that
+   issued them, so one outliving a stop cannot drive the count negative or tear
+   down a later holder.
 
    Nothing in here issues a POST. Actions are the caller's explicit
    `client.post*` calls, so a reconnect, a poll, a store subscription or a
@@ -40,19 +50,22 @@ export function createBoardRuntime(options: RuntimeOptions) {
     readonly refresh: ReturnType<typeof createRefreshController>;
     readonly context: ReturnType<typeof createContextLoader>;
     readonly live: ReturnType<typeof createLiveTransport>;
-    readonly pending: ReturnType<typeof createPendingRegistry>;
   }
+
+  const pendingRegistry = createPendingRegistry({
+    clock: env.clock,
+    onChange: () => store.setPending(pendingRegistry.keys()),
+    announce: options.announce ?? (() => undefined),
+  });
 
   let owned: Owned | null = null;
   let holders = 0;
+  let generation = 0;
   let teardown: TimerHandle | null = null;
+  let disposed = false;
+  let focusInFlight = false;
 
   function create(): Owned {
-    const pending = createPendingRegistry({
-      clock: env.clock,
-      onChange: () => store.setPending(pending.keys()),
-      announce: options.announce ?? (() => undefined),
-    });
     const sink: RefreshSink = {
       async fetchData(signal): Promise<DataOutcome> {
         const result = await client.getData({
@@ -81,7 +94,6 @@ export function createBoardRuntime(options: RuntimeOptions) {
     const refresh = createRefreshController({ sink, revisions });
     return {
       refresh,
-      pending,
       context: createContextLoader({ client, store, storage }),
       live: createLiveTransport({
         env,
@@ -94,37 +106,43 @@ export function createBoardRuntime(options: RuntimeOptions) {
   }
 
   function start(): void {
-    if (owned) return;
+    if (disposed || owned) return;
     owned = create();
     owned.live.start();
   }
 
-  function dispose(): void {
+  function stop(): void {
     if (teardown !== null) env.clock.clearTimeout(teardown);
     teardown = null;
     holders = 0;
+    generation += 1;
     const closing = owned;
     owned = null;
     if (!closing) return;
     closing.live.dispose();
     closing.refresh.dispose();
     closing.context.dispose();
-    closing.pending.dispose();
+  }
+
+  function dispose(): void {
+    stop();
+    disposed = true;
+    pendingRegistry.dispose();
     store.setPending([]);
   }
 
   const pending = {
     start(key: string, busy: string, say = ''): PendingToken | null {
-      const token = owned?.pending.start(key, busy, say) ?? null;
-      if (token && owned) store.setPending(owned.pending.keys());
+      const token = pendingRegistry.start(key, busy, say);
+      if (token) store.setPending(pendingRegistry.keys());
       return token;
     },
     end(key: string, token: PendingToken | null | undefined): boolean {
-      const ended = owned?.pending.end(key, token) ?? false;
-      if (ended && owned) store.setPending(owned.pending.keys());
+      const ended = pendingRegistry.end(key, token);
+      if (ended) store.setPending(pendingRegistry.keys());
       return ended;
     },
-    has: (key: string): boolean => owned?.pending.has(key) ?? false,
+    has: (key: string): boolean => pendingRegistry.has(key),
   };
 
   return {
@@ -133,25 +151,28 @@ export function createBoardRuntime(options: RuntimeOptions) {
     bootstrap,
     pending,
     start,
+    stop,
     dispose,
 
     /* For a component effect. React's StrictMode runs effect, cleanup, effect
        on mount; teardown is deferred one tick so that sequence reuses the
        running owner instead of opening a second stream and reading twice. */
     acquire(): () => void {
+      if (disposed) return () => undefined;
       holders += 1;
       if (teardown !== null) env.clock.clearTimeout(teardown);
       teardown = null;
       start();
+      const issued = generation;
       let released = false;
       return () => {
-        if (released) return;
+        if (released || issued !== generation) return;
         released = true;
         holders -= 1;
         if (holders > 0 || teardown !== null) return;
         teardown = env.clock.setTimeout(() => {
           teardown = null;
-          if (holders === 0) dispose();
+          if (holders === 0) stop();
         }, 0);
       };
     },
@@ -160,9 +181,20 @@ export function createBoardRuntime(options: RuntimeOptions) {
     loadContext: (scope: ContextScope): void => owned?.context.load(scope),
     requestObserverSummary: (scope: ContextScope): Promise<void> => owned?.context.requestObserverSummary(scope) ?? Promise.resolve(),
 
-    /** One explicit attempt. No capability sends nothing. */
-    focus: (identity: SessionIdentity): Promise<FocusOutcome> =>
-      client.focus({ identity, capability: bootstrap.focusCapability }),
+    /* One explicit attempt at a time, as the legacy raise control was: a press
+       while one is in flight is answered locally as throttled and sends
+       nothing, and so does an identity or capability that is empty. */
+    async focus(identity: SessionIdentity): Promise<FocusOutcome> {
+      const exact = exactIdentity(identity);
+      if (!exact || !bootstrap.focusCapability) return 'unavailable';
+      if (focusInFlight) return 'throttled';
+      focusInFlight = true;
+      try {
+        return await client.focus({ identity: exact, capability: bootstrap.focusCapability });
+      } finally {
+        focusInFlight = false;
+      }
+    },
   };
 }
 
@@ -172,11 +204,14 @@ const SLOT = Symbol.for('cargento.board.runtime');
 
 /* Module replacement re-runs the module that creates the runtime. The previous
    one is disposed here, before the replacement can start, so a hot update
-   cannot leave two owners with a stream each. */
+   cannot leave two owners with a stream each, and it stays disposed: a stale
+   holder cannot revive it. Installing the runtime that is already installed
+   changes nothing. */
 export function replaceRuntime(
   next: BoardRuntime,
   holder: Record<symbol, BoardRuntime | undefined> = globalThis as unknown as Record<symbol, BoardRuntime | undefined>,
 ): BoardRuntime {
+  if (holder[SLOT] === next) return next;
   holder[SLOT]?.dispose();
   holder[SLOT] = next;
   return next;
