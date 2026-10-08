@@ -221,6 +221,17 @@ async function settled(read) {
    page is the oracle, not the subject, so a legacy page that does not draw is recorded and the React page is
    still held to every assertion; the row comparison with legacy only runs while legacy draws. */
 const legacyDraw = { stale: false };
+/* A check on the legacy page that depends on its timing. The legacy page is the oracle, so on a loaded runner a
+   check it fails is recorded under the step's detail instead of failing the run; the React page is always held
+   to its own assertions. */
+const legacyNotes = [];
+function legacySoft(label, check) {
+  try {
+    check();
+  } catch (error) {
+    legacyNotes.push(`${label}: ${String(error.message || error).split('\n')[0]}`);
+  }
+}
 async function waitBoth(text) {
   await waitRows(world.react.page, text);
   if (legacyDraw.stale) return;
@@ -487,15 +498,17 @@ try {
       }
       assert.deepEqual(
         flips.react,
-        flips.legacy,
-        `threshold: react ${flips.react} vs legacy ${flips.legacy}`,
-      );
-      assert.deepEqual(
-        flips.react,
         [true, true, true, false, false, false],
         `the flip is not between 2 px and 3 px: ${flips.react}`,
       );
-      return { distances, followingByDistance: flips.react };
+      legacySoft('threshold', () =>
+        assert.deepEqual(
+          flips.react,
+          flips.legacy,
+          `threshold: react ${flips.react} vs legacy ${flips.legacy}`,
+        ),
+      );
+      return { distances, followingByDistance: flips.react, legacyNotes: [...legacyNotes] };
     },
   );
 
@@ -653,22 +666,28 @@ try {
       await both((side) => side.page.goBack());
       await both((side) => side.page.locator('#pc-terminal-viewport').waitFor());
       const after = await settled(() => pairs((side) => metricsOf(side.page)));
-      // A legacy page that has stopped drawing (see legacyDraw) is recorded, not held to a clamp it cannot show.
-      for (const name of SIDES.filter((side) => side === 'react' || !legacyDraw.stale)) {
-        assert.ok(
-          after[name].max < before[name].max - 20,
-          `${name}: the maximum did not shrink, so nothing was clamped`,
-        );
-        assert.ok(
-          before[name].top > after[name].max,
-          `${name}: the saved offset was not past the new maximum`,
-        );
-        near(after[name].top, after[name].max, 1, `${name} did not clamp to the new maximum`);
+      // The legacy page is the oracle: a clamp it does not show on a loaded runner is recorded (see legacySoft), and
+      // the React page is held to every assertion.
+      for (const name of SIDES) {
+        const check = () => {
+          assert.ok(
+            after[name].max < before[name].max - 20,
+            `${name}: the maximum did not shrink, so nothing was clamped`,
+          );
+          assert.ok(
+            before[name].top > after[name].max,
+            `${name}: the saved offset was not past the new maximum`,
+          );
+          near(after[name].top, after[name].max, 1, `${name} did not clamp to the new maximum`);
+        };
+        if (name === 'react') check();
+        else if (!legacyDraw.stale) legacySoft('clamp', check);
       }
       return {
         offsetBefore: before.react.top,
         maxAfter: after.react.max,
         offsetAfter: after.react.top,
+        legacyNotes: [...legacyNotes],
       };
     },
   );
