@@ -3697,6 +3697,28 @@ keeps the exception type plus at most 1,024 Unicode characters of its message, i
 `... [truncated]` when clipped; clipping does not redact sensitive content. Nothing is transmitted,
 but redact it before pasting it into a public issue.
 
+## Release workflow (the deploy key)
+
+A release is pushed by a deploy key that bypasses the branch and tag rulesets, so the workflow
+keeps that key away from dependency code. The release target is fixed once, before anything is
+built. The frontend is then installed, rebuilt and tested in jobs that have a read-only token, a
+checkout without persisted credentials and no secrets; the repository validation suite runs in a
+second job with the same limits, because it starts `node` whenever `node` is on the path. The one
+job that holds the key and the write token installs and runs no Node, pnpm, npm or frontend
+dependency, refuses to continue unless its checkout is the exact commit both verifiers saw, and
+proves the archive of the release commit before it pushes, moves the tag or advances `stable`.
+The Python in that job installs from wheels only, into an environment it calls by path, and runs
+no build script.
+
+What it still runs beside the key: first-party Python from the verified tree (the release
+scripts, the archived launcher and the validator), as the same operating-system user, with an empty
+path and a throwaway home. That keeps Node out of reach and is not credential isolation. A change
+that reaches `main` through the normal review and checks is the accepted trust boundary; the
+workflow does not defend against a reviewed commit that is hostile. The release publishes the tree
+that was verified, never a newer `main`, and a `stable` that has already moved forward is not moved
+back. Whether the ruleset bypass, the key handling of `actions/checkout` and the runner image behave
+as described can only be shown by a real run.
+
 ## Reporting a vulnerability
 
 Please do not open a public issue for security problems. Instead:

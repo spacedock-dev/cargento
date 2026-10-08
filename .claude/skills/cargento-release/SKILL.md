@@ -63,8 +63,8 @@ accepts, so a stray tag cannot become the baseline either.
   local edit is not in it.
 - **`bump_version.py --current` equals `$LAST` without its `v`.** If it does not, a previous
   release is half finished. Find out why before adding a second one on top. The workflow is
-  idempotent and resumable, so the fix is usually to re-push the existing tag, not to cut a new
-  number.
+  idempotent and resumable, so the fix is usually to use Re-run all jobs on the existing tag's
+  run (see step 6), not to cut a new number. Pushing a tag that already exists does nothing.
 - **`main`'s head is green.** The Release workflow runs the contract validator, its own tests, the
   bump-version tests and the whole dashboard suite, and rebuilds and tests the frontend, all on the
   exact commit it resolved, but not the quality gate — no ruff, no mypy, no coverage threshold, no
@@ -278,22 +278,48 @@ already carry the tagged version, which is the initial-release path and the resu
 parity check is what makes it unconditional on every normal release.
 
 
-If the run failed part way, re-push the same tag rather than picking a new number. Every step is
-idempotent and the workflow detects its own resume. Read which job failed first:
+If the run failed part way, do not cut a new number and do not push the tag again: the tag
+already exists on the remote, so a second push is `Everything up-to-date` and starts nothing, and
+the ruleset forbids deleting it. Open the failed run and use **Re-run all jobs**. That is the only
+re-run that works, because it is the only one that runs `resolve` again. **Re-run failed jobs**
+keeps the first run's resolved target, so a target that main has since moved past fails the
+assertion again, every time. Every step is idempotent and the workflow detects its own resume.
+Read which job failed first:
 
 - **`verify-frontend` or `verify-tree` failed.** Nothing was pushed, tagged or published; the tree
-  that was verified is not releasable. Fix it on `main` through a PR, then re-push the tag or
-  re-run the workflow. A re-run resolves the new main tip and verifies that.
-- **`release` failed at "Refuse to publish anything but the verified tree" with "main moved".** A
-  commit landed while the verifiers ran. Nothing was published. Re-run the failed jobs (or the whole
-  run): `resolve` takes the new tip and both verifiers cover it. This is the safe outcome, not a
-  defect to work around.
+  that was verified is not releasable. Fix it on `main` through a PR, then Re-run all jobs on the
+  same run: `resolve` takes the new main tip and both verifiers cover it. The run uses the workflow
+  file of the tagged commit, so a fix to `release.yml` itself cannot be picked up by a re-run and
+  needs the next version number.
+- **`release` failed at "Put HEAD on the verified commit" or "Refuse to publish anything but the
+  verified tree" with "main is no longer" or "main is at".** A commit landed while the verifiers
+  ran, or this is a retry after the bump commit was pushed. Re-run all jobs: `resolve` takes the new
+  tip, or finds this tag's release commit and resumes it. This is the safe outcome, not a defect to
+  work around.
 - **`release` failed at the archive proof.** The release commit exists only on the runner, so
   nothing was pushed, tagged or moved. Read the failing check in the log (versions, changes,
   bundle, inventory, page, launch); `changes` and `bundle` mean the bump commit shipped something
   other than what was verified, which should never happen and needs an owner before any re-run.
-- **A later step failed (push, tag, `stable`, publish).** Re-run: the workflow finds this tag's
-  release commit on `main`, verifies that commit, and publishes it, never a newer `main`.
+- **A later step failed (push, tag, `stable`, publish).** Re-run all jobs: the workflow finds this
+  tag's release commit on `main`, verifies that commit, and publishes it, never a newer `main`. It
+  moves `stable` forward only, so resuming an older release after a newer one leaves `stable` where
+  the newer release put it and says so in the log.
+
+### Rehearsing the sequence
+
+The decisions are in `scripts/release_transition.py` and can be run against a throwaway clone
+whose remote is a local bare repository, without touching the real remote or a real tag:
+
+```bash
+python3 scripts/release_transition.py --repo <throwaway clone> rehearse --tag v0.2.0 --dry-run
+```
+
+`rehearse` resolves, verifies, bumps, proves the archive and, without `--dry-run`, pushes, moves the
+tag and advances `stable`, all against that clone's remote. It refuses any remote whose fetch or
+push URL is not a local path, so it cannot reach GitHub. `scripts/verify_release_archive.py --repo .
+--commit <release commit> --verified <verified commit> --version X.Y.Z` runs only the archive
+proof (versions, changes, bundle, inventory, page, launch) on a local commit. Neither command can
+rehearse GitHub Actions itself, the deploy key or the rulesets.
 
 ## 6.5 Write the release note for a person
 
