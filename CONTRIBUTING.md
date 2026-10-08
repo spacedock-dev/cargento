@@ -55,7 +55,7 @@ at `http://127.0.0.1:4582/`. Open the Python URL. React edits refresh through Vi
 the terminal to restart Python, then reload the page for its new instance. Ctrl+C stops both.
 The command uses isolated fixture locations and disables model calls, quota fetching and native
 actions. It reads no personal harness transcripts. The React page has its shell, routes and shared
-controls; the session, Intent, project and Attention views are still placeholders, so use the
+controls, Sessions and session detail; the Intent, project and Attention views are still placeholders, so use the
 default dashboard for your sessions.
 
 Use `--python` with an absolute Python executable and `--port`/`--vite-port` with distinct ports
@@ -84,7 +84,9 @@ response, run `python3 scripts/regen_client_fixtures.py` and commit the result; 
 whether anything is stale. `pnpm test:storage:browser` drives the legacy page in Chromium to prove
 the React storage codecs read and write what the legacy page does. `pnpm test:shell:browser` compares
 the React shell's routes against the legacy page in the same browser, and `pnpm test:controls:browser`
-checks that focus, drafts, composition and open selects survive live updates.
+checks that focus, drafts, composition and open selects survive live updates. `pnpm test:sessions:browser`
+compares Sessions and session detail with the legacy page, and `pnpm test:terminal:browser` does the same for
+the timeline filter and the output-only terminal.
 
 ## Before you open a PR
 

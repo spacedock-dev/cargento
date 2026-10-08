@@ -3,11 +3,13 @@ import { compatSessKey } from '../api/identity';
 import { fragmentForRoute, type ProjectRoute, type Route, type SessionRoute, type TopLevelRoute } from '../router/grammar';
 import type { BoardSnapshot } from '../store/board';
 import { selectDataStatus } from '../store/selectors';
-import { findSession, sessionTitle, windowHours } from './derive';
+import { findSession, windowHours } from './derive';
 import { ProjectTabs } from './ProjectTabs';
 import { OWNERS } from './owners';
 import { RouteLink } from './RouteLink';
 import { useDisplayed } from './context';
+import { SessionDetail, SessionsView } from '../sessions';
+import type { Row } from '../observed';
 
 /* The views the later steps fill in. Each is a placeholder that says what is missing and which step
    brings it (`./owners`), because a blank page would read as an empty healthy board, and the page must
@@ -39,8 +41,33 @@ function BoardStatus({ snapshot }: { readonly snapshot: BoardSnapshot }) {
   return null;
 }
 
+/* Sessions is the landing view. Before the first payload and after reads that never succeeded it says so,
+   and a board that carried no session collection says that, because "no sessions" would be a claim about a
+   collection nobody published. */
+function SessionsBranch() {
+  const snapshot = useDisplayed((current) => current);
+  if (!snapshot.data) {
+    return (
+      <section className="next-view" data-next-view-body="sessions">
+        <h1>{HEADINGS.sessions}</h1>
+        <BoardStatus snapshot={snapshot} />
+      </section>
+    );
+  }
+  if (!payloadSessions(snapshot.data).present) {
+    return (
+      <section className="next-view" data-next-view-body="sessions" data-next-sessions-state="no-collection">
+        <h1>{HEADINGS.sessions}</h1>
+        <p className="next-absence">The board published no session collection.</p>
+      </section>
+    );
+  }
+  return <SessionsView />;
+}
+
 function TopLevelView({ route }: { readonly route: TopLevelRoute }) {
   const snapshot = useDisplayed((current) => current);
+  if (route.view === 'sessions') return <SessionsBranch />;
   return (
     <section className="next-view" data-next-view-body={route.view}>
       <h1>{HEADINGS[route.view]}</h1>
@@ -77,12 +104,7 @@ function SessionView({ route }: { readonly route: SessionRoute }) {
       </section>
     );
   }
-  return (
-    <section className="next-view" data-next-view-body="session">
-      <h1>{sessionTitle(session)}</h1>
-      <Placeholder view="session" name="This session’s page" />
-    </section>
-  );
+  return <SessionDetail route={route} data={data} session={session as unknown as Row} />;
 }
 
 function ProjectView({ route }: { readonly route: ProjectRoute }) {

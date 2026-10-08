@@ -1,43 +1,18 @@
-import { payloadAsks, payloadSessions } from '../api/bootstrap';
-import type { PayloadAsk, PayloadData, PayloadSession } from '../api/types';
+import { payloadSessions } from '../api/bootstrap';
+import type { PayloadData, PayloadSession } from '../api/types';
+import { observedFor } from '../observed/select';
+import { trimmed } from '../observed/values';
 import type { BoardSnapshot } from '../store/board';
 
-/* The few figures the page's chrome reads, derived from the rows the views render. They are the
-   chrome's slice of `nextObserved` in `next-observed.js`, not its port: the whole observed model
-   (projects, risks, capacity, delegation) belongs to the views that draw it. Each rule here is the
-   legacy rule, and the header-count test pins them against the legacy cases. */
+/* The few figures the page's chrome reads, taken from the observed model of the rows the views render
+   (`observed/`), never counted a second way: the header, the Sessions fleet facts and the session page all
+   stand on one model of one payload, so they cannot disagree about what a running or blocked session is.
+   The header-count tests pin them against the legacy cases. */
 
 export const TITLE_NOT_PUBLISHED = 'Title not published';
 
 function record(value: unknown): Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
-}
-
-function text(value: unknown): string {
-  return typeof value === 'string' ? value.trim() : '';
-}
-
-/* When a session id was observed to end, or null. Absence covers a SIGKILL, a harness with no event
-   adapter and a session that predates this server run, so a row without a stamp is not known to be
-   running and is never counted as though it were. */
-function hasEnded(row: PayloadSession): boolean {
-  const at = row.ended_at;
-  return typeof at === 'number' && Number.isFinite(at) && at > 0;
-}
-
-/* The pair, not the sid alone: two harnesses can hold the same sid. */
-function pairKey(harness: unknown, sid: unknown): string {
-  return JSON.stringify([String(harness ?? ''), String(sid ?? '')]);
-}
-
-/* The one session an ask belongs to: its sid, and its harness when it names one, matching exactly
-   one row. An ask that matches none or several is attributed to no session. */
-function askOwner(sessions: readonly PayloadSession[], ask: PayloadAsk): PayloadSession | null {
-  const sid = String(ask.session_id ?? '');
-  if (!sid) return null;
-  const harness = String(ask.harness ?? '');
-  const matches = sessions.filter((row) => String(row.sid ?? '') === sid && (!harness || String(row.harness ?? '') === harness));
-  return matches.length === 1 ? (matches[0] ?? null) : null;
 }
 
 export type HeaderCounts =
@@ -56,29 +31,17 @@ export function deriveHeaderCounts(data: PayloadData | null): HeaderCounts {
   if (!data) return UNREAD;
   const cached = countsByBody.get(data);
   if (cached) return cached;
-  const collection = payloadSessions(data);
   let counts: HeaderCounts;
-  if (!collection.present) {
+  if (!payloadSessions(data).present) {
     counts = { state: 'absent' };
   } else {
-    const sessions = collection.rows;
-    const asked = new Set<string>();
-    for (const ask of data.ask === true ? payloadAsks(data).rows : []) {
-      if (!text(ask.question)) continue;
-      const owner = askOwner(sessions, ask);
-      if (owner) asked.add(pairKey(owner.harness, owner.sid));
-    }
-    let gates = 0;
-    let running = 0;
-    let subagents = 0;
-    for (const row of sessions) {
-      const ended = hasEnded(row);
-      if ((!ended && row.state === 'needs_input') || asked.has(pairKey(row.harness, row.sid))) gates += 1;
-      if (!ended && row.state === 'working' && row.active === true) running += 1;
-      const children = record(row)['subagents'];
-      if (Array.isArray(children)) subagents += children.length;
-    }
-    counts = { state: 'measured', gates, running, subagents };
+    const model = observedFor(data);
+    counts = {
+      state: 'measured',
+      gates: model.sessions.filter((session) => session.isNeeds || session.askKnown).length,
+      running: model.totals.running,
+      subagents: model.totals.subagents,
+    };
   }
   countsByBody.set(data, counts);
   return counts;
@@ -112,7 +75,7 @@ export function findSession(
 
 /* The published title, or a sentence saying there is none. Never an invented one. */
 export function sessionTitle(session: PayloadSession | null): string {
-  return text(session?.title) || TITLE_NOT_PUBLISHED;
+  return trimmed(session?.title) || TITLE_NOT_PUBLISHED;
 }
 
 /* The two reasons the history store publishes, and nothing else: the field arrives from a file any

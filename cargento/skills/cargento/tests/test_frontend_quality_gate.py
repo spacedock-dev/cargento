@@ -214,6 +214,8 @@ class FrontendWiringControlsTest(unittest.TestCase):
             "pnpm test:storage:browser",
             "pnpm test:shell:browser",
             "pnpm test:controls:browser",
+            "pnpm test:sessions:browser",
+            "pnpm test:terminal:browser",
         ):
             with self.subTest(command=command):
                 matches = [step for step in steps if step.get("run") == command]
@@ -235,6 +237,8 @@ class FrontendWiringControlsTest(unittest.TestCase):
             "pnpm test:storage:browser",
             "pnpm test:shell:browser",
             "pnpm test:controls:browser",
+            "pnpm test:sessions:browser",
+            "pnpm test:terminal:browser",
         ):
             self.assertLess(
                 commands.index("pnpm exec playwright install --with-deps chromium"),

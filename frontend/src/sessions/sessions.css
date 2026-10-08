@@ -1,0 +1,420 @@
+/* The Sessions screen and the session page, ported rule for rule from the legacy sheet's SESSIONS and
+   SESSION sections so the two renderers look alike (the browser parity test compares their layout at
+   320, 375 and 1280 CSS px). What is left behind belongs to later steps and is not drawn here: the
+   capacity strip and usage consent (Attention and capacity), and the Intent and drift panel's own
+   fields (Intent). Selectors are copied as written, `#app` included, because the React page draws the
+   same `<main id="app">` and the cascade has to resolve the same way. */
+
+/* ===== Busy controls ===== */
+/* The one cell holds any busy control, so a button without `next-action` (the direction Save)
+   keeps max(idle, busy) too rather than laying its ghost beside the busy label (verifier R3). */
+[data-next-pending]{display:inline-grid;align-items:center;justify-items:center;cursor:progress}
+[data-next-pending]>span{grid-area:1/1}
+.next-action[data-next-pending]{display:inline-grid;align-items:center;justify-items:center;border:1px solid var(--line);background:transparent;color:var(--ink);cursor:progress}
+.next-action.next-action--primary[data-next-pending]{border-color:var(--accent);background:var(--accent);color:#14140f}
+/* A quiet control is drawn with its bottom rule alone, busy as at rest, so it does not grow 2px. */
+.next-action.next-action--quiet[data-next-pending]{border:0;border-bottom:1px solid var(--line)}
+.next-action[data-next-pending]>span{grid-area:1/1}
+.next-action-ghost{visibility:hidden}
+/* At rest the reserving control takes the busy state's own cell, so it is the same box idle and
+   busy: 89.4 by 21px both ways for the direction Save in Chrome 156. */
+[data-next-reserve]{display:inline-grid;align-items:center;justify-items:center}
+.next-action-reserve{display:contents}
+.next-action-reserve>span{grid-area:1/1}
+.next-action-reserve>.next-action-ghost{display:flex}
+.next-action-reserve .next-spinner{animation:none}
+.next-action-busy{display:inline-flex;align-items:center;gap:6px}
+@keyframes next-spin{to{transform:rotate(360deg)}}
+.next-spinner{display:inline-block;inline-size:1em;block-size:1em;box-sizing:border-box;border:2px solid currentColor;border-right-color:transparent;border-radius:50%;animation:next-spin .8s linear infinite}
+@media(prefers-reduced-motion:reduce){.next-spinner{animation:none;border-right-color:currentColor;opacity:.55}}
+
+/* ===== Row dots and tones ===== */
+.next-project-tone--ok{--project-tone:var(--accent)}
+.next-project-tone--want{--project-tone:var(--amber)}
+.next-project-tone--bad{--project-tone:var(--clay)}
+.next-project-tone--unknown{--project-tone:var(--ink2)}
+.next-project-dot{display:inline-block;flex:none;width:6px;height:6px;border:1px solid var(--project-tone);border-radius:50%;background:var(--project-tone)}
+.next-project-dot.next-project-tone--unknown{background:transparent}
+/* Shape carries the lifecycle so it survives greyscale (DRC-4646): working and
+   blocked are filled whatever the tone, which is why the fill outranks the
+   unknown-tone rule above; quiet is a ring, neutral only where its tone was
+   the working `ok`; ended is square in its own tone. */
+.next-project-dot.next-project-dot--filled{background:var(--project-tone)}
+.next-project-dot.next-project-dot--quiet{background:transparent}
+.next-project-dot--quiet.next-project-tone--ok{border-color:var(--ink2)}
+.next-project-dot--ended{border-radius:1px}
+.next-project-dot--working{animation:next-project-breathe 2.4s ease-in-out infinite}
+@keyframes next-project-breathe{0%,100%{transform:scale(.8)}50%{transform:scale(1.25)}}
+@media(prefers-reduced-motion:reduce){.next-project-dot--working{animation:none}}
+
+/* ===== Session copy controls ===== */
+.next-session-copy{position:relative;z-index:1;margin-top:8px;color:var(--ink2)}
+.next-session-copy:hover{border-color:var(--accent);color:var(--ink)}
+.next-session-copy[data-next-copy-state="copied"]{border-color:var(--accent);color:var(--ink)}
+.next-session-copy[data-next-copy-state="failed"]{border-color:var(--amber);color:var(--ink2)}
+.next-instruction-text{font-family:var(--sans);font-size:var(--fs-body);line-height:1.55}
+
+/* ===== SESSIONS ===== */
+.next-operations{min-width:0;padding:26px 0 34px}
+.next-operations-header{display:grid;grid-template-columns:132px minmax(0,1fr);gap:5px 16px;align-items:baseline}
+.next-operations-header>span{grid-row:1 / span 2;color:var(--ink-label);font-family:var(--mono);font-size:var(--fs-label);font-weight:600;letter-spacing:.07em}
+.next-operations-header h1{margin:0;font-size:var(--fs-head);font-weight:700;letter-spacing:-.02em}
+.next-operations-header p{margin:0;color:var(--ink2);font-size:var(--fs-body);line-height:1.5}
+/* The last explicit column, so the tier-2 disclosure sits under the heading at every width rather than
+   being auto-placed into the 132px label column; the narrow layout's single column is that column. */
+.next-operations-header>.next-cockpit-why{grid-column:-2 / -1}
+.next-operations-fleet{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));margin-top:24px;border-top:1px solid var(--rule);border-bottom:1px solid var(--rule)}
+.next-operations-fleet>section{min-width:0;padding:15px 18px}
+.next-operations-fleet>section+section{border-left:1px solid var(--rule)}
+.next-operations-fleet span,.next-operations-fleet strong,.next-operations-fleet small{display:block}
+.next-operations-fleet span{color:var(--ink-label);font-family:var(--mono);font-size:var(--fs-label)}
+.next-operations-fleet strong{margin-top:7px;font-family:var(--mono);font-size:var(--fs-hero);font-weight:400;line-height:1}
+.next-operations-fleet small{margin-top:7px;color:var(--ink2);font-size:var(--fs-body);font-weight:500;line-height:1.55;max-width:var(--measure)}
+.next-operation-group{margin-top:30px}
+.next-operation-group--history{margin-top:44px}
+.next-operation-group>header{display:flex;justify-content:space-between;gap:24px;align-items:baseline;padding-bottom:10px;border-bottom:1px solid var(--rule)}
+.next-operation-group>header h2{margin:0;font-size:var(--fs-value);font-weight:600}
+.next-operation-group>header p{max-width:620px;margin:0;color:var(--ink2);font-size:var(--fs-body);font-weight:500;line-height:1.55;text-align:right}
+.next-operations-columns,#app .next-operation-row{grid-template-columns:minmax(0,1.2fr) 140px minmax(0,1fr) minmax(0,1fr) minmax(0,1fr) 140px}
+.next-operations-columns{display:grid;border-bottom:1px solid var(--rule);color:var(--ink-label);font-family:var(--mono);font-size:var(--fs-label);font-weight:600;letter-spacing:.07em}
+.next-operations-columns span{padding:9px 12px}
+#app .next-operation-row{display:grid;grid-template-columns:minmax(0,1.2fr) 140px minmax(0,1fr) minmax(0,1fr) minmax(0,1fr) 140px;position:relative;width:100%;min-width:0;border-bottom:1px solid var(--line);color:var(--ink);text-decoration:none;cursor:pointer}
+.next-operation-row:hover{background:var(--panel)}
+.next-operation-route{display:block;color:var(--ink);text-decoration-color:var(--line);text-underline-offset:3px}
+.next-operation-route::after{content:"";position:absolute;inset:0}
+.next-operation-route:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.next-operation-row--needs_input{box-shadow:inset 3px 0 var(--amber)}
+.next-operation-row.next-live{box-shadow:inset 3px 0 var(--accent)}
+.next-operation-identity,.next-operation-fact{display:block;min-width:0;padding:13px 8px;overflow-wrap:anywhere}
+.next-operation-fact{border-left:0}
+.next-operation-identity small,.next-operation-identity strong,.next-operation-identity>span,.next-operation-fact small,.next-operation-fact strong,.next-operation-fact em{display:block}
+.next-operation-identity small,.next-operation-fact small{color:var(--ink-label);font-family:var(--mono);font-size:var(--fs-label);font-style:normal;font-weight:600;letter-spacing:.07em}
+.next-operation-identity>.next-operation-local-label,.next-operation-fact>small{display:none}
+.next-operation-identity strong,.next-operation-fact strong{margin-top:7px;font-size:var(--fs-body);font-style:normal;font-weight:500;line-height:1.4}
+.next-operation-harness{color:var(--ink2);font-family:var(--mono);font-size:var(--fs-label)}
+.next-operation-live-glyph{display:inline-block;margin-right:7px}
+.next-operation-assignment{margin-top:8px;color:var(--ink2);font-size:var(--fs-body);font-weight:500;line-height:1.55;max-width:var(--measure)}
+.next-operation-collision{margin-top:8px;color:var(--ink);font-size:var(--fs-body);font-weight:500;line-height:1.55;max-width:var(--measure)}
+.next-operation-unread,.next-operation-scan-only{display:block;margin-top:8px;color:var(--ink2);font-family:var(--sans);font-size:var(--fs-body);line-height:1.4}
+.next-operation-fact em{margin-top:6px;color:var(--ink2);font-family:var(--sans);font-size:var(--fs-body);font-style:normal;line-height:1.4}
+.next-operation-fact--blocked strong{color:var(--amber)}
+.next-operation-fact--clear strong{color:var(--ink)}
+.next-operation-fact--unknown strong{color:var(--ink2)}
+.next-sessions-empty{grid-column:1/-1;margin:0;padding:24px 12px;border-bottom:1px solid var(--rule);color:var(--ink2);font-size:var(--fs-body)}
+.next-operations-fleet span{font-weight:600;letter-spacing:.07em}
+.next-operation-identity .next-operation-title--unknown{color:var(--ink2)}
+.next-operation-row--bad{box-shadow:inset 2px 0 var(--clay)}
+.next-operation-row--want{box-shadow:inset 2px 0 var(--amber)}
+.next-operation-row--ok{box-shadow:inset 2px 0 var(--accent-dim)}
+.next-operation-row--unknown{box-shadow:none}
+.next-operation-outcome{display:block;margin-top:6px;color:var(--ink2);font-size:var(--fs-body);font-weight:500;line-height:1.55}
+.next-operation-outcome--bad{color:var(--ink2)}
+.next-operation-outcome--unknown{color:var(--ink2)}
+.next-operation-state{padding:13px 8px;text-align:right;color:var(--ink-label);font:600 var(--fs-label) var(--mono);letter-spacing:.07em}
+.next-operation-group--history .next-operations-columns,#app .next-operation-row[data-next-operation-history="true"]{grid-template-columns:minmax(0,1.2fr) 140px minmax(0,1fr) minmax(0,1fr) 92px}
+.next-operation-history-now{min-width:0}
+.next-operation-history-now>.next-operation-outcome{padding:0 8px 13px}
+.next-operation-end-note{grid-column:1/-1;padding:0 8px 13px}
+.next-operation-end-note .next-operation-state{padding:0;text-align:left}
+.next-operation-fact strong{font-family:var(--sans)}
+.next-operation-fact--unknown strong{font-family:var(--sans)}
+.next-operation-unread,.next-operation-scan-only,.next-operation-fact em{font-family:var(--sans)}
+@media(max-width:1100px){
+  .next-operations-fleet{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .next-operations-fleet>section:nth-child(3){border-left:0;border-top:1px solid var(--rule)}
+  .next-operations-fleet>section:nth-child(4){border-top:1px solid var(--rule)}
+  .next-operations-columns{display:none}
+  #app .next-operation-row[data-next-operation-history="true"]{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .next-operation-state{grid-column:1/-1}
+  .next-operation-history-now{grid-column:1/-1}
+  .next-operation-group--history .next-operations-columns{display:none}
+  #app .next-operation-row{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .next-operation-identity{grid-column:1/-1;border-bottom:1px solid var(--rule)}
+  .next-operation-identity>.next-operation-local-label,.next-operation-fact>small{display:block}
+  .next-operation-fact:nth-child(even){border-left:0}
+  .next-operation-fact:nth-child(n+4){border-top:1px solid var(--rule)}
+}
+@media(max-width:620px){
+  #app .next-operation-row[data-next-operation-history="true"]{grid-template-columns:minmax(0,1fr)}
+  .next-operations-header{grid-template-columns:minmax(0,1fr)}
+  .next-operations-header>span{grid-row:auto}
+  .next-operations-fleet>section{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:3px 8px;align-items:baseline;padding:6px 8px}
+  .next-operations-fleet strong{margin-top:0;font-size:var(--fs-value)}
+  .next-operations-fleet small{grid-column:1/-1;margin-top:0}
+  .next-operation-group{margin-top:16px}
+  .next-operation-group>header{align-items:flex-start;flex-direction:column;gap:6px;padding-bottom:6px}
+  .next-operation-group>header p{text-align:left}
+  /* The stacked header puts the caveat at the start, so its popover hangs from
+     that edge: from the end edge it ran off the left of a 375px screen
+     (verifier, 2026-10-02). */
+  .next-operation-group>header>details.next-disclose--pop>.next-disclose-body{inset-inline-start:0;inset-inline-end:auto}
+  .next-operation-rows{display:grid;gap:12px;padding-top:6px}
+  #app .next-operation-row{grid-template-columns:minmax(0,1fr);border:1px solid var(--line);border-radius:var(--r-control);background:var(--panel)}
+  .next-operation-identity{grid-column:auto}
+  .next-operation-fact{display:grid;grid-template-columns:minmax(74px,.34fr) minmax(0,1fr);gap:4px 10px;border-top:1px solid var(--rule);border-left:0}
+  .next-operation-fact small{grid-row:1 / span 2}
+  .next-operation-fact strong,.next-operation-fact em{grid-column:2;margin-top:0}
+  .next-operation-row[data-next-operation-history="true"] .next-operation-fact[data-next-operation-fact="now"]{display:block;grid-column:1/-1}
+  .next-operation-row[data-next-operation-history="true"] .next-operation-fact[data-next-operation-fact="next"]{display:none}
+  .next-operation-row[data-next-operation-history="true"] .next-operation-fact[data-next-operation-fact="blocked"]{display:none}
+}
+@media(max-width:360px){
+  #app .next-operation-row{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .next-operation-identity{grid-column:1/-1;padding:10px}
+  .next-operation-fact{display:block;padding:6px 10px;border-left:1px solid var(--rule)}
+  .next-operation-fact:nth-child(even){border-left:0}
+  .next-operation-fact strong,.next-operation-fact em{grid-column:auto;margin-top:6px}
+  .next-operation-row[data-next-operation-history="true"] .next-operation-fact[data-next-operation-fact="where"]{grid-column:1/-1}
+}
+
+/* ===== Command reports on the session page ===== */
+.next-attention-resume,.next-attention-raise{margin-top:0;margin-inline-start:8px;vertical-align:baseline}
+.next-attention-section{min-width:0;margin-top:24px}
+.next-attention-section-heading{margin-bottom:10px}
+.next-attention-section-heading h2:after{content:"";flex:1;min-width:20px;height:1px;background:var(--rule)}
+.next-attention-section-heading h2{display:flex;flex:1;gap:12px;align-items:center;margin:0;font-size:var(--fs-body);font-weight:600}
+.next-attention-section>h2{margin:0 0 10px;color:var(--ink-label);font-family:var(--mono);font-size:var(--fs-label);font-weight:600;letter-spacing:.07em}
+.next-attention-section>ol{display:grid;gap:10px;margin:0;padding:0;list-style:none}
+.next-attention-section>ol>li[hidden]{display:none}
+.next-attention-risk-identity h3{margin:0 0 5px;font-size:var(--fs-body);font-weight:600;line-height:1.4}
+.next-attention-risk-identity>span,.next-attention-risk-source{color:var(--ink2);font-family:var(--mono);font-size:var(--fs-label);line-height:1.5}
+.next-attention-risk-assignment{margin:5px 0 0;color:var(--ink2);font-size:var(--fs-body);font-weight:500;line-height:1.55;max-width:var(--measure)}
+.next-attention-risk-identity a,.next-attention-why a{display:flex;align-items:center;color:var(--ink);text-decoration-color:var(--line);text-underline-offset:4px}
+.next-attention-risk-observation p{margin:0;color:var(--ink2);font-size:var(--fs-body);line-height:1.5}
+.next-attention-risk-detail{display:grid;gap:5px;margin-top:5px;color:var(--ink2);font-size:var(--fs-body);font-weight:500;line-height:1.55}
+.next-attention-risk-detail small{display:block;font-size:inherit}
+.next-attention-risk-source{display:grid;gap:5px}
+.next-attention-risk-next{color:var(--ink2);font-family:var(--sans);font-size:var(--fs-label)}
+
+.next-session-detail--blocked{box-shadow:inset 3px 0 var(--amber)}
+/* ===== SESSION ===== */
+/* Two columns under a full-width header (DRC-4680): the activity, and the
+   Intent and drift panel at the design's 460px. The panel is first in the
+   markup and placed in the second track, so it leads a single column without
+   a reordering trick. The page scrolls as one document: no scroll container
+   and nothing sticky, so docs/design-reader-state.md gains no row. */
+.next-session-detail{margin:12px 0 0;padding:0 0 34px;box-shadow:none}
+.next-session-columns{display:grid;grid-template-columns:minmax(0,1fr) 460px;gap:var(--sp-5);align-items:start}
+.next-session-panel{grid-column:2;grid-row:1;display:flex;flex-direction:column;gap:var(--sp-1);min-width:0}
+.next-session-activity{grid-column:1;grid-row:1;min-width:0}
+.next-session-activity-heading{margin:0 0 var(--sp-3);color:var(--ink-label);font-family:var(--mono);font-size:var(--fs-label);font-weight:600;letter-spacing:.07em}
+.next-session-state{display:inline-block;margin:0;padding:2px var(--sp-2);border:1px solid var(--line);border-radius:var(--r-pill);color:var(--ink2);font-family:var(--mono);font-size:var(--fs-label)}
+/* Two rows: state, name and id; then the measured line with the controls on
+   its right. One element per line took 205px and pushed Analyze drift to
+   978-1022px at 1440x900 (DRC-4680 walk). */
+.next-session-detail-header{display:flex;flex-direction:column;gap:6px;padding:8px 0 14px}
+.next-session-detail-title{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 12px;min-width:0}
+.next-session-detail-bar{display:flex;flex-wrap:wrap;align-items:center;gap:6px 12px}
+.next-session-detail-bar>.next-session-detail-meta{flex:1 1 16rem}
+.next-session-section>h2,.next-session-ask-callout>span{display:block;color:var(--ink-label);font-family:var(--mono);font-size:var(--fs-label);font-weight:600;letter-spacing:.07em;text-transform:uppercase}
+.next-session-detail h1{margin:0;font-size:var(--fs-value);font-weight:600;letter-spacing:-.015em;overflow-wrap:anywhere}
+.next-session-detail-instruction{margin:0 0 10px;overflow-wrap:anywhere;color:var(--ink2);font-size:var(--fs-body);line-height:1.5}
+.next-instruction-label{color:var(--ink-label);font-family:var(--mono);font-size:var(--fs-label);font-weight:600;letter-spacing:.07em;text-transform:uppercase}
+.next-session-detail-meta{margin:0;color:var(--ink2);font-family:var(--sans);font-size:var(--fs-label)}
+.next-session-command-surface{margin-top:0}
+.next-session-current{padding:14px 17px;border:1px solid var(--rule);border-left:2px solid var(--line);border-radius:var(--r-card);background:var(--panel)}
+.next-session-detail[data-tone="want"] .next-session-current{border-left-color:var(--amber)}
+.next-session-detail[data-tone="bad"] .next-session-current{border-left-color:var(--clay)}
+.next-session-detail[data-tone="ok"] .next-session-current{border-left-color:var(--accent)}
+.next-session-command-surface h2,.next-session-current-label{display:block;margin:0 0 10px;color:var(--ink-label);font-family:var(--mono);font-size:var(--fs-label);font-weight:600;letter-spacing:.07em}
+.next-session-current>strong,.next-session-command-facts strong,.next-session-command-context{display:block;margin:0;font-size:var(--fs-body);font-weight:500;line-height:1.5;overflow-wrap:anywhere}
+.next-session-current-subagents{margin-top:16px;border-top:1px solid var(--rule)}
+.next-session-current-subagents>span,.next-session-subagents-omitted{display:block;padding:10px 8px 5px;color:var(--ink-label);font-family:var(--mono);font-size:var(--fs-label);font-weight:600;letter-spacing:.07em}
+.next-session-command-facts{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));border:1px solid var(--rule);border-top:0}
+.next-session-command-facts>section{min-width:0;padding:18px 20px}
+.next-session-command-facts>section+section{border-left:1px solid var(--rule)}
+.next-session-health{margin:20px 0 0;padding:14px 16px;border-left:3px solid var(--amber);background:var(--panel);color:var(--ink2);font-size:var(--fs-body);line-height:1.5}
+.next-session-health strong{color:var(--ink);font-family:var(--mono);font-size:var(--fs-label);font-weight:600;letter-spacing:.07em}
+.next-session-health-separator{color:var(--ink2)}
+.next-session-section{padding:28px 0;border-bottom:1px solid var(--rule)}
+.next-session-section>h2{margin:0 0 12px}
+.next-session-ask-callout{margin-bottom:18px;padding:14px 16px;border-left:3px solid var(--amber);background:var(--panel)}
+.next-session-ask-callout>strong{display:block;margin-top:6px;color:var(--ink);font-size:var(--fs-body);font-weight:500}
+.next-session-ask{padding:16px 0}
+.next-session-ask+.next-session-ask{border-top:1px solid var(--rule)}
+.next-session-ask-question{margin:0 0 14px;font-size:var(--fs-body);line-height:1.6}
+.next-session-answer-options{display:flex;flex-wrap:wrap;gap:9px}
+.next-session-answer-options button{padding:7px 11px}
+.next-session-answer-options button:hover{border-color:var(--accent)}
+.next-session-answer-empty,.next-session-answer-failure{margin:10px 0 0;color:var(--ink2);font-size:var(--fs-label)}
+.next-session-answer-failure{color:var(--ink)}
+.next-session-task,.next-session-subagent{display:grid;grid-template-columns:22px minmax(0,1fr) auto;gap:10px;align-items:center;min-height:44px;padding:9px 8px;border-top:1px solid var(--rule)}
+.next-session-task--pending{color:var(--ink2)}
+.next-session-task-subject,.next-session-subagent-name{font-size:var(--fs-body);font-weight:500}
+.next-session-subagent-elapsed{color:var(--ink2);font-family:var(--mono);font-size:var(--fs-label)}
+.next-session-subagent-parent{color:var(--ink2);font-weight:400;overflow-wrap:anywhere}
+.next-session-footer{padding:20px 0;color:var(--ink2);font-family:var(--sans);font-size:var(--fs-label);text-align:right}
+.next-session-detail-empty{margin-top:34px;padding:24px;border:1px solid var(--rule);color:var(--ink2);font-size:var(--fs-body)}
+.next-session-current>strong{font-size:var(--fs-body);font-weight:600}
+.next-session-detail .next-session-absent{color:var(--ink-absence);font-family:var(--sans)}
+.next-session-identity{margin:0;color:var(--ink2);font-family:var(--mono);font-size:var(--fs-label);overflow-wrap:anywhere}
+.next-session-controls{display:flex;flex-wrap:wrap;gap:7px;margin:0 0 0 auto}
+.next-session-controls .next-session-copy,.next-session-controls .next-session-raise{margin:0}
+.next-session-controls .next-session-raise{font-weight:700}
+/* A missing way back, said once beside the controls it is about (DRC-4758 slice E). */
+.next-session-reentry-none{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 10px;flex:1 1 100%;justify-content:flex-end;color:var(--ink2);font-size:var(--fs-body)}
+.next-session-reentry-none .next-departure-reentry-why{margin:4px 0 0}
+.next-session-section[data-next-session-section="ask"]{padding:13px 16px;border:1px solid var(--rule);border-left:2px solid var(--amber);border-radius:var(--r-card);background:var(--panel)}
+.next-session-ask-callout{margin:0;padding:0;border:0;background:transparent}
+.next-session-ask-callout>span{color:var(--amber);font-size:var(--fs-label);letter-spacing:.07em}
+.next-session-wait{color:var(--ink2);font-family:var(--sans);font-size:var(--fs-label);letter-spacing:normal;text-transform:none}
+.next-session-wait[data-known="true"]{color:var(--amber);font-family:var(--mono);font-size:var(--fs-label)}
+.next-session-ask-callout h2{margin:7px 0 0;color:var(--ink-label);font-family:var(--mono);font-size:var(--fs-label);font-weight:600;letter-spacing:.07em}
+.next-session-facts{margin:20px 0 0}
+.next-session-facts-more{margin:10px 0 0}
+.next-session-facts-more>.next-session-facts{margin:6px 0 0}
+.next-session-facts>div{display:grid;grid-template-columns:120px minmax(0,1fr);gap:18px;align-items:baseline;padding:10px 0;border-bottom:1px solid var(--rule)}
+.next-session-facts dt{color:var(--ink-label);font-family:var(--mono);font-size:var(--fs-label);font-weight:600;letter-spacing:.07em}
+.next-session-facts dd{min-width:0;margin:0;color:var(--ink2);font-family:var(--sans);font-size:var(--fs-body);line-height:1.55;overflow-wrap:anywhere}
+.next-session-fact-note{display:block;margin-top:4px;color:var(--ink-caption);font-family:var(--sans);font-size:var(--fs-label)}
+.next-session-evidence{margin-top:20px}
+.next-session-evidence h2{color:var(--ink-label);font-family:var(--mono);font-size:var(--fs-label);font-weight:600;letter-spacing:.07em}
+.next-session-controls button:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
+@media(max-width:1100px){
+  .next-session-columns{grid-template-columns:minmax(0,1fr)}
+  .next-session-panel,.next-session-activity{grid-column:1;grid-row:auto}
+}
+@media(max-width:760px){
+  .next-session-detail{padding:0}
+  .next-session-facts>div{grid-template-columns:90px minmax(0,1fr);gap:12px}
+  .next-session-command-facts{grid-template-columns:1fr}
+  .next-session-command-facts>section+section{border-top:1px solid var(--rule);border-left:0}
+  .next-session-task,.next-session-subagent{grid-template-columns:20px minmax(0,1fr)}
+  .next-session-subagent-elapsed{grid-column:2}
+}
+
+/* ===== Departures, delivery and re-entry ===== */
+/* The review section holds two collections and two more parts, so each is
+   fenced and named. The label takes the mono uppercase every other source label
+   on this panel takes; it names a collection rather than quoting one, which is
+   note 7 of the design's own compromise list and is kept deliberately. */
+.next-cockpit-departure-part{display:flex;flex-direction:column;gap:4px;padding:8px 0 0}
+.next-cockpit-departure-part+.next-cockpit-departure-part{margin-top:6px;border-top:1px solid var(--rule)}
+.next-cockpit-departure-label{color:var(--ink-label);font-family:var(--mono);font-size:var(--fs-label);font-weight:600;letter-spacing:.07em}
+.next-cockpit-departures-kept{margin:0;color:var(--ink2);font:500 var(--fs-body)/1.55 var(--sans);max-width:var(--measure)}
+.next-cockpit-departures-kept a{color:var(--ink);text-decoration-color:var(--line);text-underline-offset:4px}
+.next-cockpit-departures-kept a:hover{text-decoration-color:var(--accent)}
+/* ONE departure row treatment, and the same one the design writes down (note 2
+   of its own list: reuse this row, do not invent a second). The unasked lane's
+   row joins each selector below rather than keeping its own sizes, because the
+   review section puts the two collections side by side under one heading and
+   they were rendering in four different sizes each -- 10px against 12.5px for
+   the constraint, 12.5px against 11.5px for the clause, 13.5px against 12.5px
+   for the model's sentence, 10px against 11.5px for the evidence line. The
+   third treatment's band is 13-13.5px, so the shared body moves up rather than
+   the cockpit row moving down. */
+.next-cockpit-reading-row,.next-cockpit-departure,.next-session-departure{display:flex;flex-direction:column;gap:3px;padding-left:9px;border-left:1px dotted var(--rule)}
+/* The constraint name and the stamp on one line. A float does not survive the
+   flex column above, so the row carries them together. */
+.next-session-departure-head{display:flex;justify-content:space-between;align-items:baseline;gap:10px}
+.next-cockpit-reading-name,.next-session-departure-name{color:var(--ink-label);font-family:var(--mono);font-size:var(--fs-label);font-weight:600;letter-spacing:.07em}
+.next-cockpit-reading-clause,.next-session-departure-clause{font:var(--fs-body)/1.5 var(--sans);color:var(--ink2);overflow-wrap:anywhere}
+.next-cockpit-reading-result,.next-cockpit-reading-detail,.next-session-departure-reading{font:italic var(--fs-body)/1.55 var(--sans);color:var(--ink2);overflow-wrap:anywhere}
+.next-cockpit-reading-evidence,.next-session-departure-base{color:var(--ink-caption);font-family:var(--mono);font-size:var(--fs-label);overflow-wrap:anywhere}
+.next-cockpit-reading-stale,.next-session-departure-stale{margin:0;color:var(--amber);font:var(--fs-body)/1.5 var(--sans)}
+/* HOW IT LANDED. Two cards side by side and never one verdict: what ended and
+   who says the work finished are different questions. The board is talking
+   here, not a source and not a model, so sans throughout and no colour under
+   any state. */
+.next-cockpit-landed{display:flex;flex-direction:column;gap:8px;padding:0 16px 14px}
+.next-cockpit-landed>header{display:flex;justify-content:space-between;align-items:baseline;gap:10px}
+.next-cockpit-landed h2{margin:0;color:var(--ink-label);font-family:var(--mono);font-size:var(--fs-label);font-weight:600;letter-spacing:.07em}
+/* What the unasked lane raised. The same label shape as every other fact on
+   this panel, for the reason the delivery block beside it carries one.
+
+   No colour on a departure, and that is the rule rather than a default. A
+   departure is a model's reading of partial evidence, and the design's register
+   rule reserves colour for the board stating a fact: red here would read as
+   Cargento asserting the session is wrong, which is exactly the claim it may
+   not make. The baseline line is dimmer still, because it is provenance rather
+   than the reading. */
+.next-session-departures-count{margin:6px 0 0;color:var(--ink2);font:500 var(--fs-body)/1.55 var(--sans);max-width:var(--measure)}
+/* The sentence saying why there is nothing. Dimmer than a departure, because a
+   spent cap and a quiet board are both absences and neither is a finding. */
+.next-session-departures-why{margin:6px 0 0;color:var(--ink2);font:500 var(--fs-body)/1.55 var(--sans);max-width:var(--measure)}
+/* Everything typographic about this row is set with the cockpit's above. What
+   is left here is spacing and the one element that row has no counterpart for:
+   the stamp saying when the raise happened. */
+.next-session-departure{margin:8px 0 0}
+/* The way back beside a departure (DRC-4642): the header's own copy and raise
+   controls, so they keep the primitive's look and the raise keeps its resting
+   amber. The limit sentence is an absence, in the absence register. */
+.next-departure-reentry{display:flex;flex-wrap:wrap;gap:7px;padding-top:4px}
+.next-departure-reentry button{margin:0}
+.next-departure-reentry-why{margin:0;color:var(--ink2);font:500 var(--fs-body)/1.55 var(--sans);max-width:min(var(--measure),100%);overflow-wrap:anywhere}
+.next-session-departure-at{color:var(--ink-caption);font-family:var(--mono);font-size:var(--fs-label)}
+.next-session-departure-reading,.next-session-departure-base{margin:0}
+/* What later evidence showed. Sans and upright, because it is the board
+   reporting a derivation over its own store and not a model reading, and no
+   colour on any of its four sentences: the common one is unknown, and unknown
+   never takes colour. Dimmer than the reading above it, which is the finding. */
+.next-session-departure-next{margin:2px 0 0;color:var(--ink2);font:500 var(--fs-body)/1.55 var(--sans);max-width:var(--measure)}
+/* What became of a raise. The heading carries the count and the paragraphs
+   carry the sentences the server composed.
+
+   Colour only where the lane observed something, and never clay: a red on "the
+   service returned an error" would read as a fault the reader has to answer
+   for, which is why this block carried no colour at all until DRC-4514 put it
+   beside the departure it is about. Amber on a raise that did not get out,
+   because that is rule 3's "observed, and wants you" exactly -- the reader is
+   the only one who can act on a signal the machine failed to send. `no-lane` is
+   the plain reading ink, because nothing was published. `handed-over` and `did-not-return` stay
+   uncoloured: the first is not a delivery and the second is unknown. */
+.next-session-delivery{margin:14px 0 0;padding:10px 0 0;border-top:1px solid var(--rule)}
+/* The same label shape as every other fact on this panel, and that is the
+   correction rather than a preference: walked on a real board, the block was the
+   only one here without an uppercase mono label, so it read as a loose paragraph
+   between the LONG TURN callout and the drift record rather than as a fact the
+   panel is stating. Matches .next-session-evidence h2. */
+.next-session-delivery h2{margin:0;color:var(--ink-label);font-family:var(--mono);
+  font-size:var(--fs-label);font-weight:600;letter-spacing:.07em}
+.next-session-delivery-count{margin:6px 0 0;color:var(--ink2);font:500 var(--fs-body)/1.55 var(--sans);max-width:var(--measure)}
+.next-session-delivery-why{margin:4px 0 0;color:var(--ink);font:500 var(--fs-body)/1.55 var(--sans);max-width:var(--measure)}
+/* A qualifier on the sentence above, not a sentence of its own weight. */
+.next-session-delivery-note{margin:4px 0 0;color:var(--ink2);font:500 var(--fs-body)/1.55 var(--sans);max-width:var(--measure)}
+/* Dimmer than the outcome above it on purpose. The browser lane is weaker
+   evidence than a server-side outcome, and the two reading alike is what would
+   let the reader take a tab that was open once for a notification that landed. */
+.next-session-delivery-lane{margin:4px 0 0;color:var(--ink2);font:500 var(--fs-body)/1.55 var(--sans);max-width:var(--measure)}
+[data-next-delivery="refused"] .next-session-delivery-why,
+[data-next-delivery="not-launched"] .next-session-delivery-why{color:var(--amber)}
+[data-next-delivery="no-lane"] .next-session-delivery-why{color:var(--ink2)}
+
+.next-cockpit-landed-cards{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;align-items:start}
+.next-cockpit-landed-card{display:flex;flex-direction:column;gap:4px;padding-left:9px;border-left:1px solid var(--rule)}
+.next-cockpit-landed-label{color:var(--ink-label);font-family:var(--mono);font-size:var(--fs-label);font-weight:600;letter-spacing:.07em}
+.next-cockpit-landed-value{font:500 var(--fs-body)/1.55 var(--sans);color:var(--ink-value);max-width:var(--measure)}
+.next-cockpit-landed-value--absent{color:var(--ink-absence)}
+.next-cockpit-landed-note{color:var(--ink2);font:500 var(--fs-body)/1.55 var(--sans);max-width:var(--measure)}
+.next-operation-goal-link{position:relative;z-index:1;display:block;color:var(--ink);text-decoration-color:var(--line);text-underline-offset:3px;overflow-wrap:anywhere}
+.next-operation-goal-link:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.next-operation-drift{grid-column:1/-1;padding:6px 12px 12px;font-size:var(--fs-label);color:var(--ink2)}
+.next-operation-drift>strong{font-weight:600;color:var(--ink)}
+.next-operation-drift>small{display:block;font-size:inherit;max-width:var(--measure)}
+.next-operation-fact[data-next-operation-fact="goal"]>small{display:block}
+.next-operation-goal-link{margin-top:7px;font-size:var(--fs-body);font-weight:500;line-height:1.4}
+@media(max-width:1100px){
+  #app .next-operation-fact[data-next-operation-fact="where"]{grid-column:1/-1}
+}
+
+/* ===== The shared controls and disclosure, where the legacy rules name their old elements ===== */
+.next-operations-header>.ctl-disclosure{grid-column:-2 / -1}
+/* Above the row's link overlay, or a press on Copy would open the session instead. */
+.next-operation-identity .ctl-copy{position:relative;z-index:1;margin-top:8px}
+.next-session-controls .ctl-copy,.next-session-controls .ctl-raise{margin:0}
+.next-session-controls .ctl-raise{font-weight:700}
+.next-departure-reentry .ctl-copy,.next-departure-reentry .ctl-raise{margin:0}
+.next-session-controls .ctl-copy:focus-visible,.next-session-controls .ctl-raise:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
+
+/* The unreadable-source note this page adds above the fleet facts: a stated absence, not a list. */
+.next-sessions-sources{margin:14px 0 0;padding:0;list-style:none;color:var(--ink-absence);font-family:var(--sans);font-size:var(--fs-body);line-height:1.5}
+.next-sessions-sources li+li{margin-top:4px}
+
+/* "How it landed" carries sentences with long unbroken tokens (a path, a hash). At a narrow width and a large text
+   size they must wrap inside the card instead of widening the page. */
+.next-cockpit-landed-cards,
+.next-cockpit-landed-card,
+.next-cockpit-landed-note {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}

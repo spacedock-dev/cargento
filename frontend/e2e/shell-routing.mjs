@@ -564,12 +564,17 @@ try {
       await o.page.addStyleTag({ content: '#app{min-height:3000px}' });
       await o.page.getByRole('button', { name: 'Retry now' }).focus();
       await o.page.evaluate(() => globalThis.scrollTo(0, 900));
+      const noticeHeight = await notice.evaluate(node => Math.ceil(node.getBoundingClientRect().height));
       o.state.fail = false;
       await o.page.keyboard.press('Enter');
       await o.page.waitForFunction(() => !globalThis.document.querySelector('[data-next-state="stalled"]'));
       await o.page.waitForTimeout(patience(100));
       const landed = await o.page.evaluate(() => ({ focus: globalThis.document.activeElement.textContent, scrollY: Math.round(globalThis.scrollY) }));
-      assert.deepEqual(landed, { focus: 'Sessions', scrollY: 900 }, 'focus falls back to the current primary item without scrolling the page');
+      assert.equal(landed.focus, 'Sessions', 'focus falls back to the current primary item');
+      // The browser's own scroll anchoring keeps the rows the reader was looking at in place, so the page can move up by
+      // the notice that went away and the margins around it, and by nothing more: it is never dragged back to the fallback
+      // control, which would put it near 0.
+      assert.ok(landed.scrollY <= 900 && landed.scrollY >= 900 - noticeHeight - 60, `the page was scrolled by more than the notice and its margins: ${JSON.stringify({ ...landed, noticeHeight })}`);
     } finally { await o.close(); }
   });
 

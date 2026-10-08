@@ -93,6 +93,9 @@ try {
     try {
       await probe.page.goto(probe.origin + '/');
       await probe.page.getByRole('heading', { level: 1, name: 'Session operations' }).waitFor();
+      // Sessions is real; a view a later step owns still says so.
+      await probe.page.goto(probe.origin + '/#n=attention');
+      await probe.page.getByRole('heading', { level: 1, name: 'Attention' }).waitFor();
       await probe.page.getByText(/not available in the React interface yet/i).waitFor();
       const structure = await probe.page.evaluate(() => ({ scripts: globalThis.document.scripts.length,
         roots: globalThis.document.querySelectorAll('#root').length,
