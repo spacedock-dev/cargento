@@ -1,0 +1,394 @@
+/* Shared controls: copy, raise, disclosures, the More menu and the human-context
+   editor. Every colour reads the shell's token and falls back to the released
+   palette, so this sheet draws correctly before or without the shell's own tokens
+   and follows them once they exist. Layout is checked at 320 and 375 CSS px and
+   at 200% zoom: nothing here sets a width a narrow screen cannot give, and long
+   values (a resume command, a session id) wrap instead of scrolling the page. */
+:root {
+  --ctl-sunk: var(--sunk, #0f0f0a);
+  --ctl-panel: var(--panel, #24231b);
+  --ctl-raise: var(--raise, #323025);
+  --ctl-line: var(--line, #74725f);
+  --ctl-line-hi: var(--line-hi, #8a8874);
+  --ctl-rule: var(--rule, #35342a);
+  --ctl-ink: var(--ink, #f6f3ea);
+  --ctl-ink2: var(--ink2, #cdc7b4);
+  --ctl-ink3: var(--ink3, #a39c88);
+  --ctl-accent: var(--accent, #cfe884);
+  --ctl-amber: var(--amber, #f0b95e);
+  --ctl-radius: var(--r-control, 0.25rem);
+  --ctl-mono: var(--mono, ui-monospace, monospace);
+  --ctl-sans: var(--sans, system-ui, sans-serif);
+  --ctl-hatch: var(--hatch, repeating-linear-gradient(135deg, transparent 0 5px, rgba(163, 156, 136, 0.26) 5px 6px));
+  --ctl-measure: var(--measure, 33.75rem);
+  /* A disclosure eases for --disclose-dur; the commit gate's motion hold (220 ms) is that plus one frame. */
+  --ctl-dur: var(--disclose-dur, 200ms);
+  --ctl-pop-dur: var(--disclose-pop-dur, 160ms);
+  --ctl-ease: var(--disclose-ease, ease-in-out);
+  interpolate-size: allow-keywords;
+}
+
+.ctl-visually-hidden {
+  position: absolute;
+  inline-size: 1px;
+  block-size: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* ===== Action buttons ===== */
+.ctl-action,
+.ctl-copy,
+.ctl-raise,
+.ctl-menu-items button,
+.ctl-memo button {
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-block-size: 44px;
+  min-inline-size: 44px;
+  max-inline-size: 100%;
+  padding: 0.5625rem 0.875rem;
+  border: 1px solid var(--ctl-line);
+  border-radius: var(--ctl-radius);
+  background: transparent;
+  color: var(--ctl-ink);
+  font: 0.9375rem/1.55 var(--ctl-sans);
+  cursor: pointer;
+  overflow-wrap: anywhere;
+}
+.ctl-action:hover,
+.ctl-copy:hover,
+.ctl-raise:hover,
+.ctl-menu-items button:hover,
+.ctl-memo button:hover {
+  border-color: var(--ctl-line-hi);
+}
+.ctl-action:focus-visible,
+.ctl-copy:focus-visible,
+.ctl-raise:focus-visible,
+.ctl-menu-items button:focus-visible,
+.ctl-memo button:focus-visible,
+.ctl-menu > summary:focus-visible,
+.ctl-disclosure > summary:focus-visible {
+  outline: 2px solid var(--ctl-accent);
+  outline-offset: 2px;
+}
+.ctl-action.ctl-action--primary {
+  border-color: var(--ctl-accent);
+  background: var(--ctl-accent);
+  color: #14140f;
+  font-weight: 600;
+}
+.ctl-action.ctl-action--primary:focus-visible {
+  outline-color: var(--ctl-ink);
+}
+
+/* A refused or busy control stays on the page and in the tab order: hatch and dash against solid, so
+   the state survives greyscale, and never `display:none`. */
+.ctl-action[aria-disabled='true'],
+.ctl-raise[aria-disabled='true'],
+.ctl-action:disabled,
+.ctl-memo button:disabled {
+  border: 1px dashed var(--ctl-line);
+  background: var(--ctl-hatch);
+  color: var(--ctl-ink3);
+  cursor: not-allowed;
+}
+.ctl-action[aria-busy='true'] {
+  cursor: progress;
+}
+
+/* ===== Copy and raise ===== */
+.ctl-copy {
+  color: var(--ctl-ink2);
+}
+.ctl-copy:hover {
+  border-color: var(--ctl-accent);
+  color: var(--ctl-ink);
+}
+.ctl-copy[data-copy-state='copied'] {
+  border-color: var(--ctl-accent);
+  color: var(--ctl-ink);
+}
+.ctl-copy[data-copy-state='failed'] {
+  border-color: var(--ctl-amber);
+  color: var(--ctl-ink2);
+}
+.ctl-raise {
+  padding: 4px 7px;
+  border-color: var(--ctl-amber);
+  background: var(--ctl-sunk);
+  font-family: var(--ctl-mono);
+  font-weight: 700;
+}
+.ctl-raise:hover {
+  border-color: var(--ctl-ink);
+}
+.ctl-raise[data-raise-state='sent'] {
+  border-color: var(--ctl-accent);
+}
+.ctl-raise[data-raise-state='declined'],
+.ctl-raise[data-raise-state='failed'] {
+  border-color: var(--ctl-line);
+  color: var(--ctl-ink2);
+}
+.ctl-raise[data-raise-state='throttled'],
+.ctl-raise[data-raise-state='stale'] {
+  border-color: var(--ctl-amber);
+  color: var(--ctl-ink2);
+}
+.ctl-raise[aria-disabled='true'] {
+  background: transparent;
+}
+.ctl-raise[data-raise-state='sending'] {
+  cursor: progress;
+}
+.ctl-raise.ctl-action--primary {
+  padding: 0.5625rem 0.875rem;
+}
+
+/* ===== Disclosures =====
+   An accordion eases its height and fade; a popover floats out of flow beside its
+   summary so opening it moves nothing. Motion comes only from transitions on
+   ::details-content, which run when the reader flips `open` on a node already
+   drawn: the component writes `open` into the markup at mount, so a remount starts
+   open and replays nothing. @starting-style, keyframes on [open] and a toggle
+   animation all replay on every poll, measured, and are not used. No transform on
+   ::details-content: it would become the popover body's containing block and move
+   the anchor. */
+.ctl-disclosure > summary,
+.ctl-menu > summary {
+  display: flex;
+  align-items: center;
+  min-block-size: 44px;
+  min-inline-size: 44px;
+  list-style: none;
+  cursor: pointer;
+  inline-size: fit-content;
+  max-inline-size: 100%;
+  color: var(--ctl-ink2);
+}
+.ctl-disclosure > summary::-webkit-details-marker,
+.ctl-menu > summary::-webkit-details-marker {
+  display: none;
+}
+.ctl-disclosure > summary::after {
+  content: '';
+  display: inline-block;
+  inline-size: 0.4em;
+  block-size: 0.4em;
+  margin-inline-start: 0.45em;
+  border-inline-end: 1.5px solid currentColor;
+  border-block-end: 1.5px solid currentColor;
+  rotate: 45deg;
+  translate: 0 -0.2em;
+  transition:
+    rotate var(--ctl-dur) var(--ctl-ease),
+    translate var(--ctl-dur) var(--ctl-ease);
+}
+.ctl-disclosure[open] > summary::after {
+  rotate: 225deg;
+  translate: 0 0.1em;
+}
+.ctl-disclosure--pop {
+  position: relative;
+  z-index: 3;
+  flex: none;
+  inline-size: max-content;
+  max-inline-size: 100%;
+}
+.ctl-disclosure--pop > summary {
+  inline-size: max-content;
+}
+.ctl-disclosure--pop > .ctl-disclosure-body {
+  position: absolute;
+  inset-block-start: calc(100% + 4px);
+  inset-inline-end: 0;
+  inline-size: min(var(--ctl-measure), calc(100vw - 32px));
+  box-sizing: border-box;
+  padding: 10px 12px;
+  border: 1px solid var(--ctl-line);
+  border-radius: var(--ctl-radius);
+  background: var(--ctl-raise);
+  box-shadow: 0 18px 44px -22px #000;
+  text-align: start;
+  overflow-wrap: anywhere;
+}
+/* Under 620px the popover's summary can sit at the start edge, where an end-anchored body would
+   run off the screen's start. Hang it from the start there. */
+@media (max-width: 620px) {
+  .ctl-disclosure--pop > .ctl-disclosure-body {
+    inset-inline-start: 0;
+    inset-inline-end: auto;
+  }
+}
+
+@supports selector(::details-content) {
+  .ctl-disclosure:not(.ctl-disclosure--pop)::details-content {
+    block-size: 0;
+    overflow: clip;
+    overflow-clip-margin: 6px;
+    opacity: 0;
+    transition:
+      block-size var(--ctl-dur) var(--ctl-ease),
+      opacity var(--ctl-dur) var(--ctl-ease),
+      content-visibility var(--ctl-dur) var(--ctl-ease) allow-discrete;
+  }
+  .ctl-disclosure:not(.ctl-disclosure--pop)[open]::details-content {
+    block-size: auto;
+    opacity: 1;
+  }
+  .ctl-disclosure--pop::details-content,
+  .ctl-menu::details-content {
+    opacity: 0;
+    transition:
+      opacity var(--ctl-pop-dur) var(--ctl-ease),
+      content-visibility var(--ctl-pop-dur) var(--ctl-ease) allow-discrete;
+  }
+  .ctl-disclosure--pop[open]::details-content,
+  .ctl-menu[open]::details-content {
+    opacity: 1;
+  }
+  /* Its own rule: a selector list holding an unsupported pseudo-element invalidates the whole rule. */
+  @media (prefers-reduced-motion: reduce) {
+    .ctl-disclosure:not(.ctl-disclosure--pop)::details-content,
+    .ctl-disclosure--pop::details-content,
+    .ctl-menu::details-content {
+      transition: none;
+    }
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ctl-disclosure > summary::after {
+    transition: none;
+  }
+}
+
+/* ===== More menu ===== */
+.ctl-menu {
+  position: relative;
+}
+.ctl-menu > summary {
+  justify-content: center;
+  gap: 6px;
+  padding: 0 10px;
+  border: 1px solid var(--ctl-line);
+  border-radius: var(--ctl-radius);
+  font-size: 0;
+}
+.ctl-menu > summary::before {
+  content: attr(aria-label);
+  font: 0.8125rem var(--ctl-sans);
+}
+.ctl-menu > summary::after {
+  content: '\25BE';
+  font: 0.8125rem var(--ctl-sans);
+}
+.ctl-menu-items {
+  position: absolute;
+  z-index: 4;
+  inset-inline-end: 0;
+  inset-block-start: calc(100% + 4px);
+  box-sizing: border-box;
+  inline-size: max-content;
+  min-inline-size: min(210px, calc(100vw - 32px));
+  max-inline-size: calc(100vw - 32px);
+  padding: 8px;
+  border: 1px solid var(--ctl-line);
+  background: var(--ctl-panel);
+}
+.ctl-menu[open] > .ctl-menu-items {
+  inset-block-start: 100%;
+}
+.ctl-menu-items button {
+  display: flex;
+  justify-content: space-between;
+  inline-size: 100%;
+  padding: 8px;
+  border: 0;
+  text-align: start;
+}
+.ctl-menu-status {
+  display: block;
+  padding: 8px;
+  border-block-end: 1px solid var(--ctl-rule);
+  color: var(--ctl-ink2);
+  font-size: 0.8125rem;
+  overflow-wrap: anywhere;
+}
+
+/* ===== Human context ===== */
+.ctl-memo {
+  display: grid;
+  gap: 4px;
+  min-inline-size: 0;
+}
+.ctl-memo > span,
+.ctl-memo > label {
+  color: var(--ctl-ink2);
+  font: 0.8125rem var(--ctl-sans);
+}
+.ctl-memo > strong {
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+.ctl-memo textarea {
+  box-sizing: border-box;
+  inline-size: 100%;
+  max-inline-size: 100%;
+  min-block-size: 5rem;
+  padding: 0.5rem;
+  border: 1px solid var(--ctl-line);
+  border-radius: var(--ctl-radius);
+  background: var(--ctl-sunk);
+  color: var(--ctl-ink);
+  font: 0.9375rem/1.5 var(--ctl-sans);
+  resize: vertical;
+}
+.ctl-memo textarea:focus-visible {
+  outline: 2px solid var(--ctl-accent);
+  outline-offset: 1px;
+}
+.ctl-memo small {
+  color: var(--ctl-ink2);
+}
+
+/* ===== Native fields ===== 
+   A select sizes itself to its longest option and a textarea to its `cols`, either of which can be
+   wider than a 320px screen or a 200% zoom. They shrink to the column instead, and a long value wraps. */
+.ctl-select,
+.ctl-draft {
+  box-sizing: border-box;
+  max-inline-size: 100%;
+  min-block-size: 44px;
+  border: 1px solid var(--ctl-line);
+  border-radius: var(--ctl-radius);
+  background: var(--ctl-sunk);
+  color: var(--ctl-ink);
+  font: 0.9375rem/1.5 var(--ctl-sans);
+}
+.ctl-select {
+  inline-size: 100%;
+  padding: 0.25rem 0.5rem;
+  color-scheme: dark;
+}
+.ctl-draft {
+  display: block;
+  inline-size: 100%;
+  padding: 0.5rem;
+  resize: vertical;
+}
+.ctl-select:focus-visible,
+.ctl-draft:focus-visible {
+  outline: 2px solid var(--ctl-accent);
+  outline-offset: 1px;
+}
+.ctl-wrap {
+  overflow-wrap: anywhere;
+}

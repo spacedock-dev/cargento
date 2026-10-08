@@ -92,8 +92,8 @@ try {
     const probe = await contextFor(ready.port);
     try {
       await probe.page.goto(probe.origin + '/');
-      await probe.page.getByRole('heading', { level: 1, name: 'Cargento frontend preview' }).waitFor();
-      await probe.page.getByText(/session views are not available here yet/i).waitFor();
+      await probe.page.getByRole('heading', { level: 1, name: 'Session operations' }).waitFor();
+      await probe.page.getByText(/not available in the React interface yet/i).waitFor();
       const structure = await probe.page.evaluate(() => ({ scripts: globalThis.document.scripts.length,
         roots: globalThis.document.querySelectorAll('#root').length,
         fonts: globalThis.document.fonts.size, focus: globalThis.document.querySelectorAll('meta[name="cargento-focus"]').length }));
@@ -108,7 +108,8 @@ try {
       assert.equal(data.build, 'react-' + metadata.document.sha256.slice(0, 16));
       assert.deepEqual(probe.external, []);
       assert.deepEqual(probe.errors, []);
-      assert.ok(probe.requests.every(url => url.startsWith('data:') || new URL(url).pathname === '/'));
+      // The document, then the shell's own reads of the Python origin. Anything off that origin fails the empty `external` check above.
+      assert.ok(probe.requests.every(url => url.startsWith('data:') || ['/', '/api/data', '/api/stream'].includes(new URL(url).pathname)));
       receipts.push({ mode: 'react', bytes: metadata.document.bytes, fonts: structure.fonts,
         embeddedCore: true, externalRequests: 0, nodeHiddenFromPython: true });
     } finally { await probe.context.close(); }

@@ -1,0 +1,515 @@
+/* The React page's chrome: tokens, the page frame, primary navigation, breadcrumb, notices, the header
+   counts and the visually hidden live regions. Ported from the legacy sheet's FOUNDATION and CHROME
+   sections, rule for rule where the page still draws the same thing, so the two renderers look alike
+   and a reader who switches does not see the board move. The fifteen font faces are not here: the build
+   (and the development server) prepend them, and a font URL in this sheet would be an external request.
+
+   Layout is checked at 320 and 375 CSS px and at 200% zoom with no horizontal page scroll: every row
+   that can be long wraps (`overflow-wrap:anywhere`) and every flex row can wrap. */
+:root {
+  /* surfaces: sunk only inside panel, panel only on bg, raise only above bg */
+  --sunk: #0f0f0a;
+  --bg: #14140f;
+  --panel: #24231b;
+  --raise: #323025;
+  /* boundaries: --line bounds controls, --rule divides rows and may not bound one */
+  --line: #74725f;
+  --line-hi: #8a8874;
+  --rule: #35342a;
+  --ink: #f6f3ea;
+  --ink2: #cdc7b4;
+  --ink3: #a39c88;
+  --ink-label: var(--ink2);
+  --ink-value: var(--ink);
+  --ink-absence: var(--ink2);
+  --ink-caption: var(--ink2);
+  /* colour is observation; absence has none */
+  --accent: #cfe884;
+  --accent-dim: #93a757;
+  --amber: #f0b95e;
+  --clay: #e4886a;
+  /* type: five steps, floor 13px, sentences 15px */
+  --fs-label: 0.8125rem;
+  --fs-body: 0.9375rem;
+  --fs-value: 1.125rem;
+  --fs-head: 1.5rem;
+  --fs-hero: 2.125rem;
+  --measure: 33.75rem;
+  --sans: 'Space Grotesk', system-ui, -apple-system, sans-serif;
+  --mono: 'IBM Plex Mono', ui-monospace, monospace;
+  --r-control: 0.25rem;
+  --r-card: 0.625rem;
+  --r-shell: 1rem;
+  --r-pill: 999px;
+  --control-pad: 0.5625rem 0.875rem;
+  --hatch: repeating-linear-gradient(135deg, transparent 0 5px, rgba(163, 156, 136, 0.26) 5px 6px);
+  --sp-1: 0.25rem;
+  --sp-2: 0.5rem;
+  --sp-3: 0.75rem;
+  --sp-4: 1rem;
+  --sp-5: 1.5rem;
+  --sp-6: 2rem;
+  /* A dark scheme so a native select's open list matches the page, and `interpolate-size` so an accordion
+     can ease to `block-size:auto`; a browser without it ignores the line and opens instantly. */
+  color-scheme: dark;
+  interpolate-size: allow-keywords;
+  --disclose-dur: 200ms;
+  --disclose-pop-dur: 160ms;
+  --disclose-ease: ease-in-out;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+/* 100%, not a pixel value: the reader's own font-size setting is honoured, and a reader at 20px gets the
+   whole board a quarter larger. */
+html {
+  font-size: 100%;
+}
+
+html,
+body {
+  margin: 0;
+  min-height: 100%;
+  background: var(--bg);
+  color: var(--ink);
+}
+
+/* The root has to name a step or everything inheriting from it renders at the user-agent default. */
+body {
+  font-family: var(--sans);
+  font-size: var(--fs-body);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+#app a,
+#app button,
+#app summary,
+#app [role='link'] {
+  min-block-size: 44px;
+  min-inline-size: 44px;
+}
+
+#app a {
+  display: inline-flex;
+  align-items: center;
+  max-inline-size: 100%;
+  overflow-wrap: anywhere;
+}
+
+[data-next-view-body] {
+  min-height: 360px;
+}
+
+.next-visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.next-status-dot {
+  font-family: var(--mono);
+  font-size: var(--fs-label);
+}
+
+@keyframes next-live-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}
+
+.next-live .next-status-dot {
+  color: var(--ink);
+  animation: next-live-pulse 1.6s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .next-live .next-status-dot {
+    animation: none !important;
+    transition: none !important;
+  }
+}
+
+/* A bare control otherwise keeps user-agent chrome, the brightest thing on the board. `:where()` keeps
+   this a floor at (0,0,1): any component rule wins the tie. */
+:where(#app) button:not([class]) {
+  min-block-size: 44px;
+  padding: var(--control-pad);
+  border: 1px solid var(--line);
+  border-radius: var(--r-control);
+  background: var(--sunk);
+  color: var(--ink);
+  font-family: var(--sans);
+  font-size: var(--fs-body);
+  cursor: pointer;
+}
+
+.next-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-block-size: 44px;
+  padding: var(--control-pad);
+  border: 1px solid var(--line);
+  border-radius: var(--r-control);
+  background: transparent;
+  color: var(--ink);
+  font: var(--fs-body) / 1.55 var(--sans);
+  cursor: pointer;
+}
+
+/* Hover raises the boundary rather than lighting it: --accent is reserved for an observation. */
+.next-action:hover {
+  border-color: var(--line-hi);
+}
+
+.next-action:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+/* Hatch and dash against solid, so the state survives greyscale, which no ink choice can carry alone. */
+.next-action:disabled,
+.next-action[aria-disabled='true'] {
+  border: 1px dashed var(--line);
+  background: var(--hatch);
+  color: var(--ink3);
+  cursor: not-allowed;
+}
+
+.next-absence {
+  border: 1px dashed var(--line);
+  background: var(--hatch);
+}
+
+:where(#app) small {
+  font-size: var(--fs-label);
+}
+
+:where(#app) code,
+:where(#app) kbd {
+  padding: 0 var(--sp-1);
+  border: 1px solid var(--rule);
+  border-radius: var(--r-control);
+  background: var(--sunk);
+  color: var(--ink);
+  font-family: var(--mono);
+  font-size: var(--fs-label);
+  overflow-wrap: anywhere;
+}
+
+/* ===== CHROME ===== */
+#app {
+  max-width: 1320px;
+  margin: 28px auto 44px;
+  padding: 0 26px 34px;
+  border: 1px solid var(--rule);
+  border-radius: var(--r-shell);
+  background: var(--bg);
+}
+
+.next-header,
+.next-header-right {
+  display: flex;
+  align-items: center;
+}
+
+.next-header {
+  justify-content: space-between;
+  gap: 22px;
+  min-height: 52px;
+  border-bottom: 1px solid var(--rule);
+}
+
+.next-header-right {
+  gap: 14px;
+  font-family: var(--sans);
+  font-size: var(--fs-label);
+  color: var(--ink2);
+}
+
+.next-header nav[aria-label='Primary'] {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0 20px;
+  font-family: var(--sans);
+  font-size: var(--fs-label);
+  font-weight: 700;
+}
+
+.next-header nav[aria-label='Primary'] a {
+  display: inline-flex;
+  align-items: center;
+  min-block-size: 44px;
+  min-inline-size: 44px;
+  border-bottom: 2px solid transparent;
+  color: var(--ink2);
+  text-decoration: none;
+}
+
+.next-header nav[aria-label='Primary'] a[aria-current='page'] {
+  border-bottom-color: var(--accent);
+  color: var(--ink);
+}
+
+.next-breadcrumb {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 9px;
+  padding-top: 14px;
+  font-family: var(--sans);
+  font-size: var(--fs-label);
+  color: var(--ink2);
+}
+
+/* A crumb keeps its word width, so "Projects" never breaks mid-word at 320; the row wraps instead, and a
+   crumb longer than the whole line is the one case that breaks inside itself. */
+.next-crumb {
+  flex-shrink: 0;
+  max-width: 100%;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-decoration: none;
+  overflow-wrap: anywhere;
+}
+
+.next-crumb:hover {
+  color: var(--ink);
+}
+
+.next-running {
+  color: var(--ink2);
+}
+
+.next-gate {
+  appearance: none;
+  padding: 5px 9px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-pill);
+  background: none;
+  color: var(--amber);
+  font: inherit;
+  cursor: pointer;
+}
+
+.next-gate:focus-visible,
+.next-header nav[aria-label='Primary'] a:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 3px;
+}
+
+.next-stalled {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin-top: 18px;
+  padding: 10px 12px;
+  border-left: 3px solid var(--clay);
+  background: var(--panel);
+  color: var(--ink2);
+  font-size: var(--fs-body);
+  font-weight: 500;
+  line-height: 1.55;
+}
+
+.next-stalled strong {
+  color: var(--ink);
+  font-weight: 500;
+}
+
+.next-stalled[data-next-state='history-reset'],
+.next-stalled[data-next-state='build-changed'] {
+  border-left-color: var(--ink2);
+}
+
+.next-stalled button {
+  margin-left: auto;
+}
+
+/* Solid, against the primitive's dashed: dashed is the register for a control refusing a press, and this
+   one is waiting for a retry it will make itself. */
+.next-stalled button:disabled,
+.next-stalled button[aria-disabled='true'] {
+  cursor: wait;
+  color: var(--ink3);
+  border-style: solid;
+}
+
+.next-why-body {
+  margin: 0;
+  color: var(--ink2);
+}
+
+/* ===== VIEWS ===== */
+.next-view h1,
+.next-cockpit-stale-session h1 {
+  margin: 28px 0 0;
+  font-size: var(--fs-head);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  overflow-wrap: anywhere;
+}
+
+.next-placeholder,
+.next-view .next-absence {
+  max-width: var(--measure);
+  margin: 14px 0 0;
+  padding: 10px 12px;
+  color: var(--ink2);
+  font: var(--fs-body) / 1.55 var(--sans);
+}
+
+.next-placeholder {
+  border-left: 3px solid var(--line);
+  background: var(--panel);
+}
+
+.next-project-detail-empty,
+.next-session-detail-empty {
+  margin-top: 34px;
+  padding: 24px;
+  border: 1px solid var(--rule);
+  color: var(--ink2);
+  font-size: var(--fs-body);
+}
+
+.next-project-detail-empty .next-absence,
+.next-session-detail-empty .next-absence {
+  margin: 0 0 12px;
+  padding: 10px 12px;
+}
+
+.next-session-identity {
+  margin: 0;
+  color: var(--ink2);
+  font-family: var(--mono);
+  font-size: var(--fs-label);
+  overflow-wrap: anywhere;
+}
+
+.next-cockpit-stale-session {
+  margin: 24px 0;
+  padding: 24px;
+  border: 1px solid var(--rule);
+}
+
+.next-cockpit-stale-session > span {
+  color: var(--ink-label);
+  font: 600 var(--fs-label) var(--mono);
+  letter-spacing: 0.07em;
+}
+
+.next-cockpit-stale-session p {
+  color: var(--ink2);
+  font: var(--fs-label) var(--mono);
+  overflow-wrap: anywhere;
+}
+
+.next-cockpit-stale-session a {
+  color: var(--ink2);
+  font: var(--fs-label) var(--sans);
+}
+
+.next-cockpit-tabs {
+  display: flex;
+  gap: 24px;
+  margin-top: 24px;
+  border-bottom: 1px solid var(--rule);
+  padding: 0 12px;
+}
+
+.next-cockpit-tabs button {
+  margin-bottom: -1px;
+  padding: 12px 1px 10px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  background: transparent;
+  color: var(--ink2);
+  font: var(--fs-body) var(--sans);
+  cursor: pointer;
+}
+
+.next-cockpit-tabs button[aria-selected='true'] {
+  border-bottom-color: var(--ink2);
+  color: var(--ink);
+}
+
+.next-cockpit-tabs button:focus-visible {
+  outline: 2px solid var(--ink2);
+  outline-offset: 3px;
+}
+
+/* A label wider than its column breaks inside the word rather than pushing the page sideways: measured at
+   320 CSS px with text at 200%, where "Decisions" is wider than a quarter of the strip. */
+.next-cockpit-tabs button {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 760px) {
+  #app {
+    padding: 24px 18px 48px;
+  }
+
+  .next-breadcrumb-current-separator {
+    display: none;
+  }
+
+  .next-breadcrumb [aria-current='page'] {
+    display: block;
+    flex-basis: 100%;
+    margin-top: 4px;
+    overflow-wrap: anywhere;
+  }
+
+  .next-header,
+  .next-header-right {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .next-header-right {
+    flex-wrap: wrap;
+  }
+}
+
+@media (max-width: 420px) {
+  .next-cockpit-tabs {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 0;
+    padding: 0 6px;
+  }
+
+  .next-cockpit-tabs button {
+    min-width: 0;
+    padding-right: 0;
+    padding-left: 0;
+    font-size: var(--fs-label);
+  }
+}
+
+@media (max-width: 360px) {
+  #app {
+    padding: 18px 8px 40px;
+  }
+}

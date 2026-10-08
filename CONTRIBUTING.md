@@ -54,8 +54,9 @@ This starts the real Python backend at `http://127.0.0.1:4581/` and its owned Vi
 at `http://127.0.0.1:4582/`. Open the Python URL. React edits refresh through Vite; type `r` in
 the terminal to restart Python, then reload the page for its new instance. Ctrl+C stops both.
 The command uses isolated fixture locations and disables model calls, quota fetching and native
-actions. It reads no personal harness transcripts. Session views are still unavailable in the
-React preview; use the default dashboard for your sessions.
+actions. It reads no personal harness transcripts. The React page has its shell, routes and shared
+controls; the session, Intent, project and Attention views are still placeholders, so use the
+default dashboard for your sessions.
 
 Use `--python` with an absolute Python executable and `--port`/`--vite-port` with distinct ports
 when the defaults are occupied. Both servers bind to IPv4 loopback and refuse a collision rather
@@ -81,7 +82,9 @@ Python dashboard still requires neither.
 The typed client is tested against fixtures captured from the real server. After changing a route's
 response, run `python3 scripts/regen_client_fixtures.py` and commit the result; `--check` shows
 whether anything is stale. `pnpm test:storage:browser` drives the legacy page in Chromium to prove
-the React storage codecs read and write what the legacy page does.
+the React storage codecs read and write what the legacy page does. `pnpm test:shell:browser` compares
+the React shell's routes against the legacy page in the same browser, and `pnpm test:controls:browser`
+checks that focus, drafts, composition and open selects survive live updates.
 
 ## Before you open a PR
 
@@ -115,8 +118,8 @@ same directories through the relative symlinks under `.agents/skills/`.
 - The frontend matrix, with exact Node and pnpm pins, lint, strict types, unit tests and clean
   preview builds on Linux and macOS, and on Windows under the same condition. Linux compares the
   canonical build with tracked assets. Every platform runs browser checks against an installed
-  Python-only copy, plus owned development lifecycle, real Python/Vite hot-refresh and legacy
-  storage conformance checks.
+  Python-only copy, plus owned development lifecycle, real Python/Vite hot-refresh, legacy storage
+  conformance, React shell routing and shared-controls continuity checks.
 
 Those checks run when the diff contains something they can measure. A change to prose
 documentation alone skips them, because none of them reads it. The `quality-gate` check itself

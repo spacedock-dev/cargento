@@ -26,7 +26,8 @@ The legacy renderer replaces all of `#app`. Mounting React inside that tree woul
 root on the next refresh. The migration therefore uses two whole pages, selected once when the
 Python process starts. A request or URL never selects the renderer. Legacy remains the default
 until the candidate passes the complete parity and measurement gates. Unported routes in the
-gated React build state that they are unavailable.
+gated React build state that they are not available in the React interface yet and name the later
+step by what it brings, never by a tracker key, because that text ships in the page.
 
 The served page and published build identity must refer to the same renderer. Identity is derived
 from deterministic content, independent of release versions and per-run capabilities. The focus
@@ -61,7 +62,7 @@ A data module has its own `import.meta.url`. The build must therefore refuse res
 chunk-relative resource construction and unexpected emitted assets instead of silently resolving
 them against that URL. API requests must use the document's Python origin; the typed client layer
 must prove that boundary on the served page. Packaging smoke proves the embedded core and served
-build identity, while the unavailable preview has no API client yet. The existing framing policy
+build identity. The page reads only that origin through the typed client. The existing framing policy
 remains in force.
 
 The fifteen packaged font faces and their ranges come from the existing canonical descriptors and
@@ -75,7 +76,7 @@ The optional terminal remains a lazy same-origin exception. Its JavaScript and C
 raw bytes before embedding overhead, which every reader would otherwise download at first open.
 There is no measured startup benefit to bundling it. Installed checks distinguish the React core's
 offline launch from the existing terminal renderer's local asset and read-only stream checks;
-they do not imply the unavailable React preview already has terminal parity.
+they do not imply the React page already has terminal parity, which a later step owns.
 
 Python verifies the selected document and license payload against packaged integrity metadata.
 That detects missing, corrupt or stale build output. It does not authenticate a local actor who
@@ -157,6 +158,38 @@ directions for all twelve families. A direction is labelled by what exercised it
 passive page behaviour, a legacy function run in the page when no reachable control exists without a
 model or credential path, or a codec-level check. The receipt counts each kind and does not fold
 them into one total.
+
+## React shell, routes and controls
+
+The shell is a separate React page, not a layer over the legacy one. One tree holds the page and
+five live regions as siblings, and the regions are never inside the subtree a route replaces, because
+a node that arrives carrying its text is the one a reader's software skips. Announcements are
+written once per standing key, forgotten when the pending action that caused them ends so the next
+press is spoken again, and counted under StrictMode so a double effect cannot repeat one.
+
+Routes keep the released fragment grammar exactly. The router was checked against the real legacy
+parser over hundreds of generated fragments, and a browser test drives the legacy page and the React
+page in the same Chromium and compares the canonical hash, document title, current navigation item,
+breadcrumb, history depth after Back, reload and Escape for every route contract. A bare or malformed
+fragment lands on the Sessions view, a retired held-to alias opens its exact session, and an
+unknown `from` is dropped. `?all=1` is the only query that widens data, and the retired `next` query
+is never read by the page.
+
+Absences are stated. Before the first payload the page says it is waiting, a refresh failure shows
+nothing at one failure and a notice naming the retry interval at two consecutive failures, a newer
+server build asks for a reload, and no view prints a count it has not measured. Two deliberate
+differences from the legacy page: the header says "Waiting for the first board." before the first
+payload, where legacy printed zeros that read as a measured empty board, and Retry uses
+`aria-disabled` instead of `disabled` so keyboard focus survives its own removal.
+
+Shared controls keep reader state the redraw would otherwise discard. A keyed focus lane restores
+the same control or a named fallback without scrolling an offscreen one, a field memory keeps an
+unsaved draft, caret, undo and composition across live updates, and an open native select holds the
+poll commit for at most twelve consecutive attempts and catches up once on change or blur.
+Disclosures keep their node and open state, hold background commits for the 200 ms motion, and skip
+the hold under reduced motion. Headless Chromium draws a select's popup outside the DOM, so the
+browser proof covers the focus, deferral and catch-up contract around it and picks the option
+programmatically rather than reading the popup.
 
 ## Reader state and storage
 

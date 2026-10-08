@@ -17,10 +17,13 @@ try {
   await cp(join(repository, 'cargento'), join(copy, 'cargento'), { recursive: true,
     filter: path => !path.includes('/tests/') && !path.endsWith('/tests') && !path.includes('__pycache__') });
   await symlink(join(repository, 'node_modules'), join(copy, 'node_modules'), process.platform === 'win32' ? 'junction' : 'dir');
-  const component = join(copy, 'frontend/src/MigrationShell.tsx');
+  // The shell's page component carries the fixture: it exports only a component, so React refresh can keep its state.
+  const component = join(copy, 'frontend/src/shell/Page.tsx');
   const original = await readFile(component, 'utf8');
-  const fixture = "import { useState } from 'react';\n" + original.replace('  return (', "  const [count, setCount] = useState(0);\n  return (")
-    .replace('<main>', '<main><button onClick={() => setCount(count + 1)}>Fixture count {count}</button>');
+  const fixture = original.replace("import { useEffect } from 'react';", "import { useEffect, useState } from 'react';")
+    .replace('export function Page() {', 'export function Page() {\n  const [count, setCount] = useState(0);')
+    .replace('<main id="app">', '<main id="app"><button onClick={() => setCount(count + 1)}>Fixture count {count}</button><p>Cargento fixture marker</p>');
+  assert.notEqual(fixture, original);
   await writeFile(component, fixture);
   dev = await startDevelopment({ root: copy, port: 4587, vitePort: 4588 });
   browser = await chromium.launch();
@@ -41,23 +44,25 @@ try {
     // The body names the refusing layer: the worker's own guard answers "Development origin refused.", Vite's filesystem guard answers "403 Restricted".
     failures.push({ url: response.url(), status: response.status(), body: (await response.text().catch(() => '')).slice(0, 600) });
   });
-  // Stopping the owned backend resets the open event stream. Chromium reports that reset as a console error on Windows
-  // (Linux and macOS close it cleanly), so only a reset of the Python event stream is set aside, only while the restart
-  // is in flight, and at most twice (one stream, one reconnect attempt). A reset of any other resource still fails.
+  // Stopping the owned backend resets the open event stream, and the page's own polls are refused until the new
+  // backend answers. Chromium reports both as console errors (Windows also reports the stream reset; Linux and macOS
+  // close it cleanly). Only a reset or refusal of a Python API read is set aside, only while the restart is in
+  // flight, and only up to a bound. A failure of any other resource still fails the proof.
   page.on('console', message => {
     if (message.type() !== 'error') return;
     const url = message.location().url;
-    if (restarting && /net::ERR_CONNECTION_RESET/.test(message.text()) && (!url || url.endsWith('/api/stream')) && restartResets.length < 2) {
+    const apiRead = !url || url.endsWith('/api/stream') || url.endsWith('/api/data');
+    if (restarting && /net::ERR_CONNECTION_(RESET|REFUSED)/.test(message.text()) && apiRead && restartResets.length < 40) {
       restartResets.push(message.text());
     } else errors.push(message.text());
   });
   await page.goto(dev.origin);
-  await page.getByRole('heading', { name: 'Cargento frontend preview' }).waitFor();
+  await page.getByText('Cargento fixture marker').waitFor();
   assert.equal(await page.evaluate(() => globalThis.document.fonts.size), 15);
   await page.getByRole('button', { name: 'Fixture count 0' }).click();
   await page.evaluate(() => { globalThis.__devDocumentSentinel = 'same document'; });
-  await writeFile(component, fixture.replace('Cargento frontend preview', 'Hot refresh verified'));
-  await page.getByRole('heading', { name: 'Hot refresh verified' }).waitFor();
+  await writeFile(component, fixture.replace('Cargento fixture marker', 'Hot refresh verified'));
+  await page.getByText('Hot refresh verified').waitFor();
   await page.getByRole('button', { name: 'Fixture count 1' }).waitFor();
   assert.equal(await page.evaluate(() => globalThis.__devDocumentSentinel), 'same document');
   const first = await page.evaluate(async () => (await fetch('/api/data')).json());
@@ -118,7 +123,7 @@ try {
   const capPage = await context.newPage();
   capPage.on('pageerror', error => errors.push(error.message));
   await capPage.goto(dev.origin);
-  await capPage.getByRole('heading', { name: 'Hot refresh verified' }).waitFor();
+  await capPage.getByText('Hot refresh verified').waitFor();
   const token = await capPage.locator('head meta[name="cargento-focus"]').getAttribute('content');
   assert.match(token, /^[0-9a-f]{64}$/);
   const focus = async capability => capPage.evaluate(async value => {
@@ -134,7 +139,7 @@ try {
     Origin: dev.viteOrigin, 'X-Cargento-Capability': token }, data: { harness: 'codex', sid: 'synthetic-missing-session' } })).status(), 403);
   await dev.restart();
   await capPage.reload();
-  await capPage.getByRole('heading', { name: 'Hot refresh verified' }).waitFor();
+  await capPage.getByText('Hot refresh verified').waitFor();
   const renewedToken = await capPage.locator('head meta[name="cargento-focus"]').getAttribute('content');
   assert.notEqual(renewedToken, token);
   assert.equal((await focus(token)).status, 403);

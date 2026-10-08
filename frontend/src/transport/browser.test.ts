@@ -149,3 +149,41 @@ describe('the browser runtime shares one storage instance', () => {
     runtime.dispose();
   });
 });
+
+/* The page's shell owns the live regions and the held paint, so the browser runtime hands its hooks
+   through to the board runtime rather than leaving the shell to rebuild the runtime around them. */
+describe('the browser runtime hands the shell its announce, forget and paint hooks through', () => {
+  const flush = async () => {
+    for (let turn = 0; turn < 12; turn += 1) await Promise.resolve();
+  };
+
+  it('says a slow pending start sentence once, forgets it when the entry ends, and reports each paint', async () => {
+    const clock = createFakeClock();
+    const announce = vi.fn();
+    const forget = vi.fn();
+    const paint = vi.fn(() => Promise.resolve());
+    const runtime = createBrowserRuntime({
+      env: createFakeEnvironment({ clock }),
+      fetch: () => Promise.resolve(new Response(JSON.stringify({ generated: 1, sessions: [] }), { status: 200 })),
+      provider: () => blockedBackend(),
+      events: { addEventListener: () => undefined, removeEventListener: () => undefined },
+      search: '',
+      doc: null,
+      announce,
+      forget,
+      paint,
+    });
+    runtime.start();
+    await flush();
+    expect(paint).toHaveBeenCalledWith({ manual: false, accepted: true });
+
+    const token = runtime.pending.start('save:a', 'Saving', 'Saving the line.');
+    clock.advance(400);
+    expect(announce).toHaveBeenCalledOnce();
+    expect(announce).toHaveBeenCalledWith('save:a', 'Saving the line.');
+    expect(forget).not.toHaveBeenCalled();
+    runtime.pending.end('save:a', token);
+    expect(forget).toHaveBeenCalledWith('save:a');
+    runtime.dispose();
+  });
+});
