@@ -45,14 +45,15 @@ try {
     failures.push({ url: response.url(), status: response.status(), body: (await response.text().catch(() => '')).slice(0, 600) });
   });
   // Stopping the owned backend resets the open event stream, and the page's own polls are refused until the new
-  // backend answers. Chromium reports both as console errors (Windows also reports the stream reset; Linux and macOS
-  // close it cleanly). Only a reset or refusal of a Python API read is set aside, only while the restart is in
-  // flight, and only up to a bound. A failure of any other resource still fails the proof.
+  // backend answers. Chromium reports both as console errors, under different names by platform and timing
+  // (a reset, a refusal, a closed or never-connected socket, an empty response). Only such an error on a Python API
+  // read is set aside, only while the restart is in flight, and only up to a bound. A failure of any other resource
+  // still fails the proof.
   page.on('console', message => {
     if (message.type() !== 'error') return;
     const url = message.location().url;
     const apiRead = !url || url.endsWith('/api/stream') || url.endsWith('/api/data');
-    if (restarting && /net::ERR_CONNECTION_(RESET|REFUSED)/.test(message.text()) && apiRead && restartResets.length < 40) {
+    if (restarting && /net::ERR_(CONNECTION_(RESET|REFUSED|CLOSED|ABORTED)|SOCKET_NOT_CONNECTED|EMPTY_RESPONSE)/.test(message.text()) && apiRead && restartResets.length < 40) {
       restartResets.push(message.text());
     } else errors.push(message.text());
   });
