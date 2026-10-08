@@ -206,6 +206,12 @@
 .ctl-disclosure--pop > summary {
   inline-size: max-content;
 }
+/* A body never outgrows the window it sits in: its text carries a reading measure that can exceed a narrow window at a large text size. */
+.ctl-disclosure > .ctl-disclosure-body {
+  min-inline-size: 0;
+  max-inline-size: 100%;
+  overflow-wrap: anywhere;
+}
 .ctl-disclosure--pop > .ctl-disclosure-body {
   position: absolute;
   inset-block-start: calc(100% + 4px);

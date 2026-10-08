@@ -26,7 +26,9 @@
     "test:dev": "node --test --test-concurrency=1 frontend/dev/*.test.mjs",
     "test:dev:browser": "node frontend/e2e/development.mjs",
     "test:shell:browser": "node frontend/e2e/shell-routing.mjs",
-    "test:controls:browser": "node frontend/e2e/controls-continuity.mjs"
+    "test:controls:browser": "node frontend/e2e/controls-continuity.mjs",
+    "test:sessions:browser": "node frontend/e2e/sessions-parity.mjs",
+    "test:terminal:browser": "node frontend/e2e/terminal-parity.mjs && node frontend/e2e/timeline-filter.mjs"
   },
   "dependencies": {
     "react": "19.3.0",

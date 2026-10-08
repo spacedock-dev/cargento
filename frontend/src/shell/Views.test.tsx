@@ -11,12 +11,10 @@ async function open(fragment: string, data: unknown = BOARD) {
 
 describe('a view this step does not own says so, and names the step that does', () => {
   it.each([
-    ['#n=sessions', 'sessions'],
     ['#n=attention', 'attention'],
     ['#n=projects', 'projects'],
     ['#n=intent', 'intent'],
     ['#n=project:alpha%2Fapp', 'projects'],
-    ['#n=session:alpha%2Fapp:claude:shared-sid', 'sessions'],
   ])('%s is owned by %s', async (fragment, step) => {
     await open(fragment);
     const note = document.querySelector('[data-next-placeholder]');
@@ -27,8 +25,17 @@ describe('a view this step does not own says so, and names the step that does', 
     expect(document.body.textContent).not.toContain('Session views are not available');
   });
 
+  it('draws the Sessions screen and the session page themselves, with only the Intent panel left as a stated slot', async () => {
+    await open('#n=sessions');
+    expect(document.querySelector('[data-next-placeholder]')).toBeNull();
+    expect(document.querySelectorAll('article.next-operation-row')).toHaveLength(BOARD.sessions.length);
+    await open('#n=session:alpha%2Fapp:claude:shared-sid');
+    expect(document.querySelector('article.next-session-detail')).not.toBeNull();
+    expect(document.querySelector('[data-next-placeholder]')?.getAttribute('data-next-owner')).toBe('intent');
+  });
+
   it('keeps one owner per view in a table the later steps read', () => {
-    expect(Object.keys(OWNERS).sort()).toEqual(['attention', 'intent', 'project', 'projects', 'session', 'sessions']);
+    expect(Object.keys(OWNERS).sort()).toEqual(['attention', 'intent', 'project', 'projects']);
   });
 });
 

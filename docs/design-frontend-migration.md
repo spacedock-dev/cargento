@@ -197,6 +197,34 @@ the hold under reduced motion. Headless Chromium draws a select's popup outside 
 browser proof covers the focus, deferral and catch-up contract around it and picks the option
 programmatically rather than reading the popup.
 
+## Sessions, session detail, the timeline and the terminal
+
+The observed model that Sessions, the header counts and session detail all stand on is a full port of
+the legacy `next-observed.js`, checked by executing the real legacy file next to it over hundreds of
+generated payloads with no difference, and by mutants that show the comparison can fail. The header
+counts and the rows come from the same collection, never an authored number. The Sessions screen and
+the detail page were compared the same way against the real legacy views over about a thousand seeds,
+then in one Chromium against the same board: group membership and order, row text, absence sentences
+and the one-step link to each session. A harness whose store could not be read is named, which the
+legacy page does not do. A question answer posts one numeric `index`, only a confirmed answer retires
+the question, and a second press while one is in flight sends nothing.
+
+The timeline filter keeps `active`, `all` and `decisions` per project and session in the existing
+graph-mode storage key, with the caller's choice over the stored one over the default, and the old
+empty-scope key dropped. The terminal stays lazy, local and offline: nothing loads before the press,
+then exactly the two vendored xterm assets. It is output-only in the strongest sense the legacy page
+allows, since the legacy page sends no client frame at all and the server revokes a socket that sends
+one, so the browser proof asserts zero client frames while typing, pasting and pressing keys. Its
+lifetime follows the exact harness and session, so leaving the route and returning keeps the retained
+screen and StrictMode opens one socket. Follow is measured against the live position, not the scroll
+maximum, because the legacy page's own textarea rule makes xterm's helper element 44 px tall.
+
+Not mounted yet, and named: the timeline and terminal components are built and proven in their own
+browser harness but sit in the project view's Decisions and Console tabs, which the project step owns,
+so no route shows them today. The capacity strip belongs to the Attention step, the Intent and drift
+panel to the Intent step (the session page shows a stated slot), and the last-reply and
+recovery-briefing text lives in the project Console.
+
 ## Reader state and storage
 
 Each reader-state row specifies stable identity, stored state, retained deferral or a mechanism
