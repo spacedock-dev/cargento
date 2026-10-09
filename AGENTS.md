@@ -445,7 +445,7 @@ is Sonnet 5.5. Reviewer acceptance and scored producer results retain their sepa
 
 ## Quality Gate
 
-Every PR must pass the `quality-gate` required check (`.github/workflows/quality-gate.yml`): ruff with `select = ALL` (curated ignores documented in `pyproject.toml`), `ruff format --check`, `mypy --strict`, the HTML/CSS/JS frontend source linter (`scripts/lint_embedded.py`), a direct-launch smoke test on the Python 3.11 runtime floor followed by the whole suite there, the same suite under `coverage` on 3.12 with the `fail_under` threshold from `pyproject.toml` enforced once, and `platform-tests` — the same unit suite re-run natively on macOS, and on Windows when the Windows legs are enabled (Ubuntu is already covered by the two jobs before it). Python suite jobs use `scripts/run_tests.py`, one worker per core. The threshold only ratchets up — never lower it in a PR. A PR that must merge below threshold needs the `coverage-exception` label, which is visible in the PR timeline.
+Every PR must pass the `quality-gate` required check (`.github/workflows/quality-gate.yml`): ruff with `select = ALL` (curated ignores documented in `pyproject.toml`), `ruff format --check`, `mypy --strict`, the HTML/CSS/JS frontend source linter (`scripts/lint_embedded.py`), a direct-launch smoke test on the Python 3.11 runtime floor followed by the whole suite there, the same suite under `coverage` on 3.12 with the `fail_under` threshold from `pyproject.toml` enforced once, and `platform-tests` — the same unit suite re-run natively on macOS and on Windows, each as two parallel legs, dashboard and scripts (Ubuntu is already covered by the two jobs before it). Python suite jobs use `scripts/run_tests.py`, one worker per core. The threshold only ratchets up — never lower it in a PR. A PR that must merge below threshold needs the `coverage-exception` label, which is visible in the PR timeline.
 
 **The required context always reports; its constituent jobs may not run.** A `changes` job decides
 whether the diff contains anything the gate can measure, and the measurable jobs are gated on
@@ -462,14 +462,12 @@ gate's copy — it is the only run of the suite on a PR the detector called pros
 redundant would let a prose edit that breaks a test merge green. `validate.yml` says the same thing
 at the step itself.
 
-**Windows legs are paused on pull requests during the frontend migration.** `platform-tests` and the
-frontend matrix select `windows-latest` only on pushes to `main` or on a pull request carrying the
-`windows-ci` label when its next commit is pushed. A Windows run took 17 minutes against 4 to 6
-elsewhere and printed tracebacks from test servers while passing. They return to every pull request
-before the migration's final verification, with those two problems fixed; the Windows run on `main`
-keeps catching platform defects in the meantime.
+**Windows runs on every pull request.** `platform-tests` and the frontend jobs run `windows-latest` beside
+macOS (and Ubuntu for the frontend). The two Python suites run as separate legs on each platform, so the
+slow script suite (about 12 minutes on Windows) does not hold the dashboard suite, and the longest leg is
+what a pull request waits for. A passing Windows log carries no tracebacks from test servers.
 
-The required frontend matrix uses pinned Node and pnpm on Linux and macOS, and on Windows when enabled. It runs
+The required frontend matrix uses pinned Node and pnpm on Linux, macOS and Windows. It runs
 frontend lint, strict types, unit tests and a clean preview build on each platform. Linux checks
 the canonical tracked build; every platform checks hostile HTML literals and an installed Python
 3.11 copy in pinned Chromium, with Node hidden from the backend and external asset requests refused.
