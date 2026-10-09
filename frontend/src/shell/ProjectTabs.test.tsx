@@ -2,7 +2,8 @@ import { act, fireEvent, screen } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import { BOARD, mountShell } from './testing';
 
-const tab = (name: string) => screen.getByRole('tab', { name });
+/* A tab's accessible name carries its cue ("Course 0 No observed state changes observed"), so a tab is found by its label. */
+const tab = (name: string) => screen.getByRole('tab', { name: new RegExp(`^${name}`) });
 const hash = (page: ReturnType<typeof mountShell>) => page.history.entries().at(-1);
 
 async function open(fragment: string) {
@@ -18,7 +19,7 @@ describe('the project tab strip', () => {
       screen
         .getAllByRole('tab')
         .map((node) => [
-          node.textContent,
+          node.firstChild?.textContent,
           node.getAttribute('aria-selected'),
           node.getAttribute('tabindex'),
         ]),
@@ -80,12 +81,23 @@ describe('the project tab strip', () => {
     expect(page.history.entries().length).toBe(before);
   });
 
-  it('names the panel for the tab that is current and says the view is not migrated yet', async () => {
+  it('names the panel for the tab that is current, and draws what the tab holds inside it', async () => {
     await open('#n=project:alpha%2Fapp:course');
     const panel = screen.getByRole('tabpanel');
     expect(panel.getAttribute('id')).toBe('next-cockpit-panel-course');
     expect(panel.getAttribute('aria-labelledby')).toBe('next-cockpit-tab-course');
-    expect(panel.textContent).toContain('a later migration step');
+    expect(panel.querySelector('[data-next-cockpit-panel="course"]')).not.toBeNull();
     expect(panel.textContent).not.toMatch(/DRC-/);
+  });
+
+  it('draws the steering step in the Decisions and Console tabs, with no placeholder left standing', async () => {
+    for (const name of ['decisions', 'console']) {
+      const page = await open(`#n=project:alpha%2Fapp:${name}`);
+      const panel = screen.getByRole('tabpanel');
+      expect(panel.querySelector('[data-next-placeholder]')).toBeNull();
+      expect(panel.textContent).not.toMatch(/DRC-/);
+      expect(panel.textContent?.trim().length).toBeGreaterThan(0);
+      page.unmount();
+    }
   });
 });

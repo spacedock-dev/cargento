@@ -1,0 +1,48 @@
+/* The project steering bar and the local tripwires: the legacy sheet's own rules. */
+.next-steer{padding-top:12px;border-top:1px solid var(--rule)}
+.next-steer form{display:flex;gap:7px;padding:12px 0}
+.next-steer>header{display:grid;gap:4px}
+.next-steer-label{color:var(--ink-label);font:600 var(--fs-label)/1.2 var(--mono);letter-spacing:.07em}
+.next-steer-caveat{margin:0;max-width:var(--measure);color:var(--ink2);font:500 var(--fs-body)/1.55 var(--sans)}
+/* Raised with the caveat above it, not on its own. A 15px sentence over a
+   12.5px input would draw the warning larger than the words it warns about,
+   which is the same ordering defect as an absence outranking its value
+   (docs/design-next-ui.md: a value is never drawn smaller than the caption
+   beside it in the same cell). The add button next to the tripwire input is
+   already 15px through .next-action, so this closes that pair too. */
+.next-steer label,.next-guardrail-add-input label{flex:1;min-width:0}
+.next-steer input,.next-guardrail-add-input input{width:100%;min-width:0;padding:8px;border:1px solid var(--line);border-radius:var(--r-control);background:var(--panel);color:var(--ink);font:var(--fs-body)/1.55 var(--sans)}
+.next-steer--bar{padding:0 0 12px;border-top:0;border-bottom:1px solid var(--rule)}
+.next-steer--bar>header{padding-top:12px}
+.next-steer--bar form{padding-bottom:0}
+.next-steer button,.next-guardrail-add,.next-guardrail-add-input button{color:var(--ink2);font-family:var(--sans)}
+.next-guardrail-add{align-self:flex-start;color:var(--ink2)}
+.next-steer-receipts,.next-guardrail-rows{display:grid;gap:8px}
+.next-steer-receipt{padding:10px;border-left:2px solid var(--amber);background:var(--panel)}
+.next-steer-receipt strong{display:block;overflow-wrap:anywhere;font-size:var(--fs-label);font-weight:500}
+.next-steer-receipt p{margin:5px 0 0;color:var(--ink2);font-size:var(--fs-label)}
+.next-guardrail-row{display:grid;grid-template-columns:10px minmax(0,1fr);gap:10px;width:100%;padding:9px 11px;border:1px solid var(--line);border-radius:var(--r-control);background:transparent;color:var(--ink2);font:inherit;text-align:left;cursor:pointer}
+.next-guardrail-row:hover{border-color:var(--line-hi)}
+.next-guardrail-row[aria-checked="false"]{color:var(--ink3)}
+.next-guardrail-glyph{margin-top:2px;color:var(--ink2);font:var(--fs-label) var(--sans)}
+.next-guardrail-copy strong,.next-guardrail-copy small{display:block;overflow-wrap:anywhere;font-weight:500}
+.next-guardrail-copy strong{font-size:var(--fs-body);line-height:1.55}
+.next-guardrail-copy small{margin:0;color:var(--ink2);font-size:var(--fs-label);line-height:1.5}
+.next-guardrail-empty{margin:0;color:var(--ink2);font-size:var(--fs-body);line-height:1.5}
+.next-guardrail-add-input{display:flex;align-items:center;gap:9px}
+.next-guardrail-add-input button{flex-shrink:0;color:var(--ink)}
+.next-project-detail-rail :is(a,button,input):focus-visible{outline:2px solid var(--accent);outline-offset:3px}
+.next-cockpit-decision-summary{margin:0;padding:9px 12px;border-bottom:1px solid var(--rule);color:var(--ink2);font:var(--fs-label) var(--sans)}
+.next-stage-conditions { margin: 1rem 0; }
+.next-stage-rule { border: 1px solid var(--rule); border-radius: var(--r-card); padding: 1rem; margin: .75rem 0; }
+.next-stage-rule p { margin: .4rem 0; }
+.next-stage-editor { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; }
+.next-stage-editor select, .next-stage-editor button { font: inherit; padding: .4rem; }
+/* The two things the legacy sheet gives these controls by element rather than by class, which the React sheet
+   does not: a control's header is the mono label tier (and so carries its letter-spacing to the sentence
+   inside it), and an input is at least a touch target tall. The decision summary is a sentence tier. The add
+   control keeps the quiet ink against the primitive's. */
+.next-control>header{color:var(--ink-label);font-family:var(--mono);font-size:var(--fs-label);font-weight:600;letter-spacing:.07em}
+.next-steer input,.next-guardrail-add-input input{min-block-size:44px}
+.next-guardrails .next-guardrail-add{color:var(--ink2)}
+.next-cockpit-decision-summary{font:500 var(--fs-body)/1.55 var(--sans);max-width:var(--measure)}

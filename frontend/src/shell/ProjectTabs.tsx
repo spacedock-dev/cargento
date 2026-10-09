@@ -8,11 +8,13 @@ const label = (tab: string): string => (tab ? (tab[0] ?? '').toUpperCase() + tab
 function Tab({
   tab,
   selected,
+  cue,
   onSelect,
   onKeyDown,
 }: {
   readonly tab: ProjectTab;
   readonly selected: boolean;
+  readonly cue: ReactNode;
   readonly onSelect: () => void;
   readonly onKeyDown: (event: KeyboardEvent<HTMLButtonElement>) => void;
 }) {
@@ -33,6 +35,7 @@ function Tab({
       onKeyDown={onKeyDown}
     >
       {label(tab)}
+      {cue}
     </button>
   );
 }
@@ -43,9 +46,12 @@ function Tab({
    panel's body belongs to the views that fill it. */
 export function ProjectTabs({
   route,
+  cue,
   children,
 }: {
   readonly route: ProjectRoute;
+  /** What a tab's own count says, drawn inside its button: the project views supply it, a bare strip has none. */
+  readonly cue?: (tab: ProjectTab) => ReactNode;
   readonly children: (tab: ProjectTab) => ReactNode;
 }) {
   const navigate = useNavigate();
@@ -81,6 +87,7 @@ export function ProjectTabs({
             key={tab}
             tab={tab}
             selected={tab === selected}
+            cue={cue ? cue(tab) : null}
             onSelect={() => open(tab)}
             onKeyDown={onKeyDown(tab)}
           />

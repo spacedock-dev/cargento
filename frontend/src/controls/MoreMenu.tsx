@@ -54,9 +54,8 @@ export function MoreMenu({
       controls.briefing.remember(key, 'error');
       controls.announce(
         announceKey,
-        error instanceof BriefingUnavailable
-          ? 'The project briefing is not available in the React interface yet'
-          : 'The briefing could not be copied',
+        // A briefing that cannot be built says why in its own words (the project is gone from the board), not the clipboard's.
+        error instanceof BriefingUnavailable ? error.message : 'The briefing could not be copied',
       );
       return;
     }
