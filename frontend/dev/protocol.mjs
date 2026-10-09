@@ -46,6 +46,8 @@ export function isolatedEnvironment(scratch, ambient, platform = process.platfor
     PATH: join(scratch, 'no-executables'),
     PYTHONNOUSERSITE: '1',
     PYTHONUTF8: '1',
+    // The owned backends print times in the local zone; one zone keeps a recorded observation replayable anywhere.
+    TZ: 'UTC',
   });
   return result;
 }

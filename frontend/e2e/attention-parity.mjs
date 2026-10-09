@@ -1,8 +1,10 @@
 /*
  * The Attention screen and the notification lanes in a real browser, against the real backend (DRC-4827).
  *
- * The legacy page and the React page run in the same Chromium over one synthetic board. The DIFFERENTIAL half
- * compares what a reader can read of Attention (each queue, each row in order, the rows a section hides until
+ * The React page runs over one synthetic board and is held to what the legacy page said of it, read live beside it
+ * or from the recording in `frontend/test/golden/e2e/attention-parity.json` (`support/golden.mjs` owns the three
+ * `CARGENTO_LEGACY` modes: replay, the default, starts no legacy backend and opens no legacy page). The
+ * DIFFERENTIAL half compares what a reader can read of Attention (each queue, each row in order, the rows a section hides until
  * it is expanded) and the permission flow's visible outcome. The BEHAVIOUR half holds the React page to what a
  * text comparison cannot see: an expanded section keeps its button node, its focus and its state through
  * revisions that reorder and remove rows; focus falls to the section heading when the row a reader was on
@@ -23,7 +25,12 @@
  * Timing: every fixed wait here means "give the page time to react", and a hosted runner has a few shared
  * cores, so each is tripled under CI and every comparison reads until two reads agree (`settled`). The legacy
  * page is the oracle, not the subject: a check on it that depends on timing is recorded (`legacySoft`) rather
- * than failing, while the React page is always held to its own assertions.
+ * than failing, while the React page is always held to its own assertions. In replay the soft checks compare
+ * the React reading with the recording and still only leave a note.
+ *
+ * Dropped from replay, because no React reading is compared with them: the legacy page's keyboard legs (Show
+ * more, Copy, Raise and Enable notifications) and its screenshots. Each asserted on the legacy page what the
+ * React legs assert strictly, and nothing compared the two traces.
  */
 import assert from 'node:assert/strict';
 import { cp, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises';
@@ -31,9 +38,11 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { chromium } from '@playwright/test';
 import { recordClipboard, startSessionsBoard } from './sessions-board.mjs';
+import { goldenFor } from './support/golden.mjs';
 import { focusedLabel, openPage, REPOSITORY, tabTo } from './support/browser.mjs';
 import { PRODUCTION } from './support/world.mjs';
 
+const golden = goldenFor('attention-parity');
 const patience = (ms) => (process.env.CI ? ms * 3 : ms);
 const pause = (ms) => new Promise((resolve) => setTimeout(resolve, patience(ms)));
 
@@ -57,6 +66,14 @@ const MUTATIONS = {
       'src/attention/AttentionView.tsx',
       'onClick={() => expansion.toggle(section)}',
       'onMouseDown={() => expansion.toggle(section)}',
+    ],
+  ],
+  // The screen says something other than the legacy page did: the recording must catch a wording drift.
+  'screen-wording': [
+    [
+      'src/attention/AttentionView.tsx',
+      'Show ${String(remainder)} more',
+      'Show ${String(remainder)} others',
     ],
   ],
   // A section remounts on every revision: the button the reader pressed and focused is a different node.
@@ -234,6 +251,12 @@ const scriptNotification = (context, config) =>
       value: Scripted,
     });
   }, config);
+
+/* A wall-clock time ("Latest launch 21:03") is drawn in the browser's own time zone, so a recording made in one
+   zone differs from a run in another while saying the same thing about the board. Both sides are compared with
+   the hour and minute masked; the sentence around them still has to match. */
+const clockless = (value) =>
+  JSON.parse(JSON.stringify(value).replace(/(?<!\d)\d{1,2}:\d\d(?!\d)/g, '<clock>'));
 
 const notifyState = (page) => page.evaluate(() => globalThis.__notify);
 
@@ -419,7 +442,7 @@ const subjectSelector = (sid) =>
 try {
   await prepareCopy();
   browser = await chromium.launch();
-  board = await startSessionsBoard({ legacy: true, root: copy });
+  board = await startSessionsBoard({ legacy: golden.live, root: copy });
   holder.body = attentionBoard();
 
   /* ===================== the screen ===================== */
@@ -427,24 +450,28 @@ try {
     'parity: the legacy and React screens read alike, collapsed and with every section expanded',
     async () => {
       const react = await newSide('react');
-      const legacy = await newSide('legacy');
+      const legacy = golden.live ? await newSide('legacy') : null;
       await load(react);
-      await load(legacy);
+      if (legacy) await load(legacy);
       const arms = {};
       const mine = await settled(react.page, readAttention);
       assert.ok(!mine.missing, `the React screen did not draw: ${JSON.stringify(mine)}`);
-      const old = await settled(legacy.page, readAttention);
-      assert.deepEqual(mine, old, 'collapsed');
+      await golden.observe('the screen, collapsed', async () =>
+        clockless(await settled(legacy.page, readAttention)),
+      );
+      golden.verify('the screen, collapsed', clockless(mine));
       arms.collapsed = mine.sections.map((section) => [section.name, section.items.length]);
       assert.ok(
         mine.sections.some((section) => section.items.some((item) => item.hidden)),
         'a queue longer than three hides its rest',
       );
-      for (const side of [react, legacy])
+      for (const side of [react, legacy].filter(Boolean))
         for (const name of ['needs', 'next']) await sectionToggle(side.page, name).click();
       const mineOpen = await settled(react.page, readAttention);
-      const oldOpen = await settled(legacy.page, readAttention);
-      assert.deepEqual(mineOpen, oldOpen, 'expanded');
+      await golden.observe('the screen, every section expanded', async () =>
+        clockless(await settled(legacy.page, readAttention)),
+      );
+      golden.verify('the screen, every section expanded', clockless(mineOpen));
       assert.ok(
         mineOpen.sections
           .find((section) => section.name === 'needs')
@@ -649,16 +676,17 @@ try {
   );
 
   let flowReact = null;
+  let flowLegacy = null;
   await step(
     'pressing Enable asks once, reports the lane as two scalars, hands focus back, and the legacy page does the same',
     async () => {
       holder.body = attentionBoard({ asking: [], unowned: false });
       lanePosts.length = 0;
       flowReact = await newSide('react', { notify: { permission: 'default', answer: 'granted' } });
-      const flowLegacy = await newSide('legacy', {
-        notify: { permission: 'default', answer: 'granted' },
-      });
-      for (const side of [flowReact, flowLegacy]) {
+      flowLegacy = golden.live
+        ? await newSide('legacy', { notify: { permission: 'default', answer: 'granted' } })
+        : null;
+      for (const side of [flowReact, flowLegacy].filter(Boolean)) {
         await load(side);
         const button = side.page.getByRole('button', { name: 'Enable notifications' });
         await button.waitFor();
@@ -696,24 +724,28 @@ try {
         'focus was dropped with the button',
       );
       // The report reaches the server from the press itself; the legacy page reports with its next board.
-      await revise({ asking: [], unowned: false, generated: 1_000_025 }, flowLegacy);
-      await until(
-        () => postsOf(flowLegacy).length,
-        (count) => count >= 1,
-        'the legacy page never reported',
-      ).catch((error) => legacyNotes.push(String(error.message)));
-      await pause(300);
+      if (flowLegacy) {
+        await revise({ asking: [], unowned: false, generated: 1_000_025 }, flowLegacy);
+        await until(
+          () => postsOf(flowLegacy).length,
+          (count) => count >= 1,
+          'the legacy page never reported',
+        ).catch((error) => legacyNotes.push(String(error.message)));
+        await pause(300);
+      }
       const posts = postsOf(flowReact);
       assert.equal(posts.length, 1, `React reported the lane ${posts.length} times`);
       assert.deepEqual(JSON.parse(posts[0].body), { supported: true, permission: 'granted' });
-      legacySoft('legacy lane', () => {
-        const legacyPosts = postsOf(flowLegacy);
-        assert.equal(legacyPosts.length, 1);
-        assert.deepEqual(JSON.parse(legacyPosts[0].body), {
-          supported: true,
-          permission: 'granted',
-        });
-      });
+      // The bodies the legacy page reported, in order. A timing check: a difference is a note, not a failure.
+      const legacyPosts = await golden.observe('the lane the legacy page reported', () =>
+        postsOf(flowLegacy).map((post) => JSON.parse(post.body)),
+      );
+      legacySoft('legacy lane', () =>
+        assert.deepEqual(
+          legacyPosts,
+          posts.map((post) => JSON.parse(post.body)),
+        ),
+      );
       legacySoft('legacy control', () => assert.equal(mine.permission, 'granted'));
       return { reactPosts: posts.length };
     },
@@ -722,14 +754,13 @@ try {
   await step(
     'a gate that arrives after the first board raises one banner, once, and the legacy page raises the same',
     async () => {
-      const flowLegacy = opened.filter((side) => side.name === 'legacy').at(-1);
       holder.body = attentionBoard({ asking: [], unowned: false, browserLane: true });
-      for (const side of [flowReact, flowLegacy]) await load(side);
+      for (const side of [flowReact, flowLegacy].filter(Boolean)) await load(side);
       // Both pages hold the board without the gate, and neither raised for what it already held.
       assert.deepEqual((await notifyState(flowReact.page)).made, []);
       const change = { asking: [], unowned: false, blocked: ['gate-1'], browserLane: true };
       for (const generated of [1_000_100, 1_000_125, 1_000_150])
-        await revise({ ...change, generated }, flowReact, flowLegacy);
+        await revise({ ...change, generated }, ...[flowReact, flowLegacy].filter(Boolean));
       const made = (await notifyState(flowReact.page)).made;
       assert.deepEqual(made, [
         {
@@ -738,8 +769,11 @@ try {
           tag: 'claude:gate-1',
         },
       ]);
-      const legacyMade = await notifyState(flowLegacy.page);
-      legacySoft('legacy banner', () => assert.deepEqual(legacyMade.made, made));
+      const legacyMade = await golden.observe(
+        'the banners the legacy page raised',
+        async () => (await notifyState(flowLegacy.page)).made,
+      );
+      legacySoft('legacy banner', () => assert.deepEqual(legacyMade, made));
     },
   );
 
@@ -952,7 +986,7 @@ try {
         side.log.nonGet.filter((entry) => entry.path === path).length;
 
       holder.body = attentionBoard({ terminals: true });
-      for (const kind of ['react', 'legacy']) {
+      for (const kind of golden.live ? ['react', 'legacy'] : ['react']) {
         const side = await newSide(kind);
         await recordClipboard(side.context);
         await load(side);
@@ -1041,7 +1075,7 @@ try {
       // Enable notifications: Tab reaches it on a tab that can still be asked, Enter asks once, and focus is handed back.
       holder.body = attentionBoard({ asking: [], unowned: false });
       lanePosts.length = 0;
-      for (const kind of ['react', 'legacy']) {
+      for (const kind of golden.live ? ['react', 'legacy'] : ['react']) {
         const side = await newSide(kind, { notify: { permission: 'default', answer: 'granted' } });
         await load(side);
         const seen = trace[kind];
@@ -1099,7 +1133,7 @@ try {
         await mkdir(SHOTS, { recursive: true });
         holder.body = attentionBoard();
         const taken = [];
-        for (const kind of ['legacy', 'react'])
+        for (const kind of golden.live ? ['legacy', 'react'] : ['react'])
           for (const width of [1280, 375]) {
             const side = await newSide(kind, { viewport: { width, height: 1100 } });
             await load(side);
@@ -1159,8 +1193,14 @@ try {
 }
 
 console.log(
-  JSON.stringify({ attention: results, legacyNotes, mutation: mutation || null }, null, 2),
+  JSON.stringify(
+    { attention: results, legacyNotes, mutation: mutation || null, legacy: golden.mode },
+    null,
+    2,
+  ),
 );
+// A mutation run is expected to fail and a filtered run skips steps, so neither records nor checks the golden.
+golden.finish({ complete: failures.length === 0 && !only && !mutation });
 if (failures.length) {
   console.error(JSON.stringify({ failures }, null, 2));
   process.exitCode = 1;

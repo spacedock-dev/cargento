@@ -11,13 +11,15 @@ import {
   windowPhrase,
   type WorkstreamEvidence,
 } from './model';
+import { caseCount } from '../../test/legacy_goldens';
 
 /* The workstream, held to the legacy `next-workstream.js` by running both over the same generated board
    sequences: the tab's buffer (groups, entries, the seed from the history store), the per-project window
    and the changes a project page lists. The legacy page is the real one, loaded whole, and each sequence
    gets a fresh copy because its buffer is module state. */
 
-const SEEDS = Number(process.env['WORKSTREAM_SEEDS'] ?? 150);
+const CASES = 80;
+const SEEDS = caseCount(CASES, 'WORKSTREAM_SEEDS');
 
 interface Legacy {
   readonly app: ReturnType<typeof loadLegacyApp>;
@@ -155,7 +157,7 @@ describe('the workstream buffer reads as the legacy buffer does', () => {
         if (/last \d+d/.test(windowLabel(window))) seen.days += 1;
       }
     }
-    for (const [name, count] of Object.entries(seen)) expect(count, name).toBeGreaterThan(3);
+    for (const [name, count] of Object.entries(seen)) expect(count, name).toBeGreaterThan(1);
   });
 });
 

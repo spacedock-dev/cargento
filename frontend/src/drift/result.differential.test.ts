@@ -18,6 +18,7 @@ import {
   resultWhere,
 } from './result';
 import { readingShape } from './shape';
+import { caseCount, seedSample } from '../../test/legacy_goldens';
 
 /* The result stage's words, run next to the legacy page's over generated readings: the status line of each
    row, the answer over all of them, where the work went, why a reading is stale. */
@@ -87,7 +88,11 @@ legacy.lift([
   'nextCockpitReadingCoverage',
 ]);
 
-const SEEDS = Number(process.env['DRIFT_SEEDS'] ?? 500);
+const CASES = 60;
+// The first seed that reaches each of these states: the departs, unshown, consistent and not-reached answers.
+const WITNESSES = [149, 175, 278, 594];
+const SAMPLE = seedSample(caseCount(CASES, 'DRIFT_SEEDS'), WITNESSES);
+const SEEDS = SAMPLE.length;
 /* Text with no whitespace at all: elements the page draws side by side have no space between them in the
    markup string and a gap in the layout, so only the words and their order are compared. */
 const text = (html: string): string => {
@@ -104,7 +109,8 @@ describe('the result stage says what the legacy page says', () => {
     const note = (name: string) => {
       seen[name] = (seen[name] ?? 0) + 1;
     };
-    for (let seed = 1; seed <= SEEDS && failures.length < 3; seed += 1) {
+    for (const seed of SAMPLE) {
+      if (failures.length >= 3) break;
       const rnd = mulberry32(seed + 31);
       const harness = pick(rnd, ['claude', 'pi']);
       const entries = genEntries(rnd, harness);

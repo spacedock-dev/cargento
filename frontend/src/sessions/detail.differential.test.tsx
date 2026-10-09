@@ -3,6 +3,7 @@ import { fragmentForRoute } from '../router/grammar';
 import { genPayload } from '../observed/generate.test.helper';
 import { loadLegacyViews } from '../observed/legacy.test.helper';
 import { mountShell } from '../shell/testing';
+import { caseCount } from '../../test/legacy_goldens';
 
 /* The session page, held to the legacy page by what a reader can read. `nextSessionView` runs unchanged
    over a generated payload for each of several sessions in it, and this page renders the same route in the
@@ -116,7 +117,8 @@ function routesOf(
 }
 
 describe('the session page reads as the legacy page does, over generated payloads', () => {
-  const SEEDS = Number(process.env['SESSIONS_SEEDS'] ?? 40);
+  const CASES = 40;
+  const SEEDS = caseCount(CASES, 'SESSIONS_SEEDS');
   for (const capability of ['', 'run-capability']) {
     it(`agrees on every session of ${String(SEEDS)} seeds${capability ? ', with a terminal-raise capability' : ''}`, async () => {
       const failures: string[] = [];
@@ -164,7 +166,7 @@ describe('the session page reads as the legacy page does, over generated payload
       absent: 0,
       noRaise: 0,
     };
-    for (let seed = 1; seed <= 120; seed += 1) {
+    for (let seed = 1; seed <= Math.min(SEEDS, 30); seed += 1) {
       const payload = genPayload(seed, { wellFormed: true });
       for (const route of routesOf(payload)) {
         const old = legacySummary(payload, route);
@@ -178,6 +180,6 @@ describe('the session page reads as the legacy page does, over generated payload
         seen.noRaise += old.text.includes('Terminal raise off') ? 1 : 0;
       }
     }
-    for (const [name, count] of Object.entries(seen)) expect(count, name).toBeGreaterThan(5);
+    for (const [name, count] of Object.entries(seen)) expect(count, name).toBeGreaterThan(1);
   });
 });

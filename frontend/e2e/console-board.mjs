@@ -1,11 +1,13 @@
 /*
  * The world the Console, Decisions, steering and tripwire browser tests share.
  *
- * `startConsoleWorld` runs the REAL backend twice over the same synthetic board (`frontend/test/console_backend.py`:
- * asks, a stored history, a quota provider, one workflow stage source and a synthetic read-only terminal): once
- * serving the legacy page and once serving the React development page, whose entry is swapped for
- * `console-harness.tsx` inside a scratch copy of the tree, so no tracked file changes. A differential test then
- * drives both in one Chromium and compares what a reader can observe. `CARGENTO_MUTATION` names one deliberate
+ * `startConsoleWorld` runs the REAL backend over the same synthetic board (`frontend/test/console_backend.py`:
+ * asks, a stored history, a quota provider, one workflow stage source and a synthetic read-only terminal) serving
+ * the React development page, whose entry is swapped for `console-harness.tsx` inside a scratch copy of the tree,
+ * so no tracked file changes, and, only while the legacy page is being read live or recorded (`CARGENTO_LEGACY`,
+ * see `support/golden.mjs`), a second time serving the legacy page. A test then drives the React page in one
+ * Chromium, with the legacy page beside it or its recorded readings in its place, and compares what a reader can
+ * observe. `CARGENTO_MUTATION` names one deliberate
  * break in the scratch copy (see MUTATIONS in the calling script); the run is then expected to FAIL.
  *
  * Nothing here reads a harness store, calls a model, fetches a quota, touches the clipboard or notifications,
@@ -21,6 +23,7 @@ import { join } from 'node:path';
 import { isolatedEnvironment } from '../dev/protocol.mjs';
 import { PRODUCTION, startReactWorld } from './support/world.mjs';
 import { freePorts, openPage, REPOSITORY } from './support/browser.mjs';
+import { LEGACY_LIVE } from './support/golden.mjs';
 
 export { REPOSITORY, openPage };
 
@@ -98,6 +101,8 @@ export async function startConsoleWorld({
   // false serves the shipped page (the project views the slots are wired into) instead of the harness. The production
   // run serves it by default, so every console surface is proven on the page readers get; development keeps the harness.
   harness = !PRODUCTION,
+  // Replay starts no legacy backend: its readings come from the golden file.
+  legacy = LEGACY_LIVE,
 } = {}) {
   // Without a mutation the shipped page is the tracked `react.html` itself, so no scratch copy is made.
   const ownsRepository = !harness && !mutation && PRODUCTION;
@@ -162,7 +167,7 @@ export async function startConsoleWorld({
     const refused = [];
     let ports;
     for (let attempt = 0; ; attempt += 1) {
-      ports = await freePorts(3, refused);
+      ports = await freePorts(legacy ? 3 : 2, refused);
       try {
         dev = await startReactWorld({
           root: copy,
@@ -188,40 +193,41 @@ export async function startConsoleWorld({
       control: join(dev.scratch, 'state/terminal-fixture/control.ndjson'),
     };
 
-    legacyScratch = await mkdtemp(join(tmpdir(), 'cargento-console-legacy-'));
-    await mkdir(join(legacyScratch, 'no-executables'));
-    const args = [
-      helper,
-      '--frontend',
-      'legacy',
-      '--host',
-      '127.0.0.1',
-      '--port',
-      String(ports[2]),
-      '--no-observer-model',
-      '--no-usage',
-      '--no-git',
-      '--no-reach',
-    ];
-    child = spawn(resolvePython(), args, {
-      cwd: copy,
-      env: isolatedEnvironment(legacyScratch, process.env),
-      stdio: ['ignore', 'pipe', 'pipe'],
-    });
-    child.stderr.on('data', (chunk) => {
-      child.diagnostic = ((child.diagnostic || '') + chunk).slice(-3000);
-    });
-    child.stdout.resume();
-    const legacyOrigin = `http://127.0.0.1:${ports[2]}`;
-    await waitForHealth(legacyOrigin, child);
-    world.legacy = {
-      origin: legacyOrigin,
-      control: join(legacyScratch, 'state/terminal-fixture/control.ndjson'),
-    };
-    await Promise.all([
-      waitForRegistration(world.react.origin),
-      waitForRegistration(world.legacy.origin),
-    ]);
+    if (legacy) {
+      legacyScratch = await mkdtemp(join(tmpdir(), 'cargento-console-legacy-'));
+      await mkdir(join(legacyScratch, 'no-executables'));
+      const args = [
+        helper,
+        '--frontend',
+        'legacy',
+        '--host',
+        '127.0.0.1',
+        '--port',
+        String(ports[2]),
+        '--no-observer-model',
+        '--no-usage',
+        '--no-git',
+        '--no-reach',
+      ];
+      child = spawn(resolvePython(), args, {
+        cwd: copy,
+        env: isolatedEnvironment(legacyScratch, process.env),
+        stdio: ['ignore', 'pipe', 'pipe'],
+      });
+      child.stderr.on('data', (chunk) => {
+        child.diagnostic = ((child.diagnostic || '') + chunk).slice(-3000);
+      });
+      child.stdout.resume();
+      const legacyOrigin = `http://127.0.0.1:${ports[2]}`;
+      await waitForHealth(legacyOrigin, child);
+      world.legacy = {
+        origin: legacyOrigin,
+        control: join(legacyScratch, 'state/terminal-fixture/control.ndjson'),
+      };
+    }
+    await Promise.all(
+      [world.react, world.legacy].filter(Boolean).map((side) => waitForRegistration(side.origin)),
+    );
     return world;
   } catch (error) {
     await close();

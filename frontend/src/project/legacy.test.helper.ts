@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import vm from 'node:vm';
+import { legacyHarness } from '../../test/legacy_goldens';
 
 /* The whole legacy page, loaded as the page loads it, for the project differential tests. Every script
    part runs in one context in the order the page assembles them (`page.APP_PARTS`), except the last, which
@@ -56,7 +57,7 @@ function read(file: string): string {
   return readFileSync(resolve(process.cwd(), WEB, file), 'utf8');
 }
 
-export function loadLegacyApp(options: { storage?: Record<string, string> } = {}): LegacyApp {
+function buildLegacyApp(options: { storage?: Record<string, string> } = {}): LegacyApp {
   const store = new Map<string, string>(Object.entries(options.storage ?? {}));
   const document = {
     addEventListener: () => undefined,
@@ -149,4 +150,11 @@ export function parseHtml(html: string): DocumentFragment {
   const template = document.createElement('template');
   template.innerHTML = html;
   return template.content;
+}
+
+export function loadLegacyApp(options: { storage?: Record<string, string> } = {}): LegacyApp {
+  // The starting storage is part of what the page was asked, so it is part of the kind.
+  return legacyHarness(`app:${JSON.stringify(options)}`, () => buildLegacyApp(options), {
+    slots: { setData: 'data', setRoute: 'route' },
+  });
 }

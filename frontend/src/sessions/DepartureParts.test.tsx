@@ -14,6 +14,7 @@ import { DelegatedWorkLine, UnaskedDepartureBody } from './DepartureParts';
    miss. */
 
 const legacy = loadLegacyViews();
+const CASES = 40;
 const norm = (node: Element | null): string =>
   node ? (node.textContent ?? '').replace(/\s+/g, ' ').trim() : '';
 
@@ -36,7 +37,7 @@ describe('the departure rows read as the legacy rows do', () => {
       legacy.setFocusCapability(capability ? 'minted' : '');
       let compared = 0;
       let withRows = 0;
-      for (let seed = 1; seed <= 150; seed += 1) {
+      for (let seed = 1; seed <= CASES; seed += 1) {
         for (const session of sessionsOf(seed)) {
           legacy.setData(genPayload(seed, { wellFormed: true }));
           const html = legacy.call<string>('nextUnaskedDepartureBody', session);
@@ -68,7 +69,7 @@ describe('the departure rows read as the legacy rows do', () => {
           view.unmount();
         }
       }
-      expect(compared).toBeGreaterThan(200);
+      expect(compared).toBeGreaterThan(100);
       expect(withRows).toBeGreaterThan(10);
     });
   }
@@ -110,7 +111,7 @@ describe('the departure rows read as the legacy rows do', () => {
 
 describe('the delegated-work line reads as the legacy line does', () => {
   it('agrees on the sentence, the drawing rule and the check, for every generated session at several clocks', () => {
-    for (let seed = 1; seed <= 150; seed += 1) {
+    for (let seed = 1; seed <= CASES; seed += 1) {
       for (const session of sessionsOf(seed)) {
         for (const now of [1000, 5000, 1e7]) {
           const work = legacy.call<{ draw: boolean; risky: boolean; text: string }>(

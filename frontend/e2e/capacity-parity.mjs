@@ -2,13 +2,22 @@
  * The capacity strip, the usage consent and the observer-model consent in a real browser, against the real
  * backend (DRC-4827, capacity half).
  *
- * The legacy page and the React page run in the same Chromium over the same synthetic board
- * (`frontend/test/capacity_backend.py`), and each backend counts what matters to a person who was promised a
- * disclosure: the requests that carried `usage=1` to the application and the project-context requests that
- * carried the observer-model consent. A differential then compares what a reader can observe on the two
- * pages: the strip's rows and which one is selected, the consent controls, and the requests each page made.
- * The legacy page is the oracle, and a check on it that depends on timing is recorded instead of failing the
- * run on a loaded runner; the React page is always held to every assertion.
+ * The React page runs in Chromium over a synthetic board (`frontend/test/capacity_backend.py`) whose backend
+ * counts what matters to a person who was promised a disclosure: the requests that carried `usage=1` to the
+ * application and the project-context requests that carried the observer-model consent. A differential then
+ * compares what a reader can observe (the strip's rows, the consent controls) with what the legacy page said
+ * of the same board, read live beside it or from `frontend/test/golden/e2e/capacity-parity.json`
+ * (`support/golden.mjs` owns the three `CARGENTO_LEGACY` modes: replay, the default, starts no legacy backend
+ * and opens no legacy page). The legacy page is the oracle, and a check on it that depends on timing is
+ * recorded instead of failing the run on a loaded runner; the React page is always held to every assertion.
+ *
+ * Where a loop ran the same absolute assertions on both pages (a consent that sends no parameter, a selected
+ * window that survives a reorder, a layout that fits), it runs on the React page alone in replay: each such
+ * assertion states what must hold rather than comparing the two pages, so the React iteration carries it
+ * whole. What is compared with the legacy page stays: the disclosure sentence, the strip's keys, ticks, sub-limits
+ * and wording. Dropped from replay: the legacy page's overflow measures and keyboard traces, which were only
+ * recorded as notes, its screenshots, and, in the development run, the legacy origin standing in as the second
+ * origin of "the answer is per origin" (the production run opens the React page at a second origin instead).
  *
  * What a unit test cannot see is proved here: that an unanswered or declined consent sends no usage parameter
  * through a mount, StrictMode, a route change, a reload and a reconnect; that the parameter rides the very next
@@ -30,11 +39,13 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { chromium } from '@playwright/test';
 import { isolatedEnvironment } from '../dev/protocol.mjs';
+import { goldenFor } from './support/golden.mjs';
 import { PRODUCTION, startReactWorld } from './support/world.mjs';
 import { focusedLabel, freePorts, openPage, REPOSITORY, tabTo } from './support/browser.mjs';
 
 /* Every fixed wait here means "give the page time to react". A hosted runner has a few shared cores and delivers
    events later than a desktop, so each wait is tripled there; only a pass gets slower. */
+const golden = goldenFor('capacity-parity');
 const patience = (ms) => (process.env.CI ? ms * 3 : ms);
 const pause = (ms) => new Promise((resolve) => setTimeout(resolve, patience(ms)));
 
@@ -283,7 +294,7 @@ async function startWorld({ mutation = process.env.CARGENTO_MUTATION || '' } = {
     const refused = [];
     let ports;
     for (let attempt = 0; ; attempt += 1) {
-      ports = await freePorts(3, refused);
+      ports = await freePorts(golden.live ? 3 : 2, refused);
       try {
         dev = await startReactWorld({
           root: copy,
@@ -310,36 +321,38 @@ async function startWorld({ mutation = process.env.CARGENTO_MUTATION || '' } = {
       state: join(dev.scratch, 'state'),
     };
 
-    legacyScratch = await mkdtemp(join(tmpdir(), 'cargento-capacity-legacy-'));
-    await mkdir(join(legacyScratch, 'no-executables'));
-    child = spawn(
-      resolvePython(),
-      [
-        helper,
-        '--frontend',
-        'legacy',
-        '--host',
-        '127.0.0.1',
-        '--port',
-        String(ports[2]),
-        '--no-observer-model',
-        '--no-usage',
-        '--no-git',
-        '--no-reach',
-      ],
-      {
-        cwd: copy,
-        env: isolatedEnvironment(legacyScratch, process.env),
-        stdio: ['ignore', 'pipe', 'pipe'],
-      },
-    );
-    child.stderr.on('data', (chunk) => {
-      child.diagnostic = ((child.diagnostic || '') + chunk).slice(-3000);
-    });
-    child.stdout.resume();
-    const legacyOrigin = `http://127.0.0.1:${ports[2]}`;
-    await waitForHealth(legacyOrigin, child);
-    world.legacy = { name: 'legacy', origin: legacyOrigin, state: join(legacyScratch, 'state') };
+    if (golden.live) {
+      legacyScratch = await mkdtemp(join(tmpdir(), 'cargento-capacity-legacy-'));
+      await mkdir(join(legacyScratch, 'no-executables'));
+      child = spawn(
+        resolvePython(),
+        [
+          helper,
+          '--frontend',
+          'legacy',
+          '--host',
+          '127.0.0.1',
+          '--port',
+          String(ports[2]),
+          '--no-observer-model',
+          '--no-usage',
+          '--no-git',
+          '--no-reach',
+        ],
+        {
+          cwd: copy,
+          env: isolatedEnvironment(legacyScratch, process.env),
+          stdio: ['ignore', 'pipe', 'pipe'],
+        },
+      );
+      child.stderr.on('data', (chunk) => {
+        child.diagnostic = ((child.diagnostic || '') + chunk).slice(-3000);
+      });
+      child.stdout.resume();
+      const legacyOrigin = `http://127.0.0.1:${ports[2]}`;
+      await waitForHealth(legacyOrigin, child);
+      world.legacy = { name: 'legacy', origin: legacyOrigin, state: join(legacyScratch, 'state') };
+    }
     return world;
   } catch (error) {
     await close();
@@ -494,7 +507,7 @@ let browser;
 try {
   world = await startWorld();
   browser = await chromium.launch();
-  const SIDES = [world.legacy, world.react];
+  const SIDES = [world.legacy, world.react].filter(Boolean);
 
   /* One tracked page per side for the strip and the usage consent, and one fresh profile per consent path, so
      an answer given in one step cannot stand in for the question in the next. */
@@ -557,8 +570,12 @@ try {
           `${side.name}: the server saw one`,
         );
       }
-      const [legacy, react] = await Promise.all(SIDES.map((s) => consentOf(strip[s.name].page)));
-      assert.equal(react.disclosure, legacy.disclosure, 'the two pages ask the same question');
+      const react = await consentOf(strip.react.page);
+      await golden.observe(
+        'the unanswered disclosure: the legacy sentence',
+        async () => (await consentOf(strip.legacy.page)).disclosure,
+      );
+      golden.verify('the unanswered disclosure: the legacy sentence', react.disclosure);
       assert.match(react.disclosure, /reading the credential that harness already stored/);
       assert.equal(react.switch, null);
     },
@@ -629,20 +646,40 @@ try {
   await step(
     'the answer is per origin: another origin in the same profile is asked again',
     async () => {
-      const wide = await open(browser, world.react, [world.legacy.origin]);
+      /* The second origin. The legacy page's own origin is one while it runs. The shipped page serves everything
+         from one origin, so the same React server under another loopback name (`localhost`, which this server
+         admits) is a second origin to the browser. The development page loads its modules from a Vite server that
+         answers only the first origin, so there the React page cannot be opened at another one and only the legacy
+         origin is a second origin: the production run holds that half of the proof for the React page. */
+      const elsewhere = PRODUCTION ? `http://localhost:${new URL(world.react.origin).port}` : null;
+      const wide = await open(
+        browser,
+        world.react,
+        [elsewhere, world.legacy?.origin].filter(Boolean),
+      );
       try {
         await go(wide, SESSIONS);
         await until(async () => (await consentOf(wide.page)).disclosure, 'the question');
         await pressUsage(wide, 'declined');
         await until(async () => (await consentOf(wide.page)).switch, 'the answer on this origin');
         // Same profile, different origin: nothing was answered there, so the question is asked.
-        await wide.page.goto(`${world.legacy.origin}/${SESSIONS}`);
-        await wide.page.waitForFunction('typeof nextData !== "undefined" && nextData !== null');
-        await until(
-          async () => (await consentOf(wide.page)).disclosure,
-          'the question on the other origin',
-        );
-        assert.equal((await consentOf(wide.page)).switch, null);
+        if (elsewhere) {
+          await wide.page.goto(`${elsewhere}/${SESSIONS}`);
+          await until(
+            async () => (await consentOf(wide.page)).disclosure,
+            'the question on the other origin',
+          );
+          assert.equal((await consentOf(wide.page)).switch, null);
+        }
+        if (world.legacy) {
+          await wide.page.goto(`${world.legacy.origin}/${SESSIONS}`);
+          await wide.page.waitForFunction('typeof nextData !== "undefined" && nextData !== null');
+          await until(
+            async () => (await consentOf(wide.page)).disclosure,
+            'the question on the legacy origin',
+          );
+          assert.equal((await consentOf(wide.page)).switch, null);
+        }
       } finally {
         await wide.close();
       }
@@ -874,13 +911,10 @@ try {
         await steer(side, { windows });
         await go(strip[side.name], SESSIONS);
       }
-      const old = await read(world.legacy, count);
       const mine = await read(world.react, count);
-      assert.deepEqual(
-        facts(mine),
-        facts(old),
-        `${windows}: the same windows, ticks and sub-limits`,
-      );
+      const factsKey = `the strip's windows, ticks and sub-limits with the ${windows} board`;
+      await golden.observe(factsKey, async () => facts(await read(world.legacy, count)));
+      golden.verify(factsKey, facts(mine));
       if (windows === 'full') {
         // A spent budget says so, and the window with no clock is ranked last, behind the fold, untimed.
         assert.match(mine.rows[0].text, /already spent/);
@@ -897,7 +931,7 @@ try {
       assert.match(month.text, /Pace not measured/);
       assert.match(month.text, /not projected/);
       await pressWindow(strip.react, 'claude:week');
-      await pressWindow(strip.legacy, 'claude:week');
+      if (world.legacy) await pressWindow(strip.legacy, 'claude:week');
       const week = await stripOf(strip.react.page);
       assert.ok(week.rows.find((r) => r.key === 'claude:week')?.pressed);
       // The sub-limits hang under the weekly row only, and keep a measured zero.
@@ -905,28 +939,45 @@ try {
         week.models.map((m) => /Opus 71%.*Sonnet 0%/.test(m)),
         [true],
       );
-      const theirs = await stripOf(strip.legacy.page);
       /* Each page samples the pace on its own clock, so the span and the number of readings it quotes ("across 8s and 3
          readings") and the wall-clock minute a budget ends at can differ between two pages that read the same board
-         a moment apart. Those figures are the only part held soft. Everything else is the same sentence on both
-         pages and a difference in it fails, and React's own text is asserted below, strictly, whatever legacy drew. */
+         a moment apart. Those figures are the only part held soft, and only while the legacy page runs beside this
+         one: a recording keeps the sentences with the figures masked, because a clock minute and the weekday or
+         date a budget ends on (the browser's time zone, and today's date: the column draws "21:04", "Sat 21:04"
+         or "Oct 12" by how far off the end is) are not facts about the legacy code. Everything else is the same sentence on both pages and a difference in it fails, and React's
+         own text is asserted below, strictly, whatever legacy drew. */
       const unclocked = (text) =>
         text
           .replace(/across \S+ and \d+ readings/g, 'across <span> and <n> readings')
-          .replace(/\d{1,2}:\d{2}/g, '<time>');
-      assert.equal(unclocked(week.prospect), unclocked(theirs.prospect), 'prospect, clocks aside');
-      assert.deepEqual(
-        week.rows.map((r) => unclocked(r.text)),
-        theirs.rows.map((r) => unclocked(r.text)),
-        'rows, clocks aside',
-      );
-      legacySoft('prospect clocks', () => assert.equal(week.prospect, theirs.prospect));
-      legacySoft('rows clocks', () =>
-        assert.deepEqual(
-          week.rows.map((r) => r.text),
-          theirs.rows.map((r) => r.text),
-        ),
-      );
+          .replace(/\d{1,2}:\d{2}/g, '<time>')
+          .replace(/(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun)(?= <time>)/g, '<day>')
+          .replace(
+            /BUDGET ENDS(?:<day> <time>|<time>|(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec) \d{2})/g,
+            'BUDGET ENDS<instant>',
+          );
+      const weekKey = "the weekly window's prospect and rows, clocks aside";
+      let theirs = null;
+      const said = await golden.observe(weekKey, async () => {
+        theirs = await stripOf(strip.legacy.page);
+        return {
+          prospect: unclocked(theirs.prospect),
+          rows: theirs.rows.map((r) => unclocked(r.text)),
+        };
+      });
+      golden.verify(weekKey, {
+        prospect: unclocked(week.prospect),
+        rows: week.rows.map((r) => unclocked(r.text)),
+      });
+      assert.ok(said.rows.length > 0, 'the recording holds the weekly rows');
+      if (theirs) {
+        legacySoft('prospect clocks', () => assert.equal(week.prospect, theirs.prospect));
+        legacySoft('rows clocks', () =>
+          assert.deepEqual(
+            week.rows.map((r) => r.text),
+            theirs.rows.map((r) => r.text),
+          ),
+        );
+      }
       // The weekly row's recent pace is a measured zero, which is evidence and is not "not measured".
       assert.match(
         week.prospect,
@@ -1201,12 +1252,17 @@ try {
         path: join(SHOTS, 'drc-4827-capacity-react-1100px.png'),
         fullPage: true,
       });
-      await go(strip.legacy, SESSIONS);
-      await until(async () => (await stripOf(strip.legacy.page))?.rows.length, 'the legacy strip');
-      await strip.legacy.page.screenshot({
-        path: join(SHOTS, 'drc-4827-capacity-legacy-1100px.png'),
-        fullPage: true,
-      });
+      if (strip.legacy) {
+        await go(strip.legacy, SESSIONS);
+        await until(
+          async () => (await stripOf(strip.legacy.page))?.rows.length,
+          'the legacy strip',
+        );
+        await strip.legacy.page.screenshot({
+          path: join(SHOTS, 'drc-4827-capacity-legacy-1100px.png'),
+          fullPage: true,
+        });
+      }
       await steer(world.react, { windows: 'full', observer: 'enabled' });
       const consoleView = await open(browser, world.react);
       try {
@@ -1507,6 +1563,7 @@ try {
           realBackend: true,
           failures: failures.length,
           legacyNotes,
+          legacy: golden.mode,
           steps: results,
         },
       },
@@ -1514,6 +1571,8 @@ try {
       2,
     ),
   );
+  // A mutation run is expected to fail and a filtered run skips steps, so neither records nor checks the golden.
+  golden.finish({ complete: failures.length === 0 && !only && !world.mutation });
   if (failures.length) {
     console.error(JSON.stringify({ mutation: world.mutation || null, failures }, null, 2));
     process.exitCode = 1;

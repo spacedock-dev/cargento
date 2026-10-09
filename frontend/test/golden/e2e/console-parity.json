@@ -1,0 +1,1683 @@
+{
+ "proof": "console-parity",
+ "observations": {
+  "the steering bar says what it is before the first keystroke, in both pages :: the steering bar": {
+   "label": "STEER · LOCAL ONLY",
+   "caveat": "Cargento has no write path into a session. Anything you type here is a note to yourself, kept in this browser tab.",
+   "placeholder": "Draft a next step — kept in this tab only",
+   "maxlength": 500,
+   "value": "",
+   "submit": "save draft ⏎",
+   "receipts": []
+  },
+  "Console at project scope: the scope, the prompt, the rail, the setup line and the raw status :: the Console": {
+   "order": [
+    "scope",
+    "prompt",
+    "rail",
+    "setup"
+   ],
+   "scope": "PROJECT CONSOLE",
+   "scopeKind": [
+    "project",
+    "project"
+   ],
+   "prompt": "Select one exact session to open its read-only console.",
+   "promptLink": null,
+   "rail": [
+    {
+     "name": "delegation",
+     "text": "DELEGATION last <age> 95% of observed time ran without you no token-rate figure 4 human turns Measured over observed working and needs-input intervals.",
+     "rows": [],
+     "controls": [],
+     "bars": [
+      [
+       "PROGRESS",
+       "95",
+       "95% delegated"
+      ]
+     ]
+    },
+    {
+     "name": "waiting",
+     "text": "WAITING ON YOU 1 of 4 Needs a decision <age> Approve the retry plan? Copy command",
+     "rows": [
+      "Needs a decision <age> Approve the retry plan? Copy command"
+     ],
+     "controls": [
+      [
+       "Copy command",
+       "Copy re-entry command claude --resume gate-open",
+       null
+      ]
+     ],
+     "bars": []
+    },
+    {
+     "name": "capacity",
+     "text": "CAPACITY each window on its own clock Claude Code 5-hour 34% 0.7× pace · resets <age> Claude Code weekly 82% 1.4× pace · resets <age>",
+     "rows": [
+      "Claude Code 5-hour 34% 0.7× pace · resets <age>",
+      "Claude Code weekly 82% 1.4× pace · resets <age>"
+     ],
+     "controls": [],
+     "bars": [
+      [
+       "DIV",
+       null,
+       "34% used; 50% of window elapsed"
+      ],
+      [
+       "DIV",
+       null,
+       "82% used; 57% of window elapsed"
+      ]
+     ]
+    },
+    {
+     "name": "tripwires",
+     "text": "TRIPWIRES local only · nothing enforces these No tripwires saved in this browser. + set a tripwire C1 would let an observer act on these. Until it ships they are a note to yourself, held in this browser.",
+     "rows": [],
+     "controls": [
+      [
+       "+ set a tripwire",
+       null,
+       null
+      ]
+     ],
+     "bars": []
+    }
+   ],
+   "terminal": null,
+   "setup": {
+    "summary": "How this server was started — terminal bridge per-session, observer model off",
+    "open": false
+   },
+   "status": [
+    "claude:gate-open · needs_input",
+    "claude:live-work · working",
+    "codex:disposable-tmux-origin:1 · idle",
+    "claude:workflow-run · idle"
+   ]
+  },
+  "Console with the terminal session selected: the terminal is operational, outside the setup :: the Console on the terminal session": {
+   "order": [
+    "scope",
+    "rail",
+    "terminal",
+    "setup"
+   ],
+   "scope": "SESSION Codex CONSOLE",
+   "scopeKind": [
+    "session",
+    "codex:disposable-tmux-origin:1"
+   ],
+   "prompt": "",
+   "promptLink": null,
+   "rail": [
+    {
+     "name": "delegation",
+     "text": "DELEGATION last <age> 95% of observed time ran without you no token-rate figure 4 human turns Measured over observed working and needs-input intervals.",
+     "rows": [],
+     "controls": [],
+     "bars": [
+      [
+       "PROGRESS",
+       "95",
+       "95% delegated"
+      ]
+     ]
+    },
+    {
+     "name": "waiting",
+     "text": "WAITING ON YOU 1 of 4 Needs a decision <age> Approve the retry plan? Copy command",
+     "rows": [
+      "Needs a decision <age> Approve the retry plan? Copy command"
+     ],
+     "controls": [
+      [
+       "Copy command",
+       "Copy re-entry command claude --resume gate-open",
+       null
+      ]
+     ],
+     "bars": []
+    },
+    {
+     "name": "capacity",
+     "text": "CAPACITY each window on its own clock Claude Code 5-hour 34% 0.7× pace · resets <age> Claude Code weekly 82% 1.4× pace · resets <age>",
+     "rows": [
+      "Claude Code 5-hour 34% 0.7× pace · resets <age>",
+      "Claude Code weekly 82% 1.4× pace · resets <age>"
+     ],
+     "controls": [],
+     "bars": [
+      [
+       "DIV",
+       null,
+       "34% used; 50% of window elapsed"
+      ],
+      [
+       "DIV",
+       null,
+       "82% used; 57% of window elapsed"
+      ]
+     ]
+    },
+    {
+     "name": "tripwires",
+     "text": "TRIPWIRES local only · nothing enforces these No tripwires saved in this browser. + set a tripwire C1 would let an observer act on these. Until it ships they are a note to yourself, held in this browser.",
+     "rows": [],
+     "controls": [
+      [
+       "+ set a tripwire",
+       null,
+       null
+      ]
+     ],
+     "bars": []
+    }
+   ],
+   "terminal": {
+    "inside": false,
+    "text": "EXACT SESSION TERMINAL Open terminal"
+   },
+   "setup": {
+    "summary": "How this server was started — terminal bridge on, observer model off",
+    "open": false
+   },
+   "status": [
+    "claude:gate-open · needs_input",
+    "claude:live-work · working",
+    "codex:disposable-tmux-origin:1 · idle",
+    "claude:workflow-run · idle"
+   ]
+  },
+  "Console with a session that has no terminal: the terminal stays behind the closed setup :: the Console on a session with no terminal": {
+   "order": [
+    "scope",
+    "rail",
+    "setup"
+   ],
+   "scope": "SESSION Claude Code CONSOLE",
+   "scopeKind": [
+    "session",
+    "claude:live-work"
+   ],
+   "prompt": "",
+   "promptLink": null,
+   "rail": [
+    {
+     "name": "delegation",
+     "text": "DELEGATION last <age> 95% of observed time ran without you no token-rate figure 4 human turns Measured over observed working and needs-input intervals.",
+     "rows": [],
+     "controls": [],
+     "bars": [
+      [
+       "PROGRESS",
+       "95",
+       "95% delegated"
+      ]
+     ]
+    },
+    {
+     "name": "waiting",
+     "text": "WAITING ON YOU 1 of 4 Needs a decision <age> Approve the retry plan? Copy command",
+     "rows": [
+      "Needs a decision <age> Approve the retry plan? Copy command"
+     ],
+     "controls": [
+      [
+       "Copy command",
+       "Copy re-entry command claude --resume gate-open",
+       null
+      ]
+     ],
+     "bars": []
+    },
+    {
+     "name": "capacity",
+     "text": "CAPACITY each window on its own clock Claude Code 5-hour 34% 0.7× pace · resets <age> Claude Code weekly 82% 1.4× pace · resets <age>",
+     "rows": [
+      "Claude Code 5-hour 34% 0.7× pace · resets <age>",
+      "Claude Code weekly 82% 1.4× pace · resets <age>"
+     ],
+     "controls": [],
+     "bars": [
+      [
+       "DIV",
+       null,
+       "34% used; 50% of window elapsed"
+      ],
+      [
+       "DIV",
+       null,
+       "82% used; 57% of window elapsed"
+      ]
+     ]
+    },
+    {
+     "name": "tripwires",
+     "text": "TRIPWIRES local only · nothing enforces these No tripwires saved in this browser. + set a tripwire C1 would let an observer act on these. Until it ships they are a note to yourself, held in this browser.",
+     "rows": [],
+     "controls": [
+      [
+       "+ set a tripwire",
+       null,
+       null
+      ]
+     ],
+     "bars": []
+    }
+   ],
+   "terminal": {
+    "inside": true,
+    "text": "EXACT SESSION TERMINAL The registered terminal belongs to another session. How to register a terminal Start the dashboard with --interaction-origin-session harness:sid and --interaction-origin-registration-file PATH . Run the registration client inside the tmux pane for this exact session with that file. Output is read-only."
+   },
+   "setup": {
+    "summary": "How this server was started — terminal bridge off, observer model off",
+    "open": false
+   },
+   "status": [
+    "claude:gate-open · needs_input",
+    "claude:live-work · working",
+    "codex:disposable-tmux-origin:1 · idle",
+    "claude:workflow-run · idle"
+   ]
+  },
+  "Console of a project with no working time: the figure is withheld, never zero :: the Console of beta/api": {
+   "order": [
+    "scope",
+    "prompt",
+    "rail",
+    "setup"
+   ],
+   "scope": "PROJECT CONSOLE",
+   "scopeKind": [
+    "project",
+    "project"
+   ],
+   "prompt": "Select one exact session to open its read-only console.",
+   "promptLink": null,
+   "rail": [
+    {
+     "name": "delegation",
+     "text": "DELEGATION last <age> no figure yet Waiting on one complete token-rate window.",
+     "rows": [],
+     "controls": [],
+     "bars": []
+    },
+    {
+     "name": "waiting",
+     "text": "WAITING ON YOU none Nothing in this project has asked for you.",
+     "rows": [],
+     "controls": [],
+     "bars": []
+    },
+    {
+     "name": "capacity",
+     "text": "CAPACITY each window on its own clock Claude Code 5-hour 34% 0.7× pace · resets <age> Claude Code weekly 82% 1.4× pace · resets <age>",
+     "rows": [
+      "Claude Code 5-hour 34% 0.7× pace · resets <age>",
+      "Claude Code weekly 82% 1.4× pace · resets <age>"
+     ],
+     "controls": [],
+     "bars": [
+      [
+       "DIV",
+       null,
+       "34% used; 50% of window elapsed"
+      ],
+      [
+       "DIV",
+       null,
+       "82% used; 57% of window elapsed"
+      ]
+     ]
+    },
+    {
+     "name": "tripwires",
+     "text": "TRIPWIRES local only · nothing enforces these No tripwires saved in this browser. + set a tripwire C1 would let an observer act on these. Until it ships they are a note to yourself, held in this browser.",
+     "rows": [],
+     "controls": [
+      [
+       "+ set a tripwire",
+       null,
+       null
+      ]
+     ],
+     "bars": []
+    }
+   ],
+   "terminal": null,
+   "setup": {
+    "summary": "How this server was started — terminal bridge per-session, observer model off",
+    "open": false
+   },
+   "status": [
+    "codex:beta-codex · idle",
+    "claude:beta-idle · idle"
+   ]
+  },
+  "Decisions at project scope: the summary, the legend, each row’s rail and the unbound workers, under each filter :: Decisions": {
+   "summary": "Decision application · consumed/applied 1",
+   "heading": "RECORDED DECISIONS",
+   "mode": "decisions",
+   "filter": [
+    [
+     "Active",
+     "false"
+    ],
+    [
+     "All events",
+     "false"
+    ],
+    [
+     "Decisions",
+     "true"
+    ]
+   ],
+   "legend": [
+    [
+     "Claude FO",
+     "Claude FO"
+    ],
+    [
+     "Claude FO",
+     "Claude FO"
+    ],
+    [
+     "Codex FO",
+     "Codex FO"
+    ],
+    [
+     "Claude FO",
+     "Claude FO"
+    ],
+    [
+     "project-cockpit",
+     "Project cockpit"
+    ]
+   ],
+   "rows": [
+    {
+     "id": "gate-a",
+     "lane": "task:workflow:project-cockpit",
+     "kind": "decision",
+     "rail": [
+      "fo:claude:gate-open|||",
+      "fo:claude:live-work|||",
+      "fo:codex:disposable-tmux-origin:1|||",
+      "fo:claude:workflow-run|||",
+      "task:workflow:project-cockpit|active||mark"
+     ],
+     "text": "<age> ago PROJECT Project cockpit Unresolved Approved Project cockpit · applied No active worker · no return observed 1 dispatch Why included · Changes understanding of a recorded decision. Decision author · Captain Decision mechanics · review → shaping · applied Source · entity gate · exact · 2030-03-17T<clock>:00.000Z"
+    }
+   ],
+   "empty": "",
+   "unbound": "First Officer Context 2 unbound contributors assignment unavailable lead evidence assignment source unavailable assignment unavailable child evidence assignment source unavailable"
+  },
+  "Decisions at project scope: the summary, the legend, each row’s rail and the unbound workers, under each filter :: Decisions under All events": {
+   "summary": "Decision application · consumed/applied 1",
+   "heading": "SEMANTIC TIMELINE",
+   "mode": "all",
+   "filter": [
+    [
+     "Active",
+     "false"
+    ],
+    [
+     "All events",
+     "true"
+    ],
+    [
+     "Decisions",
+     "false"
+    ]
+   ],
+   "legend": [
+    [
+     "Claude FO",
+     "Claude FO"
+    ],
+    [
+     "Claude FO",
+     "Claude FO"
+    ],
+    [
+     "Codex FO",
+     "Codex FO"
+    ],
+    [
+     "Claude FO",
+     "Claude FO"
+    ],
+    [
+     "project-cockpit",
+     "Project cockpit"
+    ]
+   ],
+   "rows": [
+    {
+     "id": "dir-0",
+     "lane": "fo:codex:disposable-tmux-origin:1",
+     "kind": "direction",
+     "rail": [
+      "fo:claude:gate-open|||",
+      "fo:claude:live-work|||",
+      "fo:codex:disposable-tmux-origin:1|active|flow-out|mark",
+      "fo:claude:workflow-run|||",
+      "task:workflow:project-cockpit|||"
+     ],
+     "text": "<age> ago SESSION Codex First Officer Direction You directed Codex FO · Make the lane order follow the newest direction Why included · Changes understanding of the operator's intent. Source · root transcript · exact · 2030-03-17T<clock>:00.000Z"
+    },
+    {
+     "id": "task-a",
+     "lane": "task:workflow:project-cockpit",
+     "kind": "dispatch",
+     "rail": [
+      "fo:claude:gate-open|||",
+      "fo:claude:live-work|||",
+      "fo:codex:disposable-tmux-origin:1||flow-through|",
+      "fo:claude:workflow-run|||",
+      "task:workflow:project-cockpit|active|flow-out|mark"
+     ],
+     "text": "<age> ago SESSION Codex Project cockpit Unresolved Codex FO dispatched Project cockpit · return not observed No active worker · no return observed 1 dispatch Why included · Changes understanding of assigned work. Source · dispatch artifact · exact · 2030-03-17T<clock>:20.000Z Relation · Exact dispatch · First Officer → Project cockpit"
+    },
+    {
+     "id": "task-b",
+     "lane": "task:workflow:project-cockpit",
+     "kind": "progress",
+     "rail": [
+      "fo:claude:gate-open|||",
+      "fo:claude:live-work|||",
+      "fo:codex:disposable-tmux-origin:1||flow-through|",
+      "fo:claude:workflow-run|||",
+      "task:workflow:project-cockpit|active|flow-through|mark"
+     ],
+     "text": "<age> ago PROJECT Progress Project state advanced Project cockpit · shaping Why included · Changes understanding of work progress. Source · workflow state · exact · 2030-03-17T<clock>:40.000Z"
+    },
+    {
+     "id": "gate-a",
+     "lane": "task:workflow:project-cockpit",
+     "kind": "decision",
+     "rail": [
+      "fo:claude:gate-open|||",
+      "fo:claude:live-work|||",
+      "fo:codex:disposable-tmux-origin:1||flow-through|",
+      "fo:claude:workflow-run|||",
+      "task:workflow:project-cockpit|active|flow-in|mark"
+     ],
+     "text": "<age> ago PROJECT Decision Approved Project cockpit · applied Why included · Changes understanding of a recorded decision. Decision author · Captain Decision mechanics · review → shaping · applied Source · entity gate · exact · 2030-03-17T<clock>:00.000Z"
+    },
+    {
+     "id": "dir-1",
+     "lane": "fo:codex:disposable-tmux-origin:1",
+     "kind": "direction",
+     "rail": [
+      "fo:claude:gate-open|||",
+      "fo:claude:live-work|||",
+      "fo:codex:disposable-tmux-origin:1|active|flow-through|mark",
+      "fo:claude:workflow-run|||",
+      "task:workflow:project-cockpit|||"
+     ],
+     "text": "<age> ago SESSION Codex Direction You directed Codex FO · Correct the dispatch authority wording Why included · Changes understanding of the operator's intent. Source · root transcript · exact · 2030-03-17T<clock>:00.000Z"
+    },
+    {
+     "id": "dir-2",
+     "lane": "fo:codex:disposable-tmux-origin:1",
+     "kind": "direction",
+     "rail": [
+      "fo:claude:gate-open|||",
+      "fo:claude:live-work|||",
+      "fo:codex:disposable-tmux-origin:1|active|flow-through|mark",
+      "fo:claude:workflow-run|||",
+      "task:workflow:project-cockpit|||"
+     ],
+     "text": "<age> ago SESSION Codex Direction You directed Codex FO · Keep the timeline read-only Why included · Changes understanding of the operator's intent. Source · root transcript · exact · 2030-03-17T<clock>:00.000Z"
+    },
+    {
+     "id": "dir-3",
+     "lane": "fo:codex:disposable-tmux-origin:1",
+     "kind": "direction",
+     "rail": [
+      "fo:claude:gate-open|||",
+      "fo:claude:live-work|||",
+      "fo:codex:disposable-tmux-origin:1|active|flow-through|mark",
+      "fo:claude:workflow-run|||",
+      "task:workflow:project-cockpit|||"
+     ],
+     "text": "<age> ago SESSION Codex Direction You directed Codex FO · Show recorded decisions without the noise Why included · Changes understanding of the operator's intent. Source · root transcript · exact · 2030-03-17T<clock>:00.000Z"
+    },
+    {
+     "id": "dir-4",
+     "lane": "fo:codex:disposable-tmux-origin:1",
+     "kind": "direction",
+     "rail": [
+      "fo:claude:gate-open|||",
+      "fo:claude:live-work|||",
+      "fo:codex:disposable-tmux-origin:1|active|flow-through|mark",
+      "fo:claude:workflow-run|||",
+      "task:workflow:project-cockpit|||"
+     ],
+     "text": "<age> ago SESSION Codex Direction You directed Codex FO · Fold older directions into a band Why included · Changes understanding of the operator's intent. Source · root transcript · exact · 2030-03-17T<clock>:00.000Z"
+    },
+    {
+     "id": "dir-5",
+     "lane": "fo:codex:disposable-tmux-origin:1",
+     "kind": "direction",
+     "rail": [
+      "fo:claude:gate-open|||",
+      "fo:claude:live-work|||",
+      "fo:codex:disposable-tmux-origin:1|active|flow-through|mark",
+      "fo:claude:workflow-run|||",
+      "task:workflow:project-cockpit|||"
+     ],
+     "text": "<age> ago SESSION Codex Direction You directed Codex FO · Name the project in every disclosure key Why included · Changes understanding of the operator's intent. Source · root transcript · exact · 2030-03-17T<clock>:00.000Z"
+    },
+    {
+     "id": "dir-6",
+     "lane": "fo:codex:disposable-tmux-origin:1",
+     "kind": "direction",
+     "rail": [
+      "fo:claude:gate-open|||",
+      "fo:claude:live-work|||",
+      "fo:codex:disposable-tmux-origin:1|active|flow-through|mark",
+      "fo:claude:workflow-run|||",
+      "task:workflow:project-cockpit|||"
+     ],
+     "text": "<age> ago SESSION Codex Direction You directed Codex FO · Restore the filter after a reload Why included · Changes understanding of the operator's intent. Source · root transcript · exact · 2030-03-17T<clock>:00.000Z"
+    },
+    {
+     "id": "dir-7",
+     "lane": "fo:codex:disposable-tmux-origin:1",
+     "kind": "direction",
+     "rail": [
+      "fo:claude:gate-open|||",
+      "fo:claude:live-work|||",
+      "fo:codex:disposable-tmux-origin:1|active|flow-in|mark",
+      "fo:claude:workflow-run|||",
+      "task:workflow:project-cockpit|||"
+     ],
+     "text": "<age> ago SESSION Codex Direction You directed Codex FO · Keep the terminal output only Why included · Changes understanding of the operator's intent. Source · root transcript · exact · 2030-03-17T<clock>:00.000Z"
+    }
+   ],
+   "empty": "",
+   "unbound": "First Officer Context 2 unbound contributors assignment unavailable lead evidence assignment source unavailable assignment unavailable child evidence assignment source unavailable"
+  },
+  "Decisions at project scope: the summary, the legend, each row’s rail and the unbound workers, under each filter :: Decisions under Active": {
+   "summary": "Decision application · consumed/applied 1",
+   "heading": "SEMANTIC TIMELINE",
+   "mode": "active",
+   "filter": [
+    [
+     "Active",
+     "true"
+    ],
+    [
+     "All events",
+     "false"
+    ],
+    [
+     "Decisions",
+     "false"
+    ]
+   ],
+   "legend": [
+    [
+     "Claude FO",
+     "Claude FO"
+    ],
+    [
+     "Claude FO",
+     "Claude FO"
+    ],
+    [
+     "Codex FO",
+     "Codex FO"
+    ],
+    [
+     "Claude FO",
+     "Claude FO"
+    ],
+    [
+     "project-cockpit",
+     "Project cockpit"
+    ]
+   ],
+   "rows": [
+    {
+     "id": "dir-0",
+     "lane": "fo:codex:disposable-tmux-origin:1",
+     "kind": "direction",
+     "rail": [
+      "fo:claude:gate-open|||",
+      "fo:claude:live-work|||",
+      "fo:codex:disposable-tmux-origin:1|active|flow-out|mark",
+      "fo:claude:workflow-run|||",
+      "task:workflow:project-cockpit|||"
+     ],
+     "text": "<age> ago SESSION Codex First Officer Direction You directed Codex FO · Make the lane order follow the newest direction Why included · Changes understanding of the operator's intent. Source · root transcript · exact · 2030-03-17T<clock>:00.000Z"
+    },
+    {
+     "id": "task-a",
+     "lane": "task:workflow:project-cockpit",
+     "kind": "dispatch",
+     "rail": [
+      "fo:claude:gate-open|||",
+      "fo:claude:live-work|||",
+      "fo:codex:disposable-tmux-origin:1||flow-through|",
+      "fo:claude:workflow-run|||",
+      "task:workflow:project-cockpit|active|flow-out|mark"
+     ],
+     "text": "<age> ago SESSION Codex Project cockpit Unresolved Codex FO dispatched Project cockpit · return not observed No active worker · no return observed 1 dispatch Why included · Changes understanding of assigned work. Source · dispatch artifact · exact · 2030-03-17T<clock>:20.000Z Relation · Exact dispatch · First Officer → Project cockpit"
+    },
+    {
+     "id": "task-b",
+     "lane": "task:workflow:project-cockpit",
+     "kind": "progress",
+     "rail": [
+      "fo:claude:gate-open|||",
+      "fo:claude:live-work|||",
+      "fo:codex:disposable-tmux-origin:1||flow-through|",
+      "fo:claude:workflow-run|||",
+      "task:workflow:project-cockpit|active|flow-through|mark"
+     ],
+     "text": "<age> ago PROJECT Progress Project state advanced Project cockpit · shaping Why included · Changes understanding of work progress. Source · workflow state · exact · 2030-03-17T<clock>:40.000Z"
+    },
+    {
+     "id": "gate-a",
+     "lane": "task:workflow:project-cockpit",
+     "kind": "decision",
+     "rail": [
+      "fo:claude:gate-open|||",
+      "fo:claude:live-work|||",
+      "fo:codex:disposable-tmux-origin:1||flow-through|",
+      "fo:claude:workflow-run|||",
+      "task:workflow:project-cockpit|active|flow-in|mark"
+     ],
+     "text": "<age> ago PROJECT Decision Approved Project cockpit · applied Why included · Changes understanding of a recorded decision. Decision author · Captain Decision mechanics · review → shaping · applied Source · entity gate · exact · 2030-03-17T<clock>:00.000Z"
+    },
+    {
+     "id": "dir-1",
+     "lane": "fo:codex:disposable-tmux-origin:1",
+     "kind": "direction",
+     "rail": [
+      "fo:claude:gate-open|||",
+      "fo:claude:live-work|||",
+      "fo:codex:disposable-tmux-origin:1|active|flow-through|mark",
+      "fo:claude:workflow-run|||",
+      "task:workflow:project-cockpit|||"
+     ],
+     "text": "<age> ago SESSION Codex Direction You directed Codex FO · Correct the dispatch authority wording Why included · Changes understanding of the operator's intent. Source · root transcript · exact · 2030-03-17T<clock>:00.000Z"
+    },
+    {
+     "id": "dir-2",
+     "lane": "fo:codex:disposable-tmux-origin:1",
+     "kind": "direction",
+     "rail": [
+      "fo:claude:gate-open|||",
+      "fo:claude:live-work|||",
+      "fo:codex:disposable-tmux-origin:1|active|flow-through|mark",
+      "fo:claude:workflow-run|||",
+      "task:workflow:project-cockpit|||"
+     ],
+     "text": "<age> ago SESSION Codex Direction You directed Codex FO · Keep the timeline read-only Why included · Changes understanding of the operator's intent. Source · root transcript · exact · 2030-03-17T<clock>:00.000Z"
+    },
+    {
+     "id": "dir-3",
+     "lane": "fo:codex:disposable-tmux-origin:1",
+     "kind": "direction",
+     "rail": [
+      "fo:claude:gate-open|||",
+      "fo:claude:live-work|||",
+      "fo:codex:disposable-tmux-origin:1|active|flow-through|mark",
+      "fo:claude:workflow-run|||",
+      "task:workflow:project-cockpit|||"
+     ],
+     "text": "<age> ago SESSION Codex Direction You directed Codex FO · Show recorded decisions without the noise Why included · Changes understanding of the operator's intent. Source · root transcript · exact · 2030-03-17T<clock>:00.000Z"
+    },
+    {
+     "id": "dir-4",
+     "lane": "fo:codex:disposable-tmux-origin:1",
+     "kind": "direction",
+     "rail": [
+      "fo:claude:gate-open|||",
+      "fo:claude:live-work|||",
+      "fo:codex:disposable-tmux-origin:1|active|flow-through|mark",
+      "fo:claude:workflow-run|||",
+      "task:workflow:project-cockpit|||"
+     ],
+     "text": "<age> ago SESSION Codex Direction You directed Codex FO · Fold older directions into a band Why included · Changes understanding of the operator's intent. Source · root transcript · exact · 2030-03-17T<clock>:00.000Z"
+    },
+    {
+     "id": "dir-5",
+     "lane": "fo:codex:disposable-tmux-origin:1",
+     "kind": "direction",
+     "rail": [
+      "fo:claude:gate-open|||",
+      "fo:claude:live-work|||",
+      "fo:codex:disposable-tmux-origin:1|active|flow-through|mark",
+      "fo:claude:workflow-run|||",
+      "task:workflow:project-cockpit|||"
+     ],
+     "text": "<age> ago SESSION Codex Direction You directed Codex FO · Name the project in every disclosure key Why included · Changes understanding of the operator's intent. Source · root transcript · exact · 2030-03-17T<clock>:00.000Z"
+    },
+    {
+     "id": "dir-6",
+     "lane": "fo:codex:disposable-tmux-origin:1",
+     "kind": "direction",
+     "rail": [
+      "fo:claude:gate-open|||",
+      "fo:claude:live-work|||",
+      "fo:codex:disposable-tmux-origin:1|active|flow-through|mark",
+      "fo:claude:workflow-run|||",
+      "task:workflow:project-cockpit|||"
+     ],
+     "text": "<age> ago SESSION Codex Direction You directed Codex FO · Restore the filter after a reload Why included · Changes understanding of the operator's intent. Source · root transcript · exact · 2030-03-17T<clock>:00.000Z"
+    },
+    {
+     "id": "dir-7",
+     "lane": "fo:codex:disposable-tmux-origin:1",
+     "kind": "direction",
+     "rail": [
+      "fo:claude:gate-open|||",
+      "fo:claude:live-work|||",
+      "fo:codex:disposable-tmux-origin:1|active|flow-in|mark",
+      "fo:claude:workflow-run|||",
+      "task:workflow:project-cockpit|||"
+     ],
+     "text": "<age> ago SESSION Codex Direction You directed Codex FO · Keep the terminal output only Why included · Changes understanding of the operator's intent. Source · root transcript · exact · 2030-03-17T<clock>:00.000Z"
+    }
+   ],
+   "empty": "",
+   "unbound": "First Officer Context 2 unbound contributors assignment unavailable lead evidence assignment source unavailable assignment unavailable child evidence assignment source unavailable"
+  },
+  "Decisions at project scope: the summary, the legend, each row’s rail and the unbound workers, under each filter :: Decisions under Decisions": {
+   "summary": "Decision application · consumed/applied 1",
+   "heading": "RECORDED DECISIONS",
+   "mode": "decisions",
+   "filter": [
+    [
+     "Active",
+     "false"
+    ],
+    [
+     "All events",
+     "false"
+    ],
+    [
+     "Decisions",
+     "true"
+    ]
+   ],
+   "legend": [
+    [
+     "Claude FO",
+     "Claude FO"
+    ],
+    [
+     "Claude FO",
+     "Claude FO"
+    ],
+    [
+     "Codex FO",
+     "Codex FO"
+    ],
+    [
+     "Claude FO",
+     "Claude FO"
+    ],
+    [
+     "project-cockpit",
+     "Project cockpit"
+    ]
+   ],
+   "rows": [
+    {
+     "id": "gate-a",
+     "lane": "task:workflow:project-cockpit",
+     "kind": "decision",
+     "rail": [
+      "fo:claude:gate-open|||",
+      "fo:claude:live-work|||",
+      "fo:codex:disposable-tmux-origin:1|||",
+      "fo:claude:workflow-run|||",
+      "task:workflow:project-cockpit|active||mark"
+     ],
+     "text": "<age> ago PROJECT Project cockpit Unresolved Approved Project cockpit · applied No active worker · no return observed 1 dispatch Why included · Changes understanding of a recorded decision. Decision author · Captain Decision mechanics · review → shaping · applied Source · entity gate · exact · 2030-03-17T<clock>:00.000Z"
+    }
+   ],
+   "empty": "",
+   "unbound": "First Officer Context 2 unbound contributors assignment unavailable lead evidence assignment source unavailable assignment unavailable child evidence assignment source unavailable"
+  },
+  "Decisions with a session selected reads that session’s context :: Decisions on the terminal session": {
+   "summary": "Decision application · consumed/applied 1",
+   "heading": "RECORDED DECISIONS",
+   "mode": "decisions",
+   "filter": [
+    [
+     "Active",
+     "false"
+    ],
+    [
+     "All events",
+     "false"
+    ],
+    [
+     "Decisions",
+     "true"
+    ]
+   ],
+   "legend": [
+    [
+     "Codex FO",
+     "Codex FO"
+    ],
+    [
+     "project-cockpit",
+     "Project cockpit"
+    ]
+   ],
+   "rows": [
+    {
+     "id": "gate-a",
+     "lane": "task:workflow:project-cockpit",
+     "kind": "decision",
+     "rail": [
+      "fo:codex:disposable-tmux-origin:1|||",
+      "task:workflow:project-cockpit|active||mark"
+     ],
+     "text": "<age> ago PROJECT Project cockpit Unresolved Approved Project cockpit · applied No active worker · no return observed 1 dispatch Why included · Changes understanding of a recorded decision. Decision author · Captain Decision mechanics · review → shaping · applied Source · entity gate · exact · 2030-03-17T<clock>:00.000Z"
+    }
+   ],
+   "empty": "",
+   "unbound": ""
+  },
+  "Course: the stage condition narrows with the selected session, in both pages :: Course at project scope": {
+   "heading": "Workflow stage conditions",
+   "intro": "Alert once on an observed entry. First sight and gaps establish a baseline; skipped stages are not inferred.",
+   "cards": [
+    {
+     "id": "abababababababababababababababababababababababababababababababab",
+     "title": "Ship the queue",
+     "lines": [
+      "Drain the retry queue · Retry the queue (claude) · Workflow session (claude)",
+      "Save a stage condition to start a fresh baseline.",
+      "1 current entity records evaluated",
+      "",
+      "",
+      ""
+     ],
+     "options": [
+      [
+       "intake",
+       true,
+       false
+      ],
+      [
+       "build",
+       false,
+       false
+      ],
+      [
+       "review",
+       false,
+       false
+      ],
+      [
+       "done",
+       false,
+       false
+      ]
+     ],
+     "selectDisabled": false,
+     "buttons": [
+      [
+       "save",
+       "Save",
+       false
+      ]
+     ],
+     "cue": ""
+    }
+   ],
+   "fallback": []
+  },
+  "Course: the stage condition narrows with the selected session, in both pages :: Course on a session of the workflow": {
+   "heading": "Workflow stage conditions",
+   "intro": "Alert once on an observed entry. First sight and gaps establish a baseline; skipped stages are not inferred.",
+   "cards": [
+    {
+     "id": "abababababababababababababababababababababababababababababababab",
+     "title": "Ship the queue",
+     "lines": [
+      "Drain the retry queue · Retry the queue (claude) · Workflow session (claude)",
+      "Save a stage condition to start a fresh baseline.",
+      "1 current entity records evaluated",
+      "",
+      "",
+      ""
+     ],
+     "options": [
+      [
+       "intake",
+       true,
+       false
+      ],
+      [
+       "build",
+       false,
+       false
+      ],
+      [
+       "review",
+       false,
+       false
+      ],
+      [
+       "done",
+       false,
+       false
+      ]
+     ],
+     "selectDisabled": false,
+     "buttons": [
+      [
+       "save",
+       "Save",
+       false
+      ]
+     ],
+     "cue": ""
+    }
+   ],
+   "fallback": []
+  },
+  "Course: the stage condition narrows with the selected session, in both pages :: Course on a session outside the workflow": {
+   "heading": "Workflow stage conditions",
+   "intro": "Alert once on an observed entry. First sight and gaps establish a baseline; skipped stages are not inferred.",
+   "cards": [],
+   "fallback": [
+    "Workflow stage source unavailable. Saved conditions remain in Projects."
+   ]
+  },
+  "sending a steer draft records a receipt that says it was not delivered, in both pages :: the bar after a send": {
+   "label": "STEER · LOCAL ONLY",
+   "caveat": "Cargento has no write path into a session. Anything you type here is a note to yourself, kept in this browser tab.",
+   "placeholder": "Draft a next step — kept in this tab only",
+   "maxlength": 500,
+   "value": "",
+   "submit": "save draft ⏎",
+   "receipts": [
+    "take the safer route Draft recorded in this tab. Not delivered. Cargento has no write path into a session."
+   ]
+  },
+  "tripwire add: the legacy page focus": {
+   "opened": "body:ProjectsSessionsAttentionIntent log1 rep",
+   "added": "body:ProjectsSessionsAttentionIntent log1 rep"
+  },
+  "a tripwire is added, toggled and persisted the same way in both pages :: the tripwires panel": {
+   "order": [
+    "scope",
+    "prompt",
+    "rail",
+    "setup"
+   ],
+   "scope": "PROJECT CONSOLE",
+   "scopeKind": [
+    "project",
+    "project"
+   ],
+   "prompt": "Select one exact session to open its read-only console.",
+   "promptLink": null,
+   "rail": [
+    {
+     "name": "delegation",
+     "text": "DELEGATION last <age> 95% of observed time ran without you no token-rate figure 4 human turns Measured over observed working and needs-input intervals.",
+     "rows": [],
+     "controls": [],
+     "bars": [
+      [
+       "PROGRESS",
+       "95",
+       "95% delegated"
+      ]
+     ]
+    },
+    {
+     "name": "waiting",
+     "text": "WAITING ON YOU 1 of 4 Needs a decision <age> Approve the retry plan? Copy command",
+     "rows": [
+      "Needs a decision <age> Approve the retry plan? Copy command"
+     ],
+     "controls": [
+      [
+       "Copy command",
+       "Copy re-entry command claude --resume gate-open",
+       null
+      ]
+     ],
+     "bars": []
+    },
+    {
+     "name": "capacity",
+     "text": "CAPACITY each window on its own clock Claude Code 5-hour 34% 0.7× pace · resets <age> Claude Code weekly 82% 1.4× pace · resets <age>",
+     "rows": [
+      "Claude Code 5-hour 34% 0.7× pace · resets <age>",
+      "Claude Code weekly 82% 1.4× pace · resets <age>"
+     ],
+     "controls": [],
+     "bars": [
+      [
+       "DIV",
+       null,
+       "34% used; 50% of window elapsed"
+      ],
+      [
+       "DIV",
+       null,
+       "82% used; 57% of window elapsed"
+      ]
+     ]
+    },
+    {
+     "name": "tripwires",
+     "text": "TRIPWIRES local only · nothing enforces these ◇ alert me when the build breaks Disabled in this browser. + set a tripwire C1 would let an observer act on these. Until it ships they are a note to yourself, held in this browser.",
+     "rows": [
+      "◇ alert me when the build breaks Disabled in this browser."
+     ],
+     "controls": [
+      [
+       "◇ alert me when the build breaks Disabled in this browser.",
+       null,
+       "false"
+      ],
+      [
+       "+ set a tripwire",
+       null,
+       null
+      ]
+     ],
+     "bars": []
+    }
+   ],
+   "terminal": null,
+   "setup": {
+    "summary": "How this server was started — terminal bridge per-session, observer model off",
+    "open": false
+   },
+   "status": [
+    "claude:gate-open · needs_input",
+    "claude:live-work · working",
+    "codex:disposable-tmux-origin:1 · idle",
+    "claude:workflow-run · idle"
+   ]
+  },
+  "tripwire add: the bytes the legacy page stored": "[{\"enabled\":false,\"text\":\"alert me when the build breaks\"}]",
+  "Save, Rearm and Remove through the real route say the same things in both pages :: Course after save": {
+   "heading": "Workflow stage conditions",
+   "intro": "Alert once on an observed entry. First sight and gaps establish a baseline; skipped stages are not inferred.",
+   "cards": [
+    {
+     "id": "abababababababababababababababababababababababababababababababab",
+     "title": "Ship the queue",
+     "lines": [
+      "Drain the retry queue · Retry the queue (claude) · Workflow session (claude)",
+      "Saved stage: review · armed",
+      "Baseline recorded; watching for entry into review.",
+      "1 current entity records evaluated",
+      "",
+      "",
+      "Saved."
+     ],
+     "options": [
+      [
+       "intake",
+       false,
+       false
+      ],
+      [
+       "build",
+       false,
+       false
+      ],
+      [
+       "review",
+       true,
+       false
+      ],
+      [
+       "done",
+       false,
+       false
+      ]
+     ],
+     "selectDisabled": false,
+     "buttons": [
+      [
+       "save",
+       "Save",
+       false
+      ],
+      [
+       "rearm",
+       "Rearm",
+       false
+      ],
+      [
+       "remove",
+       "Remove",
+       false
+      ]
+     ],
+     "cue": "Saved."
+    }
+   ],
+   "fallback": []
+  },
+  "Save, Rearm and Remove through the real route say the same things in both pages :: Course after rearm": {
+   "heading": "Workflow stage conditions",
+   "intro": "Alert once on an observed entry. First sight and gaps establish a baseline; skipped stages are not inferred.",
+   "cards": [
+    {
+     "id": "abababababababababababababababababababababababababababababababab",
+     "title": "Ship the queue",
+     "lines": [
+      "Drain the retry queue · Retry the queue (claude) · Workflow session (claude)",
+      "Saved stage: review · armed",
+      "Baseline recorded; watching for entry into review.",
+      "1 current entity records evaluated",
+      "",
+      "",
+      "Rearmed; baseline reset."
+     ],
+     "options": [
+      [
+       "intake",
+       false,
+       false
+      ],
+      [
+       "build",
+       false,
+       false
+      ],
+      [
+       "review",
+       true,
+       false
+      ],
+      [
+       "done",
+       false,
+       false
+      ]
+     ],
+     "selectDisabled": false,
+     "buttons": [
+      [
+       "save",
+       "Save",
+       false
+      ],
+      [
+       "rearm",
+       "Rearm",
+       false
+      ],
+      [
+       "remove",
+       "Remove",
+       false
+      ]
+     ],
+     "cue": "Rearmed; baseline reset."
+    }
+   ],
+   "fallback": []
+  },
+  "Save, Rearm and Remove through the real route say the same things in both pages :: Course after remove": {
+   "heading": "Workflow stage conditions",
+   "intro": "Alert once on an observed entry. First sight and gaps establish a baseline; skipped stages are not inferred.",
+   "cards": [
+    {
+     "id": "abababababababababababababababababababababababababababababababab",
+     "title": "Ship the queue",
+     "lines": [
+      "Drain the retry queue · Retry the queue (claude) · Workflow session (claude)",
+      "Save a stage condition to start a fresh baseline.",
+      "1 current entity records evaluated",
+      "",
+      "",
+      "Removed."
+     ],
+     "options": [
+      [
+       "intake",
+       true,
+       false
+      ],
+      [
+       "build",
+       false,
+       false
+      ],
+      [
+       "review",
+       false,
+       false
+      ],
+      [
+       "done",
+       false,
+       false
+      ]
+     ],
+     "selectDisabled": false,
+     "buttons": [
+      [
+       "save",
+       "Save",
+       false
+      ]
+     ],
+     "cue": "Removed."
+    }
+   ],
+   "fallback": []
+  },
+  "typography and geometry match the legacy page on the shipped project page, at 375 and 1280 :: console at 1280": {
+   "caveat": {
+    "letterSpacing": "0.91px",
+    "fontSize": "15px",
+    "fontWeight": "500",
+    "lineHeight": "23.25px",
+    "color": "rgb(205, 199, 180)",
+    "textAlign": "start",
+    "width": 540,
+    "height": 46.5,
+    "rightGap": 397,
+    "leftGap": 0
+   },
+   "label": {
+    "letterSpacing": "0.91px",
+    "fontSize": "13px",
+    "fontWeight": "600",
+    "lineHeight": "15.6px",
+    "color": "rgb(205, 199, 180)",
+    "textAlign": "start",
+    "width": 937,
+    "height": 15.59375,
+    "rightGap": 0,
+    "leftGap": 0
+   },
+   "input": {
+    "letterSpacing": "normal",
+    "fontSize": "15px",
+    "fontWeight": "400",
+    "lineHeight": "23.25px",
+    "color": "rgb(246, 243, 234)",
+    "textAlign": "start",
+    "width": 808.140625,
+    "height": 44,
+    "rightGap": 0,
+    "leftGap": 0
+   },
+   "meta": {
+    "letterSpacing": "0.91px",
+    "fontSize": "13px",
+    "fontWeight": "400",
+    "lineHeight": "normal",
+    "color": "rgb(205, 199, 180)",
+    "textAlign": "right",
+    "width": 249.09375,
+    "height": 17,
+    "rightGap": 0,
+    "leftGap": 175
+   },
+   "add": {
+    "letterSpacing": "normal",
+    "fontSize": "15px",
+    "fontWeight": "400",
+    "lineHeight": "23.25px",
+    "color": "rgb(205, 199, 180)",
+    "textAlign": "center",
+    "width": 138.5625,
+    "height": 44,
+    "rightGap": 308,
+    "leftGap": 22
+   }
+  },
+  "typography and geometry match the legacy page on the shipped project page, at 375 and 1280 :: decisions at 1280": {
+   "caveat": {
+    "letterSpacing": "0.91px",
+    "fontSize": "15px",
+    "fontWeight": "500",
+    "lineHeight": "23.25px",
+    "color": "rgb(205, 199, 180)",
+    "textAlign": "start",
+    "width": 540,
+    "height": 46.5,
+    "rightGap": 397,
+    "leftGap": 0
+   },
+   "label": {
+    "letterSpacing": "0.91px",
+    "fontSize": "13px",
+    "fontWeight": "600",
+    "lineHeight": "15.6px",
+    "color": "rgb(205, 199, 180)",
+    "textAlign": "start",
+    "width": 937,
+    "height": 15.59375,
+    "rightGap": 0,
+    "leftGap": 0
+   },
+   "input": {
+    "letterSpacing": "normal",
+    "fontSize": "15px",
+    "fontWeight": "400",
+    "lineHeight": "23.25px",
+    "color": "rgb(246, 243, 234)",
+    "textAlign": "start",
+    "width": 808.140625,
+    "height": 44,
+    "rightGap": 0,
+    "leftGap": 0
+   },
+   "summary": {
+    "letterSpacing": "normal",
+    "fontSize": "15px",
+    "fontWeight": "500",
+    "lineHeight": "23.25px",
+    "color": "rgb(205, 199, 180)",
+    "textAlign": "start",
+    "width": 540,
+    "height": 42.25,
+    "rightGap": 409,
+    "leftGap": 12
+   },
+   "event": {
+    "letterSpacing": "normal",
+    "fontSize": "15px",
+    "fontWeight": "500",
+    "lineHeight": "22.5px",
+    "color": "rgb(246, 243, 234)",
+    "textAlign": "start",
+    "width": 743,
+    "height": 120.78125,
+    "rightGap": 0,
+    "leftGap": 0
+   },
+   "eventSummary": {
+    "letterSpacing": "normal",
+    "fontSize": "15px",
+    "fontWeight": "500",
+    "lineHeight": "22.5px",
+    "color": "rgb(246, 243, 234)",
+    "textAlign": "start",
+    "width": 743,
+    "height": 120.78125,
+    "rightGap": 0,
+    "leftGap": 0
+   },
+   "trailSummary": {
+    "letterSpacing": "normal",
+    "fontSize": "15px",
+    "fontWeight": "500",
+    "lineHeight": "22.5px",
+    "color": "rgb(246, 243, 234)",
+    "textAlign": "start",
+    "width": 743,
+    "height": 98.28125,
+    "rightGap": 0,
+    "leftGap": 0
+   },
+   "top": {
+    "letterSpacing": "normal",
+    "fontSize": "15px",
+    "fontWeight": "500",
+    "lineHeight": "22.5px",
+    "color": "rgb(246, 243, 234)",
+    "textAlign": "start",
+    "width": 743,
+    "height": 21.5,
+    "rightGap": 0,
+    "leftGap": 0
+   },
+   "topMeta": {
+    "letterSpacing": "normal",
+    "fontSize": "13px",
+    "fontWeight": "400",
+    "lineHeight": "19.5px",
+    "color": "rgb(205, 199, 180)",
+    "textAlign": "right",
+    "width": 69.875,
+    "height": 19.5,
+    "rightGap": 0,
+    "leftGap": 673
+   },
+   "result": {
+    "letterSpacing": "normal",
+    "fontSize": "15px",
+    "fontWeight": "400",
+    "lineHeight": "22.5px",
+    "color": "rgb(205, 199, 180)",
+    "textAlign": "start",
+    "width": 743,
+    "height": 22.5,
+    "rightGap": 0,
+    "leftGap": 0
+   },
+   "row": {
+    "letterSpacing": "normal",
+    "fontSize": "15px",
+    "fontWeight": "500",
+    "lineHeight": "22.5px",
+    "color": "rgb(246, 243, 234)",
+    "textAlign": "start",
+    "width": 937,
+    "height": 163.28125,
+    "rightGap": 0,
+    "leftGap": 0
+   }
+  },
+  "typography and geometry match the legacy page on the shipped project page, at 375 and 1280 :: console at 375": {
+   "caveat": {
+    "letterSpacing": "0.91px",
+    "fontSize": "15px",
+    "fontWeight": "500",
+    "lineHeight": "23.25px",
+    "color": "rgb(205, 199, 180)",
+    "textAlign": "start",
+    "width": 313,
+    "height": 93,
+    "rightGap": 0,
+    "leftGap": 0
+   },
+   "label": {
+    "letterSpacing": "0.91px",
+    "fontSize": "13px",
+    "fontWeight": "600",
+    "lineHeight": "15.6px",
+    "color": "rgb(205, 199, 180)",
+    "textAlign": "start",
+    "width": 313,
+    "height": 15.59375,
+    "rightGap": 0,
+    "leftGap": 0
+   },
+   "input": {
+    "letterSpacing": "normal",
+    "fontSize": "15px",
+    "fontWeight": "400",
+    "lineHeight": "23.25px",
+    "color": "rgb(246, 243, 234)",
+    "textAlign": "start",
+    "width": 184.140625,
+    "height": 44,
+    "rightGap": 0,
+    "leftGap": 0
+   },
+   "meta": {
+    "letterSpacing": "0.91px",
+    "fontSize": "13px",
+    "fontWeight": "400",
+    "lineHeight": "normal",
+    "color": "rgb(205, 199, 180)",
+    "textAlign": "right",
+    "width": 181.609375,
+    "height": 34,
+    "rightGap": 0,
+    "leftGap": 87
+   },
+   "add": {
+    "letterSpacing": "normal",
+    "fontSize": "15px",
+    "fontWeight": "400",
+    "lineHeight": "23.25px",
+    "color": "rgb(205, 199, 180)",
+    "textAlign": "center",
+    "width": 138.5625,
+    "height": 44,
+    "rightGap": 152,
+    "leftGap": 22
+   }
+  },
+  "typography and geometry match the legacy page on the shipped project page, at 375 and 1280 :: decisions at 375": {
+   "caveat": {
+    "letterSpacing": "0.91px",
+    "fontSize": "15px",
+    "fontWeight": "500",
+    "lineHeight": "23.25px",
+    "color": "rgb(205, 199, 180)",
+    "textAlign": "start",
+    "width": 313,
+    "height": 93,
+    "rightGap": 0,
+    "leftGap": 0
+   },
+   "label": {
+    "letterSpacing": "0.91px",
+    "fontSize": "13px",
+    "fontWeight": "600",
+    "lineHeight": "15.6px",
+    "color": "rgb(205, 199, 180)",
+    "textAlign": "start",
+    "width": 313,
+    "height": 15.59375,
+    "rightGap": 0,
+    "leftGap": 0
+   },
+   "input": {
+    "letterSpacing": "normal",
+    "fontSize": "15px",
+    "fontWeight": "400",
+    "lineHeight": "23.25px",
+    "color": "rgb(246, 243, 234)",
+    "textAlign": "start",
+    "width": 184.140625,
+    "height": 44,
+    "rightGap": 0,
+    "leftGap": 0
+   },
+   "summary": {
+    "letterSpacing": "normal",
+    "fontSize": "15px",
+    "fontWeight": "500",
+    "lineHeight": "23.25px",
+    "color": "rgb(205, 199, 180)",
+    "textAlign": "start",
+    "width": 313,
+    "height": 65.5,
+    "rightGap": 12,
+    "leftGap": 12
+   },
+   "event": {
+    "letterSpacing": "normal",
+    "fontSize": "15px",
+    "fontWeight": "500",
+    "lineHeight": "22.5px",
+    "color": "rgb(246, 243, 234)",
+    "textAlign": "start",
+    "width": 239,
+    "height": 165.28125,
+    "rightGap": 0,
+    "leftGap": 0
+   },
+   "eventSummary": {
+    "letterSpacing": "normal",
+    "fontSize": "15px",
+    "fontWeight": "500",
+    "lineHeight": "22.5px",
+    "color": "rgb(246, 243, 234)",
+    "textAlign": "start",
+    "width": 239,
+    "height": 165.28125,
+    "rightGap": 0,
+    "leftGap": 0
+   },
+   "trailSummary": {
+    "letterSpacing": "normal",
+    "fontSize": "15px",
+    "fontWeight": "500",
+    "lineHeight": "22.5px",
+    "color": "rgb(246, 243, 234)",
+    "textAlign": "start",
+    "width": 239,
+    "height": 142.78125,
+    "rightGap": 0,
+    "leftGap": 0
+   },
+   "top": {
+    "letterSpacing": "normal",
+    "fontSize": "15px",
+    "fontWeight": "500",
+    "lineHeight": "22.5px",
+    "color": "rgb(246, 243, 234)",
+    "textAlign": "start",
+    "width": 239,
+    "height": 43.5,
+    "rightGap": 0,
+    "leftGap": 0
+   },
+   "topMeta": {
+    "letterSpacing": "normal",
+    "fontSize": "13px",
+    "fontWeight": "400",
+    "lineHeight": "19.5px",
+    "color": "rgb(205, 199, 180)",
+    "textAlign": "left",
+    "width": 239,
+    "height": 19.5,
+    "rightGap": 0,
+    "leftGap": 0
+   },
+   "result": {
+    "letterSpacing": "normal",
+    "fontSize": "15px",
+    "fontWeight": "400",
+    "lineHeight": "22.5px",
+    "color": "rgb(205, 199, 180)",
+    "textAlign": "start",
+    "width": 239,
+    "height": 45,
+    "rightGap": 0,
+    "leftGap": 0
+   },
+   "row": {
+    "letterSpacing": "normal",
+    "fontSize": "15px",
+    "fontWeight": "500",
+    "lineHeight": "22.5px",
+    "color": "rgb(246, 243, 234)",
+    "textAlign": "start",
+    "width": 313,
+    "height": 207.78125,
+    "rightGap": 0,
+    "leftGap": 0
+   }
+  }
+ }
+}

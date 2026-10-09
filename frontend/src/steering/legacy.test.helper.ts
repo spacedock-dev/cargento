@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import vm from 'node:vm';
+import { legacyHarness } from '../../test/legacy_goldens';
 
 /* The legacy page's stage conditions, steering bar and tripwires panel, run as the page runs them, for the
    differential tests. The legacy source is the oracle: the page stays the rollback while this one is built.
@@ -29,7 +30,7 @@ export interface LegacySteering {
   readRules(project: string): unknown[];
 }
 
-export function loadLegacySteering(): LegacySteering {
+function buildLegacySteering(): LegacySteering {
   const storage = new Map<string, string>();
   const sandbox: Record<string, unknown> = {
     localStorage: {
@@ -100,4 +101,13 @@ export function loadLegacySteering(): LegacySteering {
       return run('nextControlsReadRules(__project)') as unknown[];
     },
   };
+}
+
+export function loadLegacySteering(): LegacySteering {
+  return legacyHarness('steering', buildLegacySteering, {
+    slots: { setData: 'data', setNotification: 'notification' },
+    observe: ['stageHtml', 'steerHtml', 'guardrailsHtml', 'readRules'],
+    reset: ['reset'],
+    props: ['storage'],
+  });
 }

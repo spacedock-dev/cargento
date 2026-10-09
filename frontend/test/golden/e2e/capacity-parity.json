@@ -1,0 +1,54 @@
+{
+ "proof": "capacity-parity",
+ "observations": {
+  "the unanswered disclosure: the legacy sentence": "Read your quota from the vendor? Cargento can show your Claude Code and Cursor windows. Doing it means reading the credential that harness already stored on this machine and sending it to that vendor, at most once every five minutes, to ask for your usage numbers and nothing else. The credential is never written, logged, or served, and no session content is sent.Read my quotaNo thanksChangeable later from this strip. --no-usage refuses it for a whole run whatever is stored here.",
+  "the strip's windows, ticks and sub-limits with the full board": {
+   "keys": [
+    "cursor:fiveH",
+    "claude:fiveH",
+    "codex:fiveH"
+   ],
+   "ticks": [
+    true,
+    true,
+    true
+   ],
+   "noclock": [
+    false,
+    false,
+    false
+   ],
+   "more": "3 more windows, 1 of them not timed",
+   "models": []
+  },
+  "the strip's windows, ticks and sub-limits with the fewer board": {
+   "keys": [
+    "claude:fiveH",
+    "claude:week",
+    "claude:month"
+   ],
+   "ticks": [
+    true,
+    true,
+    false
+   ],
+   "noclock": [
+    false,
+    false,
+    true
+   ],
+   "more": null,
+   "models": [
+    "WITHIN THIS WEEKLY BUDGETOpus 71%Sonnet 0%Per-model sub-limits · these publish no clock, so no pace and no projected end"
+   ]
+  },
+  "the weekly window's prospect and rows, clocks aside": {
+   "prospect": "Claude Code · weeklyThe remaining 18% buys 21h 4m at this window's average pace. Resets in 3d 0h.Sessions in alpha/app have worked 30m to 11h 0m, median 5h 45m, from 2 observed. 1 more session has no closed working interval in the retained window and is not in that figure.Recent pace measured at zero: nothing spent across <span> and <n> readings, so nothing is projected from it.",
+   "rows": [
+    "Claude Code5-hour · 5h 0mUSED34%PACE0.7×BUDGET ENDS<instant> · ~32% spare at resetRESETS2h 30m",
+    "Claude Codeweekly · 7d 0hUSED82%PACE1.4×BUDGET ENDS<instant>RESETS3d 0h",
+    "Claude Codebilling cycle · Window length not publishedUSED40%PACEPace not measuredBUDGET ENDSnot projectedRESETSnone published"
+   ]
+  }
+ }
+}

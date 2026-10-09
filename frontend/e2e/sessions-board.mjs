@@ -18,6 +18,7 @@ import { execFileSync } from 'node:child_process';
 import { startReactWorld } from './support/world.mjs';
 import { isolatedEnvironment } from '../dev/protocol.mjs';
 import { REPOSITORY, freePorts } from './support/browser.mjs';
+import { LEGACY_LIVE } from './support/golden.mjs';
 
 export const SESSIONS_BACKEND = fileURLToPath(
   new URL('../test/sessions_backend.py', import.meta.url),
@@ -56,6 +57,10 @@ async function waitForHealth(origin, child, deadlineMs = 20000) {
 
 /** `{ react: { origin, dev, viteOrigin }, legacy: { origin } | null, close }`. `close` stops exactly what was started here. */
 export async function startSessionsBoard({ legacy = false, root = REPOSITORY } = {}) {
+  if (legacy && !LEGACY_LIVE)
+    throw new Error(
+      'startSessionsBoard({ legacy: true }) in replay mode: ask for it only when golden.live.',
+    );
   const helper = join(root, 'frontend/test/sessions_backend.py');
   /* A sibling run can bind a port between the check that it is free and the bind itself, and then startup
      fails loudly rather than adopting someone else's listener. Try again on other ports, a few times. */

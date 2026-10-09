@@ -1,0 +1,1027 @@
+{
+ "proof": "shell-routing",
+ "observations": {
+  "routes: bare-or-invalid-fragment: bare": {
+   "shell": {
+    "hash": "#n=sessions",
+    "search": "",
+    "title": "Cargento — Sessions",
+    "current": "Sessions",
+    "primary": [
+     "Projects",
+     "Sessions",
+     "Attention",
+     "Intent log"
+    ],
+    "breadcrumb": null,
+    "historyLength": 2
+   },
+   "counts": {
+    "running": "● 2 running · 3 subagents observed",
+    "gate": "1 reported block"
+   }
+  },
+  "routes: bare-or-invalid-fragment: empty token": {
+   "shell": {
+    "hash": "#n=sessions",
+    "search": "",
+    "title": "Cargento — Sessions",
+    "current": "Sessions",
+    "primary": [
+     "Projects",
+     "Sessions",
+     "Attention",
+     "Intent log"
+    ],
+    "breadcrumb": null,
+    "historyLength": 4
+   },
+   "counts": {
+    "running": "● 2 running · 3 subagents observed",
+    "gate": "1 reported block"
+   }
+  },
+  "routes: bare-or-invalid-fragment: unknown view": {
+   "shell": {
+    "hash": "#n=sessions",
+    "search": "",
+    "title": "Cargento — Sessions",
+    "current": "Sessions",
+    "primary": [
+     "Projects",
+     "Sessions",
+     "Attention",
+     "Intent log"
+    ],
+    "breadcrumb": null,
+    "historyLength": 6
+   },
+   "counts": {
+    "running": "● 2 running · 3 subagents observed",
+    "gate": "1 reported block"
+   }
+  },
+  "routes: top-level-sessions": {
+   "shell": {
+    "hash": "#n=sessions",
+    "search": "",
+    "title": "Cargento — Sessions",
+    "current": "Sessions",
+    "primary": [
+     "Projects",
+     "Sessions",
+     "Attention",
+     "Intent log"
+    ],
+    "breadcrumb": null,
+    "historyLength": 8
+   },
+   "counts": {
+    "running": "● 2 running · 3 subagents observed",
+    "gate": "1 reported block"
+   }
+  },
+  "routes: top-level-attention": {
+   "shell": {
+    "hash": "#n=attention",
+    "search": "",
+    "title": "Cargento — Attention",
+    "current": "Attention",
+    "primary": [
+     "Projects",
+     "Sessions",
+     "Attention",
+     "Intent log"
+    ],
+    "breadcrumb": null,
+    "historyLength": 10
+   },
+   "counts": {
+    "running": "● 2 running · 3 subagents observed",
+    "gate": "1 reported block"
+   }
+  },
+  "routes: top-level-projects": {
+   "shell": {
+    "hash": "#n=projects",
+    "search": "",
+    "title": "Cargento — Projects",
+    "current": "Projects",
+    "primary": [
+     "Projects",
+     "Sessions",
+     "Attention",
+     "Intent log"
+    ],
+    "breadcrumb": null,
+    "historyLength": 12
+   },
+   "counts": {
+    "running": "● 2 running · 3 subagents observed",
+    "gate": "1 reported block"
+   }
+  },
+  "routes: top-level-intent": {
+   "shell": {
+    "hash": "#n=intent",
+    "search": "",
+    "title": "Cargento — Intent log",
+    "current": "Intent log",
+    "primary": [
+     "Projects",
+     "Sessions",
+     "Attention",
+     "Intent log"
+    ],
+    "breadcrumb": null,
+    "historyLength": 14
+   },
+   "counts": {
+    "running": "● 2 running · 3 subagents observed",
+    "gate": "1 reported block"
+   }
+  },
+  "routes: project-root": {
+   "shell": {
+    "hash": "#n=project:alpha%2Fapp",
+    "search": "",
+    "title": "alpha/app — Cargento",
+    "current": "Projects",
+    "primary": [
+     "Projects",
+     "Sessions",
+     "Attention",
+     "Intent log"
+    ],
+    "breadcrumb": "Projects › alpha/app",
+    "historyLength": 16
+   },
+   "counts": {
+    "running": null,
+    "gate": "1 reported block"
+   }
+  },
+  "routes: project-root: absent project": {
+   "shell": {
+    "hash": "#n=project:nowhere",
+    "search": "",
+    "title": "nowhere — Cargento",
+    "current": "Projects",
+    "primary": [
+     "Projects",
+     "Sessions",
+     "Attention",
+     "Intent log"
+    ],
+    "breadcrumb": "Projects › nowhere",
+    "historyLength": 18
+   },
+   "counts": {
+    "running": null,
+    "gate": "1 reported block"
+   }
+  },
+  "routes: project-tabs: course": {
+   "shell": {
+    "hash": "#n=project:alpha%2Fapp:course",
+    "search": "",
+    "title": "alpha/app — Cargento",
+    "current": "Projects",
+    "primary": [
+     "Projects",
+     "Sessions",
+     "Attention",
+     "Intent log"
+    ],
+    "breadcrumb": "Projects › alpha/app",
+    "historyLength": 20
+   },
+   "counts": {
+    "running": null,
+    "gate": "1 reported block"
+   }
+  },
+  "routes: project-tabs: decisions": {
+   "shell": {
+    "hash": "#n=project:alpha%2Fapp:decisions",
+    "search": "",
+    "title": "alpha/app — Cargento",
+    "current": "Projects",
+    "primary": [
+     "Projects",
+     "Sessions",
+     "Attention",
+     "Intent log"
+    ],
+    "breadcrumb": "Projects › alpha/app",
+    "historyLength": 22
+   },
+   "counts": {
+    "running": null,
+    "gate": "1 reported block"
+   }
+  },
+  "routes: project-tabs: console": {
+   "shell": {
+    "hash": "#n=project:alpha%2Fapp:console",
+    "search": "",
+    "title": "alpha/app — Cargento",
+    "current": "Projects",
+    "primary": [
+     "Projects",
+     "Sessions",
+     "Attention",
+     "Intent log"
+    ],
+    "breadcrumb": "Projects › alpha/app",
+    "historyLength": 24
+   },
+   "counts": {
+    "running": null,
+    "gate": "1 reported block"
+   }
+  },
+  "routes: project-tabs: now is the default": {
+   "shell": {
+    "hash": "#n=project:alpha%2Fapp",
+    "search": "",
+    "title": "alpha/app — Cargento",
+    "current": "Projects",
+    "primary": [
+     "Projects",
+     "Sessions",
+     "Attention",
+     "Intent log"
+    ],
+    "breadcrumb": "Projects › alpha/app",
+    "historyLength": 26
+   },
+   "counts": {
+    "running": null,
+    "gate": "1 reported block"
+   }
+  },
+  "routes: project-exact-session-focus": {
+   "shell": {
+    "hash": "#n=project:alpha%2Fapp:claude%3Ashared-sid",
+    "search": "",
+    "title": "alpha/app — Cargento",
+    "current": "Projects",
+    "primary": [
+     "Projects",
+     "Sessions",
+     "Attention",
+     "Intent log"
+    ],
+    "breadcrumb": "Projects › alpha/app",
+    "historyLength": 28
+   },
+   "counts": {
+    "running": null,
+    "gate": "1 reported block"
+   }
+  },
+  "routes: project-exact-session-focus: with tab": {
+   "shell": {
+    "hash": "#n=project:alpha%2Fapp:claude%3Ashared-sid:console",
+    "search": "",
+    "title": "alpha/app — Cargento",
+    "current": "Projects",
+    "primary": [
+     "Projects",
+     "Sessions",
+     "Attention",
+     "Intent log"
+    ],
+    "breadcrumb": "Projects › alpha/app",
+    "historyLength": 30
+   },
+   "counts": {
+    "running": null,
+    "gate": "1 reported block"
+   }
+  },
+  "routes: project-exact-session-focus: stale focus": {
+   "shell": {
+    "hash": "#n=project:alpha%2Fapp:claude%3Agone",
+    "search": "",
+    "title": "alpha/app — Cargento",
+    "current": "Projects",
+    "primary": [
+     "Projects",
+     "Sessions",
+     "Attention",
+     "Intent log"
+    ],
+    "breadcrumb": "Projects › alpha/app",
+    "historyLength": 32
+   },
+   "counts": {
+    "running": null,
+    "gate": "1 reported block"
+   }
+  },
+  "routes: session-exact-harness-and-id: claude": {
+   "shell": {
+    "hash": "#n=session:alpha%2Fapp:claude:shared-sid",
+    "search": "",
+    "title": "Alpha shared claude — alpha/app — Cargento",
+    "current": "Sessions",
+    "primary": [
+     "Projects",
+     "Sessions",
+     "Attention",
+     "Intent log"
+    ],
+    "breadcrumb": "Sessions › Alpha shared claude",
+    "historyLength": 34
+   },
+   "counts": {
+    "running": "● 2 running · 3 subagents observed",
+    "gate": "1 reported block"
+   }
+  },
+  "routes: session-exact-harness-and-id: codex": {
+   "shell": {
+    "hash": "#n=session:alpha%2Fapp:codex:shared-sid",
+    "search": "",
+    "title": "Alpha shared codex — alpha/app — Cargento",
+    "current": "Sessions",
+    "primary": [
+     "Projects",
+     "Sessions",
+     "Attention",
+     "Intent log"
+    ],
+    "breadcrumb": "Sessions › Alpha shared codex",
+    "historyLength": 36
+   },
+   "counts": {
+    "running": "● 2 running · 3 subagents observed",
+    "gate": "1 reported block"
+   }
+  },
+  "routes: session-exact-harness-and-id: colon sid": {
+   "shell": {
+    "hash": "#n=session:beta%2Fapi:claude:colon%3Asid",
+    "search": "",
+    "title": "Title not published — beta/api — Cargento",
+    "current": "Sessions",
+    "primary": [
+     "Projects",
+     "Sessions",
+     "Attention",
+     "Intent log"
+    ],
+    "breadcrumb": "Sessions › Title not published",
+    "historyLength": 38
+   },
+   "counts": {
+    "running": "● 2 running · 3 subagents observed",
+    "gate": "1 reported block"
+   }
+  },
+  "routes: session-exact-harness-and-id: empty project": {
+   "shell": {
+    "hash": "#n=session::codex:bare-project-sid",
+    "search": "",
+    "title": "No project label — — Cargento",
+    "current": "Sessions",
+    "primary": [
+     "Projects",
+     "Sessions",
+     "Attention",
+     "Intent log"
+    ],
+    "breadcrumb": "Sessions › No project label",
+    "historyLength": 40
+   },
+   "counts": {
+    "running": "● 2 running · 3 subagents observed",
+    "gate": "1 reported block"
+   }
+  },
+  "routes: session-exact-harness-and-id: absent session": {
+   "shell": {
+    "hash": "#n=session:alpha%2Fapp:claude:gone",
+    "search": "",
+    "title": "gone — alpha/app — Cargento",
+    "current": "Sessions",
+    "primary": [
+     "Projects",
+     "Sessions",
+     "Attention",
+     "Intent log"
+    ],
+    "breadcrumb": "Sessions › Session",
+    "historyLength": 42
+   },
+   "counts": {
+    "running": "● 2 running · 3 subagents observed",
+    "gate": "1 reported block"
+   }
+  },
+  "routes: session-legacy-id-form: unambiguous": {
+   "shell": {
+    "hash": "#n=session:beta%2Fapi:colon%3Asid",
+    "search": "",
+    "title": "Title not published — beta/api — Cargento",
+    "current": "Sessions",
+    "primary": [
+     "Projects",
+     "Sessions",
+     "Attention",
+     "Intent log"
+    ],
+    "breadcrumb": "Sessions › Title not published",
+    "historyLength": 44
+   },
+   "counts": {
+    "running": "● 2 running · 3 subagents observed",
+    "gate": "1 reported block"
+   }
+  },
+  "routes: session-legacy-id-form: ambiguous across harnesses": {
+   "shell": {
+    "hash": "#n=session:alpha%2Fapp:shared-sid",
+    "search": "",
+    "title": "shared-sid — alpha/app — Cargento",
+    "current": "Sessions",
+    "primary": [
+     "Projects",
+     "Sessions",
+     "Attention",
+     "Intent log"
+    ],
+    "breadcrumb": "Sessions › Session",
+    "historyLength": 46
+   },
+   "counts": {
+    "running": "● 2 running · 3 subagents observed",
+    "gate": "1 reported block"
+   }
+  },
+  "routes: session-origin-from: sessions": {
+   "shell": {
+    "hash": "#n=session:alpha%2Fapp:claude:shared-sid&from=sessions",
+    "search": "",
+    "title": "Alpha shared claude — alpha/app — Cargento",
+    "current": "Sessions",
+    "primary": [
+     "Projects",
+     "Sessions",
+     "Attention",
+     "Intent log"
+    ],
+    "breadcrumb": "Sessions › Alpha shared claude",
+    "historyLength": 48
+   },
+   "counts": {
+    "running": "● 2 running · 3 subagents observed",
+    "gate": "1 reported block"
+   }
+  },
+  "routes: session-origin-from: attention": {
+   "shell": {
+    "hash": "#n=session:alpha%2Fapp:claude:shared-sid&from=attention",
+    "search": "",
+    "title": "Alpha shared claude — alpha/app — Cargento",
+    "current": "Attention",
+    "primary": [
+     "Projects",
+     "Sessions",
+     "Attention",
+     "Intent log"
+    ],
+    "breadcrumb": "Attention › Alpha shared claude",
+    "historyLength": 50
+   },
+   "counts": {
+    "running": "● 2 running · 3 subagents observed",
+    "gate": "1 reported block"
+   }
+  },
+  "routes: session-origin-from: intent": {
+   "shell": {
+    "hash": "#n=session:alpha%2Fapp:claude:shared-sid&from=intent",
+    "search": "",
+    "title": "Alpha shared claude — alpha/app — Cargento",
+    "current": "Intent log",
+    "primary": [
+     "Projects",
+     "Sessions",
+     "Attention",
+     "Intent log"
+    ],
+    "breadcrumb": "Intent log › Alpha shared claude",
+    "historyLength": 50
+   },
+   "counts": {
+    "running": "● 2 running · 3 subagents observed",
+    "gate": "1 reported block"
+   }
+  },
+  "routes: session-origin-from: projects": {
+   "shell": {
+    "hash": "#n=session:alpha%2Fapp:claude:shared-sid&from=projects",
+    "search": "",
+    "title": "Alpha shared claude — alpha/app — Cargento",
+    "current": "Projects",
+    "primary": [
+     "Projects",
+     "Sessions",
+     "Attention",
+     "Intent log"
+    ],
+    "breadcrumb": "Projects › alpha/app › Alpha shared claude",
+    "historyLength": 50
+   },
+   "counts": {
+    "running": "● 2 running · 3 subagents observed",
+    "gate": "1 reported block"
+   }
+  },
+  "routes: session-origin-from: project": {
+   "shell": {
+    "hash": "#n=session:alpha%2Fapp:claude:shared-sid&from=project",
+    "search": "",
+    "title": "Alpha shared claude — alpha/app — Cargento",
+    "current": "Projects",
+    "primary": [
+     "Projects",
+     "Sessions",
+     "Attention",
+     "Intent log"
+    ],
+    "breadcrumb": "Projects › alpha/app › Alpha shared claude",
+    "historyLength": 50
+   },
+   "counts": {
+    "running": "● 2 running · 3 subagents observed",
+    "gate": "1 reported block"
+   }
+  },
+  "routes: session-origin-from: unknown is omitted": {
+   "shell": {
+    "hash": "#n=session:alpha%2Fapp:claude:shared-sid",
+    "search": "",
+    "title": "Alpha shared claude — alpha/app — Cargento",
+    "current": "Sessions",
+    "primary": [
+     "Projects",
+     "Sessions",
+     "Attention",
+     "Intent log"
+    ],
+    "breadcrumb": "Sessions › Alpha shared claude",
+    "historyLength": 50
+   },
+   "counts": {
+    "running": "● 2 running · 3 subagents observed",
+    "gate": "1 reported block"
+   }
+  },
+  "routes: retired-held-to-alias": {
+   "shell": {
+    "hash": "#n=session:alpha%2Fapp:claude:shared-sid",
+    "search": "",
+    "title": "Alpha shared claude — alpha/app — Cargento",
+    "current": "Sessions",
+    "primary": [
+     "Projects",
+     "Sessions",
+     "Attention",
+     "Intent log"
+    ],
+    "breadcrumb": "Sessions › Alpha shared claude",
+    "historyLength": 50
+   },
+   "counts": {
+    "running": "● 2 running · 3 subagents observed",
+    "gate": "1 reported block"
+   }
+  },
+  "routes: retired-held-to-alias: no harness": {
+   "shell": {
+    "hash": "#n=session:alpha%2Fapp:lonely",
+    "search": "",
+    "title": "lonely — alpha/app — Cargento",
+    "current": "Sessions",
+    "primary": [
+     "Projects",
+     "Sessions",
+     "Attention",
+     "Intent log"
+    ],
+    "breadcrumb": "Sessions › Session",
+    "historyLength": 50
+   },
+   "counts": {
+    "running": "● 2 running · 3 subagents observed",
+    "gate": "1 reported block"
+   }
+  },
+  "routes: malformed-encoding: project in a session": {
+   "shell": {
+    "hash": "#n=sessions",
+    "search": "",
+    "title": "Cargento — Sessions",
+    "current": "Sessions",
+    "primary": [
+     "Projects",
+     "Sessions",
+     "Attention",
+     "Intent log"
+    ],
+    "breadcrumb": null,
+    "historyLength": 50
+   },
+   "counts": {
+    "running": "● 2 running · 3 subagents observed",
+    "gate": "1 reported block"
+   }
+  },
+  "routes: malformed-encoding: sid in a session": {
+   "shell": {
+    "hash": "#n=sessions",
+    "search": "",
+    "title": "Cargento — Sessions",
+    "current": "Sessions",
+    "primary": [
+     "Projects",
+     "Sessions",
+     "Attention",
+     "Intent log"
+    ],
+    "breadcrumb": null,
+    "historyLength": 50
+   },
+   "counts": {
+    "running": "● 2 running · 3 subagents observed",
+    "gate": "1 reported block"
+   }
+  },
+  "routes: malformed-encoding: id-only form": {
+   "shell": {
+    "hash": "#n=sessions",
+    "search": "",
+    "title": "Cargento — Sessions",
+    "current": "Sessions",
+    "primary": [
+     "Projects",
+     "Sessions",
+     "Attention",
+     "Intent log"
+    ],
+    "breadcrumb": null,
+    "historyLength": 50
+   },
+   "counts": {
+    "running": "● 2 running · 3 subagents observed",
+    "gate": "1 reported block"
+   }
+  },
+  "routes: malformed-encoding: project root": {
+   "shell": {
+    "hash": "#n=sessions",
+    "search": "",
+    "title": "Cargento — Sessions",
+    "current": "Sessions",
+    "primary": [
+     "Projects",
+     "Sessions",
+     "Attention",
+     "Intent log"
+    ],
+    "breadcrumb": null,
+    "historyLength": 50
+   },
+   "counts": {
+    "running": "● 2 running · 3 subagents observed",
+    "gate": "1 reported block"
+   }
+  },
+  "reload and Escape: session-exact-harness-and-id: claude": {
+   "before": [
+    "#n=session:alpha%2Fapp:claude:shared-sid",
+    "Sessions",
+    "Sessions › Alpha shared claude"
+   ],
+   "reloaded": [
+    "#n=session:alpha%2Fapp:claude:shared-sid",
+    "Sessions",
+    "Sessions › Alpha shared claude"
+   ],
+   "escaped": [
+    "#n=sessions",
+    "Sessions"
+   ]
+  },
+  "reload and Escape: session-exact-harness-and-id: codex": {
+   "before": [
+    "#n=session:alpha%2Fapp:codex:shared-sid",
+    "Sessions",
+    "Sessions › Alpha shared codex"
+   ],
+   "reloaded": [
+    "#n=session:alpha%2Fapp:codex:shared-sid",
+    "Sessions",
+    "Sessions › Alpha shared codex"
+   ],
+   "escaped": [
+    "#n=sessions",
+    "Sessions"
+   ]
+  },
+  "reload and Escape: session-exact-harness-and-id: colon sid": {
+   "before": [
+    "#n=session:beta%2Fapi:claude:colon%3Asid",
+    "Sessions",
+    "Sessions › Title not published"
+   ],
+   "reloaded": [
+    "#n=session:beta%2Fapi:claude:colon%3Asid",
+    "Sessions",
+    "Sessions › Title not published"
+   ],
+   "escaped": [
+    "#n=sessions",
+    "Sessions"
+   ]
+  },
+  "reload and Escape: session-exact-harness-and-id: empty project": {
+   "before": [
+    "#n=session::codex:bare-project-sid",
+    "Sessions",
+    "Sessions › No project label"
+   ],
+   "reloaded": [
+    "#n=session::codex:bare-project-sid",
+    "Sessions",
+    "Sessions › No project label"
+   ],
+   "escaped": [
+    "#n=sessions",
+    "Sessions"
+   ]
+  },
+  "reload and Escape: session-exact-harness-and-id: absent session": {
+   "before": [
+    "#n=session:alpha%2Fapp:claude:gone",
+    "Sessions",
+    "Sessions › Session"
+   ],
+   "reloaded": [
+    "#n=session:alpha%2Fapp:claude:gone",
+    "Sessions",
+    "Sessions › Session"
+   ],
+   "escaped": [
+    "#n=sessions",
+    "Sessions"
+   ]
+  },
+  "reload and Escape: session-legacy-id-form: unambiguous": {
+   "before": [
+    "#n=session:beta%2Fapi:colon%3Asid",
+    "Sessions",
+    "Sessions › Title not published"
+   ],
+   "reloaded": [
+    "#n=session:beta%2Fapi:colon%3Asid",
+    "Sessions",
+    "Sessions › Title not published"
+   ],
+   "escaped": [
+    "#n=sessions",
+    "Sessions"
+   ]
+  },
+  "reload and Escape: session-legacy-id-form: ambiguous across harnesses": {
+   "before": [
+    "#n=session:alpha%2Fapp:shared-sid",
+    "Sessions",
+    "Sessions › Session"
+   ],
+   "reloaded": [
+    "#n=session:alpha%2Fapp:shared-sid",
+    "Sessions",
+    "Sessions › Session"
+   ],
+   "escaped": [
+    "#n=sessions",
+    "Sessions"
+   ]
+  },
+  "reload and Escape: session-origin-from: sessions": {
+   "before": [
+    "#n=session:alpha%2Fapp:claude:shared-sid&from=sessions",
+    "Sessions",
+    "Sessions › Alpha shared claude"
+   ],
+   "reloaded": [
+    "#n=session:alpha%2Fapp:claude:shared-sid&from=sessions",
+    "Sessions",
+    "Sessions › Alpha shared claude"
+   ],
+   "escaped": [
+    "#n=sessions",
+    "Sessions"
+   ]
+  },
+  "reload and Escape: session-origin-from: attention": {
+   "before": [
+    "#n=session:alpha%2Fapp:claude:shared-sid&from=attention",
+    "Attention",
+    "Attention › Alpha shared claude"
+   ],
+   "reloaded": [
+    "#n=session:alpha%2Fapp:claude:shared-sid&from=attention",
+    "Attention",
+    "Attention › Alpha shared claude"
+   ],
+   "escaped": [
+    "#n=attention",
+    "Attention"
+   ]
+  },
+  "reload and Escape: session-origin-from: intent": {
+   "before": [
+    "#n=session:alpha%2Fapp:claude:shared-sid&from=intent",
+    "Intent log",
+    "Intent log › Alpha shared claude"
+   ],
+   "reloaded": [
+    "#n=session:alpha%2Fapp:claude:shared-sid&from=intent",
+    "Intent log",
+    "Intent log › Alpha shared claude"
+   ],
+   "escaped": [
+    "#n=intent",
+    "Intent log"
+   ]
+  },
+  "reload and Escape: session-origin-from: projects": {
+   "before": [
+    "#n=session:alpha%2Fapp:claude:shared-sid&from=projects",
+    "Projects",
+    "Projects › alpha/app › Alpha shared claude"
+   ],
+   "reloaded": [
+    "#n=session:alpha%2Fapp:claude:shared-sid&from=projects",
+    "Projects",
+    "Projects › alpha/app › Alpha shared claude"
+   ],
+   "escaped": [
+    "#n=project:alpha%2Fapp",
+    "Projects"
+   ]
+  },
+  "reload and Escape: session-origin-from: project": {
+   "before": [
+    "#n=session:alpha%2Fapp:claude:shared-sid&from=project",
+    "Projects",
+    "Projects › alpha/app › Alpha shared claude"
+   ],
+   "reloaded": [
+    "#n=session:alpha%2Fapp:claude:shared-sid&from=project",
+    "Projects",
+    "Projects › alpha/app › Alpha shared claude"
+   ],
+   "escaped": [
+    "#n=project:alpha%2Fapp",
+    "Projects"
+   ]
+  },
+  "reload and Escape: session-origin-from: unknown is omitted": {
+   "before": [
+    "#n=session:alpha%2Fapp:claude:shared-sid",
+    "Sessions",
+    "Sessions › Alpha shared claude"
+   ],
+   "reloaded": [
+    "#n=session:alpha%2Fapp:claude:shared-sid",
+    "Sessions",
+    "Sessions › Alpha shared claude"
+   ],
+   "escaped": [
+    "#n=sessions",
+    "Sessions"
+   ]
+  },
+  "reload and Escape: malformed-encoding: project in a session": {
+   "before": [
+    "#n=sessions",
+    "Sessions",
+    null
+   ],
+   "reloaded": [
+    "#n=sessions",
+    "Sessions",
+    null
+   ],
+   "escaped": [
+    "#n=sessions",
+    "Sessions"
+   ]
+  },
+  "reload and Escape: malformed-encoding: sid in a session": {
+   "before": [
+    "#n=sessions",
+    "Sessions",
+    null
+   ],
+   "reloaded": [
+    "#n=sessions",
+    "Sessions",
+    null
+   ],
+   "escaped": [
+    "#n=sessions",
+    "Sessions"
+   ]
+  },
+  "reload and Escape: malformed-encoding: id-only form": {
+   "before": [
+    "#n=sessions",
+    "Sessions",
+    null
+   ],
+   "reloaded": [
+    "#n=sessions",
+    "Sessions",
+    null
+   ],
+   "escaped": [
+    "#n=sessions",
+    "Sessions"
+   ]
+  },
+  "back and forward": [
+   [
+    "Attention",
+    "#n=attention",
+    "Attention",
+    50
+   ],
+   [
+    "Projects",
+    "#n=projects",
+    "Projects",
+    50
+   ],
+   [
+    "Back",
+    "#n=attention",
+    "Attention",
+    50
+   ],
+   [
+    "Back",
+    "#n=sessions",
+    "Sessions",
+    50
+   ],
+   [
+    "Forward",
+    "#n=attention",
+    "Attention",
+    50
+   ]
+  ],
+  "notices": [
+   [
+    "one failure",
+    []
+   ],
+   [
+    "two failures",
+    [
+     "stalled: Live refresh failed twice in a row.Displayed data may be stale. Last updated N ago. Retrying automatically every 20s.Retry now"
+    ]
+   ],
+   [
+    "three failures",
+    [
+     "stalled: Live refresh failed 3 times in a row.Displayed data may be stale. Last updated N ago. Retrying automatically every 20s.Retry now"
+    ]
+   ],
+   [
+    "after Retry now",
+    []
+   ],
+   [
+    "reset and new build",
+    [
+     "history-reset: The saved history was reset.The saved file could not be read. The rail and the delegation figure start from this tab.",
+     "build-changed: Reload to use the new version.ReloadWhy reloadCargento was restarted with a different version after this page loaded, and this page may send what that version refuses."
+    ]
+   ],
+   [
+    "unknown reset",
+    []
+   ]
+  ],
+  "before the first payload": "● 0 running · 0 subagents observed"
+ }
+}

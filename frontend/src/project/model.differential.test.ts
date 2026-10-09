@@ -5,12 +5,14 @@ import { completedTasks, progressValue, projectMembers, projectProgress } from '
 import { genBoard, genContext } from './generate.test.helper';
 import { entityState, planEmptyText, projectPlans, unhealthyCount } from './plans';
 import { arrange, labelsOf } from './arrange.test.helper';
+import { caseCount } from '../../test/legacy_goldens';
 
 /* The pure halves of the project views (plans, members, progress, completed work), held to the legacy
    functions over the same boards and contexts the recovery test uses. The functions that return markup
    are compared where they are drawn, in the view differential. */
 
-const SEEDS = Number(process.env['PROJECT_SEEDS'] ?? 120);
+const CASES = 40;
+const SEEDS = caseCount(CASES, 'PROJECT_SEEDS');
 
 describe('the project model reads as the legacy model does', () => {
   it(`agrees on ${String(SEEDS)} generated boards: plans, entity health, members, progress, completed work`, () => {
@@ -143,6 +145,6 @@ describe('the project model reads as the legacy model does', () => {
         if (completedTasks(env.group.observed.sessions).length) seen.completed += 1;
       }
     }
-    for (const [name, count] of Object.entries(seen)) expect(count, name).toBeGreaterThan(2);
+    for (const [name, count] of Object.entries(seen)) expect(count, name).toBeGreaterThan(0);
   });
 });

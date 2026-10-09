@@ -10,13 +10,29 @@
 //   browser-legacy-function  a legacy function was executed in the real page; no control exists
 //                            that can reach it without a model, native or credentialed action
 //   codec-level              the codec alone, in the browser, against raw storage
+//
+// What the legacy page said is read through `support/golden.mjs`. `CARGENTO_LEGACY=replay` (the default)
+// starts no legacy backend and opens no legacy page: every interaction with the legacy page (a click, a
+// function call, a wait, a page load) is one recorded step in
+// `frontend/test/golden/e2e/storage-conformance.json`, holding what it returned and the localStorage it
+// changed. Replay hands the codec a blank same-origin page in place of the legacy one and applies each
+// recorded change to it, so the codec reads exactly what the legacy page wrote, and every codec write is
+// then checked against what the legacy page did with it: a page load is keyed by the digest of the storage
+// the codec left for it, so a codec that writes something else misses its recording instead of being
+// compared with another input's. `live` and `record` run the legacy page; see support/golden.mjs.
+// Values a run invents (the tab id, the revision stamp, a lease's timestamp) are recorded as tokens and
+// given fixed stand-ins in replay, so the same relations hold. Dropped in replay, with the reason: the
+// legacy page's requests to its own backend (the revision header and the stream), which are the legacy
+// server's behaviour; what the page does with them is recorded.
 import assert from 'node:assert/strict';
 import { execFileSync, spawn } from 'node:child_process';
 import { createInterface } from 'node:readline';
 import { fileURLToPath } from 'node:url';
 import { chromium } from '@playwright/test';
 import { build } from 'vite';
+import { BROWSER_CONTEXT, digest, goldenFor } from './support/golden.mjs';
 
+const golden = goldenFor('storage-conformance');
 const root = fileURLToPath(new URL('../../', import.meta.url));
 const pythonName =
   process.env.CARGENTO_TEST_PYTHON || (process.platform === 'win32' ? 'python' : 'python3');
@@ -41,6 +57,8 @@ const KEYS = {
   goal: 'cargento.projectGoal.v1:',
   usage: 'cargento.projectUsage.v1',
 };
+
+const LEADER_WRITTEN = `localStorage.getItem(${JSON.stringify(KEYS.leader)}) !== null`;
 
 const receipt = new Map(
   Object.entries(KEYS).map(([name, key]) => [
@@ -139,14 +157,20 @@ const bundle =
     process.env.CARGENTO_STORAGE_ENTRY || 'frontend/src/storage/index.ts',
     'CargentoStorage',
   )) + (await buildBundle('frontend/src/api/identity.ts', 'CargentoIdentity'));
-const backend = await startBackend();
-const origin = `http://127.0.0.1:${backend.ready.port}`;
+// Replay serves only blank documents from routes, so the origin names a host that nothing listens on.
+const backend = golden.live ? await startBackend() : null;
+const origin = backend
+  ? `http://127.0.0.1:${backend.ready.port}`
+  : 'http://storage-conformance.invalid';
 const browser = await chromium.launch();
 const problems = { external: [], pageErrors: [], unexpectedPosts: [] };
 const observations = [];
 
 async function newContext({ blocked = false } = {}) {
-  const context = await browser.newContext({ viewport: { width: 1700, height: 1100 } });
+  const context = await browser.newContext({
+    ...BROWSER_CONTEXT,
+    viewport: { width: 1700, height: 1100 },
+  });
   await context.route('**/*', (route) => {
     const url = route.request().url();
     if (url.startsWith(origin + '/') || url.startsWith('data:')) return route.continue();
@@ -189,7 +213,7 @@ async function seedPage(context, label = 'seed') {
   return page;
 }
 
-async function legacyPage(context, fragment = '', label = 'legacy') {
+async function openLegacy(context, fragment, label) {
   const page = await context.newPage();
   const requests = await track(page, label);
   await page.goto(origin + '/' + fragment);
@@ -200,6 +224,151 @@ async function legacyPage(context, fragment = '', label = 'legacy') {
     "document.querySelector('#app') && document.querySelector('#app').children.length > 0",
   );
   return { page, requests };
+}
+
+/* ---- the legacy page as a recording ----
+   Each interaction is one `golden.observe`d step: its result, and the localStorage keys it set or removed.
+   Replay applies the keys to a blank page of the same origin, which is where the codec then reads them. */
+const REPLAY_TAB = 'replay-tab-0000000000000';
+const REPLAY_STARTED = '1700000000';
+const TAB_ID = /^[a-z0-9]+-\d{13}$/;
+const REVISION = /^\d{9,}\.\d+$/;
+const LEASE = /^\{"id":"([^"]*)","ts":(\d+)\}$/;
+let place = { scenario: '', step: 0 };
+
+async function snapshot(page) {
+  return page.evaluate(() => {
+    try {
+      return Object.fromEntries(
+        Object.keys(globalThis.localStorage)
+          .sort()
+          .map((key) => [key, globalThis.localStorage.getItem(key)]),
+      );
+    } catch {
+      return {}; // blocked storage: there is nothing to read
+    }
+  });
+}
+
+/* A stored value with what a run invents replaced by a token. `age` keeps how old a lease's timestamp is, in
+   whole seconds, for a page's inputs; what the legacy page itself wrote is always fresh. */
+function tokenised(key, value, { age = false } = {}) {
+  if (typeof value !== 'string') return value;
+  if (key === KEYS.revision) return tokenisedRevision(value);
+  const lease = key === KEYS.leader ? LEASE.exec(value) : null;
+  if (!lease) return value;
+  const id = TAB_ID.test(lease[1]) ? '@tab' : lease[1];
+  const stamp = age ? `@now-${Math.floor((Date.now() - Number(lease[2])) / 1000)}` : '@now';
+  return `{"id":${json(id)},"ts":${json(stamp)}}`;
+}
+const tokenisedRevision = (value) =>
+  REVISION.test(value) ? `@started.${value.split('.')[1]}` : value;
+function restored(value) {
+  return value
+    .replace('"@now"', String(Date.now()))
+    .replace(/"@now-(\d+)"/, (_, seconds) => String(Date.now() - Number(seconds) * 1000))
+    .replace('@tab', REPLAY_TAB)
+    .replace('@started', REPLAY_STARTED);
+}
+function tokenisedResult(value) {
+  if (typeof value === 'string') {
+    return TAB_ID.test(value) ? '@tab' : tokenisedRevision(value);
+  }
+  if (Array.isArray(value)) return value.map(tokenisedResult);
+  if (value && typeof value === 'object') {
+    // A wait or a navigation answers with a handle or a response: nothing a proof reads, and not data.
+    if (Object.getPrototypeOf(value) !== Object.prototype) return null;
+    return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, tokenisedResult(v)]));
+  }
+  return value;
+}
+function restoredResult(value) {
+  if (typeof value === 'string')
+    return value === '@tab' ? REPLAY_TAB : value.replace(/^@started\./, `${REPLAY_STARTED}.`);
+  if (Array.isArray(value)) return value.map(restoredResult);
+  if (value && typeof value === 'object')
+    return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, restoredResult(v)]));
+  return value;
+}
+/* What an interaction changed. The lease and the revision are the page's own, written by its election timer and
+   its stream a moment after it boots: whether one lands in this step or the next differs from run to run, so
+   neither is carried unless the step names it in `always` (a step that waits for it, or is about it).
+   Anything else is carried when its tokenised value changed. */
+const AMBIENT = [KEYS.leader, KEYS.revision];
+function changes(before, after, { always = [] } = {}) {
+  const set = {};
+  for (const [key, value] of Object.entries(after)) {
+    const named = always.includes(key);
+    if (AMBIENT.includes(key) ? named : tokenised(key, before[key]) !== tokenised(key, value))
+      set[key] = tokenised(key, value);
+  }
+  return {
+    set,
+    removed: Object.keys(before).filter(
+      (key) => !(key in after) && (!AMBIENT.includes(key) || always.includes(key)),
+    ),
+  };
+}
+async function apply(page, delta) {
+  if (!Object.keys(delta.set).length && !delta.removed.length) return;
+  await page.evaluate(
+    ([set, removed]) => {
+      for (const [key, value] of Object.entries(set)) globalThis.localStorage.setItem(key, value);
+      for (const key of removed) globalThis.localStorage.removeItem(key);
+    },
+    [
+      Object.fromEntries(Object.entries(delta.set).map(([k, v]) => [k, restored(v)])),
+      delta.removed,
+    ],
+  );
+}
+
+/** One interaction with the legacy page `page`: live and record run `run`; replay answers from the recording. */
+async function viaLegacy(page, label, run, { mirror = true, always = [] } = {}) {
+  place.step += 1;
+  const key = `${place.scenario} | #${place.step} ${label.length > 160 ? `${label.slice(0, 120)}~${digest(label)}` : label}`;
+  let answer;
+  const recorded = await golden.observe(key, async () => {
+    const before = await snapshot(page);
+    answer = await run();
+    const delta = mirror
+      ? changes(before, await snapshot(page), { always })
+      : { set: {}, removed: [] };
+    return { value: tokenisedResult(answer), delta };
+  });
+  // Live and record: the page's own answer, since the proof compares it with codec values that carry the real ids.
+  if (golden.live) return answer;
+  await apply(page, recorded.delta);
+  return restoredResult(recorded.value);
+}
+const ui = viaLegacy;
+/** Whether the legacy page asked its server for the stream: the page's behaviour, recorded rather than re-asked. */
+const streamed = (page, requests) =>
+  ui(page, 'the page requested /api/stream', async () =>
+    requests.some((request) => request.path === '/api/stream'),
+  );
+
+/* A legacy page, or in replay the blank page that stands in for it. A load is keyed by the digest of the
+   storage the codec left for it, and records what the page wrote while booting. */
+async function legacyPage(context, fragment = '', label = 'legacy', { until, always } = {}) {
+  const probe = await seedPage(context, 'inputs');
+  const stored = await snapshot(probe);
+  if (golden.live) await probe.close();
+  const inputs = Object.fromEntries(
+    Object.entries(stored).map(([k, v]) => [k, tokenised(k, v, { age: true })]),
+  );
+  place.step += 1;
+  const key = `${place.scenario} | #${place.step} load ${fragment || '/'} inputs:${digest(inputs)}`;
+  let opened = null;
+  const delta = await golden.observe(key, async () => {
+    opened = await openLegacy(context, fragment, label);
+    // A write the page makes a moment after it boots would land in this step on one run and the next on another.
+    if (until) await opened.page.waitForFunction(until, undefined, { timeout: 15000 });
+    return changes(stored, await snapshot(opened.page), { always });
+  });
+  if (opened) return opened;
+  await apply(probe, delta);
+  return { page: probe, requests: [] };
 }
 
 /** Run one method of a fresh or persistent codec instance in the page. Maps come back as objects. */
@@ -236,7 +405,7 @@ async function identity(page, name, args = []) {
 const raw = (page, key) => page.evaluate((storageKey) => localStorage.getItem(storageKey), key);
 const setRaw = (page, key, value) =>
   page.evaluate(([storageKey, text]) => localStorage.setItem(storageKey, text), [key, value]);
-const legacy = (page, expression) => page.evaluate(expression);
+const legacy = (page, expression) => viaLegacy(page, expression, () => page.evaluate(expression));
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 /** Set a field's value from script and fire `input`, which skips the browser's `maxlength` so the page's own JS bound is what runs. */
 const setValue = (locator, text) =>
@@ -245,8 +414,11 @@ const setValue = (locator, text) =>
     element.dispatchEvent(new Event('input', { bubbles: true }));
   }, text);
 const json = (value) => JSON.stringify(value);
+/** A long text in a step's label: its length and digest say which text without spelling it. */
+const sized = (text) => `${text.length} units ${digest(text)}`;
 
 async function scenario(name, body) {
+  place = { scenario: name, step: 0 };
   const started = Date.now();
   try {
     await body();
@@ -263,9 +435,11 @@ try {
     const context = await newContext();
     const { page } = await legacyPage(context, `#n=project:${PROJECT}`);
     const key = await pure(page, 'memoKey', [PROJECT, null, 'outcome']);
-    await page.locator('[data-next-cockpit-action="memo-edit"]').click();
+    await ui(page, 'click memo-edit', () =>
+      page.locator('[data-next-cockpit-action="memo-edit"]').click(),
+    );
     const input = page.locator('[data-next-cockpit-memo-input]');
-    await input.fill('Ship the storage layer');
+    await ui(page, 'fill memo: Ship the storage layer', () => input.fill('Ship the storage layer'));
     assert.equal(await raw(page, key), 'Ship the storage layer');
     assert.equal(await codec(page, 'memo.read', [key], { fresh: true }), 'Ship the storage layer');
     proved(
@@ -275,7 +449,7 @@ try {
       'typing in the project memo writes the key the codec builds; codec reads the raw string back',
     );
 
-    await input.fill('x'.repeat(600));
+    await ui(page, `fill memo ${sized('x'.repeat(600))}`, () => input.fill('x'.repeat(600)));
     assert.equal(
       (await raw(page, key)).length,
       500,
@@ -283,12 +457,14 @@ try {
     );
     assert.equal((await codec(page, 'memo.read', [key], { fresh: true })).length, 500);
     // Typed text: Chrome's maxlength never splits a surrogate pair, so the cut lands one unit early.
-    await input.fill('a'.repeat(499) + '😀');
+    await ui(page, 'fill memo 499 a and an emoji', () => input.fill('a'.repeat(499) + '😀'));
     const typed = await raw(page, key);
     assert.equal(typed.length, 499);
     assert.equal(await codec(page, 'memo.read', [key], { fresh: true }), typed);
     // Script-set text skips maxlength, so the page's own slice runs and keeps the lone high surrogate.
-    await setValue(input, 'a'.repeat(499) + '😀');
+    await ui(page, 'script-set memo 499 a and an emoji', () =>
+      setValue(input, 'a'.repeat(499) + '😀'),
+    );
     const stored = await raw(page, key);
     assert.equal(stored.length, 500);
     assert.equal(stored.charCodeAt(499), 0xd83d, 'legacy keeps the lone high surrogate at the cut');
@@ -331,13 +507,19 @@ try {
     await codec(seed, 'memo.write', [focus, 'Codec focus']);
     await seed.close();
     const { page } = await legacyPage(context, `#n=project:${PROJECT}`);
-    await page.locator('[data-next-cockpit-memo-field="outcome"] strong').waitFor();
+    await ui(page, 'wait for the outcome field', () =>
+      page.locator('[data-next-cockpit-memo-field="outcome"] strong').waitFor(),
+    );
     assert.equal(
-      await page.locator('[data-next-cockpit-memo-field="outcome"] strong').innerText(),
+      await ui(page, 'read the outcome field', () =>
+        page.locator('[data-next-cockpit-memo-field="outcome"] strong').innerText(),
+      ),
       'Codec outcome',
     );
     assert.equal(
-      await page.locator('[data-next-cockpit-memo-field="focus"] strong').innerText(),
+      await ui(page, 'read the focus field', () =>
+        page.locator('[data-next-cockpit-memo-field="focus"] strong').innerText(),
+      ),
       'Codec focus',
     );
     proved(
@@ -362,7 +544,9 @@ try {
   await scenario('graph mode: legacy UI writes, codec reads', async () => {
     const context = await newContext();
     const { page } = await legacyPage(context, `#n=project:${PROJECT}:decisions`);
-    await page.locator('[data-next-cockpit-action="graph-mode"][data-arg="all"]').click();
+    await ui(page, 'click graph mode All', () =>
+      page.locator('[data-next-cockpit-action="graph-mode"][data-arg="all"]').click(),
+    );
     const scope = await pure(page, 'graphModeScope', [PROJECT, null]);
     assert.equal(await raw(page, KEYS.graphMode), json({ [scope]: 'all' }));
     assert.deepEqual(await pure(page, 'decodeGraphModes', [await raw(page, KEYS.graphMode)]), {
@@ -386,11 +570,15 @@ try {
     await codec(seed, 'graphMode.set', [scope, 'all']);
     await seed.close();
     const { page } = await legacyPage(context, `#n=project:${PROJECT}:decisions`);
-    await page
-      .locator('[data-next-cockpit-action="graph-mode"][data-arg="all"][aria-pressed="true"]')
-      .waitFor();
+    await ui(page, 'wait for All pressed', () =>
+      page
+        .locator('[data-next-cockpit-action="graph-mode"][data-arg="all"][aria-pressed="true"]')
+        .waitFor(),
+    );
     assert.equal(
-      await page.locator('[data-next-cockpit-action="graph-mode"][aria-pressed="true"]').count(),
+      await ui(page, 'count pressed modes', () =>
+        page.locator('[data-next-cockpit-action="graph-mode"][aria-pressed="true"]').count(),
+      ),
       1,
     );
     proved(
@@ -406,7 +594,7 @@ try {
       json({ '': 'all', 'p\u0000s': 'decisions', 'a\u0000b\u0000c': 'all', 'q\u0000': 'sideways' }),
     );
     const decoded = await pure(page, 'decodeGraphModes', [await raw(page, KEYS.graphMode)]);
-    await page.evaluate('projectGraphModeBySession.clear(); projectLoadGraphModes();');
+    await legacy(page, 'projectGraphModeBySession.clear(); projectLoadGraphModes();');
     assert.deepEqual(await legacy(page, 'Object.fromEntries(projectGraphModeBySession)'), decoded);
     assert.deepEqual(decoded, { 'p\u0000s': 'decisions' });
     proved(
@@ -417,7 +605,7 @@ try {
     );
     for (const corrupt of ['{', '5', '[]', '"x"']) {
       await setRaw(page, KEYS.graphMode, corrupt);
-      await page.evaluate('projectGraphModeBySession.clear(); projectLoadGraphModes();');
+      await legacy(page, 'projectGraphModeBySession.clear(); projectLoadGraphModes();');
       assert.equal(await legacy(page, 'projectGraphModeBySession.size'), 0);
       assert.deepEqual(await pure(page, 'decodeGraphModes', [corrupt]), {});
     }
@@ -435,16 +623,22 @@ try {
     const context = await newContext();
     const { page } = await legacyPage(context, `#n=project:${PROJECT}:console`);
     const key = await pure(page, 'guardrailKey', [PROJECT]);
-    const add = async (text, { script = false } = {}) => {
+    const addNow = async (text, { script = false } = {}) => {
       await page.locator('[data-next-guardrail-add]').click();
       const input = page.locator('[data-next-guardrail-input]');
       if (script) await setValue(input, text);
       else await input.fill(text);
       await input.press('Enter');
     };
+    const add = (text, options = {}) =>
+      ui(page, `add guardrail${options.script ? ' (script-set)' : ''} ${sized(text)}`, () =>
+        addNow(text, options),
+      );
     await add('  watch the tests  ');
     await add('second rule');
-    await page.locator('[data-next-guardrail-toggle="0"]').click();
+    await ui(page, 'toggle guardrail 0', () =>
+      page.locator('[data-next-guardrail-toggle="0"]').click(),
+    );
     assert.equal(
       await raw(page, key),
       json([
@@ -483,7 +677,9 @@ try {
       'browser-legacy-ui',
       'UTF-16 boundary: typed text stops at 499 before a surrogate pair; script-set text is trimmed and cut at 500 by the page, splitting the pair; the codec reads it unchanged',
     );
-    for (let index = 0; index < 55; index += 1) await add(`rule ${index}`);
+    await ui(page, 'add fifty-five rules', async () => {
+      for (let index = 0; index < 55; index += 1) await addNow(`rule ${index}`);
+    });
     const stored = JSON.parse(await raw(page, key));
     assert.equal(stored.length, 50);
     assert.equal(stored[49].text, 'rule 54');
@@ -507,16 +703,20 @@ try {
     await codec(seed, 'guardrails.toggle', [PROJECT, 1]);
     await seed.close();
     const { page } = await legacyPage(context, `#n=project:${PROJECT}:console`);
-    await page.locator('[data-next-guardrail-toggle]').first().waitFor();
+    await ui(page, 'wait for a guardrail', () =>
+      page.locator('[data-next-guardrail-toggle]').first().waitFor(),
+    );
     assert.deepEqual(
-      await page
-        .locator('[data-next-guardrail-toggle]')
-        .evaluateAll((rows) =>
-          rows.map((row) => [
-            row.getAttribute('aria-checked'),
-            row.querySelector('strong').textContent,
-          ]),
-        ),
+      await ui(page, 'read the guardrail rows', () =>
+        page
+          .locator('[data-next-guardrail-toggle]')
+          .evaluateAll((rows) =>
+            rows.map((row) => [
+              row.getAttribute('aria-checked'),
+              row.querySelector('strong').textContent,
+            ]),
+          ),
+      ),
       [
         ['true', 'first'],
         ['false', 'second'],
@@ -575,7 +775,8 @@ try {
     ]);
     assert.deepEqual(
       await pure(page, 'decodeGuardrails', [short]),
-      await page.evaluate(
+      await legacy(
+        page,
         `(() => { localStorage.setItem(${json(key)}, ${json(short)}); return nextControlsReadRules(${json(PROJECT)}); })()`,
       ),
     );
@@ -598,11 +799,14 @@ try {
     const context = await newContext();
     const { page } = await legacyPage(context, `#n=project:${PROJECT}:course`);
     const toggle = page.locator('[data-next-workstream-toggle]');
-    assert.equal(await toggle.getAttribute('aria-expanded'), 'true');
-    await toggle.click();
+    assert.equal(
+      await ui(page, 'read expanded', () => toggle.getAttribute('aria-expanded')),
+      'true',
+    );
+    await ui(page, 'click the toggle', () => toggle.click());
     assert.equal(await raw(page, KEYS.workstream), '1');
     assert.equal(await codec(page, 'workstream.collapsed', [], { fresh: true }), true);
-    await toggle.click();
+    await ui(page, 'click the toggle again', () => toggle.click());
     assert.equal(await raw(page, KEYS.workstream), '0');
     assert.equal(await codec(page, 'workstream.collapsed', [], { fresh: true }), false);
     proved(
@@ -621,7 +825,9 @@ try {
       await seed.close();
       const { page: reader } = await legacyPage(next, `#n=project:${PROJECT}:course`);
       assert.equal(
-        await reader.locator('[data-next-workstream-toggle]').getAttribute('aria-expanded'),
+        await ui(reader, `read expanded after a codec ${collapsed ? 1 : 0}`, () =>
+          reader.locator('[data-next-workstream-toggle]').getAttribute('aria-expanded'),
+        ),
         String(!collapsed),
       );
       await next.close();
@@ -638,7 +844,9 @@ try {
     await seed.close();
     const { page: reader } = await legacyPage(other, `#n=project:${PROJECT}:course`);
     assert.equal(
-      await reader.locator('[data-next-workstream-toggle]').getAttribute('aria-expanded'),
+      await ui(reader, 'read expanded after a codec true', () =>
+        reader.locator('[data-next-workstream-toggle]').getAttribute('aria-expanded'),
+      ),
       'true',
     );
     assert.equal(await codec(reader, 'workstream.collapsed', [], { fresh: true }), false);
@@ -656,14 +864,17 @@ try {
     'leader lease: legacy writes, codec reads, codec foreign owner steers legacy',
     async () => {
       const context = await newContext();
-      const { page, requests } = await legacyPage(context);
+      const { page, requests } = await legacyPage(context, '', 'legacy', {
+        until: LEADER_WRITTEN,
+        always: [KEYS.leader],
+      });
       const tabId = await legacy(page, 'NEXT_TAB_ID');
       const lease = await codec(page, 'lease.read', [], { fresh: true });
       assert.equal(lease.id, tabId);
       assert.equal(typeof lease.ts, 'number');
       assert.equal(await raw(page, KEYS.leader), json({ id: tabId, ts: lease.ts }));
       assert.equal(await pure(page, 'leaseIsLive', [lease, Date.now()]), true);
-      await sleep(2600);
+      await ui(page, 'wait 2600 ms for a renewal', () => sleep(2600), { always: [KEYS.leader] });
       assert.ok(
         (await codec(page, 'lease.read')).ts > lease.ts,
         'the legacy leader renews on its 2000 ms timer',
@@ -674,7 +885,7 @@ try {
         'browser-legacy-passive',
         'the page writes {id, ts} under its own tab id and renews it; codec parses and judges it live',
       );
-      assert.ok(requests.some((request) => request.path === '/api/stream'));
+      assert.ok(await streamed(page, requests));
 
       // A foreign lease, stale but written after this tab led: the throttled leader must still yield.
       const foreign = { id: 'foreign-conformance-tab', ts: Date.now() - 7000 };
@@ -685,9 +896,11 @@ try {
         'yield',
       );
       await setRaw(page, KEYS.leader, json(foreign));
-      await page.waitForFunction('nextIsLeader === false && nextStreamSource === null', undefined, {
-        timeout: 15000,
-      });
+      await ui(page, 'wait for the tab to yield', () =>
+        page.waitForFunction('nextIsLeader === false && nextStreamSource === null', undefined, {
+          timeout: 15000,
+        }),
+      );
       assert.equal(
         await raw(page, KEYS.leader),
         json(foreign),
@@ -704,29 +917,46 @@ try {
 
       // pagehide releases a lease the tab still owns.
       const owner = await newContext();
-      const { page: leader } = await legacyPage(owner);
+      const { page: leader } = await legacyPage(owner, '', 'legacy', {
+        until: LEADER_WRITTEN,
+        always: [KEYS.leader],
+      });
       const observer = await seedPage(owner, 'lease-observer');
       // The leader writes its lease on its first election, which a loaded runner can delay past page load.
-      await observer.waitForFunction(
-        (key) => globalThis.localStorage.getItem(key) !== null,
-        KEYS.leader,
-        { timeout: 15000 },
+      await ui(observer, 'the lease is written', () =>
+        observer.waitForFunction(
+          (key) => globalThis.localStorage.getItem(key) !== null,
+          KEYS.leader,
+          {
+            timeout: 15000,
+          },
+        ),
       );
       assert.notEqual(await codec(observer, 'lease.read', [], { fresh: true }), null);
       // The page is still alive after a synthetic pagehide, so its next election tick (within 2 s) writes the lease
       // again, and the handler only releases while the page leads (a stream error under load drops that until the next
       // tick). Read the key and the codec's view in the same task as the event, and only accept an attempt that led.
-      let released;
-      for (let attempt = 0; attempt < 20; attempt += 1) {
-        await leader.waitForFunction('nextIsLeader === true', undefined, { timeout: 15000 });
-        // A string, because `nextIsLeader` is a top-level `let` of the legacy page and no property of the window.
-        released = await leader.evaluate(`(() => {
+      // The page keeps running after the event and writes its lease on the next tick, so the storage it leaves is
+      // not recorded: the answer below is what the page did in that one task.
+      const released = await ui(
+        leader,
+        'pagehide releases a lease the tab owns',
+        async () => {
+          let result;
+          for (let attempt = 0; attempt < 20; attempt += 1) {
+            await leader.waitForFunction('nextIsLeader === true', undefined, { timeout: 15000 });
+            // A string, because `nextIsLeader` is a top-level `let` of the legacy page and no property of the window.
+            result = await leader.evaluate(`(() => {
         const leading = nextIsLeader === true;
         window.dispatchEvent(new Event('pagehide'));
         return { leading, raw: localStorage.getItem(${json(KEYS.leader)}), lease: CargentoStorage.createLegacyStorage().lease.read() };
       })()`);
-        if (released.leading) break;
-      }
+            if (result.leading) break;
+          }
+          return result;
+        },
+        { mirror: false },
+      );
       assert.equal(released.leading, true);
       assert.equal(released.raw, null);
       assert.equal(released.lease, null);
@@ -742,9 +972,12 @@ try {
       // aborted EventSource reports CLOSED first and the legacy error handler clears nextIsLeader
       // before pagehide fires. The lease is left to go stale, so the codec must read it as live.
       const away = await newContext();
-      const { page: leaving } = await legacyPage(away);
+      const { page: leaving } = await legacyPage(away, '', 'legacy', {
+        until: LEADER_WRITTEN,
+        always: [KEYS.leader],
+      });
       const watcher = await seedPage(away, 'lease-watcher');
-      await leaving.goto(origin + '/__storage-seed');
+      await ui(leaving, 'navigate away', () => leaving.goto(origin + '/__storage-seed'));
       const left = await raw(watcher, KEYS.leader);
       const decoded = await codec(watcher, 'lease.read', [], { fresh: true });
       assert.equal(decoded === null, left === null);
@@ -764,10 +997,10 @@ try {
     await codec(seed, 'lease.write', ['foreign-live-tab', Date.now()]);
     await seed.close();
     const { page, requests } = await legacyPage(live);
-    await sleep(2600);
+    await ui(page, 'wait 2600 ms', () => sleep(2600));
     assert.equal(await legacy(page, 'nextIsLeader'), false);
     assert.equal(
-      requests.some((request) => request.path === '/api/stream'),
+      await streamed(page, requests),
       false,
       'a tab yielding to a live foreign lease opens no stream',
     );
@@ -805,12 +1038,9 @@ try {
     );
     await edgeSeed.close();
     const { page: edgePage, requests: edgeRequests } = await legacyPage(edge);
-    await sleep(500);
+    await ui(edgePage, 'wait 500 ms', () => sleep(500));
     assert.equal(await legacy(edgePage, 'nextIsLeader'), false);
-    assert.equal(
-      edgeRequests.some((request) => request.path === '/api/stream'),
-      false,
-    );
+    assert.equal(await streamed(edgePage, edgeRequests), false);
     proved(
       'leader',
       'codec->legacy',
@@ -824,9 +1054,11 @@ try {
     await codec(staleSeed, 'lease.write', ['foreign-stale-tab', Date.now() - 7000]);
     await staleSeed.close();
     const { page: taker, requests: takerRequests } = await legacyPage(stale);
-    await taker.waitForFunction('nextIsLeader === true');
+    await ui(taker, 'wait for the takeover', () => taker.waitForFunction('nextIsLeader === true'), {
+      always: [KEYS.leader],
+    });
     assert.equal(JSON.parse(await raw(taker, KEYS.leader)).id, await legacy(taker, 'NEXT_TAB_ID'));
-    assert.ok(takerRequests.some((request) => request.path === '/api/stream'));
+    assert.ok(await streamed(taker, takerRequests));
     proved(
       'leader',
       'codec->legacy',
@@ -841,7 +1073,14 @@ try {
     assert.equal(await codec(corruptSeed, 'lease.read', [], { fresh: true }), null);
     await corruptSeed.close();
     const { page: tolerant } = await legacyPage(corrupt);
-    await tolerant.waitForFunction('nextIsLeader === true');
+    await ui(
+      tolerant,
+      'wait for the takeover',
+      () => tolerant.waitForFunction('nextIsLeader === true'),
+      {
+        always: [KEYS.leader],
+      },
+    );
     assert.equal(
       await legacy(tolerant, 'nextReadLease() && nextReadLease().id'),
       await legacy(tolerant, 'NEXT_TAB_ID'),
@@ -856,8 +1095,8 @@ try {
 
     const blocked = await newContext({ blocked: true });
     const { page: self, requests: selfRequests } = await legacyPage(blocked);
-    await self.waitForFunction('nextIsLeader === true');
-    assert.ok(selfRequests.some((request) => request.path === '/api/stream'));
+    await ui(self, 'wait for the tab to lead', () => self.waitForFunction('nextIsLeader === true'));
+    assert.ok(await streamed(self, selfRequests));
     assert.equal(await codec(self, 'lease.read', [], { fresh: true }), null);
     assert.equal(await codec(self, 'lease.write', ['t', 1]), false);
     proved(
@@ -872,22 +1111,22 @@ try {
   // ── revision ──────────────────────────────────────────────────────────
   await scenario('revision: legacy broadcast, comparator and cross-tab wake', async () => {
     const context = await newContext();
-    const { page, requests } = await legacyPage(context);
-    await page.waitForFunction('nextLastRevision !== null');
-    // The page stores a revision only once the stream accepts it, which can trail the first data read on a slow runner.
-    await page.waitForFunction(
-      (key) => globalThis.localStorage.getItem(key) !== null,
-      KEYS.revision,
-    );
+    const { page, requests } = await legacyPage(context, '', 'legacy', {
+      // The page stores a revision only once the stream accepts it, which can trail the first data read on a slow runner.
+      until: `nextLastRevision !== null && localStorage.getItem(${json(KEYS.revision)}) !== null`,
+      always: [KEYS.revision],
+    });
     const revision = await legacy(page, 'nextLastRevision');
     assert.equal(await raw(page, KEYS.revision), revision);
     assert.equal(await codec(page, 'revision.read', [], { fresh: true }), revision);
-    const header = (await context.request.get(origin + '/api/data')).headers()[
-      'x-cargento-revision'
-    ];
     assert.equal(
-      header.split('.')[0],
-      revision.split('.')[0],
+      await ui(page, "the stored revision carries this server's start stamp", async () => {
+        const header = (await context.request.get(origin + '/api/data')).headers()[
+          'x-cargento-revision'
+        ];
+        return header.split('.')[0] === revision.split('.')[0];
+      }),
+      true,
       "the stored revision carries this server's start stamp",
     );
     proved(
@@ -934,34 +1173,44 @@ try {
       Number(revision.slice(revision.lastIndexOf('.') + 1)),
     ];
     const writer = await seedPage(context, 'revision-writer');
-    const dataBefore = requests.filter((request) => request.path === '/api/data').length;
+    const dataReads = () => requests.filter((request) => request.path === '/api/data').length;
+    const dataBefore = dataReads();
     const newer = `${started}.${counter + 5}`;
     assert.equal(await codec(writer, 'revision.write', [newer]), true);
-    await page.waitForFunction(`nextLastRevision === ${json(newer)}`, undefined, {
-      timeout: 15000,
-    });
-    await page.waitForFunction(
-      (count) =>
-        globalThis.performance
-          .getEntriesByType('resource')
-          .filter((entry) => new URL(entry.name).pathname === '/api/data').length > count,
-      dataBefore,
-      { timeout: 15000 },
+    const woke = await ui(
+      page,
+      'a newer revision written by another tab wakes a refetch',
+      async () => {
+        await page.waitForFunction(`nextLastRevision === ${json(newer)}`, undefined, {
+          timeout: 15000,
+        });
+        await page.waitForFunction(
+          (count) =>
+            globalThis.performance
+              .getEntriesByType('resource')
+              .filter((entry) => new URL(entry.name).pathname === '/api/data').length > count,
+          dataBefore,
+          { timeout: 15000 },
+        );
+        return dataReads() > dataBefore;
+      },
     );
-    const dataAfter = requests.filter((request) => request.path === '/api/data').length;
-    assert.ok(dataAfter > dataBefore, 'a newer revision written by another tab wakes a refetch');
+    assert.ok(woke, 'a newer revision written by another tab wakes a refetch');
     assert.equal(await codec(writer, 'revision.write', [`${started}.${counter + 4}`]), true);
-    await sleep(800);
-    assert.equal(
-      await legacy(page, 'nextLastRevision'),
-      newer,
-      'an older revision does not move the tab',
+    const idle = await ui(
+      page,
+      'an older revision moves nothing and wakes no refetch',
+      async () => {
+        const before = dataReads();
+        await sleep(800);
+        return {
+          revision: await page.evaluate('nextLastRevision'),
+          refetched: dataReads() !== before,
+        };
+      },
     );
-    assert.equal(
-      requests.filter((request) => request.path === '/api/data').length,
-      dataAfter,
-      'an older revision wakes no refetch',
-    );
+    assert.equal(idle.revision, newer, 'an older revision does not move the tab');
+    assert.equal(idle.refetched, false, 'an older revision wakes no refetch');
     proved(
       'revision',
       'codec->legacy',
@@ -1044,7 +1293,7 @@ try {
     assert.equal(await raw(loaded, key), null);
     for (const value of ['0', 'true', '']) {
       await setRaw(loaded, key, value);
-      await loaded.evaluate('nextLiveMonitorMemory.clear()');
+      await legacy(loaded, 'nextLiveMonitorMemory.clear()');
       assert.equal(
         await legacy(loaded, `nextLiveMonitorOn(${json(CLAUDE)})`),
         await codec(loaded, 'liveEstimate.on', [CLAUDE], { fresh: true }),
@@ -1248,7 +1497,7 @@ try {
       KEYS.usage,
       json(Object.fromEntries(Array.from({ length: 200 }, (_, index) => [`k${index}`, 1]))),
     );
-    await writer.evaluate('projectUsageCounts = null;');
+    await legacy(writer, 'projectUsageCounts = null;');
     await legacy(writer, 'projectRecordUse("fresh")');
     assert.equal(
       Object.keys(JSON.parse(await raw(writer, KEYS.usage))).length,
@@ -1282,24 +1531,32 @@ try {
       const { page } = await legacyPage(context);
       const label = 'goal project/é';
       const key = await pure(page, 'goalKey', [label]);
-      await page.evaluate(`projectGoalEditingLabel = ${json(label)};
-      document.body.insertAdjacentHTML('beforeend', '<div id="conformance-goal-host">' + projectGoalBlock({label: ${json(label)}}, projectGoal(${json(label)}), '') + '</div>');`);
+      await legacy(
+        page,
+        `projectGoalEditingLabel = ${json(label)};
+      document.body.insertAdjacentHTML('beforeend', '<div id="conformance-goal-host">' + projectGoalBlock({label: ${json(label)}}, projectGoal(${json(label)}), '') + '</div>');`,
+      );
       const field = page.locator('#conformance-goal-host #pc-goal');
-      assert.equal(await field.getAttribute('maxlength'), '500');
-      await field.fill('   ship the migration   ');
-      await page.evaluate(`projectGoalAction("project-goal-save", ${json(label)})`);
+      assert.equal(
+        await ui(page, 'read the goal field maxlength', () => field.getAttribute('maxlength')),
+        '500',
+      );
+      await ui(page, 'fill the goal: ship the migration', () =>
+        field.fill('   ship the migration   '),
+      );
+      await legacy(page, `projectGoalAction("project-goal-save", ${json(label)})`);
       assert.equal(await raw(page, key), 'ship the migration');
       assert.equal(await codec(page, 'goal.read', [label], { fresh: true }), 'ship the migration');
       const long = 'g'.repeat(900);
-      await setValue(field, long);
-      await page.evaluate(`projectGoalAction("project-goal-save", ${json(label)})`);
+      await ui(page, `script-set the goal ${sized(long)}`, () => setValue(field, long));
+      await legacy(page, `projectGoalAction("project-goal-save", ${json(label)})`);
       assert.equal((await raw(page, key)).length, 900, 'the legacy store does not bound a goal');
       assert.equal((await codec(page, 'goal.read', [label], { fresh: true })).length, 900);
-      await field.fill('   ');
-      await page.evaluate(`projectGoalAction("project-goal-save", ${json(label)})`);
+      await ui(page, 'fill the goal with spaces', () => field.fill('   '));
+      await legacy(page, `projectGoalAction("project-goal-save", ${json(label)})`);
       assert.equal((await raw(page, key)).length, 900, 'an empty goal writes nothing');
       assert.equal(await codec(page, 'goal.save', [label, '   '], { fresh: true }), 'empty');
-      await page.evaluate(`projectGoalAction("project-goal-clear", ${json(label)})`);
+      await legacy(page, `projectGoalAction("project-goal-clear", ${json(label)})`);
       assert.equal(await raw(page, key), null);
       assert.equal(await codec(page, 'goal.read', [label], { fresh: true }), '');
       proved(
@@ -1314,13 +1571,13 @@ try {
         'saved',
       );
       assert.equal(await raw(page, key), 'padded goal');
-      await page.evaluate(`delete projectDraftByLabel[${json(label)}]`);
+      await legacy(page, `delete projectDraftByLabel[${json(label)}]`);
       assert.equal(await legacy(page, `projectGoal(${json(label)})`), 'padded goal');
       await codec(page, 'goal.save', [label, long]);
-      await page.evaluate(`delete projectDraftByLabel[${json(label)}]`);
+      await legacy(page, `delete projectDraftByLabel[${json(label)}]`);
       assert.equal((await legacy(page, `projectGoal(${json(label)})`)).length, 900);
       assert.equal(await codec(page, 'goal.clear', [label]), 'cleared');
-      await page.evaluate(`delete projectDraftByLabel[${json(label)}]`);
+      await legacy(page, `delete projectDraftByLabel[${json(label)}]`);
       assert.equal(await legacy(page, `projectGoal(${json(label)})`), '');
       proved(
         'goal',
@@ -1349,7 +1606,9 @@ try {
     // Graph mode: a codec write merges with the scopes already there instead of replacing the map.
     const graph = await newContext();
     const { page } = await legacyPage(graph, `#n=project:${PROJECT}:decisions`);
-    await page.locator('[data-next-cockpit-action="graph-mode"][data-arg="all"]').click();
+    await ui(page, 'click graph mode All', () =>
+      page.locator('[data-next-cockpit-action="graph-mode"][data-arg="all"]').click(),
+    );
     const here = await pure(page, 'graphModeScope', [PROJECT, null]);
     const there = await pure(page, 'graphModeScope', ['another project', 'sid:2']);
     assert.equal(await codec(page, 'graphMode.set', [there, 'decisions'], { fresh: true }), true);
@@ -1357,13 +1616,15 @@ try {
       [here]: 'all',
       [there]: 'decisions',
     });
-    await page.reload();
-    await page.waitForFunction(
-      "typeof nextData !== 'undefined' && !!nextData && document.querySelector('[data-next-cockpit-action=\"graph-mode\"]')",
-    );
-    await page
-      .locator('[data-next-cockpit-action="graph-mode"][data-arg="all"][aria-pressed="true"]')
-      .waitFor();
+    await ui(page, 'reload and wait for All pressed', async () => {
+      await page.reload();
+      await page.waitForFunction(
+        "typeof nextData !== 'undefined' && !!nextData && document.querySelector('[data-next-cockpit-action=\"graph-mode\"]')",
+      );
+      await page
+        .locator('[data-next-cockpit-action="graph-mode"][data-arg="all"][aria-pressed="true"]')
+        .waitFor();
+    });
     assert.deepEqual(await legacy(page, 'Object.fromEntries(projectGraphModeBySession)'), {
       [here]: 'all',
       [there]: 'decisions',
@@ -1387,8 +1648,12 @@ try {
     );
     await capSeed.close();
     const { page: rails } = await legacyPage(cap, `#n=project:${PROJECT}:console`);
-    await rails.locator('[data-next-guardrail-toggle]').first().waitFor();
-    const texts = await rails.locator('[data-next-guardrail-toggle] strong').allTextContents();
+    await ui(rails, 'wait for a guardrail', () =>
+      rails.locator('[data-next-guardrail-toggle]').first().waitFor(),
+    );
+    const texts = await ui(rails, 'read every guardrail text', () =>
+      rails.locator('[data-next-guardrail-toggle] strong').allTextContents(),
+    );
     assert.equal(texts.length, 50);
     assert.equal(texts[0], 'rule 5');
     assert.equal(texts[49], 'rule 54');
@@ -1406,27 +1671,31 @@ try {
     await codec(leaseSeed, 'lease.write', ['foreign-release-tab', Date.now()], { fresh: true });
     await leaseSeed.close();
     const { page: waiting, requests } = await legacyPage(lease);
-    await sleep(500);
+    await ui(waiting, 'wait 500 ms', () => sleep(500));
     assert.equal(await legacy(waiting, 'nextIsLeader'), false);
-    assert.equal(
-      requests.some((request) => request.path === '/api/stream'),
-      false,
-    );
+    assert.equal(await streamed(waiting, requests), false);
     assert.equal(await codec(waiting, 'lease.release', [], { fresh: true }), true);
     assert.equal(
       await raw(waiting, KEYS.leader),
       null,
       'release removes the key rather than writing a value',
     );
-    await waiting.waitForFunction('nextIsLeader === true', undefined, { timeout: 15000 });
-    // Playwright delivers `request` events asynchronously, so the page flag can flip before the Node-side list sees the stream.
-    for (
-      let waited = 0;
-      waited < 3000 && !requests.some((request) => request.path === '/api/stream');
-      waited += 50
-    )
-      await sleep(50);
-    assert.ok(requests.some((request) => request.path === '/api/stream'));
+    await ui(
+      waiting,
+      'wait for the takeover and its stream',
+      async () => {
+        await waiting.waitForFunction('nextIsLeader === true', undefined, { timeout: 15000 });
+        // Playwright delivers `request` events asynchronously, so the page flag can flip before the Node-side list sees the stream.
+        for (
+          let waited = 0;
+          waited < 3000 && !requests.some((request) => request.path === '/api/stream');
+          waited += 50
+        )
+          await sleep(50);
+      },
+      { always: [KEYS.leader] },
+    );
+    assert.ok(await streamed(waiting, requests));
     assert.equal(
       JSON.parse(await raw(waiting, KEYS.leader)).id,
       await legacy(waiting, 'NEXT_TAB_ID'),
@@ -1458,9 +1727,17 @@ try {
       true,
       'legacy would have stored exactly the codec-written text',
     );
-    await shown.locator('[data-next-cockpit-memo-field="outcome"] strong').waitFor();
+    await ui(shown, 'wait for the outcome field', () =>
+      shown.locator('[data-next-cockpit-memo-field="outcome"] strong').waitFor(),
+    );
     assert.equal(
-      (await shown.locator('[data-next-cockpit-memo-field="outcome"] strong').textContent()).length,
+      await ui(
+        shown,
+        'the outcome field is 500 units long',
+        async () =>
+          (await shown.locator('[data-next-cockpit-memo-field="outcome"] strong').textContent())
+            .length,
+      ),
       500,
     );
     proved(
@@ -1564,7 +1841,9 @@ try {
 
     // The legacy loaders are the standard: run in one synchronous call so no legacy timer can write between.
     const { page } = await legacyPage(context);
-    const legacyWrites = await page.evaluate(`(() => {
+    const legacyWrites = await legacy(
+      page,
+      `(() => {
       const writes = [];
       const original = {};
       for (const method of ['setItem', 'removeItem', 'clear']) {
@@ -1580,10 +1859,13 @@ try {
         nextLiveMonitorMemory.clear(); nextLiveMonitorOn(${json(CLAUDE)});
       } finally { for (const method of Object.keys(original)) Storage.prototype[method] = original[method]; }
       return writes;
-    })()`);
+    })()`,
+    );
     assert.deepEqual(legacyWrites, [], 'legacy loaders write nothing either, so the codec matches');
     await context.close();
   });
+
+  golden.finish();
 
   const unproved = [];
   for (const [family, entry] of receipt) {
@@ -1641,5 +1923,5 @@ try {
   );
 } finally {
   await browser.close();
-  await backend.stop();
+  await backend?.stop();
 }

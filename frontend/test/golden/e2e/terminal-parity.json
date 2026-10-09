@@ -1,0 +1,272 @@
+{
+ "proof": "terminal-parity",
+ "observations": {
+  "pressing Open terminal opens one terminal, one socket and the two local assets, in both |  #1": "installed-smoke:0.0read-onlyJump to liveClose",
+  "pressing Open terminal opens one terminal, one socket and the two local assets, in both |  #2": {
+   "readOnly": true,
+   "label": "Read-only terminal output"
+  },
+  "short output stays readable: the banner row is inside the viewport, at offset zero |  #1": {
+   "visible": true,
+   "top": 0
+  },
+  "long output: both draw the same rows and follow it to the same live position, with Jump hidden |  #1": [
+   "line 038",
+   "line 039",
+   "line 040",
+   "line 041",
+   "line 042",
+   "line 043",
+   "line 044",
+   "line 045",
+   "line 046",
+   "line 047",
+   "line 048",
+   "line 049",
+   "line 050",
+   "line 051",
+   "line 052",
+   "line 053",
+   "line 054",
+   "line 055",
+   "line 056",
+   "line 057",
+   "line 058",
+   "line 059",
+   "line 060",
+   ""
+  ],
+  "long output: both draw the same rows and follow it to the same live position, with Jump hidden |  #2": {
+   "top": 80,
+   "scrollHeight": 441,
+   "client": 340,
+   "max": 101,
+   "live": 80,
+   "screen": 408,
+   "jumpHidden": true
+  },
+  "scrolling away stops following: Jump shows and new output does not move the reader |  #1": {
+   "top": 0,
+   "scrollHeight": 441,
+   "client": 340,
+   "max": 101,
+   "live": 80,
+   "screen": 408,
+   "jumpHidden": false
+  },
+  "scrolling away stops following: Jump shows and new output does not move the reader |  #2": {
+   "top": 0,
+   "scrollHeight": 441,
+   "client": 340,
+   "max": 101,
+   "live": 80,
+   "screen": 408,
+   "jumpHidden": false
+  },
+  "scrolling away stops following: Jump shows and new output does not move the reader |  #3": [
+   "line 044",
+   "line 045",
+   "line 046",
+   "line 047",
+   "line 048",
+   "line 049",
+   "line 050",
+   "line 051",
+   "line 052",
+   "line 053",
+   "line 054",
+   "line 055",
+   "line 056",
+   "line 057",
+   "line 058",
+   "line 059",
+   "line 060",
+   "line 061",
+   "line 062",
+   "line 063",
+   "line 064",
+   "line 065",
+   "line 066",
+   ""
+  ],
+  "Jump to live resumes following, and new output is then followed again |  #1": {
+   "top": 80,
+   "scrollHeight": 441,
+   "client": 340,
+   "max": 101,
+   "live": 80,
+   "screen": 408,
+   "jumpHidden": true
+  },
+  "Jump to live resumes following, and new output is then followed again |  #2": {
+   "top": 80,
+   "scrollHeight": 441,
+   "client": 340,
+   "max": 101,
+   "live": 80,
+   "screen": 408,
+   "jumpHidden": true
+  },
+  "the follow threshold agrees with the legacy page offset by offset, and flips at 3 px from live | threshold 0 #1": {
+   "jumpHidden": true
+  },
+  "the follow threshold agrees with the legacy page offset by offset, and flips at 3 px from live | threshold 1 #2": {
+   "jumpHidden": true
+  },
+  "the follow threshold agrees with the legacy page offset by offset, and flips at 3 px from live | threshold 2 #3": {
+   "jumpHidden": true
+  },
+  "the follow threshold agrees with the legacy page offset by offset, and flips at 3 px from live | threshold 3 #4": {
+   "jumpHidden": false
+  },
+  "the follow threshold agrees with the legacy page offset by offset, and flips at 3 px from live | threshold 4 #5": {
+   "jumpHidden": false
+  },
+  "the follow threshold agrees with the legacy page offset by offset, and flips at 3 px from live | threshold 6 #6": {
+   "jumpHidden": false
+  },
+  "leaving the route and coming back finds the same screen, output, socket and offset |  #1": {
+   "top": 71,
+   "scrollHeight": 441,
+   "client": 340,
+   "max": 101,
+   "live": 80,
+   "screen": 408,
+   "jumpHidden": false
+  },
+  "leaving the route and coming back finds the same screen, output, socket and offset |  #2": [
+   "line 052",
+   "line 053",
+   "line 054",
+   "line 055",
+   "line 056",
+   "line 057",
+   "line 058",
+   "line 059",
+   "line 060",
+   "line 061",
+   "line 062",
+   "line 063",
+   "line 064",
+   "line 065",
+   "line 066",
+   "line 067",
+   "line 068",
+   "line 069",
+   "line 070",
+   "line 071",
+   "line 072",
+   "still streaming",
+   "printed while away",
+   ""
+  ],
+  "leaving the route and coming back finds the same screen, output, socket and offset |  #3": {
+   "top": 71,
+   "scrollHeight": 441,
+   "client": 340,
+   "max": 101,
+   "live": 80,
+   "screen": 408,
+   "jumpHidden": false
+  },
+  "an offset past the new scroll maximum is clamped to it on return, as the legacy page clamps | before #1": {
+   "top": 170,
+   "scrollHeight": 441,
+   "client": 220,
+   "max": 221,
+   "live": 200,
+   "screen": 408,
+   "jumpHidden": false
+  },
+  "an offset past the new scroll maximum is clamped to it on return, as the legacy page clamps | after #2": {
+   "top": 101,
+   "scrollHeight": 441,
+   "client": 340,
+   "max": 101,
+   "live": 80,
+   "screen": 408,
+   "jumpHidden": false
+  },
+  "a dropped stream reconnects, one socket at a time, and the old one is closed |  #1": [
+   "line 054",
+   "line 055",
+   "line 056",
+   "line 057",
+   "line 058",
+   "line 059",
+   "line 060",
+   "line 061",
+   "line 062",
+   "line 063",
+   "line 064",
+   "line 065",
+   "line 066",
+   "line 067",
+   "line 068",
+   "line 069",
+   "line 070",
+   "line 071",
+   "line 072",
+   "still streaming",
+   "printed while away",
+   "Synthetic read-only terminal ready",
+   "after reconnect",
+   ""
+  ],
+  "keyboard: Open terminal, Jump to live and Close are reached by Tab, operated by Enter and Space, and focus is no worse than the legacy page leaves it | legs": {
+   "openTabs": 15,
+   "afterOpen": null,
+   "jumpTabs": 15,
+   "afterJump": null,
+   "closeTabs": 15,
+   "afterClose": null
+  },
+  "refused, disabled and failed readings say what they are, with the recipe behind a disclosure that stays open |  #1": {
+   "message": [
+    "The registered terminal belongs to another session.",
+    "Output is read-only."
+   ],
+   "steps": [
+    "Start the dashboard with --interaction-origin-session harness:sid and --interaction-origin-registration-file PATH.",
+    "Run the registration client inside the tmux pane for this exact session with that file."
+   ]
+  },
+  "refused, disabled and failed readings say what they are, with the recipe behind a disclosure that stays open |  #2": true,
+  "refused, disabled and failed readings say what they are, with the recipe behind a disclosure that stays open |  #3": true,
+  "a missing bridge, a failed lookup and an incomplete origin read the same in both pages |  #1": [
+   "Tmux session name not published.",
+   "window 0",
+   "Pane index not published."
+  ],
+  "the layout holds at 320 and 375 px: no horizontal page scroll, the terminal and its controls inside the window |  #1": {
+   "overflow": 0,
+   "barRight": 298,
+   "viewportRight": 298,
+   "viewportHeight": 220,
+   "client": 320,
+   "buttons": [
+    {
+     "label": "Close",
+     "width": 56,
+     "height": 44,
+     "right": 88
+    }
+   ]
+  },
+  "the layout holds at 320 and 375 px: no horizontal page scroll, the terminal and its controls inside the window |  #2": {
+   "overflow": 0,
+   "barRight": 343,
+   "viewportRight": 343,
+   "viewportHeight": 220,
+   "client": 375,
+   "buttons": [
+    {
+     "label": "Close",
+     "width": 56,
+     "height": 44,
+     "right": 333
+    }
+   ]
+  }
+ }
+}

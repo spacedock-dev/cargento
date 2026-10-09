@@ -1,0 +1,2120 @@
+{
+ "proof": "storage-conformance",
+ "observations": {
+  "memo: legacy UI writes, codec reads | #1 load #n=project:storage-conformance inputs:44136fa355b3": {
+   "set": {},
+   "removed": []
+  },
+  "memo: legacy UI writes, codec reads | #2 click memo-edit": {
+   "delta": {
+    "set": {},
+    "removed": []
+   }
+  },
+  "memo: legacy UI writes, codec reads | #3 fill memo: Ship the storage layer": {
+   "delta": {
+    "set": {
+     "cargento.cockpit.memo.v2:storage-conformance:project:outcome": "Ship the storage layer"
+    },
+    "removed": []
+   }
+  },
+  "memo: legacy UI writes, codec reads | #4 fill memo 600 units 5130b33e6b87": {
+   "delta": {
+    "set": {
+     "cargento.cockpit.memo.v2:storage-conformance:project:outcome": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+    },
+    "removed": []
+   }
+  },
+  "memo: legacy UI writes, codec reads | #5 fill memo 499 a and an emoji": {
+   "delta": {
+    "set": {
+     "cargento.cockpit.memo.v2:storage-conformance:project:outcome": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    },
+    "removed": []
+   }
+  },
+  "memo: legacy UI writes, codec reads | #6 script-set memo 499 a and an emoji": {
+   "delta": {
+    "set": {
+     "cargento.cockpit.memo.v2:storage-conformance:project:outcome": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\ud83d"
+    },
+    "removed": []
+   }
+  },
+  "memo: legacy UI writes, codec reads | #7 nextCockpitMemoKey({\"label\":\"p/é\",\"sessions\":[{\"project_key\":\"pk 1\"}]}, null, \"outcome\")": {
+   "value": "cargento.cockpit.memo.v2:pk%201:project:outcome",
+   "delta": {
+    "set": {},
+    "removed": []
+   }
+  },
+  "memo: legacy UI writes, codec reads | #8 nextCockpitMemoKey({\"label\":\"only-label\",\"sessions\":[{},{\"project_key\":\"a\"}]}, {\"harness\":\"claude\",\"sid\":\"claude-sid:one\"}, \"focus\")": {
+   "value": "cargento.cockpit.memo.v2:a:claude%3Aclaude-sid%3Aone:focus",
+   "delta": {
+    "set": {},
+    "removed": []
+   }
+  },
+  "memo: legacy UI writes, codec reads | #9 nextCockpitMemoKey({\"label\":\"only-label\",\"sessions\":[]}, {\"harness\":\"codex\",\"sid\":\"x:y z\"}, \"outcome\")": {
+   "value": "cargento.cockpit.memo.v2:only-label:codex%3Ax%3Ay%20z:outcome",
+   "delta": {
+    "set": {},
+    "removed": []
+   }
+  },
+  "memo: legacy UI writes, codec reads | #10 nextCockpitMemoKey({\"label\":\"only-label\",\"sessions\":[]}, {\"harness\":\"claude\",\"session\":\"abcd1234\"}, \"focus\")": {
+   "value": "cargento.cockpit.memo.v2:only-label:claude%3Aabcd1234:focus",
+   "delta": {
+    "set": {},
+    "removed": []
+   }
+  },
+  "memo: codec writes, legacy UI reads | #1 load #n=project:storage-conformance inputs:a79663f2e0c2": {
+   "set": {},
+   "removed": []
+  },
+  "memo: codec writes, legacy UI reads | #2 wait for the outcome field": {
+   "delta": {
+    "set": {},
+    "removed": []
+   }
+  },
+  "memo: codec writes, legacy UI reads | #3 read the outcome field": {
+   "value": "Codec outcome",
+   "delta": {
+    "set": {},
+    "removed": []
+   }
+  },
+  "memo: codec writes, legacy UI reads | #4 read the focus field": {
+   "value": "Codec focus",
+   "delta": {
+    "set": {},
+    "removed": []
+   }
+  },
+  "memo: codec writes, legacy UI reads | #5 nextCockpitReadMemo(\"cargento.cockpit.memo.v2:storage-conformance:project:outcome\").length": {
+   "value": 500,
+   "delta": {
+    "set": {},
+    "removed": []
+   }
+  },
+  "graph mode: legacy UI writes, codec reads | #1 load #n=project:storage-conformance:decisions inputs:44136fa355b3": {
+   "set": {},
+   "removed": []
+  },
+  "graph mode: legacy UI writes, codec reads | #2 click graph mode All": {
+   "delta": {
+    "set": {
+     "cargento.next.graph.mode": "{\"storage-conformance\\u0000\":\"all\"}"
+    },
+    "removed": []
+   }
+  },
+  "graph mode: legacy UI writes, codec reads | #3 projectGraphModeScope()": {
+   "value": "storage-conformance\u0000",
+   "delta": {
+    "set": {},
+    "removed": []
+   }
+  },
+  "graph mode: codec writes, legacy UI reads | #1 load #n=project:storage-conformance:decisions inputs:428dd0cb2ff1": {
+   "set": {},
+   "removed": []
+  },
+  "graph mode: codec writes, legacy UI reads | #2 wait for All pressed": {
+   "delta": {
+    "set": {},
+    "removed": []
+   }
+  },
+  "graph mode: codec writes, legacy UI reads | #3 count pressed modes": {
+   "value": 1,
+   "delta": {
+    "set": {},
+    "removed": []
+   }
+  },
+  "graph mode: codec writes, legacy UI reads | #4 projectGraphModeBySession.clear(); projectLoadGraphModes();": {
+   "delta": {
+    "set": {},
+    "removed": []
+   }
+  },
+  "graph mode: codec writes, legacy UI reads | #5 Object.fromEntries(projectGraphModeBySession)": {
+   "value": {
+    "p\u0000s": "decisions"
+   },
+   "delta": {
+    "set": {},
+    "removed": []
+   }
+  },
+  "graph mode: codec writes, legacy UI reads | #6 projectGraphModeBySession.clear(); projectLoadGraphModes();": {
+   "delta": {
+    "set": {},
+    "removed": []
+   }
+  },
+  "graph mode: codec writes, legacy UI reads | #7 projectGraphModeBySession.size": {
+   "value": 0,
+   "delta": {
+    "set": {},
+    "removed": []
+   }
+  },
+  "graph mode: codec writes, legacy UI reads | #8 projectGraphModeBySession.clear(); projectLoadGraphModes();": {
+   "delta": {
+    "set": {},
+    "removed": []
+   }
+  },
+  "graph mode: codec writes, legacy UI reads | #9 projectGraphModeBySession.size": {
+   "value": 0,
+   "delta": {
+    "set": {},
+    "removed": []
+   }
+  },
+  "graph mode: codec writes, legacy UI reads | #10 projectGraphModeBySession.clear(); projectLoadGraphModes();": {
+   "delta": {
+    "set": {},
+    "removed": []
+   }
+  },
+  "graph mode: codec writes, legacy UI reads | #11 projectGraphModeBySession.size": {
+   "value": 0,
+   "delta": {
+    "set": {},
+    "removed": []
+   }
+  },
+  "graph mode: codec writes, legacy UI reads | #12 projectGraphModeBySession.clear(); projectLoadGraphModes();": {
+   "delta": {
+    "set": {},
+    "removed": []
+   }
+  },
+  "graph mode: codec writes, legacy UI reads | #13 projectGraphModeBySession.size": {
+   "value": 0,
+   "delta": {
+    "set": {},
+    "removed": []
+   }
+  },
+  "guardrails: legacy UI writes, codec reads | #1 load #n=project:storage-conformance:console inputs:44136fa355b3": {
+   "set": {},
+   "removed": []
+  },
+  "guardrails: legacy UI writes, codec reads | #2 add guardrail 19 units 207bf2ef4819": {
+   "delta": {
+    "set": {
+     "cargento.next.guardrails.storage-conformance": "[{\"enabled\":true,\"text\":\"watch the tests\"}]"
+    },
+    "removed": []
+   }
+  },
+  "guardrails: legacy UI writes, codec reads | #3 add guardrail 11 units dc56b1e25caf": {
+   "delta": {
+    "set": {
+     "cargento.next.guardrails.storage-conformance": "[{\"enabled\":true,\"text\":\"watch the tests\"},{\"enabled\":true,\"text\":\"second rule\"}]"
+    },
+    "removed": []
+   }
+  },
+  "guardrails: legacy UI writes, codec reads | #4 toggle guardrail 0": {
+   "delta": {
+    "set": {
+     "cargento.next.guardrails.storage-conformance": "[{\"enabled\":false,\"text\":\"watch the tests\"},{\"enabled\":true,\"text\":\"second rule\"}]"
+    },
+    "removed": []
+   }
+  },
+  "guardrails: legacy UI writes, codec reads | #5 add guardrail 508 units 442e5443b421": {
+   "delta": {
+    "set": {
+     "cargento.next.guardrails.storage-conformance": "[{\"enabled\":false,\"text\":\"watch the tests\"},{\"enabled\":true,\"text\":\"second rule\"},{\"enabled\":true,\"text\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"}]"
+    },
+    "removed": []
+   }
+  },
+  "guardrails: legacy UI writes, codec reads | #6 add guardrail (script-set) 508 units 89cfd8fef217": {
+   "delta": {
+    "set": {
+     "cargento.next.guardrails.storage-conformance": "[{\"enabled\":false,\"text\":\"watch the tests\"},{\"enabled\":true,\"text\":\"second rule\"},{\"enabled\":true,\"text\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"},{\"enabled\":true,\"text\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\\ud83d\"}]"
+    },
+    "removed": []
+   }
+  },
+  "guardrails: legacy UI writes, codec reads | #7 add fifty-five rules": {
+   "delta": {
+    "set": {
+     "cargento.next.guardrails.storage-conformance": "[{\"enabled\":true,\"text\":\"rule 5\"},{\"enabled\":true,\"text\":\"rule 6\"},{\"enabled\":true,\"text\":\"rule 7\"},{\"enabled\":true,\"text\":\"rule 8\"},{\"enabled\":true,\"text\":\"rule 9\"},{\"enabled\":true,\"text\":\"rule 10\"},{\"enabled\":true,\"text\":\"rule 11\"},{\"enabled\":true,\"text\":\"rule 12\"},{\"enabled\":true,\"text\":\"rule 13\"},{\"enabled\":true,\"text\":\"rule 14\"},{\"enabled\":true,\"text\":\"rule 15\"},{\"enabled\":true,\"text\":\"rule 16\"},{\"enabled\":true,\"text\":\"rule 17\"},{\"enabled\":true,\"text\":\"rule 18\"},{\"enabled\":true,\"text\":\"rule 19\"},{\"enabled\":true,\"text\":\"rule 20\"},{\"enabled\":true,\"text\":\"rule 21\"},{\"enabled\":true,\"text\":\"rule 22\"},{\"enabled\":true,\"text\":\"rule 23\"},{\"enabled\":true,\"text\":\"rule 24\"},{\"enabled\":true,\"text\":\"rule 25\"},{\"enabled\":true,\"text\":\"rule 26\"},{\"enabled\":true,\"text\":\"rule 27\"},{\"enabled\":true,\"text\":\"rule 28\"},{\"enabled\":true,\"text\":\"rule 29\"},{\"enabled\":true,\"text\":\"rule 30\"},{\"enabled\":true,\"text\":\"rule 31\"},{\"enabled\":true,\"text\":\"rule 32\"},{\"enabled\":true,\"text\":\"rule 33\"},{\"enabled\":true,\"text\":\"rule 34\"},{\"enabled\":true,\"text\":\"rule 35\"},{\"enabled\":true,\"text\":\"rule 36\"},{\"enabled\":true,\"text\":\"rule 37\"},{\"enabled\":true,\"text\":\"rule 38\"},{\"enabled\":true,\"text\":\"rule 39\"},{\"enabled\":true,\"text\":\"rule 40\"},{\"enabled\":true,\"text\":\"rule 41\"},{\"enabled\":true,\"text\":\"rule 42\"},{\"enabled\":true,\"text\":\"rule 43\"},{\"enabled\":true,\"text\":\"rule 44\"},{\"enabled\":true,\"text\":\"rule 45\"},{\"enabled\":true,\"text\":\"rule 46\"},{\"enabled\":true,\"text\":\"rule 47\"},{\"enabled\":true,\"text\":\"rule 48\"},{\"enabled\":true,\"text\":\"rule 49\"},{\"enabled\":true,\"text\":\"rule 50\"},{\"enabled\":true,\"text\":\"rule 51\"},{\"enabled\":true,\"text\":\"rule 52\"},{\"enabled\":true,\"text\":\"rule 53\"},{\"enabled\":true,\"text\":\"rule 54\"}]"
+    },
+    "removed": []
+   }
+  },
+  "guardrails: codec writes, legacy reads | #1 load #n=project:storage-conformance:console inputs:6981ec37703d": {
+   "set": {},
+   "removed": []
+  },
+  "guardrails: codec writes, legacy reads | #2 wait for a guardrail": {
+   "delta": {
+    "set": {},
+    "removed": []
+   }
+  },
+  "guardrails: codec writes, legacy reads | #3 read the guardrail rows": {
+   "value": [
+    [
+     "true",
+     "first"
+    ],
+    [
+     "false",
+     "second"
+    ],
+    [
+     "true",
+     "third"
+    ]
+   ],
+   "delta": {
+    "set": {},
+    "removed": []
+   }
+  },
+  "guardrails: codec writes, legacy reads | #4 nextControlsReadRules(\"storage-conformance\")": {
+   "value": [
+    {
+     "enabled": true,
+     "text": "old plain string"
+    },
+    {
+     "enabled": false,
+     "text": "off"
+    },
+    {
+     "enabled": true,
+     "text": "rule 2"
+    },
+    {
+     "enabled": true,
+     "text": "rule 3"
+    },
+    {
+     "enabled": true,
+     "text": "rule 4"
+    },
+    {
+     "enabled": true,
+     "text": "rule 5"
+    },
+    {
+     "enabled": true,
+     "text": "rule 6"
+    },
+    {
+     "enabled": true,
+     "text": "rule 7"
+    },
+    {
+     "enabled": true,
+     "text": "rule 8"
+    },
+    {
+     "enabled": true,
+     "text": "rule 9"
+    },
+    {
+     "enabled": true,
+     "text": "rule 10"
+    },
+    {
+     "enabled": true,
+     "text": "rule 11"
+    },
+    {
+     "enabled": true,
+     "text": "rule 12"
+    },
+    {
+     "enabled": true,
+     "text": "rule 13"
+    },
+    {
+     "enabled": true,
+     "text": "rule 14"
+    },
+    {
+     "enabled": true,
+     "text": "rule 15"
+    },
+    {
+     "enabled": true,
+     "text": "rule 16"
+    },
+    {
+     "enabled": true,
+     "text": "rule 17"
+    },
+    {
+     "enabled": true,
+     "text": "rule 18"
+    },
+    {
+     "enabled": true,
+     "text": "rule 19"
+    },
+    {
+     "enabled": true,
+     "text": "rule 20"
+    },
+    {
+     "enabled": true,
+     "text": "rule 21"
+    },
+    {
+     "enabled": true,
+     "text": "rule 22"
+    },
+    {
+     "enabled": true,
+     "text": "rule 23"
+    },
+    {
+     "enabled": true,
+     "text": "rule 24"
+    },
+    {
+     "enabled": true,
+     "text": "rule 25"
+    },
+    {
+     "enabled": true,
+     "text": "rule 26"
+    },
+    {
+     "enabled": true,
+     "text": "rule 27"
+    },
+    {
+     "enabled": true,
+     "text": "rule 28"
+    },
+    {
+     "enabled": true,
+     "text": "rule 29"
+    },
+    {
+     "enabled": true,
+     "text": "rule 30"
+    },
+    {
+     "enabled": true,
+     "text": "rule 31"
+    },
+    {
+     "enabled": true,
+     "text": "rule 32"
+    },
+    {
+     "enabled": true,
+     "text": "rule 33"
+    },
+    {
+     "enabled": true,
+     "text": "rule 34"
+    },
+    {
+     "enabled": true,
+     "text": "rule 35"
+    },
+    {
+     "enabled": true,
+     "text": "rule 36"
+    },
+    {
+     "enabled": true,
+     "text": "rule 37"
+    },
+    {
+     "enabled": true,
+     "text": "rule 38"
+    },
+    {
+     "enabled": true,
+     "text": "rule 39"
+    },
+    {
+     "enabled": true,
+     "text": "rule 40"
+    },
+    {
+     "enabled": true,
+     "text": "rule 41"
+    },
+    {
+     "enabled": true,
+     "text": "rule 42"
+    },
+    {
+     "enabled": true,
+     "text": "rule 43"
+    },
+    {
+     "enabled": true,
+     "text": "rule 44"
+    },
+    {
+     "enabled": true,
+     "text": "rule 45"
+    },
+    {
+     "enabled": true,
+     "text": "rule 46"
+    },
+    {
+     "enabled": true,
+     "text": "rule 47"
+    },
+    {
+     "enabled": true,
+     "text": "rule 48"
+    },
+    {
+     "enabled": true,
+     "text": "rule 49"
+    }
+   ],
+   "delta": {
+    "set": {},
+    "removed": []
+   }
+  },
+  "guardrails: codec writes, legacy reads | #5 (() => { localStorage.setItem(\"cargento.next.guardrails.storage-conformance\", \"[\\\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa~4b3b238a9f2d": {
+   "value": [
+    {
+     "enabled": true,
+     "text": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    },
+    {
+     "enabled": true,
+     "text": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\ud83d"
+    },
+    {
+     "enabled": true,
+     "text": "pad"
+    },
+    {
+     "enabled": true,
+     "text": "n"
+    }
+   ],
+   "delta": {
+    "set": {
+     "cargento.next.guardrails.storage-conformance": "[\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa😀😀\",{\"text\":\" pad \",\"enabled\":0},{\"text\":\"n\",\"enabled\":null}]"
+    },
+    "removed": []
+   }
+  },
+  "guardrails: codec writes, legacy reads | #6 nextControlsReadRules(\"storage-conformance\")": {
+   "value": [],
+   "delta": {
+    "set": {},
+    "removed": []
+   }
+  },
+  "guardrails: codec writes, legacy reads | #7 nextControlsReadRules(\"storage-conformance\")": {
+   "value": [],
+   "delta": {
+    "set": {},
+    "removed": []
+   }
+  },
+  "guardrails: codec writes, legacy reads | #8 nextControlsReadRules(\"storage-conformance\")": {
+   "value": [],
+   "delta": {
+    "set": {},
+    "removed": []
+   }
+  },
+  "guardrails: codec writes, legacy reads | #9 nextControlsReadRules(\"storage-conformance\")": {
+   "value": [],
+   "delta": {
+    "set": {},
+    "removed": []
+   }
+  },
+  "workstream collapse: both directions through the legacy toggle | #1 load #n=project:storage-conformance:course inputs:44136fa355b3": {
+   "set": {},
+   "removed": []
+  },
+  "workstream collapse: both directions through the legacy toggle | #2 read expanded": {
+   "value": "true",
+   "delta": {
+    "set": {},
+    "removed": []
+   }
+  },
+  "workstream collapse: both directions through the legacy toggle | #3 click the toggle": {
+   "delta": {
+    "set": {
+     "cargento.next.workstream.collapsed": "1"
+    },
+    "removed": []
+   }
+  },
+  "workstream collapse: both directions through the legacy toggle | #4 click the toggle again": {
+   "delta": {
+    "set": {
+     "cargento.next.workstream.collapsed": "0"
+    },
+    "removed": []
+   }
+  },
+  "workstream collapse: both directions through the legacy toggle | #5 load #n=project:storage-conformance:course inputs:eda29fa04baf": {
+   "set": {},
+   "removed": []
+  },
+  "workstream collapse: both directions through the legacy toggle | #6 read expanded after a codec 1": {
+   "value": "false",
+   "delta": {
+    "set": {},
+    "removed": []
+   }
+  },
+  "workstream collapse: both directions through the legacy toggle | #7 load #n=project:storage-conformance:course inputs:e5f783062337": {
+   "set": {},
+   "removed": []
+  },
+  "workstream collapse: both directions through the legacy toggle | #8 read expanded after a codec 0": {
+   "value": "true",
+   "delta": {
+    "set": {},
+    "removed": []
+   }
+  },
+  "workstream collapse: both directions through the legacy toggle | #9 load #n=project:storage-conformance:course inputs:d411d2494db2": {
+   "set": {},
+   "removed": []
+  },
+  "workstream collapse: both directions through the legacy toggle | #10 read expanded after a codec true": {
+   "value": "true",
+   "delta": {
+    "set": {},
+    "removed": []
+   }
+  },
+  "leader lease: legacy writes, codec reads, codec foreign owner steers legacy | #1 load / inputs:44136fa355b3": {
+   "set": {
+    "cargento.next.leader": "{\"id\":\"@tab\",\"ts\":\"@now\"}"
+   },
+   "removed": []
+  },
+  "leader lease: legacy writes, codec reads, codec foreign owner steers legacy | #2 NEXT_TAB_ID": {
+   "value": "@tab",
+   "delta": {
+    "set": {},
+    "removed": []
+   }
+  },
+  "leader lease: legacy writes, codec reads, codec foreign owner steers legacy | #3 wait 2600 ms for a renewal": {
+   "delta": {
+    "set": {
+     "cargento.next.leader": "{\"id\":\"@tab\",\"ts\":\"@now\"}"
+    },
+    "removed": []
+   }
+  },
+  "leader lease: legacy writes, codec reads, codec foreign owner steers legacy | #4 the page requested /api/stream": {
+   "value": true,
+   "delta": {
+    "set": {},
+    "removed": []
+   }
+  },
+  "leader lease: legacy writes, codec reads, codec foreign owner steers legacy | #5 wait for the tab to yield": {
+   "value": null,
+   "delta": {
+    "set": {},
+    "removed": []
+   }
+  },
+  "leader lease: legacy writes, codec reads, codec foreign owner steers legacy | #6 load / inputs:44136fa355b3": {
+   "set": {
+    "cargento.next.leader": "{\"id\":\"@tab\",\"ts\":\"@now\"}"
+   },
+   "removed": []
+  },
+  "leader lease: legacy writes, codec reads, codec foreign owner steers legacy | #7 the lease is written": {
+   "value": null,
+   "delta": {
+    "set": {},
+    "removed": []
+   }
+  },
+  "leader lease: legacy writes, codec reads, codec foreign owner steers legacy | #8 pagehide releases a lease the tab owns": {
+   "value": {
+    "leading": true,
+    "raw": null,
+    "lease": null
+   },
+   "delta": {
+    "set": {},
+    "removed": []
+   }
+  },
+  "leader lease: legacy writes, codec reads, codec foreign owner steers legacy | #9 load / inputs:44136fa355b3": {
+   "set": {
+    "cargento.next.leader": "{\"id\":\"@tab\",\"ts\":\"@now\"}"
+   },
+   "removed": []
+  },
+  "leader lease: legacy writes, codec reads, codec foreign owner steers legacy | #10 navigate away": {
+   "value": null,
+   "delta": {
+    "set": {},
+    "removed": []
+   }
+  },
+  "leader lease: codec-written foreign owners live and stale | #1 load / inputs:f131395d35f0": {
+   "set": {},
+   "removed": []
+  },
+  "leader lease: codec-written foreign owners live and stale | #2 wait 2600 ms": {
+   "delta": {
+    "set": {},
+    "removed": []
+   }
+  },
+  "leader lease: codec-written foreign owners live and stale | #3 nextIsLeader": {
+   "value": false,
+   "delta": {
+    "set": {},
+    "removed": []
+   }
+  },
+  "leader lease: codec-written foreign owners live and stale | #4 the page requested /api/stream": {
+   "value": false,
+   "delta": {
+    "set": {},
+    "removed": []
+   }
+  },
+  "leader lease: codec-written foreign owners live and stale | #5 NEXT_TAB_ID": {
+   "value": "@tab",
+   "delta": {
+    "set": {},
+    "removed": []
+   }
+  },
+  "leader lease: codec-written foreign owners live and stale | #6 load / inputs:50d30f4204c7": {
+   "set": {},
+   "removed": []
+  },
+  "leader lease: codec-written foreign owners live and stale | #7 wait 500 ms": {
+   "delta": {
+    "set": {},
+    "removed": []
+   }
+  },
+  "leader lease: codec-written foreign owners live and stale | #8 nextIsLeader": {
+   "value": false,
+   "delta": {
+    "set": {},
+    "removed": []
+   }
+  },
+  "leader lease: codec-written foreign owners live and stale | #9 the page requested /api/stream": {
+   "value": false,
+   "delta": {
+    "set": {},
+    "removed": []
+   }
+  },
+  "leader lease: codec-written foreign owners live and stale | #10 load / inputs:abbc7bc32378": {
+   "set": {},
+   "removed": []
+  },
+  "leader lease: codec-written foreign owners live and stale | #11 wait for the takeover": {
+   "value": null,
+   "delta": {
+    "set": {
+     "cargento.next.leader": "{\"id\":\"@tab\",\"ts\":\"@now\"}"
+    },
+    "removed": []
+   }
+  },
+  "leader lease: codec-written foreign owners live and stale | #12 NEXT_TAB_ID": {
+   "value": "@tab",
+   "delta": {
+    "set": {},
+    "removed": []
+   }
+  },
+  "leader lease: codec-written foreign owners live and stale | #13 the page requested /api/stream": {
+   "value": true,
+   "delta": {
+    "set": {},
+    "removed": []
+   }
+  },
+  "leader lease: codec-written foreign owners live and stale | #14 load / inputs:90a0c3e6b3bc": {
+   "set": {},
+   "removed": []
+  },
+  "leader lease: codec-written foreign owners live and stale | #15 wait for the takeover": {
+   "value": null,
+   "delta": {
+    "set": {
+     "cargento.next.leader": "{\"id\":\"@tab\",\"ts\":\"@now\"}"
+    },
+    "removed": []
+   }
+  },
+  "leader lease: codec-written foreign owners live and stale | #16 nextReadLease() && nextReadLease().id": {
+   "value": "@tab",
+   "delta": {
+    "set": {},
+    "removed": []
+   }
+  },
+  "leader lease: codec-written foreign owners live and stale | #17 NEXT_TAB_ID": {
+   "value": "@tab",
+   "delta": {
+    "set": {},
+    "removed": []
+   }
+  },
+  "leader lease: codec-written foreign owners live and stale | #18 load / inputs:44136fa355b3": {
+   "set": {},
+   "removed": []
+  },
+  "leader lease: codec-written foreign owners live and stale | #19 wait for the tab to lead": {
+   "value": null,
+   "delta": {
+    "set": {},
+    "removed": []
+   }
+  },
+  "leader lease: codec-written foreign owners live and stale | #20 the page requested /api/stream": {
+   "value": true,
+   "delta": {
+    "set": {},
+    "removed": []
+   }
+  },
+  "revision: legacy broadcast, comparator and cross-tab wake | #1 load / inputs:44136fa355b3": {
+   "set": {
+    "cargento.next.revision": "@started.4"
+   },
+   "removed": []
+  },
+  "revision: legacy broadcast, comparator and cross-tab wake | #2 nextLastRevision": {
+   "value": "@started.4",
+   "delta": {
+    "set": {},
+    "removed": []
+   }
+  },
+  "revision: legacy broadcast, comparator and cross-tab wake | #3 the stored revision carries this server's start stamp": {
+   "value": true,
+   "delta": {
+    "set": {},
+    "removed": []
+   }
+  },
+  "revision: legacy broadcast, comparator and cross-tab wake | #4 nextRevisionNewer(\"\", \"a.1\")": {
+   "value": false,
+   "delta": {
+    "set": {},
+    "removed": []
+   }
+  },
+  "revision: legacy broadcast, comparator and cross-tab wake | #5 nextRevisionNewer(\"a.1\", null)": {
+   "value": true,
+   "delta": {
+    "set": {},
+    "removed": []
+   }
+  },
+  "revision: legacy broadcast, comparator and cross-tab wake | #6 nextRevisionNewer(\"a.2\", \"a.1\")": {
+   "value": true,
+   "delta": {
+    "set": {},
+    "removed": []
+   }
+  },
+  "revision: legacy broadcast, comparator and cross-tab wake | #7 nextRevisionNewer(\"a.1\", \"a.1\")": {
+   "value": false,
+   "delta": {
+    "set": {},
+    "removed": []
+   }
+  },
+  "revision: legacy broadcast, comparator and cross-tab wake | #8 nextRevisionNewer(\"a.1\", \"a.2\")": {
+   "value": false,
+   "delta": {
+    "set": {},
+    "removed": []
+   }
+  },
+  "revision: legacy broadcast, comparator and cross-tab wake | #9 nextRevisionNewer(\"a.10\", \"a.9\")": {
+   "value": true,
+   "delta": {
+    "set": {},
+    "removed": []
+   }
+  },
+  "revision: legacy broadcast, comparator and cross-tab wake | #10 nextRevisionNewer(\"b.1\", \"a.99\")": {
+   "value": true,
+   "delta": {
+    "set": {},
+    "removed": []
+   }
+  },
+  "revision: legacy broadcast, comparator and cross-tab wake | #11 nextRevisionNewer(\"a.1.5\", \"a.1.4\")": {
+   "value": true,
+   "delta": {
+    "set": {},
+    "removed": []
+   }
+  },
+  "revision: legacy broadcast, comparator and cross-tab wake | #12 nextRevisionNewer(\"a.1.5\", \"a.2.4\")": {
+   "value": true,
+   "delta": {
+    "set": {},
+    "removed": []
+   }
+  },
+  "revision: legacy broadcast, comparator and cross-tab wake | #13 nextRevisionNewer(\"a.x\", \"a.1\")": {
+   "value": true,
+   "delta": {
+    "set": {},
+    "removed": []
+   }
+  },
+  "revision: legacy broadcast, comparator and cross-tab wake | #14 nextRevisionNewer(\"a.x\", \"a.x\")": {
+   "value": false,
+   "delta": {
+    "set": {},
+    "removed": []
+   }
+  },
+  "revision: legacy broadcast, comparator and cross-tab wake | #15 nextRevisionNewer(\"abc\", \"abd\")": {
+   "value": true,
+   "delta": {
+    "set": {},
+    "removed": []
+   }
+  },
+  "revision: legacy broadcast, comparator and cross-tab wake | #16 nextRevisionNewer(\"abc\", \"abc\")": {
+   "value": false,
+   "delta": {
+    "set": {},
+    "removed": []
+   }
+  },
+  "revision: legacy broadcast, comparator and cross-tab wake | #17 nextRevisionNewer(\"a.\", \"a.1\")": {
+   "value": false,
+   "delta": {
+    "set": {},
+    "removed": []
+   }
+  },
+  "revision: legacy broadcast, comparator and cross-tab wake | #18 nextRevisionNewer(\".5\", \".4\")": {
+   "value": true,
+   "delta": {
+    "set": {},
+    "removed": []
+   }
+  },
+  "revision: legacy broadcast, comparator and cross-tab wake | #19 nextRevisionNewer(\"1.5\", \"1.5e0\")": {
+   "value": false,
+   "delta": {
+    "set": {},
+    "removed": []
+   }
+  },
+  "revision: legacy broadcast, comparator and cross-tab wake | #20 a newer revision written by another tab wakes a refetch": {
+   "value": true,
+   "delta": {
+    "set": {},
+    "removed": []
+   }
+  },
+  "revision: legacy broadcast, comparator and cross-tab wake | #21 an older revision moves nothing and wakes no refetch": {
+   "value": {
+    "revision": "@started.9",
+    "refetched": false
+   },
+   "delta": {
+    "set": {},
+    "removed": []
+   }
+  },
+  "live estimate: both directions through the legacy functions | #1 load / inputs:44136fa355b3": {
+   "set": {},
+   "removed": []
+  },
+  "live estimate: both directions through the legacy functions | #2 nextLiveMonitorSet({\"harness\":\"claude\",\"sid\":\"claude-sid:one\"}, true)": {
+   "delta": {
+    "set": {
+     "cargento.next.live-estimate:claude:claude-sid:one": "1"
+    },
+    "removed": []
+   }
+  },
+  "live estimate: both directions through the legacy functions | #3 NEXT_LIVE_ESTIMATE_KEY + sessKey({\"harness\":\"claude\",\"sid\":\"claude-sid:one\"})": {
+   "value": "cargento.next.live-estimate:claude:claude-sid:one",
+   "delta": {
+    "set": {},
+    "removed": []
+   }
+  },
+  "live estimate: both directions through the legacy functions | #4 nextLiveMonitorSet({\"harness\":\"claude\",\"sid\":\"claude-sid:one\"}, false)": {
+   "delta": {
+    "set": {},
+    "removed": [
+     "cargento.next.live-estimate:claude:claude-sid:one"
+    ]
+   }
+  },
+  "live estimate: both directions through the legacy functions | #5 nextLiveMonitorSet({\"harness\":\"claude\",\"sid\":\"claude-sid:one\"}, false)": {
+   "delta": {
+    "set": {},
+    "removed": []
+   }
+  },
+  "live estimate: both directions through the legacy functions | #6 nextLiveMonitorOn({\"harness\":\"claude\",\"sid\":\"claude-sid:one\"})": {
+   "value": false,
+   "delta": {
+    "set": {},
+    "removed": []
+   }
+  },
+  "live estimate: both directions through the legacy functions | #7 load / inputs:b24f0e6381b2": {
+   "set": {},
+   "removed": []
+  },
+  "live estimate: both directions through the legacy functions | #8 nextLiveMonitorOn({\"harness\":\"claude\",\"sid\":\"claude-sid:one\"})": {
+   "value": true,
+   "delta": {
+    "set": {},
+    "removed": []
+   }
+  },
+  "live estimate: both directions through the legacy functions | #9 nextLiveMonitorOn({\"harness\":\"codex\",\"sid\":\"claude-sid:one\"})": {
+   "value": false,
+   "delta": {
+    "set": {},
+    "removed": []
+   }
+  },
+  "live estimate: both directions through the legacy functions | #10 nextLiveMonitorOn({\"harness\":\"claude\",\"sid\":\"other\"})": {
+   "value": false,
+   "delta": {
+    "set": {},
+    "removed": []
+   }
+  },
+  "live estimate: both directions through the legacy functions | #11 nextLiveMonitorMemory.clear()": {
+   "delta": {
+    "set": {},
+    "removed": []
+   }
+  },
+  "live estimate: both directions through the legacy functions | #12 nextLiveMonitorOn({\"harness\":\"claude\",\"sid\":\"claude-sid:one\"})": {
+   "value": false,
+   "delta": {
+    "set": {},
+    "removed": []
+   }
+  },
+  "live estimate: both directions through the legacy functions | #13 nextLiveMonitorMemory.clear()": {
+   "delta": {
+    "set": {},
+    "removed": []
+   }
+  },
+  "live estimate: both directions through the legacy functions | #14 nextLiveMonitorOn({\"harness\":\"claude\",\"sid\":\"claude-sid:one\"})": {
+   "value": false,
+   "delta": {
+    "set": {},
+    "removed": []
+   }
+  },
+  "live estimate: both directions through the legacy functions | #15 nextLiveMonitorMemory.clear()": {
+   "delta": {
+    "set": {},
+    "removed": []
+   }
+  },
+  "live estimate: both directions through the legacy functions | #16 nextLiveMonitorOn({\"harness\":\"claude\",\"sid\":\"claude-sid:one\"})": {
+   "value": false,
+   "delta": {
+    "set": {},
+    "removed": []
+   }
+  },
+  "usageConsent: both directions, other-tab winner, blocked storage | #1 load / inputs:44136fa355b3": {
+   "set": {},
+   "removed": []
+  },
+  "usageConsent: both directions, other-tab winner, blocked storage | #2 nextUsageConsent()": {
+   "value": null,
+   "delta": {
+    "set": {},
+    "removed": []
+   }
+  },
+  "usageConsent: both directions, other-tab winner, blocked storage | #3 nextSetUsageConsent(\"granted\")": {
+   "delta": {
+    "set": {
+     "cargento.next.usage.consent": "granted"
+    },
+    "removed": []
+   }
+  },
+  "usageConsent: both directions, other-tab winner, blocked storage | #4 nextSetUsageConsent(\"declined\")": {
+   "delta": {
+    "set": {
+     "cargento.next.usage.consent": "declined"
+    },
+    "removed": []
+   }
+  },
+  "usageConsent: both directions, other-tab winner, blocked storage | #5 nextUsageConsent()": {
+   "value": "granted",
+   "delta": {
+    "set": {},
+    "removed": []
+   }
+  },
+  "usageConsent: both directions, other-tab winner, blocked storage | #6 nextUsageConsent()": {
+   "value": "declined",
+   "delta": {
+    "set": {},
+    "removed": []
+   }
+  },
+  "usageConsent: both directions, other-tab winner, blocked storage | #7 load / inputs:44136fa355b3": {
+   "set": {},
+   "removed": []
+  },
+  "usageConsent: both directions, other-tab winner, blocked storage | #8 nextSetUsageConsent(\"granted\")": {
+   "delta": {
+    "set": {
+     "cargento.next.usage.consent": "granted"
+    },
+    "removed": []
+   }
+  },
+  "usageConsent: both directions, other-tab winner, blocked storage | #9 nextUsageConsent()": {
+   "value": "declined",
+   "delta": {
+    "set": {},
+    "removed": []
+   }
+  },
+  "usageConsent: both directions, other-tab winner, blocked storage | #10 nextSetUsageConsent(\"declined\")": {
+   "delta": {
+    "set": {
+     "cargento.next.usage.consent": "declined"
+    },
+    "removed": []
+   }
+  },
+  "usageConsent: both directions, other-tab winner, blocked storage | #11 load / inputs:44136fa355b3": {
+   "set": {},
+   "removed": []
+  },
+  "usageConsent: both directions, other-tab winner, blocked storage | #12 nextSetUsageConsent(\"granted\")": {
+   "delta": {
+    "set": {},
+    "removed": []
+   }
+  },
+  "usageConsent: both directions, other-tab winner, blocked storage | #13 nextUsageConsent()": {
+   "value": "granted",
+   "delta": {
+    "set": {},
+    "removed": []
+   }
+  },
+  "observerConsent: both directions, other-tab winner, blocked storage | #1 load / inputs:44136fa355b3": {
+   "set": {},
+   "removed": []
+  },
+  "observerConsent: both directions, other-tab winner, blocked storage | #2 nextObserverConsent()": {
+   "value": null,
+   "delta": {
+    "set": {},
+    "removed": []
+   }
+  },
+  "observerConsent: both directions, other-tab winner, blocked storage | #3 nextSetObserverConsent(\"granted\")": {
+   "delta": {
+    "set": {
+     "cargento.observer-model-consent.v1": "granted"
+    },
+    "removed": []
+   }
+  },
+  "observerConsent: both directions, other-tab winner, blocked storage | #4 nextSetObserverConsent(\"declined\")": {
+   "delta": {
+    "set": {
+     "cargento.observer-model-consent.v1": "declined"
+    },
+    "removed": []
+   }
+  },
+  "observerConsent: both directions, other-tab winner, blocked storage | #5 nextObserverConsent()": {
+   "value": "granted",
+   "delta": {
+    "set": {},
+    "removed": []
+   }
+  },
+  "observerConsent: both directions, other-tab winner, blocked storage | #6 nextObserverConsent()": {
+   "value": "declined",
+   "delta": {
+    "set": {},
+    "removed": []
+   }
+  },
+  "observerConsent: both directions, other-tab winner, blocked storage | #7 load / inputs:44136fa355b3": {
+   "set": {},
+   "removed": []
+  },
+  "observerConsent: both directions, other-tab winner, blocked storage | #8 nextSetObserverConsent(\"granted\")": {
+   "delta": {
+    "set": {
+     "cargento.observer-model-consent.v1": "granted"
+    },
+    "removed": []
+   }
+  },
+  "observerConsent: both directions, other-tab winner, blocked storage | #9 nextObserverConsent()": {
+   "value": "declined",
+   "delta": {
+    "set": {},
+    "removed": []
+   }
+  },
+  "observerConsent: both directions, other-tab winner, blocked storage | #10 nextSetObserverConsent(\"declined\")": {
+   "delta": {
+    "set": {
+     "cargento.observer-model-consent.v1": "declined"
+    },
+    "removed": []
+   }
+  },
+  "observerConsent: both directions, other-tab winner, blocked storage | #11 load / inputs:44136fa355b3": {
+   "set": {},
+   "removed": []
+  },
+  "observerConsent: both directions, other-tab winner, blocked storage | #12 nextSetObserverConsent(\"granted\")": {
+   "delta": {
+    "set": {},
+    "removed": []
+   }
+  },
+  "observerConsent: both directions, other-tab winner, blocked storage | #13 nextObserverConsent()": {
+   "value": "granted",
+   "delta": {
+    "set": {},
+    "removed": []
+   }
+  },
+  "cockpit project and usage: legacy setProjectCockpit writes, codec reads | #1 load / inputs:44136fa355b3": {
+   "set": {},
+   "removed": []
+  },
+  "cockpit project and usage: legacy setProjectCockpit writes, codec reads | #2 setProjectCockpit(\"storage-conformance\")": {
+   "delta": {
+    "set": {
+     "cargento.projectCockpitProject": "storage-conformance",
+     "cargento.projectUsage.v1": "{\"storage-conformance\":1}"
+    },
+    "removed": []
+   }
+  },
+  "cockpit project and usage: legacy setProjectCockpit writes, codec reads | #3 setProjectCockpit(\"other project\")": {
+   "delta": {
+    "set": {
+     "cargento.projectCockpitProject": "other project",
+     "cargento.projectUsage.v1": "{\"storage-conformance\":1,\"other project\":1}"
+    },
+    "removed": []
+   }
+  },
+  "cockpit project and usage: legacy setProjectCockpit writes, codec reads | #4 setProjectCockpit(\"storage-conformance\")": {
+   "delta": {
+    "set": {
+     "cargento.projectCockpitProject": "storage-conformance",
+     "cargento.projectUsage.v1": "{\"storage-conformance\":2,\"other project\":1}"
+    },
+    "removed": []
+   }
+  },
+  "cockpit project and usage: legacy setProjectCockpit writes, codec reads | #5 setProjectCockpit(\"\")": {
+   "delta": {
+    "set": {
+     "cargento.projectCockpitProject": "",
+     "cargento.projectUsage.v1": "{\"storage-conformance\":2,\"other project\":1,\"\":1}"
+    },
+    "removed": []
+   }
+  },
+  "cockpit project and usage: codec writes, legacy reads at load | #1 load / inputs:8d21d919b6a7": {
+   "set": {},
+   "removed": []
+  },
+  "cockpit project and usage: codec writes, legacy reads at load | #2 projectCockpitLabel": {
+   "value": "seeded label",
+   "delta": {
+    "set": {},
+    "removed": []
+   }
+  },
+  "cockpit project and usage: codec writes, legacy reads at load | #3 Object.assign({}, projectUsage())": {
+   "value": {
+    "seeded label": 2,
+    "second": 1
+   },
+   "delta": {
+    "set": {},
+    "removed": []
+   }
+  },
+  "cockpit project and usage: codec writes, legacy reads at load | #4 load / inputs:315829155643": {
+   "set": {},
+   "removed": []
+  },
+  "cockpit project and usage: codec writes, legacy reads at load | #5 Object.assign({}, projectUsage())": {
+   "value": {
+    "a": 5,
+    "b": 7,
+    "f": 999999,
+    "g": 1,
+    "i": 3
+   },
+   "delta": {
+    "set": {},
+    "removed": []
+   }
+  },
+  "cockpit project and usage: codec writes, legacy reads at load | #6 load / inputs:4931146248e4": {
+   "set": {},
+   "removed": []
+  },
+  "cockpit project and usage: codec writes, legacy reads at load | #7 Object.assign({}, projectUsage())": {
+   "value": {
+    "k0": 1,
+    "k1": 2,
+    "k2": 3,
+    "k3": 4,
+    "k4": 5,
+    "k5": 6,
+    "k6": 7,
+    "k7": 8,
+    "k8": 9,
+    "k9": 10,
+    "k10": 11,
+    "k11": 12,
+    "k12": 13,
+    "k13": 14,
+    "k14": 15,
+    "k15": 16,
+    "k16": 17,
+    "k17": 18,
+    "k18": 19,
+    "k19": 20,
+    "k20": 21,
+    "k21": 22,
+    "k22": 23,
+    "k23": 24,
+    "k24": 25,
+    "k25": 26,
+    "k26": 27,
+    "k27": 28,
+    "k28": 29,
+    "k29": 30,
+    "k30": 31,
+    "k31": 32,
+    "k32": 33,
+    "k33": 34,
+    "k34": 35,
+    "k35": 36,
+    "k36": 37,
+    "k37": 38,
+    "k38": 39,
+    "k39": 40,
+    "k40": 41,
+    "k41": 42,
+    "k42": 43,
+    "k43": 44,
+    "k44": 45,
+    "k45": 46,
+    "k46": 47,
+    "k47": 48,
+    "k48": 49,
+    "k49": 50,
+    "k50": 51,
+    "k51": 52,
+    "k52": 53,
+    "k53": 54,
+    "k54": 55,
+    "k55": 56,
+    "k56": 57,
+    "k57": 58,
+    "k58": 59,
+    "k59": 60,
+    "k60": 61,
+    "k61": 62,
+    "k62": 63,
+    "k63": 64,
+    "k64": 65,
+    "k65": 66,
+    "k66": 67,
+    "k67": 68,
+    "k68": 69,
+    "k69": 70,
+    "k70": 71,
+    "k71": 72,
+    "k72": 73,
+    "k73": 74,
+    "k74": 75,
+    "k75": 76,
+    "k76": 77,
+    "k77": 78,
+    "k78": 79,
+    "k79": 80,
+    "k80": 81,
+    "k81": 82,
+    "k82": 83,
+    "k83": 84,
+    "k84": 85,
+    "k85": 86,
+    "k86": 87,
+    "k87": 88,
+    "k88": 89,
+    "k89": 90,
+    "k90": 91,
+    "k91": 92,
+    "k92": 93,
+    "k93": 94,
+    "k94": 95,
+    "k95": 96,
+    "k96": 97,
+    "k97": 98,
+    "k98": 99,
+    "k99": 100,
+    "k100": 101,
+    "k101": 102,
+    "k102": 103,
+    "k103": 104,
+    "k104": 105,
+    "k105": 106,
+    "k106": 107,
+    "k107": 108,
+    "k108": 109,
+    "k109": 110,
+    "k110": 111,
+    "k111": 112,
+    "k112": 113,
+    "k113": 114,
+    "k114": 115,
+    "k115": 116,
+    "k116": 117,
+    "k117": 118,
+    "k118": 119,
+    "k119": 120,
+    "k120": 121,
+    "k121": 122,
+    "k122": 123,
+    "k123": 124,
+    "k124": 125,
+    "k125": 126,
+    "k126": 127,
+    "k127": 128,
+    "k128": 129,
+    "k129": 130,
+    "k130": 131,
+    "k131": 132,
+    "k132": 133,
+    "k133": 134,
+    "k134": 135,
+    "k135": 136,
+    "k136": 137,
+    "k137": 138,
+    "k138": 139,
+    "k139": 140,
+    "k140": 141,
+    "k141": 142,
+    "k142": 143,
+    "k143": 144,
+    "k144": 145,
+    "k145": 146,
+    "k146": 147,
+    "k147": 148,
+    "k148": 149,
+    "k149": 150,
+    "k150": 151,
+    "k151": 152,
+    "k152": 153,
+    "k153": 154,
+    "k154": 155,
+    "k155": 156,
+    "k156": 157,
+    "k157": 158,
+    "k158": 159,
+    "k159": 160,
+    "k160": 161,
+    "k161": 162,
+    "k162": 163,
+    "k163": 164,
+    "k164": 165,
+    "k165": 166,
+    "k166": 167,
+    "k167": 168,
+    "k168": 169,
+    "k169": 170,
+    "k170": 171,
+    "k171": 172,
+    "k172": 173,
+    "k173": 174,
+    "k174": 175,
+    "k175": 176,
+    "k176": 177,
+    "k177": 178,
+    "k178": 179,
+    "k179": 180,
+    "k180": 181,
+    "k181": 182,
+    "k182": 183,
+    "k183": 184,
+    "k184": 185,
+    "k185": 186,
+    "k186": 187,
+    "k187": 188,
+    "k188": 189,
+    "k189": 190,
+    "k190": 191,
+    "k191": 192,
+    "k192": 193,
+    "k193": 194,
+    "k194": 195,
+    "k195": 196,
+    "k196": 197,
+    "k197": 198,
+    "k198": 199,
+    "k199": 200
+   },
+   "delta": {
+    "set": {},
+    "removed": []
+   }
+  },
+  "cockpit project and usage: codec writes, legacy reads at load | #8 load / inputs:5be966767c3c": {
+   "set": {},
+   "removed": []
+  },
+  "cockpit project and usage: codec writes, legacy reads at load | #9 Object.assign({}, projectUsage())": {
+   "value": {
+    "k0": 1,
+    "k1": 1,
+    "k2": 1,
+    "k3": 1,
+    "k4": 1,
+    "k5": 1,
+    "k6": 1,
+    "k7": 1,
+    "k8": 1,
+    "k9": 1,
+    "k10": 1,
+    "k11": 1,
+    "k12": 1,
+    "k13": 1,
+    "k14": 1,
+    "k15": 1,
+    "k16": 1,
+    "k17": 1,
+    "k18": 1,
+    "k19": 1,
+    "k20": 1,
+    "k21": 1,
+    "k22": 1,
+    "k23": 1,
+    "k24": 1,
+    "k25": 1,
+    "k26": 1,
+    "k27": 1,
+    "k28": 1,
+    "k29": 1,
+    "k30": 1,
+    "k31": 1,
+    "k32": 1,
+    "k33": 1,
+    "k34": 1,
+    "k35": 1,
+    "k36": 1,
+    "k37": 1,
+    "k38": 1,
+    "k39": 1,
+    "k40": 1,
+    "k41": 1,
+    "k42": 1,
+    "k43": 1,
+    "k44": 1,
+    "k45": 1,
+    "k46": 1,
+    "k47": 1,
+    "k48": 1,
+    "k49": 1,
+    "k50": 1,
+    "k51": 1,
+    "k52": 1,
+    "k53": 1,
+    "k54": 1,
+    "k55": 1,
+    "k56": 1,
+    "k57": 1,
+    "k58": 1,
+    "k59": 1,
+    "k60": 1,
+    "k61": 1,
+    "k62": 1,
+    "k63": 1,
+    "k64": 1,
+    "k65": 1,
+    "k66": 1,
+    "k67": 1,
+    "k68": 1,
+    "k69": 1,
+    "k70": 1,
+    "k71": 1,
+    "k72": 1,
+    "k73": 1,
+    "k74": 1,
+    "k75": 1,
+    "k76": 1,
+    "k77": 1,
+    "k78": 1,
+    "k79": 1,
+    "k80": 1,
+    "k81": 1,
+    "k82": 1,
+    "k83": 1,
+    "k84": 1,
+    "k85": 1,
+    "k86": 1,
+    "k87": 1,
+    "k88": 1,
+    "k89": 1,
+    "k90": 1,
+    "k91": 1,
+    "k92": 1,
+    "k93": 1,
+    "k94": 1,
+    "k95": 1,
+    "k96": 1,
+    "k97": 1,
+    "k98": 1,
+    "k99": 1,
+    "k100": 1,
+    "k101": 1,
+    "k102": 1,
+    "k103": 1,
+    "k104": 1,
+    "k105": 1,
+    "k106": 1,
+    "k107": 1,
+    "k108": 1,
+    "k109": 1,
+    "k110": 1,
+    "k111": 1,
+    "k112": 1,
+    "k113": 1,
+    "k114": 1,
+    "k115": 1,
+    "k116": 1,
+    "k117": 1,
+    "k118": 1,
+    "k119": 1,
+    "k120": 1,
+    "k121": 1,
+    "k122": 1,
+    "k123": 1,
+    "k124": 1,
+    "k125": 1,
+    "k126": 1,
+    "k127": 1,
+    "k128": 1,
+    "k129": 1,
+    "k130": 1,
+    "k131": 1,
+    "k132": 1,
+    "k133": 1,
+    "k134": 1,
+    "k135": 1,
+    "k136": 1,
+    "k137": 1,
+    "k138": 1,
+    "k139": 1,
+    "k140": 1,
+    "k141": 1,
+    "k142": 1,
+    "k143": 1,
+    "k144": 1,
+    "k145": 1,
+    "k146": 1,
+    "k147": 1,
+    "k148": 1,
+    "k149": 1,
+    "k150": 1,
+    "k151": 1,
+    "k152": 1,
+    "k153": 1,
+    "k154": 1,
+    "k155": 1,
+    "k156": 1,
+    "k157": 1,
+    "k158": 1,
+    "k159": 1,
+    "k160": 1,
+    "k161": 1,
+    "k162": 1,
+    "k163": 1,
+    "k164": 1,
+    "k165": 1,
+    "k166": 1,
+    "k167": 1,
+    "k168": 1,
+    "k169": 1,
+    "k170": 1,
+    "k171": 1,
+    "k172": 1,
+    "k173": 1,
+    "k174": 1,
+    "k175": 1,
+    "k176": 1,
+    "k177": 1,
+    "k178": 1,
+    "k179": 1,
+    "k180": 1,
+    "k181": 1,
+    "k182": 1,
+    "k183": 1,
+    "k184": 1,
+    "k185": 1,
+    "k186": 1,
+    "k187": 1,
+    "k188": 1,
+    "k189": 1,
+    "k190": 1,
+    "k191": 1,
+    "k192": 1,
+    "k193": 1,
+    "k194": 1,
+    "k195": 1,
+    "k196": 1,
+    "k197": 1,
+    "k198": 1
+   },
+   "delta": {
+    "set": {},
+    "removed": []
+   }
+  },
+  "cockpit project and usage: codec writes, legacy reads at load | #10 load / inputs:45c25573c26f": {
+   "set": {},
+   "removed": []
+  },
+  "cockpit project and usage: codec writes, legacy reads at load | #11 Object.assign({}, projectUsage())": {
+   "value": {},
+   "delta": {
+    "set": {},
+    "removed": []
+   }
+  },
+  "cockpit project and usage: codec writes, legacy reads at load | #12 load / inputs:9bce752de065": {
+   "set": {},
+   "removed": []
+  },
+  "cockpit project and usage: codec writes, legacy reads at load | #13 Object.assign({}, projectUsage())": {
+   "value": {},
+   "delta": {
+    "set": {},
+    "removed": []
+   }
+  },
+  "cockpit project and usage: codec writes, legacy reads at load | #14 load / inputs:3fad13cb7531": {
+   "set": {},
+   "removed": []
+  },
+  "cockpit project and usage: codec writes, legacy reads at load | #15 Object.assign({}, projectUsage())": {
+   "value": {},
+   "delta": {
+    "set": {},
+    "removed": []
+   }
+  },
+  "cockpit project and usage: codec writes, legacy reads at load | #16 load / inputs:64bce1d53cbc": {
+   "set": {},
+   "removed": []
+  },
+  "cockpit project and usage: codec writes, legacy reads at load | #17 Object.assign({}, projectUsage())": {
+   "value": {},
+   "delta": {
+    "set": {},
+    "removed": []
+   }
+  },
+  "cockpit project and usage: codec writes, legacy reads at load | #18 load / inputs:db776945dc17": {
+   "set": {},
+   "removed": []
+  },
+  "cockpit project and usage: codec writes, legacy reads at load | #19 Object.assign({}, projectUsage())": {
+   "value": {},
+   "delta": {
+    "set": {},
+    "removed": []
+   }
+  },
+  "cockpit project and usage: codec writes, legacy reads at load | #20 load / inputs:44136fa355b3": {
+   "set": {},
+   "removed": []
+  },
+  "cockpit project and usage: codec writes, legacy reads at load | #21 Object.assign({}, projectUsage())": {
+   "value": {},
+   "delta": {
+    "set": {},
+    "removed": []
+   }
+  },
+  "cockpit project and usage: codec writes, legacy reads at load | #22 load / inputs:44136fa355b3": {
+   "set": {},
+   "removed": []
+  },
+  "cockpit project and usage: codec writes, legacy reads at load | #23 projectUsageCounts = null;": {
+   "value": null,
+   "delta": {
+    "set": {},
+    "removed": []
+   }
+  },
+  "cockpit project and usage: codec writes, legacy reads at load | #24 projectRecordUse(\"fresh\")": {
+   "delta": {
+    "set": {
+     "cargento.projectUsage.v1": "{\"k0\":1,\"k1\":1,\"k2\":1,\"k3\":1,\"k4\":1,\"k5\":1,\"k6\":1,\"k7\":1,\"k8\":1,\"k9\":1,\"k10\":1,\"k11\":1,\"k12\":1,\"k13\":1,\"k14\":1,\"k15\":1,\"k16\":1,\"k17\":1,\"k18\":1,\"k19\":1,\"k20\":1,\"k21\":1,\"k22\":1,\"k23\":1,\"k24\":1,\"k25\":1,\"k26\":1,\"k27\":1,\"k28\":1,\"k29\":1,\"k30\":1,\"k31\":1,\"k32\":1,\"k33\":1,\"k34\":1,\"k35\":1,\"k36\":1,\"k37\":1,\"k38\":1,\"k39\":1,\"k40\":1,\"k41\":1,\"k42\":1,\"k43\":1,\"k44\":1,\"k45\":1,\"k46\":1,\"k47\":1,\"k48\":1,\"k49\":1,\"k50\":1,\"k51\":1,\"k52\":1,\"k53\":1,\"k54\":1,\"k55\":1,\"k56\":1,\"k57\":1,\"k58\":1,\"k59\":1,\"k60\":1,\"k61\":1,\"k62\":1,\"k63\":1,\"k64\":1,\"k65\":1,\"k66\":1,\"k67\":1,\"k68\":1,\"k69\":1,\"k70\":1,\"k71\":1,\"k72\":1,\"k73\":1,\"k74\":1,\"k75\":1,\"k76\":1,\"k77\":1,\"k78\":1,\"k79\":1,\"k80\":1,\"k81\":1,\"k82\":1,\"k83\":1,\"k84\":1,\"k85\":1,\"k86\":1,\"k87\":1,\"k88\":1,\"k89\":1,\"k90\":1,\"k91\":1,\"k92\":1,\"k93\":1,\"k94\":1,\"k95\":1,\"k96\":1,\"k97\":1,\"k98\":1,\"k99\":1,\"k100\":1,\"k101\":1,\"k102\":1,\"k103\":1,\"k104\":1,\"k105\":1,\"k106\":1,\"k107\":1,\"k108\":1,\"k109\":1,\"k110\":1,\"k111\":1,\"k112\":1,\"k113\":1,\"k114\":1,\"k115\":1,\"k116\":1,\"k117\":1,\"k118\":1,\"k119\":1,\"k120\":1,\"k121\":1,\"k122\":1,\"k123\":1,\"k124\":1,\"k125\":1,\"k126\":1,\"k127\":1,\"k128\":1,\"k129\":1,\"k130\":1,\"k131\":1,\"k132\":1,\"k133\":1,\"k134\":1,\"k135\":1,\"k136\":1,\"k137\":1,\"k138\":1,\"k139\":1,\"k140\":1,\"k141\":1,\"k142\":1,\"k143\":1,\"k144\":1,\"k145\":1,\"k146\":1,\"k147\":1,\"k148\":1,\"k149\":1,\"k150\":1,\"k151\":1,\"k152\":1,\"k153\":1,\"k154\":1,\"k155\":1,\"k156\":1,\"k157\":1,\"k158\":1,\"k159\":1,\"k160\":1,\"k161\":1,\"k162\":1,\"k163\":1,\"k164\":1,\"k165\":1,\"k166\":1,\"k167\":1,\"k168\":1,\"k169\":1,\"k170\":1,\"k171\":1,\"k172\":1,\"k173\":1,\"k174\":1,\"k175\":1,\"k176\":1,\"k177\":1,\"k178\":1,\"k179\":1,\"k180\":1,\"k181\":1,\"k182\":1,\"k183\":1,\"k184\":1,\"k185\":1,\"k186\":1,\"k187\":1,\"k188\":1,\"k189\":1,\"k190\":1,\"k191\":1,\"k192\":1,\"k193\":1,\"k194\":1,\"k195\":1,\"k196\":1,\"k197\":1,\"k198\":1,\"k199\":1,\"fresh\":1}"
+    },
+    "removed": []
+   }
+  },
+  "goal: legacy editor writes, codec reads, codec writes, legacy reads | #1 load / inputs:44136fa355b3": {
+   "set": {},
+   "removed": []
+  },
+  "goal: legacy editor writes, codec reads, codec writes, legacy reads | #2 projectGoalEditingLabel = \"goal project/é\";\n      document.body.insertAdjacentHTML('beforeend', '<div id=\"conformance-go~189034cf5cd0": {
+   "delta": {
+    "set": {},
+    "removed": []
+   }
+  },
+  "goal: legacy editor writes, codec reads, codec writes, legacy reads | #3 read the goal field maxlength": {
+   "value": "500",
+   "delta": {
+    "set": {},
+    "removed": []
+   }
+  },
+  "goal: legacy editor writes, codec reads, codec writes, legacy reads | #4 fill the goal: ship the migration": {
+   "delta": {
+    "set": {},
+    "removed": []
+   }
+  },
+  "goal: legacy editor writes, codec reads, codec writes, legacy reads | #5 projectGoalAction(\"project-goal-save\", \"goal project/é\")": {
+   "value": true,
+   "delta": {
+    "set": {
+     "cargento.projectGoal.v1:goal%20project%2F%C3%A9": "ship the migration"
+    },
+    "removed": []
+   }
+  },
+  "goal: legacy editor writes, codec reads, codec writes, legacy reads | #6 script-set the goal 900 units 501bee60db56": {
+   "delta": {
+    "set": {},
+    "removed": []
+   }
+  },
+  "goal: legacy editor writes, codec reads, codec writes, legacy reads | #7 projectGoalAction(\"project-goal-save\", \"goal project/é\")": {
+   "value": true,
+   "delta": {
+    "set": {
+     "cargento.projectGoal.v1:goal%20project%2F%C3%A9": "gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg"
+    },
+    "removed": []
+   }
+  },
+  "goal: legacy editor writes, codec reads, codec writes, legacy reads | #8 fill the goal with spaces": {
+   "delta": {
+    "set": {},
+    "removed": []
+   }
+  },
+  "goal: legacy editor writes, codec reads, codec writes, legacy reads | #9 projectGoalAction(\"project-goal-save\", \"goal project/é\")": {
+   "value": true,
+   "delta": {
+    "set": {},
+    "removed": []
+   }
+  },
+  "goal: legacy editor writes, codec reads, codec writes, legacy reads | #10 projectGoalAction(\"project-goal-clear\", \"goal project/é\")": {
+   "value": true,
+   "delta": {
+    "set": {},
+    "removed": [
+     "cargento.projectGoal.v1:goal%20project%2F%C3%A9"
+    ]
+   }
+  },
+  "goal: legacy editor writes, codec reads, codec writes, legacy reads | #11 delete projectDraftByLabel[\"goal project/é\"]": {
+   "value": true,
+   "delta": {
+    "set": {},
+    "removed": []
+   }
+  },
+  "goal: legacy editor writes, codec reads, codec writes, legacy reads | #12 projectGoal(\"goal project/é\")": {
+   "value": "padded goal",
+   "delta": {
+    "set": {},
+    "removed": []
+   }
+  },
+  "goal: legacy editor writes, codec reads, codec writes, legacy reads | #13 delete projectDraftByLabel[\"goal project/é\"]": {
+   "value": true,
+   "delta": {
+    "set": {},
+    "removed": []
+   }
+  },
+  "goal: legacy editor writes, codec reads, codec writes, legacy reads | #14 projectGoal(\"goal project/é\")": {
+   "value": "gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg",
+   "delta": {
+    "set": {},
+    "removed": []
+   }
+  },
+  "goal: legacy editor writes, codec reads, codec writes, legacy reads | #15 delete projectDraftByLabel[\"goal project/é\"]": {
+   "value": true,
+   "delta": {
+    "set": {},
+    "removed": []
+   }
+  },
+  "goal: legacy editor writes, codec reads, codec writes, legacy reads | #16 projectGoal(\"goal project/é\")": {
+   "value": "",
+   "delta": {
+    "set": {},
+    "removed": []
+   }
+  },
+  "goal: legacy editor writes, codec reads, codec writes, legacy reads | #17 load / inputs:44136fa355b3": {
+   "set": {},
+   "removed": []
+  },
+  "goal: legacy editor writes, codec reads, codec writes, legacy reads | #18 projectGoal(\"goal project/é\")": {
+   "value": "",
+   "delta": {
+    "set": {},
+    "removed": []
+   }
+  },
+  "codec writes are accepted by the real legacy page | #1 load #n=project:storage-conformance:decisions inputs:44136fa355b3": {
+   "set": {},
+   "removed": []
+  },
+  "codec writes are accepted by the real legacy page | #2 click graph mode All": {
+   "delta": {
+    "set": {
+     "cargento.next.graph.mode": "{\"storage-conformance\\u0000\":\"all\"}"
+    },
+    "removed": []
+   }
+  },
+  "codec writes are accepted by the real legacy page | #3 reload and wait for All pressed": {
+   "delta": {
+    "set": {},
+    "removed": []
+   }
+  },
+  "codec writes are accepted by the real legacy page | #4 Object.fromEntries(projectGraphModeBySession)": {
+   "value": {
+    "storage-conformance\u0000": "all",
+    "another project\u0000sid:2": "decisions"
+   },
+   "delta": {
+    "set": {},
+    "removed": []
+   }
+  },
+  "codec writes are accepted by the real legacy page | #5 load #n=project:storage-conformance:console inputs:366a3d374597": {
+   "set": {},
+   "removed": []
+  },
+  "codec writes are accepted by the real legacy page | #6 wait for a guardrail": {
+   "delta": {
+    "set": {},
+    "removed": []
+   }
+  },
+  "codec writes are accepted by the real legacy page | #7 read every guardrail text": {
+   "value": [
+    "rule 5",
+    "rule 6",
+    "rule 7",
+    "rule 8",
+    "rule 9",
+    "rule 10",
+    "rule 11",
+    "rule 12",
+    "rule 13",
+    "rule 14",
+    "rule 15",
+    "rule 16",
+    "rule 17",
+    "rule 18",
+    "rule 19",
+    "rule 20",
+    "rule 21",
+    "rule 22",
+    "rule 23",
+    "rule 24",
+    "rule 25",
+    "rule 26",
+    "rule 27",
+    "rule 28",
+    "rule 29",
+    "rule 30",
+    "rule 31",
+    "rule 32",
+    "rule 33",
+    "rule 34",
+    "rule 35",
+    "rule 36",
+    "rule 37",
+    "rule 38",
+    "rule 39",
+    "rule 40",
+    "rule 41",
+    "rule 42",
+    "rule 43",
+    "rule 44",
+    "rule 45",
+    "rule 46",
+    "rule 47",
+    "rule 48",
+    "rule 49",
+    "rule 50",
+    "rule 51",
+    "rule 52",
+    "rule 53",
+    "rule 54"
+   ],
+   "delta": {
+    "set": {},
+    "removed": []
+   }
+  },
+  "codec writes are accepted by the real legacy page | #8 load / inputs:15a928fad829": {
+   "set": {},
+   "removed": []
+  },
+  "codec writes are accepted by the real legacy page | #9 wait 500 ms": {
+   "delta": {
+    "set": {},
+    "removed": []
+   }
+  },
+  "codec writes are accepted by the real legacy page | #10 nextIsLeader": {
+   "value": false,
+   "delta": {
+    "set": {},
+    "removed": []
+   }
+  },
+  "codec writes are accepted by the real legacy page | #11 the page requested /api/stream": {
+   "value": false,
+   "delta": {
+    "set": {},
+    "removed": []
+   }
+  },
+  "codec writes are accepted by the real legacy page | #12 wait for the takeover and its stream": {
+   "delta": {
+    "set": {
+     "cargento.next.leader": "{\"id\":\"@tab\",\"ts\":\"@now\"}"
+    },
+    "removed": []
+   }
+  },
+  "codec writes are accepted by the real legacy page | #13 the page requested /api/stream": {
+   "value": true,
+   "delta": {
+    "set": {},
+    "removed": []
+   }
+  },
+  "codec writes are accepted by the real legacy page | #14 NEXT_TAB_ID": {
+   "value": "@tab",
+   "delta": {
+    "set": {},
+    "removed": []
+   }
+  },
+  "codec writes are accepted by the real legacy page | #15 load #n=project:storage-conformance inputs:d2fae94df885": {
+   "set": {},
+   "removed": []
+  },
+  "codec writes are accepted by the real legacy page | #16 nextCockpitBoundMemo(\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa~8a095243f73a": {
+   "value": true,
+   "delta": {
+    "set": {},
+    "removed": []
+   }
+  },
+  "codec writes are accepted by the real legacy page | #17 wait for the outcome field": {
+   "delta": {
+    "set": {},
+    "removed": []
+   }
+  },
+  "codec writes are accepted by the real legacy page | #18 the outcome field is 500 units long": {
+   "value": 500,
+   "delta": {
+    "set": {},
+    "removed": []
+   }
+  },
+  "reads write nothing, in the codec and in legacy | #1 load / inputs:ac37a6e7290a": {
+   "set": {},
+   "removed": []
+  },
+  "reads write nothing, in the codec and in legacy | #2 (() => {\n      const writes = [];\n      const original = {};\n      for (const method of ['setItem', 'removeItem', 'clear~602f99443a1e": {
+   "value": [],
+   "delta": {
+    "set": {},
+    "removed": []
+   }
+  }
+ }
+}

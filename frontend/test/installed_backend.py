@@ -144,8 +144,6 @@ def parse_args() -> argparse.Namespace:
     args = parser.parse_args()
     if args.port != 0 and not 4581 <= args.port <= 4599:
         parser.error("owned smoke port must be 0 or 4581..4599")
-    if args.terminal_fixture and args.frontend != "legacy":
-        parser.error("the existing Console smoke belongs to legacy, not the React scaffold")
     if args.focus_token and (
         len(args.focus_token) > 128 or not set(args.focus_token) <= set("0123456789abcdefABCDEF")
     ):

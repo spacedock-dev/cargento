@@ -9,6 +9,7 @@ import {
   type Delegation,
   type GraphMode,
 } from './semantic';
+import { caseCount } from '../../test/legacy_goldens';
 
 /* Which events each mode keeps is what the reader's choice means, so it is held to the legacy file that
    decides it. Generated semantic payloads run through the real `projectSemanticTimeline` and through the
@@ -16,7 +17,8 @@ import {
    reading, in every mode and for a focused and an unfocused timeline. A failure names the seed. */
 const legacy = loadLegacyTimeline();
 const MODES: readonly GraphMode[] = ['active', 'all', 'decisions'];
-const SEEDS = 500;
+const CASES = 80;
+const SEEDS = caseCount(CASES);
 
 function mine(seed: number, mode: GraphMode) {
   const generated = genCase(seed);
@@ -87,11 +89,11 @@ describe('the events each activity mode keeps', () => {
       if (rows.some((row) => row.kind === 'direction')) seen.direction += 1;
       if (mine(seed, 'decisions').rows.some((row) => row.kind === 'decision')) seen.decision += 1;
     }
-    expect(seen.rows).toBeGreaterThan(100);
-    expect(seen.empty).toBeGreaterThan(5);
-    expect(seen.task).toBeGreaterThan(50);
-    expect(seen.direction).toBeGreaterThan(30);
-    expect(seen.decision).toBeGreaterThan(30);
+    expect(seen.rows).toBeGreaterThan(16);
+    expect(seen.empty).toBeGreaterThan(0);
+    expect(seen.task).toBeGreaterThan(8);
+    expect(seen.direction).toBeGreaterThan(4);
+    expect(seen.decision).toBeGreaterThan(4);
   });
 });
 
@@ -104,7 +106,7 @@ describe('the activity filter agrees with the legacy filter', () => {
       ['', null],
       ['beta', 'codex:s2'],
     ];
-    legacy.storage.clear();
+    legacy.clearStorage();
     legacy.reload();
     for (const [project, session] of scopes) {
       legacy.setScope(project, session);

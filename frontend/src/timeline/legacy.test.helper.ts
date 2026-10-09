@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import vm from 'node:vm';
+import { legacyHarness } from '../../test/legacy_goldens';
 
 /* The legacy page's semantic timeline and activity filter, run as the page runs them, for the differential
    tests. The legacy source is the oracle: the page stays the rollback while this one is built, so the port
@@ -14,6 +15,8 @@ export interface LegacyTimeline {
   /** `nextRoute` and `projectQuerySession`, the two globals the filter's scope reads. */
   setScope(project: string, session: string | null): void;
   reload(): void;
+  /** Empties the `localStorage` the filter writes to, as a cleared browser would. */
+  clearStorage(): void;
   timeline(
     data: unknown,
     model: unknown,
@@ -26,7 +29,7 @@ export interface LegacyTimeline {
   resolveGraphMode(options?: Record<string, unknown>): string;
 }
 
-export function loadLegacyTimeline(): LegacyTimeline {
+function buildLegacyTimeline(): LegacyTimeline {
   const storage = new Map<string, string>();
   const localStorage = {
     getItem: (key: string) => storage.get(key) ?? null,
@@ -72,6 +75,9 @@ export function loadLegacyTimeline(): LegacyTimeline {
         sandbox,
       );
     },
+    clearStorage() {
+      storage.clear();
+    },
     reload() {
       // A reload is a new page: the module state is gone and only `localStorage` remains.
       vm.runInContext('projectGraphModeBySession.clear(); projectLoadGraphModes();', sandbox);
@@ -113,4 +119,12 @@ export function legacyRows(html: string): LegacyRow[] {
 
 export function legacyEmptyText(html: string): string | null {
   return /<p class="pc-substrate-empty">([^<]*)<\/p>/.exec(html)?.[1] ?? null;
+}
+
+export function loadLegacyTimeline(): LegacyTimeline {
+  return legacyHarness('timeline', buildLegacyTimeline, {
+    slots: { setScope: 'scope' },
+    observe: ['timeline', 'resolveGraphMode'],
+    props: ['storage'],
+  });
 }

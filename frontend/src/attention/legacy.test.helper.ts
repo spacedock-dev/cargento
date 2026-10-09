@@ -1,7 +1,8 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import vm from 'node:vm';
-import { loadLegacyViews, type LegacyViews } from '../observed/legacy.test.helper';
+import { legacyHarness } from '../../test/legacy_goldens';
+import { buildLegacyViews, type LegacyViews } from '../observed/legacy.test.helper';
 
 /* The legacy page's Attention model, its text builders and its view, run as the page runs them, for the
    differential tests. The legacy source is the oracle: the page stays the rollback while this one is
@@ -37,8 +38,8 @@ export interface LegacyAttention extends LegacyViews {
   attentionHtml(payload: unknown, expanded?: readonly string[], open?: readonly string[]): string;
 }
 
-export function loadLegacyAttention(): LegacyAttention {
-  const base = loadLegacyViews();
+function buildLegacyAttention(): LegacyAttention {
+  const base = buildLegacyViews();
   const { sandbox } = base;
   vm.runInContext(read('next-attention.js'), sandbox, { filename: 'next-attention.js' });
   vm.runInContext(
@@ -76,4 +77,17 @@ export function loadLegacyAttention(): LegacyAttention {
         );
     },
   };
+}
+
+export function loadLegacyAttention(): LegacyAttention {
+  return legacyHarness('attention', buildLegacyAttention, {
+    // The model and the announcement set the data they read, so their answers depend on their arguments alone.
+    pure: ['model', 'announcement'],
+    slots: {
+      setData: 'data',
+      model: 'data',
+      attentionHtml: 'data',
+      setFocusCapability: 'capability',
+    },
+  });
 }

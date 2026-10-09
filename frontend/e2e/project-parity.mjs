@@ -13,6 +13,14 @@
  * through the board's own revisions and through tab changes; a scope survives leaving the project and coming
  * back; an open plan survives a poll; and 320, 375 and 640 CSS px layouts do not scroll sideways.
  *
+ * The legacy side of the DIFFERENTIAL half is a RECORDING (`support/golden.mjs`, `CARGENTO_LEGACY=replay|live|record`,
+ * default replay): in replay no legacy backend or page is started and the React page is held to what the legacy
+ * page said, for the same board, when it was recorded. A recorded reading is keyed by the step, the fragment and
+ * a digest of the board and contexts served, so a changed generator or fixture fails as "no golden" instead of
+ * comparing nothing. Every browser here runs in UTC, because the pages print clock times in the local zone and a
+ * recording must read the same on any machine. Dropped from replay, because nothing asserted against them: the
+ * legacy page's screenshots.
+ *
  * Models, usage, notifications and the terminal are off or replaced: the page's clipboard is a recorder, the
  * backend serving both pages answers only the document and its health, and every board and project-context read
  * is the one this script serves. The Decisions and Console tabs and the steering bar belong to the steering step
@@ -26,7 +34,9 @@ import assert from 'node:assert/strict';
 import { mkdir } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { chromium } from '@playwright/test';
+import { createHash } from 'node:crypto';
 import { openPage } from './support/browser.mjs';
+import { goldenFor, jsonSafe, normalise } from './support/golden.mjs';
 import {
   instrumentResources,
   recordClipboard,
@@ -35,6 +45,10 @@ import {
 } from './sessions-board.mjs';
 
 const patience = (ms) => (process.env.CI ? ms * 3 : ms);
+const golden = goldenFor('project-parity');
+const LIVE = golden.live;
+/* The React reading in the stable form a recorded observation has, so the two compare as plain data. */
+const norm = (value) => jsonSafe(normalise(value));
 // The key that undoes in a text box: Command on macOS, Control elsewhere.
 const MOD = process.platform === 'darwin' ? 'Meta' : 'Control';
 
@@ -211,13 +225,20 @@ async function freeze(opened, holder) {
   await opened.page.route('**/api/stream', (route) => route.abort('failed'));
 }
 
-function firstDifference(left, right, path = '$') {
+/* The first place two readings differ, each taken in its stored form, so a live reading and a recorded one meet
+   as the same kind of data. */
+function firstDifference(left, right) {
+  return firstDifferenceIn(norm(left), norm(right), '$');
+}
+function firstDifferenceIn(left, right, path) {
   if (JSON.stringify(left) === JSON.stringify(right)) return null;
   if (left && right && typeof left === 'object' && typeof right === 'object') {
     for (const key of new Set([...Object.keys(left), ...Object.keys(right)])) {
-      const found = firstDifference(left[key], right[key], `${path}.${key}`);
+      const found = firstDifferenceIn(left[key], right[key], `${path}.${key}`);
       if (found) return found;
     }
+    // A recording stores its keys sorted, so two readings of one shape can differ only in key order.
+    return null;
   }
   return `${path}: ${JSON.stringify(left)?.slice(0, 260)} != ${JSON.stringify(right)?.slice(0, 260)}`;
 }
@@ -226,6 +247,40 @@ function firstDifference(left, right, path = '$') {
    and returning, so a legacy page that does not draw is recorded and the React page is still held to every
    assertion; a comparison with legacy only runs while legacy draws. */
 const legacyDraw = { stale: false };
+
+class LegacyDidNotDraw extends Error {}
+
+/* The legacy page's reading under `key`. Replay reads the recording. Live and record read the page, and a page that
+   stops drawing is soft in live (React is then held to the recording, when there is one) and a refusal in record,
+   because a recording must come from a legacy page that drew every time. A golden mismatch is never soft. */
+async function legacySays(key, read) {
+  if (golden.mode === 'replay') return golden.observe(key, read);
+  const fallback = () => {
+    if (golden.mode === 'record')
+      throw new Error(
+        `The legacy page did not draw while recording "${key}"; record again on an idle machine.`,
+      );
+    return golden.recorded(key) ?? null;
+  };
+  if (legacyDraw.stale) return fallback();
+  try {
+    return await golden.observe(key, async () => {
+      try {
+        return await read();
+      } catch (error) {
+        throw new LegacyDidNotDraw(error.message, { cause: error });
+      }
+    });
+  } catch (error) {
+    if (!(error instanceof LegacyDidNotDraw)) throw error;
+    legacyDraw.stale = true;
+    return fallback();
+  }
+}
+
+/* What was served, as a short digest: part of a recorded key, so a board that changed is a key that is absent. */
+const digestOf = (value) =>
+  createHash('sha256').update(JSON.stringify(value)).digest('hex').slice(0, 10);
 
 /* A difference found by the comparison is a failure unless it is named here with its reason. */
 const DEVIATIONS = [];
@@ -246,8 +301,8 @@ const labelsOf = (board) => [
 const fragmentFor = (label, { focus, tab } = {}) =>
   `#n=project:${E(label)}${focus ? `:${E(focus)}` : ''}${tab && tab !== 'now' ? `:${tab}` : ''}`;
 
-const browser = await chromium.launch();
-const board = await startSessionsBoard({ legacy: true });
+const browser = await chromium.launch({ env: { ...process.env, TZ: 'UTC' } });
+const board = await startSessionsBoard({ legacy: LIVE });
 const reactOrigins = [board.react.origin, board.react.viteOrigin];
 const opened = [];
 async function newPage(kind, options = {}) {
@@ -264,30 +319,32 @@ async function newPage(kind, options = {}) {
 
 try {
   await mkdir(SHOTS, { recursive: true });
-  const legacy = await newPage('legacy');
+  const legacy = LIVE ? await newPage('legacy') : null;
   const react = await newPage('react');
   const holder = { body: proof.board, contexts: contextsFor(proof.contexts) };
-  await freeze(legacy, holder);
+  if (legacy) await freeze(legacy, holder);
   await freeze(react, holder);
+  /* The pages that exist: the legacy page is started only to be read or recorded. */
+  const pages = LIVE ? [legacy, react] : [react];
 
-  async function both(fragment, read, ...args) {
+  /* `name` says what is being compared, and the key adds the fragment and what the board and contexts held at the
+     moment, so two reads of one fragment over different boards are different keys. */
+  async function both(name, fragment, read, ...args) {
     await load(react, board.react.origin, 'react', fragment);
     const mine = await settled(react.page, read, ...args);
-    if (legacyDraw.stale) return { mine, old: null };
-    try {
+    const key = `${name} | ${fragment} | ${digestOf([holder.body, holder.contexts, args])}`;
+    const old = await legacySays(key, async () => {
       await load(legacy, board.legacy.origin, 'legacy', fragment);
-      return { mine, old: await settled(legacy.page, read, ...args) };
-    } catch {
-      legacyDraw.stale = true;
-      return { mine, old: null };
-    }
+      return settled(legacy.page, read, ...args);
+    });
+    return { mine, old };
   }
 
   /* ===================== DIFFERENTIAL: the proof board ===================== */
   await step(
     'differential: the Projects list reads the same, group by group and row by row',
     async () => {
-      const { mine, old } = await both('#n=projects', summarizeList);
+      const { mine, old } = await both('the list', '#n=projects', summarizeList);
       assert.ok(mine.groups?.length === 2, 'the React list draws both groups');
       const rows = mine.groups.reduce((sum, group) => sum + group.rows.length, 0);
       assert.ok(rows >= 6, `the proof board carries its projects (${rows})`);
@@ -300,7 +357,12 @@ try {
     const compared = [];
     for (const label of labelsOf(proof.board).filter(Boolean)) {
       for (const tab of ['now', 'course']) {
-        const { mine, old } = await both(fragmentFor(label, { tab }), summarizeProject, tab);
+        const { mine, old } = await both(
+          'a project',
+          fragmentFor(label, { tab }),
+          summarizeProject,
+          tab,
+        );
         assert.ok(mine.header, `${label} ${tab}: the page drew its project`);
         if (old) assert.equal(firstDifference(old, mine), null, `${label} ${tab}`);
         compared.push(`${label}:${tab}`);
@@ -318,6 +380,7 @@ try {
         const focus = `${row.harness}:${row.sid}`;
         for (const tab of ['now', 'course']) {
           const { mine, old } = await both(
+            'an exact session',
             fragmentFor('alpha/app', { focus, tab }),
             summarizeProject,
             tab,
@@ -342,30 +405,39 @@ try {
         sessions: [],
       };
       {
-        const { mine, old } = await both('#n=projects', summarizeList);
+        const { mine, old } = await both('no sessions: the list', '#n=projects', summarizeList);
         if (old) assert.equal(firstDifference(old, mine), null, 'no sessions: the list');
         assert.ok(mine.groups.every((group) => group.rows.length === 0 && group.empty));
         results.noSessions = mine.groups.map((group) => group.empty);
-        const gone = await both(fragmentFor('alpha/app'), summarizeProject, 'now');
+        const gone = await both(
+          'no sessions: a project',
+          fragmentFor('alpha/app'),
+          summarizeProject,
+          'now',
+        );
         if (gone.old)
           assert.equal(firstDifference(gone.old.empty.text, gone.mine.empty.text), null);
         assert.match(gone.mine.empty.text, /not present in the current payload/i);
       }
       holder.body = proof.board;
       {
-        const stale = await both(fragmentFor('alpha/app', { focus: 'claude:gone' }), () =>
-          globalThis.document
-            .querySelector('[data-next-view-body="project"]')
-            ?.textContent.replace(/\s+/g, ' ')
-            .trim(),
+        const stale = await both(
+          'a stale focus',
+          fragmentFor('alpha/app', { focus: 'claude:gone' }),
+          () =>
+            globalThis.document
+              .querySelector('[data-next-view-body="project"]')
+              ?.textContent.replace(/\s+/g, ' ')
+              .trim(),
         );
-        if (stale.old) assert.equal(stale.old, stale.mine, 'the stale focus');
+        if (stale.old) assert.equal(stale.old, norm(stale.mine), 'the stale focus');
         assert.match(stale.mine, /Session filter is outside this payload window/);
         results.staleFocus = stale.mine;
       }
       holder.contexts = {};
       {
         const failed = await both(
+          'a failed read',
           fragmentFor('alpha/app', { tab: 'course' }),
           summarizeProject,
           'course',
@@ -384,10 +456,15 @@ try {
   await step(
     'differential: a project with no plan, and one that ended without an end stamp',
     async () => {
-      const beta = await both(fragmentFor('beta/api'), summarizeProject, 'now');
+      const beta = await both('no plan', fragmentFor('beta/api'), summarizeProject, 'now');
       if (beta.old) assert.equal(firstDifference(beta.old, beta.mine), null, 'beta/api');
       assert.ok(!/PLAN\b/.test(beta.mine.panel) || /No live session plan/.test(beta.mine.panel));
-      const alpha = await both(fragmentFor('alpha/app'), summarizeProject, 'now');
+      const alpha = await both(
+        'ended without a stamp',
+        fragmentFor('alpha/app'),
+        summarizeProject,
+        'now',
+      );
       assert.match(alpha.mine.panel, /HOW THINGS ENDED/);
       assert.match(alpha.mine.panel, /Ended with uncommitted work/);
       return { noPlan: 'stated', ended: 'in HOW THINGS ENDED' };
@@ -409,7 +486,7 @@ try {
           const context = genContext(seed, generated);
           if (context) holder.contexts[`${stableKeyOf(generated, label)}\n`] = context;
         }
-        const list = await both('#n=projects', summarizeList);
+        const list = await both(`seed ${seed} list`, '#n=projects', summarizeList);
         if (list.old) {
           const found = firstDifference(list.old, list.mine);
           if (found && !DEVIATIONS.some((d) => d.seed === seed && d.scope === 'list'))
@@ -418,7 +495,12 @@ try {
         lists += 1;
         for (const label of labels.slice(0, 2)) {
           const tab = seed % 2 ? 'now' : 'course';
-          const page = await both(fragmentFor(label, { tab }), summarizeProject, tab);
+          const page = await both(
+            `seed ${seed} project`,
+            fragmentFor(label, { tab }),
+            summarizeProject,
+            tab,
+          );
           if (page.old) {
             const found = firstDifference(page.old, page.mine);
             if (found && !DEVIATIONS.some((d) => d.seed === seed && d.scope === label))
@@ -455,7 +537,7 @@ try {
         })),
       };
       holder.contexts = {};
-      const list = await both('#n=projects', summarizeList);
+      const list = await both('hostile: the list', '#n=projects', summarizeList);
       if (list.old) assert.equal(firstDifference(list.old, list.mine), null);
       assert.equal(await react.page.evaluate(() => globalThis.__hit), undefined, 'no handler ran');
       assert.equal(
@@ -464,7 +546,7 @@ try {
         'no element was injected',
       );
       const label = hostile[0];
-      const page = await both(fragmentFor(label), summarizeProject, 'now');
+      const page = await both('hostile: the project', fragmentFor(label), summarizeProject, 'now');
       assert.ok(page.mine.header.includes('img src'), 'the label is drawn as text');
       if (page.old) assert.equal(firstDifference(page.old, page.mine), null);
       holder.body = proof.board;
@@ -751,11 +833,9 @@ try {
         ),
       });
       const results = {};
-      for (const [name, origin, kind] of [
-        ['react', board.react.origin, 'react'],
-        ['legacy', board.legacy.origin, 'legacy'],
-      ]) {
-        const o = name === 'react' ? react : legacy;
+      /* The changes a page listed after two further boards reached it. Each row begins with the clock time the page
+         saw it, which is the moment of the run, so a reading is the last two rows without it. */
+      const listed = async (o, origin, kind) => {
         holder.body = proof.board;
         await load(o, origin, kind, fragmentFor('alpha/app', { tab: 'course' }));
         // Two further boards reach the page the way a poll would: the legacy page and this one both observe them.
@@ -774,21 +854,25 @@ try {
           );
           await o.page.waitForTimeout(patience(400));
         }
-        results[name] = await settled(o.page, () => ({
+        return settled(o.page, () => ({
           rows: [...globalThis.document.querySelectorAll('.next-project-change')].map((row) =>
             row.textContent.replace(/\s+/g, ' ').trim(),
           ),
           note: globalThis.document.querySelector('[data-next-workstream-toggle] small')
             ?.textContent,
         }));
-      }
+      };
+      const lastTwo = (reading) =>
+        reading.rows.slice(-2).map((row) => row.replace(/^\d\d:\d\d/, ''));
+      results.react = await listed(react, board.react.origin, 'react');
+      const legacyRows = await golden.observe(
+        'workstream: the changes the legacy page listed',
+        async () => lastTwo(await listed(legacy, board.legacy.origin, 'legacy')),
+      );
       holder.body = proof.board;
       assert.ok(results.react.rows.length >= 1, 'this tab observed a change');
       // The reload of both pages above read the board once each, so each saw the same two changes.
-      assert.deepEqual(
-        results.react.rows.slice(-2).map((row) => row.replace(/^\d\d:\d\d/, '')),
-        results.legacy.rows.slice(-2).map((row) => row.replace(/^\d\d:\d\d/, '')),
-      );
+      assert.deepEqual(lastTwo(results.react), legacyRows);
       return results.react;
     },
   );
@@ -1075,31 +1159,26 @@ try {
     'keyboard: a project row opens with Enter, the tab strip wraps with the arrows, and a scope is reached by Tab',
     async () => {
       const results = {};
-      for (const [name, origin, kind, opened_] of [
-        ['legacy', board.legacy.origin, 'legacy', legacy],
-        ['react', board.react.origin, 'react', react],
-      ]) {
-        if (name === 'legacy' && legacyDraw.stale) continue;
-        try {
-          await load(opened_, origin, kind, '#n=projects');
-          await opened_.page.evaluate(() => globalThis.document.activeElement?.blur());
-          let stops = 0;
-          for (; stops < 60; stops += 1) {
-            await opened_.page.keyboard.press('Tab');
-            const onRow = await opened_.page.evaluate(
-              () => globalThis.document.activeElement?.matches('article.next-project-row') === true,
-            );
-            if (onRow) break;
-          }
-          assert.ok(stops < 60, `${name}: a project row is reachable by Tab`);
-          await opened_.page.keyboard.press('Enter');
-          await opened_.page.waitForFunction(() => globalThis.location.hash.includes('project:'));
-          results[name] = { opens: await opened_.page.evaluate(() => globalThis.location.hash) };
-        } catch (error) {
-          if (name === 'legacy') legacyDraw.stale = true;
-          else throw error;
+      const openRow = async (name, opened_, origin, kind) => {
+        await load(opened_, origin, kind, '#n=projects');
+        await opened_.page.evaluate(() => globalThis.document.activeElement?.blur());
+        let stops = 0;
+        for (; stops < 60; stops += 1) {
+          await opened_.page.keyboard.press('Tab');
+          const onRow = await opened_.page.evaluate(
+            () => globalThis.document.activeElement?.matches('article.next-project-row') === true,
+          );
+          if (onRow) break;
         }
-      }
+        assert.ok(stops < 60, `${name}: a project row is reachable by Tab`);
+        await opened_.page.keyboard.press('Enter');
+        await opened_.page.waitForFunction(() => globalThis.location.hash.includes('project:'));
+        return { opens: await opened_.page.evaluate(() => globalThis.location.hash) };
+      };
+      results.legacy = await legacySays('keyboard: a project row opens with Enter', () =>
+        openRow('legacy', legacy, board.legacy.origin, 'legacy'),
+      );
+      results.react = await openRow('react', react, board.react.origin, 'react');
       if (results.legacy) assert.deepEqual(results.react, results.legacy);
       const o = react;
       await o.page.waitForSelector('article.next-project-detail');
@@ -1242,9 +1321,13 @@ try {
     async () => {
       const results = {};
       for (const width of [375, 1280]) {
-        for (const o of [react, legacy]) await o.page.setViewportSize({ width, height: 900 });
+        for (const o of pages) await o.page.setViewportSize({ width, height: 900 });
         for (const tab of ['now', 'course']) {
-          const { mine, old } = await both(fragmentFor('alpha/app', { tab }), computedLayout);
+          const { mine, old } = await both(
+            `computed style at ${width}`,
+            fragmentFor('alpha/app', { tab }),
+            computedLayout,
+          );
           // Held to fixed values as well as to legacy's, so a legacy page that did not draw cannot excuse a regression.
           assert.equal(
             mine.panel['padding-left'],
@@ -1274,7 +1357,7 @@ try {
           };
         }
       }
-      for (const o of [react, legacy]) await o.page.setViewportSize({ width: 1280, height: 720 });
+      for (const o of pages) await o.page.setViewportSize({ width: 1280, height: 720 });
       return results;
     },
   );
@@ -1284,10 +1367,10 @@ try {
     'screenshots: the list and a project page, on both pages, wide and narrow',
     async () => {
       for (const [name, o, origin, kind] of [
-        ['legacy', legacy, board.legacy.origin, 'legacy'],
+        ['legacy', legacy, board.legacy?.origin, 'legacy'],
         ['react', react, board.react.origin, 'react'],
       ]) {
-        if (name === 'legacy' && legacyDraw.stale) continue;
+        if (name === 'legacy' && (!LIVE || legacyDraw.stale)) continue;
         for (const [label, fragment] of [
           ['projects-list', '#n=projects'],
           ['project-alpha-now', fragmentFor('alpha/app')],
@@ -1318,12 +1401,18 @@ try {
   await board.close();
 }
 
+try {
+  golden.finish({ complete: !only && failures.length === 0 });
+} catch (error) {
+  failures.push({ name: 'golden', message: String(error.message) });
+}
+
 console.log(
   JSON.stringify(
     {
       project: receipts,
       deviations: DEVIATIONS,
-      legacyDrew: !legacyDraw.stale,
+      legacyDrew: LIVE ? !legacyDraw.stale : 'replayed from the recording',
       screenshots: shots,
     },
     null,

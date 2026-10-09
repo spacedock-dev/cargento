@@ -8,6 +8,9 @@
  * and compares what a reader can observe. `CARGENTO_MUTATION` names one deliberate break in the scratch
  * copy (see MUTATIONS in the calling script); the run is then expected to FAIL.
  *
+ * In `CARGENTO_LEGACY=replay` (the default) the legacy backend is not started and `world.legacy` is null: the
+ * legacy side is read from recorded observations (`support/golden.mjs`).
+ *
  * `openTracked` is `openPage` plus what these tests need and `openPage` does not record: every frame the
  * PAGE sent on a WebSocket, counted where the browser hands it to the network, and each socket's close.
  *
@@ -21,6 +24,7 @@ import { appendFile, cp, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { isolatedEnvironment } from '../dev/protocol.mjs';
+import { LEGACY_LIVE } from './support/golden.mjs';
 import { PRODUCTION, startReactWorld } from './support/world.mjs';
 import { freePorts, openPage, REPOSITORY, refreshReact } from './support/browser.mjs';
 
@@ -178,12 +182,17 @@ export async function startWorld({
       }
     }
     const legacyPort = ports[2];
+    world.legacy = null;
     world.react = {
       origin: dev.origin,
       viteOrigin: dev.viteOrigin,
       control: join(dev.scratch, 'state/terminal-fixture/control.ndjson'),
     };
 
+    if (!LEGACY_LIVE) {
+      await waitForRegistration(world.react.origin);
+      return world;
+    }
     legacyScratch = await mkdtemp(join(tmpdir(), 'cargento-terminal-legacy-'));
     await mkdir(join(legacyScratch, 'no-executables'));
     const args = [

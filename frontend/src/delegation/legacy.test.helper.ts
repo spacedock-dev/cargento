@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import vm from 'node:vm';
+import { legacyHarness } from '../../test/legacy_goldens';
 
 /* The legacy page's workstream evidence store and delegation arithmetic, run as the page runs them, for the
    differential tests. The legacy source is the oracle: the page stays the rollback while this one is built,
@@ -27,7 +28,7 @@ export interface LegacyDelegation {
   label(window: unknown): string;
 }
 
-export function loadLegacyDelegation(): LegacyDelegation {
+function buildLegacyDelegation(): LegacyDelegation {
   const storage = new Map<string, string>();
   const sandbox: Record<string, unknown> = {
     localStorage: {
@@ -85,4 +86,12 @@ export function loadLegacyDelegation(): LegacyDelegation {
     trend: (window) => call('nextDelegationTrend', window),
     label: (window) => call('nextWorkstreamWindowLabel', window),
   };
+}
+
+export function loadLegacyDelegation(): LegacyDelegation {
+  return legacyHarness('delegation', buildLegacyDelegation, {
+    pure: ['metric', 'trend', 'label'],
+    observe: ['window', 'history'],
+    reset: ['reset'],
+  });
 }
