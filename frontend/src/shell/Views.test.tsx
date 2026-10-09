@@ -1,6 +1,5 @@
 import { act, fireEvent, screen } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
-import { OWNERS } from './owners';
 import { BOARD, mountShell } from './testing';
 
 async function open(fragment: string, data: unknown = BOARD) {
@@ -9,15 +8,13 @@ async function open(fragment: string, data: unknown = BOARD) {
   return page;
 }
 
-describe('a view this step does not own says so, and names the step that does', () => {
-  it.each([['#n=attention', 'attention']])('%s is owned by %s', async (fragment, step) => {
-    await open(fragment);
-    const note = document.querySelector('[data-next-placeholder]');
-    expect(note?.getAttribute('data-next-owner')).toBe(step);
-    expect(note?.textContent).toContain('a later migration step');
-    expect(note?.textContent).not.toMatch(/DRC-/);
-    expect(note?.textContent).toContain('not available in the React interface yet');
-    expect(document.body.textContent).not.toContain('Session views are not available');
+describe('every top-level view is drawn by its own screen', () => {
+  it('draws Attention itself, with no stated slot standing in for it', async () => {
+    await open('#n=attention');
+    expect(document.querySelector('[data-next-placeholder]')).toBeNull();
+    expect(document.querySelector('[data-next-view-body="attention"]')).not.toBeNull();
+    expect(document.querySelector('[data-next-attention-section="risk"]')).not.toBeNull();
+    expect(document.body.textContent).not.toContain('not available in the React interface yet');
   });
 
   it('draws the Projects list and a project page themselves, with a stated slot only where the steering step is still to come', async () => {
@@ -39,10 +36,6 @@ describe('a view this step does not own says so, and names the step that does', 
     expect(document.querySelector('article.next-session-detail')).not.toBeNull();
     expect(document.querySelector('[data-next-placeholder]')).toBeNull();
     expect(document.querySelector('.next-session-drift')).not.toBeNull();
-  });
-
-  it('keeps one owner per view in a table the later steps read', () => {
-    expect(Object.keys(OWNERS).sort()).toEqual(['attention']);
   });
 });
 

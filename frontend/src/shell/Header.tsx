@@ -1,4 +1,6 @@
+import { AttentionAnnouncer } from '../attention';
 import { MoreMenu } from '../controls/MoreMenu';
+import { NotificationControl } from '../notify';
 import { useFocusKey } from '../controls/useFocusKey';
 import { splitSessKey, stableProjectKey } from '../api/identity';
 import { payloadSessions } from '../api/bootstrap';
@@ -111,7 +113,9 @@ export function Header({ route }: { readonly route: Route }) {
             {`${String(counts.gates)} ${counts.gates === 1 ? 'reported block' : 'reported blocks'}`}
           </button>
         ) : null}
+        <NotificationControl />
         {route.view === 'project' ? <ProjectMore route={route} counts={counts} /> : null}
+        <AttentionAnnouncer />
       </div>
     </header>
   );

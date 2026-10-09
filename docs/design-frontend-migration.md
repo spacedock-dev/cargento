@@ -223,11 +223,9 @@ differences from the legacy page: the header says "Waiting for the first board."
 payload, where legacy printed zeros that read as a measured empty board, and Retry uses
 `aria-disabled` instead of `disabled` so keyboard focus survives its own removal.
 
-Named for later steps rather than missing: the control that copies a session link arrives with the
-sessions step, the "Attention updated" announcement with the Attention step, the notification
-control with the notification step, and the project briefing with the project view. Until the
-briefing exists, pressing Copy briefing announces that it is not available in the React interface
-yet instead of blaming the clipboard.
+Copy briefing announces why it cannot copy (the project is no longer in the payload) instead of blaming
+the clipboard. The control that copies a session link, the project briefing, the "Attention updated"
+announcement and the notification control are each built in the step that owns the surface they sit on.
 
 Shared controls keep reader state the redraw would otherwise discard. A keyed focus lane restores
 the same control or a named fallback without scrolling an offscreen one, a field memory keeps an
@@ -260,11 +258,7 @@ lifetime follows the exact harness and session, so leaving the route and returni
 screen and StrictMode opens one socket. Follow is measured against the live position, not the scroll
 maximum, because the legacy page's own textarea rule makes xterm's helper element 44 px tall.
 
-Not mounted yet, and named: the timeline and terminal components are built and proven in their own
-browser harness but sit in the project view's Decisions and Console tabs, which the project step owns,
-so no route shows them today. The capacity strip belongs to the Attention step, the Intent and drift
-panel's drift half (Analyze, readings, steer back) to the next step (the Drift section shows a stated slot), and the last-reply and
-recovery-briefing text lives in the project Console.
+The timeline and the terminal are mounted in the project view's Decisions and Console tabs.
 
 ## The Intent log and the Intent panel
 
@@ -356,6 +350,37 @@ entry with no harness name states the absence where legacy throws; disclosures u
 panels are plain sections inside the shell's tab panel. Not ported because nothing in the legacy source
 calls them: `nextCockpitNowState`, `ActiveDelegation`, `NeedsYou`, `SystemDetails`, `TaskSubject`,
 `MemoFields`, `ProjectStatus`, `RecoveryOutcome` and `nextProjectWorkstream`.
+
+## Attention, notifications, capacity and the consent controls
+
+The Attention view (exact-owner asks and checkpoints, gates, risks, outcomes and coverage), the
+notification control and owner, the capacity strip, the usage consent and the observer-model consent
+controls are ports of `next-attention.js`, `next-notify.js`, `next-capacity.js` and the Console observer
+parts of `next-cockpit.js`. The models and text builders were run next to the legacy source over
+hundreds to thousands of generated boards, the owner in lockstep over 300 sequences, and two browser
+proofs compare the rendered pages in one Chromium and use a scripted `Notification` API: nothing here
+ever creates a native notification.
+
+Consent is a press and nothing else. The quota parameter rides `/api/data` only after an explicit yes
+answered on this origin and stops when it is turned off; unanswered and declined send nothing and read no
+credential, through mount, StrictMode, polls, reconnects, route changes, reload and another tab's storage
+event. An answer removed from storage is withdrawn at the next read, where the legacy page kept a copy in
+memory alive until reload. The observer-model press names the consent and the offer the reader saw and is
+refused locally, with a rendered sentence and no request, if either changed; quota consent never
+authorizes it, and a double click sends one request. The notification prompt opens only from its button,
+a reload with permission already granted raises nothing for gates already on the board, a native lane
+suppresses the browser's, and the lane report is one attempt that names no session. The runtime now says
+whether this tab holds the live stream, so only that tab raises a workflow stage banner.
+
+Deviations from the legacy page, recorded rather than hidden: the lane report is sent as soon as the
+reader grants rather than at the next payload; a stamp that is not a date prints without a time, where the
+legacy Attention view throws and draws nothing; a board that published no session collection says so
+instead of printing "0 of 0"; a usage entry with no harness name is drawn with the absence stated; the
+unknown reading count clause is dropped where legacy printed "null readings"; answering the usage
+question refreshes the board by hand, as legacy did, and focus lands on the new switch instead of being
+lost; and Console usage sits in the Console rail where the project page draws its operating rail. A board
+with usage but no session collection (the server always publishes one) draws the Sessions view's absence
+sentence without the capacity strip.
 
 ## Reader state and storage
 
