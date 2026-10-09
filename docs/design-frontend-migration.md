@@ -494,14 +494,14 @@ the day of the runs, re-ran the unchanged baseline driver and page with the same
 was visible: its medians sit within noise of the recorded baseline. It is embedded as it was taken and
 cannot be taken again.
 
-On 2026-10-09 (Chrome 156.0.8078.12 against the baseline's 156.0.8078.4, a load average near 2 on ten
+On 2026-10-10 (Chrome 156.0.8078.12 against the baseline's 156.0.8078.4, a load average near 4 on ten
 cores, measured against the final shipped page after the last rebuild) every timing budget passed by a wide
-margin. First-render medians were 134.2, 94.2 and 128.1 ms against budgets of 199.1, 159.5 and 192.8;
-poll-to-paint medians were 45.1, 46.4 and 63.6 ms against 119.8, 121.4 and 146.4; no run recorded a long
-task. Against the legacy page re-run the same day with the same Chrome (control medians of 90.9, 62.6 and
-96.5 ms first render, taken under a heavier load of about 5), React's first render is slower by 48%, 50% and
-33%, inside every budget, and poll-to-paint is level (45.1, 46.4 and 63.6 ms against 47.3, 47.3 and
-64.2). The core page is 1,376,372 bytes against a ceiling of 1,816,276 and the legacy page's 1,453,021,
+margin. First-render medians were 124.3, 95.0 and 128.5 ms against budgets of 199.1, 159.5 and 192.8;
+poll-to-paint medians were 46.8, 47.0 and 63.5 ms against 119.8, 121.4 and 146.4; no run recorded a long
+task. Against the legacy page re-run on 2026-10-09 with the same Chrome (control medians of 90.9, 62.6 and
+96.5 ms first render, taken under a heavier load of about 5), React's first render is slower by 37%, 52% and
+33%, inside every budget, and poll-to-paint is level (46.8, 47.0 and 63.5 ms against 47.3, 47.3 and
+64.2). The core page is 1,376,448 bytes against a ceiling of 1,816,276 and the legacy page's 1,453,021,
 which is 5.3% smaller; the optional terminal assets (488,663 and 7,112 bytes) are accounted apart, as they
 were. The typed goal, an opened disclosure and the focused prompt select kept their nodes through a poll
 that changed every row title, and the draft, caret, focus and native undo survived, where the baseline
@@ -623,6 +623,39 @@ before any verifier, tag move or push, and `assert-checkout` reads main again in
 merged while the verifiers ran still stops a resume before the bump, the tag move or `stable`; the owner lifts it by deleting the file in a reviewed pull
 request. The release skill owns the procedure. Hold releases until the final same-main-build browser,
 Python-only install and backend-connected development checks pass.
+
+### Final verification record
+
+The evidence pass ran on the merged retirement (the tree of its last pull request head, byte for byte) and
+on the one product change it found.
+
+- Browser: every development and production-bundle proof, the computed-style proof and the hostile-literal
+  parser proof passed on that tree on a desktop, and the same proofs ran on Linux, macOS and Windows in CI. The
+  hosted runs needed two reruns for failures outside the change (a Windows-only race in the annotation store's
+  thread test, and the drift proof's teardown described below); neither touched code the change altered.
+- Fluidity: three fresh runs on 2026-10-10 judged against the same budgets, none failed (figures above).
+- Installed: a copy of the plugin without Node passes the runtime inventory (119 files) and the installed smoke
+  proof, which refuses external requests and hides Node from Python.
+- Development: the Python plus Vite proof (hot refresh, event stream, backend restart, refused origins) passes.
+  It failed in 4 of 29 local runs before a fix and in none of 30 after: Chromium reported a response the restart
+  cut short as `net::ERR_CONTENT_LENGTH_MISMATCH`, which the proof's allowance for restart-time network errors
+  did not name.
+- Teardown: the drift proof failed on the hosted Ubuntu runner in two of three runs with an unhandled
+  `route.fetch: Request context disposed`, from a scripted handler still in flight when the proof closed its
+  context. Closing a context mid-fetch reproduced it on demand; the handlers now set aside only that closing error.
+- Release transition: in a throwaway clone whose remote is a local bare repository, `rehearse` refused while
+  `RELEASE_HOLD` was present, before verifying, bumping or tagging anything. With the file removed in that clone
+  only, a fresh release of an invented tag ran resolve, verify, bump, archive proof, tag move and `stable`, the
+  bump changed only the three owned manifests and left `react.html` byte for byte, and a second run resumed the
+  same release commit. Nothing touched the real remote.
+- Defect: the computed-style proof found `box-shadow: var(--e-raise)` in the project popover naming a custom
+  property the previous page declared in its root block and `shell.css` did not, so the popover drew no shadow.
+  It is declared now, the proof's pin is gone, and the page was rebuilt and measured again.
+
+What this cannot show: real GitHub Actions, the deploy key and the repository rulesets behave as the rehearsal
+does, because no disposable fork was available; the Release workflow's job boundaries are pinned by tests and
+actionlint, not exercised. Controlled fixtures prove frontend behaviour, not model accuracy. The hold stays until
+the owner lifts it in a reviewed pull request.
 
 The Intent and drift study remains paused. Controlled reading fixtures prove frontend parity,
 not model accuracy. Earlier failed measurements stay failed. A future study resume must bind the
