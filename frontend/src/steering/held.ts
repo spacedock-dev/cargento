@@ -29,6 +29,8 @@ interface ProjectHeld {
    state.md, "A workflow stage-condition choice, save cue and action focus"). */
 export interface StageFocus {
   readonly key: string;
+  /** The card instance that made the request. A card that has gone took its request with it. */
+  readonly owner: symbol;
   /** The interaction count the press saw. A later keystroke or pointer press means the reader moved on. */
   readonly interaction: number;
 }
@@ -40,6 +42,7 @@ export function createSteeringHeld() {
   let stageInteraction = 0;
   let stageMounts = 0;
   let stageFocus: StageFocus | null = null;
+  const stageCards = new Set<symbol>();
   let version = 0;
   const listeners = new Set<() => void>();
 
@@ -123,8 +126,17 @@ export function createSteeringHeld() {
           }
         };
       },
+      /* One per card on the page, by the instance and not the workflow: the Projects page draws a card for
+         the same workflow as the Course tab, and a request made on one is not the other's. */
+      cardMounted(owner: symbol): () => void {
+        stageCards.add(owner);
+        return () => {
+          stageCards.delete(owner);
+          if (stageFocus?.owner === owner) stageFocus = null;
+        };
+      },
       requestFocus(request: StageFocus): void {
-        if (stageMounts <= 0) return;
+        if (stageMounts <= 0 || !stageCards.has(request.owner)) return;
         stageFocus = request;
         notify();
       },

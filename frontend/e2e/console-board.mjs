@@ -95,6 +95,8 @@ async function waitForRegistration(origin) {
 export async function startConsoleWorld({
   mutations = {},
   mutation = process.env.CARGENTO_MUTATION || '',
+  // false serves the shipped page (the project views the slots are wired into) instead of the harness.
+  harness = true,
 } = {}) {
   const copy = await mkdtemp(join(tmpdir(), 'cargento-console-browser-'));
   let dev = null;
@@ -137,7 +139,8 @@ export async function startConsoleWorld({
       join(copy, 'node_modules'),
       process.platform === 'win32' ? 'junction' : 'dir',
     );
-    await writeFile(join(copy, 'frontend/src/main.tsx'), "import '../e2e/console-harness';\n");
+    if (harness)
+      await writeFile(join(copy, 'frontend/src/main.tsx'), "import '../e2e/console-harness';\n");
     for (const [file, needle, replacement] of mutations[mutation] ?? []) {
       const path = join(copy, 'frontend', file);
       const text = await readFile(path, 'utf8');

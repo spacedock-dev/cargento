@@ -346,8 +346,10 @@ first payload (the shell starts it) and keeps the legacy collapse key without ad
 unnamespaced one; a missing window reads "since this tab opened", never zero.
 
 Deviations, each recorded rather than hidden: Add human context is not offered at a focused session (the
-legacy page offered a button that opened an editor nothing drew); delegation lanes always read the
-project-scope assignments, where the legacy page read a cache the Decisions tab happened to seed; a
+legacy page offered a button that opened an editor nothing drew); the recovery strip, Now and Course build
+delegation lanes from the project-scope assignments, where the legacy page read a cache the Decisions tab
+happened to seed, while the Decisions tab builds them from the selected scope's own context read, a
+focused session's when one is selected, as the legacy page does; a
 non-record member of the hierarchy is skipped where legacy throws; the tripwire box takes focus when it
 opens and gives it back to its button, and an Enter that commits an IME composition adds no rule; a usage
 entry with no harness name states the absence where legacy throws; disclosures use the shared accordion;

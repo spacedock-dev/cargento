@@ -38,3 +38,11 @@
 .next-stage-rule p { margin: .4rem 0; }
 .next-stage-editor { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; }
 .next-stage-editor select, .next-stage-editor button { font: inherit; padding: .4rem; }
+/* The two things the legacy sheet gives these controls by element rather than by class, which the React sheet
+   does not: a control's header is the mono label tier (and so carries its letter-spacing to the sentence
+   inside it), and an input is at least a touch target tall. The decision summary is a sentence tier. The add
+   control keeps the quiet ink against the primitive's. */
+.next-control>header{color:var(--ink-label);font-family:var(--mono);font-size:var(--fs-label);font-weight:600;letter-spacing:.07em}
+.next-steer input,.next-guardrail-add-input input{min-block-size:44px}
+.next-guardrails .next-guardrail-add{color:var(--ink2)}
+.next-cockpit-decision-summary{font:500 var(--fs-body)/1.55 var(--sans);max-width:var(--measure)}

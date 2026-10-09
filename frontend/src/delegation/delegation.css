@@ -76,7 +76,8 @@
    heading that will not wrap) widened the whole rail past the window at 200% text size. The panels may
    shrink and their text wraps. */
 .next-project-detail-rail>.next-rail-panel{min-width:0}
-.next-rail-panel :is(h2,p,strong,span,a,small){overflow-wrap:anywhere}
-.next-rail-header{flex-wrap:wrap}
+.next-rail-panel :is(p,strong,span,a,small){overflow-wrap:anywhere}
 /* The scope cue and its word are two items on one line; at a large text size they wrap rather than widen the page. */
 .next-cockpit-scope{flex-wrap:wrap}
+/* A rail's caution reads as the quiet ink inside the project page, as the legacy sheet sets it for the cockpit. */
+.next-project-detail .next-rail-meta--amber{color:var(--ink2)}

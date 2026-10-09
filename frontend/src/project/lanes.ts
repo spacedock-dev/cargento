@@ -8,9 +8,10 @@ import { isRecord, list, text, type Row } from './raw';
    Two deliberate differences, both on input the legacy page would throw on or read by accident:
    - A member of the hierarchy, or a snapshot row, that is not a record is skipped. The legacy page reads a
      field off it and stops drawing; a port that stopped drawing is not parity worth having.
-   - The snapshot is the PROJECT-scope context read the cockpit holds, always. The legacy page reads it
-     from a cache the Decisions tab happens to seed, so a lane drawn on Now had its snapshot only after
-     the reader had visited another tab. */
+   - The snapshot is handed in by the caller. The strip, Now and Course pass the PROJECT-scope context read,
+     where the legacy page reads a cache the Decisions tab happens to seed, so a lane drawn on Now had its
+     snapshot only after the reader had visited another tab. The Decisions tab passes the selected scope's
+     own read (a focused session's when one is selected), as the legacy page does. */
 export interface Lane {
   readonly entity: string;
   readonly stage: string;

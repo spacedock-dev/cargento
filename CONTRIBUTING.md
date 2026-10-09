@@ -91,7 +91,11 @@ compares Sessions and session detail with the legacy page, and `pnpm test:termin
 the timeline filter and the output-only terminal. `pnpm test:intent:browser` compares the Intent log and the
 Intent panel's editors with the legacy page, including native undo and IME composition, and
 `pnpm test:drift:browser` does the same for the Drift section, Analyze and its consent step, the result, Steer back
-and the departures, over a scripted board that never reaches a model. `pnpm test:console:browser` compares the
+and the departures, over a scripted board that never reaches a model. `pnpm test:project:browser` compares the
+Projects list and each project's recovery strip, scopes, Now and Course with the legacy page (text, order, links and
+computed layout), and checks that the workstream collapse, a human-context note's caret and undo, a scope and an open
+plan survive live updates and navigation, with no write, copy or notification the reader did not press for.
+`pnpm test:console:browser` compares the
 steering bar, the tripwires, the workflow stage conditions, the Decisions tab and the Console tab with the legacy
 page over a real backend, and checks that drafts, carets, an open disclosure and the retained terminal survive
 live updates, a change of tab and a route away and back; it takes no native action.

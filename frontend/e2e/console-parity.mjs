@@ -1153,6 +1153,100 @@ try {
     );
   }
 
+  await step(
+    'typography and geometry match the legacy page on the shipped project page, at 375 and 1280',
+    async () => {
+      // The harness has no page chrome around its panels, so the boxes are compared in the shipped page.
+      const real = await startConsoleWorld({ harness: false });
+      try {
+        const realOrigins = [real.react.origin, real.react.viteOrigin, real.legacy.origin];
+        const SEL = {
+          caveat: '.next-steer-caveat',
+          label: '.next-steer-label',
+          input: '.next-steer input',
+          meta: '.next-rail-meta--amber',
+          add: '.next-guardrail-add',
+          summary: '.next-cockpit-decision-summary',
+          event: '.pc-timeline-event',
+          eventSummary: '.pc-timeline-event > summary',
+          trailSummary: '.pc-trail-summary',
+          top: '.pc-trail-top',
+          topMeta: '.pc-trail-top > span',
+          result: '.pc-trail-result',
+          row: '.pc-graph-row',
+        };
+        const PROPS = [
+          'letterSpacing',
+          'fontSize',
+          'fontWeight',
+          'lineHeight',
+          'color',
+          'textAlign',
+        ];
+        const read = ({ sel, props }) => {
+          const out = {};
+          for (const [name, selector] of Object.entries(sel)) {
+            const node = document.querySelector(selector);
+            if (!node) continue;
+            const style = getComputedStyle(node);
+            const box = node.getBoundingClientRect();
+            const parent = node.parentElement.getBoundingClientRect();
+            out[name] = {
+              ...Object.fromEntries(props.map((prop) => [prop, style[prop]])),
+              width: box.width,
+              height: box.height,
+              // Where it sits inside what holds it, so the page chrome around both does not matter.
+              rightGap: Math.round(parent.right - box.right),
+            };
+          }
+          return out;
+        };
+        const cases = [];
+        for (const width of [1280, 375]) {
+          for (const [tab, ready] of [
+            ['console', '[data-next-rail-panel=tripwires]'],
+            ['decisions', '.pc-graph-row'],
+          ]) {
+            const pair = {};
+            for (const kind of ['legacy', 'react']) {
+              const o = await openTracked(browser, realOrigins, {
+                viewport: { width, height: 900 },
+              });
+              await o.page.goto(
+                `${kind === 'legacy' ? real.legacy.origin : real.react.origin}/${fragmentFor(tab)}`,
+              );
+              await o.page.waitForSelector(ready, { timeout: patience(30000) });
+              pair[kind] = await settled(() => o.page.evaluate(read, { sel: SEL, props: PROPS }));
+              await o.context.close();
+            }
+            const diffs = [];
+            for (const name of Object.keys(pair.legacy)) {
+              for (const [prop, was] of Object.entries(pair.legacy[name])) {
+                const now = pair.react[name]?.[prop];
+                const number = typeof was === 'number';
+                // A width can differ by the shared chevron's own column and a wrap by a pixel; a typeface,
+                // a spacing, a height or a side the text sits against cannot.
+                const slack = prop === 'width' ? 16 : 1.5;
+                if (number ? Math.abs(was - now) > slack : was !== now)
+                  diffs.push(`${name}.${prop}: legacy ${was}, react ${now}`);
+              }
+            }
+            cases.push({ width, tab, diffs });
+          }
+        }
+        const bad = cases.filter((entry) => entry.diffs.length);
+        assert.deepEqual(
+          bad,
+          [],
+          `typography or geometry drifted from the legacy page: ${JSON.stringify(bad).slice(0, 1500)}`,
+        );
+        return { compared: cases.length };
+      } finally {
+        await real.close();
+      }
+    },
+  );
+
   await step('the Console can be operated from the keyboard alone', async () => {
     const side = await newPage('react');
     await load(side, fragmentFor('console', BOARD.terminal));

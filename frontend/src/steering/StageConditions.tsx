@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, type MouseEvent } from 'react';
+import { useEffect, useLayoutEffect, useRef, type MouseEvent } from 'react';
 import { isRecord, type Row } from '../observed';
 import { useControls } from '../controls/kit';
 import { useFocusKey } from '../controls/useFocusKey';
@@ -107,6 +107,8 @@ function Card({
   const held = useSteeringHeld();
   const id = (source ?? (rule as StageRule)).id;
   const pendingKey = `tripwire:${id}`;
+  const owner = useRef(Symbol('stage card')).current;
+  useEffect(() => held.stage.cardMounted(owner), [held, owner]);
   const busy = useBoardSelector(runtime.store, (board) => board.pending.includes(pendingKey));
   const model = stageCard({
     source,
@@ -147,6 +149,11 @@ function Card({
         result.kind === 'ok' || result.kind === 'http-error'
           ? ((isRecord(result.body) ? result.body : {}) as Row)
           : {};
+      /* An answer the page never read says nothing about whether the server kept the save: the 15 s bound
+         abandons the request, not the write. One refresh, which the shell makes explicit, shows what the
+         server holds; the cue stays as weak as it was. */
+      const unknown =
+        result.kind === 'aborted' || result.kind === 'network-error' || result.kind === 'malformed';
       if (result.kind === 'ok' && body['ok']) {
         held.stage.dropDraft(id);
         cueText =
@@ -160,12 +167,14 @@ function Card({
       } else {
         cueText = typeof body['error'] === 'string' && body['error'] ? body['error'] : SAVE_FAILED;
         held.stage.setCue(id, cueText);
+        if (unknown) await runtime.refresh();
       }
     } catch {
       held.stage.setCue(id, cueText);
+      await runtime.refresh();
     } finally {
       runtime.pending.end(pendingKey, token);
-      if (focused) held.stage.requestFocus({ key, interaction });
+      if (focused) held.stage.requestFocus({ key, interaction, owner });
     }
   };
 

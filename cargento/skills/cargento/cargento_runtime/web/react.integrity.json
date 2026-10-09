@@ -1,8 +1,8 @@
 {
   "document": {
-    "bytes": 1287452,
+    "bytes": 1289080,
     "file": "react.html",
-    "sha256": "2a162e7abccb52d2482d32678ce2f58a734713367fecbec50d34fb9afbc967ab"
+    "sha256": "560b9b78cff602e7e597e9f276b81c8d2ae73a0dc855d4a5dd0eebd60bfd16c0"
   },
   "format": 1,
   "frontend": "react",
@@ -326,7 +326,7 @@
       },
       {
         "file": "frontend/src/delegation/delegation.css",
-        "sha256": "85bddb306bba7d357ad65dcd2f086ff2bb6791362d8aeb34c20356e2258c1787"
+        "sha256": "e3c98e4986ce3dc55075b3529f30ea4735c6f1f4036b77b8fb7563c72cfe24b2"
       },
       {
         "file": "frontend/src/delegation/evidence.ts",
@@ -690,7 +690,7 @@
       },
       {
         "file": "frontend/src/project/lanes.ts",
-        "sha256": "064e0016d055d7381103f2dc7f5f8bab653e2c061cc9b22570cef13087788ed7"
+        "sha256": "aefc8012f45803be548886d159af30bdbda0aa1c786edc627c9452e4e89039bd"
       },
       {
         "file": "frontend/src/project/model.ts",
@@ -710,7 +710,7 @@
       },
       {
         "file": "frontend/src/project/project.css",
-        "sha256": "bb99247b2ce374e9bab0f4f46c174d3664b0818955fb96b3a33c9dcd9c0bde1a"
+        "sha256": "17590b4679fba7904e8b5e29b8919a4f61f34a4dab0c8405a6704f32718e4ea5"
       },
       {
         "file": "frontend/src/project/raw.ts",
@@ -906,7 +906,7 @@
       },
       {
         "file": "frontend/src/steering/StageConditions.tsx",
-        "sha256": "84c26d1a4626ef6170662fc7f3124100e76c9c57041d8aa7444a15d426452c71"
+        "sha256": "bd970bdc22d08a095e7e4cbdc7062d41bcfc894a04de8600e4404fc016827562"
       },
       {
         "file": "frontend/src/steering/Tripwires.tsx",
@@ -914,7 +914,7 @@
       },
       {
         "file": "frontend/src/steering/held.ts",
-        "sha256": "ac91171498ba8ad41390a7af122b4112b6859fb4f89240f515c53e0b582162af"
+        "sha256": "f2b9c427960e2260241c1689e7edd2e2cf52e4b450594bb33167bc264a19f9bc"
       },
       {
         "file": "frontend/src/steering/index.ts",
@@ -930,7 +930,7 @@
       },
       {
         "file": "frontend/src/steering/steering.css",
-        "sha256": "0495fb5a973862b1d22e17c775c81da66fb6e53f952635311701fc04ba0f3381"
+        "sha256": "4b0ebaad6442b2033e0f5c192895ae45098745e42f5b516cfe02c3f5c93bc239"
       },
       {
         "file": "frontend/src/steering/testing.tsx",
@@ -1094,7 +1094,7 @@
       },
       {
         "file": "frontend/src/timeline/timeline.css",
-        "sha256": "321f95aa33eef1a292c46ca4e0c180864135a72d490c8483713d51a6271c2039"
+        "sha256": "7e4e82815d35083a63b066a80d32a8e914fb99d46491d3cddbc4a6c4b5ad04eb"
       },
       {
         "file": "frontend/src/timeline/view.ts",

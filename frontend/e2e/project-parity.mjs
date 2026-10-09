@@ -1187,6 +1187,95 @@ try {
     },
   );
 
+  /* ===================== computed style against the legacy page ===================== */
+  /* A rule that stopped reaching its target shows as a different computed value, not as different text, so the
+     parity of three layout facts is read from the browser: the side inset of a tab's panel (and where its
+     content starts), the tab strip's own margin, and how the workstream toggle is drawn. Each is compared to
+     the legacy page's value at a phone width and a desktop width. */
+  const computedLayout = () => {
+    const { document, getComputedStyle } = globalThis;
+    const pick = (node, names) => {
+      if (!node) return null;
+      const style = getComputedStyle(node);
+      return Object.fromEntries(names.map((name) => [name, style.getPropertyValue(name)]));
+    };
+    const content = document.querySelector('.next-cockpit-content');
+    const panel = document.querySelector('.next-cockpit-panel');
+    const left = (node) =>
+      node && content
+        ? Math.round(node.getBoundingClientRect().left - content.getBoundingClientRect().left)
+        : null;
+    return {
+      panel: pick(panel, ['padding-left', 'padding-right']),
+      panelWidth: panel ? Math.round(panel.getBoundingClientRect().width) : null,
+      panelContentLeft: left(panel?.querySelector('.next-workstream, .next-project-activity')),
+      tabs: pick(document.querySelector('nav.next-cockpit-tabs'), [
+        'margin-top',
+        'margin-bottom',
+        'padding-left',
+        'padding-right',
+        'border-bottom-width',
+      ]),
+      toggle: pick(document.querySelector('[data-next-workstream-toggle]'), [
+        'padding-top',
+        'padding-right',
+        'padding-bottom',
+        'padding-left',
+        'border-top-width',
+        'border-bottom-width',
+        'border-left-width',
+        'border-right-width',
+        'background-color',
+        'font-family',
+        'font-size',
+        'font-weight',
+        'letter-spacing',
+        'width',
+      ]),
+    };
+  };
+  await step(
+    'computed style: a tab panel’s inset, the tab strip’s margin and the workstream toggle match the legacy page at 375 and 1280',
+    async () => {
+      const results = {};
+      for (const width of [375, 1280]) {
+        for (const o of [react, legacy]) await o.page.setViewportSize({ width, height: 900 });
+        for (const tab of ['now', 'course']) {
+          const { mine, old } = await both(fragmentFor('alpha/app', { tab }), computedLayout);
+          // Held to fixed values as well as to legacy's, so a legacy page that did not draw cannot excuse a regression.
+          assert.equal(
+            mine.panel['padding-left'],
+            '12px',
+            `${width}px ${tab}: the panel keeps its 12px side inset`,
+          );
+          assert.equal(mine.panel['padding-right'], '12px');
+          assert.equal(
+            mine.tabs['margin-top'],
+            '0px',
+            `${width}px ${tab}: the tab strip has no top margin`,
+          );
+          if (tab === 'course') {
+            assert.equal(
+              mine.toggle['border-top-width'],
+              '0px',
+              `${width}px: the workstream toggle is a caption, not a bordered button`,
+            );
+            assert.equal(mine.toggle['padding-left'], '0px');
+            assert.match(mine.toggle['font-family'], /mono/i);
+          }
+          if (old) assert.equal(firstDifference(old, mine), null, `${width}px ${tab}`);
+          results[`${width}:${tab}`] = {
+            inset: mine.panel['padding-left'],
+            tabsMargin: mine.tabs['margin-top'],
+            toggleBorder: mine.toggle?.['border-top-width'],
+          };
+        }
+      }
+      for (const o of [react, legacy]) await o.page.setViewportSize({ width: 1280, height: 720 });
+      return results;
+    },
+  );
+
   /* ===================== screenshots ===================== */
   await step(
     'screenshots: the list and a project page, on both pages, wide and narrow',

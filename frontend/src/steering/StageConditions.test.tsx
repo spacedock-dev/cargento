@@ -182,6 +182,42 @@ describe('a press is one request', () => {
     expect(page.allPosts()).toHaveLength(1);
   });
 
+  it('shows what the server holds after an abandoned request, with one refresh and no stronger a cue', async () => {
+    const page = mount({
+      routes: {
+        '/api/tripwire': (request) =>
+          new Promise<Response>((_resolve, reject) => {
+            request.signal?.addEventListener('abort', () =>
+              reject(new DOMException('gone', 'AbortError')),
+            );
+          }),
+      },
+    });
+    await page.settle();
+    const refresh = vi.spyOn(page.shell.runtime, 'refresh');
+    await press(button('save'));
+    expect(refresh).not.toHaveBeenCalled();
+    await page.advance(15_000);
+    await page.settle();
+    // The cue says what the page knows, which is that it did not hear back; the board is read once so the
+    // card shows whatever the server kept.
+    expect(cue()).toBe('Could not save the stage condition.');
+    expect(refresh).toHaveBeenCalledTimes(1);
+    expect(page.allPosts()).toHaveLength(1);
+  });
+
+  it('does not refresh after an answered refusal: the server said what it holds', async () => {
+    const page = mount({
+      routes: { '/api/tripwire': () => json({ ok: false, error: 'No.' }, 409) },
+    });
+    await page.settle();
+    const refresh = vi.spyOn(page.shell.runtime, 'refresh');
+    await press(button('save'));
+    await page.settle();
+    expect(cue()).toBe('No.');
+    expect(refresh).not.toHaveBeenCalled();
+  });
+
   it('drops the choice once it is saved, so the card shows what the board says', async () => {
     // The board still says "build" after the save, so a kept draft would show "review" against it.
     const page = mount({ routes: { '/api/tripwire': saved } });
@@ -292,6 +328,25 @@ describe('focus after a press', () => {
     await page.settle();
     expect(focus).not.toHaveBeenCalled();
     elsewhere.remove();
+  });
+
+  it('is not carried to the same workflow’s card on another page the reader went to meanwhile', async () => {
+    const page = mount({ routes: { '/api/tripwire': () => 'hold' } });
+    await page.settle();
+    button('save').focus();
+    await press(button('save'));
+    // Back to a page that draws a card for the same workflow, as the Projects list does.
+    page.show(
+      <div id="projects">
+        <StageConditions sessions={null} />
+      </div>,
+    );
+    await page.settle();
+    lostFocus();
+    const focus = focusCalls();
+    await page.release('/api/tripwire', saved());
+    await page.settle();
+    expect(focus).not.toHaveBeenCalled();
   });
 
   it('is not left waiting for a page that has gone: a card that returns later takes nothing', async () => {

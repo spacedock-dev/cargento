@@ -58,3 +58,9 @@
   .pc-trail-top{display:grid;grid-template-columns:minmax(0,1fr);gap:3px}
   .pc-trail-top span{text-align:left}
 }
+/* A timeline row's summary is the row, not a control: it takes the whole width of its body, in the row's own
+   ink. As the shared disclosure it was a shrink-to-fit flex line in the quiet ink, which narrowed the title and
+   summary to a third of the row and left the right-hand meta unaligned. The legacy row sets its marker on a line
+   of its own above the title, and so does this one, so a row is the height it was. */
+details.pc-timeline-event>summary{display:block;position:relative;padding-block-start:1.5em;inline-size:auto;max-inline-size:none;min-block-size:0;color:var(--ink)}
+details.pc-timeline-event>summary::after{position:absolute;inset-block-start:.55em;inset-inline-start:0;margin:0}
