@@ -74,7 +74,9 @@ const ALLOWED_SIZE = new RegExp(
 describe('the bundled stylesheets', () => {
   it('finds the sheets the build bundles', () => {
     expect(files.length).toBeGreaterThanOrEqual(10);
-    expect(files.some((file) => file.endsWith('styles/shell.css'))).toBe(true);
+    expect(files.some((file) => file.replaceAll('\\', '/').endsWith('styles/shell.css'))).toBe(
+      true,
+    );
   });
 
   it.each(files.map((file) => [relative(ROOT, file), file]))(
