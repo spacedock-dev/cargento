@@ -2501,10 +2501,14 @@ class ATabOpenAcrossAnUpgradeIsToldToReloadTest(NextPageJsHarness):
 
         from cargento_runtime.web import page as frontend_page  # noqa: PLC0415
 
-        from .support import collect  # noqa: PLC0415
+        from .support import collect, config_patch  # noqa: PLC0415
 
-        payload = collect()
-        self.assertEqual(frontend_page.build_id(), payload["build"])
+        # This harness drives the legacy page, so the board it reads is the legacy one;
+        # the default renderer's own build identity is `test_react_frontend`'s subject.
+        with config_patch(frontend="legacy"):
+            payload = collect()
+        self.assertEqual("legacy", payload["frontend"])
+        self.assertEqual(frontend_page.build_id("legacy"), payload["build"])
         self.assertEqual(
             hashlib.sha256(frontend_page.load_page()).hexdigest()[:16], payload["build"]
         )

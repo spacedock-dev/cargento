@@ -168,6 +168,198 @@ class ResolveTest(unittest.TestCase):
         self.assertIn("refusing to resume", str(caught.exception))
 
 
+class ReleaseHoldTest(unittest.TestCase):
+    """The recorded hold on cutting a release, as a guard rather than a sentence.
+
+    The hold is a tracked `RELEASE_HOLD` file on main. `resolve` is the one step both a
+    fresh release and a resume pass through, and it runs first in a job that holds no
+    credentials, so refusing there stops the workflow before anything can be tagged,
+    verified, pushed or published.
+    """
+
+    REASON = "Hold: the legacy frontend is not retired yet.\nLifted by deleting this file.\n"
+
+    def setUp(self) -> None:
+        self.fx = Fixture(self)
+
+    def resolve(self, tag: str) -> rt.Resolution:
+        self.fx.fetch()
+        return rt.resolve(self.fx.work, tag)
+
+    def hold(self) -> None:
+        self.fx.commit("chore: record the release hold", files={rt.HOLD_FILE: self.REASON})
+
+    def lift(self) -> None:
+        self.fx.sync()
+        git(self.fx.work, "rm", "-q", rt.HOLD_FILE)
+        git(self.fx.work, "commit", "-q", "-m", "chore: lift the release hold")
+        git(self.fx.work, "push", "-q", "origin", "main")
+
+    def release_commit(self, tag: str, version: str) -> str:
+        self.fx.set_version(version)
+        git(self.fx.work, "commit", "-q", "--amend", "-m", f"chore(release): {tag}")
+        git(self.fx.work, "push", "-q", "--force", "origin", "main")
+        return git(self.fx.work, "rev-parse", "HEAD")
+
+    def test_the_marker_is_named_in_one_place_at_the_repository_root(self) -> None:
+        self.assertEqual("RELEASE_HOLD", rt.HOLD_FILE)
+
+    def test_a_fresh_release_is_refused_while_the_marker_is_on_main(self) -> None:
+        self.fx.commit("feat: work")
+        self.fx.tag("v0.2.0")
+        self.hold()
+        before = self.fx.origin_snapshot()
+        with self.assertRaises(rt.ReleaseError) as caught:
+            self.resolve("v0.2.0")
+        text = str(caught.exception)
+        self.assertIn("RELEASE_HOLD", text)
+        self.assertIn("hold", text.lower())
+        self.assertIn("Re-run all jobs", text)
+        self.assertEqual(before, self.fx.origin_snapshot())
+
+    def test_a_resume_is_refused_too(self) -> None:
+        self.fx.commit("feat: work")
+        self.fx.tag("v0.2.0")
+        self.release_commit("v0.2.0", "0.2.0")
+        self.assertEqual("resume", self.resolve("v0.2.0").mode)
+        self.hold()
+        with self.assertRaises(rt.ReleaseError) as caught:
+            self.resolve("v0.2.0")
+        self.assertIn("RELEASE_HOLD", str(caught.exception))
+
+    def test_removing_the_marker_from_main_unblocks_both_modes(self) -> None:
+        self.fx.commit("feat: work")
+        self.fx.tag("v0.2.0")
+        self.hold()
+        with self.assertRaises(rt.ReleaseError):
+            self.resolve("v0.2.0")
+        self.lift()
+        self.assertEqual("fresh", self.resolve("v0.2.0").mode)
+        self.release_commit("v0.2.0", "0.2.0")
+        self.assertEqual("resume", self.resolve("v0.2.0").mode)
+
+    def test_the_hold_is_read_from_main_not_from_the_checkout(self) -> None:
+        # A stray file in the working tree is not a recorded hold, and a hold that main
+        # carries is not lifted by deleting the file from a checkout of it.
+        self.fx.commit("feat: work")
+        self.fx.tag("v0.2.0")
+        (self.fx.work / rt.HOLD_FILE).write_text("local only\n", encoding="utf-8")
+        self.assertEqual("fresh", self.resolve("v0.2.0").mode)
+        (self.fx.work / rt.HOLD_FILE).unlink()
+        self.hold()
+        (self.fx.work / rt.HOLD_FILE).unlink()
+        with self.assertRaises(rt.ReleaseError):
+            self.resolve("v0.2.0")
+
+    def test_the_hold_is_told_before_a_back_tagging_complaint(self) -> None:
+        # Pins the one ordering that matters to an operator: told to wait, not told their
+        # number is wrong. Other tag judgements (not on main, resume target) are not pinned
+        # by this test.
+        self.fx.commit("feat: work")
+        self.fx.tag("v0.0.9")
+        self.hold()
+        with self.assertRaises(rt.ReleaseError) as caught:
+            self.resolve("v0.0.9")
+        self.assertIn("RELEASE_HOLD", str(caught.exception))
+
+    def test_the_hold_is_read_from_the_main_ref_not_from_head(self) -> None:
+        self.fx.commit("feat: work")
+        self.fx.tag("v0.2.0")
+        self.fx.fetch()
+        # A local commit that carries the marker, never pushed: HEAD holds, main does not.
+        (self.fx.work / rt.HOLD_FILE).write_text(self.REASON, encoding="utf-8")
+        git(self.fx.work, "add", rt.HOLD_FILE)
+        git(self.fx.work, "commit", "-q", "-m", "local only")
+        self.assertEqual("fresh", rt.resolve(self.fx.work, "v0.2.0").mode)
+
+    def test_a_hold_pushed_after_resolve_stops_a_resume_before_any_mutation(self) -> None:
+        self.fx.commit("feat: work")
+        self.fx.tag("v0.2.0")
+        self.release_commit("v0.2.0", "0.2.0")
+        self.fx.fetch()
+        before = self.fx.origin_snapshot()
+        with self.assertRaises(rt.ReleaseError) as caught:
+            rt.rehearse(
+                self.fx.work,
+                "v0.2.0",
+                after={"resolve": lambda _resolution: self.hold()},
+            )
+        self.assertIn("RELEASE_HOLD", str(caught.exception))
+        # The only change on origin is the hold commit itself: no bump, tag move or stable.
+        after = self.fx.origin_snapshot()
+        changed = {ref for ref in after if before.get(ref) != after[ref]}
+        self.assertEqual({"refs/heads/main"}, changed)
+        self.assertIsNone(self.fx.origin_rev("refs/heads/stable"))
+
+    def test_a_hold_pushed_after_resolve_stops_a_fresh_release_too(self) -> None:
+        self.fx.commit("feat: work")
+        self.fx.tag("v0.2.0")
+        with self.assertRaises(rt.ReleaseError):
+            rt.rehearse(
+                self.fx.work,
+                "v0.2.0",
+                after={"resolve": lambda _resolution: self.hold()},
+            )
+        self.assertIsNone(self.fx.origin_rev("refs/heads/stable"))
+
+    def test_assert_checkout_itself_refuses_a_hold(self) -> None:
+        self.fx.commit("feat: work")
+        self.fx.tag("v0.2.0")
+        release = self.release_commit("v0.2.0", "0.2.0")
+        self.hold()
+        self.fx.fetch()
+        git(self.fx.work, "checkout", "-q", "--detach", release)
+        with self.assertRaises(rt.ReleaseError) as caught:
+            rt.assert_checkout(self.fx.work, "resume", release, "v0.2.0", verified=release)
+        self.assertIn("RELEASE_HOLD", str(caught.exception))
+
+    def test_a_repository_that_cannot_answer_fails_closed_not_open(self) -> None:
+        # An unreadable tree is not "no hold". `git ls-tree` exits nonzero on a tree it
+        # cannot read, and `cat-file -e` could not tell that apart from an absent path.
+        for ref in ("0" * 40, "refs/heads/does-not-exist"):
+            with self.subTest(ref=ref), self.assertRaises(rt.ReleaseError) as caught:
+                rt.assert_no_hold(self.fx.work, ref)
+            self.assertIn("cannot read", str(caught.exception))
+            self.assertNotIn("on hold", str(caught.exception))
+
+    def test_the_command_exits_nonzero_with_one_annotation_line_and_writes_no_outputs(self) -> None:
+        self.fx.commit("feat: work")
+        self.fx.tag("v0.2.0")
+        self.hold()
+        self.fx.fetch()
+        outputs = self.fx.root / "github-output"
+        result = subprocess.run(
+            [
+                sys.executable,
+                str(SCRIPT),
+                "--repo",
+                str(self.fx.work),
+                "resolve",
+                "--tag",
+                "v0.2.0",
+                "--github-output",
+                str(outputs),
+            ],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=60,
+        )
+        self.assertEqual(1, result.returncode, result.stdout + result.stderr)
+        self.assertEqual(1, len(result.stdout.splitlines()), result.stdout)
+        self.assertTrue(result.stdout.startswith("::error::"))
+        self.assertFalse(outputs.exists())
+
+    def test_the_whole_rehearsal_stops_at_resolve_and_leaves_the_remote_untouched(self) -> None:
+        self.fx.commit("feat: work")
+        self.fx.tag("v0.2.0")
+        self.hold()
+        before = self.fx.origin_snapshot()
+        with self.assertRaises(rt.ReleaseError):
+            rt.rehearse(self.fx.work, "v0.2.0")
+        self.assertEqual(before, self.fx.origin_snapshot())
+
+
 class AssertCheckoutTest(unittest.TestCase):
     def setUp(self) -> None:
         self.fx = Fixture(self)

@@ -50,6 +50,52 @@ class CommandManualOptionsTest(unittest.TestCase):
         self.assertEqual(len(documented), len(set(documented)), "Document each spelling once")
 
 
+class DocumentedFrontendDefaultTest(unittest.TestCase):
+    """The two reader-facing `--frontend` rows say what the code defaults to."""
+
+    ROW = re.compile(r"^\| `--frontend MODE` \|(?P<text>.*)\|$", flags=re.MULTILINE)
+
+    def rows(self) -> dict[str, str]:
+        found = {}
+        for name, path in (
+            ("SKILL.md", SERVER_PATH.parent / "SKILL.md"),
+            ("MANUAL.md", SERVER_PATH.parents[3] / "MANUAL.md"),
+        ):
+            matches = self.ROW.findall(path.read_text(encoding="utf-8"))
+            self.assertEqual(1, len(matches), f"{name} needs exactly one --frontend row")
+            found[name] = matches[0]
+        return found
+
+    def problems(self, default: str) -> list[str]:
+        found = []
+        for name, text in self.rows().items():
+            if re.findall(r"`(\w+)` \(default\)", text) != [default]:
+                found.append(f"{name} does not name {default} as the one default")
+            found.extend(
+                f"{name} does not mention {mode}"
+                for mode in runtime_config.FRONTENDS
+                if f"`{mode}`" not in text
+            )
+        return found
+
+    def test_each_row_names_the_code_default_and_only_that_one(self) -> None:
+        self.assertEqual(
+            runtime_config.DEFAULT_FRONTEND, cli.build_parser().get_default("frontend")
+        )
+        self.assertEqual([], self.problems(runtime_config.DEFAULT_FRONTEND))
+
+    def test_the_check_can_fail(self) -> None:
+        # Flipping the code default without the rows, or one row without the code, is red.
+        other = next(m for m in runtime_config.FRONTENDS if m != runtime_config.DEFAULT_FRONTEND)
+        self.assertEqual(2, len(self.problems(other)))
+
+    def test_the_rows_say_a_running_dashboard_keeps_its_renderer(self) -> None:
+        for name, text in self.rows().items():
+            with self.subTest(file=name):
+                self.assertIn("keeps its renderer until it is stopped", text)
+                self.assertIn("--stop", text)
+
+
 class RuntimeDecisionCitationsTest(unittest.TestCase):
     def test_runtime_pointers_resolve(self) -> None:
         root = SERVER_PATH.parents[3]

@@ -252,6 +252,7 @@ pnpm test:project:browser
 pnpm test:console:browser
 pnpm test:attention:browser
 pnpm test:capacity:browser
+pnpm test:production:browser   # the same parity proofs against the shipped bundle: CARGENTO_E2E_BUNDLE=production, two shards in CI
 coverage erase
 python3 scripts/run_tests.py --coverage -s cargento/skills/cargento/tests -t .
 python3 scripts/run_tests.py --coverage -s scripts/tests -t scripts/tests
@@ -474,8 +475,15 @@ the canonical tracked build; every platform checks hostile HTML literals and an 
 3.11 copy in pinned Chromium, with Node hidden from the backend and external asset requests refused.
 Every platform also exercises owned development startup/cleanup and real Python/Vite hot refresh,
 API/SSE, backend restart and inert capability guards with models, usage and native actions disabled.
-The Python jobs retain their existing discovery and coverage gate. Native harness canary Node
-requirements remain independent of this build toolchain.
+Two more required jobs belong to the same gate. `Frontend proofs` runs the seven longer development-server
+browser proofs that used to share the `frontend` job, on the same operating systems and under the same
+Windows pause; a test pins that each development proof runs once across the two jobs. `Frontend
+production bundle` runs on Linux in two shards: it rebuilds and compares the tracked artifact, then runs
+the parity proofs against the shipped bundle rather than the development server, with the shard
+membership kept in `frontend/e2e/production-shards.json`. Both are in the aggregator's `needs`, and a
+skipped result passes only when the detector said `code=false`. The Python jobs retain their existing
+discovery and coverage gate. Native harness canary Node requirements remain independent of this build
+toolchain.
 
 ## Measured Invariants
 
@@ -567,6 +575,16 @@ carries only name and description without a version field). `scripts/validate_pl
 enforces both.
 
 Version fields are **owned by the tag-driven Release workflow** — never edit them in a PR (the `version-guard` check fails any PR that does).
+
+**Releases are on hold** while a `RELEASE_HOLD` file is tracked at the repository root. React became
+the default dashboard with the legacy page kept as a temporary rollback (`--frontend legacy`), and
+the hold lasts until that rollback is retired and the final browser, Python-only install and
+backend-connected development checks pass on one build of `main`. The guard is not prose:
+`scripts/release_transition.py resolve` refuses while the file is on `main`, for a fresh release and a
+resume, before any verifier or credential, `assert-checkout` asks again before anything is published,
+an unreadable `main` refuses rather than passing, and `scripts/tests/test_release_transition.py` rehearses it
+against temporary repositories. Do not edit or delete the file to get a release through; the owner lifts
+it in a reviewed pull request. The `cargento-release` skill owns the procedure.
 
 Which number to cut is a separate question from how to cut it, and the `cargento-release` skill owns it: it reads the surfaces changed since the last tag rather than the commit prefixes, and its own history section carries the measured reason why. It also owns the pre-flight checks, the post-tag verification, and the optional Slack announcement. Invoke it rather than reasoning from the commit log by hand. To release:
 

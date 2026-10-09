@@ -1,0 +1,2964 @@
+{
+  "schema": 1,
+  "purpose": "Maps every row of scripts/frontend-migration.json to the React-side proof that stands for it, so the default can change only over a complete, named parity suite.",
+  "scope": "The checker proves that each named proof exists (the test file and the title or browser step it names) and that no inventory row is unmapped. It does not judge that a proof covers its contract; that judgement is the reviewer's, row by row, and each mapping was chosen against the row's contract text.",
+  "inventory": "scripts/frontend-migration.json",
+  "status_meanings": {
+    "proven": "A React-side proof exists and is named.",
+    "deviation": "Proven, with a difference from the legacy page recorded in the design record paragraph the entry links.",
+    "deferred": "Owned by a named later issue; carries a reason.",
+    "gap": "No React-side proof was found for something the contract or the column asks for; recorded plainly for the lead."
+  },
+  "rows": {
+    "parts": {
+      "next-boot.js": {
+        "status": "proven",
+        "proofs": [
+          {
+            "vitest": "frontend/src/router/grammar.test.ts",
+            "test": "parses and prints the same for every generated fragment"
+          },
+          {
+            "vitest": "frontend/src/router/permalink.test.ts",
+            "test": "agrees with the legacy builder"
+          },
+          {
+            "vitest": "frontend/src/api/identity.test.ts",
+            "test": "keys a session by the exact harness and sid pair"
+          },
+          {
+            "vitest": "frontend/src/controls/SessionControls.test.tsx",
+            "test": "copies exactly the control's own value once per press"
+          },
+          {
+            "browser": "frontend/e2e/shell-routing.mjs",
+            "step": "routes: every contract prints the canonical fragment"
+          },
+          {
+            "browser": "frontend/e2e/sessions-parity.mjs",
+            "step": "hostile text is text on both pages"
+          }
+        ]
+      },
+      "next-observed.js": {
+        "status": "proven",
+        "proofs": [
+          {
+            "vitest": "frontend/src/observed/observed.differential.test.ts",
+            "test": "agrees on all"
+          },
+          {
+            "vitest": "frontend/src/observed/observed.test.ts",
+            "test": "derives every total from the session list"
+          },
+          {
+            "vitest": "frontend/src/store/selectors.test.ts",
+            "test": "distinguishes a missing sessions field from an empty one"
+          },
+          {
+            "browser": "frontend/e2e/sessions-parity.mjs",
+            "step": "differential: the real board reads the same on both pages"
+          }
+        ]
+      },
+      "next-attention.js": {
+        "status": "proven",
+        "proofs": [
+          {
+            "vitest": "frontend/src/attention/model.differential.test.ts",
+            "test": "agrees on all"
+          },
+          {
+            "vitest": "frontend/src/attention/view.differential.test.tsx",
+            "test": "agrees on"
+          },
+          {
+            "vitest": "frontend/src/attention/AttentionView.test.tsx",
+            "test": "invents no urgency"
+          },
+          {
+            "browser": "frontend/e2e/attention-parity.mjs",
+            "step": "parity: the legacy and React screens read alike"
+          }
+        ]
+      },
+      "next-notify.js": {
+        "status": "proven",
+        "proofs": [
+          {
+            "vitest": "frontend/src/notify/owner.differential.test.ts",
+            "test": "agrees step by step"
+          },
+          {
+            "vitest": "frontend/src/notify/NotificationControl.test.tsx",
+            "test": "raises one banner for a gate that arrives after the first board"
+          },
+          {
+            "browser": "frontend/e2e/attention-parity.mjs",
+            "step": "a gate that arrives after the first board raises one banner"
+          }
+        ]
+      },
+      "next-cockpit-compat.js": {
+        "status": "deviation",
+        "proofs": [
+          {
+            "vitest": "frontend/src/timeline/Timeline.test.tsx",
+            "test": "says it is loading, then shows the events, having made two passive reads and no other request"
+          },
+          {
+            "vitest": "frontend/src/terminal/TerminalSurface.test.tsx",
+            "test": "opens one terminal and one socket under StrictMode"
+          }
+        ],
+        "deviation": "docs/design-frontend-migration.md#the-cutover-receipt",
+        "note": "The legacy seam that lent the timeline and terminal their globals is not ported: the React timeline and terminal are native components and no second shell is mounted. The legacy file is removed with the legacy page, in the retirement step."
+      },
+      "project.js": {
+        "status": "proven",
+        "proofs": [
+          {
+            "vitest": "frontend/src/timeline/semantic.differential.test.ts",
+            "test": "agree with the legacy timeline over"
+          },
+          {
+            "vitest": "frontend/src/terminal/owner.test.ts",
+            "test": "opens exactly one terminal and one socket for one open"
+          },
+          {
+            "browser": "frontend/e2e/timeline-filter.mjs",
+            "step": "each choice shows the events the legacy page shows"
+          },
+          {
+            "browser": "frontend/e2e/terminal-parity.mjs",
+            "step": "leaving the route and coming back finds the same screen"
+          }
+        ]
+      },
+      "next-chrome.js": {
+        "status": "proven",
+        "proofs": [
+          {
+            "vitest": "frontend/src/shell/Page.test.tsx",
+            "test": "lists the four views in the released order"
+          },
+          {
+            "vitest": "frontend/src/shell/Notices.test.tsx",
+            "test": "is told at the second consecutive failure"
+          },
+          {
+            "vitest": "frontend/src/shell/keyboard.test.ts",
+            "test": "returns a session to the view it was opened from"
+          },
+          {
+            "browser": "frontend/e2e/shell-routing.mjs",
+            "step": "differential: every route contract reads the same on both pages"
+          }
+        ]
+      },
+      "next-capacity.js": {
+        "status": "proven",
+        "proofs": [
+          {
+            "vitest": "frontend/src/capacity/model.differential.test.ts",
+            "test": "rows, in rank order and in every figure"
+          },
+          {
+            "vitest": "frontend/src/capacity/UsageConsent.test.tsx",
+            "test": "unanswered sends none through StrictMode"
+          },
+          {
+            "browser": "frontend/e2e/capacity-parity.mjs",
+            "step": "Turn on carries usage=1 on the very next request"
+          }
+        ]
+      },
+      "next-sessions.js": {
+        "status": "proven",
+        "proofs": [
+          {
+            "vitest": "frontend/src/sessions/sessions.differential.test.tsx",
+            "test": "agrees on"
+          },
+          {
+            "vitest": "frontend/src/sessions/SessionsView.test.tsx",
+            "test": "puts a blocked session first"
+          },
+          {
+            "browser": "frontend/e2e/sessions-parity.mjs",
+            "step": "differential: the real board reads the same on both pages"
+          }
+        ]
+      },
+      "next-projects.js": {
+        "status": "proven",
+        "proofs": [
+          {
+            "vitest": "frontend/src/project/ProjectsView.differential.test.tsx",
+            "test": "agrees on"
+          },
+          {
+            "browser": "frontend/e2e/project-parity.mjs",
+            "step": "differential: the Projects list reads the same"
+          }
+        ]
+      },
+      "next-project.js": {
+        "status": "deviation",
+        "proofs": [
+          {
+            "vitest": "frontend/src/project/ProjectDetail.differential.test.tsx",
+            "test": "agrees on"
+          },
+          {
+            "vitest": "frontend/src/project/model.differential.test.ts",
+            "test": "agrees on"
+          },
+          {
+            "browser": "frontend/e2e/project-parity.mjs",
+            "step": "differential: every project of the proof board, on Now and on Course"
+          }
+        ],
+        "deviation": "docs/design-frontend-migration.md#project-views-steering-and-the-console",
+        "note": "Project detail is ported with the recorded differences in the project paragraph: the delegation lanes come from the project-scope assignments, a non-record hierarchy member is skipped, and panels are plain sections."
+      },
+      "next-intent.js": {
+        "status": "proven",
+        "proofs": [
+          {
+            "vitest": "frontend/src/intent/IntentLog.differential.test.tsx",
+            "test": "agrees on"
+          },
+          {
+            "vitest": "frontend/src/intent/IntentLog.test.tsx",
+            "test": "links a session with an empty project label"
+          },
+          {
+            "browser": "frontend/e2e/intent-parity.mjs",
+            "step": "the Intent log reads as the legacy log does over saved words"
+          }
+        ]
+      },
+      "next-activity.js": {
+        "status": "proven",
+        "proofs": [
+          {
+            "vitest": "frontend/src/project/model.differential.test.ts",
+            "test": "agrees on"
+          },
+          {
+            "vitest": "frontend/src/project/ProjectDetail.test.tsx",
+            "test": "counts a state change only from the evidence"
+          },
+          {
+            "browser": "frontend/e2e/project-parity.mjs",
+            "step": "exact sessions as scopes, on Now and on Course"
+          }
+        ]
+      },
+      "next-session.js": {
+        "status": "proven",
+        "proofs": [
+          {
+            "vitest": "frontend/src/sessions/detail.differential.test.tsx",
+            "test": "agrees on every session of"
+          },
+          {
+            "vitest": "frontend/src/sessions/SessionDetail.test.tsx",
+            "test": "shows every exact request in payload order"
+          },
+          {
+            "browser": "frontend/e2e/sessions-parity.mjs",
+            "step": "differential: every session of the real board has the same page"
+          }
+        ]
+      },
+      "next-workstream.js": {
+        "status": "proven",
+        "proofs": [
+          {
+            "vitest": "frontend/src/workstream/workstream.differential.test.ts",
+            "test": "agrees on"
+          },
+          {
+            "vitest": "frontend/src/project/ProjectDetail.test.tsx",
+            "test": "collapses and expands, keeps the choice for the next load"
+          },
+          {
+            "browser": "frontend/e2e/project-parity.mjs",
+            "step": "workstream: the collapse survives a reload as 1 or 0"
+          }
+        ]
+      },
+      "next-delegation.js": {
+        "status": "proven",
+        "proofs": [
+          {
+            "vitest": "frontend/src/delegation/metric.differential.test.ts",
+            "test": "over"
+          },
+          {
+            "vitest": "frontend/src/delegation/rail.differential.test.tsx",
+            "test": "over"
+          },
+          {
+            "vitest": "frontend/src/delegation/Panels.test.tsx",
+            "test": "withholds the percentage and says why, rather than drawing zero"
+          },
+          {
+            "browser": "frontend/e2e/console-parity.mjs",
+            "step": "Console at project scope: the scope, the prompt, the rail, the setup line and the raw status"
+          }
+        ]
+      },
+      "next-controls.js": {
+        "status": "deviation",
+        "proofs": [
+          {
+            "vitest": "frontend/src/steering/ProjectSteer.test.tsx",
+            "test": "records a receipt that says it was not delivered, and empties the box AND the draft"
+          },
+          {
+            "vitest": "frontend/src/steering/Tripwires.test.tsx",
+            "test": "keep the newest fifty and cut each to five hundred characters"
+          },
+          {
+            "vitest": "frontend/src/transport/pending.test.ts",
+            "test": "uses the released timings"
+          },
+          {
+            "browser": "frontend/e2e/console-parity.mjs",
+            "step": "the steering box keeps its node, text, caret and native undo through revisions and a change of tab"
+          }
+        ],
+        "deviation": "docs/design-frontend-migration.md#project-views-steering-and-the-console",
+        "note": "Steering and tripwires are ported with the recorded differences: the tripwire box takes focus when it opens and an Enter that commits an input-method composition adds no rule."
+      },
+      "next-cockpit.js": {
+        "status": "deviation",
+        "proofs": [
+          {
+            "vitest": "frontend/src/project/ProjectDetail.test.tsx",
+            "test": "names what the captain has to do, with its source, before anything is concluded"
+          },
+          {
+            "vitest": "frontend/src/project/recovery.differential.test.ts",
+            "test": "agrees on"
+          },
+          {
+            "vitest": "frontend/src/controls/HumanContext.test.tsx",
+            "test": "saves each input to the exact released key, memory first, and says so"
+          },
+          {
+            "browser": "frontend/e2e/project-parity.mjs",
+            "step": "differential: every project of the proof board, on Now and on Course"
+          }
+        ],
+        "deviation": "docs/design-frontend-migration.md#project-views-steering-and-the-console",
+        "note": "The cockpit is split across React modules (recovery strip, scopes, notes, timeline, Console) with the recorded differences in the project paragraph; the shared Intent and terminal parts are mapped under their own rows."
+      },
+      "next-render.js": {
+        "status": "proven",
+        "proofs": [
+          {
+            "vitest": "frontend/src/controls/displayGate.test.ts",
+            "test": "defers up to twelve background paints while a native select is open, then keeps painting without re-arming"
+          },
+          {
+            "vitest": "frontend/src/store/commit-gate.test.ts",
+            "test": "waits out a reader toggle and coalesces to the newest paint"
+          },
+          {
+            "vitest": "frontend/src/transport/refresh.test.ts",
+            "test": "makes an awaited post-save refresh wait for a fetch that started after the call"
+          },
+          {
+            "browser": "frontend/e2e/controls-continuity.mjs",
+            "step": "a native select keeps its node, focus and option list while the poll is deferred"
+          },
+          {
+            "browser": "frontend/e2e/shell-routing.mjs",
+            "step": "refresh: an open native list holds a poll paint"
+          }
+        ]
+      },
+      "next-live.js": {
+        "status": "proven",
+        "proofs": [
+          {
+            "vitest": "frontend/src/transport/live.test.ts",
+            "test": "converges two tabs on one stream"
+          },
+          {
+            "vitest": "frontend/src/transport/runtime.test.ts",
+            "test": "leaves no stream, timer, listener, subscription or lease behind"
+          },
+          {
+            "browser": "frontend/e2e/sessions-parity.mjs",
+            "step": "resources: a page load opens one stream and reads once"
+          },
+          {
+            "fluidity": "resource_constant_after_collection"
+          }
+        ]
+      }
+    },
+    "surfaces": {
+      "primary-navigation": {
+        "status": "proven",
+        "proofs": [
+          {
+            "vitest": "frontend/src/shell/Page.test.tsx",
+            "test": "lists the four views in the released order"
+          },
+          {
+            "browser": "frontend/e2e/shell-routing.mjs",
+            "step": "keyboard: Tab reaches the four views in order"
+          }
+        ]
+      },
+      "breadcrumbs-and-history": {
+        "status": "proven",
+        "proofs": [
+          {
+            "vitest": "frontend/src/router/router.test.ts",
+            "test": "pushes one history entry per move, and Back returns to the preceding view"
+          },
+          {
+            "vitest": "frontend/src/shell/keyboard.test.ts",
+            "test": "returns a session to the view it was opened from"
+          },
+          {
+            "browser": "frontend/e2e/shell-routing.mjs",
+            "step": "history: Escape walks a session back to where it came from"
+          }
+        ]
+      },
+      "header-counts-and-block-control": {
+        "status": "deviation",
+        "proofs": [
+          {
+            "vitest": "frontend/src/shell/Page.test.tsx",
+            "test": "reads running and subagents with the legacy sentence"
+          },
+          {
+            "vitest": "frontend/src/shell/derive.test.ts",
+            "test": "counts a session as running only when it is working and its liveness is exactly true"
+          },
+          {
+            "browser": "frontend/e2e/shell-routing.mjs",
+            "step": "differential: before the first payload the legacy page counts zero and the React page states the absence"
+          }
+        ],
+        "deviation": "docs/design-frontend-migration.md#react-shell-routes-and-controls",
+        "note": "Before the first payload the header says it is waiting where the legacy page printed zeros that read as a measured empty board."
+      },
+      "refresh-build-and-history-notices": {
+        "status": "deviation",
+        "proofs": [
+          {
+            "vitest": "frontend/src/shell/Notices.test.tsx",
+            "test": "is told at the second consecutive failure"
+          },
+          {
+            "browser": "frontend/e2e/shell-routing.mjs",
+            "step": "differential: a failed refresh, a history reset and a newer build read the same on both pages"
+          },
+          {
+            "browser": "frontend/e2e/shell-routing.mjs",
+            "step": "notices: a newer build asks for a reload"
+          }
+        ],
+        "deviation": "docs/design-frontend-migration.md#react-shell-routes-and-controls",
+        "note": "Retry uses aria-disabled instead of disabled so keyboard focus survives its own removal."
+      },
+      "stable-status-and-alert-regions": {
+        "status": "proven",
+        "proofs": [
+          {
+            "vitest": "frontend/src/shell/announcer.test.tsx",
+            "test": "draws each region once with the politeness the legacy page gave it, empty"
+          },
+          {
+            "vitest": "frontend/src/shell/Page.test.tsx",
+            "test": "draws each of the five live regions exactly once"
+          },
+          {
+            "browser": "frontend/e2e/shell-routing.mjs",
+            "step": "ownership: React owns the page and the five live regions"
+          }
+        ]
+      },
+      "session-copy-and-terminal-raise-controls": {
+        "status": "proven",
+        "proofs": [
+          {
+            "vitest": "frontend/src/controls/SessionControls.test.tsx",
+            "test": "deduplicates while one is in flight"
+          },
+          {
+            "browser": "frontend/e2e/controls-continuity.mjs",
+            "step": "copy cues are distinct and durable, copy writes once per press, and raise is explicit and deduplicated"
+          },
+          {
+            "browser": "frontend/e2e/sessions-parity.mjs",
+            "step": "copy: a press is recorded"
+          }
+        ]
+      },
+      "sessions-first-screen": {
+        "status": "deviation",
+        "proofs": [
+          {
+            "vitest": "frontend/src/sessions/SessionsView.test.tsx",
+            "test": "puts a blocked session first"
+          },
+          {
+            "vitest": "frontend/src/sessions/sessions.differential.test.tsx",
+            "test": "agrees on"
+          },
+          {
+            "browser": "frontend/e2e/sessions-parity.mjs",
+            "step": "differential: the real board reads the same on both pages"
+          }
+        ],
+        "deviation": "docs/design-frontend-migration.md#sessions-session-detail-the-timeline-and-the-terminal",
+        "note": "A harness whose store could not be read is named, which the legacy page does not do."
+      },
+      "session-detail-and-absence": {
+        "status": "proven",
+        "proofs": [
+          {
+            "vitest": "frontend/src/sessions/SessionDetail.test.tsx",
+            "test": "names an expired identity by its harness and sid"
+          },
+          {
+            "browser": "frontend/e2e/sessions-parity.mjs",
+            "step": "differential: every session of the real board has the same page"
+          }
+        ]
+      },
+      "session-questions-and-answer-confirmation": {
+        "status": "proven",
+        "proofs": [
+          {
+            "vitest": "frontend/src/sessions/SessionDetail.test.tsx",
+            "test": "posts one numeric option index, never the option, and exactly once per press"
+          },
+          {
+            "browser": "frontend/e2e/sessions-parity.mjs",
+            "step": "answer: one numeric index goes to the real route by keyboard"
+          },
+          {
+            "browser": "frontend/e2e/sessions-parity.mjs",
+            "step": "answer: a card another tab already answered"
+          }
+        ]
+      },
+      "session-last-reply-and-delegated-work": {
+        "status": "proven",
+        "proofs": [
+          {
+            "vitest": "frontend/src/sessions/SessionDetail.test.tsx",
+            "test": "lists workers with their own state"
+          },
+          {
+            "vitest": "frontend/src/sessions/detail.differential.test.tsx",
+            "test": "reaches held requests, ended sessions, tasks, workers, health notes, deliveries and reports"
+          },
+          {
+            "browser": "frontend/e2e/sessions-parity.mjs",
+            "step": "differential: every session of the real board has the same page"
+          }
+        ]
+      },
+      "intent-log": {
+        "status": "proven",
+        "proofs": [
+          {
+            "vitest": "frontend/src/intent/IntentLog.test.tsx",
+            "test": "links a session with an empty project label"
+          },
+          {
+            "vitest": "frontend/src/intent/IntentLog.differential.test.tsx",
+            "test": "agrees on"
+          },
+          {
+            "browser": "frontend/e2e/intent-parity.mjs",
+            "step": "the Intent log reads as the legacy log does over saved words"
+          }
+        ]
+      },
+      "intent-goal-and-outcome-editor": {
+        "status": "deviation",
+        "proofs": [
+          {
+            "vitest": "frontend/src/intent/IntentEditor.test.tsx",
+            "test": "keeps the words, the caret and the selection across a board refresh"
+          },
+          {
+            "browser": "frontend/e2e/intent-parity.mjs",
+            "step": "the goal box keeps its node, text, caret, selection, focus and native undo"
+          },
+          {
+            "fluidity": "edited_or_open_node_replacements"
+          }
+        ],
+        "deviation": "docs/design-frontend-migration.md#the-intent-log-and-the-intent-panel",
+        "note": "Unsaved text survives leaving the session and returning, but the editor node and its native undo history do not, because the Intent view unmounts."
+      },
+      "prompt-adoption-menu": {
+        "status": "proven",
+        "proofs": [
+          {
+            "vitest": "frontend/src/intent/IntentAdoption.test.tsx",
+            "test": "adopts the chosen prompt naming its fact, words and time"
+          },
+          {
+            "vitest": "frontend/src/intent/IntentRaces.test.tsx",
+            "test": "is dropped by the panel once the server stops offering it and the record has been read"
+          },
+          {
+            "browser": "frontend/e2e/intent-parity.mjs",
+            "step": "the native select reads the prompts once per opening"
+          }
+        ]
+      },
+      "drift-explanation-and-live-monitor": {
+        "status": "proven",
+        "proofs": [
+          {
+            "vitest": "frontend/src/intent/LiveMonitor.test.tsx",
+            "test": "writes 1 for this exact session when turned on"
+          },
+          {
+            "browser": "frontend/e2e/drift-parity.mjs",
+            "step": "the live estimate and the header pill read as the legacy page does"
+          },
+          {
+            "browser": "frontend/e2e/intent-parity.mjs",
+            "step": "the live monitor switch writes 1 for this exact session"
+          }
+        ]
+      },
+      "analyze-consent-and-reading-result": {
+        "status": "deviation",
+        "proofs": [
+          {
+            "vitest": "frontend/src/drift/ReadingStart.test.tsx",
+            "test": "asks before sending, names the receiver, and sends only on Allow"
+          },
+          {
+            "vitest": "frontend/src/drift/ReadingResult.test.tsx",
+            "test": "says the answer, then each line by the list's own number, and never a check mark"
+          },
+          {
+            "browser": "frontend/e2e/drift-parity.mjs",
+            "step": "pressing Analyze where an Allow is owed asks for it, naming the receiver, and sends nothing"
+          },
+          {
+            "browser": "frontend/e2e/drift-parity.mjs",
+            "step": "a stored result: the answer, each line by the list"
+          }
+        ],
+        "deviation": "docs/design-frontend-migration.md#the-drift-card-analyze-and-steer-back",
+        "note": "The card holds the last board while the reader is in the correction box, composing or holding a pointer on a control, and says Updates are paused."
+      },
+      "correction-to-copy": {
+        "status": "deviation",
+        "proofs": [
+          {
+            "vitest": "frontend/src/drift/SteerBack.test.tsx",
+            "test": "composes nothing until pressed, then once, and writes nothing into the session"
+          },
+          {
+            "browser": "frontend/e2e/drift-parity.mjs",
+            "step": "Steer back opens the correction with its numbers filled in, and Copy records it once"
+          }
+        ],
+        "deviation": "docs/design-frontend-migration.md#the-drift-card-analyze-and-steer-back",
+        "note": "A stale mark that moves the correction box after the reader leaves it remounts the box: the words survive, native undo does not."
+      },
+      "departure-review-and-reading-history": {
+        "status": "proven",
+        "proofs": [
+          {
+            "vitest": "frontend/src/drift/Departures.test.tsx",
+            "test": "collapses the rows under their count, each against the revision it read, with the figures"
+          },
+          {
+            "vitest": "frontend/src/sessions/DepartureParts.test.tsx",
+            "test": "agrees over generated sessions"
+          },
+          {
+            "browser": "frontend/e2e/drift-parity.mjs",
+            "step": "the departures section: lane on and off, raises on record, delivery and counts"
+          }
+        ],
+        "note": "No legacy web surface calls the dismiss route, so none was built; the design record states it."
+      },
+      "projects-list-and-history": {
+        "status": "proven",
+        "proofs": [
+          {
+            "vitest": "frontend/src/project/ProjectsView.differential.test.tsx",
+            "test": "agrees on"
+          },
+          {
+            "browser": "frontend/e2e/project-parity.mjs",
+            "step": "differential: the Projects list reads the same, group by group and row by row"
+          }
+        ]
+      },
+      "project-detail-and-workflow-plans": {
+        "status": "deviation",
+        "proofs": [
+          {
+            "vitest": "frontend/src/project/ProjectDetail.test.tsx",
+            "test": "lists the plan with its entities and flags the one that stopped moving"
+          },
+          {
+            "vitest": "frontend/src/project/ProjectDetail.differential.test.tsx",
+            "test": "agrees on"
+          },
+          {
+            "browser": "frontend/e2e/project-parity.mjs",
+            "step": "differential: every project of the proof board, on Now and on Course"
+          }
+        ],
+        "deviation": "docs/design-frontend-migration.md#project-views-steering-and-the-console",
+        "note": "A non-record hierarchy member is skipped where the legacy page throws; disclosures use the shared accordion and panels are plain sections."
+      },
+      "project-scope-tree-and-switcher": {
+        "status": "proven",
+        "proofs": [
+          {
+            "vitest": "frontend/src/project/ProjectDetail.test.tsx",
+            "test": "draws the project root and each exact session as different scopes"
+          },
+          {
+            "browser": "frontend/e2e/project-parity.mjs",
+            "step": "scope: the root and an exact session are different scopes"
+          },
+          {
+            "browser": "frontend/e2e/project-parity.mjs",
+            "step": "exact sessions as scopes, on Now and on Course"
+          }
+        ]
+      },
+      "project-recovery-briefing": {
+        "status": "deviation",
+        "proofs": [
+          {
+            "vitest": "frontend/src/project/recovery.differential.test.ts",
+            "test": "agrees on"
+          },
+          {
+            "vitest": "frontend/src/project/ProjectDetail.test.tsx",
+            "test": "names what the captain has to do, with its source, before anything is concluded"
+          },
+          {
+            "browser": "frontend/e2e/project-parity.mjs",
+            "step": "differential: every project of the proof board, on Now and on Course"
+          }
+        ],
+        "deviation": "docs/design-frontend-migration.md#project-views-steering-and-the-console",
+        "note": "The recovery strip, Now and Course build delegation lanes from the project-scope assignments, where the legacy page read a cache the Decisions tab happened to seed."
+      },
+      "project-more-utility-menu": {
+        "status": "deviation",
+        "proofs": [
+          {
+            "vitest": "frontend/src/controls/MoreMenu.test.tsx",
+            "test": "names its summary, keeps the all-project status and offers Copy briefing"
+          },
+          {
+            "browser": "frontend/e2e/controls-continuity.mjs",
+            "step": "the More menu copies the briefing once and keeps reading Copied with no expiry"
+          },
+          {
+            "browser": "frontend/e2e/shell-routing.mjs",
+            "step": "more menu: on a project route it stays open across polls"
+          }
+        ],
+        "deviation": "docs/design-frontend-migration.md#project-views-steering-and-the-console",
+        "note": "Add human context is not offered at a focused session: the legacy page offered a button that opened an editor nothing drew."
+      },
+      "human-context-memo": {
+        "status": "deviation",
+        "proofs": [
+          {
+            "vitest": "frontend/src/controls/HumanContext.test.tsx",
+            "test": "saves each input to the exact released key, memory first, and says so"
+          },
+          {
+            "vitest": "frontend/src/project/ProjectDetail.test.tsx",
+            "test": "saves on every input to the released key, shows both notes, and reads them back after a reload"
+          },
+          {
+            "browser": "frontend/e2e/project-parity.mjs",
+            "step": "memo: a note keeps its node, text, caret, focus and native undo"
+          }
+        ],
+        "deviation": "docs/design-frontend-migration.md#project-views-steering-and-the-console",
+        "note": "Add human context is not offered at a focused session, where the strip draws no note."
+      },
+      "project-now-and-activity": {
+        "status": "proven",
+        "proofs": [
+          {
+            "vitest": "frontend/src/project/model.differential.test.ts",
+            "test": "agrees on"
+          },
+          {
+            "browser": "frontend/e2e/project-parity.mjs",
+            "step": "differential: every project of the proof board, on Now and on Course"
+          }
+        ]
+      },
+      "project-course-and-completed-work": {
+        "status": "proven",
+        "proofs": [
+          {
+            "vitest": "frontend/src/project/course.differential.test.ts",
+            "test": "agrees on"
+          },
+          {
+            "vitest": "frontend/src/project/ProjectDetail.test.tsx",
+            "test": "lists derived and exact episodes with their own badges, and never calls a review a verified result"
+          },
+          {
+            "browser": "frontend/e2e/project-parity.mjs",
+            "step": "differential: every project of the proof board, on Now and on Course"
+          }
+        ]
+      },
+      "project-decisions-semantic-timeline": {
+        "status": "proven",
+        "proofs": [
+          {
+            "vitest": "frontend/src/timeline/Timeline.test.tsx",
+            "test": "shows more in All events than in Active, and writes only the one released map"
+          },
+          {
+            "vitest": "frontend/src/steering/ProjectDecisions.test.tsx",
+            "test": "says what became of the decisions, then draws them under the recorded-decisions heading"
+          },
+          {
+            "vitest": "frontend/src/timeline/semantic.differential.test.ts",
+            "test": "agree with the legacy timeline over"
+          },
+          {
+            "browser": "frontend/e2e/console-parity.mjs",
+            "step": "Decisions at project scope: the summary, the legend"
+          },
+          {
+            "browser": "frontend/e2e/timeline-filter.mjs",
+            "step": "each choice shows the events the legacy page shows"
+          }
+        ]
+      },
+      "project-console-operating-rail": {
+        "status": "proven",
+        "proofs": [
+          {
+            "vitest": "frontend/src/delegation/Console.test.tsx",
+            "test": "draws the scope, the rail, then the setup, and names the scope exactly"
+          },
+          {
+            "vitest": "frontend/src/delegation/rail.differential.test.tsx",
+            "test": "over"
+          },
+          {
+            "browser": "frontend/e2e/console-parity.mjs",
+            "step": "Console at project scope: the scope, the prompt, the rail, the setup line and the raw status"
+          }
+        ]
+      },
+      "project-steering-and-local-tripwires": {
+        "status": "deviation",
+        "proofs": [
+          {
+            "vitest": "frontend/src/steering/ProjectSteer.test.tsx",
+            "test": "names itself local and says there is no write path into a session"
+          },
+          {
+            "vitest": "frontend/src/steering/Tripwires.test.tsx",
+            "test": "names itself local and says it is a note to yourself"
+          },
+          {
+            "browser": "frontend/e2e/console-parity.mjs",
+            "step": "a tripwire is added, toggled and persisted the same way in both pages"
+          },
+          {
+            "browser": "frontend/e2e/console-parity.mjs",
+            "step": "the steering bar says what it is before the first keystroke, in both pages"
+          }
+        ],
+        "deviation": "docs/design-frontend-migration.md#project-views-steering-and-the-console",
+        "note": "The tripwire box takes focus when it opens and gives it back to its button, and an Enter that commits an input-method composition adds no rule."
+      },
+      "workflow-stage-tripwires": {
+        "status": "proven",
+        "proofs": [
+          {
+            "vitest": "frontend/src/steering/StageConditions.test.tsx",
+            "test": "sends the exact request once, shows it busy, and says it was saved"
+          },
+          {
+            "vitest": "frontend/src/steering/StageConditions.differential.test.tsx",
+            "test": "over"
+          },
+          {
+            "browser": "frontend/e2e/console-parity.mjs",
+            "step": "a stage condition: one request per press, its choice and cue kept, and the native select stays"
+          },
+          {
+            "browser": "frontend/e2e/console-parity.mjs",
+            "step": "Save, Rearm and Remove through the real route say the same things in both pages"
+          }
+        ]
+      },
+      "workstream-changes-and-delegation-trends": {
+        "status": "proven",
+        "proofs": [
+          {
+            "vitest": "frontend/src/workstream/workstream.differential.test.ts",
+            "test": "agrees on"
+          },
+          {
+            "vitest": "frontend/src/delegation/Panels.test.tsx",
+            "test": "withholds the percentage and says why, rather than drawing zero"
+          },
+          {
+            "browser": "frontend/e2e/project-parity.mjs",
+            "step": "workstream: a change this tab saw is listed, and the legacy page lists the same change from the same boards"
+          }
+        ]
+      },
+      "exact-session-terminal-registration-recipe": {
+        "status": "proven",
+        "proofs": [
+          {
+            "vitest": "frontend/src/terminal/registration.test.ts",
+            "test": "gives each known reason its sentence, and the recipe for the four that can be fixed by registering"
+          },
+          {
+            "vitest": "frontend/src/terminal/TerminalSurface.test.tsx",
+            "test": "says the bridge is disabled when the server has none, and shows the two-step recipe behind a disclosure"
+          },
+          {
+            "browser": "frontend/e2e/terminal-parity.mjs",
+            "step": "refused, disabled and failed readings say what they are, with the recipe behind a disclosure that stays open"
+          },
+          {
+            "browser": "frontend/e2e/console-parity.mjs",
+            "step": "Console with a session that has no terminal: the terminal stays behind the closed setup"
+          }
+        ]
+      },
+      "read-only-terminal-output-and-viewport": {
+        "status": "proven",
+        "proofs": [
+          {
+            "vitest": "frontend/src/terminal/owner.test.ts",
+            "test": "transmits nothing when keys are pressed or text is pasted in the terminal"
+          },
+          {
+            "vitest": "frontend/src/terminal/stream.test.ts",
+            "test": "reconnects once after a drop and starts reading from the beginning"
+          },
+          {
+            "vitest": "frontend/src/terminal/viewport.test.ts",
+            "test": "treats 2 px as still following and 3 px as having left"
+          },
+          {
+            "browser": "frontend/e2e/terminal-parity.mjs",
+            "step": "typing, pasting and key presses transmit no frame, and nothing revokes the socket"
+          },
+          {
+            "browser": "frontend/e2e/terminal-parity.mjs",
+            "step": "the follow threshold agrees with the legacy page offset by offset, and flips at 3 px from live"
+          },
+          {
+            "browser": "frontend/e2e/terminal-parity.mjs",
+            "step": "a dropped stream reconnects, one socket at a time, and the old one is closed"
+          }
+        ]
+      },
+      "attention-gates-risks-and-coverage": {
+        "status": "deviation",
+        "proofs": [
+          {
+            "vitest": "frontend/src/attention/AttentionView.test.tsx",
+            "test": "orders the exact questions oldest first and keeps a question no session owns off the session count"
+          },
+          {
+            "vitest": "frontend/src/attention/view.differential.test.tsx",
+            "test": "agrees on"
+          },
+          {
+            "browser": "frontend/e2e/attention-parity.mjs",
+            "step": "parity: the legacy and React screens read alike"
+          }
+        ],
+        "deviation": "docs/design-frontend-migration.md#attention-notifications-capacity-and-the-consent-controls",
+        "note": "A stamp that is not a date prints without a time where the legacy Attention view throws; a board that published no session collection says so instead of printing 0 of 0."
+      },
+      "capacity-model-sublimits-and-pacing": {
+        "status": "deviation",
+        "proofs": [
+          {
+            "vitest": "frontend/src/capacity/model.differential.test.ts",
+            "test": "model sub-limits keep a measured zero, refuse fractions and strings, and bound the rest"
+          },
+          {
+            "vitest": "frontend/src/capacity/CapacityStrip.test.tsx",
+            "test": "a true zero used is a figure, not an absence"
+          },
+          {
+            "browser": "frontend/e2e/capacity-parity.mjs",
+            "step": "the strip draws the same facts on both pages and invents no tick"
+          }
+        ],
+        "deviation": "docs/design-frontend-migration.md#attention-notifications-capacity-and-the-consent-controls",
+        "note": "A usage entry with no harness name is drawn with the absence stated, and the unknown reading count clause is dropped where the legacy page printed null readings."
+      },
+      "usage-consent-disclosure": {
+        "status": "deviation",
+        "proofs": [
+          {
+            "vitest": "frontend/src/capacity/UsageConsent.test.tsx",
+            "test": "offers the disclosure, names what is read and where it goes, and sends no usage parameter on mount"
+          },
+          {
+            "browser": "frontend/e2e/capacity-parity.mjs",
+            "step": "the unanswered disclosure is drawn and no request carries a usage parameter"
+          },
+          {
+            "browser": "frontend/e2e/capacity-parity.mjs",
+            "step": "Turn on carries usage=1 on the very next request"
+          }
+        ],
+        "deviation": "docs/design-frontend-migration.md#attention-notifications-capacity-and-the-consent-controls",
+        "note": "An answer removed from storage is withdrawn at the next read, where the legacy page kept a copy in memory alive until reload."
+      },
+      "notification-permission-and-ownership": {
+        "status": "deviation",
+        "proofs": [
+          {
+            "vitest": "frontend/src/notify/NotificationControl.test.tsx",
+            "test": "opens the browser prompt once, on the press, then reports the lane once and hands focus back to the page"
+          },
+          {
+            "vitest": "frontend/src/notify/owner.test.ts",
+            "test": "is primed, leader owned, and raised once per event id"
+          },
+          {
+            "browser": "frontend/e2e/attention-parity.mjs",
+            "step": "pressing Enable asks once, reports the lane as two scalars, hands focus back"
+          }
+        ],
+        "deviation": "docs/design-frontend-migration.md#attention-notifications-capacity-and-the-consent-controls",
+        "note": "The lane report is sent as soon as the reader grants rather than at the next payload."
+      },
+      "observer-model-consent-controls": {
+        "status": "proven",
+        "proofs": [
+          {
+            "vitest": "frontend/src/capacity/ObserverControls.test.tsx",
+            "test": "sends exactly one request for the exact session, shows it in progress, and cannot be doubled"
+          },
+          {
+            "browser": "frontend/e2e/capacity-parity.mjs",
+            "step": "allowing sends nothing; one press of Summarize sends one request for the exact session"
+          },
+          {
+            "browser": "frontend/e2e/capacity-parity.mjs",
+            "step": "quota consent does not authorize the observer model"
+          }
+        ]
+      },
+      "live-update-and-fallback-continuity": {
+        "status": "proven",
+        "proofs": [
+          {
+            "vitest": "frontend/src/transport/live.test.ts",
+            "test": "polls every 20 s as a safety net beside the stream"
+          },
+          {
+            "vitest": "frontend/src/transport/runtime.test.ts",
+            "test": "refetches once for a newer stream revision and not for a repeat or an older one"
+          },
+          {
+            "browser": "frontend/e2e/sessions-parity.mjs",
+            "step": "resources: a page load opens one stream and reads once, under StrictMode, and navigation adds nothing"
+          },
+          {
+            "fluidity": "resource_constant_after_collection"
+          }
+        ]
+      },
+      "disclosure-motion-and-native-input-continuity": {
+        "status": "proven",
+        "proofs": [
+          {
+            "vitest": "frontend/src/controls/Disclosure.test.tsx",
+            "test": "is left alone, same node and same state, by an unrelated update"
+          },
+          {
+            "vitest": "frontend/src/controls/displayGate.test.ts",
+            "test": "holds a background paint behind the reader's own toggle and coalesces to the newest"
+          },
+          {
+            "browser": "frontend/e2e/controls-continuity.mjs",
+            "step": "an IME composition survives live data: no compositionend, same node, text commits once"
+          },
+          {
+            "browser": "frontend/e2e/controls-continuity.mjs",
+            "step": "a draft keeps text, caret, selection and native undo through live data from the real SSE stream"
+          },
+          {
+            "fluidity": "edited_or_open_node_replacements"
+          }
+        ]
+      }
+    },
+    "routes": {
+      "bare-or-invalid-fragment": {
+        "status": "proven",
+        "proofs": [
+          {
+            "vitest": "frontend/src/router/grammar.test.ts",
+            "test": "prints an unknown view and a missing route as Sessions"
+          },
+          {
+            "browser": "frontend/e2e/shell-routing.mjs",
+            "step": "history: a malformed fragment typed into an open page is rewritten in place"
+          },
+          {
+            "browser": "frontend/e2e/shell-routing.mjs",
+            "step": "differential: every route contract reads the same on both pages"
+          }
+        ]
+      },
+      "top-level-sessions": {
+        "status": "proven",
+        "proofs": [
+          {
+            "vitest": "frontend/src/shell/Page.test.tsx",
+            "test": "marks the current location for"
+          },
+          {
+            "browser": "frontend/e2e/shell-routing.mjs",
+            "step": "differential: every route contract reads the same on both pages"
+          }
+        ]
+      },
+      "top-level-attention": {
+        "status": "proven",
+        "proofs": [
+          {
+            "vitest": "frontend/src/shell/Page.test.tsx",
+            "test": "follows a link from one view to the next and keeps Back honest"
+          },
+          {
+            "browser": "frontend/e2e/shell-routing.mjs",
+            "step": "differential: every route contract reads the same on both pages"
+          }
+        ]
+      },
+      "top-level-projects": {
+        "status": "proven",
+        "proofs": [
+          {
+            "vitest": "frontend/src/shell/Page.test.tsx",
+            "test": "follows a link from one view to the next and keeps Back honest"
+          },
+          {
+            "browser": "frontend/e2e/shell-routing.mjs",
+            "step": "differential: every route contract reads the same on both pages"
+          }
+        ]
+      },
+      "top-level-intent": {
+        "status": "proven",
+        "proofs": [
+          {
+            "vitest": "frontend/src/intent/IntentLog.test.tsx",
+            "test": "waits while hidden: a board that arrives on another route fetches no retained words"
+          },
+          {
+            "browser": "frontend/e2e/shell-routing.mjs",
+            "step": "differential: every route contract reads the same on both pages"
+          }
+        ]
+      },
+      "project-root": {
+        "status": "proven",
+        "proofs": [
+          {
+            "vitest": "frontend/src/shell/ProjectTabs.test.tsx",
+            "test": "draws four tabs with Now selected by default and only the selected one in the tab order"
+          },
+          {
+            "browser": "frontend/e2e/shell-routing.mjs",
+            "step": "project tabs: Now is the default"
+          }
+        ]
+      },
+      "project-tabs": {
+        "status": "proven",
+        "proofs": [
+          {
+            "vitest": "frontend/src/shell/ProjectTabs.test.tsx",
+            "test": "wraps over the strip with the arrow keys and puts focus on the tab it selects"
+          },
+          {
+            "browser": "frontend/e2e/shell-routing.mjs",
+            "step": "project tabs: Now is the default and the arrow keys wrap over the strip"
+          }
+        ]
+      },
+      "project-exact-session-focus": {
+        "status": "proven",
+        "proofs": [
+          {
+            "vitest": "frontend/src/shell/Views.test.tsx",
+            "test": "matches a focused session by its exact key, the sid under the other harness being another session"
+          },
+          {
+            "browser": "frontend/e2e/shell-routing.mjs",
+            "step": "project focus: a stale session filter says so and links to the project root"
+          }
+        ]
+      },
+      "session-exact-harness-and-id": {
+        "status": "proven",
+        "proofs": [
+          {
+            "vitest": "frontend/src/shell/Views.test.tsx",
+            "test": "opens a session with no project label, which is a real group"
+          },
+          {
+            "browser": "frontend/e2e/shell-routing.mjs",
+            "step": "differential: every route contract reads the same on both pages"
+          }
+        ]
+      },
+      "session-legacy-id-form": {
+        "status": "proven",
+        "proofs": [
+          {
+            "vitest": "frontend/src/shell/Views.test.tsx",
+            "test": "refuses the released id-only form when two harnesses carry the sid, and opens it when one does"
+          },
+          {
+            "browser": "frontend/e2e/shell-routing.mjs",
+            "step": "absence: an absent project and an absent session are stated, and the legacy id form never picks an owner"
+          }
+        ]
+      },
+      "session-origin-from": {
+        "status": "proven",
+        "proofs": [
+          {
+            "vitest": "frontend/src/router/router.test.ts",
+            "test": "stamps the view a session is opened from, so the tab, the crumb and Escape agree after a reload"
+          },
+          {
+            "browser": "frontend/e2e/shell-routing.mjs",
+            "step": "differential: reload and Escape agree for every session route that carries an origin"
+          }
+        ]
+      },
+      "retired-held-to-alias": {
+        "status": "proven",
+        "proofs": [
+          {
+            "vitest": "frontend/src/router/grammar.test.ts",
+            "test": "prints a retired held-to tab as the exact session it meant"
+          },
+          {
+            "browser": "frontend/e2e/shell-routing.mjs",
+            "step": "differential: every route contract reads the same on both pages"
+          }
+        ]
+      },
+      "malformed-encoding-and-empty-project": {
+        "status": "proven",
+        "proofs": [
+          {
+            "vitest": "frontend/src/router/permalink.test.ts",
+            "test": "encodes a colon in a part and keeps an empty project, which is a valid session project"
+          },
+          {
+            "vitest": "frontend/src/shell/Views.test.tsx",
+            "test": "project route out of reach, since an empty project is not a project"
+          },
+          {
+            "browser": "frontend/e2e/shell-routing.mjs",
+            "step": "differential: every route contract reads the same on both pages"
+          }
+        ]
+      },
+      "absolute-session-permalink-query": {
+        "status": "proven",
+        "proofs": [
+          {
+            "vitest": "frontend/src/router/permalink.test.ts",
+            "test": "keeps the path and every query, ?all=1 included, and replaces only the fragment"
+          },
+          {
+            "browser": "frontend/e2e/shell-routing.mjs",
+            "step": "permalink: the session link the page builds keeps ?all=1"
+          }
+        ]
+      },
+      "all-query-data-scope": {
+        "status": "proven",
+        "proofs": [
+          {
+            "vitest": "frontend/src/api/bootstrap.test.ts",
+            "test": "admits all=1 only when the query value is exactly 1"
+          },
+          {
+            "vitest": "frontend/src/transport/runtime.test.ts",
+            "test": "adds usage=1 only while quota consent is granted"
+          },
+          {
+            "browser": "frontend/e2e/shell-routing.mjs",
+            "step": "query: only ?all=1 widens the data scope; usage and next are never read from the address"
+          }
+        ]
+      },
+      "retired-next-query-refusal": {
+        "status": "proven",
+        "proofs": [
+          {
+            "python": "cargento/skills/cargento/tests/test_next_flag.py",
+            "test": "test_retired_next_query_is_not_a_page_alias"
+          },
+          {
+            "browser": "frontend/e2e/shell-routing.mjs",
+            "step": "query: only ?all=1 widens the data scope; usage and next are never read from the address"
+          }
+        ],
+        "note": "The refusal is server code that serves whichever page was selected; the browser step shows the React page never reads the retired query."
+      },
+      "browser-history-and-escape": {
+        "status": "proven",
+        "proofs": [
+          {
+            "vitest": "frontend/src/router/router.test.ts",
+            "test": "rewrites a pasted or malformed fragment by replacement, so Back is never stuck on it"
+          },
+          {
+            "vitest": "frontend/src/shell/Page.test.tsx",
+            "test": "keeps the title through a refresh and changes it with the route"
+          },
+          {
+            "browser": "frontend/e2e/shell-routing.mjs",
+            "step": "differential: Back and Forward leave the same hash and history depth on both pages"
+          },
+          {
+            "browser": "frontend/e2e/shell-routing.mjs",
+            "step": "history: Escape walks a session back to where it came from"
+          }
+        ]
+      }
+    },
+    "reader_state": {
+      "An open disclosure (`<details>`)": {
+        "status": "proven",
+        "proofs": [
+          {
+            "vitest": "frontend/src/controls/Disclosure.test.tsx",
+            "test": "is left alone, same node and same state, by an unrelated update"
+          },
+          {
+            "browser": "frontend/e2e/controls-continuity.mjs",
+            "step": "an open disclosure keeps its node, open state and summary focus, and replays no motion, across live data"
+          },
+          {
+            "fluidity": "edited_or_open_node_replacements"
+          }
+        ]
+      },
+      "An expanded Attention section": {
+        "status": "proven",
+        "proofs": [
+          {
+            "vitest": "frontend/src/attention/AttentionView.test.tsx",
+            "test": "keeps an expanded section expanded, on the same button, with focus, through a revision that reorders and replaces rows"
+          },
+          {
+            "browser": "frontend/e2e/attention-parity.mjs",
+            "step": "an expanded section keeps its button, its focus and its state through revisions that reorder and remove rows"
+          }
+        ]
+      },
+      "Intent log rows": {
+        "status": "proven",
+        "proofs": [
+          {
+            "vitest": "frontend/src/intent/logStore.test.ts",
+            "test": "never lets a response started before an invalidation restore withdrawn words"
+          },
+          {
+            "vitest": "frontend/src/intent/IntentLog.test.tsx",
+            "test": "withholds withdrawn words the moment the token moves, and fetches the replacement once"
+          },
+          {
+            "browser": "frontend/e2e/intent-parity.mjs",
+            "step": "a draft survives leaving the session and coming back, with no write and no second read of the log"
+          }
+        ]
+      },
+      "The selected quota window": {
+        "status": "proven",
+        "proofs": [
+          {
+            "vitest": "frontend/src/capacity/CapacityStrip.test.tsx",
+            "test": "falls back to an existing window only when its own is gone, holds the fallback, and clears when none remain"
+          },
+          {
+            "browser": "frontend/e2e/capacity-parity.mjs",
+            "step": "the selection falls back only when its window is gone, holds the fallback, and clears with the last window"
+          }
+        ]
+      },
+      "Keyboard focus": {
+        "status": "proven",
+        "proofs": [
+          {
+            "vitest": "frontend/src/controls/focusLane.test.tsx",
+            "test": "hands focus to the named fallback when the focused control goes away"
+          },
+          {
+            "browser": "frontend/e2e/controls-continuity.mjs",
+            "step": "keyboard focus survives a swapped node, and an offscreen one does not scroll the page back"
+          },
+          {
+            "browser": "frontend/e2e/shell-routing.mjs",
+            "step": "refresh: a refresh moves no focus, no scroll offset, no title and no live region"
+          }
+        ]
+      },
+      "A row control's confirmation cue": {
+        "status": "proven",
+        "proofs": [
+          {
+            "vitest": "frontend/src/controls/keyedState.test.ts",
+            "test": "keeps the newest thirty-two and evicts the oldest first"
+          },
+          {
+            "vitest": "frontend/src/controls/SessionControls.test.tsx",
+            "test": "keeps the cue on a node that is replaced, then lets it lapse after thirty seconds"
+          },
+          {
+            "browser": "frontend/e2e/sessions-parity.mjs",
+            "step": "copy: a press is recorded, the cue stays on that"
+          }
+        ]
+      },
+      "A typed and unsent draft": {
+        "status": "proven",
+        "proofs": [
+          {
+            "vitest": "frontend/src/steering/ProjectSteer.test.tsx",
+            "test": "records a receipt that says it was not delivered, and empties the box AND the draft"
+          },
+          {
+            "browser": "frontend/e2e/console-parity.mjs",
+            "step": "the steering box keeps its node, text, caret and native undo through revisions and a change of tab"
+          },
+          {
+            "browser": "frontend/e2e/console-parity.mjs",
+            "step": "bar is another box with its own words"
+          }
+        ]
+      },
+      "That draft's caret offset": {
+        "status": "proven",
+        "proofs": [
+          {
+            "vitest": "frontend/src/controls/fieldMemory.test.tsx",
+            "test": "clamps a remembered caret to the text the field has now"
+          },
+          {
+            "browser": "frontend/e2e/console-parity.mjs",
+            "step": "the steering box comes back with its text and caret after a route away and back"
+          }
+        ]
+      },
+      "The `+ set a tripwire` box, once opened": {
+        "status": "proven",
+        "proofs": [
+          {
+            "vitest": "frontend/src/steering/Tripwires.test.tsx",
+            "test": "stays open for the tab, with its words, when the panel leaves and returns"
+          },
+          {
+            "vitest": "frontend/src/steering/Tripwires.test.tsx",
+            "test": "Escape cancels the draft and closes the box, and the page does not leave"
+          },
+          {
+            "browser": "frontend/e2e/console-parity.mjs",
+            "step": "the tripwire box stays open for the tab with its words, and Escape cancels it without leaving the page"
+          }
+        ]
+      },
+      "A workflow stage-condition choice, save cue and action focus": {
+        "status": "proven",
+        "proofs": [
+          {
+            "vitest": "frontend/src/steering/StageConditions.test.tsx",
+            "test": "survive the card leaving and returning, per workflow"
+          },
+          {
+            "vitest": "frontend/src/steering/StageConditions.test.tsx",
+            "test": "returns to the pressed control when nothing has taken it and the reader has not moved on"
+          },
+          {
+            "browser": "frontend/e2e/console-parity.mjs",
+            "step": "a stage condition: one request per press, its choice and cue kept, and the native select stays"
+          }
+        ]
+      },
+      "An open `<select>` option list": {
+        "status": "proven",
+        "proofs": [
+          {
+            "vitest": "frontend/src/controls/choiceProbe.test.ts",
+            "test": "releases on a select change and on its blur, once each, and never for another control"
+          },
+          {
+            "vitest": "frontend/src/controls/displayGate.test.ts",
+            "test": "defers up to twelve background paints while a native select is open, then keeps painting without re-arming"
+          },
+          {
+            "browser": "frontend/e2e/controls-continuity.mjs",
+            "step": "at most twelve consecutive holds, then the board paints and the cap is not re-armed"
+          },
+          {
+            "browser": "frontend/e2e/controls-continuity.mjs",
+            "step": "a real click opens the native popup and the board stays held until the pick"
+          },
+          {
+            "browser": "frontend/e2e/controls-continuity.mjs",
+            "step": "a select blur catches up once; a manual refresh paints over an open list"
+          }
+        ]
+      },
+      "A disclosure the reader just toggled, mid-motion": {
+        "status": "proven",
+        "proofs": [
+          {
+            "vitest": "frontend/src/controls/displayGate.test.ts",
+            "test": "holds a background paint behind the reader's own toggle and coalesces to the newest"
+          },
+          {
+            "vitest": "frontend/src/store/commit-gate.test.ts",
+            "test": "holds nothing under reduced motion"
+          },
+          {
+            "browser": "frontend/e2e/controls-continuity.mjs",
+            "step": "a reader toggle holds the poll for the motion window (220 ms) and coalesces it"
+          },
+          {
+            "browser": "frontend/e2e/controls-continuity.mjs",
+            "step": "reduced motion: a reader toggle runs no transition and holds no paint"
+          }
+        ]
+      },
+      "The workstream panel's collapse": {
+        "status": "proven",
+        "proofs": [
+          {
+            "vitest": "frontend/src/storage/flags.test.ts",
+            "test": "is collapsed only for the raw word 1"
+          },
+          {
+            "vitest": "frontend/src/project/ProjectDetail.test.tsx",
+            "test": "toggle when storage refuses, and adopts no unnamespaced legacy key"
+          },
+          {
+            "browser": "frontend/e2e/project-parity.mjs",
+            "step": "workstream: the collapse survives a reload as 1 or 0"
+          }
+        ]
+      },
+      "The timeline's activity filter": {
+        "status": "proven",
+        "proofs": [
+          {
+            "vitest": "frontend/src/timeline/modes.test.tsx",
+            "test": "prefers a mode the caller pinned, then the reader"
+          },
+          {
+            "browser": "frontend/e2e/timeline-filter.mjs",
+            "step": "a reload restores the choice, with the same events"
+          },
+          {
+            "browser": "frontend/e2e/timeline-filter.mjs",
+            "step": "a sibling project, and the same project with no session, keep their own choice"
+          }
+        ]
+      },
+      "The prototype terminal viewport scroll offset": {
+        "status": "proven",
+        "proofs": [
+          {
+            "vitest": "frontend/src/terminal/viewport.test.ts",
+            "test": "restores a reader offset, clamped to the new maximum, when the viewport is rebuilt"
+          },
+          {
+            "vitest": "frontend/src/terminal/owner.test.ts",
+            "test": "follows again on its own once the reader scrolls back to within 2 px of live"
+          },
+          {
+            "browser": "frontend/e2e/terminal-parity.mjs",
+            "step": "an offset past the new scroll maximum is clamped to it on return, as the legacy page clamps"
+          },
+          {
+            "browser": "frontend/e2e/terminal-parity.mjs",
+            "step": "Jump to live resumes following, and new output is then followed again"
+          }
+        ]
+      },
+      "Cockpit scope and selected tab": {
+        "status": "proven",
+        "proofs": [
+          {
+            "vitest": "frontend/src/router/router.test.ts",
+            "test": "stamps the view a session is opened from, so the tab, the crumb and Escape agree after a reload"
+          },
+          {
+            "vitest": "frontend/src/shell/ProjectTabs.test.tsx",
+            "test": "selects the tab the route names, and keeps a focused session across tab changes"
+          },
+          {
+            "browser": "frontend/e2e/project-parity.mjs",
+            "step": "scope: the root and an exact session are different scopes, and the scope survives leaving and coming back"
+          }
+        ]
+      },
+      "Cockpit disclosures and the mounted terminal": {
+        "status": "proven",
+        "proofs": [
+          {
+            "vitest": "frontend/src/controls/Disclosure.test.tsx",
+            "test": "keeps one disclosure per key independent of the others"
+          },
+          {
+            "vitest": "frontend/src/delegation/Console.test.tsx",
+            "test": "stay open when opened, across a poll and a return, and are per project and session"
+          },
+          {
+            "vitest": "frontend/src/intent/IntentDiscard.test.tsx",
+            "test": "arms on the first press, sends nothing, warns assertively and describes the armed control by the warning"
+          },
+          {
+            "browser": "frontend/e2e/console-parity.mjs",
+            "step": "setup disclosure stays as the reader left it, per session, across polls and tabs"
+          },
+          {
+            "browser": "frontend/e2e/console-parity.mjs",
+            "step": "the retained terminal keeps one screen and one socket across tab switches, with no frame sent"
+          }
+        ]
+      },
+      "Cockpit human context": {
+        "status": "proven",
+        "proofs": [
+          {
+            "vitest": "frontend/src/storage/memo.test.ts",
+            "test": "bounds to 500 UTF-16 units without regard to code points, and non-strings read as empty"
+          },
+          {
+            "vitest": "frontend/src/controls/HumanContext.test.tsx",
+            "test": "keeps the words in memory and says storage is unavailable when the browser refuses the write"
+          },
+          {
+            "browser": "frontend/e2e/project-parity.mjs",
+            "step": "memo: a note belongs to its project and its scope, and Escape puts back the words held when editing began"
+          }
+        ]
+      },
+      "An unsaved goal or expected outcome checklist in the session page's drift block": {
+        "status": "deviation",
+        "proofs": [
+          {
+            "vitest": "frontend/src/intent/IntentEditor.test.tsx",
+            "test": "keeps an unsaved draft when the reader leaves the session and comes back"
+          },
+          {
+            "vitest": "frontend/src/intent/IntentLines.test.tsx",
+            "test": "refuses a seventh line in place, says so aloud, and keeps the control on the page and inert"
+          },
+          {
+            "browser": "frontend/e2e/intent-parity.mjs",
+            "step": "a draft survives leaving the session and coming back, with no write and no second read of the log"
+          }
+        ],
+        "deviation": "docs/design-frontend-migration.md#the-intent-log-and-the-intent-panel",
+        "note": "Unsaved words survive leaving the session and coming back; the node and its native undo history do not, because the Intent view unmounts."
+      },
+      "A prompt chosen from \"Use your prompt\" or an explicit later direction, not yet saved": {
+        "status": "proven",
+        "proofs": [
+          {
+            "vitest": "frontend/src/intent/IntentAdoption.test.tsx",
+            "test": "keeps a prompt picked while the request was open"
+          },
+          {
+            "vitest": "frontend/src/intent/IntentRaces.test.tsx",
+            "test": "is dropped by the panel once the server stops offering it and the record has been read"
+          },
+          {
+            "browser": "frontend/e2e/intent-parity.mjs",
+            "step": "the native select reads the prompts once per opening, fills the box, and Save adopts it naming the fact"
+          }
+        ]
+      },
+      "Selected later direction and prompt-menu choices": {
+        "status": "proven",
+        "proofs": [
+          {
+            "vitest": "frontend/src/intent/IntentDirections.test.tsx",
+            "test": "names the selected direction of several and lets the reader pick another"
+          },
+          {
+            "vitest": "frontend/src/intent/IntentAdoption.test.tsx",
+            "test": "reads the prompts once per opening, by the reader’s gesture, and never from a poll"
+          },
+          {
+            "browser": "frontend/e2e/intent-parity.mjs",
+            "step": "later directions: asked about before a reading, read whole before Keep settles, added only on Save"
+          }
+        ]
+      },
+      "A later direction opened by \"Add it to my intent\" or \"Update intent instead\", pending review": {
+        "status": "proven",
+        "proofs": [
+          {
+            "vitest": "frontend/src/intent/IntentDirections.test.tsx",
+            "test": "reads the direction whole, opens it as one pending line that is not saved, and saves only on Save"
+          },
+          {
+            "vitest": "frontend/src/intent/IntentDirections.test.tsx",
+            "test": "holds the whole text, counts it past the bound, and refuses to save it rather than cutting it"
+          },
+          {
+            "vitest": "frontend/src/intent/IntentDirections.test.tsx",
+            "test": "sends a second press to the line already pending and reads nothing again"
+          },
+          {
+            "browser": "frontend/e2e/intent-parity.mjs",
+            "step": "later directions: asked about before a reading, read whole before Keep settles, added only on Save"
+          }
+        ]
+      },
+      "Steer back open": {
+        "status": "deviation",
+        "proofs": [
+          {
+            "vitest": "frontend/src/drift/SteerBack.test.tsx",
+            "test": "closes on a second press and keeps the reader's edit across the close"
+          },
+          {
+            "vitest": "frontend/src/drift/SteerBack.test.tsx",
+            "test": "is not offered while a later direction is unsettled: the question owns that slot"
+          },
+          {
+            "browser": "frontend/e2e/drift-parity.mjs",
+            "step": "Steer back opens the correction with its numbers filled in, and Copy records it once"
+          }
+        ],
+        "deviation": "docs/design-frontend-migration.md#the-drift-card-analyze-and-steer-back",
+        "note": "A Steer back box the reader opened and left unedited composes again, once, when the record it was composed from changes; a deterministic server read, never a model call."
+      },
+      "The correction draft": {
+        "status": "deviation",
+        "proofs": [
+          {
+            "vitest": "frontend/src/drift/SteerBack.test.tsx",
+            "test": "counts code points as the server does and refuses a paste over the cap, keeping the text"
+          },
+          {
+            "vitest": "frontend/src/drift/correction.differential.test.ts",
+            "test": "cuts the inserted run and never the reader's text, on 1500 generated edits"
+          },
+          {
+            "browser": "frontend/e2e/drift-parity.mjs",
+            "step": "a paste over the cap keeps the reader"
+          }
+        ],
+        "deviation": "docs/design-frontend-migration.md#the-drift-card-analyze-and-steer-back",
+        "note": "A stale mark that moves the box after the reader leaves it remounts the box: the words survive, native undo does not."
+      },
+      "The correction's native editor and active composition": {
+        "status": "deviation",
+        "proofs": [
+          {
+            "vitest": "frontend/src/drift/SteerBack.test.tsx",
+            "test": "waits through a pointer on its way to a control, and shows the board once the click lands"
+          },
+          {
+            "browser": "frontend/e2e/drift-parity.mjs",
+            "step": "a composition is never cut, copied or lost, and the board waits for it"
+          },
+          {
+            "browser": "frontend/e2e/drift-parity.mjs",
+            "step": "a pointer on its way to Copy is waited through, and the click that follows is not swallowed"
+          },
+          {
+            "browser": "frontend/e2e/drift-parity.mjs",
+            "step": "the correction box keeps its node, text, caret, selection, focus and native undo through the board"
+          }
+        ],
+        "deviation": "docs/design-frontend-migration.md#the-drift-card-analyze-and-steer-back",
+        "note": "The card holds the last board while the reader is in the box, composing or holding a pointer on a control, and says Updates are paused, because the shell's display gate is wired to open selects."
+      },
+      "The correction's Copy cue": {
+        "status": "proven",
+        "proofs": [
+          {
+            "vitest": "frontend/src/drift/SteerBack.test.tsx",
+            "test": "copies the exact text, records it once, and says Copied until an accepted edit"
+          },
+          {
+            "browser": "frontend/e2e/drift-parity.mjs",
+            "step": "Steer back opens the correction with its numbers filled in, and Copy records it once"
+          },
+          {
+            "browser": "frontend/e2e/drift-parity.mjs",
+            "step": "the box survives a route away and back, and its words are what Copy sends"
+          }
+        ]
+      },
+      "The whole text of each direction Keep opened before settling": {
+        "status": "proven",
+        "proofs": [
+          {
+            "vitest": "frontend/src/intent/IntentDirections.test.tsx",
+            "test": "draws the whole direction first and settles nothing, then settles on the next press naming the revision it drew"
+          },
+          {
+            "vitest": "frontend/src/intent/IntentDirections.test.tsx",
+            "test": "settles a sole direction the question quoted in full in one press, after opening it"
+          },
+          {
+            "vitest": "frontend/src/drift/KeepAnalyze.test.tsx",
+            "test": "settles and starts the analysis in one reading request, once"
+          },
+          {
+            "browser": "frontend/e2e/drift-parity.mjs",
+            "step": "a later direction is asked about before the press, with Analyze behind Keep"
+          }
+        ]
+      },
+      "The live monitor switch in the session page's Drift section": {
+        "status": "proven",
+        "proofs": [
+          {
+            "vitest": "frontend/src/intent/LiveMonitor.test.tsx",
+            "test": "keeps the choice for the tab where storage cannot be written"
+          },
+          {
+            "vitest": "frontend/src/storage/flags.test.ts",
+            "test": "keeps the switch for the tab when storage is blocked"
+          },
+          {
+            "browser": "frontend/e2e/intent-parity.mjs",
+            "step": "the live monitor switch writes 1 for this exact session, removes the key when off, and sends nothing"
+          }
+        ]
+      },
+      "A Not accurate mark the store did not take": {
+        "status": "proven",
+        "proofs": [
+          {
+            "vitest": "frontend/src/drift/ReadingResult.test.tsx",
+            "test": "derives its mark from the payload and never from the press"
+          },
+          {
+            "vitest": "frontend/src/drift/DrawnPress.test.tsx",
+            "test": "marks, rather than un-marks, when another tab marked it while the card was held"
+          },
+          {
+            "browser": "frontend/e2e/drift-parity.mjs",
+            "step": "a result marked not accurate draws marked, and a withheld one says why"
+          }
+        ]
+      },
+      "The drift block's save cue": {
+        "status": "proven",
+        "proofs": [
+          {
+            "vitest": "frontend/src/intent/held.test.ts",
+            "test": "restores a mark for thirty seconds and not longer"
+          },
+          {
+            "vitest": "frontend/src/intent/IntentDiscard.test.tsx",
+            "test": "lapses on its own after thirty seconds, leaving a disarmed control"
+          },
+          {
+            "browser": "frontend/e2e/intent-parity.mjs",
+            "step": "Discard everything arms on the first press and is not confirmed by a double-click or a slip, then performs once"
+          }
+        ]
+      },
+      "The two live regions the drift block's cues are written into, and the last sentence written to either": {
+        "status": "proven",
+        "proofs": [
+          {
+            "vitest": "frontend/src/shell/announcer.test.tsx",
+            "test": "remembers only the last sixteen keys, oldest first out"
+          },
+          {
+            "vitest": "frontend/src/shell/announcer.test.tsx",
+            "test": "retracts the standing warning silently when its arm ends, and only for that arm"
+          },
+          {
+            "browser": "frontend/e2e/shell-routing.mjs",
+            "step": "ownership: React owns the page and the five live regions"
+          },
+          {
+            "browser": "frontend/e2e/intent-parity.mjs",
+            "step": "Escape on the armed control disarms it without leaving the page"
+          }
+        ]
+      },
+      "Context editor focus, caret and internal scroll": {
+        "status": "proven",
+        "proofs": [
+          {
+            "vitest": "frontend/src/controls/HumanContext.test.tsx",
+            "test": "survives unrelated updates with the same node, focus, caret and typed text"
+          },
+          {
+            "vitest": "frontend/src/controls/HumanContext.test.tsx",
+            "test": "restores the words held when editing began on Escape, in the field or on Done, without an announcement"
+          },
+          {
+            "browser": "frontend/e2e/controls-continuity.mjs",
+            "step": "human context saves each input, keeps text, caret and undo through updates, and the words reload from storage"
+          },
+          {
+            "browser": "frontend/e2e/controls-continuity.mjs",
+            "step": "Escape restores the words held when editing began, closes, and says nothing"
+          }
+        ]
+      },
+      "A draft input's internal scroll and resized dimensions, even after focus leaves it": {
+        "status": "proven",
+        "proofs": [
+          {
+            "vitest": "frontend/src/controls/fieldMemory.test.tsx",
+            "test": "puts the unfocused caret, scroll offsets and dragged size back on a remounted field"
+          },
+          {
+            "vitest": "frontend/src/controls/fieldMemory.test.tsx",
+            "test": "never carries one key's state to another session's field"
+          },
+          {
+            "vitest": "frontend/src/intent/IntentIdentity.test.tsx",
+            "test": "builds new editors, so the native undo stack of the first session cannot reach the second"
+          },
+          {
+            "browser": "frontend/e2e/controls-continuity.mjs",
+            "step": "a draft keeps its inner scroll, dragged size and caret after focus leaves, and after a remount"
+          }
+        ],
+        "note": "Outcome-line boxes are keyed by session key and line index, so a resize follows its index after a deletion by that keying; no named test deletes a line over a resized box."
+      },
+      "The More menu": {
+        "status": "proven",
+        "proofs": [
+          {
+            "vitest": "frontend/src/controls/MoreMenu.test.tsx",
+            "test": "keeps its open state and summary focus through unrelated updates and a remount"
+          },
+          {
+            "vitest": "frontend/src/controls/MoreMenu.test.tsx",
+            "test": "keeps its summary keyboard operable and a menu is not dismissed by Escape as a popover is"
+          },
+          {
+            "browser": "frontend/e2e/shell-routing.mjs",
+            "step": "more menu: on a project route it stays open across polls"
+          }
+        ]
+      },
+      "The More menu's copy-briefing result": {
+        "status": "proven",
+        "proofs": [
+          {
+            "vitest": "frontend/src/controls/MoreMenu.test.tsx",
+            "test": "copies the briefing once per press and reads Copied until the scope changes, with no expiry"
+          },
+          {
+            "browser": "frontend/e2e/controls-continuity.mjs",
+            "step": "the More menu copies the briefing once and keeps reading Copied with no expiry"
+          }
+        ]
+      },
+      "Project plan, raw status, earlier Course entries, other directions, and the tier-2 caveat bodies in the drift block and on Sessions": {
+        "status": "proven",
+        "proofs": [
+          {
+            "vitest": "frontend/src/controls/Disclosure.test.tsx",
+            "test": "closes the popover on Escape, returns focus to its summary, and leaves the accordion open"
+          },
+          {
+            "vitest": "frontend/src/controls/Disclosure.test.tsx",
+            "test": "closes when focus moves to another control, and stays open when focus goes nowhere"
+          },
+          {
+            "vitest": "frontend/src/project/ProjectDetail.test.tsx",
+            "test": "keeps an opened plan open across a tab change and a poll, and does not open the same one elsewhere"
+          },
+          {
+            "browser": "frontend/e2e/sessions-parity.mjs",
+            "step": "continuity: an open popover caveat stays open across a poll, and closes on Escape and on focus leaving"
+          },
+          {
+            "browser": "frontend/e2e/project-parity.mjs",
+            "step": "continuity: an open plan, a focused link and the page"
+          }
+        ]
+      },
+      "Project-level semantic timeline disclosures, and Console's terminal-registration recipe": {
+        "status": "proven",
+        "proofs": [
+          {
+            "vitest": "frontend/src/timeline/Timeline.test.tsx",
+            "test": "keeps project scope and a focused session apart, so neither inherits the other"
+          },
+          {
+            "vitest": "frontend/src/terminal/TerminalSurface.test.tsx",
+            "test": "keeps the recipe open, and each project"
+          },
+          {
+            "browser": "frontend/e2e/timeline-filter.mjs",
+            "step": "project scope and a focused session keep their own open events, and so do two projects"
+          },
+          {
+            "browser": "frontend/e2e/timeline-filter.mjs",
+            "step": "an opened event and the folded band keep their state across live updates, and in React keep their node"
+          }
+        ]
+      },
+      "A reader-requested reading in the drift block": {
+        "status": "proven",
+        "proofs": [
+          {
+            "vitest": "frontend/src/drift/ReadingStart.test.tsx",
+            "test": "sends one request for one press and draws the job from the reply, however it is pressed"
+          },
+          {
+            "vitest": "frontend/src/drift/ReadingRefusals.test.tsx",
+            "test": "draws the sentence a stale adoption left, beside the control that was pressed"
+          },
+          {
+            "browser": "frontend/e2e/drift-parity.mjs",
+            "step": "one press sends one request, however it is pressed, and nothing retries it or restarts it under StrictMode"
+          },
+          {
+            "browser": "frontend/e2e/drift-parity.mjs",
+            "step": "a refusal is said under the control that was pressed, and is the same sentence on both pages"
+          }
+        ]
+      },
+      "A control's in-flight request": {
+        "status": "proven",
+        "proofs": [
+          {
+            "vitest": "frontend/src/transport/pending.test.ts",
+            "test": "lets a late completion end only its own token, never a replacement"
+          },
+          {
+            "vitest": "frontend/src/transport/pending.test.ts",
+            "test": "aborts the request at the bound and clears the entry at the backstop"
+          },
+          {
+            "vitest": "frontend/src/shell/Shell.test.tsx",
+            "test": "says a slow pending control"
+          },
+          {
+            "browser": "frontend/e2e/sessions-parity.mjs",
+            "step": "answer: one numeric index goes to the real route by keyboard"
+          }
+        ]
+      },
+      "Whether Analyze can be pressed, as the drawn Drift card last showed it": {
+        "status": "proven",
+        "proofs": [
+          {
+            "vitest": "frontend/src/drift/ReadingFlip.test.tsx",
+            "test": "holds a close for two payloads and ten seconds, then says it once"
+          },
+          {
+            "vitest": "frontend/src/drift/DrawnPress.test.tsx",
+            "test": "refuses with the revision sentence, sending nothing, when the words moved on under a held card"
+          },
+          {
+            "browser": "frontend/e2e/drift-parity.mjs",
+            "step": "pressing Analyze where an Allow is owed asks for it, naming the receiver, and sends nothing"
+          }
+        ]
+      },
+      "A Cancel on a running analysis": {
+        "status": "proven",
+        "proofs": [
+          {
+            "vitest": "frontend/src/drift/ReadingJob.test.tsx",
+            "test": "keeps the cancelling flag the server published across a reload"
+          },
+          {
+            "vitest": "frontend/src/drift/ReadingJob.test.tsx",
+            "test": "says it could not confirm a lost answer, never retries, and never shows it under a newer job"
+          },
+          {
+            "browser": "frontend/e2e/drift-parity.mjs",
+            "step": "Cancel names the job, sends one request, and the server"
+          }
+        ]
+      },
+      "A running analysis this tab has seen, and whether its box was drawn": {
+        "status": "proven",
+        "proofs": [
+          {
+            "vitest": "frontend/src/drift/ReadingJob.test.tsx",
+            "test": "says nothing for a job already running when the page loaded, and one outcome when it ends"
+          },
+          {
+            "vitest": "frontend/src/drift/ReadingJob.test.tsx",
+            "test": "never announces the end of a job whose box it did not draw"
+          },
+          {
+            "browser": "frontend/e2e/drift-parity.mjs",
+            "step": "the end of a watched analysis is announced once, in the server"
+          }
+        ]
+      },
+      "Observer model consent and request status": {
+        "status": "proven",
+        "proofs": [
+          {
+            "vitest": "frontend/src/capacity/ObserverControls.test.tsx",
+            "test": "a reader who leaves while it runs finds the result, and no second request, on return"
+          },
+          {
+            "vitest": "frontend/src/transport/context.test.ts",
+            "test": "keeps a passive result that raced the explicit request from overwriting it"
+          },
+          {
+            "vitest": "frontend/src/storage/consent.test.ts",
+            "test": "holds the answer for the tab when the write is refused and reports it"
+          },
+          {
+            "browser": "frontend/e2e/capacity-parity.mjs",
+            "step": "allowing sends nothing; one press of Summarize sends one request for the exact session"
+          }
+        ]
+      },
+      "The document scroll offset": {
+        "status": "proven",
+        "proofs": [
+          {
+            "vitest": "frontend/src/controls/focusLane.test.tsx",
+            "test": "does not scroll to a fallback when the removed control was wholly offscreen"
+          },
+          {
+            "vitest": "frontend/src/controls/focusLane.test.tsx",
+            "test": "scrolls normally when the removed control intersected the viewport"
+          },
+          {
+            "browser": "frontend/e2e/controls-continuity.mjs",
+            "step": "keyboard focus survives a swapped node, and an offscreen one does not scroll the page back"
+          },
+          {
+            "browser": "frontend/e2e/shell-routing.mjs",
+            "step": "refresh: a refresh moves no focus, no scroll offset, no title and no live region"
+          }
+        ]
+      },
+      "A text selection over rendered text": {
+        "status": "proven",
+        "proofs": [
+          {
+            "vitest": "frontend/src/shell/Page.test.tsx",
+            "test": "never builds a text selection or a range of its own"
+          },
+          {
+            "browser": "frontend/e2e/sessions-parity.mjs",
+            "step": "continuity: a selection inside a row, and a session page"
+          }
+        ]
+      }
+    },
+    "storage": {
+      "cargento.cockpit.memo.v2:": {
+        "status": "proven",
+        "proofs": [
+          {
+            "vitest": "frontend/src/storage/memo.test.ts",
+            "test": "builds the released key: encoded project, encoded scope, kind"
+          },
+          {
+            "vitest": "frontend/src/controls/HumanContext.test.tsx",
+            "test": "saves each input to the exact released key, memory first, and says so"
+          },
+          {
+            "browser": "frontend/e2e/storage-conformance.mjs",
+            "contains": "cargento.cockpit.memo.v2:"
+          }
+        ]
+      },
+      "cargento.next.graph.mode": {
+        "status": "proven",
+        "proofs": [
+          {
+            "vitest": "frontend/src/storage/project.test.ts",
+            "test": "loads only two-part keys with a valid mode, retiring the old empty-key entry"
+          },
+          {
+            "vitest": "frontend/src/timeline/modes.test.tsx",
+            "test": "discards the old build"
+          },
+          {
+            "browser": "frontend/e2e/timeline-filter.mjs",
+            "step": "an old build"
+          },
+          {
+            "browser": "frontend/e2e/storage-conformance.mjs",
+            "contains": "cargento.next.graph.mode"
+          }
+        ]
+      },
+      "cargento.next.guardrails.": {
+        "status": "proven",
+        "proofs": [
+          {
+            "vitest": "frontend/src/storage/guardrails.test.ts",
+            "test": "accepts the older plain-string rules as enabled"
+          },
+          {
+            "vitest": "frontend/src/steering/Tripwires.test.tsx",
+            "test": "read what an older build stored, and write the released shape"
+          },
+          {
+            "browser": "frontend/e2e/console-parity.mjs",
+            "step": "tripwires written by an older build are read, and stay a note to oneself that nothing sends"
+          },
+          {
+            "browser": "frontend/e2e/storage-conformance.mjs",
+            "contains": "cargento.next.guardrails."
+          }
+        ]
+      },
+      "cargento.next.leader": {
+        "status": "proven",
+        "proofs": [
+          {
+            "vitest": "frontend/src/storage/lease.test.ts",
+            "test": "writes {id, ts} as the released JSON and reads it back"
+          },
+          {
+            "vitest": "frontend/src/transport/legacyStorage.test.ts",
+            "test": "reads a lease the legacy page wrote and releases only the lease key"
+          },
+          {
+            "vitest": "frontend/src/transport/live.test.ts",
+            "test": "releases its own lease on pagehide and not a foreign one"
+          },
+          {
+            "browser": "frontend/e2e/storage-conformance.mjs",
+            "contains": "cargento.next.leader"
+          }
+        ]
+      },
+      "cargento.next.live-estimate:": {
+        "status": "proven",
+        "proofs": [
+          {
+            "vitest": "frontend/src/storage/flags.test.ts",
+            "test": "is on only for the raw word 1, and off removes the key"
+          },
+          {
+            "vitest": "frontend/src/intent/LiveMonitor.test.tsx",
+            "test": "writes 1 for this exact session when turned on, removes the key when turned off, and sends nothing"
+          },
+          {
+            "browser": "frontend/e2e/intent-parity.mjs",
+            "step": "the live monitor switch writes 1 for this exact session, removes the key when off, and sends nothing"
+          },
+          {
+            "browser": "frontend/e2e/storage-conformance.mjs",
+            "contains": "cargento.next.live-estimate:"
+          }
+        ]
+      },
+      "cargento.next.revision": {
+        "status": "proven",
+        "proofs": [
+          {
+            "vitest": "frontend/src/storage/lease.test.ts",
+            "test": "stores the raw revision and never wraps it"
+          },
+          {
+            "vitest": "frontend/src/transport/legacyStorage.test.ts",
+            "test": "writes the raw revision string"
+          },
+          {
+            "vitest": "frontend/src/transport/live.test.ts",
+            "test": "does not rebroadcast a revision that arrived from storage"
+          },
+          {
+            "browser": "frontend/e2e/storage-conformance.mjs",
+            "contains": "cargento.next.revision"
+          }
+        ]
+      },
+      "cargento.next.usage.consent": {
+        "status": "proven",
+        "proofs": [
+          {
+            "vitest": "frontend/src/storage/consent.test.ts",
+            "test": "is unanswered until someone answers, and a missing entry never reads as granted"
+          },
+          {
+            "vitest": "frontend/src/capacity/UsageConsent.test.tsx",
+            "test": "a profile that refuses the write keeps the answer for this tab, and the fetch follows it"
+          },
+          {
+            "browser": "frontend/e2e/capacity-parity.mjs",
+            "step": "No thanks sends no parameter, says the windows will lapse, and is kept across a reload"
+          },
+          {
+            "browser": "frontend/e2e/storage-conformance.mjs",
+            "contains": "cargento.next.usage.consent"
+          }
+        ]
+      },
+      "cargento.next.workstream.collapsed": {
+        "status": "proven",
+        "proofs": [
+          {
+            "vitest": "frontend/src/storage/flags.test.ts",
+            "test": "is collapsed only for the raw word 1"
+          },
+          {
+            "browser": "frontend/e2e/project-parity.mjs",
+            "step": "workstream: the collapse survives a reload as 1 or 0"
+          },
+          {
+            "browser": "frontend/e2e/storage-conformance.mjs",
+            "contains": "cargento.next.workstream.collapsed"
+          }
+        ]
+      },
+      "cargento.observer-model-consent.v1": {
+        "status": "proven",
+        "proofs": [
+          {
+            "vitest": "frontend/src/storage/consent.test.ts",
+            "test": "are independent keys and independent memos"
+          },
+          {
+            "vitest": "frontend/src/capacity/ObserverControls.test.tsx",
+            "test": "Allow records the answer and still sends nothing; Summarize then appears"
+          },
+          {
+            "browser": "frontend/e2e/storage-conformance.mjs",
+            "contains": "cargento.observer-model-consent.v1"
+          }
+        ]
+      },
+      "cargento.projectCockpitProject": {
+        "status": "proven",
+        "proofs": [
+          {
+            "vitest": "frontend/src/storage/project.test.ts",
+            "test": "stores the raw label and reads a missing or empty one as null"
+          },
+          {
+            "vitest": "frontend/src/storage/reads.test.ts",
+            "test": "writes nothing for any family, and leaves every raw value as legacy wrote it"
+          },
+          {
+            "browser": "frontend/e2e/storage-conformance.mjs",
+            "contains": "cargento.projectCockpitProject"
+          }
+        ]
+      },
+      "cargento.projectGoal.v1:": {
+        "status": "proven",
+        "proofs": [
+          {
+            "vitest": "frontend/src/storage/project.test.ts",
+            "test": "saves the trimmed text raw, with no storage-side length bound"
+          },
+          {
+            "vitest": "frontend/src/storage/reads.test.ts",
+            "test": "keeps read-time normalisation in memory only"
+          },
+          {
+            "browser": "frontend/e2e/storage-conformance.mjs",
+            "contains": "cargento.projectGoal.v1:"
+          }
+        ]
+      },
+      "cargento.projectUsage.v1": {
+        "status": "proven",
+        "proofs": [
+          {
+            "vitest": "frontend/src/storage/project.test.ts",
+            "test": "floors, keeps positives only and clamps at 999999"
+          },
+          {
+            "vitest": "frontend/src/storage/reads.test.ts",
+            "test": "writes nothing for any family, and leaves every raw value as legacy wrote it"
+          },
+          {
+            "browser": "frontend/e2e/storage-conformance.mjs",
+            "contains": "cargento.projectUsage.v1"
+          }
+        ]
+      }
+    }
+  },
+  "classes": {
+    "shell": {
+      "surfaces": [
+        "primary-navigation",
+        "breadcrumbs-and-history",
+        "header-counts-and-block-control",
+        "refresh-build-and-history-notices",
+        "stable-status-and-alert-regions",
+        "live-update-and-fallback-continuity"
+      ],
+      "keyboard": {
+        "proofs": [
+          {
+            "browser": "frontend/e2e/shell-routing.mjs",
+            "step": "keyboard: Tab reaches the four views in order and then the block button, and project tabs roam by tabindex"
+          },
+          {
+            "vitest": "frontend/src/shell/Page.test.tsx",
+            "test": "opens Attention, Projects and Sessions with a, p and s, and ignores the retired dashboard key"
+          }
+        ]
+      },
+      "narrow": {
+        "proofs": [
+          {
+            "browser": "frontend/e2e/shell-routing.mjs",
+            "step": "layout: no horizontal page scroll at 320 and 375 CSS px, at 200% zoom and at 200% text size, notices included"
+          },
+          {
+            "browser": "frontend/e2e/shell-routing.mjs",
+            "step": "layout: a failure notice and a build notice wrap at 320 without horizontal scroll"
+          }
+        ]
+      },
+      "zoom": {
+        "proofs": [
+          {
+            "browser": "frontend/e2e/shell-routing.mjs",
+            "step": "layout: no horizontal page scroll at 320 and 375 CSS px, at 200% zoom and at 200% text size, notices included"
+          }
+        ]
+      },
+      "editor": {
+        "na": "The shell holds no editable text; the editors are in the intent, drift, project and console classes."
+      }
+    },
+    "controls": {
+      "surfaces": [
+        "session-copy-and-terminal-raise-controls",
+        "disclosure-motion-and-native-input-continuity",
+        "project-more-utility-menu"
+      ],
+      "keyboard": {
+        "proofs": [
+          {
+            "browser": "frontend/e2e/controls-continuity.mjs",
+            "step": "keyboard focus survives a swapped node, and an offscreen one does not scroll the page back"
+          },
+          {
+            "vitest": "frontend/src/controls/MoreMenu.test.tsx",
+            "test": "keeps its summary keyboard operable and a menu is not dismissed by Escape as a popover is"
+          }
+        ]
+      },
+      "narrow": {
+        "proofs": [
+          {
+            "browser": "frontend/e2e/controls-continuity.mjs",
+            "step": "no horizontal scroll and 44px targets at 320 and 375 CSS px and at 200% zoom of each"
+          }
+        ]
+      },
+      "zoom": {
+        "proofs": [
+          {
+            "browser": "frontend/e2e/controls-continuity.mjs",
+            "step": "no horizontal scroll and 44px targets at 320 and 375 CSS px and at 200% zoom of each"
+          }
+        ]
+      },
+      "editor": {
+        "proofs": [
+          {
+            "browser": "frontend/e2e/controls-continuity.mjs",
+            "step": "a draft keeps text, caret, selection and native undo through live data from the real SSE stream"
+          },
+          {
+            "browser": "frontend/e2e/controls-continuity.mjs",
+            "step": "an IME composition survives live data: no compositionend, same node, text commits once"
+          },
+          {
+            "browser": "frontend/e2e/controls-continuity.mjs",
+            "step": "human context saves each input, keeps text, caret and undo through updates, and the words reload from storage"
+          }
+        ]
+      }
+    },
+    "sessions": {
+      "surfaces": [
+        "sessions-first-screen",
+        "session-detail-and-absence",
+        "session-questions-and-answer-confirmation",
+        "session-last-reply-and-delegated-work"
+      ],
+      "keyboard": {
+        "proofs": [
+          {
+            "browser": "frontend/e2e/sessions-parity.mjs",
+            "step": "keyboard: Tab reaches a row"
+          },
+          {
+            "browser": "frontend/e2e/sessions-parity.mjs",
+            "step": "keyboard: a caveat opens and closes with Enter and Space, and the page reports its state"
+          },
+          {
+            "browser": "frontend/e2e/sessions-parity.mjs",
+            "step": "answer: one numeric index goes to the real route by keyboard"
+          }
+        ]
+      },
+      "narrow": {
+        "proofs": [
+          {
+            "browser": "frontend/e2e/sessions-parity.mjs",
+            "step": "layout: the screen and four session pages wrap at 320, 375, 200% zoom and 1280 with no horizontal page scroll"
+          }
+        ]
+      },
+      "zoom": {
+        "proofs": [
+          {
+            "browser": "frontend/e2e/sessions-parity.mjs",
+            "step": "layout: the screen and four session pages wrap at 320, 375, 200% zoom and 1280 with no horizontal page scroll"
+          }
+        ]
+      },
+      "editor": {
+        "na": "Sessions and the session page hold no editable text of their own; the goal and outcome editors on the session page are the intent class."
+      }
+    },
+    "intent": {
+      "surfaces": [
+        "intent-log",
+        "intent-goal-and-outcome-editor",
+        "prompt-adoption-menu"
+      ],
+      "keyboard": {
+        "proofs": [
+          {
+            "browser": "frontend/e2e/intent-parity.mjs",
+            "step": "the editor is operable from the keyboard: Tab order, Enter on Save, Escape in the box"
+          }
+        ]
+      },
+      "narrow": {
+        "proofs": [
+          {
+            "browser": "frontend/e2e/intent-parity.mjs",
+            "step": "layout: the log and the panel wrap at 320, 375, 200% zoom and 1280 with no horizontal page scroll"
+          }
+        ]
+      },
+      "zoom": {
+        "proofs": [
+          {
+            "browser": "frontend/e2e/intent-parity.mjs",
+            "step": "layout: the log and the panel wrap at 320, 375, 200% zoom and 1280 with no horizontal page scroll"
+          }
+        ]
+      },
+      "editor": {
+        "proofs": [
+          {
+            "browser": "frontend/e2e/intent-parity.mjs",
+            "step": "the goal box keeps its node, text, caret, selection, focus and native undo through the board"
+          },
+          {
+            "browser": "frontend/e2e/intent-parity.mjs",
+            "step": "an outcome line keeps its node, text, caret and undo"
+          },
+          {
+            "browser": "frontend/e2e/intent-parity.mjs",
+            "step": "an IME composition in the goal box survives the board"
+          }
+        ]
+      }
+    },
+    "drift": {
+      "surfaces": [
+        "drift-explanation-and-live-monitor",
+        "analyze-consent-and-reading-result",
+        "correction-to-copy",
+        "departure-review-and-reading-history"
+      ],
+      "keyboard": {
+        "proofs": [
+          {
+            "browser": "frontend/e2e/drift-parity.mjs",
+            "step": "Analyze, the consent step and Steer back are operated from the keyboard alone"
+          }
+        ]
+      },
+      "narrow": {
+        "proofs": [
+          {
+            "browser": "frontend/e2e/drift-parity.mjs",
+            "step": "320, 375, 640 (200% zoom) and 1280 CSS px: no horizontal scroll, in every state"
+          }
+        ]
+      },
+      "zoom": {
+        "proofs": [
+          {
+            "browser": "frontend/e2e/drift-parity.mjs",
+            "step": "320, 375, 640 (200% zoom) and 1280 CSS px: no horizontal scroll, in every state"
+          }
+        ]
+      },
+      "editor": {
+        "proofs": [
+          {
+            "browser": "frontend/e2e/drift-parity.mjs",
+            "step": "the correction box keeps its node, text, caret, selection, focus and native undo through the board"
+          },
+          {
+            "browser": "frontend/e2e/drift-parity.mjs",
+            "step": "a composition is never cut, copied or lost, and the board waits for it"
+          },
+          {
+            "browser": "frontend/e2e/drift-parity.mjs",
+            "step": "a paste over the cap keeps the reader"
+          }
+        ]
+      }
+    },
+    "project": {
+      "surfaces": [
+        "projects-list-and-history",
+        "project-detail-and-workflow-plans",
+        "project-scope-tree-and-switcher",
+        "project-recovery-briefing",
+        "human-context-memo",
+        "project-now-and-activity",
+        "project-course-and-completed-work",
+        "workstream-changes-and-delegation-trends"
+      ],
+      "keyboard": {
+        "proofs": [
+          {
+            "browser": "frontend/e2e/project-parity.mjs",
+            "step": "keyboard: a project row opens with Enter, the tab strip wraps with the arrows, and a scope is reached by Tab"
+          }
+        ]
+      },
+      "narrow": {
+        "proofs": [
+          {
+            "browser": "frontend/e2e/project-parity.mjs",
+            "step": "layout: 320, 375 and 640 CSS px (and 1280) never scroll sideways, on the list and every tab"
+          }
+        ]
+      },
+      "zoom": {
+        "proofs": [
+          {
+            "browser": "frontend/e2e/project-parity.mjs",
+            "step": "layout: 320, 375 and 640 CSS px (and 1280) never scroll sideways, on the list and every tab"
+          }
+        ]
+      },
+      "editor": {
+        "proofs": [
+          {
+            "browser": "frontend/e2e/project-parity.mjs",
+            "step": "memo: a note keeps its node, text, caret, focus and native undo through the board"
+          }
+        ]
+      }
+    },
+    "console-and-steering": {
+      "surfaces": [
+        "project-console-operating-rail",
+        "project-steering-and-local-tripwires",
+        "workflow-stage-tripwires"
+      ],
+      "keyboard": {
+        "proofs": [
+          {
+            "browser": "frontend/e2e/console-parity.mjs",
+            "step": "the Console can be operated from the keyboard alone"
+          }
+        ]
+      },
+      "narrow": {
+        "proofs": [
+          {
+            "browser": "frontend/e2e/console-parity.mjs",
+            "step": "the Console and Decisions tabs draw with no horizontal page scroll"
+          }
+        ]
+      },
+      "zoom": {
+        "proofs": [
+          {
+            "browser": "frontend/e2e/console-parity.mjs",
+            "step": "the Console and Decisions tabs draw with no horizontal page scroll"
+          }
+        ]
+      },
+      "editor": {
+        "proofs": [
+          {
+            "browser": "frontend/e2e/console-parity.mjs",
+            "step": "the steering box keeps its node, text, caret and native undo through revisions and a change of tab"
+          },
+          {
+            "browser": "frontend/e2e/console-parity.mjs",
+            "step": "the tripwire box stays open for the tab with its words, and Escape cancels it without leaving the page"
+          }
+        ]
+      }
+    },
+    "timeline": {
+      "surfaces": [
+        "project-decisions-semantic-timeline"
+      ],
+      "keyboard": {
+        "proofs": [
+          {
+            "browser": "frontend/e2e/timeline-filter.mjs",
+            "step": "keyboard focus stays on the button that was pressed across a live update"
+          }
+        ]
+      },
+      "narrow": {
+        "proofs": [
+          {
+            "browser": "frontend/e2e/timeline-filter.mjs",
+            "step": "the layout holds at 320 and 375 px: no horizontal page scroll, controls inside the window and large enough"
+          }
+        ]
+      },
+      "zoom": {
+        "proofs": [
+          {
+            "browser": "frontend/e2e/console-parity.mjs",
+            "step": "the Console and Decisions tabs draw with no horizontal page scroll"
+          },
+          {
+            "browser": "frontend/e2e/project-parity.mjs",
+            "step": "layout: 320, 375 and 640 CSS px (and 1280) never scroll sideways, on the list and every tab"
+          }
+        ]
+      },
+      "editor": {
+        "na": "The timeline holds no editable text; its controls are the filter buttons and the event disclosures."
+      }
+    },
+    "terminal": {
+      "surfaces": [
+        "exact-session-terminal-registration-recipe",
+        "read-only-terminal-output-and-viewport"
+      ],
+      "keyboard": {
+        "proofs": [
+          {
+            "browser": "frontend/e2e/terminal-parity.mjs",
+            "step": "keyboard: Open terminal, Jump to live and Close are reached by Tab"
+          },
+          {
+            "browser": "frontend/e2e/terminal-parity.mjs",
+            "step": "typing, pasting and key presses transmit no frame"
+          }
+        ],
+        "note": "Tab and Shift+Tab reach Open terminal, Jump to live and Close, Enter and Space operate them, and the result is asserted (one socket, live position, sockets and renderer released). Focus falls onto the document after each press in the legacy page and in this one, because the control the press used is replaced or hidden; the step records both readings and holds React to no worse than legacy. The page stays operable by keyboard from there."
+      },
+      "narrow": {
+        "proofs": [
+          {
+            "browser": "frontend/e2e/terminal-parity.mjs",
+            "step": "the layout holds at 320 and 375 px: no horizontal page scroll, the terminal and its controls inside the window"
+          }
+        ]
+      },
+      "zoom": {
+        "proofs": [
+          {
+            "browser": "frontend/e2e/console-parity.mjs",
+            "step": "the Console and Decisions tabs draw with no horizontal page scroll"
+          }
+        ]
+      },
+      "editor": {
+        "na": "The terminal is read-only and sends no frame, proven by the typing and pasting step; there is no editable text."
+      }
+    },
+    "attention": {
+      "surfaces": [
+        "attention-gates-risks-and-coverage",
+        "notification-permission-and-ownership"
+      ],
+      "keyboard": {
+        "proofs": [
+          {
+            "browser": "frontend/e2e/attention-parity.mjs",
+            "step": "keyboard: Show more, Copy, Raise and Enable notifications are reached by Tab"
+          }
+        ],
+        "note": "Show more opens on Enter and closes on Space, Copy writes the resume command once on Enter, Raise sends one request on Space, and Enable notifications asks once on Enter and hands focus to the Attention navigation item; each keeps its focus, and the legacy page is the soft oracle."
+      },
+      "narrow": {
+        "proofs": [
+          {
+            "browser": "frontend/e2e/attention-parity.mjs",
+            "step": "the screen does not scroll sideways at 320, 375 and 640 CSS px"
+          }
+        ]
+      },
+      "zoom": {
+        "proofs": [
+          {
+            "browser": "frontend/e2e/attention-parity.mjs",
+            "step": "the screen does not scroll sideways at 320, 375 and 640 CSS px"
+          }
+        ]
+      },
+      "editor": {
+        "na": "Attention holds no editable text."
+      }
+    },
+    "capacity": {
+      "surfaces": [
+        "capacity-model-sublimits-and-pacing",
+        "usage-consent-disclosure",
+        "observer-model-consent-controls"
+      ],
+      "keyboard": {
+        "proofs": [
+          {
+            "browser": "frontend/e2e/capacity-parity.mjs",
+            "step": "keyboard: the window rows and the consent buttons are reached by Tab"
+          }
+        ],
+        "note": "A window row is selected by Space and, after Shift+Tab, by Enter, keeping focus on the row; No thanks answers on Enter and Read my quota on Space with the usage parameter only after the press, and focus lands on the switch that replaces the question (the legacy page leaves it on the document)."
+      },
+      "narrow": {
+        "proofs": [
+          {
+            "browser": "frontend/e2e/capacity-parity.mjs",
+            "step": "the layout holds at 320 and 375 px and every control is a touch target"
+          },
+          {
+            "browser": "frontend/e2e/capacity-parity.mjs",
+            "step": "zoom: the strip, the consent and the observer controls fit at 320, 375 and 640 px and at 200% text"
+          }
+        ]
+      },
+      "zoom": {
+        "proofs": [
+          {
+            "browser": "frontend/e2e/capacity-parity.mjs",
+            "step": "zoom: the strip, the consent and the observer controls fit at 320, 375 and 640 px and at 200% text"
+          },
+          {
+            "browser": "frontend/e2e/console-parity.mjs",
+            "step": "the Console and Decisions tabs draw with no horizontal page scroll"
+          }
+        ],
+        "note": "The capacity step measures the strip and the unanswered consent on the Sessions view, the usage switch and the observer controls on the Console tab, and the answered switch, at 320, 375 and 640 CSS px (200% zoom of 1280) and at the reader's text at 200%. React is held to no page scroll and to controls inside the window and at least 44 px; the legacy page's overflow is recorded. The production run measures the shipped page; the development harness has no page padding, so it allows the width of a disclosure chevron (4 px) and no more."
+      },
+      "editor": {
+        "na": "Capacity and the consent controls hold no editable text."
+      }
+    }
+  },
+  "production_artifact": {
+    "proofs": [
+      {
+        "browser": "frontend/e2e/production-proofs.mjs",
+        "contains": "CARGENTO_E2E_BUNDLE"
+      },
+      {
+        "browser": "frontend/e2e/installed.mjs",
+        "contains": "assert.equal(data.frontend, 'react');"
+      },
+      {
+        "browser": "frontend/e2e/installed.mjs",
+        "contains": "Installed synthetic read-only terminal"
+      },
+      {
+        "fluidity": "edited_or_open_node_replacements"
+      },
+      {
+        "fluidity": "resource_constant_after_collection"
+      },
+      {
+        "fluidity": "poll_to_paint_median"
+      }
+    ],
+    "production_bundle": {
+      "switch": "CARGENTO_E2E_BUNDLE=production",
+      "command": "pnpm test:production:browser",
+      "ci_job": "Frontend production bundle (ubuntu-latest, shard ${{ matrix.shard }})",
+      "shards": "frontend/e2e/production-shards.json",
+      "runs": "the eleven parity proofs (storage, shell, controls, sessions, intent, drift, project, console, attention, capacity, terminal and timeline)"
+    },
+    "limits": "The Python backend serves the React side without Vite in production mode. Served the tracked minified react.html itself (no scratch copy, no mutation): the shell, sessions, intent, drift, project, attention, console, capacity, and terminal and timeline proofs. Each drives its surface through the shipped page's own mount point (the strip in the Sessions view, the consent and observer controls and the terminal in the Console tab, the timeline in the Decisions tab), and a `shipped page` step in the capacity proof fails if the strip or the consent is not inside its view. A mutation run is served a production build of a scratch copy made by the same packaging code. Still harness-hosted, because the shipped page cannot reach them with a fixture: the controls proof mounts the controls gallery, which composes combinations of the shared controls (a stack of draft fields, selects and disclosures, composition and undo cases) that no one project or session page draws together, so those controls are proven in the shipped composition only through the sessions, project, intent, drift, attention and shell proofs, not by the gallery's own cases; and the storage proof's React side is the storage codec bundled minified in the browser, not a served page. On the shipped page three harness-only readings are replaced by what a reader can observe, and the proofs say so where they do it: the terminal owner's internal counters become the renderer count and the open terminal sockets (the owner's last-opened key is asserted only in development), the console's accepted-board count becomes the count of board answers, and a manual refresh becomes another tab's revision announcement. StrictMode double effects exist only in development, so the production run proves the same counts without the double mount, and the development run of every proof stays in CI."
+  },
+  "gates": {
+    "keyboard_narrow_zoom_editor": "The classes block names, per surface class, the proof for keyboard operation, 320 and 375 CSS px, 200% zoom (640 CSS px, or the reader's text at 200%) and native editor continuity (undo, IME). A cell is a proof, not-applicable with a reason, or a gap.",
+    "commands": [
+      "pnpm test",
+      "pnpm test:browser",
+      "pnpm test:parser",
+      "pnpm test:installed",
+      "pnpm test:dev",
+      "pnpm test:dev:browser",
+      "pnpm test:storage:browser",
+      "pnpm test:shell:browser",
+      "pnpm test:controls:browser",
+      "pnpm test:sessions:browser",
+      "pnpm test:intent:browser",
+      "pnpm test:drift:browser",
+      "pnpm test:project:browser",
+      "pnpm test:console:browser",
+      "pnpm test:attention:browser",
+      "pnpm test:capacity:browser",
+      "pnpm test:terminal:browser",
+      "pnpm test:production:browser"
+    ]
+  }
+}

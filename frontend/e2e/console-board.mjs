@@ -19,7 +19,7 @@ import { cp, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/pr
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { isolatedEnvironment } from '../dev/protocol.mjs';
-import { startDevelopment } from '../dev/supervisor.mjs';
+import { PRODUCTION, startReactWorld } from './support/world.mjs';
 import { freePorts, openPage, REPOSITORY } from './support/browser.mjs';
 
 export { REPOSITORY, openPage };
@@ -95,10 +95,15 @@ async function waitForRegistration(origin) {
 export async function startConsoleWorld({
   mutations = {},
   mutation = process.env.CARGENTO_MUTATION || '',
-  // false serves the shipped page (the project views the slots are wired into) instead of the harness.
-  harness = true,
+  // false serves the shipped page (the project views the slots are wired into) instead of the harness. The production
+  // run serves it by default, so every console surface is proven on the page readers get; development keeps the harness.
+  harness = !PRODUCTION,
 } = {}) {
-  const copy = await mkdtemp(join(tmpdir(), 'cargento-console-browser-'));
+  // Without a mutation the shipped page is the tracked `react.html` itself, so no scratch copy is made.
+  const ownsRepository = !harness && !mutation && PRODUCTION;
+  const copy = ownsRepository
+    ? REPOSITORY
+    : await mkdtemp(join(tmpdir(), 'cargento-console-browser-'));
   let dev = null;
   let child = null;
   let legacyScratch = null;
@@ -119,33 +124,35 @@ export async function startConsoleWorld({
     }
     if (dev) await dev.close();
     if (legacyScratch) await rm(legacyScratch, { recursive: true, force: true });
-    await rm(copy, { recursive: true, force: true });
+    if (!ownsRepository) await rm(copy, { recursive: true, force: true });
   }
   try {
-    await cp(join(REPOSITORY, 'frontend'), join(copy, 'frontend'), {
-      recursive: true,
-      filter: (path) =>
-        !path.includes('/fixtures') &&
-        !path.includes('/test-results') &&
-        !path.includes('__pycache__'),
-    });
-    await cp(join(REPOSITORY, 'cargento'), join(copy, 'cargento'), {
-      recursive: true,
-      filter: (path) =>
-        !path.includes('/tests/') && !path.endsWith('/tests') && !path.includes('__pycache__'),
-    });
-    await symlink(
-      join(REPOSITORY, 'node_modules'),
-      join(copy, 'node_modules'),
-      process.platform === 'win32' ? 'junction' : 'dir',
-    );
-    if (harness)
-      await writeFile(join(copy, 'frontend/src/main.tsx'), "import '../e2e/console-harness';\n");
-    for (const [file, needle, replacement] of mutations[mutation] ?? []) {
-      const path = join(copy, 'frontend', file);
-      const text = await readFile(path, 'utf8');
-      assert.ok(text.includes(needle), `mutation ${mutation}: needle not found in ${file}`);
-      await writeFile(path, text.replace(needle, replacement));
+    if (!ownsRepository) {
+      await cp(join(REPOSITORY, 'frontend'), join(copy, 'frontend'), {
+        recursive: true,
+        filter: (path) =>
+          !path.includes('/fixtures') &&
+          !path.includes('/test-results') &&
+          !path.includes('__pycache__'),
+      });
+      await cp(join(REPOSITORY, 'cargento'), join(copy, 'cargento'), {
+        recursive: true,
+        filter: (path) =>
+          !path.includes('/tests/') && !path.endsWith('/tests') && !path.includes('__pycache__'),
+      });
+      await symlink(
+        join(REPOSITORY, 'node_modules'),
+        join(copy, 'node_modules'),
+        process.platform === 'win32' ? 'junction' : 'dir',
+      );
+      if (harness)
+        await writeFile(join(copy, 'frontend/src/main.tsx'), "import '../e2e/console-harness';\n");
+      for (const [file, needle, replacement] of mutations[mutation] ?? []) {
+        const path = join(copy, 'frontend', file);
+        const text = await readFile(path, 'utf8');
+        assert.ok(text.includes(needle), `mutation ${mutation}: needle not found in ${file}`);
+        await writeFile(path, text.replace(needle, replacement));
+      }
     }
     assert.ok(!mutation || mutations[mutation], `unknown mutation ${mutation}`);
 
@@ -157,7 +164,7 @@ export async function startConsoleWorld({
     for (let attempt = 0; ; attempt += 1) {
       ports = await freePorts(3, refused);
       try {
-        dev = await startDevelopment({
+        dev = await startReactWorld({
           root: copy,
           port: ports[0],
           vitePort: ports[1],

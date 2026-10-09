@@ -26,10 +26,14 @@ import { appendFile, mkdir } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { chromium } from '@playwright/test';
 import { BOARD, fragmentFor, openTracked, startConsoleWorld } from './console-board.mjs';
+import { refreshReact } from './support/browser.mjs';
+import { PRODUCTION as SHIPPED } from './support/world.mjs';
 
 /* Every fixed wait here means "give the page time to react". A hosted runner has a few shared cores and
    delivers events and frames later than a desktop, so each wait is tripled there; only a pass gets slower. A
    state is read once two reads a short while apart agree (`settled`), never after a fixed delay alone. */
+/* What shows when the route is not a project. The harness draws its own marker; the shipped page draws the Sessions view. */
+const AWAY = SHIPPED ? '[data-next-view-body="sessions"]' : '#elsewhere';
 const patience = (ms) => (process.env.CI ? ms * 3 : ms);
 const MOD = process.platform === 'darwin' ? 'Meta' : 'Control';
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -287,6 +291,11 @@ async function newPage(kind, { viewport = { width: 1280, height: 1000 }, strict 
   const o = await openTracked(browser, origins, { viewport });
   o.kind = kind;
   o.strict = strict;
+  let answered = 0;
+  o.page.on('response', (response) => {
+    if (new URL(response.url()).pathname === '/api/data' && response.ok()) answered += 1;
+  });
+  o.answered = () => answered;
   await o.context.addInitScript(() => {
     /* A node's words, each element's own run apart from the next. Adjacent text nodes are one run (React draws
        `resets ` and `2d` as two where the markup has one), so a split the reader cannot see changes nothing. */
@@ -579,18 +588,23 @@ try {
       ([sel, key]) => globalThis[`__mark_${key}`] === document.querySelector(sel),
       [selector, name],
     );
+  /* How many boards the page has taken in. The harness exposes its store; the shipped page exposes nothing, so the
+     boards it was answered (`/api/data` responses that arrived) stand in. They are at least the boards it accepted. */
   const generatedOf = () =>
-    react.page.evaluate(() => globalThis.__harness.shell.runtime.store.getSnapshot().acceptedCount);
+    SHIPPED
+      ? react.answered()
+      : react.page.evaluate(
+          () => globalThis.__harness.shell.runtime.store.getSnapshot().acceptedCount,
+        );
   const waitRevisions = async (count) => {
     const start = await generatedOf();
-    await react.page.waitForFunction(
-      ([from, extra]) =>
-        globalThis.__harness.shell.runtime.store.getSnapshot().acceptedCount >= from + extra,
-      [start, count],
-      { timeout: patience(40000) },
-    );
+    const deadline = Date.now() + patience(40000);
+    while ((await generatedOf()) < start + count) {
+      if (Date.now() > deadline) throw new Error(`fewer than ${count} boards arrived`);
+      await sleep(100);
+    }
   };
-  const refreshNow = () => react.page.evaluate(() => globalThis.__harness.shell.runtime.refresh());
+  const refreshNow = () => refreshReact(react.page, SHIPPED);
 
   await step(
     'the steering box keeps its node, text, caret and native undo through revisions and a change of tab',
@@ -663,7 +677,7 @@ try {
         node.value,
       ]);
       await hashTo(react, '#n=sessions');
-      await react.page.locator('#elsewhere').waitFor();
+      await react.page.locator(AWAY).waitFor();
       await refreshNow();
       await hashTo(react, fragmentFor('console'));
       await react.page.locator('[data-next-draft="steer"]').waitFor();
@@ -688,8 +702,13 @@ try {
       await mark('[data-next-draft="steer"]', 'alpha');
       await hashTo(react, fragmentFor('console', null, BOARD.other));
       await react.page.waitForFunction(
-        (project) => document.querySelector('#hosted')?.getAttribute('data-project') === project,
-        BOARD.other,
+        ([project, shipped]) =>
+          shipped
+            ? (document.querySelector('nav[aria-label="Breadcrumb"]')?.textContent ?? '').includes(
+                project,
+              )
+            : document.querySelector('#hosted')?.getAttribute('data-project') === project,
+        [BOARD.other, SHIPPED],
       );
       const other = react.page.locator('[data-next-draft="steer"]');
       assert.equal(
@@ -706,8 +725,13 @@ try {
       await react.page.keyboard.type('beta words');
       await hashTo(react, fragmentFor('console'));
       await react.page.waitForFunction(
-        (project) => document.querySelector('#hosted')?.getAttribute('data-project') === project,
-        BOARD.project,
+        ([project, shipped]) =>
+          shipped
+            ? (document.querySelector('nav[aria-label="Breadcrumb"]')?.textContent ?? '').includes(
+                project,
+              )
+            : document.querySelector('#hosted')?.getAttribute('data-project') === project,
+        [BOARD.project, SHIPPED],
       );
       assert.equal(
         await react.page.locator('[data-next-draft="steer"]').inputValue(),
@@ -715,8 +739,13 @@ try {
       );
       await hashTo(react, fragmentFor('console', null, BOARD.other));
       await react.page.waitForFunction(
-        (project) => document.querySelector('#hosted')?.getAttribute('data-project') === project,
-        BOARD.other,
+        ([project, shipped]) =>
+          shipped
+            ? (document.querySelector('nav[aria-label="Breadcrumb"]')?.textContent ?? '').includes(
+                project,
+              )
+            : document.querySelector('#hosted')?.getAttribute('data-project') === project,
+        [BOARD.other, SHIPPED],
       );
       assert.equal(
         await react.page.locator('[data-next-draft="steer"]').inputValue(),
@@ -743,7 +772,7 @@ try {
       await react.page.getByRole('tab', { name: 'Console' }).click();
       assert.deepEqual(await input.evaluate((node) => [node.selectionStart, node.value]), caret);
       await hashTo(react, '#n=sessions');
-      await react.page.locator('#elsewhere').waitFor();
+      await react.page.locator(AWAY).waitFor();
       await hashTo(react, fragmentFor('console'));
       await input.waitFor();
       assert.deepEqual(await input.evaluate((node) => [node.selectionStart, node.value]), caret);
@@ -803,7 +832,7 @@ try {
           await page.page.getByRole('tab', { name: tab }).click();
           await sleep(patience(150));
         }
-        await page.page.evaluate(() => globalThis.__harness.shell.runtime.refresh());
+        await refreshReact(page.page, SHIPPED);
         await sleep(patience(400));
         assert.deepEqual(
           page.log.nonGet,
@@ -1037,6 +1066,10 @@ try {
         world.react.control,
         `${JSON.stringify({ text: 'printed while away\r\n' })}\n`,
       );
+      /* A terminal the page has scrolled out of view draws nothing: xterm pauses its renderer while it is off screen
+         and repaints when it returns, which is its design and not a lost frame. The shipped page is taller than the
+         harness, so coming back from another tab can leave the terminal below the fold; the reader scrolls to it. */
+      await side.page.locator('#pc-terminal-viewport').scrollIntoViewIfNeeded();
       await side.page.waitForFunction(
         () => document.body.innerText.includes('printed while away'),
         null,

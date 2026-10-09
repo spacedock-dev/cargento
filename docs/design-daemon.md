@@ -90,7 +90,8 @@ turned both stores back on. The test parses the respawn argv back through the CL
 child's config with the parent's for every switch, and a second test holds the convention the
 derivation reads: every `--no-*` option is a store-true switch whose destination starts with `no_`
 and spells it. A `--no-*` flag that took a value would be dropped silently, and a `no_*` switch
-spelled otherwise would make the child exit 2, so either shape fails that test first. No opt-in is forwarded; one that ever is will
+spelled otherwise would make the child exit 2, so either shape fails that test first. The renderer choice is always forwarded, the default included, so a respawn never falls back to
+its own default. No opt-in is forwarded; one that ever is will
 travel with `--no-observer-model`, which the derivation always carries.
 
 The Windows branch has to be checked, and the re-spawn dispatched, *before* the POSIX bind-then-fork

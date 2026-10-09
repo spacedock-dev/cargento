@@ -30,8 +30,9 @@ import { cp, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/pr
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { chromium } from '@playwright/test';
-import { startSessionsBoard } from './sessions-board.mjs';
-import { openPage, REPOSITORY } from './support/browser.mjs';
+import { recordClipboard, startSessionsBoard } from './sessions-board.mjs';
+import { focusedLabel, openPage, REPOSITORY, tabTo } from './support/browser.mjs';
+import { PRODUCTION } from './support/world.mjs';
 
 const patience = (ms) => (process.env.CI ? ms * 3 : ms);
 const pause = (ms) => new Promise((resolve) => setTimeout(resolve, patience(ms)));
@@ -50,6 +51,14 @@ const only = process.env.CARGENTO_E2E_STEPS ? new RegExp(process.env.CARGENTO_E2
 /* One break each, applied to the scratch copy only. A missing needle fails the run loudly rather than
    silently testing nothing. */
 const MUTATIONS = {
+  // Show more answers a pointer press and nothing else: Enter and Space do nothing.
+  'toggle-pointer-only': [
+    [
+      'src/attention/AttentionView.tsx',
+      'onClick={() => expansion.toggle(section)}',
+      'onMouseDown={() => expansion.toggle(section)}',
+    ],
+  ],
   // A section remounts on every revision: the button the reader pressed and focused is a different node.
   'section-remounts': [
     [
@@ -138,12 +147,17 @@ async function step(name, run) {
 /* ---- the world: a scratch copy of the tree, so a mutation never touches a tracked file ---- */
 const mutation = process.env.CARGENTO_MUTATION || '';
 assert.ok(!mutation || MUTATIONS[mutation], `unknown mutation ${mutation}`);
-const copy = await mkdtemp(join(tmpdir(), 'cargento-attention-browser-'));
+/* Without a mutation, the production run serves the tracked `react.html` itself rather than a scratch copy's build. */
+const ownsRepository = PRODUCTION && !mutation;
+const copy = ownsRepository
+  ? REPOSITORY
+  : await mkdtemp(join(tmpdir(), 'cargento-attention-browser-'));
 let board = null;
 let browser = null;
 const opened = [];
 
 async function prepareCopy() {
+  if (ownsRepository) return;
   await cp(join(REPOSITORY, 'frontend'), join(copy, 'frontend'), {
     recursive: true,
     filter: (path) =>
@@ -909,6 +923,155 @@ try {
     },
   );
 
+  /* ===================== keyboard ===================== */
+  await step(
+    'keyboard: Show more, Copy, Raise and Enable notifications are reached by Tab and operated by Enter and Space, and keep their focus',
+    async () => {
+      const trace = { react: {}, legacy: {} };
+      /* A keyboard leg on the legacy page that fails is recorded, not failed: it is the oracle and a loaded runner
+         delivers its events late. The React page is held to every assertion. */
+      async function leg(side, label, run) {
+        try {
+          await run();
+        } catch (error) {
+          if (side.name !== 'legacy') throw error;
+          legacyNotes.push(`keyboard ${label}: ${String(error.message || error).split('\n')[0]}`);
+        }
+      }
+      const nameOf = (side, pattern) =>
+        side.page.evaluate((source) => {
+          const re = new RegExp(source, 'i');
+          const text = (node) =>
+            (node.getAttribute('aria-label') || node.textContent || '').replace(/\s+/g, ' ').trim();
+          const found = [
+            ...globalThis.document.querySelectorAll('[data-next-attention-section="needs"] button'),
+          ].find((node) => re.test(text(node)));
+          return found ? text(found) : null;
+        }, pattern.source);
+      const nonGetTo = (side, path) =>
+        side.log.nonGet.filter((entry) => entry.path === path).length;
+
+      holder.body = attentionBoard({ terminals: true });
+      for (const kind of ['react', 'legacy']) {
+        const side = await newSide(kind);
+        await recordClipboard(side.context);
+        await load(side);
+        const seen = trace[kind];
+
+        // Show more: Tab reaches the section's toggle, Enter opens it and Space closes it, and focus stays on it.
+        await leg(side, 'show more', async () => {
+          const toggle = sectionToggle(side.page, 'needs');
+          const name = await toggle.evaluate((node) =>
+            (node.getAttribute('aria-label') || node.textContent).replace(/\s+/g, ' ').trim(),
+          );
+          assert.match(name, /more/i, `the toggle reads "${name}"`);
+          seen.showMoreTabs = await tabTo(side.page, name);
+          await side.page.keyboard.press('Shift+Tab');
+          assert.notEqual(await focusedLabel(side.page), name, 'Shift+Tab did not leave');
+          await side.page.keyboard.press('Tab');
+          assert.equal(await focusedLabel(side.page), name, 'Tab did not come back');
+          await side.page.keyboard.press('Enter');
+          assert.equal(await toggle.getAttribute('aria-expanded'), 'true', 'Enter did not expand');
+          const open = await settled(side.page, readAttention);
+          assert.ok(
+            open.sections
+              .find((section) => section.name === 'needs')
+              .items.every((item) => !item.hidden),
+            'every needs row shows once expanded by keyboard',
+          );
+          assert.equal(
+            await toggle.evaluate((node) => node === globalThis.document.activeElement),
+            true,
+            'focus left the toggle on Enter',
+          );
+          await side.page.keyboard.press('Space');
+          assert.equal(
+            await toggle.getAttribute('aria-expanded'),
+            'false',
+            'Space did not collapse',
+          );
+          assert.equal(
+            await toggle.evaluate((node) => node === globalThis.document.activeElement),
+            true,
+            'focus left the toggle on Space',
+          );
+          seen.showMore = 'enter opens, space closes, focus kept';
+        });
+
+        // Copy: Enter writes the resume command once, and the button keeps focus.
+        await leg(side, 'copy', async () => {
+          const name = await nameOf(side, /copy/);
+          assert.ok(name, 'the gate row offers no Copy');
+          seen.copyTabs = await tabTo(side.page, name);
+          const before = await side.page.evaluate(() => globalThis.__copied.length);
+          await side.page.keyboard.press('Enter');
+          await until(
+            () => side.page.evaluate(() => globalThis.__copied.length),
+            (count) => count === before + 1,
+            'Enter on Copy did not write exactly once',
+          );
+          assert.equal(await focusedLabel(side.page), name, 'focus left Copy after the press');
+          seen.copied = await side.page.evaluate(() => globalThis.__copied.at(-1));
+        });
+
+        // Raise: Space sends one request, and the button keeps focus. The inert raise answers; nothing is raised.
+        await leg(side, 'raise', async () => {
+          const name = await nameOf(side, /raise the terminal/);
+          assert.ok(name, 'the gate row offers no Raise');
+          seen.raiseTabs = await tabTo(side.page, name);
+          side.pressedRaise = true;
+          const before = nonGetTo(side, '/api/focus');
+          await side.page.keyboard.press('Space');
+          await until(
+            () => nonGetTo(side, '/api/focus'),
+            (count) => count === before + 1,
+            'Space on Raise did not send exactly one request',
+          );
+          await pause(400);
+          assert.equal(
+            nonGetTo(side, '/api/focus'),
+            before + 1,
+            'a press sent more than one request',
+          );
+          assert.equal(await focusedLabel(side.page), name, 'focus left Raise after the press');
+        });
+        await side.close();
+      }
+
+      // Enable notifications: Tab reaches it on a tab that can still be asked, Enter asks once, and focus is handed back.
+      holder.body = attentionBoard({ asking: [], unowned: false });
+      lanePosts.length = 0;
+      for (const kind of ['react', 'legacy']) {
+        const side = await newSide(kind, { notify: { permission: 'default', answer: 'granted' } });
+        await load(side);
+        const seen = trace[kind];
+        await leg(side, 'enable', async () => {
+          seen.enableTabs = await tabTo(side.page, 'Enable notifications');
+          await side.page.keyboard.press('Enter');
+          await until(
+            () => notifyState(side.page).then((state) => state.asked),
+            (asked) => asked === 1,
+            'Enter on Enable notifications did not ask exactly once',
+          );
+          await until(
+            () => side.page.getByRole('button', { name: 'Enable notifications' }).count(),
+            (count) => count === 0,
+            'the control stayed after the grant',
+          );
+          await pause(300);
+          assert.equal((await notifyState(side.page)).asked, 1);
+          seen.afterEnable = await focusedLabel(side.page);
+          // The button is gone, so focus is handed to the Attention item of the primary navigation, as a press does.
+          if (kind === 'react')
+            assert.equal(seen.afterEnable, 'Attention', 'focus was dropped with the button');
+        });
+        await side.close();
+      }
+      holder.body = attentionBoard();
+      return trace;
+    },
+  );
+
   /* ===================== layout and captures ===================== */
   await step('the screen does not scroll sideways at 320, 375 and 640 CSS px', async () => {
     holder.body = attentionBoard({ terminals: false });
@@ -966,9 +1129,15 @@ try {
         [],
         'a board read carried the usage parameter',
       );
+      // A page where the keyboard step pressed Raise sent the one request that press is for; every other page, and
+      // every page for a notification, asked for nothing.
       assert.deepEqual(
         opened.flatMap((side) =>
-          side.log.requests.filter((entry) => /^\/api\/(focus|notify)/.test(entry.path)),
+          side.log.requests.filter(
+            (entry) =>
+              /^\/api\/notify/.test(entry.path) ||
+              (!side.pressedRaise && /^\/api\/focus/.test(entry.path)),
+          ),
         ),
         [],
       );
@@ -986,7 +1155,7 @@ try {
   for (const side of opened) await side.close().catch(() => undefined);
   if (browser) await browser.close();
   if (board) await board.close();
-  await rm(copy, { recursive: true, force: true });
+  if (!ownsRepository) await rm(copy, { recursive: true, force: true });
 }
 
 console.log(

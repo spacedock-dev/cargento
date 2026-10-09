@@ -1,8 +1,8 @@
 {
   "document": {
-    "bytes": 1376344,
+    "bytes": 1376372,
     "file": "react.html",
-    "sha256": "d0356bf4e335221bf4f34df4e2fa1fbc3b1aef4e43b4525e11cc346da83b9226"
+    "sha256": "fa35d735ae166efddadf9bdff2db04086566566e4440f3ea87e19b83c498c51b"
   },
   "format": 1,
   "frontend": "react",
@@ -162,7 +162,7 @@
       },
       {
         "file": "cargento/skills/cargento/cargento_runtime/web/page.py",
-        "sha256": "4a74ef05f32dcf58b2765ad4ed31954bb3c9cc9dda8e932b41a407b8ce249faa"
+        "sha256": "a7b40bdc38b56ad03c674638a945f0a74cb89e2685fc1886a726569b91a422dc"
       },
       {
         "file": "cargento/skills/cargento/cargento_runtime/web/styles.css",
@@ -814,7 +814,7 @@
       },
       {
         "file": "frontend/src/project/project.css",
-        "sha256": "17590b4679fba7904e8b5e29b8919a4f61f34a4dab0c8405a6704f32718e4ea5"
+        "sha256": "9ed56efc847ade6556dbd7b1d75aceb4282cc905d957a131ceafd2ec27446d3a"
       },
       {
         "file": "frontend/src/project/raw.ts",
@@ -1274,7 +1274,7 @@
       },
       {
         "file": "package.json",
-        "sha256": "2c3f9c62a1a0d6a7af2c87e9a2734edfbfdc21bc81565c5386d5122a8b46bc79"
+        "sha256": "589a004214b360b836e2d697d5f0fa2d8b4bcd0dd35e11deee6731fb3cf0513d"
       },
       {
         "file": "pnpm-lock.yaml",

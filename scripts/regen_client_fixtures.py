@@ -271,6 +271,11 @@ class Rig:
             os_name="posix",
             launcher_path=SKILL / "server.py",
             port=4581,
+            # Named rather than defaulted: the committed bytes carry the legacy `frontend`
+            # field and an unprefixed build id, so a change of default renderer must not
+            # rewrite every fixture. The published React values are asserted in
+            # `test_react_frontend`, against the real page identity.
+            frontend="legacy",
             store_root_overrides={"claude.projects": str(self.dir / "projects")},
             **flags,
         )

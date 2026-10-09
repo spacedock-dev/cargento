@@ -24,10 +24,14 @@ native undo, composition, open option lists or browser layout.
 
 The legacy renderer replaces all of `#app`. Mounting React inside that tree would destroy its
 root on the next refresh. The migration therefore uses two whole pages, selected once when the
-Python process starts. A request or URL never selects the renderer. Legacy remains the default
-until the candidate passes the complete parity and measurement gates. Unported routes in the
-gated React build state that they are not available in the React interface yet and name the later
-step by what it brings, never by a tracker key, because that text ships in the page.
+Python process starts. A request or URL never selects the renderer, and neither does an
+environment variable or a stored setting: the launch flag is the only input. React is the default
+and `--frontend legacy` is the explicit process-level rollback, forwarded to a detached child
+rather than left to its own default. A selected build that cannot load refuses before the socket
+is bound, says how to roll back and never serves the other page. Until the candidate passed the
+complete parity and measurement gates, legacy was the default and any route React had not ported
+said so in the page, naming the later step by what it brings, never by a tracker key, because
+that text ships in the page.
 
 The served page and published build identity must refer to the same renderer. Identity is derived
 from deterministic content, independent of release versions and per-run capabilities. The focus
@@ -117,12 +121,12 @@ The optional terminal remains a lazy same-origin exception. Its JavaScript and C
 raw bytes before embedding overhead, which every reader would otherwise download at first open.
 There is no measured startup benefit to bundling it. Installed checks distinguish the React core's
 offline launch from the existing terminal renderer's local asset and read-only stream checks;
-they do not imply the React page already has terminal parity, which a later step owns.
+they do not stand in for the React terminal's own browser proof, described under Sessions below.
 
 Python verifies the selected document and license payload against packaged integrity metadata.
 That detects missing, corrupt or stale build output. It does not authenticate a local actor who
 replaces the artifact and its metadata together. A selected bad build fails before binding;
-recovery commands remain available. The default legacy page keeps its original bytes throughout
+recovery commands remain available. The legacy page keeps its original bytes throughout
 the migration.
 
 ## Integrated development
@@ -435,12 +439,131 @@ The probe owns its headless browser/profile and synthetic Python backend. It ref
 port, reads no real session stores and disables models, usage and native focus. Compare the complete
 reports and their source bindings; an incomplete report or unsupported metric is not a zero.
 
+[The React receipt](frontend-fluidity.json) holds three complete runs of `scripts/frontend_fluidity.mjs`
+against the assembled React page, on the same platform, fixtures, browser family and method as the
+baseline, composed and judged by `scripts/frontend_cutover.py`. The driver is the baseline driver with
+seven differences, listed in the receipt. The React page has no global poll function, so the update
+trigger is the page's own 20 second fallback-poll callback, captured from `setInterval` and invoked: the
+background-poll path with its open-select and motion deferrals, not a manual refresh. The runs also count
+open streams and removed nodes per update, hold an opened disclosure and the prompt select beside the typed
+goal, check that native undo survives, and read a second navigation series after a forced collection. A
+test holds the shared instrumentation to the baseline's own text apart from the two additions it declares.
+A control block re-runs the unchanged baseline driver and page on the same day with the same Chrome, so
+machine drift is visible: its medians sit within noise of the recorded baseline.
+
+On 2026-10-09 (Chrome 156.0.8078.12 against the baseline's 156.0.8078.4, a load average near 2 on ten
+cores, measured against the final shipped page after the last rebuild) every timing budget passed by a wide
+margin. First-render medians were 134.2, 94.2 and 128.1 ms against budgets of 199.1, 159.5 and 192.8;
+poll-to-paint medians were 45.1, 46.4 and 63.6 ms against 119.8, 121.4 and 146.4; no run recorded a long
+task. Against the legacy page re-run the same day with the same Chrome (control medians of 90.9, 62.6 and
+96.5 ms first render, taken under a heavier load of about 5), React's first render is slower by 48%, 50% and
+33%, inside every budget, and poll-to-paint is level (45.1, 46.4 and 63.6 ms against 47.3, 47.3 and
+64.2). The core page is 1,376,372 bytes against a ceiling of 1,816,276 and the legacy page's 1,453,021,
+which is 5.3% smaller; the optional terminal assets (488,663 and 7,112 bytes) are accounted apart, as they
+were. The typed goal, an opened disclosure and the focused prompt select kept their nodes through a poll
+that changed every row title, and the draft, caret, focus and native undo survived, where the baseline
+replaced the goal node on every poll. The cohort polls removed no node; the editor update removed two.
+
+Read the baseline's way, with no collection forced, the page's JavaScript event listeners grow by 37 per
+navigation round (1,815 to 2,000 across five rounds through Projects, Attention and Sessions) where the
+legacy page held 48, and its node count grows by 531 a round where the legacy page's grew by 583 with no
+listeners on those nodes. Timers, intervals, WebSockets and the one live stream stay flat. After a forced
+collection before each reading, listeners, nodes and documents are exactly constant (207, 664 and 1) in all
+three runs, so the raw growth is detached nodes the browser had not yet collected, not retained ones. The rule
+is that resource counts must settle rather than grow with navigation, and retained growth is what matters, so
+the settle criterion is evaluated after a forced collection: every counter must be exactly constant across
+the five rounds, and a mutation that leaves a count higher after collection fails it. The uncollected series
+stays in the receipt as `gc_pending`, round by round beside the legacy page's own, informational and not a
+budget. The forced-collection criterion was ruled by the migration lead at cutover review on 2026-10-09,
+under the owner's standing delegation; the owner has not reviewed it. The first composition judged the
+raw listener series and recorded it as a failed budget, and that receipt was recomposed from its own runs
+under the ruling. A later rebuild changed the page, and the runs recorded here were taken against that final
+page and judged under the ruling from the start.
+
+```bash
+node scripts/frontend_fluidity.mjs --output /tmp/cargento-fluidity-1.json --chrome "$CARGENTO_FLUIDITY_CHROME"
+python3 scripts/frontend_cutover.py fluidity --run /tmp/cargento-fluidity-1.json --run … --run … \
+  --control /tmp/cargento-legacy-1.json --control … --control …
+python3 scripts/frontend_cutover.py check
+python3 scripts/frontend_cutover.py check --final
+```
+
+Run the first command three times with distinct names, and the unchanged
+`node scripts/frontend_baseline.mjs --port 4581 --chrome "$CARGENTO_FLUIDITY_CHROME"` three times for the
+control; the driver owns its browser, backend and ports (4581 to 4586, 4594, 4595 and 4597 to 4599) and
+refuses a busy one. `check` re-derives every figure and verdict from the embedded runs, so an edited
+verdict fails, and it checks the source bindings. `--final` also fails on any gap or failed budget and
+requires the receipt to be bound to the page that ships: any later rebuild of the React page changes its
+digest and needs measuring again.
+
+## The cutover receipt
+
+[The mapped receipt](frontend-cutover-receipt.json) maps every row of the ownership map (20 parts, 39
+surfaces, 17 routes, 45 reader-state rows and 12 storage families) to the React-side proof that stands for
+it: a vitest file and test title, a browser proof and its step, a Python test for server code both pages
+share, or a fluidity verdict. A row is proven, proven with a recorded deviation (the entry links the
+paragraph that records it), deferred to a named owner, or an explicit gap. `python3
+scripts/frontend_cutover.py check` fails when a row has no mapping, when a mapped file, title or step no
+longer exists or matches more than one step, and when a deviation links a heading that is not there. A
+test runs it, so a new surface cannot ship without a mapping and a renamed proof cannot leave a row
+quietly unproven. It proves that the named proof exists, not that it is adequate: each mapping was chosen
+against the row's contract text, and a reviewer owns that judgement.
+
+A second block lists, for each surface class, the proof for keyboard operation, 320 and 375 CSS px, 200%
+zoom (640 CSS px, or the reader's text at 200%) and native editor continuity (undo and composition), says
+why a cell does not apply, or records a gap. The receipt holds none: the terminal's Open, Jump to live and
+Close controls, the Attention controls and the capacity window rows and consent buttons each have a browser
+step that operates them by key.
+
+Every parity proof can run against the shipped `react.html` rather than the development server:
+`CARGENTO_E2E_BUNDLE=production` makes the Python backend serve the minified page, `pnpm
+test:production:browser` runs all eleven, and CI runs them as the `Frontend production bundle` job in two
+shards. The receipt's `production_artifact` block names that runner and job, and `check` fails if either
+goes missing from the package scripts or the workflow's steps. The limits it states are these. The controls
+proof mounts the controls gallery, a combination of shared controls no one page draws together, so in the
+shipped composition those controls are proven through the shell, sessions, project, intent, drift and
+attention proofs and not by the gallery's own cases. The storage proof's React side is the storage codec
+bundled minified in a browser, not a served page. Three harness-only readings are replaced on the shipped
+page by what a reader can observe (the terminal owner's counters become the renderer count and the open
+sockets, the console's accepted-board count becomes the count of board answers, and a manual refresh
+becomes another tab's revision announcement), and the proofs say so where they do it. StrictMode double
+effects exist only in development, so the development run of every proof stays in CI beside the
+production one.
+
+The legacy compatibility seam `next-cockpit-compat.js` has no React twin by design. The React timeline and
+terminal are native components, so nothing lends them globals, and the file leaves with the legacy page.
+
 ## Cutover and final verification
 
 Complete candidate parity, native editor checks, degraded states and measured budgets before the
 default flip. Retain an explicit process-level rollback through cleanup, then remove legacy code
 only after equivalent coverage exists. Hold releases until the final same-main-build browser,
 Python-only install and backend-connected development checks pass.
+
+The default flip is one constant, `DEFAULT_FRONTEND`, which the parser, `build_runtime_config` and
+the detached child's argument list all read. The explicit `--frontend legacy` keeps its page,
+assets, byte pins and tests until retirement. Tests that launch the legacy page now name the
+rollback on purpose rather than lean on a default, and the committed client-contract fixtures pin
+`legacy` for the same reason: a change of default renderer must not rewrite their bytes.
+
+Candidate parity runs against the shipped bytes as well as the development server. Setting
+`CARGENTO_E2E_BUNDLE=production` makes the shared proof support (`frontend/e2e/support/world.mjs`) start the
+Python backend with `--frontend react` and no development ticket, so it serves the minified `react.html`;
+the default stays the development server, and a StrictMode-specific assertion keeps running there because
+the production build has no double effect. A proof that serves a scratch copy of the tree (a harness
+entry, the controls gallery or a deliberate mutation) has that copy packaged with the same `packageFrontend`
+the tracked artifact comes from, so it is served a production build too. Measured on a desktop, all eleven
+parity proofs passed in production mode with no behavioural difference from development; the harness-hosted
+proofs differ from the shipped page in composition, which the receipt's `production_artifact.limits` states.
+`pnpm test:production:browser` runs them, and CI runs two shards of it as `Frontend production bundle`.
+The two native `frontend` legs share their proofs with a second job, `Frontend proofs`, so no leg runs
+every proof in one sitting.
+
+The hold is a tracked `RELEASE_HOLD` file at the repository root. `release_transition.py resolve`
+refuses while main carries it, so a fresh release and a resume stop in the credential-free job
+before any verifier, tag move or push, and `assert-checkout` reads main again in the publishing job, so a hold
+merged while the verifiers ran still stops a resume before the bump, the tag move or `stable`; the owner lifts it by deleting the file in a reviewed pull
+request. The release skill owns the procedure.
 
 The Intent and drift study remains paused. Controlled reading fixtures prove frontend parity,
 not model accuracy. Earlier failed measurements stay failed. A future study resume must bind the
