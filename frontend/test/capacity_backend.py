@@ -152,6 +152,19 @@ def request_usage_fetch(_self: Any) -> bool:
 
 
 _COLLECT = project_context.collect
+_SUMMARIZED: set[tuple[str, str]] = set()
+_CONTROL_STAMP: list[int] = [0]
+
+
+def _forget_summaries_on_new_control() -> None:
+    """A steer of the fixture (the control file rewritten) starts the next state with no summary."""
+    try:
+        stamp = (_folder() / "control.json").stat().st_mtime_ns
+    except OSError:
+        stamp = 0
+    if stamp != _CONTROL_STAMP[0]:
+        _CONTROL_STAMP[0] = stamp
+        _SUMMARIZED.clear()
 
 
 def collect(*args: Any, **kwargs: Any) -> dict[str, Any]:
@@ -168,8 +181,14 @@ def collect(*args: Any, **kwargs: Any) -> dict[str, Any]:
     else:
         result["observer_model"] = offer
     focus = kwargs.get("focus")
+    _forget_summaries_on_new_control()
     if consented and focus is not None:
         record("model_call", harness=focus[0], sid=focus[1])
+        _SUMMARIZED.add((focus[0], focus[1]))
+    # The real server keeps the summary a reader paid for and hands it back to every later read of
+    # that session, so a board poll that lands right after the press does not erase it. The fixture
+    # does the same, until the test steers it to another state.
+    if focus is not None and (focus[0], focus[1]) in _SUMMARIZED:
         rows = [
             row
             for row in result.get("observers", [])
