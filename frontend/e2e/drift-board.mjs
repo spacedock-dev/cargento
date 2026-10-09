@@ -137,6 +137,20 @@ export const RECORD = (generated) => [
   check('c2', generated - 650, 'passed'),
 ];
 
+/* A poll can still be inside one of these handlers when the proof closes its context. Playwright then rejects the
+   handler's own fetch or fulfill with a "disposed" or "closed" error that nothing awaits, and Node ends the process
+   on an unhandled rejection, which failed the shipped-bundle drift proof on hosted runners. Only that closing error
+   is set aside here; any other failure of a handler still surfaces. */
+export const quietWhenClosing = (handler) => async (route) => {
+  try {
+    return await handler(route);
+  } catch (error) {
+    if (/Request context disposed|has been closed|Target closed/.test(String(error?.message)))
+      return undefined;
+    throw error;
+  }
+};
+
 /* Installs the script on a page's context. The returned object is the script itself, so a test sets a state
    by assigning to it and reloading the page. */
 export async function installScript(context, script) {
@@ -147,26 +161,32 @@ export async function installScript(context, script) {
     );
     return { ...body, ...script.payload };
   };
-  await context.route('**/api/data*', async (route) => {
-    const response = await route.fetch();
-    const body = await response.json();
-    const patched = merged(body);
-    await route.fulfill({ response, body: JSON.stringify(patched) });
-  });
-  await context.route('**/api/project-context*', async (route) => {
-    if (script.contextError) return route.fulfill({ status: 500, body: 'unreadable' });
-    const response = await route.fetch();
-    const body = await response.json().catch(() => ({}));
-    const patched = {
-      ...body,
-      semantic: { ...(body.semantic || {}), facts: script.facts },
-      sources: {
-        ...(body.sources || {}),
-        work: { tool_reports: [], line_requests: [], ...script.work },
-      },
-    };
-    await route.fulfill({ response, body: JSON.stringify(patched) });
-  });
+  await context.route(
+    '**/api/data*',
+    quietWhenClosing(async (route) => {
+      const response = await route.fetch();
+      const body = await response.json();
+      const patched = merged(body);
+      await route.fulfill({ response, body: JSON.stringify(patched) });
+    }),
+  );
+  await context.route(
+    '**/api/project-context*',
+    quietWhenClosing(async (route) => {
+      if (script.contextError) return route.fulfill({ status: 500, body: 'unreadable' });
+      const response = await route.fetch();
+      const body = await response.json().catch(() => ({}));
+      const patched = {
+        ...body,
+        semantic: { ...(body.semantic || {}), facts: script.facts },
+        sources: {
+          ...(body.sources || {}),
+          work: { tool_reports: [], line_requests: [], ...script.work },
+        },
+      };
+      await route.fulfill({ response, body: JSON.stringify(patched) });
+    }),
+  );
   const scripted = [
     '/api/reading',
     '/api/reading/cancel',
