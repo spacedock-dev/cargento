@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import vm from 'node:vm';
+import { legacyHarness } from '../../test/legacy_goldens';
 
 /* The legacy Console rail, run as the page runs it: `nextProjectRail` over `nextObserved`, with the
    workstream's tab memory behind the delegation figure. Only the browser objects the files touch at load
@@ -23,7 +24,7 @@ export interface LegacyRail {
   rail(payload: unknown, project: string): string;
 }
 
-export function loadLegacyRail(): LegacyRail {
+function buildLegacyRail(): LegacyRail {
   const storage = new Map<string, string>();
   let capability = '';
   const sandbox: Record<string, unknown> = {
@@ -106,4 +107,12 @@ export function loadLegacyRail(): LegacyRail {
       ) as string;
     },
   };
+}
+
+export function loadLegacyRail(): LegacyRail {
+  return legacyHarness('rail', buildLegacyRail, {
+    observe: ['projects', 'rail'],
+    slots: { setCapability: 'capability' },
+    reset: ['reset'],
+  });
 }

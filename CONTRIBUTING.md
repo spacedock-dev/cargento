@@ -115,6 +115,33 @@ by what a reader can observe, and the proofs say so where they do it; the receip
 lists the limits. Set the variable yourself to run one proof against the bundle, for example
 `CARGENTO_E2E_BUNDLE=production pnpm test:attention:browser`.
 
+The parity proofs and the unit differentials hold the React page to what the legacy page said, and they read
+that from recordings, so the legacy page does not have to run. `CARGENTO_LEGACY` picks one of three modes for both
+(an environment variable; the script names above do not change):
+
+| Mode | What runs | Use it for |
+|---|---|---|
+| `replay` (the default, and what CI runs) | The React page alone. The legacy backend is not started and no legacy page is opened; each legacy reading comes from `frontend/test/golden/e2e/<proof>.json` or, for the unit differentials, `frontend/test/golden/vitest/`. | Everyday work. It needs no legacy code and is faster. |
+| `live` | The legacy page runs beside the React page, as before the recordings existed, and every legacy reading must also equal its recording. `CARGENTO_LEGACY_STRICT=1` fails a reading that has no recording. | Proving that the recordings still say what the legacy code says. |
+| `record` | Like `live`, and the readings are written to the golden files once the run has passed. A run of some steps (`CARGENTO_E2E_STEPS`), or one with a failed step, writes nothing. | Re-recording after a deliberate change to what a proof reads. Only possible while the legacy code exists. |
+
+A recording is keyed by the step and the input, so a step that was renamed, an input a generator now produces
+differently, or a reading that was added fails with "no golden for this input" instead of comparing against
+nothing. Every key a recording holds must be read by the run, so a removed step fails too. To re-record a browser
+proof, run it three times into scratch directories on an idle machine and keep the file only if the three agree:
+
+```bash
+for i in 1 2 3; do
+  CARGENTO_LEGACY=record CARGENTO_GOLDEN_DIR="$(mktemp -d)/run$i" node frontend/e2e/<proof>.mjs
+done
+```
+
+(`<proof>` is a script name from `frontend/e2e/`; copy the agreed file to `frontend/test/golden/e2e/<proof>.json`.)
+Values a run invents, such as ports, clock times and ids, are normalised before they are stored, and a value
+the legacy page measured in pixels is compared through a distance that does not depend on the font, because the
+recordings are replayed on other operating systems. The recordings are committed and small (browser proofs under
+3 MB in total, unit differentials under 4 MB); do not commit a raw session or a payload from a real store.
+
 Two receipts record what the default flip stands on, and `python3 scripts/frontend_cutover.py check` verifies
 both without starting a browser: `docs/frontend-fluidity.json` (the React page measured against the
 pre-React budgets) and `docs/frontend-cutover-receipt.json` (every row of the migration inventory mapped to

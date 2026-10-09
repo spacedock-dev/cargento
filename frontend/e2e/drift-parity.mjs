@@ -13,6 +13,12 @@
  * focus and a keypress; keyboard operation; the announcements through the runtime's live regions; and
  * 320/375/640(200% zoom)/1280 CSS px layouts with no horizontal page scroll.
  *
+ * The legacy side of the DIFFERENTIAL half is a RECORDING (`support/golden.mjs`, `CARGENTO_LEGACY=replay|live|record`,
+ * default replay): in replay no legacy backend or page is started, each state is scripted onto the React page
+ * alone and what it reads is held to what the legacy page said when it was recorded. Every legacy-side
+ * assertion that compared the two pages (the consent step's request count, the copies and the copy requests of
+ * Steer back) is recorded as an observation and asserted against the React page's own.
+ *
  * No model is ever called: the reading route is a double. Every request leaving the board's own origins is
  * refused. Run with `pnpm test:drift:browser`; `CARGENTO_E2E_STEPS=<regex>` runs only the steps whose name
  * matches.
@@ -39,6 +45,7 @@ import {
 import { call, startIntentBoard } from './intent-board.mjs';
 import { instrumentResources, recordClipboard, resources } from './sessions-board.mjs';
 import { openPage } from './support/browser.mjs';
+import { goldenFor, jsonSafe, normalise } from './support/golden.mjs';
 
 /* Every fixed wait here means "give the page time to react". A hosted runner has a few shared cores and
    delivers events and frames later than a desktop, so each wait is tripled there; only a pass gets slower. A
@@ -54,6 +61,10 @@ const SHOTS = (process.env.CARGENTO_SCREENSHOTS || `${checkout}docs/screenshots`
   /\/?$/,
   '/',
 );
+const golden = goldenFor('drift-parity');
+const LIVE = golden.live;
+/* The React reading in the stable form a recorded observation has, so the two compare as plain data. */
+const norm = (value) => jsonSafe(normalise(value));
 const receipts = {};
 const failures = [];
 const shots = [];
@@ -128,6 +139,8 @@ const summarizeCard = () => {
    thing about the reader's words either way. */
 const comparable = (value) =>
   JSON.stringify(value)
+    // A call's moment is printed whole, with its date and seconds, and a recording must not carry the day it was made.
+    .replace(/\d{4}-\d\d-\d\d \d\d:\d\d:\d\d UTC/g, '<instant>')
     // No word boundary before the digits: a list row prints "exact" and its age with nothing between.
     .replace(/(?<!\d)\d+[smhd]( \d+[smh])?(?![A-Za-z0-9])/g, '<age>')
     .replace(/(?<!\d)\d\d:\d\d(?!\d)/g, '<clock>')
@@ -145,9 +158,13 @@ async function settled(read, { deadline = patience(6000), every = 120 } = {}) {
   }
 }
 
-const board = await startIntentBoard({ legacy: true });
+const board = await startIntentBoard({ legacy: LIVE });
 const browser = await chromium.launch();
-const origins = [board.react.origin, board.react.viteOrigin, board.legacy.origin];
+const origins = [
+  board.react.origin,
+  board.react.viteOrigin,
+  ...(LIVE ? [board.legacy.origin] : []),
+];
 const opened = [];
 
 async function newPage(kind, viewport = { width: 1280, height: 900 }) {
@@ -180,8 +197,6 @@ async function load(o, fragment = FRAGMENT) {
   await o.page.waitForSelector('.next-session-drift');
 }
 
-const both = (fn) => Promise.all(['legacy', 'react'].map(fn));
-
 /* The real board's own clock, so every time in a state is relative to it. */
 async function clockOf() {
   const real = await (await fetch(`${board.react.origin}/api/data`)).json();
@@ -190,7 +205,7 @@ async function clockOf() {
 
 function setState(legacyPage, reactPage, make) {
   return Promise.all(
-    [legacyPage, reactPage].map(async (o) => {
+    [legacyPage, reactPage].filter(Boolean).map(async (o) => {
       const next = freshScript();
       Object.assign(next, await make(o));
       for (const key of Object.keys(o.script)) delete o.script[key];
@@ -200,24 +215,24 @@ function setState(legacyPage, reactPage, make) {
 }
 
 try {
-  const legacy = await newPage('legacy');
+  const legacy = LIVE ? await newPage('legacy') : null;
   const react = await newPage('react');
+  /* The pages a state-changing action is made on: the legacy page exists only while it is read or recorded. */
+  const pages = LIVE ? [legacy, react] : [react];
+  const read = (o) => settled(() => o.page.evaluate(summarizeCard));
 
   /* ===================== DIFFERENTIAL: the card, state by state ===================== */
   async function compare(label, make, { text = true, ready = null } = {}) {
     const g = await clockOf();
     await setState(legacy, react, (o) => make(g, o));
-    await both((kind) => load(kind === 'legacy' ? legacy : react));
-    // A state the legacy page reaches after a record read, said by what it draws rather than by a delay.
-    if (ready) {
-      await both((kind) =>
-        (kind === 'legacy' ? legacy : react).page.waitForSelector(ready, {
-          timeout: patience(15000),
-        }),
-      );
-    }
-    const read = (o) => settled(() => o.page.evaluate(summarizeCard));
-    const [old, mine] = await Promise.all([read(legacy), read(react)]);
+    const draw = async (o) => {
+      await load(o);
+      // A state the legacy page reaches after a record read, said by what it draws rather than by a delay.
+      if (ready) await o.page.waitForSelector(ready, { timeout: patience(15000) });
+      return read(o);
+    };
+    const mine = norm(await draw(react));
+    const old = await golden.observe(`card: ${label}`, () => draw(legacy));
     for (const key of Object.keys(old)) {
       if (!text && key === 'text') continue;
       if (typeof old[key] === 'string' && typeof mine[key] === 'string' && old[key] !== mine[key]) {
@@ -352,7 +367,8 @@ try {
     async () => {
       const state = await compare('stored result', (g) => stored(g));
       assert.match(state.text, /Departs from your intent1 departure/);
-      assert.deepEqual(state.resultStates.sort(), ['consistent', 'departs']);
+      // Sorted as a copy: a golden observation is the stored value itself, and sorting it would change the recording.
+      assert.deepEqual([...state.resultStates].sort(), ['consistent', 'departs']);
       assert.ok(state.entries.length >= 2);
       assert.ok(state.buttons.some(([label]) => label === 'Analyze again'));
       return state.resultStates;
@@ -419,10 +435,13 @@ try {
        Neither is an empty record. */
     const g0 = await clockOf();
     await setState(legacy, react, () => claude(g0, { contextError: true }));
-    await both((kind) => load(kind === 'legacy' ? legacy : react));
-    const unread = await Promise.all(
-      [legacy, react].map((o) => settled(() => o.page.evaluate(summarizeCard))),
-    );
+    await load(react);
+    const unreadReact = norm(await read(react));
+    const unreadLegacy = await golden.observe('gap: the record could not be read', async () => {
+      await load(legacy);
+      return read(legacy);
+    });
+    const unread = [unreadLegacy, unreadReact];
     assert.match(unread[0].work, /has not been read yet/);
     assert.match(unread[1].work, /could not be read/);
     assert.ok(
@@ -521,25 +540,26 @@ try {
     async () => {
       const g = await clockOf();
       await setState(legacy, react, () => claude(g, { payload: { reading: UNCONSENTED } }));
-      await both((kind) => load(kind === 'legacy' ? legacy : react));
-      for (const o of [legacy, react])
+      await Promise.all(pages.map((o) => load(o)));
+      for (const o of pages)
         await o.page.locator('[data-next-cockpit-action="reading-ask"]').click();
-      const read = (o) => settled(() => o.page.evaluate(summarizeCard));
-      const [old, mine] = await Promise.all([read(legacy), read(react)]);
+      const old = await golden.observe('consent: the step', () => read(legacy));
+      const mine = norm(await read(react));
       assert.deepEqual(mine, old, 'the consent step differs from the legacy step');
       assert.match(old.text, /Send this session to Claude Code for analysis\?/);
       assert.deepEqual(
         old.buttons.filter(([label]) => ['Allow and analyze', 'Not now'].includes(label)).length,
         2,
       );
-      assert.equal(
-        postsTo(legacy.script, '/api/reading').length +
-          postsTo(react.script, '/api/reading').length,
-        0,
+      const legacySent = await golden.observe(
+        'consent: reading requests the legacy page sent',
+        async () => postsTo(legacy.script, '/api/reading').length,
       );
-      for (const o of [legacy, react])
+      assert.equal(legacySent + postsTo(react.script, '/api/reading').length, 0);
+      for (const o of pages)
         await o.page.locator('[data-next-cockpit-action="reading-not-now"]').click();
-      const [after, again] = await Promise.all([read(legacy), read(react)]);
+      const after = await golden.observe('consent: after Not now', () => read(legacy));
+      const again = norm(await read(react));
       assert.deepEqual(again, after);
       assert.ok(after.buttons.some(([label]) => label === 'Analyze drift'));
     },
@@ -558,29 +578,35 @@ try {
           },
         }),
       );
-      await both((kind) => load(kind === 'legacy' ? legacy : react));
-      for (const o of [legacy, react]) {
+      await Promise.all(pages.map((o) => load(o)));
+      for (const o of pages) {
         await o.page.locator('[data-next-cockpit-action="steer-back"]').click();
         await o.page.waitForSelector('#next-cockpit-correction');
       }
-      const read = (o) => settled(() => o.page.evaluate(summarizeCard));
-      const [old, mine] = await Promise.all([read(legacy), read(react)]);
+      const old = await golden.observe('steer: the box', () => read(legacy));
+      const mine = norm(await read(react));
       assert.deepEqual(mine, old, 'the steer box differs from the legacy box');
-      const texts = await both((kind) =>
-        (kind === 'legacy' ? legacy : react).page.locator('#next-cockpit-correction').inputValue(),
+      const text = await react.page.locator('#next-cockpit-correction').inputValue();
+      const legacyText = await golden.observe('steer: the correction text', () =>
+        legacy.page.locator('#next-cockpit-correction').inputValue(),
       );
-      assert.equal(texts[0], texts[1]);
-      assert.match(texts[0], /Your last check failed \(#1 in Cargento\)\. Fix it, then say so\./);
-      for (const o of [legacy, react])
+      assert.equal(text, legacyText);
+      assert.match(text, /Your last check failed \(#1 in Cargento\)\. Fix it, then say so\./);
+      for (const o of pages)
         await o.page.locator('[data-next-cockpit-action="correction-copy"]').click();
       await sleep(patience(300));
-      const copies = await both((kind) =>
-        (kind === 'legacy' ? legacy : react).page.evaluate(() => globalThis.__copied),
+      const copied = await react.page.evaluate(() => globalThis.__copied);
+      const legacyCopied = await golden.observe('steer: what the legacy page copied', () =>
+        legacy.page.evaluate(() => globalThis.__copied),
       );
-      assert.deepEqual(copies[1], copies[0]);
-      assert.equal(copies[0].length, 1);
-      for (const o of [legacy, react])
-        assert.equal(postsTo(o.script, '/api/correction/copied').length, 1);
+      assert.deepEqual(copied, legacyCopied);
+      assert.equal(legacyCopied.length, 1);
+      const legacyRecorded = await golden.observe(
+        'steer: copy requests the legacy page sent',
+        async () => postsTo(legacy.script, '/api/correction/copied').length,
+      );
+      assert.equal(legacyRecorded, 1);
+      assert.equal(postsTo(react.script, '/api/correction/copied').length, 1);
       assert.equal(postsTo(react.script, '/api/correction').length, 1);
     },
   );
@@ -608,8 +634,7 @@ try {
         facts: RECORD(g2),
       });
     await setState(legacy, react, () => make(g));
-    await both(async (kind) => {
-      const o = kind === 'legacy' ? legacy : react;
+    const arm = async (o) => {
       await o.context.addInitScript(
         ([harness, sid]) => {
           globalThis.localStorage.setItem(`cargento.next.live-estimate:${harness}:${sid}`, '1');
@@ -617,9 +642,10 @@ try {
         [HARNESS, SID],
       );
       await load(o);
-    });
-    const read = (o) => settled(() => o.page.evaluate(summarizeCard));
-    const [old, mine] = await Promise.all([read(legacy), read(react)]);
+      return read(o);
+    };
+    const mine = norm(await arm(react));
+    const old = await golden.observe('live estimate and pill', () => arm(legacy));
     assert.deepEqual(mine, old, 'the live estimate differs from the legacy page');
     assert.match(old.pill, /Drift: High/);
     assert.match(old.text, /Live estimate/);
@@ -1292,6 +1318,12 @@ try {
   for (const o of opened) await o.close().catch(() => undefined);
   await browser.close();
   await board.close();
+}
+
+try {
+  golden.finish({ complete: !only && failures.length === 0 });
+} catch (error) {
+  failures.push({ name: 'golden', message: String(error.message) });
 }
 
 console.log(JSON.stringify({ receipts, shots }, null, 2));

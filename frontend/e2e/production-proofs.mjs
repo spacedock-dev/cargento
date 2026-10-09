@@ -8,10 +8,18 @@
  * Any other argument prints the usage and exits 2 before a proof starts: a typo in a CI command must not run all
  * eleven on every shard. pnpm passes what follows the script name through, so there is no `--` in the command.
  *
+ * Each proof compares the React page with what the legacy page said, and `CARGENTO_LEGACY` chooses where that
+ * comes from (see `support/golden.mjs`). It is left in the environment each proof inherits, so the default is
+ * replay: no legacy backend and no legacy page, which is also why the wall times below are shorter than the
+ * ones measured while the legacy page still ran beside the React one. `CARGENTO_LEGACY=live` here proves the
+ * recordings against the legacy code while it exists; `record` is refused, because a recording is made one proof
+ * at a time, three times, into a scratch directory, never through a runner that would overwrite all eleven.
+ *
  * The shards are `production-shards.json`, balanced from measured production-mode wall times
  * (a: shell 170 s, project 152 s, capacity 173 s; b: the other eight, 479 s) so the two CI legs finish
- * together. A test pins that the shards are disjoint and together name every parity proof, so a proof
- * cannot fall between them. Every proof runs even after one fails, because the second failure is the one
+ * together. Those were measured with the legacy page running; replay is shorter (capacity 115 s, console 47 s and
+ * attention 44 s on a loaded desk) and the split has not been re-measured since. A test pins that the shards
+ * are disjoint and together name every parity proof, so a proof cannot fall between them. Every proof runs even after one fails, because the second failure is the one
  * a contributor would otherwise find a CI round later.
  */
 import { spawnSync } from 'node:child_process';
@@ -27,6 +35,8 @@ const usage = (reason) => {
   );
   process.exit(2);
 };
+if (process.env.CARGENTO_LEGACY === 'record')
+  usage('CARGENTO_LEGACY=record is not available through this runner; record one proof at a time.');
 const args = process.argv.slice(2);
 let wanted = null;
 if (args.length === 2 && args[0] === '--shard') [, wanted] = args;

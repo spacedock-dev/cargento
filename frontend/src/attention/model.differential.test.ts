@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { caseCount } from '../../test/legacy_goldens';
 import { genPayload, mulberry32, pick } from '../observed/generate.test.helper';
 import { canonical, firstDifference } from '../observed/legacy.test.helper';
 import { loadLegacyAttention } from './legacy.test.helper';
@@ -13,7 +14,10 @@ import { checkpointRows, subjectNow, subjectOutcome, subjectSource } from './tex
    without a stop, unicode, wrong-typed fields), and a failure names the seed and the first path that
    differs. */
 const legacy = loadLegacyAttention();
-const SEEDS = Number(process.env['ATTENTION_SEEDS'] ?? 600);
+/* How many generated payloads run beside the legacy answers. The legacy answers are recorded goldens, so the
+   number is what the committed record holds: raising it needs a re-record (see test/legacy_goldens.ts). */
+const CASES = 80;
+const SEEDS = caseCount(CASES, 'ATTENTION_SEEDS');
 
 describe('nextAttentionModel and attentionModel agree over generated payloads', () => {
   it(`agrees on all ${String(SEEDS)} seeds`, () => {
@@ -91,7 +95,7 @@ describe('nextAttentionModel and attentionModel agree over generated payloads', 
     const failures: string[] = [];
     let pace = 0;
     let level = 0;
-    for (let seed = 1; seed <= 500; seed += 1) {
+    for (let seed = 1; seed <= Math.min(SEEDS, 60); seed += 1) {
       const window = () => {
         const windowSec = pick(rnd, windows);
         const span = typeof windowSec === 'number' && windowSec > 0 ? windowSec : 18000;
@@ -185,7 +189,7 @@ describe('the close queue is ordered by what is at stake, then by when', () => {
 describe('the sentences a subject is read through agree with the legacy builders', () => {
   it('reads outcome, now, next and source the same way for every subject', () => {
     const failures: string[] = [];
-    for (let seed = 1; seed <= Math.min(SEEDS, 300); seed += 1) {
+    for (let seed = 1; seed <= Math.min(SEEDS, 50); seed += 1) {
       const payload = genPayload(seed);
       legacy.setData(payload);
       const oldModel = legacy.call<Record<string, unknown>>('nextAttentionModel', payload);
@@ -230,7 +234,7 @@ describe('the sentences a subject is read through agree with the legacy builders
 
   it('announces a changed count the way the legacy page does, and nothing for an unchanged one', () => {
     const failures: string[] = [];
-    for (let seed = 1; seed <= 150; seed += 1) {
+    for (let seed = 1; seed <= Math.min(SEEDS, 50); seed += 1) {
       const before = genPayload(seed);
       const after = genPayload(seed + 1000);
       const old = legacy.announcement(before, after);

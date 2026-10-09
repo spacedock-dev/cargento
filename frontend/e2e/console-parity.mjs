@@ -3,13 +3,17 @@
  * The steering bar, the tripwires, the workflow stage conditions, the Decisions tab and the Console tab in a real
  * browser.
  *
- * Two kinds of proof. The DIFFERENTIAL half drives the legacy page and the React page in the same Chromium over
- * one board (`console-board.mjs`: the real documents and modules, the real backend over a synthetic board with
- * asks, a stored history, a quota provider, one workflow stage source and a synthetic read-only terminal) and
- * compares what a reader can read in each state a reader reaches: the Console at project scope and with each of
+ * Two kinds of proof. The DIFFERENTIAL half drives the React page over one board (`console-board.mjs`: the real
+ * documents and modules, the real backend over a synthetic board with asks, a stored history, a quota provider,
+ * one workflow stage source and a synthetic read-only terminal) and compares what a reader can read in each
+ * state a reader reaches with what the legacy page said of the same state: the Console at project scope and with each of
  * three sessions selected, the Decisions tab under each filter, the Course tab's conditions in and out of scope,
  * a sent draft, an added and toggled tripwire, and a stage condition saved, rearmed and removed through the real
- * `/api/tripwire` route. The BEHAVIOUR half holds the React page to what a unit test cannot see: the steering
+ * `/api/tripwire` route. The legacy page's readings are recorded in `frontend/test/golden/e2e/console-parity.json`
+ * (`support/golden.mjs` owns the three `CARGENTO_LEGACY` modes and the re-record command): replay, the default,
+ * starts no legacy backend and opens no legacy page; live drives the legacy page beside the React one and must
+ * agree with the recording. The legacy page's focus after opening and adding a tripwire is only reported
+ * (`focusProbe`), never compared, and is recorded for that report. The BEHAVIOUR half holds the React page to what a unit test cannot see: the steering
  * box's node, text, caret and native undo surviving the board's own revisions and a change of tab, the text and
  * caret coming back after a route away and back, the tripwire box staying open, Escape cancelling it without
  * leaving the page, a stage condition's focus and its native select across a poll, request counts over a mount,
@@ -27,7 +31,10 @@ import { fileURLToPath } from 'node:url';
 import { chromium } from '@playwright/test';
 import { BOARD, fragmentFor, openTracked, startConsoleWorld } from './console-board.mjs';
 import { refreshReact } from './support/browser.mjs';
+import { goldenFor } from './support/golden.mjs';
 import { PRODUCTION as SHIPPED } from './support/world.mjs';
+
+const golden = goldenFor('console-parity');
 
 /* Every fixed wait here means "give the page time to react". A hosted runner has a few shared cores and
    delivers events and frames later than a desktop, so each wait is tripled there; only a pass gets slower. A
@@ -48,11 +55,13 @@ const SHOTS = (process.env.CARGENTO_SCREENSHOTS || `${checkout}docs/screenshots`
 );
 const receipts = {};
 const failures = [];
+let currentStep = '';
 const shots = [];
 const only = process.env.CARGENTO_E2E_STEPS ? new RegExp(process.env.CARGENTO_E2E_STEPS) : null;
 
 async function step(name, run) {
   if (only && !only.test(name)) return;
+  currentStep = name;
   try {
     const detail = await run();
     receipts[name] = detail === undefined ? 'ok' : detail;
@@ -128,7 +137,7 @@ const MUTATIONS = {
 
 const world = await startConsoleWorld({ mutations: MUTATIONS });
 const browser = await chromium.launch();
-const origins = [world.react.origin, world.react.viteOrigin, world.legacy.origin];
+const origins = [world.react.origin, world.react.viteOrigin, world.legacy?.origin].filter(Boolean);
 const opened = [];
 const E = encodeURIComponent;
 const focusProbe = [];
@@ -352,24 +361,36 @@ async function hashTo(o, fragment) {
   }, fragment);
 }
 
-const both = (fn) => Promise.all([legacy, react].map(fn));
-let legacy;
+/* Runs `fn` on each page that exists in this mode; the result is `[legacy, react]`, with `null` for the legacy
+   page when it is not open (replay). */
+const both = async (fn) => {
+  const [old, mine] = await Promise.all([legacy ? fn(legacy) : null, fn(react)]);
+  return [old, mine];
+};
+let legacy = null;
 let react;
 
-/* Both sides read until each has settled, then the two reads are compared. */
+/* The React page reads until it has settled, and is compared with what the legacy page said of the same state:
+   read now beside it (live, record) or from the golden file (replay). */
 async function same(label, read, { ready = null } = {}) {
-  if (ready) await both((o) => o.page.waitForFunction(ready, null, { timeout: patience(20000) }));
-  const [old, mine] = await Promise.all([
-    settled(() => legacy.page.evaluate(read)),
+  if (ready)
+    await Promise.all(
+      [legacy, react]
+        .filter(Boolean)
+        .map((o) => o.page.waitForFunction(ready, null, { timeout: patience(20000) })),
+    );
+  const key = `${currentStep} :: ${label}`;
+  const [, mine] = await Promise.all([
+    golden.observe(key, () => settled(() => legacy.page.evaluate(read))),
     settled(() => react.page.evaluate(read)),
   ]);
-  assert.deepEqual(mine, old, `${label}: the React page reads differently from the legacy page`);
+  golden.verify(key, mine);
   return mine;
 }
 
 /* ================================================================================================ */
 try {
-  legacy = await newPage('legacy');
+  if (golden.live) legacy = await newPage('legacy');
   react = await newPage('react');
 
   /* =============================== DIFFERENTIAL =============================== */
@@ -524,20 +545,29 @@ try {
     );
     await both((o) => o.page.locator('[data-next-guardrail-input]').press('Enter'));
     await sleep(patience(300));
-    focusProbe.push({ opened, added: await both(focusOf) });
+    const added = await both(focusOf);
+    // Reported, never compared: the legacy page's focus, read now or as recorded.
+    const legacyFocus = await golden.observe('tripwire add: the legacy page focus', async () => ({
+      opened: opened[0],
+      added: added[0],
+    }));
+    focusProbe.push({ legacy: legacyFocus, react: { opened: opened[1], added: added[1] } });
     await both((o) => o.page.getByRole('switch').first().click());
     const read = await same('the tripwires panel', readConsole);
     const panel = read.rail.find((section) => section.name === 'tripwires');
     assert.match(panel.text, /alert me when the build breaks/);
     assert.match(panel.text, /Disabled in this browser\./);
-    const stored = await both((o) =>
+    const readStored = (o) =>
       o.page.evaluate(() => {
         const key = `cargento.next.guardrails.${encodeURIComponent('alpha/app')}`;
         return globalThis.localStorage.getItem(key);
-      }),
+      });
+    const stored = await readStored(react);
+    await golden.observe('tripwire add: the bytes the legacy page stored', () =>
+      readStored(legacy),
     );
-    assert.equal(stored[0], stored[1], 'the two pages wrote different bytes');
-    assert.deepEqual(JSON.parse(stored[1]), [
+    golden.verify('tripwire add: the bytes the legacy page stored', stored);
+    assert.deepEqual(JSON.parse(stored), [
       { enabled: false, text: 'alert me when the build breaks' },
     ]);
   });
@@ -1192,7 +1222,9 @@ try {
       // The harness has no page chrome around its panels, so the boxes are compared in the shipped page.
       const real = await startConsoleWorld({ harness: false });
       try {
-        const realOrigins = [real.react.origin, real.react.viteOrigin, real.legacy.origin];
+        const realOrigins = [real.react.origin, real.react.viteOrigin, real.legacy?.origin].filter(
+          Boolean,
+        );
         const SEL = {
           caveat: '.next-steer-caveat',
           label: '.next-steer-label',
@@ -1240,18 +1272,25 @@ try {
             ['console', '[data-next-rail-panel=tripwires]'],
             ['decisions', '.pc-graph-row'],
           ]) {
-            const pair = {};
-            for (const kind of ['legacy', 'react']) {
+            const measure = async (origin) => {
               const o = await openTracked(browser, realOrigins, {
                 viewport: { width, height: 900 },
               });
-              await o.page.goto(
-                `${kind === 'legacy' ? real.legacy.origin : real.react.origin}/${fragmentFor(tab)}`,
-              );
-              await o.page.waitForSelector(ready, { timeout: patience(30000) });
-              pair[kind] = await settled(() => o.page.evaluate(read, { sel: SEL, props: PROPS }));
-              await o.context.close();
-            }
+              try {
+                await o.page.goto(`${origin}/${fragmentFor(tab)}`);
+                await o.page.waitForSelector(ready, { timeout: patience(30000) });
+                return await settled(() => o.page.evaluate(read, { sel: SEL, props: PROPS }));
+              } finally {
+                await o.context.close();
+              }
+            };
+            // The legacy boxes are recorded as measured, and the slack below is applied to the recording.
+            const pair = {
+              legacy: await golden.observe(`${currentStep} :: ${tab} at ${width}`, () =>
+                measure(real.legacy.origin),
+              ),
+              react: await measure(real.react.origin),
+            };
             const diffs = [];
             for (const name of Object.keys(pair.legacy)) {
               for (const [prop, was] of Object.entries(pair.legacy[name])) {
@@ -1335,7 +1374,9 @@ try {
   await world.close();
 }
 
-console.log(JSON.stringify({ receipts, shots, focusProbe }, null, 2));
+console.log(JSON.stringify({ receipts, shots, focusProbe, legacy: golden.mode }, null, 2));
+// A mutation run is expected to fail and a filtered run skips steps, so neither records nor checks the golden.
+golden.finish({ complete: failures.length === 0 && !only && !world.mutation });
 if (failures.length) {
   for (const failure of failures) console.error(`\nFAILED: ${failure.name}\n${failure.message}`);
   process.exit(1);

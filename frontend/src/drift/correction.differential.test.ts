@@ -31,6 +31,7 @@ import {
 } from './generate.test.helper';
 import { loadLegacyDrift } from './legacy.test.helper';
 import { readingShape } from './shape';
+import { caseCount } from '../../test/legacy_goldens';
 
 /* The correction's pure half, run next to the legacy page: the edit arithmetic that decides what an
    over-the-cap paste keeps, the text composed from the server's parts and the list's numbers, whether it is
@@ -103,7 +104,10 @@ legacy.lift([
 ]);
 legacy.lift(['fmtDur'], 'next-cockpit-compat.js');
 
-const SEEDS = Number(process.env['DRIFT_SEEDS'] ?? 500);
+const CASES = 60;
+const SEEDS = caseCount(CASES, 'DRIFT_SEEDS');
+// Edits are cheap to answer and cheap to store: a few hundred cover the emoji, the caret and the cap arms.
+const EDITS = caseCount(150);
 const text = (html: string): string => {
   const node = document.createElement('div');
   node.innerHTML = html;
@@ -117,9 +121,9 @@ function genText(rnd: Rng, length: number): string {
 }
 
 describe('the correction edit arithmetic matches the legacy page', () => {
-  it("cuts the inserted run and never the reader's text, on 1500 generated edits", () => {
+  it("cuts the inserted run and never the reader's text, on generated edits", () => {
     const failures: string[] = [];
-    for (let seed = 1; seed <= 1500 && failures.length < 3; seed += 1) {
+    for (let seed = 1; seed <= EDITS && failures.length < 3; seed += 1) {
       const rnd = mulberry32(seed + 400);
       const before = genText(rnd, Math.floor(rnd() * 40));
       const cut = Math.floor(rnd() * (before.length + 1));

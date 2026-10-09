@@ -5,8 +5,12 @@
  * Two kinds of proof. The DIFFERENTIAL half drives the legacy page and the React page in the same Chromium
  * over one real backend (the real annotation store behind both, one at a time, given the same sequence of
  * writes) and compares what a reader can read: the Intent log's notes, groups, rows and links, and the
- * editor's boxes, counts, marks, controls and cues, in each state a reader reaches. The BEHAVIOUR half holds
- * the React page to what a unit test cannot see: the native editor's text, caret, selection, undo history
+ * editor's boxes, counts, marks, controls and cues, in each state a reader reaches. The legacy side of that
+ * half is a RECORDING (`support/golden.mjs`, `CARGENTO_LEGACY=replay|live|record`, default replay): in replay no
+ * legacy backend or page is started and the React page is held to what the legacy page said when it was
+ * recorded. The one legacy-only measurement, the legacy page's own horizontal overflow and screenshots in the
+ * layout step, was a receipt nothing asserted against, so it runs in live and record only. The BEHAVIOUR half
+ * holds the React page to what a unit test cannot see: the native editor's text, caret, selection, undo history
  * and input-method composition surviving the board's own revisions (announced over the real stream), a
  * route away and back, the native select, the discard's dwell, the live monitor switch's storage key, the
  * StrictMode request and resource counts, keyboard operation, and 320/375/640(200% zoom)/1280 CSS px layouts
@@ -23,6 +27,7 @@ import { chromium } from '@playwright/test';
 import { call, startIntentBoard } from './intent-board.mjs';
 import { instrumentResources, recordClipboard, resources } from './sessions-board.mjs';
 import { openPage } from './support/browser.mjs';
+import { goldenFor, jsonSafe, normalise } from './support/golden.mjs';
 
 /* Every fixed wait here means "give the page time to react". A hosted runner has a few shared cores and
    delivers events and frames later than a desktop, so each wait is tripled there; only a pass gets slower. A
@@ -38,6 +43,10 @@ const SHOTS = (process.env.CARGENTO_SCREENSHOTS || `${checkout}docs/screenshots`
   /\/?$/,
   '/',
 );
+const golden = goldenFor('intent-parity');
+const LIVE = golden.live;
+/* The React reading in the stable form a recorded observation has, so the two compare as plain data. */
+const norm = (value) => jsonSafe(normalise(value));
 const receipts = {};
 const failures = [];
 const shots = [];
@@ -164,9 +173,13 @@ async function settled(read, { deadline = patience(6000), every = 100 } = {}) {
   }
 }
 
-const board = await startIntentBoard({ legacy: true });
+const board = await startIntentBoard({ legacy: LIVE });
 const browser = await chromium.launch();
-const origins = [board.react.origin, board.react.viteOrigin, board.legacy.origin];
+const origins = [
+  board.react.origin,
+  board.react.viteOrigin,
+  ...(LIVE ? [board.legacy.origin] : []),
+];
 const opened = [];
 async function newPage(kind, viewport = { width: 1280, height: 900 }) {
   const o = await openPage(browser, origins, { viewport });
@@ -195,13 +208,12 @@ async function load(o, fragment) {
 }
 
 const origin = (kind) => (kind === 'legacy' ? board.legacy.origin : board.react.origin);
-const both = (fn) => Promise.all(['legacy', 'react'].map(fn));
 
 /* One write, made identically on both backends. A prompt adoption names its prompt as that backend published
    it, because the two started at different moments. */
 async function writeBoth(sid, body) {
   const out = {};
-  for (const kind of ['legacy', 'react']) {
+  for (const kind of LIVE ? ['legacy', 'react'] : ['react']) {
     const data = (await call(origin(kind), 'GET', '/api/data')).body;
     const row = data.sessions.find((s) => s.sid === sid);
     const request = { harness: 'claude', sid, expected_revision: row.annotation_revision || 0 };
@@ -219,15 +231,21 @@ async function writeBoth(sid, body) {
 }
 
 try {
-  const legacy = await newPage('legacy');
+  const legacy = LIVE ? await newPage('legacy') : null;
   const react = await newPage('react');
+  /* The pages a state-changing action is made on: the legacy page exists only while it is read or recorded. */
+  const pages = LIVE ? [legacy, react] : [react];
 
   /* ===================== DIFFERENTIAL: the Intent log ===================== */
   async function compareLog(label) {
-    await both((kind) => load(kind === 'legacy' ? legacy : react, '#n=intent'));
     const read = (o) => settled(() => o.page.evaluate(summarizeLog));
-    const [old, mine] = await Promise.all([read(legacy), read(react)]);
-    assert.deepEqual(mine, old, `the Intent log differs from the legacy log (${label})`);
+    await load(react, '#n=intent');
+    const mine = await read(react);
+    const old = await golden.observe(`log: ${label}`, async () => {
+      await load(legacy, '#n=intent');
+      return read(legacy);
+    });
+    assert.deepEqual(norm(mine), old, `the Intent log differs from the legacy log (${label})`);
     return old;
   }
 
@@ -257,12 +275,24 @@ try {
   );
 
   /* ===================== DIFFERENTIAL: the editor ===================== */
+  const readEditor = (o) => settled(() => o.page.evaluate(summarizeEditor));
+  /* The React editor against the legacy editor's recorded reading of the same state, under `key`. */
+  async function versus(key, message) {
+    const mine = await readEditor(react);
+    const old = await golden.observe(key, () => readEditor(legacy));
+    assert.deepEqual(norm(mine), old, message);
+    return old;
+  }
   async function compareEditor(label, sid = 'intent-1', prepare = async () => undefined) {
-    await both((kind) => load(kind === 'legacy' ? legacy : react, fragmentOf(sid)));
-    await prepare();
-    const read = (o) => settled(() => o.page.evaluate(summarizeEditor));
-    const [old, mine] = await Promise.all([read(legacy), read(react)]);
-    assert.deepEqual(mine, old, `the editor differs from the legacy editor (${label})`);
+    await load(react, fragmentOf(sid));
+    await prepare(react);
+    const mine = await readEditor(react);
+    const old = await golden.observe(`editor: ${label}`, async () => {
+      await load(legacy, fragmentOf(sid));
+      await prepare(legacy);
+      return readEditor(legacy);
+    });
+    assert.deepEqual(norm(mine), old, `the editor differs from the legacy editor (${label})`);
     return old;
   }
 
@@ -288,15 +318,13 @@ try {
       const drafted = await compareEditor('drafted', 'intent-2');
       assert.equal(drafted.fields[0].boxes[0], 'Ship the queue worker behind a flag.');
       assert.match(drafted.fields[0].marks, /from your prompt/);
-      const typed = await compareEditor('typed', 'intent-2', async () => {
-        for (const o of [legacy, react]) {
-          const box = o.page.locator('textarea[data-next-cockpit-held-kind="goal"]');
-          await box.click();
-          await o.page.keyboard.press(`${MOD}+a`);
-          await o.page.keyboard.type('Ship the worker, then verify');
-          await o.page.locator('[data-next-cockpit-action="held-line-add"]').click();
-          await o.page.keyboard.type('The queue drains');
-        }
+      const typed = await compareEditor('typed', 'intent-2', async (o) => {
+        const box = o.page.locator('textarea[data-next-cockpit-held-kind="goal"]');
+        await box.click();
+        await o.page.keyboard.press(`${MOD}+a`);
+        await o.page.keyboard.type('Ship the worker, then verify');
+        await o.page.locator('[data-next-cockpit-action="held-line-add"]').click();
+        await o.page.keyboard.type('The queue drains');
       });
       assert.equal(typed.fields[0].marks, '');
       assert.equal(typed.fields[0].boxes[0], 'Ship the worker, then verify');
@@ -309,12 +337,9 @@ try {
     'the editor reads as the legacy editor does over a chosen prompt, later directions, a pending line and an armed discard',
     async () => {
       const options = {};
-      await both(async (kind) => {
-        const o = kind === 'legacy' ? legacy : react;
-        await load(o, fragmentOf('intent-4'));
-      });
+      await Promise.all(pages.map((o) => load(o, fragmentOf('intent-4'))));
       // A chosen prompt, picked through the native list.
-      for (const o of [legacy, react]) {
+      for (const o of pages) {
         const select = o.page.locator('[data-next-cockpit-prompt-select]');
         await select.click();
         await o.page.waitForFunction(
@@ -322,30 +347,29 @@ try {
         );
         await select.selectOption({ index: 1 });
       }
-      const read = (o) => settled(() => o.page.evaluate(summarizeEditor));
-      let [old, mine] = await Promise.all([read(legacy), read(react)]);
-      assert.deepEqual(mine, old, 'the editor differs from the legacy editor over a chosen prompt');
+      let old = await versus(
+        'editor: a chosen prompt',
+        'the editor differs from the legacy editor over a chosen prompt',
+      );
       assert.match(old.fields[0].boxes[0], /Rename the worker/);
       options.chosen = old.fields[0].menu.length;
       // Save it (one adoption on each backend), which is what makes later directions the page can ask about.
-      for (const o of [legacy, react]) {
+      for (const o of pages) {
         await o.page.locator('[data-next-cockpit-action="held-save"]').click();
         await o.page.waitForFunction(
           () => document.querySelector('.next-cockpit-held-footer small')?.textContent,
         );
       }
       await new Promise((resolve) => setTimeout(resolve, patience(1800)));
-      await both((kind) => load(kind === 'legacy' ? legacy : react, fragmentOf('intent-4')));
-      [old, mine] = await Promise.all([read(legacy), read(react)]);
-      assert.deepEqual(
-        mine,
-        old,
+      await Promise.all(pages.map((o) => load(o, fragmentOf('intent-4'))));
+      old = await versus(
+        'editor: later directions',
         'the editor differs from the legacy editor over later directions',
       );
       assert.ok(old.question, 'no later direction was asked about');
       options.question = old.question.buttons;
       // Add opens the selected direction as a pending line.
-      for (const o of [legacy, react]) {
+      for (const o of pages) {
         await o.page
           .locator(
             '[data-next-cockpit-direction-question] [data-next-cockpit-action="direction-add"]',
@@ -353,17 +377,17 @@ try {
           .click();
         await o.page.waitForSelector('[data-next-cockpit-direction-key]');
       }
-      [old, mine] = await Promise.all([read(legacy), read(react)]);
-      assert.deepEqual(mine, old, 'the editor differs from the legacy editor over a pending line');
+      old = await versus(
+        'editor: a pending line',
+        'the editor differs from the legacy editor over a pending line',
+      );
       // An armed discard.
-      for (const o of [legacy, react]) {
+      for (const o of pages) {
         await o.page.locator('.next-cockpit-held-discard-offer summary').click();
         await o.page.locator('[data-next-cockpit-action="held-discard"]').click();
       }
-      [old, mine] = await Promise.all([read(legacy), read(react)]);
-      assert.deepEqual(
-        mine,
-        old,
+      old = await versus(
+        'editor: an armed discard',
         'the editor differs from the legacy editor over an armed discard',
       );
       assert.match(old.caveats, /Confirm discard/);
@@ -879,7 +903,8 @@ try {
       const wide = [];
       for (const shape of SHAPES) {
         const pair = {};
-        for (const kind of ['legacy', 'react'])
+        const kinds = LIVE ? ['legacy', 'react'] : ['react'];
+        for (const kind of kinds)
           pair[kind] = await newPage(kind, { width: shape.width, height: shape.height });
         try {
           for (const [label, fragment] of [
@@ -887,7 +912,7 @@ try {
             ['drafted', fragmentOf('intent-2')],
             ['saved', fragmentOf('intent-1')],
           ]) {
-            for (const kind of ['legacy', 'react']) {
+            for (const kind of kinds) {
               const o = pair[kind];
               await load(o, fragment);
               await settled(() => o.page.evaluate(() => document.body.innerText.length));
@@ -907,7 +932,7 @@ try {
             }
           }
         } finally {
-          for (const kind of ['legacy', 'react']) await pair[kind].close();
+          for (const kind of kinds) await pair[kind].close();
         }
       }
       assert.deepEqual(wide, [], 'horizontal page overflow on the React page: ' + wide.join(' | '));
@@ -918,6 +943,12 @@ try {
   for (const o of opened) await o.close().catch(() => undefined);
   await browser.close().catch(() => undefined);
   await board.close();
+}
+
+try {
+  golden.finish({ complete: !only && failures.length === 0 });
+} catch (error) {
+  failures.push({ name: 'golden', message: String(error.message) });
 }
 
 console.log(JSON.stringify({ receipts, screenshots: shots }, null, 2));

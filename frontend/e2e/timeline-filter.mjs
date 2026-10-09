@@ -14,6 +14,13 @@
  * Run with `node frontend/e2e/timeline-filter.mjs` (it is the second half of `pnpm test:terminal:browser`);
  * `CARGENTO_E2E_STEPS=<regex>`, `CARGENTO_SCREENSHOTS=1` and `CARGENTO_MUTATION=<name>` behave as in
  * `terminal-parity.mjs`.
+ *
+ * What the legacy page said is read through `support/golden.mjs`: `CARGENTO_LEGACY=replay` (the default)
+ * reads it from `frontend/test/golden/e2e/timeline-filter.json`, starts no legacy backend and opens no
+ * legacy page; `live` and `record` run it. Each `pairs` read is keyed by its step and its order inside the
+ * step. Dropped in replay, with the reason: the legacy screenshots (a capture is not an observation) and
+ * the legacy page's own request log (`world.legacy.log`), which restates what the React assertions beside
+ * it already hold the React page to.
  */
 import assert from 'node:assert/strict';
 import { mkdir } from 'node:fs/promises';
@@ -28,6 +35,7 @@ import {
   startWorld,
   TERMINAL,
 } from './terminal-support.mjs';
+import { goldenFor } from './support/golden.mjs';
 import { PRODUCTION as SHIPPED } from './support/world.mjs';
 
 /* Every fixed wait here means "give the page time to react". A hosted runner has a few shared cores and delivers
@@ -107,6 +115,7 @@ const results = {};
 const failures = [];
 async function step(name, run) {
   if (only && !only.test(name)) return;
+  reading = { step: name, index: 0 };
   const started = Date.now();
   try {
     const detail = await run();
@@ -161,10 +170,20 @@ const detailsOf = (page, id) => page.locator(`article[data-event-id="${id}"] det
 const bandOf = (page) => page.locator('summary', { hasText: /^Earlier meaningful/ }).first();
 
 const SIDES = ['legacy', 'react'];
+const golden = goldenFor('timeline-filter');
+/* The sides that run: both while the legacy code exists, React alone in replay. */
+const ACTIVE = golden.live ? SIDES : ['react'];
 let world, started, browser;
-const both = (fn) => Promise.all(SIDES.map((name) => fn(world[name], name)));
-const pairs = async (read) => {
-  const [legacy, react] = await Promise.all(SIDES.map((name) => read(world[name])));
+const both = (fn) => Promise.all(ACTIVE.map((name) => fn(world[name], name)));
+/* A legacy reading is `golden.observe`d under the step's name and the reading's place in the step. */
+let reading = { step: '', index: 0 };
+const pairs = async (read, label = '', scrub) => {
+  reading.index += 1;
+  const key = `${reading.step} | ${label} #${reading.index}`;
+  const [legacy, react] = await Promise.all([
+    golden.observe(key, () => read(world.legacy), { scrub }),
+    read(world.react),
+  ]);
   return { legacy, react };
 };
 async function ready(side, fragment) {
@@ -206,14 +225,19 @@ const BETA_PROJECT = `#n=project:${encodeURIComponent('beta/api')}:decisions`;
 try {
   started = await startWorld({ mutations: MUTATIONS });
   browser = await chromium.launch();
-  const origins = [started.react.origin, started.react.viteOrigin, started.legacy.origin];
+  const origins = [started.react.origin, started.react.viteOrigin];
+  if (golden.live) origins.push(started.legacy.origin);
   const viewport = { width: 1100, height: 1000 };
   world = {
-    legacy: {
-      name: 'legacy',
-      origin: started.legacy.origin,
-      ...(await openTracked(browser, origins, { viewport })),
-    },
+    ...(golden.live
+      ? {
+          legacy: {
+            name: 'legacy',
+            origin: started.legacy.origin,
+            ...(await openTracked(browser, origins, { viewport })),
+          },
+        }
+      : {}),
     react: {
       name: 'react',
       origin: started.react.origin,
@@ -343,19 +367,15 @@ try {
     'an old build’s single empty key is discarded rather than read as a project',
     async () => {
       const fresh = {};
-      for (const name of SIDES) {
-        fresh[name] = await openTracked(
-          browser,
-          [started.react.origin, started.react.viteOrigin, started.legacy.origin],
-          { viewport },
-        );
+      for (const name of ACTIVE) {
+        fresh[name] = await openTracked(browser, origins, { viewport });
         await fresh[name].context.addInitScript((key) => {
           if (!globalThis.localStorage.getItem(key))
             globalThis.localStorage.setItem(key, '{"":"all"}');
         }, KEY);
       }
       try {
-        for (const name of SIDES) {
+        for (const name of ACTIVE) {
           const side = { name, origin: world[name].origin, page: fresh[name].page };
           await ready(side, SESSION);
           assert.equal(
@@ -366,11 +386,18 @@ try {
           await filterButton(side.page, 'Active').click();
           await pause(150);
         }
-        const stored = await Promise.all(SIDES.map((name) => storedOf(fresh[name].page)));
-        assert.equal(stored[0], stored[1]);
-        assert.deepEqual(Object.keys(JSON.parse(stored[1])), [`${TERMINAL.project}\u0000${FOCUS}`]);
+        const stored = {
+          legacy: await golden.observe('an old build empty key: stored', () =>
+            storedOf(fresh.legacy.page),
+          ),
+          react: await storedOf(fresh.react.page),
+        };
+        assert.equal(stored.react, stored.legacy);
+        assert.deepEqual(Object.keys(JSON.parse(stored.react)), [
+          `${TERMINAL.project}\u0000${FOCUS}`,
+        ]);
       } finally {
-        await Promise.all(SIDES.map((name) => fresh[name].close()));
+        await Promise.all(ACTIVE.map((name) => fresh[name].close()));
       }
     },
   );
@@ -432,7 +459,7 @@ try {
   await step(
     'keyboard focus stays on the button that was pressed across a live update (the legacy page drops it)',
     async () => {
-      for (const name of SIDES) {
+      for (const name of ACTIVE) {
         const button = filterButton(world[name].page, 'All events');
         await button.focus();
         await world[name].page.keyboard.press('Enter');
@@ -532,11 +559,7 @@ try {
     async () => {
       const reads = (side) => side.requestsTo('/api/project-context').map((entry) => entry.path);
       const count = async (url) => {
-        const probe = await openTracked(
-          browser,
-          [started.react.origin, started.react.viteOrigin, started.legacy.origin],
-          { viewport },
-        );
+        const probe = await openTracked(browser, origins, { viewport });
         try {
           await probe.page.goto(url);
           await probe.page.locator('.pc-graph-filter').waitFor();
@@ -575,7 +598,7 @@ try {
     async () => {
       const report = {};
       for (const width of [320, 375]) {
-        for (const name of SIDES) await world[name].page.setViewportSize({ width, height: 900 });
+        for (const name of ACTIVE) await world[name].page.setViewportSize({ width, height: 900 });
         await both((side) => ready(side, SESSION));
         await both((side) => filterButton(side.page, 'All events').click());
         await pause(300);
@@ -584,30 +607,34 @@ try {
           await bandOf(side.page).click();
           await pause(300);
         });
-        const measure = await pairs((side) =>
-          side.page.evaluate(() => {
-            const { document } = globalThis;
-            const doc = document.documentElement;
-            const wide = [...document.querySelectorAll('.pc-semantic-timeline *')]
-              .filter((node) => node.getBoundingClientRect().right > doc.clientWidth + 0.5)
-              .slice(0, 5)
-              .map(
-                (node) => `${node.tagName.toLowerCase()}.${String(node.className).slice(0, 24)}`,
-              );
-            const targets = [
-              ...document.querySelectorAll(
-                '.pc-graph-filter button, .pc-semantic-timeline summary',
-              ),
-            ].map((node) => {
-              const box = node.getBoundingClientRect();
-              return {
-                label: node.textContent.trim().slice(0, 24),
-                width: Math.round(box.width),
-                height: Math.round(box.height),
-              };
-            });
-            return { overflow: doc.scrollWidth - doc.clientWidth, wide, targets };
-          }),
+        const measure = await pairs(
+          (side) =>
+            side.page.evaluate(() => {
+              const { document } = globalThis;
+              const doc = document.documentElement;
+              const wide = [...document.querySelectorAll('.pc-semantic-timeline *')]
+                .filter((node) => node.getBoundingClientRect().right > doc.clientWidth + 0.5)
+                .slice(0, 5)
+                .map(
+                  (node) => `${node.tagName.toLowerCase()}.${String(node.className).slice(0, 24)}`,
+                );
+              const targets = [
+                ...document.querySelectorAll(
+                  '.pc-graph-filter button, .pc-semantic-timeline summary',
+                ),
+              ].map((node) => {
+                const box = node.getBoundingClientRect();
+                return {
+                  label: node.textContent.trim().slice(0, 24),
+                  width: Math.round(box.width),
+                  height: Math.round(box.height),
+                };
+              });
+              return { overflow: doc.scrollWidth - doc.clientWidth, wide, targets };
+            }),
+          `layout ${width}`,
+          // Only the legacy page's overflow is read back; its control sizes are not asserted of it.
+          ({ overflow, wide }) => ({ overflow, wide }),
         );
         for (const name of SIDES)
           assert.ok(
@@ -628,23 +655,25 @@ try {
             path: join(SHOTS, `drc-4824-timeline-react-${width}px.png`),
             fullPage: true,
           });
-          await world.legacy.page.screenshot({
-            path: join(SHOTS, `drc-4824-timeline-legacy-${width}px.png`),
-            fullPage: true,
-          });
+          if (golden.live)
+            await world.legacy.page.screenshot({
+              path: join(SHOTS, `drc-4824-timeline-legacy-${width}px.png`),
+              fullPage: true,
+            });
         }
       }
-      for (const name of SIDES) await world[name].page.setViewportSize(viewport);
+      for (const name of ACTIVE) await world[name].page.setViewportSize(viewport);
       if (shots) {
         await both((side) => ready(side, SESSION));
         await world.react.page.screenshot({
           path: join(SHOTS, 'drc-4824-timeline-react-1100px.png'),
           fullPage: true,
         });
-        await world.legacy.page.screenshot({
-          path: join(SHOTS, 'drc-4824-timeline-legacy-1100px.png'),
-          fullPage: true,
-        });
+        if (golden.live)
+          await world.legacy.page.screenshot({
+            path: join(SHOTS, 'drc-4824-timeline-legacy-1100px.png'),
+            fullPage: true,
+          });
       }
       return report;
     },
@@ -653,7 +682,7 @@ try {
   await step(
     'no external request, page error or console error, and no POST, in either page',
     async () => {
-      for (const name of SIDES) {
+      for (const name of ACTIVE) {
         assert.deepEqual(world[name].log.externalRequests, [], `${name}: an external request`);
         assert.deepEqual(world[name].log.pageErrors, [], `${name}: a page error`);
         assert.deepEqual(
@@ -665,6 +694,8 @@ try {
       }
     },
   );
+
+  golden.finish({ complete: !only && !started.mutation && failures.length === 0 });
 
   console.log(
     JSON.stringify(

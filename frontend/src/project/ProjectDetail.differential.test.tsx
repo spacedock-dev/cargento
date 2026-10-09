@@ -6,6 +6,7 @@ import { sessKey, stableKey } from './group';
 import { parseHtml } from './legacy.test.helper';
 import { memoKey } from '../storage';
 import { mountProject } from './testing';
+import { caseCount } from '../../test/legacy_goldens';
 
 /* The project page held to the legacy page by what a reader can read. The legacy `nextProjectView` runs
    unchanged over a generated board and a seeded context read, and this page renders the same board in the
@@ -15,7 +16,8 @@ import { mountProject } from './testing';
    Outside the comparison on purpose, because the steering step owns them: the steering bar, the stage
    conditions, and the whole of the Decisions and Console tabs. */
 
-const SEEDS = Number(process.env['PROJECT_VIEW_SEEDS'] ?? 40);
+const CASES = 40;
+const SEEDS = caseCount(CASES, 'PROJECT_VIEW_SEEDS');
 
 const norm = (node: Element | null): string =>
   node ? (node.textContent ?? '').replace(/\s+/g, ' ').trim() : '';

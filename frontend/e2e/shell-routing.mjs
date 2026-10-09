@@ -12,12 +12,20 @@
  * Models, usage, focus and notifications are off in the fixture backend; nothing here reads a harness
  * store, a clipboard or a terminal. Run with `pnpm test:shell:browser`; `CARGENTO_E2E_STEPS=<regex>`
  * runs only the steps whose name matches.
+ *
+ * What the legacy page said is read through `support/golden.mjs`: `CARGENTO_LEGACY=replay` (the default)
+ * reads it from `frontend/test/golden/e2e/shell-routing.json` and never starts the legacy backend or opens
+ * a legacy page; `live` and `record` run the legacy page. Every differential step keeps its React side
+ * strict and compares it with the recorded reading. Dropped in replay, with its reason: the assertion that
+ * the legacy page asked for nothing outside the board, which is a fact about the legacy page's own
+ * requests with no React counterpart (the React page's are asserted by the behaviour steps).
  */
 import assert from 'node:assert/strict';
 import { mkdir } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { chromium } from '@playwright/test';
 import { BOARD, openPage, observeShell, startBoard } from './support/browser.mjs';
+import { goldenFor } from './support/golden.mjs';
 
 /* Every fixed wait here means "give the page time to react". A hosted runner has a few shared cores and draws frames,
    fires timers and delivers stream events later than a desktop does, so each wait is tripled there. A wait that is too
@@ -135,23 +143,27 @@ const CANONICAL = new Map([
 const DEVIATIONS = [];
 
 const browser = await chromium.launch();
-const board = await startBoard({ legacy: true });
+const golden = goldenFor('shell-routing');
+const board = await startBoard({ legacy: golden.live });
 const reactOrigins = [board.react.origin, board.react.dev.viteOrigin];
 const shots = [];
 let legacy, react;
 
 try {
   await mkdir(SHOTS, { recursive: true });
-  legacy = await openPage(browser, board.legacy.origin);
+  if (golden.live) legacy = await openPage(browser, board.legacy.origin);
   react = await openPage(browser, reactOrigins);
 
   /* ===================== DIFFERENTIAL: legacy page vs React page ===================== */
   await step('differential: every route contract reads the same on both pages', async () => {
     const mismatches = [];
     for (const [name, fragment] of ROUTES) {
-      await load(legacy, board.legacy.origin, 'legacy', fragment);
+      const recorded = await golden.observe(`routes: ${name}`, async () => {
+        await load(legacy, board.legacy.origin, 'legacy', fragment);
+        return { shell: await observeShell(legacy.page), counts: await counts(legacy.page) };
+      });
       await load(react, board.react.origin, 'react', fragment);
-      const [l, r] = [await observeShell(legacy.page), await observeShell(react.page)];
+      const [l, r] = [recorded.shell, await observeShell(react.page)];
       for (const field of [
         'hash',
         'title',
@@ -166,7 +178,7 @@ try {
       }
       if (CANONICAL.has(fragment))
         assert.equal(r.hash, CANONICAL.get(fragment), `${name}: canonical fragment`);
-      const [lc, rc] = [await counts(legacy.page), await counts(react.page)];
+      const [lc, rc] = [recorded.counts, await counts(react.page)];
       if (!fragment.startsWith('#n=project:')) {
         if (JSON.stringify(lc) !== JSON.stringify(rc))
           mismatches.push({ route: name, field: 'header counts', legacy: lc, react: rc });
@@ -180,27 +192,28 @@ try {
     'differential: reload and Escape agree for every session route that carries an origin',
     async () => {
       const mismatches = [];
+      const trace = async (kind, opened, origin, fragment) => {
+        await load(opened, origin, kind, fragment);
+        const before = await observeShell(opened.page);
+        await opened.page.reload();
+        await (kind === 'legacy' ? legacyReady : reactReady)(opened.page);
+        await opened.page.waitForTimeout(patience(100));
+        const reloaded = await observeShell(opened.page);
+        await opened.page.keyboard.press('Escape');
+        await opened.page.waitForTimeout(patience(100));
+        const escaped = await observeShell(opened.page);
+        return {
+          before: [before.hash, before.current, before.breadcrumb],
+          reloaded: [reloaded.hash, reloaded.current, reloaded.breadcrumb],
+          escaped: [escaped.hash, escaped.current],
+        };
+      };
       for (const [name, fragment] of ROUTES.filter(([, f]) => f.includes('session:'))) {
         const after = {};
-        for (const [kind, opened, origin] of [
-          ['legacy', legacy, board.legacy.origin],
-          ['react', react, board.react.origin],
-        ]) {
-          await load(opened, origin, kind, fragment);
-          const before = await observeShell(opened.page);
-          await opened.page.reload();
-          await (kind === 'legacy' ? legacyReady : reactReady)(opened.page);
-          await opened.page.waitForTimeout(patience(100));
-          const reloaded = await observeShell(opened.page);
-          await opened.page.keyboard.press('Escape');
-          await opened.page.waitForTimeout(patience(100));
-          const escaped = await observeShell(opened.page);
-          after[kind] = {
-            before: [before.hash, before.current, before.breadcrumb],
-            reloaded: [reloaded.hash, reloaded.current, reloaded.breadcrumb],
-            escaped: [escaped.hash, escaped.current],
-          };
-        }
+        after.legacy = await golden.observe(`reload and Escape: ${name}`, () =>
+          trace('legacy', legacy, board.legacy.origin, fragment),
+        );
+        after.react = await trace('react', react, board.react.origin, fragment);
         if (JSON.stringify(after.legacy) !== JSON.stringify(after.react))
           mismatches.push({ route: name, ...after });
         assert.deepEqual(
@@ -220,11 +233,7 @@ try {
   await step(
     'differential: Back and Forward leave the same hash and history depth on both pages',
     async () => {
-      const trace = {};
-      for (const [kind, opened, origin] of [
-        ['legacy', legacy, board.legacy.origin],
-        ['react', react, board.react.origin],
-      ]) {
+      const walk = async (kind, opened, origin) => {
         await load(opened, origin, kind, '#n=sessions');
         const seen = [];
         const note = async (label) => {
@@ -241,8 +250,14 @@ try {
         await note('Back');
         await opened.page.goForward();
         await note('Forward');
-        trace[kind] = seen;
-      }
+        return seen;
+      };
+      const trace = {
+        legacy: await golden.observe('back and forward', () =>
+          walk('legacy', legacy, board.legacy.origin),
+        ),
+        react: await walk('react', react, board.react.origin),
+      };
       assert.deepEqual(trace.react, trace.legacy);
     },
   );
@@ -284,11 +299,7 @@ try {
   await step(
     'differential: a failed refresh, a history reset and a newer build read the same on both pages',
     async () => {
-      const trace = {};
-      for (const [kind, origin] of [
-        ['legacy', board.legacy.origin],
-        ['react', board.react.origin],
-      ]) {
+      const notices = async (kind, origin) => {
         const o = await faulted(kind, origin, {});
         try {
           const seen = [];
@@ -313,11 +324,15 @@ try {
           o.state.mutate = (body) => ({ ...body, history_reset: '<img src=x>' });
           await o.poll();
           seen.push(['unknown reset', await noticeText(o.page)]);
-          trace[kind] = seen;
+          return seen;
         } finally {
           await o.close();
         }
-      }
+      };
+      const trace = {
+        legacy: await golden.observe('notices', () => notices('legacy', board.legacy.origin)),
+        react: await notices('react', board.react.origin),
+      };
       assert.deepEqual(trace.react, trace.legacy, JSON.stringify(trace, null, 1));
       assert.deepEqual(trace.react[0][1], [], 'one failure shows nothing');
       assert.match(
@@ -330,18 +345,20 @@ try {
   await step(
     'differential: before the first payload the legacy page counts zero and the React page states the absence',
     async () => {
-      const seen = {};
-      for (const [kind, origin] of [
-        ['legacy', board.legacy.origin],
-        ['react', board.react.origin],
-      ]) {
+      const before = async (kind, origin) => {
         const o = await faulted(kind, origin, { boot: 'fail' });
         try {
-          seen[kind] = (await counts(o.page)).running;
+          return (await counts(o.page)).running;
         } finally {
           await o.close();
         }
-      }
+      };
+      const seen = {
+        legacy: await golden.observe('before the first payload', () =>
+          before('legacy', board.legacy.origin),
+        ),
+        react: await before('react', board.react.origin),
+      };
       assert.match(
         seen.legacy,
         /0 running · 0 subagents observed/,
@@ -1276,17 +1293,20 @@ try {
     },
   );
 
-  assert.deepEqual(
-    legacy.log.externalRequests,
-    [],
-    'the legacy page asked for something outside the board',
-  );
+  if (legacy)
+    assert.deepEqual(
+      legacy.log.externalRequests,
+      [],
+      'the legacy page asked for something outside the board',
+    );
 } finally {
   await legacy?.close();
   await react?.close();
   await browser.close();
   await board.close();
 }
+
+golden.finish({ complete: !only && failures.length === 0 });
 
 console.log(
   JSON.stringify(

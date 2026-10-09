@@ -1,0 +1,1367 @@
+{
+ "proof": "drift-parity",
+ "observations": {
+  "card: allow owed": {
+   "absences": [],
+   "analyzing": [],
+   "buttons": [
+    [
+     "",
+     "live-monitor",
+     false,
+     null,
+     false
+    ],
+    [
+     "Analyze drift",
+     "reading-ask",
+     false,
+     null,
+     false
+    ],
+    [
+     "Discard everything",
+     "held-discard",
+     false,
+     null,
+     false
+    ]
+   ],
+   "delivery": [],
+   "entries": [],
+   "heading": "Drift",
+   "levels": 0,
+   "meta": "Claude · generating… · session started <age> ago · 0 entries",
+   "pill": "",
+   "resultStates": [],
+   "stale": [],
+   "steps": [],
+   "text": "DriftHow far the session has moved from the goalLive monitorShows a level after every turn, from checks and file paths, with no model call. The level shows here and in the header.Not checked yetNone or lowMediumHighExtremeAnalyze drift0 model requests0 model requests recorded for this session.Reads the session up to its last turn against your intent. Runs in the background.What is sent to Claude CodeYour saved words.The agent messages.What it reads is the evidence on this page: the observed record in this session’s activity and the goal and output you saved, and nothing else. It does not read a diff, a file, a test or a deliverable, replies from git, gh or connected tools, or your screen.10 of 10 left todayWhat analysis doesWhen you analyze drift, Cargento lists where this session departed from your saved goal. It never writes into the session, so steering stays yours.Later directions: noneNothing you have said since you saved these words is in the observed record read for this session.Nothing here decides whether it changes what you are asking for. That is yours, and Cargento does not write into the session either way.About these saved wordsBound by an eight-character identity prefix, which is all this harness publishes as the session id. Another session sharing it would share these words.Discard everythingThe clear beside the goal and the remove beside each outcome line empty them, and the save after it keeps every earlier revision, so anything raised against those words goes on quoting them. Discarding everything is the other act.Discard everything",
+   "work": "No entry in the observed record names this session.Results are as the tool reported; not inspected.About this recordCargento reads work results from Claude Code and Pi only. Claude records the checks a session ran and the files it wrote, and they are listed here. A result is what the tool reported; Cargento inspects no file, test or deliverable."
+  },
+  "card: annotations off": {
+   "absences": [
+    [
+     "run-config",
+     "Annotations are off for this run. Start without --no-annotations to type a goal and an expected output here."
+    ]
+   ],
+   "analyzing": [],
+   "buttons": [
+    [
+     "Analyze drift",
+     "reading-ask",
+     true,
+     null,
+     false
+    ],
+    [
+     "Turn off readings",
+     "reading-off",
+     false,
+     null,
+     false
+    ]
+   ],
+   "delivery": [],
+   "entries": [],
+   "heading": "Drift",
+   "levels": 0,
+   "meta": "Claude · generating… · session started <age> ago",
+   "pill": "",
+   "resultStates": [],
+   "stale": [],
+   "steps": [],
+   "text": "DriftHow far the session has moved from the goalAnalyze driftAnnotations are off for this run. Start without --no-annotations to type a goal and an expected output here.What is sentYour saved words.The agent messages.Turn off readings9 of 10 left today",
+   "work": "The observed record for this session has not been read yet.Results are as the tool reported; not inspected.About this recordCargento reads work results from Claude Code and Pi only. Claude records the checks a session ran and the files it wrote, and they are listed here. A result is what the tool reported; Cargento inspects no file, test or deliverable."
+  },
+  "card: cancelling": {
+   "absences": [],
+   "analyzing": [
+    "job-1"
+   ],
+   "buttons": [
+    [
+     "",
+     "live-monitor",
+     false,
+     null,
+     false
+    ],
+    [
+     "Cancel",
+     "reading-cancel",
+     true,
+     null,
+     false
+    ],
+    [
+     "Turn off readings",
+     "reading-off",
+     false,
+     null,
+     false
+    ],
+    [
+     "Discard everything",
+     "held-discard",
+     false,
+     null,
+     false
+    ]
+   ],
+   "delivery": [],
+   "entries": [],
+   "heading": "Drift",
+   "levels": 0,
+   "meta": "Claude · generating… · turn started <age> ago · 0 entries",
+   "pill": "",
+   "resultStates": [],
+   "stale": [],
+   "steps": [
+    [
+     "done",
+     null
+    ],
+    [
+     "active",
+     "step"
+    ],
+    [
+     "todo",
+     null
+    ]
+   ],
+   "text": "DriftHow far the session has moved from the goalLive monitorShows a level after every turn, from checks and file paths, with no model call. The level shows here and in the header.Not checked yetNone or lowMediumHighExtremeAnalyzing driftCancelCollecting the recordReading itWriting the resultReads only the work so far. The result will appear here.Turn off readings0 model requests0 model requests recorded for this session.9 of 10 left todayWhat analysis doesWhen you analyze drift, Cargento lists where this session departed from your saved goal. It never writes into the session, so steering stays yours.Later directions: noneNothing you have said since you saved these words is in the observed record read for this session.Nothing here decides whether it changes what you are asking for. That is yours, and Cargento does not write into the session either way.About these saved wordsBound by an eight-character identity prefix, which is all this harness publishes as the session id. Another session sharing it would share these words.Discard everythingThe clear beside the goal and the remove beside each outcome line empty them, and the save after it keeps every earlier revision, so anything raised against those words goes on quoting them. Discarding everything is the other act.Discard everything",
+   "work": "No entry in the observed record names this session.Results are as the tool reported; not inspected.About this recordCargento reads work results from Claude Code and Pi only. Claude records the checks a session ran and the files it wrote, and they are listed here. A result is what the tool reported; Cargento inspects no file, test or deliverable."
+  },
+  "card: lane off": {
+   "absences": [
+    [
+     "run-config",
+     "The model off switch refuses unasked checks. Restart with --unasked-readings and without either --no-harness-usage or --no-observer-model to enable them."
+    ],
+    [
+     "run-config",
+     "The checks that run while you were away are off for this run, so nothing new is being checked. What was already raised is still on record."
+    ]
+   ],
+   "analyzing": [],
+   "buttons": [
+    [
+     "",
+     "live-monitor",
+     false,
+     null,
+     false
+    ],
+    [
+     "Analyze drift",
+     "reading-ask",
+     false,
+     null,
+     false
+    ],
+    [
+     "Turn off readings",
+     "reading-off",
+     false,
+     null,
+     false
+    ],
+    [
+     "Discard everything",
+     "held-discard",
+     false,
+     null,
+     false
+    ],
+    [
+     "Copy command",
+     "",
+     false,
+     null,
+     false
+    ]
+   ],
+   "delivery": [],
+   "entries": [],
+   "heading": "Drift",
+   "levels": 0,
+   "meta": "Claude · generating… · session started <age> ago · 0 entries",
+   "pill": "",
+   "resultStates": [],
+   "stale": [],
+   "steps": [],
+   "text": "DriftHow far the session has moved from the goalLive monitorShows a level after every turn, from checks and file paths, with no model call. The level shows here and in the header.Not checked yetNone or lowMediumHighExtremeAnalyze drift0 model requests0 model requests recorded for this session.Reads the session up to its last turn against your intent. Runs in the background.What is sentYour saved words.The agent messages.What it reads is the evidence on this page: the observed record in this session’s activity and the goal and output you saved, and nothing else. It does not read a diff, a file, a test or a deliverable, replies from git, gh or connected tools, or your screen.Turn off readings9 of 10 left todayWhat analysis doesWhen you analyze drift, Cargento lists where this session departed from your saved goal. It never writes into the session, so steering stays yours.Later directions: noneNothing you have said since you saved these words is in the observed record read for this session.Nothing here decides whether it changes what you are asking for. That is yours, and Cargento does not write into the session either way.About these saved wordsBound by an eight-character identity prefix, which is all this harness publishes as the session id. Another session sharing it would share these words.Discard everythingThe clear beside the goal and the remove beside each outcome line empty them, and the save after it keeps every earlier revision, so anything raised against those words goes on quoting them. Discarding everything is the other act.Discard everythingRaised while you were away: 1A departure is a place the record does not match the words you chose.FROM THE CHECKS RUN WHILE YOU WERE AWAYThe model off switch refuses unasked checks. Restart with --unasked-readings and without either --no-harness-usage or --no-observer-model to enable them.The checks that run while you were away are off for this run, so nothing new is being checked. What was already raised is still on record.One departure was raisedTYPED GOAL<clock>Ship the queue workerIt stopped running the tests.read against revision 2 · evidence to <clock> · pytest failedThis raise read revision 2. Revision 3 is current, so it does not describe what you are asking for now.Copy commandCargento has not checked this session against what you asked for. Nothing here says whether it would have found anything.No notification raise about a departure on this session is on record, so nothing here says one was attempted. Raises this board made about the session for other reasons are not counted here, and the record is bounded and drops its oldest rows, so an older raise can have left it.COUNTSDEPARTURESFrom the reading you asked fornot publishedFrom the checks run while you were away1RAISESOn record for this board0This board attempted0A notification service accepted0Five figures, and no arithmetic between them.What a count does not sayA count identifies a session worth reading; it establishes nothing about whether the brief, the agent or Cargento’s own judgement was poor, and those three are not separable from it.Raised to you and nowhere else.Why no raise goes furtherCargento does not write into a session, so steering is by hand; the steer box in Console states the same rule about notes you write there.",
+   "work": "No entry in the observed record names this session.Results are as the tool reported; not inspected.About this recordCargento reads work results from Claude Code and Pi only. Claude records the checks a session ran and the files it wrote, and they are listed here. A result is what the tool reported; Cargento inspects no file, test or deliverable."
+  },
+  "card: lane on, nothing raised": {
+   "absences": [],
+   "analyzing": [],
+   "buttons": [
+    [
+     "",
+     "live-monitor",
+     false,
+     null,
+     false
+    ],
+    [
+     "Analyze drift",
+     "reading-ask",
+     false,
+     null,
+     false
+    ],
+    [
+     "Turn off readings",
+     "reading-off",
+     false,
+     null,
+     false
+    ],
+    [
+     "Discard everything",
+     "held-discard",
+     false,
+     null,
+     false
+    ]
+   ],
+   "delivery": [],
+   "entries": [],
+   "heading": "Drift",
+   "levels": 0,
+   "meta": "Claude · generating… · session started <age> ago · 0 entries",
+   "pill": "",
+   "resultStates": [],
+   "stale": [],
+   "steps": [],
+   "text": "DriftHow far the session has moved from the goalLive monitorShows a level after every turn, from checks and file paths, with no model call. The level shows here and in the header.Not checked yetNone or lowMediumHighExtremeAnalyze drift0 model requests0 model requests recorded for this session.Reads the session up to its last turn against your intent. Runs in the background.What is sentYour saved words.The agent messages.What it reads is the evidence on this page: the observed record in this session’s activity and the goal and output you saved, and nothing else. It does not read a diff, a file, a test or a deliverable, replies from git, gh or connected tools, or your screen.Turn off readings9 of 10 left todayWhat analysis doesWhen you analyze drift, Cargento lists where this session departed from your saved goal. It never writes into the session, so steering stays yours.Later directions: noneNothing you have said since you saved these words is in the observed record read for this session.Nothing here decides whether it changes what you are asking for. That is yours, and Cargento does not write into the session either way.About these saved wordsBound by an eight-character identity prefix, which is all this harness publishes as the session id. Another session sharing it would share these words.Discard everythingThe clear beside the goal and the remove beside each outcome line empty them, and the save after it keeps every earlier revision, so anything raised against those words goes on quoting them. Discarding everything is the other act.Discard everythingFROM THE CHECKS RUN WHILE YOU WERE AWAYNot checked yet.About these checksA departure is a place the record does not match the words you chose.Raised to you and nowhere else.Why no raise goes furtherCargento does not write into a session, so steering is by hand; the steer box in Console states the same rule about notes you write there.",
+   "work": "No entry in the observed record names this session.Results are as the tool reported; not inspected.About this recordCargento reads work results from Claude Code and Pi only. Claude records the checks a session ran and the files it wrote, and they are listed here. A result is what the tool reported; Cargento inspects no file, test or deliverable."
+  },
+  "card: model off": {
+   "absences": [
+    [
+     "run-config",
+     "Model calls are off for this run. Restart without --no-observer-model or its alias --no-harness-usage to allow a reading."
+    ]
+   ],
+   "analyzing": [],
+   "buttons": [
+    [
+     "",
+     "live-monitor",
+     false,
+     null,
+     false
+    ],
+    [
+     "Analyze drift",
+     "reading-ask",
+     true,
+     null,
+     false
+    ],
+    [
+     "Discard everything",
+     "held-discard",
+     false,
+     null,
+     false
+    ]
+   ],
+   "delivery": [],
+   "entries": [],
+   "heading": "Drift",
+   "levels": 0,
+   "meta": "Claude · generating… · session started <age> ago · 0 entries",
+   "pill": "",
+   "resultStates": [],
+   "stale": [],
+   "steps": [],
+   "text": "DriftHow far the session has moved from the goalLive monitorShows a level after every turn, from checks and file paths, with no model call. The level shows here and in the header.Not checked yetNone or lowMediumHighExtremeAnalyze drift0 model requests0 model requests recorded for this session.Model calls are off for this run. Restart without --no-observer-model or its alias --no-harness-usage to allow a reading.What is sent to Claude CodeYour saved words.The agent messages.What it reads is the evidence on this page: the observed record in this session’s activity and the goal and output you saved, and nothing else. It does not read a diff, a file, a test or a deliverable, replies from git, gh or connected tools, or your screen.10 of 10 left todayWhat analysis doesWhen you analyze drift, Cargento lists where this session departed from your saved goal. It never writes into the session, so steering stays yours.Later directions: noneNothing you have said since you saved these words is in the observed record read for this session.Nothing here decides whether it changes what you are asking for. That is yours, and Cargento does not write into the session either way.About these saved wordsBound by an eight-character identity prefix, which is all this harness publishes as the session id. Another session sharing it would share these words.Discard everythingThe clear beside the goal and the remove beside each outcome line empty them, and the save after it keeps every earlier revision, so anything raised against those words goes on quoting them. Discarding everything is the other act.Discard everything",
+   "work": "No entry in the observed record names this session.Results are as the tool reported; not inspected.About this recordCargento reads work results from Claude Code and Pi only. Claude records the checks a session ran and the files it wrote, and they are listed here. A result is what the tool reported; Cargento inspects no file, test or deliverable."
+  },
+  "card: new work": {
+   "absences": [],
+   "analyzing": [],
+   "buttons": [
+    [
+     "",
+     "live-monitor",
+     false,
+     null,
+     false
+    ],
+    [
+     "Analyze again",
+     "reading-ask",
+     false,
+     null,
+     false
+    ],
+    [
+     "Turn off readings",
+     "reading-off",
+     false,
+     null,
+     false
+    ],
+    [
+     "Steer back",
+     "steer-back",
+     false,
+     null,
+     false
+    ],
+    [
+     "Update intent instead",
+     "update-intent",
+     false,
+     null,
+     false
+    ],
+    [
+     "Not accurate?",
+     "not-accurate",
+     false,
+     "false",
+     false
+    ],
+    [
+     "Discard everything",
+     "held-discard",
+     false,
+     null,
+     false
+    ]
+   ],
+   "delivery": [],
+   "entries": [
+    [
+     "1",
+     "c1"
+    ],
+    [
+     "2",
+     "c2"
+    ],
+    [
+     "3",
+     "c3"
+    ],
+    [
+     "4",
+     "m1"
+    ]
+   ],
+   "heading": "Drift",
+   "levels": 0,
+   "meta": "Claude · generating… · session started <age> ago · 4 entries",
+   "pill": "",
+   "resultStates": [
+    "departs",
+    "consistent"
+   ],
+   "stale": [
+    "work"
+   ],
+   "steps": [],
+   "text": "DriftHow far the session has moved from the goalLive monitorNew work since this analysis.Analyze again1 model request1 model request recorded for this session.What is sentYour saved words.The agent messages.Turn off readings9 of 10 left todayDeparts from your intent1 departureModel assessmentRead intent: Ship the queue workerIt stopped running the tests.#1 · pytest -qfailed check · claudeCall recorded at <instant>Result time not recorded.Sourcetranscript · exactShip the queue workerDeparts; evidence #1EvidenceTYPED GOALtool_report · transcript · exactAgainst expected outcomeTests passConsistent with #2EvidenceEXPECTED OUTCOME · LINE 1 · TYPEDConsistent with #2, as the tool reported; not inspectedtool_report · transcript · exactSteer backUpdate intent insteadDeparture evidence at #1 · <age> agoNot accurate?What it readRevision 3, typed <age> ago; reads work from your message <age> ago.A reading is one model pass over the record, made only when you press for it.What it reads is the evidence on this page: the observed record in this session’s activity and the goal and output you saved, and nothing else. It does not read a diff, a file, a test or a deliverable, replies from git, gh or connected tools, or your screen.model · mRead up to its last turn.1 check, 1 message arrived since this analysis.Evidence read to its end.TYPED GOALShip the queue workerEXPECTED OUTCOME · LINE 1Tests passLater directions: noneNothing you have said since you saved these words is in the observed record read for this session.Nothing here decides whether it changes what you are asking for. That is yours, and Cargento does not write into the session either way.About these saved wordsBound by an eight-character identity prefix, which is all this harness publishes as the session id. Another session sharing it would share these words.Discard everythingThe clear beside the goal and the remove beside each outcome line empty them, and the save after it keeps every earlier revision, so anything raised against those words goes on quoting them. Discarding everything is the other act.Discard everything",
+   "work": "The record read here no longer reaches back to where your intent’s window opens, so #1 is the first entry it holds after that point.#1Agent · check · ran, result not recordedCitedpytest -qtranscript · exact<age> ago#2Agent · check · ran, result not recordedpytesttranscript · exact<age> ago#3Agent · check · ran, result not recordedpytesttranscript · exact<age> ago#4AgentAgent saidEntry m1transcript · exact<age> agoResults are as the tool reported; not inspected.About this record4 entries · 1 message the agent wrote · 3 observed of what it did.Cargento reads work results from Claude Code and Pi only. Claude records the checks a session ran and the files it wrote, and they are listed here. A result is what the tool reported; Cargento inspects no file, test or deliverable."
+  },
+  "card: no reader": {
+   "absences": [],
+   "analyzing": [],
+   "buttons": [
+    [
+     "",
+     "live-monitor",
+     false,
+     null,
+     false
+    ],
+    [
+     "Turn off readings",
+     "reading-off",
+     false,
+     null,
+     false
+    ],
+    [
+     "Discard everything",
+     "held-discard",
+     false,
+     null,
+     false
+    ]
+   ],
+   "delivery": [],
+   "entries": [],
+   "heading": "Drift",
+   "levels": 0,
+   "meta": "Claude · generating… · session started <age> ago · 0 entries",
+   "pill": "",
+   "resultStates": [],
+   "stale": [],
+   "steps": [],
+   "text": "DriftHow far the session has moved from the goalLive monitorShows a level after every turn, from checks and file paths, with no model call. The level shows here and in the header.Not checked yetNone or lowMediumHighExtremeNo claude binary was found.Turn off readings0 model requests0 model requests recorded for this session.What a reading readsA reading is a model’s account of the evidence on this page: the observed record in this session’s activity and the goal and output you saved, and nothing else. It does not read a diff, a file, a test or a deliverable, replies from git, gh or connected tools, or what you saw on your screen. A reading is never a verification that the work was done.What analysis doesWhen you analyze drift, Cargento lists where this session departed from your saved goal. It never writes into the session, so steering stays yours.Later directions: noneNothing you have said since you saved these words is in the observed record read for this session.Nothing here decides whether it changes what you are asking for. That is yours, and Cargento does not write into the session either way.About these saved wordsBound by an eight-character identity prefix, which is all this harness publishes as the session id. Another session sharing it would share these words.Discard everythingThe clear beside the goal and the remove beside each outcome line empty them, and the save after it keeps every earlier revision, so anything raised against those words goes on quoting them. Discarding everything is the other act.Discard everything",
+   "work": "No entry in the observed record names this session.Results are as the tool reported; not inspected.About this recordCargento reads work results from Claude Code and Pi only. Claude records the checks a session ran and the files it wrote, and they are listed here. A result is what the tool reported; Cargento inspects no file, test or deliverable."
+  },
+  "card: no reading": {
+   "absences": [],
+   "analyzing": [],
+   "buttons": [
+    [
+     "",
+     "live-monitor",
+     false,
+     null,
+     false
+    ],
+    [
+     "Analyze drift",
+     "reading-ask",
+     false,
+     null,
+     false
+    ],
+    [
+     "Turn off readings",
+     "reading-off",
+     false,
+     null,
+     false
+    ],
+    [
+     "Discard everything",
+     "held-discard",
+     false,
+     null,
+     false
+    ]
+   ],
+   "delivery": [],
+   "entries": [],
+   "heading": "Drift",
+   "levels": 0,
+   "meta": "Claude · generating… · session started <age> ago · 0 entries",
+   "pill": "",
+   "resultStates": [],
+   "stale": [],
+   "steps": [],
+   "text": "DriftHow far the session has moved from the goalLive monitorShows a level after every turn, from checks and file paths, with no model call. The level shows here and in the header.Not checked yetNone or lowMediumHighExtremeAnalyze drift0 model requests0 model requests recorded for this session.Reads the session up to its last turn against your intent. Runs in the background.What is sentYour saved words.The agent messages.What it reads is the evidence on this page: the observed record in this session’s activity and the goal and output you saved, and nothing else. It does not read a diff, a file, a test or a deliverable, replies from git, gh or connected tools, or your screen.Turn off readings9 of 10 left todayWhat analysis doesWhen you analyze drift, Cargento lists where this session departed from your saved goal. It never writes into the session, so steering stays yours.Later directions: noneNothing you have said since you saved these words is in the observed record read for this session.Nothing here decides whether it changes what you are asking for. That is yours, and Cargento does not write into the session either way.About these saved wordsBound by an eight-character identity prefix, which is all this harness publishes as the session id. Another session sharing it would share these words.Discard everythingThe clear beside the goal and the remove beside each outcome line empty them, and the save after it keeps every earlier revision, so anything raised against those words goes on quoting them. Discarding everything is the other act.Discard everything",
+   "work": "No entry in the observed record names this session.Results are as the tool reported; not inspected.About this recordCargento reads work results from Claude Code and Pi only. Claude records the checks a session ran and the files it wrote, and they are listed here. A result is what the tool reported; Cargento inspects no file, test or deliverable."
+  },
+  "card: not accurate": {
+   "absences": [],
+   "analyzing": [],
+   "buttons": [
+    [
+     "",
+     "live-monitor",
+     false,
+     null,
+     false
+    ],
+    [
+     "Analyze again",
+     "reading-ask",
+     false,
+     null,
+     false
+    ],
+    [
+     "Turn off readings",
+     "reading-off",
+     false,
+     null,
+     false
+    ],
+    [
+     "Not accurate?",
+     "not-accurate",
+     false,
+     "true",
+     false
+    ],
+    [
+     "Discard everything",
+     "held-discard",
+     false,
+     null,
+     false
+    ]
+   ],
+   "delivery": [],
+   "entries": [
+    [
+     "1",
+     "c1"
+    ],
+    [
+     "2",
+     "c2"
+    ]
+   ],
+   "heading": "Drift",
+   "levels": 0,
+   "meta": "Claude · generating… · session started <age> ago · 2 entries",
+   "pill": "",
+   "resultStates": [
+    "departs",
+    "consistent"
+   ],
+   "stale": [],
+   "steps": [],
+   "text": "DriftHow far the session has moved from the goalLive monitorYou marked this analysis not accurate.Departs from your intent1 departureModel assessmentRead intent: Ship the queue workerIt stopped running the tests.#1 · pytest -qfailed check · claudeCall recorded at <instant>Result time not recorded.Sourcetranscript · exactShip the queue workerDeparts; evidence #1EvidenceTYPED GOALtool_report · transcript · exactAgainst expected outcomeTests passConsistent with #2EvidenceEXPECTED OUTCOME · LINE 1 · TYPEDConsistent with #2, as the tool reported; not inspectedtool_report · transcript · exactAnalyze again1 model request1 model request recorded for this session.What is sentYour saved words.The agent messages.Turn off readings9 of 10 left todayNot accurate?What it readRevision 3, typed <age> ago; reads work from your message <age> ago.A reading is one model pass over the record, made only when you press for it.What it reads is the evidence on this page: the observed record in this session’s activity and the goal and output you saved, and nothing else. It does not read a diff, a file, a test or a deliverable, replies from git, gh or connected tools, or your screen.model · mRead up to its last turn.Evidence read to its end.TYPED GOALShip the queue workerEXPECTED OUTCOME · LINE 1Tests passLater directions: noneNothing you have said since you saved these words is in the observed record read for this session.Nothing here decides whether it changes what you are asking for. That is yours, and Cargento does not write into the session either way.About these saved wordsBound by an eight-character identity prefix, which is all this harness publishes as the session id. Another session sharing it would share these words.Discard everythingThe clear beside the goal and the remove beside each outcome line empty them, and the save after it keeps every earlier revision, so anything raised against those words goes on quoting them. Discarding everything is the other act.Discard everything",
+   "work": "The record read here no longer reaches back to where your intent’s window opens, so #1 is the first entry it holds after that point.#1Agent · check · ran, result not recordedCitedpytest -qtranscript · exact<age> ago#2Agent · check · ran, result not recordedpytesttranscript · exact<age> agoResults are as the tool reported; not inspected.About this record2 entries · 2 observed of what it did.Cargento reads work results from Claude Code and Pi only. Claude records the checks a session ran and the files it wrote, and they are listed here. A result is what the tool reported; Cargento inspects no file, test or deliverable."
+  },
+  "card: outside the scan": {
+   "absences": [],
+   "analyzing": [],
+   "buttons": [
+    [
+     "",
+     "live-monitor",
+     false,
+     null,
+     false
+    ],
+    [
+     "Analyze drift",
+     "reading-ask",
+     false,
+     null,
+     false
+    ],
+    [
+     "Turn off readings",
+     "reading-off",
+     false,
+     null,
+     false
+    ],
+    [
+     "Discard everything",
+     "held-discard",
+     false,
+     null,
+     false
+    ]
+   ],
+   "delivery": [],
+   "entries": [],
+   "heading": "Drift",
+   "levels": 0,
+   "meta": "Claude · generating… · session started <age> ago",
+   "pill": "",
+   "resultStates": [],
+   "stale": [],
+   "steps": [],
+   "text": "DriftHow far the session has moved from the goalLive monitorShows a level after every turn, from checks and file paths, with no model call. The level shows here and in the header.Not checked yetNone or lowMediumHighExtremeAnalyze drift0 model requests0 model requests recorded for this session.Reads the session up to its last turn against your intent. Runs in the background.What is sentYour saved words.The agent messages.What it reads is the evidence on this page: the observed record in this session’s activity and the goal and output you saved, and nothing else. It does not read a diff, a file, a test or a deliverable, replies from git, gh or connected tools, or your screen.Turn off readings9 of 10 left todayWhat analysis doesWhen you analyze drift, Cargento lists where this session departed from your saved goal. It never writes into the session, so steering stays yours.Later directions: unknown (record unread)This session was outside the observed-record scan, which covered 0 of the sessions in this project and left 1 out. Its record is unread rather than empty. So whether you have given a later direction is unknown, not none.Nothing here decides whether it changes what you are asking for. That is yours, and Cargento does not write into the session either way.About these saved wordsBound by an eight-character identity prefix, which is all this harness publishes as the session id. Another session sharing it would share these words.Discard everythingThe clear beside the goal and the remove beside each outcome line empty them, and the save after it keeps every earlier revision, so anything raised against those words goes on quoting them. Discarding everything is the other act.Discard everything",
+   "work": "This session was outside the observed-record scan, which covered 0 of the sessions in this project and left 1 out. Its record is unread rather than empty.Results are as the tool reported; not inspected.About this recordCargento reads work results from Claude Code and Pi only. Claude records the checks a session ran and the files it wrote, and they are listed here. A result is what the tool reported; Cargento inspects no file, test or deliverable."
+  },
+  "card: question": {
+   "absences": [],
+   "analyzing": [],
+   "buttons": [
+    [
+     "",
+     "live-monitor",
+     false,
+     null,
+     false
+    ],
+    [
+     "Keep my intent and analyze",
+     "direction-keep",
+     false,
+     null,
+     false
+    ],
+    [
+     "Add it to my intent",
+     "direction-add",
+     false,
+     null,
+     false
+    ],
+    [
+     "Use this as my goal",
+     "direction-goal",
+     false,
+     null,
+     false
+    ],
+    [
+     "Turn off readings",
+     "reading-off",
+     false,
+     null,
+     false
+    ],
+    [
+     "Discard everything",
+     "held-discard",
+     false,
+     null,
+     false
+    ]
+   ],
+   "delivery": [],
+   "entries": [
+    [
+     "1",
+     "d1"
+    ]
+   ],
+   "heading": "Drift",
+   "levels": 0,
+   "meta": "Claude · generating… · session started <age> ago · 1 entry",
+   "pill": "",
+   "resultStates": [],
+   "stale": [],
+   "steps": [],
+   "text": "DriftHow far the session has moved from the goalLive monitorShows a level after every turn, from checks and file paths, with no model call. The level shows here and in the header.Not checked yetNone or lowMediumHighExtremeYou gave a later direction at #1: \"Keep the flag off by default.\"Keep my intent and analyzeAdd it to my intentUse this as my goalTurn off readingsThis sends the session to Claude Code.0 model requests0 model requests recorded for this session.9 of 10 left todayWhat analysis doesWhen you analyze drift, Cargento lists where this session departed from your saved goal. It never writes into the session, so steering stays yours.About these saved wordsBound by an eight-character identity prefix, which is all this harness publishes as the session id. Another session sharing it would share these words.Discard everythingThe clear beside the goal and the remove beside each outcome line empty them, and the save after it keeps every earlier revision, so anything raised against those words goes on quoting them. Discarding everything is the other act.Discard everything",
+   "work": "The record read here no longer reaches back to where your intent’s window opens, so #1 is the first entry it holds after that point.#1YouPromptA later direction you gaveKeep the flag off by default.transcript · exact<age> agoAdd to my intentResults are as the tool reported; not inspected.About this record1 entry · 1 direction you gave · 0 observed of what it did.Cargento reads work results from Claude Code and Pi only. Claude records the checks a session ran and the files it wrote, and they are listed here. A result is what the tool reported; Cargento inspects no file, test or deliverable."
+  },
+  "card: question, an Allow owed": {
+   "absences": [],
+   "analyzing": [],
+   "buttons": [
+    [
+     "",
+     "live-monitor",
+     false,
+     null,
+     false
+    ],
+    [
+     "Keep my intent",
+     "direction-keep",
+     false,
+     null,
+     false
+    ],
+    [
+     "Add it to my intent",
+     "direction-add",
+     false,
+     null,
+     false
+    ],
+    [
+     "Use this as my goal",
+     "direction-goal",
+     false,
+     null,
+     false
+    ],
+    [
+     "Discard everything",
+     "held-discard",
+     false,
+     null,
+     false
+    ]
+   ],
+   "delivery": [],
+   "entries": [
+    [
+     "1",
+     "d1"
+    ]
+   ],
+   "heading": "Drift",
+   "levels": 0,
+   "meta": "Claude · generating… · session started <age> ago · 1 entry",
+   "pill": "",
+   "resultStates": [],
+   "stale": [],
+   "steps": [],
+   "text": "DriftHow far the session has moved from the goalLive monitorShows a level after every turn, from checks and file paths, with no model call. The level shows here and in the header.Not checked yetNone or lowMediumHighExtremeYou gave a later direction at #1: \"Keep the flag off by default.\"Keep my intentAdd it to my intentUse this as my goal0 model requests0 model requests recorded for this session.10 of 10 left todayWhat analysis doesWhen you analyze drift, Cargento lists where this session departed from your saved goal. It never writes into the session, so steering stays yours.About these saved wordsBound by an eight-character identity prefix, which is all this harness publishes as the session id. Another session sharing it would share these words.Discard everythingThe clear beside the goal and the remove beside each outcome line empty them, and the save after it keeps every earlier revision, so anything raised against those words goes on quoting them. Discarding everything is the other act.Discard everything",
+   "work": "The record read here no longer reaches back to where your intent’s window opens, so #1 is the first entry it holds after that point.#1YouPromptA later direction you gaveKeep the flag off by default.transcript · exact<age> agoAdd to my intentResults are as the tool reported; not inspected.About this record1 entry · 1 direction you gave · 0 observed of what it did.Cargento reads work results from Claude Code and Pi only. Claude records the checks a session ran and the files it wrote, and they are listed here. A result is what the tool reported; Cargento inspects no file, test or deliverable."
+  },
+  "card: raises": {
+   "absences": [],
+   "analyzing": [],
+   "buttons": [
+    [
+     "",
+     "live-monitor",
+     false,
+     null,
+     false
+    ],
+    [
+     "Analyze drift",
+     "reading-ask",
+     false,
+     null,
+     false
+    ],
+    [
+     "Turn off readings",
+     "reading-off",
+     false,
+     null,
+     false
+    ],
+    [
+     "Discard everything",
+     "held-discard",
+     false,
+     null,
+     false
+    ],
+    [
+     "Copy command",
+     "",
+     false,
+     null,
+     false
+    ]
+   ],
+   "delivery": [
+    [
+     "handed-over",
+     ""
+    ]
+   ],
+   "entries": [],
+   "heading": "Drift",
+   "levels": 0,
+   "meta": "Claude · generating… · session started <age> ago · 0 entries",
+   "pill": "",
+   "resultStates": [],
+   "stale": [],
+   "steps": [],
+   "text": "DriftHow far the session has moved from the goalLive monitorShows a level after every turn, from checks and file paths, with no model call. The level shows here and in the header.Not checked yetNone or lowMediumHighExtremeAnalyze drift0 model requests0 model requests recorded for this session.Reads the session up to its last turn against your intent. Runs in the background.What is sentYour saved words.The agent messages.What it reads is the evidence on this page: the observed record in this session’s activity and the goal and output you saved, and nothing else. It does not read a diff, a file, a test or a deliverable, replies from git, gh or connected tools, or your screen.Turn off readings9 of 10 left todayWhat analysis doesWhen you analyze drift, Cargento lists where this session departed from your saved goal. It never writes into the session, so steering stays yours.Later directions: noneNothing you have said since you saved these words is in the observed record read for this session.Nothing here decides whether it changes what you are asking for. That is yours, and Cargento does not write into the session either way.About these saved wordsBound by an eight-character identity prefix, which is all this harness publishes as the session id. Another session sharing it would share these words.Discard everythingThe clear beside the goal and the remove beside each outcome line empty them, and the save after it keeps every earlier revision, so anything raised against those words goes on quoting them. Discarding everything is the other act.Discard everythingRaised while you were away: 1A departure is a place the record does not match the words you chose.FROM THE CHECKS RUN WHILE YOU WERE AWAYOne departure was raisedTYPED GOAL<clock>Ship the queue workerIt stopped running the tests.read against revision 2 · evidence to <clock> · pytest failedThis raise read revision 2. Revision 3 is current, so it does not describe what you are asking for now.Copy commandCargento has not checked this session against what you asked for. Nothing here says whether it would have found anything.HOW IT WAS RAISEDOne notification was raised about this sessionA notification service accepted it.COUNTSDEPARTURESFrom the reading you asked fornot publishedFrom the checks run while you were away1RAISESOn record for this board3This board attempted3A notification service accepted2Five figures, and no arithmetic between them.What a count does not sayA count identifies a session worth reading; it establishes nothing about whether the brief, the agent or Cargento’s own judgement was poor, and those three are not separable from it.Raised to you and nowhere else.Why no raise goes furtherCargento does not write into a session, so steering is by hand; the steer box in Console states the same rule about notes you write there.",
+   "work": "No entry in the observed record names this session.Results are as the tool reported; not inspected.About this recordCargento reads work results from Claude Code and Pi only. Claude records the checks a session ran and the files it wrote, and they are listed here. A result is what the tool reported; Cargento inspects no file, test or deliverable."
+  },
+  "card: refused": {
+   "absences": [],
+   "analyzing": [],
+   "buttons": [
+    [
+     "",
+     "live-monitor",
+     false,
+     null,
+     false
+    ],
+    [
+     "Analyze drift",
+     "reading-ask",
+     false,
+     null,
+     false
+    ],
+    [
+     "Turn off readings",
+     "reading-off",
+     false,
+     null,
+     false
+    ],
+    [
+     "Discard everything",
+     "held-discard",
+     false,
+     null,
+     false
+    ]
+   ],
+   "delivery": [],
+   "entries": [],
+   "heading": "Drift",
+   "levels": 0,
+   "meta": "Claude · generating… · session started <age> ago · 0 entries",
+   "pill": "",
+   "resultStates": [],
+   "stale": [],
+   "steps": [],
+   "text": "DriftHow far the session has moved from the goalLive monitorAnalyze drift1 model request1 model request recorded for this session.Reads the session up to its last turn against your intent. Runs in the background.What is sentYour saved words.The agent messages.What it reads is the evidence on this page: the observed record in this session’s activity and the goal and output you saved, and nothing else. It does not read a diff, a file, a test or a deliverable, replies from git, gh or connected tools, or your screen.Turn off readings9 of 10 left todayREADINGA reading is one model pass over the record, made only when you press for it.A reading is stored for this session and this build could not read it, so nothing from it is shown. Asking again replaces it.Later directions: noneNothing you have said since you saved these words is in the observed record read for this session.Nothing here decides whether it changes what you are asking for. That is yours, and Cargento does not write into the session either way.About these saved wordsBound by an eight-character identity prefix, which is all this harness publishes as the session id. Another session sharing it would share these words.Discard everythingThe clear beside the goal and the remove beside each outcome line empty them, and the save after it keeps every earlier revision, so anything raised against those words goes on quoting them. Discarding everything is the other act.Discard everything",
+   "work": "No entry in the observed record names this session.Results are as the tool reported; not inspected.About this recordCargento reads work results from Claude Code and Pi only. Claude records the checks a session ran and the files it wrote, and they are listed here. A result is what the tool reported; Cargento inspects no file, test or deliverable."
+  },
+  "card: running": {
+   "absences": [],
+   "analyzing": [
+    "job-1"
+   ],
+   "buttons": [
+    [
+     "",
+     "live-monitor",
+     false,
+     null,
+     false
+    ],
+    [
+     "Cancel",
+     "reading-cancel",
+     false,
+     null,
+     false
+    ],
+    [
+     "Turn off readings",
+     "reading-off",
+     false,
+     null,
+     false
+    ],
+    [
+     "Discard everything",
+     "held-discard",
+     false,
+     null,
+     false
+    ]
+   ],
+   "delivery": [],
+   "entries": [],
+   "heading": "Drift",
+   "levels": 0,
+   "meta": "Claude · generating… · turn started <age> ago · 0 entries",
+   "pill": "",
+   "resultStates": [],
+   "stale": [],
+   "steps": [
+    [
+     "done",
+     null
+    ],
+    [
+     "active",
+     "step"
+    ],
+    [
+     "todo",
+     null
+    ]
+   ],
+   "text": "DriftHow far the session has moved from the goalLive monitorShows a level after every turn, from checks and file paths, with no model call. The level shows here and in the header.Not checked yetNone or lowMediumHighExtremeAnalyzing driftCancelCollecting the recordReading itWriting the resultReads only the work so far. The result will appear here.Turn off readings0 model requests0 model requests recorded for this session.9 of 10 left todayWhat analysis doesWhen you analyze drift, Cargento lists where this session departed from your saved goal. It never writes into the session, so steering stays yours.Later directions: noneNothing you have said since you saved these words is in the observed record read for this session.Nothing here decides whether it changes what you are asking for. That is yours, and Cargento does not write into the session either way.About these saved wordsBound by an eight-character identity prefix, which is all this harness publishes as the session id. Another session sharing it would share these words.Discard everythingThe clear beside the goal and the remove beside each outcome line empty them, and the save after it keeps every earlier revision, so anything raised against those words goes on quoting them. Discarding everything is the other act.Discard everything",
+   "work": "No entry in the observed record names this session.Results are as the tool reported; not inspected.About this recordCargento reads work results from Claude Code and Pi only. Claude records the checks a session ran and the files it wrote, and they are listed here. A result is what the tool reported; Cargento inspects no file, test or deliverable."
+  },
+  "card: stored result": {
+   "absences": [],
+   "analyzing": [],
+   "buttons": [
+    [
+     "",
+     "live-monitor",
+     false,
+     null,
+     false
+    ],
+    [
+     "Steer back",
+     "steer-back",
+     false,
+     null,
+     false
+    ],
+    [
+     "Update intent instead",
+     "update-intent",
+     false,
+     null,
+     false
+    ],
+    [
+     "Analyze again",
+     "reading-ask",
+     false,
+     null,
+     false
+    ],
+    [
+     "Turn off readings",
+     "reading-off",
+     false,
+     null,
+     false
+    ],
+    [
+     "Not accurate?",
+     "not-accurate",
+     false,
+     "false",
+     false
+    ],
+    [
+     "Discard everything",
+     "held-discard",
+     false,
+     null,
+     false
+    ]
+   ],
+   "delivery": [],
+   "entries": [
+    [
+     "1",
+     "c1"
+    ],
+    [
+     "2",
+     "c2"
+    ]
+   ],
+   "heading": "Drift",
+   "levels": 0,
+   "meta": "Claude · generating… · session started <age> ago · 2 entries",
+   "pill": "",
+   "resultStates": [
+    "departs",
+    "consistent"
+   ],
+   "stale": [],
+   "steps": [],
+   "text": "DriftHow far the session has moved from the goalLive monitorDeparts from your intent1 departureModel assessmentRead intent: Ship the queue workerIt stopped running the tests.#1 · pytest -qfailed check · claudeCall recorded at <instant>Result time not recorded.Sourcetranscript · exactShip the queue workerDeparts; evidence #1EvidenceTYPED GOALtool_report · transcript · exactAgainst expected outcomeTests passConsistent with #2EvidenceEXPECTED OUTCOME · LINE 1 · TYPEDConsistent with #2, as the tool reported; not inspectedtool_report · transcript · exactSteer backUpdate intent insteadAnalyze again1 model request1 model request recorded for this session.Departure evidence at #1 · <age> agoWhat is sentYour saved words.The agent messages.Turn off readings9 of 10 left todayNot accurate?What it readRevision 3, typed <age> ago; reads work from your message <age> ago.A reading is one model pass over the record, made only when you press for it.What it reads is the evidence on this page: the observed record in this session’s activity and the goal and output you saved, and nothing else. It does not read a diff, a file, a test or a deliverable, replies from git, gh or connected tools, or your screen.model · mRead up to its last turn.Evidence read to its end.TYPED GOALShip the queue workerEXPECTED OUTCOME · LINE 1Tests passLater directions: noneNothing you have said since you saved these words is in the observed record read for this session.Nothing here decides whether it changes what you are asking for. That is yours, and Cargento does not write into the session either way.About these saved wordsBound by an eight-character identity prefix, which is all this harness publishes as the session id. Another session sharing it would share these words.Discard everythingThe clear beside the goal and the remove beside each outcome line empty them, and the save after it keeps every earlier revision, so anything raised against those words goes on quoting them. Discarding everything is the other act.Discard everything",
+   "work": "The record read here no longer reaches back to where your intent’s window opens, so #1 is the first entry it holds after that point.#1Agent · check · ran, result not recordedCitedpytest -qtranscript · exact<age> ago#2Agent · check · ran, result not recordedpytesttranscript · exact<age> agoResults are as the tool reported; not inspected.About this record2 entries · 2 observed of what it did.Cargento reads work results from Claude Code and Pi only. Claude records the checks a session ran and the files it wrote, and they are listed here. A result is what the tool reported; Cargento inspects no file, test or deliverable."
+  },
+  "card: superseded": {
+   "absences": [],
+   "analyzing": [],
+   "buttons": [
+    [
+     "",
+     "live-monitor",
+     false,
+     null,
+     false
+    ],
+    [
+     "Analyze again",
+     "reading-ask",
+     false,
+     null,
+     false
+    ],
+    [
+     "Turn off readings",
+     "reading-off",
+     false,
+     null,
+     false
+    ],
+    [
+     "Not accurate?",
+     "not-accurate",
+     false,
+     "false",
+     false
+    ],
+    [
+     "Discard everything",
+     "held-discard",
+     false,
+     null,
+     false
+    ]
+   ],
+   "delivery": [],
+   "entries": [
+    [
+     "1",
+     "c1"
+    ],
+    [
+     "2",
+     "c2"
+    ]
+   ],
+   "heading": "Drift",
+   "levels": 0,
+   "meta": "Claude · generating… · session started <age> ago · 2 entries",
+   "pill": "",
+   "resultStates": [
+    "departs",
+    "consistent"
+   ],
+   "stale": [
+    "intent"
+   ],
+   "steps": [],
+   "text": "DriftHow far the session has moved from the goalLive monitorYour intent changed after this analysis.This reading read revision 3. Revision 4 is current, so it does not describe what you are asking for now.Analyze again1 model request1 model request recorded for this session.What is sentYour saved words.The agent messages.Turn off readings9 of 10 left todayDeparts from your intent1 departureModel assessmentRead intent: Ship the queue workerIt stopped running the tests.#1 · pytest -qfailed check · claudeCall recorded at <instant>Result time not recorded.Sourcetranscript · exactShip the queue workerDeparts; evidence #1EvidenceTYPED GOALtool_report · transcript · exactAgainst expected outcomeTests passConsistent with #2EvidenceEXPECTED OUTCOME · LINE 1Consistent with #2, as the tool reported; not inspectedtool_report · transcript · exactNot accurate?What it readRevision 3, typed <age> ago; reads work from your message <age> ago.A reading is one model pass over the record, made only when you press for it.What it reads is the evidence on this page: the observed record in this session’s activity and the goal and output you saved, and nothing else. It does not read a diff, a file, a test or a deliverable, replies from git, gh or connected tools, or your screen.model · mRead up to its last turn.Evidence read to its end.TYPED GOALShip the queue workerEXPECTED OUTCOME · LINE 1Tests passLater directions: noneNothing you have said since you saved these words is in the observed record read for this session.Nothing here decides whether it changes what you are asking for. That is yours, and Cargento does not write into the session either way.About these saved wordsBound by an eight-character identity prefix, which is all this harness publishes as the session id. Another session sharing it would share these words.Discard everythingThe clear beside the goal and the remove beside each outcome line empty them, and the save after it keeps every earlier revision, so anything raised against those words goes on quoting them. Discarding everything is the other act.Discard everything",
+   "work": "The record read here no longer reaches back to where your intent’s window opens, so #1 is the first entry it holds after that point.#1Agent · check · ran, result not recordedCitedpytest -qtranscript · exact<age> ago#2Agent · check · ran, result not recordedpytesttranscript · exact<age> agoResults are as the tool reported; not inspected.About this record2 entries · 2 observed of what it did.Cargento reads work results from Claude Code and Pi only. Claude records the checks a session ran and the files it wrote, and they are listed here. A result is what the tool reported; Cargento inspects no file, test or deliverable."
+  },
+  "card: unknown field": {
+   "absences": [],
+   "analyzing": [],
+   "buttons": [
+    [
+     "",
+     "live-monitor",
+     false,
+     null,
+     false
+    ],
+    [
+     "Analyze drift",
+     "reading-ask",
+     false,
+     null,
+     false
+    ],
+    [
+     "Turn off readings",
+     "reading-off",
+     false,
+     null,
+     false
+    ],
+    [
+     "Discard everything",
+     "held-discard",
+     false,
+     null,
+     false
+    ]
+   ],
+   "delivery": [],
+   "entries": [
+    [
+     "1",
+     "c1"
+    ],
+    [
+     "2",
+     "c2"
+    ]
+   ],
+   "heading": "Drift",
+   "levels": 0,
+   "meta": "Claude · generating… · session started <age> ago · 2 entries",
+   "pill": "",
+   "resultStates": [],
+   "stale": [],
+   "steps": [],
+   "text": "DriftHow far the session has moved from the goalLive monitorAnalyze drift1 model request1 model request recorded for this session.Reads the session up to its last turn against your intent. Runs in the background.What is sentYour saved words.The agent messages.Turn off readings9 of 10 left todayREADINGA reading is one model pass over the record, made only when you press for it.This board cannot read the reading it was given: it carries a field this build does not know. Nothing from it is shown, because a reading half-read is not a reading.Unrecognised: surprise.Later directions: noneNothing you have said since you saved these words is in the observed record read for this session.Nothing here decides whether it changes what you are asking for. That is yours, and Cargento does not write into the session either way.About these saved wordsBound by an eight-character identity prefix, which is all this harness publishes as the session id. Another session sharing it would share these words.Discard everythingThe clear beside the goal and the remove beside each outcome line empty them, and the save after it keeps every earlier revision, so anything raised against those words goes on quoting them. Discarding everything is the other act.Discard everything",
+   "work": "The record read here no longer reaches back to where your intent’s window opens, so #1 is the first entry it holds after that point.#1Agent · check · ran, result not recordedpytest -qtranscript · exact<age> ago#2Agent · check · ran, result not recordedpytesttranscript · exact<age> agoResults are as the tool reported; not inspected.About this record2 entries · 2 observed of what it did.Cargento reads work results from Claude Code and Pi only. Claude records the checks a session ran and the files it wrote, and they are listed here. A result is what the tool reported; Cargento inspects no file, test or deliverable."
+  },
+  "card: withheld": {
+   "absences": [],
+   "analyzing": [],
+   "buttons": [
+    [
+     "",
+     "live-monitor",
+     false,
+     null,
+     false
+    ],
+    [
+     "Analyze drift",
+     "reading-ask",
+     false,
+     null,
+     false
+    ],
+    [
+     "Turn off readings",
+     "reading-off",
+     false,
+     null,
+     false
+    ],
+    [
+     "Discard everything",
+     "held-discard",
+     false,
+     null,
+     false
+    ]
+   ],
+   "delivery": [],
+   "entries": [],
+   "heading": "Drift",
+   "levels": 0,
+   "meta": "Claude · generating… · session started <age> ago · 0 entries",
+   "pill": "",
+   "resultStates": [],
+   "stale": [],
+   "steps": [],
+   "text": "DriftHow far the session has moved from the goalLive monitorAnalyze drift1 model request1 model request recorded for this session.Last analysis, <age> ago: The analysis was cancelled.Reads the session up to its last turn against your intent. Runs in the background.What is sentYour saved words.The agent messages.What it reads is the evidence on this page: the observed record in this session’s activity and the goal and output you saved, and nothing else. It does not read a diff, a file, a test or a deliverable, replies from git, gh or connected tools, or your screen.Turn off readings9 of 10 left todayLater directions: noneNothing you have said since you saved these words is in the observed record read for this session.Nothing here decides whether it changes what you are asking for. That is yours, and Cargento does not write into the session either way.About these saved wordsBound by an eight-character identity prefix, which is all this harness publishes as the session id. Another session sharing it would share these words.Discard everythingThe clear beside the goal and the remove beside each outcome line empty them, and the save after it keeps every earlier revision, so anything raised against those words goes on quoting them. Discarding everything is the other act.Discard everything",
+   "work": "No entry in the observed record names this session.Results are as the tool reported; not inspected.About this recordCargento reads work results from Claude Code and Pi only. Claude records the checks a session ran and the files it wrote, and they are listed here. A result is what the tool reported; Cargento inspects no file, test or deliverable."
+  },
+  "consent: after Not now": {
+   "absences": [],
+   "analyzing": [],
+   "buttons": [
+    [
+     "",
+     "live-monitor",
+     false,
+     null,
+     false
+    ],
+    [
+     "Analyze drift",
+     "reading-ask",
+     false,
+     null,
+     false
+    ],
+    [
+     "Discard everything",
+     "held-discard",
+     false,
+     null,
+     false
+    ]
+   ],
+   "delivery": [],
+   "entries": [],
+   "heading": "Drift",
+   "levels": 0,
+   "meta": "Claude · generating… · session started <age> ago · 0 entries",
+   "pill": "",
+   "resultStates": [],
+   "stale": [],
+   "steps": [],
+   "text": "DriftHow far the session has moved from the goalLive monitorShows a level after every turn, from checks and file paths, with no model call. The level shows here and in the header.Not checked yetNone or lowMediumHighExtremeAnalyze drift0 model requests0 model requests recorded for this session.Reads the session up to its last turn against your intent. Runs in the background.What is sent to Claude CodeYour saved words.The agent messages.What it reads is the evidence on this page: the observed record in this session’s activity and the goal and output you saved, and nothing else. It does not read a diff, a file, a test or a deliverable, replies from git, gh or connected tools, or your screen.10 of 10 left todayWhat analysis doesWhen you analyze drift, Cargento lists where this session departed from your saved goal. It never writes into the session, so steering stays yours.Later directions: noneNothing you have said since you saved these words is in the observed record read for this session.Nothing here decides whether it changes what you are asking for. That is yours, and Cargento does not write into the session either way.About these saved wordsBound by an eight-character identity prefix, which is all this harness publishes as the session id. Another session sharing it would share these words.Discard everythingThe clear beside the goal and the remove beside each outcome line empty them, and the save after it keeps every earlier revision, so anything raised against those words goes on quoting them. Discarding everything is the other act.Discard everything",
+   "work": "No entry in the observed record names this session.Results are as the tool reported; not inspected.About this recordCargento reads work results from Claude Code and Pi only. Claude records the checks a session ran and the files it wrote, and they are listed here. A result is what the tool reported; Cargento inspects no file, test or deliverable."
+  },
+  "consent: reading requests the legacy page sent": 0,
+  "consent: the step": {
+   "absences": [],
+   "analyzing": [],
+   "buttons": [
+    [
+     "",
+     "live-monitor",
+     false,
+     null,
+     false
+    ],
+    [
+     "Allow and analyze",
+     "reading-allow",
+     false,
+     null,
+     false
+    ],
+    [
+     "Not now",
+     "reading-not-now",
+     false,
+     null,
+     false
+    ],
+    [
+     "Discard everything",
+     "held-discard",
+     false,
+     null,
+     false
+    ]
+   ],
+   "delivery": [],
+   "entries": [],
+   "heading": "Drift",
+   "levels": 0,
+   "meta": "Claude · generating… · session started <age> ago · 0 entries",
+   "pill": "",
+   "resultStates": [],
+   "stale": [],
+   "steps": [],
+   "text": "DriftHow far the session has moved from the goalLive monitorShows a level after every turn, from checks and file paths, with no model call. The level shows here and in the header.Not checked yetNone or lowMediumHighExtremeSend this session to Claude Code for analysis?Your saved words.The agent messages.Allow and analyzeNot nowReads the session up to its last turn against your intent. Runs in the background.0 model requests0 model requests recorded for this session.10 of 10 left todayWhat a reading readsWhat it reads is the evidence on this page: the observed record in this session’s activity and the goal and output you saved, and nothing else. It does not read a diff, a file, a test or a deliverable, replies from git, gh or connected tools, or your screen.What analysis doesWhen you analyze drift, Cargento lists where this session departed from your saved goal. It never writes into the session, so steering stays yours.Later directions: noneNothing you have said since you saved these words is in the observed record read for this session.Nothing here decides whether it changes what you are asking for. That is yours, and Cargento does not write into the session either way.About these saved wordsBound by an eight-character identity prefix, which is all this harness publishes as the session id. Another session sharing it would share these words.Discard everythingThe clear beside the goal and the remove beside each outcome line empty them, and the save after it keeps every earlier revision, so anything raised against those words goes on quoting them. Discarding everything is the other act.Discard everything",
+   "work": "No entry in the observed record names this session.Results are as the tool reported; not inspected.About this recordCargento reads work results from Claude Code and Pi only. Claude records the checks a session ran and the files it wrote, and they are listed here. A result is what the tool reported; Cargento inspects no file, test or deliverable."
+  },
+  "gap: the record could not be read": {
+   "absences": [],
+   "analyzing": [],
+   "buttons": [
+    [
+     "",
+     "live-monitor",
+     false,
+     null,
+     false
+    ],
+    [
+     "Analyze drift",
+     "reading-ask",
+     false,
+     null,
+     false
+    ],
+    [
+     "Turn off readings",
+     "reading-off",
+     false,
+     null,
+     false
+    ],
+    [
+     "Discard everything",
+     "held-discard",
+     false,
+     null,
+     false
+    ]
+   ],
+   "delivery": [],
+   "entries": [],
+   "heading": "Drift",
+   "levels": 0,
+   "meta": "Claude · generating… · session started <age> ago",
+   "pill": "",
+   "resultStates": [],
+   "stale": [],
+   "steps": [],
+   "text": "DriftHow far the session has moved from the goalLive monitorShows a level after every turn, from checks and file paths, with no model call. The level shows here and in the header.Not checked yetNone or lowMediumHighExtremeAnalyze drift0 model requests0 model requests recorded for this session.Reads the session up to its last turn against your intent. Runs in the background.What is sentYour saved words.The agent messages.What it reads is the evidence on this page: the observed record in this session’s activity and the goal and output you saved, and nothing else. It does not read a diff, a file, a test or a deliverable, replies from git, gh or connected tools, or your screen.Turn off readings9 of 10 left todayWhat analysis doesWhen you analyze drift, Cargento lists where this session departed from your saved goal. It never writes into the session, so steering stays yours.Later directions: unknown (record unread)The observed record for this session has not been read yet. So whether you have given a later direction is unknown, not none.Nothing here decides whether it changes what you are asking for. That is yours, and Cargento does not write into the session either way.About these saved wordsBound by an eight-character identity prefix, which is all this harness publishes as the session id. Another session sharing it would share these words.Discard everythingThe clear beside the goal and the remove beside each outcome line empty them, and the save after it keeps every earlier revision, so anything raised against those words goes on quoting them. Discarding everything is the other act.Discard everything",
+   "work": "The observed record for this session has not been read yet.Results are as the tool reported; not inspected.About this recordCargento reads work results from Claude Code and Pi only. Claude records the checks a session ran and the files it wrote, and they are listed here. A result is what the tool reported; Cargento inspects no file, test or deliverable."
+  },
+  "live estimate and pill": {
+   "absences": [],
+   "analyzing": [],
+   "buttons": [
+    [
+     "",
+     "live-monitor",
+     false,
+     null,
+     false
+    ],
+    [
+     "Analyze drift",
+     "reading-ask",
+     false,
+     null,
+     false
+    ],
+    [
+     "Turn off readings",
+     "reading-off",
+     false,
+     null,
+     false
+    ],
+    [
+     "Discard everything",
+     "held-discard",
+     false,
+     null,
+     false
+    ]
+   ],
+   "delivery": [],
+   "entries": [
+    [
+     "1",
+     "c1"
+    ],
+    [
+     "2",
+     "c2"
+    ]
+   ],
+   "heading": "Drift",
+   "levels": 3,
+   "meta": "Claude · generating… · session started <age> ago · 2 entries",
+   "pill": "Drift: High",
+   "resultStates": [],
+   "stale": [],
+   "steps": [],
+   "text": "DriftHow far the session has moved from the goalLive monitorHighLive estimate · <clock>None or lowMediumHighExtremeReads checks and file paths, not what your intent says. Rose from Medium at #1.No model assessment for this intent yet.Recorded signalspytest -q failed <age> ago at #1; no passing re-run recorded.#1 · pytest -qfailed check · claudeCall recorded at <instant>Result time not recorded.Sourcetranscript · exactLimits of this estimateNo check has passed yet.Analyze drift0 model requests0 model requests recorded for this session.Reads the session up to its last turn against your intent. Runs in the background.What is sentYour saved words.The agent messages.What it reads is the evidence on this page: the observed record in this session’s activity and the goal and output you saved, and nothing else. It does not read a diff, a file, a test or a deliverable, replies from git, gh or connected tools, or your screen.Turn off readings9 of 10 left todayWhat analysis doesWhen you analyze drift, Cargento lists where this session departed from your saved goal. It never writes into the session, so steering stays yours.Later directions: noneNothing you have said since you saved these words is in the observed record read for this session.Nothing here decides whether it changes what you are asking for. That is yours, and Cargento does not write into the session either way.About these saved wordsBound by an eight-character identity prefix, which is all this harness publishes as the session id. Another session sharing it would share these words.Discard everythingThe clear beside the goal and the remove beside each outcome line empty them, and the save after it keeps every earlier revision, so anything raised against those words goes on quoting them. Discarding everything is the other act.Discard everything",
+   "work": "The record read here no longer reaches back to where your intent’s window opens, so #1 is the first entry it holds after that point.#1Agent · check · ran, result not recordedpytest -qtranscript · exact<age> ago#2Agent · check · ran, result not recordedpytesttranscript · exact<age> agoResults are as the tool reported; not inspected.About this record2 entries · 2 observed of what it did.Cargento reads work results from Claude Code and Pi only. Claude records the checks a session ran and the files it wrote, and they are listed here. A result is what the tool reported; Cargento inspects no file, test or deliverable."
+  },
+  "steer: copy requests the legacy page sent": 1,
+  "steer: the box": {
+   "absences": [],
+   "analyzing": [],
+   "buttons": [
+    [
+     "",
+     "live-monitor",
+     false,
+     null,
+     false
+    ],
+    [
+     "Steer back",
+     "steer-back",
+     false,
+     null,
+     false
+    ],
+    [
+     "Update intent instead",
+     "update-intent",
+     false,
+     null,
+     false
+    ],
+    [
+     "Analyze again",
+     "reading-ask",
+     false,
+     null,
+     false
+    ],
+    [
+     "Copy",
+     "correction-copy",
+     false,
+     null,
+     false
+    ],
+    [
+     "Turn off readings",
+     "reading-off",
+     false,
+     null,
+     false
+    ],
+    [
+     "Not accurate?",
+     "not-accurate",
+     false,
+     "false",
+     false
+    ],
+    [
+     "Discard everything",
+     "held-discard",
+     false,
+     null,
+     false
+    ]
+   ],
+   "delivery": [],
+   "entries": [
+    [
+     "1",
+     "c1"
+    ],
+    [
+     "2",
+     "c2"
+    ]
+   ],
+   "heading": "Drift",
+   "levels": 0,
+   "meta": "Claude · generating… · session started <age> ago · 2 entries",
+   "pill": "",
+   "resultStates": [
+    "departs",
+    "consistent"
+   ],
+   "stale": [],
+   "steps": [],
+   "text": "DriftHow far the session has moved from the goalLive monitorDeparts from your intent1 departureModel assessmentRead intent: Ship the queue workerIt stopped running the tests.#1 · pytest -qfailed check · claudeCall recorded at <instant>Result time not recorded.Sourcetranscript · exactShip the queue workerDeparts; evidence #1EvidenceTYPED GOALtool_report · transcript · exactAgainst expected outcomeTests passConsistent with #2EvidenceEXPECTED OUTCOME · LINE 1 · TYPEDConsistent with #2, as the tool reported; not inspectedtool_report · transcript · exactSteer backUpdate intent insteadAnalyze again1 model request1 model request recorded for this session.Departure evidence at #1 · <age> agoCorrection to copyYour last check failed (#1 in Cargento). Fix it, then say so.Copy61/2000Cargento never sends this. Copy it and paste it into the session.What is sentYour saved words.The agent messages.Turn off readings9 of 10 left todayNot accurate?What it readRevision 3, typed <age> ago; reads work from your message <age> ago.A reading is one model pass over the record, made only when you press for it.What it reads is the evidence on this page: the observed record in this session’s activity and the goal and output you saved, and nothing else. It does not read a diff, a file, a test or a deliverable, replies from git, gh or connected tools, or your screen.model · mRead up to its last turn.Evidence read to its end.TYPED GOALShip the queue workerEXPECTED OUTCOME · LINE 1Tests passLater directions: noneNothing you have said since you saved these words is in the observed record read for this session.Nothing here decides whether it changes what you are asking for. That is yours, and Cargento does not write into the session either way.About these saved wordsBound by an eight-character identity prefix, which is all this harness publishes as the session id. Another session sharing it would share these words.Discard everythingThe clear beside the goal and the remove beside each outcome line empty them, and the save after it keeps every earlier revision, so anything raised against those words goes on quoting them. Discarding everything is the other act.Discard everything",
+   "work": "The record read here no longer reaches back to where your intent’s window opens, so #1 is the first entry it holds after that point.#1Agent · check · ran, result not recordedCitedpytest -qtranscript · exact<age> ago#2Agent · check · ran, result not recordedpytesttranscript · exact<age> agoResults are as the tool reported; not inspected.About this record2 entries · 2 observed of what it did.Cargento reads work results from Claude Code and Pi only. Claude records the checks a session ran and the files it wrote, and they are listed here. A result is what the tool reported; Cargento inspects no file, test or deliverable."
+  },
+  "steer: the correction text": "Your last check failed (#1 in Cargento). Fix it, then say so.",
+  "steer: what the legacy page copied": [
+   "Your last check failed (#1 in Cargento). Fix it, then say so."
+  ]
+ }
+}

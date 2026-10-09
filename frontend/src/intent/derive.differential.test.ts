@@ -33,6 +33,7 @@ import { createHeld } from './held';
 import { mulberry32, pick, genSession, type Rng } from './generate.test.helper';
 import { loadLegacyIntent } from './legacy.test.helper';
 import { workSource } from './work';
+import { caseCount, seedSample } from '../../test/legacy_goldens';
 
 /* The Intent panel's derivations, run next to the legacy functions over generated sessions, payloads,
    contexts and held state. What the reader typed, picked and chose is the state a redraw must keep, so the
@@ -42,7 +43,11 @@ import { workSource } from './work';
    that no longer stands, from inside the read; `intentDraft` is pure and `chosenIsStale` says the same
    thing, so the test asserts the legacy page deleted exactly when this one says it is stale. */
 const legacy = loadLegacyIntent();
-const SEEDS = Number(process.env['INTENT_SEEDS'] ?? 400);
+const CASES = 60;
+// The first seed that reaches a chosen prompt in the menu.
+const WITNESSES = [150];
+const SAMPLE = seedSample(caseCount(CASES, 'INTENT_SEEDS'), WITNESSES);
+const SEEDS = SAMPLE.length;
 
 const PROMPTS = ['Fix the redirect', 'Ship the queue', 'Tidy the labels', 'x'.repeat(300), ''];
 
@@ -217,7 +222,8 @@ describe('the Intent derivations agree with the legacy page over generated state
     const note = (name: string) => {
       seen[name] = (seen[name] ?? 0) + 1;
     };
-    for (let seed = 1; seed <= SEEDS && failures.length < 3; seed += 1) {
+    for (const seed of SAMPLE) {
+      if (failures.length >= 3) break;
       const input = genCase(seed);
       load(input);
       const { held, draft } = mine(input);

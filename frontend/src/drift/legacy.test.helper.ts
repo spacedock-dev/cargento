@@ -1,5 +1,6 @@
 import vm from 'node:vm';
-import { liftSource, loadLegacyIntent, type LegacyIntent } from '../intent/legacy.test.helper';
+import { legacyHarness } from '../../test/legacy_goldens';
+import { buildLegacyIntent, liftSource, type LegacyIntent } from '../intent/legacy.test.helper';
 
 /* The legacy Drift code, run as the page runs it, for the differential tests. The Intent harness is the base
    (the page's observed record, the Intent drafts and the shared helpers); the reading, result, route and
@@ -11,8 +12,8 @@ export interface LegacyDrift extends LegacyIntent {
   lift(names: readonly string[], file?: string): void;
 }
 
-export function loadLegacyDrift(): LegacyDrift {
-  const base = loadLegacyIntent();
+function buildLegacyDrift(): LegacyDrift {
+  const base = buildLegacyIntent();
   return {
     ...base,
     lift(names, file = 'next-cockpit.js') {
@@ -33,4 +34,15 @@ export function loadLegacyDrift(): LegacyDrift {
       );
     },
   };
+}
+
+export function loadLegacyDrift(): LegacyDrift {
+  return legacyHarness('drift', buildLegacyDrift, {
+    slots: {
+      setData: 'data',
+      setFocusCapability: 'capability',
+      sessionsHtml: 'data',
+      sessionHtml: 'data',
+    },
+  });
 }

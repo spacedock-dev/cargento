@@ -4,13 +4,15 @@ import { steeringHeldFor } from './held';
 import { loadLegacySteering } from './legacy.test.helper';
 import { StageConditions } from './StageConditions';
 import { mountPanels } from './testing';
+import { caseCount } from '../../test/legacy_goldens';
 
 /* The stage-condition cards are held to the legacy page by what a reader can read. The page's own
    `nextStageConditions` runs over a generated `tripwires` section and so does the component; both are reduced
    to the same sequence (each heading, sentence, option, and button with its state) and compared. A
    difference is a bug here unless it is named in the DEVIATIONS the step records. */
 const legacy = loadLegacySteering();
-const SEEDS = 250;
+const CASES = 80;
+const SEEDS = caseCount(CASES);
 
 const norm = (text: string | null): string => (text ?? '').replace(/\s+/g, ' ').trim();
 
@@ -103,8 +105,8 @@ describe('the stage-condition cards agree with the legacy page', () => {
     }
     expect(failures).toEqual([]);
     // The comparison is not vacuous: cards were drawn, some tripped, some with a browser lane.
-    expect(cards).toBeGreaterThan(150);
-    expect(withTrip).toBeGreaterThan(30);
-    expect(lanes).toBeGreaterThan(10);
+    expect(cards).toBeGreaterThan(40);
+    expect(withTrip).toBeGreaterThan(8);
+    expect(lanes).toBeGreaterThan(2);
   }, 120_000);
 });

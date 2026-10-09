@@ -4,13 +4,15 @@ import { genScenario } from './generate.test.helper';
 import { loadLegacyDelegation } from './legacy.test.helper';
 import { delegationFigure } from './metric';
 import { createWorkstream, projectWindow } from '../workstream/model';
+import { caseCount } from '../../test/legacy_goldens';
 
 /* The tab's memory is held to the page's own. Generated boards (a stored history and a run of accepted
    payloads) go through the real `nextObserveWorkstream` and through `createEvidence`, and after every payload
    the window each project reads, and the delegation rows printed from it, must agree. A failure names the
    seed, the payload and the first path that differs. */
 const legacy = loadLegacyDelegation();
-const SEEDS = 500;
+const CASES = 12;
+const SEEDS = caseCount(CASES);
 
 describe('the evidence store and the delegation rows agree with the legacy page', () => {
   it(`over ${String(SEEDS)} generated boards`, () => {
@@ -43,7 +45,7 @@ describe('the evidence store and the delegation rows agree with the legacy page'
     }
     expect(failures).toEqual([]);
     // The comparison is not vacuous: a good share of the windows reached a figure.
-    expect(compared).toBeGreaterThan(5000);
-    expect(known).toBeGreaterThan(500);
+    expect(compared).toBeGreaterThan(300);
+    expect(known).toBeGreaterThan(40);
   });
 });

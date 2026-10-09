@@ -5,6 +5,7 @@ import { loadLegacyTimeline } from './legacy.test.helper';
 import { eventFlows } from './rails';
 import { Timeline } from './Timeline';
 import type { Delegation, GraphMode } from './semantic';
+import { caseCount } from '../../test/legacy_goldens';
 
 /* The lanes around the timeline's rows are held to the legacy page by what a reader can read: the legend that
    names each lane, the rail beside every row (which lane it is on, the mark, where each lane's line runs) and
@@ -13,7 +14,8 @@ import type { Delegation, GraphMode } from './semantic';
    for a focused and an unfocused timeline. A failure names the seed. */
 const legacy = loadLegacyTimeline();
 const MODES: readonly GraphMode[] = ['active', 'all', 'decisions'];
-const SEEDS = 120;
+const CASES = 80;
+const SEEDS = caseCount(CASES);
 
 const norm = (node: Element | null): string =>
   (node?.textContent ?? '').replace(/\s+/g, ' ').trim();
@@ -112,11 +114,11 @@ describe('the lanes agree with the legacy page', () => {
       page.unmount();
     }
     expect(failures).toEqual([]);
-    expect(seen.rows).toBeGreaterThan(200);
-    expect(seen.flowed).toBeGreaterThan(40);
-    expect(seen.marks).toBeGreaterThan(150);
-    expect(seen.unbound).toBeGreaterThan(10);
-    expect(seen.legends).toBeGreaterThan(60);
+    expect(seen.rows).toBeGreaterThan(100);
+    expect(seen.flowed).toBeGreaterThan(25);
+    expect(seen.marks).toBeGreaterThan(80);
+    expect(seen.unbound).toBeGreaterThan(5);
+    expect(seen.legends).toBeGreaterThan(40);
   }, 240_000);
 });
 

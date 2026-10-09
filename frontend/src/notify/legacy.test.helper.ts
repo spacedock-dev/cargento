@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import vm from 'node:vm';
+import { legacyHarness } from '../../test/legacy_goldens';
 
 /* The legacy page's notification module, run as the page runs it, for the differential tests. The legacy
    source is the oracle: the page stays the rollback while this one is built. Only the browser objects the
@@ -37,7 +38,7 @@ export interface LegacyNotify {
   settle(): Promise<void>;
 }
 
-export function loadLegacyNotify(): LegacyNotify {
+function buildLegacyNotify(): LegacyNotify {
   const banners: RaisedBanner[] = [];
   const lanePosts: { body: string }[] = [];
   let now = 0;
@@ -145,4 +146,20 @@ export function loadLegacyNotify(): LegacyNotify {
       for (let turn = 0; turn < 6; turn += 1) await Promise.resolve();
     },
   };
+}
+
+export function loadLegacyNotify(): LegacyNotify {
+  return legacyHarness('notify', buildLegacyNotify, {
+    slots: {
+      setPermission: 'permission',
+      setSupported: 'supported',
+      setNow: 'now',
+      setLeader: 'leader',
+      setThrowing: 'throwing',
+      setLaneAnswer: 'laneAnswer',
+    },
+    observe: ['control'],
+    props: ['banners', 'lanePosts'],
+    async: ['settle'],
+  });
 }

@@ -17,6 +17,16 @@
  * real terminal. Run with `pnpm test:terminal:browser`; `CARGENTO_E2E_STEPS=<regex>` runs only the steps
  * whose name matches, `CARGENTO_SCREENSHOTS=1` writes captures to docs/screenshots/, and
  * `CARGENTO_MUTATION=<name>` applies one deliberate break (see MUTATIONS), which must make the run FAIL.
+ *
+ * What the legacy page said is read through `support/golden.mjs`: `CARGENTO_LEGACY=replay` (the default)
+ * reads it from `frontend/test/golden/e2e/terminal-parity.json`, starts no legacy backend and opens no
+ * legacy page; `live` and `record` run it. Each `pairs` reading is keyed by its step and its order inside
+ * the step. Every cross-page pixel comparison reads a distance that does not depend on the font (distance
+ * from live, live less the screen height), because the recording is replayed on another operating system's
+ * glyph metrics. Dropped in replay, with the reasons: the legacy screenshots (a capture is not an
+ * observation), and the legacy page's own socket, request and console counts, which every step asserts of
+ * the React page in the same loop. A legacy page that stopped drawing or failed a soft timing check cannot
+ * be recorded: `record` fails and the run is repeated on an idle machine.
  */
 import assert from 'node:assert/strict';
 import { mkdir } from 'node:fs/promises';
@@ -34,6 +44,7 @@ import {
   TERMINAL,
 } from './terminal-support.mjs';
 import { focusedLabel, tabTo } from './support/browser.mjs';
+import { goldenFor } from './support/golden.mjs';
 import { PRODUCTION as SHIPPED } from './support/world.mjs';
 
 /* Every fixed wait here means "give the page time to react". A hosted runner has a few shared cores and delivers
@@ -110,6 +121,7 @@ const results = {};
 const failures = [];
 async function step(name, run) {
   if (only && !only.test(name)) return;
+  reading = { step: name, index: 0 };
   const started = Date.now();
   try {
     const detail = await run();
@@ -169,6 +181,7 @@ const metricsOf = (page) =>
       client: viewport.clientHeight,
       max,
       live,
+      screen: screen ? screen.getBoundingClientRect().height : null,
       jumpHidden: jump ? jump.hidden : null,
     };
   });
@@ -240,21 +253,27 @@ function legacySoft(label, check) {
   try {
     check();
   } catch (error) {
+    // A recording must come from a legacy page that agreed on every check, or replay would hold React to less.
+    if (golden.mode === 'record') throw error;
     legacyNotes.push(`${label}: ${String(error.message || error).split('\n')[0]}`);
   }
 }
 async function waitBoth(text) {
   await waitRows(world.react.page, text);
-  if (legacyDraw.stale) return;
+  if (!golden.live || legacyDraw.stale) return;
   try {
     await waitRows(world.legacy.page, text, patience(6000));
-  } catch {
+  } catch (error) {
+    if (golden.mode === 'record') throw error;
     legacyDraw.stale = true;
   }
 }
 
 /* The sides: one tracked page each over the same backend pair. */
 const SIDES = ['legacy', 'react'];
+const golden = goldenFor('terminal-parity');
+/* The sides that run: both while the legacy code exists, React alone in replay. */
+const ACTIVE = golden.live ? SIDES : ['react'];
 
 /* A real press on Jump to live, only when it is on screen: a hidden control cannot be pressed. */
 async function jumpIfShown(side) {
@@ -298,9 +317,28 @@ async function ownerStats() {
   return { terminals, sockets, attached: terminals === 1 };
 }
 
-const both = (fn) => Promise.all(SIDES.map((name) => fn(world[name], name)));
-const pairs = async (read) => {
-  const [legacy, react] = await Promise.all(SIDES.map((name) => read(world[name])));
+const both = (fn) => Promise.all(ACTIVE.map((name) => fn(world[name], name)));
+/* A legacy reading is `golden.observe`d under the step's name and the reading's place in the step. */
+let reading = { step: '', index: 0 };
+const readingKey = (label) => {
+  reading.index += 1;
+  return `${reading.step} | ${label} #${reading.index}`;
+};
+const pairs = async (read, label = '', scrub) => {
+  const key = readingKey(label);
+  const [legacy, react] = await Promise.all([
+    golden.observe(key, () => read(world.legacy), { scrub }),
+    read(world.react),
+  ]);
+  return { legacy, react };
+};
+/* `pairs` for a reading that has to settle: each side settles alone, and the legacy one is recorded once, settled. */
+const settledPairs = async (read, label = '') => {
+  const key = readingKey(label);
+  const [legacy, react] = await Promise.all([
+    golden.observe(key, () => settled(() => read(world.legacy))),
+    settled(() => read(world.react)),
+  ]);
   return { legacy, react };
 };
 
@@ -309,14 +347,19 @@ try {
   const w = await startWorld({ mutations: MUTATIONS });
   started = w;
   browser = await chromium.launch();
-  const origins = [w.react.origin, w.react.viteOrigin, w.legacy.origin];
+  const origins = [w.react.origin, w.react.viteOrigin];
+  if (golden.live) origins.push(w.legacy.origin);
   world = {
-    legacy: {
-      name: 'legacy',
-      origin: w.legacy.origin,
-      control: w.legacy.control,
-      ...(await openTracked(browser, origins, { viewport: { width: 1100, height: 900 } })),
-    },
+    ...(golden.live
+      ? {
+          legacy: {
+            name: 'legacy',
+            origin: w.legacy.origin,
+            control: w.legacy.control,
+            ...(await openTracked(browser, origins, { viewport: { width: 1100, height: 900 } })),
+          },
+        }
+      : {}),
     react: {
       name: 'react',
       origin: w.react.origin,
@@ -333,7 +376,7 @@ try {
     async () => {
       await both((side) => ready(side, consoleFragment));
       await both((side) => openButton(side).waitFor());
-      for (const name of SIDES) {
+      for (const name of ACTIVE) {
         const side = world[name];
         assert.equal(side.stream().length, 0, `${name}: a socket opened before the press`);
         assert.equal(
@@ -356,7 +399,7 @@ try {
       await both((side) => openButton(side).click());
       await both((side) => side.page.locator('#pc-terminal-screen .xterm').waitFor());
       await both((side) => waitRows(side.page, TERMINAL.banner));
-      for (const name of SIDES) {
+      for (const name of ACTIVE) {
         const side = world[name];
         assert.equal(side.stream().length, 1, `${name}: expected one terminal socket`);
         assert.equal(
@@ -440,7 +483,13 @@ try {
         metrics.legacy.live > 20,
         `the terminal is not taller than its window: ${JSON.stringify(metrics.legacy)}`,
       );
-      near(metrics.react.live, metrics.legacy.live, 1, 'live position');
+      // Live less the screen height is the page's own insets and window, not glyph metrics.
+      near(
+        metrics.react.live - metrics.react.screen,
+        metrics.legacy.live - metrics.legacy.screen,
+        1,
+        'live position',
+      );
       near(metrics.react.top, metrics.react.live, 2, 'react follows to the live position');
       near(metrics.legacy.top, metrics.legacy.live, 2, 'legacy follows to the live position');
       assert.equal(metrics.react.jumpHidden, true);
@@ -451,10 +500,11 @@ try {
           path: join(SHOTS, 'drc-4824-terminal-react-1100px.png'),
           fullPage: true,
         });
-        await world.legacy.page.screenshot({
-          path: join(SHOTS, 'drc-4824-terminal-legacy-1100px.png'),
-          fullPage: true,
-        });
+        if (golden.live)
+          await world.legacy.page.screenshot({
+            path: join(SHOTS, 'drc-4824-terminal-legacy-1100px.png'),
+            fullPage: true,
+          });
       }
       return {
         live: metrics.react.live,
@@ -467,13 +517,18 @@ try {
   await step(
     'scrolling away stops following: Jump shows and new output does not move the reader',
     async () => {
-      for (const name of SIDES) await wheelOverInset(world[name], -160);
+      for (const name of ACTIVE) await wheelOverInset(world[name], -160);
       await pause(300);
       const before = await pairs((side) => metricsOf(side.page));
       assert.equal(before.legacy.jumpHidden, false, 'Jump to live did not show in legacy');
       assert.equal(before.react.jumpHidden, false, 'Jump to live did not show in react');
       assert.ok(before.react.top < before.react.live - 20);
-      near(before.react.top, before.legacy.top, 1, 'scrolled offset');
+      near(
+        before.react.live - before.react.top,
+        before.legacy.live - before.legacy.top,
+        1,
+        'scrolled offset (distance from live)',
+      );
       await both((side, name) => emit(world[name], numbered(61, 66)));
       await both((side) => waitRows(side.page, 'line 066'));
       await pause(250);
@@ -493,7 +548,12 @@ try {
     const jumped = await pairs((side) => metricsOf(side.page));
     near(jumped.react.top, jumped.react.live, 2, 'react did not reach live');
     near(jumped.legacy.top, jumped.legacy.live, 2, 'legacy did not reach live');
-    near(jumped.react.top, jumped.legacy.top, 1, 'jump offset');
+    near(
+      jumped.react.top - jumped.react.screen,
+      jumped.legacy.top - jumped.legacy.screen,
+      1,
+      'jump offset',
+    );
     assert.equal(jumped.react.jumpHidden, true);
     assert.equal(jumped.legacy.jumpHidden, true);
     await both((side, name) => emit(world[name], numbered(67, 72)));
@@ -502,7 +562,12 @@ try {
     const followed = await pairs((side) => metricsOf(side.page));
     near(followed.react.top, followed.react.live, 2, 'react stopped following');
     near(followed.legacy.top, followed.legacy.live, 2, 'legacy stopped following');
-    near(followed.react.top, followed.legacy.top, 1, 'followed offset');
+    near(
+      followed.react.top - followed.react.screen,
+      followed.legacy.top - followed.legacy.screen,
+      1,
+      'followed offset',
+    );
   });
 
   await step(
@@ -511,13 +576,14 @@ try {
       const flips = { legacy: [], react: [] };
       const distances = [0, 1, 2, 3, 4, 6];
       for (const distance of distances) {
-        for (const name of SIDES) {
+        for (const name of ACTIVE) {
           const { live } = await metricsOf(world[name].page);
           await scrollTo(world[name].page, live);
           await scrollTo(world[name].page, live - distance);
         }
-        const state = await settled(() =>
-          pairs(async (side) => (({ jumpHidden }) => ({ jumpHidden }))(await metricsOf(side.page))),
+        const state = await settledPairs(
+          async (side) => (({ jumpHidden }) => ({ jumpHidden }))(await metricsOf(side.page)),
+          `threshold ${distance}`,
         );
         flips.legacy.push(state.legacy.jumpHidden);
         flips.react.push(state.react.jumpHidden);
@@ -542,7 +608,7 @@ try {
     'typing, pasting and key presses transmit no frame, and nothing revokes the socket',
     async () => {
       await both((side) => jumpIfShown(side));
-      for (const name of SIDES) {
+      for (const name of ACTIVE) {
         const { page } = world[name];
         await page.locator('#pc-terminal-screen .xterm-helper-textarea').focus();
         await page.keyboard.type('echo this must never leave the browser');
@@ -568,7 +634,7 @@ try {
         await page.keyboard.type('and clicking first');
       }
       await pause(600);
-      for (const name of SIDES) {
+      for (const name of ACTIVE) {
         const [socket] = world[name].stream();
         assert.deepEqual(
           socket.sent,
@@ -592,17 +658,16 @@ try {
     'leaving the route and coming back finds the same screen, output, socket and offset',
     async () => {
       // Put the reader somewhere that is not the end.
-      for (const name of SIDES) await wheelOverInset(world[name], -30);
+      for (const name of ACTIVE) await wheelOverInset(world[name], -30);
       await pause(300);
       const before = await pairs((side) => metricsOf(side.page));
       assert.equal(before.react.jumpHidden, false);
       await world.react.page.evaluate(() => {
         globalThis.__mark = globalThis.document.getElementById('pc-terminal-screen');
       });
-      const requests = {
-        legacy: world.legacy.requestsTo('/assets/xterm').length,
-        react: world.react.requestsTo('/assets/xterm').length,
-      };
+      const requests = Object.fromEntries(
+        ACTIVE.map((name) => [name, world[name].requestsTo('/assets/xterm').length]),
+      );
       await both((side) =>
         side.page.evaluate((fragment) => {
           globalThis.location.hash = fragment;
@@ -613,7 +678,7 @@ try {
       );
       await both((side, name) => emit(world[name], 'printed while away\r\n'));
       await pause(400);
-      for (const name of SIDES)
+      for (const name of ACTIVE)
         assert.equal(
           world[name].stream().filter((socket) => socket.closed === null).length,
           1,
@@ -638,7 +703,7 @@ try {
       near(after.react.top, before.react.top, 1, 'react did not restore the offset');
       near(after.legacy.top, before.legacy.top, 1, 'legacy did not restore the offset');
       assert.equal(after.react.jumpHidden, false);
-      for (const name of SIDES) {
+      for (const name of ACTIVE) {
         assert.equal(world[name].stream().length, 1, `${name}: coming back opened another socket`);
         assert.equal(
           world[name].requestsTo('/assets/xterm').length,
@@ -669,13 +734,14 @@ try {
   await step(
     'an offset past the new scroll maximum is clamped to it on return, as the legacy page clamps',
     async () => {
-      for (const name of SIDES) await world[name].page.setViewportSize({ width: 700, height: 900 });
+      for (const name of ACTIVE)
+        await world[name].page.setViewportSize({ width: 700, height: 900 });
       await pause(300);
-      for (const name of SIDES) {
+      for (const name of ACTIVE) {
         const { live } = await metricsOf(world[name].page);
         await scrollTo(world[name].page, live - 30);
       }
-      const before = await settled(() => pairs((side) => metricsOf(side.page)));
+      const before = await settledPairs((side) => metricsOf(side.page), 'before');
       assert.equal(before.react.jumpHidden, false);
       await both((side) =>
         side.page.evaluate((fragment) => {
@@ -686,12 +752,12 @@ try {
         side.page.locator('#pc-terminal-viewport').waitFor({ state: 'detached' }),
       );
       // Wider again: the window is taller, so the same content has a smaller maximum.
-      for (const name of SIDES)
+      for (const name of ACTIVE)
         await world[name].page.setViewportSize({ width: 1100, height: 900 });
       await pause(200);
       await both((side) => side.page.goBack());
       await both((side) => side.page.locator('#pc-terminal-viewport').waitFor());
-      const after = await settled(() => pairs((side) => metricsOf(side.page)));
+      const after = await settledPairs((side) => metricsOf(side.page), 'after');
       // The legacy page is the oracle: a clamp it does not show on a loaded runner is recorded (see legacySoft), and
       // the React page is held to every assertion.
       for (const name of SIDES) {
@@ -725,7 +791,7 @@ try {
       await both((side, name) => disconnect(world[name]));
       await waitBoth('control-mode-disconnected');
       await pause(3300);
-      for (const name of SIDES) {
+      for (const name of ACTIVE) {
         const sockets = world[name].stream();
         assert.ok(
           sockets.length >= 3,
@@ -745,7 +811,7 @@ try {
           `${name}: a reconnect sent a frame`,
         );
       }
-      for (const name of SIDES) {
+      for (const name of ACTIVE) {
         const response = await fetch(world[name].origin + '/api/interaction/reconnect', {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
@@ -770,9 +836,9 @@ try {
       /* The count is taken once Close has taken effect: the stream was still reconnecting when it was pressed, and
        a reconnect that landed between a count taken before the press and the press itself is not a socket opened
        after Close (a hosted runner measured exactly that: 10 against 9). */
-      const before = { legacy: world.legacy.stream().length, react: world.react.stream().length };
+      const before = Object.fromEntries(ACTIVE.map((name) => [name, world[name].stream().length]));
       await pause(2600);
-      for (const name of SIDES) {
+      for (const name of ACTIVE) {
         const sockets = world[name].stream();
         assert.equal(sockets.length, before[name], `${name}: a socket opened after Close`);
         assert.ok(
@@ -794,11 +860,11 @@ try {
   );
 
   await step('opening again after Close opens one fresh terminal, not two', async () => {
-    const before = { legacy: world.legacy.stream().length, react: world.react.stream().length };
+    const before = Object.fromEntries(ACTIVE.map((name) => [name, world[name].stream().length]));
     await both((side) => openButton(side).click());
     await both((side) => side.page.locator('#pc-terminal-screen .xterm').waitFor());
     await waitBoth(TERMINAL.banner);
-    for (const name of SIDES) {
+    for (const name of ACTIVE) {
       assert.equal(
         world[name].stream().length,
         before[name] + 1,
@@ -821,14 +887,14 @@ try {
   await step(
     'keyboard: Open terminal, Jump to live and Close are reached by Tab, operated by Enter and Space, and focus is no worse than the legacy page leaves it',
     async () => {
-      const trace = {};
       /* The legacy page is the oracle, and on a loaded runner a keyboard leg it fails is recorded instead of
-         failing the run; the React page is always held to every assertion. */
+         failing the run; the React page is always held to every assertion. A recording is not made from a leg
+         that failed. */
       async function leg(side, label, run) {
         try {
           await run();
         } catch (error) {
-          if (side.name !== 'legacy') throw error;
+          if (side.name !== 'legacy' || golden.mode === 'record') throw error;
           legacyNotes.push(`keyboard ${label}: ${String(error.message || error).split('\n')[0]}`);
           return false;
         }
@@ -839,10 +905,9 @@ try {
          assertion. The React page may not drop it where the legacy page keeps it, and the page has to stay
          operable by keyboard from there, which every `tabTo` below proves by starting from the top again. */
       const after = (side) => focusedLabel(side.page);
-      for (const name of SIDES) {
+      const legs = async (name) => {
         const side = world[name];
         const seen = {};
-        trace[name] = seen;
         await ready(side, consoleFragment);
         await revealSetup(side);
         await openButton(side).waitFor();
@@ -904,7 +969,12 @@ try {
         // Leave both pages closed for the step after, whatever the legacy page did.
         const close = side.page.getByRole('button', { name: 'Close' });
         if (await close.count()) await close.click().catch(() => undefined);
-      }
+        return seen;
+      };
+      const trace = {
+        legacy: await golden.observe(`${reading.step} | legs`, () => legs('legacy')),
+        react: await legs('react'),
+      };
       for (const phase of ['afterOpen', 'afterJump', 'afterClose']) {
         // A legacy leg that failed softly left no reading; React is then held to nothing it cannot be compared with.
         if (trace.legacy[phase] === undefined) continue;
@@ -951,7 +1021,7 @@ try {
         globalThis.__recipe = globalThis.document.querySelector('details:has(.pc-substrate-steps)');
       });
       await refreshReact(world.react.page, SHIPPED);
-      await world.legacy.page.evaluate(() => globalThis.nextRefreshPoll());
+      if (golden.live) await world.legacy.page.evaluate(() => globalThis.nextRefreshPoll());
       await pause(500);
       const open = await pairs((side) =>
         side.page.evaluate(
@@ -1049,7 +1119,7 @@ try {
     async () => {
       const report = {};
       for (const width of [320, 375]) {
-        for (const name of SIDES) await world[name].page.setViewportSize({ width, height: 800 });
+        for (const name of ACTIVE) await world[name].page.setViewportSize({ width, height: 800 });
         await both((side) => ready(side, consoleFragment));
         await both((side) => openButton(side).click());
         await both((side) => side.page.locator('#pc-terminal-screen .xterm').waitFor());
@@ -1115,14 +1185,15 @@ try {
             path: join(SHOTS, `drc-4824-terminal-react-${width}px.png`),
             fullPage: true,
           });
-          await world.legacy.page.screenshot({
-            path: join(SHOTS, `drc-4824-terminal-legacy-${width}px.png`),
-            fullPage: true,
-          });
+          if (golden.live)
+            await world.legacy.page.screenshot({
+              path: join(SHOTS, `drc-4824-terminal-legacy-${width}px.png`),
+              fullPage: true,
+            });
         }
         await both((side) => side.page.getByRole('button', { name: 'Close' }).click());
       }
-      for (const name of SIDES)
+      for (const name of ACTIVE)
         await world[name].page.setViewportSize({ width: 1100, height: 900 });
       return report;
     },
@@ -1149,7 +1220,7 @@ try {
   );
 
   await step('no external request, page error or console error in either page', async () => {
-    for (const name of SIDES) {
+    for (const name of ACTIVE) {
       assert.deepEqual(world[name].log.externalRequests, [], `${name}: an external request`);
       assert.deepEqual(world[name].log.pageErrors, [], `${name}: a page error`);
       assert.deepEqual(
@@ -1165,6 +1236,8 @@ try {
       assert.deepEqual(world[name].log.nonGet, [], `${name}: a request that was not a GET`);
     }
   });
+
+  golden.finish({ complete: !only && !w.mutation && failures.length === 0 });
 
   console.log(
     JSON.stringify(

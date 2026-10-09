@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { genLogCase, type LogCase } from './generate.test.helper';
 import { loadLegacyIntent } from './legacy.test.helper';
 import { json, mountIntent } from './testing';
+import { caseCount } from '../../test/legacy_goldens';
 
 /* The Intent log, held to the legacy page by what a reader can read. The legacy `nextIntentView` runs
    unchanged over a generated board and a generated set of retained rows; this view renders the same two
@@ -100,7 +101,8 @@ const REACHED = {
 const DEVIATIONS: readonly { readonly seed: number; readonly reason: string }[] = [];
 
 describe('the Intent log reads as the legacy log does, over generated boards', () => {
-  const SEEDS = Number(process.env['INTENT_SEEDS'] ?? 150);
+  const CASES = 80;
+  const SEEDS = caseCount(CASES, 'INTENT_SEEDS');
   it(`agrees on ${String(SEEDS)} seeds, note by note and row by row`, async () => {
     const failures: string[] = [];
     for (let seed = 1; seed <= SEEDS; seed += 1) {

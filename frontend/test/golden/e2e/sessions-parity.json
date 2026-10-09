@@ -1,0 +1,2868 @@
+{
+ "proof": "sessions-parity",
+ "observations": {
+  "real board: list": {
+   "header": "COMMAND SURFACESession operationsNo session has been checked for drift yet; open one to check it.How rows are splitBlocked sessions lead, followed by recorded departures, then working sessions. The Active now figure counts active evidence only; a recorded departure adds no active session.Goal sourcesYour first prompt, or your latest where the first is not published, comes from Claude Code or Codex; other harnesses show only your typed words. A goal marked from your prompt was adopted by you; showing a prompt alone adopts nothing, and Drift names a recorded departure.",
+   "fleet": [
+    [
+     "active",
+     "ACTIVE NOW415 recently observed"
+    ],
+    [
+     "working",
+     "WORKING22 waiting on you"
+    ],
+    [
+     "requests",
+     "EXACT REQUESTS22 of 15 sessions carry an exact request"
+    ],
+    [
+     "reported-blocks",
+     "REPORTED BLOCKS1414 of 15 sessions report block state"
+    ]
+   ],
+   "groups": [
+    {
+     "kind": "active",
+     "header": "Active nowworking, waiting on you, an exact request, or recorded drift",
+     "empty": null,
+     "rows": [
+      {
+       "harness": "claude",
+       "sid": "gate-open",
+       "history": false,
+       "tone": "next-operation-row--want",
+       "href": "#n=session:alpha%2Fapp:claude:gate-open",
+       "aria": "Open session Needs a decision",
+       "text": "SESSIONClaude CodeNeeds a decisionCopy ID5 sessions share this display label; shared location is not establishedWHERE · PROJECT LABELExact location not publishedalpha/appGOALAdd a goalNOW · NEEDS INPUTwaiting on a permission promptNEXTNo pending step publishedBLOCKED · NEEDS YOUWaiting on youApprove the retry plan?",
+       "buttons": [
+        "Copy session ID gate-open"
+       ]
+      },
+      {
+       "harness": "claude",
+       "sid": "spacedock-asked",
+       "history": false,
+       "tone": "next-operation-row--want",
+       "href": "#n=session:delta:claude:spacedock-asked",
+       "aria": "Open session A captain's question",
+       "text": "SESSIONClaude CodeA captain's questionCopy ID3 sessions share this display label; shared location is not establishedWHERE · PROJECT LABELExact location not publisheddeltaGOALAdd a goalNOW · IDLEawaiting your messageNEXTNo pending step publishedBLOCKED · CAPTAINWaiting on youShip the stage?QUIET",
+       "buttons": [
+        "Copy session ID spacedock-asked"
+       ]
+      },
+      {
+       "harness": "claude",
+       "sid": "long-turn",
+       "history": false,
+       "tone": "next-operation-row--want",
+       "href": "#n=session:gamma:claude:long-turn",
+       "aria": "Open session A long turn and a failing loop",
+       "text": "SESSIONClaude Code●A long turn and a failing loopCopy ID2 sessions share this display label; shared location is not establishedWHERE · PROJECT LABELExact location not publishedgammaGOALAdd a goalNOW · WORKINGawaiting your messageNEXTNo pending step publishedBLOCKEDNo reported block",
+       "buttons": [
+        "Copy session ID long-turn"
+       ]
+      },
+      {
+       "harness": "claude",
+       "sid": "live-work",
+       "history": false,
+       "tone": "next-operation-row--ok",
+       "href": "#n=session:alpha%2Fapp:claude:live-work",
+       "aria": "Open session Retry the queue",
+       "text": "SESSIONClaude Code●Retry the queueCopy IDASSIGNMENT · Drain the retry queue in order5 sessions share this display label; shared location is not establishedWHERE · PROJECT LABELExact location not publishedalpha/appGOAL · YOUR FIRST PROMPTMake the retry queue drain in orderNOW · WORKINGFix the drain orderNEXTRun the suiteBLOCKEDNo reported block",
+       "buttons": [
+        "Copy session ID live-work"
+       ]
+      }
+     ]
+    },
+    {
+     "kind": "history",
+     "header": "Recent historyWhat recent meansRecently observed is not proof the harness process is still open or closed; rows marked ENDED reported their own end.",
+     "empty": null,
+     "rows": [
+      {
+       "harness": "claude",
+       "sid": "ended-still-working",
+       "history": true,
+       "tone": "next-operation-row--bad",
+       "href": "#n=session:beta%2Fapi:claude:ended-still-working",
+       "aria": "Open session Ended but still says working",
+       "text": "SESSIONClaude CodeEnded but still says workingCopy ID3 sessions share this display label; shared location is not establishedWHERE · PROJECT LABELExact location not publishedbeta/apiGOALAdd a goalNOW · ENDEDSession reported its own endended 1m ago△ Session ended with uncommitted work3 changed entriesENDED",
+       "buttons": [
+        "Copy session ID ended-still-working"
+       ]
+      },
+      {
+       "harness": "codex",
+       "sid": "idle-recent",
+       "history": true,
+       "tone": "next-operation-row--ok",
+       "href": "#n=session:alpha%2Fapp:codex:idle-recent",
+       "aria": "Open session Idle and recent",
+       "text": "SESSIONCodexIdle and recentCopy ID5 sessions share this display label; shared location is not establishedWHERE · PROJECT LABELExact location not publishedalpha/appGOALAdd a goalNOW · IDLElast active 10s agoQUIET",
+       "buttons": [
+        "Copy session ID idle-recent"
+       ]
+      },
+      {
+       "harness": "claude",
+       "sid": "stopped-dirty",
+       "history": true,
+       "tone": "next-operation-row--bad",
+       "href": "#n=session:beta%2Fapi:claude:stopped-dirty",
+       "aria": "Open session Stopped with uncommitted work",
+       "text": "SESSIONClaude CodeStopped with uncommitted workCopy ID3 sessions share this display label; shared location is not establishedWHERE · PROJECT LABELExact location not publishedbeta/apiGOALAdd a goalNOW · IDLElast active 8m ago△ Stop observed with uncommitted work2 changed entriesQUIET",
+       "buttons": [
+        "Copy session ID stopped-dirty"
+       ]
+      },
+      {
+       "harness": "claude",
+       "sid": "delegated",
+       "history": true,
+       "tone": "next-operation-row--ok",
+       "href": "#n=session:gamma:claude:delegated",
+       "aria": "Open session Launched work nobody saw finish",
+       "text": "SESSIONClaude CodeLaunched work nobody saw finishCopy ID2 sessions share this display label; shared location is not establishedWHERE · PROJECT LABELExact location not publishedgammaGOALAdd a goalNOW · IDLElast active 40m agoQUIET",
+       "buttons": [
+        "Copy session ID delegated"
+       ]
+      },
+      {
+       "harness": "claude",
+       "sid": "shared-sid",
+       "history": true,
+       "tone": "next-operation-row--ok",
+       "href": "#n=session:alpha%2Fapp:claude:shared-sid",
+       "aria": "Open session Shared sid under claude",
+       "text": "SESSIONClaude CodeShared sid under claudeCopy ID5 sessions share this display label; shared location is not establishedWHERE · PROJECT LABELExact location not publishedalpha/appGOALAdd a goalNOW · IDLElast active 50m agoQUIET",
+       "buttons": [
+        "Copy session ID shared-sid"
+       ]
+      },
+      {
+       "harness": "codex",
+       "sid": "shared-sid",
+       "history": true,
+       "tone": "next-operation-row--ok",
+       "href": "#n=session:alpha%2Fapp:codex:shared-sid",
+       "aria": "Open session Shared sid under codex",
+       "text": "SESSIONCodexShared sid under codexCopy ID5 sessions share this display label; shared location is not establishedWHERE · PROJECT LABELExact location not publishedalpha/appGOALAdd a goalNOW · IDLElast active 51m agoQUIET",
+       "buttons": [
+        "Copy session ID shared-sid"
+       ]
+      },
+      {
+       "harness": "codex",
+       "sid": "colon:sid",
+       "history": true,
+       "tone": "next-operation-row--ok",
+       "href": "#n=session:beta%2Fapi:codex:colon%3Asid",
+       "aria": "Open session Title not published",
+       "text": "SESSIONCodexTitle not publishedCopy IDLAST PROMPT · A prompt with no title3 sessions share this display label; shared location is not establishedWHERE · PROJECT LABELExact location not publishedbeta/apiGOALAdd a goalNOW · IDLElast active 53m agoQUIET",
+       "buttons": [
+        "Copy session ID colon:sid"
+       ]
+      },
+      {
+       "harness": "codex",
+       "sid": "no-project",
+       "history": true,
+       "tone": "next-operation-row--ok",
+       "href": "#n=session::codex:no-project",
+       "aria": "Open session No project label",
+       "text": "SESSIONCodexNo project labelCopy IDWHERE · PROJECT LABELExact location not publishedGOALAdd a goalNOW · IDLElast active 55m agoQUIET",
+       "buttons": [
+        "Copy session ID no-project"
+       ]
+      },
+      {
+       "harness": "codex",
+       "sid": "scan-only",
+       "history": true,
+       "tone": "next-operation-row--ok",
+       "href": "#n=session:delta:codex:scan-only",
+       "aria": "Open session Read by scanning",
+       "text": "SESSIONCodexRead by scanningCopy ID3 sessions share this display label; shared location is not establishedRead by scanning: no turn end can be observed hereWHERE · PROJECT LABELExact location not publisheddeltaGOALAdd a goalNOW · IDLElast active 56m agoQUIET",
+       "buttons": [
+        "Copy session ID scan-only"
+       ]
+      },
+      {
+       "harness": "codex",
+       "sid": "source-gap",
+       "history": true,
+       "tone": "next-operation-row--unknown",
+       "href": "#n=session:delta:codex:source-gap",
+       "aria": "Open session Part of its store was unreadable",
+       "text": "SESSIONCodexPart of its store was unreadableCopy ID3 sessions share this display label; shared location is not establishedSource not fully read: block state, token accountingWHERE · PROJECT LABELExact location not publisheddeltaGOALAdd a goalNOW · IDLElast active 58m agoQUIET",
+       "buttons": [
+        "Copy session ID source-gap"
+       ]
+      },
+      {
+       "harness": "claude",
+       "sid": "unicode-title",
+       "history": true,
+       "tone": "next-operation-row--ok",
+       "href": "#n=session:%C3%BCn%C3%AF%2F%C3%A7%C3%B8d%C3%A9:claude:unicode-title",
+       "aria": "Open session Ünï ✓ <b>not markup</b> & \"quotes\"",
+       "text": "SESSIONClaude CodeÜnï ✓ <b>not markup</b> & \"quotes\"Copy IDWHERE · PROJECT LABELExact location not publishedünï/çødéGOALAdd a goalNOW · IDLElast active 1h 6m agoQUIET",
+       "buttons": [
+        "Copy session ID unicode-title"
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  "real board: page claude/gate-open": {
+   "attrs": [
+    "gate-open",
+    "needs_input",
+    "want",
+    true
+   ],
+   "header": "State: needs inputNeeds a decisionclaude · gate-open · 0 /m · alpha/appClaude Code · waiting on a permission prompt · blocked 2mCopy IDCopy linkCopy commandNo terminal to raiseWhyNo terminal was reported for this session, so it cannot be raised. That is the ordinary answer outside tmux, for a session older than this server run, and on Linux and Windows.",
+   "headerLinks": [
+    "#n=project:alpha%2Fapp"
+   ],
+   "headerButtons": [
+    "Copy session ID gate-open",
+    "Copy a link to this session",
+    "Copy re-entry command claude --resume gate-open"
+   ],
+   "ask": "ASKED YOU · NsAGENT IS ASKING · Claude Code is asking youNEEDS YOUApprove the retry plan?Yes, run itNo, stopAsk me later",
+   "answers": [
+    "ask#0:Yes, run it",
+    "ask#1:No, stop",
+    "ask#2:Ask me later"
+   ],
+   "parts": [
+    [
+     ".next-session-activity-heading",
+     "Session activity"
+    ],
+    [
+     ".next-session-command-surface",
+     "CURRENT ACTIVITYwaiting on you · waiting on a permission promptagent, 1m: Choose how to continue"
+    ],
+    [
+     "dl.next-session-facts",
+     "NEXT STEPNo pending step publishedBLOCKEDWaiting on youApprove the retry plan?"
+    ],
+    [
+     "details.next-session-facts-more",
+     "Session facts: No stop or end observed · Git state was not measuredTURNNo turn in progressOUTCOMENo stop or end observedGIT STATEGit state was not measuredPROJECTalpha/app"
+    ],
+    [
+     ".next-session-evidence",
+     ""
+    ],
+    [
+     "[data-next-command-reports]",
+     "Command-shape reportsNo command-shape reports.About these reportsNo matching reports received; missing hooks and unmatched commands can look the same.A shape match does not prove the action succeeded.Claude Code and Codex after-tool hooks only. Reports may repeat or arrive out of order. This run keeps up to 1,000 reports, 20 per session, for at most 24 hours; restarting clears them."
+    ],
+    [
+     ".next-cockpit-landed",
+     "HOW IT LANDEDEND EVIDENCENo stop or end observed while the session is runningWHO CLAIMS IT FINISHEDNothing has claimed this session finishedGit state was not measured, so nothing was observed apart from the session's own accountNeither card implies the other.Why two cardsEvidence of an end and a claim of completion are separate questions."
+    ],
+    [
+     ".next-cockpit-departures-kept",
+     "Intent logWhat it keepsThe Intent log keeps what you saved and what was raised against it after the session leaves the board."
+    ]
+   ],
+   "footer": ""
+  },
+  "real board: page claude/ended-still-working": {
+   "attrs": [
+    "ended-still-working",
+    "working",
+    "bad",
+    false
+   ],
+   "header": "State: endedEnded but still says workingclaude · ended-still-working · 0 /m · beta/apiClaude Code · ended 1m agoCopy IDCopy linkNo resume command · No terminal to raiseWhyThis session published no usable id this run, so there is no re-entry command to copy.No terminal was reported for this session, so it cannot be raised. That is the ordinary answer outside tmux, for a session older than this server run, and on Linux and Windows.",
+   "headerLinks": [
+    "#n=project:beta%2Fapi"
+   ],
+   "headerButtons": [
+    "Copy session ID ended-still-working",
+    "Copy a link to this session"
+   ],
+   "ask": null,
+   "answers": [],
+   "parts": [
+    [
+     ".next-session-activity-heading",
+     "Session activity"
+    ],
+    [
+     ".next-session-command-surface",
+     "CURRENT ACTIVITYsession ended · Session reported its own end"
+    ],
+    [
+     "dl.next-session-facts",
+     "NEXT STEPNo pending step publishedBLOCKEDNo reported block"
+    ],
+    [
+     "details.next-session-facts-more",
+     "Session facts: Session ended with uncommitted workTURNNo turn in progressOUTCOMESession ended with uncommitted workGIT STATE3 changed entriesPROJECTbeta/api"
+    ],
+    [
+     ".next-session-evidence",
+     ""
+    ],
+    [
+     "[data-next-command-reports]",
+     "Command-shape reportsNo command-shape reports.About these reportsNo matching reports received; missing hooks and unmatched commands can look the same.A shape match does not prove the action succeeded.Claude Code and Codex after-tool hooks only. Reports may repeat or arrive out of order. This run keeps up to 1,000 reports, 20 per session, for at most 24 hours; restarting clears them."
+    ],
+    [
+     ".next-cockpit-landed",
+     "HOW IT LANDEDEND EVIDENCEA session end was observedWHO CLAIMS IT FINISHEDThe agent reported it finished3 changed entries were observed, which shows work happened and not that the requested output existsNeither card implies the other.Why two cardsEvidence of an end and a claim of completion are separate questions."
+    ],
+    [
+     ".next-cockpit-departures-kept",
+     "Intent logWhat it keepsThe Intent log keeps what you saved and what was raised against it after the session leaves the board."
+    ]
+   ],
+   "footer": ""
+  },
+  "real board: page claude/live-work": {
+   "attrs": [
+    "live-work",
+    "working",
+    "ok",
+    false
+   ],
+   "header": "State: workingRetry the queueclaude · live-work · 1,234 /m · alpha/appClaude Code · generating · turn started 4m agoCopy IDCopy linkCopy commandNo terminal to raiseWhyNo terminal was reported for this session, so it cannot be raised. That is the ordinary answer outside tmux, for a session older than this server run, and on Linux and Windows.",
+   "headerLinks": [
+    "#n=project:alpha%2Fapp"
+   ],
+   "headerButtons": [
+    "Copy session ID live-work",
+    "Copy a link to this session",
+    "Copy re-entry command claude --resume live-work"
+   ],
+   "ask": null,
+   "answers": [],
+   "parts": [
+    [
+     ".next-session-activity-heading",
+     "Session activity"
+    ],
+    [
+     ".next-session-command-surface",
+     "CURRENT ACTIVITYworking · Fix the drain order"
+    ],
+    [
+     "[data-next-session-subagents]",
+     "1 RUNNING SUBAGENT · 1 WORKER RUNNING BENEATH●lead4m●child · lead1m○finished15m+2 older finished workers omitted"
+    ],
+    [
+     "dl.next-session-facts",
+     "NEXT STEPRun the suiteBLOCKEDNo reported block"
+    ],
+    [
+     "details.next-session-facts-more",
+     "Session facts: No stop or end observed · Git state was not measuredTURN4m into turn · 2m estimated remainingOUTCOMENo stop or end observedGIT STATEGit state was not measuredPROJECTalpha/app"
+    ],
+    [
+     ".next-session-evidence",
+     "ASSIGNMENTasked, 5m: Drain the retry queue in order"
+    ],
+    [
+     "[data-next-session-section=\"tasks\"]",
+     "TASKS · 1 OF 3 DONE✓Write the failing test●Fix the drain order○Run the suite"
+    ],
+    [
+     "[data-next-command-reports]",
+     "Command-shape reportsNo command-shape reports.About these reportsNo matching reports received; missing hooks and unmatched commands can look the same.A shape match does not prove the action succeeded.Claude Code and Codex after-tool hooks only. Reports may repeat or arrive out of order. This run keeps up to 1,000 reports, 20 per session, for at most 24 hours; restarting clears them."
+    ],
+    [
+     ".next-cockpit-landed",
+     "HOW IT LANDEDEND EVIDENCENo stop or end observed while the session is runningWHO CLAIMS IT FINISHEDNothing has claimed this session finishedGit state was not measured, so nothing was observed apart from the session's own accountNeither card implies the other.Why two cardsEvidence of an end and a claim of completion are separate questions."
+    ],
+    [
+     ".next-cockpit-departures-kept",
+     "Intent logWhat it keepsThe Intent log keeps what you saved and what was raised against it after the session leaves the board."
+    ]
+   ],
+   "footer": "1.5k output tokens this turn"
+  },
+  "real board: page claude/long-turn": {
+   "attrs": [
+    "long-turn",
+    "working",
+    "want",
+    false
+   ],
+   "header": "State: workingA long turn and a failing loopclaude · long-turn · 0 /m · gammaClaude Code · awaiting your message · turn started 41m agoCopy IDCopy linkNo resume command · No terminal to raiseWhyThis session published no usable id this run, so there is no re-entry command to copy.No terminal was reported for this session, so it cannot be raised. That is the ordinary answer outside tmux, for a session older than this server run, and on Linux and Windows.",
+   "headerLinks": [
+    "#n=project:gamma"
+   ],
+   "headerButtons": [
+    "Copy session ID long-turn",
+    "Copy a link to this session"
+   ],
+   "ask": null,
+   "answers": [],
+   "parts": [
+    [
+     ".next-session-activity-heading",
+     "Session activity"
+    ],
+    [
+     ".next-session-command-surface",
+     "CURRENT ACTIVITYworking · awaiting your message"
+    ],
+    [
+     "dl.next-session-facts",
+     "NEXT STEPNo pending step publishedBLOCKEDNo reported block"
+    ],
+    [
+     "details.next-session-facts-more",
+     "Session facts: No stop or end observed · Git state was not measuredTURN41m into turnOUTCOMENo stop or end observedGIT STATEGit state was not measuredPROJECTgamma"
+    ],
+    [
+     ".next-session-evidence",
+     ""
+    ],
+    [
+     ".next-session-health",
+     "LONG TURN — 5 tool calls failed this turn, 3 of them consecutive (most recently Slack · send message). Check the agent is working the problem rather than repeating the failure."
+    ],
+    [
+     "[data-next-command-reports]",
+     "Command-shape reportsNo command-shape reports.About these reportsNo matching reports received; missing hooks and unmatched commands can look the same.A shape match does not prove the action succeeded.Claude Code and Codex after-tool hooks only. Reports may repeat or arrive out of order. This run keeps up to 1,000 reports, 20 per session, for at most 24 hours; restarting clears them."
+    ],
+    [
+     ".next-cockpit-landed",
+     "HOW IT LANDEDEND EVIDENCENo stop or end observed while the session is runningWHO CLAIMS IT FINISHEDNothing has claimed this session finishedGit state was not measured, so nothing was observed apart from the session's own accountNeither card implies the other.Why two cardsEvidence of an end and a claim of completion are separate questions."
+    ],
+    [
+     ".next-cockpit-departures-kept",
+     "Intent logWhat it keepsThe Intent log keeps what you saved and what was raised against it after the session leaves the board."
+    ]
+   ],
+   "footer": ""
+  },
+  "real board: page codex/colon:sid": {
+   "attrs": [
+    "colon:sid",
+    "idle",
+    "ok",
+    false
+   ],
+   "header": "State: idleTitle not publishedcodex · colon:sid · beta/apiCodex · awaiting your messageCopy IDCopy linkNo resume command · No terminal to raiseWhyThis session published no usable id this run, so there is no re-entry command to copy.No terminal was reported for this session, so it cannot be raised. That is the ordinary answer outside tmux, for a session older than this server run, and on Linux and Windows.",
+   "headerLinks": [
+    "#n=project:beta%2Fapi"
+   ],
+   "headerButtons": [
+    "Copy session ID colon:sid",
+    "Copy a link to this session"
+   ],
+   "ask": null,
+   "answers": [],
+   "parts": [
+    [
+     ".next-session-activity-heading",
+     "Session activity"
+    ],
+    [
+     ".next-session-command-surface",
+     "CURRENT ACTIVITYidle · last active 53m ago"
+    ],
+    [
+     "dl.next-session-facts",
+     "NEXT STEPNo pending step publishedBLOCKEDNo reported block"
+    ],
+    [
+     "details.next-session-facts-more",
+     "Session facts: No stop or end observed · Git state was not measuredTURNNo turn in progressOUTCOMENo stop or end observedGIT STATEGit state was not measuredPROJECTbeta/api"
+    ],
+    [
+     ".next-session-evidence",
+     ""
+    ],
+    [
+     "[data-next-command-reports]",
+     "Command-shape reportsNo command-shape reports.About these reportsNo matching reports received; missing hooks and unmatched commands can look the same.A shape match does not prove the action succeeded.Claude Code and Codex after-tool hooks only. Reports may repeat or arrive out of order. This run keeps up to 1,000 reports, 20 per session, for at most 24 hours; restarting clears them."
+    ],
+    [
+     ".next-cockpit-landed",
+     "HOW IT LANDEDEND EVIDENCEIdle with completion unknown: no stop and no end was observedWHO CLAIMS IT FINISHEDNothing has claimed this session finishedGit state was not measured, so nothing was observed apart from the session's own accountNeither card implies the other.Why two cardsEvidence of an end and a claim of completion are separate questions."
+    ],
+    [
+     ".next-cockpit-departures-kept",
+     "Intent logWhat it keepsThe Intent log keeps what you saved and what was raised against it after the session leaves the board."
+    ]
+   ],
+   "footer": ""
+  },
+  "real board: page claude/delegated": {
+   "attrs": [
+    "delegated",
+    "idle",
+    "ok",
+    false
+   ],
+   "header": "State: idleLaunched work nobody saw finishclaude · delegated · 0 /m · gammaClaude Code · awaiting your messageCopy IDCopy linkNo resume command · No terminal to raiseWhyThis session published no usable id this run, so there is no re-entry command to copy.No terminal was reported for this session, so it cannot be raised. That is the ordinary answer outside tmux, for a session older than this server run, and on Linux and Windows.",
+   "headerLinks": [
+    "#n=project:gamma"
+   ],
+   "headerButtons": [
+    "Copy session ID delegated",
+    "Copy a link to this session"
+   ],
+   "ask": null,
+   "answers": [],
+   "parts": [
+    [
+     ".next-session-activity-heading",
+     "Session activity"
+    ],
+    [
+     ".next-session-command-surface",
+     "CURRENT ACTIVITYidle · last active 40m ago"
+    ],
+    [
+     "dl.next-session-facts",
+     "NEXT STEPNo pending step publishedBLOCKEDNo reported block"
+    ],
+    [
+     "details.next-session-facts-more",
+     "Session facts: No stop or end observed · Git state was not measuredTURNNo turn in progressOUTCOMENo stop or end observedGIT STATEGit state was not measuredPROJECTgamma"
+    ],
+    [
+     ".next-session-evidence",
+     ""
+    ],
+    [
+     "[data-next-command-reports]",
+     "Command-shape reportsNo command-shape reports.About these reportsNo matching reports received; missing hooks and unmatched commands can look the same.A shape match does not prove the action succeeded.Claude Code and Codex after-tool hooks only. Reports may repeat or arrive out of order. This run keeps up to 1,000 reports, 20 per session, for at most 24 hours; restarting clears them."
+    ],
+    [
+     ".next-cockpit-landed",
+     "HOW IT LANDEDEND EVIDENCEIdle with completion unknown: no stop and no end was observedWHO CLAIMS IT FINISHEDNothing has claimed this session finishedGit state was not measured, so nothing was observed apart from the session's own accountNeither card implies the other.Why two cardsEvidence of an end and a claim of completion are separate questions."
+    ],
+    [
+     ".next-cockpit-departures-kept",
+     "Intent logWhat it keepsThe Intent log keeps what you saved and what was raised against it after the session leaves the board."
+    ]
+   ],
+   "footer": ""
+  },
+  "real board: page codex/idle-recent": {
+   "attrs": [
+    "idle-recent",
+    "idle",
+    "ok",
+    false
+   ],
+   "header": "State: idleIdle and recentcodex · idle-recent · alpha/appCodex · awaiting your messageCopy IDCopy linkNo resume command · No terminal to raiseWhyThis session published no usable id this run, so there is no re-entry command to copy.No terminal was reported for this session, so it cannot be raised. That is the ordinary answer outside tmux, for a session older than this server run, and on Linux and Windows.",
+   "headerLinks": [
+    "#n=project:alpha%2Fapp"
+   ],
+   "headerButtons": [
+    "Copy session ID idle-recent",
+    "Copy a link to this session"
+   ],
+   "ask": null,
+   "answers": [],
+   "parts": [
+    [
+     ".next-session-activity-heading",
+     "Session activity"
+    ],
+    [
+     ".next-session-command-surface",
+     "CURRENT ACTIVITYidle · last active 10s ago"
+    ],
+    [
+     "dl.next-session-facts",
+     "NEXT STEPNo pending step publishedBLOCKEDNo reported block"
+    ],
+    [
+     "details.next-session-facts-more",
+     "Session facts: No stop or end observed · Git state was not measuredTURNNo turn in progressOUTCOMENo stop or end observedGIT STATEGit state was not measuredPROJECTalpha/app"
+    ],
+    [
+     ".next-session-evidence",
+     ""
+    ],
+    [
+     "[data-next-command-reports]",
+     "Command-shape reportsNo command-shape reports.About these reportsNo matching reports received; missing hooks and unmatched commands can look the same.A shape match does not prove the action succeeded.Claude Code and Codex after-tool hooks only. Reports may repeat or arrive out of order. This run keeps up to 1,000 reports, 20 per session, for at most 24 hours; restarting clears them."
+    ],
+    [
+     ".next-cockpit-landed",
+     "HOW IT LANDEDEND EVIDENCEIdle with completion unknown: no stop and no end was observedWHO CLAIMS IT FINISHEDNothing has claimed this session finishedGit state was not measured, so nothing was observed apart from the session's own accountNeither card implies the other.Why two cardsEvidence of an end and a claim of completion are separate questions."
+    ],
+    [
+     ".next-cockpit-departures-kept",
+     "Intent logWhat it keepsThe Intent log keeps what you saved and what was raised against it after the session leaves the board."
+    ]
+   ],
+   "footer": ""
+  },
+  "real board: page codex/no-project": {
+   "attrs": [
+    "no-project",
+    "idle",
+    "ok",
+    false
+   ],
+   "header": "State: idleNo project labelcodex · no-projectCodex · awaiting your messageCopy IDCopy linkNo resume command · No terminal to raiseWhyThis session published no usable id this run, so there is no re-entry command to copy.No terminal was reported for this session, so it cannot be raised. That is the ordinary answer outside tmux, for a session older than this server run, and on Linux and Windows.",
+   "headerLinks": [],
+   "headerButtons": [
+    "Copy session ID no-project",
+    "Copy a link to this session"
+   ],
+   "ask": null,
+   "answers": [],
+   "parts": [
+    [
+     ".next-session-activity-heading",
+     "Session activity"
+    ],
+    [
+     ".next-session-command-surface",
+     "CURRENT ACTIVITYidle · last active 55m ago"
+    ],
+    [
+     "dl.next-session-facts",
+     "NEXT STEPNo pending step publishedBLOCKEDNo reported block"
+    ],
+    [
+     "details.next-session-facts-more",
+     "Session facts: No stop or end observed · Git state was not measuredTURNNo turn in progressOUTCOMENo stop or end observedGIT STATEGit state was not measuredPROJECT"
+    ],
+    [
+     ".next-session-evidence",
+     ""
+    ],
+    [
+     "[data-next-command-reports]",
+     "Command-shape reportsNo command-shape reports.About these reportsNo matching reports received; missing hooks and unmatched commands can look the same.A shape match does not prove the action succeeded.Claude Code and Codex after-tool hooks only. Reports may repeat or arrive out of order. This run keeps up to 1,000 reports, 20 per session, for at most 24 hours; restarting clears them."
+    ],
+    [
+     ".next-cockpit-landed",
+     "HOW IT LANDEDEND EVIDENCEIdle with completion unknown: no stop and no end was observedWHO CLAIMS IT FINISHEDNothing has claimed this session finishedGit state was not measured, so nothing was observed apart from the session's own accountNeither card implies the other.Why two cardsEvidence of an end and a claim of completion are separate questions."
+    ],
+    [
+     ".next-cockpit-departures-kept",
+     "Intent logWhat it keepsThe Intent log keeps what you saved and what was raised against it after the session leaves the board."
+    ]
+   ],
+   "footer": ""
+  },
+  "real board: page codex/scan-only": {
+   "attrs": [
+    "scan-only",
+    "idle",
+    "ok",
+    false
+   ],
+   "header": "State: idleRead by scanningcodex · scan-only · deltaCodex · awaiting your message · read by scanning: no turn end can be observed hereCopy IDCopy linkNo resume command · No terminal to raiseWhyThis session published no usable id this run, so there is no re-entry command to copy.No terminal was reported for this session, so it cannot be raised. That is the ordinary answer outside tmux, for a session older than this server run, and on Linux and Windows.",
+   "headerLinks": [
+    "#n=project:delta"
+   ],
+   "headerButtons": [
+    "Copy session ID scan-only",
+    "Copy a link to this session"
+   ],
+   "ask": null,
+   "answers": [],
+   "parts": [
+    [
+     ".next-session-activity-heading",
+     "Session activity"
+    ],
+    [
+     ".next-session-command-surface",
+     "CURRENT ACTIVITYidle · last active 56m ago"
+    ],
+    [
+     "dl.next-session-facts",
+     "NEXT STEPNo pending step publishedBLOCKEDNo reported block"
+    ],
+    [
+     "details.next-session-facts-more",
+     "Session facts: No stop or end observed · Git state was not measuredTURNNo turn in progressOUTCOMENo stop or end observedGIT STATEGit state was not measuredPROJECTdelta"
+    ],
+    [
+     ".next-session-evidence",
+     ""
+    ],
+    [
+     "[data-next-command-reports]",
+     "Command-shape reportsNo command-shape reports.About these reportsNo matching reports received; missing hooks and unmatched commands can look the same.A shape match does not prove the action succeeded.Claude Code and Codex after-tool hooks only. Reports may repeat or arrive out of order. This run keeps up to 1,000 reports, 20 per session, for at most 24 hours; restarting clears them."
+    ],
+    [
+     ".next-cockpit-landed",
+     "HOW IT LANDEDEND EVIDENCENo event from this harness can reach this row, so no stop or end can be observedWHO CLAIMS IT FINISHEDNothing has claimed this session finishedGit state was not measured, so nothing was observed apart from the session's own accountNeither card implies the other.Why two cardsEvidence of an end and a claim of completion are separate questions."
+    ],
+    [
+     ".next-cockpit-departures-kept",
+     "Intent logWhat it keepsThe Intent log keeps what you saved and what was raised against it after the session leaves the board."
+    ]
+   ],
+   "footer": ""
+  },
+  "real board: page claude/shared-sid": {
+   "attrs": [
+    "shared-sid",
+    "idle",
+    "ok",
+    false
+   ],
+   "header": "State: idleShared sid under claudeclaude · shared-sid · 0 /m · alpha/appClaude Code · awaiting your messageCopy IDCopy linkNo resume command · No terminal to raiseWhyThis session published no usable id this run, so there is no re-entry command to copy.No terminal was reported for this session, so it cannot be raised. That is the ordinary answer outside tmux, for a session older than this server run, and on Linux and Windows.",
+   "headerLinks": [
+    "#n=project:alpha%2Fapp"
+   ],
+   "headerButtons": [
+    "Copy session ID shared-sid",
+    "Copy a link to this session"
+   ],
+   "ask": null,
+   "answers": [],
+   "parts": [
+    [
+     ".next-session-activity-heading",
+     "Session activity"
+    ],
+    [
+     ".next-session-command-surface",
+     "CURRENT ACTIVITYidle · last active 50m ago"
+    ],
+    [
+     "dl.next-session-facts",
+     "NEXT STEPNo pending step publishedBLOCKEDNo reported block"
+    ],
+    [
+     "details.next-session-facts-more",
+     "Session facts: No stop or end observed · Git state was not measuredTURNNo turn in progressOUTCOMENo stop or end observedGIT STATEGit state was not measuredPROJECTalpha/app"
+    ],
+    [
+     ".next-session-evidence",
+     ""
+    ],
+    [
+     "[data-next-command-reports]",
+     "Command-shape reportsNo command-shape reports.About these reportsNo matching reports received; missing hooks and unmatched commands can look the same.A shape match does not prove the action succeeded.Claude Code and Codex after-tool hooks only. Reports may repeat or arrive out of order. This run keeps up to 1,000 reports, 20 per session, for at most 24 hours; restarting clears them."
+    ],
+    [
+     ".next-cockpit-landed",
+     "HOW IT LANDEDEND EVIDENCEIdle with completion unknown: no stop and no end was observedWHO CLAIMS IT FINISHEDNothing has claimed this session finishedGit state was not measured, so nothing was observed apart from the session's own accountNeither card implies the other.Why two cardsEvidence of an end and a claim of completion are separate questions."
+    ],
+    [
+     ".next-cockpit-departures-kept",
+     "Intent logWhat it keepsThe Intent log keeps what you saved and what was raised against it after the session leaves the board."
+    ]
+   ],
+   "footer": ""
+  },
+  "real board: page codex/shared-sid": {
+   "attrs": [
+    "shared-sid",
+    "idle",
+    "ok",
+    false
+   ],
+   "header": "State: idleShared sid under codexcodex · shared-sid · alpha/appCodex · awaiting your messageCopy IDCopy linkNo resume command · No terminal to raiseWhyThis session published no usable id this run, so there is no re-entry command to copy.No terminal was reported for this session, so it cannot be raised. That is the ordinary answer outside tmux, for a session older than this server run, and on Linux and Windows.",
+   "headerLinks": [
+    "#n=project:alpha%2Fapp"
+   ],
+   "headerButtons": [
+    "Copy session ID shared-sid",
+    "Copy a link to this session"
+   ],
+   "ask": null,
+   "answers": [],
+   "parts": [
+    [
+     ".next-session-activity-heading",
+     "Session activity"
+    ],
+    [
+     ".next-session-command-surface",
+     "CURRENT ACTIVITYidle · last active 51m ago"
+    ],
+    [
+     "dl.next-session-facts",
+     "NEXT STEPNo pending step publishedBLOCKEDNo reported block"
+    ],
+    [
+     "details.next-session-facts-more",
+     "Session facts: No stop or end observed · Git state was not measuredTURNNo turn in progressOUTCOMENo stop or end observedGIT STATEGit state was not measuredPROJECTalpha/app"
+    ],
+    [
+     ".next-session-evidence",
+     ""
+    ],
+    [
+     "[data-next-command-reports]",
+     "Command-shape reportsNo command-shape reports.About these reportsNo matching reports received; missing hooks and unmatched commands can look the same.A shape match does not prove the action succeeded.Claude Code and Codex after-tool hooks only. Reports may repeat or arrive out of order. This run keeps up to 1,000 reports, 20 per session, for at most 24 hours; restarting clears them."
+    ],
+    [
+     ".next-cockpit-landed",
+     "HOW IT LANDEDEND EVIDENCEIdle with completion unknown: no stop and no end was observedWHO CLAIMS IT FINISHEDNothing has claimed this session finishedGit state was not measured, so nothing was observed apart from the session's own accountNeither card implies the other.Why two cardsEvidence of an end and a claim of completion are separate questions."
+    ],
+    [
+     ".next-cockpit-departures-kept",
+     "Intent logWhat it keepsThe Intent log keeps what you saved and what was raised against it after the session leaves the board."
+    ]
+   ],
+   "footer": ""
+  },
+  "real board: page codex/source-gap": {
+   "attrs": [
+    "source-gap",
+    "idle",
+    "unknown",
+    false
+   ],
+   "header": "State: idlePart of its store was unreadablecodex · source-gap · deltaCodex · awaiting your message · source not fully read: block state, token accountingCopy IDCopy linkNo resume command · No terminal to raiseWhyThis session published no usable id this run, so there is no re-entry command to copy.No terminal was reported for this session, so it cannot be raised. That is the ordinary answer outside tmux, for a session older than this server run, and on Linux and Windows.",
+   "headerLinks": [
+    "#n=project:delta"
+   ],
+   "headerButtons": [
+    "Copy session ID source-gap",
+    "Copy a link to this session"
+   ],
+   "ask": null,
+   "answers": [],
+   "parts": [
+    [
+     ".next-session-activity-heading",
+     "Session activity"
+    ],
+    [
+     ".next-session-command-surface",
+     "CURRENT ACTIVITYidle · last active 58m ago"
+    ],
+    [
+     "dl.next-session-facts",
+     "NEXT STEPNo pending step publishedBLOCKEDBlock state could not be read"
+    ],
+    [
+     "details.next-session-facts-more",
+     "Session facts: No stop or end observed · Git state was not measuredTURNNo turn in progressOUTCOMENo stop or end observedGIT STATEGit state was not measuredPROJECTdelta"
+    ],
+    [
+     ".next-session-evidence",
+     ""
+    ],
+    [
+     "[data-next-command-reports]",
+     "Command-shape reportsNo command-shape reports.About these reportsNo matching reports received; missing hooks and unmatched commands can look the same.A shape match does not prove the action succeeded.Claude Code and Codex after-tool hooks only. Reports may repeat or arrive out of order. This run keeps up to 1,000 reports, 20 per session, for at most 24 hours; restarting clears them."
+    ],
+    [
+     ".next-cockpit-landed",
+     "HOW IT LANDEDEND EVIDENCEIdle with completion unknown: no stop and no end was observedWHO CLAIMS IT FINISHEDNothing has claimed this session finishedGit state was not measured, so nothing was observed apart from the session's own accountNeither card implies the other.Why two cardsEvidence of an end and a claim of completion are separate questions."
+    ],
+    [
+     ".next-cockpit-departures-kept",
+     "Intent logWhat it keepsThe Intent log keeps what you saved and what was raised against it after the session leaves the board."
+    ]
+   ],
+   "footer": ""
+  },
+  "real board: page claude/spacedock-asked": {
+   "attrs": [
+    "spacedock-asked",
+    "idle",
+    "want",
+    false
+   ],
+   "header": "State: needs inputA captain's questionclaude · spacedock-asked · 0 /m · deltaClaude Code · awaiting your messageCopy IDCopy linkNo resume command · No terminal to raiseWhyThis session published no usable id this run, so there is no re-entry command to copy.No terminal was reported for this session, so it cannot be raised. That is the ordinary answer outside tmux, for a session older than this server run, and on Linux and Windows.",
+   "headerLinks": [
+    "#n=project:delta"
+   ],
+   "headerButtons": [
+    "Copy session ID spacedock-asked",
+    "Copy a link to this session"
+   ],
+   "ask": "ASKED YOU · NsAGENT IS ASKING · Claude Code is asking youCAPTAINShip the stage?ShipHold",
+   "answers": [
+    "ask#0:Ship",
+    "ask#1:Hold"
+   ],
+   "parts": [
+    [
+     ".next-session-activity-heading",
+     "Session activity"
+    ],
+    [
+     ".next-session-command-surface",
+     "CURRENT ACTIVITYidle · awaiting your message"
+    ],
+    [
+     "dl.next-session-facts",
+     "NEXT STEPNo pending step publishedBLOCKEDWaiting on youShip the stage?"
+    ],
+    [
+     "details.next-session-facts-more",
+     "Session facts: No stop or end observed · Git state was not measuredTURNNo turn in progressOUTCOMENo stop or end observedGIT STATEGit state was not measuredPROJECTdelta"
+    ],
+    [
+     ".next-session-evidence",
+     ""
+    ],
+    [
+     "[data-next-command-reports]",
+     "Command-shape reportsNo command-shape reports.About these reportsNo matching reports received; missing hooks and unmatched commands can look the same.A shape match does not prove the action succeeded.Claude Code and Codex after-tool hooks only. Reports may repeat or arrive out of order. This run keeps up to 1,000 reports, 20 per session, for at most 24 hours; restarting clears them."
+    ],
+    [
+     ".next-cockpit-landed",
+     "HOW IT LANDEDEND EVIDENCEIdle with completion unknown: no stop and no end was observedWHO CLAIMS IT FINISHEDNothing has claimed this session finishedGit state was not measured, so nothing was observed apart from the session's own accountNeither card implies the other.Why two cardsEvidence of an end and a claim of completion are separate questions."
+    ],
+    [
+     ".next-cockpit-departures-kept",
+     "Intent logWhat it keepsThe Intent log keeps what you saved and what was raised against it after the session leaves the board."
+    ]
+   ],
+   "footer": ""
+  },
+  "real board: page claude/stopped-dirty": {
+   "attrs": [
+    "stopped-dirty",
+    "idle",
+    "bad",
+    false
+   ],
+   "header": "State: idleStopped with uncommitted workclaude · stopped-dirty · 0 /m · beta/apiClaude Code · awaiting your messageCopy IDCopy linkNo resume command · No terminal to raiseWhyThis session published no usable id this run, so there is no re-entry command to copy.No terminal was reported for this session, so it cannot be raised. That is the ordinary answer outside tmux, for a session older than this server run, and on Linux and Windows.",
+   "headerLinks": [
+    "#n=project:beta%2Fapi"
+   ],
+   "headerButtons": [
+    "Copy session ID stopped-dirty",
+    "Copy a link to this session"
+   ],
+   "ask": null,
+   "answers": [],
+   "parts": [
+    [
+     ".next-session-activity-heading",
+     "Session activity"
+    ],
+    [
+     ".next-session-command-surface",
+     "CURRENT ACTIVITYidle · last active 8m ago"
+    ],
+    [
+     "dl.next-session-facts",
+     "NEXT STEPNo pending step publishedBLOCKEDNo reported block"
+    ],
+    [
+     "details.next-session-facts-more",
+     "Session facts: Stop observed with uncommitted workTURNNo turn in progressOUTCOMEStop observed with uncommitted workGIT STATE2 changed entriesPROJECTbeta/api"
+    ],
+    [
+     ".next-session-evidence",
+     ""
+    ],
+    [
+     "[data-next-command-reports]",
+     "Command-shape reportsNo command-shape reports.About these reportsNo matching reports received; missing hooks and unmatched commands can look the same.A shape match does not prove the action succeeded.Claude Code and Codex after-tool hooks only. Reports may repeat or arrive out of order. This run keeps up to 1,000 reports, 20 per session, for at most 24 hours; restarting clears them."
+    ],
+    [
+     ".next-cockpit-landed",
+     "HOW IT LANDEDEND EVIDENCEA turn stop was observed; no session end wasWHO CLAIMS IT FINISHEDThe agent reported it finished2 changed entries were observed, which shows work happened and not that the requested output existsNeither card implies the other.Why two cardsEvidence of an end and a claim of completion are separate questions."
+    ],
+    [
+     ".next-cockpit-departures-kept",
+     "Intent logWhat it keepsThe Intent log keeps what you saved and what was raised against it after the session leaves the board."
+    ]
+   ],
+   "footer": ""
+  },
+  "real board: page claude/unicode-title": {
+   "attrs": [
+    "unicode-title",
+    "idle",
+    "ok",
+    false
+   ],
+   "header": "State: idleÜnï ✓ <b>not markup</b> & \"quotes\"claude · unicode-title · 0 /m · ünï/çødéClaude Code · awaiting your messageCopy IDCopy linkNo resume command · No terminal to raiseWhyThis session published no usable id this run, so there is no re-entry command to copy.No terminal was reported for this session, so it cannot be raised. That is the ordinary answer outside tmux, for a session older than this server run, and on Linux and Windows.",
+   "headerLinks": [
+    "#n=project:%C3%BCn%C3%AF%2F%C3%A7%C3%B8d%C3%A9"
+   ],
+   "headerButtons": [
+    "Copy session ID unicode-title",
+    "Copy a link to this session"
+   ],
+   "ask": null,
+   "answers": [],
+   "parts": [
+    [
+     ".next-session-activity-heading",
+     "Session activity"
+    ],
+    [
+     ".next-session-command-surface",
+     "CURRENT ACTIVITYidle · last active 1h 6m ago"
+    ],
+    [
+     "dl.next-session-facts",
+     "NEXT STEPNo pending step publishedBLOCKEDNo reported block"
+    ],
+    [
+     "details.next-session-facts-more",
+     "Session facts: No stop or end observed · Git state was not measuredTURNNo turn in progressOUTCOMENo stop or end observedGIT STATEGit state was not measuredPROJECTünï/çødé"
+    ],
+    [
+     ".next-session-evidence",
+     ""
+    ],
+    [
+     "[data-next-command-reports]",
+     "Command-shape reportsNo command-shape reports.About these reportsNo matching reports received; missing hooks and unmatched commands can look the same.A shape match does not prove the action succeeded.Claude Code and Codex after-tool hooks only. Reports may repeat or arrive out of order. This run keeps up to 1,000 reports, 20 per session, for at most 24 hours; restarting clears them."
+    ],
+    [
+     ".next-cockpit-landed",
+     "HOW IT LANDEDEND EVIDENCEIdle with completion unknown: no stop and no end was observedWHO CLAIMS IT FINISHEDNothing has claimed this session finishedGit state was not measured, so nothing was observed apart from the session's own accountNeither card implies the other.Why two cardsEvidence of an end and a claim of completion are separate questions."
+    ],
+    [
+     ".next-cockpit-departures-kept",
+     "Intent logWhat it keepsThe Intent log keeps what you saved and what was raised against it after the session leaves the board."
+    ]
+   ],
+   "footer": ""
+  },
+  "row link hash": "#n=session:beta%2Fapi:codex:colon%3Asid&from=sessions",
+  "generated seed 1 9c2ddd76c500: list": {
+   "header": "COMMAND SURFACESession operationsHow rows are splitBlocked sessions lead, followed by recorded departures, then working sessions. The Active now figure counts active evidence only; a recorded departure adds no active session.Goal sourcesYour first prompt, or your latest where the first is not published, comes from Claude Code or Codex; other harnesses show only your typed words. A goal marked from your prompt was adopted by you; showing a prompt alone adopts nothing, and Drift names a recorded departure.",
+   "fleet": [
+    [
+     "active",
+     "ACTIVE NOW413 recently observed"
+    ],
+    [
+     "working",
+     "WORKING22 waiting on you"
+    ],
+    [
+     "requests",
+     "EXACT REQUESTS00 of 13 sessions carry an exact request"
+    ],
+    [
+     "reported-blocks",
+     "REPORTED BLOCKS33 of 13 sessions report block state"
+    ]
+   ],
+   "groups": [
+    {
+     "kind": "active",
+     "header": "Active nowworking, waiting on you, an exact request, or recorded drift",
+     "empty": null,
+     "rows": [
+      {
+       "harness": "claude",
+       "sid": "a:b:c",
+       "history": false,
+       "tone": "next-operation-row--want",
+       "href": "#n=session:alpha%2Fapp%20:claude:a%3Ab%3Ac",
+       "aria": "Open session Title not published",
+       "text": "SESSION Title not publishedCopy ID8 sessions share this display label; shared location is not establishedWHERE · PROJECT LABELExact location not publishedalpha/app GOALAdd a goalNOW · NEEDS INPUTActivity not publishedNEXTNo pending step publishedBLOCKEDWaiting on youBlock reported",
+       "buttons": [
+        "Copy session ID a:b:c"
+       ]
+      },
+      {
+       "harness": "codex",
+       "sid": "a:b:c",
+       "history": false,
+       "tone": "next-operation-row--want",
+       "href": "#n=session:alpha%2Fapp%20:codex:a%3Ab%3Ac",
+       "aria": "Open session <script>x</script>",
+       "text": "SESSIONcodex<script>x</script>Copy ID8 sessions share this display label; shared location is not establishedWHERE · PROJECT LABELExact location not publishedalpha/app GOALAdd a goalNOW · NEEDS INPUTActivity not publishedNEXTNo pending step publishedBLOCKEDWaiting on youBlock reportedDrift · age unknown",
+       "buttons": [
+        "Copy session ID a:b:c"
+       ]
+      },
+      {
+       "harness": "",
+       "sid": "s2",
+       "history": false,
+       "tone": "next-operation-row--unknown",
+       "href": "#n=session:alpha%2Fapp%20:s2",
+       "aria": "Open session Fix the build",
+       "text": "SESSIONFix the buildCopy ID8 sessions share this display label; shared location is not establishedWHERE · PROJECT LABELExact location not publishedalpha/app GOALAdd a goalNOW · BOGUSNo state publishedNEXTNo pending step publishedBLOCKEDHarness does not report blocksDrift · 0s agoSome recorded departure ages are unknown",
+       "buttons": [
+        "Copy session ID s2"
+       ]
+      },
+      {
+       "harness": "",
+       "sid": "a:b:c",
+       "history": false,
+       "tone": "next-operation-row--want",
+       "href": "#n=session:alpha%2Fapp%20:a%3Ab%3Ac",
+       "aria": "Open session Title not published",
+       "text": "SESSIONTitle not publishedCopy ID8 sessions share this display label; shared location is not establishedSource not fully read: token accounting, xWHERE · PROJECT LABELExact location not publishedalpha/app GOALAdd a goalNOW · WORKINGActivity not publishedNEXTNo pending step publishedBLOCKEDHarness does not report blocks",
+       "buttons": [
+        "Copy session ID a:b:c"
+       ]
+      },
+      {
+       "harness": "cursor",
+       "sid": "x y",
+       "history": false,
+       "tone": "next-operation-row--ok",
+       "href": "#n=session:alpha%2Fapp%20:cursor:x%20y",
+       "aria": "Open session Title with \"quotes\" & <tags>",
+       "text": "SESSION Title with \"quotes\" & <tags>Copy ID8 sessions share this display label; shared location is not establishedWHERE · PROJECT LABELExact location not publishedalpha/app GOALAdd a goalNOW · WORKINGShip itNEXTNo pending step publishedBLOCKEDNo reported block",
+       "buttons": [
+        "Copy session ID x y"
+       ]
+      }
+     ]
+    },
+    {
+     "kind": "history",
+     "header": "Recent historyWhat recent meansRecently observed is not proof the harness process is still open or closed; rows marked ENDED reported their own end.",
+     "empty": null,
+     "rows": [
+      {
+       "harness": "codex",
+       "sid": "s2",
+       "history": true,
+       "tone": "next-operation-row--unknown",
+       "href": "#n=session:alpha%2Fapp%20:codex:s2",
+       "aria": "Open session Title not published",
+       "text": "SESSIONcodexTitle not publishedCopy IDLAST PROMPT · Last prompt8 sessions share this display label; shared location is not establishedWHERE · PROJECT LABELExact location not publishedalpha/app GOALAdd a goalNOW · ENDEDSession reported its own endended 16m ago◦ Session ended; git state not measuredGit state was not measuredENDED",
+       "buttons": [
+        "Copy session ID s2"
+       ]
+      },
+      {
+       "harness": "ghost",
+       "sid": "",
+       "history": true,
+       "tone": "next-operation-row--unknown",
+       "href": "#n=sessions",
+       "aria": "Open session Title not published",
+       "text": "SESSIONghostTitle not publishedWHERE · PROJECT LABELExact location not published<b>x</b>GOALAdd a goalNOW · IDLElast active 0s agoQUIET",
+       "buttons": []
+      },
+      {
+       "harness": "claude",
+       "sid": "x y",
+       "history": true,
+       "tone": "next-operation-row--unknown",
+       "href": "#n=session:a%3Ab:claude:x%20y",
+       "aria": "Open session Title with \"quotes\" & <tags>",
+       "text": "SESSION Title with \"quotes\" & <tags>Copy IDWHERE · PROJECT LABELExact location not publisheda:bGOALAdd a goalNOW · 7No state published",
+       "buttons": [
+        "Copy session ID x y"
+       ]
+      },
+      {
+       "harness": "claude",
+       "sid": "5",
+       "history": true,
+       "tone": "next-operation-row--unknown",
+       "href": "#n=session:alpha%2Fapp:claude:5",
+       "aria": "Open session Title with \"quotes\" & <tags>",
+       "text": "SESSION Title with \"quotes\" & <tags>Copy IDWHERE · PROJECT LABELExact location not publishedalpha/appGOALAdd a goalNOW · No state published",
+       "buttons": [
+        "Copy session ID 5"
+       ]
+      },
+      {
+       "harness": "codex",
+       "sid": "shared",
+       "history": true,
+       "tone": "next-operation-row--unknown",
+       "href": "#n=session:beta%2Fapi:codex:shared",
+       "aria": "Open session Title not published",
+       "text": "SESSIONcodexTitle not publishedCopy IDWHERE · PROJECT LABELExact location not publishedbeta/apiGOALAdd a goalNOW · No state published",
+       "buttons": [
+        "Copy session ID shared"
+       ]
+      },
+      {
+       "harness": "gemini",
+       "sid": "s2",
+       "history": true,
+       "tone": "next-operation-row--unknown",
+       "href": "#n=session:gamma:gemini:s2",
+       "aria": "Open session Ünï ✓",
+       "text": "SESSIONgeminiÜnï ✓Copy IDSource not fully read: block state, token accountingWHERE · PROJECT LABELExact location not publishedgammaGOALAdd a goalNOW · No state published",
+       "buttons": [
+        "Copy session ID s2"
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  "generated seed 1 9c2ddd76c500: page 0 claude/a:b:c": {
+   "attrs": [
+    "a:b:c",
+    "needs_input",
+    "want",
+    true
+   ],
+   "header": "State: needs inputTitle not publishedclaude · a:b:c · alpha/app · blocked 0sCopy IDCopy linkNo resume command · No terminal to raiseWhyThis session published no usable id this run, so there is no re-entry command to copy.No terminal was reported for this session, so it cannot be raised. That is the ordinary answer outside tmux, for a session older than this server run, and on Linux and Windows.",
+   "headerLinks": [
+    "#n=project:alpha%2Fapp%20"
+   ],
+   "headerButtons": [
+    "Copy session ID a:b:c",
+    "Copy a link to this session"
+   ],
+   "ask": null,
+   "answers": [],
+   "parts": [
+    [
+     ".next-session-activity-heading",
+     "Session activity"
+    ],
+    [
+     ".next-session-command-surface",
+     "CURRENT ACTIVITYwaiting on you · Activity not published"
+    ],
+    [
+     "[data-next-session-subagents]",
+     "2 RUNNING SUBAGENTS · 1 WORKER RUNNING BENEATH●subagent · lead16m●subagent16m●Ünï0s"
+    ],
+    [
+     "dl.next-session-facts",
+     "NEXT STEPNo pending step publishedBLOCKEDWaiting on youBlock reported"
+    ],
+    [
+     "details.next-session-facts-more",
+     "Session facts: No stop or end observed · Git state was not measuredTURNHarness does not report turn boundsOUTCOMENo stop or end observedGIT STATEGit state was not measuredPROJECTalpha/app"
+    ],
+    [
+     ".next-session-evidence",
+     ""
+    ],
+    [
+     "[data-next-command-reports]",
+     "Command-shape reports: offCommand-shape reports are disabled for this run.A shape match does not prove the action succeeded.Claude Code and Codex after-tool hooks only. Reports may repeat or arrive out of order. This run keeps up to 1,000 reports, 20 per session, for at most 24 hours; restarting clears them."
+    ],
+    [
+     ".next-cockpit-landed",
+     "HOW IT LANDEDEND EVIDENCENo stop or end observed while the session is runningWHO CLAIMS IT FINISHEDNothing has claimed this session finishedGit state was not measured, so nothing was observed apart from the session's own accountNeither card implies the other.Why two cardsEvidence of an end and a claim of completion are separate questions."
+    ],
+    [
+     ".next-cockpit-departures-kept",
+     "Intent logWhat it keepsThe Intent log keeps what you saved and what was raised against it after the session leaves the board."
+    ]
+   ],
+   "footer": ""
+  },
+  "generated seed 1 9c2ddd76c500: page 1 claude/x y": {
+   "attrs": [
+    "x y",
+    null,
+    "unknown",
+    false
+   ],
+   "header": "Title with \"quotes\" & <tags>claude · x y · a:b · ÜnïCopy IDCopy linkCopy commandNo terminal to raiseWhyNo terminal was reported for this session, so it cannot be raised. That is the ordinary answer outside tmux, for a session older than this server run, and on Linux and Windows.",
+   "headerLinks": [
+    "#n=project:a%3Ab"
+   ],
+   "headerButtons": [
+    "Copy session ID x y",
+    "Copy a link to this session",
+    "Copy re-entry command claude --resume abc-123"
+   ],
+   "ask": null,
+   "answers": [],
+   "parts": [
+    [
+     ".next-session-activity-heading",
+     "Session activity"
+    ],
+    [
+     ".next-session-command-surface",
+     "CURRENT ACTIVITY7 · No state published"
+    ],
+    [
+     "[data-next-session-subagents]",
+     "1 RUNNING SUBAGENT · 1 WORKER RUNNING BENEATH○Ünï · lead0s●helper · lead●Ünï"
+    ],
+    [
+     "dl.next-session-facts",
+     "NEXT STEPNo pending step publishedBLOCKEDHarness does not report blocks"
+    ],
+    [
+     "details.next-session-facts-more",
+     "Session facts: No stop or end observed · Git state was not measuredTURNHarness does not report turn boundsOUTCOMENo stop or end observedGIT STATEGit state was not measuredPROJECTa:b"
+    ],
+    [
+     ".next-session-evidence",
+     ""
+    ],
+    [
+     "[data-next-command-reports]",
+     "Command-shape reports: offCommand-shape reports are disabled for this run.A shape match does not prove the action succeeded.Claude Code and Codex after-tool hooks only. Reports may repeat or arrive out of order. This run keeps up to 1,000 reports, 20 per session, for at most 24 hours; restarting clears them."
+    ],
+    [
+     ".next-cockpit-landed",
+     "HOW IT LANDEDEND EVIDENCENo stop or end observed while the session is runningWHO CLAIMS IT FINISHEDNothing has claimed this session finishedGit state was not measured, so nothing was observed apart from the session's own accountNeither card implies the other.Why two cardsEvidence of an end and a claim of completion are separate questions."
+    ],
+    [
+     ".next-cockpit-departures-kept",
+     "Intent logWhat it keepsThe Intent log keeps what you saved and what was raised against it after the session leaves the board."
+    ]
+   ],
+   "footer": "999 output tokens this session"
+  },
+  "generated seed 2 2b90f4481276: list": {
+   "header": "COMMAND SURFACESession operationsHow rows are splitBlocked sessions lead, followed by recorded departures, then working sessions. The Active now figure counts active evidence only; a recorded departure adds no active session.Goal sourcesAnnotations are off, so goals cannot be typed and Drift marks are not shown.",
+   "fleet": [
+    [
+     "active",
+     "ACTIVE NOW18 recently observed"
+    ],
+    [
+     "working",
+     "WORKING10 waiting on you"
+    ],
+    [
+     "requests",
+     "EXACT REQUESTS00 of 8 sessions carry an exact request"
+    ],
+    [
+     "reported-blocks",
+     "REPORTED BLOCKS00 of 8 sessions report block state"
+    ]
+   ],
+   "groups": [
+    {
+     "kind": "active",
+     "header": "Active nowworking, waiting on you, an exact request, or recorded drift",
+     "empty": null,
+     "rows": [
+      {
+       "harness": "claude",
+       "sid": "a:b:c",
+       "history": false,
+       "tone": "next-operation-row--unknown",
+       "href": "#n=session:a%3Ab:claude:a%3Ab%3Ac",
+       "aria": "Open session <script>x</script>",
+       "text": "SESSION5<script>x</script>Copy ID4 sessions share this display label; shared location is not establishedWHERE · PROJECT LABELExact location not publisheda:bGOALAnnotations offNOW · WORKINGActivity not publishedNEXTNo pending step publishedBLOCKEDHarness does not report blocks",
+       "buttons": [
+        "Copy session ID a:b:c"
+       ]
+      }
+     ]
+    },
+    {
+     "kind": "history",
+     "header": "Recent historyWhat recent meansRecently observed is not proof the harness process is still open or closed; rows marked ENDED reported their own end.",
+     "empty": null,
+     "rows": [
+      {
+       "harness": "codex",
+       "sid": "a:b:c",
+       "history": true,
+       "tone": "next-operation-row--unknown",
+       "href": "#n=session:a%3Ab:codex:a%3Ab%3Ac",
+       "aria": "Open session Title not published",
+       "text": "SESSIONcodexTitle not publishedCopy ID4 sessions share this display label; shared location is not establishedWHERE · PROJECT LABELExact location not publisheda:bGOALAnnotations offNOW · ENDEDSession reported its own end◦ Session ended; git state not measuredGit state was not measuredENDED",
+       "buttons": [
+        "Copy session ID a:b:c"
+       ]
+      },
+      {
+       "harness": "",
+       "sid": "a:b:c",
+       "history": true,
+       "tone": "next-operation-row--unknown",
+       "href": "#n=session:a%3Ab:a%3Ab%3Ac",
+       "aria": "Open session Title with \"quotes\" & <tags>",
+       "text": "SESSIONTitle with \"quotes\" & <tags>Copy ID4 sessions share this display label; shared location is not establishedWHERE · PROJECT LABELExact location not publisheda:bGOALAnnotations offNOW · ENDEDSession reported its own endended 0s ago◦ Session ended; git state not measuredGit state was not measuredENDED",
+       "buttons": [
+        "Copy session ID a:b:c"
+       ]
+      },
+      {
+       "harness": "cursor",
+       "sid": "s2",
+       "history": true,
+       "tone": "next-operation-row--unknown",
+       "href": "#n=session:alpha%2Fapp:cursor:s2",
+       "aria": "Open session Ünï ✓",
+       "text": "SESSIONcursorÜnï ✓Copy ID2 sessions share this display label; shared location is not establishedWHERE · PROJECT LABELExact location not publishedalpha/appGOALAnnotations offNOW · ENDEDSession reported its own endended 0s ago◦ Session ended; git state not measuredGit state was not measuredENDED",
+       "buttons": [
+        "Copy session ID s2"
+       ]
+      },
+      {
+       "harness": "",
+       "sid": "x y",
+       "history": true,
+       "tone": "next-operation-row--unknown",
+       "href": "#n=session:%3Cb%3Ex%3C%2Fb%3E:x%20y",
+       "aria": "Open session <script>x</script>",
+       "text": "SESSION<script>x</script>Copy ID2 sessions share this display label; shared location is not establishedSource not fully read: block stateWHERE · PROJECT LABELExact location not published<b>x</b>GOALAnnotations offNOW · IDLEActivity not publishedQUIET",
+       "buttons": [
+        "Copy session ID x y"
+       ]
+      },
+      {
+       "harness": "codex",
+       "sid": "x y",
+       "history": true,
+       "tone": "next-operation-row--want",
+       "href": "#n=session:%3Cb%3Ex%3C%2Fb%3E:codex:x%20y",
+       "aria": "Open session Title with \"quotes\" & <tags>",
+       "text": "SESSIONcodexTitle with \"quotes\" & <tags>Copy ID2 sessions share this display label; shared location is not establishedWHERE · PROJECT LABELExact location not published<b>x</b>GOALAnnotations offNOW · IDLEActivity not publishedQUIET",
+       "buttons": [
+        "Copy session ID x y"
+       ]
+      },
+      {
+       "harness": "codex",
+       "sid": "a:b:c",
+       "history": true,
+       "tone": "next-operation-row--unknown",
+       "href": "#n=session:a%3Ab:codex:a%3Ab%3Ac",
+       "aria": "Open session <script>x</script>",
+       "text": "SESSIONcodex<script>x</script>Copy ID4 sessions share this display label; shared location is not establishedWHERE · PROJECT LABELExact location not publisheda:bGOALAnnotations offNOW · No state published",
+       "buttons": [
+        "Copy session ID a:b:c"
+       ]
+      },
+      {
+       "harness": "ghost",
+       "sid": "",
+       "history": true,
+       "tone": "next-operation-row--unknown",
+       "href": "#n=sessions",
+       "aria": "Open session Fix the build",
+       "text": "SESSION5Fix the build2 sessions share this display label; shared location is not establishedSource not fully read: block state, token accountingWHERE · PROJECT LABELExact location not publishedalpha/appGOALAnnotations offNOW · No state published",
+       "buttons": []
+      }
+     ]
+    }
+   ]
+  },
+  "generated seed 2 2b90f4481276: page 0 codex/x y": {
+   "attrs": [
+    "x y",
+    "idle",
+    "want",
+    false
+   ],
+   "header": "State: idleTitle with \"quotes\" & <tags>codex · x y · <b>x</b>session started 0s agoCopy IDCopy linkNo resume command · No terminal to raiseWhyThis session published no usable id this run, so there is no re-entry command to copy.No terminal was reported for this session, so it cannot be raised. That is the ordinary answer outside tmux, for a session older than this server run, and on Linux and Windows.",
+   "headerLinks": [
+    "#n=project:%3Cb%3Ex%3C%2Fb%3E"
+   ],
+   "headerButtons": [
+    "Copy session ID x y",
+    "Copy a link to this session"
+   ],
+   "ask": null,
+   "answers": [],
+   "parts": [
+    [
+     ".next-session-activity-heading",
+     "Session activity"
+    ],
+    [
+     ".next-session-command-surface",
+     "CURRENT ACTIVITYidle · Activity not publishedagent: 12"
+    ],
+    [
+     "[data-next-session-subagents]",
+     "3 RUNNING SUBAGENTS●Ünï0s●helper16m●subagent"
+    ],
+    [
+     "dl.next-session-facts",
+     "NEXT STEPÜnï taskBLOCKEDHarness does not report blocks"
+    ],
+    [
+     "details.next-session-facts-more",
+     "Session facts: No stop or end observed · Git state reported cleanTURNHarness does not report turn boundsOUTCOMENo stop or end observedGIT STATEGit state reported cleanPROJECT<b>x</b>"
+    ],
+    [
+     ".next-session-evidence",
+     ""
+    ],
+    [
+     ".next-session-health",
+     "FAILED TOOL LOOP — 5 tool calls failed this turn, 3 of them consecutive (most recently Slack · send message). Check the agent is working the problem rather than repeating the failure."
+    ],
+    [
+     "[data-next-session-section=\"tasks\"]",
+     "TASKS · 0 OF 4 DONE○Ünï task○○Ünï task○"
+    ],
+    [
+     "[data-next-command-reports]",
+     "Command-shape reports: offCommand-shape reports are disabled for this run.A shape match does not prove the action succeeded.Claude Code and Codex after-tool hooks only. Reports may repeat or arrive out of order. This run keeps up to 1,000 reports, 20 per session, for at most 24 hours; restarting clears them."
+    ],
+    [
+     ".next-session-delivery",
+     "NOTIFICATIONSOne notification was raised about this sessionBound to a tab"
+    ]
+   ],
+   "footer": ""
+  },
+  "generated seed 2 2b90f4481276: page 1 codex/a:b:c": {
+   "empty": {
+    "state": "outside-payload",
+    "text": "This session is not in the current payload.codex · a:b:cThe board holds sessions observed in the last 24 hours.View all sessions",
+    "links": [
+     "#n=sessions"
+    ]
+   }
+  },
+  "generated seed 3 2a27d0fecbda: list": {
+   "header": "COMMAND SURFACESession operationsHow rows are splitBlocked sessions lead, followed by recorded departures, then working sessions. The Active now figure counts active evidence only; a recorded departure adds no active session.Goal sourcesAnnotations are off, so goals cannot be typed and Drift marks are not shown.",
+   "fleet": [
+    [
+     "active",
+     "ACTIVE NOW11 recently observed"
+    ],
+    [
+     "working",
+     "WORKING11 waiting on you"
+    ],
+    [
+     "requests",
+     "EXACT REQUESTS11 of 1 session carries an exact request"
+    ],
+    [
+     "reported-blocks",
+     "REPORTED BLOCKS11 of 1 session reports block state"
+    ]
+   ],
+   "groups": [
+    {
+     "kind": "active",
+     "header": "Active nowworking, waiting on you, an exact request, or recorded drift",
+     "empty": null,
+     "rows": [
+      {
+       "harness": "ghost",
+       "sid": "shared",
+       "history": false,
+       "tone": "next-operation-row--want",
+       "href": "#n=session:beta%2Fapi:ghost:shared",
+       "aria": "Open session Title not published",
+       "text": "SESSIONghostTitle not publishedCopy IDWHERE · PROJECT LABELExact location not publishedbeta/apiGOALAnnotations offNOW · WORKINGActivity not publishedNEXTNo pending step publishedBLOCKED · NEEDS YOUWaiting on youÜnï question?",
+       "buttons": [
+        "Copy session ID shared"
+       ]
+      }
+     ]
+    },
+    {
+     "kind": "history",
+     "header": "Recent historyWhat recent meansRecently observed is not proof the harness process is still open or closed; rows marked ENDED reported their own end.",
+     "empty": "No recent-history rows in this payload.",
+     "rows": []
+    }
+   ]
+  },
+  "generated seed 3 2a27d0fecbda: page 0 ghost/shared": {
+   "attrs": [
+    "shared",
+    "working",
+    "want",
+    false
+   ],
+   "header": "State: needs inputTitle not publishedghost · shared · beta/apiCopy IDCopy linkNo resume command · No terminal to raiseWhyGhost publishes no re-entry command, so there is none to copy.No terminal was reported for this session, so it cannot be raised. That is the ordinary answer outside tmux, for a session older than this server run, and on Linux and Windows.",
+   "headerLinks": [
+    "#n=project:beta%2Fapi"
+   ],
+   "headerButtons": [
+    "Copy session ID shared",
+    "Copy a link to this session"
+   ],
+   "ask": "ASKED YOU · Ns 6mAGENT IS ASKING · An agent is asking youNEEDS YOU No answer options were supplied.Ünï question?A3",
+   "answers": [
+    "ask#0:A",
+    "ask#1:3",
+    "ask#2:"
+   ],
+   "parts": [
+    [
+     ".next-session-activity-heading",
+     "Session activity"
+    ],
+    [
+     ".next-session-command-surface",
+     "CURRENT ACTIVITYworking · Activity not published"
+    ],
+    [
+     "dl.next-session-facts",
+     "NEXT STEPNo pending step publishedBLOCKEDWaiting on youÜnï question?"
+    ],
+    [
+     "details.next-session-facts-more",
+     "Session facts: No stop or end observed · Uncommitted work observedTURNHarness does not report turn boundsOUTCOMENo stop or end observedGIT STATEUncommitted work observedPROJECTbeta/api"
+    ],
+    [
+     ".next-session-evidence",
+     ""
+    ],
+    [
+     "[data-next-command-reports]",
+     "Command-shape reports: unsupported hereCommand-shape reporting is unsupported for this harness.A shape match does not prove the action succeeded.Claude Code and Codex after-tool hooks only. Reports may repeat or arrive out of order. This run keeps up to 1,000 reports, 20 per session, for at most 24 hours; restarting clears them."
+    ]
+   ],
+   "footer": "-2 output tokens this session"
+  },
+  "generated seed 4 2843169cb37d: list": {
+   "header": "COMMAND SURFACESession operationsHow rows are splitBlocked sessions lead, followed by recorded departures, then working sessions. The Active now figure counts active evidence only; a recorded departure adds no active session.Goal sourcesAnnotations are off, so goals cannot be typed and Drift marks are not shown.",
+   "fleet": [
+    [
+     "active",
+     "ACTIVE NOW11 recently observed"
+    ],
+    [
+     "working",
+     "WORKING11 waiting on you"
+    ],
+    [
+     "requests",
+     "EXACT REQUESTS11 of 1 session carries an exact request"
+    ],
+    [
+     "reported-blocks",
+     "REPORTED BLOCKS11 of 1 session reports block state"
+    ]
+   ],
+   "groups": [
+    {
+     "kind": "active",
+     "header": "Active nowworking, waiting on you, an exact request, or recorded drift",
+     "empty": null,
+     "rows": [
+      {
+       "harness": "codex",
+       "sid": "ünï",
+       "history": false,
+       "tone": "next-operation-row--want",
+       "href": "#n=session:a%3Ab:codex:%C3%BCn%C3%AF",
+       "aria": "Open session Title with \"quotes\" & <tags>",
+       "text": "SESSION5Title with \"quotes\" & <tags>Copy IDWHERE · PROJECT LABELExact location not publisheda:bGOALAnnotations offNOW · WORKINGActivity not publishedNEXTNo pending step publishedBLOCKED · NEEDS YOUWaiting on youÜnï question?",
+       "buttons": [
+        "Copy session ID ünï"
+       ]
+      }
+     ]
+    },
+    {
+     "kind": "history",
+     "header": "Recent historyWhat recent meansRecently observed is not proof the harness process is still open or closed; rows marked ENDED reported their own end.",
+     "empty": "No recent-history rows in this payload.",
+     "rows": []
+    }
+   ]
+  },
+  "generated seed 4 2843169cb37d: page 0 codex/ünï": {
+   "attrs": [
+    "ünï",
+    "working",
+    "want",
+    false
+   ],
+   "header": "State: needs inputTitle with \"quotes\" & <tags>codex · ünï · a:b5Copy IDCopy linkNo resume command · No terminal to raiseWhyThis session published no usable id this run, so there is no re-entry command to copy.No terminal was reported for this session, so it cannot be raised. That is the ordinary answer outside tmux, for a session older than this server run, and on Linux and Windows.",
+   "headerLinks": [
+    "#n=project:a%3Ab"
+   ],
+   "headerButtons": [
+    "Copy session ID ünï",
+    "Copy a link to this session"
+   ],
+   "ask": "ASKED YOU · Wait duration not publishedAGENT IS ASKING · 5 is asking youNEEDS YOUÜnï question?A3",
+   "answers": [
+    "ask#0:A",
+    "ask#1:3",
+    "ask#2:"
+   ],
+   "parts": [
+    [
+     ".next-session-activity-heading",
+     "Session activity"
+    ],
+    [
+     ".next-session-command-surface",
+     "CURRENT ACTIVITYworking · Activity not published"
+    ],
+    [
+     "dl.next-session-facts",
+     "NEXT STEPNo pending step publishedBLOCKEDWaiting on youÜnï question?"
+    ],
+    [
+     "details.next-session-facts-more",
+     "Session facts: No stop or end observed · Git state was not measuredTURNHarness does not report turn boundsOUTCOMENo stop or end observedGIT STATEGit state was not measuredPROJECTa:b"
+    ],
+    [
+     ".next-session-evidence",
+     ""
+    ],
+    [
+     "[data-next-session-section=\"tasks\"]",
+     "TASKS · 0 OF 2 DONE○Ünï task●"
+    ],
+    [
+     "[data-next-command-reports]",
+     "Command-shape reports: offCommand-shape reports are disabled for this run.A shape match does not prove the action succeeded.Claude Code and Codex after-tool hooks only. Reports may repeat or arrive out of order. This run keeps up to 1,000 reports, 20 per session, for at most 24 hours; restarting clears them."
+    ]
+   ],
+   "footer": "-2 output tokens this session"
+  },
+  "generated seed 5 108789d1bf94: list": {
+   "header": "COMMAND SURFACESession operationsHow rows are splitBlocked sessions lead, followed by recorded departures, then working sessions. The Active now figure counts active evidence only; a recorded departure adds no active session.Goal sourcesYour first prompt, or your latest where the first is not published, comes from Claude Code or Codex; other harnesses show only your typed words. A goal marked from your prompt was adopted by you; showing a prompt alone adopts nothing, and Drift names a recorded departure.",
+   "fleet": [
+    [
+     "active",
+     "ACTIVE NOW18 recently observed"
+    ],
+    [
+     "working",
+     "WORKING01 waiting on you"
+    ],
+    [
+     "requests",
+     "EXACT REQUESTS11 of 8 sessions carry an exact request"
+    ],
+    [
+     "reported-blocks",
+     "REPORTED BLOCKS11 of 8 sessions report block state"
+    ]
+   ],
+   "groups": [
+    {
+     "kind": "active",
+     "header": "Active nowworking, waiting on you, an exact request, or recorded drift",
+     "empty": null,
+     "rows": [
+      {
+       "harness": "codex",
+       "sid": "ünï",
+       "history": false,
+       "tone": "next-operation-row--want",
+       "href": "#n=session:alpha%2Fapp:codex:%C3%BCn%C3%AF",
+       "aria": "Open session <script>x</script>",
+       "text": "SESSIONCODEX<script>x</script>Copy ID5 sessions share this display label; shared location is not establishedSource not fully read: block state, token accountingWHERE · PROJECT LABELExact location not publishedalpha/appGOALAdd a goalNOW · No state publishedNEXTNo pending step publishedBLOCKED · NEEDS YOUWaiting on youÜnï question?",
+       "buttons": [
+        "Copy session ID ünï"
+       ]
+      }
+     ]
+    },
+    {
+     "kind": "history",
+     "header": "Recent historyWhat recent meansRecently observed is not proof the harness process is still open or closed; rows marked ENDED reported their own end.",
+     "empty": null,
+     "rows": [
+      {
+       "harness": "codex",
+       "sid": "s2",
+       "history": true,
+       "tone": "next-operation-row--unknown",
+       "href": "#n=session:alpha%2Fapp:codex:s2",
+       "aria": "Open session padded",
+       "text": "SESSIONCODEXpaddedCopy ID5 sessions share this display label; shared location is not establishedWHERE · PROJECT LABELExact location not publishedalpha/appGOALAdd a goalNOW · IDLEquiet◦ Stop observed; git state not measuredGit state was not measuredQUIET",
+       "buttons": [
+        "Copy session ID s2"
+       ]
+      },
+      {
+       "harness": "claude",
+       "sid": "s2",
+       "history": true,
+       "tone": "next-operation-row--unknown",
+       "href": "#n=session:alpha%2Fapp:claude:s2",
+       "aria": "Open session Fix the build",
+       "text": "SESSIONCLAUDEFix the buildCopy ID5 sessions share this display label; shared location is not establishedWHERE · PROJECT LABELExact location not publishedalpha/appGOALAdd a goalNOW · IDLEquiet◦ Turn stop in Claude Code's transcript; git state not measuredGit state was not measuredQUIET",
+       "buttons": [
+        "Copy session ID s2"
+       ]
+      },
+      {
+       "harness": "claude",
+       "sid": "s2",
+       "history": true,
+       "tone": "next-operation-row--unknown",
+       "href": "#n=session:alpha%2Fapp:claude:s2",
+       "aria": "Open session Fix the build",
+       "text": "SESSIONCLAUDEFix the buildCopy ID5 sessions share this display label; shared location is not establishedWHERE · PROJECT LABELExact location not publishedalpha/appGOALAdd a goalNOW · IDLEquiet◦ Turn stop in Claude Code's transcript; git state not measuredGit state was not measuredQUIET",
+       "buttons": [
+        "Copy session ID s2"
+       ]
+      },
+      {
+       "harness": "claude",
+       "sid": "long-zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz",
+       "history": true,
+       "tone": "next-operation-row--unknown",
+       "href": "#n=session:%3Cb%3Ex%3C%2Fb%3E:claude:long-zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz",
+       "aria": "Open session Fix the build",
+       "text": "SESSIONCLAUDEFix the buildCopy IDWHERE · PROJECT LABELExact location not published<b>x</b>GOALAdd a goalNOW · No state published",
+       "buttons": [
+        "Copy session ID long-zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz"
+       ]
+      },
+      {
+       "harness": "claude",
+       "sid": "x y",
+       "history": true,
+       "tone": "next-operation-row--ok",
+       "href": "#n=session:alpha%2Fapp:claude:x%20y",
+       "aria": "Open session Title not published",
+       "text": "SESSIONCLAUDETitle not publishedCopy ID5 sessions share this display label; shared location is not establishedWHERE · PROJECT LABELExact location not publishedalpha/appGOALAdd a goalNOW · ENDEDSession reported its own end✓ Session ended; git state cleanGit state reported cleanENDED",
+       "buttons": [
+        "Copy session ID x y"
+       ]
+      },
+      {
+       "harness": "gemini",
+       "sid": "s1",
+       "history": true,
+       "tone": "next-operation-row--unknown",
+       "href": "#n=session:beta%2Fapi:gemini:s1",
+       "aria": "Open session Title with \"quotes\" & <tags>",
+       "text": "SESSIONgeminiTitle with \"quotes\" & <tags>Copy ID2 sessions share this display label; shared location is not establishedWHERE · PROJECT LABELExact location not publishedbeta/apiGOALAdd a goalNOW · BOGUSNo state published",
+       "buttons": [
+        "Copy session ID s1"
+       ]
+      },
+      {
+       "harness": "pi",
+       "sid": "s1",
+       "history": true,
+       "tone": "next-operation-row--unknown",
+       "href": "#n=session:beta%2Fapi:pi:s1",
+       "aria": "Open session Fix the build",
+       "text": "SESSIONpiFix the buildCopy ID2 sessions share this display label; shared location is not establishedWHERE · PROJECT LABELExact location not publishedbeta/apiGOAL · YOUR WORDS5NOW · 7No state published",
+       "buttons": [
+        "Copy session ID s1"
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  "generated seed 5 108789d1bf94: page 0 claude/long-zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz": {
+   "attrs": [
+    "long-zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz",
+    null,
+    "unknown",
+    false
+   ],
+   "header": "Fix the buildclaude · long-zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz · <b>x</b>CLAUDE · ÜnïCopy IDCopy linkCopy commandNo terminal to raiseWhyNo terminal was reported for this session, so it cannot be raised. That is the ordinary answer outside tmux, for a session older than this server run, and on Linux and Windows.",
+   "headerLinks": [
+    "#n=project:%3Cb%3Ex%3C%2Fb%3E"
+   ],
+   "headerButtons": [
+    "Copy session ID long-zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz",
+    "Copy a link to this session",
+    "Copy re-entry command claude --resume abc-123"
+   ],
+   "ask": null,
+   "answers": [],
+   "parts": [
+    [
+     ".next-session-activity-heading",
+     "Session activity"
+    ],
+    [
+     ".next-session-command-surface",
+     "CURRENT ACTIVITY · No state published"
+    ],
+    [
+     "dl.next-session-facts",
+     "NEXT STEPNo pending step publishedBLOCKEDHarness does not report blocks"
+    ],
+    [
+     "details.next-session-facts-more",
+     "Session facts: No stop or end observed · Git state reported cleanTURNNo turn in progressOUTCOMENo stop or end observedGIT STATEGit state reported cleanPROJECT<b>x</b>"
+    ],
+    [
+     ".next-session-evidence",
+     ""
+    ],
+    [
+     "[data-next-command-reports]",
+     "Command-shape reports: offCommand-shape reports are disabled for this run.A shape match does not prove the action succeeded.Claude Code and Codex after-tool hooks only. Reports may repeat or arrive out of order. This run keeps up to 1,000 reports, 20 per session, for at most 24 hours; restarting clears them."
+    ],
+    [
+     ".next-cockpit-landed",
+     "HOW IT LANDEDEND EVIDENCENo stop or end observed while the session is runningWHO CLAIMS IT FINISHEDNothing has claimed this session finishedThe working tree was observed clean, which is not evidence a deliverable existsNeither card implies the other.Why two cardsEvidence of an end and a claim of completion are separate questions."
+    ],
+    [
+     ".next-cockpit-departures-kept",
+     "Intent logWhat it keepsThe Intent log keeps what you saved and what was raised against it after the session leaves the board."
+    ]
+   ],
+   "footer": ""
+  },
+  "generated seed 5 108789d1bf94: page 1 claude/x y": {
+   "attrs": [
+    "x y",
+    null,
+    "ok",
+    false
+   ],
+   "header": "Title not publishedclaude · x y · alpha/appCLAUDE · awaiting your messageCopy IDCopy linkNo resume command · No terminal to raiseWhyThis session published no usable id this run, so there is no re-entry command to copy.No terminal was reported for this session, so it cannot be raised. That is the ordinary answer outside tmux, for a session older than this server run, and on Linux and Windows.",
+   "headerLinks": [
+    "#n=project:alpha%2Fapp"
+   ],
+   "headerButtons": [
+    "Copy session ID x y",
+    "Copy a link to this session"
+   ],
+   "ask": null,
+   "answers": [],
+   "parts": [
+    [
+     ".next-session-activity-heading",
+     "Session activity"
+    ],
+    [
+     ".next-session-command-surface",
+     "CURRENT ACTIVITYsession ended · Session reported its own end"
+    ],
+    [
+     "dl.next-session-facts",
+     "NEXT STEPNo pending step publishedBLOCKEDHarness does not report blocks"
+    ],
+    [
+     "details.next-session-facts-more",
+     "Session facts: Session ended; git state cleanTURNNo turn in progressOUTCOMESession ended; git state cleanGIT STATEGit state reported cleanPROJECTalpha/app"
+    ],
+    [
+     ".next-session-evidence",
+     ""
+    ],
+    [
+     "[data-next-session-section=\"tasks\"]",
+     "TASKS · 0 OF 3 DONE●Write tests○○5"
+    ],
+    [
+     "[data-next-command-reports]",
+     "Command-shape reports: offCommand-shape reports are disabled for this run.A shape match does not prove the action succeeded.Claude Code and Codex after-tool hooks only. Reports may repeat or arrive out of order. This run keeps up to 1,000 reports, 20 per session, for at most 24 hours; restarting clears them."
+    ],
+    [
+     ".next-cockpit-landed",
+     "HOW IT LANDEDEND EVIDENCEA session end was observedWHO CLAIMS IT FINISHEDThe agent reported it finishedThe working tree was observed clean, which is not evidence a deliverable existsNeither card implies the other.Why two cardsEvidence of an end and a claim of completion are separate questions."
+    ],
+    [
+     ".next-cockpit-departures-kept",
+     "Intent logWhat it keepsThe Intent log keeps what you saved and what was raised against it after the session leaves the board."
+    ]
+   ],
+   "footer": ""
+  },
+  "generated seed 6 3fb7a735550b: list": {
+   "header": "COMMAND SURFACESession operationsHow rows are splitBlocked sessions lead, followed by recorded departures, then working sessions. The Active now figure counts active evidence only; a recorded departure adds no active session.Goal sourcesAnnotations are off, so goals cannot be typed and Drift marks are not shown.",
+   "fleet": [
+    [
+     "active",
+     "ACTIVE NOW13 recently observed"
+    ],
+    [
+     "working",
+     "WORKING10 waiting on you"
+    ],
+    [
+     "requests",
+     "EXACT REQUESTS00 of 3 sessions carry an exact request"
+    ],
+    [
+     "reported-blocks",
+     "REPORTED BLOCKS00 of 3 sessions report block state"
+    ]
+   ],
+   "groups": [
+    {
+     "kind": "active",
+     "header": "Active nowworking, waiting on you, an exact request, or recorded drift",
+     "empty": null,
+     "rows": [
+      {
+       "harness": "claude",
+       "sid": "s2",
+       "history": false,
+       "tone": "next-operation-row--unknown",
+       "href": "#n=session:a%3Ab:claude:s2",
+       "aria": "Open session Title with \"quotes\" & <tags>",
+       "text": "SESSIONCLAUDETitle with \"quotes\" & <tags>Copy ID2 sessions share this display label; shared location is not establishedWHERE · PROJECT LABELExact location not publisheda:bGOALAnnotations offNOW · WORKINGgeneratingNEXTNo pending step publishedBLOCKEDHarness does not report blocks",
+       "buttons": [
+        "Copy session ID s2"
+       ]
+      }
+     ]
+    },
+    {
+     "kind": "history",
+     "header": "Recent historyWhat recent meansRecently observed is not proof the harness process is still open or closed; rows marked ENDED reported their own end.",
+     "empty": null,
+     "rows": [
+      {
+       "harness": "codex",
+       "sid": "s2",
+       "history": true,
+       "tone": "next-operation-row--unknown",
+       "href": "#n=session:a%3Ab:codex:s2",
+       "aria": "Open session Fix the build",
+       "text": "SESSIONCODEXFix the buildCopy ID2 sessions share this display label; shared location is not establishedSource not fully read: block state, token accountingWHERE · PROJECT LABELExact location not publisheda:bGOALAnnotations offNOW · ENDEDSession reported its own endended 0s ago◦ Session ended; git state not measuredGit state was not measuredENDED",
+       "buttons": [
+        "Copy session ID s2"
+       ]
+      },
+      {
+       "harness": "pi",
+       "sid": "",
+       "history": true,
+       "tone": "next-operation-row--unknown",
+       "href": "#n=sessions",
+       "aria": "Open session Title not published",
+       "text": "SESSIONPITitle not publishedLAST PROMPT · Last promptWHERE · PROJECT LABELExact location not publishedgammaGOALAnnotations offNOW · IDLElast active 16m agoQUIET",
+       "buttons": []
+      }
+     ]
+    }
+   ]
+  },
+  "generated seed 6 3fb7a735550b: page 0 codex/s2": {
+   "attrs": [
+    "s2",
+    "working",
+    "unknown",
+    false
+   ],
+   "header": "State: endedFix the buildcodex · s2 · a:bCODEX · ended 0s ago · source not fully read: block state, token accountingCopy IDCopy linkNo resume command · No terminal to raiseWhyThis session published no usable id this run, so there is no re-entry command to copy.No terminal was reported for this session, so it cannot be raised. That is the ordinary answer outside tmux, for a session older than this server run, and on Linux and Windows.",
+   "headerLinks": [
+    "#n=project:a%3Ab"
+   ],
+   "headerButtons": [
+    "Copy session ID s2",
+    "Copy a link to this session"
+   ],
+   "ask": null,
+   "answers": [],
+   "parts": [
+    [
+     ".next-session-activity-heading",
+     "Session activity"
+    ],
+    [
+     ".next-session-command-surface",
+     "CURRENT ACTIVITYsession ended · Session reported its own end"
+    ],
+    [
+     "dl.next-session-facts",
+     "NEXT STEPNo pending step publishedBLOCKEDBlock state could not be read"
+    ],
+    [
+     "details.next-session-facts-more",
+     "Session facts: Session ended; git state not measuredTURNNo turn in progressOUTCOMESession ended; git state not measuredGIT STATEGit state was not measuredPROJECTa:b"
+    ],
+    [
+     ".next-session-evidence",
+     ""
+    ],
+    [
+     "[data-next-session-section=\"tasks\"]",
+     "TASKS · 0 OF 2 DONE●●Ünï task"
+    ],
+    [
+     "[data-next-command-reports]",
+     "Command-shape reportsNo command-shape reports.About these reportsNo matching reports received; missing hooks and unmatched commands can look the same.A shape match does not prove the action succeeded.Claude Code and Codex after-tool hooks only. Reports may repeat or arrive out of order. This run keeps up to 1,000 reports, 20 per session, for at most 24 hours; restarting clears them."
+    ]
+   ],
+   "footer": "20.5k output tokens this turn"
+  },
+  "generated seed 6 3fb7a735550b: page 1 claude/s2": {
+   "attrs": [
+    "s2",
+    "working",
+    "unknown",
+    false
+   ],
+   "header": "State: workingTitle with \"quotes\" & <tags>claude · s2 · a:bCLAUDE · generatingCopy IDCopy linkNo resume command · No terminal to raiseWhyThis session published no usable id this run, so there is no re-entry command to copy.No terminal was reported for this session, so it cannot be raised. That is the ordinary answer outside tmux, for a session older than this server run, and on Linux and Windows.",
+   "headerLinks": [
+    "#n=project:a%3Ab"
+   ],
+   "headerButtons": [
+    "Copy session ID s2",
+    "Copy a link to this session"
+   ],
+   "ask": null,
+   "answers": [],
+   "parts": [
+    [
+     ".next-session-activity-heading",
+     "Session activity"
+    ],
+    [
+     ".next-session-command-surface",
+     "CURRENT ACTIVITYworking · generating"
+    ],
+    [
+     "dl.next-session-facts",
+     "NEXT STEPNo pending step publishedBLOCKEDHarness does not report blocks"
+    ],
+    [
+     "details.next-session-facts-more",
+     "Session facts: No stop or end observed · Git state was not measuredTURNHarness does not report turn boundsOUTCOMENo stop or end observedGIT STATEGit state was not measuredPROJECTa:b"
+    ],
+    [
+     ".next-session-evidence",
+     ""
+    ],
+    [
+     "[data-next-command-reports]",
+     "Command-shape reportsNo command-shape reports.About these reportsNo matching reports received; missing hooks and unmatched commands can look the same.A shape match does not prove the action succeeded.Claude Code and Codex after-tool hooks only. Reports may repeat or arrive out of order. This run keeps up to 1,000 reports, 20 per session, for at most 24 hours; restarting clears them."
+    ]
+   ],
+   "footer": ""
+  },
+  "generated seed 7 41187196d42c: list": {
+   "header": "COMMAND SURFACESession operationsHow rows are splitBlocked sessions lead, followed by recorded departures, then working sessions. The Active now figure counts active evidence only; a recorded departure adds no active session.Goal sourcesAnnotations are off, so goals cannot be typed and Drift marks are not shown.",
+   "fleet": [
+    [
+     "active",
+     "ACTIVE NOW00 recently observed"
+    ],
+    [
+     "working",
+     "WORKING00 waiting on you"
+    ],
+    [
+     "requests",
+     "EXACT REQUESTS00 of 0 sessions carry an exact request"
+    ],
+    [
+     "reported-blocks",
+     "REPORTED BLOCKS00 of 0 sessions report block state"
+    ]
+   ],
+   "groups": [
+    {
+     "kind": "active",
+     "header": "Active nowworking, waiting on you, an exact request, or recorded drift",
+     "empty": "No exact session has active evidence right now.",
+     "rows": []
+    },
+    {
+     "kind": "history",
+     "header": "Recent historyWhat recent meansRecently observed is not proof the harness process is still open or closed; rows marked ENDED reported their own end.",
+     "empty": "No recent-history rows in this payload.",
+     "rows": []
+    }
+   ]
+  },
+  "generated seed 8 14ff2417bf6e: list": {
+   "header": "COMMAND SURFACESession operationsHow rows are splitBlocked sessions lead, followed by recorded departures, then working sessions. The Active now figure counts active evidence only; a recorded departure adds no active session.Goal sourcesYour first prompt, or your latest where the first is not published, comes from Claude Code or Codex; other harnesses show only your typed words. A goal marked from your prompt was adopted by you; showing a prompt alone adopts nothing, and Drift names a recorded departure.",
+   "fleet": [
+    [
+     "active",
+     "ACTIVE NOW59 recently observed"
+    ],
+    [
+     "working",
+     "WORKING50 waiting on you"
+    ],
+    [
+     "requests",
+     "EXACT REQUESTS00 of 9 sessions carry an exact request"
+    ],
+    [
+     "reported-blocks",
+     "REPORTED BLOCKS00 of 9 sessions report block state"
+    ]
+   ],
+   "groups": [
+    {
+     "kind": "active",
+     "header": "Active nowworking, waiting on you, an exact request, or recorded drift",
+     "empty": null,
+     "rows": [
+      {
+       "harness": "gemini",
+       "sid": "",
+       "history": false,
+       "tone": "next-operation-row--unknown",
+       "href": "#n=sessions",
+       "aria": "Open session padded",
+       "text": "SESSIONgemini●padded2 sessions share this display label; shared location is not establishedWHERE · PROJECT LABELExact location not publishedalpha/app GOALAdd a goalNOW · WORKINGActivity not publishedNEXTNo pending step publishedBLOCKEDHarness does not report blocksDrift · age unknown",
+       "buttons": []
+      },
+      {
+       "harness": "codex",
+       "sid": "0",
+       "history": false,
+       "tone": "next-operation-row--unknown",
+       "href": "#n=session:%20%20:codex:0",
+       "aria": "Open session padded",
+       "text": "SESSIONcodexpaddedCopy ID3 sessions share this display label; shared location is not establishedWHERE · PROJECT LABELExact location not published GOALAdd a goalNOW · WORKINGActivity not publishedNEXTNo pending step publishedBLOCKEDHarness does not report blocks",
+       "buttons": [
+        "Copy session ID 0"
+       ]
+      },
+      {
+       "harness": "codex",
+       "sid": "0",
+       "history": false,
+       "tone": "next-operation-row--unknown",
+       "href": "#n=session:%20%20:codex:0",
+       "aria": "Open session padded",
+       "text": "SESSIONcodexpaddedCopy ID3 sessions share this display label; shared location is not establishedWHERE · PROJECT LABELExact location not published GOALAdd a goalNOW · WORKINGActivity not publishedNEXTNo pending step publishedBLOCKEDHarness does not report blocks",
+       "buttons": [
+        "Copy session ID 0"
+       ]
+      },
+      {
+       "harness": "ghost",
+       "sid": "long-zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz",
+       "history": false,
+       "tone": "next-operation-row--unknown",
+       "href": "#n=session::ghost:long-zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz",
+       "aria": "Open session Title not published",
+       "text": "SESSIONGHOSTTitle not publishedCopy ID2 sessions share this display label; shared location is not establishedSource not fully read: aWHERE · PROJECT LABELExact location not publishedGOALAdd a goalNOW · WORKINGÜnï taskNEXTNo pending step publishedBLOCKEDHarness does not report blocks",
+       "buttons": [
+        "Copy session ID long-zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz"
+       ]
+      },
+      {
+       "harness": "",
+       "sid": "s2",
+       "history": false,
+       "tone": "next-operation-row--unknown",
+       "href": "#n=session:gamma:s2",
+       "aria": "Open session Fix the build",
+       "text": "SESSIONFix the buildCopy ID2 sessions share this display label; shared location is not establishedWHERE · PROJECT LABELExact location not publishedgammaGOALAdd a goalNOW · WORKINGgeneratingNEXTNo pending step publishedBLOCKEDHarness does not report blocks",
+       "buttons": [
+        "Copy session ID s2"
+       ]
+      }
+     ]
+    },
+    {
+     "kind": "history",
+     "header": "Recent historyWhat recent meansRecently observed is not proof the harness process is still open or closed; rows marked ENDED reported their own end.",
+     "empty": null,
+     "rows": [
+      {
+       "harness": "codex",
+       "sid": "s2",
+       "history": true,
+       "tone": "next-operation-row--unknown",
+       "href": "#n=session:gamma:codex:s2",
+       "aria": "Open session <script>x</script>",
+       "text": "SESSIONcodex<script>x</script>Copy ID2 sessions share this display label; shared location is not establishedWHERE · PROJECT LABELExact location not publishedgammaGOAL · YOUR WORDSShip the queueNOW · IDLEÜnï taskQUIET",
+       "buttons": [
+        "Copy session ID s2"
+       ]
+      },
+      {
+       "harness": "",
+       "sid": "x y",
+       "history": true,
+       "tone": "next-operation-row--unknown",
+       "href": "#n=session::x%20y",
+       "aria": "Open session padded",
+       "text": "SESSIONpaddedCopy ID2 sessions share this display label; shared location is not establishedWHERE · PROJECT LABELExact location not publishedGOAL · YOUR WORDSShip the queueNOW · No state published",
+       "buttons": [
+        "Copy session ID x y"
+       ]
+      },
+      {
+       "harness": "claude",
+       "sid": "s1",
+       "history": true,
+       "tone": "next-operation-row--unknown",
+       "href": "#n=session:alpha%2Fapp%20:claude:s1",
+       "aria": "Open session Title not published",
+       "text": "SESSIONclaudeTitle not publishedCopy ID2 sessions share this display label; shared location is not establishedWHERE · PROJECT LABELExact location not publishedalpha/app GOALAdd a goalNOW · No state published",
+       "buttons": [
+        "Copy session ID s1"
+       ]
+      },
+      {
+       "harness": "",
+       "sid": "",
+       "history": true,
+       "tone": "next-operation-row--unknown",
+       "href": "#n=sessions",
+       "aria": "Open session Fix the build",
+       "text": "SESSIONFix the build3 sessions share this display label; shared location is not establishedWHERE · PROJECT LABELExact location not published GOALAdd a goalNOW · BOGUSNo state published",
+       "buttons": []
+      }
+     ]
+    }
+   ]
+  },
+  "generated seed 8 14ff2417bf6e: page 0 ghost/long-zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz": {
+   "attrs": [
+    "long-zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz",
+    "working",
+    "unknown",
+    false
+   ],
+   "header": "State: workingTitle not publishedghost · long-zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzGHOST · source not fully read: aCopy IDCopy linkNo resume commandWhyGHOST publishes no re-entry command, so there is none to copy.",
+   "headerLinks": [],
+   "headerButtons": [
+    "Copy session ID long-zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz",
+    "Copy a link to this session"
+   ],
+   "ask": null,
+   "answers": [],
+   "parts": [
+    [
+     ".next-session-activity-heading",
+     "Session activity"
+    ],
+    [
+     ".next-session-command-surface",
+     "CURRENT ACTIVITYworking · Ünï task"
+    ],
+    [
+     "dl.next-session-facts",
+     "NEXT STEPNo pending step publishedBLOCKEDHarness does not report blocks"
+    ],
+    [
+     "details.next-session-facts-more",
+     "Session facts: No stop or end observed · Uncommitted work observedTURNTurn bounds not publishedOUTCOMENo stop or end observedGIT STATEUncommitted work observedPROJECT"
+    ],
+    [
+     ".next-session-evidence",
+     ""
+    ],
+    [
+     "[data-next-session-section=\"tasks\"]",
+     "TASKS · 0 OF 3 DONE○Write tests●Ünï task○"
+    ],
+    [
+     "[data-next-command-reports]",
+     "Command-shape reports: offCommand-shape reports are disabled for this run.A shape match does not prove the action succeeded.Claude Code and Codex after-tool hooks only. Reports may repeat or arrive out of order. This run keeps up to 1,000 reports, 20 per session, for at most 24 hours; restarting clears them."
+    ],
+    [
+     ".next-session-delivery",
+     "NOTIFICATIONSOne notification was raised about this session"
+    ],
+    [
+     ".next-cockpit-landed",
+     "HOW IT LANDEDEND EVIDENCENo stop or end observed while the session is runningWHO CLAIMS IT FINISHEDNothing has claimed this session finishedUncommitted work was observed, which shows work happened and not that the requested output existsNeither card implies the other.Why two cardsEvidence of an end and a claim of completion are separate questions."
+    ],
+    [
+     ".next-cockpit-departures-kept",
+     "Intent logWhat it keepsThe Intent log keeps what you saved and what was raised against it after the session leaves the board."
+    ]
+   ],
+   "footer": "999 output tokens this session"
+  },
+  "generated seed 8 14ff2417bf6e: page 1 codex/0": {
+   "empty": {
+    "state": "outside-payload",
+    "text": "This session is not in the current payload.codex · 0The board holds sessions observed in the last 24 hours.View all sessions",
+    "links": [
+     "#n=sessions"
+    ]
+   }
+  },
+  "generated seed 9 b4f141bee85f: list": {
+   "header": "COMMAND SURFACESession operationsHow rows are splitBlocked sessions lead, followed by recorded departures, then working sessions. The Active now figure counts active evidence only; a recorded departure adds no active session.Goal sourcesAnnotations are off, so goals cannot be typed and Drift marks are not shown.",
+   "fleet": [
+    [
+     "active",
+     "ACTIVE NOW310 recently observed"
+    ],
+    [
+     "working",
+     "WORKING21 waiting on you"
+    ],
+    [
+     "requests",
+     "EXACT REQUESTS00 of 10 sessions carry an exact request"
+    ],
+    [
+     "reported-blocks",
+     "REPORTED BLOCKS22 of 10 sessions report block state"
+    ]
+   ],
+   "groups": [
+    {
+     "kind": "active",
+     "header": "Active nowworking, waiting on you, an exact request, or recorded drift",
+     "empty": null,
+     "rows": [
+      {
+       "harness": "claude",
+       "sid": "long-zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz",
+       "history": false,
+       "tone": "next-operation-row--want",
+       "href": "#n=session:beta%2Fapi:claude:long-zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz",
+       "aria": "Open session Title not published",
+       "text": "SESSIONclaudeTitle not publishedCopy IDASSIGNMENT · Ship the retry queue3 sessions share this display label; shared location is not establishedSource not fully read: aWHERE · PROJECT LABELExact location not publishedbeta/apiGOALAnnotations offNOW · NEEDS INPUTActivity not publishedNEXTNo pending step publishedBLOCKEDWaiting on youBlock reported",
+       "buttons": [
+        "Copy session ID long-zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz"
+       ]
+      },
+      {
+       "harness": "claude",
+       "sid": "shared",
+       "history": false,
+       "tone": "next-operation-row--want",
+       "href": "#n=session:%3Cb%3Ex%3C%2Fb%3E:claude:shared",
+       "aria": "Open session padded",
+       "text": "SESSIONclaudepaddedCopy IDWHERE · PROJECT LABELExact location not published<b>x</b>GOALAnnotations offNOW · WORKINGActivity not publishedNEXTNo pending step publishedBLOCKEDHarness does not report blocks",
+       "buttons": [
+        "Copy session ID shared"
+       ]
+      },
+      {
+       "harness": "claude",
+       "sid": "long-zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz",
+       "history": false,
+       "tone": "next-operation-row--want",
+       "href": "#n=session:beta%2Fapi:claude:long-zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz",
+       "aria": "Open session Title not published",
+       "text": "SESSIONclaudeTitle not publishedCopy IDASSIGNMENT · Ship the retry queue3 sessions share this display label; shared location is not establishedSource not fully read: aWHERE · PROJECT LABELExact location not publishedbeta/apiGOALAnnotations offNOW · WORKINGActivity not publishedNEXTNo pending step publishedBLOCKEDHarness does not report blocks",
+       "buttons": [
+        "Copy session ID long-zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz"
+       ]
+      }
+     ]
+    },
+    {
+     "kind": "history",
+     "header": "Recent historyWhat recent meansRecently observed is not proof the harness process is still open or closed; rows marked ENDED reported their own end.",
+     "empty": null,
+     "rows": [
+      {
+       "harness": "claude",
+       "sid": "0",
+       "history": true,
+       "tone": "next-operation-row--unknown",
+       "href": "#n=session:beta%2Fapi:claude:0",
+       "aria": "Open session Ünï ✓",
+       "text": "SESSIONclaudeÜnï ✓Copy ID3 sessions share this display label; shared location is not establishedWHERE · PROJECT LABELExact location not publishedbeta/apiGOALAnnotations offNOW · IDLEquietQUIET",
+       "buttons": [
+        "Copy session ID 0"
+       ]
+      },
+      {
+       "harness": "ghost",
+       "sid": "s2",
+       "history": true,
+       "tone": "next-operation-row--unknown",
+       "href": "#n=session:a%3Ab:ghost:s2",
+       "aria": "Open session Title with \"quotes\" & <tags>",
+       "text": "SESSIONghostTitle with \"quotes\" & <tags>Copy ID2 sessions share this display label; shared location is not establishedWHERE · PROJECT LABELExact location not publisheda:bGOALAnnotations offNOW · BOGUSNo state published",
+       "buttons": [
+        "Copy session ID s2"
+       ]
+      },
+      {
+       "harness": "ghost",
+       "sid": "s2",
+       "history": true,
+       "tone": "next-operation-row--unknown",
+       "href": "#n=session:a%3Ab:ghost:s2",
+       "aria": "Open session Title with \"quotes\" & <tags>",
+       "text": "SESSIONghostTitle with \"quotes\" & <tags>Copy ID2 sessions share this display label; shared location is not establishedWHERE · PROJECT LABELExact location not publisheda:bGOALAnnotations offNOW · BOGUSNo state published",
+       "buttons": [
+        "Copy session ID s2"
+       ]
+      },
+      {
+       "harness": "pi",
+       "sid": "s2",
+       "history": true,
+       "tone": "next-operation-row--unknown",
+       "href": "#n=session::pi:s2",
+       "aria": "Open session <script>x</script>",
+       "text": "SESSIONpi<script>x</script>Copy IDWHERE · PROJECT LABELExact location not publishedGOALAnnotations offNOW · No state published",
+       "buttons": [
+        "Copy session ID s2"
+       ]
+      },
+      {
+       "harness": "gemini",
+       "sid": "a:b:c",
+       "history": true,
+       "tone": "next-operation-row--unknown",
+       "href": "#n=session:alpha%2Fapp%20:gemini:a%3Ab%3Ac",
+       "aria": "Open session Ünï ✓",
+       "text": "SESSION Ünï ✓Copy ID2 sessions share this display label; shared location is not establishedWHERE · PROJECT LABELExact location not publishedalpha/app GOALAnnotations offNOW · BOGUSNo state published",
+       "buttons": [
+        "Copy session ID a:b:c"
+       ]
+      },
+      {
+       "harness": "cursor",
+       "sid": "s2",
+       "history": true,
+       "tone": "next-operation-row--ok",
+       "href": "#n=session:alpha%2Fapp%20:cursor:s2",
+       "aria": "Open session Ünï ✓",
+       "text": "SESSIONcursorÜnï ✓Copy ID2 sessions share this display label; shared location is not establishedWHERE · PROJECT LABELExact location not publishedalpha/app GOALAnnotations offNOW · ENDEDSession reported its own end✓ Session ended; git state cleanGit state reported cleanENDED",
+       "buttons": [
+        "Copy session ID s2"
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  "generated seed 9 b4f141bee85f: page 0 ghost/s2": {
+   "empty": {
+    "state": "outside-payload",
+    "text": "This session is not in the current payload.ghost · s2View all sessions",
+    "links": [
+     "#n=sessions"
+    ]
+   }
+  },
+  "generated seed 9 b4f141bee85f: page 1 ghost/s2": {
+   "empty": {
+    "state": "outside-payload",
+    "text": "This session is not in the current payload.ghost · s2View all sessions",
+    "links": [
+     "#n=sessions"
+    ]
+   }
+  },
+  "generated seed 10 02e196094171: list": {
+   "header": "COMMAND SURFACESession operationsHow rows are splitBlocked sessions lead, followed by recorded departures, then working sessions. The Active now figure counts active evidence only; a recorded departure adds no active session.Goal sourcesYour first prompt, or your latest where the first is not published, comes from Claude Code or Codex; other harnesses show only your typed words. A goal marked from your prompt was adopted by you; showing a prompt alone adopts nothing, and Drift names a recorded departure.",
+   "fleet": [
+    [
+     "active",
+     "ACTIVE NOW28 recently observed"
+    ],
+    [
+     "working",
+     "WORKING02 waiting on you"
+    ],
+    [
+     "requests",
+     "EXACT REQUESTS22 of 8 sessions carry an exact request"
+    ],
+    [
+     "reported-blocks",
+     "REPORTED BLOCKS22 of 8 sessions report block state"
+    ]
+   ],
+   "groups": [
+    {
+     "kind": "active",
+     "header": "Active nowworking, waiting on you, an exact request, or recorded drift",
+     "empty": null,
+     "rows": [
+      {
+       "harness": "cursor",
+       "sid": "s1",
+       "history": false,
+       "tone": "next-operation-row--want",
+       "href": "#n=session:%3Cb%3Ex%3C%2Fb%3E:cursor:s1",
+       "aria": "Open session Title not published",
+       "text": "SESSIONcursorTitle not publishedCopy ID2 sessions share this display label; shared location is not establishedWHERE · PROJECT LABELExact location not published<b>x</b>GOALAdd a goalNOW · NEEDS INPUTWrite testsNEXTNo pending step publishedBLOCKED · NEEDS YOUWaiting on youLine one Line twoDrift · age unknown",
+       "buttons": [
+        "Copy session ID s1"
+       ]
+      },
+      {
+       "harness": "pi",
+       "sid": "1",
+       "history": false,
+       "tone": "next-operation-row--want",
+       "href": "#n=session::pi:1",
+       "aria": "Open session Title not published",
+       "text": "SESSIONpiTitle not publishedCopy IDSource not fully read: aWHERE · PROJECT LABELExact location not publishedGOALAdd a goalNOW · 7No state publishedNEXTNo pending step publishedBLOCKED · NEEDS YOUWaiting on youLine one Line two",
+       "buttons": [
+        "Copy session ID 1"
+       ]
+      },
+      {
+       "harness": "claude",
+       "sid": "ünï",
+       "history": false,
+       "tone": "next-operation-row--unknown",
+       "href": "#n=session:beta%2Fapi:claude:%C3%BCn%C3%AF",
+       "aria": "Open session Title not published",
+       "text": "SESSIONclaudeTitle not publishedCopy ID2 sessions share this display label; shared location is not establishedWHERE · PROJECT LABELExact location not publishedbeta/apiGOALAdd a goalNOW · No state publishedNEXTWrite testsBLOCKEDHarness does not report blocksDrift · age unknown",
+       "buttons": [
+        "Copy session ID ünï"
+       ]
+      },
+      {
+       "harness": "claude",
+       "sid": "x y",
+       "history": false,
+       "tone": "next-operation-row--unknown",
+       "href": "#n=session:alpha%2Fapp:claude:x%20y",
+       "aria": "Open session Title not published",
+       "text": "SESSIONclaudeTitle not publishedCopy IDWHERE · PROJECT LABELExact location not publishedalpha/appGOALAdd a goalNOW · 7No state publishedNEXTNo pending step publishedBLOCKEDHarness does not report blocksDrift · age unknown",
+       "buttons": [
+        "Copy session ID x y"
+       ]
+      }
+     ]
+    },
+    {
+     "kind": "history",
+     "header": "Recent historyWhat recent meansRecently observed is not proof the harness process is still open or closed; rows marked ENDED reported their own end.",
+     "empty": null,
+     "rows": [
+      {
+       "harness": "ghost",
+       "sid": "a:b:c",
+       "history": true,
+       "tone": "next-operation-row--unknown",
+       "href": "#n=session:%C3%BCn%C3%AF%2F%C3%A7%C3%B8d%C3%A9:ghost:a%3Ab%3Ac",
+       "aria": "Open session Fix the build",
+       "text": "SESSIONghostFix the buildCopy IDWHERE · PROJECT LABELExact location not publishedünï/çødéGOALAdd a goalNOW · ENDEDSession reported its own end◦ Session ended; git state not measuredGit state was not measuredENDED",
+       "buttons": [
+        "Copy session ID a:b:c"
+       ]
+      },
+      {
+       "harness": "claude",
+       "sid": "",
+       "history": true,
+       "tone": "next-operation-row--unknown",
+       "href": "#n=sessions",
+       "aria": "Open session padded",
+       "text": "SESSIONclaudepadded2 sessions share this display label; shared location is not establishedSource not fully read: block stateWHERE · PROJECT LABELExact location not published<b>x</b>GOAL · YOUR WORDS5NOW · 7No state published",
+       "buttons": []
+      },
+      {
+       "harness": "pi",
+       "sid": "0",
+       "history": true,
+       "tone": "next-operation-row--want",
+       "href": "#n=session:alpha%2Fapp%20:pi:0",
+       "aria": "Open session <script>x</script>",
+       "text": "SESSIONpi<script>x</script>Copy IDWHERE · PROJECT LABELExact location not publishedalpha/app GOALAdd a goalNOW · 7No state published",
+       "buttons": [
+        "Copy session ID 0"
+       ]
+      },
+      {
+       "harness": "pi",
+       "sid": "long-zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz",
+       "history": true,
+       "tone": "next-operation-row--unknown",
+       "href": "#n=session:beta%2Fapi:pi:long-zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz",
+       "aria": "Open session Title not published",
+       "text": "SESSIONpiTitle not publishedCopy ID2 sessions share this display label; shared location is not establishedSource not fully read: block state, token accountingWHERE · PROJECT LABELExact location not publishedbeta/apiGOAL · YOUR WORDS5NOW · BOGUSNo state published",
+       "buttons": [
+        "Copy session ID long-zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz"
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  "generated seed 10 02e196094171: page 0 claude/ünï": {
+   "attrs": [
+    "ünï",
+    null,
+    "unknown",
+    false
+   ],
+   "header": "Title not publishedclaude · ünï · beta/apiclaude · ÜnïCopy IDCopy linkNo resume command · No terminal to raiseWhyThis session published no usable id this run, so there is no re-entry command to copy.No terminal was reported for this session, so it cannot be raised. That is the ordinary answer outside tmux, for a session older than this server run, and on Linux and Windows.",
+   "headerLinks": [
+    "#n=project:beta%2Fapi"
+   ],
+   "headerButtons": [
+    "Copy session ID ünï",
+    "Copy a link to this session"
+   ],
+   "ask": null,
+   "answers": [],
+   "parts": [
+    [
+     ".next-session-activity-heading",
+     "Session activity"
+    ],
+    [
+     ".next-session-command-surface",
+     "CURRENT ACTIVITY · No state published"
+    ],
+    [
+     "dl.next-session-facts",
+     "NEXT STEPWrite testsBLOCKEDHarness does not report blocks"
+    ],
+    [
+     "details.next-session-facts-more",
+     "Session facts: No stop or end observed · Git state was not measuredTURNHarness does not report turn boundsOUTCOMENo stop or end observedGIT STATEGit state was not measuredPROJECTbeta/api"
+    ],
+    [
+     ".next-session-evidence",
+     ""
+    ],
+    [
+     "[data-next-session-section=\"tasks\"]",
+     "TASKS · 0 OF 3 DONE○Write tests○Write tests○Write tests"
+    ],
+    [
+     "[data-next-command-reports]",
+     "Command-shape reports: offCommand-shape reports are disabled for this run.A shape match does not prove the action succeeded.Claude Code and Codex after-tool hooks only. Reports may repeat or arrive out of order. This run keeps up to 1,000 reports, 20 per session, for at most 24 hours; restarting clears them."
+    ],
+    [
+     ".next-cockpit-landed",
+     "HOW IT LANDEDEND EVIDENCENo stop or end observed while the session is runningWHO CLAIMS IT FINISHEDNothing has claimed this session finishedGit state was not measured, so nothing was observed apart from the session's own accountNeither card implies the other.Why two cardsEvidence of an end and a claim of completion are separate questions."
+    ],
+    [
+     ".next-cockpit-departures-kept",
+     "Intent logWhat it keepsThe Intent log keeps what you saved and what was raised against it after the session leaves the board."
+    ]
+   ],
+   "footer": ""
+  },
+  "generated seed 10 02e196094171: page 1 pi/0": {
+   "attrs": [
+    "0",
+    null,
+    "want",
+    false
+   ],
+   "header": "<script>x</script>pi · 0 · alpha/app pi · Copy IDCopy linkNo resume command · No terminal to raiseWhypi publishes no re-entry command, so there is none to copy.No terminal was reported for this session, so it cannot be raised. That is the ordinary answer outside tmux, for a session older than this server run, and on Linux and Windows.",
+   "headerLinks": [
+    "#n=project:alpha%2Fapp%20"
+   ],
+   "headerButtons": [
+    "Copy session ID 0",
+    "Copy a link to this session"
+   ],
+   "ask": null,
+   "answers": [],
+   "parts": [
+    [
+     ".next-session-activity-heading",
+     "Session activity"
+    ],
+    [
+     ".next-session-command-surface",
+     "CURRENT ACTIVITY7 · No state published"
+    ],
+    [
+     "dl.next-session-facts",
+     "NEXT STEPNo pending step publishedBLOCKEDHarness does not report blocks"
+    ],
+    [
+     "details.next-session-facts-more",
+     "Session facts: No stop or end observed · Git state was not measuredTURN3m into turn · 2m estimated remainingOUTCOMENo stop or end observedGIT STATEGit state was not measuredPROJECTalpha/app"
+    ],
+    [
+     ".next-session-evidence",
+     ""
+    ],
+    [
+     ".next-session-health",
+     "FAILED TOOL LOOP — 5 tool calls failed this turn, 3 of them consecutive (most recently Slack · send message). Check the agent is working the problem rather than repeating the failure."
+    ],
+    [
+     "[data-next-command-reports]",
+     "Command-shape reports: offCommand-shape reports are disabled for this run.A shape match does not prove the action succeeded.Claude Code and Codex after-tool hooks only. Reports may repeat or arrive out of order. This run keeps up to 1,000 reports, 20 per session, for at most 24 hours; restarting clears them."
+    ],
+    [
+     ".next-cockpit-landed",
+     "HOW IT LANDEDEND EVIDENCENo stop or end observed while the session is runningWHO CLAIMS IT FINISHEDNothing has claimed this session finishedGit state was not measured, so nothing was observed apart from the session's own accountNeither card implies the other.Why two cardsEvidence of an end and a claim of completion are separate questions."
+    ],
+    [
+     ".next-cockpit-departures-kept",
+     "Intent logWhat it keepsThe Intent log keeps what you saved and what was raised against it after the session leaves the board."
+    ]
+   ],
+   "footer": "0 output tokens this session"
+  },
+  "hostile text: list": {
+   "header": "COMMAND SURFACESession operationsHow rows are splitBlocked sessions lead, followed by recorded departures, then working sessions. The Active now figure counts active evidence only; a recorded departure adds no active session.Goal sourcesAnnotations are off, so goals cannot be typed and Drift marks are not shown.",
+   "fleet": [
+    [
+     "active",
+     "ACTIVE NOW44 recently observed"
+    ],
+    [
+     "working",
+     "WORKING40 waiting on you"
+    ],
+    [
+     "requests",
+     "EXACT REQUESTS00 of 4 sessions carry an exact request"
+    ],
+    [
+     "reported-blocks",
+     "REPORTED BLOCKS00 of 4 sessions report block state"
+    ]
+   ],
+   "groups": [
+    {
+     "kind": "active",
+     "header": "Active nowworking, waiting on you, an exact request, or recorded drift",
+     "empty": null,
+     "rows": [
+      {
+       "harness": "claude",
+       "sid": "s0:\"]'><img src=x onerror=globalThis.__hit=1>",
+       "history": false,
+       "tone": "next-operation-row--unknown",
+       "href": "#n=session:%22%5D'%3E%3Cimg%20src%3Dx%20onerror%3DglobalThis.__hit%3D1%3E:claude:s0%3A%22%5D'%3E%3Cimg%20src%3Dx%20onerror%3DglobalThis.__hit%3D1%3E",
+       "aria": "Open session \"]'><img src=x onerror=globalThis.__hit=1>",
+       "text": "SESSIONclaude●\"]'><img src=x onerror=globalThis.__hit=1>Copy IDWHERE · PROJECT LABELExact location not published\"]'><img src=x onerror=globalThis.__hit=1>GOALAnnotations offNOW · WORKING\"]'><img src=x onerror=globalThis.__hit=1>NEXTNo pending step publishedBLOCKEDHarness does not report blocks",
+       "buttons": [
+        "Copy session ID s0:\"]'><img src=x onerror=globalThis.__hit=1>"
+       ]
+      },
+      {
+       "harness": "claude",
+       "sid": "s1:<script>globalThis.__hit=1</script>",
+       "history": false,
+       "tone": "next-operation-row--unknown",
+       "href": "#n=session:%3Cscript%3EglobalThis.__hit%3D1%3C%2Fscript%3E:claude:s1%3A%3Cscript%3EglobalThis.__hit%3D1%3C%2Fscript%3E",
+       "aria": "Open session <script>globalThis.__hit=1</script>",
+       "text": "SESSIONclaude●<script>globalThis.__hit=1</script>Copy IDWHERE · PROJECT LABELExact location not published<script>globalThis.__hit=1</script>GOALAnnotations offNOW · WORKING<script>globalThis.__hit=1</script>NEXTNo pending step publishedBLOCKEDHarness does not report blocks",
+       "buttons": [
+        "Copy session ID s1:<script>globalThis.__hit=1</script>"
+       ]
+      },
+      {
+       "harness": "claude",
+       "sid": "s2:`${1+1}`",
+       "history": false,
+       "tone": "next-operation-row--unknown",
+       "href": "#n=session:%60%24%7B1%2B1%7D%60:claude:s2%3A%60%24%7B1%2B1%7D%60",
+       "aria": "Open session `${1+1}`",
+       "text": "SESSIONclaude●`${1+1}`Copy IDWHERE · PROJECT LABELExact location not published`${1+1}`GOALAnnotations offNOW · WORKING`${1+1}`NEXTNo pending step publishedBLOCKEDHarness does not report blocks",
+       "buttons": [
+        "Copy session ID s2:`${1+1}`"
+       ]
+      },
+      {
+       "harness": "claude",
+       "sid": "s3:‮RTL",
+       "history": false,
+       "tone": "next-operation-row--unknown",
+       "href": "#n=session:%E2%80%AERTL:claude:s3%3A%E2%80%AERTL",
+       "aria": "Open session ‮RTL",
+       "text": "SESSIONclaude●‮RTLCopy IDWHERE · PROJECT LABELExact location not published‮RTLGOALAnnotations offNOW · WORKING‮RTLNEXTNo pending step publishedBLOCKEDHarness does not report blocks",
+       "buttons": [
+        "Copy session ID s3:‮RTL"
+       ]
+      }
+     ]
+    },
+    {
+     "kind": "history",
+     "header": "Recent historyWhat recent meansRecently observed is not proof the harness process is still open or closed; rows marked ENDED reported their own end.",
+     "empty": "No recent-history rows in this payload.",
+     "rows": []
+    }
+   ]
+  },
+  "keyboard: open and return": {
+   "opens": "#n=session:alpha%2Fapp:claude:gate-open&from=sessions",
+   "returns": "#n=sessions"
+  },
+  "layout: list height": 3227
+ }
+}

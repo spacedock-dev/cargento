@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import vm from 'node:vm';
+import { legacyHarness } from '../../test/legacy_goldens';
 
 /* The legacy page's observed model and the two session parts that stand on it, run as the page runs
    them, for the differential tests. The legacy source is the oracle: the page stays the rollback while
@@ -35,7 +36,7 @@ function read(file: string): string {
   return readFileSync(resolve(process.cwd(), WEB, file), 'utf8');
 }
 
-export function loadLegacySessions(href = 'http://127.0.0.1:4581/'): LegacySessions {
+function buildLegacySessions(href = 'http://127.0.0.1:4581/'): LegacySessions {
   const location = { href, search: '', hash: '#n=sessions' };
   const sandbox: Record<string, unknown> = {
     location,
@@ -171,8 +172,8 @@ export interface LegacyViews extends LegacySessions {
   ): string;
 }
 
-export function loadLegacyViews(): LegacyViews {
-  const base = loadLegacySessions();
+function buildLegacyViews(): LegacyViews {
+  const base = buildLegacySessions();
   const { sandbox } = base;
   let capability = '';
   (sandbox['document'] as Record<string, unknown>)['querySelector'] = () =>
@@ -255,3 +256,25 @@ export function loadLegacyViews(): LegacyViews {
     },
   };
 }
+
+/* The wrappers are what a test loads. `setData` replaces the page's data whatever came before, so it names a
+   slot instead of lengthening the history; the view methods set the data themselves. */
+export function loadLegacySessions(href?: string): LegacySessions {
+  return legacyHarness('sessions', () => buildLegacySessions(href), {
+    slots: { setData: 'data' },
+  });
+}
+
+export function loadLegacyViews(): LegacyViews {
+  return legacyHarness('views', buildLegacyViews, {
+    slots: {
+      setData: 'data',
+      setFocusCapability: 'capability',
+      sessionsHtml: 'data',
+      sessionHtml: 'data',
+    },
+  });
+}
+
+/** The unwrapped harness, for a loader that is itself wrapped over it. */
+export { buildLegacyViews, buildLegacySessions };

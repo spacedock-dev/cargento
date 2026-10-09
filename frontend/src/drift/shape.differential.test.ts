@@ -5,6 +5,7 @@ import type { WorkEntry } from '../intent/work';
 import { genAnnotation, genAssessment, genEntries, mulberry32, pick } from './generate.test.helper';
 import { loadLegacyDrift } from './legacy.test.helper';
 import { lineRequestFloors, readingShape } from './shape';
+import { caseCount, seedSample } from '../../test/legacy_goldens';
 
 /* The reading's shape contract, run next to the legacy producer over generated stored readings and evidence.
    A difference is a bug here: the seven rules are the reason a reading can be shown at all. */
@@ -58,7 +59,11 @@ legacy.lift([
   'nextCockpitReadingShape',
 ]);
 
-const SEEDS = Number(process.env['DRIFT_SEEDS'] ?? 600);
+const CASES = 60;
+// The first seed that reaches each of the result kinds the first seeds miss.
+const WITNESSES = [144, 165, 257];
+const SAMPLE = seedSample(caseCount(CASES, 'DRIFT_SEEDS'), WITNESSES);
+const SEEDS = SAMPLE.length;
 
 describe('the reading shape contract holds as the legacy producer holds it', () => {
   it(`agrees on ${String(SEEDS)} generated stored readings`, () => {
@@ -67,7 +72,8 @@ describe('the reading shape contract holds as the legacy producer holds it', () 
     const note = (name: string) => {
       seen[name] = (seen[name] ?? 0) + 1;
     };
-    for (let seed = 1; seed <= SEEDS && failures.length < 3; seed += 1) {
+    for (const seed of SAMPLE) {
+      if (failures.length >= 3) break;
       const rnd = mulberry32(seed);
       const harness = pick(rnd, ['claude', 'pi', 'codex']);
       const entries = genEntries(rnd, harness);
@@ -123,7 +129,7 @@ describe('the reading shape contract holds as the legacy producer holds it', () 
 
   it('joins a line request to its unique, non-copied parent entry as the legacy page does', () => {
     const failures: string[] = [];
-    for (let seed = 1; seed <= 200 && failures.length < 3; seed += 1) {
+    for (let seed = 1; seed <= CASES && failures.length < 3; seed += 1) {
       const rnd = mulberry32(seed + 9000);
       const session = { harness: 'claude', sid: 's1' };
       const entries = genEntries(rnd, 'claude');

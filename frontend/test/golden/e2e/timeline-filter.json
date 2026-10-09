@@ -1,0 +1,332 @@
+{
+ "proof": "timeline-filter",
+ "observations": {
+  "an untouched filter opens on Decisions in both, showing the same events |  #1": "RECORDED DECISIONS",
+  "an untouched filter opens on Decisions in both, showing the same events |  #2": {
+   "Active": false,
+   "All events": false,
+   "Decisions": true
+  },
+  "an untouched filter opens on Decisions in both, showing the same events |  #3": [
+   {
+    "id": "gate-a",
+    "kind": "decision",
+    "lane": "task:workflow:project-cockpit"
+   }
+  ],
+  "each choice shows the events the legacy page shows, and the heading follows |  #1": [
+   {
+    "id": "dir-0",
+    "kind": "direction",
+    "lane": "fo:codex:disposable-tmux-origin:1"
+   },
+   {
+    "id": "task-a",
+    "kind": "dispatch",
+    "lane": "task:workflow:project-cockpit"
+   },
+   {
+    "id": "task-b",
+    "kind": "progress",
+    "lane": "task:workflow:project-cockpit"
+   },
+   {
+    "id": "gate-a",
+    "kind": "decision",
+    "lane": "task:workflow:project-cockpit"
+   },
+   {
+    "id": "dir-1",
+    "kind": "direction",
+    "lane": "fo:codex:disposable-tmux-origin:1"
+   },
+   {
+    "id": "dir-2",
+    "kind": "direction",
+    "lane": "fo:codex:disposable-tmux-origin:1"
+   },
+   {
+    "id": "dir-3",
+    "kind": "direction",
+    "lane": "fo:codex:disposable-tmux-origin:1"
+   },
+   {
+    "id": "dir-4",
+    "kind": "direction",
+    "lane": "fo:codex:disposable-tmux-origin:1"
+   },
+   {
+    "id": "dir-5",
+    "kind": "direction",
+    "lane": "fo:codex:disposable-tmux-origin:1"
+   },
+   {
+    "id": "dir-6",
+    "kind": "direction",
+    "lane": "fo:codex:disposable-tmux-origin:1"
+   },
+   {
+    "id": "dir-7",
+    "kind": "direction",
+    "lane": "fo:codex:disposable-tmux-origin:1"
+   }
+  ],
+  "each choice shows the events the legacy page shows, and the heading follows |  #2": "SEMANTIC TIMELINE",
+  "each choice shows the events the legacy page shows, and the heading follows |  #3": {
+   "Active": false,
+   "All events": true,
+   "Decisions": false
+  },
+  "each choice shows the events the legacy page shows, and the heading follows |  #4": [
+   {
+    "id": "dir-0",
+    "kind": "direction",
+    "lane": "fo:codex:disposable-tmux-origin:1"
+   },
+   {
+    "id": "task-a",
+    "kind": "dispatch",
+    "lane": "task:workflow:project-cockpit"
+   },
+   {
+    "id": "task-b",
+    "kind": "progress",
+    "lane": "task:workflow:project-cockpit"
+   },
+   {
+    "id": "gate-a",
+    "kind": "decision",
+    "lane": "task:workflow:project-cockpit"
+   },
+   {
+    "id": "dir-1",
+    "kind": "direction",
+    "lane": "fo:codex:disposable-tmux-origin:1"
+   },
+   {
+    "id": "dir-2",
+    "kind": "direction",
+    "lane": "fo:codex:disposable-tmux-origin:1"
+   },
+   {
+    "id": "dir-3",
+    "kind": "direction",
+    "lane": "fo:codex:disposable-tmux-origin:1"
+   },
+   {
+    "id": "dir-4",
+    "kind": "direction",
+    "lane": "fo:codex:disposable-tmux-origin:1"
+   },
+   {
+    "id": "dir-5",
+    "kind": "direction",
+    "lane": "fo:codex:disposable-tmux-origin:1"
+   },
+   {
+    "id": "dir-6",
+    "kind": "direction",
+    "lane": "fo:codex:disposable-tmux-origin:1"
+   },
+   {
+    "id": "dir-7",
+    "kind": "direction",
+    "lane": "fo:codex:disposable-tmux-origin:1"
+   }
+  ],
+  "each choice shows the events the legacy page shows, and the heading follows |  #5": "SEMANTIC TIMELINE",
+  "each choice shows the events the legacy page shows, and the heading follows |  #6": {
+   "Active": true,
+   "All events": false,
+   "Decisions": false
+  },
+  "each choice shows the events the legacy page shows, and the heading follows |  #7": [
+   {
+    "id": "gate-a",
+    "kind": "decision",
+    "lane": "task:workflow:project-cockpit"
+   }
+  ],
+  "each choice shows the events the legacy page shows, and the heading follows |  #8": "RECORDED DECISIONS",
+  "each choice shows the events the legacy page shows, and the heading follows |  #9": {
+   "Active": false,
+   "All events": false,
+   "Decisions": true
+  },
+  "the choice is written as the one released map, byte for byte, and only that key |  #1": "{\"gamma/term\\u0000codex:disposable-tmux-origin:1\":\"all\"}",
+  "the choice is written as the one released map, byte for byte, and only that key |  #2": [
+   "cargento.next.graph.mode",
+   "cargento.next.leader",
+   "cargento.next.revision"
+  ],
+  "a reload restores the choice, with the same events |  #1": {
+   "Active": false,
+   "All events": true,
+   "Decisions": false
+  },
+  "a reload restores the choice, with the same events |  #2": [
+   {
+    "id": "dir-0",
+    "kind": "direction",
+    "lane": "fo:codex:disposable-tmux-origin:1"
+   },
+   {
+    "id": "task-a",
+    "kind": "dispatch",
+    "lane": "task:workflow:project-cockpit"
+   },
+   {
+    "id": "task-b",
+    "kind": "progress",
+    "lane": "task:workflow:project-cockpit"
+   },
+   {
+    "id": "gate-a",
+    "kind": "decision",
+    "lane": "task:workflow:project-cockpit"
+   },
+   {
+    "id": "dir-1",
+    "kind": "direction",
+    "lane": "fo:codex:disposable-tmux-origin:1"
+   },
+   {
+    "id": "dir-2",
+    "kind": "direction",
+    "lane": "fo:codex:disposable-tmux-origin:1"
+   },
+   {
+    "id": "dir-3",
+    "kind": "direction",
+    "lane": "fo:codex:disposable-tmux-origin:1"
+   },
+   {
+    "id": "dir-4",
+    "kind": "direction",
+    "lane": "fo:codex:disposable-tmux-origin:1"
+   },
+   {
+    "id": "dir-5",
+    "kind": "direction",
+    "lane": "fo:codex:disposable-tmux-origin:1"
+   },
+   {
+    "id": "dir-6",
+    "kind": "direction",
+    "lane": "fo:codex:disposable-tmux-origin:1"
+   },
+   {
+    "id": "dir-7",
+    "kind": "direction",
+    "lane": "fo:codex:disposable-tmux-origin:1"
+   }
+  ],
+  "a sibling project, and the same project with no session, keep their own choice |  #1": {
+   "Active": false,
+   "All events": false,
+   "Decisions": true
+  },
+  "a sibling project, and the same project with no session, keep their own choice |  #2": {
+   "Active": false,
+   "All events": false,
+   "Decisions": true
+  },
+  "a sibling project, and the same project with no session, keep their own choice |  #3": {
+   "Active": false,
+   "All events": true,
+   "Decisions": false
+  },
+  "a sibling project, and the same project with no session, keep their own choice |  #4": {
+   "Active": true,
+   "All events": false,
+   "Decisions": false
+  },
+  "a sibling project, and the same project with no session, keep their own choice |  #5": "{\"gamma/term\\u0000codex:disposable-tmux-origin:1\":\"all\",\"beta/api\\u0000codex:beta-working\":\"active\",\"gamma/term\\u0000\":\"all\"}",
+  "an old build empty key: stored": "{\"gamma/term\\u0000codex:disposable-tmux-origin:1\":\"active\"}",
+  "an opened event and the folded band keep their state across live updates, and in React keep their node |  #1": [
+   {
+    "id": "dir-0",
+    "kind": "direction",
+    "lane": "fo:codex:disposable-tmux-origin:1"
+   },
+   {
+    "id": "task-a",
+    "kind": "dispatch",
+    "lane": "task:workflow:project-cockpit"
+   },
+   {
+    "id": "task-b",
+    "kind": "progress",
+    "lane": "task:workflow:project-cockpit"
+   },
+   {
+    "id": "gate-a",
+    "kind": "decision",
+    "lane": "task:workflow:project-cockpit"
+   },
+   {
+    "id": "dir-1",
+    "kind": "direction",
+    "lane": "fo:codex:disposable-tmux-origin:1"
+   },
+   {
+    "id": "dir-2",
+    "kind": "direction",
+    "lane": "fo:codex:disposable-tmux-origin:1"
+   },
+   {
+    "id": "dir-3",
+    "kind": "direction",
+    "lane": "fo:codex:disposable-tmux-origin:1"
+   },
+   {
+    "id": "dir-4",
+    "kind": "direction",
+    "lane": "fo:codex:disposable-tmux-origin:1"
+   },
+   {
+    "id": "dir-5",
+    "kind": "direction",
+    "lane": "fo:codex:disposable-tmux-origin:1"
+   },
+   {
+    "id": "dir-6",
+    "kind": "direction",
+    "lane": "fo:codex:disposable-tmux-origin:1"
+   },
+   {
+    "id": "dir-7",
+    "kind": "direction",
+    "lane": "fo:codex:disposable-tmux-origin:1"
+   }
+  ],
+  "an opened event and the folded band keep their state across live updates, and in React keep their node |  #2": true,
+  "an opened event and the folded band keep their state across live updates, and in React keep their node |  #3": {
+   "event": true,
+   "band": true
+  },
+  "keyboard focus stays on the button that was pressed across a live update (the legacy page drops it) |  #1": null,
+  "leaving the route and coming back keeps the filter and every opened disclosure |  #1": {
+   "Active": false,
+   "All events": true,
+   "Decisions": false
+  },
+  "leaving the route and coming back keeps the filter and every opened disclosure |  #2": {
+   "event": true,
+   "band": true
+  },
+  "project scope and a focused session keep their own open events, and so do two projects |  #1": false,
+  "project scope and a focused session keep their own open events, and so do two projects |  #2": true,
+  "project scope and a focused session keep their own open events, and so do two projects |  #3": false,
+  "project scope and a focused session keep their own open events, and so do two projects |  #4": true,
+  "project scope and a focused session keep their own open events, and so do two projects |  #5": false,
+  "the layout holds at 320 and 375 px: no horizontal page scroll, controls inside the window and large enough | layout 320 #1": {
+   "overflow": 0,
+   "wide": []
+  },
+  "the layout holds at 320 and 375 px: no horizontal page scroll, controls inside the window and large enough | layout 375 #2": {
+   "overflow": 0,
+   "wide": []
+  }
+ }
+}

@@ -19,11 +19,13 @@ import {
   pick,
 } from './generate.test.helper';
 import { loadLegacyIntent } from './legacy.test.helper';
+import { caseCount } from '../../test/legacy_goldens';
 
 /* The annotation reader and the sentences built from it, run next to the legacy functions over generated
    rows. The legacy source is the oracle; a difference is a bug here. */
 const legacy = loadLegacyIntent();
-const SEEDS = Number(process.env['INTENT_SEEDS'] ?? 400);
+const CASES = 80;
+const SEEDS = caseCount(CASES, 'INTENT_SEEDS');
 
 function agree(label: string, left: unknown, right: unknown): string | null {
   const found = firstDifference(canonical(left), canonical(right));

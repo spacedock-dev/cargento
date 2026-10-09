@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { genPayload } from '../observed/generate.test.helper';
 import { loadLegacyViews } from '../observed/legacy.test.helper';
 import { mountShell } from '../shell/testing';
+import { caseCount } from '../../test/legacy_goldens';
 
 /* The Sessions screen, held to the legacy page by what a reader can read. The legacy `nextSessionsView`
    runs unchanged over a generated payload and this screen renders the same payload in the real shell;
@@ -95,7 +96,8 @@ const DEVIATIONS: readonly {
 }[] = [];
 
 describe('the Sessions screen reads as the legacy screen does, over generated payloads', () => {
-  const SEEDS = Number(process.env['SESSIONS_SEEDS'] ?? 60);
+  const CASES = 60;
+  const SEEDS = caseCount(CASES, 'SESSIONS_SEEDS');
   it(`agrees on ${String(SEEDS)} seeds, group by group and row by row`, async () => {
     const failures: string[] = [];
     for (let seed = 1; seed <= SEEDS; seed += 1) {

@@ -16,6 +16,7 @@ import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { LEGACY_LIVE } from './golden.mjs';
 import { startReactWorld } from './world.mjs';
 import { isolatedEnvironment } from '../../dev/protocol.mjs';
 
@@ -94,9 +95,15 @@ async function waitForHealth(origin, child, deadlineMs = 15000) {
 
 /**
  * Start the board. Returns `{ react, legacy, close }`: each is `{ origin }` (legacy only when
- * asked). `close()` stops exactly the processes started here and removes only their scratch.
+ * asked, and only while `CARGENTO_LEGACY` is `live` or `record`). `close()` stops exactly the processes started here and removes only their scratch.
  */
 export async function startBoard({ legacy = false, root = REPOSITORY } = {}) {
+  // In replay the legacy page is read from a recording (`support/golden.mjs`); a proof that still asks for
+  // one has missed a seam, and starting a backend nobody should read would hide that.
+  if (legacy && !LEGACY_LIVE)
+    throw new Error(
+      'startBoard({ legacy: true }) in replay mode: ask for it only when golden.live.',
+    );
   const [pythonPort, vitePort, legacyPort] = await freePorts(legacy ? 3 : 2);
   // The helper that runs is the one under `root`, so a scratch copy of the tree (a mutation check, or a
   // contributor's experiment) serves its own sources and its own runtime end to end.

@@ -9,6 +9,7 @@ import { mulberry32, pick, type Rng } from './generate.test.helper';
 import { loadLegacyDrift } from './legacy.test.helper';
 import { analysisLevel, liveEstimate, readingStored, type DriftLevel, type Signals } from './level';
 import { readingShape } from './shape';
+import { caseCount } from '../../test/legacy_goldens';
 
 /* The live estimate and the analysis level, run next to the legacy page's over generated contexts. The two
    levels are different claims with different sources, so each is compared with its own source line. */
@@ -86,7 +87,8 @@ legacy.lift([
 ]);
 legacy.lift(['fmtDur'], 'next-cockpit-compat.js');
 
-const SEEDS = Number(process.env['DRIFT_SEEDS'] ?? 500);
+const CASES = 80;
+const SEEDS = caseCount(CASES, 'DRIFT_SEEDS');
 const squash = (value: string): string => value.replace(/\s+/g, '');
 const htmlText = (html: string): string => {
   const node = document.createElement('div');

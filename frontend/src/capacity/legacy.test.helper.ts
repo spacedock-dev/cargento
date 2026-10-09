@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import vm from 'node:vm';
+import { legacyHarness } from '../../test/legacy_goldens';
 
 /* The legacy capacity strip and its consent, run as the page runs them, for the differential tests. The
    legacy source is the oracle: the page stays the rollback while this one is built, so the port is held to
@@ -27,7 +28,7 @@ export interface LegacyCapacity {
   selected(): string;
 }
 
-export function loadLegacyCapacity(): LegacyCapacity {
+function buildLegacyCapacity(): LegacyCapacity {
   const storage = new Map<string, string>();
   const sandbox: Record<string, unknown> = {
     localStorage: {
@@ -91,4 +92,14 @@ export function loadLegacyCapacity(): LegacyCapacity {
     },
     selected: () => run('nextCapacitySelectedKey'),
   };
+}
+
+export function loadLegacyCapacity(): LegacyCapacity {
+  return legacyHarness('capacity', buildLegacyCapacity, {
+    // `view` and `rail` set the consent and the data they draw from, so their answers depend on their
+    // arguments alone; `view` also leaves the selection `selected()` reads.
+    pure: ['rows', 'models', 'clock', 'view', 'rail', 'spread'],
+    slots: { view: 'drawn' },
+    observe: ['selected'],
+  });
 }

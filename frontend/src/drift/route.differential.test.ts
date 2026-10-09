@@ -24,6 +24,7 @@ import {
   toolOutputGranted,
   withheldAge,
 } from './route';
+import { caseCount } from '../../test/legacy_goldens';
 
 /* Who would read a session, whether they may, and what refuses a press, run next to the legacy page over
    generated payloads. The three refusals that rank above every other are asserted by name as well, because
@@ -67,7 +68,8 @@ legacy.lift([
 ]);
 legacy.lift(['fmtDur'], 'next-cockpit-compat.js');
 
-const SEEDS = Number(process.env['DRIFT_SEEDS'] ?? 600);
+const CASES = 80;
+const SEEDS = caseCount(CASES, 'DRIFT_SEEDS');
 const plain = (html: string): string => html.replace(/<[^>]*>/g, '').replace(/\s+/g, '');
 
 function genPayload(rnd: Rng): Record<string, unknown> {

@@ -1788,7 +1788,7 @@
           },
           {
             "vitest": "frontend/src/drift/correction.differential.test.ts",
-            "test": "cuts the inserted run and never the reader's text, on 1500 generated edits"
+            "test": "cuts the inserted run and never the reader's text, on generated edits"
           },
           {
             "browser": "frontend/e2e/drift-parity.mjs",

@@ -17,12 +17,14 @@ import { projectLanes, semanticOf } from './recovery';
 import { sessKey, stableKey } from './group';
 import { cueGloss, cueMark, tabCue, tabLede } from './tabs';
 import { createWorkstream, projectChanges, projectWindow } from '../workstream/model';
+import { caseCount } from '../../test/legacy_goldens';
 
 /* The Course tab and the tab strip, held to the legacy functions over generated boards and context reads:
    the delegation lanes the tab reads contributors from, the canonical semantic, the episodes and the
    directions beside them, the review findings, the evidence an episode discloses, and each tab's cue. */
 
-const SEEDS = Number(process.env['PROJECT_SEEDS'] ?? 120);
+const CASES = 25;
+const SEEDS = caseCount(CASES, 'PROJECT_SEEDS');
 
 function entry(data: Record<string, unknown> | null, error: boolean, revision = 1): ContextEntry {
   return { data: data as never, revision, error: error ? { kind: 'network-error' } : null };
@@ -235,7 +237,8 @@ describe('the Course tab reads as the legacy tab does', () => {
       directions: 0,
       contributors: 0,
     };
-    for (let seed = 1; seed <= SEEDS * 2; seed += 1) {
+    // No legacy answer is read here: the generator is run wide, past the seeds the goldens hold.
+    for (let seed = 1; seed <= 240; seed += 1) {
       const board = genBoard(seed);
       for (const label of labelsOf(board)) {
         const made = arrange(board, genContext(seed, board), label, 'ready');

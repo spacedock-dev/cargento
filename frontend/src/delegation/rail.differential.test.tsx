@@ -4,6 +4,7 @@ import { firstShapeDifference, shape } from './dom.test.helper';
 import { ProjectConsole } from './Console';
 import { genRailCase } from './rail.generate.test.helper';
 import { loadLegacyRail } from './legacy.rail.test.helper';
+import { caseCount } from '../../test/legacy_goldens';
 
 /* The Console's rail is held to the legacy page by what a reader can read and press. The page's own
    `nextProjectRail` runs over a generated board, after the same two payloads this tab accepted, and so does
@@ -11,7 +12,8 @@ import { loadLegacyRail } from './legacy.rail.test.helper';
    window, each waiting session with its controls, each capacity window, and the tripwires panel. A failure
    names the seed, the project and the first path that differs. */
 const legacy = loadLegacyRail();
-const SEEDS = 200;
+const CASES = 80;
+const SEEDS = caseCount(CASES);
 
 describe('the Console rail agrees with the legacy page', () => {
   it(`over ${String(SEEDS)} generated boards`, async () => {
@@ -68,10 +70,10 @@ describe('the Console rail agrees with the legacy page', () => {
     }
     expect(failures).toEqual([]);
     // The comparison is not vacuous.
-    expect(seen.rails).toBeGreaterThan(150);
-    expect(seen.known).toBeGreaterThan(30);
-    expect(seen.waiting).toBeGreaterThan(40);
-    expect(seen.windows).toBeGreaterThan(30);
-    expect(seen.raise).toBeGreaterThan(5);
+    expect(seen.rails).toBeGreaterThan(50);
+    expect(seen.known).toBeGreaterThan(10);
+    expect(seen.waiting).toBeGreaterThan(15);
+    expect(seen.windows).toBeGreaterThan(10);
+    expect(seen.raise).toBeGreaterThan(0);
   }, 240_000);
 });

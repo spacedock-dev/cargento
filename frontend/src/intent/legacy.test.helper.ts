@@ -1,7 +1,8 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import vm from 'node:vm';
-import { loadLegacyViews, type LegacyViews } from '../observed/legacy.test.helper';
+import { legacyHarness } from '../../test/legacy_goldens';
+import { buildLegacyViews, type LegacyViews } from '../observed/legacy.test.helper';
 
 /* The legacy Intent code, run as the page runs it, for the differential tests. The legacy source is the
    oracle: the page stays the rollback while this one is built, so the port is held to what it computes.
@@ -37,8 +38,8 @@ export interface LegacyIntent extends LegacyViews {
   run<T = unknown>(source: string, bindings?: Record<string, unknown>): T;
 }
 
-export function loadLegacyIntent(): LegacyIntent {
-  const views = loadLegacyViews();
+export function buildLegacyIntent(): LegacyIntent {
+  const views = buildLegacyViews();
   const { sandbox } = views;
   vm.runInContext(
     [
@@ -114,4 +115,15 @@ export function loadLegacyIntent(): LegacyIntent {
       return vm.runInContext(source, sandbox) as T;
     },
   };
+}
+
+export function loadLegacyIntent(): LegacyIntent {
+  return legacyHarness('intent', buildLegacyIntent, {
+    slots: {
+      setData: 'data',
+      setFocusCapability: 'capability',
+      sessionsHtml: 'data',
+      sessionHtml: 'data',
+    },
+  });
 }

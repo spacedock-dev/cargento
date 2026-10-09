@@ -1,0 +1,2826 @@
+{
+ "proof": "project-parity",
+ "observations": {
+  "a failed read | #n=project:alpha%2Fapp:course | 0869ac1c55": {
+   "header": "alpha/appExact location not published6 sessions · 1 working · 1 waiting on you · 1 ended · 3 quiet6 sessions share this display label; shared location is not established",
+   "panel": "Course: direction changes Cargento observed in the session record.▾ OBSERVED STATE CHANGES0 of 0 unattended · since this tab openedNo state changes observed since this tab opened.Course evidence unavailable.COMPLETED TASKS · 11 of 4 done✓Write the failing test",
+   "panelLinks": [],
+   "scopeLinks": [
+    [
+     "#n=project:alpha%2Fapp:course",
+     "project",
+     true
+    ],
+    [
+     "#n=project:alpha%2Fapp:claude%3Aa-lead:course",
+     "session",
+     false
+    ],
+    [
+     "#n=project:alpha%2Fapp:claude%3Aa-wait:course",
+     "session",
+     false
+    ],
+    [
+     "#n=project:alpha%2Fapp:claude%3Aa-gap:course",
+     "session",
+     false
+    ],
+    [
+     "#n=project:alpha%2Fapp:claude%3Aa-quiet:course",
+     "session",
+     false
+    ],
+    [
+     "#n=project:alpha%2Fapp:codex%3Aa-lead:course",
+     "session",
+     false
+    ],
+    [
+     "#n=project:alpha%2Fapp:claude%3Aa-ended:course",
+     "session",
+     false
+    ]
+   ],
+   "scopeTree": "SCOPEPROJECTapp6 sessionsSESSIONSession a-leadClaude Code · working · 5sSESSIONNeeds a decisionClaude Code · needs_input · 1mSESSIONPart of its store was unreadableClaude Code · idle · 15mSESSIONSession title not publishedClaude Code · idle · 25mSESSIONSame sid under codexCodex · idle · 5mSESSIONEnded with uncommitted workClaude Code · working · 10s",
+   "strip": "PROJECT RECOVERY BRIEFINGFO is the first officer, the agent driving this workflow; Captain is you.ASSIGNMENTNot observedSTATED GOALclaude · latest assignment · observed 5m agoDrain the retry queue in order5 of 6 sessions publish no goal.EXECUTIONClaude Code · workinglens · activeEvidence · child handoffReview the diff · source exact parent dispatch · source session claude:a-leadscout · returnedEvidence · child handoffMap the queue · Mapped · source child lifecycle · source session claude:a-lead · event 1880 · age 2m agoCOMMANDWAITING ON YOUNeeds a decision2mApprove the retry plan?RAISECopy commandCAPTAIN NEEDEDANSWER · Approve the retry plan?REFRESH · refresh captain-attention scanCaptain attention unavailable · project context request failedEvidence · attention sourcesCAPTAIN · ask · Approve the retry plan? · AskRegistry exact question · exactFO · coverage_inspection · refresh captain-attention scan · project context request failed · unavailableFO · attention · inspect idle owner · 3 · exact session state · exact1 more FO actionCaptain attention unavailable · project context request failedLATEST EVIDENCEActionable direction not observed · Session result not observed+ Add human context · this browser",
+   "stripLinks": [
+    "#n=session:alpha%2Fapp:claude:a-wait"
+   ],
+   "switcher": "Viewing project · appChange scope",
+   "tabs": [
+    "Now|false",
+    "Course0No observed state changes observed|true",
+    "Decisions—decisions could not be read|false",
+    "Console|false"
+   ],
+   "viewing": ""
+  },
+  "a project | #n=project:%C3%BCn%C3%AF%2F%C3%A7%C3%B8d%C3%A9 | 7564310c32": {
+   "header": "ünï/çødéExact location not published1 session · 1 quiet",
+   "panel": "Now: what is running in this project this minute, and how sessions here have ended.GOING ONNo session currently running. Command attention remains above.HOW THINGS ENDEDNo session in this project has been observed ending.",
+   "panelLinks": [],
+   "scopeLinks": [],
+   "scopeTree": "",
+   "strip": "PROJECT RECOVERY BRIEFINGFO is the first officer, the agent driving this workflow; Captain is you.ASSIGNMENTNot observedSTATED GOALNo assignment or workflow goal published1 of 1 session publishes no goal.EXECUTIONNo execution observedCOMMANDFO INSPECTINGREFRESH · refresh captain-attention scanCaptain state unknownCaptain attention unavailable · project context request failedEvidence · attention sourcesFO · coverage_inspection · refresh captain-attention scan · project context request failed · unavailableFO · attention · inspect idle owner · 1 · exact session state · exact1 more FO actionCaptain attention unavailable · project context request failedLATEST EVIDENCEActionable direction not observed · Session result not observed+ Add human context · this browser",
+   "stripLinks": [],
+   "switcher": "",
+   "tabs": [
+    "Now|true",
+    "Course0No observed state changes observed|false",
+    "Decisions—decisions could not be read|false",
+    "Console|false"
+   ],
+   "viewing": ""
+  },
+  "a project | #n=project:%C3%BCn%C3%AF%2F%C3%A7%C3%B8d%C3%A9:course | 584366977f": {
+   "header": "ünï/çødéExact location not published1 session · 1 quiet",
+   "panel": "Course: direction changes Cargento observed in the session record.▾ OBSERVED STATE CHANGES0 of 0 unattended · since this tab openedNo state changes observed since this tab opened.Course evidence unavailable.",
+   "panelLinks": [],
+   "scopeLinks": [],
+   "scopeTree": "",
+   "strip": "PROJECT RECOVERY BRIEFINGFO is the first officer, the agent driving this workflow; Captain is you.ASSIGNMENTNot observedSTATED GOALNo assignment or workflow goal published1 of 1 session publishes no goal.EXECUTIONNo execution observedCOMMANDFO INSPECTINGREFRESH · refresh captain-attention scanCaptain state unknownCaptain attention unavailable · project context request failedEvidence · attention sourcesFO · coverage_inspection · refresh captain-attention scan · project context request failed · unavailableFO · attention · inspect idle owner · 1 · exact session state · exact1 more FO actionCaptain attention unavailable · project context request failedLATEST EVIDENCEActionable direction not observed · Session result not observed+ Add human context · this browser",
+   "stripLinks": [],
+   "switcher": "",
+   "tabs": [
+    "Now|false",
+    "Course0No observed state changes observed|true",
+    "Decisions—decisions could not be read|false",
+    "Console|false"
+   ],
+   "viewing": ""
+  },
+  "a project | #n=project:alpha%2Fapp | 7564310c32": {
+   "header": "alpha/appExact location not published6 sessions · 1 working · 1 waiting on you · 1 ended · 3 quiet6 sessions share this display label; shared location is not established",
+   "panel": "Now: what is running in this project this minute, and how sessions here have ended.GOING ONSession a-leadasked, 5m: Drain the retry queue in orderclaude · Fix the drain ordernext · No pending step publishedturn · Turn bounds not published900 /mNeeds a decisionclaude · Activity not publishednext · No pending step publishedturn · No turn in progressApprove the retry plan?2mHOW THINGS ENDED△Ended with uncommitted workSession ended with uncommitted workclaude · git: 3 changed entriesno estimate left · no confidence0 entities unhealthy — estimate withheldShow project planPLANbuildShip it○betaplan●alpha2buildClaude Code",
+   "panelLinks": [],
+   "scopeLinks": [
+    [
+     "#n=project:alpha%2Fapp",
+     "project",
+     true
+    ],
+    [
+     "#n=project:alpha%2Fapp:claude%3Aa-lead",
+     "session",
+     false
+    ],
+    [
+     "#n=project:alpha%2Fapp:claude%3Aa-wait",
+     "session",
+     false
+    ],
+    [
+     "#n=project:alpha%2Fapp:claude%3Aa-gap",
+     "session",
+     false
+    ],
+    [
+     "#n=project:alpha%2Fapp:claude%3Aa-quiet",
+     "session",
+     false
+    ],
+    [
+     "#n=project:alpha%2Fapp:codex%3Aa-lead",
+     "session",
+     false
+    ],
+    [
+     "#n=project:alpha%2Fapp:claude%3Aa-ended",
+     "session",
+     false
+    ]
+   ],
+   "scopeTree": "SCOPEPROJECTapp6 sessionsSESSIONSession a-leadClaude Code · working · 5sSESSIONNeeds a decisionClaude Code · needs_input · 1mSESSIONPart of its store was unreadableClaude Code · idle · 15mSESSIONSession title not publishedClaude Code · idle · 25mSESSIONSame sid under codexCodex · idle · 5mSESSIONEnded with uncommitted workClaude Code · working · 10s",
+   "strip": "PROJECT RECOVERY BRIEFINGFO is the first officer, the agent driving this workflow; Captain is you.ASSIGNMENTShip feature · BuildEvidence · assignment sourceExact workflow state · source session claude:a-leadSTATED GOALclaude · latest assignment · observed 5m agoDrain the retry queue in order5 of 6 sessions publish no goal.EXECUTIONClaude Code · workinglens · activeEvidence · child handoffReview the diff · source exact parent dispatch · source session claude:a-leadscout · returnedEvidence · child handoffMap the queue · Mapped · source child lifecycle · source session claude:a-lead · event 1880 · age 2m agoCOMMANDWAITING ON YOUNeeds a decision2mApprove the retry plan?RAISECopy commandCAPTAIN NEEDEDAUTHORIZE · Authorize the dispatch?ANSWER · Approve the retry plan?INSPECT · inspect idle owner · 3Evidence · attention sourcesCAPTAIN · authorize_dispatch · Authorize the dispatch? · ask registry · exactCAPTAIN · ask · Approve the retry plan? · AskRegistry exact question · exactFO · attention · inspect idle owner · 3 · exact session state · exactCoverage complete · 2 of 2 active sessions · active-session attention scanLATEST EVIDENCELATEST ACTIONABLE DIRECTIONLand the retry queue behind a flagLATEST EXACT RESULTShippedEvidence · direction and result sourcespromoted exact direction · source session claude:a-leadexact semantic result · source session claude:a-lead",
+   "stripLinks": [
+    "#n=session:alpha%2Fapp:claude:a-wait"
+   ],
+   "switcher": "Viewing project · appChange scope",
+   "tabs": [
+    "Now|true",
+    "Course0No observed state changes observed|false",
+    "Decisions11 decision|false",
+    "Console|false"
+   ],
+   "viewing": ""
+  },
+  "a project | #n=project:alpha%2Fapp:course | 584366977f": {
+   "header": "alpha/appExact location not published6 sessions · 1 working · 1 waiting on you · 1 ended · 3 quiet6 sessions share this display label; shared location is not established",
+   "panel": "Course: direction changes Cargento observed in the session record.▾ OBSERVED STATE CHANGES0 of 0 unattended · since this tab openedNo state changes observed since this tab opened.SESSIONClaude CodeDERIVED COURSE CHANGEShip feature · Course changedrop the cacheadd the retryEvidence · source and confidenceSource · reviewConfidence · exactFact · revContributors · lensSESSIONClaude CodeEXACT RESULTShip feature · ResultDirection · Land the retry queue behind a flagShipped · checkpoint abcdef12Evidence · source and confidenceSource · transcriptConfidence · exactFact · liveContributors · lensEvidence · source and confidenceSource · transcriptConfidence · exactFact · dirPROJECTEXACT DECISIONShip feature · DecisionapproveEvidence · source and confidenceSource · entity gateConfidence · exactFact · gateContributors · lensCOMPLETED TASKS · 11 of 4 done✓Write the failing test",
+   "panelLinks": [],
+   "scopeLinks": [
+    [
+     "#n=project:alpha%2Fapp:course",
+     "project",
+     true
+    ],
+    [
+     "#n=project:alpha%2Fapp:claude%3Aa-lead:course",
+     "session",
+     false
+    ],
+    [
+     "#n=project:alpha%2Fapp:claude%3Aa-wait:course",
+     "session",
+     false
+    ],
+    [
+     "#n=project:alpha%2Fapp:claude%3Aa-gap:course",
+     "session",
+     false
+    ],
+    [
+     "#n=project:alpha%2Fapp:claude%3Aa-quiet:course",
+     "session",
+     false
+    ],
+    [
+     "#n=project:alpha%2Fapp:codex%3Aa-lead:course",
+     "session",
+     false
+    ],
+    [
+     "#n=project:alpha%2Fapp:claude%3Aa-ended:course",
+     "session",
+     false
+    ]
+   ],
+   "scopeTree": "SCOPEPROJECTapp6 sessionsSESSIONSession a-leadClaude Code · working · 5sSESSIONNeeds a decisionClaude Code · needs_input · 1mSESSIONPart of its store was unreadableClaude Code · idle · 15mSESSIONSession title not publishedClaude Code · idle · 25mSESSIONSame sid under codexCodex · idle · 5mSESSIONEnded with uncommitted workClaude Code · working · 10s",
+   "strip": "PROJECT RECOVERY BRIEFINGFO is the first officer, the agent driving this workflow; Captain is you.ASSIGNMENTShip feature · BuildEvidence · assignment sourceExact workflow state · source session claude:a-leadSTATED GOALclaude · latest assignment · observed 5m agoDrain the retry queue in order5 of 6 sessions publish no goal.EXECUTIONClaude Code · workinglens · activeEvidence · child handoffReview the diff · source exact parent dispatch · source session claude:a-leadscout · returnedEvidence · child handoffMap the queue · Mapped · source child lifecycle · source session claude:a-lead · event 1880 · age 2m agoCOMMANDWAITING ON YOUNeeds a decision2mApprove the retry plan?RAISECopy commandCAPTAIN NEEDEDAUTHORIZE · Authorize the dispatch?ANSWER · Approve the retry plan?INSPECT · inspect idle owner · 3Evidence · attention sourcesCAPTAIN · authorize_dispatch · Authorize the dispatch? · ask registry · exactCAPTAIN · ask · Approve the retry plan? · AskRegistry exact question · exactFO · attention · inspect idle owner · 3 · exact session state · exactCoverage complete · 2 of 2 active sessions · active-session attention scanLATEST EVIDENCELATEST ACTIONABLE DIRECTIONLand the retry queue behind a flagLATEST EXACT RESULTShippedEvidence · direction and result sourcespromoted exact direction · source session claude:a-leadexact semantic result · source session claude:a-lead",
+   "stripLinks": [
+    "#n=session:alpha%2Fapp:claude:a-wait"
+   ],
+   "switcher": "Viewing project · appChange scope",
+   "tabs": [
+    "Now|false",
+    "Course0No observed state changes observed|true",
+    "Decisions11 decision|false",
+    "Console|false"
+   ],
+   "viewing": ""
+  },
+  "a project | #n=project:beta%2Fapi | 7564310c32": {
+   "header": "beta/apiExact location not published2 sessions · 2 quiet2 sessions share this display label; shared location is not established",
+   "panel": "Now: what is running in this project this minute, and how sessions here have ended.GOING ONNo session currently running. Command attention remains above.HOW THINGS ENDEDNo session in this project has been observed ending.",
+   "panelLinks": [],
+   "scopeLinks": [
+    [
+     "#n=project:beta%2Fapi",
+     "project",
+     true
+    ],
+    [
+     "#n=project:beta%2Fapi:claude%3Ab-1",
+     "session",
+     false
+    ],
+    [
+     "#n=project:beta%2Fapi:claude%3Ab-2",
+     "session",
+     false
+    ]
+   ],
+   "scopeTree": "SCOPE · Claude CodePROJECTapi2 sessionsSESSIONIdle with outputidle · 6mSESSIONAnother betaidle · 8m",
+   "strip": "PROJECT RECOVERY BRIEFINGFO is the first officer, the agent driving this workflow; Captain is you.ASSIGNMENTNot observedSTATED GOALNo assignment or workflow goal published2 of 2 sessions publish no goal.EXECUTIONNo execution observedCOMMANDFO INSPECTINGREFRESH · refresh captain-attention scanCaptain state unknownCaptain attention unavailable · project context request failedEvidence · attention sourcesFO · coverage_inspection · refresh captain-attention scan · project context request failed · unavailableFO · attention · inspect idle owner · 2 · exact session state · exact1 more FO actionCaptain attention unavailable · project context request failedLATEST EVIDENCEActionable direction not observed · Session result not observed+ Add human context · this browser",
+   "stripLinks": [],
+   "switcher": "Viewing project · apiChange scope",
+   "tabs": [
+    "Now|true",
+    "Course0No observed state changes observed|false",
+    "Decisions—decisions could not be read|false",
+    "Console|false"
+   ],
+   "viewing": ""
+  },
+  "a project | #n=project:beta%2Fapi%20 | 7564310c32": {
+   "header": "beta/api Exact location not published1 session · 1 quiet",
+   "panel": "Now: what is running in this project this minute, and how sessions here have ended.GOING ONNo session currently running. Command attention remains above.HOW THINGS ENDEDNo session in this project has been observed ending.",
+   "panelLinks": [],
+   "scopeLinks": [],
+   "scopeTree": "",
+   "strip": "PROJECT RECOVERY BRIEFINGFO is the first officer, the agent driving this workflow; Captain is you.ASSIGNMENTNot observedSTATED GOALNo assignment or workflow goal published1 of 1 session publishes no goal.EXECUTIONNo execution observedCOMMANDFO INSPECTINGREFRESH · refresh captain-attention scanCaptain state unknownCaptain attention unavailable · project context request failedEvidence · attention sourcesFO · coverage_inspection · refresh captain-attention scan · project context request failed · unavailableFO · attention · inspect idle owner · 1 · exact session state · exact1 more FO actionCaptain attention unavailable · project context request failedLATEST EVIDENCEActionable direction not observed · Session result not observed+ Add human context · this browser",
+   "stripLinks": [],
+   "switcher": "",
+   "tabs": [
+    "Now|true",
+    "Course0No observed state changes observed|false",
+    "Decisions—decisions could not be read|false",
+    "Console|false"
+   ],
+   "viewing": ""
+  },
+  "a project | #n=project:beta%2Fapi%20:course | 584366977f": {
+   "header": "beta/api Exact location not published1 session · 1 quiet",
+   "panel": "Course: direction changes Cargento observed in the session record.▾ OBSERVED STATE CHANGES0 of 0 unattended · since this tab openedNo state changes observed since this tab opened.Course evidence unavailable.",
+   "panelLinks": [],
+   "scopeLinks": [],
+   "scopeTree": "",
+   "strip": "PROJECT RECOVERY BRIEFINGFO is the first officer, the agent driving this workflow; Captain is you.ASSIGNMENTNot observedSTATED GOALNo assignment or workflow goal published1 of 1 session publishes no goal.EXECUTIONNo execution observedCOMMANDFO INSPECTINGREFRESH · refresh captain-attention scanCaptain state unknownCaptain attention unavailable · project context request failedEvidence · attention sourcesFO · coverage_inspection · refresh captain-attention scan · project context request failed · unavailableFO · attention · inspect idle owner · 1 · exact session state · exact1 more FO actionCaptain attention unavailable · project context request failedLATEST EVIDENCEActionable direction not observed · Session result not observed+ Add human context · this browser",
+   "stripLinks": [],
+   "switcher": "",
+   "tabs": [
+    "Now|false",
+    "Course0No observed state changes observed|true",
+    "Decisions—decisions could not be read|false",
+    "Console|false"
+   ],
+   "viewing": ""
+  },
+  "a project | #n=project:beta%2Fapi:course | 584366977f": {
+   "header": "beta/apiExact location not published2 sessions · 2 quiet2 sessions share this display label; shared location is not established",
+   "panel": "Course: direction changes Cargento observed in the session record.▾ OBSERVED STATE CHANGES0 of 0 unattended · since this tab openedNo state changes observed since this tab opened.Course evidence unavailable.",
+   "panelLinks": [],
+   "scopeLinks": [
+    [
+     "#n=project:beta%2Fapi:course",
+     "project",
+     true
+    ],
+    [
+     "#n=project:beta%2Fapi:claude%3Ab-1:course",
+     "session",
+     false
+    ],
+    [
+     "#n=project:beta%2Fapi:claude%3Ab-2:course",
+     "session",
+     false
+    ]
+   ],
+   "scopeTree": "SCOPE · Claude CodePROJECTapi2 sessionsSESSIONIdle with outputidle · 6mSESSIONAnother betaidle · 8m",
+   "strip": "PROJECT RECOVERY BRIEFINGFO is the first officer, the agent driving this workflow; Captain is you.ASSIGNMENTNot observedSTATED GOALNo assignment or workflow goal published2 of 2 sessions publish no goal.EXECUTIONNo execution observedCOMMANDFO INSPECTINGREFRESH · refresh captain-attention scanCaptain state unknownCaptain attention unavailable · project context request failedEvidence · attention sourcesFO · coverage_inspection · refresh captain-attention scan · project context request failed · unavailableFO · attention · inspect idle owner · 2 · exact session state · exact1 more FO actionCaptain attention unavailable · project context request failedLATEST EVIDENCEActionable direction not observed · Session result not observed+ Add human context · this browser",
+   "stripLinks": [],
+   "switcher": "Viewing project · apiChange scope",
+   "tabs": [
+    "Now|false",
+    "Course0No observed state changes observed|true",
+    "Decisions—decisions could not be read|false",
+    "Console|false"
+   ],
+   "viewing": ""
+  },
+  "a project | #n=project:calm%2Fapp | 7564310c32": {
+   "header": "calm/appExact location not published1 session · 1 working",
+   "panel": "Now: what is running in this project this minute, and how sessions here have ended.GOING ONSession c-1claude · Activity not publishednext · No pending step publishedturn · Turn bounds not published300 /mHOW THINGS ENDEDNo session in this project has been observed ending.Show project planPROJECT WORKFLOWbuildShip itDECLARED STAGESplan · buildObserved by Spacedock project discovery; no live entity state is inferred.",
+   "panelLinks": [],
+   "scopeLinks": [],
+   "scopeTree": "",
+   "strip": "PROJECT RECOVERY BRIEFINGFO is the first officer, the agent driving this workflow; Captain is you.ASSIGNMENTShip feature · BuildEvidence · assignment sourceExact workflow stateSTATED GOALNo assignment or workflow goal published1 of 1 session publishes no goal.EXECUTIONClaude Code · workingCOMMANDFO CONTINUES · Continue current assignmentEvidence · attention sourcesCoverage complete · 2 of 2 active sessions · active-session attention scanLATEST EVIDENCEActionable direction not observed · Session result not observed",
+   "stripLinks": [],
+   "switcher": "",
+   "tabs": [
+    "Now|true",
+    "Course0No observed state changes observed|false",
+    "Decisions0No decisions observed|false",
+    "Console|false"
+   ],
+   "viewing": ""
+  },
+  "a project | #n=project:calm%2Fapp:course | 584366977f": {
+   "header": "calm/appExact location not published1 session · 1 working",
+   "panel": "Course: direction changes Cargento observed in the session record.▾ OBSERVED STATE CHANGES0 of 0 unattended · since this tab openedNo state changes observed since this tab opened.No source-backed course changes observed in the last 1 hour.",
+   "panelLinks": [],
+   "scopeLinks": [],
+   "scopeTree": "",
+   "strip": "PROJECT RECOVERY BRIEFINGFO is the first officer, the agent driving this workflow; Captain is you.ASSIGNMENTShip feature · BuildEvidence · assignment sourceExact workflow stateSTATED GOALNo assignment or workflow goal published1 of 1 session publishes no goal.EXECUTIONClaude Code · workingCOMMANDFO CONTINUES · Continue current assignmentEvidence · attention sourcesCoverage complete · 2 of 2 active sessions · active-session attention scanLATEST EVIDENCEActionable direction not observed · Session result not observed",
+   "stripLinks": [],
+   "switcher": "",
+   "tabs": [
+    "Now|false",
+    "Course0No observed state changes observed|true",
+    "Decisions0No decisions observed|false",
+    "Console|false"
+   ],
+   "viewing": ""
+  },
+  "a stale focus | #n=project:alpha%2Fapp:claude%3Agone | bb3cd2ad8b": "SESSION FILTERSession filter is outside this payload windowclaude:goneView project root",
+  "an exact session | #n=project:alpha%2Fapp:claude%3Aa-ended | 7564310c32": {
+   "header": "alpha/appExact location not published6 sessions · 1 working · 1 waiting on you · 1 ended · 3 quiet6 sessions share this display label; shared location is not established",
+   "panel": "Now: what is running in this project this minute, and how sessions here have ended. It stays project-wide, including activity from other sessions.GOING ONSession a-leadasked, 5m: Drain the retry queue in orderclaude · Fix the drain ordernext · No pending step publishedturn · Turn bounds not published900 /mNeeds a decisionclaude · Activity not publishednext · No pending step publishedturn · No turn in progressApprove the retry plan?2mHOW THINGS ENDED△Ended with uncommitted workSession ended with uncommitted workclaude · git: 3 changed entriesno estimate left · no confidence0 entities unhealthy — estimate withheldShow project planPLANbuildShip it○betaplan●alpha2buildClaude Code",
+   "panelLinks": [],
+   "scopeLinks": [
+    [
+     "#n=project:alpha%2Fapp",
+     "project",
+     false
+    ],
+    [
+     "#n=project:alpha%2Fapp:claude%3Aa-lead",
+     "session",
+     false
+    ],
+    [
+     "#n=project:alpha%2Fapp:claude%3Aa-wait",
+     "session",
+     false
+    ],
+    [
+     "#n=project:alpha%2Fapp:claude%3Aa-gap",
+     "session",
+     false
+    ],
+    [
+     "#n=project:alpha%2Fapp:claude%3Aa-quiet",
+     "session",
+     false
+    ],
+    [
+     "#n=project:alpha%2Fapp:codex%3Aa-lead",
+     "session",
+     false
+    ],
+    [
+     "#n=project:alpha%2Fapp:claude%3Aa-ended",
+     "session",
+     true
+    ]
+   ],
+   "scopeTree": "SCOPEPROJECTapp6 sessionsSESSIONSession a-leadClaude Code · working · 5sSESSIONNeeds a decisionClaude Code · needs_input · 1mSESSIONPart of its store was unreadableClaude Code · idle · 15mSESSIONSession title not publishedClaude Code · idle · 25mSESSIONSame sid under codexCodex · idle · 5mSESSIONEnded with uncommitted workClaude Code · working · 10s",
+   "strip": "PROJECT RECOVERY BRIEFINGFO is the first officer, the agent driving this workflow; Captain is you.ASSIGNMENTShip feature · BuildEvidence · assignment sourceExact workflow state · source session claude:a-leadSTATED GOALThis session published no goalEXECUTIONClaude Code · workinglens · activeEvidence · child handoffReview the diff · source exact parent dispatch · source session claude:a-leadscout · returnedEvidence · child handoffMap the queue · Mapped · source child lifecycle · source session claude:a-lead · event 1880 · age 2m agoCOMMANDWAITING ON YOUNeeds a decision2mApprove the retry plan?RAISECopy commandCAPTAIN NEEDEDAUTHORIZE · Authorize the dispatch?ANSWER · Approve the retry plan?INSPECT · inspect idle owner · 3Evidence · attention sourcesCAPTAIN · authorize_dispatch · Authorize the dispatch? · ask registry · exactCAPTAIN · ask · Approve the retry plan? · AskRegistry exact question · exactFO · attention · inspect idle owner · 3 · exact session state · exactCoverage complete · 2 of 2 active sessions · active-session attention scanLATEST EVIDENCELATEST ACTIONABLE DIRECTIONLand the retry queue behind a flagLATEST EXACT RESULTShippedEvidence · direction and result sourcespromoted exact direction · source session claude:a-leadexact semantic result · source session claude:a-lead",
+   "stripLinks": [
+    "#n=session:alpha%2Fapp:claude:a-wait"
+   ],
+   "switcher": "Viewing session · Claude Code · workingChange scope",
+   "tabs": [
+    "Now|true",
+    "Course0No observed state changes observed|false",
+    "Decisions…decisions not loaded yet|false",
+    "Console|false"
+   ],
+   "viewing": "Viewing session · Claude Code · working"
+  },
+  "an exact session | #n=project:alpha%2Fapp:claude%3Aa-ended:course | 584366977f": {
+   "header": "alpha/appExact location not published6 sessions · 1 working · 1 waiting on you · 1 ended · 3 quiet6 sessions share this display label; shared location is not established",
+   "panel": "Course: direction changes Cargento observed in the session record.▾ OBSERVED STATE CHANGES0 of 0 unattended · since this tab openedNo state changes observed since this tab opened.SESSIONClaude CodeDERIVED COURSE CHANGEShip feature · Course changedrop the cacheadd the retryEvidence · source and confidenceSource · reviewConfidence · exactFact · revSESSIONClaude CodeEXACT RESULTShip feature · ResultDirection · Land the retry queue behind a flagShipped · checkpoint abcdef12Evidence · source and confidenceSource · transcriptConfidence · exactFact · liveEvidence · source and confidenceSource · transcriptConfidence · exactFact · dirPROJECTEXACT DECISIONShip feature · DecisionapproveEvidence · source and confidenceSource · entity gateConfidence · exactFact · gateCOMPLETED TASKS · 11 of 4 done✓Write the failing test",
+   "panelLinks": [],
+   "scopeLinks": [
+    [
+     "#n=project:alpha%2Fapp:course",
+     "project",
+     false
+    ],
+    [
+     "#n=project:alpha%2Fapp:claude%3Aa-lead:course",
+     "session",
+     false
+    ],
+    [
+     "#n=project:alpha%2Fapp:claude%3Aa-wait:course",
+     "session",
+     false
+    ],
+    [
+     "#n=project:alpha%2Fapp:claude%3Aa-gap:course",
+     "session",
+     false
+    ],
+    [
+     "#n=project:alpha%2Fapp:claude%3Aa-quiet:course",
+     "session",
+     false
+    ],
+    [
+     "#n=project:alpha%2Fapp:codex%3Aa-lead:course",
+     "session",
+     false
+    ],
+    [
+     "#n=project:alpha%2Fapp:claude%3Aa-ended:course",
+     "session",
+     true
+    ]
+   ],
+   "scopeTree": "SCOPEPROJECTapp6 sessionsSESSIONSession a-leadClaude Code · working · 5sSESSIONNeeds a decisionClaude Code · needs_input · 1mSESSIONPart of its store was unreadableClaude Code · idle · 15mSESSIONSession title not publishedClaude Code · idle · 25mSESSIONSame sid under codexCodex · idle · 5mSESSIONEnded with uncommitted workClaude Code · working · 10s",
+   "strip": "PROJECT RECOVERY BRIEFINGFO is the first officer, the agent driving this workflow; Captain is you.ASSIGNMENTShip feature · BuildEvidence · assignment sourceExact workflow state · source session claude:a-leadSTATED GOALThis session published no goalEXECUTIONClaude Code · workinglens · activeEvidence · child handoffReview the diff · source exact parent dispatch · source session claude:a-leadscout · returnedEvidence · child handoffMap the queue · Mapped · source child lifecycle · source session claude:a-lead · event 1880 · age 2m agoCOMMANDWAITING ON YOUNeeds a decision2mApprove the retry plan?RAISECopy commandCAPTAIN NEEDEDAUTHORIZE · Authorize the dispatch?ANSWER · Approve the retry plan?INSPECT · inspect idle owner · 3Evidence · attention sourcesCAPTAIN · authorize_dispatch · Authorize the dispatch? · ask registry · exactCAPTAIN · ask · Approve the retry plan? · AskRegistry exact question · exactFO · attention · inspect idle owner · 3 · exact session state · exactCoverage complete · 2 of 2 active sessions · active-session attention scanLATEST EVIDENCELATEST ACTIONABLE DIRECTIONLand the retry queue behind a flagLATEST EXACT RESULTShippedEvidence · direction and result sourcespromoted exact direction · source session claude:a-leadexact semantic result · source session claude:a-lead",
+   "stripLinks": [
+    "#n=session:alpha%2Fapp:claude:a-wait"
+   ],
+   "switcher": "Viewing session · Claude Code · workingChange scope",
+   "tabs": [
+    "Now|false",
+    "Course0No observed state changes observed|true",
+    "Decisions11 decision|false",
+    "Console|false"
+   ],
+   "viewing": "Viewing session · Claude Code · working"
+  },
+  "an exact session | #n=project:alpha%2Fapp:claude%3Aa-gap | 7564310c32": {
+   "header": "alpha/appExact location not published6 sessions · 1 working · 1 waiting on you · 1 ended · 3 quiet6 sessions share this display label; shared location is not established",
+   "panel": "Now: what is running in this project this minute, and how sessions here have ended. It stays project-wide, including activity from other sessions.GOING ONSession a-leadasked, 5m: Drain the retry queue in orderclaude · Fix the drain ordernext · No pending step publishedturn · Turn bounds not published900 /mNeeds a decisionclaude · Activity not publishednext · No pending step publishedturn · No turn in progressApprove the retry plan?2mHOW THINGS ENDED△Ended with uncommitted workSession ended with uncommitted workclaude · git: 3 changed entriesno estimate left · no confidence0 entities unhealthy — estimate withheldShow project planPLANbuildShip it○betaplan●alpha2buildClaude Code",
+   "panelLinks": [],
+   "scopeLinks": [
+    [
+     "#n=project:alpha%2Fapp",
+     "project",
+     false
+    ],
+    [
+     "#n=project:alpha%2Fapp:claude%3Aa-lead",
+     "session",
+     false
+    ],
+    [
+     "#n=project:alpha%2Fapp:claude%3Aa-wait",
+     "session",
+     false
+    ],
+    [
+     "#n=project:alpha%2Fapp:claude%3Aa-gap",
+     "session",
+     true
+    ],
+    [
+     "#n=project:alpha%2Fapp:claude%3Aa-quiet",
+     "session",
+     false
+    ],
+    [
+     "#n=project:alpha%2Fapp:codex%3Aa-lead",
+     "session",
+     false
+    ],
+    [
+     "#n=project:alpha%2Fapp:claude%3Aa-ended",
+     "session",
+     false
+    ]
+   ],
+   "scopeTree": "SCOPEPROJECTapp6 sessionsSESSIONSession a-leadClaude Code · working · 5sSESSIONNeeds a decisionClaude Code · needs_input · 1mSESSIONPart of its store was unreadableClaude Code · idle · 15mSESSIONSession title not publishedClaude Code · idle · 25mSESSIONSame sid under codexCodex · idle · 5mSESSIONEnded with uncommitted workClaude Code · working · 10s",
+   "strip": "PROJECT RECOVERY BRIEFINGFO is the first officer, the agent driving this workflow; Captain is you.ASSIGNMENTShip feature · BuildEvidence · assignment sourceExact workflow state · source session claude:a-leadSTATED GOALThis session published no goalEXECUTIONClaude Code · workinglens · activeEvidence · child handoffReview the diff · source exact parent dispatch · source session claude:a-leadscout · returnedEvidence · child handoffMap the queue · Mapped · source child lifecycle · source session claude:a-lead · event 1880 · age 2m agoCOMMANDWAITING ON YOUNeeds a decision2mApprove the retry plan?RAISECopy commandCAPTAIN NEEDEDAUTHORIZE · Authorize the dispatch?ANSWER · Approve the retry plan?INSPECT · inspect idle owner · 3Evidence · attention sourcesCAPTAIN · authorize_dispatch · Authorize the dispatch? · ask registry · exactCAPTAIN · ask · Approve the retry plan? · AskRegistry exact question · exactFO · attention · inspect idle owner · 3 · exact session state · exactCoverage complete · 2 of 2 active sessions · active-session attention scanLATEST EVIDENCELATEST ACTIONABLE DIRECTIONLand the retry queue behind a flagLATEST EXACT RESULTShippedEvidence · direction and result sourcespromoted exact direction · source session claude:a-leadexact semantic result · source session claude:a-lead",
+   "stripLinks": [
+    "#n=session:alpha%2Fapp:claude:a-wait"
+   ],
+   "switcher": "Viewing session · Claude Code · idleChange scope",
+   "tabs": [
+    "Now|true",
+    "Course0No observed state changes observed|false",
+    "Decisions…decisions not loaded yet|false",
+    "Console|false"
+   ],
+   "viewing": "Viewing session · Claude Code · idle"
+  },
+  "an exact session | #n=project:alpha%2Fapp:claude%3Aa-gap:course | 584366977f": {
+   "header": "alpha/appExact location not published6 sessions · 1 working · 1 waiting on you · 1 ended · 3 quiet6 sessions share this display label; shared location is not established",
+   "panel": "Course: direction changes Cargento observed in the session record.▾ OBSERVED STATE CHANGES0 of 0 unattended · since this tab openedNo state changes observed since this tab opened.SESSIONClaude CodeDERIVED COURSE CHANGEShip feature · Course changedrop the cacheadd the retryEvidence · source and confidenceSource · reviewConfidence · exactFact · revSESSIONClaude CodeEXACT RESULTShip feature · ResultDirection · Land the retry queue behind a flagShipped · checkpoint abcdef12Evidence · source and confidenceSource · transcriptConfidence · exactFact · liveEvidence · source and confidenceSource · transcriptConfidence · exactFact · dirPROJECTEXACT DECISIONShip feature · DecisionapproveEvidence · source and confidenceSource · entity gateConfidence · exactFact · gateCOMPLETED TASKS · 11 of 4 done✓Write the failing test",
+   "panelLinks": [],
+   "scopeLinks": [
+    [
+     "#n=project:alpha%2Fapp:course",
+     "project",
+     false
+    ],
+    [
+     "#n=project:alpha%2Fapp:claude%3Aa-lead:course",
+     "session",
+     false
+    ],
+    [
+     "#n=project:alpha%2Fapp:claude%3Aa-wait:course",
+     "session",
+     false
+    ],
+    [
+     "#n=project:alpha%2Fapp:claude%3Aa-gap:course",
+     "session",
+     true
+    ],
+    [
+     "#n=project:alpha%2Fapp:claude%3Aa-quiet:course",
+     "session",
+     false
+    ],
+    [
+     "#n=project:alpha%2Fapp:codex%3Aa-lead:course",
+     "session",
+     false
+    ],
+    [
+     "#n=project:alpha%2Fapp:claude%3Aa-ended:course",
+     "session",
+     false
+    ]
+   ],
+   "scopeTree": "SCOPEPROJECTapp6 sessionsSESSIONSession a-leadClaude Code · working · 5sSESSIONNeeds a decisionClaude Code · needs_input · 1mSESSIONPart of its store was unreadableClaude Code · idle · 15mSESSIONSession title not publishedClaude Code · idle · 25mSESSIONSame sid under codexCodex · idle · 5mSESSIONEnded with uncommitted workClaude Code · working · 10s",
+   "strip": "PROJECT RECOVERY BRIEFINGFO is the first officer, the agent driving this workflow; Captain is you.ASSIGNMENTShip feature · BuildEvidence · assignment sourceExact workflow state · source session claude:a-leadSTATED GOALThis session published no goalEXECUTIONClaude Code · workinglens · activeEvidence · child handoffReview the diff · source exact parent dispatch · source session claude:a-leadscout · returnedEvidence · child handoffMap the queue · Mapped · source child lifecycle · source session claude:a-lead · event 1880 · age 2m agoCOMMANDWAITING ON YOUNeeds a decision2mApprove the retry plan?RAISECopy commandCAPTAIN NEEDEDAUTHORIZE · Authorize the dispatch?ANSWER · Approve the retry plan?INSPECT · inspect idle owner · 3Evidence · attention sourcesCAPTAIN · authorize_dispatch · Authorize the dispatch? · ask registry · exactCAPTAIN · ask · Approve the retry plan? · AskRegistry exact question · exactFO · attention · inspect idle owner · 3 · exact session state · exactCoverage complete · 2 of 2 active sessions · active-session attention scanLATEST EVIDENCELATEST ACTIONABLE DIRECTIONLand the retry queue behind a flagLATEST EXACT RESULTShippedEvidence · direction and result sourcespromoted exact direction · source session claude:a-leadexact semantic result · source session claude:a-lead",
+   "stripLinks": [
+    "#n=session:alpha%2Fapp:claude:a-wait"
+   ],
+   "switcher": "Viewing session · Claude Code · idleChange scope",
+   "tabs": [
+    "Now|false",
+    "Course0No observed state changes observed|true",
+    "Decisions11 decision|false",
+    "Console|false"
+   ],
+   "viewing": "Viewing session · Claude Code · idle"
+  },
+  "an exact session | #n=project:alpha%2Fapp:claude%3Aa-lead | 7564310c32": {
+   "header": "alpha/appExact location not published6 sessions · 1 working · 1 waiting on you · 1 ended · 3 quiet6 sessions share this display label; shared location is not established",
+   "panel": "Now: what is running in this project this minute, and how sessions here have ended. It stays project-wide, including activity from other sessions.GOING ONSession a-leadasked, 5m: Drain the retry queue in orderclaude · Fix the drain ordernext · No pending step publishedturn · Turn bounds not published900 /mNeeds a decisionclaude · Activity not publishednext · No pending step publishedturn · No turn in progressApprove the retry plan?2mHOW THINGS ENDED△Ended with uncommitted workSession ended with uncommitted workclaude · git: 3 changed entriesno estimate left · no confidence0 entities unhealthy — estimate withheldShow project planPLANbuildShip it○betaplan●alpha2buildClaude Code",
+   "panelLinks": [],
+   "scopeLinks": [
+    [
+     "#n=project:alpha%2Fapp",
+     "project",
+     false
+    ],
+    [
+     "#n=project:alpha%2Fapp:claude%3Aa-lead",
+     "session",
+     true
+    ],
+    [
+     "#n=project:alpha%2Fapp:claude%3Aa-wait",
+     "session",
+     false
+    ],
+    [
+     "#n=project:alpha%2Fapp:claude%3Aa-gap",
+     "session",
+     false
+    ],
+    [
+     "#n=project:alpha%2Fapp:claude%3Aa-quiet",
+     "session",
+     false
+    ],
+    [
+     "#n=project:alpha%2Fapp:codex%3Aa-lead",
+     "session",
+     false
+    ],
+    [
+     "#n=project:alpha%2Fapp:claude%3Aa-ended",
+     "session",
+     false
+    ]
+   ],
+   "scopeTree": "SCOPEPROJECTapp6 sessionsSESSIONSession a-leadClaude Code · working · 5sSESSIONNeeds a decisionClaude Code · needs_input · 1mSESSIONPart of its store was unreadableClaude Code · idle · 15mSESSIONSession title not publishedClaude Code · idle · 25mSESSIONSame sid under codexCodex · idle · 5mSESSIONEnded with uncommitted workClaude Code · working · 10s",
+   "strip": "PROJECT RECOVERY BRIEFINGFO is the first officer, the agent driving this workflow; Captain is you.ASSIGNMENTShip feature · BuildEvidence · assignment sourceExact workflow state · source session claude:a-leadSTATED GOALclaude · latest assignment · observed 5m agoDrain the retry queue in orderEXECUTIONClaude Code · workinglens · activeEvidence · child handoffReview the diff · source exact parent dispatch · source session claude:a-leadscout · returnedEvidence · child handoffMap the queue · Mapped · source child lifecycle · source session claude:a-lead · event 1880 · age 2m agoCOMMANDWAITING ON YOUNeeds a decision2mApprove the retry plan?RAISECopy commandCAPTAIN NEEDEDAUTHORIZE · Authorize the dispatch?ANSWER · Approve the retry plan?INSPECT · inspect idle owner · 3Evidence · attention sourcesCAPTAIN · authorize_dispatch · Authorize the dispatch? · ask registry · exactCAPTAIN · ask · Approve the retry plan? · AskRegistry exact question · exactFO · attention · inspect idle owner · 3 · exact session state · exactCoverage complete · 2 of 2 active sessions · active-session attention scanLATEST EVIDENCELATEST ACTIONABLE DIRECTIONLand the retry queue behind a flagLATEST EXACT RESULTShippedEvidence · direction and result sourcespromoted exact direction · source session claude:a-leadexact semantic result · source session claude:a-lead",
+   "stripLinks": [
+    "#n=session:alpha%2Fapp:claude:a-wait"
+   ],
+   "switcher": "Viewing session · Claude Code · workingChange scope",
+   "tabs": [
+    "Now|true",
+    "Course0No observed state changes observed|false",
+    "Decisions…decisions not loaded yet|false",
+    "Console|false"
+   ],
+   "viewing": "Viewing session · Claude Code · working"
+  },
+  "an exact session | #n=project:alpha%2Fapp:claude%3Aa-lead:course | 584366977f": {
+   "header": "alpha/appExact location not published6 sessions · 1 working · 1 waiting on you · 1 ended · 3 quiet6 sessions share this display label; shared location is not established",
+   "panel": "Course: direction changes Cargento observed in the session record.▾ OBSERVED STATE CHANGES0 of 0 unattended · since this tab openedNo state changes observed since this tab opened.SESSIONClaude CodeDERIVED COURSE CHANGEShip feature · Course changedrop the cacheadd the retryEvidence · source and confidenceSource · reviewConfidence · exactFact · revContributors · lensSESSIONClaude CodeEXACT RESULTShip feature · ResultDirection · Land the retry queue behind a flagShipped · checkpoint abcdef12Evidence · source and confidenceSource · transcriptConfidence · exactFact · liveContributors · lensEvidence · source and confidenceSource · transcriptConfidence · exactFact · dirPROJECTEXACT DECISIONShip feature · DecisionapproveEvidence · source and confidenceSource · entity gateConfidence · exactFact · gateContributors · lensCOMPLETED TASKS · 11 of 4 done✓Write the failing test",
+   "panelLinks": [],
+   "scopeLinks": [
+    [
+     "#n=project:alpha%2Fapp:course",
+     "project",
+     false
+    ],
+    [
+     "#n=project:alpha%2Fapp:claude%3Aa-lead:course",
+     "session",
+     true
+    ],
+    [
+     "#n=project:alpha%2Fapp:claude%3Aa-wait:course",
+     "session",
+     false
+    ],
+    [
+     "#n=project:alpha%2Fapp:claude%3Aa-gap:course",
+     "session",
+     false
+    ],
+    [
+     "#n=project:alpha%2Fapp:claude%3Aa-quiet:course",
+     "session",
+     false
+    ],
+    [
+     "#n=project:alpha%2Fapp:codex%3Aa-lead:course",
+     "session",
+     false
+    ],
+    [
+     "#n=project:alpha%2Fapp:claude%3Aa-ended:course",
+     "session",
+     false
+    ]
+   ],
+   "scopeTree": "SCOPEPROJECTapp6 sessionsSESSIONSession a-leadClaude Code · working · 5sSESSIONNeeds a decisionClaude Code · needs_input · 1mSESSIONPart of its store was unreadableClaude Code · idle · 15mSESSIONSession title not publishedClaude Code · idle · 25mSESSIONSame sid under codexCodex · idle · 5mSESSIONEnded with uncommitted workClaude Code · working · 10s",
+   "strip": "PROJECT RECOVERY BRIEFINGFO is the first officer, the agent driving this workflow; Captain is you.ASSIGNMENTShip feature · BuildEvidence · assignment sourceExact workflow state · source session claude:a-leadSTATED GOALclaude · latest assignment · observed 5m agoDrain the retry queue in orderEXECUTIONClaude Code · workinglens · activeEvidence · child handoffReview the diff · source exact parent dispatch · source session claude:a-leadscout · returnedEvidence · child handoffMap the queue · Mapped · source child lifecycle · source session claude:a-lead · event 1880 · age 2m agoCOMMANDWAITING ON YOUNeeds a decision2mApprove the retry plan?RAISECopy commandCAPTAIN NEEDEDAUTHORIZE · Authorize the dispatch?ANSWER · Approve the retry plan?INSPECT · inspect idle owner · 3Evidence · attention sourcesCAPTAIN · authorize_dispatch · Authorize the dispatch? · ask registry · exactCAPTAIN · ask · Approve the retry plan? · AskRegistry exact question · exactFO · attention · inspect idle owner · 3 · exact session state · exactCoverage complete · 2 of 2 active sessions · active-session attention scanLATEST EVIDENCELATEST ACTIONABLE DIRECTIONLand the retry queue behind a flagLATEST EXACT RESULTShippedEvidence · direction and result sourcespromoted exact direction · source session claude:a-leadexact semantic result · source session claude:a-lead",
+   "stripLinks": [
+    "#n=session:alpha%2Fapp:claude:a-wait"
+   ],
+   "switcher": "Viewing session · Claude Code · workingChange scope",
+   "tabs": [
+    "Now|false",
+    "Course0No observed state changes observed|true",
+    "Decisions11 decision|false",
+    "Console|false"
+   ],
+   "viewing": "Viewing session · Claude Code · working"
+  },
+  "an exact session | #n=project:alpha%2Fapp:claude%3Aa-quiet | 7564310c32": {
+   "header": "alpha/appExact location not published6 sessions · 1 working · 1 waiting on you · 1 ended · 3 quiet6 sessions share this display label; shared location is not established",
+   "panel": "Now: what is running in this project this minute, and how sessions here have ended. It stays project-wide, including activity from other sessions.GOING ONSession a-leadasked, 5m: Drain the retry queue in orderclaude · Fix the drain ordernext · No pending step publishedturn · Turn bounds not published900 /mNeeds a decisionclaude · Activity not publishednext · No pending step publishedturn · No turn in progressApprove the retry plan?2mHOW THINGS ENDED△Ended with uncommitted workSession ended with uncommitted workclaude · git: 3 changed entriesno estimate left · no confidence0 entities unhealthy — estimate withheldShow project planPLANbuildShip it○betaplan●alpha2buildClaude Code",
+   "panelLinks": [],
+   "scopeLinks": [
+    [
+     "#n=project:alpha%2Fapp",
+     "project",
+     false
+    ],
+    [
+     "#n=project:alpha%2Fapp:claude%3Aa-lead",
+     "session",
+     false
+    ],
+    [
+     "#n=project:alpha%2Fapp:claude%3Aa-wait",
+     "session",
+     false
+    ],
+    [
+     "#n=project:alpha%2Fapp:claude%3Aa-gap",
+     "session",
+     false
+    ],
+    [
+     "#n=project:alpha%2Fapp:claude%3Aa-quiet",
+     "session",
+     true
+    ],
+    [
+     "#n=project:alpha%2Fapp:codex%3Aa-lead",
+     "session",
+     false
+    ],
+    [
+     "#n=project:alpha%2Fapp:claude%3Aa-ended",
+     "session",
+     false
+    ]
+   ],
+   "scopeTree": "SCOPEPROJECTapp6 sessionsSESSIONSession a-leadClaude Code · working · 5sSESSIONNeeds a decisionClaude Code · needs_input · 1mSESSIONPart of its store was unreadableClaude Code · idle · 15mSESSIONSession title not publishedClaude Code · idle · 25mSESSIONSame sid under codexCodex · idle · 5mSESSIONEnded with uncommitted workClaude Code · working · 10s",
+   "strip": "PROJECT RECOVERY BRIEFINGFO is the first officer, the agent driving this workflow; Captain is you.ASSIGNMENTShip feature · BuildEvidence · assignment sourceExact workflow state · source session claude:a-leadSTATED GOALThis session published no goalEXECUTIONClaude Code · workinglens · activeEvidence · child handoffReview the diff · source exact parent dispatch · source session claude:a-leadscout · returnedEvidence · child handoffMap the queue · Mapped · source child lifecycle · source session claude:a-lead · event 1880 · age 2m agoCOMMANDWAITING ON YOUNeeds a decision2mApprove the retry plan?RAISECopy commandCAPTAIN NEEDEDAUTHORIZE · Authorize the dispatch?ANSWER · Approve the retry plan?INSPECT · inspect idle owner · 3Evidence · attention sourcesCAPTAIN · authorize_dispatch · Authorize the dispatch? · ask registry · exactCAPTAIN · ask · Approve the retry plan? · AskRegistry exact question · exactFO · attention · inspect idle owner · 3 · exact session state · exactCoverage complete · 2 of 2 active sessions · active-session attention scanLATEST EVIDENCELATEST ACTIONABLE DIRECTIONLand the retry queue behind a flagLATEST EXACT RESULTShippedEvidence · direction and result sourcespromoted exact direction · source session claude:a-leadexact semantic result · source session claude:a-lead",
+   "stripLinks": [
+    "#n=session:alpha%2Fapp:claude:a-wait"
+   ],
+   "switcher": "Viewing session · Claude Code · idleChange scope",
+   "tabs": [
+    "Now|true",
+    "Course0No observed state changes observed|false",
+    "Decisions…decisions not loaded yet|false",
+    "Console|false"
+   ],
+   "viewing": "Viewing session · Claude Code · idle"
+  },
+  "an exact session | #n=project:alpha%2Fapp:claude%3Aa-quiet:course | 584366977f": {
+   "header": "alpha/appExact location not published6 sessions · 1 working · 1 waiting on you · 1 ended · 3 quiet6 sessions share this display label; shared location is not established",
+   "panel": "Course: direction changes Cargento observed in the session record.▾ OBSERVED STATE CHANGES0 of 0 unattended · since this tab openedNo state changes observed since this tab opened.SESSIONClaude CodeDERIVED COURSE CHANGEShip feature · Course changedrop the cacheadd the retryEvidence · source and confidenceSource · reviewConfidence · exactFact · revSESSIONClaude CodeEXACT RESULTShip feature · ResultDirection · Land the retry queue behind a flagShipped · checkpoint abcdef12Evidence · source and confidenceSource · transcriptConfidence · exactFact · liveEvidence · source and confidenceSource · transcriptConfidence · exactFact · dirPROJECTEXACT DECISIONShip feature · DecisionapproveEvidence · source and confidenceSource · entity gateConfidence · exactFact · gateCOMPLETED TASKS · 11 of 4 done✓Write the failing test",
+   "panelLinks": [],
+   "scopeLinks": [
+    [
+     "#n=project:alpha%2Fapp:course",
+     "project",
+     false
+    ],
+    [
+     "#n=project:alpha%2Fapp:claude%3Aa-lead:course",
+     "session",
+     false
+    ],
+    [
+     "#n=project:alpha%2Fapp:claude%3Aa-wait:course",
+     "session",
+     false
+    ],
+    [
+     "#n=project:alpha%2Fapp:claude%3Aa-gap:course",
+     "session",
+     false
+    ],
+    [
+     "#n=project:alpha%2Fapp:claude%3Aa-quiet:course",
+     "session",
+     true
+    ],
+    [
+     "#n=project:alpha%2Fapp:codex%3Aa-lead:course",
+     "session",
+     false
+    ],
+    [
+     "#n=project:alpha%2Fapp:claude%3Aa-ended:course",
+     "session",
+     false
+    ]
+   ],
+   "scopeTree": "SCOPEPROJECTapp6 sessionsSESSIONSession a-leadClaude Code · working · 5sSESSIONNeeds a decisionClaude Code · needs_input · 1mSESSIONPart of its store was unreadableClaude Code · idle · 15mSESSIONSession title not publishedClaude Code · idle · 25mSESSIONSame sid under codexCodex · idle · 5mSESSIONEnded with uncommitted workClaude Code · working · 10s",
+   "strip": "PROJECT RECOVERY BRIEFINGFO is the first officer, the agent driving this workflow; Captain is you.ASSIGNMENTShip feature · BuildEvidence · assignment sourceExact workflow state · source session claude:a-leadSTATED GOALThis session published no goalEXECUTIONClaude Code · workinglens · activeEvidence · child handoffReview the diff · source exact parent dispatch · source session claude:a-leadscout · returnedEvidence · child handoffMap the queue · Mapped · source child lifecycle · source session claude:a-lead · event 1880 · age 2m agoCOMMANDWAITING ON YOUNeeds a decision2mApprove the retry plan?RAISECopy commandCAPTAIN NEEDEDAUTHORIZE · Authorize the dispatch?ANSWER · Approve the retry plan?INSPECT · inspect idle owner · 3Evidence · attention sourcesCAPTAIN · authorize_dispatch · Authorize the dispatch? · ask registry · exactCAPTAIN · ask · Approve the retry plan? · AskRegistry exact question · exactFO · attention · inspect idle owner · 3 · exact session state · exactCoverage complete · 2 of 2 active sessions · active-session attention scanLATEST EVIDENCELATEST ACTIONABLE DIRECTIONLand the retry queue behind a flagLATEST EXACT RESULTShippedEvidence · direction and result sourcespromoted exact direction · source session claude:a-leadexact semantic result · source session claude:a-lead",
+   "stripLinks": [
+    "#n=session:alpha%2Fapp:claude:a-wait"
+   ],
+   "switcher": "Viewing session · Claude Code · idleChange scope",
+   "tabs": [
+    "Now|false",
+    "Course0No observed state changes observed|true",
+    "Decisions11 decision|false",
+    "Console|false"
+   ],
+   "viewing": "Viewing session · Claude Code · idle"
+  },
+  "an exact session | #n=project:alpha%2Fapp:claude%3Aa-wait | 7564310c32": {
+   "header": "alpha/appExact location not published6 sessions · 1 working · 1 waiting on you · 1 ended · 3 quiet6 sessions share this display label; shared location is not established",
+   "panel": "Now: what is running in this project this minute, and how sessions here have ended. It stays project-wide, including activity from other sessions.GOING ONSession a-leadasked, 5m: Drain the retry queue in orderclaude · Fix the drain ordernext · No pending step publishedturn · Turn bounds not published900 /mNeeds a decisionclaude · Activity not publishednext · No pending step publishedturn · No turn in progressApprove the retry plan?2mHOW THINGS ENDED△Ended with uncommitted workSession ended with uncommitted workclaude · git: 3 changed entriesno estimate left · no confidence0 entities unhealthy — estimate withheldShow project planPLANbuildShip it○betaplan●alpha2buildClaude Code",
+   "panelLinks": [],
+   "scopeLinks": [
+    [
+     "#n=project:alpha%2Fapp",
+     "project",
+     false
+    ],
+    [
+     "#n=project:alpha%2Fapp:claude%3Aa-lead",
+     "session",
+     false
+    ],
+    [
+     "#n=project:alpha%2Fapp:claude%3Aa-wait",
+     "session",
+     true
+    ],
+    [
+     "#n=project:alpha%2Fapp:claude%3Aa-gap",
+     "session",
+     false
+    ],
+    [
+     "#n=project:alpha%2Fapp:claude%3Aa-quiet",
+     "session",
+     false
+    ],
+    [
+     "#n=project:alpha%2Fapp:codex%3Aa-lead",
+     "session",
+     false
+    ],
+    [
+     "#n=project:alpha%2Fapp:claude%3Aa-ended",
+     "session",
+     false
+    ]
+   ],
+   "scopeTree": "SCOPEPROJECTapp6 sessionsSESSIONSession a-leadClaude Code · working · 5sSESSIONNeeds a decisionClaude Code · needs_input · 1mSESSIONPart of its store was unreadableClaude Code · idle · 15mSESSIONSession title not publishedClaude Code · idle · 25mSESSIONSame sid under codexCodex · idle · 5mSESSIONEnded with uncommitted workClaude Code · working · 10s",
+   "strip": "PROJECT RECOVERY BRIEFINGFO is the first officer, the agent driving this workflow; Captain is you.ASSIGNMENTShip feature · BuildEvidence · assignment sourceExact workflow state · source session claude:a-leadSTATED GOALThis session published no goalEXECUTIONClaude Code · workinglens · activeEvidence · child handoffReview the diff · source exact parent dispatch · source session claude:a-leadscout · returnedEvidence · child handoffMap the queue · Mapped · source child lifecycle · source session claude:a-lead · event 1880 · age 2m agoCOMMANDWAITING ON YOUNeeds a decision2mApprove the retry plan?RAISECopy commandCAPTAIN NEEDEDAUTHORIZE · Authorize the dispatch?ANSWER · Approve the retry plan?INSPECT · inspect idle owner · 3Evidence · attention sourcesCAPTAIN · authorize_dispatch · Authorize the dispatch? · ask registry · exactCAPTAIN · ask · Approve the retry plan? · AskRegistry exact question · exactFO · attention · inspect idle owner · 3 · exact session state · exactCoverage complete · 2 of 2 active sessions · active-session attention scanLATEST EVIDENCELATEST ACTIONABLE DIRECTIONLand the retry queue behind a flagLATEST EXACT RESULTShippedEvidence · direction and result sourcespromoted exact direction · source session claude:a-leadexact semantic result · source session claude:a-lead",
+   "stripLinks": [
+    "#n=session:alpha%2Fapp:claude:a-wait"
+   ],
+   "switcher": "Viewing session · Claude Code · needs_inputChange scope",
+   "tabs": [
+    "Now|true",
+    "Course0No observed state changes observed|false",
+    "Decisions…decisions not loaded yet|false",
+    "Console|false"
+   ],
+   "viewing": "Viewing session · Claude Code · needs_input"
+  },
+  "an exact session | #n=project:alpha%2Fapp:claude%3Aa-wait:course | 584366977f": {
+   "header": "alpha/appExact location not published6 sessions · 1 working · 1 waiting on you · 1 ended · 3 quiet6 sessions share this display label; shared location is not established",
+   "panel": "Course: direction changes Cargento observed in the session record.▾ OBSERVED STATE CHANGES0 of 0 unattended · since this tab openedNo state changes observed since this tab opened.SESSIONClaude CodeDERIVED COURSE CHANGEShip feature · Course changedrop the cacheadd the retryEvidence · source and confidenceSource · reviewConfidence · exactFact · revSESSIONClaude CodeEXACT RESULTShip feature · ResultDirection · Land the retry queue behind a flagShipped · checkpoint abcdef12Evidence · source and confidenceSource · transcriptConfidence · exactFact · liveEvidence · source and confidenceSource · transcriptConfidence · exactFact · dirPROJECTEXACT DECISIONShip feature · DecisionapproveEvidence · source and confidenceSource · entity gateConfidence · exactFact · gateCOMPLETED TASKS · 11 of 4 done✓Write the failing test",
+   "panelLinks": [],
+   "scopeLinks": [
+    [
+     "#n=project:alpha%2Fapp:course",
+     "project",
+     false
+    ],
+    [
+     "#n=project:alpha%2Fapp:claude%3Aa-lead:course",
+     "session",
+     false
+    ],
+    [
+     "#n=project:alpha%2Fapp:claude%3Aa-wait:course",
+     "session",
+     true
+    ],
+    [
+     "#n=project:alpha%2Fapp:claude%3Aa-gap:course",
+     "session",
+     false
+    ],
+    [
+     "#n=project:alpha%2Fapp:claude%3Aa-quiet:course",
+     "session",
+     false
+    ],
+    [
+     "#n=project:alpha%2Fapp:codex%3Aa-lead:course",
+     "session",
+     false
+    ],
+    [
+     "#n=project:alpha%2Fapp:claude%3Aa-ended:course",
+     "session",
+     false
+    ]
+   ],
+   "scopeTree": "SCOPEPROJECTapp6 sessionsSESSIONSession a-leadClaude Code · working · 5sSESSIONNeeds a decisionClaude Code · needs_input · 1mSESSIONPart of its store was unreadableClaude Code · idle · 15mSESSIONSession title not publishedClaude Code · idle · 25mSESSIONSame sid under codexCodex · idle · 5mSESSIONEnded with uncommitted workClaude Code · working · 10s",
+   "strip": "PROJECT RECOVERY BRIEFINGFO is the first officer, the agent driving this workflow; Captain is you.ASSIGNMENTShip feature · BuildEvidence · assignment sourceExact workflow state · source session claude:a-leadSTATED GOALThis session published no goalEXECUTIONClaude Code · workinglens · activeEvidence · child handoffReview the diff · source exact parent dispatch · source session claude:a-leadscout · returnedEvidence · child handoffMap the queue · Mapped · source child lifecycle · source session claude:a-lead · event 1880 · age 2m agoCOMMANDWAITING ON YOUNeeds a decision2mApprove the retry plan?RAISECopy commandCAPTAIN NEEDEDAUTHORIZE · Authorize the dispatch?ANSWER · Approve the retry plan?INSPECT · inspect idle owner · 3Evidence · attention sourcesCAPTAIN · authorize_dispatch · Authorize the dispatch? · ask registry · exactCAPTAIN · ask · Approve the retry plan? · AskRegistry exact question · exactFO · attention · inspect idle owner · 3 · exact session state · exactCoverage complete · 2 of 2 active sessions · active-session attention scanLATEST EVIDENCELATEST ACTIONABLE DIRECTIONLand the retry queue behind a flagLATEST EXACT RESULTShippedEvidence · direction and result sourcespromoted exact direction · source session claude:a-leadexact semantic result · source session claude:a-lead",
+   "stripLinks": [
+    "#n=session:alpha%2Fapp:claude:a-wait"
+   ],
+   "switcher": "Viewing session · Claude Code · needs_inputChange scope",
+   "tabs": [
+    "Now|false",
+    "Course0No observed state changes observed|true",
+    "Decisions11 decision|false",
+    "Console|false"
+   ],
+   "viewing": "Viewing session · Claude Code · needs_input"
+  },
+  "an exact session | #n=project:alpha%2Fapp:codex%3Aa-lead | 7564310c32": {
+   "header": "alpha/appExact location not published6 sessions · 1 working · 1 waiting on you · 1 ended · 3 quiet6 sessions share this display label; shared location is not established",
+   "panel": "Now: what is running in this project this minute, and how sessions here have ended. It stays project-wide, including activity from other sessions.GOING ONSession a-leadasked, 5m: Drain the retry queue in orderclaude · Fix the drain ordernext · No pending step publishedturn · Turn bounds not published900 /mNeeds a decisionclaude · Activity not publishednext · No pending step publishedturn · No turn in progressApprove the retry plan?2mHOW THINGS ENDED△Ended with uncommitted workSession ended with uncommitted workclaude · git: 3 changed entriesno estimate left · no confidence0 entities unhealthy — estimate withheldShow project planPLANbuildShip it○betaplan●alpha2buildClaude Code",
+   "panelLinks": [],
+   "scopeLinks": [
+    [
+     "#n=project:alpha%2Fapp",
+     "project",
+     false
+    ],
+    [
+     "#n=project:alpha%2Fapp:claude%3Aa-lead",
+     "session",
+     false
+    ],
+    [
+     "#n=project:alpha%2Fapp:claude%3Aa-wait",
+     "session",
+     false
+    ],
+    [
+     "#n=project:alpha%2Fapp:claude%3Aa-gap",
+     "session",
+     false
+    ],
+    [
+     "#n=project:alpha%2Fapp:claude%3Aa-quiet",
+     "session",
+     false
+    ],
+    [
+     "#n=project:alpha%2Fapp:codex%3Aa-lead",
+     "session",
+     true
+    ],
+    [
+     "#n=project:alpha%2Fapp:claude%3Aa-ended",
+     "session",
+     false
+    ]
+   ],
+   "scopeTree": "SCOPEPROJECTapp6 sessionsSESSIONSession a-leadClaude Code · working · 5sSESSIONNeeds a decisionClaude Code · needs_input · 1mSESSIONPart of its store was unreadableClaude Code · idle · 15mSESSIONSession title not publishedClaude Code · idle · 25mSESSIONSame sid under codexCodex · idle · 5mSESSIONEnded with uncommitted workClaude Code · working · 10s",
+   "strip": "PROJECT RECOVERY BRIEFINGFO is the first officer, the agent driving this workflow; Captain is you.ASSIGNMENTShip feature · BuildEvidence · assignment sourceExact workflow state · source session claude:a-leadSTATED GOALThis session published no goalEXECUTIONClaude Code · workinglens · activeEvidence · child handoffReview the diff · source exact parent dispatch · source session claude:a-leadscout · returnedEvidence · child handoffMap the queue · Mapped · source child lifecycle · source session claude:a-lead · event 1880 · age 2m agoCOMMANDWAITING ON YOUNeeds a decision2mApprove the retry plan?RAISECopy commandCAPTAIN NEEDEDAUTHORIZE · Authorize the dispatch?ANSWER · Approve the retry plan?INSPECT · inspect idle owner · 3Evidence · attention sourcesCAPTAIN · authorize_dispatch · Authorize the dispatch? · ask registry · exactCAPTAIN · ask · Approve the retry plan? · AskRegistry exact question · exactFO · attention · inspect idle owner · 3 · exact session state · exactCoverage complete · 2 of 2 active sessions · active-session attention scanLATEST EVIDENCELATEST ACTIONABLE DIRECTIONLand the retry queue behind a flagLATEST EXACT RESULTShippedEvidence · direction and result sourcespromoted exact direction · source session claude:a-leadexact semantic result · source session claude:a-lead",
+   "stripLinks": [
+    "#n=session:alpha%2Fapp:claude:a-wait"
+   ],
+   "switcher": "Viewing session · Codex · idleChange scope",
+   "tabs": [
+    "Now|true",
+    "Course0No observed state changes observed|false",
+    "Decisions…decisions not loaded yet|false",
+    "Console|false"
+   ],
+   "viewing": "Viewing session · Codex · idle"
+  },
+  "an exact session | #n=project:alpha%2Fapp:codex%3Aa-lead:course | 584366977f": {
+   "header": "alpha/appExact location not published6 sessions · 1 working · 1 waiting on you · 1 ended · 3 quiet6 sessions share this display label; shared location is not established",
+   "panel": "Course: direction changes Cargento observed in the session record.▾ OBSERVED STATE CHANGES0 of 0 unattended · since this tab openedNo state changes observed since this tab opened.SESSIONClaude CodeDERIVED COURSE CHANGEShip feature · Course changedrop the cacheadd the retryEvidence · source and confidenceSource · reviewConfidence · exactFact · revSESSIONClaude CodeEXACT RESULTShip feature · ResultDirection · Land the retry queue behind a flagShipped · checkpoint abcdef12Evidence · source and confidenceSource · transcriptConfidence · exactFact · liveEvidence · source and confidenceSource · transcriptConfidence · exactFact · dirPROJECTEXACT DECISIONShip feature · DecisionapproveEvidence · source and confidenceSource · entity gateConfidence · exactFact · gateCOMPLETED TASKS · 11 of 4 done✓Write the failing test",
+   "panelLinks": [],
+   "scopeLinks": [
+    [
+     "#n=project:alpha%2Fapp:course",
+     "project",
+     false
+    ],
+    [
+     "#n=project:alpha%2Fapp:claude%3Aa-lead:course",
+     "session",
+     false
+    ],
+    [
+     "#n=project:alpha%2Fapp:claude%3Aa-wait:course",
+     "session",
+     false
+    ],
+    [
+     "#n=project:alpha%2Fapp:claude%3Aa-gap:course",
+     "session",
+     false
+    ],
+    [
+     "#n=project:alpha%2Fapp:claude%3Aa-quiet:course",
+     "session",
+     false
+    ],
+    [
+     "#n=project:alpha%2Fapp:codex%3Aa-lead:course",
+     "session",
+     true
+    ],
+    [
+     "#n=project:alpha%2Fapp:claude%3Aa-ended:course",
+     "session",
+     false
+    ]
+   ],
+   "scopeTree": "SCOPEPROJECTapp6 sessionsSESSIONSession a-leadClaude Code · working · 5sSESSIONNeeds a decisionClaude Code · needs_input · 1mSESSIONPart of its store was unreadableClaude Code · idle · 15mSESSIONSession title not publishedClaude Code · idle · 25mSESSIONSame sid under codexCodex · idle · 5mSESSIONEnded with uncommitted workClaude Code · working · 10s",
+   "strip": "PROJECT RECOVERY BRIEFINGFO is the first officer, the agent driving this workflow; Captain is you.ASSIGNMENTShip feature · BuildEvidence · assignment sourceExact workflow state · source session claude:a-leadSTATED GOALThis session published no goalEXECUTIONClaude Code · workinglens · activeEvidence · child handoffReview the diff · source exact parent dispatch · source session claude:a-leadscout · returnedEvidence · child handoffMap the queue · Mapped · source child lifecycle · source session claude:a-lead · event 1880 · age 2m agoCOMMANDWAITING ON YOUNeeds a decision2mApprove the retry plan?RAISECopy commandCAPTAIN NEEDEDAUTHORIZE · Authorize the dispatch?ANSWER · Approve the retry plan?INSPECT · inspect idle owner · 3Evidence · attention sourcesCAPTAIN · authorize_dispatch · Authorize the dispatch? · ask registry · exactCAPTAIN · ask · Approve the retry plan? · AskRegistry exact question · exactFO · attention · inspect idle owner · 3 · exact session state · exactCoverage complete · 2 of 2 active sessions · active-session attention scanLATEST EVIDENCELATEST ACTIONABLE DIRECTIONLand the retry queue behind a flagLATEST EXACT RESULTShippedEvidence · direction and result sourcespromoted exact direction · source session claude:a-leadexact semantic result · source session claude:a-lead",
+   "stripLinks": [
+    "#n=session:alpha%2Fapp:claude:a-wait"
+   ],
+   "switcher": "Viewing session · Codex · idleChange scope",
+   "tabs": [
+    "Now|false",
+    "Course0No observed state changes observed|true",
+    "Decisions11 decision|false",
+    "Console|false"
+   ],
+   "viewing": "Viewing session · Codex · idle"
+  },
+  "computed style at 1280 | #n=project:alpha%2Fapp | bb3cd2ad8b": {
+   "panel": {
+    "padding-left": "12px",
+    "padding-right": "12px"
+   },
+   "panelContentLeft": 13,
+   "panelWidth": 961,
+   "tabs": {
+    "border-bottom-width": "1px",
+    "margin-bottom": "0px",
+    "margin-top": "0px",
+    "padding-left": "12px",
+    "padding-right": "12px"
+   },
+   "toggle": null
+  },
+  "computed style at 1280 | #n=project:alpha%2Fapp:course | bb3cd2ad8b": {
+   "panel": {
+    "padding-left": "12px",
+    "padding-right": "12px"
+   },
+   "panelContentLeft": 13,
+   "panelWidth": 961,
+   "tabs": {
+    "border-bottom-width": "1px",
+    "margin-bottom": "0px",
+    "margin-top": "0px",
+    "padding-left": "12px",
+    "padding-right": "12px"
+   },
+   "toggle": {
+    "background-color": "rgba(0, 0, 0, 0)",
+    "border-bottom-width": "0px",
+    "border-left-width": "0px",
+    "border-right-width": "0px",
+    "border-top-width": "0px",
+    "font-family": "\"IBM Plex Mono\", ui-monospace, monospace",
+    "font-size": "13px",
+    "font-weight": "600",
+    "letter-spacing": "0.91px",
+    "padding-bottom": "11px",
+    "padding-left": "0px",
+    "padding-right": "0px",
+    "padding-top": "0px",
+    "width": "937px"
+   }
+  },
+  "computed style at 375 | #n=project:alpha%2Fapp | bb3cd2ad8b": {
+   "panel": {
+    "padding-left": "12px",
+    "padding-right": "12px"
+   },
+   "panelContentLeft": 12,
+   "panelWidth": 337,
+   "tabs": {
+    "border-bottom-width": "1px",
+    "margin-bottom": "0px",
+    "margin-top": "0px",
+    "padding-left": "6px",
+    "padding-right": "6px"
+   },
+   "toggle": null
+  },
+  "computed style at 375 | #n=project:alpha%2Fapp:course | bb3cd2ad8b": {
+   "panel": {
+    "padding-left": "12px",
+    "padding-right": "12px"
+   },
+   "panelContentLeft": 12,
+   "panelWidth": 337,
+   "tabs": {
+    "border-bottom-width": "1px",
+    "margin-bottom": "0px",
+    "margin-top": "0px",
+    "padding-left": "6px",
+    "padding-right": "6px"
+   },
+   "toggle": {
+    "background-color": "rgba(0, 0, 0, 0)",
+    "border-bottom-width": "0px",
+    "border-left-width": "0px",
+    "border-right-width": "0px",
+    "border-top-width": "0px",
+    "font-family": "\"IBM Plex Mono\", ui-monospace, monospace",
+    "font-size": "13px",
+    "font-weight": "600",
+    "letter-spacing": "0.91px",
+    "padding-bottom": "11px",
+    "padding-left": "0px",
+    "padding-right": "0px",
+    "padding-top": "0px",
+    "width": "313px"
+   }
+  },
+  "ended without a stamp | #n=project:alpha%2Fapp | 7564310c32": {
+   "header": "alpha/appExact location not published6 sessions · 1 working · 1 waiting on you · 1 ended · 3 quiet6 sessions share this display label; shared location is not established",
+   "panel": "Now: what is running in this project this minute, and how sessions here have ended.GOING ONSession a-leadasked, 5m: Drain the retry queue in orderclaude · Fix the drain ordernext · No pending step publishedturn · Turn bounds not published900 /mNeeds a decisionclaude · Activity not publishednext · No pending step publishedturn · No turn in progressApprove the retry plan?2mHOW THINGS ENDED△Ended with uncommitted workSession ended with uncommitted workclaude · git: 3 changed entriesno estimate left · no confidence0 entities unhealthy — estimate withheldShow project planPLANbuildShip it○betaplan●alpha2buildClaude Code",
+   "panelLinks": [],
+   "scopeLinks": [
+    [
+     "#n=project:alpha%2Fapp",
+     "project",
+     true
+    ],
+    [
+     "#n=project:alpha%2Fapp:claude%3Aa-lead",
+     "session",
+     false
+    ],
+    [
+     "#n=project:alpha%2Fapp:claude%3Aa-wait",
+     "session",
+     false
+    ],
+    [
+     "#n=project:alpha%2Fapp:claude%3Aa-gap",
+     "session",
+     false
+    ],
+    [
+     "#n=project:alpha%2Fapp:claude%3Aa-quiet",
+     "session",
+     false
+    ],
+    [
+     "#n=project:alpha%2Fapp:codex%3Aa-lead",
+     "session",
+     false
+    ],
+    [
+     "#n=project:alpha%2Fapp:claude%3Aa-ended",
+     "session",
+     false
+    ]
+   ],
+   "scopeTree": "SCOPEPROJECTapp6 sessionsSESSIONSession a-leadClaude Code · working · 5sSESSIONNeeds a decisionClaude Code · needs_input · 1mSESSIONPart of its store was unreadableClaude Code · idle · 15mSESSIONSession title not publishedClaude Code · idle · 25mSESSIONSame sid under codexCodex · idle · 5mSESSIONEnded with uncommitted workClaude Code · working · 10s",
+   "strip": "PROJECT RECOVERY BRIEFINGFO is the first officer, the agent driving this workflow; Captain is you.ASSIGNMENTShip feature · BuildEvidence · assignment sourceExact workflow state · source session claude:a-leadSTATED GOALclaude · latest assignment · observed 5m agoDrain the retry queue in order5 of 6 sessions publish no goal.EXECUTIONClaude Code · workinglens · activeEvidence · child handoffReview the diff · source exact parent dispatch · source session claude:a-leadscout · returnedEvidence · child handoffMap the queue · Mapped · source child lifecycle · source session claude:a-lead · event 1880 · age 2m agoCOMMANDWAITING ON YOUNeeds a decision2mApprove the retry plan?RAISECopy commandCAPTAIN NEEDEDAUTHORIZE · Authorize the dispatch?ANSWER · Approve the retry plan?INSPECT · inspect idle owner · 3Evidence · attention sourcesCAPTAIN · authorize_dispatch · Authorize the dispatch? · ask registry · exactCAPTAIN · ask · Approve the retry plan? · AskRegistry exact question · exactFO · attention · inspect idle owner · 3 · exact session state · exactCoverage complete · 2 of 2 active sessions · active-session attention scanLATEST EVIDENCELATEST ACTIONABLE DIRECTIONLand the retry queue behind a flagLATEST EXACT RESULTShippedEvidence · direction and result sourcespromoted exact direction · source session claude:a-leadexact semantic result · source session claude:a-lead",
+   "stripLinks": [
+    "#n=session:alpha%2Fapp:claude:a-wait"
+   ],
+   "switcher": "Viewing project · appChange scope",
+   "tabs": [
+    "Now|true",
+    "Course0No observed state changes observed|false",
+    "Decisions11 decision|false",
+    "Console|false"
+   ],
+   "viewing": ""
+  },
+  "hostile: the list | #n=projects | 9ca5ab141b": {
+   "groups": [
+    {
+     "empty": null,
+     "header": "Activeblocked on you ranks first · only source-backed sessions contribute claims",
+     "kind": "active",
+     "rows": [
+      {
+       "history": false,
+       "members": [
+        [
+         "session:%22%5D'%3E%3Cimg%20src%3Dx%20onerror%3DglobalThis.__hit%3D1%3E:claude:s0%3A%22%5D'%3E%3Cimg%20src%3Dx%20onerror%3DglobalThis.__hit%3D1%3E",
+         "claude",
+         "s0:\"]'><img src=x onerror=globalThis.__hit=1>",
+         "claude\"]'><img src=x onerror=globalThis.__hit=1>\"]'><img src=x onerror=globalThis.__hit=1>No pending step published"
+        ]
+       ],
+       "more": null,
+       "project": "\"]'><img src=x onerror=globalThis.__hit=1>",
+       "role": "link",
+       "route": "project:%22%5D'%3E%3Cimg%20src%3Dx%20onerror%3DglobalThis.__hit%3D1%3E",
+       "tabindex": "0",
+       "text": "\"]'><img src=x onerror=globalThis.__hit=1>Exact location not published1 session · 1 workingclaude\"]'><img src=x onerror=globalThis.__hit=1>\"]'><img src=x onerror=globalThis.__hit=1>No pending step published›",
+       "tone": "next-project-tone--unknown"
+      },
+      {
+       "history": false,
+       "members": [
+        [
+         "session:%3Cscript%3EglobalThis.__hit%3D1%3C%2Fscript%3E:claude:s1%3A%3Cscript%3EglobalThis.__hit%3D1%3C%2Fscript%3E",
+         "claude",
+         "s1:<script>globalThis.__hit=1</script>",
+         "claude<script>globalThis.__hit=1</script><script>globalThis.__hit=1</script>No pending step published"
+        ]
+       ],
+       "more": null,
+       "project": "<script>globalThis.__hit=1</script>",
+       "role": "link",
+       "route": "project:%3Cscript%3EglobalThis.__hit%3D1%3C%2Fscript%3E",
+       "tabindex": "0",
+       "text": "<script>globalThis.__hit=1</script>Exact location not published1 session · 1 workingclaude<script>globalThis.__hit=1</script><script>globalThis.__hit=1</script>No pending step published›",
+       "tone": "next-project-tone--unknown"
+      },
+      {
+       "history": false,
+       "members": [
+        [
+         "session:%E2%80%AERTL:claude:s2%3A%E2%80%AERTL",
+         "claude",
+         "s2:‮RTL",
+         "claude‮RTL‮RTLNo pending step published"
+        ]
+       ],
+       "more": null,
+       "project": "‮RTL",
+       "role": "link",
+       "route": "project:%E2%80%AERTL",
+       "tabindex": "0",
+       "text": "‮RTLExact location not published1 session · 1 workingclaude‮RTL‮RTLNo pending step published›",
+       "tone": "next-project-tone--unknown"
+      }
+     ]
+    },
+    {
+     "empty": "No recently observed project history in this payload.",
+     "header": "Recently observedidentity stays reachable; operational claims lapse",
+     "kind": "history",
+     "rows": []
+    }
+   ],
+   "note": "sessions grouped by the label their harness publishes"
+  },
+  "hostile: the project | #n=project:%22%5D'%3E%3Cimg%20src%3Dx%20onerror%3DglobalThis.__hit%3D1%3E | 4140005c71": {
+   "header": "\"]'><img src=x onerror=globalThis.__hit=1>Exact location not published1 session · 1 working",
+   "panel": "Now: what is running in this project this minute, and how sessions here have ended.GOING ON\"]'><img src=x onerror=globalThis.__hit=1>claude · \"]'><img src=x onerror=globalThis.__hit=1>next · No pending step publishedturn · Harness does not report turn boundsToken rate not reportedHOW THINGS ENDEDNo session in this project has been observed ending.",
+   "panelLinks": [],
+   "scopeLinks": [],
+   "scopeTree": "",
+   "strip": "PROJECT RECOVERY BRIEFINGFO is the first officer, the agent driving this workflow; Captain is you.ASSIGNMENTNot observedSTATED GOALNo assignment or workflow goal published1 of 1 session publishes no goal.EXECUTIONclaude · workingCOMMANDFO INSPECTINGREFRESH · refresh captain-attention scanCaptain state unknownCaptain attention unavailable · project context request failedEvidence · attention sourcesFO · coverage_inspection · refresh captain-attention scan · project context request failed · unavailableCaptain attention unavailable · project context request failedLATEST EVIDENCEActionable direction not observed · Session result not observed+ Add human context · this browser",
+   "stripLinks": [],
+   "switcher": "",
+   "tabs": [
+    "Now|true",
+    "Course0No observed state changes observed|false",
+    "Decisions—decisions could not be read|false",
+    "Console|false"
+   ],
+   "viewing": ""
+  },
+  "keyboard: a project row opens with Enter": {
+   "opens": "#n=project:alpha%2Fapp"
+  },
+  "no plan | #n=project:beta%2Fapi | 7564310c32": {
+   "header": "beta/apiExact location not published2 sessions · 2 quiet2 sessions share this display label; shared location is not established",
+   "panel": "Now: what is running in this project this minute, and how sessions here have ended.GOING ONNo session currently running. Command attention remains above.HOW THINGS ENDEDNo session in this project has been observed ending.",
+   "panelLinks": [],
+   "scopeLinks": [
+    [
+     "#n=project:beta%2Fapi",
+     "project",
+     true
+    ],
+    [
+     "#n=project:beta%2Fapi:claude%3Ab-1",
+     "session",
+     false
+    ],
+    [
+     "#n=project:beta%2Fapi:claude%3Ab-2",
+     "session",
+     false
+    ]
+   ],
+   "scopeTree": "SCOPE · Claude CodePROJECTapi2 sessionsSESSIONIdle with outputidle · 6mSESSIONAnother betaidle · 8m",
+   "strip": "PROJECT RECOVERY BRIEFINGFO is the first officer, the agent driving this workflow; Captain is you.ASSIGNMENTNot observedSTATED GOALNo assignment or workflow goal published2 of 2 sessions publish no goal.EXECUTIONNo execution observedCOMMANDFO INSPECTINGREFRESH · refresh captain-attention scanCaptain state unknownCaptain attention unavailable · project context request failedEvidence · attention sourcesFO · coverage_inspection · refresh captain-attention scan · project context request failed · unavailableFO · attention · inspect idle owner · 2 · exact session state · exact1 more FO actionCaptain attention unavailable · project context request failedLATEST EVIDENCEActionable direction not observed · Session result not observed+ Add human context · this browser",
+   "stripLinks": [],
+   "switcher": "Viewing project · apiChange scope",
+   "tabs": [
+    "Now|true",
+    "Course0No observed state changes observed|false",
+    "Decisions—decisions could not be read|false",
+    "Console|false"
+   ],
+   "viewing": ""
+  },
+  "no sessions: a project | #n=project:alpha%2Fapp | ca85034ed0": {
+   "empty": {
+    "links": [
+     "#n=projects"
+    ],
+    "state": "",
+    "text": "Not present in the current payload.View all projects"
+   }
+  },
+  "no sessions: the list | #n=projects | a53290885c": {
+   "groups": [
+    {
+     "empty": "No project has active session evidence right now.",
+     "header": "Activeblocked on you ranks first · only source-backed sessions contribute claims",
+     "kind": "active",
+     "rows": []
+    },
+    {
+     "empty": "No recently observed project history in this payload.",
+     "header": "Recently observedidentity stays reachable; operational claims lapse",
+     "kind": "history",
+     "rows": []
+    }
+   ],
+   "note": "sessions grouped by the label their harness publishes"
+  },
+  "seed 1 list | #n=projects | 2ff9c07b9c": {
+   "groups": [
+    {
+     "empty": null,
+     "header": "Activeblocked on you ranks first · only source-backed sessions contribute claims",
+     "kind": "active",
+     "rows": [
+      {
+       "history": false,
+       "members": [
+        [
+         "session:alpha%2Fapp%20:claude:a%3Ab%3Ac",
+         "claude",
+         "a:b:c",
+         "claudeTitle not publishedActivity not publishedNo pending step published"
+        ],
+        [
+         "session:alpha%2Fapp%20:codex:a%3Ab%3Ac",
+         "codex",
+         "a:b:c",
+         "codex<script>x</script>Activity not publishedNo pending step published"
+        ],
+        [
+         "session:alpha%2Fapp%20:cursor:x%20y",
+         "cursor",
+         "x y",
+         "cursorTitle with \"quotes\" & <tags>Ship itNo pending step published"
+        ],
+        [
+         "session:alpha%2Fapp%20:a%3Ab%3Ac",
+         "",
+         "a:b:c",
+         "Title not publishedActivity not publishedNo pending step published"
+        ],
+        [
+         "session:alpha%2Fapp%20:a%3Ab%3Ac",
+         "",
+         "a:b:c",
+         "Title not publishedquietNo pending step published"
+        ],
+        [
+         "session:alpha%2Fapp%20:a%3Ab%3Ac",
+         "",
+         "a:b:c",
+         "Title not publishedquietNo pending step published"
+        ]
+       ],
+       "more": "2 other sessions",
+       "project": "alpha/app ",
+       "role": "link",
+       "route": "project:alpha%2Fapp%20",
+       "tabindex": "0",
+       "text": "alpha/app Exact location not published8 sessions · 2 working · 2 waiting on you · 1 ended · 2 quiet · 1 in no counted state8 sessions share this display label; shared location is not establishedclaudeTitle not publishedActivity not publishedNo pending step publishedcodex<script>x</script>Activity not publishedNo pending step publishedcursorTitle with \"quotes\" & <tags>Ship itNo pending step publishedTitle not publishedActivity not publishedNo pending step publishedTitle not publishedquietNo pending step publishedTitle not publishedquietNo pending step published2 other sessions›",
+       "tone": "next-project-tone--want"
+      }
+     ]
+    },
+    {
+     "empty": null,
+     "header": "Recently observedidentity stays reachable; operational claims lapse",
+     "kind": "history",
+     "rows": [
+      {
+       "history": true,
+       "members": [],
+       "more": null,
+       "project": "<b>x</b>",
+       "role": "link",
+       "route": "project:%3Cb%3Ex%3C%2Fb%3E",
+       "tabindex": "0",
+       "text": "<b>x</b>1 session · 1 quiet›",
+       "tone": "next-project-tone--want"
+      },
+      {
+       "history": true,
+       "members": [],
+       "more": null,
+       "project": "a:b",
+       "role": "link",
+       "route": "project:a%3Ab",
+       "tabindex": "0",
+       "text": "a:b1 session · 1 in no counted state›",
+       "tone": "next-project-tone--unknown"
+      },
+      {
+       "history": true,
+       "members": [],
+       "more": null,
+       "project": "alpha/app",
+       "role": "link",
+       "route": "project:alpha%2Fapp",
+       "tabindex": "0",
+       "text": "alpha/app1 session · 1 in no counted state›",
+       "tone": "next-project-tone--unknown"
+      },
+      {
+       "history": true,
+       "members": [],
+       "more": null,
+       "project": "beta/api",
+       "role": "link",
+       "route": "project:beta%2Fapi",
+       "tabindex": "0",
+       "text": "beta/api1 session · 1 in no counted state›",
+       "tone": "next-project-tone--unknown"
+      },
+      {
+       "history": true,
+       "members": [],
+       "more": null,
+       "project": "gamma",
+       "role": "link",
+       "route": "project:gamma",
+       "tabindex": "0",
+       "text": "gamma1 session · 1 in no counted state›",
+       "tone": "next-project-tone--unknown"
+      }
+     ]
+    }
+   ],
+   "note": "sessions grouped by the label their harness publishes"
+  },
+  "seed 1 project | #n=project:a%3Ab | 9bc0858efd": {
+   "header": "a:bExact location not published1 session · 1 in no counted state",
+   "panel": "Now: what is running in this project this minute, and how sessions here have ended.GOING ONNo session currently running. Command attention remains above.HOW THINGS ENDEDNo session in this project has been observed ending.",
+   "panelLinks": [],
+   "scopeLinks": [],
+   "scopeTree": "",
+   "strip": "PROJECT RECOVERY BRIEFINGFO is the first officer, the agent driving this workflow; Captain is you.ASSIGNMENTNot observedSTATED GOALNo assignment or workflow goal published1 of 1 session publishes no goal.EXECUTION · 7Child · returnedassignment unavailableEvidence · child handoffassignment unavailable · Summary · source child lifecycle source unavailable · source session claude:x y · event unavailable · age unavailableCOMMANDFO INSPECTINGREFRESH · refresh captain-attention scanCaptain state unknownCaptain attention unavailable · project context request failedEvidence · attention sourcesFO · coverage_inspection · refresh captain-attention scan · project context request failed · unavailableFO · child_evidence_gap · inspect Child assignment · child lifecycle source unavailable · unavailable1 more FO actionCaptain attention unavailable · project context request failedLATEST EVIDENCEActionable direction not observed · Session result not observed+ Add human context · this browser",
+   "stripLinks": [],
+   "switcher": "",
+   "tabs": [
+    "Now|true",
+    "Course0No observed state changes observed|false",
+    "Decisions—decisions could not be read|false",
+    "Console|false"
+   ],
+   "viewing": ""
+  },
+  "seed 1 project | #n=project:alpha%2Fapp%20 | 9bc0858efd": {
+   "header": "alpha/app Exact location not published8 sessions · 2 working · 2 waiting on you · 1 ended · 2 quiet · 1 in no counted state8 sessions share this display label; shared location is not established",
+   "panel": "Now: what is running in this project this minute, and how sessions here have ended.GOING ONTitle not publishedclaude · Activity not publishednext · No pending step publishedturn · Harness does not report turn bounds0ssubagent16msubagent16mÜnï0s<script>x</script>codex · Activity not publishednext · No pending step publishedturn · Harness does not report turn boundsWait duration not publishedsubagent0ssubagenthelper0sHOW THINGS ENDED◦Title not publishedSession ended; git state not measuredcodex · git: Git state was not measuredShow project planAn ensign attachment was observed, but attachment metadata is not the project workflow definition. Checking project workflow definitions…",
+   "panelLinks": [],
+   "scopeLinks": [
+    [
+     "#n=project:alpha%2Fapp%20",
+     "project",
+     true
+    ],
+    [
+     "#n=project:alpha%2Fapp%20:%3Aa%3Ab%3Ac",
+     "unknown",
+     false
+    ],
+    [
+     "#n=project:alpha%2Fapp%20:%3Aa%3Ab%3Ac",
+     "unknown",
+     false
+    ],
+    [
+     "#n=project:alpha%2Fapp%20:%3Aa%3Ab%3Ac",
+     "unknown",
+     false
+    ],
+    [
+     "#n=project:alpha%2Fapp%20:cursor%3Ax%20y",
+     "session",
+     false
+    ],
+    [
+     "#n=project:alpha%2Fapp%20:claude%3Aa%3Ab%3Ac",
+     "session",
+     false
+    ],
+    [
+     "#n=project:alpha%2Fapp%20:codex%3Aa%3Ab%3Ac",
+     "session",
+     false
+    ],
+    [
+     "#n=project:alpha%2Fapp%20:%3As2",
+     "unknown",
+     false
+    ],
+    [
+     "#n=project:alpha%2Fapp%20:codex%3As2",
+     "session",
+     false
+    ]
+   ],
+   "scopeTree": "SCOPEPROJECTc8 sessionsSCOPE UNKNOWNSession title not publishedSession · working · 0s · a:b:cSCOPE UNKNOWNSession title not publishedSession · working · 0s · a:b:cSCOPE UNKNOWNSession title not publishedSession · working · 0s · a:b:cSESSIONTitle with \"quotes\" & <tags> · working · 0sSESSIONSession title not published · needs_input · 3sSESSION<script>x</script>codex · needs_input · 1mSCOPE UNKNOWNFix the buildSession · bogus · 1mSESSIONSession title not publishedcodex · working",
+   "strip": "PROJECT RECOVERY BRIEFINGFO is the first officer, the agent driving this workflow; Captain is you.ASSIGNMENTNot observedSTATED GOALSpacedock · workflow goal · observation time not publishedShip it5 of 8 sessions publish no goal.EXECUTIONSession · workingEnsign · activeassignment unavailableEvidence · child handoffassignment unavailable · source assignment source unavailable · source session :a:b:cEnsign · activeassignment unavailableEvidence · child handoffassignment unavailable · source assignment source unavailable · source session :a:b:cEnsign · activeassignment unavailableEvidence · child handoffassignment unavailable · source assignment source unavailable · source session :a:b:c · needs inputChild · returned · stale 15mresult unavailableEvidence · child handoffReview the diff · result unavailable · source child lifecycle source unavailable · source session claude:a:b:c · event 100 · age 15m agoSession · workingEnsign · activeassignment unavailableEvidence · child handoffassignment unavailable · source assignment source unavailable · source session :a:b:cEnsign · activeassignment unavailableEvidence · child handoffassignment unavailable · source assignment source unavailable · source session :a:b:cEnsign · activeassignment unavailableEvidence · child handoffassignment unavailable · source assignment source unavailable · source session :a:b:c · workingSession · workingEnsign · activeassignment unavailableEvidence · child handoffassignment unavailable · source assignment source unavailable · source session :a:b:cEnsign · activeassignment unavailableEvidence · child handoffassignment unavailable · source assignment source unavailable · source session :a:b:cEnsign · activeassignment unavailableEvidence · child handoffassignment unavailable · source assignment source unavailable · source session :a:b:cCOMMANDWAITING ON YOUTitle not published0sCopy IDFO INSPECTINGREFRESH · refresh captain-attention scanCaptain attention unavailable · project context request failedEvidence · attention sourcesFO · coverage_inspection · refresh captain-attention scan · project context request failed · unavailableFO · attention · inspect input request · exact session needs-input state · unavailableFO · attention · inspect Codex input request · exact session needs-input state · unavailableFO · child_evidence_gap · inspect Ensign assignment · assignment source unavailable · unavailableFO · child_evidence_gap · inspect Child result · child lifecycle source unavailable · unavailable4 more FO actionsCaptain attention unavailable · project context request failedLATEST EVIDENCEActionable direction not observed · Session result not observed+ Add human context · this browser",
+   "stripLinks": [
+    "#n=session:alpha%2Fapp%20:claude:a%3Ab%3Ac"
+   ],
+   "switcher": "Viewing project · cChange scope",
+   "tabs": [
+    "Now|true",
+    "Course0No observed state changes observed|false",
+    "Decisions—decisions could not be read|false",
+    "Console|false"
+   ],
+   "viewing": ""
+  },
+  "seed 10 list | #n=projects | 56da470ee1": {
+   "groups": [
+    {
+     "empty": null,
+     "header": "Activeblocked on you ranks first · only source-backed sessions contribute claims",
+     "kind": "active",
+     "rows": [
+      {
+       "history": false,
+       "members": [
+        [
+         "session::pi:1",
+         "pi",
+         "1",
+         "piTitle not publishedNo state publishedNo pending step published"
+        ],
+        [
+         "sessions",
+         "claude",
+         "",
+         "claudepaddedNo state publishedNo pending step published"
+        ],
+        [
+         "session::claude:%C3%BCn%C3%AF",
+         "claude",
+         "ünï",
+         "claudeTitle not publishedNo state publishedWrite tests"
+        ],
+        [
+         "session::claude:x%20y",
+         "claude",
+         "x y",
+         "claudeTitle not publishedNo state publishedNo pending step published"
+        ],
+        [
+         "session::pi:long-zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz",
+         "pi",
+         "long-zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz",
+         "piTitle not publishedNo state publishedNo pending step published"
+        ]
+       ],
+       "more": "1 other session",
+       "project": "",
+       "role": "link",
+       "route": "sessions",
+       "tabindex": "0",
+       "text": "Exact location not published6 sessions · 1 ended · 5 in no counted state6 sessions share this display label; shared location is not establishedpiTitle not publishedNo state publishedNo pending step publishedclaudepaddedNo state publishedNo pending step publishedclaudeTitle not publishedNo state publishedWrite testsclaudeTitle not publishedNo state publishedNo pending step publishedpiTitle not publishedNo state publishedNo pending step published1 other session›",
+       "tone": "next-project-tone--want"
+      },
+      {
+       "history": false,
+       "members": [
+        [
+         "session:%3Cb%3Ex%3C%2Fb%3E:cursor:s1",
+         "cursor",
+         "s1",
+         "cursorTitle not publishedWrite testsNo pending step published"
+        ]
+       ],
+       "more": null,
+       "project": "<b>x</b>",
+       "role": "link",
+       "route": "project:%3Cb%3Ex%3C%2Fb%3E",
+       "tabindex": "0",
+       "text": "<b>x</b>Exact location not published1 session · 1 waiting on youcursorTitle not publishedWrite testsNo pending step published›",
+       "tone": "next-project-tone--want"
+      }
+     ]
+    },
+    {
+     "empty": null,
+     "header": "Recently observedidentity stays reachable; operational claims lapse",
+     "kind": "history",
+     "rows": [
+      {
+       "history": true,
+       "members": [],
+       "more": null,
+       "project": "alpha/app ",
+       "role": "link",
+       "route": "project:alpha%2Fapp%20",
+       "tabindex": "0",
+       "text": "alpha/app 1 session · 1 in no counted state›",
+       "tone": "next-project-tone--want"
+      }
+     ]
+    }
+   ],
+   "note": "sessions grouped by the label their harness publishes"
+  },
+  "seed 10 project | #n=project:%3Cb%3Ex%3C%2Fb%3E:course | ac8ad238b6": {
+   "header": "<b>x</b>Exact location not published1 session · 1 waiting on you",
+   "panel": "Course: direction changes Cargento observed in the session record.▾ OBSERVED STATE CHANGES0 of 0 unattended · since this tab openedNo state changes observed since this tab opened.No source-backed course changes observed. The semantic history window was not published.",
+   "panelLinks": [],
+   "scopeLinks": [],
+   "scopeTree": "",
+   "strip": "PROJECT RECOVERY BRIEFINGFO is the first officer, the agent driving this workflow; Captain is you.ASSIGNMENTNot observedSTATED GOALSpacedock · workflow goal · observation time not publishedÜnï goal0 of 1 session publishes no goal.EXECUTIONNo execution observedCOMMANDWAITING ON YOUTitle not publishedWait duration not publishedLine one Line twoCopy IDCAPTAIN NEEDEDANSWER · Line one Line twoINSPECT · Approve the plan?Coverage incomplete · 1 of 3 active sessions · 2 omitted · active-session attention scanEvidence · attention sourcesCAPTAIN · ask · Line one Line two · AskRegistry exact question · exactFO · revise_plan · Approve the plan? · source unavailable · confidence unavailableFO · decision_application · apply recorded revise plan · source unavailable · confidence unavailableFO · coverage_inspection · complete captain-attention scan · active-session attention scan · boundedFO · attention · refresh workflow discovery · project workflow discovery · timed out · exactFO · attention · inspect assignment return · 2 · 2 retried · semantic task trail heads · exact4 more FO actionsCoverage incomplete · 1 of 3 active sessions · 2 omitted · active-session attention scanLATEST EVIDENCEActionable direction not observed · Session result not observed+ Add human context · this browser",
+   "stripLinks": [
+    "#n=session:%3Cb%3Ex%3C%2Fb%3E:cursor:s1"
+   ],
+   "switcher": "",
+   "tabs": [
+    "Now|false",
+    "Course0No observed state changes observed|true",
+    "Decisions11 decision|false",
+    "Console|false"
+   ],
+   "viewing": ""
+  },
+  "seed 10 project | #n=project:alpha%2Fapp%20:course | ac8ad238b6": {
+   "header": "alpha/app Exact location not published1 session · 1 in no counted state",
+   "panel": "Course: direction changes Cargento observed in the session record.▾ OBSERVED STATE CHANGES0 of 0 unattended · since this tab openedNo state changes observed since this tab opened.No source-backed course changes observed. The semantic history window was not published.",
+   "panelLinks": [],
+   "scopeLinks": [],
+   "scopeTree": "",
+   "strip": "PROJECT RECOVERY BRIEFINGFO is the first officer, the agent driving this workflow; Captain is you.ASSIGNMENTNot observedSTATED GOALSpacedock · workflow goal · observation time not publishedShip it Ünï goal0 of 1 session publishes no goal.EXECUTIONNo execution observedCOMMANDFO INSPECTINGINSPECT · Approve the plan?Captain state unknownCoverage incomplete · 1 of 3 active sessions · 2 omitted · active-session attention scanEvidence · attention sourcesFO · revise_plan · Approve the plan? · source unavailable · confidence unavailableFO · decision_application · apply recorded revise plan · source unavailable · confidence unavailableFO · coverage_inspection · complete captain-attention scan · active-session attention scan · boundedFO · attention · refresh workflow discovery · project workflow discovery · timed out · exactFO · attention · inspect assignment return · 2 · 2 retried · semantic task trail heads · exact4 more FO actionsCoverage incomplete · 1 of 3 active sessions · 2 omitted · active-session attention scanLATEST EVIDENCEActionable direction not observed · Session result not observed+ Add human context · this browser",
+   "stripLinks": [],
+   "switcher": "",
+   "tabs": [
+    "Now|false",
+    "Course0No observed state changes observed|true",
+    "Decisions11 decision|false",
+    "Console|false"
+   ],
+   "viewing": ""
+  },
+  "seed 11 list | #n=projects | c572d762cc": {
+   "groups": [
+    {
+     "empty": "No project has active session evidence right now.",
+     "header": "Activeblocked on you ranks first · only source-backed sessions contribute claims",
+     "kind": "active",
+     "rows": []
+    },
+    {
+     "empty": null,
+     "header": "Recently observedidentity stays reachable; operational claims lapse",
+     "kind": "history",
+     "rows": [
+      {
+       "history": true,
+       "members": [],
+       "more": null,
+       "project": "a:b",
+       "role": "link",
+       "route": "project:a%3Ab",
+       "tabindex": "0",
+       "text": "a:b1 session · 1 quiet›",
+       "tone": "next-project-tone--want"
+      },
+      {
+       "history": true,
+       "members": [],
+       "more": null,
+       "project": "beta/api",
+       "role": "link",
+       "route": "project:beta%2Fapi",
+       "tabindex": "0",
+       "text": "beta/api2 sessions · 2 quiet›",
+       "tone": "next-project-tone--want"
+      },
+      {
+       "history": true,
+       "members": [],
+       "more": null,
+       "project": "gamma",
+       "role": "link",
+       "route": "project:gamma",
+       "tabindex": "0",
+       "text": "gamma2 sessions · 1 ended · 1 in no counted state›",
+       "tone": "next-project-tone--bad"
+      },
+      {
+       "history": true,
+       "members": [],
+       "more": null,
+       "project": "alpha/app ",
+       "role": "link",
+       "route": "project:alpha%2Fapp%20",
+       "tabindex": "0",
+       "text": "alpha/app 1 session · 1 in no counted state›",
+       "tone": "next-project-tone--unknown"
+      }
+     ]
+    }
+   ],
+   "note": "sessions grouped by the label their harness publishes"
+  },
+  "seed 11 project | #n=project:alpha%2Fapp%20 | b70e66bd3b": {
+   "header": "alpha/app Exact location not published1 session · 1 in no counted state",
+   "panel": "Now: what is running in this project this minute, and how sessions here have ended.GOING ONNo session currently running. Command attention remains above.HOW THINGS ENDEDNo session in this project has been observed ending.no estimate left · no confidence0 entities unhealthy — estimate withheldShow project planPLANünï flowShip it○alpha2ünï",
+   "panelLinks": [],
+   "scopeLinks": [],
+   "scopeTree": "",
+   "strip": "PROJECT RECOVERY BRIEFINGFO is the first officer, the agent driving this workflow; Captain is you.ASSIGNMENTNot observedSTATED GOALSpacedock · workflow goal · observation time not publishedShip it Ship it0 of 1 session publishes no goal.EXECUTIONNo execution observedCOMMANDFO INSPECTINGCOMPLETE · complete captain-attention scanCaptain state unknownCoverage incomplete · 1 of 3 active sessions · 2 omitted · active-session attention scanEvidence · attention sourcesFO · coverage_inspection · complete captain-attention scan · active-session attention scan · boundedFO · attention · inspect assignment return · 1 · semantic task trail heads · exact1 more FO actionCoverage incomplete · 1 of 3 active sessions · 2 omitted · active-session attention scanLATEST EVIDENCEActionable direction not observed · Session result not observed+ Add human context · this browser",
+   "stripLinks": [],
+   "switcher": "",
+   "tabs": [
+    "Now|true",
+    "Course0No observed state changes observed|false",
+    "Decisions11 decision|false",
+    "Console|false"
+   ],
+   "viewing": ""
+  },
+  "seed 11 project | #n=project:beta%2Fapi | b70e66bd3b": {
+   "header": "beta/apiExact location not published2 sessions · 2 quiet2 sessions share this display label; shared location is not established",
+   "panel": "Now: what is running in this project this minute, and how sessions here have ended.GOING ONNo session currently running. Command attention remains above.HOW THINGS ENDEDNo session in this project has been observed ending.no estimate left · no confidence0 entities unhealthy — estimate withheldShow project planPLANünï flowÜnï goal",
+   "panelLinks": [],
+   "scopeLinks": [
+    [
+     "#n=project:beta%2Fapi",
+     "project",
+     true
+    ],
+    [
+     "#n=project:beta%2Fapi:gemini%3Ax%20y",
+     "session",
+     false
+    ],
+    [
+     "#n=project:beta%2Fapi:pi%3Along-zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz",
+     "session",
+     false
+    ]
+   ],
+   "scopeTree": "SCOPEPROJECTc2 sessionsSESSIONFix the build · idleSESSIONTitle with \"quotes\" & <tags>pi · idle · 1m",
+   "strip": "PROJECT RECOVERY BRIEFINGFO is the first officer, the agent driving this workflow; Captain is you.ASSIGNMENTNot observedSTATED GOALSpacedock · workflow goal · observation time not publishedÜnï goal1 of 2 sessions publish no goal.EXECUTIONNo execution observedCOMMANDFO INSPECTINGCOMPLETE · complete captain-attention scanCaptain state unknownCoverage incomplete · 1 of 3 active sessions · 2 omitted · active-session attention scanEvidence · attention sourcesFO · coverage_inspection · complete captain-attention scan · active-session attention scan · boundedFO · attention · inspect assignment return · 1 · semantic task trail heads · exactFO · attention · inspect idle owner · 2 · exact session state · exact2 more FO actionsCoverage incomplete · 1 of 3 active sessions · 2 omitted · active-session attention scanLATEST EVIDENCEActionable direction not observed · Session result not observed+ Add human context · this browser",
+   "stripLinks": [],
+   "switcher": "Viewing project · cChange scope",
+   "tabs": [
+    "Now|true",
+    "Course0No observed state changes observed|false",
+    "Decisions11 decision|false",
+    "Console|false"
+   ],
+   "viewing": ""
+  },
+  "seed 12 list | #n=projects | 1764df1aa1": {
+   "groups": [
+    {
+     "empty": null,
+     "header": "Activeblocked on you ranks first · only source-backed sessions contribute claims",
+     "kind": "active",
+     "rows": [
+      {
+       "history": false,
+       "members": [
+        [
+         "session:a%3Ab:claude:dup",
+         "claude",
+         "dup",
+         "claudeFix the buildActivity not publishedNo pending step published"
+        ],
+        [
+         "sessions",
+         "gemini",
+         "",
+         "geminiÜnï ✓No state publishedNo pending step published"
+        ]
+       ],
+       "more": null,
+       "project": "a:b",
+       "role": "link",
+       "route": "project:a%3Ab",
+       "tabindex": "0",
+       "text": "a:bExact location not published2 sessions · 1 waiting on you · 1 in no counted state2 sessions share this display label; shared location is not establishedclaudeFix the buildActivity not publishedNo pending step publishedgeminiÜnï ✓No state publishedNo pending step published›",
+       "tone": "next-project-tone--want"
+      },
+      {
+       "history": false,
+       "members": [
+        [
+         "session::cursor:shared",
+         "cursor",
+         "shared",
+         "cursorTitle not publishedawaiting your messageNo pending step published"
+        ],
+        [
+         "session::pi:long-zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz",
+         "pi",
+         "long-zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz",
+         "piTitle not publishedNo state publishedNo pending step published"
+        ],
+        [
+         "session::shared",
+         "",
+         "shared",
+         "Ünï ✓Session reported its own endNo pending step published"
+        ]
+       ],
+       "more": null,
+       "project": "",
+       "role": "link",
+       "route": "sessions",
+       "tabindex": "0",
+       "text": "Exact location not published3 sessions · 1 working · 1 ended · 1 in no counted state3 sessions share this display label; shared location is not establishedcursorTitle not publishedawaiting your messageNo pending step publishedpiTitle not publishedNo state publishedNo pending step publishedÜnï ✓Session reported its own endNo pending step published›",
+       "tone": "next-project-tone--want"
+      },
+      {
+       "history": false,
+       "members": [
+        [
+         "session:beta%2Fapi:claude:colon%3Asid",
+         "claude",
+         "colon:sid",
+         "claudeTitle not publishedActivity not publishedNo pending step published"
+        ],
+        [
+         "session:beta%2Fapi:cursor:colon%3Asid",
+         "cursor",
+         "colon:sid",
+         "cursorFix the buildSession reported its own endNo pending step published"
+        ]
+       ],
+       "more": null,
+       "project": "beta/api",
+       "role": "link",
+       "route": "project:beta%2Fapi",
+       "tabindex": "0",
+       "text": "beta/apiExact location not published2 sessions · 1 working · 1 ended2 sessions share this display label; shared location is not establishedclaudeTitle not publishedActivity not publishedNo pending step publishedcursorFix the buildSession reported its own endNo pending step published›",
+       "tone": "next-project-tone--unknown"
+      },
+      {
+       "history": false,
+       "members": [
+        [
+         "session:gamma:ghost:a%3Ab%3Ac",
+         "ghost",
+         "a:b:c",
+         "ghostpaddedActivity not publishedNo pending step published"
+        ],
+        [
+         "session:gamma:shared",
+         "",
+         "shared",
+         "Title with \"quotes\" & <tags>No state publishedNo pending step published"
+        ]
+       ],
+       "more": null,
+       "project": "gamma",
+       "role": "link",
+       "route": "project:gamma",
+       "tabindex": "0",
+       "text": "gammaExact location not published2 sessions · 1 working · 1 in no counted state2 sessions share this display label; shared location is not establishedghostpaddedActivity not publishedNo pending step publishedTitle with \"quotes\" & <tags>No state publishedNo pending step published›",
+       "tone": "next-project-tone--unknown"
+      }
+     ]
+    },
+    {
+     "empty": null,
+     "header": "Recently observedidentity stays reachable; operational claims lapse",
+     "kind": "history",
+     "rows": [
+      {
+       "history": true,
+       "members": [],
+       "more": null,
+       "project": "<b>x</b>",
+       "role": "link",
+       "route": "project:%3Cb%3Ex%3C%2Fb%3E",
+       "tabindex": "0",
+       "text": "<b>x</b>1 session · 1 in no counted state›",
+       "tone": "next-project-tone--unknown"
+      },
+      {
+       "history": true,
+       "members": [],
+       "more": null,
+       "project": "alpha/app",
+       "role": "link",
+       "route": "project:alpha%2Fapp",
+       "tabindex": "0",
+       "text": "alpha/app1 session · 1 ended›",
+       "tone": "next-project-tone--ok"
+      }
+     ]
+    }
+   ],
+   "note": "sessions grouped by the label their harness publishes"
+  },
+  "seed 12 project | #n=project:%3Cb%3Ex%3C%2Fb%3E:course | 39385f8a6f": {
+   "header": "<b>x</b>Exact location not published1 session · 1 in no counted state",
+   "panel": "Course: direction changes Cargento observed in the session record.▾ OBSERVED STATE CHANGES0 of 0 unattended · since this tab openedNo state changes observed since this tab opened.SCOPE UNKNOWNEXACT RESULTWork · ResultDirection · Make the drain order stableDrain order stable · checkpoint abcdef12Evidence · source and confidenceSource · transcriptConfidence · exactFact · pair-resultEvidence · source and confidenceSource · transcriptConfidence · exactFact · pair-directionCOMPLETED TASKS · 1✓5",
+   "panelLinks": [],
+   "scopeLinks": [],
+   "scopeTree": "",
+   "strip": "PROJECT RECOVERY BRIEFINGFO is the first officer, the agent driving this workflow; Captain is you.ASSIGNMENTNot observedSTATED GOALNo assignment or workflow goal published1 of 1 session publishes no goal.EXECUTIONNo execution observedCOMMANDFO INSPECTINGAPPLY · apply recorded authorize dispatchCaptain state unknownCaptain attention unavailable · project context coverage unavailableEvidence · attention sourcesFO · decision_application · apply recorded authorize dispatch · ask registry · exactFO · coverage_inspection · refresh captain-attention scan · project context coverage unavailable · unavailable1 more FO actionCaptain attention unavailable · project context coverage unavailableLATEST EVIDENCEActionable direction not observed · Session result not observed+ Add human context · this browser",
+   "stripLinks": [],
+   "switcher": "",
+   "tabs": [
+    "Now|false",
+    "Course0No observed state changes observed|true",
+    "Decisions11 decision|false",
+    "Console|false"
+   ],
+   "viewing": ""
+  },
+  "seed 12 project | #n=project:alpha%2Fapp:course | 39385f8a6f": {
+   "header": "alpha/appExact location not published1 session · 1 ended",
+   "panel": "Course: direction changes Cargento observed in the session record.▾ OBSERVED STATE CHANGES0 of 0 unattended · since this tab openedNo state changes observed since this tab opened.SCOPE UNKNOWNEXACT RESULTWork · ResultDirection · Make the drain order stableDrain order stable · checkpoint abcdef12Evidence · source and confidenceSource · transcriptConfidence · exactFact · pair-resultEvidence · source and confidenceSource · transcriptConfidence · exactFact · pair-direction",
+   "panelLinks": [],
+   "scopeLinks": [],
+   "scopeTree": "",
+   "strip": "PROJECT RECOVERY BRIEFINGFO is the first officer, the agent driving this workflow; Captain is you.ASSIGNMENTNot observedSTATED GOALNo assignment or workflow goal published1 of 1 session publishes no goal.EXECUTIONNo execution observedCOMMANDFO INSPECTINGAPPLY · apply recorded authorize dispatchCaptain state unknownCaptain attention unavailable · project context coverage unavailableEvidence · attention sourcesFO · decision_application · apply recorded authorize dispatch · ask registry · exactFO · coverage_inspection · refresh captain-attention scan · project context coverage unavailable · unavailable1 more FO actionCaptain attention unavailable · project context coverage unavailableLATEST EVIDENCEActionable direction not observed · Session result not observed+ Add human context · this browser",
+   "stripLinks": [],
+   "switcher": "",
+   "tabs": [
+    "Now|false",
+    "Course0No observed state changes observed|true",
+    "Decisions11 decision|false",
+    "Console|false"
+   ],
+   "viewing": ""
+  },
+  "seed 2 list | #n=projects | f1e00b137d": {
+   "groups": [
+    {
+     "empty": null,
+     "header": "Activeblocked on you ranks first · only source-backed sessions contribute claims",
+     "kind": "active",
+     "rows": [
+      {
+       "history": false,
+       "members": [
+        [
+         "session:a%3Ab:claude:a%3Ab%3Ac",
+         "claude",
+         "a:b:c",
+         "claude<script>x</script>Activity not publishedNo pending step published"
+        ],
+        [
+         "session:a%3Ab:codex:a%3Ab%3Ac",
+         "codex",
+         "a:b:c",
+         "codex<script>x</script>No state publishedNo pending step published"
+        ]
+       ],
+       "more": null,
+       "project": "a:b",
+       "role": "link",
+       "route": "project:a%3Ab",
+       "tabindex": "0",
+       "text": "a:bExact location not published2 sessions · 1 working · 1 in no counted state2 sessions share this display label; shared location is not establishedclaude<script>x</script>Activity not publishedNo pending step publishedcodex<script>x</script>No state publishedNo pending step published›",
+       "tone": "next-project-tone--unknown"
+      }
+     ]
+    },
+    {
+     "empty": null,
+     "header": "Recently observedidentity stays reachable; operational claims lapse",
+     "kind": "history",
+     "rows": [
+      {
+       "history": true,
+       "members": [],
+       "more": null,
+       "project": "",
+       "role": "link",
+       "route": "sessions",
+       "tabindex": "0",
+       "text": "4 sessions · 2 ended · 2 quiet›",
+       "tone": "next-project-tone--want"
+      },
+      {
+       "history": true,
+       "members": [],
+       "more": null,
+       "project": "alpha/app",
+       "role": "link",
+       "route": "project:alpha%2Fapp",
+       "tabindex": "0",
+       "text": "alpha/app2 sessions · 1 ended · 1 in no counted state›",
+       "tone": "next-project-tone--unknown"
+      }
+     ]
+    }
+   ],
+   "note": "sessions grouped by the label their harness publishes"
+  },
+  "seed 2 project | #n=project:a%3Ab:course | db166dd043": {
+   "header": "a:bExact location not published2 sessions · 1 working · 1 in no counted state2 sessions share this display label; shared location is not established",
+   "panel": "Course: direction changes Cargento observed in the session record.▾ OBSERVED STATE CHANGES0 of 0 unattended · since this tab openedNo state changes observed since this tab opened.Course evidence unavailable.",
+   "panelLinks": [],
+   "scopeLinks": [
+    [
+     "#n=project:a%3Ab:course",
+     "project",
+     true
+    ],
+    [
+     "#n=project:a%3Ab:claude%3Aa%3Ab%3Ac:course",
+     "session",
+     false
+    ],
+    [
+     "#n=project:a%3Ab:codex%3Aa%3Ab%3Ac:course",
+     "session",
+     false
+    ]
+   ],
+   "scopeTree": "SCOPEPROJECTçødé2 sessionsSESSION<script>x</script>5 · working · 11mSESSION<script>x</script>codex · unknown",
+   "strip": "PROJECT RECOVERY BRIEFINGFO is the first officer, the agent driving this workflow; Captain is you.ASSIGNMENTNot observedSTATED GOALNo assignment or workflow goal published2 of 2 sessions publish no goal.EXECUTION5 · workinglens · activeEvidence · child handoffWrite tests · source structured dispatch · source session claude:a:b:cCOMMANDFO INSPECTINGREFRESH · refresh captain-attention scanCaptain state unknownCaptain attention unavailable · project context request failedEvidence · attention sourcesFO · coverage_inspection · refresh captain-attention scan · project context request failed · unavailableFO · attention · refresh stale owner · 1 · exact session state · exact1 more FO actionCaptain attention unavailable · project context request failedLATEST EVIDENCEActionable direction not observed · Session result not observed+ Add human context · this browser",
+   "stripLinks": [],
+   "switcher": "Viewing project · çødéChange scope",
+   "tabs": [
+    "Now|false",
+    "Course0No observed state changes observed|true",
+    "Decisions—decisions could not be read|false",
+    "Console|false"
+   ],
+   "viewing": ""
+  },
+  "seed 2 project | #n=project:alpha%2Fapp:course | db166dd043": {
+   "header": "alpha/appExact location not published2 sessions · 1 ended · 1 in no counted state2 sessions share this display label; shared location is not established",
+   "panel": "Course: direction changes Cargento observed in the session record.▾ OBSERVED STATE CHANGES0 of 0 unattended · since this tab openedNo state changes observed since this tab opened.Course evidence unavailable.",
+   "panelLinks": [],
+   "scopeLinks": [
+    [
+     "#n=project:alpha%2Fapp:course",
+     "project",
+     true
+    ],
+    [
+     "#n=project:alpha%2Fapp:cursor%3As2:course",
+     "session",
+     false
+    ],
+    [
+     "#n=project:alpha%2Fapp:ghost%3As4:course",
+     "unknown",
+     false
+    ]
+   ],
+   "scopeTree": "SCOPEPROJECTapp2 sessionsSESSIONÜnï ✓cursor · working · 3sSCOPE UNKNOWNFix the build5 · unknown",
+   "strip": "PROJECT RECOVERY BRIEFINGFO is the first officer, the agent driving this workflow; Captain is you.ASSIGNMENTNot observedSTATED GOALSpacedock · workflow goal · observation time not publishedShip it Ünï goal1 of 2 sessions publish no goal.EXECUTIONcursor · workingÜnï · returnedassignment unavailableEvidence · child handoffassignment unavailable · Done · source child lifecycle source unavailable · source session cursor:s2 · event unavailable · age unavailableCOMMANDFO INSPECTINGREFRESH · refresh captain-attention scanCaptain state unknownCaptain attention unavailable · project context request failedEvidence · attention sourcesFO · coverage_inspection · refresh captain-attention scan · project context request failed · unavailableFO · child_evidence_gap · inspect Ünï assignment · child lifecycle source unavailable · unavailable1 more FO actionCaptain attention unavailable · project context request failedLATEST EVIDENCEActionable direction not observed · Session result not observed+ Add human context · this browser",
+   "stripLinks": [],
+   "switcher": "Viewing project · appChange scope",
+   "tabs": [
+    "Now|false",
+    "Course0No observed state changes observed|true",
+    "Decisions—decisions could not be read|false",
+    "Console|false"
+   ],
+   "viewing": ""
+  },
+  "seed 3 list | #n=projects | bdbdb7ca88": {
+   "groups": [
+    {
+     "empty": null,
+     "header": "Activeblocked on you ranks first · only source-backed sessions contribute claims",
+     "kind": "active",
+     "rows": [
+      {
+       "history": false,
+       "members": [
+        [
+         "session:beta%2Fapi:ghost:shared",
+         "ghost",
+         "shared",
+         "ghostTitle not publishedActivity not publishedNo pending step published"
+        ]
+       ],
+       "more": null,
+       "project": "beta/api",
+       "role": "link",
+       "route": "project:beta%2Fapi",
+       "tabindex": "0",
+       "text": "beta/apiExact location not published1 session · 1 workingghostTitle not publishedActivity not publishedNo pending step published›",
+       "tone": "next-project-tone--want"
+      }
+     ]
+    },
+    {
+     "empty": "No recently observed project history in this payload.",
+     "header": "Recently observedidentity stays reachable; operational claims lapse",
+     "kind": "history",
+     "rows": []
+    }
+   ],
+   "note": "sessions grouped by the label their harness publishes"
+  },
+  "seed 3 project | #n=project:beta%2Fapi | 0153af21ed": {
+   "header": "beta/apiExact location not published1 session · 1 working",
+   "panel": "Now: what is running in this project this minute, and how sessions here have ended.GOING ONTitle not publishedghost · Activity not publishednext · No pending step publishedturn · Harness does not report turn boundsÜnï question?Token rate not reportedHOW THINGS ENDEDNo session in this project has been observed ending.no estimate left · no confidence0 entities unhealthy — estimate withheldShow project planPLANünï flow○gamma2",
+   "panelLinks": [],
+   "scopeLinks": [],
+   "scopeTree": "",
+   "strip": "PROJECT RECOVERY BRIEFINGFO is the first officer, the agent driving this workflow; Captain is you.ASSIGNMENTNot observedSTATED GOALNo assignment or workflow goal published1 of 1 session publishes no goal.EXECUTIONghost · workingChild · returnedEvidence · child handoffReview the diff · Done · source child lifecycle source unavailable · source session ghost:shared · event 980 · age 20s agoCOMMANDWAITING ON YOUTitle not published1h 6mÜnï question?Copy IDCAPTAIN NEEDEDANSWER · Ünï question?REFRESH · refresh captain-attention scanCaptain attention unavailable · project context coverage unavailableEvidence · attention sourcesCAPTAIN · ask · Ünï question? · AskRegistry exact question · exactFO · coverage_inspection · refresh captain-attention scan · project context coverage unavailable · unavailableFO · attention · refresh observer · Observer · observer offline · unavailable1 more FO actionCaptain attention unavailable · project context coverage unavailableLATEST EVIDENCEActionable direction not observed · Session result not observed+ Add human context · this browser",
+   "stripLinks": [
+    "#n=session:beta%2Fapi:ghost:shared"
+   ],
+   "switcher": "",
+   "tabs": [
+    "Now|true",
+    "Course0No observed state changes observed|false",
+    "Decisions·decisions not published|false",
+    "Console|false"
+   ],
+   "viewing": ""
+  },
+  "seed 4 list | #n=projects | bfe26f770f": {
+   "groups": [
+    {
+     "empty": null,
+     "header": "Activeblocked on you ranks first · only source-backed sessions contribute claims",
+     "kind": "active",
+     "rows": [
+      {
+       "history": false,
+       "members": [
+        [
+         "session::codex:%C3%BCn%C3%AF",
+         "codex",
+         "ünï",
+         "codexTitle with \"quotes\" & <tags>Activity not publishedNo pending step published"
+        ]
+       ],
+       "more": null,
+       "project": "",
+       "role": "link",
+       "route": "sessions",
+       "tabindex": "0",
+       "text": "Exact location not published1 session · 1 workingcodexTitle with \"quotes\" & <tags>Activity not publishedNo pending step published›",
+       "tone": "next-project-tone--want"
+      }
+     ]
+    },
+    {
+     "empty": "No recently observed project history in this payload.",
+     "header": "Recently observedidentity stays reachable; operational claims lapse",
+     "kind": "history",
+     "rows": []
+    }
+   ],
+   "note": "sessions grouped by the label their harness publishes"
+  },
+  "seed 5 list | #n=projects | ae361691fc": {
+   "groups": [
+    {
+     "empty": null,
+     "header": "Activeblocked on you ranks first · only source-backed sessions contribute claims",
+     "kind": "active",
+     "rows": [
+      {
+       "history": false,
+       "members": [
+        [
+         "session:alpha%2Fapp:codex:%C3%BCn%C3%AF",
+         "codex",
+         "ünï",
+         "codex<script>x</script>No state publishedNo pending step published"
+        ],
+        [
+         "session:alpha%2Fapp:claude:long-zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz",
+         "claude",
+         "long-zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz",
+         "claudeFix the buildNo state publishedNo pending step published"
+        ],
+        [
+         "session:alpha%2Fapp:claude:s2",
+         "claude",
+         "s2",
+         "claudeFix the buildquietNo pending step published"
+        ],
+        [
+         "session:alpha%2Fapp:claude:s2",
+         "claude",
+         "s2",
+         "claudeFix the buildquietNo pending step published"
+        ],
+        [
+         "session:alpha%2Fapp:codex:s2",
+         "codex",
+         "s2",
+         "codexpaddedquietNo pending step published"
+        ]
+       ],
+       "more": "2 other sessions",
+       "project": "alpha/app",
+       "role": "link",
+       "route": "project:alpha%2Fapp",
+       "tabindex": "0",
+       "text": "alpha/appExact location not published7 sessions · 1 ended · 3 quiet · 3 in no counted state7 sessions share this display label; shared location is not establishedcodex<script>x</script>No state publishedNo pending step publishedclaudeFix the buildNo state publishedNo pending step publishedclaudeFix the buildquietNo pending step publishedclaudeFix the buildquietNo pending step publishedcodexpaddedquietNo pending step published2 other sessions›",
+       "tone": "next-project-tone--want"
+      }
+     ]
+    },
+    {
+     "empty": null,
+     "header": "Recently observedidentity stays reachable; operational claims lapse",
+     "kind": "history",
+     "rows": [
+      {
+       "history": true,
+       "members": [],
+       "more": null,
+       "project": "beta/api",
+       "role": "link",
+       "route": "project:beta%2Fapi",
+       "tabindex": "0",
+       "text": "beta/api1 session · 1 in no counted state›",
+       "tone": "next-project-tone--unknown"
+      }
+     ]
+    }
+   ],
+   "note": "sessions grouped by the label their harness publishes"
+  },
+  "seed 5 project | #n=project:alpha%2Fapp | 7225cc771c": {
+   "header": "alpha/appExact location not published7 sessions · 1 ended · 3 quiet · 3 in no counted state7 sessions share this display label; shared location is not established",
+   "panel": "Now: what is running in this project this minute, and how sessions here have ended.GOING ON<script>x</script>codex · No state publishednext · No pending step publishedturn · No turn in progressstuck · 3 tool failures in a row · 5 failures this turnÜnï question?Token rate not reportedHOW THINGS ENDED✓Title not publishedSession ended; git state cleanclaude · git: Git state reported cleanno estimate left · no confidence0 entities unhealthy — estimate withheldShow project planPLANbuildShip it○betaünï○gamma2●alphapiPLANa/b●alpha3pi",
+   "panelLinks": [],
+   "scopeLinks": [
+    [
+     "#n=project:alpha%2Fapp",
+     "project",
+     true
+    ],
+    [
+     "#n=project:alpha%2Fapp:claude%3As2",
+     "session",
+     false
+    ],
+    [
+     "#n=project:alpha%2Fapp:claude%3As2",
+     "session",
+     false
+    ],
+    [
+     "#n=project:alpha%2Fapp:codex%3As2",
+     "session",
+     false
+    ],
+    [
+     "#n=project:alpha%2Fapp:claude%3Along-zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz",
+     "session",
+     false
+    ],
+    [
+     "#n=project:alpha%2Fapp:claude%3Ax%20y",
+     "session",
+     false
+    ],
+    [
+     "#n=project:alpha%2Fapp:codex%3A%C3%BCn%C3%AF",
+     "session",
+     false
+    ],
+    [
+     "#n=project:alpha%2Fapp:pi%3As1",
+     "session",
+     false
+    ]
+   ],
+   "scopeTree": "SCOPEPROJECTçødé7 sessionsSESSIONFix the buildCLAUDE · idle · s2SESSIONFix the buildCLAUDE · idle · s2SESSIONpaddedCODEX · idleSESSIONFix the buildCLAUDE · unknownSESSIONSession title not publishedCLAUDE · unknownSESSION<script>x</script>CODEX · unknownSESSIONFix the buildpi · 7",
+   "strip": "PROJECT RECOVERY BRIEFINGFO is the first officer, the agent driving this workflow; Captain is you.ASSIGNMENTNot observedSTATED GOALSpacedock · workflow goal · observation time not publishedShip it5 of 7 sessions publish no goal.EXECUTIONCLAUDE · idleChild · returnedassignment unavailableEvidence · child handoffassignment unavailable · Summary · source child lifecycle · source session claude:s2 · event 980 · age unavailableCLAUDE · idleChild · returnedassignment unavailableEvidence · child handoffassignment unavailable · Summary · source child lifecycle · source session claude:s2 · event 980 · age unavailableCOMMANDWAITING ON YOU<script>x</script>Wait duration not publishedÜnï question?Copy IDCAPTAIN NEEDEDANSWER · Ünï question?INSPECT · resolve thisCoverage incomplete · 1 of 3 active sessions · 2 omitted · active-session attention scanEvidence · attention sourcesCAPTAIN · ask · Ünï question? · AskRegistry exact question · exactFO · revise_plan · resolve this · source unavailable · confidence unavailableFO · coverage_inspection · complete captain-attention scan · active-session attention scan · boundedFO · attention · inspect idle owner · 3 · exact session state · exactFO · child_evidence_gap · inspect Child handoff · child lifecycle · unavailable3 more FO actionsCoverage incomplete · 1 of 3 active sessions · 2 omitted · active-session attention scanLATEST EVIDENCEActionable direction not observed · Session result not observed+ Add human context · this browser",
+   "stripLinks": [
+    "#n=session:alpha%2Fapp:codex:%C3%BCn%C3%AF"
+   ],
+   "switcher": "Viewing project · çødéChange scope",
+   "tabs": [
+    "Now|true",
+    "Course0No observed state changes observed|false",
+    "Decisions0No decisions observed|false",
+    "Console|false"
+   ],
+   "viewing": ""
+  },
+  "seed 5 project | #n=project:beta%2Fapi | 7225cc771c": {
+   "header": "beta/apiExact location not published1 session · 1 in no counted state",
+   "panel": "Now: what is running in this project this minute, and how sessions here have ended.GOING ONNo session currently running. Command attention remains above.HOW THINGS ENDEDNo session in this project has been observed ending.no estimate left · no confidence0 entities unhealthy — estimate withheldShow project planPLANa/bÜnï goal●alpha4shipgeminiPLANbuild",
+   "panelLinks": [],
+   "scopeLinks": [],
+   "scopeTree": "",
+   "strip": "PROJECT RECOVERY BRIEFINGFO is the first officer, the agent driving this workflow; Captain is you.ASSIGNMENTNot observedSTATED GOALSpacedock · workflow goal · observation time not publishedÜnï goal0 of 1 session publishes no goal.EXECUTIONNo execution observedCOMMANDFO INSPECTINGINSPECT · resolve thisCaptain state unknownCoverage incomplete · 1 of 3 active sessions · 2 omitted · active-session attention scanEvidence · attention sourcesFO · revise_plan · resolve this · source unavailable · confidence unavailableFO · coverage_inspection · complete captain-attention scan · active-session attention scan · bounded1 more FO actionCoverage incomplete · 1 of 3 active sessions · 2 omitted · active-session attention scanLATEST EVIDENCEActionable direction not observed · Session result not observed+ Add human context · this browser",
+   "stripLinks": [],
+   "switcher": "",
+   "tabs": [
+    "Now|true",
+    "Course0No observed state changes observed|false",
+    "Decisions0No decisions observed|false",
+    "Console|false"
+   ],
+   "viewing": ""
+  },
+  "seed 6 list | #n=projects | 5eeceb7868": {
+   "groups": [
+    {
+     "empty": null,
+     "header": "Activeblocked on you ranks first · only source-backed sessions contribute claims",
+     "kind": "active",
+     "rows": [
+      {
+       "history": false,
+       "members": [
+        [
+         "session:a%3Ab:claude:s2",
+         "claude",
+         "s2",
+         "claudeTitle with \"quotes\" & <tags>generatingNo pending step published"
+        ]
+       ],
+       "more": null,
+       "project": "a:b",
+       "role": "link",
+       "route": "project:a%3Ab",
+       "tabindex": "0",
+       "text": "a:bExact location not published1 session · 1 workingclaudeTitle with \"quotes\" & <tags>generatingNo pending step published›",
+       "tone": "next-project-tone--want"
+      }
+     ]
+    },
+    {
+     "empty": null,
+     "header": "Recently observedidentity stays reachable; operational claims lapse",
+     "kind": "history",
+     "rows": [
+      {
+       "history": true,
+       "members": [],
+       "more": null,
+       "project": "gamma",
+       "role": "link",
+       "route": "project:gamma",
+       "tabindex": "0",
+       "text": "gamma2 sessions · 1 ended · 1 quiet›",
+       "tone": "next-project-tone--want"
+      }
+     ]
+    }
+   ],
+   "note": "sessions grouped by the label their harness publishes"
+  },
+  "seed 6 project | #n=project:a%3Ab:course | 6a8045f9a3": {
+   "header": "a:bExact location not published1 session · 1 working",
+   "panel": "Course: direction changes Cargento observed in the session record.▾ OBSERVED STATE CHANGES0 of 0 unattended · since this tab openedNo state changes observed since this tab opened.No source-backed course changes observed in the last 1 hour.COMPLETED TASKS · 00 of 7.5 doneNo completed tracked tasks in this payload.",
+   "panelLinks": [],
+   "scopeLinks": [],
+   "scopeTree": "",
+   "strip": "PROJECT RECOVERY BRIEFINGFO is the first officer, the agent driving this workflow; Captain is you.ASSIGNMENTNot observedSTATED GOALNo assignment or workflow goal published1 of 1 session publishes no goal.EXECUTIONCLAUDE · workingCOMMANDFO INSPECTINGAPPLY · apply recorded stage link requiredCaptain state unknownCaptain attention unavailable · project context coverage unavailableEvidence · attention sourcesFO · decision_application · apply recorded stage link required · source unavailable · confidence unavailableFO · decision_application · apply recorded authorize dispatch · source unavailable · confidence unavailableFO · authorize_dispatch · Approve the plan? · source unavailable · confidence unavailableFO · coverage_inspection · refresh captain-attention scan · project context coverage unavailable · unavailableFO · attention · refresh workflow discovery · project workflow discovery · timed out · exactFO · attention · inspect project context source · Git · no repository · Git · source unavailable · unavailableFO · attention · inspect assignment return · 1 · semantic task trail heads · exact6 more FO actionsCaptain attention unavailable · project context coverage unavailableLATEST EVIDENCEActionable direction not observed · Session result not observed+ Add human context · this browser",
+   "stripLinks": [],
+   "switcher": "",
+   "tabs": [
+    "Now|false",
+    "Course0No observed state changes observed|true",
+    "Decisions11 decision|false",
+    "Console|false"
+   ],
+   "viewing": ""
+  },
+  "seed 6 project | #n=project:gamma:course | 6a8045f9a3": {
+   "header": "gammaExact location not published2 sessions · 1 ended · 1 quiet2 sessions share this display label; shared location is not established",
+   "panel": "Course: direction changes Cargento observed in the session record.▾ OBSERVED STATE CHANGES0 of 0 unattended · since this tab openedNo state changes observed since this tab opened.No source-backed course changes observed in the last 1 hour.COMPLETED TASKS · 02 of 7.5 doneNo completed tracked tasks in this payload.",
+   "panelLinks": [],
+   "scopeLinks": [
+    [
+     "#n=project:gamma:course",
+     "project",
+     true
+    ],
+    [
+     "#n=project:gamma:pi%3As0:course",
+     "unknown",
+     false
+    ],
+    [
+     "#n=project:gamma:codex%3As2:course",
+     "session",
+     false
+    ]
+   ],
+   "scopeTree": "SCOPEPROJECTgamma2 sessionsSCOPE UNKNOWNSession title not publishedPI · idle · 3sSESSIONFix the buildCODEX · working · 11m",
+   "strip": "PROJECT RECOVERY BRIEFINGFO is the first officer, the agent driving this workflow; Captain is you.ASSIGNMENTNot observedSTATED GOALSpacedock · workflow goal · observation time not publishedShip it1 of 2 sessions publish no goal.EXECUTIONCODEX · workingChild · returnedresult unavailableEvidence · child handoffReview the diff · result unavailable · source child lifecycle source unavailable · source session codex:s2 · event -4000 · age unavailableCOMMANDFO INSPECTINGAPPLY · apply recorded stage link requiredCaptain state unknownCaptain attention unavailable · project context coverage unavailableEvidence · attention sourcesFO · decision_application · apply recorded stage link required · source unavailable · confidence unavailableFO · decision_application · apply recorded authorize dispatch · source unavailable · confidence unavailableFO · authorize_dispatch · Approve the plan? · source unavailable · confidence unavailableFO · coverage_inspection · refresh captain-attention scan · project context coverage unavailable · unavailableFO · attention · refresh workflow discovery · project workflow discovery · timed out · exactFO · attention · inspect project context source · Git · no repository · Git · source unavailable · unavailableFO · attention · inspect assignment return · 1 · semantic task trail heads · exactFO · attention · inspect idle owner · 1 · refresh stale owner · 1 · exact session state · exactFO · child_evidence_gap · inspect Child result · child lifecycle source unavailable · unavailable8 more FO actionsCaptain attention unavailable · project context coverage unavailableLATEST EVIDENCEActionable direction not observed · Session result not observed+ Add human context · this browser",
+   "stripLinks": [],
+   "switcher": "Viewing project · gammaChange scope",
+   "tabs": [
+    "Now|false",
+    "Course0No observed state changes observed|true",
+    "Decisions11 decision|false",
+    "Console|false"
+   ],
+   "viewing": ""
+  },
+  "seed 7 list | #n=projects | a0bc5250a4": {
+   "groups": [
+    {
+     "empty": "No project has active session evidence right now.",
+     "header": "Activeblocked on you ranks first · only source-backed sessions contribute claims",
+     "kind": "active",
+     "rows": []
+    },
+    {
+     "empty": "No recently observed project history in this payload.",
+     "header": "Recently observedidentity stays reachable; operational claims lapse",
+     "kind": "history",
+     "rows": []
+    }
+   ],
+   "note": "sessions grouped by the label their harness publishes"
+  },
+  "seed 8 list | #n=projects | a65d0512a6": {
+   "groups": [
+    {
+     "empty": null,
+     "header": "Activeblocked on you ranks first · only source-backed sessions contribute claims",
+     "kind": "active",
+     "rows": [
+      {
+       "history": false,
+       "members": [
+        [
+         "sessions",
+         "gemini",
+         "",
+         "geminipaddedActivity not publishedNo pending step published"
+        ],
+        [
+         "session:alpha%2Fapp:ghost:long-zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz",
+         "ghost",
+         "long-zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz",
+         "ghostTitle not publishedÜnï taskNo pending step published"
+        ],
+        [
+         "session:alpha%2Fapp:codex:0",
+         "codex",
+         "0",
+         "codexpaddedActivity not publishedNo pending step published"
+        ],
+        [
+         "session:alpha%2Fapp:codex:0",
+         "codex",
+         "0",
+         "codexpaddedActivity not publishedNo pending step published"
+        ],
+        [
+         "session:alpha%2Fapp:s2",
+         "",
+         "s2",
+         "Fix the buildgeneratingNo pending step published"
+        ],
+        [
+         "sessions",
+         "",
+         "",
+         "Fix the buildNo state publishedNo pending step published"
+        ]
+       ],
+       "more": "3 other sessions",
+       "project": "alpha/app",
+       "role": "link",
+       "route": "project:alpha%2Fapp",
+       "tabindex": "0",
+       "text": "alpha/appExact location not published9 sessions · 5 working · 1 quiet · 3 in no counted state9 sessions share this display label; shared location is not establishedgeminipaddedActivity not publishedNo pending step publishedghostTitle not publishedÜnï taskNo pending step publishedcodexpaddedActivity not publishedNo pending step publishedcodexpaddedActivity not publishedNo pending step publishedFix the buildgeneratingNo pending step publishedFix the buildNo state publishedNo pending step published3 other sessions›",
+       "tone": "next-project-tone--want"
+      }
+     ]
+    },
+    {
+     "empty": "No recently observed project history in this payload.",
+     "header": "Recently observedidentity stays reachable; operational claims lapse",
+     "kind": "history",
+     "rows": []
+    }
+   ],
+   "note": "sessions grouped by the label their harness publishes"
+  },
+  "seed 8 project | #n=project:alpha%2Fapp:course | e38cd07792": {
+   "header": "alpha/appExact location not published9 sessions · 5 working · 1 quiet · 3 in no counted state9 sessions share this display label; shared location is not established",
+   "panel": "Course: direction changes Cargento observed in the session record.▾ OBSERVED STATE CHANGES0 of 0 unattended · since this tab openedNo state changes observed since this tab opened.Course evidence unavailable.COMPLETED TASKS · 12 of 12.5 done✓Write tests",
+   "panelLinks": [],
+   "scopeLinks": [
+    [
+     "#n=project:alpha%2Fapp:course",
+     "project",
+     true
+    ],
+    [
+     "#n=project:alpha%2Fapp:%3As2:course",
+     "unknown",
+     false
+    ],
+    [
+     "#n=project:alpha%2Fapp:codex%3A0:course",
+     "session",
+     false
+    ],
+    [
+     "#n=project:alpha%2Fapp:codex%3A0:course",
+     "session",
+     false
+    ],
+    [
+     "#n=project:alpha%2Fapp:gemini%3As0:course",
+     "unknown",
+     false
+    ],
+    [
+     "#n=project:alpha%2Fapp:ghost%3Along-zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz:course",
+     "session",
+     false
+    ],
+    [
+     "#n=project:alpha%2Fapp:codex%3As2:course",
+     "session",
+     false
+    ],
+    [
+     "#n=project:alpha%2Fapp:%3As5:course",
+     "unknown",
+     false
+    ],
+    [
+     "#n=project:alpha%2Fapp:%3Ax%20y:course",
+     "unknown",
+     false
+    ],
+    [
+     "#n=project:alpha%2Fapp:claude%3As1:course",
+     "session",
+     false
+    ]
+   ],
+   "scopeTree": "SCOPEPROJECTc9 sessionsSCOPE UNKNOWNFix the buildSession · workingSESSIONpaddedcodex · working · 0s · 0SESSIONpaddedcodex · working · 0s · 0SCOPE UNKNOWNpaddedgemini · workingSESSIONSession title not publishedGHOST · workingSESSION<script>x</script>codex · idleSCOPE UNKNOWNFix the buildSession · bogusSCOPE UNKNOWNpaddedSession · unknown · 0sSESSIONSession title not publishedclaude · unknown · 0s",
+   "strip": "PROJECT RECOVERY BRIEFINGFO is the first officer, the agent driving this workflow; Captain is you.ASSIGNMENTNot observedSTATED GOALSpacedock · workflow goal · observation time not publishedÜnï goal6 of 9 sessions publish no goal.EXECUTIONgemini · workingÜnï · activeassignment unavailableEvidence · child handoffassignment unavailable · source assignment source unavailable · source session gemini:s0GHOST · workingChild · returned · handoff unavailableassignment unavailable · result unavailableEvidence · child handoffassignment unavailable · result unavailable · source source unavailable · source session ghost:long-zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz · event unavailable · age unavailablecodex · workingcodex · workingSession · workinglens · activeEvidence · child handoffReview the diff · source structured dispatch · source session :s2COMMANDFO INSPECTINGREFRESH · refresh captain-attention scanCaptain state unknownCaptain attention unavailable · project context request failedEvidence · attention sourcesFO · coverage_inspection · refresh captain-attention scan · project context request failed · unavailableFO · attention · inspect idle owner · 1 · exact session state · exactFO · child_evidence_gap · inspect Ünï assignment · assignment source unavailable · unavailableFO · child_evidence_gap · recover Child handoff · source unavailable · unavailable3 more FO actionsCaptain attention unavailable · project context request failedLATEST EVIDENCEActionable direction not observed · Session result not observed+ Add human context · this browser",
+   "stripLinks": [],
+   "switcher": "Viewing project · cChange scope",
+   "tabs": [
+    "Now|false",
+    "Course0No observed state changes observed|true",
+    "Decisions—decisions could not be read|false",
+    "Console|false"
+   ],
+   "viewing": ""
+  },
+  "seed 9 list | #n=projects | 743cf2983a": {
+   "groups": [
+    {
+     "empty": null,
+     "header": "Activeblocked on you ranks first · only source-backed sessions contribute claims",
+     "kind": "active",
+     "rows": [
+      {
+       "history": false,
+       "members": [
+        [
+         "session:beta%2Fapi:claude:long-zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz",
+         "claude",
+         "long-zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz",
+         "claudeTitle not publishedActivity not publishedNo pending step published"
+        ],
+        [
+         "session:beta%2Fapi:claude:long-zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz",
+         "claude",
+         "long-zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz",
+         "claudeTitle not publishedActivity not publishedNo pending step published"
+        ],
+        [
+         "session:beta%2Fapi:claude:0",
+         "claude",
+         "0",
+         "claudeÜnï ✓quietNo pending step published"
+        ]
+       ],
+       "more": null,
+       "project": "beta/api",
+       "role": "link",
+       "route": "project:beta%2Fapi",
+       "tabindex": "0",
+       "text": "beta/apiExact location not published3 sessions · 1 working · 1 waiting on you · 1 quiet3 sessions share this display label; shared location is not establishedclaudeTitle not publishedActivity not publishedNo pending step publishedclaudeTitle not publishedActivity not publishedNo pending step publishedclaudeÜnï ✓quietNo pending step published›",
+       "tone": "next-project-tone--want"
+      },
+      {
+       "history": false,
+       "members": [
+        [
+         "session:%3Cb%3Ex%3C%2Fb%3E:claude:shared",
+         "claude",
+         "shared",
+         "claudepaddedActivity not publishedNo pending step published"
+        ]
+       ],
+       "more": null,
+       "project": "<b>x</b>",
+       "role": "link",
+       "route": "project:%3Cb%3Ex%3C%2Fb%3E",
+       "tabindex": "0",
+       "text": "<b>x</b>Exact location not published1 session · 1 workingclaudepaddedActivity not publishedNo pending step published›",
+       "tone": "next-project-tone--want"
+      }
+     ]
+    },
+    {
+     "empty": null,
+     "header": "Recently observedidentity stays reachable; operational claims lapse",
+     "kind": "history",
+     "rows": [
+      {
+       "history": true,
+       "members": [],
+       "more": null,
+       "project": "a:b",
+       "role": "link",
+       "route": "project:a%3Ab",
+       "tabindex": "0",
+       "text": "a:b2 sessions · 2 in no counted state›",
+       "tone": "next-project-tone--want"
+      },
+      {
+       "history": true,
+       "members": [],
+       "more": null,
+       "project": "alpha/app",
+       "role": "link",
+       "route": "project:alpha%2Fapp",
+       "tabindex": "0",
+       "text": "alpha/app1 session · 1 in no counted state›",
+       "tone": "next-project-tone--want"
+      },
+      {
+       "history": true,
+       "members": [],
+       "more": null,
+       "project": "alpha/app ",
+       "role": "link",
+       "route": "project:alpha%2Fapp%20",
+       "tabindex": "0",
+       "text": "alpha/app 2 sessions · 1 ended · 1 in no counted state›",
+       "tone": "next-project-tone--want"
+      },
+      {
+       "history": true,
+       "members": [],
+       "more": null,
+       "project": "",
+       "role": "link",
+       "route": "sessions",
+       "tabindex": "0",
+       "text": "1 session · 1 in no counted state›",
+       "tone": "next-project-tone--unknown"
+      }
+     ]
+    }
+   ],
+   "note": "sessions grouped by the label their harness publishes"
+  },
+  "seed 9 project | #n=project:a%3Ab | 04ce89b525": {
+   "header": "a:bExact location not published2 sessions · 2 in no counted state2 sessions share this display label; shared location is not established",
+   "panel": "Now: what is running in this project this minute, and how sessions here have ended.GOING ONNo session currently running. Command attention remains above.HOW THINGS ENDEDNo session in this project has been observed ending.",
+   "panelLinks": [],
+   "scopeLinks": [
+    [
+     "#n=project:a%3Ab",
+     "project",
+     true
+    ],
+    [
+     "#n=project:a%3Ab:ghost%3As2",
+     "session",
+     false
+    ],
+    [
+     "#n=project:a%3Ab:ghost%3As2",
+     "session",
+     false
+    ]
+   ],
+   "scopeTree": "SCOPE · ghostPROJECTc2 sessionsSESSIONTitle with \"quotes\" & <tags>bogus · s2SESSIONTitle with \"quotes\" & <tags>bogus · s2",
+   "strip": "PROJECT RECOVERY BRIEFINGFO is the first officer, the agent driving this workflow; Captain is you.ASSIGNMENTNot observedSTATED GOALSpacedock · workflow goal · observation time not publishedShip it1 of 2 sessions publish no goal.EXECUTIONNo execution observedCOMMANDFO INSPECTINGINSPECT · inspect project context sourceCaptain not neededEvidence · attention sourcesFO · attention · inspect project context source · Git · no repository · Git · source unavailable · unavailableCoverage complete · 1 of 1 active session · active-session attention scanLATEST EVIDENCEActionable direction not observed · Session result not observed+ Add human context · this browser",
+   "stripLinks": [],
+   "switcher": "Viewing project · cChange scope",
+   "tabs": [
+    "Now|true",
+    "Course0No observed state changes observed|false",
+    "Decisions0No decisions observed|false",
+    "Console|false"
+   ],
+   "viewing": ""
+  },
+  "seed 9 project | #n=project:alpha%2Fapp | 04ce89b525": {
+   "header": "alpha/appExact location not published1 session · 1 in no counted state",
+   "panel": "Now: what is running in this project this minute, and how sessions here have ended.GOING ONNo session currently running. Command attention remains above.HOW THINGS ENDEDNo session in this project has been observed ending.Show project planAn ensign attachment was observed, but attachment metadata is not the project workflow definition. Workflow activity is present in the semantic timeline. Checking project workflow definitions…",
+   "panelLinks": [],
+   "scopeLinks": [],
+   "scopeTree": "",
+   "strip": "PROJECT RECOVERY BRIEFINGFO is the first officer, the agent driving this workflow; Captain is you.ASSIGNMENTNot observedSTATED GOALNo assignment or workflow goal published1 of 1 session publishes no goal.EXECUTIONNo execution observedCOMMANDFO INSPECTINGINSPECT · inspect project context sourceCaptain not neededEvidence · attention sourcesFO · attention · inspect project context source · Git · no repository · Git · source unavailable · unavailableCoverage complete · 1 of 1 active session · active-session attention scanLATEST EVIDENCEActionable direction not observed · Session result not observed+ Add human context · this browser",
+   "stripLinks": [],
+   "switcher": "",
+   "tabs": [
+    "Now|true",
+    "Course0No observed state changes observed|false",
+    "Decisions0No decisions observed|false",
+    "Console|false"
+   ],
+   "viewing": ""
+  },
+  "the list | #n=projects | bb3cd2ad8b": {
+   "groups": [
+    {
+     "empty": null,
+     "header": "Activeblocked on you ranks first · only source-backed sessions contribute claims",
+     "kind": "active",
+     "rows": [
+      {
+       "history": false,
+       "members": [
+        [
+         "session:alpha%2Fapp:claude:a-wait",
+         "claude",
+         "a-wait",
+         "claudeNeeds a decisionActivity not publishedNo pending step published"
+        ],
+        [
+         "session:alpha%2Fapp:claude:a-lead",
+         "claude",
+         "a-lead",
+         "claudeSession a-leadFix the drain orderNo pending step published"
+        ],
+        [
+         "session:alpha%2Fapp:claude:a-ended",
+         "claude",
+         "a-ended",
+         "claudeEnded with uncommitted workSession reported its own endNo pending step published"
+        ],
+        [
+         "session:alpha%2Fapp:codex:a-lead",
+         "codex",
+         "a-lead",
+         "codexSame sid under codexlast active 5m agoNo pending step published"
+        ],
+        [
+         "session:alpha%2Fapp:claude:a-gap",
+         "claude",
+         "a-gap",
+         "claudePart of its store was unreadablelast active 15m agoNo pending step published"
+        ]
+       ],
+       "more": "1 other session",
+       "project": "alpha/app",
+       "role": "link",
+       "route": "project:alpha%2Fapp",
+       "tabindex": "0",
+       "text": "alpha/appExact location not published6 sessions · 1 working · 1 waiting on you · 1 ended · 3 quiet6 sessions share this display label; shared location is not establishedclaudeNeeds a decisionActivity not publishedNo pending step publishedclaudeSession a-leadFix the drain orderNo pending step publishedclaudeEnded with uncommitted workSession reported its own endNo pending step publishedcodexSame sid under codexlast active 5m agoNo pending step publishedclaudePart of its store was unreadablelast active 15m agoNo pending step published1 other session›",
+       "tone": "next-project-tone--want"
+      },
+      {
+       "history": false,
+       "members": [
+        [
+         "session:calm%2Fapp:claude:c-1",
+         "claude",
+         "c-1",
+         "claudeSession c-1Activity not publishedNo pending step published"
+        ]
+       ],
+       "more": null,
+       "project": "calm/app",
+       "role": "link",
+       "route": "project:calm%2Fapp",
+       "tabindex": "0",
+       "text": "calm/appExact location not published1 session · 1 workingclaudeSession c-1Activity not publishedNo pending step published›",
+       "tone": "next-project-tone--ok"
+      }
+     ]
+    },
+    {
+     "empty": null,
+     "header": "Recently observedidentity stays reachable; operational claims lapse",
+     "kind": "history",
+     "rows": [
+      {
+       "history": true,
+       "members": [],
+       "more": null,
+       "project": "",
+       "role": "link",
+       "route": "sessions",
+       "tabindex": "0",
+       "text": "1 session · 1 quiet›",
+       "tone": "next-project-tone--ok"
+      },
+      {
+       "history": true,
+       "members": [],
+       "more": null,
+       "project": "beta/api",
+       "role": "link",
+       "route": "project:beta%2Fapi",
+       "tabindex": "0",
+       "text": "beta/api2 sessions · 2 quiet›",
+       "tone": "next-project-tone--ok"
+      },
+      {
+       "history": true,
+       "members": [],
+       "more": null,
+       "project": "beta/api ",
+       "role": "link",
+       "route": "project:beta%2Fapi%20",
+       "tabindex": "0",
+       "text": "beta/api 1 session · 1 quiet›",
+       "tone": "next-project-tone--ok"
+      },
+      {
+       "history": true,
+       "members": [],
+       "more": null,
+       "project": "ünï/çødé",
+       "role": "link",
+       "route": "project:%C3%BCn%C3%AF%2F%C3%A7%C3%B8d%C3%A9",
+       "tabindex": "0",
+       "text": "ünï/çødé1 session · 1 quiet›",
+       "tone": "next-project-tone--ok"
+      }
+     ]
+    }
+   ],
+   "note": "sessions grouped by the label their harness publishes"
+  },
+  "workstream: the changes the legacy page listed": [
+   "became idleClaude Code",
+   "agent resumedClaude Code"
+  ]
+ }
+}

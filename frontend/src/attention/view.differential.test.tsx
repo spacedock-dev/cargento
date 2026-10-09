@@ -4,6 +4,7 @@ import { genPayload } from '../observed/generate.test.helper';
 import { mountShell } from '../shell/testing';
 import { expansionFor } from './expansion';
 import { loadLegacyAttention } from './legacy.test.helper';
+import { caseCount } from '../../test/legacy_goldens';
 
 /* The Attention screen, held to the legacy page by what a reader can read. The legacy `nextAttentionView`
    runs unchanged over a generated payload, and this screen renders the same payload in the real shell;
@@ -160,7 +161,8 @@ function firstDifference(left: string, right: string): string {
   return `near ${JSON.stringify(left.slice(Math.max(0, at - 90), at + 160))} vs ${JSON.stringify(right.slice(Math.max(0, at - 90), at + 160))}`;
 }
 
-const SEEDS = Number(process.env['ATTENTION_VIEW_SEEDS'] ?? 40);
+const CASES = 40;
+const SEEDS = caseCount(CASES, 'ATTENTION_VIEW_SEEDS');
 
 describe('the Attention screen reads as the legacy screen does, over generated payloads', () => {
   it(`agrees on ${String(SEEDS)} seeds, collapsed and expanded, with and without the terminal raise`, async () => {
