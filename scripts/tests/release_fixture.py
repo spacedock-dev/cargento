@@ -112,7 +112,12 @@ def _build_template() -> Path:
         if source.is_file():
             shutil.copy2(source, root / "scripts" / name)
     write_manifest_version(root, BASE_VERSION)
+    # The real repository pins its generated artifacts to LF in .gitattributes, which this copy does not carry.
+    # Without it a Windows runner's core.autocrlf rewrites react.html to CRLF in `git archive` and in every
+    # checkout, so the archive proof sees bytes that differ from the verified blob.
+    (root / ".gitattributes").write_text("* -text\n", encoding="utf-8")
     git(root, "init", "-q", "-b", "main")
+    git(root, "config", "core.autocrlf", "false")
     git(root, "add", "-A")
     git(root, "commit", "-q", "-m", "initial")
     git(root, "tag", f"v{BASE_VERSION}")
