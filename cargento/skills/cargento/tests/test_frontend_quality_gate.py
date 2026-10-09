@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 import os
-import re
 import shutil
 import subprocess
 import tempfile
@@ -145,19 +144,11 @@ class FrontendAggregateControlsTest(unittest.TestCase):
 
 
 class FrontendWiringControlsTest(unittest.TestCase):
-    def check_windows_paused_on_pull_requests(
-        self, job: dict[str, Any], pull_request: set[str]
-    ) -> None:
-        """Windows runs on main pushes and labelled pull requests only, until the migration's final stage."""
+    def check_runs_everywhere(self, job: dict[str, Any], runners: list[str]) -> None:
+        """Every pull request and every push runs every platform: the Windows legs are no longer paused."""
         selection = job["strategy"]["matrix"]["os"]
-        self.assertIsInstance(selection, str)
-        self.assertIn("github.event_name == 'pull_request'", selection)
-        self.assertIn("contains(github.event.pull_request.labels.*.name, 'windows-ci')", selection)
-        unlabelled, everywhere = (
-            json.loads(part) for part in re.findall(r"'(\[[^']*\])'", selection)
-        )
-        self.assertEqual(pull_request, set(unlabelled))
-        self.assertEqual(pull_request | {"windows-latest"}, set(everywhere))
+        self.assertEqual(runners, selection)
+        self.assertNotIn("windows-ci", json.dumps(job))
 
     def test_gate_checkouts_do_not_leave_credentials_for_later_commands(self) -> None:
         for name, job in jobs().items():
@@ -169,9 +160,24 @@ class FrontendWiringControlsTest(unittest.TestCase):
     def test_matrix_is_required_and_keeps_all_current_python_jobs(self) -> None:
         workflow_jobs = jobs()
         frontend = workflow_jobs["frontend"]
-        self.check_windows_paused_on_pull_requests(frontend, {"ubuntu-latest", "macos-latest"})
-        self.check_windows_paused_on_pull_requests(
-            workflow_jobs["platform-tests"], {"macos-latest"}
+        everywhere = ["ubuntu-latest", "macos-latest", "windows-latest"]
+        self.check_runs_everywhere(frontend, everywhere)
+        platform = workflow_jobs["platform-tests"]
+        self.check_runs_everywhere(platform, ["macos-latest", "windows-latest"])
+        # The two suites run as parallel legs so the slow script suite does not hold the dashboard one.
+        self.assertEqual(["dashboard", "scripts"], platform["strategy"]["matrix"]["suite"])
+        self.assertEqual([1, 2, 3], platform["strategy"]["matrix"]["shard"])
+        self.assertEqual(
+            [{"suite": "dashboard", "shard": 2}, {"suite": "dashboard", "shard": 3}],
+            platform["strategy"]["matrix"]["exclude"],
+        )
+        gated = {step["name"]: step.get("if") for step in platform["steps"] if "if" in step}
+        self.assertEqual(
+            {
+                "Run dashboard test discovery": "matrix.suite == 'dashboard'",
+                "Run script unit tests": "matrix.suite == 'scripts'",
+            },
+            gated,
         )
         self.assertFalse(frontend["strategy"]["fail-fast"])
         self.assertLessEqual(frontend["timeout-minutes"], 30)
@@ -197,9 +203,9 @@ class FrontendWiringControlsTest(unittest.TestCase):
         self.assertEqual("${{ needs.frontend.result }}", env["R_FRONTEND"])
         self.assertEqual("${{ needs.frontend-proofs.result }}", env["R_FRONTEND_PROOFS"])
         self.assertEqual("${{ needs.frontend-production.result }}", env["R_FRONTEND_PRODUCTION"])
-        # The proofs job is a second half of `frontend`, so it keeps the same runners, pause and cap.
+        # The proofs job is a second half of `frontend`, so it keeps the same runners and cap.
         proofs = workflow_jobs["frontend-proofs"]
-        self.check_windows_paused_on_pull_requests(proofs, {"ubuntu-latest", "macos-latest"})
+        self.check_runs_everywhere(proofs, everywhere)
         self.assertFalse(proofs["strategy"]["fail-fast"])
         self.assertLessEqual(proofs["timeout-minutes"], 30)
         self.assertEqual("changes", proofs["needs"])
