@@ -19,6 +19,9 @@ export default defineConfig({
     include: ['frontend/**/*.test.ts', 'frontend/**/*.test.tsx'],
     setupFiles: ['frontend/test/setup.ts'],
     maxWorkers: 2,
+    // A hosted Windows runner took longer than the default five seconds on a generated-board test that
+    // takes about one second here; a hang still ends, only later.
+    testTimeout: 30_000,
     env: { TZ: 'UTC', LC_ALL: 'en_US.UTF-8', LANG: 'en_US.UTF-8' },
   },
 });
