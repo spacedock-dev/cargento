@@ -1174,8 +1174,10 @@ class FluidityDriverTest(unittest.TestCase):
                     str(chrome),
                     "--port",
                     str(port),
+                    # The same budget bounds the backend child's readiness, so a short one lets a loaded
+                    # machine fail the child first and the run never reaches the navigation it is about.
                     "--timeout-ms",
-                    "1500",
+                    "5000",
                 ],
                 capture_output=True,
                 text=True,
