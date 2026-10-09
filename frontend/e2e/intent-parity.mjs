@@ -147,8 +147,9 @@ const summarizeEditor = () => {
    backends started at different moments, and say the same thing about the reader's words either way. */
 const comparable = (value) =>
   JSON.stringify(value)
-    .replace(/\b\d+[smhd]( \d+[smh])?\b/g, '<age>')
-    .replace(/\b\d\d:\d\d\b/g, '<clock>')
+    .replace(/(?<!\d)\d+[smhd]( \d+[smh])?(?![A-Za-z0-9])/g, '<age>')
+    // No word boundary after the minutes: the page prints "13:09Adding a line..." with the next sentence glued on.
+    .replace(/(?<!\d)\d\d:\d\d(?!\d)/g, '<clock>')
     .replace(/fact:[0-9a-f]{16}/g, '<fact>');
 
 async function settled(read, { deadline = patience(6000), every = 100 } = {}) {
