@@ -10,23 +10,32 @@ export interface ConsentStore {
 }
 
 /**
- * Storage is consulted first so an answer given in another tab wins; the memo only answers when
- * storage is unreadable or holds something unrecognised, so a refused write still lasts the tab.
+ * Storage is consulted first so an answer given in another tab wins. The memo answers only when storage
+ * is unreadable, or when the last write was refused so storage holds nothing to read: an answer the reader
+ * removed from storage is then withdrawn rather than kept alive by a copy in memory, which would fail
+ * toward consent.
  */
 export function createConsentStore(access: StorageAccess, key: string): ConsentStore {
   let memo: ConsentAnswer | null = null;
+  let memoStands = false;
   return {
     get() {
       const read = access.attempt((backend) => backend.getItem(key));
-      if (read.ok && (read.value === 'granted' || read.value === 'declined')) return read.value;
+      if (read.ok && (read.value === 'granted' || read.value === 'declined')) {
+        memoStands = false;
+        return read.value;
+      }
+      if (read.ok && read.value === null && !memoStands) return null;
       return memo;
     },
     set(answer) {
       const value: ConsentAnswer = answer === 'granted' ? 'granted' : 'declined';
       memo = value;
-      return access.attempt((backend) => {
+      const wrote = access.attempt((backend) => {
         backend.setItem(key, value);
       }).ok;
+      memoStands = !wrote;
+      return wrote;
     },
   };
 }

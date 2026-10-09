@@ -527,6 +527,16 @@ jobs:
         env:
           CARGENTO_TEST_PYTHON: ${{ steps.python.outputs.python-path }}
         run: pnpm test:console:browser
+      - name: Attention and notification browser proof
+        timeout-minutes: 5
+        env:
+          CARGENTO_TEST_PYTHON: ${{ steps.python.outputs.python-path }}
+        run: pnpm test:attention:browser
+      - name: Capacity, usage consent and observer consent browser proof
+        timeout-minutes: 8
+        env:
+          CARGENTO_TEST_PYTHON: ${{ steps.python.outputs.python-path }}
+        run: pnpm test:capacity:browser
       - name: Timeline and output-only terminal browser proof
         timeout-minutes: 5
         env:

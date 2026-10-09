@@ -1,3 +1,4 @@
+import { ObserverControls, RailUsage } from '../capacity';
 import { ProjectConsole } from '../delegation';
 import type { ProjectSlots } from '../project/slots';
 import { ProjectDecisions } from './ProjectDecisions';
@@ -15,7 +16,13 @@ export const STEERING_SLOTS: ProjectSlots = {
     <ProjectDecisions project={project} projectKey={projectKey} focus={focus} />
   ),
   console: ({ project, projectKey, focus }) => (
-    <ProjectConsole project={project} projectKey={projectKey} focus={focus} />
+    <ProjectConsole
+      project={project}
+      projectKey={projectKey}
+      focus={focus}
+      usage={<RailUsage />}
+      observer={<ObserverControls projectKey={projectKey} focus={focus} />}
+    />
   ),
   projectsConditions: () => <StageConditions sessions={null} />,
 };

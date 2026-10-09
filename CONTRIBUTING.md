@@ -98,7 +98,10 @@ plan survive live updates and navigation, with no write, copy or notification th
 `pnpm test:console:browser` compares the
 steering bar, the tripwires, the workflow stage conditions, the Decisions tab and the Console tab with the legacy
 page over a real backend, and checks that drafts, carets, an open disclosure and the retained terminal survive
-live updates, a change of tab and a route away and back; it takes no native action.
+live updates, a change of tab and a route away and back; it takes no native action. `pnpm test:attention:browser`
+compares the Attention view and the notification control with the legacy page against a scripted Notification
+API, and `pnpm test:capacity:browser` does the same for the capacity strip, the usage consent and the observer
+consent, checking that no usage parameter, model request or notification starts without an explicit press.
 
 ## Before you open a PR
 

@@ -45,8 +45,14 @@ describe.each(families)('%s', (_name, family, key) => {
     store.set('granted');
     backend.data.set(key, 'garbled');
     expect(store.get()).toBe('granted');
+  });
+
+  it('treats an answer removed from storage as withdrawn, so a copy in memory cannot keep consent alive', () => {
+    const backend = fakeBackend();
+    const store = createLegacyStorage(() => backend)[family];
+    expect(store.set('granted')).toBe(true);
     backend.data.delete(key);
-    expect(store.get()).toBe('granted');
+    expect(store.get()).toBeNull();
   });
 
   it('holds the answer for the tab when the write is refused and reports it', () => {

@@ -95,6 +95,16 @@ describe('start and dispose', () => {
     runtime.dispose();
   });
 
+  it('says whether this tab holds the live stream: not before it starts, yes while it does, not after', async () => {
+    const { runtime } = runtimeFor();
+    expect(runtime.isLeader()).toBe(false);
+    runtime.start();
+    await flush();
+    expect(runtime.isLeader()).toBe(true);
+    runtime.dispose();
+    expect(runtime.isLeader()).toBe(false);
+  });
+
   it('is idempotent: a second start is a no-op and a second dispose too', async () => {
     const { api, env, clock, runtime } = runtimeFor();
     runtime.start();
@@ -222,6 +232,23 @@ describe('HMR replacement', () => {
     expect(clock.activeTimers()).toBe(2);
     expect(hub.subscriberCount()).toBe(1);
     expect(api.posts()).toBe(0);
+  });
+});
+
+describe('two tabs on one lease', () => {
+  it('lets exactly one of them be the leader, which is what keeps a stage banner to one tab', async () => {
+    const api = backend();
+    const clock = createFakeClock();
+    const hub = createFakeStorageHub();
+    const first = runtimeFor({ api, clock, hub, tabId: 'tab-a' });
+    const second = runtimeFor({ api, clock, hub, tabId: 'tab-b' });
+    first.runtime.start();
+    await flush();
+    second.runtime.start();
+    await flush();
+    expect([first.runtime.isLeader(), second.runtime.isLeader()]).toEqual([true, false]);
+    first.runtime.dispose();
+    second.runtime.dispose();
   });
 });
 
