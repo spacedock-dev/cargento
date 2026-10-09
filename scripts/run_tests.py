@@ -55,7 +55,7 @@ import unittest
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
+    from collections.abc import Iterable, Iterator
     from multiprocessing.queues import Queue
 
 # How long the parent waits on the result queue before checking whether its
@@ -63,6 +63,55 @@ if TYPE_CHECKING:
 # error on every class it never finished, never waited on forever.
 POLL_SECONDS = 5.0
 JOIN_SECONDS = 30.0
+
+
+# Seconds one module took on a hosted Windows runner, the slowest platform (measured 2026-10-10
+# from the `--slowest` report of a passing run), used only to balance `--shard` legs. A module
+# not listed costs DEFAULT_COST. The numbers need not stay current: a stale table makes a shard
+# slower, never wrong, because every module lands in exactly one shard whatever it costs.
+MODULE_COST: dict[str, float] = {
+    "test_analyze_campaign": 450.0,
+    "test_qualification_conditional_priority": 212.0,
+    "test_closure_qualification": 150.0,
+    "test_qualification_semantic_measurement": 137.0,
+    "test_release_transition": 130.0,
+    "test_claude_route_verification": 58.0,
+    "test_frontend_cutover": 57.0,
+}
+DEFAULT_COST = 2.0
+
+
+def parse_shard(text: str) -> tuple[int, int]:
+    """Read ``K/N`` (1-based) and refuse anything else."""
+    try:
+        first, count = (int(part) for part in text.split("/"))
+    except ValueError:
+        first = count = 0
+    if not 1 <= first <= count:
+        message = f"--shard expects K/N with 1 <= K <= N, got {text!r}"
+        raise SystemExit(message)
+    return first, count
+
+
+def assign_shards(modules: Iterable[str], count: int) -> dict[str, int]:
+    """Give each module one shard, heaviest first onto the lightest shard (zero-based)."""
+    load = [0.0] * count
+    shard_of: dict[str, int] = {}
+    ranked = sorted(set(modules), key=lambda name: (-MODULE_COST.get(name, DEFAULT_COST), name))
+    for module in ranked:
+        lightest = min(range(count), key=lambda index: (load[index], index))
+        shard_of[module] = lightest
+        load[lightest] += MODULE_COST.get(module, DEFAULT_COST)
+    return shard_of
+
+
+def module_of(tests: list[unittest.TestCase]) -> str:
+    """The test module a unit belongs to, by its last dotted component."""
+    first = tests[0]
+    name = type(first).__module__
+    if name == "unittest.loader":  # an import failure: its id is the module that failed
+        name = first.id()
+    return name.rsplit(".", 1)[-1]
 
 
 def iter_tests(suite: unittest.TestSuite) -> Iterator[unittest.TestCase]:
@@ -103,13 +152,23 @@ def unit_of(test: unittest.TestCase) -> str:
     return name
 
 
-def discover(start: str, top: str | None, pattern: str) -> dict[str, list[unittest.TestCase]]:
-    """Discover like ``unittest discover`` and group the cases by class."""
+def discover(
+    start: str, top: str | None, pattern: str, shard: tuple[int, int] | None = None
+) -> dict[str, list[unittest.TestCase]]:
+    """Discover like ``unittest discover`` and group the cases by class.
+
+    With ``shard`` (K, N) only the units of the modules assigned to leg K of N are kept. Parent and
+    every worker discover with the same shard, so the inventory check still compares like with like.
+    """
     suite = unittest.TestLoader().discover(start, pattern=pattern, top_level_dir=top)
     units: dict[str, list[unittest.TestCase]] = {}
     for test in iter_tests(suite):
         units.setdefault(unit_of(test), []).append(test)
-    return units
+    if shard is None:
+        return units
+    index, count = shard
+    owner = assign_shards((module_of(tests) for tests in units.values()), count)
+    return {unit: tests for unit, tests in units.items() if owner[module_of(tests)] == index - 1}
 
 
 def summarise(unit: str, result: unittest.TestResult, seconds: float) -> dict[str, Any]:
@@ -137,7 +196,7 @@ def worker(
         cov = coverage.Coverage(data_suffix=True)
         cov.start()
     try:
-        units = discover(config["start"], config["top"], config["pattern"])
+        units = discover(config["start"], config["top"], config["pattern"], config["shard"])
         results.put(("inventory", index, {unit: len(tests) for unit, tests in units.items()}))
         while (unit := tasks.get()) is not None:
             result = unittest.TestResult()
@@ -258,11 +317,18 @@ def collect(
 
 
 def run(
-    start: str, top: str | None, pattern: str, jobs: int, *, coverage: bool, slowest: int = 0
+    start: str,
+    top: str | None,
+    pattern: str,
+    jobs: int,
+    *,
+    coverage: bool,
+    slowest: int = 0,
+    shard: tuple[int, int] | None = None,
 ) -> bool:
     """Discover, fan out across ``jobs`` workers, merge, report, return the verdict."""
     started = time.perf_counter()
-    units = discover(start, top, pattern)
+    units = discover(start, top, pattern, shard)
     order = order_units(units)
     jobs = max(1, min(jobs, len(order)))
     context = multiprocessing.get_context("spawn")
@@ -272,7 +338,13 @@ def run(
         tasks.put(unit)
     for _ in range(jobs):
         tasks.put(None)
-    config = {"start": start, "top": top, "pattern": pattern, "coverage": coverage}
+    config = {
+        "start": start,
+        "top": top,
+        "pattern": pattern,
+        "coverage": coverage,
+        "shard": shard,
+    }
     procs = [
         context.Process(target=worker, args=(index, config, tasks, results))
         for index in range(jobs)
@@ -316,6 +388,13 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--slowest", type=int, default=0, metavar="N", help="list the N slowest classes"
     )
+    parser.add_argument(
+        "--shard",
+        type=parse_shard,
+        default=None,
+        metavar="K/N",
+        help="run only leg K of N, balancing whole modules by measured cost",
+    )
     args = parser.parse_args(argv)
     # Every worker inherits this, so no test can resolve Cargento's state to the
     # developer's real ~/.cargento. The dashboard suite already gets one from
@@ -336,6 +415,7 @@ def main(argv: list[str] | None = None) -> int:
         args.jobs,
         coverage=args.coverage,
         slowest=args.slowest,
+        shard=args.shard,
     )
     state_home.cleanup()
     return 0 if ok else 1

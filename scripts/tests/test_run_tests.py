@@ -214,3 +214,55 @@ def mock_env(values: dict[str, str]) -> contextlib.AbstractContextManager[object
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ShardTest(unittest.TestCase):
+    def test_every_module_lands_in_exactly_one_shard_and_the_heavy_ones_are_spread(self) -> None:
+        modules = [
+            "test_analyze_campaign",
+            "test_release_transition",
+            "test_quick_a",
+            "test_quick_b",
+        ]
+        modules += ["test_qualification_conditional_priority", "test_closure_qualification"]
+        for count in (1, 2, 3, 4):
+            with self.subTest(count=count):
+                owner = run_tests.assign_shards(modules, count)
+                self.assertEqual(set(modules), set(owner))
+                self.assertTrue(all(0 <= index < count for index in owner.values()))
+        three = run_tests.assign_shards(modules, 3)
+        heavy = [
+            "test_analyze_campaign",
+            "test_qualification_conditional_priority",
+            "test_closure_qualification",
+        ]
+        self.assertEqual(3, len({three[name] for name in heavy}))
+
+    def test_assignment_does_not_depend_on_the_order_modules_are_found_in(self) -> None:
+        modules = [f"test_m{index}" for index in range(12)] + ["test_analyze_campaign"]
+        self.assertEqual(
+            run_tests.assign_shards(modules, 3), run_tests.assign_shards(reversed(modules), 3)
+        )
+
+    def test_the_shards_of_a_suite_run_every_test_once_and_no_test_twice(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            for name in ("test_alpha", "test_beta", "test_gamma", "test_delta"):
+                (root / f"{name}.py").write_text(
+                    "import unittest\n\nclass T(unittest.TestCase):\n"
+                    "    def test_a(self):\n        pass\n    def test_b(self):\n        pass\n",
+                    encoding="utf-8",
+                )
+            whole = run_tests.discover(str(root), str(root), "test*.py")
+            parts = [
+                run_tests.discover(str(root), str(root), "test*.py", (k, 3)) for k in (1, 2, 3)
+            ]
+            seen = [unit for part in parts for unit in part]
+            self.assertEqual(sorted(whole), sorted(seen))
+            self.assertEqual(len(seen), len(set(seen)))
+
+    def test_a_malformed_shard_is_refused(self) -> None:
+        for text in ("0/3", "4/3", "x", "1/", "1/0", "-1/2"):
+            with self.subTest(text=text), self.assertRaises(SystemExit):
+                run_tests.parse_shard(text)
+        self.assertEqual((2, 3), run_tests.parse_shard("2/3"))

@@ -368,7 +368,7 @@ jobs:
   # there. The Ubuntu child repeated both, which bought a sixth run of the suite
   # per pull request and another chance to draw a flake, and nothing distinct.
   platform-tests:
-    name: Tests (${{ matrix.os }}, ${{ matrix.suite }})
+    name: Tests (${{ matrix.os }}, ${{ matrix.suite }} ${{ matrix.shard }})
     needs: changes
     if: needs.changes.outputs.code == 'true'
     runs-on: ${{ matrix.os }}
@@ -381,6 +381,14 @@ jobs:
         # slow script suite no longer holds the dashboard one) and the longest leg is what a pull request waits for.
         os: [macos-latest, windows-latest]
         suite: [dashboard, scripts]
+        # The script suite is split into three legs balanced by measured cost (scripts/run_tests.py --shard),
+        # because the paused study's campaign tests and the release rehearsals take 17 minutes on Windows in one leg.
+        shard: [1, 2, 3]
+        exclude:
+          - suite: dashboard
+            shard: 2
+          - suite: dashboard
+            shard: 3
     steps:
       # actions/checkout@v7.0.1 — pinned to immutable SHA.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
@@ -410,7 +418,7 @@ jobs:
         run: python scripts/run_tests.py --slowest 10 -s cargento/skills/cargento/tests -t .
       - name: Run script unit tests
         if: matrix.suite == 'scripts'
-        run: python scripts/run_tests.py --slowest 10 -s scripts/tests -t scripts/tests
+        run: python scripts/run_tests.py --slowest 10 --shard ${{ matrix.shard }}/3 -s scripts/tests -t scripts/tests
 
   frontend:
     name: Frontend (${{ matrix.os }})

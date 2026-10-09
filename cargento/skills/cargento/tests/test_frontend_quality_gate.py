@@ -166,6 +166,11 @@ class FrontendWiringControlsTest(unittest.TestCase):
         self.check_runs_everywhere(platform, ["macos-latest", "windows-latest"])
         # The two suites run as parallel legs so the slow script suite does not hold the dashboard one.
         self.assertEqual(["dashboard", "scripts"], platform["strategy"]["matrix"]["suite"])
+        self.assertEqual([1, 2, 3], platform["strategy"]["matrix"]["shard"])
+        self.assertEqual(
+            [{"suite": "dashboard", "shard": 2}, {"suite": "dashboard", "shard": 3}],
+            platform["strategy"]["matrix"]["exclude"],
+        )
         gated = {step["name"]: step.get("if") for step in platform["steps"] if "if" in step}
         self.assertEqual(
             {
