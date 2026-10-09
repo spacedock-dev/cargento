@@ -964,12 +964,16 @@ try {
           assert.equal(modelRequests(view).length, 0, `${side.name}: a reload sent a request`);
           // The press: a double click is one request for exactly this session.
           await view.page.locator('[data-next-observer-action="request"]').dblclick();
+          // The answer comes from the fixture's own refresh on a shared runner, so the wait is generous, and the
+          // page's text is what a failure reports: "false" said nothing about what the page drew instead.
           await until(
-            async () =>
-              /Observed goal: Retry the queue until it drains/.test(
-                (await observerText(view.page)) ?? '',
-              ),
+            async () => {
+              const drawn = (await observerText(view.page)) ?? '';
+              if (/Observed goal: Retry the queue until it drains/.test(drawn)) return drawn;
+              throw new Error(`the page drew: ${drawn.slice(0, 400)}`);
+            },
             `${side.name} the goal`,
+            patience(30000),
           );
           const text = await observerText(view.page);
           assert.match(text, /The refresh returned\./);
