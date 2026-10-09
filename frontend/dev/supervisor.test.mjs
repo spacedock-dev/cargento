@@ -62,7 +62,6 @@ test('real backend restarts serialize fresh identities and close only owned chil
   try {
     const first = dev.ready;
     const data = await (await fetch(first.origin + '/api/data')).json();
-    assert.equal(data.frontend, 'react');
     assert.match(data.build, /^react-dev-/);
     await Promise.all([dev.restart(), dev.restart()]);
     assert.notEqual(dev.ready.pid, first.pid);

@@ -15,8 +15,6 @@ with placeholder prose only.
 from __future__ import annotations
 
 import json
-import re
-import shutil
 import tempfile
 import unittest
 from pathlib import Path
@@ -28,11 +26,9 @@ from cargento_runtime import transcripts
 
 from .fixtures import _iso, _jsonl
 from .support import HarnessContractTestCase, make_runtime
-from .test_next_intent_draft import FIRST, LATEST, _DraftPage, intent_of, visible_text
 from .test_slash_command_direction import CAVEAT, local_command, prompt_command
 
 LATER = "Build the placeholder parser and test every token type"
-WHY_CLEAR = "This session opened with /clear, so there is no first prompt to draft a goal from."
 
 
 def _user(when: float, content: str, **extra: Any) -> dict[str, Any]:
@@ -150,73 +146,3 @@ class AControlIsNeverAdoptedAsTheFirstPromptTest(unittest.TestCase):
 
 
 CONTROL = '__s.first_prompt = "/clear"; __s.first_prompt_control = true;\n'
-
-
-@unittest.skipUnless(shutil.which("node"), "node not available")
-class ThePageDraftsNoGoalOverAControlTest(_DraftPage):
-    def goal_box(self, intent: str) -> str:
-        box = re.search(r'<textarea[^>]*data-next-cockpit-held-kind="goal"[^>]*>([^<]*)<', intent)
-        assert box is not None
-        return box.group(1)
-
-    def test_a_control_first_session_drafts_nothing_and_says_why(self) -> None:
-        intent = intent_of(self.html(CONTROL))
-        text = visible_text(intent)
-        self.assertEqual("", self.goal_box(intent))
-        self.assertIn(WHY_CLEAR, text)
-        self.assertNotIn("data-next-cockpit-drafted", intent)
-        self.assertNotIn("Looks right", text)
-        self.assertNotIn("from your prompt", text)
-
-    def test_the_latest_prompt_is_not_drafted_in_its_place(self) -> None:
-        intent = intent_of(self.html(CONTROL))
-        self.assertNotIn(LATEST, self.goal_box(intent))
-
-    def test_the_why_names_the_command_and_not_its_arguments(self) -> None:
-        setup = (
-            '__s.first_prompt = "/compact keep the parser notes";'
-            " __s.first_prompt_control = true;\n"
-        )
-        text = visible_text(intent_of(self.html(setup)))
-        self.assertIn("This session opened with /compact, so there is no first prompt", text)
-        self.assertNotIn("keep the parser notes", text)
-
-    def test_a_typed_goal_needs_no_why(self) -> None:
-        setup = (
-            CONTROL + '__s.annotation_goal = "Ship the retry queue"; __s.annotation_revision = 1;\n'
-        )
-        self.assertNotIn("no first prompt to draft", visible_text(intent_of(self.html(setup))))
-
-    def test_a_first_prompt_that_is_no_control_still_drafts(self) -> None:
-        intent = intent_of(self.html("__s.first_prompt_control = false;\n"))
-        self.assertEqual(FIRST, self.goal_box(intent))
-        self.assertNotIn("no first prompt to draft", visible_text(intent))
-
-    def test_the_sessions_goal_cell_names_no_prompt_over_a_control(self) -> None:
-        out = self.drive(
-            CONTROL,
-            'navigateNext({view:"sessions"});\nawait __settle();\n'
-            "console.log(JSON.stringify(__els.app.innerHTML));",
-        )
-        assert isinstance(out, str)
-        cell = re.search(r'data-next-operation-fact="goal">([\s\S]*?)</span>', out)
-        assert cell is not None
-        text = visible_text(cell.group(1))
-        self.assertIn("Add a goal", text)
-        self.assertNotIn("/clear", text)
-        self.assertNotIn(LATEST, text)
-
-    def test_analyze_over_a_control_first_session_sends_nothing_and_says_nothing_is_typed(
-        self,
-    ) -> None:
-        # The latest prompt has a time, so a fallback to it once read as a goal and let the
-        # press through with nothing to adopt (lens review, DRC-4766).
-        out = self.drive(
-            CONTROL
-            + "__semantic.facts = __semantic.facts.filter(f => f.type !== 'user_message');\n",
-            '__press("reading-ask");\nawait __settle();\n'
-            "console.log(JSON.stringify({posts:__posts, html:__els.app.innerHTML}));",
-        )
-        assert isinstance(out, dict)
-        self.assertEqual([], out["posts"])
-        self.assertIn("Nothing has been typed for this session", visible_text(out["html"]))

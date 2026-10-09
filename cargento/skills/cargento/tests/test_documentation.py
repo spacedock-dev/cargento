@@ -50,52 +50,6 @@ class CommandManualOptionsTest(unittest.TestCase):
         self.assertEqual(len(documented), len(set(documented)), "Document each spelling once")
 
 
-class DocumentedFrontendDefaultTest(unittest.TestCase):
-    """The two reader-facing `--frontend` rows say what the code defaults to."""
-
-    ROW = re.compile(r"^\| `--frontend MODE` \|(?P<text>.*)\|$", flags=re.MULTILINE)
-
-    def rows(self) -> dict[str, str]:
-        found = {}
-        for name, path in (
-            ("SKILL.md", SERVER_PATH.parent / "SKILL.md"),
-            ("MANUAL.md", SERVER_PATH.parents[3] / "MANUAL.md"),
-        ):
-            matches = self.ROW.findall(path.read_text(encoding="utf-8"))
-            self.assertEqual(1, len(matches), f"{name} needs exactly one --frontend row")
-            found[name] = matches[0]
-        return found
-
-    def problems(self, default: str) -> list[str]:
-        found = []
-        for name, text in self.rows().items():
-            if re.findall(r"`(\w+)` \(default\)", text) != [default]:
-                found.append(f"{name} does not name {default} as the one default")
-            found.extend(
-                f"{name} does not mention {mode}"
-                for mode in runtime_config.FRONTENDS
-                if f"`{mode}`" not in text
-            )
-        return found
-
-    def test_each_row_names_the_code_default_and_only_that_one(self) -> None:
-        self.assertEqual(
-            runtime_config.DEFAULT_FRONTEND, cli.build_parser().get_default("frontend")
-        )
-        self.assertEqual([], self.problems(runtime_config.DEFAULT_FRONTEND))
-
-    def test_the_check_can_fail(self) -> None:
-        # Flipping the code default without the rows, or one row without the code, is red.
-        other = next(m for m in runtime_config.FRONTENDS if m != runtime_config.DEFAULT_FRONTEND)
-        self.assertEqual(2, len(self.problems(other)))
-
-    def test_the_rows_say_a_running_dashboard_keeps_its_renderer(self) -> None:
-        for name, text in self.rows().items():
-            with self.subTest(file=name):
-                self.assertIn("keeps its renderer until it is stopped", text)
-                self.assertIn("--stop", text)
-
-
 class RuntimeDecisionCitationsTest(unittest.TestCase):
     def test_runtime_pointers_resolve(self) -> None:
         root = SERVER_PATH.parents[3]
@@ -279,44 +233,6 @@ class DocumentationMatchesCodeTest(unittest.TestCase):
         # The listener is IPv4-only, so "localhost" can resolve to ::1 and fail.
         self.assertNotIn("http://localhost:4553", self.SKILL)
         self.assertIn("http://127.0.0.1:4553", self.SKILL)
-
-    def test_every_attention_section_the_skill_names_is_one_the_board_renders(self) -> None:
-        # The promotion in 8d2585c renamed the page's groups and updated the
-        # skill body with DIFFERENT names in the same change, and nothing
-        # compared them, so a reader searching the board for "Safe to close"
-        # found nothing for weeks. The headings are inline arguments rather than
-        # a table, so read them out of the source the way the store-path
-        # assertions above read `config`: there is no JS engine here and this
-        # needs none.
-        attention = (
-            SERVER_PATH.parent / "cargento_runtime" / "web" / "next-attention.js"
-        ).read_text(encoding="utf-8")
-        rendered = set(re.findall(r'nextAttentionSectionHtml\("[a-z]+", "([A-Za-z ]+)"', attention))
-        rendered |= set(re.findall(r'<h2 tabindex="-1">([A-Za-z ,]+)</h2>', attention))
-        self.assertEqual(
-            {
-                # Sentence case since 2026-10-02 (N9), as "At risk" beside them already was.
-                "Needs you now",
-                "At risk",
-                "Close the loop",
-                "Coming next",
-                "Also at risk, off the session count",
-                "Not on this board yet",
-            },
-            rendered,
-            "the Attention headings moved; the skill body has to move with them",
-        )
-        for title in rendered:
-            self.assertIn(
-                f"**{title}**",
-                self.SKILL,
-                f"the board renders {title} and the skill body never names it",
-            )
-        # The names the body used to carry. Asserted as absent by name rather
-        # than derived, because the failure was a body claiming a name the page
-        # had stopped rendering, and only a literal catches a return to it.
-        for dead in ("Safe to close", "What's next"):
-            self.assertNotIn(dead, self.SKILL, f"{dead} is not a heading the board renders")
 
 
 class DocumentedCaptureFiguresTest(unittest.TestCase):
@@ -1901,9 +1817,8 @@ class IrreversibleActionsContractDocumentationTest(unittest.TestCase):
     def test_the_reason_the_tool_name_may_come_back_is_a_field_that_is_published(self) -> None:
         # The section's justification is that the snapshot already serves a failing
         # tool's name, so the envelope was dropping a value the board publishes.
-        # Bound to the producer rather than to the page: the page's own byte pins
-        # belong to another surface, and `loop_signal` is where the field is put
-        # into the snapshot. If the signal stops carrying it the justification is
+        # Bound to the producer rather than to the page: `loop_signal` is where the
+        # field is put into the snapshot. If the signal stops carrying it the justification is
         # gone and this says so.
         source = (self.RUNTIME / "turns.py").read_text(encoding="utf-8")
         self.assertIn('"tool": scan.get("err_tool")', source)
@@ -2399,78 +2314,6 @@ class ReaderStateInventoryTest(unittest.TestCase):
             found[cells[0]] = (cells[1], cells[2])
         return found
 
-    def test_the_document_the_render_cites_is_the_one_that_exists(self) -> None:
-        # The capture group keeps the `docs/` prefix outside the quoted string
-        # deliberately. The quality gate derives its "this docs file is code"
-        # list by grepping whole quoted `docs/...md` paths out of these test
-        # modules, so a pattern written as one such string would join that list
-        # as an entry no real file can ever equal.
-        cited: set[str] = set()
-        for name in ("next-chrome.js", "next-controls.js"):
-            body = (self.WEB / name).read_text(encoding="utf-8")
-            cited.update(f"docs/{stem}" for stem in re.findall(r"docs/(design-[a-z-]+\.md)", body))
-        self.assertIn(self.DOC_NAME, cited)
-        for path in sorted(cited):
-            with self.subTest(cited=path):
-                self.assertTrue((self.ROOT / path).is_file())
-
-    def test_every_lane_the_render_captures_or_restores_has_a_row(self) -> None:
-        # Derived from `renderNext` rather than listed here, but only over the
-        # lanes whose names carry `Capture` or `Restore`. Measured: a
-        # `nextKeepScrollOffset()` or a `nextTooltipAttr()` added to the body
-        # leaves this green, and `nextTooltipAttr` is the shape of DRC-4410,
-        # one of the three defects the document was written for. Lanes outside
-        # that convention are named by hand in the table and held by the test
-        # below instead.
-        chrome = (self.WEB / "next-chrome.js").read_text(encoding="utf-8")
-        body = chrome[chrome.index("function renderNext(") :]
-        body = body[: body.index("\nfunction ")]
-        lanes = sorted(set(re.findall(r"\b(next[A-Za-z]*(?:Capture|Restore)[A-Za-z]*)\(", body)))
-        self.assertTrue(lanes)
-        for lane in lanes:
-            with self.subTest(lane=lane):
-                self.assertIn(lane, self.DOC)
-
-    def test_the_lanes_the_derivation_cannot_see_are_still_named_and_real(self) -> None:
-        # The test above derives only `Capture`/`Restore` names, so these
-        # fifteen survive a redraw with nothing deriving their rows. Renaming any
-        # would otherwise leave the table citing a symbol that is gone. Two
-        # joined on 2026-09-11: both landed with rows in the table and
-        # neither was pinned here, which is the gap this test exists to close.
-        # The four cue-region names joined with DRC-4564: two nodes that
-        # outlive every redraw because they are held outside `#app`, the
-        # map that stops one sentence being written into them twice for the
-        # same standing mark, and the key that says whose armed warning the
-        # assertive region is holding, so the warning can be taken back when
-        # that arm stops standing.
-        for name, lane in (
-            ("next-controls.js", "nextControlsProjectState"),
-            ("next-workstream.js", "nextWorkstreamCollapsed"),
-            ("next-cockpit.js", "nextCockpitHeldDrafts"),
-            ("next-cockpit.js", "nextCockpitHeldStates"),
-            ("next-cockpit.js", "nextCockpitBriefingCopyStates"),
-            ("next-chrome.js", "nextCockpitCueStatusElement"),
-            ("next-chrome.js", "nextCockpitCueAlertElement"),
-            ("next-cockpit.js", "nextCockpitAnnouncedCues"),
-            ("next-cockpit.js", "nextCockpitArmedAnnouncedKey"),
-            # DRC-4726 and DRC-4732: the analyses a tab has seen, and Keep's whole texts.
-            ("next-cockpit.js", "nextCockpitReadingJobsSeen"),
-            ("next-cockpit.js", "nextCockpitDirectionWhole"),
-            # DRC-4696: the live monitor switch, per session, in this browser only.
-            ("next-cockpit.js", "nextLiveMonitorMemory"),
-            # DRC-4739: native editor state cannot be restored into a new textarea.
-            ("next-cockpit.js", "nextCockpitCorrectionComposition"),
-            ("next-cockpit.js", "nextCockpitCorrectionPendingRender"),
-            ("next-cockpit.js", "nextCockpitCorrectionPointer"),
-            # Owner, 2026-10-02: a control's in-flight request, re-emitted by key.
-            ("next-controls.js", "nextPending"),
-            # Owner, 2026-10-02: whether Analyze could be pressed, as last drawn.
-            ("next-cockpit.js", "nextReadingFlips"),
-        ):
-            with self.subTest(lane=lane):
-                self.assertIn(f"{lane}", (self.WEB / name).read_text(encoding="utf-8"))
-                self.assertIn(f"`{lane}", self.DOC)
-
     def test_both_split_out_lanes_carry_a_verdict_and_a_reason(self) -> None:
         rows = self.rows()
         for lane in ("The document scroll offset", "A text selection over rendered text"):
@@ -2479,45 +2322,3 @@ class ReaderStateInventoryTest(unittest.TestCase):
                 verdict, where = rows[lane]
                 self.assertTrue(verdict)
                 self.assertIn("#", where)
-
-    def test_the_unmanaged_selection_row_is_still_true_of_the_bundle(self) -> None:
-        # The row says nothing restores a selection. The moment something does,
-        # the row is wrong, and this is what says so.
-        hits = [
-            f"{path.name}:{match.group(0)}"
-            for path in sorted(self.WEB.glob("*.js"))
-            for match in re.finditer(
-                r"getSelection|createRange|getRangeAt", path.read_text("utf-8")
-            )
-        ]
-        self.assertEqual([], hits)
-
-    def test_only_the_documented_terminal_adds_a_scroll_container(self) -> None:
-        # A replaced scroll container needs its own restoration lane. The
-        # prototype terminal has one; no other panel may quietly add scrolling.
-        #
-        # Read over the whole declaration value and case-folded, because a bare
-        # `[a-z-]+` run after the colon let `overflow: auto`, `overflow:AUTO`,
-        # `overflow:hidden auto` and `overflow-y: scroll` through — all four
-        # measured. The lookbehind is what keeps `text-overflow:ellipsis` out;
-        # without it the expected set carried an `overflow:ellipsis` that is
-        # not an overflow declaration at all.
-        styles = (self.WEB / "styles.css").read_text(encoding="utf-8")
-        forms = sorted(
-            {
-                f"{prop.lower()}:{' '.join(value.split()).lower()}"
-                for prop, value in re.findall(
-                    r"(?<![a-z-])(overflow(?:-[a-z]+)?)\s*:\s*([^;}]+)", styles, re.IGNORECASE
-                )
-            }
-        )
-        # `overflow:clip` joined with the accordion motion (owner, 2026-10-02): an open
-        # accordion's `::details-content` clips while it eases, and clipping scrolls nothing.
-        self.assertEqual(
-            ["overflow-wrap:anywhere", "overflow:auto", "overflow:clip", "overflow:hidden"], forms
-        )
-        scroll_rules = re.findall(r"([^{}]+)\{([^{}]*overflow\s*:\s*auto[^{}]*)\}", styles)
-        self.assertEqual([".pc-terminal-viewport"], [rule.strip() for rule, _ in scroll_rules])
-        for form in forms:
-            with self.subTest(form=form):
-                self.assertIn(f"`{form}`", self.DOC)

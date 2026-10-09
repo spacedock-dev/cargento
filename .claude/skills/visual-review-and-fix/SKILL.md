@@ -26,11 +26,11 @@ build will be held to, and once after, to catch what the change broke. The two m
 ## When it is owed, and how much
 
 Rigor is a dial. `AGENTS.md` measured what happens when it is a constant: a 339-line additive change
-with no callers got the same treatment as the one owning both byte-pin oracles.
+with no callers got the same treatment as the one owning the built bundle.
 
 | The change | Before | After |
 |---|---|---|
-| Renders anything a person reads: `web/`, a published row field, a threshold that gates a claim | Full walk | Full walk |
+| Renders anything a person reads: `frontend/src`, a published row field, a threshold that gates a claim | Full walk | Full walk |
 | Changes what a collector publishes, without touching the page | The stages that render it | The same stages |
 | A doc claim about what the board shows or says | The one surface it describes | The same surface |
 | Runtime only, nothing published changes | Skip, and say in the report that you skipped it | Skip, and say so |
@@ -100,7 +100,7 @@ screen says that rather than implying the opposite:
 - A reading that arrived once and has since gone stale.
 - A value the vendor publishes that this surface does not render.
 
-The standard to hold new work to is the code's own. `next-capacity.js` prints "Recent pace not
+The standard to hold new work to is the code's own. `frontend/src/capacity` prints "Recent pace not
 measured: no second reading yet from this vendor" instead of a pace of zero, and marks an expired
 reset "not projected" rather than projecting from it. `collectors/codex.py` returns nothing at all
 for a snapshot older than the activity window, because "the band's empty state is more honest than a
@@ -156,9 +156,12 @@ belonged in the same branch.
 
 Not a generic checklist. Every one of these has happened here:
 
-- **State the render throws away.** `renderNext` replaces the whole of `#app`, so anything held in
-  the DOM is lost. A confirmation cue, keyboard focus, and a disclosure's open state have each been
-  found this way, separately. Click a control, let a render land, and check the answer survives.
+- **State a refresh throws away.** The React page redraws on every board refresh, and anything
+  held only in a node is lost when that node remounts. Each lane that must survive has an owner in
+  `docs/design-reader-state.md` (the controls provider, the disclosure store, the held drafts, the
+  focus lane). A confirmation cue, keyboard focus, unsaved text and a disclosure's open state were
+  each lost this way on the previous page, separately. Click a control, let a refresh land, and
+  check the answer survives; a lane with no owner in that record has no restoration.
 - **Two channels of the same page disagreeing.** A visual cue saying one thing while the live region
   says another. Check the screen-reader text against the colour, not just each alone.
 - **A quantity replaced by a conclusion.** A column that should carry a number carrying a verdict
@@ -194,8 +197,9 @@ allowed to assert.
 
 A behavioural test here:
 
-- **Drives the assembled bundle**, not a function in isolation. The page is one canonical artifact
-  and the reader meets it whole.
+- **Drives the page as the reader meets it**: the built bundle in a real browser (`frontend/e2e`),
+  or the mounted component in its React test, not a function in isolation. The page is one
+  canonical artifact and the reader meets it whole.
 - **Is named as a sentence about a person.** `test_a_stale_capability_names_the_restart_and_the_remedy`
   reads as a claim someone can check. `test_403_branch` does not. This is the house style rather than
   a new ask: 82% of the suite's 2,180 test names already carry an article or a pronoun, and six of
@@ -264,16 +268,18 @@ Each of these produced a wrong conclusion here before it was understood:
 - **Navigating to the same URL with an unchanged fragment does not reload the document.** A "fresh"
   page still holds the old bundle and the old capability, and the fix you just made looks broken.
   Use an explicit reload.
-- **A reference held across a render is stale.** A live region created lazily on first use did not
-  exist when the reference was taken, so the announcement read as missing when it had fired. Re-query
-  after every render, or watch with a `MutationObserver`.
+- **A reference held across a route change or remount can be stale.** A live region created lazily
+  on first use did not exist when the reference was taken, so the announcement read as missing when
+  it had fired. Re-query after the change, or watch with a `MutationObserver`.
 - **Restarting the server invalidates the page's capability.** Every raise then answers 403 and the
   data lane keeps working perfectly, so the board looks healthy and one control is permanently dead.
   If you restart, reload the page. This was diagnosed as a broken handshake before it was understood
   as a stale tab, and the underlying defect, that the page said nothing useful about it, was real.
 - **State with a lifetime expires between tool calls.** A cue held for thirty seconds reads as absent
   if the click and the assertion are in separate calls. Do both in one script.
-- **A disclosure you opened with script closes on the next render**, so the screenshot shows it shut.
+- **Open a disclosure with a real click, not script.** The disclosure store records what the reader
+  does, so a scripted opening can read as shut in the next screenshot. Refresh once and check it
+  stayed open.
 - **A programmatic click cannot always write the clipboard**, because the document is not focused. A
   `failed` copy state there is the harness, not the product.
 - **Consent is per origin.** A different port is a different origin, so a consent-gated feature has

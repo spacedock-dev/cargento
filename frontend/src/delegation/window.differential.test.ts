@@ -4,7 +4,6 @@ import { genScenario } from './generate.test.helper';
 import { loadLegacyDelegation } from './legacy.test.helper';
 import { delegationFigure } from './metric';
 import { createWorkstream, projectWindow } from '../workstream/model';
-import { caseCount } from '../../test/legacy_goldens';
 
 /* The tab's memory is held to the page's own. Generated boards (a stored history and a run of accepted
    payloads) go through the real `nextObserveWorkstream` and through `createEvidence`, and after every payload
@@ -12,7 +11,7 @@ import { caseCount } from '../../test/legacy_goldens';
    seed, the payload and the first path that differs. */
 const legacy = loadLegacyDelegation();
 const CASES = 12;
-const SEEDS = caseCount(CASES);
+const SEEDS = CASES;
 
 describe('the evidence store and the delegation rows agree with the legacy page', () => {
   it(`over ${String(SEEDS)} generated boards`, () => {

@@ -4,10 +4,8 @@ These four checks were written against `reports_needs_input` in
 `tests/test_page.py`, and they went out together in 8d2585c when the next UI
 replaced the old one and that file was deleted as collateral. Nothing replaced
 them, and `HarnessSpec`'s own docstring went on telling a reader that
-`tests/test_next_page.py` derived the expected set, which no test there has ever
-done. They live in a file of their own now rather than in `test_next_page.py`:
-that file owns the frontend byte pins, which is the surface two branches most
-often collide on, and none of what is here reads a byte of the page.
+a page test derived the expected set, which no test there has ever
+done. They live in a file of their own, and none of what is here reads a byte of the page.
 """
 
 from __future__ import annotations
@@ -416,17 +414,12 @@ class HarnessGateCoverageTest(RuntimeTestCase):
         # mypy, the validator or the suite reads a comment, so it survived until
         # someone read it and believed it.
         #
-        # The frontend half of this check is gone rather than repointed. It used to
-        # read `regular.js` and ban a spelled-out count from the comment above
-        # `gateBlind()`, on the rule that a count there buys nothing because the
-        # function reads the payload's per-harness flag: that comment had carried
-        # "Nine of the ten" through two consecutive features that changed it. Both
-        # the asset and the function went with the old UI in 8d2585c. Today the
-        # payload flag is read in `next-attention.js` (`nextAttentionCoverage`,
-        # `nextAttentionCoverageHtml`) and `next-sessions.js`
-        # (`nextOperationsReportsBlocks`), and none of the three carries a comment
-        # that counts anything, so there is no count to ban and inventing a pin on
-        # a comment that does not exist would only pin the pin. The rule survives
+        # There is no frontend half to this check. It once banned a spelled-out count
+        # from the comment above the gate-blind function, on the rule that a count
+        # there buys nothing because the function reads the payload's per-harness
+        # flag: that comment carried "Nine of the ten" through two consecutive
+        # features that changed it. The React page reads the same flag and carries no
+        # comment that counts anything, so there is nothing to ban. The rule survives
         # as a rule: a spelled-out count in a frontend comment about gate coverage
         # rots at the rate of the registry, and the fix is to delete it rather than
         # to test it.

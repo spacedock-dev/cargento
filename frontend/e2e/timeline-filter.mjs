@@ -1,26 +1,24 @@
 /*
  * The timeline's activity filter and its disclosures in a real browser, against the real backend (DRC-4824).
  *
- * The legacy page and the React page run in one Chromium over the same synthetic board; the project
- * context answers with one fixed semantic model (`frontend/test/terminal_backend.py`), so there are events
- * to filter and fold. A differential compares what a reader can observe: the heading, which filter button
- * is pressed, the events each choice shows (id, kind and lane, in order), and the one `cargento.next.graph.mode`
- * map each page writes, byte for byte. What a unit test cannot see is proved here: the choice surviving a
- * reload, project and session scopes staying independent, an old build's empty key being discarded, an open
- * disclosure keeping its state (and in the React page its node) across live updates and leaving the route,
- * keyboard focus staying on the button that was pressed, no duplicate reads under StrictMode, and the layout
- * at 320 and 375 CSS px.
+ * The React page runs in Chromium over a synthetic board; the project context answers with one fixed semantic
+ * model (`frontend/test/terminal_backend.py`), so there are events to filter and fold. A differential compares what
+ * a reader can observe with what the previous interface showed: the heading, which filter button is pressed, the
+ * events each choice shows (id, kind and lane, in order), and the one `cargento.next.graph.mode` map written, byte
+ * for byte. What a unit test cannot see is proved here: the choice surviving a reload, project and session scopes
+ * staying independent, an old build's empty key being discarded, an open disclosure keeping its state (and its
+ * node) across live updates and leaving the route, keyboard focus staying on the button that was pressed, no
+ * duplicate reads under StrictMode, and the layout at 320 and 375 CSS px.
  *
  * Run with `node frontend/e2e/timeline-filter.mjs` (it is the second half of `pnpm test:terminal:browser`);
  * `CARGENTO_E2E_STEPS=<regex>`, `CARGENTO_SCREENSHOTS=1` and `CARGENTO_MUTATION=<name>` behave as in
  * `terminal-parity.mjs`.
  *
- * What the legacy page said is read through `support/golden.mjs`: `CARGENTO_LEGACY=replay` (the default)
- * reads it from `frontend/test/golden/e2e/timeline-filter.json`, starts no legacy backend and opens no
- * legacy page; `live` and `record` run it. Each `pairs` read is keyed by its step and its order inside the
- * step. Dropped in replay, with the reason: the legacy screenshots (a capture is not an observation) and
- * the legacy page's own request log (`world.legacy.log`), which restates what the React assertions beside
- * it already hold the React page to.
+ * What the previous interface said is read through `support/golden.mjs` from
+ * `frontend/test/golden/e2e/timeline-filter.json`, a recording that cannot be remade because that interface is
+ * gone. Each `pairs` read is keyed by its step and its order inside the step. Dropped with the previous
+ * interface, with the reason: its screenshots (a capture is not an observation) and its own request log, which
+ * restated what the React assertions beside it already hold the React page to.
  */
 import assert from 'node:assert/strict';
 import { mkdir } from 'node:fs/promises';
@@ -113,6 +111,8 @@ const MUTATIONS = {
 
 const results = {};
 const failures = [];
+/* A step's name is part of every key recorded under it (`support/golden.mjs`), so a name that still says "both
+   pages" or "the legacy page" is the name the recording was made under, kept so its keys resolve. */
 async function step(name, run) {
   if (only && !only.test(name)) return;
   reading = { step: name, index: 0 };
@@ -169,28 +169,18 @@ const filterButton = (page, name) =>
 const detailsOf = (page, id) => page.locator(`article[data-event-id="${id}"] details`).first();
 const bandOf = (page) => page.locator('summary', { hasText: /^Earlier meaningful/ }).first();
 
-const SIDES = ['legacy', 'react'];
 const golden = goldenFor('timeline-filter');
-/* The sides that run: both while the legacy code exists, React alone in replay. */
-const ACTIVE = golden.live ? SIDES : ['react'];
 let world, started, browser;
-const both = (fn) => Promise.all(ACTIVE.map((name) => fn(world[name], name)));
-/* A legacy reading is `golden.observe`d under the step's name and the reading's place in the step. */
+/* A recorded reading is `golden.observe`d under the step's name and the reading's place in the step. */
 let reading = { step: '', index: 0 };
-const pairs = async (read, label = '', scrub) => {
+const pairs = async (read, label = '') => {
   reading.index += 1;
   const key = `${reading.step} | ${label} #${reading.index}`;
-  const [legacy, react] = await Promise.all([
-    golden.observe(key, () => read(world.legacy), { scrub }),
-    read(world.react),
-  ]);
-  return { legacy, react };
+  return { recorded: golden.observe(key), react: await read(world.react) };
 };
 async function ready(side, fragment) {
   await side.page.goto('about:blank');
   await side.page.goto(side.origin + '/' + fragment);
-  if (side.name === 'legacy')
-    await side.page.waitForFunction('typeof nextData !== "undefined" && nextData !== null');
   await side.page.locator('.pc-graph-filter').waitFor();
   await side.page.waitForTimeout(patience(150));
 }
@@ -211,11 +201,8 @@ const open = (page, details) =>
     .then(() => pause(350))
     .then(() => page);
 const isOpen = (locator) => locator.evaluate((node) => node.open);
-/* A live update through each page's own refresh path. */
-const refresh = (side) =>
-  side.name === 'react'
-    ? refreshReact(side.page, SHIPPED)
-    : side.page.evaluate(() => globalThis.nextRefreshPoll());
+/* A live update through the page's own refresh path. */
+const refresh = (side) => refreshReact(side.page, SHIPPED);
 
 const SESSION = fragmentFor('decisions');
 const PROJECT = fragmentFor('decisions', null);
@@ -226,18 +213,8 @@ try {
   started = await startWorld({ mutations: MUTATIONS });
   browser = await chromium.launch();
   const origins = [started.react.origin, started.react.viteOrigin];
-  if (golden.live) origins.push(started.legacy.origin);
   const viewport = { width: 1100, height: 1000 };
   world = {
-    ...(golden.live
-      ? {
-          legacy: {
-            name: 'legacy',
-            origin: started.legacy.origin,
-            ...(await openTracked(browser, origins, { viewport })),
-          },
-        }
-      : {}),
     react: {
       name: 'react',
       origin: started.react.origin,
@@ -248,19 +225,19 @@ try {
   await step(
     'an untouched filter opens on Decisions in both, showing the same events',
     async () => {
-      await both((side) => ready(side, SESSION));
+      await ready(world.react, SESSION);
       const heading = await pairs((side) => headingOf(side.page));
       assert.equal(heading.react, 'RECORDED DECISIONS');
-      assert.equal(heading.legacy, 'RECORDED DECISIONS');
+      assert.equal(heading.recorded, 'RECORDED DECISIONS');
       const pressed = await pairs((side) => pressedOf(side.page));
       assert.deepEqual(pressed.react, { Active: false, 'All events': false, Decisions: true });
-      assert.deepEqual(pressed.react, pressed.legacy);
+      assert.deepEqual(pressed.react, pressed.recorded);
       const rows = await pairs((side) => rowsOf(side.page));
       assert.deepEqual(
         rows.react.map((row) => row.id),
         ['gate-a'],
       );
-      assert.deepEqual(rows.react, rows.legacy);
+      assert.deepEqual(rows.react, rows.recorded);
       assert.equal(
         await world.react.page.getByRole('group', { name: 'Work activity filter' }).count(),
         1,
@@ -277,14 +254,14 @@ try {
         ['Active', 'SEMANTIC TIMELINE'],
         ['Decisions', 'RECORDED DECISIONS'],
       ]) {
-        await both((side) => filterButton(side.page, label).click());
+        await filterButton(world.react.page, label).click();
         await pause(200);
         const rows = await pairs((side) => rowsOf(side.page));
-        assert.deepEqual(rows.react, rows.legacy, `${label}: the events differ`);
+        assert.deepEqual(rows.react, rows.recorded, `${label}: the events differ`);
         assert.equal((await pairs((side) => headingOf(side.page))).react, expectedHeading);
         const pressed = await pairs((side) => pressedOf(side.page));
         assert.equal(pressed.react[label], true);
-        assert.deepEqual(pressed.react, pressed.legacy);
+        assert.deepEqual(pressed.react, pressed.recorded);
         seen[label] = rows.react.length;
       }
       assert.ok(
@@ -299,10 +276,10 @@ try {
   await step(
     'the choice is written as the one released map, byte for byte, and only that key',
     async () => {
-      await both((side) => filterButton(side.page, 'All events').click());
+      await filterButton(world.react.page, 'All events').click();
       await pause(150);
       const stored = await pairs((side) => storedOf(side.page));
-      assert.equal(stored.react, stored.legacy);
+      assert.equal(stored.react, stored.recorded);
       assert.equal(stored.react, JSON.stringify({ [`${TERMINAL.project}\u0000${FOCUS}`]: 'all' }));
       const keys = await pairs((side) =>
         side.page.evaluate(() => Object.keys(globalThis.localStorage).sort()),
@@ -315,43 +292,43 @@ try {
   );
 
   await step('a reload restores the choice, with the same events', async () => {
-    await both((side) => side.page.reload());
-    await both((side) => side.page.locator('.pc-graph-filter').waitFor());
+    await world.react.page.reload();
+    await world.react.page.locator('.pc-graph-filter').waitFor();
     await pause(300);
     const pressed = await pairs((side) => pressedOf(side.page));
     assert.equal(pressed.react['All events'], true);
-    assert.deepEqual(pressed.react, pressed.legacy);
+    assert.deepEqual(pressed.react, pressed.recorded);
     const rows = await pairs((side) => rowsOf(side.page));
-    assert.deepEqual(rows.react, rows.legacy);
+    assert.deepEqual(rows.react, rows.recorded);
     assert.ok(rows.react.length > 1);
   });
 
   await step(
     'a sibling project, and the same project with no session, keep their own choice',
     async () => {
-      await both((side) => ready(side, BETA));
+      await ready(world.react, BETA);
       let pressed = await pairs((side) => pressedOf(side.page));
       assert.equal(
         pressed.react.Decisions,
         true,
         'the sibling project inherited another project’s choice',
       );
-      assert.deepEqual(pressed.react, pressed.legacy);
-      await both((side) => filterButton(side.page, 'Active').click());
-      await both((side) => ready(side, PROJECT));
+      assert.deepEqual(pressed.react, pressed.recorded);
+      await filterButton(world.react.page, 'Active').click();
+      await ready(world.react, PROJECT);
       pressed = await pairs((side) => pressedOf(side.page));
       assert.equal(pressed.react.Decisions, true, 'project scope inherited the session’s choice');
-      assert.deepEqual(pressed.react, pressed.legacy);
-      await both((side) => filterButton(side.page, 'All events').click());
-      await both((side) => ready(side, SESSION));
+      assert.deepEqual(pressed.react, pressed.recorded);
+      await filterButton(world.react.page, 'All events').click();
+      await ready(world.react, SESSION);
       pressed = await pairs((side) => pressedOf(side.page));
       assert.equal(pressed.react['All events'], true);
-      await both((side) => ready(side, BETA));
+      await ready(world.react, BETA);
       pressed = await pairs((side) => pressedOf(side.page));
       assert.equal(pressed.react.Active, true);
-      assert.deepEqual(pressed.react, pressed.legacy);
+      assert.deepEqual(pressed.react, pressed.recorded);
       const stored = await pairs((side) => storedOf(side.page));
-      assert.equal(stored.react, stored.legacy);
+      assert.equal(stored.react, stored.recorded);
       assert.deepEqual(
         Object.keys(JSON.parse(stored.react)).sort(),
         [
@@ -366,38 +343,31 @@ try {
   await step(
     'an old build’s single empty key is discarded rather than read as a project',
     async () => {
-      const fresh = {};
-      for (const name of ACTIVE) {
-        fresh[name] = await openTracked(browser, origins, { viewport });
-        await fresh[name].context.addInitScript((key) => {
-          if (!globalThis.localStorage.getItem(key))
-            globalThis.localStorage.setItem(key, '{"":"all"}');
-        }, KEY);
-      }
+      const fresh = await openTracked(browser, origins, { viewport });
+      await fresh.context.addInitScript((key) => {
+        if (!globalThis.localStorage.getItem(key))
+          globalThis.localStorage.setItem(key, '{"":"all"}');
+      }, KEY);
       try {
-        for (const name of ACTIVE) {
-          const side = { name, origin: world[name].origin, page: fresh[name].page };
-          await ready(side, SESSION);
-          assert.equal(
-            (await pressedOf(side.page)).Decisions,
-            true,
-            `${name}: the empty key was read as a choice`,
-          );
-          await filterButton(side.page, 'Active').click();
-          await pause(150);
-        }
+        const side = { name: 'react', origin: world.react.origin, page: fresh.page };
+        await ready(side, SESSION);
+        assert.equal(
+          (await pressedOf(side.page)).Decisions,
+          true,
+          'react: the empty key was read as a choice',
+        );
+        await filterButton(side.page, 'Active').click();
+        await pause(150);
         const stored = {
-          legacy: await golden.observe('an old build empty key: stored', () =>
-            storedOf(fresh.legacy.page),
-          ),
-          react: await storedOf(fresh.react.page),
+          recorded: golden.observe('an old build empty key: stored'),
+          react: await storedOf(fresh.page),
         };
-        assert.equal(stored.react, stored.legacy);
+        assert.equal(stored.react, stored.recorded);
         assert.deepEqual(Object.keys(JSON.parse(stored.react)), [
           `${TERMINAL.project}\u0000${FOCUS}`,
         ]);
       } finally {
-        await Promise.all(ACTIVE.map((name) => fresh[name].close()));
+        await fresh.close();
       }
     },
   );
@@ -405,36 +375,34 @@ try {
   await step(
     'an opened event and the folded band keep their state across live updates, and in React keep their node',
     async () => {
-      await both((side) => ready(side, SESSION));
-      await both((side) => filterButton(side.page, 'All events').click());
+      await ready(world.react, SESSION);
+      await filterButton(world.react.page, 'All events').click();
       await pause(200);
       const rows = await pairs((side) => rowsOf(side.page));
-      assert.deepEqual(rows.react, rows.legacy);
-      await both((side) => open(side.page, detailsOf(side.page, 'dir-0')));
-      await both(async (side) => {
-        await bandOf(side.page).click();
-        await pause(350);
-      });
+      assert.deepEqual(rows.react, rows.recorded);
+      await open(world.react.page, detailsOf(world.react.page, 'dir-0'));
+      await bandOf(world.react.page).click();
+      await pause(350);
       const band = await pairs((side) =>
         bandOf(side.page).evaluate((node) => node.parentElement.open),
       );
-      assert.deepEqual(band, { legacy: true, react: true });
+      assert.deepEqual(band, { recorded: true, react: true });
       await world.react.page.evaluate(() => {
         globalThis.__marks = {
           event: globalThis.document.querySelector('article[data-event-id="dir-0"] details'),
           filter: globalThis.document.querySelector('.pc-graph-filter button'),
         };
       });
-      await both((side) => refresh(side));
+      await refresh(world.react);
       await pause(300);
-      await both((side) => refresh(side));
+      await refresh(world.react);
       await pause(500);
       const state = await pairs(async (side) => ({
         event: await isOpen(detailsOf(side.page, 'dir-0')),
         band: await bandOf(side.page).evaluate((node) => node.parentElement.open),
       }));
       assert.deepEqual(state.react, { event: true, band: true });
-      assert.deepEqual(state.react, state.legacy);
+      assert.deepEqual(state.react, state.recorded);
       assert.equal(
         await world.react.page.evaluate(
           () =>
@@ -459,12 +427,11 @@ try {
   await step(
     'keyboard focus stays on the button that was pressed across a live update (the legacy page drops it)',
     async () => {
-      for (const name of ACTIVE) {
-        const button = filterButton(world[name].page, 'All events');
-        await button.focus();
-        await world[name].page.keyboard.press('Enter');
-      }
-      await both((side) => refresh(side));
+      const button = filterButton(world.react.page, 'All events');
+      await button.focus();
+      await world.react.page.keyboard.press('Enter');
+
+      await refresh(world.react);
       await pause(500);
       const focus = await pairs((side) =>
         side.page.evaluate(() => {
@@ -479,32 +446,30 @@ try {
         'All events',
         'the filter button lost keyboard focus in the react page',
       );
-      // Pressing a filter in the legacy page redraws the whole view, and nothing puts focus back.
-      return { legacyFocusAfter: focus.legacy };
+      // Pressing a filter in the previous interface redrew the whole view, and nothing put focus back.
+      return { recordedFocusAfter: focus.recorded };
     },
   );
 
   await step(
     'leaving the route and coming back keeps the filter and every opened disclosure',
     async () => {
-      await both((side) =>
-        side.page.evaluate(() => {
-          globalThis.location.hash = '#n=sessions';
-        }),
-      );
-      await both((side) => side.page.locator('.pc-graph-filter').waitFor({ state: 'detached' }));
-      await both((side) => side.page.goBack());
-      await both((side) => side.page.locator('.pc-graph-filter').waitFor());
+      await world.react.page.evaluate(() => {
+        globalThis.location.hash = '#n=sessions';
+      });
+      await world.react.page.locator('.pc-graph-filter').waitFor({ state: 'detached' });
+      await world.react.page.goBack();
+      await world.react.page.locator('.pc-graph-filter').waitFor();
       await pause(500);
       const pressed = await pairs((side) => pressedOf(side.page));
       assert.equal(pressed.react['All events'], true);
-      assert.deepEqual(pressed.react, pressed.legacy);
+      assert.deepEqual(pressed.react, pressed.recorded);
       const state = await pairs(async (side) => ({
         event: await isOpen(detailsOf(side.page, 'dir-0')),
         band: await bandOf(side.page).evaluate((node) => node.parentElement.open),
       }));
       assert.deepEqual(state.react, { event: true, band: true });
-      assert.deepEqual(state.react, state.legacy);
+      assert.deepEqual(state.react, state.recorded);
     },
   );
 
@@ -512,43 +477,43 @@ try {
     'project scope and a focused session keep their own open events, and so do two projects',
     async () => {
       // Project scope, no session focused: its own filter choice and its own disclosures, closed to begin with.
-      await both((side) => go(side, PROJECT));
-      await both((side) => filterButton(side.page, 'All events').click());
+      await go(world.react, PROJECT);
+      await filterButton(world.react.page, 'All events').click();
       await pause(300);
       assert.deepEqual(
         await pairs((side) => isOpen(detailsOf(side.page, 'task-a'))),
-        { legacy: false, react: false },
+        { recorded: false, react: false },
         'project scope began open',
       );
-      await both((side) => open(side.page, detailsOf(side.page, 'task-a')));
+      await open(world.react.page, detailsOf(world.react.page, 'task-a'));
       assert.deepEqual(
         await pairs((side) => isOpen(detailsOf(side.page, 'task-a'))),
-        { legacy: true, react: true },
+        { recorded: true, react: true },
         'the opened event did not open',
       );
       // The same project, a focused session: the project's open event did not follow.
-      await both((side) => go(side, SESSION));
-      await both((side) => filterButton(side.page, 'All events').click());
+      await go(world.react, SESSION);
+      await filterButton(world.react.page, 'All events').click();
       await pause(300);
       assert.deepEqual(
         await pairs((side) => isOpen(detailsOf(side.page, 'task-a'))),
-        { legacy: false, react: false },
+        { recorded: false, react: false },
         'the session inherited the project’s open event',
       );
       // And back at project scope it is still open, as it was left.
-      await both((side) => go(side, PROJECT));
+      await go(world.react, PROJECT);
       assert.deepEqual(
         await pairs((side) => isOpen(detailsOf(side.page, 'task-a'))),
-        { legacy: true, react: true },
+        { recorded: true, react: true },
         'project scope forgot its open event',
       );
       // Another project at project scope: its own, closed.
-      await both((side) => go(side, BETA_PROJECT));
-      await both((side) => filterButton(side.page, 'All events').click());
+      await go(world.react, BETA_PROJECT);
+      await filterButton(world.react.page, 'All events').click();
       await pause(300);
       assert.deepEqual(
         await pairs((side) => isOpen(detailsOf(side.page, 'task-a'))),
-        { legacy: false, react: false },
+        { recorded: false, react: false },
         'another project inherited the open event',
       );
     },
@@ -598,15 +563,13 @@ try {
     async () => {
       const report = {};
       for (const width of [320, 375]) {
-        for (const name of ACTIVE) await world[name].page.setViewportSize({ width, height: 900 });
-        await both((side) => ready(side, SESSION));
-        await both((side) => filterButton(side.page, 'All events').click());
+        await world.react.page.setViewportSize({ width, height: 900 });
+        await ready(world.react, SESSION);
+        await filterButton(world.react.page, 'All events').click();
         await pause(300);
-        await both((side) => open(side.page, detailsOf(side.page, 'dir-0')));
-        await both(async (side) => {
-          await bandOf(side.page).click();
-          await pause(300);
-        });
+        await open(world.react.page, detailsOf(world.react.page, 'dir-0'));
+        await bandOf(world.react.page).click();
+        await pause(300);
         const measure = await pairs(
           (side) =>
             side.page.evaluate(() => {
@@ -633,10 +596,9 @@ try {
               return { overflow: doc.scrollWidth - doc.clientWidth, wide, targets };
             }),
           `layout ${width}`,
-          // Only the legacy page's overflow is read back; its control sizes are not asserted of it.
-          ({ overflow, wide }) => ({ overflow, wide }),
         );
-        for (const name of SIDES)
+        // Only the recording's overflow is read back; its control sizes are not asserted of it.
+        for (const name of ['recorded', 'react'])
           assert.ok(
             measure[name].overflow <= 0,
             `${name}: horizontal page scroll at ${width}px (${measure[name].wide.join(' | ')})`,
@@ -647,7 +609,7 @@ try {
         assert.deepEqual(small, [], `react timeline controls under 44 px at ${width}px`);
         report[width] = {
           overflowReact: measure.react.overflow,
-          overflowLegacy: measure.legacy.overflow,
+          overflowRecorded: measure.recorded.overflow,
         };
         if (shots) {
           await mkdir(SHOTS, { recursive: true });
@@ -655,25 +617,15 @@ try {
             path: join(SHOTS, `drc-4824-timeline-react-${width}px.png`),
             fullPage: true,
           });
-          if (golden.live)
-            await world.legacy.page.screenshot({
-              path: join(SHOTS, `drc-4824-timeline-legacy-${width}px.png`),
-              fullPage: true,
-            });
         }
       }
-      for (const name of ACTIVE) await world[name].page.setViewportSize(viewport);
+      await world.react.page.setViewportSize(viewport);
       if (shots) {
-        await both((side) => ready(side, SESSION));
+        await ready(world.react, SESSION);
         await world.react.page.screenshot({
           path: join(SHOTS, 'drc-4824-timeline-react-1100px.png'),
           fullPage: true,
         });
-        if (golden.live)
-          await world.legacy.page.screenshot({
-            path: join(SHOTS, 'drc-4824-timeline-legacy-1100px.png'),
-            fullPage: true,
-          });
       }
       return report;
     },
@@ -682,16 +634,14 @@ try {
   await step(
     'no external request, page error or console error, and no POST, in either page',
     async () => {
-      for (const name of ACTIVE) {
-        assert.deepEqual(world[name].log.externalRequests, [], `${name}: an external request`);
-        assert.deepEqual(world[name].log.pageErrors, [], `${name}: a page error`);
-        assert.deepEqual(
-          world[name].log.consoleErrors.filter((text) => !/net::ERR_FAILED/.test(text)),
-          [],
-          `${name}: a console error`,
-        );
-        assert.deepEqual(world[name].log.nonGet, [], `${name}: a request that was not a GET`);
-      }
+      assert.deepEqual(world.react.log.externalRequests, [], `react: an external request`);
+      assert.deepEqual(world.react.log.pageErrors, [], `react: a page error`);
+      assert.deepEqual(
+        world.react.log.consoleErrors.filter((text) => !/net::ERR_FAILED/.test(text)),
+        [],
+        `react: a console error`,
+      );
+      assert.deepEqual(world.react.log.nonGet, [], `react: a request that was not a GET`);
     },
   );
 
@@ -733,7 +683,7 @@ try {
   );
   process.exitCode = 1;
 } finally {
-  for (const name of SIDES) await world?.[name]?.close?.().catch(() => undefined);
+  await world?.react?.close?.().catch(() => undefined);
   if (browser) await browser.close();
   if (started) await started.close();
 }

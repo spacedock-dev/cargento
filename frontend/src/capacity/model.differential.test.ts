@@ -4,7 +4,6 @@ import { canonical, firstDifference } from '../observed/legacy.test.helper';
 import { genCapacity } from './generate.test.helper';
 import { loadLegacyCapacity } from './legacy.test.helper';
 import { clockWords, modelLimits, projectSpread, stripRows } from './model';
-import { caseCount } from '../../test/legacy_goldens';
 
 /* The strip's rows, model sub-limits, clock words and project spread are held to `next-capacity.js` by what
    they compute, over generated boards that publish windows with and without a clock, a reset already past,
@@ -12,8 +11,8 @@ import { caseCount } from '../../test/legacy_goldens';
    one, hostile model labels and a history with idle gaps. */
 const legacy = loadLegacyCapacity();
 const CASES = 80;
-const SEEDS = caseCount(CASES);
-const SPREAD_SEEDS = caseCount(600);
+const SEEDS = CASES;
+const SPREAD_SEEDS = 600;
 
 describe('the capacity model agrees with the legacy page', () => {
   it(`rows, in rank order and in every figure, over ${String(SEEDS)} boards`, () => {

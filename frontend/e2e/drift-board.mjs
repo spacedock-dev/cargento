@@ -1,13 +1,12 @@
 /*
  * The scripted board the Drift browser tests drive.
  *
- * The documents and every module come from the real backends (the legacy page and the React page over
- * `intent_backend.py`), so the pages are the real pages. What a reading says, what is running, what the
+ * The document and every module come from the real backend (the React page over `intent_backend.py`), so the
+ * page is the real page. What a reading says, what is running, what the
  * record holds and what the receiver is are SCRIPTED: `/api/data` and `/api/project-context` are answered
  * from the real backend's body with the Drift fields replaced, and the routes that could reach a model or a
  * correction (`/api/reading`, `/api/reading/cancel`, `/api/correction`, `/api/correction/copied`) are
- * answered by a handler this file owns and never reach any backend. Both renderers are fed the same state,
- * one at a time, so a difference is the renderer's.
+ * answered by a handler this file owns and never reach any backend.
  *
  * No model is ever called: nothing here can start one, and a POST nobody scripted is refused with a 404 so a
  * request the page should not make fails loudly instead of reaching the real route.
@@ -70,7 +69,7 @@ export const check = (id, at, result, extra = {}) =>
 
 /* What a state is: `session` and `payload` are merged over the real board's row and body, `facts` and `work`
    replace the record the page reads, and `routes` answers the POSTs. Everything is relative to the real
-   board's own clock, so an age reads the same on both renderers. */
+   board's own clock, so an age reads the same on every run. */
 export function freshScript() {
   return {
     session: {},

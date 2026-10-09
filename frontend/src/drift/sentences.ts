@@ -217,6 +217,10 @@ export const REASON_LINES: Readonly<Record<string, (n: string) => string>> = {
   'most-writes-outside-folders': () =>
     'Most files were written outside the folders your intent names.',
 };
+/* The reasons `levels.REASONS` can publish that carry no sentence of their own: the level is drawn without
+   one. Every reason has exactly one home, a line, a blocker or this list, and
+   `api/vocabulary.test.ts` holds the three to the producer's list. */
+export const SILENT_REASONS: readonly string[] = ['draft-unsaved', 'floor-met', 'no-reading'];
 export const BLOCKER_LINES: Readonly<Record<string, string>> = {
   'no-passing-check': 'No check has passed yet.',
   'check-not-recorded': 'A check ran and its result was not recorded.',

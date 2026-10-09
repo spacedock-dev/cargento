@@ -4,7 +4,6 @@ import { steeringHeldFor } from './held';
 import { loadLegacySteering } from './legacy.test.helper';
 import { StageConditions } from './StageConditions';
 import { mountPanels } from './testing';
-import { caseCount } from '../../test/legacy_goldens';
 
 /* The stage-condition cards are held to the legacy page by what a reader can read. The page's own
    `nextStageConditions` runs over a generated `tripwires` section and so does the component; both are reduced
@@ -12,7 +11,7 @@ import { caseCount } from '../../test/legacy_goldens';
    difference is a bug here unless it is named in the DEVIATIONS the step records. */
 const legacy = loadLegacySteering();
 const CASES = 80;
-const SEEDS = caseCount(CASES);
+const SEEDS = CASES;
 
 const norm = (text: string | null): string => (text ?? '').replace(/\s+/g, ' ').trim();
 

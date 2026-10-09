@@ -36,7 +36,7 @@
           },
           {
             "browser": "frontend/e2e/sessions-parity.mjs",
-            "step": "hostile text is text on both pages"
+            "step": "differential: hostile text is text, as recorded, and draws no element, selector or script"
           }
         ]
       },
@@ -57,7 +57,7 @@
           },
           {
             "browser": "frontend/e2e/sessions-parity.mjs",
-            "step": "differential: the real board reads the same on both pages"
+            "step": "differential: the real board reads as the recording does, group by group and row by row"
           }
         ]
       },
@@ -78,7 +78,7 @@
           },
           {
             "browser": "frontend/e2e/attention-parity.mjs",
-            "step": "parity: the legacy and React screens read alike"
+            "step": "parity: the React screen reads as the recording does, collapsed and with every section expanded"
           }
         ]
       },
@@ -95,7 +95,7 @@
           },
           {
             "browser": "frontend/e2e/attention-parity.mjs",
-            "step": "a gate that arrives after the first board raises one banner"
+            "step": "a gate that arrives after the first board raises one banner, once, and the recording raised the same"
           }
         ]
       },
@@ -152,7 +152,7 @@
           },
           {
             "browser": "frontend/e2e/shell-routing.mjs",
-            "step": "differential: every route contract reads the same on both pages"
+            "step": "differential: every route contract reads as the recording does"
           }
         ]
       },
@@ -186,7 +186,7 @@
           },
           {
             "browser": "frontend/e2e/sessions-parity.mjs",
-            "step": "differential: the real board reads the same on both pages"
+            "step": "differential: the real board reads as the recording does, group by group and row by row"
           }
         ]
       },
@@ -199,7 +199,7 @@
           },
           {
             "browser": "frontend/e2e/project-parity.mjs",
-            "step": "differential: the Projects list reads the same"
+            "step": "differential: the Projects list reads as recorded, group by group and row by row"
           }
         ]
       },
@@ -235,7 +235,7 @@
           },
           {
             "browser": "frontend/e2e/intent-parity.mjs",
-            "step": "the Intent log reads as the legacy log does over saved words"
+            "step": "the Intent log reads as the recorded log does over saved words, a prompt adoption and a discard"
           }
         ]
       },
@@ -269,7 +269,7 @@
           },
           {
             "browser": "frontend/e2e/sessions-parity.mjs",
-            "step": "differential: every session of the real board has the same page"
+            "step": "differential: every session of the real board has the recorded page, reached by its one-step link"
           }
         ]
       },
@@ -447,7 +447,7 @@
           },
           {
             "browser": "frontend/e2e/shell-routing.mjs",
-            "step": "differential: before the first payload the legacy page counts zero and the React page states the absence"
+            "step": "differential: before the first payload the previous interface counted zero and the React page states the absence"
           }
         ],
         "deviation": "docs/design-frontend-migration.md#react-shell-routes-and-controls",
@@ -462,7 +462,7 @@
           },
           {
             "browser": "frontend/e2e/shell-routing.mjs",
-            "step": "differential: a failed refresh, a history reset and a newer build read the same on both pages"
+            "step": "differential: a failed refresh, a history reset and a newer build read as the recording does"
           },
           {
             "browser": "frontend/e2e/shell-routing.mjs",
@@ -519,7 +519,7 @@
           },
           {
             "browser": "frontend/e2e/sessions-parity.mjs",
-            "step": "differential: the real board reads the same on both pages"
+            "step": "differential: the real board reads as the recording does, group by group and row by row"
           }
         ],
         "deviation": "docs/design-frontend-migration.md#sessions-session-detail-the-timeline-and-the-terminal",
@@ -534,7 +534,7 @@
           },
           {
             "browser": "frontend/e2e/sessions-parity.mjs",
-            "step": "differential: every session of the real board has the same page"
+            "step": "differential: every session of the real board has the recorded page, reached by its one-step link"
           }
         ]
       },
@@ -568,7 +568,7 @@
           },
           {
             "browser": "frontend/e2e/sessions-parity.mjs",
-            "step": "differential: every session of the real board has the same page"
+            "step": "differential: every session of the real board has the recorded page, reached by its one-step link"
           }
         ]
       },
@@ -585,7 +585,7 @@
           },
           {
             "browser": "frontend/e2e/intent-parity.mjs",
-            "step": "the Intent log reads as the legacy log does over saved words"
+            "step": "the Intent log reads as the recorded log does over saved words, a prompt adoption and a discard"
           }
         ]
       },
@@ -633,7 +633,7 @@
           },
           {
             "browser": "frontend/e2e/drift-parity.mjs",
-            "step": "the live estimate and the header pill read as the legacy page does"
+            "step": "the live estimate and the header pill read as the recording does"
           },
           {
             "browser": "frontend/e2e/intent-parity.mjs",
@@ -706,7 +706,7 @@
           },
           {
             "browser": "frontend/e2e/project-parity.mjs",
-            "step": "differential: the Projects list reads the same, group by group and row by row"
+            "step": "differential: the Projects list reads as recorded, group by group and row by row"
           }
         ]
       },
@@ -932,7 +932,7 @@
           },
           {
             "browser": "frontend/e2e/project-parity.mjs",
-            "step": "workstream: a change this tab saw is listed, and the legacy page lists the same change from the same boards"
+            "step": "workstream: a change this tab saw is listed, and the previous interface listed the same change from the same boards"
           }
         ]
       },
@@ -999,7 +999,7 @@
           },
           {
             "browser": "frontend/e2e/attention-parity.mjs",
-            "step": "parity: the legacy and React screens read alike"
+            "step": "parity: the React screen reads as the recording does, collapsed and with every section expanded"
           }
         ],
         "deviation": "docs/design-frontend-migration.md#attention-notifications-capacity-and-the-consent-controls",
@@ -1018,7 +1018,7 @@
           },
           {
             "browser": "frontend/e2e/capacity-parity.mjs",
-            "step": "the strip draws the same facts on both pages and invents no tick"
+            "step": "the strip draws the recorded facts and invents no tick"
           }
         ],
         "deviation": "docs/design-frontend-migration.md#attention-notifications-capacity-and-the-consent-controls",
@@ -1056,7 +1056,7 @@
           },
           {
             "browser": "frontend/e2e/attention-parity.mjs",
-            "step": "pressing Enable asks once, reports the lane as two scalars, hands focus back"
+            "step": "pressing Enable asks once, reports the lane as two scalars, hands focus back, and the recording says the same"
           }
         ],
         "deviation": "docs/design-frontend-migration.md#attention-notifications-capacity-and-the-consent-controls",
@@ -1138,7 +1138,7 @@
           },
           {
             "browser": "frontend/e2e/shell-routing.mjs",
-            "step": "differential: every route contract reads the same on both pages"
+            "step": "differential: every route contract reads as the recording does"
           }
         ]
       },
@@ -1151,7 +1151,7 @@
           },
           {
             "browser": "frontend/e2e/shell-routing.mjs",
-            "step": "differential: every route contract reads the same on both pages"
+            "step": "differential: every route contract reads as the recording does"
           }
         ]
       },
@@ -1164,7 +1164,7 @@
           },
           {
             "browser": "frontend/e2e/shell-routing.mjs",
-            "step": "differential: every route contract reads the same on both pages"
+            "step": "differential: every route contract reads as the recording does"
           }
         ]
       },
@@ -1177,7 +1177,7 @@
           },
           {
             "browser": "frontend/e2e/shell-routing.mjs",
-            "step": "differential: every route contract reads the same on both pages"
+            "step": "differential: every route contract reads as the recording does"
           }
         ]
       },
@@ -1190,7 +1190,7 @@
           },
           {
             "browser": "frontend/e2e/shell-routing.mjs",
-            "step": "differential: every route contract reads the same on both pages"
+            "step": "differential: every route contract reads as the recording does"
           }
         ]
       },
@@ -1242,7 +1242,7 @@
           },
           {
             "browser": "frontend/e2e/shell-routing.mjs",
-            "step": "differential: every route contract reads the same on both pages"
+            "step": "differential: every route contract reads as the recording does"
           }
         ]
       },
@@ -1268,7 +1268,7 @@
           },
           {
             "browser": "frontend/e2e/shell-routing.mjs",
-            "step": "differential: reload and Escape agree for every session route that carries an origin"
+            "step": "differential: reload and Escape read as the recording does for every session route that carries an origin"
           }
         ]
       },
@@ -1281,7 +1281,7 @@
           },
           {
             "browser": "frontend/e2e/shell-routing.mjs",
-            "step": "differential: every route contract reads the same on both pages"
+            "step": "differential: every route contract reads as the recording does"
           }
         ]
       },
@@ -1298,7 +1298,7 @@
           },
           {
             "browser": "frontend/e2e/shell-routing.mjs",
-            "step": "differential: every route contract reads the same on both pages"
+            "step": "differential: every route contract reads as the recording does"
           }
         ]
       },
@@ -1336,7 +1336,7 @@
         "status": "proven",
         "proofs": [
           {
-            "python": "cargento/skills/cargento/tests/test_next_flag.py",
+            "python": "cargento/skills/cargento/tests/test_default_page.py",
             "test": "test_retired_next_query_is_not_a_page_alias"
           },
           {
@@ -1359,7 +1359,7 @@
           },
           {
             "browser": "frontend/e2e/shell-routing.mjs",
-            "step": "differential: Back and Forward leave the same hash and history depth on both pages"
+            "step": "differential: Back and Forward leave the recorded hash and history depth"
           },
           {
             "browser": "frontend/e2e/shell-routing.mjs",
@@ -2067,7 +2067,7 @@
           },
           {
             "browser": "frontend/e2e/drift-parity.mjs",
-            "step": "a refusal is said under the control that was pressed, and is the same sentence on both pages"
+            "step": "a refusal is said under the control that was pressed, in the recorded sentence"
           }
         ]
       },
@@ -2538,7 +2538,7 @@
         "proofs": [
           {
             "browser": "frontend/e2e/sessions-parity.mjs",
-            "step": "keyboard: Tab reaches a row"
+            "step": "keyboard: Tab reaches a row’s link, Enter opens the session, Escape returns, as recorded"
           },
           {
             "browser": "frontend/e2e/sessions-parity.mjs",
@@ -2913,7 +2913,7 @@
       },
       {
         "browser": "frontend/e2e/installed.mjs",
-        "contains": "assert.equal(data.frontend, 'react');"
+        "contains": "assert.equal(data.build, 'react-' + metadata.document.sha256.slice(0, 16));"
       },
       {
         "browser": "frontend/e2e/installed.mjs",

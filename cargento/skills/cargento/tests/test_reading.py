@@ -32,7 +32,7 @@ if TYPE_CHECKING:
 from cargento_runtime import annotations as annotation_store
 from cargento_runtime import events, observer, reading, reading_route, records
 
-from .next_harness import named_machine
+from .reading_pins import named_machine
 
 SESSION = {"harness": "claude", "sid": "S1"}
 NOW = 1_700_100_000.0
@@ -1689,20 +1689,6 @@ class TheWarningIsOnThePageAndNotOnlyInAConstant(unittest.TestCase):
         # Beside the check, because a reader who cannot press still needs to
         # know what pressing would do.
         self.assertIn('"reading_check"', source)
-
-    def test_the_page_shows_the_warning_before_the_button_and_not_after(self) -> None:
-        source = (self.WEB / "next-cockpit.js").read_text(encoding="utf-8")
-        control = source[
-            source.index("function nextCockpitReadingControl(") : source.index(
-                "const NEXT_READING_OFFER"
-            )
-        ]
-        self.assertIn("route.disclosure", control, "the warning is not on the control")
-        self.assertLess(
-            control.index("route.disclosure"),
-            control.index('<button type="button"'),
-            "the warning renders after the button the reader has already pressed",
-        )
 
     def test_the_warning_says_where_the_words_go_and_who_pays(self) -> None:
         # The offer paragraph scopes WHAT is sent; only this says where it

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import shutil
 import unittest
 from typing import Any, cast
 from unittest import mock
@@ -12,9 +11,7 @@ from cargento_runtime import levels, reading
 
 from . import test_correction as correction_tests
 from . import test_levels as level_tests
-from . import test_next_cockpit as cockpit_tests
 from . import test_reading as reading_tests
-from .next_harness import NextPageJsHarness, storage_prelude
 
 NEUTRAL = "not reached at this stop"
 DETAIL = "The placeholder PR is waiting on CI."
@@ -279,91 +276,3 @@ class NotReachedIsNeitherUnverifiableNorADeparture(unittest.TestCase):
         )
         self.assertEqual(got["goal"].get("result"), reading.RESULT_UNVERIFIABLE)
         self.assertEqual(got["goal"]["detail"], "")
-
-
-@unittest.skipUnless(shutil.which("node"), "node not available")
-class ThePageNamesUnfinishedWork(NextPageJsHarness):
-    def page(self, suffix: str) -> Any:
-        return self._run_page_js(
-            "await __settle();\n"
-            """
-const annotation={goal:"Ship",lines:[{text:"Merged",source:"typed"}],revision:1};
-const entries=[{id:"a1",type:"agent_message",by:"agent",author:"agent",at:95,
-  source:"Claude assistant text · exact",summary:"CI pending"}];
-const raw={revision_read:1,scope:"last-turn",criteria:{
-  goal:{result:"consistent with the evidence read",cites:["a1"]},
-  line_1:{result:"not reached at this stop",cites:["a1"],detail:"CI pending"}}};
-""" + suffix,
-            storage_prelude({}) + cockpit_tests.NextCockpitCompositionTest.FIXTURE,
-        )
-
-    def test_final_unknown_claims_and_uncited_neutral_results_are_refused(self) -> None:
-        out = self.page("""
-function line(){return nextCockpitReadingShape(raw,annotation,entries,"",false).criteria[1];}
-const results=[];
-for(const scope of ["final","withdrawn", ""]){raw.scope=scope;results.push(line().result);}
-raw.scope="last-turn"; raw.criteria.line_1.cites=[]; results.push(line().result);
-raw.criteria.claims={result:"not reached at this stop",cites:["a1"]};
-results.push(nextCockpitReadingShape(raw,annotation,entries,"",false).criteria[2].result);
-console.log(JSON.stringify(results));
-""")
-        self.assertEqual(out, [reading.RESULT_UNVERIFIABLE] * 5)
-
-    def test_an_unfinished_claim_names_an_invalid_result_before_evidence_rules(self) -> None:
-        out = self.page("""
-const claim=nextCockpitReadingCriterion("claims","CLAIMS","",{
- result:"not reached at this stop",cites:["a1"]},entries,"",false,null,"last-turn");
-console.log(JSON.stringify({reason:claim.why,malformed:NEXT_READING_MALFORMED}));
-""")
-        self.assertEqual(out["reason"], out["malformed"])
-
-    def test_an_unfinished_explanation_is_visible_and_escaped_only_under_its_result(self) -> None:
-        out = self.page("""
-raw.criteria.line_1.detail="<script>placeholder</script> CI pending";
-const row=nextCockpitReadingShape(raw,annotation,entries,"",false).criteria[1];
-const neutral=nextCockpitResultItem(row,new Map(),new Map());
-raw.criteria.line_1.cites=[];
-const refused=nextCockpitResultItem(nextCockpitReadingShape(raw,annotation,entries,"",false)
-  .criteria[1],new Map(),new Map());
-console.log(JSON.stringify({neutral,refused}));
-""")
-        self.assertIn("&lt;script&gt;placeholder&lt;/script&gt; CI pending", out["neutral"])
-        self.assertNotIn("<script>", out["neutral"])
-        self.assertIn('data-next-result-state="not-reached"', out["neutral"])
-        self.assertNotIn("CI pending", out["refused"])
-
-    def test_an_unfinished_line_does_not_hide_a_separate_unverifiable_line(self) -> None:
-        out = self.page("""
-raw.criteria.line_2={result:"not verifiable from available evidence",cites:[]};
-const shape=nextCockpitReadingShape(raw,annotation,entries,"",false);
-console.log(JSON.stringify(nextDriftAnswer(shape,entries)));
-""")
-        self.assertEqual(out["kind"], "cant-tell")
-
-    def test_the_row_and_answer_are_neutral_and_offer_no_correction(self) -> None:
-        out = self._run_page_js(
-            "await __settle();\n"
-            """
-const annotation = {goal:"Ship", lines:[{text:"Merged",source:"typed"}], revision:1};
-const entries = [{id:"a1", type:"agent_message", by:"agent", at:95,
-  author:"agent", summary:"CI is pending", source:"Claude assistant text · exact"}];
-const raw = {revision_read:1,scope:"last-turn",criteria:{
-  goal:{result:"consistent with the evidence read",cites:["a1"]},
-  line_1:{result:"not reached at this stop",cites:["a1"],detail:"CI is pending"}}};
-const shape = nextCockpitReadingShape(raw,annotation,entries,"",false);
-const answer = nextDriftAnswer(shape,entries);
-nextData.annotate = true;
-console.log(JSON.stringify({answer:answer.kind,row:shape.criteria[1].result,
-  status:nextCockpitResultStatus(shape.criteria[1],new Map(),new Map()),
-  html:nextCockpitResultAnswer(answer,new Map(),new Map()),
-  offer:nextCockpitSteerOffer({harness:"claude",sid:"placeholder",annotation_revision:1},
-    annotation,{state:"read",entries,all:entries},shape)}));
-""",
-            storage_prelude({}) + cockpit_tests.NextCockpitCompositionTest.FIXTURE,
-        )
-        self.assertEqual(out["row"], NEUTRAL)
-        self.assertEqual(out["answer"], "not-reached")
-        self.assertIn("Not reached at this stop", out["status"])
-        self.assertIn("Not reached at this stop", out["html"])
-        self.assertNotIn("Can't tell", out["html"])
-        self.assertIsNone(out["offer"])

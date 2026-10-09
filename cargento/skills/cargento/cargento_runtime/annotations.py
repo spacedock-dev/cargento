@@ -2079,7 +2079,7 @@ def direction_floor(
 ) -> float | None:
     """The moment a direction must be after to be a later direction of these words.
 
-    The page's own rule (`nextCockpitLaterDirections`), made draft-aware as
+    The previous page's rule (`nextCockpitLaterDirections`), made draft-aware as
     item 4 of
     [DEC-24](docs/design-reading-a-session.md#dec-24-your-intent-is-a-drafted-goal-and-a-checklist-and-a-correction-is-yours-to-copy)
     needs: adopted words by their source time, typed words by

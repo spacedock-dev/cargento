@@ -1,58 +1,42 @@
 import { createHash } from 'node:crypto';
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { dirname, relative, resolve } from 'node:path';
-import { gunzipSync, gzipSync } from 'node:zlib';
+import { existsSync, readFileSync } from 'node:fs';
+import { relative, resolve } from 'node:path';
+import { gunzipSync } from 'node:zlib';
 import { afterAll, expect } from 'vitest';
 
-/* Golden records of what the legacy page computes, so the React port stays held to the legacy page after the
-   legacy page is gone.
+/* What the previous interface said, recorded, so the React port stays held to it after that interface was
+   removed. "Legacy" in this seam, in the `legacy*.test.helper.ts` files and in the differential tests means
+   that removed page: its source is gone from the shipped plugin and nothing here reads it.
 
-   The differential tests run the real legacy functions in a `vm` beside the TypeScript port and compare the
-   two over generated inputs. Every legacy loader is wrapped here, and the wrapper is the one place that
-   decides whether the legacy code runs at all. `CARGENTO_LEGACY` picks the mode:
+   Each differential test compares the TypeScript port with the recorded answers of the removed page over
+   generated inputs. A harness (`legacyHarness`) is a stand-in for the removed page's functions: calling one
+   of its methods looks the answer up in `frontend/test/golden/vitest/<test file>.json.gz`. These files are
+   fixtures of record. The page that produced them no longer exists, so they cannot be regenerated; a changed
+   generator, input or step fails with the name of the call that has no recorded answer. A deliberate
+   departure from a recorded behaviour is an edit to the test that says so, and an entry in the design
+   record, never a silent change of input.
 
-     replay (default)  The legacy code is not read and not run. Each answer comes from the golden file of the
-                       test file that asks. A call with no recorded answer fails with the name of the call:
-                       a changed generator, input or step has to be re-recorded, never passed silently.
-     live              The legacy code runs, as it did before this seam existed, and every answer is checked
-                       against the golden. A mismatch means the golden no longer says what the legacy page
-                       says. `CARGENTO_LEGACY_STRICT=1` also fails a call the golden has no answer for, which
-                       proves a golden is complete.
-     record            The legacy code runs and the answers are written to
-                       `frontend/test/golden/vitest/<test file>.json.gz`. Two different answers to one key fail
-                       the run: the call depends on state the wrapper cannot see.
-
-   Re-record, while the legacy code exists, from the repository root. Record whole test files, never with
-   `-t`: a file's golden is rewritten from the calls that run, so a filtered run would drop the rest.
-
-     CARGENTO_LEGACY=record pnpm exec vitest run <test files>
-     CARGENTO_LEGACY=live CARGENTO_LEGACY_STRICT=1 pnpm exec vitest run <test files>   # the proof
-
-   A key is a hash of what the legacy side was asked: the harness, the method, its arguments and the state
-   the earlier calls left it in. State is tracked as a hash and never read back from the page, so a method has
+   A key is a hash of what the removed page was asked: the harness, the method, its arguments and the state
+   the earlier calls left it in. State is tracked as a hash and never read back from a page, so a method has
    to say how it changes state (see `HarnessSpec`). The state returns to where the module left it at the
    start of every test, so a test filtered by name asks for the same keys as it does in a full run.
 
-   The generators stay deterministic (fixed seeds) so replay finds the keys it recorded. How many cases each
-   differential runs is a `CASES` constant in the test, not a setting of the recorder: the committed goldens
-   hold a few dozen to a hundred generated cases per differential, plus the hand-built edge cases, because
-   the migration's thousands of cases proved the port equal once and the goldens only have to keep it so.
-   A rare state the first seeds miss is reached by a named witness seed (`seedSample`) rather than by a
-   thousand more seeds. A callback handed to the legacy code stands in a key by its source text, so
-   reformatting one is a re-record. The goldens were checked against a clock moved 400 days on: nothing in
-   them reads the wall clock.
+   The generators stay deterministic (fixed seeds) so a run finds the keys that were recorded. How many cases
+   each differential runs is a `CASES` constant in the test: the committed goldens hold a few dozen to a
+   hundred generated cases per differential, plus the hand-built edge cases, because the migration's
+   thousands of cases proved the port equal once and the goldens only have to keep it so. A rare state the
+   first seeds miss is reached by a named witness seed (`seedSample`). A callback handed to the removed page
+   stands in a key by its source text, so reformatting one changes the key. The goldens were checked against
+   a clock moved 400 days on: nothing in them reads the wall clock.
 
-   Answers are stored through one codec in every mode, including `live` and `record`, so a test cannot pass
-   against a value a golden could not hold. The codec keeps what a JSON round trip would hide (`undefined`,
-   `NaN`, `-0`, the infinities, `Set`, `Map`, `Date`, `RegExp`) and refuses what it cannot keep (a function). */
+   Every key a golden holds must be asked for by the end of its test file's run, so a removed or shortened
+   differential (a smaller `CASES`, a dropped step) fails instead of leaving recorded answers nothing
+   compares. A run that cannot reach them all says so: a name filter (`-t`) skips the check, and a file
+   that skips tests on purpose calls `allowUnreadGoldens` with the reason.
 
-export type LegacyMode = 'live' | 'record' | 'replay';
-
-export function legacyMode(): LegacyMode {
-  const raw = process.env['CARGENTO_LEGACY'] ?? 'replay';
-  if (raw === 'live' || raw === 'record' || raw === 'replay') return raw;
-  throw new Error(`CARGENTO_LEGACY must be replay, record or live, not "${raw}".`);
-}
+   Answers are stored through one codec, so a test cannot pass against a value a golden could not hold. The
+   codec keeps what a JSON round trip would hide (`undefined`, `NaN`, `-0`, the infinities, `Set`, `Map`,
+   `Date`, `RegExp`) and refuses what it cannot keep (a function). */
 
 /* ---- the codec ---- */
 
@@ -163,24 +147,6 @@ interface GoldenFile {
   readonly blobs: Record<string, unknown>;
 }
 
-// Smaller than this, a reference costs more than the copy it saves.
-const BLOB_MIN = 160;
-
-function intern(node: unknown, blobs: Map<string, unknown>): unknown {
-  let out: unknown = node;
-  if (Array.isArray(node)) out = node.map((item) => intern(item, blobs));
-  else if (typeof node === 'object' && node !== null) {
-    const copy: Record<string, unknown> = {};
-    for (const [key, item] of Object.entries(node)) copy[key] = intern(item, blobs);
-    out = copy;
-  } else if (typeof node !== 'string') return node;
-  const text = JSON.stringify(out);
-  if (text.length < BLOB_MIN) return out;
-  const id = digest(text);
-  blobs.set(id, out);
-  return { $: 'ref', h: id };
-}
-
 function expand(node: unknown, blobs: ReadonlyMap<string, unknown>): unknown {
   if (Array.isArray(node)) return node.map((item) => expand(item, blobs));
   if (typeof node !== 'object' || node === null) return node;
@@ -221,7 +187,7 @@ class Goldens {
     if (this.loaded) return;
     this.loaded = true;
     const path = goldenPath();
-    if (legacyMode() === 'record' || !existsSync(path)) return;
+    if (!existsSync(path)) return;
     const file = JSON.parse(gunzipSync(readFileSync(path)).toString('utf8')) as GoldenFile;
     for (const [key, id] of Object.entries(file.entries)) this.entries.set(key, id);
     for (const [id, blob] of Object.entries(file.blobs)) this.blobs.set(id, blob);
@@ -229,46 +195,20 @@ class Goldens {
       this.results.set(id, expand(result, this.blobs));
   }
 
-  has(key: string): boolean {
-    this.load();
-    return this.entries.has(key);
-  }
+  private readonly asked = new Set<string>();
 
   /** The recorded answer, as the codec holds it. */
   answer(key: string): string | undefined {
     this.load();
     const id = this.entries.get(key);
+    if (id !== undefined) this.asked.add(key);
     return id === undefined ? undefined : JSON.stringify(this.results.get(id));
   }
 
-  record(key: string, encoded: unknown): void {
+  /** The recorded keys nothing asked for. */
+  unasked(): string[] {
     this.load();
-    const text = JSON.stringify(encoded);
-    const id = digest(text);
-    const known = this.entries.get(key);
-    if (known !== undefined && known !== id)
-      throw new Error(
-        `Two different legacy answers for one key (${key}): the call depends on state the golden seam cannot see. Declare how the method changes state in its HarnessSpec.`,
-      );
-    this.entries.set(key, id);
-    this.results.set(id, encoded);
-  }
-
-  flush(): void {
-    if (this.entries.size === 0) return;
-    const path = goldenPath();
-    const entries: Record<string, string> = {};
-    for (const key of [...this.entries.keys()].sort())
-      entries[key] = this.entries.get(key) as string;
-    const used = new Set(Object.values(entries));
-    const blobs = new Map<string, unknown>();
-    const results: Record<string, unknown> = {};
-    for (const id of [...used].sort()) results[id] = intern(this.results.get(id), blobs);
-    const shared: Record<string, unknown> = {};
-    for (const id of [...blobs.keys()].sort()) shared[id] = blobs.get(id);
-    const file: GoldenFile = { v: 1, entries, results, blobs: shared };
-    mkdirSync(dirname(path), { recursive: true });
-    writeFileSync(path, gzipSync(Buffer.from(JSON.stringify(file)), { level: 9 }));
+    return [...this.entries.keys()].filter((key) => !this.asked.has(key));
   }
 
   describe(): string {
@@ -278,8 +218,30 @@ class Goldens {
 
 const goldens = new Goldens();
 
+let unreadAllowed = '';
+
+/** A test file that skips tests on purpose, or that records more than it can ask for, says why here, once. */
+export function allowUnreadGoldens(reason: string): void {
+  if (!reason.trim())
+    throw new Error('allowUnreadGoldens needs the reason the golden is not read in full.');
+  unreadAllowed = reason;
+}
+
+function filtered(): boolean {
+  const worker = (globalThis as { __vitest_worker__?: { config?: { testNamePattern?: unknown } } })
+    .__vitest_worker__;
+  return Boolean(worker?.config?.testNamePattern);
+}
+
 // Registered at import, which happens while the test file is collected: a hook may not be added from a test.
-if (legacyMode() === 'record') afterAll(() => goldens.flush());
+afterAll(() => {
+  if (unreadAllowed || filtered()) return;
+  const unread = goldens.unasked();
+  if (unread.length)
+    throw new Error(
+      `${String(unread.length)} recorded answer(s) in ${goldens.describe()} were never asked for: ${unread.slice(0, 3).join(', ')}. A generator, a step or a case count shrank; the page that recorded them is gone, so restore the case or say why with allowUnreadGoldens.`,
+    );
+});
 
 /* ---- the wrapper ---- */
 
@@ -303,16 +265,9 @@ function currentTest(): string | undefined {
   return expect.getState().currentTestName;
 }
 
-export function legacyHarness<T extends object>(
-  kind: string,
-  load: () => T,
-  spec: HarnessSpec = {},
-): T {
-  const mode = legacyMode();
-  const strict = process.env['CARGENTO_LEGACY_STRICT'] === '1';
-  let real: T | null = null;
-  const page = (): T => (real ??= load());
-
+/** A stand-in for the removed page's functions, one per `kind`. Every method call and every `props` read is
+ *  answered from the golden of the test file that asks; none runs any code. */
+export function legacyHarness<T extends object>(kind: string, spec: HarnessSpec = {}): T {
   const baseline = { chain: 'first', slots: {} as Record<string, string> };
   let chain = baseline.chain;
   let slots: Record<string, string> = {};
@@ -340,29 +295,13 @@ export function legacyHarness<T extends object>(
   const keyFor = (name: string, args: string, stateful: boolean): string =>
     digest(`${kind}|${name}|${args}|${stateful ? state() : ''}`);
 
-  const answer = <R>(key: string, label: string, run: () => R): R => {
-    if (mode === 'replay') {
-      const stored = goldens.answer(key);
-      if (stored === undefined)
-        throw new Error(
-          `No golden for ${kind}.${label} in ${goldens.describe()}. A generator, an input or a step changed: re-record while the legacy code exists (see frontend/test/legacy_goldens.ts).`,
-        );
-      return decode(JSON.parse(stored)) as R;
-    }
-    const encoded = encode(run());
-    const text = JSON.stringify(encoded);
-    if (mode === 'record') goldens.record(key, encoded);
-    else {
-      const stored = goldens.answer(key);
-      if (stored === undefined) {
-        if (strict) throw new Error(`The golden has no answer for ${kind}.${label}.`);
-      } else if (stored !== text) {
-        throw new Error(
-          `The legacy page now answers ${kind}.${label} differently from its golden (${goldens.describe()}): ${text.slice(0, 160)} != ${stored.slice(0, 160)}`,
-        );
-      }
-    }
-    return decode(encoded) as R;
+  const answer = <R>(key: string, label: string): R => {
+    const stored = goldens.answer(key);
+    if (stored === undefined)
+      throw new Error(
+        `No golden for ${kind}.${label} in ${goldens.describe()}. A generator, an input or a step changed, and the page that recorded the answers no longer exists.`,
+      );
+    return decode(JSON.parse(stored)) as R;
   };
 
   const pure = new Set(spec.pure);
@@ -375,52 +314,23 @@ export function legacyHarness<T extends object>(
     arrive();
     const encodedArgs = JSON.stringify(encode(args, true));
     const isPure = pure.has(name);
-    const stateful = !isPure;
-    const key = keyFor(name, encodedArgs, stateful);
-    const after = (): void => {
-      const slot = spec.slots?.[name];
-      if (reset.has(name)) {
-        chain = baseline.chain;
-        slots = { ...baseline.slots };
-      } else if (slot !== undefined) slots = { ...slots, [slot]: digest(encodedArgs) };
-      else if (isPure || observeOnly.has(name)) return;
-      else chain = digest(`${chain}|${name}|${encodedArgs}`);
-      rebase();
-    };
-    const run = (): unknown =>
-      (page() as Record<string, (...a: unknown[]) => unknown>)[name]?.(...args);
-    if (asyncMethods.has(name)) {
-      if (mode === 'replay') {
-        const result = answer(key, name, run);
-        after();
-        return Promise.resolve(result);
-      }
-      return (async () => {
-        const pending = run();
-        const result = await pending;
-        const stored = answer(key, name, () => result);
-        after();
-        return stored;
-      })();
-    }
-    const result = answer(key, name, () => {
-      const value = run();
-      if (
-        value !== null &&
-        typeof value === 'object' &&
-        typeof (value as { then?: unknown }).then === 'function'
-      )
-        throw new Error(`${kind}.${name} returned a promise: list it under HarnessSpec.async.`);
-      return value;
-    });
-    after();
-    return result;
+    const key = keyFor(name, encodedArgs, !isPure);
+    const result = answer(key, name);
+    const slot = spec.slots?.[name];
+    if (reset.has(name)) {
+      chain = baseline.chain;
+      slots = { ...baseline.slots };
+    } else if (slot !== undefined) slots = { ...slots, [slot]: digest(encodedArgs) };
+    else if (isPure || observeOnly.has(name))
+      return asyncMethods.has(name) ? Promise.resolve(result) : result;
+    else chain = digest(`${chain}|${name}|${encodedArgs}`);
+    rebase();
+    return asyncMethods.has(name) ? Promise.resolve(result) : result;
   };
 
   const snapshot = (name: string): unknown => {
     arrive();
-    const key = keyFor(`prop:${name}`, '', true);
-    return answer(key, `prop ${name}`, () => (page() as Record<string, unknown>)[name]);
+    return answer(keyFor(`prop:${name}`, '', true), `prop ${name}`);
   };
 
   return new Proxy({} as T, {
@@ -433,17 +343,10 @@ export function legacyHarness<T extends object>(
   });
 }
 
-/* ---- the number of generated cases ---- */
-
-/** A differential's generated cases: the committed cap, or `envName` when the recorder or a developer asks. */
-export function caseCount(cap: number, envName?: string): number {
-  const asked = envName ? process.env[envName] : undefined;
-  return asked === undefined || asked === '' ? cap : Number(asked);
-}
-
-/** The seeds a differential runs: 1..`cases`, then the `witnesses`, one seed each for a rare state the first
- *  seeds do not reach, found once by running the generator wide. Keeping them as named seeds lets the
- *  committed record stay small without losing the states the "agreement proves something" checks demand. */
+/** A differential's generated cases: the seeds 1..`cases`, then the `witnesses`, one seed each for a rare
+ *  state the first seeds do not reach, found once by running the generator wide. Keeping them as named seeds
+ *  lets the committed record stay small without losing the states the "agreement proves something" checks
+ *  demand. */
 export function seedSample(cases: number, witnesses: readonly number[] = []): number[] {
   const seeds = Array.from({ length: cases }, (_, index) => index + 1);
   for (const witness of witnesses)

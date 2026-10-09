@@ -255,11 +255,9 @@ under `--daemon` too. Check whether a dashboard is already there before killing 
 python3 "<skill-dir>/server.py" --port 4553 --status
 ```
 
-`--status` reports one of three things, and never guesses: running (with pid, start time and the
-page it serves, `react` or `legacy`), not running, or that the port belongs to some other process —
-in which case it changes nothing. A running dashboard keeps its renderer until it is stopped, so a
-start with a different `--frontend` on that port is refused and names the page already there; run
-`--stop`, then start again with the flag you want.
+`--status` reports one of three things, and never guesses: running (with pid and start time), not
+running, or that the port belongs to some other process — in which case it changes nothing. A start
+on a port that already runs a dashboard is refused and points at it.
 
 The server writes ten files, all under `~/.cargento` (relocatable with `CARGENTO_HOME`):
 `cargento-<port>.json`, which records the running instance; `cargento-<port>.log`, where a
@@ -719,8 +717,7 @@ Paths 2 and 3 are complementary and can both be installed. Keep `Notification` o
 
 | Flag / URL | Effect |
 |---|---|
-| `--frontend MODE` | Select `react` (default) or `legacy` for this process. React draws the board; `legacy` is the temporary rollback to the previous page, kept for a short time and then removed. Only this flag selects the renderer: not a URL, an environment variable or a stored setting. The choice is made once at launch and a detached child keeps it. Installed builds need no Node or remote assets. A running dashboard keeps its renderer until it is stopped: to change it, run `--stop`, then start again with the flag you want. A missing or corrupt React build refuses before serving, says how to roll back and never substitutes the other page. The renderer changes how the board is drawn, not what Cargento reads or concludes about a session. |
-| `--frontend-dev-manifest PATH` | Contributor-only ticket for an owned Vite child, requiring foreground React (the default; `--frontend legacy` is refused) on `127.0.0.1`. Startup validates isolated fixture roots and a fresh child handshake; models, quota fetching and native actions are disabled. Diagnose/forget refuse this mode. Ordinary installed launches use the packaged page. |
+| `--frontend-dev-manifest PATH` | Contributor-only ticket for an owned Vite child, requiring a foreground server on `127.0.0.1`. Startup validates isolated fixture roots and a fresh child handshake; models, quota fetching and native actions are disabled. Diagnose/forget refuse this mode. Ordinary installed launches use the packaged page. |
 | `--claude-reading-model MODEL` | Select an explicit Claude Sonnet or Opus generation 5 or later ID for reader-requested Claude readings (default `claude-sonnet-5-5`). `claude-sonnet-5` is the baseline. Unavailable models fail without retrying another selection; aliases and lower or unknown families refuse before launch. This selection supplies no accuracy qualification. |
 | `--observer-model` / `--no-observer-model` | Offer optional Codex goal summaries, or refuse every model call for this run (refusal wins, including unasked checks). Goal summaries are off by default and retain their separate browser consent. On a goal-less Claude Code or Codex session the goal is drafted from the published first prompt (the latest where no first one with a time is published), and Analyze drift or Save intent adopts it. A session whose first prompt is a harness control such as `/clear` drafts nothing, says so, and never drafts a later prompt in its place. The goal field also offers the latest prompt without checking. Adopted goals say "from your prompt" and never enable unasked readings; editing the goal makes typed words. Reader-requested readings need no startup flag: the first Analyze drift presents its disclosure and Allow and analyze. The answer is remembered across tabs and restarts while the destination its disclosure named is unchanged, and asked for again once it moves; Turn off readings revokes it. They spend the capacity of the provider the disclosure names (Claude Code for a Claude Code session when `claude` is on PATH, Codex otherwise) and are capped at twelve reserved or actual attempts per rolling twenty-four hours. Failed attempts are not refunded; off/on and `--forget` do not reset that budget. Each prompt is bounded to 16,384 redacted bytes, with one call in flight per session; a reading has a 180-second timeout and a goal summary a 60-second one. Quota consent authorizes neither path. |
 | `--interaction-origin-session <harness:sid>` / `--interaction-origin-registration-file <private-file>` | Enable the prototype terminal for one exact session only when both flags are supplied. The generated private file supplies the registration capability; registration must happen inside that session's tmux pane. Output is read-only and bounded; no terminal input is accepted. |

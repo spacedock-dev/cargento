@@ -3,7 +3,6 @@ import { mulberry32, pick, type Rng } from '../observed/generate.test.helper';
 import { canonical, firstDifference } from '../observed/legacy.test.helper';
 import { loadLegacyCapacity } from '../capacity/legacy.test.helper';
 import { capacityRows } from './capacityRows';
-import { caseCount } from '../../test/legacy_goldens';
 
 /* The order and the figures the Console's capacity panel draws are held to `nextCapacityRows`. Generated
    usage boards publish windows with and without a clock, a reset already in the past, a vendor clock ahead of
@@ -12,7 +11,7 @@ import { caseCount } from '../../test/legacy_goldens';
 const legacy = loadLegacyCapacity();
 
 const CASES = 300;
-const SEEDS = caseCount(CASES);
+const SEEDS = CASES;
 const chance = (rnd: Rng, p: number): boolean => rnd() < p;
 const int = (rnd: Rng, low: number, high: number): number =>
   low + Math.floor(rnd() * (high - low + 1));

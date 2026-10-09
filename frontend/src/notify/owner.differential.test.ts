@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest';
 import { mulberry32, pick, type Rng } from '../observed/generate.test.helper';
 import { loadLegacyNotify } from './legacy.test.helper';
 import { createNotifyOwner, type NotifyHost } from './owner';
-import { caseCount } from '../../test/legacy_goldens';
 
 /* The notification owner is held to the legacy file that decides when a banner is raised. Both run the
    same long sequence of boards, permissions, clocks and leader states in lockstep, and after every step
@@ -141,7 +140,7 @@ function mine() {
 }
 
 const CASES = 80;
-const SEEDS = caseCount(CASES, 'NOTIFY_SEEDS');
+const SEEDS = CASES;
 
 describe('the notification owner raises what the legacy module raises', () => {
   it(`agrees step by step over ${String(SEEDS)} generated sequences`, async () => {

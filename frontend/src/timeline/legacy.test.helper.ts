@@ -1,14 +1,7 @@
-import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
-import vm from 'node:vm';
 import { legacyHarness } from '../../test/legacy_goldens';
 
-/* The legacy page's semantic timeline and activity filter, run as the page runs them, for the differential
-   tests. The legacy source is the oracle: the page stays the rollback while this one is built, so the port
-   is held to what `project.js` computes and not to a description of it. Only what the file touches at load
-   time is stubbed: a Map-backed `localStorage` the filter writes to, the document, and the three helpers the
-   cockpit's compatibility seam (`next-cockpit-compat.js`) supplies. Vitest runs from the repository root. */
-const WEB = 'cargento/skills/cargento/cargento_runtime/web';
+/* What the removed page said, for the semantic timeline and activity filter, as the differential tests ask for it. The answers
+   are recorded in `frontend/test/golden/vitest`; see `frontend/test/legacy_goldens.ts`. */
 
 export interface LegacyTimeline {
   readonly storage: Map<string, string>;
@@ -27,69 +20,6 @@ export interface LegacyTimeline {
   ): string;
   setGraphMode(mode: string): boolean;
   resolveGraphMode(options?: Record<string, unknown>): string;
-}
-
-function buildLegacyTimeline(): LegacyTimeline {
-  const storage = new Map<string, string>();
-  const localStorage = {
-    getItem: (key: string) => storage.get(key) ?? null,
-    setItem: (key: string, value: string) => void storage.set(key, value),
-    removeItem: (key: string) => void storage.delete(key),
-  };
-  const sandbox: Record<string, unknown> = {
-    localStorage,
-    location: { href: 'http://127.0.0.1:4581/', search: '', hash: '' },
-    document: { addEventListener: () => undefined, getElementById: () => null },
-    URLSearchParams,
-    encodeURIComponent,
-    decodeURIComponent,
-    Date,
-    Math,
-    JSON,
-    Number,
-    String,
-    Array,
-    Object,
-    Set,
-    Map,
-    esc: (value: unknown) =>
-      String(value == null ? '' : value).replace(
-        /[&<>"']/g,
-        (c) => `&#${String(c.charCodeAt(0))};`,
-      ),
-    sessKey: (session: { harness?: unknown; sid?: unknown; session?: unknown } | null) =>
-      `${String(session?.harness || '')}:${String(session?.sid || session?.session || '')}`,
-    fmtDur: (seconds: number) => `${String(Math.round(Number(seconds)))}s`,
-  };
-  vm.createContext(sandbox);
-  const source = readFileSync(resolve(process.cwd(), WEB, 'project.js'), 'utf8');
-  const load = () => vm.runInContext(source, sandbox, { filename: 'project.js' });
-  load();
-  return {
-    storage,
-    setScope(project, session) {
-      sandbox['__project'] = project;
-      sandbox['__session'] = session;
-      vm.runInContext(
-        'nextRoute = {view:"project", project:__project}; projectQuerySession = __session;',
-        sandbox,
-      );
-    },
-    clearStorage() {
-      storage.clear();
-    },
-    reload() {
-      // A reload is a new page: the module state is gone and only `localStorage` remains.
-      vm.runInContext('projectGraphModeBySession.clear(); projectLoadGraphModes();', sandbox);
-    },
-    timeline(data, model, delegations, focus, origins, options) {
-      const fn = sandbox['projectSemanticTimeline'] as (...args: unknown[]) => string;
-      return fn(data, model, delegations, focus, origins, options);
-    },
-    setGraphMode: (mode) => (sandbox['projectSetGraphMode'] as (m: string) => boolean)(mode),
-    resolveGraphMode: (options) =>
-      (sandbox['projectResolveGraphMode'] as (o?: unknown) => string)(options),
-  };
 }
 
 export interface LegacyRow {
@@ -122,7 +52,7 @@ export function legacyEmptyText(html: string): string | null {
 }
 
 export function loadLegacyTimeline(): LegacyTimeline {
-  return legacyHarness('timeline', buildLegacyTimeline, {
+  return legacyHarness('timeline', {
     slots: { setScope: 'scope' },
     observe: ['timeline', 'resolveGraphMode'],
     props: ['storage'],

@@ -14,6 +14,13 @@ model or a native action is listed in `UNREACHABLE` with the reason instead of i
 
     python3 scripts/regen_client_fixtures.py          # rewrite the committed files
     python3 scripts/regen_client_fixtures.py --check  # exit 1 if any file is stale
+
+It also writes `frontend/test/fixtures/vocabulary.json`: the words, keys and rules the Python
+producers and their React twins each spell, read from the Python modules at generation time. A
+Python constant that changes without regeneration fails `--check`; a React constant that no longer
+equals the fixture fails `frontend/src/api/vocabulary.test.ts`. The file sits beside the
+client-contract directory, not in it, because that directory is recorded request and response
+scenarios and the manifest and the client tests require every file in it to be one.
 """
 
 from __future__ import annotations
@@ -43,11 +50,17 @@ if TYPE_CHECKING:
 REPO = Path(__file__).resolve().parents[1]
 SKILL = REPO / "cargento" / "skills" / "cargento"
 FIXTURES = REPO / "frontend" / "test" / "fixtures" / "client-contract"
+VOCABULARY = FIXTURES.parent / "vocabulary.json"
 sys.path.insert(0, str(SKILL))
+from cargento_runtime import aggregate as runtime_aggregate  # noqa: E402 - skill runtime path
 from cargento_runtime import annotations as annotation_store  # noqa: E402 - skill runtime path
+from cargento_runtime import levels as runtime_levels  # noqa: E402 - skill runtime path
+from cargento_runtime import notifications as runtime_notifications  # noqa: E402 - runtime path
 from cargento_runtime import observation as observation_module  # noqa: E402 - skill runtime path
+from cargento_runtime import reading as runtime_reading  # noqa: E402 - skill runtime path
 from cargento_runtime import reading_jobs as runtime_reading_jobs  # noqa: E402 - skill runtime path
 from cargento_runtime import reading_route as runtime_reading_route  # noqa: E402 - runtime path
+from cargento_runtime import records as runtime_records  # noqa: E402 - skill runtime path
 from cargento_runtime import tripwires as runtime_tripwires  # noqa: E402 - runtime path
 from cargento_runtime.aggregate import Application, HarnessSpec  # noqa: E402 - skill runtime path
 from cargento_runtime.config import build_runtime_config  # noqa: E402 - skill runtime path
@@ -271,11 +284,6 @@ class Rig:
             os_name="posix",
             launcher_path=SKILL / "server.py",
             port=4581,
-            # Named rather than defaulted: the committed bytes carry the legacy `frontend`
-            # field and an unprefixed build id, so a change of default renderer must not
-            # rewrite every fixture. The published React values are asserted in
-            # `test_react_frontend`, against the real page identity.
-            frontend="legacy",
             store_root_overrides={"claude.projects": str(self.dir / "projects")},
             **flags,
         )
@@ -1597,20 +1605,98 @@ def generate() -> dict[str, bytes]:
     return dict(sorted(files.items()))
 
 
+def _code_point_ranges(pattern: Any) -> list[list[int]]:
+    """The BMP code points a compiled pattern matches as one character, as [first, last] runs."""
+    runs: list[list[int]] = []
+    for point in range(0x10000):
+        if not pattern.fullmatch(chr(point)):
+            continue
+        if runs and runs[-1][1] == point - 1:
+            runs[-1][1] = point
+        else:
+            runs.append([point, point])
+    return runs
+
+
+def vocabulary() -> dict[str, Any]:
+    """What the Python producers and their React twins must each spell the same way.
+
+    Every entry is read from the Python module that owns it, so a change there moves this file and
+    `--check` says so. The React side is held to it by `frontend/src/api/vocabulary.test.ts`, which
+    imports the React constants where they live and compares them, so a change on either side fails
+    until the other follows. These replaced the Python tests that compared the retired page's
+    source text with the same constants.
+    """
+    reading = runtime_reading
+    # The registry labels a harness; a titled alert and a popup body are composed in two layers.
+    labels = ("Claude Code", "")
+    wait_bodies = [
+        {"project": "alpha/app", "state_detail": detail} for detail in ("", "Run the migration?")
+    ]
+    ask_details = [
+        {"question": question, "project": project}
+        for question, project in (
+            ("Which branch?", "alpha/app"),
+            ("Which branch?", ""),
+        )
+    ]
+    return {
+        "format": FORMAT,
+        "assessmentKeys": list(reading.ASSESSMENT_KEYS),
+        "criterionKeys": list(reading.CRITERION_KEYS),
+        "whyTokens": [token for token in reading.WHY_TOKENS if token != reading.WHY_STANDS],
+        "whyStands": reading.WHY_STANDS,
+        "workEvidenceByHarness": {
+            harness: sorted(types) for harness, types in reading.WORK_EVIDENCE_BY_HARNESS.items()
+        },
+        "checkResultWords": dict(reading.CHECK_RESULT_WORDS),
+        "checkNotRecorded": reading.CHECK_NOT_RECORDED,
+        "checkEarlierFailed": reading.CHECK_EARLIER_FAILED,
+        "checkBeforeLastChange": reading.CHECK_BEFORE_LAST_CHANGE,
+        "results": list(reading.RESULTS),
+        "promptSources": list(reading.PROMPT_SOURCES),
+        "promptChosen": reading.PROMPT_CHOSEN,
+        "maxOutcomeLines": reading.MAX_OUTCOME_LINES,
+        "turnStopHarnesses": list(reading.TURN_STOP_HARNESSES),
+        "levelReasons": list(runtime_levels.REASONS),
+        "annotationFields": sorted(annotation_store.published(None)),
+        "unsafeChars": {
+            "pattern": runtime_records._UNSAFE_CHARS.pattern,  # noqa: SLF001 - the rule is the contract
+            "codePoints": _code_point_ranges(runtime_records._UNSAFE_CHARS),  # noqa: SLF001
+        },
+        "titles": {
+            "waiting": {label: runtime_notifications.waiting_title(label) for label in labels},
+            "asking": {label: runtime_notifications.asking_title(label) for label in labels},
+        },
+        "waitBodies": [
+            {**case, "body": runtime_aggregate._wait_popup_body(case)}  # noqa: SLF001
+            for case in wait_bodies
+        ],
+        "askDetails": [
+            {**case, "detail": runtime_notifications.ask_popup_detail(**case)}
+            for case in ask_details
+        ],
+    }
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("--check", action="store_true", help="exit 1 if a committed file is stale")
     args = parser.parse_args()
     files = generate()
     present = {path.name: path.read_bytes() for path in FIXTURES.glob("*.json")}
+    words = canonical(vocabulary())
     if args.check:
         stale = sorted(
             {name for name in files if present.get(name) != files[name]}
             | (present.keys() - files.keys())
         )
+        if not VOCABULARY.is_file() or VOCABULARY.read_bytes() != words:
+            stale.append(str(VOCABULARY.relative_to(REPO)))
         for name in stale:
             print(f"stale: {name}", file=sys.stderr)
         return 1 if stale else 0
+    VOCABULARY.write_bytes(words)
     FIXTURES.mkdir(parents=True, exist_ok=True)
     for name in present.keys() - files.keys():
         (FIXTURES / name).unlink()

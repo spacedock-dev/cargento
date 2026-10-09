@@ -10,7 +10,7 @@ import type { Annotation } from './annotation';
    and nothing else; no model is asked anything here. The legacy page's `nextCockpitWorkSource` and the
    functions beside it are the oracle (`work.differential.test.ts`). */
 
-const WORK_BY_HARNESS: Readonly<Record<string, readonly string[]>> = {
+export const WORK_BY_HARNESS: Readonly<Record<string, readonly string[]>> = {
   pi: ['work_result', 'result'],
   claude: ['tool_report'],
 };

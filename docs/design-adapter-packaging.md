@@ -108,7 +108,8 @@ These were four separate gaps. Each now has an independent check:
 
 1. **Runtime inventory:** `CARGENTO_RUNTIME_FILES` names both JavaScript files explicitly; discovery
    parity includes top-level `.js` alongside `.py`, and installed-copy checks reject a missing file.
-2. **Syntax:** `lint_embedded.py` syntax-checks each adapter as an ES module outside the web bundle.
+2. **Syntax:** each adapter is imported as an ES module under Node, outside the web bundle, by the
+   `validate_plugins.py` probes and by `test_opencode_plugin` and `test_pi_extension`; a syntax error fails there.
 3. **Vocabulary:** `validate_plugins.py` invokes the actual OpenCode passive event callback and Pi's
    native `ui_prompt_start` / `ui_prompt_end` handlers. It checks their registrations and emitted
    gate pair; wrong native names and a removed gate mapping fail.

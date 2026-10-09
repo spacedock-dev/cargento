@@ -17,7 +17,6 @@ the documented `AKIAIOSFODNN7EXAMPLE`.
 
 from __future__ import annotations
 
-import shutil
 import tempfile
 import unittest
 from pathlib import Path
@@ -40,8 +39,6 @@ from . import test_direction_adoption as adoption
 from .support import make_server, serve_until_closed
 from .test_claude_checks import SHORT, START, Transcript
 from .test_direction_adoption import _row
-from .test_next_activity_numbers import WINDOW, WINDOWED, facts_js, rows_of
-from .test_next_drift_panel import PanelPage
 
 FIRST = "Add retry with backoff to the webhook handler."
 ARGS = "1287 address the placeholder review comments"
@@ -346,41 +343,6 @@ class ACommandIsNeverShownWholeWhenItWasCutTest(_SlashSession):
         (entry,) = [row for row in ledger if row["id"] == fact["fact_id"]]
         self.assertEqual(typed[: project_context.MAX_SEMANTIC_LINE], entry["summary"])
         self.assertEqual(typed, entry.get("words"))
-
-
-@unittest.skipUnless(shutil.which("node"), "node not available")
-class TheSessionPageListsTheCommandAsALaterDirectionTest(PanelPage):
-    def test_the_collected_command_is_flagged_and_asked_about(self) -> None:
-        # The summary the page draws is the one the collector publishes for the recorded shape,
-        # so this reads the server's output rather than restating it.
-        with tempfile.TemporaryDirectory() as temp:
-            board = Board(Path(temp))
-            board.session.skill("pr-review-response", ARGS)
-            summary = next(
-                str(f["summary"])
-                for f in board.facts()
-                if f.get("type") == "user_message" and str(f["summary"]).startswith("/")
-            )
-        rows = [*WINDOWED, ("later", 120, "user_message", summary, {})]
-        html = self.page("claude", facts_js("claude", rows) + WINDOW)
-        flagged = [row for row in rows_of(html) if row["flags"]]
-        self.assertEqual([DIRECTED], [row["summary"] for row in flagged])
-        self.assertEqual(["A later direction you gave"], flagged[0]["flags"])
-        self.assertIn(f"You gave a later direction at #4: &quot;{DIRECTED}&quot;.", html)
-
-    def test_a_cut_command_is_drawn_with_the_arguments_that_arrived(self) -> None:
-        with tempfile.TemporaryDirectory() as temp:
-            board = Board(Path(temp))
-            board.session.skill("pr-review-response", HUGE_ARGS)
-            summary = next(
-                str(f["summary"])
-                for f in board.facts()
-                if str(f.get("summary") or "").startswith("/pr-")
-            )
-        rows = [*WINDOWED, ("later", 120, "user_message", summary, {})]
-        html = self.page("claude", facts_js("claude", rows) + WINDOW)
-        (flagged,) = [row for row in rows_of(html) if row["flags"]]
-        self.assertTrue(flagged["summary"].startswith("/pr-review-response word0"), flagged)
 
 
 if __name__ == "__main__":

@@ -253,8 +253,6 @@ export async function startDevelopment(options = {}) {
     const launcher = options.backendHelper || join(root, 'cargento/skills/cargento/server.py');
     const args = [
       launcher,
-      '--frontend',
-      'react',
       '--frontend-dev-manifest',
       manifestPath,
       '--host',

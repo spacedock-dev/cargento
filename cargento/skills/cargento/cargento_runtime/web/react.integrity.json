@@ -162,11 +162,11 @@
       },
       {
         "file": "cargento/skills/cargento/cargento_runtime/web/page.py",
-        "sha256": "a7b40bdc38b56ad03c674638a945f0a74cb89e2685fc1886a726569b91a422dc"
+        "sha256": "83c21830054dc2285f1db8986338f1b2cf075728eff8ffd01c9c3ae88d48bc7e"
       },
       {
         "file": "cargento/skills/cargento/cargento_runtime/web/styles.css",
-        "sha256": "60dab8d2c8c098c06af224d7c34f3f176a291ac12fb271f9f439b5e3a37768f6"
+        "sha256": "92ba71eedd47a9d7a5a95a00fecf7aa99e2cf5bd1b88bf2214d7ddd63a0309d2"
       },
       {
         "file": "cargento/skills/cargento/cargento_runtime/web/vendor/SOURCES.txt",
@@ -522,11 +522,11 @@
       },
       {
         "file": "frontend/src/drift/sentences.ts",
-        "sha256": "13b599023a81c85d19168272a3760d8d200501866c1a763edbc34552b3c0dd37"
+        "sha256": "9605544864d96247fb8aa754d186856407e772744ffcc0b51fc1ae394cfe24dd"
       },
       {
         "file": "frontend/src/drift/shape.ts",
-        "sha256": "6b0abd12e77af26a346394e880b23575481cdcb8ccc7c0c033232e0869045b8d"
+        "sha256": "dc4e3ac53522ba7b6fccc625b46bd2820b123f688f374d49e78cb46089795bfe"
       },
       {
         "file": "frontend/src/drift/state.ts",
@@ -594,7 +594,7 @@
       },
       {
         "file": "frontend/src/intent/annotation.ts",
-        "sha256": "3f48dfd438069ec392704d152bcd0bf5c748bafcca89f0bd9237ac86608b0998"
+        "sha256": "39a0172c564f5685428a62ef82408b068394c1706d1c514235c3f919044bf1e5"
       },
       {
         "file": "frontend/src/intent/api.ts",
@@ -674,7 +674,7 @@
       },
       {
         "file": "frontend/src/intent/work.ts",
-        "sha256": "4a8ee44866bee056698093e90b9432fa756075d9a0ac3392662b7971a0a06ea2"
+        "sha256": "4d6aa44a1a5ea7d0380e20bc86778c15d435aa86a5802986abedb528f6499c07"
       },
       {
         "file": "frontend/src/main.tsx",
@@ -1274,7 +1274,7 @@
       },
       {
         "file": "package.json",
-        "sha256": "589a004214b360b836e2d697d5f0fa2d8b4bcd0dd35e11deee6731fb3cf0513d"
+        "sha256": "cdb87c1eb840dc04e338d407da36362959a36aa71bd073d6d4470a761e00c47c"
       },
       {
         "file": "pnpm-lock.yaml",

@@ -261,6 +261,7 @@ class FrontendWiringControlsTest(unittest.TestCase):
             "pnpm test:attention:browser",
             "pnpm test:capacity:browser",
             "pnpm test:terminal:browser",
+            "pnpm test:css:browser",
         ):
             with self.subTest(command=command):
                 matches = [step for step in steps if step.get("run") == command]
@@ -299,6 +300,7 @@ class FrontendWiringControlsTest(unittest.TestCase):
             "test:shell:browser": ("shell-routing.mjs",),
             "test:controls:browser": ("controls-continuity.mjs",),
             "test:storage:browser": ("storage-conformance.mjs",),
+            "test:css:browser": ("css-contract.mjs",),
         }
         for name, files in expected.items():
             for file in files:
@@ -422,6 +424,19 @@ class FrontendWiringControlsTest(unittest.TestCase):
         self.assertTrue(all(step.get("timeout-minutes", 0) > 0 for step in steps if "run" in step))
         python = next(step for step in steps if step.get("id") == "python")
         self.assertEqual("3.11", python["with"]["python-version"])
+
+    def test_no_step_runs_the_retired_embedded_linter_or_a_legacy_recording_mode(self) -> None:
+        # The embedded linter checked the previous interface's sources and went with them; Biome,
+        # strict types, the unit tests, the hostile-literal parser proof and `pnpm build:check`
+        # (the frontend job) are what check the React sources and the page built from them.
+        text = WORKFLOW.read_text()
+        self.assertNotIn("lint_embedded", text)
+        self.assertNotIn("CARGENTO_LEGACY", text)
+        lint_steps = [step.get("run", "") for step in jobs()["lint"]["steps"]]
+        self.assertFalse(any("scripts/" in command for command in lint_steps), lint_steps)
+        frontend = {step.get("run") for step in jobs()["frontend"]["steps"]}
+        for command in ("pnpm lint", "pnpm typecheck", "pnpm test", "pnpm test:parser"):
+            self.assertIn(command, frontend)
 
 
 if __name__ == "__main__":

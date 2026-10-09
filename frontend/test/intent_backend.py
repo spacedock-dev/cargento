@@ -2,10 +2,9 @@
 """Run the real CLI over synthetic Claude Code transcripts, for the Intent step's browser tests.
 
 Nothing but the transcripts is synthetic. The collector, the project-context reader, the annotation
-store, `/api/annotate`, `/api/direction` and `/api/annotations` are the real ones, so one helper
-serves the legacy page and the React page and a differential run compares like with like. The
-transcripts live in the scratch tree the launcher points every harness store at; no real store,
-model, clipboard, notification or terminal is read or called.
+store, `/api/annotate`, `/api/direction` and `/api/annotations` are the real ones, so a browser
+proof reads what a reader's page would. The transcripts live in the scratch tree the launcher points
+every harness store at; no real store, model, clipboard, notification or terminal is read or called.
 
 What the board holds, by design:
 

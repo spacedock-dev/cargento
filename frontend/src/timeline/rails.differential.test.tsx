@@ -5,7 +5,6 @@ import { loadLegacyTimeline } from './legacy.test.helper';
 import { eventFlows } from './rails';
 import { Timeline } from './Timeline';
 import type { Delegation, GraphMode } from './semantic';
-import { caseCount } from '../../test/legacy_goldens';
 
 /* The lanes around the timeline's rows are held to the legacy page by what a reader can read: the legend that
    names each lane, the rail beside every row (which lane it is on, the mark, where each lane's line runs) and
@@ -15,7 +14,7 @@ import { caseCount } from '../../test/legacy_goldens';
 const legacy = loadLegacyTimeline();
 const MODES: readonly GraphMode[] = ['active', 'all', 'decisions'];
 const CASES = 80;
-const SEEDS = caseCount(CASES);
+const SEEDS = CASES;
 
 const norm = (node: Element | null): string =>
   (node?.textContent ?? '').replace(/\s+/g, ' ').trim();

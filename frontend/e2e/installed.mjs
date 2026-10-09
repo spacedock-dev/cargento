@@ -6,7 +6,6 @@ import { tmpdir } from 'node:os';
 import { join, relative, isAbsolute } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium } from '@playwright/test';
-import { LEGACY_LIVE } from './support/golden.mjs';
 
 const root = fileURLToPath(new URL('../../', import.meta.url));
 const pythonName =
@@ -19,18 +18,16 @@ const scratch = await mkdtemp(join(tmpdir(), 'cargento-installed-browser-'));
 let browser;
 const receipts = [];
 
-async function backend(plugin, mode, terminal, use) {
+async function backend(plugin, terminal, use) {
   const args = [
     join(root, 'frontend/test/installed_backend.py'),
     '--plugin-root',
     plugin,
-    '--frontend',
-    mode,
     '--port',
     terminal ? '4584' : '4583',
   ];
   if (terminal) args.push('--terminal-fixture');
-  if (mode === 'react') args.push('--focus-token', 'abcdef');
+  args.push('--focus-token', 'abcdef');
   const child = spawn(python, args, {
     cwd: scratch,
     stdio: ['pipe', 'pipe', 'pipe'],
@@ -76,7 +73,6 @@ async function backend(plugin, mode, terminal, use) {
       });
     });
     assert.equal(ready.ready, true);
-    assert.equal(ready.frontend, mode);
     const imported = relative(await realpath(plugin), await realpath(ready.runtime));
     assert.ok(
       !imported.startsWith('..') && !isAbsolute(imported),
@@ -141,7 +137,7 @@ try {
   await cp(join(root, 'cargento'), plugin, { recursive: true });
   await mkdir(join(scratch, 'no-executables'));
   browser = await chromium.launch();
-  await backend(plugin, 'react', false, async (ready) => {
+  await backend(plugin, false, async (ready) => {
     const probe = await contextFor(ready.port);
     try {
       await probe.page.goto(probe.origin + '/');
@@ -175,7 +171,6 @@ try {
         ),
       );
       const data = await (await probe.context.request.get(probe.origin + '/api/data')).json();
-      assert.equal(data.frontend, 'react');
       assert.equal(data.build, 'react-' + metadata.document.sha256.slice(0, 16));
       assert.deepEqual(probe.external, []);
       assert.deepEqual(probe.errors, []);
@@ -188,7 +183,6 @@ try {
         ),
       );
       receipts.push({
-        mode: 'react',
         bytes: metadata.document.bytes,
         fonts: structure.fonts,
         embeddedCore: true,
@@ -199,11 +193,8 @@ try {
       await probe.context.close();
     }
   });
-  /* The installed terminal, on the React page: the same button, the same two local vendor assets and the same
-     read-only output the legacy block below measures. The legacy block has no recording to replay (it asserts
-     the legacy page's own installed behaviour and nothing compares it with React), so it runs only while the
-     legacy page runs (`CARGENTO_LEGACY=live` or `record`, see `support/golden.mjs`). */
-  await backend(plugin, 'react', true, async (ready) => {
+  /* The installed terminal: the Open terminal button, the two local vendor assets and the read-only output. */
+  await backend(plugin, true, async (ready) => {
     const probe = await contextFor(ready.port);
     try {
       await probe.page.goto(probe.origin + '/' + ready.terminal_fragment);
@@ -221,7 +212,6 @@ try {
       assert.deepEqual(probe.external, []);
       assert.deepEqual(probe.errors, []);
       receipts.push({
-        mode: 'react',
         terminal: ready.terminal_fixture,
         localVendorAssets: true,
         actualReadOnlyViewportOutput: true,
@@ -232,38 +222,6 @@ try {
       await probe.context.close();
     }
   });
-  if (LEGACY_LIVE)
-    await backend(plugin, 'legacy', true, async (ready) => {
-      const probe = await contextFor(ready.port);
-      try {
-        await probe.page.goto(probe.origin + '/' + ready.terminal_fragment);
-        await probe.page.getByRole('button', { name: 'Open terminal', exact: true }).click();
-        await probe.page.locator('#pc-terminal-screen .xterm').waitFor();
-        await probe.page.waitForFunction(
-          "typeof projectTerminalSequence !== 'undefined' && projectTerminalSequence > 0",
-        );
-        const content = await probe.page.evaluate(`(() => {
-        const rows=[]; for(let i=0;i<projectTerminal.buffer.active.length;i++) rows.push(projectTerminal.buffer.active.getLine(i).translateToString());
-        return rows.join('\\n');
-      })()`);
-        assert.ok(content.includes('Installed synthetic read-only terminal'));
-        assert.ok(probe.requests.some((url) => new URL(url).pathname === '/assets/xterm.js'));
-        assert.ok(probe.requests.some((url) => new URL(url).pathname === '/assets/xterm.css'));
-        assert.ok(probe.frames.length > 0);
-        assert.deepEqual(probe.external, []);
-        assert.deepEqual(probe.errors, []);
-        receipts.push({
-          mode: 'legacy',
-          terminal: ready.terminal_fixture,
-          localVendorAssets: true,
-          actualReadOnlyViewportOutput: true,
-          externalRequests: 0,
-          nodeHiddenFromPython: true,
-        });
-      } finally {
-        await probe.context.close();
-      }
-    });
   console.log(JSON.stringify({ installed: receipts }, null, 2));
 } finally {
   if (browser) await browser.close();

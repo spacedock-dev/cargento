@@ -14,7 +14,7 @@
     "statePaint": "Empty/unavailable have no unique sequence marker in production DOM; update-to-paint unavailable."
   },
   "differences_from_baseline": [
-    "The page is react.html through frontend_fluidity_fixture.py, which reuses the baseline fixture's data and states.",
+    "The page is react.html through frontend_fluidity_fixture.py, which serves the baseline fixture's data and states (its cohorts, rows, titles and states); the baseline's own fixture script was removed with the previous interface.",
     "The poll is the page's own 20 s fallback-poll callback, captured from setInterval; the React page has no global poll function.",
     "Two instrumentation additions: the setInterval wrapper keeps callbacks and an EventSource wrapper counts open streams. The shared instrumentation is otherwise the baseline's text, checked by a test.",
     "The editor step also holds an opened disclosure and the prompt select and checks native undo.",
@@ -84,6 +84,17 @@
       "bytes": 8044
     }
   },
+  "current_sources": {
+    "driver": {
+      "sha256": "14159347ec0bdbb8c25191fd45f8f63225eb3641cac4b592db5a00d9d0d38226",
+      "bytes": 28963
+    },
+    "fixture": {
+      "sha256": "fa9d5413925af80d91e0d1dc7eb4794b5728db7d1a56e942270a3f79647f3b8d",
+      "bytes": 9241
+    }
+  },
+  "baseline_status": "Historical. The pre-React baseline's probe and fixture were removed with the previous interface, so it cannot be re-measured: its budgets derive from the runs embedded in docs/frontend-baseline.json, which is bound here by digest, and its control runs are kept as they were taken.",
   "baseline_binding": {
     "sha256": "2d025730b1f9c6e01fbd580aef46ac2d9f60302dcc00b178e134563d7810c0a8",
     "bytes": 81097

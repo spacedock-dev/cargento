@@ -2,16 +2,17 @@
   "a": [
     "test:shell:browser",
     "test:project:browser",
-    "test:capacity:browser"
+    "test:capacity:browser",
+    "test:sessions:browser"
   ],
   "b": [
-    "test:sessions:browser",
     "test:terminal:browser",
     "test:intent:browser",
     "test:drift:browser",
     "test:console:browser",
     "test:attention:browser",
     "test:storage:browser",
-    "test:controls:browser"
+    "test:controls:browser",
+    "test:css:browser"
   ]
 }

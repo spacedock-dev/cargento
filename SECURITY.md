@@ -793,8 +793,9 @@ would be a strictly worse trade than the raise is worth.
 
 So focus gets **its own consumer key**, and it is delivered by injecting it into the served document
 where the page bytes are handed to the server rather than by baking it into an asset. That seam
-matters: the frontend's assembled bytes are pinned by digest in two test files, and a token in an
-asset would make them non-deterministic. Injecting after assembly leaves those pins untouched.
+matters: the page's bytes are verified against `react.integrity.json` at load, and a token in an
+asset would break that check and make them non-deterministic. Injecting after the load leaves the
+verified bytes untouched.
 
 Both halves of that matter and neither is decoration. A GET would repeat a gap this repository has
 already been bitten by: an attacker page that gets the browser to open a Cargento URL in a tab reads
@@ -939,7 +940,7 @@ This paragraph previously described the banner as shipped when the page had no b
 control and no stored setting at all: the next-UI promotion had dropped them, the page consequently
 sent the parameter never, and nothing failed because nothing bound this paragraph to the page. The
 promise was true only because the feature never acted. Restoring the surface and making the page
-ask, in that order, repaired it. `test_next_capacity.py` binds the builder and the mount, and
+ask, in that order, repaired it. `frontend/src/capacity/UsageConsent.test.tsx` and `frontend/src/api/bootstrap.test.ts` bind the builder and the mount, and
 `test_quota.NoFetchWithoutConsentTest` binds the server's refusal, so neither half can go missing
 again without a red test.
 

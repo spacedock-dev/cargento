@@ -1,5 +1,4 @@
 import { describe, expect, it } from 'vitest';
-import { caseCount } from '../../test/legacy_goldens';
 import { genPayload, mulberry32, pick } from '../observed/generate.test.helper';
 import { canonical, firstDifference } from '../observed/legacy.test.helper';
 import { loadLegacyAttention } from './legacy.test.helper';
@@ -17,7 +16,7 @@ const legacy = loadLegacyAttention();
 /* How many generated payloads run beside the legacy answers. The legacy answers are recorded goldens, so the
    number is what the committed record holds: raising it needs a re-record (see test/legacy_goldens.ts). */
 const CASES = 80;
-const SEEDS = caseCount(CASES, 'ATTENTION_SEEDS');
+const SEEDS = CASES;
 
 describe('nextAttentionModel and attentionModel agree over generated payloads', () => {
   it(`agrees on all ${String(SEEDS)} seeds`, () => {

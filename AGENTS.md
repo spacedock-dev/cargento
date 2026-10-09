@@ -43,9 +43,17 @@ cargento/                           # plugin root: Claude Code, Codex, Antigravi
         ├── cargento_runtime/       # importable dashboard runtime package
         │                           # per-module map: docs/design-runtime-architecture.md
         │   ├── collectors/         # one harness collector per file, one per supported harness
-        │   └── web/                # canonical HTML, CSS, JS, fonts, and page loader
+        │   └── web/                # the built React page, its integrity metadata and licenses, vendored
+        │                           # terminal assets, fonts and the page loader (`page.py`); the frozen
+        │                           # legacy script parts stay for the paused study only, never served
         ├── agents/openai.yaml      # Codex presentation metadata
         └── tests/                  # dashboard unit tests and shared support
+frontend/                           # React sources, unit tests and browser proofs (Node and pnpm; not shipped)
+├── src/                            # the React page; `pnpm build` packages it into `web/react.html`
+├── test/                           # test support, synthetic backends and the recorded answers
+│                                   # (`test/golden/`: fixtures of record, never regenerated)
+├── e2e/                            # Playwright browser proofs, run by `pnpm test:*:browser`
+└── build/ dev/                     # the packager and the contributor development supervisor
 cargento-gemini/                    # extension root: Gemini CLI (hooks only)
 └── hooks/
     ├── hooks.json                  # Gemini CLI lifecycle hooks
@@ -87,8 +95,8 @@ shipped skill body, lives in the `sync-docs` skill at `.claude/skills/sync-docs/
 | `docs/promise-map.md` | **Canonical** user-facing promise: one promise per stage of the user's day, the shipped capability behind each, and where each stops. Release notes and the README lede restate it rather than reinvent it. |
 | `docs/development-tracking.md` | **Canonical** development taxonomy: promise IDs, journey labels, board columns, moves and tracker copies. It links to the public promise map without putting tracker provenance into that map. |
 | `docs/design-runtime-architecture.md` | **Canonical** module map: what each runtime file owns, which way dependencies run, and how config/state/application are held. |
-| `docs/design-reader-state.md` | **Canonical** rule for what survives a redraw: one row per thing a reader can leave in the DOM, whether `renderNext` puts it back, and — for the two it does not manage — why. The code cites it instead of repeating it. |
-| `docs/design-frontend-migration.md` | React migration boundaries, ownership inventory and browser measurement method. `scripts/frontend-migration.json` maps existing parts, surfaces, routes, reader state and browser storage to migration owners and behavioral oracles; `scripts/frontend_inventory.py` checks completeness without loading runtime stores. |
+| `docs/design-reader-state.md` | **Canonical** rule for what survives a board refresh: one row per thing a reader can leave in the page, which React owner keeps it, and — for the two it does not manage — why. The code cites it instead of repeating it. |
+| `docs/design-frontend-migration.md` | The React frontend: its boundaries, the recorded answers it is held to, its deviations from the retired page and why, and the measurement method. `scripts/frontend-migration.json` maps the retired page's parts, surfaces, routes, reader state and browser storage to owners and proofs; `scripts/frontend_inventory.py` checks that each row is owned and names proofs that exist. |
 | `docs/design-reading-a-session.md` | **Canonical** record of the four rulings that govern what Cargento may say about a session against the words a reader typed: the evidence floor and the reader-requested model overlay, whether an assessment may be stored, that Cargento never writes into a session, and the seven-rule shape contract a reading must satisfy. The runtime cites its headings, because three of those rules are built into the producer rather than checked after it. |
 | [docs/design-adapter-packaging.md](docs/design-adapter-packaging.md) | **Canonical** adapter admission and packaging contract: identity normalizers, hook-shaped mappings, and implementation-language boundaries. |
 | `docs/design-*.md` | Durable design rationale, including alternatives that were tried and rejected. Each links to the architecture owner rather than repeating its module map. |
@@ -221,7 +229,6 @@ python3 -m pip install -r requirements-validation.txt -r requirements-dev.txt
 ruff check .
 ruff format --check .
 mypy
-python3 scripts/lint_embedded.py   # needs node; add --allow-missing-node to degrade
 python3 scripts/validate_plugins.py
 python3 scripts/bump_version.py --current   # version-field parity across all owned locations
 # `--current` proves the three version fields AGREE; `version-guard` additionally proves they
@@ -252,6 +259,7 @@ pnpm test:project:browser
 pnpm test:console:browser
 pnpm test:attention:browser
 pnpm test:capacity:browser
+pnpm test:css:browser         # computed-style readability contract: type floor, absences, inks, controls, variables, focus rings
 pnpm test:production:browser   # the same parity proofs against the shipped bundle: CARGENTO_E2E_BUNDLE=production, two shards in CI
 coverage erase
 python3 scripts/run_tests.py --coverage -s cargento/skills/cargento/tests -t .
@@ -331,26 +339,21 @@ test-only predecessor fixture checked by the real ledger validator for those set
 an end-to-end test of every reservation, settlement and the full 239-call ceiling. Do not cache
 production receipt validation or relax durability to make a test faster.
 
-**Frontend byte pins are the conflict you will get.** `tests/test_next_page.py` holds per-part sizes
-and digests plus the assembled page, and it is not the only file that pins it: `tests/test_next_flag.py`
-holds the assembled length and digest in separate tests, and `tests/test_focus.py` holds a digest
-of the assembled page too. Across those three files, two assertions pin the assembled length and
-three pin its digest. Two branches that both change a web asset produce a conflict where
-**each side is correct for a tree that no longer exists**, so a textual resolution ships a number
-wrong for both.
+**The built page is the conflict you will get.** `react.html`, `react.integrity.json` and
+`react-licenses.txt` under `cargento_runtime/web/` are build output. Two branches that change anything
+the build reads (a source file, `page.py`'s font table, the font rows of `styles.css`, a lockfile)
+produce a conflict where **each side is correct for a tree that no longer exists**, so a textual
+resolution ships an artifact that matches neither. Resolve the sources, then rebuild with `pnpm build`
+and check with `pnpm build:check`, which fails when the tracked files differ from a clean build of the
+tree. Do not choose a side of the generated files. A page that changes also changes the digest the
+fluidity receipt binds, so `python3 scripts/frontend_cutover.py check --final` says when the page needs
+measuring again.
 
-**Run `python3 scripts/regen_byte_pins.py` rather than recomputing by hand**, and
-`--check` to ask whether anything is stale without writing. It derives every figure from the assets
-and rewrites all three files, which is the part that used to go wrong: recomputing only the first
-leaves CI red on the other two. A single asset edit moves **seven** figures, not one pair.
-
-The script exists because the procedure was hand-reasoned every time and five throwaway versions
-were written in one milestone. Three things it knows that a fresh one usually does not:
-`expected_fonts` pins the base64-DECODED payload rather than the file, so a raw read writes wrong
-figures for fifteen fonts; `styles.css` is two bare assertions rather than a table row, so a
-row-walker skips it; and `expected_faces` has the shape of a pin table without being one, which has
-now produced two wrong counts. It raises rather than continuing if it meets a pin row it cannot
-account for.
+**The recorded answers are the opposite case.** `frontend/test/golden/` holds what the retired page
+said, and the page that produced it no longer exists, so it cannot be regenerated. A conflict or a diff
+there is a mistake to undo, never something to resolve by re-recording. A change that needs a different
+answer edits the test that asks for it and records the departure in
+[the design record](docs/design-frontend-migration.md#held-to-recorded-answers).
 
 **Three files are conflict hotspots** because every branch wants a line in them:
 
@@ -398,8 +401,8 @@ actually blocked a merge** — 3.5 agents per finding — and exhausted the sess
 
 The checking earned its keep: every one of those five PRs shipped a real defect that fully green CI
 missed, and none was findable by reading the diff. It was the **uniformity** that cost. A 339-line
-additive PR with no callers got the same six-agent treatment as the one that owns both frontend
-byte-pin oracles.
+additive PR with no callers got the same six-agent treatment as the one that owned both frontend
+byte-pin oracles (a pair of tests since removed).
 
 **Review depth — pick per PR, not per session.**
 
@@ -407,7 +410,7 @@ byte-pin oracles.
 |---|---|
 | No user-visible behaviour change and nothing calls it yet | Self-verify: read the diff, run the checks, merge. |
 | Security, credential handling, or data loss | Full adversarial — several lenses, a completeness critic, an arbiter. |
-| Owns a conflict-prone surface (`web/` byte pins, `SKILL.md`, `config.py`) | Two lenses plus an arbiter. |
+| Owns a conflict-prone surface (the built page, `SKILL.md`, `config.py`) | Two lenses plus an arbiter. |
 | Anything else | Two lenses plus an arbiter. |
 
 What makes the rest affordable is an **arbiter that reproduces findings rather than ranking them**.
@@ -445,7 +448,7 @@ is Sonnet 5.5. Reviewer acceptance and scored producer results retain their sepa
 
 ## Quality Gate
 
-Every PR must pass the `quality-gate` required check (`.github/workflows/quality-gate.yml`): ruff with `select = ALL` (curated ignores documented in `pyproject.toml`), `ruff format --check`, `mypy --strict`, the HTML/CSS/JS frontend source linter (`scripts/lint_embedded.py`), a direct-launch smoke test on the Python 3.11 runtime floor followed by the whole suite there, the same suite under `coverage` on 3.12 with the `fail_under` threshold from `pyproject.toml` enforced once, and `platform-tests` — the same unit suite re-run natively on macOS and on Windows, each as two parallel legs, dashboard and scripts (Ubuntu is already covered by the two jobs before it). Python suite jobs use `scripts/run_tests.py`, one worker per core. The threshold only ratchets up — never lower it in a PR. A PR that must merge below threshold needs the `coverage-exception` label, which is visible in the PR timeline.
+Every PR must pass the `quality-gate` required check (`.github/workflows/quality-gate.yml`): ruff with `select = ALL` (curated ignores documented in `pyproject.toml`), `ruff format --check`, `mypy --strict`, a direct-launch smoke test on the Python 3.11 runtime floor followed by the whole suite there, the same suite under `coverage` on 3.12 with the `fail_under` threshold from `pyproject.toml` enforced once, and `platform-tests` — the same unit suite re-run natively on macOS and on Windows, each as two parallel legs, dashboard and scripts (Ubuntu is already covered by the two jobs before it). Python suite jobs use `scripts/run_tests.py`, one worker per core. The threshold only ratchets up — never lower it in a PR. A PR that must merge below threshold needs the `coverage-exception` label, which is visible in the PR timeline.
 
 **The required context always reports; its constituent jobs may not run.** A `changes` job decides
 whether the diff contains anything the gate can measure, and the measurable jobs are gated on
@@ -574,10 +577,10 @@ enforces both.
 
 Version fields are **owned by the tag-driven Release workflow** — never edit them in a PR (the `version-guard` check fails any PR that does).
 
-**Releases are on hold** while a `RELEASE_HOLD` file is tracked at the repository root. React became
-the default dashboard with the legacy page kept as a temporary rollback (`--frontend legacy`), and
-the hold lasts until that rollback is retired and the final browser, Python-only install and
-backend-connected development checks pass on one build of `main`. The guard is not prose:
+**Releases are on hold** while a `RELEASE_HOLD` file is tracked at the repository root. React is the
+only dashboard page: the legacy page and its `--frontend legacy` rollback were removed, and the hold
+lasts until the final browser, Python-only install and backend-connected development checks pass on
+one build of `main`. The guard is not prose:
 `scripts/release_transition.py resolve` refuses while the file is on `main`, for a fresh release and a
 resume, before any verifier or credential, `assert-checkout` asks again before anything is published,
 an unreadable `main` refuses rather than passing, and `scripts/tests/test_release_transition.py` rehearses it

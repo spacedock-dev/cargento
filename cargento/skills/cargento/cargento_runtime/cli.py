@@ -5,7 +5,6 @@ from __future__ import annotations
 import argparse
 import contextlib
 import dataclasses
-import errno
 import ipaddress
 import json
 import math
@@ -201,21 +200,15 @@ def claude_reading_model_arg(value: str) -> str:
 
 def build_parser() -> argparse.ArgumentParser:
     """The CLI surface. argparse owns --help and its own usage errors."""
-    parser = argparse.ArgumentParser(description=DESCRIPTION)
+    # Abbreviations are off so a removed option stays refused: `--frontend` is a unique prefix of
+    # `--frontend-dev-manifest`, and a habit from the retired renderer switch (`--frontend react`)
+    # would otherwise be read as a development ticket path instead of an unknown option.
+    parser = argparse.ArgumentParser(description=DESCRIPTION, allow_abbrev=False)
     parser.add_argument("--port", type=lifecycle.tcp_port, default=4553)
-    parser.add_argument(
-        "--frontend",
-        choices=runtime_config.FRONTENDS,
-        default=runtime_config.DEFAULT_FRONTEND,
-        help=(
-            "dashboard renderer for this process (default react; legacy is the "
-            "temporary rollback to the previous page)"
-        ),
-    )
     parser.add_argument(
         "--frontend-dev-manifest",
         type=Path,
-        help="owned contributor Vite startup ticket; requires foreground React on loopback",
+        help="owned contributor Vite startup ticket; requires a foreground server on loopback",
     )
     parser.add_argument(
         "--host",
@@ -466,7 +459,6 @@ def build_runtime(
         launcher_path=launcher_path,
         host=args.host,
         port=args.port,
-        frontend=args.frontend,
         window_hours=args.window_hours,
         spacedock_enabled=not args.no_spacedock,
         tripwires_enabled=not args.no_tripwires,
@@ -579,26 +571,20 @@ def build_application(
     return application
 
 
-def load_frontend_page(mode: str) -> bytes | None:
-    """Assemble the required dashboard page, or say why it cannot be served.
+def load_frontend_page() -> bytes | None:
+    """Load the dashboard page, or say why it cannot be served.
 
-    A failure never substitutes the other renderer: serving the legacy page because the
-    default one is broken would hide a damaged installation behind a dashboard that looks
-    fine. The message names the rollback instead, so the reader chooses it knowingly.
+    A failure serves nothing rather than a stand-in: a dashboard that looks fine over a
+    damaged installation would hide the damage.
     """
     try:
-        return frontend_page.load_frontend_page(mode)
+        return frontend_page.load_frontend_page()
     except (OSError, UnicodeError, RuntimeError) as exc:
         print(
             f"Cargento: cannot load frontend assets ({type(exc).__name__}: {exc}).",
             file=sys.stderr,
         )
-        if mode != "legacy":
-            print(
-                "Cargento: reinstall the plugin to repair this build, or start with "
-                "--frontend legacy to use the previous dashboard in the meantime.",
-                file=sys.stderr,
-            )
+        print("Cargento: reinstall the plugin to repair this build.", file=sys.stderr)
         return None
 
 
@@ -614,15 +600,9 @@ def validate_interaction_args(parser: argparse.ArgumentParser, args: argparse.Na
 def validate_frontend_args(parser: argparse.ArgumentParser, args: argparse.Namespace) -> None:
     if args.frontend_dev_manifest is None:
         return
-    if (
-        args.frontend != "react"
-        or args.host != "127.0.0.1"
-        or args.daemon
-        or args.diagnose
-        or args.forget
-    ):
+    if args.host != "127.0.0.1" or args.daemon or args.diagnose or args.forget:
         parser.error(
-            "development frontend requires foreground React on 127.0.0.1; "
+            "development frontend requires a foreground server on 127.0.0.1; "
             "diagnose/forget are not development commands"
         )
     for name in (
@@ -644,26 +624,13 @@ def prepare_frontend(
     config: RuntimeConfig, args: argparse.Namespace
 ) -> tuple[RuntimeConfig, bytes | None]:
     if args.frontend_dev_manifest is None:
-        return config, load_frontend_page(config.frontend)
+        return config, load_frontend_page()
     try:
         dev = frontend_dev.admit(args.frontend_dev_manifest, config)
         return dataclasses.replace(config, frontend_dev=dev), frontend_dev.load_page(dev)
     except RuntimeError as exc:
         print(f"Cargento: cannot admit development frontend ({exc}).", file=sys.stderr)
         return config, None
-
-
-def describe_bind_failure(exc: OSError, args: argparse.Namespace) -> str:
-    """The bind message, naming the renderer already on a busy port when it says which.
-
-    Only a busy port is asked, so a refused or reserved port costs no probe.
-    """
-    serving = None
-    if exc.errno == errno.EADDRINUSE or getattr(exc, "winerror", None) == 10048:  # WSAEADDRINUSE
-        serving = lifecycle.probe_frontend(args.port)
-    return http_api.bind_error_message(
-        exc, args.port, args.host, serving=serving, requested=args.frontend
-    )
 
 
 FOCUS_META_NAME = "cargento-focus"
@@ -678,10 +645,10 @@ def inject_focus_capability(page: bytes, token: str) -> bytes:
     """Put this run's focus capability into the served document.
 
     Injected here rather than baked into an asset, and the seam matters: the
-    frontend's assembled bytes are pinned by digest in two test files, so a token
-    inside `cargento_runtime/web/` would make them non-deterministic. This runs
-    between `load_frontend_page()` and the server construction, which leaves
-    `frontend_page.load_page()` byte-identical and both pins untouched.
+    page's bytes are verified against `react.integrity.json`, so a token inside
+    `cargento_runtime/web/` would break that check and make the page
+    non-deterministic. This runs between `load_frontend_page()` and the server
+    construction, which leaves the verified bytes untouched.
 
     Returns the page unchanged when there is nothing safe to inject, because a
     page with no control is the documented off state rather than an error.
@@ -929,7 +896,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             interaction_registration_file=args.interaction_origin_registration_file,
         )
     except OSError as exc:
-        runtime_io.diag(describe_bind_failure(exc, args), print)
+        runtime_io.diag(http_api.bind_error_message(exc, args.port, args.host), print)
         return 1
 
     announce_fd: int | None = None

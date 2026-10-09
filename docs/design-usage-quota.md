@@ -387,10 +387,10 @@ but vacuously: they described a mechanism nothing exercised.
 
 Both halves were restored together, disclosure first (DRC-4376) and the parameter second
 (DRC-4352), because the other order would have started reading a credential with no disclosure in
-front of it. `nextUsageConsent` in `web/next-capacity.js` is the gate, and it answers three states
+front of it. The usage consent control in `frontend/src/capacity/UsageConsent.tsx` is the gate, and it answers three states
 rather than two: `granted`, `declined`, and unanswered, where an unreadable or unrecognised stored
-value counts as unanswered. `tests/test_next_capacity.py` binds each of them to the URL the page
-actually builds.
+value counts as unanswered. `frontend/src/capacity/UsageConsent.test.tsx` and `frontend/src/api/bootstrap.test.ts` bind each of
+them to the URL the page actually builds.
 
 1. "No polling while no dashboard page is connected": no request, no fetch.
 2. "Disclosed before it acts": on first run the banner is up, no poll carries consent yet, and

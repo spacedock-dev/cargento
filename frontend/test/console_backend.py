@@ -4,10 +4,9 @@
 Only the collectors, the source of the workflow stage conditions, the history file and the terminal
 adapter are replaced. The CLI, HTTP guard, page selection, snapshot code, history lane,
 stage-condition store and its `/api/tripwire` route, ask registry and interaction registry are the
-real ones, so the same helper serves the legacy page and the React page and a differential run
-compares like with like. Nothing here reads a harness store, starts a terminal, calls a provider or
-fetches a quota: a model and the usage fetch stay off, and the one native action a session could
-cause (raising a terminal) is inert.
+real ones, so a browser proof reads what a reader's page would. Nothing here reads a harness
+store, starts a terminal, calls a provider or fetches a quota: a model and the usage fetch stay off,
+and the one native action a session could cause (raising a terminal) is inert.
 
 What the board holds, by design rather than by accident:
 

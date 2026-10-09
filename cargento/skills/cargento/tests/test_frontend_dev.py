@@ -66,7 +66,6 @@ class FrontendDevelopmentTest(unittest.TestCase):
             os_name="posix",
             launcher_path=SERVER_PATH,
             port=4581,
-            frontend="react",
             model_calls_disabled=True,
             usage_fetch_enabled=False,
             git_probe_enabled=False,
@@ -141,7 +140,6 @@ class FrontendDevelopmentTest(unittest.TestCase):
         for changes in (
             {"host": "0.0.0.0"},
             {"port": 4589},
-            {"frontend": "legacy"},
             {"model_calls_disabled": False},
             {"usage_fetch_enabled": True},
             {"home": "/real-home"},
@@ -304,18 +302,16 @@ class FrontendDevelopmentTest(unittest.TestCase):
                 self.assertTrue(timers, "elapsed deadline must have an owned watchdog")
                 self.assertTrue(all(not timer.is_alive() for timer in timers))
 
-    def test_cli_dev_requires_foreground_react_loopback_and_freezes_safe_services(self) -> None:
+    def test_cli_dev_requires_a_foreground_loopback_server_and_freezes_safe_services(self) -> None:
         parser = cli.build_parser()
-        for args in (("--daemon",), ("--host", "0.0.0.0"), ("--frontend", "legacy")):
+        for args in (("--daemon",), ("--host", "0.0.0.0")):
             with (
                 self.subTest(args=args),
                 redirect_stderr(io.StringIO()),
                 self.assertRaises(SystemExit),
             ):
-                cli.main(["--frontend", "react", "--frontend-dev-manifest", str(self.path), *args])
-        parsed = parser.parse_args(
-            ["--frontend", "react", "--frontend-dev-manifest", str(self.path)]
-        )
+                cli.main(["--frontend-dev-manifest", str(self.path), *args])
+        parsed = parser.parse_args(["--frontend-dev-manifest", str(self.path)])
         cli.validate_frontend_args(parser, parsed)
         config, _ = cli.build_runtime(parsed, started=1)
         self.assertTrue(config.model_calls_disabled)
@@ -383,7 +379,7 @@ class FrontendDevelopmentTest(unittest.TestCase):
             "USERPROFILE": str(self.root),
             "CARGENTO_HOME": str(self.root / "state"),
         }
-        args = ["--frontend", "react", "--frontend-dev-manifest", str(self.path), "--port", "4581"]
+        args = ["--frontend-dev-manifest", str(self.path), "--port", "4581"]
         with (
             mock.patch.object(cli, "runtime_environ", return_value=env),
             redirect_stderr(io.StringIO()),
@@ -421,8 +417,6 @@ class FrontendDevelopmentTest(unittest.TestCase):
             [
                 sys.executable,
                 str(helper),
-                "--frontend",
-                "react",
                 "--frontend-dev-manifest",
                 str(self.path),
                 "--port",

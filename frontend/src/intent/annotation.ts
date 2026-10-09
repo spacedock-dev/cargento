@@ -12,7 +12,7 @@ export type Annotation = Readonly<Record<string, unknown>>;
 /* The fields a row publishes, spelt as `annotations.published` spells them (the legacy page derives its
    own copy from the same list). `known` below tests exactly these, so a field this list lacks is one the
    page would never notice arriving. */
-const ANNOTATION_FIELDS: readonly string[] = [
+export const ANNOTATION_FIELDS: readonly string[] = [
   'goal',
   'goal_why',
   'lines_why',

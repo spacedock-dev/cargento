@@ -210,17 +210,8 @@ def bind_error_message(
     exc: OSError,
     port: int,
     host: str = "127.0.0.1",
-    *,
-    serving: str | None = None,
-    requested: str | None = None,
 ) -> str:
-    """Explain a failed bind instead of dumping a raw traceback.
-
-    `serving` is the renderer the occupant of the port publishes, when it publishes one,
-    and `requested` is the renderer this start asked for. A dashboard keeps its renderer
-    until it is stopped, so when they differ the useful advice is to stop it and start
-    again, not to use the page that is already running.
-    """
+    """Explain a failed bind instead of dumping a raw traceback."""
     winerror = getattr(exc, "winerror", None)
     if exc.errno == errno.EADDRINUSE or winerror == 10048:  # WSAEADDRINUSE
         # 0.0.0.0 is a bind address and not a destination, so the hint keeps
@@ -228,13 +219,6 @@ def bind_error_message(
         # `_host_admitted` says in as many words. Any other bind is where the
         # printed curl was pointing at the wrong machine.
         reachable = "127.0.0.1" if host in ("127.0.0.1", "0.0.0.0") else host  # noqa: S104
-        if serving is not None and requested is not None and serving != requested:
-            return (
-                f"Cargento: port {port} is already in use by a dashboard serving the {serving} "
-                f"page, and you asked for {requested}. A running dashboard keeps its renderer "
-                f"until it is stopped: stop it with --port {port} --stop, then start again "
-                f"with the flag you want. Otherwise pick another port with --port."
-            )
         return (
             f"Cargento: port {port} is already in use. If that is a dashboard "
             f"already running, use it: curl -s http://{reachable}:{port}/api/data. "
@@ -908,11 +892,11 @@ class _RequestHandler(BaseHTTPRequestHandler):
         # decision rather than an unfinished policy. It is not a fetch directive
         # and has no fallback to `default-src`, so alone it restricts framing and
         # nothing on the page. A second directive is not free: this document is
-        # one inline `<script>`, one inline `<style>` and nine `data:` font URIs,
-        # so a `default-src 'self'` added beside it serves a blank board.
+        # one `data:` module script and one `data:` stylesheet that carries its fonts
+        # as `data:` URIs, so a `default-src 'self'` added beside it serves a blank board.
         # A header rather than a `<meta http-equiv>` because CSP ignores
-        # `frame-ancestors` delivered that way, which is also what keeps the
-        # frontend byte pins untouched. No `X-Frame-Options: DENY` beside it:
+        # `frame-ancestors` delivered that way, which also leaves the page's
+        # verified bytes untouched. No `X-Frame-Options: DENY` beside it:
         # `frame-ancestors` wins wherever both are present, and a browser old
         # enough to read only XFO cannot run this page. What the header does and
         # does not buy is in SECURITY.md's Known and accepted section.
@@ -2630,7 +2614,7 @@ class _RequestHandler(BaseHTTPRequestHandler):
                 if latest
                 else {},
                 # The agent's messages carry a line verdict where no check can be sent
-                # (owner ruling, 2026-10-03), as the page's `nextReadingOutputLimit` says.
+                # (owner ruling, 2026-10-03), as the previous page's `nextReadingOutputLimit` says.
                 lines_judged=bool(
                     route["provider"]
                     and (

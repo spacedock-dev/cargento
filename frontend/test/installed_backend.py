@@ -2,7 +2,7 @@
 """Controlled installed-copy smoke server; stdin EOF owns its lifetime.
 
 All runtime imports come from the explicitly supplied plugin copy. The optional
-legacy terminal fixture uses synthetic HTTP registration and stream output; it
+terminal fixture uses synthetic HTTP registration and stream output; it
 starts no terminal, tmux, notification, provider, or child process.
 """
 
@@ -133,7 +133,6 @@ def isolated_environment(scratch: Path, environ: dict[str, str], *, os_name: str
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--plugin-root", type=Path, required=True)
-    parser.add_argument("--frontend", choices=("legacy", "react"), required=True)
     parser.add_argument("--port", type=int, required=True)
     parser.add_argument("--terminal-fixture", action="store_true")
     parser.add_argument(
@@ -171,7 +170,7 @@ def main() -> int:
     for module in modules.values():
         if not Path(module.__file__).resolve().is_relative_to(skill):
             raise RuntimeError("smoke runtime escaped the installed copy")
-    page = modules["web.page"].load_frontend_page(args.frontend)
+    page = modules["web.page"].load_frontend_page()
     with tempfile.TemporaryDirectory(prefix="cargento-installed-backend-") as temporary:
         scratch = Path(temporary)
         # The child environment and explicit runtime config independently refuse
@@ -185,7 +184,6 @@ def main() -> int:
             os_name=os.name,
             launcher_path=skill / "server.py",
             port=args.port,
-            frontend=args.frontend,
             spacedock_enabled=False,
             tripwires_enabled=False,
             usage_fetch_enabled=False,
@@ -243,7 +241,6 @@ def main() -> int:
             ready = {
                 "ready": True,
                 "port": server.server_port,
-                "frontend": args.frontend,
                 "runtime": str(Path(modules["config"].__file__).resolve()),
             }
             if prototype is not None:

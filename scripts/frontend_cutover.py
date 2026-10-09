@@ -3,8 +3,11 @@
 
 `fluidity` composes three complete runs of `frontend_fluidity.mjs` into
 `docs/frontend-fluidity.json` and judges them against the budgets the pre-React receipt
-(`docs/frontend-baseline.json`) fixes. `check` re-derives that receipt from its embedded runs, so a
-hand-edited verdict fails, and checks the mapped cutover receipt
+(`docs/frontend-baseline.json`) fixes. That baseline is historical: its probe and fixture were
+removed with the previous interface, so it is read, never re-measured, and its control runs (the
+unchanged baseline driver, run again beside the React runs) are kept as they were taken.
+`check` re-derives the fluidity receipt from its embedded runs, so a hand-edited verdict fails, and
+checks the mapped cutover receipt
 (`docs/frontend-cutover-receipt.json`): every row of the ownership map in
 `scripts/frontend-migration.json` must name a React-side proof that exists, or be recorded as a
 deviation, a deferral with an owner, or an explicit gap. Nothing here starts a browser, a server
@@ -59,11 +62,22 @@ PARITY_SCRIPTS = frozenset(
         "terminal",
     )
 )
+# Not a parity proof: the computed-style contract that replaced the legacy stylesheet guards also
+# runs on the shipped bundle.
+EXTRA_PRODUCTION_PROOFS = frozenset({"test:css:browser"})
+# The sources a measurement is taken with. A receipt records two digests of each: what the runs were
+# taken with (`source_bindings`, embedded in every run and never rewritten) and what the tree holds
+# when the receipt was last composed (`current_sources`, checked against the files).
 SCRIPTS = {
     "driver": "scripts/frontend_fluidity.mjs",
     "fixture": "scripts/frontend_fluidity_fixture.py",
-    "baselineFixture": "scripts/frontend_baseline_fixture.py",
 }
+BASELINE_STATUS = (
+    "Historical. The pre-React baseline's probe and fixture were removed with the previous "
+    "interface, so it cannot be re-measured: its budgets derive from the runs embedded in "
+    "docs/frontend-baseline.json, which is bound here by digest, and its control runs are kept as "
+    "they were taken."
+)
 COHORTS = ("small", "median", "large")
 COHORT_SIZES = {"small": 5, "median": 50, "large": 250}
 GROUPS = ("parts", "surfaces", "routes", "reader_state", "storage")
@@ -173,8 +187,6 @@ def run_problems(run: dict[str, Any]) -> list[str]:
     ]
     if run.get("leadership", {}).get("leaderAcquired") is not True:
         problems.append("the document never took the live stream before the navigation series")
-    if run.get("fixture", {}).get("frontend") != "react":
-        problems.append("the fixture did not serve the React page")
     return problems
 
 
@@ -451,8 +463,9 @@ def _comparability(base: dict[str, Any], run: dict[str, Any]) -> str:
 
 DIFFERENCES = (
     (
-        "The page is react.html through frontend_fluidity_fixture.py, which reuses the baseline "
-        "fixture's data and states."
+        "The page is react.html through frontend_fluidity_fixture.py, which serves the baseline "
+        "fixture's data and states (its cohorts, rows, titles and states); the baseline's own "
+        "fixture script was removed with the previous interface."
     ),
     (
         "The poll is the page's own 20 s fallback-poll callback, captured from setInterval; the "
@@ -476,14 +489,7 @@ DIFFERENCES = (
 )
 
 
-def compose(
-    root: Path,
-    run_paths: list[Path],
-    *,
-    date: str,
-    commit: str,
-    control_paths: list[Path] | None = None,
-) -> dict[str, Any]:
+def compose(root: Path, run_paths: list[Path], *, date: str, commit: str) -> dict[str, Any]:
     baseline_path = root / BASELINE
     baseline = read_json(baseline_path)
     runs = [read_json(path) for path in run_paths]
@@ -498,26 +504,12 @@ def compose(
     if any(run["sources"] != runs[0]["sources"] for run in runs):
         msg = "the runs were taken with different driver or fixture sources"
         raise ValueError(msg)
-    control = [read_json(path) for path in control_paths or []]
-    for number, run in enumerate(control, 1):
-        if (
-            run.get("fatal")
-            or run.get("schema") != 1
-            or len(run.get("cohorts", [])) != len(COHORTS)
-        ):
-            msg = f"control run {number} is incomplete"
-            raise ValueError(msg)
     derived = evaluate(runs, baseline)
     failed = [
         {"budget": item["budget"], "cohort": item["cohort"]}
         for item in derived["verdicts"]
         if not item["pass"]
     ]
-    held = (
-        {"legacy_control": {**control_summary(control, baseline), "runs": control}}
-        if control
-        else {}
-    )
     return {
         "schema": 1,
         "date": date,
@@ -533,7 +525,9 @@ def compose(
             "load_average_at_start": [run["environment"]["loadAverageAtStart"] for run in runs],
             "comparability": _comparability(baseline["runs"][0], runs[0]),
         },
-        "source_bindings": {name: digest(root / path) for name, path in SCRIPTS.items()},
+        "source_bindings": {name: runs[0]["sources"][name] for name in SCRIPTS},
+        "current_sources": {name: digest(root / path) for name, path in SCRIPTS.items()},
+        "baseline_status": BASELINE_STATUS,
         "baseline_binding": digest(baseline_path),
         "page": _page_binding(root, runs, baseline),
         "budget_policy": baseline["budget_policy"],
@@ -551,7 +545,6 @@ def compose(
             ),
         ],
         **derived,
-        **held,
         "overall": {"failed": failed, "all_budgets_pass": not failed},
         "runs": runs,
     }
@@ -585,10 +578,12 @@ def _binding_problems(root: Path, receipt: dict[str, Any], runs: list[dict[str, 
         problems.append(f"{BASELINE} changed since this receipt was composed")
     for name, path in SCRIPTS.items():
         bound = receipt.get("source_bindings", {}).get(name)
-        if bound != digest(root / path):
-            problems.append(f"{path} changed since the runs were taken (source binding {name})")
-        if any(run["sources"].get(name) != bound for run in runs):
+        if bound is None or any(run["sources"].get(name) != bound for run in runs):
             problems.append(f"a run was taken with a different {name} than the receipt binds")
+        if receipt.get("current_sources", {}).get(name) != digest(root / path):
+            problems.append(
+                f"{path} changed since this receipt recorded it (current source {name})"
+            )
     sha = receipt.get("page", {}).get("sha256")
     if any(run["fixture"]["page_sha256"] != sha for run in runs):
         problems.append("a run served a page other than the one the receipt binds")
@@ -941,7 +936,7 @@ def _shard_problems(root: Path) -> list[str]:
     ]
     return problems + [
         f"{PRODUCTION_SHARDS} names {name}, which is not a parity proof"
-        for name in sorted(set(listed) - PARITY_SCRIPTS)
+        for name in sorted(set(listed) - PARITY_SCRIPTS - EXTRA_PRODUCTION_PROOFS)
     ]
 
 
@@ -1054,13 +1049,7 @@ def _git_head(root: Path) -> str:
 
 def _run_fluidity(root: Path, args: argparse.Namespace) -> int:
     try:
-        receipt = compose(
-            root,
-            args.run,
-            date=args.date,
-            commit=args.commit or _git_head(root),
-            control_paths=args.control,
-        )
+        receipt = compose(root, args.run, date=args.date, commit=args.commit or _git_head(root))
     except (OSError, ValueError, KeyError) as error:
         print(f"Cannot compose the fluidity receipt: {error}", file=sys.stderr)
         return 1
@@ -1102,9 +1091,6 @@ def main(argv: list[str] | None = None) -> int:
     commands = parser.add_subparsers(dest="command", required=True)
     flu = commands.add_parser("fluidity", help="compose three runs into the committed receipt")
     flu.add_argument("--run", type=Path, action="append", required=True)
-    flu.add_argument(
-        "--control", type=Path, action="append", help="a re-run of the unchanged baseline driver"
-    )
     flu.add_argument("--output", type=Path)
     flu.add_argument("--date", default=datetime.now(tz=UTC).date().isoformat())
     flu.add_argument("--commit")

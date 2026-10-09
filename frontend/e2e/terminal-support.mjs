@@ -1,15 +1,12 @@
 /*
  * The browser world the timeline and terminal tests share (DRC-4824).
  *
- * `startWorld` runs the REAL backend twice over the same synthetic board and the same synthetic
- * read-only terminal (`frontend/test/terminal_backend.py`): once serving the legacy page and once
- * serving the React development page, whose entry is swapped for `terminal-harness.tsx` inside a scratch
- * copy of the tree, so no tracked file changes. A differential test then drives both in one Chromium
- * and compares what a reader can observe. `CARGENTO_MUTATION` names one deliberate break in the scratch
- * copy (see MUTATIONS in the calling script); the run is then expected to FAIL.
- *
- * In `CARGENTO_LEGACY=replay` (the default) the legacy backend is not started and `world.legacy` is null: the
- * legacy side is read from recorded observations (`support/golden.mjs`).
+ * `startWorld` runs the REAL backend over the synthetic board and the synthetic read-only terminal
+ * (`frontend/test/terminal_backend.py`), serving the React development page, whose entry is swapped for
+ * `terminal-harness.tsx` inside a scratch copy of the tree, so no tracked file changes. A test then drives it in
+ * Chromium and compares what a reader can observe with the previous interface's recorded observations
+ * (`support/golden.mjs`). `CARGENTO_MUTATION` names one deliberate break in the scratch copy (see MUTATIONS in the
+ * calling script); the run is then expected to FAIL.
  *
  * `openTracked` is `openPage` plus what these tests need and `openPage` does not record: every frame the
  * PAGE sent on a WebSocket, counted where the browser hands it to the network, and each socket's close.
@@ -19,12 +16,9 @@
  * board's own origins is refused.
  */
 import assert from 'node:assert/strict';
-import { execFileSync, spawn } from 'node:child_process';
-import { appendFile, cp, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises';
+import { appendFile, cp, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { isolatedEnvironment } from '../dev/protocol.mjs';
-import { LEGACY_LIVE } from './support/golden.mjs';
 import { PRODUCTION, startReactWorld } from './support/world.mjs';
 import { freePorts, openPage, REPOSITORY, refreshReact } from './support/browser.mjs';
 
@@ -42,37 +36,6 @@ export const FOCUS = `${TERMINAL.harness}:${TERMINAL.sid}`;
 const E = encodeURIComponent;
 export const fragmentFor = (tab, focus = FOCUS) =>
   `#n=project:${E(TERMINAL.project)}${focus ? `:${E(focus)}` : ''}:${tab}`;
-
-function resolvePython() {
-  const name =
-    process.env.CARGENTO_TEST_PYTHON || (process.platform === 'win32' ? 'python' : 'python3');
-  return execFileSync(name, ['-I', '-c', 'import sys; print(sys.executable)'], {
-    encoding: 'utf8',
-    timeout: 5000,
-  }).trim();
-}
-
-async function waitForHealth(origin, child) {
-  const deadline = Date.now() + 20000;
-  for (;;) {
-    if (child.exitCode !== null)
-      throw new Error('Legacy terminal backend exited: ' + (child.diagnostic || ''));
-    try {
-      const health = await (
-        await fetch(origin + '/api/health', { signal: AbortSignal.timeout(1000) })
-      ).json();
-      if (health.ok === true && health.pid === child.pid) return;
-      throw new Error('Port belongs to another process.');
-    } catch (error) {
-      if (Date.now() > deadline)
-        throw new Error(
-          'Legacy terminal backend never became ready: ' + (child.diagnostic || error.message),
-          { cause: error },
-        );
-      await new Promise((resolve) => setTimeout(resolve, 100));
-    }
-  }
-}
 
 /* Waits until the synthetic terminal has registered, so a page opened next sees it registered. */
 async function waitForRegistration(origin) {
@@ -104,25 +67,9 @@ export async function startWorld({
     ? REPOSITORY
     : await mkdtemp(join(tmpdir(), 'cargento-terminal-browser-'));
   let dev = null;
-  let child = null;
-  let legacyScratch = null;
   const world = { copy, mutation, shipped, close };
   async function close() {
-    if (child && child.exitCode === null) {
-      child.kill('SIGTERM');
-      await new Promise((resolve) => {
-        const timer = setTimeout(() => {
-          child.kill('SIGKILL');
-          resolve();
-        }, 3000);
-        child.once('close', () => {
-          clearTimeout(timer);
-          resolve();
-        });
-      });
-    }
     if (dev) await dev.close();
-    if (legacyScratch) await rm(legacyScratch, { recursive: true, force: true });
     if (!ownsRepository) await rm(copy, { recursive: true, force: true });
   }
   try {
@@ -161,7 +108,7 @@ export async function startWorld({
     const refused = [];
     let ports;
     for (let attempt = 0; ; attempt += 1) {
-      ports = await freePorts(3, refused);
+      ports = await freePorts(2, refused);
       try {
         dev = await startReactWorld({
           root: copy,
@@ -181,58 +128,13 @@ export async function startWorld({
           throw error;
       }
     }
-    const legacyPort = ports[2];
-    world.legacy = null;
     world.react = {
       origin: dev.origin,
       viteOrigin: dev.viteOrigin,
       control: join(dev.scratch, 'state/terminal-fixture/control.ndjson'),
     };
 
-    if (!LEGACY_LIVE) {
-      await waitForRegistration(world.react.origin);
-      return world;
-    }
-    legacyScratch = await mkdtemp(join(tmpdir(), 'cargento-terminal-legacy-'));
-    await mkdir(join(legacyScratch, 'no-executables'));
-    const args = [
-      helper,
-      '--frontend',
-      'legacy',
-      '--host',
-      '127.0.0.1',
-      '--port',
-      String(legacyPort),
-      '--no-observer-model',
-      '--no-usage',
-      '--no-git',
-      '--no-focus',
-      '--no-events',
-      '--no-spacedock',
-      '--no-tripwires',
-      '--no-reach',
-      '--no-ask',
-      '--no-history',
-    ];
-    child = spawn(resolvePython(), args, {
-      cwd: copy,
-      env: isolatedEnvironment(legacyScratch, process.env),
-      stdio: ['ignore', 'pipe', 'pipe'],
-    });
-    child.stderr.on('data', (chunk) => {
-      child.diagnostic = ((child.diagnostic || '') + chunk).slice(-3000);
-    });
-    child.stdout.resume();
-    const legacyOrigin = `http://127.0.0.1:${legacyPort}`;
-    await waitForHealth(legacyOrigin, child);
-    world.legacy = {
-      origin: legacyOrigin,
-      control: join(legacyScratch, 'state/terminal-fixture/control.ndjson'),
-    };
-    await Promise.all([
-      waitForRegistration(world.react.origin),
-      waitForRegistration(world.legacy.origin),
-    ]);
+    await waitForRegistration(world.react.origin);
     return world;
   } catch (error) {
     await close();

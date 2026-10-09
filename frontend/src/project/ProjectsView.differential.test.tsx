@@ -3,7 +3,6 @@ import { genPayload } from '../observed/generate.test.helper';
 import { mountShell } from '../shell/testing';
 import { genBoard, scenarios } from './generate.test.helper';
 import { loadLegacyApp, parseHtml } from './legacy.test.helper';
-import { caseCount } from '../../test/legacy_goldens';
 
 /* The Projects list held to the legacy list by what a reader can read: each group, each project row in
    order, its text, tone and route, and every member line it names. The legacy `nextProjectsView` runs
@@ -11,7 +10,7 @@ import { caseCount } from '../../test/legacy_goldens';
    conditions that open the legacy list belong to the steering step and are drawn by neither side here. */
 
 const CASES = 60;
-const SEEDS = caseCount(CASES, 'PROJECT_LIST_SEEDS');
+const SEEDS = CASES;
 
 const norm = (node: Element | null): string =>
   node ? (node.textContent ?? '').replace(/\s+/g, ' ').trim() : '';

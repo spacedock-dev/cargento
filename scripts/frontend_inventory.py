@@ -1,10 +1,18 @@
 #!/usr/bin/env python3
-"""Check the migration inventory against the legacy contracts it must preserve."""
+"""Check the migration inventory: every row is owned, has a contract and names oracles that exist.
+
+The inventory maps what the previous interface did (its script parts, surfaces, routes, reader
+state and persisted keys) to the React owner that took it over and the proofs that hold it. The
+interface is gone, so its source is no longer a thing to derive coverage from: the reader-state rows
+must match the design record's table, and the storage rows must match the keys the React codec owns.
+Every file the reader-state record cites as an owner, and every symbol it names in that file, must
+exist, so an owner that is renamed or deleted fails here rather than rotting in the prose.
+The `parts` rows are the historical map and are checked for form only.
+"""
 
 from __future__ import annotations
 
 import argparse
-import ast
 import json
 import re
 import sys
@@ -12,7 +20,7 @@ from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
-WEB = Path("cargento/skills/cargento/cargento_runtime/web")
+STORAGE_KEYS = Path("frontend/src/storage/keys.ts")
 OWNERS = frozenset(f"DRC-{number}" for number in range(4822, 4828))
 DISPOSITIONS = frozenset(
     {"stable-identity", "store-held", "retained-deferral", "obsolete-with-proof", "not-managed"}
@@ -29,8 +37,6 @@ def check_inventory(root: Path, data: dict[str, Any]) -> list[str]:
         name: _rows(data, name, root, gaps)
         for name in ("parts", "reader_state", "storage", "surfaces", "routes")
     }
-    expected_parts = _parts(root / WEB / "page.py")
-    _coverage("parts", expected_parts, groups["parts"], gaps)
     document = (root / "docs/design-reader-state.md").read_text(encoding="utf-8")
     table = document.split("## The inventory", 1)[1].split("\n## ", 1)[0]
     state_names = {
@@ -44,16 +50,9 @@ def check_inventory(root: Path, data: dict[str, Any]) -> list[str]:
         for row in groups["reader_state"]
         if row.get("disposition") not in DISPOSITIONS
     )
+    gaps.extend(owner_gaps(root, document))
     literals = re.compile(r"""["'`](cargento\.[^"'`\s$]+)""")
-    source_files = [root / WEB / name for name in expected_parts]
-    index = root / WEB / "index.html"
-    if index.exists():
-        source_files.append(index)
-    storage_names = {
-        key
-        for source in source_files
-        for key in literals.findall(source.read_text(encoding="utf-8"))
-    }
+    storage_names = set(literals.findall((root / STORAGE_KEYS).read_text(encoding="utf-8")))
     _coverage("storage", storage_names, groups["storage"], gaps)
     gaps.extend(
         f"storage {row['name']}: missing format contract"
@@ -63,28 +62,38 @@ def check_inventory(root: Path, data: dict[str, Any]) -> list[str]:
     return gaps
 
 
-def _parts(path: Path) -> set[str]:
-    tree = ast.parse(path.read_text(encoding="utf-8"))
-    for node in tree.body:
-        value = None
-        if (
-            isinstance(node, ast.AnnAssign)
-            and isinstance(node.target, ast.Name)
-            and node.target.id == "APP_PARTS"
-        ) or (
-            isinstance(node, ast.Assign)
-            and any(
-                isinstance(target, ast.Name) and target.id == "APP_PARTS" for target in node.targets
-            )
-        ):
-            value = node.value
-        if value is not None:
-            parts = ast.literal_eval(value)
-            if not isinstance(parts, tuple) or not all(isinstance(part, str) for part in parts):
-                break
-            return set(parts)
-    msg = "page.py must declare the APP_PARTS tuple"
-    raise ValueError(msg)
+# `path`: `Symbol`, `other` is the form every cited owner takes. A path alone is cited for the file;
+# the symbols after the colon are identifiers the file must still declare or use. A symbol that is
+# not a plain identifier (a CSS class, a storage key) is not checked, because a word search says
+# nothing of it.
+OWNER = re.compile(r"`(frontend/[^`\s]+)`(?::\s*((?:`[^`]+`(?:,\s*)?)+))?")
+IDENTIFIER = re.compile(r"^[A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*$")
+
+
+def owner_gaps(root: Path, document: str) -> list[str]:
+    """Each cited owner file that is missing, and each cited symbol its file no longer names."""
+    gaps = []
+    for match in OWNER.finditer(document):
+        path, listed = match.group(1), match.group(2)
+        target = (root / path).resolve()
+        if not target.is_relative_to(root) or not target.is_file():
+            gaps.append(f"owner {path}: the file the reader-state record cites does not exist")
+            continue
+        if not listed:
+            continue
+        text = target.read_text(encoding="utf-8")
+        for raw in re.findall(r"`([^`]+)`", listed):
+            symbol = raw.strip()
+            if not IDENTIFIER.fullmatch(symbol):
+                continue
+            if not all(
+                re.search(rf"(?<![\w$]){re.escape(part)}(?![\w$])", text)
+                for part in symbol.split(".")
+            ):
+                gaps.append(
+                    f"owner {path}: {symbol} is not in the file the reader-state record cites"
+                )
+    return gaps
 
 
 def _rows(data: dict[str, Any], group: str, root: Path, gaps: list[str]) -> list[dict[str, Any]]:

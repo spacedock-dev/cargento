@@ -28,14 +28,6 @@ STORE_ENV_VARS = (
 )
 CARGENTO_HOME_ENV = "CARGENTO_HOME"
 
-# React is the dashboard unless a process is started with `--frontend legacy`. Stated here
-# once because the CLI, `build_runtime_config` and the detached child's argv all need the
-# same answer, and a default repeated in each is how one of them keeps the old page. The
-# choice is a launch flag only: no environment variable or stored setting selects it, so a
-# stray variable in a shell profile cannot swap the renderer under a reader.
-DEFAULT_FRONTEND: Final = "react"
-FRONTENDS: Final = ("legacy", "react")
-
 CLAUDE_READING_DEFAULT_MODEL: Final = "claude-sonnet-5-5"
 CLAUDE_READING_MODEL_POLICY: Final = "sonnet-5-floor-v1"
 _CLAUDE_READING_ID = re.compile(
@@ -96,7 +88,6 @@ class RuntimeConfig:
     launcher_path: Path
     host: str
     port: int
-    frontend: str
     frontend_dev: DevelopmentFrontend | None
     window_hours: float
     spacedock_enabled: bool
@@ -642,7 +633,6 @@ def build_runtime_config(
     store_root_overrides: Mapping[str, str] | None = None,
     host: str = "127.0.0.1",
     port: int = 4553,
-    frontend: str = DEFAULT_FRONTEND,
     window_hours: float = 24.0,
     spacedock_enabled: bool = True,
     tripwires_enabled: bool = True,
@@ -668,8 +658,6 @@ def build_runtime_config(
 ) -> RuntimeConfig:
     """Construct runtime configuration solely from explicit inputs."""
     selected_claude_model = validate_claude_reading_model(claude_reading_model)
-    if frontend not in FRONTENDS:
-        raise ValueError("frontend must be legacy or react")
     windows = platform_name == "win32"
     join = ntpath.join if windows else posixpath.join
     home_key = "USERPROFILE" if windows else "HOME"
@@ -703,7 +691,6 @@ def build_runtime_config(
         launcher_path=launcher_path,
         host=host,
         port=port,
-        frontend=frontend,
         frontend_dev=None,
         window_hours=window_hours,
         spacedock_enabled=spacedock_enabled,

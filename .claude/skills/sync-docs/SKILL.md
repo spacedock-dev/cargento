@@ -288,13 +288,12 @@ awk '/return RuntimeConfig\\(/,/^    \\)/' "$C"
 sed -n '/^class CollectMemoEntry/,$p' "$R"
 # Python floor: the ruff target and the mypy pin must agree, and match the docs
 grep -nE 'target-version|python_version|fail_under' pyproject.toml
-# Frontend source ownership, assembly slots, and byte identity
-grep -nE 'WEB_DIR|load_frontend' scripts/lint_embedded.py
-grep -o '{{CARGENTO_STYLES}}\|{{CARGENTO_APP}}' "$W/index.html" | sort | uniq -c
+# Frontend identity: the served page is `react.html`, verified against `react.integrity.json`.
+# `pnpm build:check` proves the tracked bundle matches the sources in `frontend/`.
 python3 - "$W" <<'PY'
-import base64
 import hashlib
 import importlib.util
+import json
 import sys
 from pathlib import Path
 
@@ -303,26 +302,14 @@ spec = importlib.util.spec_from_file_location("cargento_web_page", web / "page.p
 assert spec and spec.loader
 page_mod = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(page_mod)
-# APP_PARTS first: test_next_page compares the tuple by equality, so a new part
-# fails there as well as on its own size, and the order is part of the claim.
-print("APP_PARTS =", page_mod.APP_PARTS)
-for name in (*page_mod.APP_PARTS, "styles.css"):
-    payload = (web / name).read_bytes()
-    print(name, len(payload), hashlib.sha256(payload).hexdigest())
-# Fonts are pinned DECODED, not as the .b64 file on disk. Printing the raw bytes
-# here produced plausible figures that fail the test: the oracle joins the .b64
-# lines and base64-decodes before measuring, so the two differ by about a third.
-for name, _slot in page_mod.FONT_ASSETS:
-    encoded = "".join((web / name).read_text(encoding="ascii").splitlines())
-    payload = base64.b64decode(encoded, validate=True)
-    print(name, len(payload), hashlib.sha256(payload).hexdigest())
-page = page_mod.load_page()
-print("assembled page", len(page), hashlib.sha256(page).hexdigest())
-print("NOTE: the assembled figures are pinned TWICE, in tests/test_next_page.py")
-print("      and tests/test_next_flag.py. Update both.")
+page = page_mod.load_frontend_page()
+print("served page", len(page), hashlib.sha256(page).hexdigest())
+metadata = json.loads((web / "react.integrity.json").read_text(encoding="utf-8"))
+print("document", metadata["document"]["bytes"], metadata["document"]["sha256"])
+print("fonts", len(metadata["provenance"]["fonts"]), "sources", len(metadata["provenance"]["sources"]))
 PY
 # The real CI command surface
-grep -nE '^\s+(- name:|run:|  +[a-z].*)$' .github/workflows/quality-gate.yml | grep -E 'ruff|mypy|coverage|unittest|lint_embedded|validate_plugins'
+grep -nE '^\s+(- name:|run:|  +[a-z].*)$' .github/workflows/quality-gate.yml | grep -E 'ruff|mypy|coverage|unittest|validate_plugins'
 grep -nE 'run: ' .github/workflows/validate.yml
 # What the validator enforces on documentation
 grep -nE 'PORTABILITY_MARKERS|SHARED_FRONTMATTER_FIELDS|ROOT_DOCS|BANNED_DOC_LITERALS|validate_repository_skills|maximum is 300' \
@@ -465,7 +452,7 @@ minutes, a Python version. Stale counts are this repository's most common drift.
      this same tree minutes ago and the human author owns the result.
    - **Standalone/periodic run** — you are the PR author, so run the **whole** pre-PR suite from
      `AGENTS.md` before opening anything. `quality-gate` is a required check covering ruff, format,
-     `mypy --strict`, `lint_embedded.py`, coverage against `fail_under`, and `platform-tests` on
+     `mypy --strict`, the frontend lint, strict types and tests, coverage against `fail_under`, and `platform-tests` on
      macOS and Windows; none of that is implied by a to e. Opening a PR you have not gated pushes your own
      verification onto the reviewer.
 

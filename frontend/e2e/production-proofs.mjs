@@ -8,19 +8,18 @@
  * Any other argument prints the usage and exits 2 before a proof starts: a typo in a CI command must not run all
  * eleven on every shard. pnpm passes what follows the script name through, so there is no `--` in the command.
  *
- * Each proof compares the React page with what the legacy page said, and `CARGENTO_LEGACY` chooses where that
- * comes from (see `support/golden.mjs`). It is left in the environment each proof inherits, so the default is
- * replay: no legacy backend and no legacy page, which is also why the wall times below are shorter than the
- * ones measured while the legacy page still ran beside the React one. `CARGENTO_LEGACY=live` here proves the
- * recordings against the legacy code while it exists; `record` is refused, because a recording is made one proof
- * at a time, three times, into a scratch directory, never through a runner that would overwrite all eleven.
+ * Each proof holds the React page to what the previous interface said, from the recordings under
+ * `frontend/test/golden/e2e` (see `support/golden.mjs`); none starts anything but the React page's own backend.
  *
- * The shards are `production-shards.json`, balanced from measured production-mode wall times
- * (a: shell 170 s, project 152 s, capacity 173 s; b: the other eight, 479 s) so the two CI legs finish
- * together. Those were measured with the legacy page running; replay is shorter (capacity 115 s, console 47 s and
- * attention 44 s on a loaded desk) and the split has not been re-measured since. A test pins that the shards
- * are disjoint and together name every parity proof, so a proof cannot fall between them. Every proof runs even after one fails, because the second failure is the one
- * a contributor would otherwise find a CI round later.
+ * The shards are `production-shards.json`, balanced from measured production-mode wall times so the two CI legs
+ * finish together. Measured on 2026-10-10 with the recordings replayed and nothing else started, in seconds, on a
+ * macOS desk and in a Linux arm64 container run with `CI=1` (shell 60/138, project 53/123, capacity 74/117,
+ * sessions 27/64; terminal 38/104, intent 47/69, drift 72/93, console 35/59, attention 21/45, storage 4/3,
+ * controls 15/21): shard a took 214 s and 442 s, shard b 232 s and 394 s. Sessions moved from b to a, which
+ * brought both machines closer (it was 187 and 378 against 259 and 458 before). A test pins that the shards
+ * are disjoint and together name every parity proof, so a proof cannot fall between them. Every proof runs
+ * even after one fails, because the second failure is the one a contributor would otherwise find a CI round
+ * later.
  */
 import { spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
@@ -35,8 +34,6 @@ const usage = (reason) => {
   );
   process.exit(2);
 };
-if (process.env.CARGENTO_LEGACY === 'record')
-  usage('CARGENTO_LEGACY=record is not available through this runner; record one proof at a time.');
 const args = process.argv.slice(2);
 let wanted = null;
 if (args.length === 2 && args[0] === '--shard') [, wanted] = args;

@@ -1,9 +1,10 @@
 name: Quality Gate
 
-# Strict lint (ruff, all rules), formatting, mypy --strict, frontend source
-# checks, and the full unittest suite under coverage with an enforced
-# threshold. The final `quality-gate` job aggregates every result into the one
-# status that branch protection requires.
+# Strict lint (ruff, all rules), formatting, mypy --strict, the frontend's own
+# checks (Biome, strict types, unit tests, the build and the browser proofs),
+# and the full unittest suite under coverage with an enforced threshold. The
+# final `quality-gate` job aggregates every result into the one status that
+# branch protection requires.
 #
 # Adapted from DataRecce/recce-cloud-infra `server-unittest.yaml` (lint/type/
 # test job shape) and `coverage-report.yaml` (sticky PR coverage comment, gate
@@ -148,6 +149,9 @@ jobs:
           echo "Every changed path is prose the gate cannot measure."
           emit false
 
+  # The job keeps the name it had when it also ran the embedded-source linter, because a
+  # branch ruleset may require that exact context; the frontend's sources are linted by the
+  # `frontend` job (`pnpm lint`).
   lint:
     name: Lint (ruff + format + frontend sources)
     needs: changes
@@ -171,8 +175,6 @@ jobs:
         run: ruff check --output-format=github .
       - name: Ruff format check
         run: ruff format --check .
-      - name: Frontend source checks (JS syntax, CSS structure, DOM ids)
-        run: python3 scripts/lint_embedded.py
 
   typecheck:
     name: Type check (mypy --strict)
@@ -497,7 +499,7 @@ jobs:
         env:
           CARGENTO_TEST_PYTHON: ${{ steps.python.outputs.python-path }}
         run: pnpm test:dev:browser
-      - name: Legacy storage conformance browser proof
+      - name: Storage conformance browser proof
         timeout-minutes: 3
         env:
           CARGENTO_TEST_PYTHON: ${{ steps.python.outputs.python-path }}
@@ -599,6 +601,11 @@ jobs:
         env:
           CARGENTO_TEST_PYTHON: ${{ steps.python.outputs.python-path }}
         run: pnpm test:terminal:browser
+      - name: Stylesheet readability contract browser proof
+        timeout-minutes: 8
+        env:
+          CARGENTO_TEST_PYTHON: ${{ steps.python.outputs.python-path }}
+        run: pnpm test:css:browser
 
   # The same proofs against the SHIPPED bundle. Every other frontend proof serves the React side through the
   # development server (Vite modules, HMR, StrictMode double effects); this job sets `CARGENTO_E2E_BUNDLE=production`

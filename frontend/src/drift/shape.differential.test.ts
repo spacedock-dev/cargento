@@ -5,7 +5,7 @@ import type { WorkEntry } from '../intent/work';
 import { genAnnotation, genAssessment, genEntries, mulberry32, pick } from './generate.test.helper';
 import { loadLegacyDrift } from './legacy.test.helper';
 import { lineRequestFloors, readingShape } from './shape';
-import { caseCount, seedSample } from '../../test/legacy_goldens';
+import { seedSample } from '../../test/legacy_goldens';
 
 /* The reading's shape contract, run next to the legacy producer over generated stored readings and evidence.
    A difference is a bug here: the seven rules are the reason a reading can be shown at all. */
@@ -62,7 +62,7 @@ legacy.lift([
 const CASES = 60;
 // The first seed that reaches each of the result kinds the first seeds miss.
 const WITNESSES = [144, 165, 257];
-const SAMPLE = seedSample(caseCount(CASES, 'DRIFT_SEEDS'), WITNESSES);
+const SAMPLE = seedSample(CASES, WITNESSES);
 const SEEDS = SAMPLE.length;
 
 describe('the reading shape contract holds as the legacy producer holds it', () => {

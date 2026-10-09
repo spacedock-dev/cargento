@@ -3,7 +3,6 @@ import { fragmentForRoute } from '../router/grammar';
 import { genPayload } from '../observed/generate.test.helper';
 import { loadLegacyViews } from '../observed/legacy.test.helper';
 import { mountShell } from '../shell/testing';
-import { caseCount } from '../../test/legacy_goldens';
 
 /* The session page, held to the legacy page by what a reader can read. `nextSessionView` runs unchanged
    over a generated payload for each of several sessions in it, and this page renders the same route in the
@@ -118,7 +117,7 @@ function routesOf(
 
 describe('the session page reads as the legacy page does, over generated payloads', () => {
   const CASES = 40;
-  const SEEDS = caseCount(CASES, 'SESSIONS_SEEDS');
+  const SEEDS = CASES;
   for (const capability of ['', 'run-capability']) {
     it(`agrees on every session of ${String(SEEDS)} seeds${capability ? ', with a terminal-raise capability' : ''}`, async () => {
       const failures: string[] = [];

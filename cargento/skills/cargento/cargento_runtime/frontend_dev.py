@@ -53,8 +53,6 @@ class DevelopmentRuntime(Protocol):
     @property
     def port(self) -> int: ...
     @property
-    def frontend(self) -> str: ...
-    @property
     def model_calls_disabled(self) -> bool: ...
     @property
     def usage_fetch_enabled(self) -> bool: ...
@@ -131,11 +129,7 @@ def load_manifest(path: Path) -> DevManifest:
 
 
 def validate_runtime(manifest: DevManifest, config: DevelopmentRuntime) -> None:
-    if (
-        config.frontend != "react"
-        or config.host != "127.0.0.1"
-        or config.port != _port(manifest.frontend.python_origin)
-    ):
+    if config.host != "127.0.0.1" or config.port != _port(manifest.frontend.python_origin):
         raise RuntimeError("development document does not match the React loopback bind")
     if not config.model_calls_disabled or config.usage_fetch_enabled:
         raise RuntimeError("development fixtures must disable models and vendor usage")

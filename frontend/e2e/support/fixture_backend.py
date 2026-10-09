@@ -4,9 +4,8 @@
 The two harnesses publish rows that exercise the route grammar: one sid carried by both
 harnesses, a sid with a colon, a session whose project label is empty, and a session with no
 published title. Only the collectors are replaced. The CLI, HTTP guard, page selection and
-snapshot code are the real ones, so the same helper serves the legacy page and the React page
-and a differential run compares like with like. Nothing here reads a harness store, starts a
-terminal or calls a provider.
+snapshot code are the real ones, so a browser proof reads what a reader's page would. Nothing here
+reads a harness store, starts a terminal or calls a provider.
 """
 
 from __future__ import annotations

@@ -39,15 +39,15 @@ from .fixtures import STORE_CONSTANTS
 SERVER_PATH = Path(__file__).resolve().parents[1] / "server.py"
 sys.path.insert(0, str(SERVER_PATH.parent))
 frontend_page = importlib.import_module("cargento_runtime.web.page")
-PAGE_BYTES = frontend_page.load_page()
+PAGE_BYTES = frontend_page.load_frontend_page()
 
 # `cli.main` injects this run's focus capability into the served document between
 # `load_frontend_page()` and the server construction, so the bytes a running
-# server hands out are the assembly plus one meta element. Stripping it here
+# server hands out are the verified page plus one meta element. Stripping it here
 # keeps the assertions that care about page IDENTITY comparing against
-# `frontend_page.load_page()`, which is what the two pinned digests in
-# `test_next_page.py` measure — and it fails rather than passing vacuously if the
-# injection ever ships a token outside its own grammar.
+# `frontend_page.load_frontend_page()`, which is the integrity-checked document, and it
+# fails rather than passing vacuously if the injection ever ships a token outside its
+# own grammar.
 FOCUS_META_RE = re.compile(rb'<meta name="cargento-focus" content="[0-9a-fA-F]{1,128}">')
 
 

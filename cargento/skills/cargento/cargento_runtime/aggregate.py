@@ -94,7 +94,7 @@ def _keep_wait_detail(session: Session, patch: Mapping[str, Any]) -> Mapping[str
 def _wait_popup_body(session: Session) -> str:
     """The popup body for a gated row: its project, and what it is waiting on.
 
-    `notify.js` composes the same two fields with the same fallback, and the two
+    The page's notifier composes the same two fields with the same fallback, and the two
     must agree because either layer may be the one that delivers a given gate.
     The fallback is not decoration: no overlay constructor sets `detail`, so
     every needs-input patch from the event lane carries None, and that lane is
@@ -267,9 +267,7 @@ class HarnessSpec:
     `EVENTS_BY_HARNESS` alone, which is one adapter shape and not the table the
     server admits on, so it refused a truthful declaration for Antigravity
     (DRC-4440). The same file holds the count in the sentence above to the registry,
-    since nothing else does and it has been wrong twice. Not `test_next_page.py`,
-    where this pointer sent a reader from 8d2585c, which deleted the file that
-    actually held these four, until DRC-4378 restored them.
+    since nothing else does and it has been wrong twice.
     """
 
     key: str
@@ -704,16 +702,10 @@ class Application:
     ) -> None:
         self.config = config
         self.frontend_build = (
-            (
-                "react-dev-"
-                if config.frontend_dev is not None
-                else "react-"
-                if config.frontend == "react"
-                else ""
-            )
+            ("react-dev-" if config.frontend_dev is not None else "react-")
             + hashlib.sha256(frontend_page_bytes).hexdigest()[:16]
             if frontend_page_bytes is not None
-            else frontend_page.build_id(config.frontend)
+            else frontend_page.build_id()
         )
         self.state = state
         self.harnesses = harnesses
@@ -1010,7 +1002,6 @@ class Application:
                 # Which page this process serves, so a tab left open across an
                 # upgrade says to reload (regressions major 1, ui5).
                 "build": self.frontend_build,
-                "frontend": config.frontend,
             }
         )
         if usage_supported:
