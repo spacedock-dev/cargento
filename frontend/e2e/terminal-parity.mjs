@@ -28,10 +28,13 @@ import {
   fragmentFor,
   numbered,
   openTracked,
+  refreshReact,
   REPOSITORY,
   startWorld,
   TERMINAL,
 } from './terminal-support.mjs';
+import { focusedLabel, tabTo } from './support/browser.mjs';
+import { PRODUCTION as SHIPPED } from './support/world.mjs';
 
 /* Every fixed wait here means "give the page time to react". A hosted runner has a few shared cores and delivers
    events and frames later than a desktop, so each wait is tripled there; only a pass gets slower. */
@@ -44,6 +47,14 @@ const only = process.env.CARGENTO_E2E_STEPS ? new RegExp(process.env.CARGENTO_E2
 /* One break each, applied to the scratch copy only. A missing needle fails the run loudly rather than
    silently testing nothing. */
 const MUTATIONS = {
+  // Open terminal answers a pointer press and nothing else: a keyboard press does nothing.
+  'open-pointer-only': [
+    [
+      'src/terminal/TerminalSurface.tsx',
+      'className="pc-terminal-open" onClick={() => owner.open(key)}',
+      'className="pc-terminal-open" onMouseDown={() => owner.open(key)}',
+    ],
+  ],
   // The socket gains a way to send, and a key press uses it: the zero-input proof must catch it.
   'transmit-input': [
     [
@@ -264,13 +275,28 @@ async function ready(side, fragment) {
    the closed "How this server was started" disclosure there. The React surface has no such wrapper: the
    Console that hosts it owns that disclosure. */
 async function revealSetup(side) {
-  if (side.name !== 'legacy') return;
-  const details = side.page.locator('details[data-next-cockpit-console-setup]');
+  // The shipped Console owns that disclosure; the harness has none around the terminal.
+  if (side.name !== 'legacy' && !SHIPPED) return;
+  const details = side.page.locator(
+    side.name === 'legacy'
+      ? 'details[data-next-cockpit-console-setup]'
+      : 'details.next-cockpit-console-setup',
+  );
   await details.waitFor();
   if (!(await details.evaluate((node) => node.open))) await details.locator('> summary').click();
   await pause(300);
 }
 const openButton = (side) => side.page.getByRole('button', { name: 'Open terminal', exact: true });
+
+/* The owner's counters exist only in the harness. On the shipped page the facts a reader can observe stand in for
+   them: renderers on the page and terminal sockets still open. What stays harness-only is `openKey`, the key the
+   owner last opened, which no reader can see; the sockets and renderer counts around it are asserted either way. */
+async function ownerStats() {
+  if (!SHIPPED) return world.react.page.evaluate(() => globalThis.__harness.owner.stats());
+  const terminals = await world.react.page.locator('#pc-terminal-screen .xterm').count();
+  const sockets = world.react.stream().filter((socket) => socket.closed === null).length;
+  return { terminals, sockets, attached: terminals === 1 };
+}
 
 const both = (fn) => Promise.all(SIDES.map((name) => fn(world[name], name)));
 const pairs = async (read) => {
@@ -317,10 +343,10 @@ try {
         );
         assert.deepEqual(side.log.nonGet, [], `${name}: a request that was not a GET`);
       }
-      const stats = await world.react.page.evaluate(() => globalThis.__harness.owner.stats());
+      const stats = await ownerStats();
       assert.equal(stats.terminals, 0);
       assert.equal(stats.sockets, 0);
-      assert.equal(stats.openKey, null);
+      if (!SHIPPED) assert.equal(stats.openKey, null);
     },
   );
 
@@ -368,7 +394,7 @@ try {
       );
       assert.deepEqual(labels.react, { readOnly: true, label: 'Read-only terminal output' });
       assert.deepEqual(labels.react, labels.legacy);
-      const stats = await world.react.page.evaluate(() => globalThis.__harness.owner.stats());
+      const stats = await ownerStats();
       assert.deepEqual(
         { terminals: stats.terminals, sockets: stats.sockets, attached: stats.attached },
         { terminals: 1, sockets: 1, attached: true },
@@ -627,7 +653,7 @@ try {
         true,
         'react drew a different screen element',
       );
-      const stats = await world.react.page.evaluate(() => globalThis.__harness.owner.stats());
+      const stats = await ownerStats();
       assert.deepEqual(
         { terminals: stats.terminals, sockets: stats.sockets },
         { terminals: 1, sockets: 1 },
@@ -759,9 +785,9 @@ try {
           `${name}: the renderer is still on the page`,
         );
       }
-      const stats = await world.react.page.evaluate(() => globalThis.__harness.owner.stats());
+      const stats = await ownerStats();
       assert.deepEqual(
-        { terminals: stats.terminals, sockets: stats.sockets, openKey: stats.openKey },
+        { terminals: stats.terminals, sockets: stats.sockets, openKey: stats.openKey ?? null },
         { terminals: 0, sockets: 0, openKey: null },
       );
     },
@@ -791,6 +817,105 @@ try {
     }
     await both((side) => side.page.getByRole('button', { name: 'Close' }).click());
   });
+
+  await step(
+    'keyboard: Open terminal, Jump to live and Close are reached by Tab, operated by Enter and Space, and focus is no worse than the legacy page leaves it',
+    async () => {
+      const trace = {};
+      /* The legacy page is the oracle, and on a loaded runner a keyboard leg it fails is recorded instead of
+         failing the run; the React page is always held to every assertion. */
+      async function leg(side, label, run) {
+        try {
+          await run();
+        } catch (error) {
+          if (side.name !== 'legacy') throw error;
+          legacyNotes.push(`keyboard ${label}: ${String(error.message || error).split('\n')[0]}`);
+          return false;
+        }
+        return true;
+      }
+      /* Where focus is after a press. Measured: both pages drop it onto the document, because the control the
+         press used is replaced (Open terminal becomes Close) or hidden (Jump to live), so "kept" is not the
+         assertion. The React page may not drop it where the legacy page keeps it, and the page has to stay
+         operable by keyboard from there, which every `tabTo` below proves by starting from the top again. */
+      const after = (side) => focusedLabel(side.page);
+      for (const name of SIDES) {
+        const side = world[name];
+        const seen = {};
+        trace[name] = seen;
+        await ready(side, consoleFragment);
+        await revealSetup(side);
+        await openButton(side).waitFor();
+        const sockets = side.stream().length;
+
+        // Open terminal: Tab reaches it, Shift+Tab leaves and Tab comes back, Enter opens exactly one terminal.
+        await leg(side, 'open', async () => {
+          seen.openTabs = await tabTo(side.page, 'Open terminal');
+          await side.page.keyboard.press('Shift+Tab');
+          assert.notEqual(
+            await focusedLabel(side.page),
+            'Open terminal',
+            'Shift+Tab did not leave',
+          );
+          await side.page.keyboard.press('Tab');
+          assert.equal(await focusedLabel(side.page), 'Open terminal', 'Tab did not come back');
+          await side.page.keyboard.press('Enter');
+          await side.page.locator('#pc-terminal-screen .xterm').waitFor();
+          await waitRows(side.page, TERMINAL.banner);
+          assert.equal(
+            side.stream().length,
+            sockets + 1,
+            `${name}: Enter opened ${side.stream().length - sockets} sockets`,
+          );
+          assert.equal(await side.page.locator('#pc-terminal-screen .xterm').count(), 1);
+          seen.afterOpen = await after(side);
+        });
+
+        // Jump to live: Space on the button follows live again, and focus stays on a control.
+        await leg(side, 'jump', async () => {
+          await emit(side, numbered(1, 60));
+          await waitRows(side.page, 'line 060');
+          await pause(250);
+          await wheelOverInset(side, -160);
+          await pause(300);
+          assert.equal((await metricsOf(side.page)).jumpHidden, false, 'Jump to live did not show');
+          seen.jumpTabs = await tabTo(side.page, 'Jump to live');
+          await side.page.keyboard.press('Space');
+          await pause(250);
+          const metrics = await metricsOf(side.page);
+          near(metrics.top, metrics.live, 2, `${name}: Space on Jump to live did not reach live`);
+          assert.equal(metrics.jumpHidden, true);
+          seen.afterJump = await after(side);
+        });
+
+        // Close: Enter lets go of this page's own socket and renderer, and Open terminal is back to press again.
+        await leg(side, 'close', async () => {
+          seen.closeTabs = await tabTo(side.page, 'Close');
+          await side.page.keyboard.press('Enter');
+          await openButton(side).waitFor();
+          await pause(600);
+          assert.ok(
+            side.stream().every((socket) => socket.closed !== null),
+            `${name}: a terminal socket is still open after Enter on Close`,
+          );
+          assert.equal(await side.page.locator('#pc-terminal-screen .xterm').count(), 0);
+          seen.afterClose = await after(side);
+        });
+        // Leave both pages closed for the step after, whatever the legacy page did.
+        const close = side.page.getByRole('button', { name: 'Close' });
+        if (await close.count()) await close.click().catch(() => undefined);
+      }
+      for (const phase of ['afterOpen', 'afterJump', 'afterClose']) {
+        // A legacy leg that failed softly left no reading; React is then held to nothing it cannot be compared with.
+        if (trace.legacy[phase] === undefined) continue;
+        assert.ok(
+          trace.react[phase] !== null || trace.legacy[phase] === null,
+          `react dropped focus ${phase} where legacy kept it on "${trace.legacy[phase]}"`,
+        );
+      }
+      return trace;
+    },
+  );
 
   await step(
     'refused, disabled and failed readings say what they are, with the recipe behind a disclosure that stays open',
@@ -825,9 +950,7 @@ try {
       await world.react.page.evaluate(() => {
         globalThis.__recipe = globalThis.document.querySelector('details:has(.pc-substrate-steps)');
       });
-      await world.react.page.evaluate(() =>
-        globalThis.__harness.shell.runtime.refresh({ manual: true }),
-      );
+      await refreshReact(world.react.page, SHIPPED);
       await world.legacy.page.evaluate(() => globalThis.nextRefreshPoll());
       await pause(500);
       const open = await pairs((side) =>

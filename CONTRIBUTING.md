@@ -54,9 +54,8 @@ This starts the real Python backend at `http://127.0.0.1:4581/` and its owned Vi
 at `http://127.0.0.1:4582/`. Open the Python URL. React edits refresh through Vite; type `r` in
 the terminal to restart Python, then reload the page for its new instance. Ctrl+C stops both.
 The command uses isolated fixture locations and disables model calls, quota fetching and native
-actions. It reads no personal harness transcripts. The React page has its shell, routes and shared
-controls, Sessions and session detail; the Intent, project and Attention views are still placeholders, so use the
-default dashboard for your sessions.
+actions. It reads no personal harness transcripts, so start the ordinary launcher to see your own
+sessions: React is its default, and `--frontend legacy` is the temporary rollback to the previous page.
 
 Use `--python` with an absolute Python executable and `--port`/`--vite-port` with distinct ports
 when the defaults are occupied. Both servers bind to IPv4 loopback and refuse a collision rather
@@ -102,6 +101,29 @@ live updates, a change of tab and a route away and back; it takes no native acti
 compares the Attention view and the notification control with the legacy page against a scripted Notification
 API, and `pnpm test:capacity:browser` does the same for the capacity strip, the usage consent and the observer
 consent, checking that no usage parameter, model request or notification starts without an explicit press.
+
+Every proof above serves the React side through the development server by default. `pnpm test:production:browser`
+runs the same eleven proofs with `CARGENTO_E2E_BUNDLE=production`, which has the Python backend serve the minified
+`react.html` that readers get (no Vite child, no hot refresh, no StrictMode double effect), so a difference only the
+shipped bytes show fails a proof. Pass `--shard a` or `--shard b` to run half of them; CI runs the two halves as
+separate jobs. Every surface proof is driven through the shipped page's own mount points (the capacity strip in
+the Sessions view, the consent and observer controls and the terminal in the Console tab, the timeline in the
+Decisions tab). Two things stay harness-hosted: the controls proof mounts the controls gallery, which composes
+shared controls no one page draws together and is served a production build of a scratch copy, and the storage
+proof bundles its codec minified. A few readings that only a harness can take are replaced on the shipped page
+by what a reader can observe, and the proofs say so where they do it; the receipt's `production_artifact` block
+lists the limits. Set the variable yourself to run one proof against the bundle, for example
+`CARGENTO_E2E_BUNDLE=production pnpm test:attention:browser`.
+
+Two receipts record what the default flip stands on, and `python3 scripts/frontend_cutover.py check` verifies
+both without starting a browser: `docs/frontend-fluidity.json` (the React page measured against the
+pre-React budgets) and `docs/frontend-cutover-receipt.json` (every row of the migration inventory mapped to
+a named React-side proof, with a keyboard, narrow, zoom and editor column per surface class). Adding a row
+to `scripts/frontend-migration.json` fails the check until the receipt maps it, and renaming a proof it names
+fails it too. Measure again after any change to the React page with `scripts/frontend_fluidity.mjs` (three
+runs, then `python3 scripts/frontend_cutover.py fluidity`; the commands are in the
+[migration contract](docs/design-frontend-migration.md#fluidity-measurements)), and use `check --final` for
+the final verification.
 
 ## Before you open a PR
 
@@ -314,7 +336,7 @@ allowlist changes only in a PR that makes a reviewed ownership decision.
 - Read nothing inside a project except what `SECURITY.md` § Project reads permits. Today that is
   Spacedock workflow and entity-state frontmatter, from absolute paths the session itself recorded.
   Never derive a project path by guessing, scanning or walking.
-- The default legacy frontend rebuilds `#app` from scratch on every refresh. What triggers one moved in
+- The legacy frontend (now the explicit rollback; React is the default) rebuilds `#app` from scratch on every refresh. What triggers one moved in
   Phase 1c:
   the leader tab holds an `EventSource` on `/api/stream` and refetches when the server announces a
   new revision, with a 20-second safety net behind it, and only a browser without `EventSource`
@@ -325,7 +347,7 @@ allowlist changes only in a PR that makes a reviewed ownership decision.
   `esc()`, because the page builds HTML by concatenation and session titles come from files a
   project can write. And never sort rows on a value that ticks: order on the state, then on a fixed
   timestamp, then on the session id, or rows move under the reader between refreshes.
-- The default legacy frontend is one assembled scope under `web/`. The retired `next` query is rejected at the
+- The legacy frontend is one assembled scope under `web/`. The retired `next` query is rejected at the
   page boundary, not routed to another assembly path. The promoted files retain their `next-*` names and
   `cargento.next.*` browser keys so old bookmarks and stored leases stay harmless, and the imported
   cockpit sits beside them in `project.js` under its own `cargento.project*` keys; do not infer a
@@ -369,7 +391,9 @@ allowlist changes only in a PR that makes a reviewed ownership decision.
   `os.makedirs(exist_ok=True)` is not this check: it succeeds for a directory that already exists
   whatever its mode, which is the likeliest bad state of all.
   Every asset required by the selected renderer must load before bind. A broken selected React
-  build refuses; it never silently substitutes the legacy dashboard or starts a Node build.
+  build refuses and names `--frontend legacy` as the rollback; it never silently substitutes the
+  legacy dashboard or starts a Node build. The renderer default is `DEFAULT_FRONTEND` in
+  `config.py`, forwarded explicitly to a detached child, and no environment variable selects it.
 - Never use `os.kill`, including `os.kill(pid, 0)` for liveness. CPython implements it on Windows
   through `TerminateProcess`, so a liveness check would kill the process it was asked to inspect.
   Probe `/api/health` instead.

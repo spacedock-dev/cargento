@@ -12,6 +12,7 @@ import socket
 import subprocess
 import sys
 import tempfile
+import time
 import unittest
 from contextlib import redirect_stderr
 from pathlib import Path
@@ -19,6 +20,7 @@ from typing import Any
 from unittest import mock
 
 from cargento_runtime import aggregate, cli, lifecycle
+from cargento_runtime import config as runtime_config
 from cargento_runtime.web import page
 
 from .support import make_runtime
@@ -37,6 +39,10 @@ class ReactFrontendTest(unittest.TestCase):
         self.root = Path(self.temp.name)
         self.addCleanup(mock.patch.stopall)
         mock.patch.object(page, "WEB_DIR", self.root).start()
+        # `build_id` is cached for the life of a process, and React is the default now, so
+        # any earlier test that built an application has already cached the real page's id.
+        page.build_id.cache_clear()
+        self.addCleanup(page.build_id.cache_clear)
         self.write_package(self.HTML)
 
     def write_package(self, html: bytes) -> None:
@@ -145,27 +151,114 @@ class ReactFrontendTest(unittest.TestCase):
         with self.assertRaises(RuntimeError):
             page.load_frontend_page("react")
 
-    def test_cli_freezes_explicit_selection_and_windows_respawn_carries_it(self) -> None:
+    def test_react_is_the_default_and_the_choice_is_frozen_per_process(self) -> None:
         parser = cli.build_parser()
         default = parser.parse_args([])
-        self.assertEqual("legacy", default.frontend)
-        selected = parser.parse_args(["--frontend", "react", "--daemon"])
-        config, _ = cli.build_runtime(selected, started=1)
+        self.assertEqual("react", default.frontend)
+        self.assertEqual("react", runtime_config.DEFAULT_FRONTEND)
+        config, _ = cli.build_runtime(default, started=1)
         self.assertEqual("react", config.frontend)
         with self.assertRaises(dataclasses.FrozenInstanceError):
             config.frontend = "legacy"  # type: ignore[misc]  # exercise frozen-field refusal
-        argv = lifecycle.spawn_argv(config, selected)
+        # A programmatic caller that names no renderer gets the same one as the CLI, so
+        # the default is stated once rather than once per entry point.
+        self.assertEqual("react", make_runtime()[0].frontend)
+
+    def test_no_loader_defaults_a_renderer_so_a_fallback_cannot_pick_the_old_one(self) -> None:
+        import inspect  # noqa: PLC0415
+
+        for function in (page.load_frontend_page, page.build_id, cli.load_frontend_page):
+            with self.subTest(function=function.__qualname__):
+                parameter = inspect.signature(function).parameters["mode"]
+                self.assertIs(inspect.Parameter.empty, parameter.default)
+                with self.assertRaises(TypeError):
+                    function()  # type: ignore[call-arg]  # the missing mode is the subject
+
+    def test_legacy_is_the_explicit_process_level_rollback(self) -> None:
+        parser = cli.build_parser()
+        selected = parser.parse_args(["--frontend", "legacy"])
+        config, _ = cli.build_runtime(selected, started=1)
+        self.assertEqual("legacy", config.frontend)
+        with self.assertRaises(SystemExit), redirect_stderr(io.StringIO()):
+            parser.parse_args(["--frontend", "next"])
+        with self.assertRaises(ValueError):
+            runtime_config.build_runtime_config(
+                environ={"HOME": "/nonexistent-cargento-test"},
+                platform_name="linux",
+                os_name="posix",
+                launcher_path=Path("server.py"),
+                frontend="next",
+            )
+
+    def test_the_detached_child_inherits_the_selection_whichever_way_it_went(self) -> None:
+        # Always forwarded, including the default: a respawn that relied on the child's
+        # own default would change renderer the day the default moves again.
+        parser = cli.build_parser()
+        for chosen in ("react", "legacy"):
+            with self.subTest(chosen=chosen):
+                selected = parser.parse_args(["--frontend", chosen, "--daemon"])
+                config, _ = cli.build_runtime(selected, started=1)
+                argv = lifecycle.spawn_argv(config, selected)
+                self.assertEqual(chosen, argv[argv.index("--frontend") + 1])
+                self.assertEqual(1, argv.count("--frontend"))
+                self.assertNotIn("--daemon", argv)
+        omitted = parser.parse_args(["--daemon"])
+        config, _ = cli.build_runtime(omitted, started=1)
+        argv = lifecycle.spawn_argv(config, omitted)
         self.assertEqual("react", argv[argv.index("--frontend") + 1])
-        self.assertNotIn("--daemon", argv)
-        config, _ = cli.build_runtime(default, started=1)
-        self.assertNotIn("--frontend", lifecycle.spawn_argv(config, default))
+        child = parser.parse_args(argv[2:])
+        self.assertEqual("react", child.frontend)
+
+    def test_no_environment_variable_or_stored_setting_selects_the_renderer(self) -> None:
+        config, _ = cli.build_runtime(cli.build_parser().parse_args([]), started=1)
+        for name in ("CARGENTO_FRONTEND", "CARGENTO_RENDERER", "FRONTEND"):
+            with self.subTest(name=name), mock.patch.dict(os.environ, {name: "legacy"}):
+                again, _ = cli.build_runtime(cli.build_parser().parse_args([]), started=1)
+                self.assertEqual(config.frontend, again.frontend)
+
+    def test_development_frontend_needs_react_so_the_rollback_refuses_it(self) -> None:
+        parser = cli.build_parser()
+        manifest = ["--frontend-dev-manifest", "ticket.json"]
+        # React is now the default, so the flag alone satisfies the renderer half of the check.
+        cli.validate_frontend_args(parser, parser.parse_args(manifest))
+        with self.assertRaises(SystemExit), redirect_stderr(io.StringIO()):
+            cli.validate_frontend_args(
+                parser, parser.parse_args(["--frontend", "legacy", *manifest])
+            )
 
     def test_bad_selected_artifact_fails_before_server_or_daemon_setup(self) -> None:
         (self.root / "react.html").unlink()
+        for argv in (["--frontend", "react"], []):
+            with self.subTest(argv=argv):
+                stderr = io.StringIO()
+                with redirect_stderr(stderr):
+                    self.assertEqual(1, cli.main([*argv, "--no-events", "--daemon"]))
+                self.assertIn("cannot load frontend assets", stderr.getvalue())
+
+    def test_a_broken_default_build_says_how_to_roll_back_and_never_falls_back(self) -> None:
+        (self.root / "react.html").unlink()
+        legacy_loads: list[str] = []
+        real = page.load_frontend_page
+
+        def spy(mode: str = "legacy") -> bytes:
+            legacy_loads.append(mode)
+            return real(mode)
+
         stderr = io.StringIO()
-        with redirect_stderr(stderr):
-            self.assertEqual(1, cli.main(["--frontend", "react", "--no-events", "--daemon"]))
+        with mock.patch.object(page, "load_frontend_page", spy), redirect_stderr(stderr):
+            self.assertEqual(1, cli.main(["--no-events"]))
+        self.assertEqual(["react"], legacy_loads)
+        self.assertIn("--frontend legacy", stderr.getvalue())
+
+    def test_a_broken_legacy_build_does_not_offer_itself_as_the_rollback(self) -> None:
+        stderr = io.StringIO()
+        with (
+            mock.patch.object(page, "WEB_DIR", self.root),
+            redirect_stderr(stderr),
+        ):
+            self.assertEqual(1, cli.main(["--frontend", "legacy", "--no-events"]))
         self.assertIn("cannot load frontend assets", stderr.getvalue())
+        self.assertNotIn("--frontend legacy", stderr.getvalue())
 
     def test_duplicate_metadata_keys_and_bad_provenance_refuse(self) -> None:
         self.metadata["provenance"]["sources"] = [
@@ -225,6 +318,51 @@ class ReactFrontendTest(unittest.TestCase):
             self.assertEqual(mode, result["frontend"])
             prefix = "react-" if mode == "react" else ""
             self.assertEqual(prefix + hashlib.sha256(html).hexdigest()[:16], result["build"])
+
+
+class LegacyAssetGuardTest(unittest.TestCase):
+    """The rollback has no integrity metadata, so an emptied part must not serve a page.
+
+    Measured on a scratch plugin: emptying `next-cockpit.js` served HTTP 200 with a
+    908,989 byte page and no message, while a deleted part refused. Full integrity for
+    the legacy assets is deferred to its retirement; this only closes the silent case.
+    """
+
+    def setUp(self) -> None:
+        self.temp = tempfile.TemporaryDirectory(prefix="cargento-legacy-guard-")
+        self.addCleanup(self.temp.cleanup)
+        self.root = Path(self.temp.name)
+        shutil.copytree(
+            page.WEB_DIR,
+            self.root,
+            dirs_exist_ok=True,
+            ignore=shutil.ignore_patterns("react*", "vendor", "__pycache__"),
+        )
+        self.addCleanup(mock.patch.stopall)
+        mock.patch.object(page, "WEB_DIR", self.root).start()
+
+    def test_the_untouched_copy_still_assembles(self) -> None:
+        self.assertTrue(page.load_frontend_page("legacy"))
+
+    def test_an_empty_or_blank_script_part_refuses_by_name(self) -> None:
+        for name in page.APP_PARTS:
+            for blank in ("", " \n\t\n"):
+                with self.subTest(part=name, blank=blank):
+                    original = (self.root / name).read_bytes()
+                    (self.root / name).write_text(blank, encoding="utf-8")
+                    try:
+                        with self.assertRaisesRegex(RuntimeError, f"{name} is empty"):
+                            page.load_frontend_page("legacy")
+                    finally:
+                        (self.root / name).write_bytes(original)
+
+    def test_the_launcher_refuses_loudly_and_does_not_serve_the_react_page_instead(self) -> None:
+        (self.root / "next-cockpit.js").write_text("", encoding="utf-8")
+        stderr = io.StringIO()
+        with redirect_stderr(stderr):
+            self.assertEqual(1, cli.main(["--frontend", "legacy", "--no-events"]))
+        self.assertIn("cannot load frontend assets", stderr.getvalue())
+        self.assertIn("next-cockpit.js is empty", stderr.getvalue())
 
 
 class InstalledFrontendTest(unittest.TestCase):
@@ -386,6 +524,158 @@ class InstalledFrontendTest(unittest.TestCase):
                 self.assertIn(result.returncode, (0, 1))
                 self.assertNotIn("cannot load frontend assets", result.stderr)
                 self.assertNotIn("Traceback", result.stderr)
+
+    def test_the_installed_launcher_serves_react_by_default_and_legacy_on_request(self) -> None:
+        # The real launcher, not the fixture helper: this is what a reader types. Node is
+        # absent from PATH and the home is empty, so the page can only come from the
+        # installed copy's own files and no real store is read.
+        repo = Path(__file__).resolve().parents[4]
+        with tempfile.TemporaryDirectory(prefix="cargento-installed-default-") as temporary:
+            root = Path(temporary)
+            plugin = root / "plugin"
+            shutil.copytree(
+                repo / "cargento", plugin, ignore=shutil.ignore_patterns("tests", "__pycache__")
+            )
+            env = self.child_environment(root)
+            launcher = plugin / "skills/cargento/server.py"
+            react_page = (plugin / "skills/cargento/cargento_runtime/web/react.html").read_bytes()
+            quiet = ("--no-usage", "--no-git", "--no-focus", "--no-reach", "--no-history")
+            for label, flags, detach, expected in (
+                ("default", (), False, "react"),
+                ("rollback", ("--frontend", "legacy"), False, "legacy"),
+                ("default detached", (), True, "react"),
+                ("rollback detached", ("--frontend", "legacy"), True, "legacy"),
+            ):
+                with self.subTest(label=label):
+                    port = self.free_port()
+                    argv = [
+                        sys.executable,
+                        str(launcher),
+                        "--port",
+                        str(port),
+                        *quiet,
+                        *flags,
+                    ]
+                    stop = [sys.executable, str(launcher), "--port", str(port), "--stop"]
+                    proc: subprocess.Popen[str] | None = None
+                    try:
+                        if detach:
+                            started = subprocess.run(
+                                [*argv, "--daemon"],
+                                capture_output=True,
+                                text=True,
+                                env=env,
+                                timeout=60,
+                                check=False,
+                            )
+                            self.assertEqual(0, started.returncode, started.stdout + started.stderr)
+                        else:
+                            proc = subprocess.Popen(
+                                argv,
+                                stdout=subprocess.PIPE,
+                                stderr=subprocess.PIPE,
+                                env=env,
+                                text=True,
+                            )
+                        body, payload = self.fetch_page_and_data(port, proc)
+                        self.assertEqual(expected, payload["frontend"])
+                        self.assertEqual(expected == "react", body == react_page)
+                        prefix = "react-" if expected == "react" else ""
+                        self.assertEqual(
+                            prefix + hashlib.sha256(body).hexdigest()[:16], payload["build"]
+                        )
+                    finally:
+                        subprocess.run(
+                            stop,
+                            capture_output=True,
+                            env=env,
+                            timeout=30,
+                            check=False,
+                        )
+                        if proc is not None:
+                            self.close_owned_process(proc)
+
+    def test_a_running_dashboard_keeps_its_renderer_and_a_second_start_says_so(self) -> None:
+        # A daemon started under the old default keeps serving the legacy page after an
+        # upgrade, and the rollback flag does nothing on a port that already runs React.
+        # Neither may be silent, and neither may send the reader to the wrong page.
+        repo = Path(__file__).resolve().parents[4]
+        with tempfile.TemporaryDirectory(prefix="cargento-installed-occupied-") as temporary:
+            root = Path(temporary)
+            plugin = root / "plugin"
+            shutil.copytree(
+                repo / "cargento", plugin, ignore=shutil.ignore_patterns("tests", "__pycache__")
+            )
+            env = self.child_environment(root)
+            launcher = str(plugin / "skills/cargento/server.py")
+            quiet = ("--no-usage", "--no-git", "--no-focus", "--no-reach", "--no-history")
+            for running, asked in (("legacy", "react"), ("react", "legacy")):
+                with self.subTest(running=running, asked=asked):
+                    port = self.free_port()
+                    base = [sys.executable, launcher, "--port", str(port), *quiet]
+
+                    def run(
+                        *extra: str, base: list[str] = base
+                    ) -> subprocess.CompletedProcess[str]:
+                        return subprocess.run(
+                            [*base, *extra],
+                            capture_output=True,
+                            text=True,
+                            env=env,
+                            timeout=60,
+                            check=False,
+                        )
+
+                    try:
+                        started = run("--frontend", running, "--daemon")
+                        self.assertEqual(0, started.returncode, started.stdout + started.stderr)
+                        status = run("--status")
+                        self.assertEqual(0, status.returncode, status.stdout + status.stderr)
+                        self.assertIn(f"frontend {running}", status.stdout)
+                        for detach in (("--daemon",), ()):
+                            refused = run("--frontend", asked, *detach)
+                            text = refused.stdout + refused.stderr
+                            self.assertEqual(1, refused.returncode, text)
+                            self.assertIn(running, text)
+                            self.assertIn("--stop", text)
+                            self.assertIn("start again with the flag you want", text)
+                            self.assertNotIn("use it", text)
+                        # Same renderer as the occupant: using it is the right answer.
+                        same = run("--frontend", running)
+                        self.assertEqual(1, same.returncode)
+                        self.assertIn("use it", same.stdout + same.stderr)
+                    finally:
+                        run("--stop")
+
+    @staticmethod
+    def free_port() -> int:
+        with socket.socket() as probe:
+            probe.bind(("127.0.0.1", 0))
+            return int(probe.getsockname()[1])
+
+    @staticmethod
+    def fetch_page_and_data(
+        port: int, proc: subprocess.Popen[str] | None
+    ) -> tuple[bytes, dict[str, Any]]:
+        deadline = time.monotonic() + 60
+        while time.monotonic() < deadline:
+            if proc is not None and proc.poll() is not None:
+                assert proc.stderr is not None
+                raise AssertionError(f"launcher exited early: {proc.stderr.read()}")
+            try:
+                conn = http.client.HTTPConnection("127.0.0.1", port, timeout=5)
+                try:
+                    conn.request("GET", "/")
+                    body = conn.getresponse().read()
+                    conn.request("GET", "/api/data")
+                    payload = json.loads(conn.getresponse().read())
+                finally:
+                    conn.close()
+            except (OSError, ValueError):
+                time.sleep(0.1)
+                continue
+            return body, payload
+        raise AssertionError(f"nothing answered on port {port}")
 
     def test_installed_copy_serves_both_modes_without_node_and_cleans_up_on_eof(self) -> None:
         repo = Path(__file__).resolve().parents[4]

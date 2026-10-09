@@ -15,7 +15,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { execFileSync } from 'node:child_process';
-import { startDevelopment } from '../dev/supervisor.mjs';
+import { startReactWorld } from './support/world.mjs';
 import { isolatedEnvironment } from '../dev/protocol.mjs';
 import { REPOSITORY, freePorts } from './support/browser.mjs';
 
@@ -65,7 +65,7 @@ export async function startSessionsBoard({ legacy = false, root = REPOSITORY } =
   for (let attempt = 0; ; attempt += 1) {
     ports = await freePorts(legacy ? 3 : 2, refused);
     try {
-      dev = await startDevelopment({
+      dev = await startReactWorld({
         root,
         port: ports[0],
         vitePort: ports[1],

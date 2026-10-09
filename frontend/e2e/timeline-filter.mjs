@@ -23,10 +23,12 @@ import {
   FOCUS,
   fragmentFor,
   openTracked,
+  refreshReact,
   REPOSITORY,
   startWorld,
   TERMINAL,
 } from './terminal-support.mjs';
+import { PRODUCTION as SHIPPED } from './support/world.mjs';
 
 /* Every fixed wait here means "give the page time to react". A hosted runner has a few shared cores and delivers
    events and frames later than a desktop, so each wait is tripled there; only a pass gets slower. */
@@ -193,7 +195,7 @@ const isOpen = (locator) => locator.evaluate((node) => node.open);
 /* A live update through each page's own refresh path. */
 const refresh = (side) =>
   side.name === 'react'
-    ? side.page.evaluate(() => globalThis.__harness.shell.runtime.refresh({ manual: true }))
+    ? refreshReact(side.page, SHIPPED)
     : side.page.evaluate(() => globalThis.nextRefreshPoll());
 
 const SESSION = fragmentFor('decisions');

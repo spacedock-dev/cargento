@@ -1,8 +1,9 @@
 # Design: the dashboard UI
 
 This document records the interface first released behind `?next=true` and the decisions that
-survived its promotion to the default dashboard. The runtime module map remains in
-[design-runtime-architecture.md](design-runtime-architecture.md).
+survived its promotion to the dashboard. That interface is the legacy page now: the React page is
+the default, and this one stays as the temporary `--frontend legacy` rollback until it is retired.
+The runtime module map remains in [design-runtime-architecture.md](design-runtime-architecture.md).
 
 It is a record of rationale, including the direction that was rejected, and it is written for
 whoever changes this interface next. What the interface promises a user, and what backs each

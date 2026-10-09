@@ -107,8 +107,21 @@ def asset_path(name: str) -> Path:
 
 
 def load_script() -> str:
-    """Return every script part, in execution order, as one text."""
-    return "".join(asset_path(name).read_text(encoding="utf-8") for name in APP_PARTS)
+    """Return every script part, in execution order, as one text.
+
+    A part that reads as empty refuses by name. The legacy assembly carries no integrity
+    metadata, and measured on a scratch plugin an emptied `next-cockpit.js` served a 200
+    page with no message, where a deleted part refused. Full integrity is deferred to the
+    legacy page's retirement; this closes the silent case only.
+    """
+    parts = []
+    for name in APP_PARTS:
+        text = asset_path(name).read_text(encoding="utf-8")
+        if not text.strip():
+            msg = f"{name} is empty"
+            raise RuntimeError(msg)
+        parts.append(text)
+    return "".join(parts)
 
 
 def load_styles() -> str:
@@ -262,7 +275,7 @@ def _unique_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
     return result
 
 
-def load_frontend_page(mode: str = "legacy") -> bytes:
+def load_frontend_page(mode: str) -> bytes:
     """Load fixed installed bytes; contributor tools are never invoked here."""
     if mode == "legacy":
         return load_page()
@@ -318,7 +331,7 @@ def _load_react_page() -> bytes:
 
 
 @functools.cache
-def build_id(mode: str = "legacy") -> str:
+def build_id(mode: str) -> str:
     """A short digest of the page this process serves, or "" if it cannot load.
 
     Published on the board (regressions major 1, ui5) so a tab left open across

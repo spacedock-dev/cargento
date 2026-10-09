@@ -224,7 +224,7 @@
 .next-cockpit-recovery .next-project-value--absent{font:var(--fs-label)/1.55 var(--sans);letter-spacing:0}
 .next-cockpit-course{display:grid;gap:0;padding:12px}
 .next-course-episode,.next-course-direction{padding:13px 0;border-bottom:1px solid var(--rule)}
-.next-course-episode>header,.next-course-direction>header{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.next-course-episode>header,.next-course-direction>header{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:4px 10px}
 .next-course-episode>header>span:last-child,.next-course-direction>header>span:last-child{color:var(--ink-label);font:600 var(--fs-label) var(--mono);letter-spacing:.07em}
 .next-course-episode>strong{display:block;margin-top:5px;font-size:var(--fs-body);font-weight:600}
 .next-course-episode p,.next-course-episode ul,.next-course-direction p{margin:6px 0 0;color:var(--ink2);font-size:var(--fs-body);line-height:1.5}

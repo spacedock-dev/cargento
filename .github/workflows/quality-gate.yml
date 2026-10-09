@@ -507,6 +507,54 @@ jobs:
         env:
           CARGENTO_TEST_PYTHON: ${{ steps.python.outputs.python-path }}
         run: pnpm test:sessions:browser
+
+  # The proofs that took the longest moved out of `frontend` so that no native leg runs them all in one
+  # sitting: the macOS leg took 23 of its 30 minutes when everything shared it. Nothing was dropped or
+  # reordered within a proof: `frontend` keeps the build, the unit tests, the smoke proofs and four
+  # development-server proofs, and this job runs the other seven, on the same runners and with the same
+  # bootstrap. A test pins that each development proof runs exactly once across the two jobs.
+  frontend-proofs:
+    name: Frontend proofs (${{ matrix.os }})
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        # Paused on pull requests exactly like `platform-tests` above; see the note there.
+        os: ${{ fromJSON(github.event_name == 'pull_request' && !contains(github.event.pull_request.labels.*.name, 'windows-ci') && '["ubuntu-latest", "macos-latest"]' || '["ubuntu-latest", "macos-latest", "windows-latest"]') }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      # actions/setup-node@v7.0.0 — exact verified release commit.
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version-file: .node-version
+          check-latest: false
+          package-manager-cache: false
+      # pnpm/setup@v3.0.0 verifies its native pnpm download's signature/checksum.
+      # Keep Node authoritative above, and run the script-denied install explicitly.
+      - uses: pnpm/setup@fbda4c85fc2e1e08721cd8763afea8f48d60f024
+        with:
+          version: 12.9.1
+          install: false
+          node-version-file: false
+          cache: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        id: python
+        with:
+          python-version: "3.11"
+      - name: Verify effective builder versions
+        timeout-minutes: 1
+        run: node -e "const fs=require('node:fs');const wanted=fs.readFileSync('.node-version','utf8').trim();if(process.versions.node!==wanted)throw Error('Unexpected Node '+process.versions.node);console.log('Node '+process.versions.node)"
+      - name: Frozen install with dependency scripts denied
+        timeout-minutes: 5
+        run: pnpm install --frozen-lockfile --ignore-scripts
+      - name: Install pinned Chromium and its host dependencies
+        timeout-minutes: 5
+        run: pnpm exec playwright install --with-deps chromium
       - name: Intent log and Intent panel browser proof
         timeout-minutes: 8
         env:
@@ -543,11 +591,78 @@ jobs:
           CARGENTO_TEST_PYTHON: ${{ steps.python.outputs.python-path }}
         run: pnpm test:terminal:browser
 
+  # The same proofs against the SHIPPED bundle. Every other frontend proof serves the React side through the
+  # development server (Vite modules, HMR, StrictMode double effects); this job sets `CARGENTO_E2E_BUNDLE=production`
+  # (see frontend/e2e/support/world.mjs), so the Python backend serves the minified react.html that readers get,
+  # and a difference only the shipped bytes show (minification, dead-code elimination, CSS order, the absence of
+  # StrictMode's double effect) fails here. It adds coverage; the development runs above stay. Ubuntu only: the
+  # bundle is platform-independent bytes, and the native legs exist for the platform-specific work above.
+  # `pnpm build:check` runs first so the file served is the one the sources produce, not a stale commit of it.
+  frontend-production:
+    name: Frontend production bundle (ubuntu-latest, shard ${{ matrix.shard }})
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        # Balanced from measured production-mode times in frontend/e2e/production-shards.json.
+        shard: [a, b]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      # actions/setup-node@v7.0.0 — exact verified release commit.
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version-file: .node-version
+          check-latest: false
+          package-manager-cache: false
+      # pnpm/setup@v3.0.0 verifies its native pnpm download's signature/checksum.
+      # Keep Node authoritative above, and run the script-denied install explicitly.
+      - uses: pnpm/setup@fbda4c85fc2e1e08721cd8763afea8f48d60f024
+        with:
+          version: 12.9.1
+          install: false
+          node-version-file: false
+          cache: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        id: python
+        with:
+          python-version: "3.11"
+      - name: Verify effective builder versions
+        timeout-minutes: 1
+        run: node -e "const fs=require('node:fs');const wanted=fs.readFileSync('.node-version','utf8').trim();if(process.versions.node!==wanted)throw Error('Unexpected Node '+process.versions.node);console.log('Node '+process.versions.node)"
+      - name: Frozen install with dependency scripts denied
+        timeout-minutes: 5
+        run: pnpm install --frozen-lockfile --ignore-scripts
+      - name: Canonical rebuild and tracked artifact comparison
+        timeout-minutes: 3
+        run: pnpm build:check
+      - name: Install pinned Chromium and its host dependencies
+        timeout-minutes: 5
+        run: pnpm exec playwright install --with-deps chromium
+      - name: Parity proofs against the shipped bundle
+        timeout-minutes: 20
+        env:
+          CARGENTO_TEST_PYTHON: ${{ steps.python.outputs.python-path }}
+        run: pnpm test:production:browser --shard ${{ matrix.shard }}
+
   # The single required status check. Branch protection requires this job, so
   # every job above must succeed (a skip or failure anywhere fails the gate).
   quality-gate:
     name: quality-gate
-    needs: [changes, lint, typecheck, runtime-floor, test, platform-tests, frontend]
+    needs:
+      - changes
+      - lint
+      - typecheck
+      - runtime-floor
+      - test
+      - platform-tests
+      - frontend
+      - frontend-proofs
+      - frontend-production
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -562,6 +677,8 @@ jobs:
           R_TEST: ${{ needs.test.result }}
           R_PLATFORM: ${{ needs.platform-tests.result }}
           R_FRONTEND: ${{ needs.frontend.result }}
+          R_FRONTEND_PROOFS: ${{ needs.frontend-proofs.result }}
+          R_FRONTEND_PRODUCTION: ${{ needs.frontend-production.result }}
         run: |
           set -euo pipefail
           echo "changes:        $R_CHANGES (code=$CODE)"
@@ -571,6 +688,8 @@ jobs:
           echo "test:           $R_TEST"
           echo "platform-tests: $R_PLATFORM"
           echo "frontend:       $R_FRONTEND"
+          echo "frontend-proofs: $R_FRONTEND_PROOFS"
+          echo "frontend-production: $R_FRONTEND_PRODUCTION"
 
           # The detector itself is never allowed to skip or fail. If it did, we
           # do not know whether the measurable jobs were skipped on purpose or lost,
@@ -584,7 +703,9 @@ jobs:
           # job could measure. Anything else skipped means a dependency failed
           # upstream and GitHub cascaded it, which is a failure, not a pass.
           for pair in "lint:$R_LINT" "typecheck:$R_TYPECHECK" "runtime-floor:$R_FLOOR" \
-                      "test:$R_TEST" "platform-tests:$R_PLATFORM" "frontend:$R_FRONTEND"; do
+                      "test:$R_TEST" "platform-tests:$R_PLATFORM" "frontend:$R_FRONTEND" \
+                      "frontend-proofs:$R_FRONTEND_PROOFS" \
+                      "frontend-production:$R_FRONTEND_PRODUCTION"; do
             job=${pair%%:*}
             res=${pair#*:}
             if [ "$res" = "success" ]; then

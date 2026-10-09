@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import contextlib
 import dataclasses
+import errno
 import ipaddress
 import json
 import math
@@ -204,9 +205,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--port", type=lifecycle.tcp_port, default=4553)
     parser.add_argument(
         "--frontend",
-        choices=("legacy", "react"),
-        default="legacy",
-        help="dashboard renderer for this process (default legacy)",
+        choices=runtime_config.FRONTENDS,
+        default=runtime_config.DEFAULT_FRONTEND,
+        help=(
+            "dashboard renderer for this process (default react; legacy is the "
+            "temporary rollback to the previous page)"
+        ),
     )
     parser.add_argument(
         "--frontend-dev-manifest",
@@ -575,8 +579,13 @@ def build_application(
     return application
 
 
-def load_frontend_page(mode: str = "legacy") -> bytes | None:
-    """Assemble the required dashboard page."""
+def load_frontend_page(mode: str) -> bytes | None:
+    """Assemble the required dashboard page, or say why it cannot be served.
+
+    A failure never substitutes the other renderer: serving the legacy page because the
+    default one is broken would hide a damaged installation behind a dashboard that looks
+    fine. The message names the rollback instead, so the reader chooses it knowingly.
+    """
     try:
         return frontend_page.load_frontend_page(mode)
     except (OSError, UnicodeError, RuntimeError) as exc:
@@ -584,6 +593,12 @@ def load_frontend_page(mode: str = "legacy") -> bytes | None:
             f"Cargento: cannot load frontend assets ({type(exc).__name__}: {exc}).",
             file=sys.stderr,
         )
+        if mode != "legacy":
+            print(
+                "Cargento: reinstall the plugin to repair this build, or start with "
+                "--frontend legacy to use the previous dashboard in the meantime.",
+                file=sys.stderr,
+            )
         return None
 
 
@@ -636,6 +651,19 @@ def prepare_frontend(
     except RuntimeError as exc:
         print(f"Cargento: cannot admit development frontend ({exc}).", file=sys.stderr)
         return config, None
+
+
+def describe_bind_failure(exc: OSError, args: argparse.Namespace) -> str:
+    """The bind message, naming the renderer already on a busy port when it says which.
+
+    Only a busy port is asked, so a refused or reserved port costs no probe.
+    """
+    serving = None
+    if exc.errno == errno.EADDRINUSE or getattr(exc, "winerror", None) == 10048:  # WSAEADDRINUSE
+        serving = lifecycle.probe_frontend(args.port)
+    return http_api.bind_error_message(
+        exc, args.port, args.host, serving=serving, requested=args.frontend
+    )
 
 
 FOCUS_META_NAME = "cargento-focus"
@@ -901,7 +929,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             interaction_registration_file=args.interaction_origin_registration_file,
         )
     except OSError as exc:
-        runtime_io.diag(http_api.bind_error_message(exc, args.port, args.host), print)
+        runtime_io.diag(describe_bind_failure(exc, args), print)
         return 1
 
     announce_fd: int | None = None

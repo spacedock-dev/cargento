@@ -14,7 +14,7 @@ import { mkdir, mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { isolatedEnvironment } from '../dev/protocol.mjs';
-import { startDevelopment } from '../dev/supervisor.mjs';
+import { startReactWorld } from './support/world.mjs';
 import { REPOSITORY, freePorts } from './support/browser.mjs';
 
 function resolvePython() {
@@ -59,7 +59,7 @@ export async function startIntentBoard({ legacy = false, root = REPOSITORY } = {
   for (let attempt = 0; ; attempt += 1) {
     ports = await freePorts(legacy ? 3 : 2, refused);
     try {
-      dev = await startDevelopment({
+      dev = await startReactWorld({
         root,
         port: ports[0],
         vitePort: ports[1],

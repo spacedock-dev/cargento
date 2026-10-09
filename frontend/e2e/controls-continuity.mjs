@@ -18,7 +18,7 @@ import { cp, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { chromium } from '@playwright/test';
-import { startDevelopment } from '../dev/supervisor.mjs';
+import { startReactWorld } from './support/world.mjs';
 import { freePorts, openPage, REPOSITORY } from './support/browser.mjs';
 
 const SCREENSHOTS = join(REPOSITORY, 'docs/screenshots');
@@ -154,7 +154,7 @@ try {
   assert.ok(!mutation || MUTATIONS[mutation], `unknown mutation ${mutation}`);
 
   const [port, vitePort] = await freePorts(2);
-  dev = await startDevelopment({
+  dev = await startReactWorld({
     root: copy,
     port,
     vitePort,

@@ -21,10 +21,10 @@ import { appendFile, cp, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { isolatedEnvironment } from '../dev/protocol.mjs';
-import { startDevelopment } from '../dev/supervisor.mjs';
-import { freePorts, openPage, REPOSITORY } from './support/browser.mjs';
+import { PRODUCTION, startReactWorld } from './support/world.mjs';
+import { freePorts, openPage, REPOSITORY, refreshReact } from './support/browser.mjs';
 
-export { REPOSITORY, openPage };
+export { REPOSITORY, openPage, refreshReact };
 
 /* The session the synthetic terminal registers for, and its project, as `terminal_backend.py` publishes them. */
 export const TERMINAL = {
@@ -91,11 +91,18 @@ export async function startWorld({
   mutations = {},
   mutation = process.env.CARGENTO_MUTATION || '',
 } = {}) {
-  const copy = await mkdtemp(join(tmpdir(), 'cargento-terminal-browser-'));
+  /* Development mounts `terminal-harness.tsx` in a scratch copy. The production run serves the page readers get and the
+     proofs reach the timeline and the terminal through the project page's tabs. Without a mutation that page is the
+     tracked `react.html` itself; a mutation needs a scratch copy, packaged with the same build. */
+  const shipped = PRODUCTION;
+  const ownsRepository = shipped && !mutation;
+  const copy = ownsRepository
+    ? REPOSITORY
+    : await mkdtemp(join(tmpdir(), 'cargento-terminal-browser-'));
   let dev = null;
   let child = null;
   let legacyScratch = null;
-  const world = { copy, mutation, close };
+  const world = { copy, mutation, shipped, close };
   async function close() {
     if (child && child.exitCode === null) {
       child.kill('SIGTERM');
@@ -112,32 +119,35 @@ export async function startWorld({
     }
     if (dev) await dev.close();
     if (legacyScratch) await rm(legacyScratch, { recursive: true, force: true });
-    await rm(copy, { recursive: true, force: true });
+    if (!ownsRepository) await rm(copy, { recursive: true, force: true });
   }
   try {
-    await cp(join(REPOSITORY, 'frontend'), join(copy, 'frontend'), {
-      recursive: true,
-      filter: (path) =>
-        !path.includes('/fixtures') &&
-        !path.includes('/test-results') &&
-        !path.includes('__pycache__'),
-    });
-    await cp(join(REPOSITORY, 'cargento'), join(copy, 'cargento'), {
-      recursive: true,
-      filter: (path) =>
-        !path.includes('/tests/') && !path.endsWith('/tests') && !path.includes('__pycache__'),
-    });
-    await symlink(
-      join(REPOSITORY, 'node_modules'),
-      join(copy, 'node_modules'),
-      process.platform === 'win32' ? 'junction' : 'dir',
-    );
-    await writeFile(join(copy, 'frontend/src/main.tsx'), "import '../e2e/terminal-harness';\n");
-    for (const [file, needle, replacement] of mutations[mutation] ?? []) {
-      const path = join(copy, 'frontend', file);
-      const text = await readFile(path, 'utf8');
-      assert.ok(text.includes(needle), `mutation ${mutation}: needle not found in ${file}`);
-      await writeFile(path, text.replace(needle, replacement));
+    if (!ownsRepository) {
+      await cp(join(REPOSITORY, 'frontend'), join(copy, 'frontend'), {
+        recursive: true,
+        filter: (path) =>
+          !path.includes('/fixtures') &&
+          !path.includes('/test-results') &&
+          !path.includes('__pycache__'),
+      });
+      await cp(join(REPOSITORY, 'cargento'), join(copy, 'cargento'), {
+        recursive: true,
+        filter: (path) =>
+          !path.includes('/tests/') && !path.endsWith('/tests') && !path.includes('__pycache__'),
+      });
+      await symlink(
+        join(REPOSITORY, 'node_modules'),
+        join(copy, 'node_modules'),
+        process.platform === 'win32' ? 'junction' : 'dir',
+      );
+      if (!shipped)
+        await writeFile(join(copy, 'frontend/src/main.tsx'), "import '../e2e/terminal-harness';\n");
+      for (const [file, needle, replacement] of mutations[mutation] ?? []) {
+        const path = join(copy, 'frontend', file);
+        const text = await readFile(path, 'utf8');
+        assert.ok(text.includes(needle), `mutation ${mutation}: needle not found in ${file}`);
+        await writeFile(path, text.replace(needle, replacement));
+      }
     }
     assert.ok(!mutation || mutations[mutation], `unknown mutation ${mutation}`);
 
@@ -149,7 +159,7 @@ export async function startWorld({
     for (let attempt = 0; ; attempt += 1) {
       ports = await freePorts(3, refused);
       try {
-        dev = await startDevelopment({
+        dev = await startReactWorld({
           root: copy,
           port: ports[0],
           vitePort: ports[1],

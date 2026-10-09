@@ -57,6 +57,11 @@ BOT_NAME = "github-actions[bot]"
 BOT_EMAIL = "41898282+github-actions[bot]@users.noreply.github.com"
 GIT = shutil.which("git") or "git"
 MODES = ("fresh", "resume")
+# A tracked file at the repository root on main. Its presence is the hold, its text is the
+# reason and what lifts it, and removing it in a reviewed pull request lifts it. Read from
+# main's tree rather than the checkout so that a stray file does not hold a release and
+# deleting it from a checkout does not lift one.
+HOLD_FILE = "RELEASE_HOLD"
 PHASES = (
     "resolve",
     "verify",
@@ -176,10 +181,40 @@ def require_sha(name: str, value: str) -> str:
     return value
 
 
+def assert_no_hold(repo: Path, main_ref: str) -> None:
+    """Refuse while main carries the hold marker; refuse too when main cannot be read.
+
+    Both a fresh release and a resume pass through `resolve`, and it runs before any
+    verifier, credential or tag move, so that is where this stops all of them and leaves
+    nothing to undo. `assert_checkout` asks again, because the verifiers run for up to
+    twenty-five minutes and a hold merged in that window must still stop a resume.
+
+    Asked with `git ls-tree`, which lists the entry or prints nothing and exits nonzero
+    only when it cannot read the tree. `git cat-file -e` was tried first and rejected: it
+    exits 1 for a missing blob and 128 for both an absent path and a fatal error, so a
+    damaged repository read as "no hold", and a guard that fails open is not a guard.
+    """
+    result = run([GIT, "-C", str(repo), "ls-tree", "--name-only", main_ref, "--", HOLD_FILE])
+    if result.returncode:
+        message = (
+            f"cannot read main to check for {HOLD_FILE}, so a hold cannot be ruled out "
+            f"({result.stderr.strip() or 'git ls-tree failed'}); refusing to release"
+        )
+        raise ReleaseError(message)
+    if result.stdout.strip():
+        message = (
+            f"releases are on hold: {HOLD_FILE} is present on main. Read it for the reason and "
+            "for what lifts the hold; remove it in a reviewed pull request, then use Re-run all "
+            "jobs on this run. Nothing was tagged, verified, pushed or published."
+        )
+        raise ReleaseError(message)
+
+
 def resolve(repo: Path, tag: str, main_ref: str = "origin/main") -> Resolution:
     """Fix the commit this run releases, before anything is built or verified."""
     version, _ = parse_tag(tag)
     main_tip = run_git(repo, "rev-parse", "--verify", f"{main_ref}^{{commit}}")
+    assert_no_hold(repo, main_tip)
     tag_commit = run_git(repo, "rev-parse", "--verify", f"refs/tags/{tag}^{{commit}}")
     if not is_ancestor(repo, tag_commit, main_tip):
         message = (
@@ -247,6 +282,8 @@ def assert_checkout(
         )
         raise ReleaseError(message)
     version, _ = parse_tag(tag)
+    # Read from main's own ref, as `resolve` does, and before anything else is judged.
+    assert_no_hold(repo, run_git(repo, "rev-parse", "--verify", f"{main_ref}^{{commit}}"))
     head = run_git(repo, "rev-parse", "HEAD")
     if mode == "fresh":
         if head != target:

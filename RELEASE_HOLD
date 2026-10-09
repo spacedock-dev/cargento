@@ -1,0 +1,18 @@
+RELEASES ARE ON HOLD
+
+Why: the React dashboard is now the default, and the legacy page is kept only as a temporary
+rollback (`--frontend legacy`). A release cut now would publish both renderers, and the final
+checks on the build that will actually ship have not passed.
+
+What lifts it, all on one commit of main:
+  1. The legacy frontend, its assets, byte pins and tests are removed.
+  2. The final browser checks pass on that build.
+  3. The Python-only installed copy and the backend-connected development checks pass on that
+     same build.
+
+Who lifts it: the repository owner, by deleting this file in a reviewed pull request.
+
+How it is enforced: the Release workflow's `resolve` job runs
+`python3 scripts/release_transition.py resolve`, which refuses while this file is present on
+main. Nothing is tagged, verified, pushed or published. After this file is gone, use "Re-run all
+jobs" on the failed run, or push the next version tag.

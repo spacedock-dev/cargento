@@ -119,7 +119,13 @@ class DefaultPageCliBoundaryTest(unittest.TestCase):
         with (
             tempfile.TemporaryDirectory() as tmp,
             mock.patch.dict(os.environ, {"CARGENTO_HOME": tmp}),
-            mock.patch.object(sys, "argv", ["server.py", "--port", str(port), "--no-events"]),
+            # The loaders under test are the legacy page's, so the rollback is named: the
+            # default launch assembles the React page instead.
+            mock.patch.object(
+                sys,
+                "argv",
+                ["server.py", "--port", str(port), "--no-events", "--frontend", "legacy"],
+            ),
             mock.patch.object(frontend_page, "load_page", side_effect=page_loader),
             mock.patch.object(
                 frontend_page,

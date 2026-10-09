@@ -59,12 +59,17 @@ function proved(family, direction, how, what) {
   side.get(how).push(what);
 }
 
+/* The React side here is the codec, not a served page. In production mode (`CARGENTO_E2E_BUNDLE=production`) it is
+   bundled minified, as the shipped page's copy of it is, so a rename or dead-code removal the minifier performs
+   shows up as a failed conformance check; the development run keeps it readable. */
+const minify = process.env.CARGENTO_E2E_BUNDLE === 'production';
+
 async function buildBundle(entry, name) {
   const output = await build({
     root,
     configFile: false,
     logLevel: 'silent',
-    build: { write: false, minify: false, lib: { entry, name, formats: ['iife'], fileName: name } },
+    build: { write: false, minify, lib: { entry, name, formats: ['iife'], fileName: name } },
   });
   const bundle = Array.isArray(output) ? output[0] : output;
   // Playwright wraps init scripts, so the IIFE's `var` would not reach the page's global scope.

@@ -333,8 +333,11 @@ print(json.dumps({{
             # reads as a lifecycle break and sends the reader to the wrong file.
             self.assertEqual(len(frontend_page.load_page()), discovered["page_size"])
             state_path = cargento_home / f"cargento-{port}.json"
+            # The rollback page, named on purpose: React is the default now, and the legacy
+            # assembly stays under test until it is retired.
+            # `test_react_frontend` owns the default launch of a copied installation.
             proc = subprocess.Popen(
-                [sys.executable, str(launcher), "--port", str(port)],
+                [sys.executable, str(launcher), "--frontend", "legacy", "--port", str(port)],
                 cwd=cwd,
                 env=env,
                 stdout=subprocess.PIPE,
@@ -398,8 +401,18 @@ print(json.dumps({{
             missing.unlink()
             port = self._candidate_port()
             env = self._clean_env(root / "state")
+            # A missing legacy font only refuses the legacy page; the default page never
+            # reads it, so the rollback is named here.
             launch = subprocess.run(
-                [sys.executable, str(launcher), "--daemon", "--port", str(port)],
+                [
+                    sys.executable,
+                    str(launcher),
+                    "--frontend",
+                    "legacy",
+                    "--daemon",
+                    "--port",
+                    str(port),
+                ],
                 cwd=root,
                 env=env,
                 capture_output=True,
@@ -444,7 +457,16 @@ print(json.dumps({{
             popen.return_value = mock.Mock(pid=1)
             lifecycle.spawn_detached(config, args, str(Path(tmp) / "cargento.log"))
         self.assertEqual(
-            [sys.executable, windows_launcher, "--port", "4553", "--window-hours", "24.0"],
+            [
+                sys.executable,
+                windows_launcher,
+                "--port",
+                "4553",
+                "--window-hours",
+                "24.0",
+                "--frontend",
+                "react",
+            ],
             popen.call_args.args[0],
         )
         self.assertEqual(520, popen.call_args.kwargs["creationflags"])
@@ -487,6 +509,8 @@ print(json.dumps({{
                 "--window-hours",
                 "7.5",
                 "--no-spacedock",
+                "--frontend",
+                "react",
             ],
             lifecycle.spawn_argv(spawned_config, spawned_args),
         )
@@ -506,6 +530,8 @@ print(json.dumps({{
                 "--window-hours",
                 "7.5",
                 "--no-spacedock",
+                "--frontend",
+                "react",
             ],
             popen.call_args.args[0],
         )
@@ -651,6 +677,101 @@ class CargentoServerTest(PageJsHarness):
         self.assertIn("another process", foreign)
         self.assertIn("Nothing was stopped", foreign)
         self.assertIn("not running", lifecycle.render_status({"state": "absent", "port": 4553}))
+
+    def test_status_names_the_renderer_a_running_dashboard_serves(self) -> None:
+        running = {"state": "running", "port": 4553, "pid": 7, "started": 1000.0, "log": "/l"}
+        for renderer in ("react", "legacy"):
+            with self.subTest(renderer=renderer):
+                line = lifecycle.render_status({**running, "frontend": renderer})
+                self.assertIn(renderer, line)
+        self.assertNotIn("frontend", lifecycle.render_status({**running, "frontend": None}))
+        with (
+            mock.patch.object(
+                lifecycle,
+                "probe_port",
+                return_value=(
+                    "cargento",
+                    {
+                        "ok": True,
+                        "pid": 7,
+                        "port": 4553,
+                        "started": 1000.0,
+                    },
+                ),
+            ),
+            mock.patch.object(lifecycle, "probe_frontend", return_value="legacy"),
+        ):
+            self.assertEqual("legacy", lifecycle.instance_status(cfg(), 4553)["frontend"])
+
+    def test_probe_frontend_reads_what_the_server_publishes_and_nothing_else(self) -> None:
+        for body, expected in (
+            (b'{"frontend": "legacy", "sessions": []}', "legacy"),
+            (b'{"frontend": "react"}', "react"),
+            (b'{"frontend": "next"}', None),
+            (b'{"frontend": 7}', None),
+            (b'{"sessions": []}', None),
+            (b"not json", None),
+            (b"[]", None),
+        ):
+            with self.subTest(body=body):
+
+                class Handler(http.server.BaseHTTPRequestHandler):
+                    payload = body
+
+                    def do_GET(self) -> None:
+                        self.send_response(200)
+                        self.send_header("Content-Length", str(len(self.payload)))
+                        self.end_headers()
+                        self.wfile.write(self.payload)
+
+                    def log_message(self, *_args: object) -> None:
+                        pass
+
+                httpd = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+                thread = threading.Thread(target=httpd.serve_forever, daemon=True)
+                thread.start()
+                try:
+                    self.assertEqual(expected, lifecycle.probe_frontend(httpd.server_port))
+                finally:
+                    httpd.shutdown()
+                    httpd.server_close()
+                    thread.join(timeout=5)
+        with socket.socket() as probe:
+            probe.bind(("127.0.0.1", 0))
+            closed = probe.getsockname()[1]
+        self.assertIsNone(lifecycle.probe_frontend(closed, timeout=0.2))
+
+    def test_probe_frontend_gives_up_on_a_listener_that_drips_forever(self) -> None:
+        """A busy port may be held by something that is not a dashboard and never finishes
+        its answer: the probe is bounded, so a failed start is not held up by it."""
+        stop = threading.Event()
+
+        class Drip(http.server.BaseHTTPRequestHandler):
+            def do_GET(self) -> None:
+                self.send_response(200)
+                self.send_header("Content-Length", "1000000")
+                self.end_headers()
+                with contextlib.suppress(OSError):
+                    while not stop.is_set():
+                        self.wfile.write(b" ")
+                        self.wfile.flush()
+                        time.sleep(0.05)
+
+            def log_message(self, *_args: object) -> None:
+                pass
+
+        httpd = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Drip)
+        thread = threading.Thread(target=httpd.serve_forever, daemon=True)
+        thread.start()
+        try:
+            started = time.monotonic()
+            self.assertIsNone(lifecycle.probe_frontend(httpd.server_port, deadline=0.6))
+            self.assertLess(time.monotonic() - started, 3.0)
+        finally:
+            stop.set()
+            httpd.shutdown()
+            httpd.server_close()
+            thread.join(timeout=5)
 
     def test_render_status_survives_a_started_value_it_cannot_convert(self) -> None:
         # Keep render_status defensive even though probe_port now rejects
@@ -1237,6 +1358,8 @@ class CargentoServerTest(PageJsHarness):
                 "--window-hours",
                 "12.0",
                 "--no-spacedock",
+                "--frontend",
+                "react",
             ],
             argv,
         )
@@ -1264,7 +1387,16 @@ class CargentoServerTest(PageJsHarness):
             ),
         )
         self.assertEqual(
-            [sys.executable, str(config.launcher_path), "--port", "1", "--window-hours", "24.0"],
+            [
+                sys.executable,
+                str(config.launcher_path),
+                "--port",
+                "1",
+                "--window-hours",
+                "24.0",
+                "--frontend",
+                "react",
+            ],
             plain,
         )
         # config.launcher_path is the only respawn target: no second interpreter
@@ -1332,7 +1464,9 @@ class CargentoServerTest(PageJsHarness):
         argv = popen.call_args.args[0]
         self.assertEqual(sys.executable, argv[0])
         self.assertTrue(argv[1].endswith("server.py"))
-        self.assertEqual(["--port", "4553", "--window-hours", "24.0"], argv[2:])
+        self.assertEqual(
+            ["--port", "4553", "--window-hours", "24.0", "--frontend", "react"], argv[2:]
+        )
         self.assertEqual(subprocess.DEVNULL, popen.call_args.kwargs["stdin"])
         self.assertTrue(popen.call_args.kwargs["close_fds"])
         # 0 on POSIX, where these creationflags do not exist; the call must

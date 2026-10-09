@@ -200,6 +200,51 @@ def probe_port(port: int, timeout: float = 1.0) -> tuple[str, dict[str, Any] | N
     return ("cargento", data)
 
 
+# The board's own payload names the renderer, and a daemon started before the field
+# existed in health still answers it, so this reads /api/data rather than widening
+# /api/health. Bounded: the answer comes from a process that has only just been
+# declined as a source of trust, and the field sits in a payload of a few MB at most.
+_FRONTEND_PROBE_MAX_BYTES = 32 * 1024 * 1024
+
+
+def probe_frontend(port: int, timeout: float = 1.0, deadline: float = 3.0) -> str | None:
+    """The renderer a dashboard on `port` serves, or None when it does not say.
+
+    None is not "legacy": an unreachable port, a refusal, a payload that is not the board
+    and a value outside the two renderers all read as unknown, so a caller never
+    reports a renderer nobody published.
+
+    Bounded twice, because whatever holds a busy port may not be a dashboard: `timeout`
+    for each socket operation and `deadline` for the whole read, so a listener that
+    drips bytes forever costs a failed start `deadline` seconds, never more.
+    """
+    end = time.monotonic() + deadline
+    conn = http.client.HTTPConnection("127.0.0.1", port, timeout=timeout)
+    try:
+        conn.request("GET", "/api/data")
+        response = conn.getresponse()
+        if response.status != 200:
+            return None
+        body = bytearray()
+        while len(body) <= _FRONTEND_PROBE_MAX_BYTES:
+            if time.monotonic() > end:
+                return None
+            # read1, not read: read(n) waits for all n bytes, so a drip would outlast the deadline.
+            chunk = response.read1(65536)
+            if not chunk:
+                break
+            body.extend(chunk)
+        else:
+            return None
+        data = json.loads(bytes(body))
+    except (OSError, http.client.HTTPException, ValueError, RecursionError):
+        return None
+    finally:
+        conn.close()
+    value = data.get("frontend") if isinstance(data, dict) else None
+    return value if value in runtime_config.FRONTENDS else None
+
+
 def port_released(config: RuntimeConfig, port: int) -> bool:
     """Whether a new listener could take `port` — the question --stop's caller
     actually has, since what follows a stop is usually a start.
@@ -368,6 +413,7 @@ def instance_status(config: RuntimeConfig, port: int) -> dict[str, Any]:
             "port": port,
             "pid": health["pid"],
             "started": health.get("started"),
+            "frontend": probe_frontend(port),
             "log": recorded_log,
         }
     if kind == "foreign":
@@ -393,8 +439,12 @@ def render_status(status: dict[str, Any]) -> str:
             # outside time_t, or NaN, raises here rather than printing a line.
             with contextlib.suppress(OverflowError, ValueError, OSError):
                 since = datetime.fromtimestamp(started, tz=UTC).astimezone().strftime("%H:%M")
+        # A running dashboard keeps its renderer until it is stopped, so this is the one
+        # place a reader can see which page a start flag will not change.
+        renderer = status.get("frontend")
+        served = f", frontend {renderer}" if renderer else ""
         return (
-            f"Cargento: running on port {port} (pid {status['pid']}, since {since}) "
+            f"Cargento: running on port {port} (pid {status['pid']}, since {since}{served}) "
             f"http://127.0.0.1:{port}/"
         )
     if state == "foreign":
@@ -692,8 +742,9 @@ def spawn_argv(config: RuntimeConfig, args: argparse.Namespace) -> list[str]:
         str(args.window_hours),
     ]
     argv.extend(_opt_out_argv(args))
-    if config.frontend != "legacy":
-        argv.extend(["--frontend", config.frontend])
+    # Always forwarded, the default included: the child's own default is not the
+    # parent's choice, and the rollback has to survive the respawn it was selected for.
+    argv.extend(["--frontend", config.frontend])
     if config.claude_reading_model != runtime_config.CLAUDE_READING_DEFAULT_MODEL:
         argv.extend(["--claude-reading-model", config.claude_reading_model])
     reach_url = getattr(args, "reach_url", None)

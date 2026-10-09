@@ -30,8 +30,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { chromium } from '@playwright/test';
 import { isolatedEnvironment } from '../dev/protocol.mjs';
-import { startDevelopment } from '../dev/supervisor.mjs';
-import { freePorts, openPage, REPOSITORY } from './support/browser.mjs';
+import { PRODUCTION, startReactWorld } from './support/world.mjs';
+import { focusedLabel, freePorts, openPage, REPOSITORY, tabTo } from './support/browser.mjs';
 
 /* Every fixed wait here means "give the page time to react". A hosted runner has a few shared cores and delivers
    events later than a desktop, so each wait is tripled there; only a pass gets slower. */
@@ -45,6 +45,29 @@ const only = process.env.CARGENTO_E2E_STEPS ? new RegExp(process.env.CARGENTO_E2
 /* One break each, applied to the scratch copy only. A missing needle fails the run loudly rather than silently
    testing nothing. */
 const MUTATIONS = {
+  // The strip's rows keep their wide desktop columns on a narrow window: the page scrolls sideways.
+  'strip-wide-columns': [
+    [
+      'src/capacity/capacity.css',
+      '.next-capacity-row{position:relative;padding:13px 4px;',
+      '.next-capacity-row{position:relative;min-width:560px;padding:13px 4px;',
+    ],
+  ],
+  // A window row and the consent answers answer a pointer press and nothing else.
+  'window-pointer-only': [
+    [
+      'src/capacity/CapacityStrip.tsx',
+      'onClick={() => onPick(key)}',
+      'onMouseDown={() => onPick(key)}',
+    ],
+  ],
+  'answer-pointer-only': [
+    [
+      'src/capacity/UsageConsent.tsx',
+      "onClick={() => answer('declined')}",
+      "onMouseDown={() => answer('declined')}",
+    ],
+  ],
   // An unanswered consent is read as a yes: the first request carries the usage parameter.
   'unanswered-is-yes': [
     [
@@ -192,7 +215,16 @@ async function waitForHealth(origin, child) {
 }
 
 async function startWorld({ mutation = process.env.CARGENTO_MUTATION || '' } = {}) {
-  const copy = await mkdtemp(join(tmpdir(), 'cargento-capacity-browser-'));
+  /* Development mounts the capacity harness (`capacity-harness.tsx`) in a scratch copy, so the strip, the usage consent
+     and the observer controls are driven apart from the page that hosts them. The production run serves the page
+     readers get instead, and drives each surface through its real mount point: the strip in the Sessions view, the
+     consent and observer controls in the Console tab. Without a mutation that page is the tracked `react.html`
+     itself; a mutation needs a scratch copy, which is packaged with the same build. */
+  const shipped = PRODUCTION;
+  const ownsRepository = shipped && !mutation;
+  const copy = ownsRepository
+    ? REPOSITORY
+    : await mkdtemp(join(tmpdir(), 'cargento-capacity-browser-'));
   let dev = null;
   let child = null;
   let legacyScratch = null;
@@ -213,27 +245,30 @@ async function startWorld({ mutation = process.env.CARGENTO_MUTATION || '' } = {
     }
     if (dev) await dev.close();
     if (legacyScratch) await rm(legacyScratch, { recursive: true, force: true });
-    await rm(copy, { recursive: true, force: true });
+    if (!ownsRepository) await rm(copy, { recursive: true, force: true });
   }
   try {
-    await cp(join(REPOSITORY, 'frontend'), join(copy, 'frontend'), {
-      recursive: true,
-      filter: (path) =>
-        !path.includes('/fixtures') &&
-        !path.includes('/test-results') &&
-        !path.includes('__pycache__'),
-    });
-    await cp(join(REPOSITORY, 'cargento'), join(copy, 'cargento'), {
-      recursive: true,
-      filter: (path) =>
-        !path.includes('/tests/') && !path.endsWith('/tests') && !path.includes('__pycache__'),
-    });
-    await symlink(
-      join(REPOSITORY, 'node_modules'),
-      join(copy, 'node_modules'),
-      process.platform === 'win32' ? 'junction' : 'dir',
-    );
-    await writeFile(join(copy, 'frontend/src/main.tsx'), "import '../e2e/capacity-harness';\n");
+    if (!ownsRepository) {
+      await cp(join(REPOSITORY, 'frontend'), join(copy, 'frontend'), {
+        recursive: true,
+        filter: (path) =>
+          !path.includes('/fixtures') &&
+          !path.includes('/test-results') &&
+          !path.includes('__pycache__'),
+      });
+      await cp(join(REPOSITORY, 'cargento'), join(copy, 'cargento'), {
+        recursive: true,
+        filter: (path) =>
+          !path.includes('/tests/') && !path.endsWith('/tests') && !path.includes('__pycache__'),
+      });
+      await symlink(
+        join(REPOSITORY, 'node_modules'),
+        join(copy, 'node_modules'),
+        process.platform === 'win32' ? 'junction' : 'dir',
+      );
+      if (!shipped)
+        await writeFile(join(copy, 'frontend/src/main.tsx'), "import '../e2e/capacity-harness';\n");
+    }
     assert.ok(!mutation || MUTATIONS[mutation], `unknown mutation ${mutation}`);
     for (const [file, needle, replacement] of MUTATIONS[mutation] ?? []) {
       const path = join(copy, 'frontend', file);
@@ -250,7 +285,7 @@ async function startWorld({ mutation = process.env.CARGENTO_MUTATION || '' } = {
     for (let attempt = 0; ; attempt += 1) {
       ports = await freePorts(3, refused);
       try {
-        dev = await startDevelopment({
+        dev = await startReactWorld({
           root: copy,
           port: ports[0],
           vitePort: ports[1],
@@ -471,6 +506,34 @@ try {
   const both = async (run) => {
     for (const side of SIDES) await run(strip[side.name], side);
   };
+
+  /* The production run is only worth its name if the surfaces it drives are the ones the shipped page mounts. This
+     reads each one inside the view that hosts it: the strip in the Sessions view and the consent in the project
+     page's Console tab, on a page that carries no test hook. The development run mounts the harness instead. */
+  if (PRODUCTION)
+    await step(
+      'shipped page: the strip is mounted by the Sessions view and the consent by the Console tab',
+      async () => {
+        const view = strip.react;
+        await until(
+          () => view.page.locator('[data-next-view-body="sessions"] [data-next-capacity]').count(),
+          'the strip inside the Sessions view',
+        );
+        const console_ = await open(browser, world.react);
+        try {
+          await go(console_, CONSOLE);
+          await until(
+            () =>
+              console_.page
+                .locator('[data-next-view-body="project"] [data-next-usage-consent]')
+                .count(),
+            'the consent inside the Console tab',
+          );
+        } finally {
+          await console_.close();
+        }
+      },
+    );
 
   await step(
     'the unanswered disclosure is drawn and no request carries a usage parameter',
@@ -843,8 +906,22 @@ try {
         [true],
       );
       const theirs = await stripOf(strip.legacy.page);
-      legacySoft('prospect', () => assert.equal(week.prospect, theirs.prospect));
-      legacySoft('rows', () =>
+      /* Each page samples the pace on its own clock, so the span and the number of readings it quotes ("across 8s and 3
+         readings") and the wall-clock minute a budget ends at can differ between two pages that read the same board
+         a moment apart. Those figures are the only part held soft. Everything else is the same sentence on both
+         pages and a difference in it fails, and React's own text is asserted below, strictly, whatever legacy drew. */
+      const unclocked = (text) =>
+        text
+          .replace(/across \S+ and \d+ readings/g, 'across <span> and <n> readings')
+          .replace(/\d{1,2}:\d{2}/g, '<time>');
+      assert.equal(unclocked(week.prospect), unclocked(theirs.prospect), 'prospect, clocks aside');
+      assert.deepEqual(
+        week.rows.map((r) => unclocked(r.text)),
+        theirs.rows.map((r) => unclocked(r.text)),
+        'rows, clocks aside',
+      );
+      legacySoft('prospect clocks', () => assert.equal(week.prospect, theirs.prospect));
+      legacySoft('rows clocks', () =>
         assert.deepEqual(
           week.rows.map((r) => r.text),
           theirs.rows.map((r) => r.text),
@@ -1148,6 +1225,260 @@ try {
     }
     return report;
   });
+
+  /* The strip and the consent at the widths and zoom a reader meets: 320 and 375 CSS px, 640 (200% zoom of a 1280
+     window) and the reader's text at twice the size, on the Sessions view (the strip and the usage question) and the
+     Console tab (the usage switch and the observer controls). A fresh profile draws the unanswered question; the
+     answered switch is drawn by the tracked strip page, which answered earlier in this run. React is held to every
+     measure; the legacy page's overflow is the oracle's and is recorded, not enforced. */
+  /* The harness draws the strip with no page padding, so a disclosure chevron (a rotated pseudo-element, which counts
+     toward scrollable overflow) pokes 3 px past the window at 320 px and 200% text. The shipped page's view padding
+     holds it, so the production run allows nothing; the harness run allows the chevron's width and no more. */
+  const CHEVRON_PX = PRODUCTION ? 0 : 4;
+  await step(
+    'zoom: the strip, the consent and the observer controls fit at 320, 375 and 640 px and at 200% text, on the Sessions view and the Console tab',
+    async () => {
+      const report = {};
+      for (const side of SIDES) await steer(side, { windows: 'full', observer: 'enabled' });
+      const measure = (page) =>
+        page.evaluate(() => {
+          const { document } = globalThis;
+          const root = document.scrollingElement;
+          const boxes = (selector) =>
+            [...document.querySelectorAll(selector)].map((node) => {
+              const box = node.getBoundingClientRect();
+              return { width: box.width, height: box.height, right: box.right };
+            });
+          return {
+            overflow: root.scrollWidth - root.clientWidth,
+            client: root.clientWidth,
+            rows: boxes('.next-capacity-row'),
+            actions: boxes(
+              '.next-usage-consent-actions button, .next-usage-switch button, [data-next-observer-action]',
+            ),
+          };
+        });
+      for (const side of SIDES) {
+        for (const [label, route, wait] of [
+          ['sessions', SESSIONS, async (view) => (await stripOf(view.page))?.rows.length],
+          [
+            'console',
+            CONSOLE,
+            async (view) =>
+              (await observerButtons(view.page)).length || (await consentOf(view.page)).switch,
+          ],
+        ]) {
+          for (const width of [320, 375, 640]) {
+            const view = await open(browser, side);
+            try {
+              await view.page.setViewportSize({ width, height: 900 });
+              await go(view, route);
+              await until(() => wait(view), `${side.name} the ${label} view at ${width}`);
+              for (const scale of ['100%', '200%']) {
+                await view.page.evaluate((fontSize) => {
+                  globalThis.document.documentElement.style.fontSize = fontSize;
+                }, scale);
+                await pause(150);
+                const measured = await measure(view.page);
+                const where = `${side.name} ${label} at ${width}px, text ${scale}`;
+                report[where] = { overflow: measured.overflow };
+                if (side.name === 'react') {
+                  assert.ok(
+                    measured.overflow <= CHEVRON_PX,
+                    `${where}: horizontal page scroll ${measured.overflow}`,
+                  );
+                  for (const row of measured.rows)
+                    assert.ok(
+                      row.right <= measured.client + 1,
+                      `${where}: a window row leaves the page`,
+                    );
+                  for (const action of measured.actions) {
+                    assert.ok(
+                      action.right <= measured.client + 1,
+                      `${where}: a control leaves the page`,
+                    );
+                    assert.ok(
+                      action.height >= 44 && action.width >= 44,
+                      `${where}: a control under 44 px (${Math.round(action.width)}x${Math.round(action.height)})`,
+                    );
+                  }
+                } else {
+                  legacySoft(where, () =>
+                    assert.ok(measured.overflow <= 0, `legacy overflow ${measured.overflow}`),
+                  );
+                }
+              }
+            } finally {
+              await view.close();
+            }
+          }
+        }
+      }
+      // The answered switch, in a fresh profile that answers on the page, at the narrowest width and the largest text.
+      const answered = await open(browser, world.react);
+      try {
+        await answered.page.setViewportSize({ width: 320, height: 900 });
+        await go(answered, SESSIONS);
+        await until(async () => (await consentOf(answered.page)).disclosure, 'the question');
+        await pressUsage(answered, 'declined');
+        await until(async () => (await consentOf(answered.page)).switch, 'the answered switch');
+        await answered.page.evaluate(() => {
+          globalThis.document.documentElement.style.fontSize = '200%';
+        });
+        await pause(150);
+        const switched = await measure(answered.page);
+        assert.ok(
+          switched.overflow <= CHEVRON_PX,
+          `react: the usage switch scrolls the page by ${switched.overflow} at 320px, text 200%`,
+        );
+        report['react answered switch at 320px, text 200%'] = { overflow: switched.overflow };
+      } finally {
+        await answered.close();
+      }
+      return report;
+    },
+  );
+
+  /* A reader who never touches the mouse: the window rows and the consent answers are reached by Tab and operated by
+     Enter and Space, and each press does what the same press with a pointer does. */
+  await step(
+    'keyboard: the window rows and the consent buttons are reached by Tab, operated by Enter and Space, and keep their focus',
+    async () => {
+      const trace = { legacy: {}, react: {} };
+      /* The legacy page is the oracle: a keyboard leg it fails on a loaded runner is recorded, not failed. React is
+         held to every assertion. */
+      async function leg(side, label, run) {
+        try {
+          await run();
+        } catch (error) {
+          if (side.name !== 'legacy') throw error;
+          legacyNotes.push(`keyboard ${label}: ${String(error.message || error).split('\n')[0]}`);
+        }
+      }
+      const nameOf = (page, selector) =>
+        page.evaluate((query) => {
+          const node = globalThis.document.querySelector(query);
+          return node
+            ? (node.getAttribute('aria-label') || node.textContent || '')
+                .replace(/\s+/g, ' ')
+                .trim()
+            : null;
+        }, selector);
+      const holdsFocus = (page, selector) =>
+        page.evaluate(
+          (query) => globalThis.document.querySelector(query) === globalThis.document.activeElement,
+          selector,
+        );
+
+      for (const side of SIDES) {
+        await steer(side, { windows: 'full' });
+        const seen = trace[side.name];
+
+        // The window rows: Space selects the third, Shift+Tab and Enter select the one before it.
+        const rows = await open(browser, side);
+        try {
+          await go(rows, SESSIONS);
+          await until(
+            async () => (await stripOf(rows.page))?.rows.some((r) => r.key === 'codex:fiveH'),
+            `${side.name} the full board`,
+            patience(15000),
+          );
+          await leg(side, 'window rows', async () => {
+            const keys = (await stripOf(rows.page)).rows.map((r) => r.key);
+            const target = keys.at(-1);
+            const before = keys.at(-2);
+            const buttonOf = (key) => `[data-next-capacity-row="${key}"] button`;
+            const name = await nameOf(rows.page, buttonOf(target));
+            assert.ok(name, 'the last window row has no button');
+            seen.rowTabs = await tabTo(rows.page, name);
+            await rows.page.keyboard.press('Space');
+            assert.equal(await pressedKey(rows), target, 'Space did not select the window');
+            assert.equal(await holdsFocus(rows.page, buttonOf(target)), true, 'focus left the row');
+            await rows.page.keyboard.press('Shift+Tab');
+            assert.equal(
+              await holdsFocus(rows.page, buttonOf(before)),
+              true,
+              'Shift+Tab did not reach the row before',
+            );
+            await rows.page.keyboard.press('Enter');
+            assert.equal(await pressedKey(rows), before, 'Enter did not select the window');
+            assert.equal(await holdsFocus(rows.page, buttonOf(before)), true, 'focus left the row');
+            seen.rows = [target, before];
+          });
+          assert.deepEqual(
+            usageRequests(rows),
+            [],
+            `${side.name}: choosing a window sent a usage parameter`,
+          );
+        } finally {
+          await rows.close();
+        }
+
+        // The consent: each answer is a button a keyboard reader reaches and presses, on a profile never asked.
+        for (const [answer, key, expectFetch] of [
+          ['declined', 'Enter', false],
+          ['granted', 'Space', true],
+        ]) {
+          const view = await open(browser, side);
+          try {
+            await go(view, SESSIONS);
+            await until(
+              async () => (await consentOf(view.page)).disclosure,
+              `${side.name} the question`,
+            );
+            await pause(800);
+            assert.deepEqual(usageRequests(view), [], `${side.name}: a request before the press`);
+            await leg(side, `consent ${answer}`, async () => {
+              const selector = `[data-next-usage-answer="${answer}"]`;
+              const name = await nameOf(view.page, selector);
+              assert.ok(name, `no ${answer} button`);
+              seen[`${answer}Tabs`] = await tabTo(view.page, name);
+              const seenBefore = (await eventsOf(side, 'usage_fetch')).length;
+              view.reset();
+              await view.page.keyboard.press(key);
+              await until(
+                async () => (await consentOf(view.page)).switch,
+                `${side.name} the switch`,
+              );
+              await until(
+                () => dataRequests(view).length > 0,
+                `${side.name} the read after the answer`,
+              );
+              if (expectFetch) {
+                await until(() => usageRequests(view).length > 0, `${side.name} the parameter`);
+                assert.match(usageRequests(view)[0].path, /usage=1/);
+                await until(
+                  async () => (await eventsOf(side, 'usage_fetch')).length > seenBefore,
+                  `${side.name} the server counting the press`,
+                );
+                assert.match((await consentOf(view.page)).switch, /Vendor quota fetch: on/);
+              } else {
+                await pause(1500);
+                assert.deepEqual(
+                  usageRequests(view),
+                  [],
+                  `${side.name}: No thanks sent a parameter`,
+                );
+                assert.match((await consentOf(view.page)).switch, /Vendor quota fetch: off/);
+              }
+              // The question is gone with its buttons, so focus is handed to the switch that replaced it.
+              seen[`${answer}Focus`] = await focusedLabel(view.page);
+              assert.equal(
+                await view.page.evaluate(
+                  () => globalThis.document.activeElement?.closest('.next-usage-switch') !== null,
+                ),
+                true,
+                `focus did not land on the switch after ${key} on ${answer}`,
+              );
+            });
+          } finally {
+            await view.close();
+          }
+        }
+      }
+      return trace;
+    },
+  );
 
   await step('no external request, page error or console error in either page', async () => {
     for (const side of SIDES) {

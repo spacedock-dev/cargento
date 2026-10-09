@@ -206,8 +206,21 @@ def reuse_address_allowed(os_name: str) -> bool:
     return os_name != "nt"
 
 
-def bind_error_message(exc: OSError, port: int, host: str = "127.0.0.1") -> str:
-    """Explain a failed bind instead of dumping a raw traceback."""
+def bind_error_message(
+    exc: OSError,
+    port: int,
+    host: str = "127.0.0.1",
+    *,
+    serving: str | None = None,
+    requested: str | None = None,
+) -> str:
+    """Explain a failed bind instead of dumping a raw traceback.
+
+    `serving` is the renderer the occupant of the port publishes, when it publishes one,
+    and `requested` is the renderer this start asked for. A dashboard keeps its renderer
+    until it is stopped, so when they differ the useful advice is to stop it and start
+    again, not to use the page that is already running.
+    """
     winerror = getattr(exc, "winerror", None)
     if exc.errno == errno.EADDRINUSE or winerror == 10048:  # WSAEADDRINUSE
         # 0.0.0.0 is a bind address and not a destination, so the hint keeps
@@ -215,6 +228,13 @@ def bind_error_message(exc: OSError, port: int, host: str = "127.0.0.1") -> str:
         # `_host_admitted` says in as many words. Any other bind is where the
         # printed curl was pointing at the wrong machine.
         reachable = "127.0.0.1" if host in ("127.0.0.1", "0.0.0.0") else host  # noqa: S104
+        if serving is not None and requested is not None and serving != requested:
+            return (
+                f"Cargento: port {port} is already in use by a dashboard serving the {serving} "
+                f"page, and you asked for {requested}. A running dashboard keeps its renderer "
+                f"until it is stopped: stop it with --port {port} --stop, then start again "
+                f"with the flag you want. Otherwise pick another port with --port."
+            )
         return (
             f"Cargento: port {port} is already in use. If that is a dashboard "
             f"already running, use it: curl -s http://{reachable}:{port}/api/data. "

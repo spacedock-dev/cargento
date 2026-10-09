@@ -16,7 +16,7 @@ import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { startDevelopment } from '../../dev/supervisor.mjs';
+import { startReactWorld } from './world.mjs';
 import { isolatedEnvironment } from '../../dev/protocol.mjs';
 
 export const REPOSITORY = fileURLToPath(new URL('../../../', import.meta.url));
@@ -101,7 +101,7 @@ export async function startBoard({ legacy = false, root = REPOSITORY } = {}) {
   // The helper that runs is the one under `root`, so a scratch copy of the tree (a mutation check, or a
   // contributor's experiment) serves its own sources and its own runtime end to end.
   const helper = join(root, 'frontend/e2e/support/fixture_backend.py');
-  const dev = await startDevelopment({ root, port: pythonPort, vitePort, backendHelper: helper });
+  const dev = await startReactWorld({ root, port: pythonPort, vitePort, backendHelper: helper });
   const board = { react: { origin: dev.origin, dev }, legacy: null, close };
   let child = null;
   let scratch = null;
@@ -257,4 +257,68 @@ function readShell(page) {
 /** Resolves once the shell's primary navigation is on the page, for either renderer. */
 export function waitForShell(page) {
   return page.locator('nav[aria-label="Primary"]').waitFor();
+}
+
+/**
+ * What the focused element is called to a reader: its aria-label, else its text, else its tag. `null` when
+ * nothing but the page itself holds focus, which is what a control that vanished under the reader leaves.
+ */
+export function focusedLabel(page) {
+  return page.evaluate(() => {
+    const active = globalThis.document.activeElement;
+    if (
+      !active ||
+      active === globalThis.document.body ||
+      active === globalThis.document.documentElement
+    )
+      return null;
+    const name = active.getAttribute('aria-label') || active.textContent || active.tagName;
+    return name.replace(/\s+/g, ' ').trim().slice(0, 80) || active.tagName;
+  });
+}
+
+/**
+ * Press Tab from the top of the page until the control called `label` holds focus; the count of presses.
+ * The starting point is reset first: Chromium otherwise continues from wherever the last control was,
+ * which would make the count depend on the step before. Fails with the labels it walked past.
+ */
+export async function tabTo(page, label, { max = 200 } = {}) {
+  await page.evaluate(() => {
+    const { document } = globalThis;
+    document.activeElement?.blur?.();
+    document.body.setAttribute('tabindex', '-1');
+    document.body.focus();
+    document.body.removeAttribute('tabindex');
+    globalThis.scrollTo(0, 0);
+  });
+  const walked = [];
+  for (let presses = 1; presses <= max; presses += 1) {
+    await page.keyboard.press('Tab');
+    const now = await focusedLabel(page);
+    walked.push(now);
+    if (now === label) return presses;
+  }
+  throw new Error(
+    `Tab never reached "${label}" in ${max} presses; it walked: ${JSON.stringify(walked.slice(-12))}`,
+  );
+}
+
+/* A live update through the React page's own refresh path. The harness exposes the runtime, so a refresh is the
+   manual one; the shipped page exposes nothing, so another tab's announcement stands in, which is how the page is
+   told in real use: a storage event on the revision key wakes it to read the board. */
+let wakes = 0;
+export function refreshReact(page, shipped) {
+  wakes += 1;
+  return shipped
+    ? page.evaluate(
+        (number) =>
+          globalThis.dispatchEvent(
+            new globalThis.StorageEvent('storage', {
+              key: 'cargento.next.revision',
+              newValue: `9999999999.${String(number)}`,
+            }),
+          ),
+        wakes,
+      )
+    : page.evaluate(() => globalThis.__harness.shell.runtime.refresh({ manual: true }));
 }

@@ -59,6 +59,15 @@ which git resolves to `HEAD..HEAD`: zero commits, empty diffs, exit 0. It reads 
 release with nothing in it. The glob matches only the two release-tag shapes the Release workflow
 accepts, so a stray tag cannot become the baseline either.
 
+- **No release hold is recorded.** A tracked `RELEASE_HOLD` file at the repository root of `main`
+  means releases are paused; see [The release hold](#the-release-hold). Check it before choosing a
+  number, because a pushed tag would only start a run that fails at `resolve`:
+
+  ```bash
+  git fetch -q origin main   # a stale origin/main would print "no hold" for a hold that exists
+  [ -n "$(git ls-tree --name-only origin/main -- RELEASE_HOLD)" ] && echo "HOLD: read RELEASE_HOLD, stop" || echo "no hold"
+  ```
+
 - **The tree is clean and `main` is current.** A tag is a pointer to a commit on the remote; a
   local edit is not in it.
 - **`bump_version.py --current` equals `$LAST` without its `v`.** If it does not, a previous
@@ -286,6 +295,9 @@ keeps the first run's resolved target, so a target that main has since moved pas
 assertion again, every time. Every step is idempotent and the workflow detects its own resume.
 Read which job failed first:
 
+- **`resolve` failed with "releases are on hold".** `RELEASE_HOLD` is on `main`. Nothing was
+  tagged, verified, pushed or published, and nothing needs undoing. Do not work around it: read
+  [The release hold](#the-release-hold).
 - **`verify-frontend` or `verify-tree` failed.** Nothing was pushed, tagged or published; the tree
   that was verified is not releasable. Fix it on `main` through a PR, then Re-run all jobs on the
   same run: `resolve` takes the new main tip and both verifiers cover it. The run uses the workflow
@@ -304,6 +316,26 @@ Read which job failed first:
   tag's release commit on `main`, verifies that commit, and publishes it, never a newer `main`. It
   moves `stable` forward only, so resuming an older release after a newer one leaves `stable` where
   the newer release put it and says so in the log.
+
+### The release hold
+
+`RELEASE_HOLD` at the repository root of `main` pauses every release. It is a real guard: the
+Release workflow's `resolve` job runs `scripts/release_transition.py resolve`, which refuses with
+`releases are on hold` while the file is present on `main`, for a fresh release and for a resume
+alike. It reads `main`'s tree rather than the checkout, so a stray local file holds nothing and
+deleting the file locally lifts nothing. `resolve` holds no credentials and runs before every
+verifier, so a refused run has tagged, pushed and published nothing. `assert-checkout` asks again
+in the publishing job, so a hold merged while the verifiers ran still stops a resume before the
+bump, tag move or `stable`. If main cannot be read at all, both refuse: an unreadable repository
+is not a missing hold.
+
+The file records why the hold exists and what lifts it. The current hold lasts until the legacy
+frontend is retired and the final browser, Python-only install and backend-connected development
+checks pass on one build of `main`. Only the repository owner lifts it, by deleting the file in a
+reviewed pull request. This skill never deletes it, and never edits it to make a release pass.
+
+After the file is gone from `main`, use **Re-run all jobs** on a run that stopped at the hold (a
+tag that is already pushed cannot be pushed again), or push the next version tag.
 
 ### Rehearsing the sequence
 
